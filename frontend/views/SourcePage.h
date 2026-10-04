@@ -179,6 +179,7 @@ private:
   QLabel* owned_note_ = nullptr;
   QPushButton* steam_settings_ = nullptr;
   QPushButton* art_key_ = nullptr;  // covers need a SteamGridDB key
+  QString art_key_setting_;         // that failure's fix target
   TileGrid* owned_grid_ = nullptr;
 
   // What the account owns and isn't installed, by ref, with its title.
@@ -187,6 +188,7 @@ private:
   // Refs asked to install/update/download and not yet started by mirad, and
   // the ones done this session. What's running comes from downloads_.
   QHash<QString, QString> owned_state_;  // ref -> "Installing…", "Downloaded", ...
+  QHash<QString, QString> humble_paths_;  // downloaded bundle key -> its folder, to add as a game
 
   GameLibraryModel* library_ = nullptr;
   GameFilterProxy* games_ = nullptr;        // this source's games, for library_grid_

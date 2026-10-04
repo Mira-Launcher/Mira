@@ -296,6 +296,13 @@ void SettingsNavWidget::RefreshIcons() {
   }
 }
 
+void SettingsNavWidget::ScrollToTop() {
+  jump_->stop();
+  canvas_->layout()->activate();
+  scroll_->verticalScrollBar()->setValue(0);
+  SyncToScroll();
+}
+
 void SettingsNavWidget::Select(int index) {
   if (index < 0 || index >= static_cast<int>(categories_.size())) return;
   const Category& category = categories_[index];

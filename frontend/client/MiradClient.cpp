@@ -188,6 +188,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.runner_ref) body["runner_ref"] = *patch.runner_ref;
   if (patch.data_dir) body["data_dir"] = *patch.data_dir;
   if (patch.tags) body["tags"] = *patch.tags;
+  if (patch.reviewed) body["reviewed"] = *patch.reviewed;
 
   const auto parse_object = [&](const std::string& text, const char* field,
                                 const char* message) -> bool {
@@ -766,6 +767,27 @@ RunnerToolsResult ListRunnerToolsSync() {
     result.tools.push_back({entry.value("id", std::string()), entry.value("label", std::string()),
                             entry.value("doc", std::string()), entry.value("path", std::string()),
                             entry.value("installed", false)});
+  }
+  return result;
+}
+
+RunnerSchemaResult GetRunnerSchemaSync(const std::string& kind) {
+  RunnerSchemaResult result;
+  const std::string path = "/v1/runners/" + QueryEncode(kind) + "/schema";
+  const transport::Reply reply = transport::Get(path);
+  if (!reply.ok) {
+    result.error = reply.error;
+    return result;
+  }
+  if (!reply.body.is_array()) {
+    result.error = transport::UnexpectedResponse("GET " + path);
+    return result;
+  }
+  result.ok = true;
+  for (const json& entry : reply.body) {
+    if (!entry.is_object()) continue;
+    const std::string key = entry.value("key", std::string());
+    result.options.push_back({key, entry.value("label", key), entry.value("doc", std::string())});
   }
   return result;
 }
@@ -1539,6 +1561,11 @@ void MiradClient::ListRunnerToolsAsync(QObject* context, std::function<void(Runn
   async::Run(context, [] { return ListRunnerToolsSync(); }, std::move(callback));
 }
 
+void MiradClient::GetRunnerSchemaAsync(QObject* context, const std::string& kind,
+                                       std::function<void(RunnerSchemaResult)> callback) {
+  async::Run(context, [kind] { return GetRunnerSchemaSync(kind); }, std::move(callback));
+}
+
 void MiradClient::SetupRunnerToolAsync(QObject* context, const std::string& id,
                                        std::function<void(RunnerDownloadResult)> callback) {
   async::Run(context, [id] { return SetupRunnerToolSync(id); }, std::move(callback), async::Lane::Slow);
@@ -1665,7 +1692,7 @@ bool MiradClient::ParseGameState(const std::string& data, GameStateEvent* out) {
   out->id = entry.value("id", std::string());
   out->state = entry.value("state", std::string());
   out->played_seconds = entry.value("played_seconds", std::int64_t{0});
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return !out->id.empty();
 }
 
@@ -1722,7 +1749,7 @@ bool MiradClient::ParseArtworkSelectEvent(const std::string& data, ArtworkSelect
   if (id.empty()) return false;
   out->id = id;
   out->slot = payload.value("type", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   out->art = mapping::ToArtVersions(payload);
   return true;
 }
@@ -1737,7 +1764,7 @@ bool MiradClient::ParseArtCandidatesEvent(const std::string& data, ArtCandidates
   out->request = payload.value("request", std::string());
   out->total = payload.value("total", 0);
   out->code = payload.value("code", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   out->candidates.clear();
   if (payload.contains("candidates") && payload["candidates"].is_array()) {
     for (const json& item : payload["candidates"]) out->candidates.push_back(ParseArtCandidate(item));
@@ -1751,7 +1778,7 @@ bool MiradClient::ParseArtThumbsEvent(const std::string& data, ArtThumbsEvent* o
   out->id = payload.value("id", std::string());
   if (out->id.empty()) return false;
   out->slot = payload.value("type", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   const auto ids = [&](const char* key) {
     std::vector<std::int64_t> list;
     if (!payload.contains(key) || !payload[key].is_array()) return list;
@@ -1884,7 +1911,7 @@ bool MiradClient::ParseTitleArtworkEvent(const std::string& event_type, const st
   out->state = event_type.substr(kPrefix.size());  // "ready" | "failed"
   out->source = entry.value("source", std::string());
   out->ref = entry.value("ref", std::string());
-  out->error = entry.value("code", std::string());
+  out->error = mapping::ToApiError(entry);
   return !out->ref.empty();
 }
 
@@ -1927,11 +1954,14 @@ void MiradClient::RelocateGamesAsync(QObject* context, const std::vector<std::st
 }
 
 void MiradClient::RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
-                                    std::function<void(GameDetailResult)> callback) {
+                                    const std::string& data_dir, std::function<void(GameDetailResult)> callback) {
+  json body = json::object();
+  if (!install_path.empty()) body["install_path"] = install_path;
+  if (!data_dir.empty()) body["data_dir"] = data_dir;
   RunJob<GameDetailResult>(
       context, "relocate",
-      [id, install_path](const std::string& query) {
-        return transport::PostJson("/v1/games/" + id + "/relocate" + query, {{"install_path", install_path}});
+      [id, body](const std::string& query) {
+        return transport::PostJson("/v1/games/" + id + "/relocate" + query, body);
       },
       [id](GameDetailResult& result, const json& body) {
         if (!body.is_object()) throw std::runtime_error(transport::UnexpectedResponse("POST /v1/games/" + id + "/relocate"));
@@ -2056,10 +2086,12 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
     }
   } else if (out->kind == "download") {
     out->ref = entry.value("bundle_key", std::string());
+    out->path = entry.value("path", std::string());
+    out->downloaded = entry.value("downloaded", true);
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
   }
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 
@@ -2077,7 +2109,7 @@ bool MiradClient::ParseRunnerDownload(const std::string& event_type, const std::
   out->label = entry.value("label", out->name);
   out->source = entry.value("source", std::string());
   out->replaced = entry.value("replaced", std::string());
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 
@@ -2091,7 +2123,7 @@ bool MiradClient::ParseTricksEvent(const std::string& event_type, const std::str
   out->state = event_type.substr(kPrefix.size());
   out->id = entry.value("id", std::string());
   out->verb = entry.value("verb", std::string());
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 

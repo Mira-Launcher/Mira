@@ -16,7 +16,7 @@ TEST_CASE("ToGameSummary reads the fields a library row shows") {
   const json entry = json::parse(R"({
     "id": "animal-well", "name": "Animal Well", "status": "ready",
     "platform": "windows", "runner_ref": "proton_umu:GE-Proton11-7",
-    "last_error": "", "reviewed": true, "confidence": 0.75,
+    "last_error": "", "needs_check": true,
     "last_played_at": 1789620825, "play_seconds": 4210, "running": true
   })");
 
@@ -27,8 +27,7 @@ TEST_CASE("ToGameSummary reads the fields a library row shows") {
   CHECK(game.status == "ready");
   CHECK(game.platform == "windows");
   CHECK(game.runner_ref == "proton_umu:GE-Proton11-7");
-  CHECK(game.reviewed);
-  CHECK(game.confidence == doctest::Approx(0.75));
+  CHECK(game.needs_check);
   REQUIRE(game.last_played_at.has_value());
   CHECK(*game.last_played_at == 1789620825);
   CHECK(game.play_seconds == 4210);
@@ -60,8 +59,7 @@ TEST_CASE("ToGameSummary tolerates a record missing every optional field") {
   CHECK(game.id == "x");
   CHECK(game.name.empty());
   CHECK(game.status.empty());
-  CHECK_FALSE(game.reviewed);
-  CHECK(game.confidence == doctest::Approx(0.0));
+  CHECK_FALSE(game.needs_check);
   CHECK(game.play_seconds == 0);
   CHECK_FALSE(game.last_played_at.has_value());
 }
@@ -114,39 +112,34 @@ TEST_CASE("ToGameDetail reads every candidate, including installer flags") {
   CHECK(detail.candidates[1].score == doctest::Approx(4.0));
 }
 
-TEST_CASE("ToDisplayString renders each schema type as one editable line") {
+TEST_CASE("ToDisplayString renders each scalar schema type as one editable line") {
   CHECK(mapping::ToDisplayString(json(true)) == "true");
   CHECK(mapping::ToDisplayString(json(false)) == "false");
   CHECK(mapping::ToDisplayString(json(42)) == "42");
   CHECK(mapping::ToDisplayString(json("~/Games")) == "~/Games");
-  CHECK(mapping::ToDisplayString(json::parse(R"(["a", "b"])")) == "a, b");
-  CHECK(mapping::ToDisplayString(json::array()).empty());
 }
 
-TEST_CASE("ToDisplayString does not quote a string inside an array") {
-  // The array form feeds a comma-separated edit box that SplitCommaSeparated
-  // reads back, so a quoted entry here would survive a save as a literal
-  // pair of quote characters in the config.
-  CHECK(mapping::ToDisplayString(json::parse(R"(["/home/me/Games"])")) == "/home/me/Games");
+TEST_CASE("A list setting round-trips unchanged, items with commas included") {
+  const json original = json::parse(R"(["~/Games", "*.{txt,log}", "/mnt/a, b"])");
+  CHECK(json(mapping::ParseListText(mapping::ToDisplayString(original))) == original);
+  CHECK(mapping::TypedValueFromText("an array of strings", mapping::ListText({"*.{txt,log}"})) ==
+        json::parse(R"(["*.{txt,log}"])"));
+  CHECK(mapping::ParseListText(mapping::ToDisplayString(json::array())).empty());
 }
 
-TEST_CASE("SplitCommaSeparated is the inverse of the array display form") {
-  const std::vector<std::string> items = mapping::SplitCommaSeparated(" a , b ,c ");
-  REQUIRE(items.size() == 3);
-  CHECK(items[0] == "a");
-  CHECK(items[1] == "b");
-  CHECK(items[2] == "c");
-
-  CHECK(mapping::SplitCommaSeparated("").empty());
-  CHECK(mapping::SplitCommaSeparated("   ").empty());
-  CHECK(mapping::SplitCommaSeparated(",,").empty());  // empty entries are dropped, not sent
+TEST_CASE("A merge patch between two objects sends changed keys and removes cleared ones") {
+  const json before = json::parse(R"({"gameid": "umu-123", "store": "ea", "kept": "x"})");
+  const json after = json::parse(R"({"gameid": "umu-456", "kept": "x", "new": "y"})");
+  const json patch = mapping::MergePatchBetween(before, after);
+  CHECK(patch == json::parse(R"({"gameid": "umu-456", "store": null, "new": "y"})"));
+  json applied = before;
+  applied.merge_patch(patch);
+  CHECK(applied == after);
 }
 
-TEST_CASE("An array round-trips unchanged through display and split") {
-  const json original = json::parse(R"(["~/Games", "/mnt/games"])");
-  const std::vector<std::string> back =
-      mapping::SplitCommaSeparated(mapping::ToDisplayString(original));
-  CHECK(json(back) == original);
+TEST_CASE("A list setting drops empty items rather than sending them") {
+  CHECK(mapping::ParseListText(R"(["", "a", ""])") == std::vector<std::string>{"a"});
+  CHECK(mapping::ParseListText("").empty());
 }
 
 TEST_CASE("TypedValueFromText converts by schema type, not by looks") {
@@ -157,7 +150,7 @@ TEST_CASE("TypedValueFromText converts by schema type, not by looks") {
   CHECK(mapping::TypedValueFromText("an integer", "1500") == json(1500));
   CHECK(mapping::TypedValueFromText("a number", "0.5") == json(0.5));
   CHECK(mapping::TypedValueFromText("a string", "5") == json("5"));
-  CHECK(mapping::TypedValueFromText("an array of strings", "a, b") == json::parse(R"(["a","b"])"));
+  CHECK(mapping::TypedValueFromText("an array of strings", R"(["a","b"])") == json::parse(R"(["a","b"])"));
 }
 
 TEST_CASE("TypedValueFromText sends a malformed number as text") {

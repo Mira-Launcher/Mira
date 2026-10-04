@@ -48,7 +48,8 @@ AboutPanel::AboutPanel(QWidget* parent) : QWidget(parent) {
   layout->addWidget(Line(this,
                          "By <a href=\"https://github.com/AriGood\">AriGood</a> and "
                          "<a href=\"https://github.com/eMondri\">eMondri</a><br>"
-                         "<a href=\"https://github.com/AriGood/Mira\">github.com/AriGood/Mira</a>"
+                         "<a href=\"https://github.com/Mira-Launcher/Mira\">"
+                         "github.com/Mira-Launcher/Mira</a>"
                          "<br><a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">"
                          "GPL-3.0-or-later</a>",
                          "muted"));

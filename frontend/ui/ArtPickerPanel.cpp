@@ -575,7 +575,7 @@ void ArtPickerPanel::Apply() {
   MiradClient::SelectArtworkAsync(this, id_, slot, candidate_id, [this, slot](ArtworkSelectResult result) {
     if (result.ok) return;  // game.artwork_selected follows
     applying_.reset();
-    emit ApplyFailed(QString::fromStdString(slot), QString::fromStdString(result.error));
+    emit ApplyFailed(QString::fromStdString(slot), error_help::Describe(result.error));
   });
 }
 
@@ -690,7 +690,7 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
     if (!fetching_ || !MiradClient::ParseMetadataEvent(data, &event) || event.id != id_) return;
     fetching_ = false;
     if (type == "game.metadata_failed") {
-      ShowMessage("Could not fetch from SteamGridDB: " + QString::fromStdString(event.error), true);
+      ShowMessage("Could not fetch from SteamGridDB: " + error_help::Describe(event.error), true);
       return;
     }
     Open(slot_);
@@ -704,7 +704,7 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
   const std::int64_t applied = applying_->second;
   applying_.reset();
   if (type == "game.artwork_select_failed") {
-    emit ApplyFailed(QString::fromStdString(event.slot), QString::fromStdString(event.error));
+    emit ApplyFailed(QString::fromStdString(event.slot), error_help::Describe(event.error));
     return;
   }
   if (event.slot != slot_) return;

@@ -43,6 +43,10 @@ private:
   void LoadRunner();
   void ShowRunner(const SourceRunnerResult& runner);
   void SelectRunner(const QString& runner_ref);
+  // The runner list from `runners`, with `pick` selected.
+  void FillRunners(const RunnersResult& runners, const QString& pick);
+  // A build was installed or removed: list them again in every runner picker here.
+  void RunnersChanged();
   void LoadSettings();
   void UpdateButtons();
   void ShowStatus(const QString& text, bool error);

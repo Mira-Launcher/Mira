@@ -154,7 +154,9 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
                                     : QString("%1 · %2").arg(FormatLastPlayed(game.last_played_at),
                                                              FormatPlaytime(game.play_seconds)));
   SetLine(error_line_, QString::fromStdString(game.last_error));
-  SetLine(hint_line_, hint);
+  SetLine(hint_line_, !hint.isEmpty() || !game.needs_check
+                          ? hint
+                          : QString("Not checked: Mira wasn't sure which program starts it. Open it to check."));
   Reposition();
 
   MiradClient::GetMetadataAsync(this, game.id, [this, id = game.id](GameMetadataResult result) {

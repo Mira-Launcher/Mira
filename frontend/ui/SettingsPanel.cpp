@@ -14,7 +14,9 @@
 #include <optional>
 #include <utility>
 
+#include "../client/EventHub.h"
 #include "AppearancePreviews.h"
+#include "ErrorHelp.h"
 #include "KeyBindings.h"
 #include "Notify.h"
 #include "SettingsCard.h"
@@ -552,7 +554,7 @@ void SettingsPanel::LoadFrontendPrefs() {
 void SettingsPanel::Load() {
   MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
-      emit LoadFailed(QString::fromStdString(schema.error));
+      emit LoadFailed(error_help::Describe(schema.error));
       return;
     }
     for (ConfigSchemaEntry& entry : schema.entries) {
@@ -563,11 +565,15 @@ void SettingsPanel::Load() {
     }
     BuildSchemaPages();
 
-    MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
+    const auto list_runners = [this] {
+      MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
+    };
+    list_runners();
+    connect(EventHub::Instance(), &EventHub::RunnersChanged, this, list_runners);
 
     MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
-        emit LoadFailed(QString::fromStdString(config.error));
+        emit LoadFailed(error_help::Describe(config.error));
         return;
       }
       for (SettingEditor& field : fields_) {

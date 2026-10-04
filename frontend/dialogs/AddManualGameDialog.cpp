@@ -95,6 +95,12 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
   layout->addWidget(buttons);
 }
 
+void AddManualGameDialog::Prefill(const QString& install_path, const QString& name) {
+  install_path_->setText(install_path);
+  name_->setText(name);
+  exe_path_->setFocus();
+}
+
 void AddManualGameDialog::BrowseExe() {
   const QString start =
       install_path_->text().trimmed().isEmpty() ? QString() : install_path_->text();

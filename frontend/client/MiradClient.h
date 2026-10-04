@@ -201,6 +201,9 @@ public:
   // GET /v1/runners/tools and POST /v1/runners/tools/{id}/setup (reported as
   // <id>.setup.* events).
   static void ListRunnerToolsAsync(QObject* context, std::function<void(RunnerToolsResult)> callback);
+  // GET /v1/runners/{kind}/schema: the options a kind's runner_config takes.
+  static void GetRunnerSchemaAsync(QObject* context, const std::string& kind,
+                                   std::function<void(RunnerSchemaResult)> callback);
   static void SetupRunnerToolAsync(QObject* context, const std::string& id,
                                    std::function<void(RunnerDownloadResult)> callback);
 
@@ -316,9 +319,10 @@ public:
   // into Mira's own layout, one game at a time.
   static void RelocateGamesAsync(QObject* context, const std::vector<std::string>& ids,
                                  std::function<void(RelocateLibraryResult)> callback);
-  // POST /v1/games/{id}/relocate: moves one game's files to `install_path`.
+  // POST /v1/games/{id}/relocate: moves one game's files to `install_path` and its prefix to
+  // `data_dir`. An empty one stays where it is.
   static void RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
-                                std::function<void(GameDetailResult)> callback);
+                                const std::string& data_dir, std::function<void(GameDetailResult)> callback);
   static bool ParseInstallEvent(const std::string& event_type, const std::string& data,
                                 InstallEvent* out);
 

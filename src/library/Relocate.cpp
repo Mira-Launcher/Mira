@@ -41,7 +41,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   const bool store_managed = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
                              game.source == "itch" || game.source == "amazon" || game.source == "lutris" ||
                              launchers::ForGame(game) != nullptr;
-  if (!game.install_path.empty() && (request.install_path || !store_managed)) {
+  if (!game.install_path.empty() && (request.install_path || (!request.only_given && !store_managed))) {
     const std::vector<fs::path> library_roots = config.GetPathArray("library_roots");
     fs::path target;
     if (request.install_path) {
@@ -54,7 +54,8 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     if (target.empty()) return Err("no_library_roots", "no library_roots configured to relocate into");
     if (!paths::IsWithin(target, library_roots)) {
       return Err("path_outside_root",
-                std::format("\"{}\" is not inside a configured library root", target.string()));
+                 std::format("\"{}\" is not inside a configured library root", target.string()),
+                 "Pick a folder inside one of the library folders, or add it as one.", Fix::Setting("library_roots"));
     }
     if (fs::path(game.install_path) != target) {
       if (auto moved = Move(game.install_path, target, config.GetBool("relocate.allow_copy")); !moved) return std::unexpected(moved.error());
@@ -62,7 +63,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     }
   }
 
-  if (!game.data_dir.empty()) {
+  if (!game.data_dir.empty() && (request.data_dir || !request.only_given)) {
     const fs::path prefix_root = config.GetPath("prefix_root");
     const fs::path target = request.data_dir ? *request.data_dir
                                              : NamedDir(config, game, prefix_root, game.data_dir);
@@ -72,7 +73,8 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     };
     if (!paths::IsWithin(target, {prefix_root})) {
       undo_install();
-      return Err("path_outside_root", std::format("\"{}\" is not inside prefix_root", target.string()));
+      return Err("path_outside_root", std::format("\"{}\" is not inside prefix_root", target.string()),
+                 "Pick a folder inside the prefix folder, or change that setting.", Fix::Setting("prefix_root"));
     }
     if (fs::path(game.data_dir) != target) {
       if (auto moved = Move(game.data_dir, target, config.GetBool("relocate.allow_copy")); !moved) {

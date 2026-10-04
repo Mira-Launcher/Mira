@@ -3,21 +3,25 @@
 #include <QWidget>
 #include <QString>
 
+#include <map>
 #include <string>
 #include <vector>
+
+#include <json.hpp>
 
 #include "../client/MiradClient.h"
 
 namespace mira_gui {
+class KeyValueEdit;
 class OverridesEditor;
 class SettingRow;
+class SettingsCard;
 class TagEdit;
 }
 
 class QComboBox;
 class QLabel;
 class QLineEdit;
-class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
 class QVBoxLayout;
@@ -70,10 +74,18 @@ private:
   void PopulateExeCombo(const std::vector<mira_gui::GameDetail::Candidate>& candidates,
                         const std::string& current);
   void PopulateRunnerCombo(const mira_gui::RunnersResult& result);
+  // The kind of the runner picked (or the default it resolves to): "proton", "wine", ...
+  std::string RunnerKind() const;
+  // Lists the picked runner's options, fetching its schema the first time.
+  void ShowRunnerOptions();
+  void BuildRunnerFields(const std::vector<mira_gui::RunnerOption>& options);
+  void ShowRunnerFieldValues();
   void OnExeComboActivated(int index);
   void BrowseExecutable();
-  // POST /v1/games/{id}/relocate into a folder the user picks.
-  void MoveInstall();
+  // POST /v1/games/{id}/relocate of the install folder or the prefix into a folder the user picks.
+  void MoveFolder(bool prefix);
+  // PATCH {"reviewed": true}: keeps mirad's pick of executable and clears its "Not checked".
+  void ConfirmExecutable();
   void ShowInstallPath();
   void ResetScroll();
   void UpdateModified();
@@ -86,9 +98,12 @@ private:
 
   QLabel* last_error_label_ = nullptr;
   QLabel* source_note_label_ = nullptr;
+  QLabel* check_tag_ = nullptr;
+  QPushButton* looks_right_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* move_button_ = nullptr;
   QPushButton* open_data_dir_ = nullptr;
+  QPushButton* move_prefix_ = nullptr;
 
   QLineEdit* name_edit_ = nullptr;
   QComboBox* exe_combo_ = nullptr;
@@ -97,8 +112,21 @@ private:
   TagEdit* tags_edit_ = nullptr;
   QComboBox* runner_combo_ = nullptr;
   QLineEdit* data_dir_edit_ = nullptr;
-  QPlainTextEdit* runner_config_edit_ = nullptr;
-  QPlainTextEdit* env_edit_ = nullptr;
+  KeyValueEdit* env_edit_ = nullptr;
+
+  // Runner options: one row per key the chosen runner's schema lists, editing
+  // runner_config_ (the whole object, so keys of other runners are kept).
+  struct RunnerField {
+    std::string key;
+    SettingRow* row = nullptr;
+    QLineEdit* edit = nullptr;
+  };
+  SettingsCard* runner_options_card_ = nullptr;
+  std::vector<RunnerField> runner_fields_;
+  std::map<std::string, std::vector<mira_gui::RunnerOption>> runner_schemas_;  // by kind
+  std::string options_kind_;
+  std::string default_runner_;  // what "Default runner" resolves to, from the game record
+  nlohmann::json runner_config_ = nlohmann::json::object();
 
   SettingRow* name_row_ = nullptr;
   SettingRow* exe_row_ = nullptr;
@@ -107,7 +135,6 @@ private:
   SettingRow* tags_row_ = nullptr;
   SettingRow* runner_row_ = nullptr;
   SettingRow* data_dir_row_ = nullptr;
-  SettingRow* runner_config_row_ = nullptr;
   SettingRow* env_row_ = nullptr;
 
   // The cards, then Advanced: the runner options and the per-game overrides.

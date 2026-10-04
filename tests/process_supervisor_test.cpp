@@ -69,6 +69,36 @@ TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanl
   CHECK(stored->last_error.empty());  // clean exit, not a crash
 }
 
+TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens the game's log") {
+  const fs::path state = TempDir("proc-crash-state");
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  api::EventBus events;
+  proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
+
+  model::Game game;
+  game.id = "crasher";
+  game.platform = model::Platform::Windows;
+  REQUIRE(games.Upsert(game).has_value());
+
+  Command command;
+  command.argv = {"sh", "-c", "exit 3"};
+  REQUIRE(supervisor.Launch(game, command, "").has_value());
+
+  nlohmann::json crashed;
+  CHECK(WaitFor(
+      [&] {
+        for (const model::Event& e : events.Since(0)) {
+          if (e.type == "game.state" && e.payload.value("state", "") == "crashed") crashed = e.payload;
+        }
+        return !crashed.is_null();
+      },
+      std::chrono::seconds(5)));
+  CHECK(crashed.value("exit_code", 0) == 3);
+  CHECK_FALSE(crashed.value("hint", "").empty());
+  CHECK(crashed["fix"] == nlohmann::json{{"kind", "game"}, {"target", "crasher"}, {"step", "log"}});
+}
+
 TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is already running") {
   const fs::path state = TempDir("proc-duplicate-state");
   store::GameStore games(state / "games.toml");

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "../client/ApiError.h"
+
 class QTimer;
 
 namespace mira_gui {
@@ -43,7 +45,7 @@ public:
     qint64 eta_seconds = -1;
     double bytes_per_second = -1;
     QString message;       // a Job's current step
-    QString error;
+    ApiError error;
     QDateTime changed;
   };
 

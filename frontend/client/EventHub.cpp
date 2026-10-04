@@ -20,6 +20,7 @@ void EventHub::Start() {
         // A resumed connection sends no stream.live: everything it replays is news.
         if (type == "stream.live") live_ = true;
         emit Received(type, data, live_);
+        if (live_ && (type == "runners.removed" || type == "runners.download.finished")) emit RunnersChanged();
       },
       [this](bool connected) {
         emit ConnectionChanged(connected);

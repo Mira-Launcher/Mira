@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "../client/EventHub.h"
 #include "../client/MiradClient.h"
 
 namespace mira_gui {
@@ -98,11 +99,15 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
       nav_->RegisterRow(row, field.SearchText());
     }
   }
-  MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
-    for (Field& field : fields_) {
-      if (field.combo != nullptr && field.entry.is_runner_ref) FillRunnerCombo(field.combo, runners);
-    }
-  });
+  const auto list_runners = [this] {
+    MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+      for (Field& field : fields_) {
+        if (field.combo != nullptr && field.entry.is_runner_ref) FillRunnerCombo(field.combo, runners);
+      }
+    });
+  };
+  list_runners();
+  connect(EventHub::Instance(), &EventHub::RunnersChanged, this, list_runners);
 }
 
 void OverridesEditor::ApplyValues(const GameConfigResult& config) {
@@ -170,6 +175,11 @@ void OverridesEditor::DiscardChanges() {
 
 SettingsPage* OverridesEditor::AddPage(const QString& title, icons::Glyph glyph) {
   return nav_->AddCategory(title, glyph);
+}
+
+void OverridesEditor::ShowFromTop() {
+  nav_->RearrangePages();
+  nav_->ScrollToTop();
 }
 
 void OverridesEditor::ResetField(size_t index) {

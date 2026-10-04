@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "../client/EventHub.h"
 #include "../client/MiradClient.h"
 #include "../ui/ErrorHelp.h"
 #include "../ui/Theme.h"
@@ -34,6 +35,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   Header()->addWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
+  connect(EventHub::Instance(), &EventHub::RunnersChanged, this, &SourceSettingsCard::RunnersChanged);
 
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
@@ -235,6 +237,34 @@ void SourceSettingsCard::SelectRunner(const QString& runner_ref) {
   runner_->setCurrentIndex(index);
 }
 
+void SourceSettingsCard::FillRunners(const RunnersResult& runners, const QString& pick) {
+  runner_->clear();
+  runner_->addItem("Default (from Runners settings)", QString());
+  runner_->addItem("Auto (best available)", QString("auto"));
+  if (runners.ok) {
+    for (const RunnerInfo& info : runners.runners) {
+      if (info.kind != "wine" && info.kind != "proton") continue;
+      const QString label = QString::fromStdString(info.label.empty() ? info.name : info.label);
+      runner_->addItem(QString("%1 (%2)").arg(label, QString::fromStdString(info.kind)),
+                       QString::fromStdString(info.reference));
+    }
+  }
+  SelectRunner(pick);
+}
+
+void SourceSettingsCard::RunnersChanged() {
+  MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+    // Keeps an unsaved pick; a removed one shows as not installed.
+    if (runner_ != nullptr && runner_->isEnabled()) {
+      FillRunners(runners, runner_->currentData().toString());
+      UpdateButtons();
+    }
+    for (SettingEditor& editor : settings_) {
+      if (editor.combo != nullptr && editor.entry.is_runner_ref) FillRunnerCombo(editor.combo, runners);
+    }
+  });
+}
+
 void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
   runner_can_apply_ = false;
   UpdateButtons();
@@ -242,23 +272,12 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
     runner_->setEnabled(false);
     runner_note_->setText(source_.kind == SourceInfo::Kind::Launcher
                               ? "Install " + source_.name + " to choose its runner."
-                              : "Could not ask mirad: " + QString::fromStdString(runner.error));
+                              : "Could not ask mirad: " + error_help::Describe(runner.error));
     return;
   }
   runner_ref_ = QString::fromStdString(runner.runner_ref);
   MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
-    runner_->clear();
-    runner_->addItem("Default (from Runners settings)", QString());
-    runner_->addItem("Auto (best available)", QString("auto"));
-    if (runners.ok) {
-      for (const RunnerInfo& info : runners.runners) {
-        if (info.kind != "wine" && info.kind != "proton") continue;
-        const QString label = QString::fromStdString(info.label.empty() ? info.name : info.label);
-        runner_->addItem(QString("%1 (%2)").arg(label, QString::fromStdString(info.kind)),
-                         QString::fromStdString(info.reference));
-      }
-    }
-    SelectRunner(runner_ref_);
+    FillRunners(runners, runner_ref_);
     runner_->setEnabled(true);
     UpdateButtons();
   });
@@ -286,7 +305,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
 void SourceSettingsCard::LoadSettings() {
   MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
-      ShowStatus("Could not load settings: " + QString::fromStdString(schema.error), true);
+      ShowStatus("Could not load settings: " + error_help::Describe(schema.error), true);
       return;
     }
     if (settings_.empty()) {
@@ -314,7 +333,7 @@ void SourceSettingsCard::LoadSettings() {
     }
     MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
-        ShowStatus("Could not load settings: " + QString::fromStdString(config.error), true);
+        ShowStatus("Could not load settings: " + error_help::Describe(config.error), true);
         return;
       }
       for (SettingEditor& editor : settings_) {

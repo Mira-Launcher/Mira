@@ -13,6 +13,7 @@
 
 #include <json.hpp>
 
+#include "core/Result.h"
 #include "model/Types.h"
 
 namespace mira::api {
@@ -79,5 +80,11 @@ private:
   std::int64_t next_id_;
   size_t capacity_;
 };
+
+// Adds an error's optional hint and fix to `out` (an error envelope or an event).
+void AddHintAndFix(nlohmann::json& out, const Error& error);
+
+// A *.failed event: `fields` plus the error's message (`error`), code, hint and fix.
+nlohmann::json FailedEvent(nlohmann::json fields, const Error& error);
 
 }  // namespace mira::api

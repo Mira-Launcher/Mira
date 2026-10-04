@@ -17,6 +17,9 @@ class AddManualGameDialog : public QDialog {
 public:
   explicit AddManualGameDialog(QWidget* parent = nullptr);
 
+  // Starts from a known folder and name, such as a finished Humble download.
+  void Prefill(const QString& install_path, const QString& name);
+
 private:
   void BrowseExe();
   void Submit();

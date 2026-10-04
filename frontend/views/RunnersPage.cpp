@@ -15,6 +15,7 @@
 
 #include <algorithm>
 
+#include "../client/EventHub.h"
 #include "../client/MiradClient.h"
 #include "../ui/DownloadTracker.h"
 #include "../ui/Icons.h"
@@ -172,6 +173,14 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   right->addWidget(status_);
 
   connect(downloads_, &DownloadTracker::Changed, this, &RunnersPage::DownloadChanged);
+  // Removed here, from the CLI or by another window.
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string&, bool live) {
+    if (!live || type != "runners.removed") return;
+    RefreshInstalled();
+    RefreshUpdates();
+    RefreshCatalog();
+  });
   Refresh();
 }
 
@@ -487,9 +496,8 @@ void RunnersPage::Remove(const RunnerInfo& runner) {
   MiradClient::DeleteRunnerAsync(this, runner.kind, runner.name, [this](RunnerRemoveResult result) {
     if (!result.ok) {
       SetStatus("Could not remove that runner: " + error_help::Describe(result.error), true);
-      return;
     }
-    RefreshInstalled();
+    // Otherwise runners.removed refreshes the lists.
   });
 }
 
@@ -506,7 +514,7 @@ void RunnersPage::DownloadChanged(const QString& key) {
   if (key.startsWith("tool:")) {
     const DownloadTracker::Entry* entry = downloads_->Find(key);
     if (entry != nullptr && entry->state == DownloadTracker::State::Failed) {
-      SetStatus(QString("Installing %1 failed: %2").arg(entry->source, entry->error), true);
+      SetStatus(QString("Installing %1 failed: %2").arg(entry->source, error_help::Describe(entry->error)), true);
     }
     if (entry != nullptr && entry->state != DownloadTracker::State::Running) {
       RefreshTools();
@@ -520,7 +528,8 @@ void RunnersPage::DownloadChanged(const QString& key) {
   const DownloadTracker::Entry* entry = downloads_->Find(key);
   if (entry == nullptr) return;
   if (entry->state == DownloadTracker::State::Failed) {
-    SetStatus(QString("Downloading %1 failed: %2").arg(downloads_->NameFor(*entry), entry->error), true);
+    const QString name = downloads_->NameFor(*entry);
+    SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)), true);
     replacing_.erase(entry->ref.toStdString());
   }
   if (entry->state == DownloadTracker::State::Finished) {
@@ -546,7 +555,6 @@ void RunnersPage::DownloadChanged(const QString& key) {
                           "Remove", /*destructive=*/true)) {
         MiradClient::DeleteRunnerAsync(this, kind, name, [this](RunnerRemoveResult result) {
           if (!result.ok) SetStatus("Could not remove the old build: " + error_help::Describe(result.error), true);
-          RefreshInstalled();
         });
       }
     }

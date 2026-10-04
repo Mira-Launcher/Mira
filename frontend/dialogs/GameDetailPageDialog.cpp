@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "../client/MiradClient.h"
+#include "../ui/ErrorHelp.h"
 
 namespace mira_gui {
 namespace {
@@ -64,7 +65,7 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
       // found nothing" case, not a failure: result.error is only set for
       // an actual transport/server failure, and is empty here otherwise.
       const QString text = result.missing ? "No store info cached for this game yet."
-                                          : QString::fromStdString(result.error);
+                                          : error_help::Describe(result.error);
       auto* empty = new QLabel(text, body);
       empty->setWordWrap(true);
       empty->setProperty("role", "muted");

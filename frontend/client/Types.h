@@ -40,8 +40,8 @@ struct GameSummary {
   std::string runner_ref;
   std::string last_error;
   std::string install_path;
-  bool reviewed = false;
-  double confidence = 0.0;
+  // mirad picked the executable itself, wasn't sure, and nobody has confirmed it.
+  bool needs_check = false;
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
   // Free-form, user-assigned (docs/api.md). "hidden" is the one convention
@@ -75,9 +75,9 @@ struct GamesResult {
 struct GameStateEvent {
   std::string id;
   std::string state;  // "running" | "exited" | "crashed"
-  // After an exit: how long it ran, and for a crash what went wrong.
+  // After an exit: how long it ran, and for a crash what went wrong and what to do.
   std::int64_t played_seconds = 0;
-  std::string error;
+  ApiError error;
 };
 
 struct DeleteResult {
@@ -260,7 +260,7 @@ struct MetadataEvent {
 struct ArtworkSelectEvent {
   std::string id;
   std::string slot;
-  std::string error;  // .artwork_select_failed only
+  ApiError error;                  // .artwork_select_failed only
   std::optional<ArtVersions> art;  // .artwork_selected only
 };
 
@@ -319,15 +319,15 @@ struct GameDetail {
   std::string runner_ref;
   std::string data_dir;
   std::string last_error;
-  bool reviewed = false;
-  double confidence = 0.0;
+  bool needs_check = false;  // as GameSummary's
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
-  // `runner_config`/`env` are arbitrary JSON objects (docs/api.md) with no
-  // fixed shape to build widgets for, so they round-trip as raw JSON text,
-  // pretty-printed for display, re-parsed on save (MiradClient.cpp).
+  // `runner_config`/`env` as JSON object text; GameEditForm edits them as rows
+  // and sends only the keys that changed.
   std::string runner_config_json;
   std::string env_json;
+  // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
+  std::string default_runner;
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
 };
@@ -353,6 +353,8 @@ struct GamePatch {
   // Replaces the whole set (docs/api.md); there's no per-entry merge for a
   // plain list the way env's null-removes-a-key convention gives it one.
   std::optional<std::vector<std::string>> tags;
+  // true confirms mirad's pick of executable without changing anything else.
+  std::optional<bool> reviewed;
 };
 
 struct PatchGameResult {
@@ -410,7 +412,7 @@ struct ConfigResult {
   // Every leaf of GET /v1/config's document, flattened to dotted keys
   // matching Schema entries' own `key` (e.g. "scan.debounce_ms"), each
   // stringified for display/editing: a bool as "true"/"false", a number in
-  // its natural text form, an array of strings comma-joined. The opaque
+  // its natural text form, an array as JSON (mapping::ParseListText). The opaque
   // `frontend` table (docs/architecture.md) is excluded because it isn't part of
   // the schema this screen renders.
   std::map<std::string, std::string> values;
@@ -564,6 +566,19 @@ struct RunnerToolsResult {
   std::vector<RunnerTool> tools;
 };
 
+// GET /v1/runners/{kind}/schema: one key a runner's runner_config takes.
+struct RunnerOption {
+  std::string key;
+  std::string label;
+  std::string doc;
+};
+
+struct RunnerSchemaResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<RunnerOption> options;
+};
+
 // POST /v1/runners/download returns 202 immediately and reports progress on
 // the event stream, so "ok" here only means the download started.
 struct RunnerDownloadResult {
@@ -580,7 +595,7 @@ struct RunnerDownloadEvent {
   std::string source;
   std::string replaced;  // on "finished" after an update: the "kind:name" it replaced
   std::string state;  // "started" | "finished" | "failed"
-  std::string error;  // only on "failed"
+  ApiError error;     // only on "failed"
 };
 
 // POST /v1/steam/scan.
@@ -802,7 +817,7 @@ struct TricksEvent {
   std::string id;
   std::string verb;
   std::string state;  // "started" | "finished" | "failed"
-  std::string error;  // only on "failed"
+  ApiError error;     // only on "failed"
 };
 
 // DELETE /v1/runners/{kind}:{name}: synchronous, 200 on success.
@@ -973,11 +988,13 @@ struct StoreEvent {
   std::string kind;    // "setup" | "install" | "download"
   std::string state;   // "started" | "finished" | "failed"
   std::string ref;     // install: the title's ref; download: the bundle key
-  std::string error;   // only on "failed"
+  ApiError error;      // only on "failed"
   bool update = false;  // install: an update rather than a first install
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+  std::string path;         // download "finished": the folder it landed in
+  bool downloaded = true;   // download "finished": false when the bundle had nothing to download
 };
 
 }  // namespace mira_gui

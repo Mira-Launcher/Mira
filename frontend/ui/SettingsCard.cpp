@@ -322,6 +322,11 @@ void SettingsCard::SetLeading(QWidget* widget) {
   header_->show();
 }
 
+void SettingsCard::SetTitle(const QString& title) {
+  title_->setText(title);
+  header_->setVisible(!title.isEmpty());
+}
+
 void SettingsCard::SetTitleWidget(QWidget* widget) {
   const int index = header_layout_->indexOf(title_);
   header_layout_->insertWidget(index, widget, /*stretch=*/1);

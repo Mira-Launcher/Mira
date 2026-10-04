@@ -1706,6 +1706,16 @@ void LibraryWindow::InstallErrorNavigator() {
     const mira_gui::GameSummary* game = self->FindGame(id);
     mira_gui::actions::ViewLog(self, id, game != nullptr ? QString::fromStdString(game->name) : QString());
   };
+  nav.install_shown = [self](const std::string& id) {
+    if (!self) return;
+    mira_gui::MiradClient::InstallGameAsync(self, id, /*interactive=*/true, std::string(),
+                                            [self](mira_gui::GameActionResult result) {
+                                              if (self && !result.ok) {
+                                                mira_gui::notify::FailedRequest(self, "Could not start the installer.",
+                                                                                result.error);
+                                              }
+                                            });
+  };
   nav.start_daemon = [self] {
     if (!self) return;
     // Kept, not deleted after Ready: its destructor stops a mirad it started.
@@ -3508,11 +3518,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     if (live && state.state == "crashed" && state.played_seconds < kFailedStartSeconds) {
       const mira_gui::GameSummary* crashed = FindGame(state.id);
       const QString name = crashed != nullptr ? QString::fromStdString(crashed->name) : QString("The game");
-      const std::string id = state.id;
-      mira_gui::notify::FailedWithAction(
-          this, name + " closed right after starting.", QString::fromStdString(state.error),
-          "Its log usually says why. A different runner in the game's settings often helps.", "View log",
-          [this, id, name] { mira_gui::actions::ViewLog(this, id, name); });
+      mira_gui::notify::FailedRequest(this, name + " closed right after starting.", state.error);
     }
     return;
   }

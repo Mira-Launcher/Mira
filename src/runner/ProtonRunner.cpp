@@ -161,11 +161,13 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
 nlohmann::json ProtonRunner::SettingsSchema() const {
   return nlohmann::json::array({
       {{"key", "gameid"},
+       {"label", "Steam game ID"},
        {"type", "string"},
        {"doc", "Steam AppID umu reports through the GAMEID environment variable. It decides which "
                "protonfixes entry Proton applies. Optional: without it umu uses a generic "
                "default (\"umu-default\")."}},
       {{"key", "store"},
+       {"label", "Store"},
        {"type", "string"},
        {"doc", "Store umu should report via the STORE env var (e.g. \"ubisoft\", \"battlenet\", \"ea\"), "
                "so store-specific protonfixes apply. Set automatically for store launcher games."}},

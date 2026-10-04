@@ -136,18 +136,23 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // "Ready" says nothing worth a line on every tile, only a state that
   // needs attention (or Playing) earns one.
   const QString status_text = index.data(StatusTextRole).toString();
-  if (show_status_ && (running || status != "ready" || !status_text.isEmpty())) {
+  // Only when nothing more pressing is on the line.
+  const bool unchecked = !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
+  if (show_status_ && (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
     QFont status_font = option.font;
     status_font.setPixelSize(qMax(9, status_font.pixelSize() > 0 ? status_font.pixelSize() - 2 : 10));
     painter->setFont(status_font);
     const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
+    QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
+    if (unchecked) dot = tokens.warning;
     painter->setPen(Qt::NoPen);
-    painter->setBrush((status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up).lighter(160));
+    painter->setBrush(dot.lighter(160));
     painter->drawEllipse(QPoint(status_rect.left() + 3, status_rect.center().y()), 3, 3);
     painter->setPen(QColor(255, 255, 255, 170));
     painter->drawText(status_rect.adjusted(12, 0, 0, 0), Qt::AlignLeft | Qt::AlignVCenter,
                       !status_text.isEmpty() ? status_text
                       : running              ? QString("Playing")
+                      : unchecked            ? QString("Not checked")
                                              : StatusLabel(status));
   }
 

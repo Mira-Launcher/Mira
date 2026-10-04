@@ -11,7 +11,7 @@ Bodies are JSON. Errors share one envelope:
 `code` is stable and meant for code; `message` is meant for people and says what went wrong. Two optional fields say what to do about it:
 
 - `hint`: one sentence for the user, worded for any client (no CLI commands, no GUI paths).
-- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log"}`.
+- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown).
 
 ```json
 { "error": { "code": "no_steamgriddb_key", "message": "searching SteamGridDB needs an API key",
@@ -19,7 +19,7 @@ Bodies are JSON. Errors share one envelope:
              "fix": { "kind": "setting", "target": "steamgriddb.api_key" } } }
 ```
 
-`game.install.failed` events carry the same `hint` and `fix` next to their `error`.
+Every `*.failed` event (and `game.artwork_candidates_ready` or `game.artwork_thumbs_ready` with an error) carries the message as `error`, plus its `code` and, when they apply, the same `hint` and `fix`. `job.failed` nests them under `error` instead.
 
 ```sh
 curl --unix-socket "$XDG_RUNTIME_DIR/mira/mirad.sock" http://localhost/v1/health
@@ -83,7 +83,8 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
   "source": "scan", "exe_path": "Celeste", "args": "", "working_dir": "", "runner_ref": "",
   "data_dir": "", "runner_config": {}, "overrides": {}, "last_error": "",
   "created_at": 0, "updated_at": 0, "last_played_at": null, "play_seconds": 0,
-  "env": {}, "candidates": [], "tags": [], "running": false, "art": {"cover": "18f3a2c07d4e1b00-2c41"}
+  "env": {}, "candidates": [], "tags": [], "running": false, "needs_check": false,
+  "art": {"cover": "18f3a2c07d4e1b00-2c41"}
 }
 ```
 
@@ -91,14 +92,16 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 
 - `art` lists the art slots Mira has an image cached for, each with a version: `{"cover": "18f3a…-2c41", "hero": "…"}`. A slot left out has no image, so `GET /v1/games/{id}/artwork` for it would 404. The version changes whenever the slot's image does, so a client can keep its copy until then. Every game record has it, and so do `game.metadata_ready`, `game.metadata_failed` and `game.artwork_selected`.
 
-- `confidence` and `reviewed` let a client surface games nobody has checked since detection.
+- `confidence` is how sure the detector was of its pick of executable; it stays 0 for games an importer added, which have no `candidates`. `reviewed` turns true once someone changes or confirms the game.
+- `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at.
 - `candidates` lists every executable the detector considered.
 - `runner_config` belongs to the runner named by `runner_ref`.
+- `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
 - `data_dir` is the game's prefix.
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args`, `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args`, `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -183,7 +186,7 @@ Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the i
 An optional body `{"install_path"?, "exe_path"?}` switches the game to a program installed in its prefix first: `install_path` must be inside the game's `data_dir` (`400` otherwise, `409` while the game runs), and the game's candidates are detected again there.
 
 ### `POST /v1/games/{id}/relocate`
-Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
+Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
 
 ### `POST /v1/games/{id}/tricks`
 Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). Events: `tricks.started`/`finished`/`failed`.
@@ -296,7 +299,7 @@ Installs the latest umu-launcher zipapp (needs python3) or winetricks script int
 Removes a build that lives inside a search path. `400` for system builds, `auto`/`latest`, or kinds without builds; `404` if the build isn't installed. Publishes `runners.removed`.
 
 ### `GET /v1/runners/{kind}/schema`
-What `runner_config` accepts for a kind: `[{"key": "gameid", "type": "string", "doc": "..."}]`. Empty for every kind but `proton`. `404` for an unknown kind.
+What `runner_config` accepts for a kind: `[{"key": "gameid", "label": "Steam game ID", "type": "string", "doc": "..."}]`, `label` in sentence case. Empty for every kind but `proton`. `404` for an unknown kind.
 
 ## Steam
 
@@ -521,7 +524,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed. |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
-| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. |
+| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. A crash adds a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
 | `game.launched` | `{id, via, tracked}` for launches handed to Steam or a store launcher. |
 | `game.install.*` | See `POST /v1/games/{id}/install`. |
@@ -529,7 +532,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.artwork_*` | See the artwork endpoints. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
-| `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus `code` on failure. |
+| `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |

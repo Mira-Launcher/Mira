@@ -99,7 +99,7 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   } else if (type == "job.failed") {
     entry.state = State::Failed;
     const nlohmann::json error = event.contains("error") ? event["error"] : nlohmann::json::object();
-    entry.error = QString::fromStdString(mapping::Str(error, "message"));
+    entry.error = mapping::ToApiError(error);
   }
   emit Changed(entry.key);
   return true;
@@ -113,7 +113,7 @@ void DownloadTracker::RecheckJobs() {
       const auto found = std::find_if(entries_.begin(), entries_.end(), [&key](const Entry& e) { return e.key == key; });
       if (found == entries_.end() || found->state != State::Running) return;
       found->state = outcome.ok ? State::Finished : State::Failed;
-      found->error = QString::fromStdString(outcome.error.message);
+      found->error = outcome.error;
       emit Changed(key);
     });
   }
@@ -126,7 +126,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     if (!ToState(install.state, &state)) return true;
     Entry& entry = Upsert(Kind::Game, QString(), QString::fromStdString(install.id));
     entry.state = state;
-    entry.error = QString::fromStdString(install.error);
+    entry.error = install.error;
     if (state == State::Running) entry.bytes = 0;
     emit Changed(entry.key);
     return true;
@@ -138,7 +138,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     Entry& entry = Upsert(Kind::Runner, QString::fromStdString(runner.kind), QString::fromStdString(ref));
     if (!runner.label.empty()) NoteTitle("runner:" + entry.source, entry.ref, QString::fromStdString(runner.label));
     entry.state = state;
-    entry.error = QString::fromStdString(runner.error);
+    entry.error = runner.error;
     emit Changed(entry.key);
     return true;
   }
@@ -165,7 +165,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
   Entry& entry = Upsert(kind, source, ref);
   entry.state = state;
   entry.update = store.update;
-  entry.error = QString::fromStdString(store.error);
+  entry.error = store.error;
   if (state == State::Running) {
     entry.progress = -1;
     entry.eta_seconds = -1;

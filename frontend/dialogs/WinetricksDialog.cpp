@@ -11,6 +11,7 @@
 
 #include "../client/MiradClient.h"
 #include "../client/EventHub.h"
+#include "../ui/ErrorHelp.h"
 #include "../ui/Notify.h"
 #include "../ui/Theme.h"
 
@@ -87,7 +88,7 @@ void WinetricksDialog::Run() {
       verb_->setEnabled(true);
       run_->setEnabled(true);
       SetStatus(QString("Could not start %1: %2")
-                    .arg(QString::fromStdString(verb), QString::fromStdString(result.error)),
+                    .arg(QString::fromStdString(verb), error_help::Describe(result.error)),
                 /*error=*/true);
       return;
     }
@@ -109,7 +110,7 @@ void WinetricksDialog::HandleEvent(const std::string& type, const std::string& d
   verb_->setEnabled(true);
   run_->setEnabled(!verb_->currentText().trimmed().isEmpty());
   if (event.state == "failed") {
-    SetStatus(QString("%1 failed: %2").arg(verb, QString::fromStdString(event.error)),
+    SetStatus(QString("%1 failed: %2").arg(verb, error_help::Describe(event.error)),
               /*error=*/true);
     return;
   }

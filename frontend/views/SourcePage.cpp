@@ -16,10 +16,12 @@
 #include <QVBoxLayout>
 
 #include "../client/MiradClient.h"
+#include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/ItchCollectionsDialog.h"
 #include "../ui/ArtworkStore.h"
 #include "../ui/CoverArt.h"
 #include "../ui/DownloadTracker.h"
+#include "../ui/ErrorHelp.h"
 #include "../client/EventHub.h"
 #include "../ui/GameLibraryModel.h"
 #include "../ui/GameActions.h"
@@ -112,9 +114,9 @@ void ShowLine(QLabel* label, const QString& text, const char* role) {
   label->setVisible(!text.isEmpty());
 }
 
-// mirad's messages start lowercase; this one follows a sentence.
-void ShowError(QLabel* label, const QString& what, const std::string& detail) {
-  QString text = QString::fromStdString(detail);
+// mirad's messages start lowercase; this one follows a sentence. Adds mirad's hint.
+void ShowError(QLabel* label, const QString& what, const ApiError& error) {
+  QString text = error_help::Describe(error);
   if (!text.isEmpty()) text[0] = text[0].toUpper();
   ShowLine(label, (what + " " + text).trimmed(), "error");
 }
@@ -566,11 +568,8 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (id_ != "humble") {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
     art_key_->setIcon(icons::For(icons::Glyph::Image));
-    art_key_->setToolTip(source_.name + " has no covers Mira can use. SteamGridDB has them and "
-                         "needs a free API key.");
     art_key_->setVisible(false);
-    connect(art_key_, &QPushButton::clicked, this,
-            [this] { emit OpenSettingsRequested("steamgriddb.api_key"); });
+    connect(art_key_, &QPushButton::clicked, this, [this] { emit OpenSettingsRequested(art_key_setting_); });
     auto* row = new QHBoxLayout();
     row->addWidget(art_key_);
     row->addStretch(1);
@@ -587,6 +586,12 @@ QWidget* SourcePage::BuildOwnedSection() {
     const QString ref = index.data(GameTileDelegate::IdRole).toString();
     if (id_ != "humble") {
       StartInstall(ref, /*update=*/false);
+      return;
+    }
+    if (humble_paths_.contains(ref)) {
+      AddManualGameDialog dialog(this);
+      dialog.Prefill(humble_paths_.value(ref), index.data(GameTileDelegate::NameRole).toString());
+      dialog.exec();
       return;
     }
     owned_state_.insert(ref, "Downloading…");
@@ -954,7 +959,8 @@ void SourcePage::RebuildOwnedTiles() {
       item->setToolTip(title + "\nA paid game from a collection. Buy it on itch.io to install it here.");
       continue;
     }
-    item->setData(state.isEmpty() ? idle : state, GameTileDelegate::ActionRole);
+    const QString action = humble_paths_.contains(ref) ? QString("Add to library…") : idle;
+    item->setData(state.isEmpty() ? action : state, GameTileDelegate::ActionRole);
     item->setData(state.isEmpty(), GameTileDelegate::ActionEnabledRole);
   }
   owned_heading_->setText(Heading(id_ == "humble" ? "Your purchases" : "Not installed",
@@ -1005,9 +1011,13 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     hover_card_->ShowGame(*game, game->running);
   } else {
     // A tile's pill says what's under way; an idle one just says Install.
-    const QString status = index.data(GameTileDelegate::ActionEnabledRole).toBool()
-                               ? (id_ == "humble" ? "Not downloaded" : "Not installed")
-                               : index.data(GameTileDelegate::ActionRole).toString();
+    const QString ref = index.data(GameTileDelegate::IdRole).toString();
+    QString status = index.data(GameTileDelegate::ActionRole).toString();
+    if (humble_paths_.contains(ref)) {
+      status = "Downloaded to " + humble_paths_.value(ref);
+    } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
+      status = id_ == "humble" ? "Not downloaded" : "Not installed";
+    }
     hover_card_->ShowTitle(index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
   }
   const QRect tile = grid->visualRect(index);
@@ -1051,8 +1061,11 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   for (const QModelIndex& it : SelectForMenu(owned_grid_, index)) {
     if (it.data(GameTileDelegate::ActionEnabledRole).toBool()) refs << it.data(GameTileDelegate::IdRole).toString();
   }
+  // One downloaded bundle adds to the library; several only download the rest.
+  const bool add = refs.size() == 1 && humble_paths_.contains(refs.front());
+  if (!add) refs.removeIf([this](const QString& ref) { return humble_paths_.contains(ref); });
   QMenu menu(this);
-  const QString verb = id_ == "humble" ? "Download" : "Install";
+  const QString verb = add ? "Add to library…" : id_ == "humble" ? "Download" : "Install";
   QAction* start = menu.addAction(refs.size() > 1 ? QString("%1 (%2)").arg(verb).arg(refs.size()) : verb);
   start->setEnabled(!refs.isEmpty());
   if (menu.exec(owned_grid_->viewport()->mapToGlobal(pos)) != start || !owned_grid_->on_action) return;
@@ -1072,7 +1085,10 @@ void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   if (StoreEvent art; MiradClient::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
-    if (art.source == id_ && art.state == "failed" && art.error == "no_steamgriddb_key" && art_key_ != nullptr) {
+    if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&
+        art.error.fix.kind == "setting" && art_key_ != nullptr) {
+      art_key_setting_ = QString::fromStdString(art.error.fix.target);
+      art_key_->setToolTip(error_help::HintFor(art.error));
       art_key_->setVisible(true);
     }
     return;
@@ -1106,8 +1122,11 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     owned_state_.remove(ref);
     ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
   } else if (event.state == "finished") {
-    if (event.kind == "download") {
-      owned_state_.insert(ref, "Downloaded");
+    if (event.kind == "download" && !event.downloaded) {
+      owned_state_.insert(ref, "Nothing to download");  // e.g. only a Steam key
+    } else if (event.kind == "download") {
+      owned_state_.remove(ref);
+      humble_paths_.insert(ref, QString::fromStdString(event.path));
     } else if (id_ == "steam") {
       owned_state_.insert(ref, "Sent to Steam");
     } else {

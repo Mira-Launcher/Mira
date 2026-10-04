@@ -33,6 +33,8 @@ public:
     SourceRole,
     // Optional: 0..1, drawn as a bar along the tile's bottom edge.
     ProgressRole,
+    // mirad wants its pick of executable checked: "Not checked" on the status line.
+    NeedsCheckRole,
   };
 
   // Where the ActionRole pill sits inside a tile's cell.

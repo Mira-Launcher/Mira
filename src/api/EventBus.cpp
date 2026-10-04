@@ -29,16 +29,18 @@ void EventBus::DecorateGames(const std::string& type, nlohmann::json& payload) {
     if (art && payload.contains("id")) payload["art"] = art(payload.value("id", std::string()));
     return;
   }
-  // A state change says outright whether it runs; asking the supervisor
-  // could race its own bookkeeping.
-  if (type == "game.state") {
-    payload["running"] = payload.value("state", std::string()) == "running";
-    return;
-  }
   std::function<void(nlohmann::json&)> hook;
   {
     std::lock_guard lock(hook_mutex_);
     hook = game_hook_;
+  }
+  if (type == "game.state") {
+    // A full record gets the rest of a record's fields too.
+    if (hook && payload.contains("name")) hook(payload);
+    // A state change says outright whether it runs; asking the supervisor
+    // could race its own bookkeeping.
+    payload["running"] = payload.value("state", std::string()) == "running";
+    return;
   }
   if (!hook) return;
   if (type == "game.added" || type == "game.updated") {
@@ -94,6 +96,21 @@ std::vector<model::Event> EventBus::Since(std::int64_t after_id) const {
 std::int64_t EventBus::LatestId() const {
   std::lock_guard lock(mutex_);
   return events_.empty() ? 0 : events_.back().id;
+}
+
+void AddHintAndFix(nlohmann::json& out, const Error& error) {
+  if (!error.hint.empty()) out["hint"] = error.hint;
+  if (error.fix.kind.empty()) return;
+  nlohmann::json fix = {{"kind", error.fix.kind}, {"target", error.fix.target}};
+  if (!error.fix.step.empty()) fix["step"] = error.fix.step;
+  out["fix"] = std::move(fix);
+}
+
+nlohmann::json FailedEvent(nlohmann::json fields, const Error& error) {
+  fields["error"] = error.message;
+  fields["code"] = error.code;
+  AddHintAndFix(fields, error);
+  return fields;
 }
 
 }  // namespace mira::api

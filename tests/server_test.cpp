@@ -211,6 +211,36 @@ TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   CHECK(stored->env.empty());
 }
 
+TEST_CASE("A detected game Mira wasn't sure about needs a check until someone confirms it") {
+  LiveServer server(TempDir("server-needs-check"));
+
+  model::Game unsure;
+  unsure.id = "splodey";
+  unsure.name = "Splodey";
+  unsure.confidence = 0.3;
+  unsure.candidates = {{.rel_path = "Splodey.exe", .score = 4.0, .chosen = true}, {.rel_path = "Launcher.exe", .score = 3.0}};
+  REQUIRE(server.games().Upsert(unsure).has_value());
+  model::Game imported;  // an importer's game: no candidates, no confidence
+  imported.id = "balatro";
+  imported.name = "Balatro";
+  REQUIRE(server.games().Upsert(imported).has_value());
+
+  httplib::Client client = server.Client();
+  const auto needs_check = [&](const std::string& id) {
+    auto res = client.Get("/v1/games/" + id);
+    REQUIRE(res != nullptr);
+    return nlohmann::json::parse(res->body).value("needs_check", true);
+  };
+  CHECK(needs_check("splodey"));
+  CHECK_FALSE(needs_check("balatro"));
+
+  auto confirmed = client.Patch("/v1/games/splodey", R"({"reviewed": true})", "application/json");
+  REQUIRE(confirmed != nullptr);
+  CHECK(confirmed->status == 200);
+  CHECK_FALSE(nlohmann::json::parse(confirmed->body).value("needs_check", true));
+  CHECK_FALSE(needs_check("splodey"));
+}
+
 TEST_CASE("GET /v1/games excludes hidden-tagged games by default; ?tag= filters, including for hidden") {
   LiveServer server(TempDir("server-tags"));
 
@@ -972,6 +1002,8 @@ TEST_CASE("POST /v1/games/manual with is_installer=true creates a needs_install 
   CHECK(parsed.value("status", "") == "needs_install");
   CHECK(parsed.value("platform", "") == "windows");
   CHECK_FALSE(parsed.value("last_error", "").empty());
+  // The installer runs in the game's prefix, so it needs one before it can run.
+  CHECK_FALSE(parsed.value("data_dir", "").empty());
 }
 
 TEST_CASE("POST /v1/games/manual to the same install_path updates rather than duplicates") {
