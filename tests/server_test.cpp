@@ -329,6 +329,27 @@ TEST_CASE("POST /v1/games/{id}/launch refuses a command_wrappers entry that isn'
   CHECK(res->body.find("wrapper_not_found") != std::string::npos);
 }
 
+TEST_CASE("POST /v1/games/{id}/launch refuses a needs_install game with a message") {
+  LiveServer server(TempDir("server-launch-needs-install"));
+
+  model::Game game;
+  game.id = "setup-game";
+  game.name = "setup-game";
+  game.platform = model::Platform::Windows;
+  game.status = model::GameStatus::NeedsInstall;
+  game.install_path = "/tmp";
+  game.exe_path = "Setup.exe";
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto res = client.Post("/v1/games/setup-game/launch");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 409);
+  const auto error = nlohmann::json::parse(res->body, nullptr, false)["error"];
+  CHECK(error.value("code", "") == "needs_install");
+  CHECK_FALSE(error.value("message", "").empty());
+}
+
 TEST_CASE("POST /v1/games/{id}/launch splits a multi-token command_wrappers entry into separate argv") {
   LiveServer server(TempDir("server-launch-wrapper-split"));
 

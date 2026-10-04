@@ -70,24 +70,27 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
     : QWidget(parent, Qt::Popup), tracker_(tracker), artwork_(artwork) {
   setObjectName("downloads_popover");
   setAttribute(Qt::WA_StyledBackground);
-  setFixedWidth(360);
+  setFixedWidth(380);
+  // Laid out as a settings card: titled header, then rows split by a line.
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(12, 10, 12, 12);
-  layout->setSpacing(8);
+  layout->setContentsMargins(0, 0, 0, 6);
+  layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
+  header->setContentsMargins(18, 12, 10, 6);
   auto* title = new QLabel("Activity", this);
   title->setProperty("role", "section");
   header->addWidget(title);
   header->addStretch(1);
   clear_ = new QPushButton("Clear finished", this);
-  clear_->setFlat(true);
+  clear_->setObjectName("text_button");
   connect(clear_, &QPushButton::clicked, tracker_, &DownloadTracker::ClearFinished);
   header->addWidget(clear_);
   layout->addLayout(header);
 
   empty_ = new QLabel("Nothing installing, downloading or running.", this);
-  empty_->setProperty("role", "muted");
+  empty_->setProperty("role", "subtle");
+  empty_->setContentsMargins(18, 6, 18, 10);
   layout->addWidget(empty_);
 
   auto* scroll = new QScrollArea(this);
@@ -98,7 +101,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   auto* list = new QWidget(scroll);
   rows_ = new QVBoxLayout(list);
   rows_->setContentsMargins(0, 0, 0, 0);
-  rows_->setSpacing(6);
+  rows_->setSpacing(0);
   scroll->setWidget(list);
   layout->addWidget(scroll);
 
@@ -133,10 +136,10 @@ void DownloadsPanel::Rebuild() {
   clear_->setEnabled(tracker_->RunningCount() < static_cast<int>(entries.size()));
 
   // Grows with its rows up to a cap, then scrolls.
-  const int row_height = kCover.height() + 16;
+  const int row_height = kCover.height() + 20;
   auto* scroll = findChild<QScrollArea*>("downloads_scroll");
   scroll->setVisible(!entries.empty());
-  scroll->setFixedHeight(std::min<int>(static_cast<int>(entries.size()), 6) * (row_height + 6));
+  scroll->setFixedHeight(std::min<int>(static_cast<int>(entries.size()), 6) * row_height);
   adjustSize();
 }
 
@@ -172,9 +175,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   row->setObjectName("download_row");
   row->setProperty("download_key", entry.key);
   row->setProperty("download_running", entry.state == State::Running);
+  row->setProperty("first", index == 0);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(8, 8, 8, 8);
-  layout->setSpacing(10);
+  layout->setContentsMargins(18, 10, 18, 10);
+  layout->setSpacing(12);
 
   auto* cover = new QLabel(row);
   cover->setFixedSize(kCover);

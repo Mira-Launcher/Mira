@@ -3,8 +3,9 @@
 #include <QHash>
 #include <QKeySequence>
 #include <QSet>
-#include <QWidget>
 #include <QString>
+#include <QStringList>
+#include <QWidget>
 
 #include <functional>
 #include <optional>
@@ -12,60 +13,69 @@
 #include <vector>
 
 #include "../client/MiradClient.h"
+#include "AppearancePreviews.h"
 #include "SettingEditor.h"
+#include "SidebarStyleCard.h"
 
-class QCheckBox;
-class QComboBox;
-class QDoubleSpinBox;
-class QFormLayout;
-class QKeySequenceEdit;
+class QButtonGroup;
 class QLabel;
-class QLineEdit;
-class QPushButton;
+class QSlider;
 class QSpinBox;
 
 namespace mira_gui {
 
+class ArtworkStore;
+class ChangeBar;
+class SettingRow;
+class SettingsCard;
 class SettingsNavWidget;
+class SettingsPage;
+class ShortcutEdit;
+class Switch;
+class ThemeChoice;
+class TilePreview;
 
-// The settings screen's content, embedded directly in a window (the
-// library grid, taking over its body). Owns loading the schema, building
-// one form per category, and saving both the backend config and the
-// frontend-only prefs above it.
+// The settings screen's content, embedded in the library window in place of
+// its body. Loads the schema and builds a page of cards per category, plus the
+// frontend-only Interface, Sidebar and Shortcuts pages. Nothing applies until
+// Save: changes are counted in a bar at the bottom that saves or discards
+// them, and each changed row is marked.
 class SettingsPanel : public QWidget {
   Q_OBJECT
 
 public:
-  explicit SettingsPanel(QWidget* parent = nullptr);
+  // What the previews draw: the user's own games and their art.
+  struct Previews {
+    ArtworkStore* artwork = nullptr;
+    std::vector<GameSummary> pinned;
+    std::vector<GameSummary> recent;  // most recent first, running ones included
+  };
+
+  explicit SettingsPanel(Previews previews, QWidget* parent = nullptr);
 
   // FocusKey target for the frontend-only Sidebar page.
   static constexpr const char* kSidebarKey = "frontend.sidebar";
 
-  // Patches every changed field. Emits SaveFinished either way; the caller
-  // decides what "done" means (close a dialog, switch back to the grid).
+  // Saves every change. Emits SaveFinished either way.
   void Save();
 
-  // Switches to `key`'s tab and focuses its field. No-op for an unknown key;
+  // Switches to `key`'s page and focuses its field. No-op for an unknown key;
   // retried once the schema loads if called too early.
   void FocusKey(const QString& key);
 
-  // A widget pinned under the nav's category list, e.g. LibraryWindow's
-  // Back/Reset/Save row.
-  void SetFooterActions(QWidget* actions);
+  // Above the nav, e.g. the window's back button and title.
+  void SetHeader(QWidget* header);
 
-  // A button row at the end of `category`'s page, for a one-off action that
-  // belongs next to those settings. Added once the schema has loaded.
-  void AddSectionAction(const QString& category, const QString& label, const QString& doc,
+  // A button row at the end of `category`'s card titled `card`, for a one-off
+  // action that belongs next to those settings. Added once the schema loads.
+  void AddSectionAction(const QString& category, const QString& card, const QString& label, const QString& doc,
                         const QString& button_text, std::function<void()> activated);
 
-  // True if anything differs from what Load() last fetched or Save() last
-  // confirmed; the signal a caller uses to warn before discarding.
-  bool IsDirty() const;
+  // True if anything differs from what was loaded or last saved.
+  bool IsDirty() const { return ChangeCount() > 0; }
 
-  // Reverts every field to what Load() last fetched or Save() last
-  // confirmed, without touching the daemon or re-fetching anything,
-  // nothing here applies live before Save() runs, so there is no already-
-  // applied state to undo, just widgets to set back.
+  // Puts every field back to what was loaded or last saved. Nothing applies
+  // before Save, so there is nothing else to undo.
   void DiscardChanges();
 
 signals:
@@ -75,70 +85,82 @@ signals:
   void PrefsSaved(const mira_gui::FrontendPrefs& prefs);
 
 private:
-  struct Field : SettingEditor {
-    QFormLayout* owner_form = nullptr;  // the category group's form this row lives in
+  // A frontend.toml control, however it is drawn: whether it differs from what
+  // was saved and from its default, and how to put it back to either.
+  struct PrefField {
+    SettingRow* row = nullptr;
+    std::function<bool()> changed;
+    std::function<bool()> is_default;
+    std::function<void()> revert;    // to the saved value
+    std::function<void()> reset;     // to the default
+    std::function<void()> mark_saved;
   };
 
-  // One pixel adjustment layered over the theme. -1 is the spinbox's special
-  // value, "whatever the theme says".
-  struct ShapeField {
-    QSpinBox* spin = nullptr;
-    int original = -1;
-  };
-
-  // A frontend.toml checkbox or number, bound to its FrontendPrefs field.
+  // A frontend.toml switch bound to its FrontendPrefs field.
   struct PrefToggle {
-    QCheckBox* check = nullptr;
+    Switch* toggle = nullptr;
     std::optional<bool> FrontendPrefs::*member = nullptr;
     bool fallback = false;  // when frontend.toml doesn't set it
-    bool original = false;
+    bool saved = false;
   };
-  struct PrefCount {
-    QSpinBox* spin = nullptr;
+
+  // One shape adjustment over the theme; unset follows the theme.
+  struct ShapeField {
+    QSlider* slider = nullptr;
+    QLabel* value = nullptr;
     std::optional<int> FrontendPrefs::*member = nullptr;
-    int fallback = 0;
-    int original = 0;
-  };
-  // A frontend.toml string with fixed choices; each item's data is its stored value.
-  struct PrefChoice {
-    QComboBox* combo = nullptr;
-    std::optional<std::string> FrontendPrefs::*member = nullptr;
-    QString fallback;
-    QString original;
+    int theme_default = 0;  // what unset resolves to in the current theme
+    std::optional<int> current;
+    std::optional<int> saved;
   };
 
   struct ShortcutField {
     QString id;
-    QKeySequenceEdit* edit = nullptr;
-    QKeySequence original;  // last value loaded (the override, or the default if none)
-    QPushButton* reset_button = nullptr;
+    ShortcutEdit* edit = nullptr;
+    QKeySequence saved;  // the override, or the default if none
+    QKeySequence default_keys;
+  };
+
+  struct CardReset {
+    SettingsCard* card = nullptr;
+    std::vector<size_t> prefs;   // into pref_fields_
+    std::vector<size_t> schema;  // into fields_
+  };
+
+  // One source's row on the Sidebar page: shown in the sidebar, in this order.
+  struct SourceRow {
+    QString id;
+    SettingRow* row = nullptr;
+    Switch* shown = nullptr;
   };
 
   void Load();
   void LoadFrontendPrefs();
-  void BuildInterfaceGroup();
-  void BuildShortcutsGroup();
-  void BuildSidebarGroup();
-  QSet<QString> CurrentHiddenSources() const;
-  // Anything frontend.toml holds differs from what was loaded.
-  bool PrefsDirty() const;
-  QCheckBox* AddToggle(QFormLayout* form, const QString& label, const QString& tip, const QString& search,
-                       std::optional<bool> FrontendPrefs::*member, bool fallback);
-  QSpinBox* AddCount(QFormLayout* form, const QString& label, const QString& tip, const QString& search,
-                     std::optional<int> FrontendPrefs::*member, int fallback, int minimum, int maximum);
-  // `choices` are {stored value, label}.
-  QComboBox* AddChoice(QFormLayout* form, const QString& label, const QString& tip, const QString& search,
-                       std::optional<std::string> FrontendPrefs::*member, const QString& fallback,
-                       const std::vector<std::pair<QString, QString>>& choices);
-  QWidget* MakeShapeControl(ShapeField& field, const QString& label, int maximum,
-                            const QString& tip);
-  // Shows each shape spinbox's special "unset" value as the actual number
-  // the current theme resolves it to, not a placeholder, refreshed on
-  // theme::Notifier::Changed so it never goes stale.
+  void BuildInterfacePage();
+  void BuildSidebarPage();
+  void BuildShortcutsPage();
+  void BuildSchemaPages();
+  // A Sources-style category: one folding card per source, its on switch in the header.
+  void BuildSourceCards(SettingsPage* page, const std::vector<size_t>& rows);
+  SettingRow* AddSchemaRow(SettingsCard* card, size_t index);
+  Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
+                    std::optional<bool> FrontendPrefs::*member, bool fallback);
+  // Returns the field's index in pref_fields_.
+  size_t AddPrefField(PrefField field);
+  // A card's "Reset to defaults" over these pref_fields_ and fields_ indices.
+  void AddCardReset(SettingsCard* card, std::vector<size_t> prefs, std::vector<size_t> schema);
+  QWidget* MakeSlider(ShapeField& field, int maximum);
+  void RefreshShape(ShapeField& field);
   void RefreshShapeDefaults();
-  void BuildRows();
+  void UpdatePreviews();
+  QString SelectedTheme() const;
+  void SelectTheme(const QString& name);
+  QStringList CurrentSourceOrder() const;
+  QSet<QString> CurrentHiddenSources() const;
+  void ArrangeSources(const QStringList& order);
   struct SectionAction {
     QString category;
+    QString card;
     QString label;
     QString doc;
     QString button_text;
@@ -146,33 +168,57 @@ private:
   };
   void AppendSectionAction(const SectionAction& action);
   void LoadGameModeStatus();
-  void PopulateRunnerCombos(const mira_gui::RunnersResult& result);
-  void ResetField(size_t index);
+  void PopulateRunnerCombos(const RunnersResult& result);
+  // Recounts the changes, marks the rows and shows or hides the bar.
+  void Refresh();
+  int ChangeCount() const;
+  bool PrefsDirty() const;
+  void FinishSave(bool ok, const QString& error);
 
+  Previews previews_;
   SettingsNavWidget* nav_ = nullptr;
-  QComboBox* theme_ = nullptr;
-  QString theme_original_;
+  ChangeBar* change_bar_ = nullptr;
+  bool loaded_ = false;  // Refresh ignores the edits loading itself makes
+
+  // Interface
+  QButtonGroup* themes_ = nullptr;
+  QString theme_saved_;
   std::vector<PrefToggle> toggles_;
-  std::vector<PrefCount> counts_;
-  std::vector<PrefChoice> choices_;
-  QWidget* sidebar_first_row_ = nullptr;  // kSidebarKey's target
-  std::vector<std::pair<QString, QCheckBox*>> source_checks_;  // source id, "show in sidebar"
-  QSet<QString> hidden_sources_original_;
+  QSpinBox* continue_count_ = nullptr;
+  int continue_count_saved_ = 3;
+  SettingRow* continue_count_row_ = nullptr;
+  Switch* continue_row_ = nullptr;
+  TilePreview* tile_preview_ = nullptr;
+  Switch* tile_status_ = nullptr;
+  Switch* tile_mark_ = nullptr;
+  Switch* tile_pin_ = nullptr;
+  LayoutPreview* layout_preview_ = nullptr;
   ShapeField tile_spacing_;
   ShapeField grid_margin_;
   ShapeField tile_radius_;
   ShapeField panel_radius_;
   ShapeField control_radius_;
+
+  // Sidebar
+  SidebarStyleChoices* sidebar_style_ = nullptr;
+  SidebarStyleChoices::Choices sidebar_style_saved_;
+  SettingsCard* sources_card_ = nullptr;
+  std::vector<SourceRow> source_rows_;
+  QStringList source_order_saved_;
+  QSet<QString> hidden_sources_saved_;
+
   std::vector<ShortcutField> shortcuts_;
-  std::vector<Field> fields_;
+  std::vector<PrefField> pref_fields_;
+  std::vector<SettingEditor> fields_;
+  std::vector<CardReset> card_resets_;
   QString pending_focus_key_;  // FocusKey called before the schema arrived
   std::vector<SectionAction> section_actions_;
-  QHash<QString, QFormLayout*> category_forms_;
-  QSet<QString> categories_with_actions_;
+  QHash<QString, SettingsPage*> pages_;
   bool rows_built_ = false;
-  // Read-only "is Feral GameMode installed/running" indicator on the
-  // Launching category, not tied to any Field, since it isn't a config key.
+  // Read-only "is Feral GameMode installed/running" on the Launching page; not a config key.
   QLabel* gamemode_status_ = nullptr;
+  int saves_pending_ = 0;
+  QString save_error_;
 };
 
 }  // namespace mira_gui

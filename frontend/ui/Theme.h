@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <array>
 #include <optional>
 
 class QWidget;
@@ -61,6 +62,12 @@ struct Tokens {
   int placeholder_value = 135;
 };
 
+// Stand-ins for covers in a preview with no games to show: `tokens`' own
+// accent colors, so they suit the theme being previewed.
+inline std::array<QColor, 4> SampleArt(const Tokens& tokens) {
+  return {tokens.accent, tokens.warning, tokens.success, tokens.error};
+}
+
 // What everything currently draws with. Valid before Apply() is ever called,
 // it starts as the built-in defaults.
 const Tokens& Current();
@@ -103,6 +110,10 @@ void Configure(const QString& name, const Overrides& overrides);
 
 // The name last passed to Apply(), so the settings picker can show it.
 QString CurrentName();
+
+// The colors `name` would draw with, without applying it; "auto" resolves to
+// the desktop's light or dark theme. For previewing a theme before picking it.
+Tokens Peek(const QString& name);
 
 // Sets one of the stylesheet's own properties on a widget: "role" for a text
 // style (muted, heading, section, error, keys), "status" for a lifecycle

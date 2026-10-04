@@ -306,6 +306,11 @@ void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {
 
 QString CurrentName() { return g_name; }
 
+Tokens Peek(const QString& name) {
+  const std::string text = ReadThemeFile(name == "auto" ? DesktopTheme() : name);
+  return text.empty() ? Tokens{} : ParseTokens(text);
+}
+
 Notifier* Notifier::Instance() {
   static Notifier instance;
   return &instance;

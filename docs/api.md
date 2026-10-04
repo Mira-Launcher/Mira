@@ -52,13 +52,14 @@ Every setting at its current value, plus the `frontend` table from `frontend.tom
 Every setting in display order:
 
 ```json
-[{ "key": "scan.debounce_ms", "label": "Debounce Time (ms)", "type": "an integer",
+[{ "key": "scan.debounce_ms", "label": "Scan delay (ms)", "type": "an integer",
    "default": 3000, "scope": "global", "category": "Scanning", "group": 0,
-   "doc": "How long a new folder must stop changing before it is scanned.",
+   "group_label": "Scanning",
+   "doc": "How long a new folder must stay unchanged before Mira scans it.",
    "minimum": 0, "maximum": 600000 }]
 ```
 
-`category` is the settings section and `group` changes where a divider goes. `scope` is `per_game` when a game can override the setting and `game_only` when it only exists per game. Optional fields, present only when they apply: `game_doc` (help text for a game's own settings, used instead of `doc`), `one_of` (enum values), `minimum`/`maximum`, `is_secret` (mask the value), `is_runner_ref` (offer a runner picker), `link` (a web page where the user gets the value, e.g. an API key page) and `keywords` (extra search terms such as abbreviations, space-separated).
+`category` is the settings section. Within it, settings sharing a `group` number belong together under the title `group_label`. Labels and group titles are in sentence case. `scope` is `per_game` when a game can override the setting and `game_only` when it only exists per game. Optional fields, present only when they apply: `game_doc` (help text for a game's own settings, used instead of `doc`), `one_of` (enum values), `minimum`/`maximum`, `is_secret` (mask the value), `is_runner_ref` (offer a runner picker), `link` (a web page where the user gets the value, e.g. an API key page), `keywords` (extra search terms such as abbreviations, space-separated), `group_collapsed` (the group holds rarely changed values, best shown folded), `group_resettable` (the group's values make sense to put back to their defaults together, so a screen can offer one reset for the group), `path` (`"folder"` or `"file"` when the value, or each item of an array, is a path on this computer, so a screen can offer a picker) and `source` (the source the setting belongs to, e.g. `"steam"` or `"ubisoft"`, so a screen can gather one source's settings together).
 
 ### `PATCH /v1/config`
 Sets any subset of settings, nested like `GET /v1/config`, plus an optional `frontend` key, merged into `frontend.toml` as a JSON merge patch (a `null` value deletes that key). The whole patch is validated first; one bad value means nothing is applied.

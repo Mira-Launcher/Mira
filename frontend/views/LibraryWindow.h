@@ -15,11 +15,13 @@
 #include <map>
 #include <set>
 #include <string>
+#include <deque>
 #include <vector>
 
 #include "../client/Types.h"
 #include "../ui/ArtworkStore.h"
-#include "../dialogs/ManageSourcesDialog.h"
+#include "../ui/InstallPromptCard.h"
+#include "../ui/ManageSourcesCard.h"
 #include "../ui/Shortcuts.h"
 #include "../ui/SidebarGames.h"
 
@@ -47,6 +49,7 @@ class LibraryGrid;
 
 namespace mira_gui {
 class ArtPickerPanel;
+class ChangeBar;
 class ContinueRow;
 class GameFilterProxy;
 class GameLibraryModel;
@@ -178,6 +181,8 @@ private:
   void BatchSetTag(const std::vector<std::string>& ids, const std::string& tag, bool present);
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
+  void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
+  void ShowNextInstallPrompt();
   void LaunchGame(const std::string& id);
   void OpenGameDialog(const std::string& id);
   // Scrim + centered card slot, built once. Shown/hidden per open rather
@@ -193,6 +198,12 @@ private:
   // Confirms first if game_edit_form_ is dirty; the card's own Back
   // button, the sidebar's Library nav row, and a click on the scrim.
   void RequestCloseGameEdit();
+  // The card's Back and Esc: out of the art picker, then Advanced, then the card.
+  void GameEditBack();
+  // The form's change count, and room under its cards while the bar shows.
+  void UpdateGameEditBar();
+  // Play or Stop, as the game's state allows.
+  void UpdateGameEditPlay();
   bool GameEditOpen() const;
   // `focus_key` jumps straight to that schema field once loaded.
   void OpenSettings(const QString& focus_key = QString());
@@ -226,12 +237,14 @@ private:
   void FillSidebarSection(QWidget* heading, QVBoxLayout* layout,
                           const std::vector<const mira_gui::GameSummary*>& games, mira_gui::sidebar::Style style,
                           bool recent, QString& signature);
-  // The customize card for PINNED and RECENTLY PLAYED, over the content
-  // with the sidebar left undimmed as its preview.
-  QWidget* BuildSidebarStyleOverlay();
+  // A card that changes the sidebar (the pinned and recently played style,
+  // Manage sources), over the content with the sidebar left undimmed as its
+  // preview. Showing one replaces any other.
+  QWidget* BuildSidebarCardOverlay();
+  void ShowSidebarCard(QWidget* card);
+  void CloseSidebarCard();
+  bool SidebarCardOpen() const;
   void OpenSidebarStyle();
-  void CloseSidebarStyle();
-  bool SidebarStyleOpen() const;
   // Redraws both sections and stores their styles and the recent count.
   void SaveSidebarStyle();
   void RefreshContinue();
@@ -241,8 +254,9 @@ private:
   QIcon SourceIcon(const mira_gui::SourceInfo& source, bool active) const;
   void SetSourceHidden(const QString& id, bool hidden);
   std::vector<QString> SourceOrder() const;
-  std::vector<ManageSourcesDialog::Entry> SourceEntries() const;
-  void MoveSourceBy(const QString& id, int delta);
+  std::vector<mira_gui::ManageSourcesCard::Entry> SourceEntries() const;
+  // Shows and stores a new sidebar order.
+  void SetSourceOrder(std::vector<QString> order);
   void NoteImported(const QString& id);
   // Moves `id` to just before the visible row `before` (end if -1).
   void MoveSource(const QString& id, int before);
@@ -284,8 +298,8 @@ private:
   QString InstallText(const std::string& id) const;  // `announce` is false for the bulk path, where one toast covers the batch
   // and per-game messages would be one notification per game.
   void RefreshMetadata(const std::string& id, bool announce = true);
-  // Swaps the game card's fields for its art picker on `slot`, and back.
-  void OpenArtPicker(const std::string& slot);
+  // Swaps the game card's fields for its art picker, and back.
+  void OpenArtPicker();
   void CloseArtPicker(bool applied = false);
   bool ArtPickerOpen() const;
   void FetchMissingArtwork();
@@ -325,10 +339,12 @@ private:
   QSlider* zoom_ = nullptr;
   QToolButton* sort_direction_ = nullptr;
   QToolButton* add_games_ = nullptr;
-  // Sidebar nav row, styled like library_nav_. Settings' own
-  // Back/Reset/Save row lives on the settings page itself (BuildSettingsPage),
-  // rebuilt fresh alongside settings_panel_ on each open.
+  // Sidebar nav row, styled like library_nav_. Settings' own back button
+  // lives on the settings page itself (BuildSettingsPage), rebuilt fresh
+  // alongside settings_panel_ on each open.
   QPushButton* settings_button_ = nullptr;
+  // Set by "Save and leave", so the save that follows closes Settings.
+  bool close_settings_after_save_ = false;
   // Moved here from the sidebar's old hamburger menu; see BuildTopBar.
   QToolButton* downloads_button_ = nullptr;
   QToolButton* refresh_button_ = nullptr;
@@ -370,9 +386,11 @@ private:
   mira_gui::sidebar::Style pinned_style_ = mira_gui::sidebar::Style::Covers;
   mira_gui::sidebar::Style recent_style_ = mira_gui::sidebar::Style::Covers;
   bool recent_when_ = true;
-  QWidget* sidebar_style_overlay_ = nullptr;
-  QGridLayout* sidebar_style_layout_ = nullptr;
-  QWidget* sidebar_style_card_ = nullptr;
+  QWidget* sidebar_card_overlay_ = nullptr;
+  QGridLayout* sidebar_card_layout_ = nullptr;
+  QWidget* sidebar_card_ = nullptr;
+  // Installer prompts waiting for Settings, a game's card or another card to close.
+  std::deque<mira_gui::InstallDetectedEvent> pending_install_prompts_;
   bool show_source_counts_ = true;
   bool source_icons_ = true;
   QElapsedTimer last_row_click_;
@@ -416,14 +434,15 @@ private:
   mira_gui::GameEditForm* game_edit_form_ = nullptr;
   mira_gui::HeroBackdrop* game_edit_backdrop_ = nullptr;  // the card itself
   mira_gui::CoverChip* game_edit_cover_ = nullptr;
-  // The fields' scroll area, and the art picker once first opened.
+  // The form, and the art picker once first opened.
   QStackedWidget* game_edit_stack_ = nullptr;
   mira_gui::ArtPickerPanel* game_edit_picker_ = nullptr;
-  QPushButton* game_edit_hero_button_ = nullptr;
-  QPushButton* game_edit_cover_button_ = nullptr;
-  QPushButton* game_edit_back_ = nullptr;
-  QPushButton* game_edit_advanced_ = nullptr;
-  QPushButton* game_edit_save_ = nullptr;
+  QLabel* game_edit_title_ = nullptr;
+  QPushButton* game_edit_art_button_ = nullptr;
+  QPushButton* game_edit_play_ = nullptr;
+  // The form's unsaved changes, or the picker's pick while it's open.
+  mira_gui::ChangeBar* game_edit_bar_ = nullptr;
+  bool close_game_edit_after_save_ = false;
   QLabel* footer_ = nullptr;
   QLabel* empty_hint_ = nullptr;
   mira_gui::HoverCard* hover_card_ = nullptr;

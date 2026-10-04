@@ -4,10 +4,15 @@
 #include <QAction>
 #include <QApplication>
 #include <QCursor>
+#include <QGuiApplication>
 #include <QHelpEvent>
 #include <QMenu>
 #include <QPainter>
 #include <QPointer>
+#include <QScreen>
+
+#include <algorithm>
+#include <optional>
 
 #include "HoverCard.h"
 #include "Theme.h"
@@ -17,6 +22,13 @@ namespace {
 
 // Wider than this wraps.
 constexpr int kMaxWidth = 320;
+
+// Set by AlignLeftWith: the widget whose left side the tooltip starts at.
+constexpr const char* kAlignProperty = "mira_tooltip_align";
+// In from that side, so the two edges don't read as one line, and a little
+// closer to the label than a plain tooltip.
+constexpr int kAlignInset = 6;
+constexpr int kAlignDrop = -2;
 
 class TipCard : public QWidget {
 public:
@@ -28,14 +40,24 @@ public:
 
   // Drawn, not a QLabel: a word-wrapped QLabel's heightForWidth can run a
   // line or more past what it paints, leaving empty bands in the card.
-  void ShowText(const QString& text, const QRect& anchor, bool beside) {
+  // `left`, when set, is the global x the card starts at, rather than centered under `anchor`.
+  void ShowText(const QString& text, const QRect& anchor, bool beside, std::optional<int> left) {
     text_ = text;
     ensurePolished();
     const QRect text_rect =
         fontMetrics().boundingRect(QRect(0, 0, kMaxWidth, 100000), Qt::TextWordWrap, text_);
     text_size_ = text_rect.size();
     setFixedSize(text_size_.width() + 2 * card::kPaddingX, text_size_.height() + 2 * kPaddingY);
-    move(card::Place(anchor, size(), beside));
+    QPoint pos = card::Place(anchor, size(), beside);
+    if (left) {
+      // Still kept on screen at the right.
+      const QScreen* screen = QGuiApplication::screenAt(anchor.center());
+      const int right = screen != nullptr ? screen->availableGeometry().right() : *left + width();
+      pos.setX(std::min(*left, right + 1 - width()));
+      // Away from the label, whichever side of it Place put the card.
+      pos.ry() += pos.y() > anchor.top() ? kAlignDrop : -kAlignDrop;
+    }
+    move(pos);
     update();
     show();
   }
@@ -114,6 +136,7 @@ private:
     QString text;
     QRect anchor;
     bool beside = false;
+    std::optional<int> left;
     if (auto* menu = qobject_cast<QMenu*>(widget)) {
       QAction* action = menu->actionAt(help->pos());
       if (action != nullptr) {
@@ -133,6 +156,9 @@ private:
       // Qt passes it on to the parent, which may have one.
       if (text.isEmpty()) return false;
       anchor = GlobalRect(widget, widget->rect());
+      if (auto* edge = qobject_cast<QWidget*>(widget->property(kAlignProperty).value<QObject*>())) {
+        left = edge->mapToGlobal(QPoint(kAlignInset, 0)).x();
+      }
     }
 
     if (text.isEmpty()) {
@@ -142,7 +168,7 @@ private:
     if (card_ == nullptr) card_ = new TipCard();
     target_ = widget;
     anchor_ = anchor;
-    card_->ShowText(text, anchor, beside);
+    card_->ShowText(text, anchor, beside, left);
     return true;
   }
 
@@ -159,5 +185,9 @@ private:
 }  // namespace
 
 void Install() { qApp->installEventFilter(new ToolTipFilter(qApp)); }
+
+void AlignLeftWith(QWidget* widget, QWidget* edge) {
+  widget->setProperty(kAlignProperty, QVariant::fromValue<QObject*>(edge));
+}
 
 }  // namespace mira_gui::tooltip

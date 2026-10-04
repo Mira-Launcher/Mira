@@ -5,19 +5,23 @@
 #include <QWidget>
 
 #include <string>
-#include <utility>
 #include <vector>
 
-class QFormLayout;
+#include "Icons.h"
+
+class QButtonGroup;
 class QLabel;
 class QLineEdit;
-class QListWidget;
-class QListWidgetItem;
+class QPushButton;
 class QScrollArea;
 class QStackedWidget;
+class QVariantAnimation;
 class QVBoxLayout;
 
 namespace mira_gui {
+
+class SettingsCard;
+class SettingsPage;
 
 // Row indices grouped by category, in first-seen order. Never sorted: the
 // schema's order is the display order.
@@ -27,97 +31,108 @@ struct CategoryRows {
 };
 std::vector<CategoryRows> GroupByCategory(const std::vector<std::string>& categories);
 
-// Left-nav-plus-search chrome shared by the Settings screen and the
-// per-game Advanced editor: category list + search on the left, a
-// QStackedWidget of per-category forms on the right. Knows nothing about
-// config schemas: each consumer's own gate (the overridable filter)
-// composes with the live search via SetRowGateVisible instead of
-// both fighting over the same row's setRowVisible call.
+// Where a settings category sits in the nav: its group heading and icon. An
+// unknown category (one mirad added later) lands under Games with a generic icon.
+QString CategoryNavGroup(const QString& category);
+icons::Glyph CategoryGlyph(const QString& category);
+
+// Left-nav-plus-search chrome shared by the Settings screen and a game's own
+// settings: grouped category rows and search on the left, every category's
+// page in one scroll on the right. The nav jumps to a page and follows the
+// scroll; the current page's title sticks to the top. Knows nothing about config schemas:
+// each consumer's own gate (the overridable filter) composes with the live
+// search via SetRowGateVisible instead of both fighting over a row's visibility.
 class SettingsNavWidget : public QWidget {
   Q_OBJECT
 
 public:
   explicit SettingsNavWidget(QWidget* parent = nullptr);
 
-  // Adds a category page (a scroll-wrapped QFormLayout, same shape every
-  // category got from the old per-consumer AddCategoryTab) and a matching
-  // nav-list entry. Returns the form, ready for addRow calls.
-  QFormLayout* AddCategory(const QString& title);
+  // A page with its nav row, under `nav_group`'s heading (none when empty).
+  SettingsPage* AddCategory(const QString& title, icons::Glyph glyph, const QString& nav_group = {});
 
-  // Call once per row, right after form->addRow(label, row_widget); it lets
-  // the search box find it later. searchable_text should already contain
-  // everything the row should match on (key, doc, category, hand-picked
-  // synonyms for non-schema rows). Every query word must appear, in any
-  // order (ui/SettingsSearch).
-  void RegisterRow(QFormLayout* form, QWidget* row_widget, const QString& searchable_text);
+  // Call once per row, after it is placed in a card on one of these pages, so
+  // the search box can find it. Every query word must appear, in any order
+  // (ui/SettingsSearch).
+  void RegisterRow(QWidget* row_widget, const QString& searchable_text);
 
-  // A second, independent visibility gate under the search filter, e.g. the
-  // overridable flag on the per-game editor. Defaults to true. Composes
-  // with the live search query rather than racing it: both flow through
-  // the same ApplyFilter() pass.
+  // A second visibility gate under the search filter, e.g. the overridable
+  // flag in a game's settings. Defaults to true.
   void SetRowGateVisible(QWidget* row_widget, bool visible);
 
-  // The category column's width; the default fits the settings screen's header checkbox.
   void SetNavWidth(int width);
 
-  // Clears any active search (so the target row can't be hidden by a stale
-  // query), switches to row_widget's category, and scrolls it into view.
-  // Does not change focus; the caller still owns whichever inner control
-  // widget should actually receive it.
+  // Clears the search, unfolds row_widget's card and scrolls it into view.
+  // Leaves focus to the caller.
   void RevealRow(QWidget* row_widget);
 
-  // A widget shown above the search box, e.g. the main Settings screen's
-  // "Show advanced & expert settings" checkbox. Screen-wide chrome that
-  // isn't part of any one category, so it lives with the other
-  // screen-wide chrome (nav + search) rather than floating separately.
+  // Above the search box, e.g. the screen's back button and title.
   void SetHeaderWidget(QWidget* widget);
 
-  // A widget pinned below the nav list, e.g. the Settings screen's
-  // Back/Reset/Save row. Each call inserts right below the nav list, above
-  // whatever an earlier call added.
-  void AddFooterWidget(QWidget* widget);
+  // The page area, for a change bar to float over.
+  QWidget* ContentArea() const;
 
-  // A thin line across `form`, between two groups of rows.
-  void AddDivider(QFormLayout* form);
+  // Extra space under the last page while a change bar floats over it.
+  void SetBottomRoom(int height);
 
-  // A divider followed by a larger title, for a named block of rows inside a
-  // category. Hidden while searching, like the dividers.
-  void AddSubheading(QFormLayout* form, const QString& text);
+  // Splits every page's cards into columns again, e.g. once loaded values
+  // have given them their real heights. Folding never does this by itself.
+  void RearrangePages();
+
+protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
   struct Category {
-    QListWidgetItem* item = nullptr;
-    QWidget* page = nullptr;
-    QScrollArea* scroll = nullptr;
-    QFormLayout* form = nullptr;
+    QPushButton* button = nullptr;
+    QLabel* count = nullptr;          // matches while searching, inside the button
+    QLabel* group_heading = nullptr;  // the nav heading this category sits under, if any
+    SettingsPage* page = nullptr;
+    icons::Glyph glyph = icons::Glyph::Dot;
     int total_rows = 0;
   };
 
   struct RowEntry {
-    QFormLayout* form = nullptr;
     QWidget* row_widget = nullptr;
+    SettingsCard* card = nullptr;
     QString search_text;  // settings_search::Normalize'd
     bool gate_visible = true;
     int category_index = -1;
   };
 
   void ApplyFilter();
-  void SelectFirstVisibleCategory();
+  // Scrolls to a page's title.
+  void Select(int index);
+  void RefreshIcons();
+  // The sticky title, the nav's current row and the room under the last page,
+  // after a scroll or a change in the pages' size.
+  void SyncToScroll();
+  int TitleTop(const Category& category) const;
+  int CurrentIndex() const;
 
   QLineEdit* search_ = nullptr;
-  QListWidget* nav_list_ = nullptr;
-  QStackedWidget* stack_ = nullptr;         // one page per category, indices matching nav_list_ rows
-  QStackedWidget* content_stack_ = nullptr;  // stack_ vs. empty_state_
+  QWidget* nav_ = nullptr;
+  QVBoxLayout* nav_layout_ = nullptr;
+  QButtonGroup* buttons_ = nullptr;
+  QScrollArea* scroll_ = nullptr;            // every page, one after another
+  QWidget* canvas_ = nullptr;
+  QVBoxLayout* sections_ = nullptr;
+  QLabel* sticky_ = nullptr;                 // the current page's title, over the scroll's top
+  QVariantAnimation* jump_ = nullptr;
+  int jumping_to_ = -1;                      // the nav row a jump is heading for
+  int bottom_room_ = 0;                      // for a change bar
+  QStackedWidget* content_stack_ = nullptr;  // scroll_ vs. empty_state_
   QLabel* empty_state_ = nullptr;            // shown when a query matches nothing at all
   QWidget* left_ = nullptr;
-  QVBoxLayout* left_layout_ = nullptr;  // header widget (if any), search box, nav list, footer, in that order
+  QVBoxLayout* left_layout_ = nullptr;  // header widget (if any), search box, nav
   QWidget* header_widget_ = nullptr;
+  QLabel* current_heading_ = nullptr;   // the group heading new categories go under
+  QString current_group_;
 
   std::vector<Category> categories_;
   std::vector<RowEntry> rows_;
-  std::vector<std::pair<QFormLayout*, QWidget*>> dividers_;
-  QHash<QWidget*, int> row_index_by_widget_;   // row_widget -> index into rows_
-  QHash<QFormLayout*, int> category_by_form_;  // form -> index into categories_
+  QHash<QWidget*, int> row_index_by_widget_;  // row_widget -> index into rows_
+  QHash<SettingsCard*, bool> folded_before_search_;
 };
 
 }  // namespace mira_gui

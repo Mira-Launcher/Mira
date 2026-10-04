@@ -65,8 +65,6 @@ qt_add_executable(mira-gui
   ui/GameLibraryModel.h
   ui/GameActions.cpp
   ui/GameActions.h
-  ui/HeroArtWidget.cpp
-  ui/HeroArtWidget.h
   ui/HeroBackdrop.cpp
   ui/HeroBackdrop.h
   ui/HoverCard.cpp
@@ -86,6 +84,10 @@ qt_add_executable(mira-gui
   ui/PopupDialog.h
   ui/SidebarGames.cpp
   ui/SidebarGames.h
+  ui/ManageSourcesCard.cpp
+  ui/ManageSourcesCard.h
+  ui/InstallPromptCard.cpp
+  ui/InstallPromptCard.h
   ui/SidebarStyleCard.cpp
   ui/SidebarStyleCard.h
   ui/Sources.cpp
@@ -98,6 +100,8 @@ qt_add_executable(mira-gui
   ui/Theme.h
   ui/TabRow.cpp
   ui/TabRow.h
+  ui/TagEdit.cpp
+  ui/TagEdit.h
   ui/TileGrid.cpp
   ui/TileGrid.h
   ui/TileView.cpp
@@ -108,10 +112,18 @@ qt_add_executable(mira-gui
   ui/Tray.h
   ui/SettingsNav.cpp
   ui/SettingsNav.h
+  ui/SettingsCard.cpp
+  ui/SettingsCard.h
+  ui/SettingsColumns.cpp
+  ui/SettingsColumns.h
+  ui/ShortcutEdit.cpp
+  ui/ShortcutEdit.h
+  ui/AppearancePreviews.cpp
+  ui/AppearancePreviews.h
+  ui/ListEdit.cpp
+  ui/ListEdit.h
   ui/SettingsSearch.cpp
   ui/SettingsSearch.h
-  ui/HelpButton.cpp
-  ui/HelpButton.h
   ui/ErrorHelp.cpp
   ui/ErrorHelp.h
   ui/SettingEditor.cpp
@@ -146,10 +158,6 @@ qt_add_executable(mira-gui
   dialogs/ItchCollectionsDialog.h
   dialogs/LogViewerDialog.cpp
   dialogs/LogViewerDialog.h
-  dialogs/ManageSourcesDialog.cpp
-  dialogs/ManageSourcesDialog.h
-  dialogs/InstallDetectedDialog.cpp
-  dialogs/InstallDetectedDialog.h
   dialogs/RunInPrefixDialog.cpp
   dialogs/RunInPrefixDialog.h
   dialogs/OverridesEditor.cpp
@@ -231,6 +239,7 @@ add_executable(mira_gui_tests
   ui/DaemonSupervisor.cpp
   ui/DownloadTracker.cpp
   ui/SettingsSearch.cpp
+  ui/SettingsColumns.cpp
   ui/ErrorHelp.cpp
   client/Transport.cpp
 )

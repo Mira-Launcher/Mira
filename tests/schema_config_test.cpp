@@ -19,7 +19,27 @@ TEST_CASE("every schema entry is well-formed") {
     INFO("key: ", entry.key);
     CHECK_FALSE(entry.label.empty());
     CHECK_FALSE(entry.category.empty());
+    CHECK_FALSE(entry.group_label.empty());
     CHECK_FALSE(Schema::Instance().Validate(entry.key, entry.default_value).has_value());
+  }
+}
+
+TEST_CASE("settings are attributed to the source they configure") {
+  const Schema& schema = Schema::Instance();
+  CHECK(schema.Find("steam.root")->source == "steam");
+  CHECK(schema.Find("gog.install_root")->source == "gog");
+  CHECK(schema.Find("launchers.ubisoft.disable_overlay")->source == "ubisoft");
+  // A download location for a store's tool and a launcher-wide setting belong to no one source.
+  CHECK(schema.Find("runner_sources.gog.repo")->source.empty());
+  CHECK(schema.Find("launchers.runner")->source.empty());
+  CHECK(schema.Find("scan.max_depth")->source.empty());
+}
+
+TEST_CASE("every setting on the Sources page belongs to a source") {
+  for (const Entry& entry : Schema::Instance().Entries()) {
+    if (entry.category != "Sources") continue;
+    INFO("key: ", entry.key);
+    CHECK_FALSE(entry.source.empty());
   }
 }
 

@@ -1,18 +1,14 @@
 #include "OverridesEditor.h"
 
-#include <QCheckBox>
-#include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
-#include <QMessageBox>
-#include <QSizePolicy>
-
-#include "../ui/HelpButton.h"
-#include "../ui/Notify.h"
-#include "../ui/SettingsNav.h"
-#include <QPushButton>
+#include <QToolButton>
 #include <QVBoxLayout>
+
+#include "../ui/Icons.h"
+#include "../ui/Notify.h"
+#include "../ui/SettingsCard.h"
+#include "../ui/SettingsNav.h"
+#include "../ui/Theme.h"
 
 #include <algorithm>
 #include <utility>
@@ -56,52 +52,50 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
   std::vector<std::string> categories;
   for (const ConfigSchemaEntry& entry : entries) categories.push_back(entry.category);
 
+  // Every row is built before any is stored, so the vector never reallocates
+  // under the lambdas below, which hold indices.
+  fields_.reserve(entries.size());
   for (const auto& [category, rows] : GroupByCategory(categories)) {
-    QFormLayout* form = nav_->AddCategory(category);
-    int group = entries[rows.front()].group;
+    SettingsPage* page = nav_->AddCategory(category, CategoryGlyph(category));
+    SettingsCard* card = nullptr;
+    int group = -1;
 
     for (const size_t i : rows) {
-      if (entries[i].group != group) {
-        nav_->AddDivider(form);
-        group = entries[i].group;
+      const ConfigSchemaEntry& entry = entries[i];
+      if (card == nullptr || entry.group != group) {
+        group = entry.group;
+        card = page->AddCard(QString::fromStdString(entry.group_label));
       }
 
-      const ConfigSchemaEntry& entry = entries[i];
-      Field field;
+      fields_.emplace_back();
+      Field& field = fields_.back();
       field.entry = entry;
-
-      // The settings screen's own editor, so an enum is a dropdown and a
-      // runner a picker here too. Its own Reset is left out for Clear below.
-      QWidget* row_widget = field.Build(this, nullptr);
-      auto* row_layout = static_cast<QHBoxLayout*>(row_widget->layout());
-
-      field.layer_label = new QLabel(row_widget);
-      field.layer_label->setProperty("role", "muted");
-      field.layer_label->setMinimumWidth(56);
-      row_layout->addWidget(field.layer_label);
-
-      // Only meaningful once this game actually has an override to remove,
-      // disabled until ApplyValues confirms layer == "game", since there's
-      // nothing to clear otherwise.
-      field.reset_button = new QPushButton("Clear", row_widget);
-      field.reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-      field.reset_button->setEnabled(false);
-      field.reset_button->setToolTip("This game has no override for this setting");
-      row_layout->addWidget(field.reset_button);
-
-      const QString label_text =
-          QString::fromStdString(entry.label.empty() ? entry.key : entry.label);
+      // The settings screen's own editor, so an enum is a dropdown and a runner a picker here too.
       const std::string& doc = entry.game_doc.empty() ? entry.doc : entry.game_doc;
-      QWidget* label = LabelWithHelp(label_text, QString::fromStdString(doc), this);
+      SettingRow* row = field.Build(card, QString::fromStdString(doc));
+      field.layer_label = new QLabel(row);
+      field.layer_label->setProperty("role", "subtle");
+      row->AddAfterLabel(field.layer_label);
+      field.clear = new QToolButton(row);
+      field.clear->setAutoRaise(true);
+      field.clear->setIcon(icons::For(icons::Glyph::Close, theme::Current().text_muted));
+      field.clear->setToolTip("Use the global setting again");
+      field.clear->hide();
+      row->AddAfterLabel(field.clear);
+      card->AddRow(row);
 
-      fields_.push_back(field);
       const size_t index = fields_.size() - 1;
-      connect(field.reset_button, &QPushButton::clicked, this, [this, index] { ResetField(index); });
-      form->addRow(label, row_widget);
-      nav_->RegisterRow(form, row_widget,
-                        QString("%1 %2 %3 %4 %5")
-                            .arg(QString::fromStdString(entry.key), label_text, category,
-                                 QString::fromStdString(entry.doc), QString::fromStdString(entry.keywords)));
+      connect(field.clear, &QToolButton::clicked, this, [this, index] { ResetField(index); });
+      connect(row, &SettingRow::RevertClicked, this, [this, index] {
+        fields_[index].SetText(fields_[index].original);
+        fields_[index].row->SetModified(false);
+        emit Changed();
+      });
+      field.OnEdited(this, [this, index] {
+        fields_[index].row->SetModified(fields_[index].Changed());
+        emit Changed();
+      });
+      nav_->RegisterRow(row, field.SearchText());
     }
   }
   MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
@@ -121,18 +115,27 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
     if (it == fields_.end()) continue;
     Field& field = *it;
 
-    nav_->SetRowGateVisible(field.row_widget, entry.overridable);
+    nav_->SetRowGateVisible(field.row, entry.overridable);
     if (!entry.overridable) continue;
 
+    // A reload after resetting one override keeps unsaved edits to the others.
+    const bool pending = !field.layer.empty() && field.Text() != field.original && field.entry.key != resetting_key_;
+    const std::string kept = field.Text();
     field.layer = entry.layer;
-    field.layer_label->setText(QString("(%1)").arg(QString::fromStdString(entry.layer)));
-    field.reset_button->setEnabled(entry.layer == "game");
-    field.reset_button->setToolTip(
-        entry.layer == "game" ? "Remove this game's override and use the global setting again"
-                              : "This game has no override for this setting");
+    field.layer_label->setText(entry.layer == "game"     ? QString("This game")
+                               : entry.layer == "config" ? QString("From settings")
+                                                         : QString("Default"));
+    field.clear->setVisible(entry.layer == "game");
     field.SetText(entry.value_display);
-    field.original = field.Text();
+    field.original = field.Text();  // as the editor holds it (a clamped number, a joined list)
+    if (pending) field.SetText(kept);
+    field.row->SetModified(field.Text() != field.original);
   }
+  // The first values give lists and paths their rows; later reloads keep the columns put.
+  if (!values_loaded_) nav_->RearrangePages();
+  values_loaded_ = true;
+  resetting_key_.clear();
+  emit Changed();  // the change count, after a reset dropped that row's edit
 }
 
 std::vector<GameConfigEdit> OverridesEditor::PendingEdits() const {
@@ -149,11 +152,29 @@ std::vector<GameConfigEdit> OverridesEditor::PendingEdits() const {
 }
 
 void OverridesEditor::MarkSaved() {
-  for (Field& field : fields_) field.original = field.Text();
+  for (Field& field : fields_) {
+    field.original = field.Text();
+    if (field.row != nullptr) field.row->SetModified(false);
+  }
+  Reload();  // each saved row now says "This game" and can be reset
+}
+
+void OverridesEditor::DiscardChanges() {
+  for (Field& field : fields_) {
+    if (field.row == nullptr || !field.Changed()) continue;
+    field.SetText(field.original);
+    field.row->SetModified(false);
+  }
+  emit Changed();
+}
+
+SettingsPage* OverridesEditor::AddPage(const QString& title, icons::Glyph glyph) {
+  return nav_->AddCategory(title, glyph);
 }
 
 void OverridesEditor::ResetField(size_t index) {
   const Field& field = fields_[index];
+  resetting_key_ = field.entry.key;
   MiradClient::PatchGameConfigAsync(
       this, game_id_, {GameConfigEdit{field.entry.key, field.entry.type, std::string(), true}},
       [this](PatchGameConfigResult result) {

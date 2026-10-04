@@ -2,13 +2,25 @@
 
 `mira-gui` is a Qt6 client of the REST API in [`api.md`](api.md). It never links against `mira_core`.
 
+## UX principles
+
+These hold across every screen; a new one follows them without being told.
+
+- **Nothing moves on its own.** A control that comes and goes keeps its space while hidden (`setRetainSizeWhenHidden`), so revealing it never shifts a row, a header or a card. A header is the same height with or without its buttons.
+- **No permanent help chrome.** Help lives on the thing it explains: a setting's doc is its label's tooltip after 0.3 s of hover, not a [?] icon. Labels say what the control does, so most never need the tooltip.
+- **Undo before reset.** A changed value shows a dot and an undo button that stay until it's saved or undone; undo puts back the saved value. Reset to defaults is a card-level action, offered only where the card's values belong together (layout, shortcuts, detection, scanning and the like) and only while something in it isn't default. Neither applies before Save.
+- **Line up with the structure.** Popups anchored to a card start at the card's left edge (6 px in) rather than centering under whatever was hovered.
+- **Every interactive state is styled.** No Fusion bevels or native hovers: frameless icon buttons share one flat rounded hover (`QToolButton[autoRaise="true"]` in `base.qss`), and a new button kind gets its hover, pressed, checked and focus looks together.
+- **Previews are never blank.** With no games to show, a preview draws sample cards in the theme's own colors (`theme::SampleArt`), so the setting still shows what it changes.
+- **Quiet by default.** Secondary actions are muted text or icons until hovered; nothing explains itself in a subtitle or hint line.
+
 ## Windows
 
 `mira-gui` opens on the **grid** (`views/LibraryWindow`): cover tiles, a left sidebar and a custom top bar in place of a native titlebar. The window is frameless. The top bar carries the Mira badge and name; dragging its empty area moves the window, double-clicking the top bar toggles maximize, and the edges resize. Moves and resizes go through `QWindow::startSystemMove`/`startSystemResize` so they work on Wayland and X11.
 
 ### Library page
 
-The grid page opens on the same tab row as a source page (`ui/TabRow`): tabs for All, Installed, Playing now, Needs attention and Never played, then the filter and sort menu and the search box. There's no page title; the sidebar says where you are. Under them, *Continue playing* (`ui/ContinueRow`) shows large cards for running and recently played games while the whole library is shown. Tiles show a status line and a small mark for the source a game came from. Each part can be turned off in Settings → Interface.
+The grid page opens on the same tab row as a source page (`ui/TabRow`): tabs for All, Installed, Playing now, Needs attention and Never played, then the filter and sort menu and the search box. When the window narrows, the search box gives way first (320 px down to 160, then a search button that opens it again, as does Ctrl+F), then the last tabs move into a More menu; the current tab always stays, and source pages' rows do the same. There's no page title; the sidebar says where you are. Under them, *Continue playing* (`ui/ContinueRow`) shows large cards for running and recently played games while the whole library is shown. Tiles show a status line and a small mark for the source a game came from. Each part can be turned off in Settings → Interface.
 
 ### Sidebar
 
@@ -16,7 +28,7 @@ From top to bottom: the Mira header, the Library, Runners and Settings rows, pin
 
 Pinning a game (game menu, or several at once from the batch menu, which offers Pin/Unpin and Hide/Unhide for whichever selected games each would change) adds the `favorite` tag, the same one Lutris imports its favorites under. Pinned games list by name under PINNED and get a pin badge on their tile. PINNED follows the grid's filter: hidden pinned games show only under the Hidden filter, and only they do. Clicking a pinned or recently played row plays the game; the second click of a double click is ignored, since the list can reorder under it. Source rows show the source's colored initial and an orange dot for a store that has games but is signed out.
 
-Only sources that are set up show in the sidebar. *Manage sources* (`dialogs/ManageSourcesDialog`) lists every source, sets which ones show and their order, and opens the page of one that isn't set up yet. `ui/Sources` lists them for every view.
+Only sources that are set up show in the sidebar. *Manage sources* (`ui/ManageSourcesCard`) is an in-window card over the content, sharing the sidebar style card's overlay so the sidebar stays bright beside it. It lists every source in sidebar order as one freely reorderable list (drag the grip or Alt+Up/Down), each row with its kind tag and status inline, a switch that turns the source on or off, Set up for one that isn't set up yet, and a ⋯ menu for open, import, show in sidebar and remove. Every change applies at once. `ui/Sources` lists them for every view.
 
 ### Source pages
 
@@ -26,22 +38,24 @@ Each source row opens `views/SourcePage` in the grid's place:
 - **Launchers** (Battle.net, Ubisoft Connect, EA app): install the launcher into its own prefix, open it, import its games.
 - **Local** (Steam, Lutris): import what the other program installed. Steam also lists owned games once a Web API key is set.
 
-A page opens on a tab row that also holds the source's status and its Sign out / Open, Import, settings and ⋯ buttons, numbered setup steps while one is left (the current one expanded), and the source's games as tiles (`ui/TileGrid`), split into Installed and Not installed tabs unless `source_page_tabs` is off. The zoom slider sizes each page on its own unless `tile_size_synced` is on. Covers for games that aren't installed come from `/v1/library/artwork`. Login URLs and paste parsing come from `mirad`, so the page only holds wording. A source turned off with `<id>.enabled` isn't listed.
+A page opens on a tab row that also holds the source's status and its Sign out / Open, Import, settings and ⋯ buttons, a "Set up <source>" card while a step is left (one row per numbered step, the current one bold and holding its explanation and accent button), and the source's games as tiles (`ui/TileGrid`), split into Installed and Not installed tabs unless `source_page_tabs` is off. The zoom slider sizes each page on its own unless `tile_size_synced` is on. Covers for games that aren't installed come from `/v1/library/artwork`. Login URLs and paste parsing come from `mirad`, so the page only holds wording. A source turned off with `<id>.enabled` isn't listed.
 
-The banner's gear opens `views/SourceSettingsCard` under it: the source's runner (`/v1/sources/{id}/runner`) and every schema setting under its own keys (`<id>.*`, plus `launchers.<id>.*`), each saved as soon as it changes. The banner's ⋯ menu updates a store's tool, opens a launcher's prefix tools (folder, winetricks, run a program, log) and removes the source through the same confirmation Manage sources uses.
+The banner's gear opens `views/SourceSettingsCard` under it: the source's runner (`/v1/sources/{id}/runner`) and every schema setting under its own keys (`<id>.*`, plus `launchers.<id>.*`), in the same rows as Settings and saved or discarded together from the card's foot. The banner's ⋯ menu updates a store's tool, opens a launcher's prefix tools (folder, winetricks, run a program, log) and removes the source through the same confirmation Manage sources uses.
 
 ### Runners page
 
-`views/RunnersPage` has a Proton/Wine switch that filters both of its lists:
+`views/RunnersPage` has a Proton/Wine switch that filters both of its lists. They are settings cards in two columns, which stack into one on a window under 1150 px wide:
 
-- **Installed** builds show their label and source. Builds Mira downloaded can be updated or removed; distro and Steam builds show as managed outside Mira. After an update it offers to remove the old build. *Make default* and *Pick automatically instead* set `default_runner.windows`.
-- **Get more** lists releases from the chosen source, with an Install button on each.
+- **Installed** builds are one row each: the label, a Default tag on `default_runner.windows`, and how many games use it, its version and source inline (elided when narrow). Builds Mira downloaded show Update when there's a newer one and Remove in their ⋯ menu; distro and Steam builds show as managed outside Mira. After an update it offers to remove the old build. *Make default* (⋯) and *Pick automatically instead* (the note under the card) set `default_runner.windows`.
+- **Get more** lists releases from the chosen source (the dropdown in its header), with date, size and checksum inline and an Install button on each.
 
-A banner offers to install umu-launcher or winetricks when either is missing.
+A Missing tools card above Installed offers to install umu-launcher or winetricks when either is missing.
 
 ### Activity
 
 The top bar's download button opens `ui/DownloadsPanel`, titled Activity. It lists everything `ui/DownloadTracker` has seen from the event stream: game installers, store installs and updates, Humble downloads, launcher installs, tool downloads, runner downloads and `mirad`'s jobs (scans, imports, moving and deleting games, removing a source). `mirad` replays recent events on connect, so work started before the GUI opened also shows. Game installers report bytes written; Epic, GOG, Amazon and itch installs report percent, speed and time left (`library.install.progress`), also drawn as a bar on the title's tile; jobs with steps report how far along they are. A finished install offers *Show*, which selects the game.
+
+When a launched game turns out to have been an installer (`game.install_detected`), `ui/InstallPromptCard` asks over the library, in the same overlay as Manage sources: the program found (or *Choose…* one inside the installed folder), a switch to mark it as an app, and *Keep as is* or *Use this program* (`finish-install`). While Mira is hidden or minimized, a notification asks first and its *Review…* button opens the card.
 
 Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for each one's `job.finished` or `job.failed` on the shared event connection, and after a reconnect asks `GET /v1/jobs/{id}` about any it was still waiting on, so the `MiradClient` calls that start them still hand their caller one result.
 
@@ -63,9 +77,9 @@ Quit goes through `QApplication::closeAllWindows()` so `LibraryWindow::closeEven
 
 A theme is a TOML file of tokens. `themes/base.qss` is the only stylesheet, and every `@token` in it is filled from the current theme. `mira-dark` and `mira-light` are built in; user themes go in `$XDG_CONFIG_HOME/mira/themes/*.toml`. Missing or invalid keys fall back to the defaults. The `theme` pref is a theme name or `auto`, which follows the desktop's light/dark setting.
 
-`theme::Overrides` applies tile spacing, grid padding and corner radii from `frontend.toml` on top of any theme. `-1` means "use the theme's value".
+`theme::Overrides` applies tile spacing, grid padding and corner radii from `frontend.toml` on top of any theme. A key left out of the file uses the theme's value.
 
-Widgets that paint by hand read tokens directly and repaint on `theme::Notifier::Changed`: `ui/GameTileDelegate`, `ui/CoverArt`, `ui/Notify`, `ui/HeroArtWidget` and `ui/HeroBackdrop`.
+Widgets that paint by hand read tokens directly and repaint on `theme::Notifier::Changed`: `ui/GameTileDelegate`, `ui/CoverArt`, `ui/Notify` and `ui/HeroBackdrop`.
 
 Widgets don't set colors themselves. They set a style property (`setProperty("role", "muted")`) and `base.qss` styles it; `theme::SetStyleProperty` re-polishes after a change. `ui/Icons` draws icons as vector paths in the theme's text color.
 
@@ -95,9 +109,16 @@ Each layer only depends on the ones above it in this list.
 
 Only `game.added` and `game.updated` carry a game record, so views check the event type before parsing one. `game.state` carries only the state and launch details, so an exit triggers a re-fetch. A game handed to Steam or a launcher reports `tracked` in the launch reply and `game.launched`, and isn't marked running unless it is tracked.
 
+## Game card
+
+*Game settings* opens a card over the library: the game's hero art with Back at the top left, *Change art* at the top right, and the cover, name, status and Play under them. Below sit `ui/GameEditForm`'s Launch, Runner, Details and Files cards, built from the same rows as Settings, with tags as chips (`ui/TagEdit`). *Advanced settings* swaps the cards for the runner options and the game's overrides of global settings (`dialogs/OverridesEditor`); Back and Esc step out of it, then out of the card. The same change bar counts unsaved edits from both and saves them through `PATCH /v1/games/{id}`, `PATCH /v1/games` for tags and `PATCH .../config`. The card stays open after a save.
+
 ## Settings
 
-- **`settings.toml`** holds backend settings. `ui/SettingsPanel` is generated from `GET /v1/config/schema`: sections, order, labels, dividers and runner pickers (`is_runner_ref`) all come from the schema, so a new backend setting needs no frontend change. Each row's editor comes from `ui/SettingEditor`, which the source settings card shares. A setting's doc opens from the `ui/HelpButton` [?] beside its label on click, not on hover, and a `link` shows as a web link next to the field. Search (`ui/SettingsSearch`) matches every typed word in any order against the key, label, category, doc and `keywords`.
+Settings takes over the window body. `ui/SettingsNav` lists the categories under three headings (Look and feel, Games, System), each with an icon, and shows every category's page of cards (`ui/SettingsCard`) one after another in a single scroll. Clicking a category scrolls to its page, the list follows the scroll, and the current page's title sticks to the top; the last page gets room below it so it can reach the top too. A page lays its cards in as many 600 to 760 px columns as fit (`ui/SettingsColumns`), using fewer when that's nearly as short, and may move a card to another column to even the columns out; each column keeps the cards' order, and the last card of a shorter column stretches to the common bottom unless it folds. The split is kept until the width or the shown cards change, so folding a card never moves others between columns. In the scroll, the wheel only changes a dropdown, number box or slider once it has focus. A game's own settings (`dialogs/OverridesEditor`) use the same scroll. Every screen that edits settings is built from the same pieces: a titled card, rows with the label on the left and the control on the right (a switch for on/off), and a line between rows. A row's doc is its label's tooltip, shown after 0.3 s of hover. While a row has a change that isn't saved yet, a dot marks it and an undo button puts back the saved value. Cards whose settings make sense to reset together (Layout, the Shortcuts cards, and schema groups with `group_resettable`) get a "Reset to defaults" button in their header while anything in them differs from its default; like any edit, it applies on Save. Nothing applies until saved: the change bar at the bottom counts the changes and saves or discards them, and Back asks first if anything is unsaved. A setting put back to its default is removed from `settings.toml` (`POST /v1/config/reset`) rather than written out.
+
+- **`settings.toml`** holds backend settings. Their pages are generated from `GET /v1/config/schema`: categories, order, labels, card titles (`group_label`), folded cards (`group_collapsed`), card resets (`group_resettable`), runner pickers (`is_runner_ref`, showing a listed runner by name and storing its reference), folder and file pickers (`path`) and lists for arrays (`ui/ListEdit`) all come from the schema, so a new backend setting needs no frontend change. A category whose every setting has a `source` (Sources) shows one folding card per source, with the source's on switch in its header. Each row's editor comes from `ui/SettingEditor`, which a game's own settings (`dialogs/OverridesEditor`) and the source settings card share. A secret is masked, with a show button inside the field, and a `link` is a button beside it. Search (`ui/SettingsSearch`) matches every typed word in any order against the key, label, category, card title, doc and `keywords`, and opens a folded card that matches. It filters the scroll in place: pages with no match hide and dim in the list, and the rest show their match count.
+- **Interface, Sidebar and Shortcuts** are the GUI's own pages. Themes are picked from tiles that draw a small window in each theme's colors (`ui/AppearancePreviews`, `theme::Peek`); the tile toggles sit under two of the user's games drawn by the grid's own `GameTileDelegate`; the layout sliders reshape a strip of covers before anything is saved. The Sidebar page holds the same rows as the in-window Pinned and recently played card (`ui/SidebarStyleCard`), and every source with a switch for showing it in the sidebar and a grip for dragging it to a new place (or Alt+Up/Down). Shortcuts are keycaps (`ui/ShortcutEdit`): click one and press the new keys, Esc cancels and Backspace leaves none.
 - **`frontend.toml`** holds GUI state and preferences (`FrontendPrefs` in `client/Types.h`), read and written as the `frontend` key of `/v1/config`. The backend never validates it.
 
 | Key | Meaning |
@@ -152,7 +173,7 @@ Without `steamgriddb.api_key`, non-Steam games may have no source. `mirad` then 
 
 Metadata is only fetched when a game is first added. A tile's *Refresh metadata && cover art* and *Fetch missing cover art* ask again.
 
-`ui/ArtPickerPanel` is the game card's *Change hero* / *Change cover*. It shows a slot's candidates as a grid of previews with style filters, loading SteamGridDB pages as the grid scrolls. `mirad` downloads the previews (`POST .../artwork/thumbs`) only for what is on screen plus one screen ahead, and deletes them when the GUI quits. Clicking a preview shows it on the card; *Use* applies it. The *Art from* menu picks which SteamGridDB game the art comes from.
+`ui/ArtPickerPanel` is the game card's *Change art*, with a *Covers* and a *Hero art* tab. It shows a slot's candidates as a grid of previews with style filters, loading SteamGridDB pages as the grid scrolls. `mirad` downloads the previews (`POST .../artwork/thumbs`) only for what is on screen plus one screen ahead, and deletes them when the GUI quits. Clicking a preview shows it on the card and in the change bar; *Use this cover* (or hero) applies it and *Cancel* goes back to the one in use. The *Art from* menu picks which SteamGridDB game the art comes from.
 
 ## API use
 
@@ -165,7 +186,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
 | `POST /v1/games/manual` | `AddManualGameDialog` |
 | `POST /v1/games/{id}/run` | `RunInPrefixDialog` |
-| `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install` | `InstallGameDialog`, *Mark as installed*, `DownloadTracker` |
+| `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install` | `InstallGameDialog`, *Mark as installed*, `ui/InstallPromptCard`, `DownloadTracker` |
 | `POST /v1/games/{id}/tricks` | `WinetricksDialog` |
 | `GET /v1/games/{id}/log` | `LogViewerDialog` |
 | `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…* |

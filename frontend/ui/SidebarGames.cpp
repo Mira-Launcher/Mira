@@ -243,8 +243,7 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
   }
   // Nothing in the section yet: a sketch of the style instead.
   const theme::Tokens& tokens = theme::Current();
-  // Stand-ins for covers: the theme's own accent colors, softened.
-  const QColor art[] = {tokens.accent, tokens.warning, tokens.success, tokens.error};
+  const std::array<QColor, 4> art = theme::SampleArt(tokens);
   painter->save();
   painter->setRenderHint(QPainter::Antialiasing);
   painter->setPen(Qt::NoPen);

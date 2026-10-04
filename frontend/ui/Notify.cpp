@@ -229,26 +229,36 @@ void FailedWithHint(QWidget* parent, const QString& what, const QString& detail,
   FailedWithAction(parent, what, detail, hint, QString(), {});
 }
 
+namespace {
+
+// The click lands with Mira possibly hidden in the tray or behind other
+// windows, so bring it forward before routing anywhere inside it.
+std::function<void()> RaiseThen(QWidget* parent, std::function<void()> activate) {
+  QPointer<QWidget> window = parent != nullptr ? parent->window() : nullptr;
+  return [window, activate] {
+    if (window) {
+      window->show();
+      window->raise();
+      window->activateWindow();
+    }
+    activate();
+  };
+}
+
+}  // namespace
+
 void FailedWithAction(QWidget* parent, const QString& what, const QString& detail,
                       const QString& hint, const QString& action,
                       std::function<void()> activate) {
   const QString body = JoinDetail(detail, hint);
-  std::function<void()> on_action;
-  if (activate) {
-    // The click lands with Mira possibly hidden in the tray or behind other
-    // windows, so bring it forward before routing anywhere inside it.
-    QPointer<QWidget> window = parent != nullptr ? parent->window() : nullptr;
-    on_action = [window, activate] {
-      if (window) {
-        window->show();
-        window->raise();
-        window->activateWindow();
-      }
-      activate();
-    };
-  }
+  const std::function<void()> on_action = activate ? RaiseThen(parent, activate) : std::function<void()>();
   if (system_notifier::Send(Urgency::Persistent, what, body, action, on_action)) return;
   FailedPopup(parent, what, body, action, std::move(activate));
+}
+
+bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body, const QString& action,
+                   std::function<void()> activate) {
+  return system_notifier::Send(Urgency::Persistent, title, body, action, RaiseThen(parent, std::move(activate)));
 }
 
 void FailedRequest(QWidget* parent, const QString& what, const ApiError& error) {

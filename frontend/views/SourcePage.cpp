@@ -308,9 +308,8 @@ QWidget* SourcePage::BuildTopRow() {
   filter_ = new QLineEdit(tabs_);
   filter_->setPlaceholderText("Filter…");
   filter_->setClearButtonEnabled(true);
-  filter_->setFixedSize(200, TabRow::kControlHeight);
   connect(filter_, &QLineEdit::textChanged, this, &SourcePage::ApplyFilter);
-  tabs_->SetTrailing(filter_);
+  tabs_->SetSearch(filter_);
   return tabs_;
 }
 
@@ -378,12 +377,9 @@ void SourcePage::UpdateTool() {
 
 QWidget* SourcePage::BuildSetupCard() {
   const SourceCopy copy = CopyFor(id_);
-  setup_card_ = new QFrame(this);
-  setup_card_->setObjectName("source_setup");
+  auto* card = new mira_gui::SettingsCard("Set up " + source_.name, this);
+  setup_card_ = card;
   setup_card_->setVisible(false);
-  auto* layout = new QVBoxLayout(setup_card_);
-  layout->setContentsMargins(18, 14, 18, 14);
-  layout->setSpacing(10);
 
   QStringList titles;
   if (IsStore()) titles << "Get " + copy.tool << "Sign in to " + source_.name;
@@ -391,23 +387,27 @@ QWidget* SourcePage::BuildSetupCard() {
   if (!titles.isEmpty() && HasImport()) titles << "Import your games";
   for (int i = 0; i < titles.size(); ++i) {
     Step step;
-    step.row = new QWidget(setup_card_);
-    auto* row = new QHBoxLayout(step.row);
-    row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(12);
+    step.row = new QWidget(card);
+    auto* column = new QVBoxLayout(step.row);
+    column->setContentsMargins(18, 10, 18, 10);
+    column->setSpacing(8);
+    auto* line = new QHBoxLayout();
+    line->setSpacing(12);
     step.marker = new QLabel(QString::number(i + 1), step.row);
     step.marker->setObjectName("step_marker");
     step.marker->setFixedSize(26, 26);
     step.marker->setAlignment(Qt::AlignCenter);
-    row->addWidget(step.marker);
+    line->addWidget(step.marker);
     step.title = new QLabel(titles[i], step.row);
-    row->addWidget(step.title, /*stretch=*/1);
-    layout->addWidget(step.row);
+    step.title->setObjectName("step_title");
+    line->addWidget(step.title, /*stretch=*/1);
+    column->addLayout(line);
+    card->AddRow(step.row);
     steps_.push_back(step);
   }
 
-  // Moved under whichever step is current (SetStep).
-  setup_body_ = new QWidget(setup_card_);
+  // Moved into whichever step is current (SetStep).
+  setup_body_ = new QWidget(card);
   auto* body = new QVBoxLayout(setup_body_);
   body->setContentsMargins(38, 0, 0, 4);
   body->setSpacing(8);
@@ -415,7 +415,8 @@ QWidget* SourcePage::BuildSetupCard() {
   body->addWidget(setup_text_);
 
   setup_button_ = new QPushButton(setup_body_);
-  setup_button_->setIcon(icons::For(icons::Glyph::Download));
+  setup_button_->setIcon(icons::For(icons::Glyph::Download, theme::Current().on_accent));
+  setup_button_->setDefault(true);
   setup_button_->setVisible(false);
   connect(setup_button_, &QPushButton::clicked, this, [this] {
     setup_button_->setEnabled(false);
@@ -451,6 +452,7 @@ QWidget* SourcePage::BuildSetupCard() {
   credential_->setPlaceholderText(copy.credential_placeholder);
   connect(credential_, &QLineEdit::returnPressed, this, &SourcePage::SignIn);
   sign_in_ = new QPushButton("Sign in", sign_in_row_);
+  sign_in_->setDefault(true);
   connect(sign_in_, &QPushButton::clicked, this, &SourcePage::SignIn);
   sign_in_layout->addWidget(open_login_);
   sign_in_layout->addWidget(credential_, /*stretch=*/1);
@@ -460,12 +462,11 @@ QWidget* SourcePage::BuildSetupCard() {
   setup_error_ = Text(setup_body_, QString(), "error");
   setup_error_->setVisible(false);
   body->addWidget(setup_error_);
-  layout->addWidget(setup_body_);
+  setup_body_->hide();
   return setup_card_;
 }
 
 void SourcePage::SetStep(int current) {
-  auto* layout = static_cast<QVBoxLayout*>(setup_card_->layout());
   for (int i = 0; i < static_cast<int>(steps_.size()); ++i) {
     const Step& step = steps_[i];
     const char* state = i < current ? "done" : i == current ? "current" : "todo";
@@ -473,13 +474,17 @@ void SourcePage::SetStep(int current) {
     step.marker->setProperty("state", state);
     step.marker->style()->unpolish(step.marker);
     step.marker->style()->polish(step.marker);
-    step.title->setProperty("role", i == current ? "section" : i > current ? "muted" : "");
+    step.title->setProperty("state", state);
     step.title->style()->unpolish(step.title);
     step.title->style()->polish(step.title);
+    // In code: a stylesheet font-weight on a property state didn't apply here.
+    QFont font = step.title->font();
+    font.setWeight(i == current ? QFont::DemiBold : QFont::Normal);
+    step.title->setFont(font);
   }
   if (current >= 0 && current < static_cast<int>(steps_.size())) {
-    layout->removeWidget(setup_body_);
-    layout->insertWidget(layout->indexOf(steps_[current].row) + 1, setup_body_);
+    static_cast<QVBoxLayout*>(steps_[current].row->layout())->addWidget(setup_body_);
+    setup_body_->show();
   }
 }
 

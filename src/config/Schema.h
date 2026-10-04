@@ -18,6 +18,10 @@ enum class Scope { Global, PerGame, GameOnly };
 
 enum class Type { Bool, Int, Double, String, StringArray, Object };
 
+// A String or StringArray whose values are paths on this computer, so a
+// settings screen can offer a picker.
+enum class PathKind { None, Folder, File };
+
 using Validator = std::function<std::optional<std::string>(const nlohmann::json&)>;
 
 // A Validator plus the shape it enforces, so /v1/config/schema can publish
@@ -49,11 +53,17 @@ struct Entry {
   bool is_secret = false;      // a credential: mask it
   bool is_runner_ref = false;  // a runner reference: offer a runner picker
   std::string link = {};       // where to get the value, e.g. an API key page
+  PathKind path = PathKind::None;
   std::string keywords = {};   // extra search terms a settings screen matches, e.g. "sgdb"
 
   // Set by the section the entry is declared under, never per entry.
   std::string category = {};
-  int group = 0;  // index within its category; a divider sits between groups
+  int group = 0;                  // index within its category
+  std::string group_label = {};   // the group's title, e.g. "Steam account"
+  bool group_collapsed = false;   // a group of rarely changed values a screen shows folded
+  bool group_resettable = false;  // a group whose values make sense to reset together
+  // The source the key belongs to ("steam", "ubisoft"), derived from the key; empty if none.
+  std::string source = {};
 };
 
 // Every configurable value in the daemon is declared here exactly once. The

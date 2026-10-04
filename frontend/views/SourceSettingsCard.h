@@ -1,15 +1,14 @@
 #pragma once
 
-#include <QFrame>
 #include <QString>
 
 #include <vector>
 
 #include "../ui/SettingEditor.h"
+#include "../ui/SettingsCard.h"
 #include "SourcePage.h"
 
 class QComboBox;
-class QFormLayout;
 class QLabel;
 class QPushButton;
 
@@ -17,8 +16,8 @@ namespace mira_gui {
 
 // A source page's settings, opened from its banner: the runner its games
 // use, then every setting under its own keys. Like the settings screen,
-// edits apply on Save; Reset and "Switch them too" are actions and apply at once.
-class SourceSettingsCard : public QFrame {
+// edits apply on Save; "Switch them too" is an action and applies at once.
+class SourceSettingsCard : public SettingsCard {
   Q_OBJECT
 
 public:
@@ -40,30 +39,34 @@ signals:
 private:
   bool HasRunner() const;
   bool RunnerDirty() const;
-  void BuildRunnerRow(QFormLayout* form);
+  void BuildRunnerRow();
   void LoadRunner();
   void ShowRunner(const SourceRunnerResult& runner);
   void SelectRunner(const QString& runner_ref);
   void LoadSettings();
-  void ResetSetting(size_t index);
   void UpdateButtons();
   void ShowStatus(const QString& text, bool error);
+  void SaveRunner();
+  void FinishSave(bool ok);
 
   SourceInfo source_;
   std::string id_;
 
+  SettingRow* runner_row_ = nullptr;
   QComboBox* runner_ = nullptr;
   QLabel* runner_note_ = nullptr;
   QPushButton* runner_apply_ = nullptr;
   bool runner_can_apply_ = false;  // some games use another runner
   QString runner_ref_;  // what mirad last confirmed
 
-  QFormLayout* form_ = nullptr;
   std::vector<SettingEditor> settings_;
+  QWidget* footer_ = nullptr;
   QLabel* status_ = nullptr;
   QPushButton* discard_ = nullptr;
   QPushButton* save_ = nullptr;
   bool saving_ = false;
+  int saves_pending_ = 0;
+  QString save_error_;
 };
 
 }  // namespace mira_gui

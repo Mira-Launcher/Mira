@@ -235,6 +235,11 @@ ConfigSchemaResult GetConfigSchemaSync() {
     e.game_doc = entry.value("game_doc", std::string());
     e.category = entry.value("category", std::string());
     e.group = entry.value("group", 0);
+    e.group_label = entry.value("group_label", std::string());
+    e.group_collapsed = entry.value("group_collapsed", false);
+    e.group_resettable = entry.value("group_resettable", false);
+    e.source = entry.value("source", std::string());
+    e.path = entry.value("path", std::string());
     const std::string scope = entry.value("scope", std::string());
     e.per_game = scope == "per_game" || scope == "game_only";
     e.game_only = scope == "game_only";

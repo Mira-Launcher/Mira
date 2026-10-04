@@ -1,5 +1,7 @@
 #include "Sources.h"
 
+#include <QLabel>
+
 #include <algorithm>
 
 namespace mira_gui {
@@ -25,6 +27,40 @@ const SourceInfo* FindSourceInfo(const QString& id) {
   const std::vector<SourceInfo>& sources = AllSources();
   const auto it = std::ranges::find(sources, id, &SourceInfo::id);
   return it == sources.end() ? nullptr : &*it;
+}
+
+QString KindLabel(SourceInfo::Kind kind) {
+  switch (kind) {
+    case SourceInfo::Kind::Store:
+      return "Store";
+    case SourceInfo::Kind::Launcher:
+      return "Launcher";
+    case SourceInfo::Kind::Local:
+      return "Local";
+  }
+  return {};
+}
+
+QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim) {
+  auto* badge = new QLabel(source.name.left(1), parent);
+  badge->setFixedSize(size, size);
+  badge->setAlignment(Qt::AlignCenter);
+  SetSourceBadgeDim(badge, source, dim);
+  return badge;
+}
+
+void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim) {
+  QColor fill = source.color;
+  if (dim) fill.setAlphaF(0.55);
+  badge->setStyleSheet(QString("background: %1; color: white; border-radius: %2px; font-weight: 700;")
+                           .arg(fill.name(QColor::HexArgb))
+                           .arg(badge->width() / 4));
+}
+
+QLabel* MakeKindTag(const SourceInfo& source, QWidget* parent) {
+  auto* tag = new QLabel(KindLabel(source.kind), parent);
+  tag->setObjectName("kind_tag");
+  return tag;
 }
 
 }  // namespace mira_gui

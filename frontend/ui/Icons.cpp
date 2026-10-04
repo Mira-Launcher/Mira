@@ -243,6 +243,70 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.setBrush(color);
       painter.drawEllipse(QPointF(8.0, 5.2), 0.75, 0.75);
       return;
+    case Glyph::Monitor:
+      painter.drawRoundedRect(QRectF(2.0, 3.0, 12.0, 8.0), 1.2, 1.2);
+      painter.drawLine(QPointF(8.0, 11.0), QPointF(8.0, 13.5));
+      painter.drawLine(QPointF(5.5, 13.5), QPointF(10.5, 13.5));
+      return;
+    case Glyph::Sidebar:
+      painter.drawRoundedRect(QRectF(2.0, 3.0, 12.0, 10.0), 1.2, 1.2);
+      painter.drawLine(QPointF(6.0, 3.0), QPointF(6.0, 13.0));
+      return;
+    case Glyph::Folder:
+      painter.drawPolygon(QPolygonF({QPointF(2.0, 4.0), QPointF(6.0, 4.0), QPointF(7.5, 5.5), QPointF(14.0, 5.5),
+                                     QPointF(14.0, 12.5), QPointF(2.0, 12.5)}));
+      return;
+    case Glyph::Layers:
+      painter.drawPolygon(QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
+      painter.drawPolyline(QPolygonF({QPointF(2.0, 9.0), QPointF(8.0, 12.3), QPointF(14.0, 9.0)}));
+      return;
+    case Glyph::Target:
+      painter.drawEllipse(QPointF(8.0, 8.0), 5.5, 5.5);
+      painter.drawEllipse(QPointF(8.0, 8.0), 2.0, 2.0);
+      return;
+    case Glyph::Grid:
+      for (const qreal x : {2.5, 9.0}) {
+        for (const qreal y : {2.5, 9.0}) painter.drawRoundedRect(QRectF(x, y, 4.5, 4.5), 0.8, 0.8);
+      }
+      return;
+    case Glyph::ArrowLeft:
+      painter.drawLine(QPointF(3.0, 8.0), QPointF(13.0, 8.0));
+      painter.drawPolyline(QPolygonF({QPointF(7.0, 4.0), QPointF(3.0, 8.0), QPointF(7.0, 12.0)}));
+      return;
+    case Glyph::Undo: {
+      // A counter-clockwise arc with its arrowhead at the start.
+      QPainterPath arc;
+      arc.arcMoveTo(QRectF(3.0, 3.0, 10.0, 10.0), 160.0);
+      arc.arcTo(QRectF(3.0, 3.0, 10.0, 10.0), 160.0, 250.0);
+      painter.drawPath(arc);
+      painter.drawPolyline(QPolygonF({QPointF(2.6, 3.8), QPointF(3.2, 6.8), QPointF(6.2, 6.0)}));
+      return;
+    }
+    case Glyph::Eye:
+      painter.drawEllipse(QRectF(2.5, 4.5, 11.0, 7.0));
+      painter.drawEllipse(QPointF(8.0, 8.0), 1.6, 1.6);
+      return;
+    case Glyph::External:
+      painter.drawPolyline(QPolygonF({QPointF(7.0, 3.5), QPointF(3.5, 3.5), QPointF(3.5, 12.5), QPointF(12.5, 12.5),
+                                      QPointF(12.5, 9.0)}));
+      painter.drawLine(QPointF(8.0, 8.0), QPointF(13.0, 3.0));
+      painter.drawPolyline(QPolygonF({QPointF(9.5, 3.0), QPointF(13.0, 3.0), QPointF(13.0, 6.5)}));
+      return;
+    case Glyph::Grip:
+    case Glyph::More: {
+      painter.setPen(Qt::NoPen);
+      painter.setBrush(color);
+      const bool grip = glyph == Glyph::Grip;
+      for (const qreal along : {4.0, 8.0, 12.0}) {
+        if (grip) {
+          painter.drawEllipse(QPointF(6.0, along), 1.0, 1.0);
+          painter.drawEllipse(QPointF(10.0, along), 1.0, 1.0);
+        } else {
+          painter.drawEllipse(QPointF(along, 8.0), 1.2, 1.2);
+        }
+      }
+      return;
+    }
   }
 }
 

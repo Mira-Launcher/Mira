@@ -1,15 +1,15 @@
 #include "GameEditForm.h"
 
-#include "../client/JsonMapping.h"
 #include "../dialogs/OverridesEditor.h"
-#include "GamePresentation.h"
-#include "HeroArtWidget.h"
 #include "Notify.h"
-#include "Theme.h"
+#include "SettingEditor.h"
+#include "SettingsCard.h"
+#include "TagEdit.h"
 
 #include <QComboBox>
+#include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
-#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -17,236 +17,251 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QSizePolicy>
 #include <QStackedWidget>
+#include <QUrl>
 #include <QVBoxLayout>
-#include <QWidget>
 
 #include <algorithm>
 #include <filesystem>
 
 namespace mira_gui {
+namespace {
+
+// A field with its buttons after it, for under a row's label.
+QWidget* FieldLine(QWidget* parent, QWidget* field, std::initializer_list<QWidget*> buttons) {
+  auto* line = new QWidget(parent);
+  auto* layout = new QHBoxLayout(line);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(8);
+  layout->addWidget(field, /*stretch=*/1);
+  for (QWidget* button : buttons) layout->addWidget(button);
+  return line;
+}
+
+QComboBox* EditableCombo(QWidget* parent, const QString& placeholder) {
+  auto* combo = new QComboBox(parent);
+  combo->setEditable(true);
+  combo->setInsertPolicy(QComboBox::NoInsert);
+  combo->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+  combo->lineEdit()->setPlaceholderText(placeholder);
+  return combo;
+}
+
+QLineEdit* LineEdit(QWidget* parent, const QString& placeholder = {}) {
+  auto* edit = new QLineEdit(parent);
+  edit->setPlaceholderText(placeholder);
+  return edit;
+}
+
+}  // namespace
 
 GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), id_(std::move(id)) {
-  // Two columns, not one: the art preview would otherwise scroll out of
-  // view with the rest of the form.
-  auto* layout = new QHBoxLayout(this);
+  auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(16);
+  pages_ = new QStackedWidget(this);
+  layout->addWidget(pages_);
 
-  art_column_ = new QWidget(this);
-  QWidget* art_column = art_column_;
-  art_column->setFixedWidth(220);
-  auto* art_layout = new QVBoxLayout(art_column);
-  art_layout->setContentsMargins(0, 0, 0, 0);
-  art_layout->setSpacing(10);
+  auto* scroll = new QScrollArea(pages_);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
+  scroll->viewport()->setAutoFillBackground(false);
+  auto* cards_page = new QWidget();
+  auto* cards_layout = new QVBoxLayout(cards_page);
+  cards_layout_ = cards_layout;
+  cards_layout->setContentsMargins(18, 18, 18, 18);
+  cards_layout->setSpacing(14);
+  scroll->setWidget(cards_page);
+  pages_->addWidget(scroll);
 
-  hero_art_ = new HeroArtWidget(art_column);
-  art_layout->addWidget(hero_art_);
-  art_layout->addStretch(1);
-  layout->addWidget(art_column);
-
-  auto* fields_column = new QWidget(this);
-  auto* fields_layout = new QVBoxLayout(fields_column);
-  fields_layout->setContentsMargins(0, 0, 0, 0);
-  fields_layout->setSpacing(12);
-
-  // Two columns with each label above its field: a label column to the left
-  // spent a third of the width on words.
-  auto* form = new QGridLayout();
-  form->setVerticalSpacing(12);
-  form->setHorizontalSpacing(20);
-  form->setColumnStretch(0, 1);
-  form->setColumnStretch(1, 1);
-  // QLabel's default vertical policy is Preferred, not Fixed like
-  // QLineEdit/QComboBox, so leftover QScrollArea height landed on whichever
-  // one-line read-only label was still willing to grow. Pinned Fixed.
-  status_label_ = new QLabel(this);
-  status_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-  install_path_label_ = new QLabel(this);
-  // Also Ignored horizontally: a path has no spaces to word-wrap at, so its
-  // minimumSizeHint was the whole string, the sidebar's own floor.
-  install_path_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-  install_path_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  last_error_label_ = new QLabel(this);
+  last_error_label_ = new QLabel(cards_page);
   last_error_label_->setWordWrap(true);
   last_error_label_->setProperty("role", "error");
   last_error_label_->hide();
+  cards_layout->addWidget(last_error_label_);
 
-  // Set from game.source in Populate() -- hidden for an ordinary scan,
-  // where exe_path really is what runs. For Steam it usually isn't.
-  source_note_label_ = new QLabel(this);
+  // --- Launch
+  auto* launch = new SettingsCard("Launch", cards_page);
+  exe_combo_ = EditableCombo(launch, QString());
+  connect(exe_combo_, &QComboBox::activated, this, &GameEditForm::OnExeComboActivated);
+  auto* browse = new QPushButton("Browse…", launch);
+  connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
+  // Shown for a store that launches the game its own way, where the field isn't what runs.
+  source_note_label_ = new QLabel(launch);
   source_note_label_->setWordWrap(true);
   source_note_label_->setProperty("role", "muted");
   source_note_label_->hide();
+  auto* exe_box = new QWidget(launch);
+  auto* exe_box_layout = new QVBoxLayout(exe_box);
+  exe_box_layout->setContentsMargins(0, 0, 0, 0);
+  exe_box_layout->setSpacing(6);
+  exe_box_layout->addWidget(FieldLine(exe_box, exe_combo_, {browse}));
+  exe_box_layout->addWidget(source_note_label_);
+  exe_row_ = new SettingRow("Executable", QString(), launch);
+  exe_row_->SetBelow(exe_box);
+  launch->AddRow(exe_row_);
 
-  name_edit_ = new QLineEdit(this);
-  args_edit_ = new QLineEdit(this);
-  working_dir_edit_ = new QLineEdit(this);
-  tags_edit_ = new QLineEdit(this);
-  tags_edit_->setPlaceholderText("Comma-separated, e.g. hidden, co-op");
-  tags_edit_->setToolTip(
-      "Labels of your choice. The \"hidden\" tag keeps this game out of the library until you "
-      "ask for it (Ctrl+H, or the Hidden filter).");
+  args_edit_ = LineEdit(launch, "None");
+  args_row_ = new SettingRow("Arguments", QString(), launch);
+  args_row_->SetBelow(args_edit_);
+  launch->AddRow(args_row_);
 
-  exe_combo_ = new QComboBox(this);
-  exe_combo_->setEditable(true);
-  exe_combo_->setInsertPolicy(QComboBox::NoInsert);
-  exe_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  connect(exe_combo_, QOverload<int>::of(&QComboBox::activated), this,
-          &GameEditForm::OnExeComboActivated);
+  working_dir_edit_ = LineEdit(launch, "The install folder");
+  working_dir_row_ = new SettingRow("Working folder", QString(), launch);
+  working_dir_row_->SetBelow(working_dir_edit_);
+  launch->AddRow(working_dir_row_);
 
-  // A QWidget wrapper, not a bare QHBoxLayout passed to addRow(): QFormLayout
-  // sizes a nested-layout row from its shortest child, not the tallest,
-  // which is what clipped Browse's text in RunInPrefixDialog's copy of this.
-  auto* exe_row_widget = new QWidget(this);
-  auto* exe_row = new QHBoxLayout(exe_row_widget);
-  exe_row->setContentsMargins(0, 0, 0, 0);
-  exe_row->setSpacing(8);
-  auto* browse_button = new QPushButton("Browse…", this);
-  connect(browse_button, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
-  exe_row->addWidget(exe_combo_, /*stretch=*/1);
-  exe_row->addWidget(browse_button);
+  // --- Runner
+  auto* runner = new SettingsCard("Runner", cards_page);
+  runner_combo_ = EditableCombo(runner, "Default runner");
+  runner_row_ = new SettingRow("Runner", QString(), runner);
+  runner_row_->SetBelow(runner_combo_);
+  runner->AddRow(runner_row_);
 
-  runner_combo_ = new QComboBox(this);
-  runner_combo_->setEditable(true);
-  runner_combo_->setInsertPolicy(QComboBox::NoInsert);
-  runner_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  runner_combo_->lineEdit()->setPlaceholderText("Auto (use default runner)");
-  connect(runner_combo_, QOverload<int>::of(&QComboBox::activated), this,
-          &GameEditForm::OnRunnerComboActivated);
-  auto* runner_row_widget = new QWidget(this);
-  auto* runner_row = new QHBoxLayout(runner_row_widget);
-  runner_row->setContentsMargins(0, 0, 0, 0);
-  runner_row->addWidget(runner_combo_, /*stretch=*/1);
+  // Under its label like the other rows, so a narrow card never squeezes the label.
+  auto* advanced = new QPushButton("Advanced settings…", runner);
+  connect(advanced, &QPushButton::clicked, this, &GameEditForm::OpenAdvanced);
+  auto* advanced_line = new QWidget(runner);
+  auto* advanced_line_layout = new QHBoxLayout(advanced_line);
+  advanced_line_layout->setContentsMargins(0, 0, 0, 0);
+  advanced_line_layout->addWidget(advanced);
+  advanced_line_layout->addStretch(1);
+  auto* advanced_row = new SettingRow("Environment, runner options and scripts", QString(), runner);
+  advanced_row->SetBelow(advanced_line);
+  runner->AddRow(advanced_row);
 
-  data_dir_edit_ = new QLineEdit(this);
-  data_dir_edit_->setToolTip("The folder holding this game's Wine or Proton prefix and data.");
+  // --- Details
+  auto* details = new SettingsCard("Details", cards_page);
+  name_edit_ = LineEdit(details);
+  name_row_ = new SettingRow("Name", QString(), details);
+  name_row_->SetBelow(name_edit_);
+  details->AddRow(name_row_);
 
-  runner_config_edit_ = new QPlainTextEdit(this);
-  runner_config_edit_->setFixedHeight(70);
-  runner_config_edit_->setToolTip("Runner settings as a JSON object. They are merged with the defaults, not replacing them.");
+  tags_edit_ = new TagEdit(details);
+  tags_row_ = new SettingRow(
+      "Tags",
+      "Labels of your choice. The \"hidden\" tag keeps this game out of the library until you ask for it "
+      "(Ctrl+H, or the Hidden filter).",
+      details);
+  tags_row_->SetBelow(tags_edit_);
+  details->AddRow(tags_row_);
 
-  env_edit_ = new QPlainTextEdit(this);
-  // Taller than runner_config_edit_'s 70: env vars are usually several
-  // KEY=value-shaped entries, one per line, and 70px only showed two of
-  // them at a time before scrolling took over.
-  env_edit_->setFixedHeight(110);
-  env_edit_->setToolTip("Extra environment variables as a JSON object of strings. They are added to the defaults, not replacing them.");
-
-  // A caption above its field; the pair shows and hides together.
-  auto add_field = [form, this](const QString& text, QWidget* field, int row, int column, int span) {
-    auto* box = new QWidget(this);
-    auto* box_layout = new QVBoxLayout(box);
-    box_layout->setContentsMargins(0, 0, 0, 0);
-    box_layout->setSpacing(5);
-    auto* label = new QLabel(text, box);
-    label->setProperty("role", "muted");
-    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    box_layout->addWidget(label);
-    box_layout->addWidget(field);
-    form->addWidget(box, row, column, 1, span);
-    return box;
-  };
-  // Editing the path would only repoint the record; Move… moves the files too.
-  auto* install_row_widget = new QWidget(this);
-  auto* install_row = new QHBoxLayout(install_row_widget);
-  install_row->setContentsMargins(0, 0, 0, 0);
-  install_row->setSpacing(8);
-  install_row->addWidget(install_path_label_, /*stretch=*/1);
-  move_button_ = new QPushButton("Move…", this);
+  // --- Files
+  auto* files = new SettingsCard("Files", cards_page);
+  // Read-only: editing the path would only repoint the record, Move… moves the files too.
+  install_path_edit_ = LineEdit(files, "Not installed");
+  install_path_edit_->setReadOnly(true);
+  move_button_ = new QPushButton("Move…", files);
   move_button_->setToolTip("Move this game's files to another folder");
   connect(move_button_, &QPushButton::clicked, this, &GameEditForm::MoveInstall);
-  install_row->addWidget(move_button_);
+  auto* install_row = new SettingRow("Install folder", QString(), files);
+  install_row->SetBelow(FieldLine(files, install_path_edit_, {move_button_}));
+  files->AddRow(install_row);
 
-  status_box_ = add_field("Status", status_label_, 0, 0, 2);
-  add_field("Install path", install_row_widget, 1, 0, 2);
-  form->addWidget(source_note_label_, 2, 0, 1, 2);
-  add_field("Executable", exe_row_widget, 3, 0, 2);
-  add_field("Arguments", args_edit_, 4, 0, 1);
-  add_field("Working directory", working_dir_edit_, 4, 1, 1);
-  add_field("Runner", runner_row_widget, 5, 0, 1);
-  add_field("Data directory", data_dir_edit_, 5, 1, 1);
-  add_field("Name", name_edit_, 6, 0, 1);
-  add_field("Tags", tags_edit_, 6, 1, 1);
-  add_field("Runner config", runner_config_edit_, 7, 0, 2);
-  add_field("Environment", env_edit_, 8, 0, 2);
-  fields_layout->addLayout(form);
-  fields_layout->addWidget(last_error_label_);
+  data_dir_edit_ = LineEdit(files, "Automatic");
+  open_data_dir_ = new QPushButton("Open", files);
+  open_data_dir_->setToolTip("Open this folder in the file manager");
+  open_data_dir_->setEnabled(false);
+  connect(open_data_dir_, &QPushButton::clicked, this, [this] {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(data_dir_edit_->text()));
+  });
+  data_dir_row_ = new SettingRow("Prefix and data folder",
+                                 "The folder holding this game's Wine or Proton prefix and its data.", files);
+  data_dir_row_->SetBelow(FieldLine(files, data_dir_edit_, {open_data_dir_}));
+  files->AddRow(data_dir_row_);
 
-  // Without a stretch factor here, Qt spreads the QScrollArea's leftover
-  // height evenly across every form row instead of leaving one gap below.
-  fields_layout->addStretch(1);
+  // Two columns stacked separately, not a grid, so a short card leaves no gap under it.
+  auto* columns = new QHBoxLayout();
+  columns->setSpacing(14);
+  for (const auto& [top, bottom] : {std::pair{launch, details}, std::pair{runner, files}}) {
+    auto* column = new QVBoxLayout();
+    column->setSpacing(14);
+    column->addWidget(top);
+    column->addWidget(bottom);
+    column->addStretch(1);
+    columns->addLayout(column, /*stretch=*/1);
+  }
+  cards_layout->addLayout(columns, /*stretch=*/1);
 
-  // After the stretch, not right below the form: pushed to the very bottom
-  // of the page, next to the containing page's own Save/Cancel, rather than
-  // sitting in the middle of the form fields above it.
-  advanced_button_ = new QPushButton("Advanced settings…", this);
-  QPushButton* advanced_button = advanced_button_;
-  // QPushButton defaults to Fixed horizontal, the same sidebar-floor bug as
-  // install_path_label_ above, this time spilling the button's own text.
-  advanced_button->setSizePolicy(QSizePolicy::Ignored, advanced_button->sizePolicy().verticalPolicy());
-  advanced_button->setToolTip("Per-game overrides of the global settings.");
-  connect(advanced_button, &QPushButton::clicked, this, &GameEditForm::OpenAdvanced);
-  fields_layout->addWidget(advanced_button);
+  // --- Advanced: the runner options page, then the overrides' own categories.
+  overrides_ = new mira_gui::OverridesEditor(id_, pages_);
+  SettingsCard* options = overrides_->AddPage("Runner options", icons::Glyph::Sliders)->AddCard(QString());
+  runner_config_edit_ = new QPlainTextEdit(options);
+  runner_config_edit_->setFixedHeight(80);
+  runner_config_row_ = new SettingRow(
+      "Runner config", "Runner settings as a JSON object. They are merged with the defaults, not replacing them.",
+      options);
+  runner_config_row_->SetBelow(runner_config_edit_);
+  options->AddRow(runner_config_row_);
+  env_edit_ = new QPlainTextEdit(options);
+  env_edit_->setFixedHeight(120);
+  env_row_ = new SettingRow(
+      "Environment variables",
+      "Extra environment variables as a JSON object of strings. They are added to the defaults, not replacing them.",
+      options);
+  env_row_->SetBelow(env_edit_);
+  options->AddRow(env_row_);
+  pages_->addWidget(overrides_);
+  connect(overrides_, &OverridesEditor::Changed, this, &GameEditForm::Changed);
 
-  // Covers just the fields column when open; the art column stays on
-  // screen either side of it, unlike the separate dialog this used to be.
-  fields_stack_ = new QStackedWidget(this);
-  fields_stack_->addWidget(fields_column);
-
-  auto* advanced_page = new QWidget(this);
-  auto* advanced_layout = new QVBoxLayout(advanced_page);
-  advanced_layout->setContentsMargins(0, 0, 0, 0);
-  advanced_layout->setSpacing(10);
-  advanced_back_ = new QPushButton("← Back", advanced_page);
-  connect(advanced_back_, &QPushButton::clicked, this, &GameEditForm::CloseAdvanced);
-  advanced_layout->addWidget(advanced_back_, /*stretch=*/0, Qt::AlignLeft);
-  overrides_ = new mira_gui::OverridesEditor(id_, advanced_page);
-  advanced_layout->addWidget(overrides_, /*stretch=*/1);
-  fields_stack_->addWidget(advanced_page);
-
-  layout->addWidget(fields_stack_, /*stretch=*/1);
+  for (QLineEdit* edit : {name_edit_, args_edit_, working_dir_edit_, data_dir_edit_}) {
+    connect(edit, &QLineEdit::textChanged, this, &GameEditForm::UpdateModified);
+  }
+  for (QComboBox* combo : {exe_combo_, runner_combo_}) {
+    connect(combo, &QComboBox::editTextChanged, this, &GameEditForm::UpdateModified);
+  }
+  for (QPlainTextEdit* edit : {runner_config_edit_, env_edit_}) {
+    connect(edit, &QPlainTextEdit::textChanged, this, &GameEditForm::UpdateModified);
+  }
+  connect(tags_edit_, &TagEdit::Changed, this, &GameEditForm::UpdateModified);
+  const auto revert = [this](SettingRow* row, auto member) {
+    connect(row, &SettingRow::RevertClicked, this, [this, member] {
+      mira_gui::GamePatch patch = CurrentPatch();
+      patch.*member = original_patch_.*member;
+      populating_ = true;
+      ShowPatch(patch);
+      populating_ = false;
+      UpdateModified();
+    });
+  };
+  revert(name_row_, &mira_gui::GamePatch::name);
+  revert(exe_row_, &mira_gui::GamePatch::exe_path);
+  revert(args_row_, &mira_gui::GamePatch::args);
+  revert(working_dir_row_, &mira_gui::GamePatch::working_dir);
+  revert(tags_row_, &mira_gui::GamePatch::tags);
+  revert(runner_row_, &mira_gui::GamePatch::runner_ref);
+  revert(data_dir_row_, &mira_gui::GamePatch::data_dir);
+  revert(runner_config_row_, &mira_gui::GamePatch::runner_config_json);
+  revert(env_row_, &mira_gui::GamePatch::env_json);
+  connect(data_dir_edit_, &QLineEdit::textChanged, this,
+          [this](const QString& path) { open_data_dir_->setEnabled(!path.isEmpty() && QDir(path).exists()); });
 
   setEnabled(false);
   Load();
 }
 
-void GameEditForm::SetArtworkStore(ArtworkStore* store) { hero_art_->SetArtworkStore(store); }
+void GameEditForm::SetTagSuggestions(const QStringList& tags) { tags_edit_->SetSuggestions(tags); }
 
-void GameEditForm::SetArtColumnVisible(bool visible) { art_column_->setVisible(visible); }
-
-void GameEditForm::SetAdvancedButtonVisible(bool visible) {
-  advanced_button_->setVisible(visible);
-  advanced_back_->setVisible(visible);
+void GameEditForm::SetBottomRoom(int height) {
+  const QMargins margins = cards_layout_->contentsMargins();
+  cards_layout_->setContentsMargins(margins.left(), margins.top(), margins.right(), 18 + height);
 }
 
-void GameEditForm::RefreshCover() { hero_art_->RefreshCover(); }
-void GameEditForm::RefreshBanner(const std::string& id) { hero_art_->RefreshBanner(id); }
-
 void GameEditForm::OpenAdvanced() {
-  fields_stack_->setCurrentIndex(1);
-  ResetScroll();
+  pages_->setCurrentIndex(1);
   emit AdvancedChanged(true);
 }
 
 void GameEditForm::CloseAdvanced() {
-  fields_stack_->setCurrentIndex(0);
+  pages_->setCurrentIndex(0);
   ResetScroll();
   emit AdvancedChanged(false);
 }
 
-bool GameEditForm::AdvancedOpen() const { return fields_stack_->currentIndex() == 1; }
+bool GameEditForm::AdvancedOpen() const { return pages_->currentIndex() == 1; }
 
 void GameEditForm::ResetScroll() {
-  // The host (LibraryWindow's overlay card) wraps this form in a QScrollArea
-  // it has no direct handle to.
-  for (QWidget* ancestor = parentWidget(); ancestor != nullptr; ancestor = ancestor->parentWidget()) {
-    if (auto* scroll_area = qobject_cast<QScrollArea*>(ancestor)) {
-      scroll_area->verticalScrollBar()->setValue(0);
-      return;
-    }
-  }
+  if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0))) scroll->verticalScrollBar()->setValue(0);
 }
 
 void GameEditForm::Load() {
@@ -267,73 +282,61 @@ void GameEditForm::Load() {
 void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   emit Loaded(QString::fromStdString(game.name));
 
-  // GameDetail, not GameSummary: hero_art_ only needs the handful of fields
-  // the two share, and GetGameAsync (Load(), above) is what this form has.
-  mira_gui::GameSummary summary;
-  summary.id = game.id;
-  summary.name = game.name;
-  summary.status = game.status;
-  summary.platform = game.platform;
-  summary.runner_ref = game.runner_ref;
-  summary.last_error = game.last_error;
-  summary.install_path = game.install_path;
-  summary.reviewed = game.reviewed;
-  summary.confidence = game.confidence;
-  summary.last_played_at = game.last_played_at;
-  summary.play_seconds = game.play_seconds;
-  summary.tags = game.tags;
-  hero_art_->ShowGame(summary);
-
-  // "Ready" is the common case and says nothing worth a line of its own,
-  // only a state that needs attention earns one.
-  status_box_->setVisible(game.status != "ready");
-  status_label_->setText(QString::fromStdString(game.status));
-  theme::SetStyleProperty(status_label_, "status", QString::fromStdString(game.status));
-
   install_path_ = game.install_path;
-  install_path_label_->setText(QString::fromStdString(game.install_path));
-  install_path_label_->setToolTip(install_path_label_->text());
+  ShowInstallPath();
   // A desktop entry's files belong to another app; Steam moves its own games.
   move_button_->setVisible(!game.install_path.empty() && game.source != "desktop-entry" && game.source != "steam");
 
   if (game.source == "steam") {
     source_note_label_->setText(
-        "Imported from Steam. Steam launches this game itself, using its own record of the "
-        "executable. The Executable field below isn't what runs it, and editing it won't "
-        "change how it launches.");
+        "Steam launches this game from its own record of the executable, so changing it here has no effect.");
   } else if (game.source == "lutris") {
-    source_note_label_->setText(
-        "Imported from Lutris. The executable below came from Lutris's own config, not from "
-        "scanning the install folder, so there's no list of alternates to pick from here.");
+    source_note_label_->setText("This executable came from Lutris's config, so there are no others to pick from.");
   }
   source_note_label_->setVisible(game.source == "steam" || game.source == "lutris");
 
-  if (game.last_error.empty()) {
-    last_error_label_->hide();
-  } else {
-    last_error_label_->setText(QString("Error: %1").arg(QString::fromStdString(game.last_error)));
-    last_error_label_->show();
-  }
+  last_error_label_->setText(QString("Error: %1").arg(QString::fromStdString(game.last_error)));
+  last_error_label_->setVisible(!game.last_error.empty());
 
-  name_edit_->setText(QString::fromStdString(game.name));
-  name_edit_->setCursorPosition(0);
-  args_edit_->setText(QString::fromStdString(game.args));
-  args_edit_->setCursorPosition(0);
-  working_dir_edit_->setText(QString::fromStdString(game.working_dir));
-  working_dir_edit_->setCursorPosition(0);
-  tags_edit_->setText(QString::fromStdString(mira_gui::mapping::ToDisplayString(nlohmann::json(game.tags))));
-  tags_edit_->setCursorPosition(0);
-  data_dir_edit_->setText(QString::fromStdString(game.data_dir));
-  data_dir_edit_->setCursorPosition(0);
-  runner_config_edit_->setPlainText(QString::fromStdString(game.runner_config_json));
-  env_edit_->setPlainText(QString::fromStdString(game.env_json));
-
+  populating_ = true;
   PopulateExeCombo(game.candidates, game.exe_path);
-
-  runner_combo_->setEditText(QString::fromStdString(game.runner_ref));
-  runner_combo_->lineEdit()->setCursorPosition(0);
+  mira_gui::GamePatch patch;
+  patch.name = game.name;
+  patch.exe_path = game.exe_path;
+  patch.args = game.args;
+  patch.working_dir = game.working_dir;
+  patch.tags = game.tags;
+  patch.runner_ref = game.runner_ref;
+  patch.data_dir = game.data_dir;
+  patch.runner_config_json = game.runner_config_json;
+  patch.env_json = game.env_json;
+  ShowPatch(patch);
+  populating_ = false;
 
   original_patch_ = CurrentPatch();
+  UpdateModified();
+}
+
+void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
+  const auto show = [](QLineEdit* edit, const std::optional<std::string>& value) {
+    edit->setText(QString::fromStdString(value.value_or(std::string())));
+    edit->setCursorPosition(0);
+  };
+  show(name_edit_, patch.name);
+  show(args_edit_, patch.args);
+  show(working_dir_edit_, patch.working_dir);
+  show(data_dir_edit_, patch.data_dir);
+  show(exe_combo_->lineEdit(), patch.exe_path);
+  ShowRunnerRef(runner_combo_, QString::fromStdString(patch.runner_ref.value_or(std::string())));
+  tags_edit_->SetTags(patch.tags.value_or(std::vector<std::string>()));
+  runner_config_edit_->setPlainText(QString::fromStdString(patch.runner_config_json.value_or(std::string())));
+  env_edit_->setPlainText(QString::fromStdString(patch.env_json.value_or(std::string())));
+}
+
+void GameEditForm::ShowInstallPath() {
+  install_path_edit_->setText(QString::fromStdString(install_path_));
+  install_path_edit_->setCursorPosition(0);
+  install_path_edit_->setToolTip(install_path_edit_->text());
 }
 
 void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Candidate>& candidates,
@@ -351,17 +354,16 @@ void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Cand
     if (candidate.is_installer) label += " (installer, probably not the game)";
     exe_combo_->addItem(label, QString::fromStdString(candidate.rel_path));
   }
-  exe_combo_->blockSignals(false);
-
   exe_combo_->setEditText(QString::fromStdString(current));
   exe_combo_->lineEdit()->setCursorPosition(0);
+  exe_combo_->blockSignals(false);
 }
 
 void GameEditForm::PopulateRunnerCombo(const mira_gui::RunnersResult& result) {
-  const QString current = runner_combo_->currentText();
+  const QString current = RunnerRef(runner_combo_);
   runner_combo_->blockSignals(true);
   runner_combo_->clear();
-  runner_combo_->addItem("Auto (use default runner)", QString());
+  runner_combo_->addItem("Default runner", QString());
   if (result.ok) {
     for (const mira_gui::RunnerInfo& runner : result.runners) {
       const QString label = QString("%1 (%2)").arg(QString::fromStdString(runner.name),
@@ -369,18 +371,13 @@ void GameEditForm::PopulateRunnerCombo(const mira_gui::RunnersResult& result) {
       runner_combo_->addItem(label, QString::fromStdString(runner.reference));
     }
   }
-  runner_combo_->setEditText(current);
+  ShowRunnerRef(runner_combo_, current);
   runner_combo_->blockSignals(false);
 }
 
 void GameEditForm::OnExeComboActivated(int index) {
   exe_combo_->setEditText(exe_combo_->itemData(index).toString());
   exe_combo_->lineEdit()->setCursorPosition(0);
-}
-
-void GameEditForm::OnRunnerComboActivated(int index) {
-  runner_combo_->setEditText(runner_combo_->itemData(index).toString());
-  runner_combo_->lineEdit()->setCursorPosition(0);
 }
 
 void GameEditForm::BrowseExecutable() {
@@ -421,8 +418,7 @@ void GameEditForm::MoveInstall() {
       return;
     }
     install_path_ = result.game.install_path;
-    install_path_label_->setText(QString::fromStdString(install_path_));
-    install_path_label_->setToolTip(install_path_label_->text());
+    ShowInstallPath();
   });
 }
 
@@ -432,23 +428,48 @@ mira_gui::GamePatch GameEditForm::CurrentPatch() const {
   patch.exe_path = exe_combo_->currentText().toStdString();
   patch.args = args_edit_->text().toStdString();
   patch.working_dir = working_dir_edit_->text().toStdString();
-  patch.tags = mira_gui::mapping::SplitCommaSeparated(tags_edit_->text().toStdString());
-  patch.runner_ref = runner_combo_->currentText().toStdString();
+  patch.tags = tags_edit_->Tags();
+  patch.runner_ref = RunnerRef(runner_combo_).toStdString();
   patch.data_dir = data_dir_edit_->text().toStdString();
   patch.runner_config_json = runner_config_edit_->toPlainText().toStdString();
   patch.env_json = env_edit_->toPlainText().toStdString();
   return patch;
 }
 
-bool GameEditForm::IsDirty() const {
-  const mira_gui::GamePatch current = CurrentPatch();
-  return current.name != original_patch_.name || current.exe_path != original_patch_.exe_path ||
-         current.args != original_patch_.args ||
-         current.working_dir != original_patch_.working_dir ||
-         current.tags != original_patch_.tags || current.runner_ref != original_patch_.runner_ref ||
-         current.data_dir != original_patch_.data_dir ||
-         current.runner_config_json != original_patch_.runner_config_json ||
-         current.env_json != original_patch_.env_json || !overrides_->PendingEdits().empty();
+void GameEditForm::UpdateModified() {
+  if (populating_) return;
+  const mira_gui::GamePatch now = CurrentPatch();
+  name_row_->SetModified(now.name != original_patch_.name);
+  exe_row_->SetModified(now.exe_path != original_patch_.exe_path);
+  args_row_->SetModified(now.args != original_patch_.args);
+  working_dir_row_->SetModified(now.working_dir != original_patch_.working_dir);
+  tags_row_->SetModified(now.tags != original_patch_.tags);
+  runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
+  data_dir_row_->SetModified(now.data_dir != original_patch_.data_dir);
+  runner_config_row_->SetModified(now.runner_config_json != original_patch_.runner_config_json);
+  env_row_->SetModified(now.env_json != original_patch_.env_json);
+  emit Changed();
+}
+
+int GameEditForm::ChangeCount() const {
+  const mira_gui::GamePatch now = CurrentPatch();
+  const int fields = (now.name != original_patch_.name) + (now.exe_path != original_patch_.exe_path) +
+                     (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
+                     (now.tags != original_patch_.tags) + (now.runner_ref != original_patch_.runner_ref) +
+                     (now.data_dir != original_patch_.data_dir) +
+                     (now.runner_config_json != original_patch_.runner_config_json) +
+                     (now.env_json != original_patch_.env_json);
+  return fields + static_cast<int>(overrides_->PendingEdits().size());
+}
+
+bool GameEditForm::IsDirty() const { return ChangeCount() > 0; }
+
+void GameEditForm::DiscardChanges() {
+  populating_ = true;
+  ShowPatch(original_patch_);
+  populating_ = false;
+  overrides_->DiscardChanges();
+  UpdateModified();
 }
 
 void GameEditForm::Save() {
@@ -487,38 +508,42 @@ void GameEditForm::Save() {
 
   const auto fail = [this](const std::string& error) {
     setEnabled(true);
+    UpdateModified();  // what didn't save still counts as a change
     emit SaveFinished(false, QString::fromStdString(error));
   };
-  const auto save_overrides = [this, override_edits, fail] {
-    if (override_edits.empty()) {
-      setEnabled(true);
-      emit SaveFinished(true, QString());
-      return;
-    }
+  const auto succeed = [this, current] {
+    setEnabled(true);
+    UpdateModified();
+    emit Loaded(QString::fromStdString(current.name.value_or(std::string())));
+    emit SaveFinished(true, QString());
+  };
+  const auto save_overrides = [this, override_edits, fail, succeed] {
+    if (override_edits.empty()) return succeed();
     mira_gui::MiradClient::PatchGameConfigAsync(
-        this, id_, override_edits, [this](mira_gui::PatchGameConfigResult override_result) {
-          setEnabled(true);
-          if (!override_result.ok) {
-            emit SaveFinished(false, QString::fromStdString(override_result.error));
-            return;
-          }
+        this, id_, override_edits, [this, fail, succeed](mira_gui::PatchGameConfigResult override_result) {
+          if (!override_result.ok) return fail(override_result.error);
           overrides_->MarkSaved();
-          emit SaveFinished(true, QString());
+          succeed();
         });
   };
+  // Each part counts as saved only once its own request succeeds.
   const auto save_tags = [this, tags, tags_changed, current, fail, save_overrides] {
+    const std::optional<std::vector<std::string>> saved_tags = original_patch_.tags;
     original_patch_ = current;
+    original_patch_.tags = saved_tags;
     if (!tags_changed) {
       save_overrides();
       return;
     }
-    mira_gui::MiradClient::PatchGamesAsync(this, tags, [fail, save_overrides](mira_gui::PatchGamesResult result) {
-      if (!result.ok) {
-        fail(result.error);
-        return;
-      }
-      save_overrides();
-    });
+    mira_gui::MiradClient::PatchGamesAsync(
+        this, tags, [this, current, fail, save_overrides](mira_gui::PatchGamesResult result) {
+          if (!result.ok) {
+            fail(result.error);
+            return;
+          }
+          original_patch_.tags = current.tags;
+          save_overrides();
+        });
   };
 
   setEnabled(false);

@@ -26,6 +26,8 @@ class QVariantAnimation;
 
 namespace mira_gui {
 
+class TabRow;
+
 // A grid of one art slot's candidates ("cover" or "hero"; art_candidates in
 // GET .../metadata), shown as previews mirad caches for it
 // (POST .../artwork/thumbs), a screenful at a time as the grid scrolls.
@@ -42,6 +44,8 @@ public:
 
   // True when the pick isn't the candidate already in use.
   bool HasChange() const;
+  // Back to the candidate in use, dropping the pick.
+  void ResetPick();
   // Switches the slot to the pick. game.artwork_selected follows on success;
   // ApplyFailed on failure.
   void Apply();
@@ -51,6 +55,8 @@ signals:
   // Null when the pick is the one in use.
   void Previewed(QString slot, QPixmap preview);
   void PickChanged(bool has_change);
+  // The user switched between Covers and Hero art; a pick in the other slot was dropped.
+  void SlotChanged(QString slot);
   // Double-click or Enter on a candidate: the host applies it.
   void PickActivated();
   void ApplyFailed(QString slot, QString error);
@@ -97,7 +103,7 @@ private:
   // The slot and candidate an Apply() is waiting to hear back on.
   std::optional<std::pair<std::string, std::int64_t>> applying_;
 
-  QLabel* title_ = nullptr;
+  TabRow* slots_ = nullptr;  // Covers and Hero art, each with its count once known
   QHBoxLayout* chips_layout_ = nullptr;
   QButtonGroup* chips_ = nullptr;
   QWidget* match_row_ = nullptr;

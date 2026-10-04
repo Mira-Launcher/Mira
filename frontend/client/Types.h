@@ -384,7 +384,12 @@ struct ConfigSchemaEntry {
   std::optional<double> minimum;
   std::optional<double> maximum;
   std::string category;        // UI grouping; always present
-  int group = 0;               // a divider goes where this changes within a category
+  int group = 0;               // settings sharing this number within a category form one card
+  std::string group_label;     // that card's title
+  bool group_collapsed = false;  // the card starts folded
+  bool group_resettable = false;  // the card offers one reset to its defaults
+  std::string source;          // e.g. "steam" when the setting belongs to one source; else empty
+  std::string path;            // "folder" or "file" when the value is a path on this computer
   bool per_game = false;       // overridable per game (scope "per_game" or "game_only")
   bool game_only = false;      // only exists per game; not listed in the global settings
   bool is_secret = false;      // mask this value's field

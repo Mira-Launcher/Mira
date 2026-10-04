@@ -26,6 +26,7 @@
 #include "../client/MiradClient.h"
 #include "ErrorHelp.h"
 #include "../client/EventHub.h"
+#include "TabRow.h"
 #include "Theme.h"
 
 namespace mira_gui {
@@ -168,9 +169,17 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
   auto* bar_layout = new QHBoxLayout(bar);
   bar_layout->setContentsMargins(16, 10, 16, 10);
   bar_layout->setSpacing(8);
-  title_ = new QLabel(bar);
-  title_->setProperty("role", "section");
-  bar_layout->addWidget(title_);
+  slots_ = new TabRow(bar);
+  slots_->setObjectName("picker_tabs");
+  slots_->AddTab("cover", "Covers");
+  slots_->AddTab("hero", "Hero art");
+  connect(slots_, &TabRow::CurrentChanged, this, [this](const QString& slot) {
+    if (HasChange()) emit Previewed(QString::fromStdString(slot_), QPixmap());
+    Open(slot.toStdString());
+    emit PickChanged(false);
+    emit SlotChanged(slot);
+  });
+  bar_layout->addWidget(slots_);
   bar_layout->addSpacing(6);
   chips_layout_ = new QHBoxLayout();
   chips_layout_->setSpacing(6);
@@ -284,7 +293,7 @@ void ArtPickerPanel::Open(const std::string& slot) {
   slot_ = slot;
   pick_.reset();
   candidates_.clear();
-  title_->setText(slot_ == "hero" ? "Hero art" : "Covers");
+  slots_->SetCurrent(QString::fromStdString(slot_));
   ShowMessage("Loading…", false);
   if (!matches_loaded_) {
     matches_loaded_ = true;
@@ -365,7 +374,7 @@ void ArtPickerPanel::UpdateTitle() {
     count = griddb_total_ + static_cast<int>(std::ranges::count_if(
                                 candidates_, [](const ArtCandidate& c) { return c.source != "steamgriddb"; }));
   }
-  title_->setText(QString("%1 · %2").arg(slot_ == "hero" ? "Hero art" : "Covers").arg(count));
+  slots_->SetCount(QString::fromStdString(slot_), count);
 }
 
 void ArtPickerPanel::RequestPage() {
@@ -544,6 +553,19 @@ void ArtPickerPanel::EmitPreview() {
 }
 
 bool ArtPickerPanel::HasChange() const { return pick_.has_value() && pick_ != active_id_; }
+
+void ArtPickerPanel::ResetPick() {
+  QListWidgetItem* active = active_id_ ? ItemFor(*active_id_) : nullptr;
+  if (active != nullptr) {
+    grid_->setCurrentItem(active);  // picks it, through currentItemChanged
+    grid_->scrollToItem(active);
+    return;
+  }
+  grid_->blockSignals(true);
+  grid_->setCurrentItem(nullptr);
+  grid_->blockSignals(false);
+  Pick(nullptr);
+}
 
 void ArtPickerPanel::Apply() {
   if (!HasChange()) return;

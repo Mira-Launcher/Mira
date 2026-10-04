@@ -1,18 +1,20 @@
 #pragma once
 
-#include <QFrame>
+#include <optional>
 
+#include "SettingsCard.h"
 #include "SidebarGames.h"
 
-class QCheckBox;
+class QAbstractButton;
 class QSpinBox;
 
 namespace mira_gui {
 
-// The in-window card for how PINNED and RECENTLY PLAYED look. Every choice
-// applies at once (the sidebar beside it shows the result), so there is no
-// Save; the window stores each one as it's made.
-class SidebarStyleCard : public QFrame {
+// How PINNED and RECENTLY PLAYED look: a row of tiles per section, each
+// previewing the user's own games, then whether to show when each was last
+// played and how many recently played games to list. Makes the rows; the
+// caller puts them in a card, which takes ownership.
+class SidebarStyleChoices : public QObject {
   Q_OBJECT
 
 public:
@@ -21,28 +23,56 @@ public:
     sidebar::Style recent = sidebar::Style::Covers;
     int recent_count = 0;
     bool recent_when = true;  // "Yesterday" beside each recently played game
+
+    bool operator==(const Choices&) const = default;
   };
+
   // `pinned` and `recent` are what the sections would list (`recent` as for the
-  // spin box's maximum), so each tile previews the user's own games.
-  SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned, std::vector<GameSummary> recent,
-                   ArtworkStore* artwork, QWidget* parent = nullptr);
+  // count's maximum), so each tile previews the user's own games.
+  SidebarStyleChoices(const Choices& choices, std::vector<GameSummary> pinned, std::vector<GameSummary> recent,
+                      ArtworkStore* artwork, QObject* parent = nullptr);
+
+  const Choices& Current() const { return choices_; }
+  void SetChoices(const Choices& choices);
+  QList<SettingRow*> Rows() const;
 
 signals:
-  void Changed(const mira_gui::SidebarStyleCard::Choices& choices);
-  void CloseRequested();
+  void Changed(const mira_gui::SidebarStyleChoices::Choices& choices);
 
 private:
-  // One tile per style, side by side; picking one sets `*target`.
-  QWidget* MakeChoices(sidebar::Style* target, bool recent);
-  // The games a section's preview in `style` draws, as its current choices would show them.
+  SettingRow* MakeStyleRow(const QString& label, bool recent);
   std::vector<sidebar::PreviewGame> PreviewGames(bool recent, sidebar::Style style) const;
+  void Edited();
+  void Sync();  // the controls from choices_
 
   Choices choices_;
   std::vector<GameSummary> pinned_;
   std::vector<GameSummary> recent_;
   ArtworkStore* artwork_;
-  QCheckBox* when_ = nullptr;
+  SettingRow* pinned_row_ = nullptr;
+  SettingRow* recent_row_ = nullptr;
+  SettingRow* when_row_ = nullptr;
+  SettingRow* count_row_ = nullptr;
+  std::vector<QAbstractButton*> pinned_tiles_;  // in StyleOptions() order
+  std::vector<QAbstractButton*> recent_tiles_;
+  Switch* when_ = nullptr;
   QSpinBox* recent_count_ = nullptr;
+};
+
+// The in-window card for the same choices, opened from the sidebar. Every
+// choice applies at once (the sidebar beside it shows the result), so there is
+// no Save; the window stores each one as it's made.
+class SidebarStyleCard : public SettingsCard {
+  Q_OBJECT
+
+public:
+  using Choices = SidebarStyleChoices::Choices;
+  SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned, std::vector<GameSummary> recent,
+                   ArtworkStore* artwork, QWidget* parent = nullptr);
+
+signals:
+  void Changed(const mira_gui::SidebarStyleChoices::Choices& choices);
+  void CloseRequested();
 };
 
 }  // namespace mira_gui

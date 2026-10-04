@@ -120,8 +120,11 @@ QWidget#downloads_popover QScrollArea > QWidget > QWidget {
 }
 
 QFrame#download_row {
-  background: @surface_alt;
-  border-radius: @radius_control;
+  border-top: 1px solid @border;
+}
+
+QFrame#download_row[first="true"] {
+  border-top: none;
 }
 
 QWidget#downloads_popover QProgressBar {
@@ -303,6 +306,56 @@ QPushButton:default {
 QPushButton:disabled {
   color: @text_muted;
   border-color: @border;
+}
+
+QPushButton:default:disabled {
+  background: @surface_alt;
+}
+
+/* Frameless tool buttons (autoRaise): back, close, fold, more, a row's grip
+ * and undo. Fusion's own hover is a raised bevel that matches nothing else. */
+QToolButton[autoRaise="true"] {
+  background: transparent;
+  border: none;
+  border-radius: @radius_control;
+  padding: 4px;
+}
+
+QToolButton[autoRaise="true"]:hover {
+  background: @surface_alt;
+}
+
+QToolButton[autoRaise="true"]:pressed {
+  background: @border;
+}
+
+QToolButton[autoRaise="true"]:checked {
+  background: @accent_soft;
+}
+
+QToolButton[autoRaise="true"]:focus {
+  border: 1px solid @accent;
+  padding: 3px;
+}
+
+/* A menu button's glyph already says it opens a menu. */
+QToolButton[autoRaise="true"]::menu-indicator {
+  image: none;
+  width: 0;
+}
+
+/* A card's "Reset to defaults", quieter than the settings around it. */
+QToolButton#card_reset {
+  color: @text_muted;
+  padding: 0 8px;
+}
+
+QToolButton#card_reset:hover {
+  color: @text;
+}
+
+QToolButton#card_reset:focus {
+  padding: 0 7px;
 }
 
 /* --- Inputs -------------------------------------------------------------- */
@@ -488,27 +541,153 @@ QListWidget#library_grid {
   border: none;
 }
 
-/* The settings nav is a rail inside a two-pane layout (ui/SettingsNav), not
- * a standalone panel, so it skips the generic bordered/rounded look below. */
-QListWidget#settings_nav {
+/* --- Settings (ui/SettingsNav, ui/SettingsCard) --------------------------
+ * The nav is the main sidebar's twin: the same surface and the same flat rows,
+ * under small uppercase group headings. */
+
+QWidget#settings_nav {
   background: @surface;
-  border: none;
   border-right: 1px solid @border;
-  border-radius: 0;
 }
 
-QListWidget#settings_nav::item {
-  padding: 7px 12px;
+QWidget#settings_nav QScrollArea,
+QWidget#settings_nav QScrollArea > QWidget > QWidget {
+  background: transparent;
+}
+
+QWidget#settings_nav QPushButton {
+  background: transparent;
+  border: none;
   border-radius: @radius_control;
+  padding: 6px 10px;
+  text-align: left;
 }
 
-QListWidget#settings_nav::item:selected {
+QWidget#settings_nav QPushButton:hover {
+  background: @surface_alt;
+}
+
+QWidget#settings_nav QPushButton:checked {
   background: @accent;
   color: @on_accent;
 }
 
-QLineEdit#settings_search {
-  margin-bottom: 6px;
+QLabel[role="nav_heading"] {
+  color: @text_muted;
+  font-size: @font_size_small;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 12px 4px 3px 4px;
+}
+
+QWidget#settings_nav QPushButton:disabled {
+  color: @text_muted;
+}
+
+QScrollArea#settings_page,
+QWidget#settings_canvas {
+  background: @window;
+}
+
+/* The group heading above the first page of each group, flush with the titles. */
+QWidget#settings_section QLabel[role="nav_heading"] {
+  padding: 0;
+}
+
+/* The current page's title, held at the top of the scroll; top padding matches
+ * kTitleClearance in ui/SettingsNav.cpp. */
+QLabel#settings_sticky {
+  background: @window;
+  border-bottom: 1px solid @border;
+  padding: 14px 32px 12px 32px;
+}
+
+QFrame#settings_card {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: @radius_panel;
+}
+
+/* Fields sit a step darker than the card they are on, as in the grid. */
+QFrame#settings_card QLineEdit,
+QFrame#settings_card QSpinBox,
+QFrame#settings_card QDoubleSpinBox,
+QFrame#settings_card QComboBox {
+  background: @window;
+}
+
+/* An unsaved change. */
+QWidget#row_dot {
+  background: @accent;
+  border-radius: 3px;
+}
+
+QWidget#setting_row[dragging="true"] {
+  background: @surface_alt;
+}
+
+QFrame#change_bar {
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-radius: @radius_panel;
+}
+
+/* A source's Store, Launcher or Local tag beside its name. */
+QLabel#kind_tag {
+  color: @text_muted;
+  font-size: @font_size_small;
+  border: 1px solid @border;
+  border-radius: 8px;
+  padding: 0px 6px;
+}
+
+/* ui/ListEdit: a list setting as rows in one box. */
+QWidget#list_edit {
+  background: @window;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+}
+
+QFrame#settings_card QLineEdit#list_item {
+  background: transparent;
+  border: none;
+  padding: 6px 0px;
+}
+
+QPushButton#list_add,
+QPushButton#text_button {
+  background: transparent;
+  border: none;
+  color: @accent;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+QPushButton#list_add:hover,
+QPushButton#text_button:hover {
+  text-decoration: underline;
+}
+
+QPushButton#text_button:disabled {
+  color: @text_muted;
+  text-decoration: none;
+}
+
+/* ui/TagEdit: one chip per tag. */
+QFrame#tag_chip {
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+}
+
+QToolButton#tag_remove {
+  border: none;
+  border-radius: @radius_control;
+  padding: 1px;
+}
+
+QToolButton#tag_remove:hover {
+  background: @border;
 }
 
 QListWidget, QTreeWidget, QTableWidget {
@@ -634,7 +813,8 @@ QWidget#tab_row {
   border-bottom: 1px solid @border;
 }
 
-QWidget#tab_row QPushButton {
+QWidget#tab_row QPushButton,
+QWidget#picker_tabs QPushButton {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -643,11 +823,13 @@ QWidget#tab_row QPushButton {
   padding: 8px 12px;
 }
 
-QWidget#tab_row QPushButton:hover {
+QWidget#tab_row QPushButton:hover,
+QWidget#picker_tabs QPushButton:hover {
   color: @text;
 }
 
-QWidget#tab_row QPushButton:checked {
+QWidget#tab_row QPushButton:checked,
+QWidget#picker_tabs QPushButton:checked {
   color: @text;
   font-weight: 600;
   border-bottom-color: @accent;
@@ -669,20 +851,10 @@ QFrame#continue_card:hover {
   border-color: @accent;
 }
 
-/* --- Customize sidebar card (ui/SidebarStyleCard) ------------------------ */
-
-QFrame#sidebar_style_card {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
-}
-
 /* --- Source setup steps (views/SourcePage) ------------------------------- */
 
-QFrame#source_setup {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
+QLabel#step_title[state="todo"] {
+  color: @text_muted;
 }
 
 QLabel#step_marker {
@@ -728,29 +900,13 @@ QPushButton#chip:checked {
 
 /* --- Runners page -------------------------------------------------------- */
 
-QFrame#runners_card {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
-}
-
-QFrame#runner_row {
-  background: transparent;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
-}
-
-QFrame#runner_row[current="true"] {
-  border-color: @accent;
-}
-
-QFrame#catalog_row {
-  border: none;
-  border-bottom: 1px solid @border;
-}
-
-QPushButton#danger {
-  color: @error;
+/* The build Windows games use by default, beside its name. */
+QLabel#default_tag {
+  color: @accent;
+  font-size: @font_size_small;
+  border: 1px solid @accent;
+  border-radius: 8px;
+  padding: 0px 6px;
 }
 
 QWidget#segmented {
@@ -771,30 +927,13 @@ QWidget#segmented QPushButton:checked {
   font-weight: 600;
 }
 
-QFrame#runners_card QProgressBar {
+QWidget#runners_page QProgressBar {
   background: @border;
   border: none;
   border-radius: 2px;
 }
 
-QFrame#runners_card QProgressBar::chunk {
+QWidget#runners_page QProgressBar::chunk {
   background: @accent;
   border-radius: 2px;
-}
-
-/* ui/HelpButton: a setting's [?]. */
-QToolButton#help_button {
-  background: transparent;
-  color: @text_muted;
-  border: 1px solid @border;
-  border-radius: 9px;
-  padding: 0;
-  font-size: @font_size_small;
-  font-weight: 600;
-}
-
-QToolButton#help_button:hover,
-QToolButton#help_button:focus {
-  color: @accent;
-  border-color: @accent;
 }

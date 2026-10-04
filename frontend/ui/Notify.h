@@ -42,6 +42,12 @@ void FailedWithAction(QWidget* parent, const QString& what, const QString& detai
                       const QString& hint, const QString& action,
                       std::function<void()> activate);
 
+// A question for while the window is hidden or minimized: a persistent
+// notification whose `action` raises the window and runs `activate`. False
+// with no notification service, so the caller asks in the window instead.
+bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body, const QString& action,
+                   std::function<void()> activate);
+
 // A failed mirad request: its message and hint, plus a button for its fix
 // (ui/ErrorHelp). Prefer this over Failed for any result.error.
 void FailedRequest(QWidget* parent, const QString& what, const ApiError& error);

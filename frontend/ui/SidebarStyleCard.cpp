@@ -2,7 +2,6 @@
 
 #include <QAbstractButton>
 #include <QButtonGroup>
-#include <QCheckBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -17,6 +16,7 @@
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 #include "Icons.h"
+#include "SettingsCard.h"
 #include "Theme.h"
 
 namespace mira_gui {
@@ -66,72 +66,76 @@ private:
   ArtworkStore* artwork_;
 };
 
-QLabel* Heading(const QString& text, QWidget* parent) {
-  auto* label = new QLabel(text, parent);
-  label->setProperty("role", "section");
-  return label;
-}
-
 }  // namespace
 
-SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
-                                   std::vector<GameSummary> recent, ArtworkStore* artwork, QWidget* parent)
-    : QFrame(parent), choices_(choices), pinned_(std::move(pinned)), recent_(std::move(recent)), artwork_(artwork) {
-  setObjectName("sidebar_style_card");
-  // Art that lands while the card is open shows in its previews.
+SidebarStyleChoices::SidebarStyleChoices(const Choices& choices, std::vector<GameSummary> pinned,
+                                         std::vector<GameSummary> recent, ArtworkStore* artwork, QObject* parent)
+    : QObject(parent), choices_(choices), pinned_(std::move(pinned)), recent_(std::move(recent)), artwork_(artwork) {
+  pinned_row_ = MakeStyleRow("Pinned", /*recent=*/false);
+  recent_row_ = MakeStyleRow("Recently played", /*recent=*/true);
+
+  // Art that lands while this is open shows in its previews.
   const auto repaint = [this] {
-    for (QWidget* tile : findChildren<QAbstractButton*>()) tile->update();
+    for (QAbstractButton* tile : pinned_tiles_) tile->update();
+    for (QAbstractButton* tile : recent_tiles_) tile->update();
   };
   connect(artwork_, &ArtworkStore::CoverChanged, this, repaint);
   connect(artwork_, &ArtworkStore::SlotArtChanged, this, repaint);
-  connect(this, &SidebarStyleCard::Changed, this, repaint);  // the count and the when toggle
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(20, 16, 16, 20);
-  layout->setSpacing(10);
 
-  auto* header = new QHBoxLayout();
-  auto* title = new QLabel("Pinned and recently played", this);
-  title->setProperty("role", "heading");
-  header->addWidget(title, /*stretch=*/1);
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  close->setIcon(icons::For(icons::Glyph::Close));
-  close->setToolTip("Close");
-  connect(close, &QToolButton::clicked, this, &SidebarStyleCard::CloseRequested);
-  header->addWidget(close);
-  layout->addLayout(header);
-
-  layout->addWidget(Heading("Pinned", this));
-  layout->addWidget(MakeChoices(&choices_.pinned, /*recent=*/false));
-
-  layout->addSpacing(8);
-  layout->addWidget(Heading("Recently played", this));
-  layout->addWidget(MakeChoices(&choices_.recent, /*recent=*/true));
-
-  when_ = new QCheckBox("Show when games were last played", this);
-  when_->setChecked(choices_.recent_when);
-  connect(when_, &QCheckBox::toggled, this, [this](bool on) {
+  when_row_ = new SettingRow("Show when games were last played", {});
+  when_ = new Switch(when_row_);
+  when_->setAccessibleName(when_row_->Label()->text());
+  connect(when_, &Switch::toggled, this, [this](bool on) {
     choices_.recent_when = on;
-    emit Changed(choices_);
+    Edited();
   });
-  layout->addWidget(when_);
+  when_row_->AddControl(when_);
 
-  auto* count_row = new QHBoxLayout();
-  count_row->addWidget(new QLabel("Games to show", this), /*stretch=*/1);
-  recent_count_ = new QSpinBox(this);
+  count_row_ = new SettingRow("Games to show", "Running games always show.");
+  recent_count_ = new QSpinBox(count_row_);
   recent_count_->setRange(0, 10);
   recent_count_->setSpecialValueText("Off");
-  recent_count_->setValue(choices_.recent_count);
-  recent_count_->setToolTip("Running games always show.");
+  recent_count_->setMinimumWidth(90);
   connect(recent_count_, &QSpinBox::valueChanged, this, [this](int count) {
     choices_.recent_count = count;
-    emit Changed(choices_);
+    Edited();
   });
-  count_row->addWidget(recent_count_);
-  layout->addLayout(count_row);
+  count_row_->AddControl(recent_count_);
+  Sync();
 }
 
-std::vector<sidebar::PreviewGame> SidebarStyleCard::PreviewGames(bool recent, sidebar::Style style) const {
+QList<SettingRow*> SidebarStyleChoices::Rows() const { return {pinned_row_, recent_row_, when_row_, count_row_}; }
+
+void SidebarStyleChoices::SetChoices(const Choices& choices) {
+  choices_ = choices;
+  Sync();
+}
+
+void SidebarStyleChoices::Edited() {
+  Sync();
+  emit Changed(choices_);
+}
+
+void SidebarStyleChoices::Sync() {
+  const auto check = [](const std::vector<QAbstractButton*>& tiles, sidebar::Style style) {
+    const auto& options = sidebar::StyleOptions();
+    for (size_t i = 0; i < tiles.size(); ++i) {
+      const QSignalBlocker block(tiles[i]);
+      tiles[i]->setChecked(options[i].style == style);
+      tiles[i]->update();
+    }
+  };
+  check(pinned_tiles_, choices_.pinned);
+  check(recent_tiles_, choices_.recent);
+  {
+    const QSignalBlocker block_when(when_);
+    when_->setChecked(choices_.recent_when);
+    const QSignalBlocker block_count(recent_count_);
+    recent_count_->setValue(choices_.recent_count);
+  }
+}
+
+std::vector<sidebar::PreviewGame> SidebarStyleChoices::PreviewGames(bool recent, sidebar::Style style) const {
   std::vector<sidebar::PreviewGame> games;
   // Running games always show, the rest up to the count; on a shelf the running ones are part of it.
   int played = 0;
@@ -155,26 +159,44 @@ std::vector<sidebar::PreviewGame> SidebarStyleCard::PreviewGames(bool recent, si
   return games;
 }
 
-QWidget* SidebarStyleCard::MakeChoices(sidebar::Style* target, bool recent) {
-  auto* box = new QWidget(this);
-  auto* row = new QHBoxLayout(box);
-  row->setContentsMargins(0, 0, 0, 0);
-  row->setSpacing(10);
+SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent) {
+  auto* row = new SettingRow(label, {});
+  auto* box = new QWidget(row);
+  auto* tiles = new QHBoxLayout(box);
+  tiles->setContentsMargins(0, 0, 0, 4);
+  tiles->setSpacing(10);
   auto* group = new QButtonGroup(box);
+  std::vector<QAbstractButton*>& list = recent ? recent_tiles_ : pinned_tiles_;
   for (const sidebar::StyleOption& option : sidebar::StyleOptions()) {
-    const sidebar::Style shown = option.style;
-    auto* choice = new StyleChoice(option, [this, recent, shown] { return PreviewGames(recent, shown); }, artwork_, box);
-    choice->setChecked(option.style == *target);
     const sidebar::Style style = option.style;
-    connect(choice, &QAbstractButton::clicked, this, [this, target, style] {
-      *target = style;
-      emit Changed(choices_);
+    auto* choice = new StyleChoice(option, [this, recent, style] { return PreviewGames(recent, style); }, artwork_, box);
+    connect(choice, &QAbstractButton::clicked, this, [this, recent, style] {
+      (recent ? choices_.recent : choices_.pinned) = style;
+      Edited();
     });
     group->addButton(choice);
-    row->addWidget(choice);
+    tiles->addWidget(choice);
+    list.push_back(choice);
   }
-  row->addStretch(1);
-  return box;
+  tiles->addStretch(1);
+  row->SetBelow(box);
+  return row;
+}
+
+SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
+                                   std::vector<GameSummary> recent, ArtworkStore* artwork, QWidget* parent)
+    : SettingsCard("Pinned and recently played", parent) {
+  SetProminentTitle();
+  auto* close = new QToolButton(this);
+  close->setAutoRaise(true);
+  close->setIcon(icons::For(icons::Glyph::Close));
+  close->setToolTip("Close");
+  connect(close, &QToolButton::clicked, this, &SidebarStyleCard::CloseRequested);
+  Header()->addWidget(close);
+
+  auto* content = new SidebarStyleChoices(choices, std::move(pinned), std::move(recent), artwork, this);
+  connect(content, &SidebarStyleChoices::Changed, this, &SidebarStyleCard::Changed);
+  for (SettingRow* row : content->Rows()) AddRow(row);
 }
 
 }  // namespace mira_gui

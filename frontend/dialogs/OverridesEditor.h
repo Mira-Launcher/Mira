@@ -6,19 +6,21 @@
 #include <vector>
 
 #include "../client/Types.h"
+#include "../ui/Icons.h"
 #include "../ui/SettingEditor.h"
 
 class QLabel;
-class QPushButton;
+class QToolButton;
 
 namespace mira_gui {
 
 class SettingsNavWidget;
+class SettingsPage;
 
 // The "just for this game" half of a game's settings: every overridable
 // setting, resolved through default -> settings.toml -> this game, editable
-// the same way SettingsDialog edits the global value, plus a Clear that
-// drops back to the layer underneath.
+// the same way the settings screen edits the global value, each row's clear
+// button dropping back to the layer underneath.
 //
 // Its own widget because it talks to a different endpoint than the dialog
 // around it: the dialog saves fields via PATCH .../games/{id}, this saves
@@ -43,15 +45,22 @@ public:
   // change-tracking baseline without a re-fetch, so PendingEdits() goes
   // back to empty.
   void MarkSaved();
+  // Puts every edited row back to its loaded value.
+  void DiscardChanges();
+
+  // A page of the host's own, listed before the schema's categories.
+  SettingsPage* AddPage(const QString& title, icons::Glyph glyph);
+
+signals:
+  void Changed();
 
 private:
   // One row: an overridable schema key with the same editor the settings
-  // screen gives it, the layer the shown value came from, and a Clear button
-  // that only means something once that layer is "game".
+  // screen gives it and the layer the shown value came from.
   struct Field : SettingEditor {
     std::string layer;  // "default" | "config" | "game"
     QLabel* layer_label = nullptr;
-    QPushButton* reset_button = nullptr;
+    QToolButton* clear = nullptr;  // drops this game's override; shown while the layer is "game"
   };
 
   void BuildRows(const ConfigSchemaResult& schema);
@@ -60,6 +69,8 @@ private:
   void ResetField(size_t index);
 
   std::string game_id_;
+  std::string resetting_key_;  // the override a reset is reloading for; its edit is dropped
+  bool values_loaded_ = false;
   SettingsNavWidget* nav_ = nullptr;
   std::vector<Field> fields_;
 };

@@ -8,14 +8,15 @@
 
 #include "../client/Types.h"
 
+class QBoxLayout;
 class QButtonGroup;
 class QComboBox;
 class QLabel;
-class QVBoxLayout;
 
 namespace mira_gui {
 
 class DownloadTracker;
+class SettingsCard;
 
 // The library window's Runners page: the Proton or Wine builds installed,
 // which one Windows games default to, updates for them, the builds available
@@ -29,6 +30,9 @@ public:
 
   // The whole library, to say how many games use each build.
   void SetGames(const std::vector<GameSummary>& games);
+
+protected:
+  void resizeEvent(QResizeEvent* event) override;
 
 private:
   std::string CurrentKind() const;
@@ -52,11 +56,12 @@ private:
 
   DownloadTracker* downloads_ = nullptr;
   QButtonGroup* kinds_ = nullptr;
-  QVBoxLayout* installed_list_ = nullptr;
+  QBoxLayout* columns_ = nullptr;  // side by side, or stacked on a narrow window
+  SettingsCard* installed_ = nullptr;
   QLabel* default_note_ = nullptr;
-  QVBoxLayout* catalog_list_ = nullptr;
+  SettingsCard* catalog_ = nullptr;
   QComboBox* source_ = nullptr;
-  QVBoxLayout* tools_list_ = nullptr;
+  SettingsCard* tools_card_ = nullptr;  // shown only while a tool is missing
   QLabel* status_ = nullptr;
 
   std::vector<GameSummary> games_;

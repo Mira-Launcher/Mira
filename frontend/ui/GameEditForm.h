@@ -9,9 +9,9 @@
 #include "../client/MiradClient.h"
 
 namespace mira_gui {
-class ArtworkStore;
-class HeroArtWidget;
 class OverridesEditor;
+class SettingRow;
+class TagEdit;
 }
 
 class QComboBox;
@@ -20,12 +20,13 @@ class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
-class QWidget;
+class QVBoxLayout;
 
 namespace mira_gui {
 
-// One game's editable record (GET/PATCH /v1/games/{id}), shown in
-// LibraryWindow's game card.
+// One game's editable record (GET/PATCH /v1/games/{id}) as Launch, Runner,
+// Details and Files cards, shown in LibraryWindow's game card. Advanced
+// swaps them for the runner options and the per-game overrides.
 class GameEditForm : public QWidget {
   Q_OBJECT
 
@@ -34,79 +35,85 @@ public:
 
   const std::string& id() const { return id_; }
 
-  // Same store the grid's own tiles use. Without one this form's own copy
-  // still works and shows placeholders.
-  void SetArtworkStore(ArtworkStore* store);
-  // Off when the host already shows the art (LibraryWindow's hero card).
-  void SetArtColumnVisible(bool visible);
-  // Off when the host's footer opens and leaves Advanced itself (OpenAdvanced, CloseAdvanced).
-  void SetAdvancedButtonVisible(bool visible);
-  // Swaps the fields for the per-game overrides, and back.
+  // Offered while a new tag is typed.
+  void SetTagSuggestions(const QStringList& tags);
+  // Extra space under the last card, so a change bar floating over it never covers a row.
+  void SetBottomRoom(int height);
+
   void OpenAdvanced();
   void CloseAdvanced();
   bool AdvancedOpen() const;
 
   void Save();
+  // Puts every field back to what was last loaded or saved.
+  void DiscardChanges();
 
   // True once any field differs from what Populate() last loaded or Save()
   // last confirmed; the signal a caller uses to warn before discarding.
   bool IsDirty() const;
-
-  // For game.artwork_selected/a fresh cover fetch to reach this form's own
-  // hero/cover box while it's open; both are safe no-ops if this isn't the
-  // game currently on screen (HeroArtWidget's own concern, see its header).
-  void RefreshCover();
-  void RefreshBanner(const std::string& id);
+  // How many fields and overrides differ, for the change bar.
+  int ChangeCount() const;
 
 signals:
+  // The record loaded, or a save landed.
   void Loaded(QString name);
   void LoadFailed(QString error);
   void SaveFinished(bool ok, QString error);
   void AdvancedChanged(bool open);
+  // Any field edited, or put back.
+  void Changed();
 
 private:
   void Load();
   void Populate(const mira_gui::GameDetail& game);
+  void ShowPatch(const mira_gui::GamePatch& patch);
   void PopulateExeCombo(const std::vector<mira_gui::GameDetail::Candidate>& candidates,
                         const std::string& current);
   void PopulateRunnerCombo(const mira_gui::RunnersResult& result);
   void OnExeComboActivated(int index);
-  void OnRunnerComboActivated(int index);
   void BrowseExecutable();
   // POST /v1/games/{id}/relocate into a folder the user picks.
   void MoveInstall();
+  void ShowInstallPath();
   void ResetScroll();
+  void UpdateModified();
   mira_gui::GamePatch CurrentPatch() const;
 
   std::string id_;
   std::string install_path_;
   mira_gui::GamePatch original_patch_;
+  bool populating_ = false;
 
-  QWidget* art_column_ = nullptr;
-  QPushButton* advanced_button_ = nullptr;
-  QPushButton* advanced_back_ = nullptr;  // the overrides page's own way out
+  QLabel* last_error_label_ = nullptr;
+  QLabel* source_note_label_ = nullptr;
+  QLineEdit* install_path_edit_ = nullptr;
   QPushButton* move_button_ = nullptr;
-  QWidget* status_box_ = nullptr;
-  HeroArtWidget* hero_art_ = nullptr;
-  QLabel* status_label_;
-  QLabel* install_path_label_;
-  QLabel* source_note_label_;
-  QLabel* last_error_label_;
-  QLineEdit* name_edit_;
-  QComboBox* exe_combo_;
-  QLineEdit* args_edit_;
-  QLineEdit* working_dir_edit_;
-  QLineEdit* tags_edit_;
-  QComboBox* runner_combo_;
+  QPushButton* open_data_dir_ = nullptr;
 
-  // Swaps the fields column (art stays on screen) for the per-game overrides
-  // table and back, not a separate dialog, so opening it never covers the
-  // art side or needs its own window chrome beyond a Back button.
-  QStackedWidget* fields_stack_ = nullptr;
-  QLineEdit* data_dir_edit_;
-  QPlainTextEdit* runner_config_edit_;
-  QPlainTextEdit* env_edit_;
-  mira_gui::OverridesEditor* overrides_;
+  QLineEdit* name_edit_ = nullptr;
+  QComboBox* exe_combo_ = nullptr;
+  QLineEdit* args_edit_ = nullptr;
+  QLineEdit* working_dir_edit_ = nullptr;
+  TagEdit* tags_edit_ = nullptr;
+  QComboBox* runner_combo_ = nullptr;
+  QLineEdit* data_dir_edit_ = nullptr;
+  QPlainTextEdit* runner_config_edit_ = nullptr;
+  QPlainTextEdit* env_edit_ = nullptr;
+
+  SettingRow* name_row_ = nullptr;
+  SettingRow* exe_row_ = nullptr;
+  SettingRow* args_row_ = nullptr;
+  SettingRow* working_dir_row_ = nullptr;
+  SettingRow* tags_row_ = nullptr;
+  SettingRow* runner_row_ = nullptr;
+  SettingRow* data_dir_row_ = nullptr;
+  SettingRow* runner_config_row_ = nullptr;
+  SettingRow* env_row_ = nullptr;
+
+  // The cards, then Advanced: the runner options and the per-game overrides.
+  QStackedWidget* pages_ = nullptr;
+  QVBoxLayout* cards_layout_ = nullptr;
+  mira_gui::OverridesEditor* overrides_ = nullptr;
 };
 
 }  // namespace mira_gui
