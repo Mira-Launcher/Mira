@@ -1,10 +1,10 @@
 # Maintainer: arigood99 <arigood99@gmail.com>
 pkgname=mira-launcher
-pkgver=0.11.1
+pkgver=0.12.0
 pkgrel=1
 pkgdesc="Linux game launcher for native games and Windows games via Wine/Proton"
 arch=('x86_64')
-url="https://github.com/AriGood/Mira"
+url="https://github.com/Mira-Launcher/Mira"
 license=('GPL3')
 depends=('gcc-libs' 'curl' 'qt6-base')
 makedepends=('cmake' 'ninja' 'clang')
@@ -13,12 +13,12 @@ optdepends=('wine: run Windows games without Proton'
            'winetricks: install DLL/redistributable fixes into a game prefix'
            '7zip: auto-extract archives dropped into a library root')
 backup=()
-source=("mira-$pkgver.tar.gz::https://github.com/AriGood/Mira/archive/refs/tags/v$pkgver.tar.gz")
+source=("mira-$pkgver.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
   # GitHub's archive directory name varies by endpoint (Mira-<version> vs.
-  # AriGood-Mira-<commit sha>, confirmed by testing both) -- there's exactly
+  # Mira-Launcher-Mira-<commit sha>, confirmed by testing both) -- there's exactly
   # one directory extracted here regardless of what it's named.
   cd "$srcdir"/*/
   cmake -B build -S . \
