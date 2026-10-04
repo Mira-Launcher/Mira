@@ -98,6 +98,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `runner_config` belongs to the runner named by `runner_ref`.
 - `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
 - `data_dir` is the game's prefix.
+- `installer_dir` is the folder the game's installer was in, once the game was installed somewhere else (usually its prefix). A scan treats that folder as this game's and doesn't add it again.
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
@@ -172,10 +173,13 @@ Sends SIGTERM to the game's process group and every process in its prefix, then 
 Body `{"exe_path": "...", "args": "..."}`. Runs any executable in the game's prefix with normal tracking, provisioning the prefix first if there isn't one. This is how an installer is run by hand.
 
 ### `POST /v1/games/{id}/install`
-Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_install` game's installer in its prefix. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and the game folder as the target; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time. Afterwards the game executable is looked for in `install_path` or in new folders under `install.detect_dirs` in `drive_c`. Events: `game.install.started`/`finished`/`failed` and `game.updated`. Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
+Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_install` game's installer in its prefix. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and the game folder as the target; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time. Afterwards the game executable is looked for in `install_path` or in new folders under `install.detect_dirs` in `drive_c`. A game found in a new folder moves there: `installer_dir` keeps the old one, a game still named after the installer's folder takes the new folder's name, and its metadata is fetched again. Events: `game.install.started`/`finished`/`failed` and `game.updated`, also for an installer a scan runs on its own (`scan.auto_run_installers`). Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
 
 ### `GET /v1/games/{id}/installer[?path=]`
 `{"path", "size_bytes", "format": "inno"|"nsis"|"msi"|"unknown", "silent", "silent_args"}` for the game's installer, or for `path`.
+
+### `DELETE /v1/games/{id}/installer`
+Deletes the game's `installer_dir` and clears it, returning the game. Only inside a library root, and never when that folder also holds the game's `install_path` or `data_dir` (`409 installer_dir_in_use`). `404 no_installer_dir` when there's none, `409` while the game runs.
 
 ### `GET /v1/games/{id}/install/progress`
 `{"state": "idle"|"queued"|"running"|"finished"|"failed", "mode": "silent"|"interactive", "started_at", "finished_at", "error", "bytes_written"}`. Silent installers report no percentage, so `bytes_written` is the progress signal. Kept in memory only.
@@ -183,7 +187,7 @@ Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_inst
 ### `POST /v1/games/{id}/finish-install`
 Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the installed game. `409 no_executable` if `exe_path` is empty, still an installer, or missing.
 
-An optional body `{"install_path"?, "exe_path"?}` switches the game to a program installed in its prefix first: `install_path` must be inside the game's `data_dir` (`400` otherwise, `409` while the game runs), and the game's candidates are detected again there.
+An optional body `{"install_path"?, "exe_path"?}` switches the game to a program installed in its prefix first: `install_path` must be inside the game's `data_dir` (`400` otherwise, `409` while the game runs), and the game's candidates are detected again there. The move is handled like an install's: `installer_dir`, the name and a metadata refetch.
 
 ### `POST /v1/games/{id}/relocate`
 Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
@@ -519,13 +523,14 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 
 | Event | Payload |
 |---|---|
-| `game.added` | The game, plus `open_config` from the `open_config_on_add` setting. |
+| `game.added` | The game, plus `open_config` from the `open_config_on_add` setting and, for a scanned folder, `auto_install`: whether the scan runs its installer on its own. |
 | `game.updated` | The game. |
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed. |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
 | `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. A crash adds a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
+| `game.installer_leftover` | `{id, installer_dir, bytes}`, after an install or `finish-install` left the game somewhere other than its installer's folder, which is still on disk. Delete it with `DELETE /v1/games/{id}/installer`. |
 | `game.launched` | `{id, via, tracked}` for launches handed to Steam or a store launcher. |
 | `game.install.*` | See `POST /v1/games/{id}/install`. |
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |

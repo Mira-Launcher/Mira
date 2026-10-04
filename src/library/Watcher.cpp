@@ -264,6 +264,7 @@ void Watcher::HandleInotify() {
   // missing promptly. Once per root, however many entries went at once.
   if (!deleted_from.empty()) {
     library::Scanner scanner(config_, games_, events_);
+    scanner.UseMetadataQueue(*metadata_fetches_);
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
@@ -311,6 +312,7 @@ void Watcher::HandleDebounceTick() {
       to_scan.insert(entry.root);
     }
     library::Scanner scanner(config_, games_, events_);
+    scanner.UseMetadataQueue(*metadata_fetches_);
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);

@@ -63,18 +63,10 @@ void TryProvision(model::Game game, const runner::RunnerRegistry& runners, store
 // Silently runs a recognized installer off the scan thread (installs can
 // take minutes). A failed attempt sets last_error and isn't retried.
 void QueueAutoInstall(const model::Game& game, config::Config& config, store::GameStore& games,
-                      api::EventBus& events) {
-  if (game.status != model::GameStatus::NeedsInstall) return;
-  if (!config.GetBool("scan.auto_run_installers")) return;
-  if (!config.GetBool("install.retry_failed") && game.last_error.starts_with("Install didn't finish")) return;
-  if (DetectInstallerFormat(fs::path(game.install_path) / game.exe_path) == InstallerFormat::kUnknown) return;
-  if (!BeginInstall(game.id)) return;
-  std::thread([id = game.id, &config, &games, &events] {
-    if (const auto done = Install(config, games, id, InstallMode::kSilentOnly, std::nullopt)) {
-      events.Publish("game.updated", model::ToJson(*done));
-    } else if (const auto stored = games.Find(id)) {
-      events.Publish("game.updated", model::ToJson(*stored));
-    }
+                      api::EventBus& events, metadata::FetchQueue* fetches) {
+  if (!AutoInstalls(config, game) || !BeginInstall(game.id)) return;
+  std::thread([id = game.id, &config, &games, &events, fetches] {
+    RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
   }).detach();
 }
 
@@ -123,6 +115,11 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   const runner::RunnerRegistry runners(config_);
 
   std::set<std::string> seen_install_paths;
+  // An installer's folder whose game now lives elsewhere (usually in its prefix) isn't a new game.
+  std::set<std::string> installer_dirs;
+  for (const model::Game& game : games_.All()) {
+    if (!game.installer_dir.empty()) installer_dirs.insert(game.installer_dir);
+  }
 
   for (const auto& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
     if (!entry.is_directory(ec)) continue;
@@ -137,6 +134,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
     const std::string install_path = dir.string();
     auto existing = games_.FindByInstallPath(install_path);
+    if (!existing && installer_dirs.contains(install_path)) continue;
 
     // A combined install+prefix layout (Lutris colocates a Wine prefix
     // inside the game's own folder) legitimately looks like a Wine prefix
@@ -177,7 +175,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       // end reachable only by the one provisioning attempt at detection time.
       if (config_.GetBool("auto_setup")) {
         TryProvision(*existing, runners, games_, events_);
-        QueueAutoInstall(*existing, config_, games_, events_);
+        QueueAutoInstall(*existing, config_, games_, events_, metadata_fetches_);
       }
       continue;  // already known; never re-detect over a user's configuration
     }
@@ -195,7 +193,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     // this thread for the few seconds umu/Proton's first-run init takes.
     if (config_.GetBool("auto_setup")) {
       TryProvision(game, runners, games_, events_);
-      QueueAutoInstall(game, config_, games_, events_);
+      QueueAutoInstall(game, config_, games_, events_, metadata_fetches_);
     }
   }
 

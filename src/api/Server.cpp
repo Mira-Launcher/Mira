@@ -891,6 +891,7 @@ void Server::RegisterRoutes() {
   http_->Post("/v1/library/scan", [this](const Request& req, Response& res) {
     StartJob(req, res, "scan", "", "Scanning your library", [this](JobRegistry::Progress&) -> Result<json> {
       library::Scanner scanner(config_, games_, events_);
+      scanner.UseMetadataQueue(metadata_fetches_);
       const library::ScanSummary summary = scanner.ScanAll();
       for (const model::Game& game : summary.added_games) metadata_fetches_.Enqueue(config_, events_, game);
       return json{{"added", summary.added}, {"missing", summary.missing}, {"restored", summary.restored}};
@@ -1577,8 +1578,7 @@ void Server::RegisterRoutes() {
     if (is_installer) {
       // An installer isn't the game, so it isn't provisioned or launchable yet.
       game.status = model::GameStatus::NeedsInstall;
-      game.last_error = "This is an installer, not the game itself. Run it first, then point Mira at the "
-                        "installed game.";
+      game.last_error = "This is an installer, not the game itself. Install it to play.";
     } else {
       game.status = model::GameStatus::Ready;
       game.last_error.clear();
@@ -1932,19 +1932,9 @@ void Server::RegisterRoutes() {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
 
-    events_.Publish("game.install.started", {{"id", game->id}});
     operations_.Run([this, id = game->id, interactive, installer] {
-      const auto done = library::Install(config_, games_, id,
-                                         interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto,
-                                         installer);
-      if (done) {
-        SyncDesktopEntries(config_, games_);
-        events_.Publish("game.updated", Record(*done));
-        events_.Publish("game.install.finished", {{"id", id}});
-      } else {
-        if (const auto stored = games_.Find(id)) events_.Publish("game.updated", Record(*stored));
-        events_.Publish("game.install.failed", FailedEvent({{"id", id}}, done.error()));
-      }
+      library::RunInstall(config_, games_, events_, &metadata_fetches_, id,
+                          interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
     });
     SendJson(res, {{"status", "installing"}, {"id", game->id}}, 202);
   });
@@ -1971,7 +1961,7 @@ void Server::RegisterRoutes() {
         if (supervisor_.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
         const library::Detector::Result detected =
             library::Detector(library::SettingsFromConfig(config_)).Detect(install_path);
-        game->install_path = install_path;
+        library::AdoptInstallFolder(*game, install_path);
         game->working_dir.clear();
         game->candidates = detected.candidates;
         game->confidence = detected.confidence;
@@ -1990,8 +1980,11 @@ void Server::RegisterRoutes() {
     if (!std::filesystem::exists(std::filesystem::path(game->install_path) / game->exe_path, ec)) {
       return needs_exe("the game's executable isn't in its install folder");
     }
+    const bool moved = games_.Find(game->id).value_or(*game).install_path != game->install_path;
     auto result = games_.Update(game->id, [&](model::Game& g) {
       g.install_path = game->install_path;
+      g.installer_dir = game->installer_dir;
+      g.name = game->name;
       g.working_dir = game->working_dir;
       g.exe_path = game->exe_path;
       g.candidates = game->candidates;
@@ -2001,6 +1994,24 @@ void Server::RegisterRoutes() {
     });
     if (!result) return SendStoreError(res, result.error());
     SyncDesktopEntries(config_, games_);
+    events_.Publish("game.updated", Record(*result));
+    // Its art and store info were looked up by the installer's name.
+    if (moved) {
+      metadata_fetches_.Enqueue(config_, events_, *result, /*force=*/true);
+      library::AnnounceInstallerLeftover(events_, *result);
+    }
+    SendJson(res, Record(*result));
+  });
+
+  http_->Delete(R"(/v1/games/([^/]+)/installer)", [this](const Request& req, Response& res) {
+    const auto game = games_.Find(req.matches[1]);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    if (supervisor_.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+    if (auto deleted = library::DeleteInstallerFolder(config_, *game); !deleted) {
+      return SendError(res, deleted.error().code == "no_installer_dir" ? 404 : 409, deleted.error());
+    }
+    auto result = games_.Update(game->id, [](model::Game& g) { g.installer_dir.clear(); });
+    if (!result) return SendStoreError(res, result.error());
     events_.Publish("game.updated", Record(*result));
     SendJson(res, Record(*result));
   });

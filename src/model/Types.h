@@ -72,6 +72,10 @@ struct Game {
   // not know that: what lives inside belongs to the runner.
   std::string data_dir;
 
+  // Where the game's installer was, once it installed the game somewhere else; a scan
+  // treats that folder as this game's, not a new one. Empty otherwise.
+  std::string installer_dir;
+
   nlohmann::json runner_config = nlohmann::json::object();  // opaque, owned by the runner
   nlohmann::json overrides = nlohmann::json::object();      // dotted config keys
 

@@ -11,6 +11,13 @@
 #include "model/Types.h"
 #include "store/GameStore.h"
 
+namespace mira::api {
+class EventBus;
+}
+namespace mira::metadata {
+class FetchQueue;
+}
+
 namespace mira::library {
 
 enum class InstallerFormat { kUnknown, kInnoSetup, kNsis, kMsi };
@@ -69,5 +76,27 @@ bool BeginInstall(const std::string& id);
 // Saves the result: Ready on success, last_error on failure.
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,
                             InstallMode mode, const std::optional<std::filesystem::path>& installer);
+
+// Install, reported: game.install.started, game.updated, then game.install.finished or
+// .failed (with the error's hint and fix). On success it updates the menu entries and,
+// with `fetches`, fetches the game's art and store info again. After BeginInstall.
+void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
+                metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
+                const std::optional<std::filesystem::path>& installer);
+
+// Publishes game.installer_leftover when the game's installer folder (installer_dir) is still
+// on disk, so a client can offer to delete it.
+void AnnounceInstallerLeftover(api::EventBus& events, const model::Game& game);
+
+// Deletes the game's installer_dir, only inside a library root and never when it holds the
+// game itself or its prefix.
+Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game);
+
+// Whether a scan runs this game's installer on its own (quietly, scan.auto_run_installers).
+bool AutoInstalls(const config::Config& config, const model::Game& game);
+
+// Points `game` at the folder its installer put it in, remembering the installer's folder
+// in installer_dir, and renames it after that folder while it still has its automatic name.
+void AdoptInstallFolder(model::Game& game, const std::string& install_path);
 
 }  // namespace mira::library

@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "core/Strings.h"
+#include "library/AutoInstall.h"
 #include "library/PrefixNaming.h"
 
 namespace mira::library {
@@ -45,9 +46,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
       // Running an installer isn't running the game: flag it rather than
       // silently provisioning/launching a setup wizard as if it were.
       game.status = model::GameStatus::NeedsInstall;
-      game.last_error = "This looks like an installer (" + top.rel_path +
-                        "), not the game itself. Run it first, then point Mira at the "
-                        "installed game.";
+      game.last_error = "This looks like an installer (" + top.rel_path + "), not the game itself. Install it to play.";
     } else if (top.kind == model::Platform::Native) {
       game.status = model::GameStatus::Ready;  // native needs no provisioning
     } else {
@@ -62,6 +61,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
 
   nlohmann::json payload = model::ToJson(game);
   payload["open_config"] = config_.GetBool("open_config_on_add");
+  payload["auto_install"] = AutoInstalls(config_, game);
   events_.Publish("game.added", std::move(payload));
 
   return game;

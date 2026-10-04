@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "core/Strings.h"
 #include "library/AutoInstall.h"
 #include "runner/IRunner.h"
 
@@ -27,6 +28,22 @@ void Write(const fs::path& path, std::string_view head, std::string_view tail, s
 }
 
 }  // namespace
+
+TEST_CASE("A game installed elsewhere takes the installed folder's name unless it was renamed") {
+  model::Game game;
+  game.install_path = "/games/setup_clustertruck";
+  game.name = strings::CleanGameName("setup_clustertruck");
+  library::AdoptInstallFolder(game, "/prefixes/ct/drive_c/GOG Games/ClusterTruck");
+  CHECK(game.name == strings::CleanGameName("ClusterTruck"));
+  CHECK(game.install_path == "/prefixes/ct/drive_c/GOG Games/ClusterTruck");
+  CHECK(game.installer_dir == "/games/setup_clustertruck");
+
+  model::Game renamed;
+  renamed.install_path = "/games/setup_clustertruck";
+  renamed.name = "My Trucks";
+  library::AdoptInstallFolder(renamed, "/prefixes/ct/drive_c/GOG Games/ClusterTruck");
+  CHECK(renamed.name == "My Trucks");
+}
 
 TEST_CASE("DetectInstallerFormat recognizes Inno Setup near the head") {
   const fs::path file = TempFile("inno-head.exe");
