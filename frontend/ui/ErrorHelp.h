@@ -18,6 +18,7 @@ struct Navigator {
   std::function<void(const std::string& source)> open_source;
   std::function<void(const std::string& game_id)> open_game_settings;
   std::function<void(const std::string& game_id)> view_log;
+  std::function<void(const std::string& game_id)> install_shown;  // run its installer with the window shown
   std::function<void()> start_daemon;
   std::function<QString(const std::string& source)> source_name;
 };

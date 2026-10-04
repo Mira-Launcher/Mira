@@ -75,9 +75,9 @@ struct GamesResult {
 struct GameStateEvent {
   std::string id;
   std::string state;  // "running" | "exited" | "crashed"
-  // After an exit: how long it ran, and for a crash what went wrong.
+  // After an exit: how long it ran, and for a crash what went wrong and what to do.
   std::int64_t played_seconds = 0;
-  std::string error;
+  ApiError error;
 };
 
 struct DeleteResult {
@@ -260,7 +260,7 @@ struct MetadataEvent {
 struct ArtworkSelectEvent {
   std::string id;
   std::string slot;
-  std::string error;  // .artwork_select_failed only
+  ApiError error;                  // .artwork_select_failed only
   std::optional<ArtVersions> art;  // .artwork_selected only
 };
 
@@ -580,7 +580,7 @@ struct RunnerDownloadEvent {
   std::string source;
   std::string replaced;  // on "finished" after an update: the "kind:name" it replaced
   std::string state;  // "started" | "finished" | "failed"
-  std::string error;  // only on "failed"
+  ApiError error;     // only on "failed"
 };
 
 // POST /v1/steam/scan.
@@ -802,7 +802,7 @@ struct TricksEvent {
   std::string id;
   std::string verb;
   std::string state;  // "started" | "finished" | "failed"
-  std::string error;  // only on "failed"
+  ApiError error;     // only on "failed"
 };
 
 // DELETE /v1/runners/{kind}:{name}: synchronous, 200 on success.
@@ -973,7 +973,7 @@ struct StoreEvent {
   std::string kind;    // "setup" | "install" | "download"
   std::string state;   // "started" | "finished" | "failed"
   std::string ref;     // install: the title's ref; download: the bundle key
-  std::string error;   // only on "failed"
+  ApiError error;      // only on "failed"
   bool update = false;  // install: an update rather than a first install
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported

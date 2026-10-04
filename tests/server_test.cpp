@@ -972,6 +972,8 @@ TEST_CASE("POST /v1/games/manual with is_installer=true creates a needs_install 
   CHECK(parsed.value("status", "") == "needs_install");
   CHECK(parsed.value("platform", "") == "windows");
   CHECK_FALSE(parsed.value("last_error", "").empty());
+  // The installer runs in the game's prefix, so it needs one before it can run.
+  CHECK_FALSE(parsed.value("data_dir", "").empty());
 }
 
 TEST_CASE("POST /v1/games/manual to the same install_path updates rather than duplicates") {

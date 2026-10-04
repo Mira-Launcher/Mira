@@ -135,11 +135,13 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   const InstallerFormat format = DetectInstallerFormat(installer);
   const bool silent = format != InstallerFormat::kUnknown && mode != InstallMode::kInteractive;
   if (!silent && mode == InstallMode::kSilentOnly) {
-    return Err("installer_unsupported", "not a known silent-install format");
+    return Err("installer_unsupported", "not a known silent-install format",
+               "Run the installer with its window shown and click through it.", Fix::Game(game.id, "install"));
   }
   const std::int64_t timeout_s = config.GetInt("install.timeout_s");
   if (silent && timeout_s > 0 && !runner::FindOnPath("timeout")) {
-    return Err("timeout_missing", "'timeout' (coreutils) isn't on PATH");
+    return Err("timeout_missing", "'timeout' (coreutils) isn't on PATH",
+               "Install coreutils, or set the installer timeout to 0.", Fix::Setting("install.timeout_s"));
   }
 
   const runner::RunnerRegistry runners(config);
@@ -191,7 +193,15 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   if (!result) return std::unexpected(result.error());
   // A GUI installer's exit code isn't reliable; detection below decides.
   if (silent && result->exit_code != 0) {
-    return Err("installer_failed", std::format("installer exited {}", result->exit_code));
+    // 124 and 137 are timeout's own codes: it stopped the installer.
+    if (timeout_s > 0 && (result->exit_code == 124 || result->exit_code == 137)) {
+      return Err("installer_timeout", std::format("the quiet install didn't finish within {} s", timeout_s),
+                 "Run the installer with its window shown, or raise the installer timeout.",
+                 Fix::Game(game.id, "install"));
+    }
+    return Err("installer_failed", std::format("the quiet install failed (exit code {})", result->exit_code),
+               "Some installers only work with their window shown. Run it that way and click through it.",
+               Fix::Game(game.id, "install"));
   }
 
   const Detector detector(SettingsFromConfig(config));
@@ -350,8 +360,8 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.status = done->status;
       stored.last_error.clear();
     } else {
-      stored.last_error = std::format("Install didn't finish ({}) -- run it again with `mira install {} --interactive`.",
-                                      done.error().message, id);
+      stored.last_error = std::format("Install didn't finish ({}). Run the installer again with its window shown.",
+                                      done.error().message);
     }
     stored.updated_at = model::NowSeconds();
   });

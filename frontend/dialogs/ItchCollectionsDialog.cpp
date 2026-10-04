@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 
 #include "../client/MiradClient.h"
+#include "../ui/ErrorHelp.h"
 
 ItchCollectionsDialog::ItchCollectionsDialog(QWidget* parent) : QDialog(parent) {
   setWindowTitle("itch.io collections");
@@ -60,7 +61,7 @@ void ItchCollectionsDialog::ShowCollections(const mira_gui::ItchCollectionsResul
     delete item;
   }
   if (!result.ok) {
-    status_->setText("Could not list the collections: " + QString::fromStdString(result.error));
+    status_->setText("Could not list the collections: " + mira_gui::error_help::Describe(result.error));
     return;
   }
   status_->setText(result.collections.empty() ? "No collections yet." : QString());
@@ -85,7 +86,7 @@ void ItchCollectionsDialog::ShowCollections(const mira_gui::ItchCollectionsResul
         mira_gui::MiradClient::RemoveItchCollectionAsync(
             this, id, [this](mira_gui::StoreActionResult r) {
               if (!r.ok) {
-                status_->setText("Could not remove it: " + QString::fromStdString(r.error));
+                status_->setText("Could not remove it: " + mira_gui::error_help::Describe(r.error));
                 return;
               }
               changed_ = true;
@@ -107,7 +108,7 @@ void ItchCollectionsDialog::Add() {
       this, link.toStdString(), [this](mira_gui::StoreActionResult r) {
         add_->setEnabled(true);
         if (!r.ok) {
-          status_->setText("Could not add it: " + QString::fromStdString(r.error));
+          status_->setText("Could not add it: " + mira_gui::error_help::Describe(r.error));
           return;
         }
         changed_ = true;

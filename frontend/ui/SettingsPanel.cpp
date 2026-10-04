@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "AppearancePreviews.h"
+#include "ErrorHelp.h"
 #include "KeyBindings.h"
 #include "Notify.h"
 #include "SettingsCard.h"
@@ -552,7 +553,7 @@ void SettingsPanel::LoadFrontendPrefs() {
 void SettingsPanel::Load() {
   MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
-      emit LoadFailed(QString::fromStdString(schema.error));
+      emit LoadFailed(error_help::Describe(schema.error));
       return;
     }
     for (ConfigSchemaEntry& entry : schema.entries) {
@@ -567,7 +568,7 @@ void SettingsPanel::Load() {
 
     MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
-        emit LoadFailed(QString::fromStdString(config.error));
+        emit LoadFailed(error_help::Describe(config.error));
         return;
       }
       for (SettingEditor& field : fields_) {

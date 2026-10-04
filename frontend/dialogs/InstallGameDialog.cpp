@@ -70,7 +70,7 @@ void InstallGameDialog::LoadInfo(const std::string& path) {
   error_->setVisible(false);
   MiradClient::GetInstallerInfoAsync(this, game_id_, path, [this, path](InstallerInfoResult info) {
     if (!info.ok) {
-      error_->setText("Could not read the installer: " + QString::fromStdString(info.error));
+      error_->setText("Could not read the installer: " + error_help::Describe(info.error));
       error_->setVisible(true);
       return;
     }

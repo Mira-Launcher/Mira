@@ -1,6 +1,7 @@
 #include "GameEditForm.h"
 
 #include "../dialogs/OverridesEditor.h"
+#include "ErrorHelp.h"
 #include "Notify.h"
 #include "SettingEditor.h"
 #include "SettingsCard.h"
@@ -270,7 +271,7 @@ void GameEditForm::Load() {
   });
   mira_gui::MiradClient::GetGameAsync(this, id_, [this](mira_gui::GameDetailResult result) {
     if (!result.ok) {
-      emit LoadFailed(QString::fromStdString(result.error));
+      emit LoadFailed(error_help::Describe(result.error));
       return;
     }
     setEnabled(true);

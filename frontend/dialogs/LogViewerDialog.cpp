@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "../client/MiradClient.h"
+#include "../ui/ErrorHelp.h"
 
 namespace mira_gui {
 
@@ -45,7 +46,7 @@ void LogViewerDialog::Refresh() {
   MiradClient::GetGameLogAsync(this, game_id_, kLines, [this](GameLogResult result) {
     if (!result.ok) {
       // Said where the log would be, not as a notification over it.
-      text_->setPlainText("Could not read this game's log: " + QString::fromStdString(result.error));
+      text_->setPlainText("Could not read this game's log: " + error_help::Describe(result.error));
       return;
     }
     if (result.lines.empty()) {

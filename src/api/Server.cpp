@@ -77,14 +77,6 @@ void SendError(Response& res, int status, std::string_view code, std::string_vie
   res.set_content(ErrorBody(code, message).dump(), "application/json");
 }
 
-// Adds an error's optional hint and fix to `out` (an error envelope or an event).
-void AddHintAndFix(json& out, const Error& error) {
-  if (!error.hint.empty()) out["hint"] = error.hint;
-  if (error.fix.kind.empty()) return;
-  json fix = {{"kind", error.fix.kind}, {"target", error.fix.target}};
-  if (!error.fix.step.empty()) fix["step"] = error.fix.step;
-  out["fix"] = std::move(fix);
-}
 
 // Same, keeping the error's hint and fix for the client to offer.
 void SendError(Response& res, int status, const Error& error) {
@@ -987,7 +979,7 @@ void Server::RegisterRoutes() {
       operations_.Run([this, asset, tool, event_prefix, install] {
         if (auto installed = install(config_, asset); !installed) {
           log::Error("{} install failed ({}): {}", tool, asset.tag, installed.error().message);
-          events_.Publish(event_prefix + ".failed", {{"tag", asset.tag}, {"error", installed.error().message}});
+          events_.Publish(event_prefix + ".failed", FailedEvent({{"tag", asset.tag}}, installed.error()));
         } else {
           log::Info("installed {} {}", tool, asset.tag);
           events_.Publish(event_prefix + ".finished", {{"tag", asset.tag}});
@@ -1157,7 +1149,7 @@ void Server::RegisterRoutes() {
         events_.Publish("game.updated", Record(*stored));
       }
       if (!done) {
-        events_.Publish("launcher.install.failed", {{"id", launcher->id}, {"error", done.error().message}});
+        events_.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
         return;
       }
       if (const auto imported = launchers::Import(config_, games_, events_, *launcher)) {
@@ -1373,7 +1365,7 @@ void Server::RegisterRoutes() {
       const Result<bool> result = humble::Download(config_, bundle_key, item_numbers);
       if (!result) {
         log::Error("humble download failed ({}): {}", bundle_key, result.error().message);
-        events_.Publish("humble.download.failed", {{"bundle_key", bundle_key}, {"error", result.error().message}});
+        events_.Publish("humble.download.failed", FailedEvent({{"bundle_key", bundle_key}}, result.error()));
       } else if (!*result) {
         log::Warn("humble download for {} had nothing to download (a redeemed key with no Humble-hosted "
                  "files, most likely)",
@@ -1439,7 +1431,7 @@ void Server::RegisterRoutes() {
       if (!result) {
         log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref, result.error().message);
         events_.Publish("library.install.failed",
-                       {{"source", source}, {"ref", ref}, {"update", is_update}, {"error", result.error().message}});
+                        FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
       } else {
         log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
         SyncDesktopEntries(config_, games_);
@@ -1559,6 +1551,12 @@ void Server::RegisterRoutes() {
     game.platform = platform;
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
+    // An installer needs the prefix too: it installs the game into it.
+    if (platform != model::Platform::Windows) {
+      game.data_dir.clear();
+    } else if (game.data_dir.empty()) {
+      game.data_dir = library::PrefixDir(config_, game).string();
+    }
 
     if (is_installer) {
       // An installer isn't the game, so it isn't provisioned or launchable yet.
@@ -1566,11 +1564,6 @@ void Server::RegisterRoutes() {
       game.last_error = "This is an installer, not the game itself. Run it first, then point Mira at the "
                         "installed game.";
     } else {
-      if (platform != model::Platform::Windows) {
-        game.data_dir.clear();
-      } else if (game.data_dir.empty()) {
-        game.data_dir = library::PrefixDir(config_, game).string();
-      }
       game.status = model::GameStatus::Ready;
       game.last_error.clear();
     }
@@ -1934,9 +1927,7 @@ void Server::RegisterRoutes() {
         events_.Publish("game.install.finished", {{"id", id}});
       } else {
         if (const auto stored = games_.Find(id)) events_.Publish("game.updated", Record(*stored));
-        json failed = {{"id", id}, {"error", done.error().message}};
-        AddHintAndFix(failed, done.error());
-        events_.Publish("game.install.failed", std::move(failed));
+        events_.Publish("game.install.failed", FailedEvent({{"id", id}}, done.error()));
       }
     });
     SendJson(res, {{"status", "installing"}, {"id", game->id}}, 202);
@@ -2053,12 +2044,13 @@ void Server::RegisterRoutes() {
       const runner::RunnerRegistry registry(config_);
       const auto game = games_.Find(id);
       if (!game) {  // removed while queued
-        events_.Publish("tricks.failed", {{"id", id}, {"verb", verb}, {"error", "the game was removed"}});
+        const Error removed{"game_not_found", "the game was removed", {}, {}};
+        events_.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
         return;
       }
       if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
         log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
-        events_.Publish("tricks.failed", {{"id", id}, {"verb", verb}, {"error", ran.error().message}});
+        events_.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
       } else {
         events_.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
       }
@@ -2098,8 +2090,7 @@ void Server::RegisterRoutes() {
     const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
     artwork_selects_.Run([this, id, slot, candidate_id] {
       if (auto selected = metadata::SelectArtwork(config_, id, slot, candidate_id); !selected) {
-        events_.Publish("game.artwork_select_failed",
-                        {{"id", id}, {"type", slot}, {"error", selected.error().message}});
+        events_.Publish("game.artwork_select_failed", FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
       } else {
         events_.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
       }
@@ -2124,8 +2115,7 @@ void Server::RegisterRoutes() {
       if (auto fetched = metadata::FetchCandidatePage(config_, id, slot, page); fetched) {
         event.update(*fetched);
       } else {
-        event["code"] = fetched.error().code;
-        event["error"] = fetched.error().message;
+        event = FailedEvent(std::move(event), fetched.error());
       }
       events_.Publish("game.artwork_candidates_ready", event);
     });
@@ -2153,7 +2143,7 @@ void Server::RegisterRoutes() {
       } else {
         event["ready"] = json::array();
         event["failed"] = candidate_ids;
-        event["error"] = batch.error().message;
+        event = FailedEvent(std::move(event), batch.error());
       }
       events_.Publish("game.artwork_thumbs_ready", event);
     });
@@ -2390,7 +2380,7 @@ void Server::RegisterRoutes() {
       }
       if (!installed) {
         log::Error("{} install failed: {}", id, installed.error().message);
-        events_.Publish(id + ".setup.failed", {{"error", installed.error().message}});
+        events_.Publish(id + ".setup.failed", FailedEvent(json::object(), installed.error()));
       } else {
         events_.Publish(id + ".setup.finished", json::object());
       }
@@ -2542,9 +2532,7 @@ void Server::InstallRunnerAsync(const std::string& kind, const std::string& sour
   operations_.Run([this, kind, asset, replacing, base] {
     if (auto installed = runner::DownloadAndInstall(config_, kind, asset); !installed) {
       log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
-      json failed = base;
-      failed["error"] = installed.error().message;
-      events_.Publish("runners.download.failed", failed);
+      events_.Publish("runners.download.failed", FailedEvent(base, installed.error()));
       return;
     }
     log::Info("installed {} {}", kind, asset.tag);

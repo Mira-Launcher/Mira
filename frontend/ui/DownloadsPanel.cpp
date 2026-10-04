@@ -12,6 +12,7 @@
 
 #include "ArtworkStore.h"
 #include "DownloadTracker.h"
+#include "ErrorHelp.h"
 #include "Icons.h"
 #include "Theme.h"
 
@@ -135,11 +136,17 @@ void DownloadsPanel::Rebuild() {
   empty_->setVisible(entries.empty());
   clear_->setEnabled(tracker_->RunningCount() < static_cast<int>(entries.size()));
 
-  // Grows with its rows up to a cap, then scrolls.
-  const int row_height = kCover.height() + 20;
+  // Grows with its rows up to six, then scrolls. Measured at the popover's width, since a
+  // failed row's message and hint wrap onto more lines than a cover's height.
+  int height = 0;
+  for (int i = 0; i < std::min(rows_->count(), 6); ++i) {
+    if (QWidget* row = rows_->itemAt(i)->widget()) {
+      height += row->hasHeightForWidth() ? row->heightForWidth(width()) : row->sizeHint().height();
+    }
+  }
   auto* scroll = findChild<QScrollArea*>("downloads_scroll");
   scroll->setVisible(!entries.empty());
-  scroll->setFixedHeight(std::min<int>(static_cast<int>(entries.size()), 6) * row_height);
+  scroll->setFixedHeight(height);
   adjustSize();
 }
 
@@ -220,7 +227,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
     state = FinishedText(entry);
   } else {
     state = "Failed";
-    if (!entry.error.isEmpty()) state += ": " + entry.error;
+    if (!entry.error.empty()) state += ": " + error_help::Describe(entry.error);
     role = "error";
   }
   const QString origin = Origin(*tracker_, entry);
@@ -255,6 +262,15 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       emit ShowGameRequested(game_id);
     });
     layout->addWidget(show, 0, Qt::AlignVCenter);
+  } else if (entry.state == State::Failed) {
+    if (const auto action = error_help::ActionFor(entry.error)) {
+      auto* fix = new QPushButton(action->label, row);
+      connect(fix, &QPushButton::clicked, this, [this, run = action->run] {
+        hide();
+        run();
+      });
+      layout->addWidget(fix, 0, Qt::AlignVCenter);
+    }
   }
   return row;
 }

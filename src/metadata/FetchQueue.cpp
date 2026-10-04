@@ -116,7 +116,7 @@ bool FetchQueue::Run(const config::Config& config, api::EventBus& events, const 
     if (const Result<void> fetched = FetchCover(config, game); !fetched) {
       log::Debug("no cover for {} {}: {}", game.source, game.source_ref, fetched.error().message);
       events.Publish("library.artwork_failed",
-                     {{"source", game.source}, {"ref", game.source_ref}, {"code", fetched.error().code}});
+                     api::FailedEvent({{"source", game.source}, {"ref", game.source_ref}}, fetched.error()));
       return false;
     }
     events.Publish("library.artwork_ready", {{"source", game.source}, {"ref", game.source_ref}});
@@ -126,10 +126,7 @@ bool FetchQueue::Run(const config::Config& config, api::EventBus& events, const 
   if (auto fetched = Fetch(config, game); !fetched) {
     const Error& error = fetched.error();
     log::Warn("metadata fetch failed for {}: {}", game.id, error.message);
-    nlohmann::json failed = {{"id", game.id}, {"code", error.code}, {"error", error.message}};
-    if (!error.hint.empty()) failed["hint"] = error.hint;
-    if (!error.fix.kind.empty()) failed["fix"] = {{"kind", error.fix.kind}, {"target", error.fix.target}};
-    events.Publish("game.metadata_failed", std::move(failed));
+    events.Publish("game.metadata_failed", api::FailedEvent({{"id", game.id}}, error));
     if (job.announce && fetched.error().code != "no_steamgriddb_key") {
       events.PublishNotification(model::NotifyLevel::Warning,
                                  std::format("No metadata found for \"{}\": {}", game.name,

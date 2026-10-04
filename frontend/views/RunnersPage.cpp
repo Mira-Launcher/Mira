@@ -506,7 +506,7 @@ void RunnersPage::DownloadChanged(const QString& key) {
   if (key.startsWith("tool:")) {
     const DownloadTracker::Entry* entry = downloads_->Find(key);
     if (entry != nullptr && entry->state == DownloadTracker::State::Failed) {
-      SetStatus(QString("Installing %1 failed: %2").arg(entry->source, entry->error), true);
+      SetStatus(QString("Installing %1 failed: %2").arg(entry->source, error_help::Describe(entry->error)), true);
     }
     if (entry != nullptr && entry->state != DownloadTracker::State::Running) {
       RefreshTools();
@@ -520,7 +520,8 @@ void RunnersPage::DownloadChanged(const QString& key) {
   const DownloadTracker::Entry* entry = downloads_->Find(key);
   if (entry == nullptr) return;
   if (entry->state == DownloadTracker::State::Failed) {
-    SetStatus(QString("Downloading %1 failed: %2").arg(downloads_->NameFor(*entry), entry->error), true);
+    const QString name = downloads_->NameFor(*entry);
+    SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)), true);
     replacing_.erase(entry->ref.toStdString());
   }
   if (entry->state == DownloadTracker::State::Finished) {

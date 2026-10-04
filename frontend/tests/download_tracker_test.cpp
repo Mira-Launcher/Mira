@@ -28,9 +28,15 @@ TEST_CASE("DownloadTracker follows a store install from start to finish") {
   CHECK(DownloadTracker::GameIdFor(*entry).toStdString() == "gog-1207658924");
 
   tracker.HandleEvent("library.install.failed",
-                      R"({"source": "gog", "ref": "1207658924", "update": false, "error": "disk full"})");
+                      R"({"source": "gog", "ref": "1207658924", "update": false, "error": "not signed in",
+                          "code": "not_authenticated", "hint": "Sign in to GOG.",
+                          "fix": {"kind": "source", "target": "gog", "step": "login"}})");
   CHECK(StateOf(tracker, "gog:1207658924") == State::Failed);
-  CHECK(tracker.Find("gog:1207658924")->error.toStdString() == "disk full");
+  const ApiError& error = tracker.Find("gog:1207658924")->error;
+  CHECK(error.message == "not signed in");
+  CHECK(error.hint == "Sign in to GOG.");
+  CHECK(error.fix.kind == "source");
+  CHECK(error.fix.target == "gog");
   CHECK(tracker.RunningCount() == 0);
 }
 
@@ -75,7 +81,7 @@ TEST_CASE("DownloadTracker follows a job by its label and steps") {
 
   tracker.HandleEvent("job.failed", R"({"id": "delete-1", "kind": "delete", "error": {"code": "io", "message": "busy"}})");
   CHECK(StateOf(tracker, key) == State::Failed);
-  CHECK(tracker.Find(key)->error.toStdString() == "busy");
+  CHECK(tracker.Find(key)->error.message == "busy");
 
   // Nothing to name a job whose start was never seen.
   tracker.HandleEvent("job.finished", R"({"id": "scan-9", "kind": "scan", "result": {}})");

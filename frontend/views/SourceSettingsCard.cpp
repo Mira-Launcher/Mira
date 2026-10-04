@@ -242,7 +242,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
     runner_->setEnabled(false);
     runner_note_->setText(source_.kind == SourceInfo::Kind::Launcher
                               ? "Install " + source_.name + " to choose its runner."
-                              : "Could not ask mirad: " + QString::fromStdString(runner.error));
+                              : "Could not ask mirad: " + error_help::Describe(runner.error));
     return;
   }
   runner_ref_ = QString::fromStdString(runner.runner_ref);
@@ -286,7 +286,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
 void SourceSettingsCard::LoadSettings() {
   MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
-      ShowStatus("Could not load settings: " + QString::fromStdString(schema.error), true);
+      ShowStatus("Could not load settings: " + error_help::Describe(schema.error), true);
       return;
     }
     if (settings_.empty()) {
@@ -314,7 +314,7 @@ void SourceSettingsCard::LoadSettings() {
     }
     MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
-        ShowStatus("Could not load settings: " + QString::fromStdString(config.error), true);
+        ShowStatus("Could not load settings: " + error_help::Describe(config.error), true);
         return;
       }
       for (SettingEditor& editor : settings_) {

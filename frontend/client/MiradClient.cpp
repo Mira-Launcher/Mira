@@ -1665,7 +1665,7 @@ bool MiradClient::ParseGameState(const std::string& data, GameStateEvent* out) {
   out->id = entry.value("id", std::string());
   out->state = entry.value("state", std::string());
   out->played_seconds = entry.value("played_seconds", std::int64_t{0});
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return !out->id.empty();
 }
 
@@ -1722,7 +1722,7 @@ bool MiradClient::ParseArtworkSelectEvent(const std::string& data, ArtworkSelect
   if (id.empty()) return false;
   out->id = id;
   out->slot = payload.value("type", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   out->art = mapping::ToArtVersions(payload);
   return true;
 }
@@ -1737,7 +1737,7 @@ bool MiradClient::ParseArtCandidatesEvent(const std::string& data, ArtCandidates
   out->request = payload.value("request", std::string());
   out->total = payload.value("total", 0);
   out->code = payload.value("code", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   out->candidates.clear();
   if (payload.contains("candidates") && payload["candidates"].is_array()) {
     for (const json& item : payload["candidates"]) out->candidates.push_back(ParseArtCandidate(item));
@@ -1751,7 +1751,7 @@ bool MiradClient::ParseArtThumbsEvent(const std::string& data, ArtThumbsEvent* o
   out->id = payload.value("id", std::string());
   if (out->id.empty()) return false;
   out->slot = payload.value("type", std::string());
-  out->error = payload.value("error", std::string());
+  out->error = mapping::ToApiError(payload);
   const auto ids = [&](const char* key) {
     std::vector<std::int64_t> list;
     if (!payload.contains(key) || !payload[key].is_array()) return list;
@@ -1884,7 +1884,7 @@ bool MiradClient::ParseTitleArtworkEvent(const std::string& event_type, const st
   out->state = event_type.substr(kPrefix.size());  // "ready" | "failed"
   out->source = entry.value("source", std::string());
   out->ref = entry.value("ref", std::string());
-  out->error = entry.value("code", std::string());
+  out->error = mapping::ToApiError(entry);
   return !out->ref.empty();
 }
 
@@ -2059,7 +2059,7 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
   }
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 
@@ -2077,7 +2077,7 @@ bool MiradClient::ParseRunnerDownload(const std::string& event_type, const std::
   out->label = entry.value("label", out->name);
   out->source = entry.value("source", std::string());
   out->replaced = entry.value("replaced", std::string());
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 
@@ -2091,7 +2091,7 @@ bool MiradClient::ParseTricksEvent(const std::string& event_type, const std::str
   out->state = event_type.substr(kPrefix.size());
   out->id = entry.value("id", std::string());
   out->verb = entry.value("verb", std::string());
-  out->error = entry.value("error", std::string());
+  out->error = mapping::ToApiError(entry);
   return true;
 }
 

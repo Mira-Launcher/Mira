@@ -34,6 +34,13 @@ constexpr auto kPollInterval = std::chrono::milliseconds(1000);
 // instead of the whole session.
 constexpr std::int64_t kCheckpointSeconds = 60;
 
+// A crashed game.state's hint and fix: its log, and for a Windows game another runner.
+void AddCrashHelp(json& event, const std::string& game_id, bool windows) {
+  event["hint"] = windows ? "The game's log usually says why. Another runner in the game's settings often helps."
+                          : "The game's log usually says why.";
+  event["fix"] = {{"kind", "game"}, {"target", game_id}, {"step", "log"}};
+}
+
 void RunScript(const std::string& script, const std::string& game_id, const char* which) {
   if (script.empty()) return;
   Command command;
@@ -451,6 +458,7 @@ void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t start
   event["signal"] = signal_number;
   event["played_seconds"] = played;
   event["error"] = error;
+  if (crashed) AddCrashHelp(event, game_id, updated && updated->platform == model::Platform::Windows);
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 
@@ -546,6 +554,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   event["signal"] = record.signal;
   event["played_seconds"] = record.duration_seconds;
   event["error"] = error;
+  if (crashed) AddCrashHelp(event, game_id, updated && updated->platform == model::Platform::Windows);
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 

@@ -179,6 +179,7 @@ private:
   QLabel* owned_note_ = nullptr;
   QPushButton* steam_settings_ = nullptr;
   QPushButton* art_key_ = nullptr;  // covers need a SteamGridDB key
+  QString art_key_setting_;         // that failure's fix target
   TileGrid* owned_grid_ = nullptr;
 
   // What the account owns and isn't installed, by ref, with its title.

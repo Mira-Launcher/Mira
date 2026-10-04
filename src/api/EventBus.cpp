@@ -96,4 +96,19 @@ std::int64_t EventBus::LatestId() const {
   return events_.empty() ? 0 : events_.back().id;
 }
 
+void AddHintAndFix(nlohmann::json& out, const Error& error) {
+  if (!error.hint.empty()) out["hint"] = error.hint;
+  if (error.fix.kind.empty()) return;
+  nlohmann::json fix = {{"kind", error.fix.kind}, {"target", error.fix.target}};
+  if (!error.fix.step.empty()) fix["step"] = error.fix.step;
+  out["fix"] = std::move(fix);
+}
+
+nlohmann::json FailedEvent(nlohmann::json fields, const Error& error) {
+  fields["error"] = error.message;
+  fields["code"] = error.code;
+  AddHintAndFix(fields, error);
+  return fields;
+}
+
 }  // namespace mira::api

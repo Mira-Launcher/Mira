@@ -20,6 +20,7 @@
 #include "../ui/ArtworkStore.h"
 #include "../ui/CoverArt.h"
 #include "../ui/DownloadTracker.h"
+#include "../ui/ErrorHelp.h"
 #include "../client/EventHub.h"
 #include "../ui/GameLibraryModel.h"
 #include "../ui/GameActions.h"
@@ -112,9 +113,9 @@ void ShowLine(QLabel* label, const QString& text, const char* role) {
   label->setVisible(!text.isEmpty());
 }
 
-// mirad's messages start lowercase; this one follows a sentence.
-void ShowError(QLabel* label, const QString& what, const std::string& detail) {
-  QString text = QString::fromStdString(detail);
+// mirad's messages start lowercase; this one follows a sentence. Adds mirad's hint.
+void ShowError(QLabel* label, const QString& what, const ApiError& error) {
+  QString text = error_help::Describe(error);
   if (!text.isEmpty()) text[0] = text[0].toUpper();
   ShowLine(label, (what + " " + text).trimmed(), "error");
 }
@@ -566,11 +567,8 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (id_ != "humble") {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
     art_key_->setIcon(icons::For(icons::Glyph::Image));
-    art_key_->setToolTip(source_.name + " has no covers Mira can use. SteamGridDB has them and "
-                         "needs a free API key.");
     art_key_->setVisible(false);
-    connect(art_key_, &QPushButton::clicked, this,
-            [this] { emit OpenSettingsRequested("steamgriddb.api_key"); });
+    connect(art_key_, &QPushButton::clicked, this, [this] { emit OpenSettingsRequested(art_key_setting_); });
     auto* row = new QHBoxLayout();
     row->addWidget(art_key_);
     row->addStretch(1);
@@ -1072,7 +1070,10 @@ void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   if (StoreEvent art; MiradClient::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
-    if (art.source == id_ && art.state == "failed" && art.error == "no_steamgriddb_key" && art_key_ != nullptr) {
+    if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&
+        art.error.fix.kind == "setting" && art_key_ != nullptr) {
+      art_key_setting_ = QString::fromStdString(art.error.fix.target);
+      art_key_->setToolTip(error_help::HintFor(art.error));
       art_key_->setVisible(true);
     }
     return;

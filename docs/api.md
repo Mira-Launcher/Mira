@@ -11,7 +11,7 @@ Bodies are JSON. Errors share one envelope:
 `code` is stable and meant for code; `message` is meant for people and says what went wrong. Two optional fields say what to do about it:
 
 - `hint`: one sentence for the user, worded for any client (no CLI commands, no GUI paths).
-- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log"}`.
+- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown).
 
 ```json
 { "error": { "code": "no_steamgriddb_key", "message": "searching SteamGridDB needs an API key",
@@ -19,7 +19,7 @@ Bodies are JSON. Errors share one envelope:
              "fix": { "kind": "setting", "target": "steamgriddb.api_key" } } }
 ```
 
-`game.install.failed` events carry the same `hint` and `fix` next to their `error`.
+Every `*.failed` event (and `game.artwork_candidates_ready` or `game.artwork_thumbs_ready` with an error) carries the message as `error`, plus its `code` and, when they apply, the same `hint` and `fix`. `job.failed` nests them under `error` instead.
 
 ```sh
 curl --unix-socket "$XDG_RUNTIME_DIR/mira/mirad.sock" http://localhost/v1/health
@@ -521,7 +521,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed. |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
-| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. |
+| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. A crash adds a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
 | `game.launched` | `{id, via, tracked}` for launches handed to Steam or a store launcher. |
 | `game.install.*` | See `POST /v1/games/{id}/install`. |
@@ -529,7 +529,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.artwork_*` | See the artwork endpoints. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
-| `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus `code` on failure. |
+| `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |

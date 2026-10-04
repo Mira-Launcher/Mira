@@ -28,6 +28,9 @@ std::optional<Action> ActionFor(const ApiError& error) {
   if (fix.kind == "game" && fix.step == "log" && nav.view_log) {
     return Action{"View log", [id = fix.target] { Nav().view_log(id); }};
   }
+  if (fix.kind == "game" && fix.step == "install" && nav.install_shown) {
+    return Action{"Show the installer", [id = fix.target] { Nav().install_shown(id); }};
+  }
   if (fix.kind == "game" && nav.open_game_settings) {
     return Action{"Game settings", [id = fix.target] { Nav().open_game_settings(id); }};
   }
