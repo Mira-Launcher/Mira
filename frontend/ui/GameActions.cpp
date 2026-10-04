@@ -11,7 +11,6 @@
 
 #include "../client/MiradClient.h"
 #include "../dialogs/DeleteGameDialog.h"
-#include "../dialogs/InstallGameDialog.h"
 #include "../dialogs/LogViewerDialog.h"
 #include "../dialogs/RunInPrefixDialog.h"
 #include "../dialogs/WinetricksDialog.h"
@@ -172,11 +171,6 @@ void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QStri
       });
 }
 
-void Install(QWidget* parent, const std::string& id, const std::string& install_path,
-             const QString& name) {
-  InstallGameDialog dialog(id, install_path, name, parent);
-  dialog.exec();
-}
 
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done) {

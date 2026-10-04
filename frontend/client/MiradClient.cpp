@@ -647,6 +647,11 @@ GameActionResult FetchArtCandidatesSync(const std::string& id, const std::string
   return {reply.ok, reply.error};
 }
 
+GameActionResult DeleteInstallerSync(const std::string& id) {
+  const transport::Reply reply = transport::Delete("/v1/games/" + id + "/installer");
+  return {reply.ok, reply.error};
+}
+
 GameActionResult FetchArtThumbsSync(const std::string& id, const std::string& slot,
                                     const std::vector<std::int64_t>& candidate_ids) {
   const transport::Reply reply = transport::PostJson("/v1/games/" + id + "/artwork/thumbs?type=" + slot,
@@ -1994,6 +1999,25 @@ void MiradClient::DeleteGamesAsync(QObject* context, const std::vector<std::stri
 bool MiradClient::ParseOpenConfig(const std::string& data) {
   const json entry = json::parse(data, nullptr, false);
   return entry.is_object() && entry.value("open_config", false);
+}
+
+bool MiradClient::ParseAutoInstall(const std::string& data) {
+  const json entry = json::parse(data, nullptr, false);
+  return entry.is_object() && entry.value("auto_install", false);
+}
+
+bool MiradClient::ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out) {
+  const json entry = json::parse(data, nullptr, false);
+  if (!entry.is_object()) return false;
+  out->id = entry.value("id", std::string());
+  out->installer_dir = entry.value("installer_dir", std::string());
+  out->bytes = entry.value("bytes", std::int64_t{0});
+  return !out->id.empty() && !out->installer_dir.empty();
+}
+
+void MiradClient::DeleteInstallerAsync(QObject* context, const std::string& id,
+                                       std::function<void(GameActionResult)> callback) {
+  async::Run(context, [id] { return DeleteInstallerSync(id); }, std::move(callback));
 }
 
 bool MiradClient::ParseInstallEvent(const std::string& event_type, const std::string& data,

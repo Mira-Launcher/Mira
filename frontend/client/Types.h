@@ -123,6 +123,13 @@ struct InstallDetectedEvent {
   std::string exe_path;      // relative to install_path; empty when none was found
 };
 
+// game.installer_leftover: an install left the game away from its installer's folder.
+struct InstallerLeftoverEvent {
+  std::string id;
+  std::string installer_dir;
+  std::int64_t bytes = 0;
+};
+
 // GET /v1/games/{id}/artwork: the cached cover image itself, as bytes.
 //
 // `missing` is the 404 case and is not an error: most games have no cached

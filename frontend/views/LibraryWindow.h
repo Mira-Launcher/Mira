@@ -21,6 +21,7 @@
 #include "../client/Types.h"
 #include "../ui/ArtworkStore.h"
 #include "../ui/InstallPromptCard.h"
+#include "../ui/InstallerCards.h"
 #include "../ui/ManageSourcesCard.h"
 #include "../ui/Shortcuts.h"
 #include "../ui/SidebarGames.h"
@@ -182,7 +183,14 @@ private:
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
   void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
-  void ShowNextInstallPrompt();
+  // The card that runs a needs_install game's installer.
+  void OfferInstall(const std::string& id);
+  // The card that offers to delete an installer folder an install left behind.
+  void OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent& event);
+  // Shows a prompt card now, or once Settings, a game's card and other cards have closed.
+  // One per `key`; a second ask while it waits is dropped.
+  void QueueCard(const std::string& key, std::function<void()> show);
+  void ShowNextCard();
   void LaunchGame(const std::string& id);
   void OpenGameDialog(const std::string& id);
   // Scrim + centered card slot, built once. Shown/hidden per open rather
@@ -390,7 +398,7 @@ private:
   QGridLayout* sidebar_card_layout_ = nullptr;
   QWidget* sidebar_card_ = nullptr;
   // Installer prompts waiting for Settings, a game's card or another card to close.
-  std::deque<mira_gui::InstallDetectedEvent> pending_install_prompts_;
+  std::deque<std::pair<std::string, std::function<void()>>> pending_cards_;  // key, show
   bool show_source_counts_ = true;
   bool source_icons_ = true;
   QElapsedTimer last_row_click_;
