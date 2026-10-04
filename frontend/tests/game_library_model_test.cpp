@@ -70,6 +70,19 @@ TEST_CASE("Apps stay under All games, get their own filter, and never count as u
   CHECK(Shown(proxy) == std::vector<std::string>{"g"});
 }
 
+TEST_CASE("Needs attention lists games mirad wants checked beside broken ones") {
+  GameSummary unsure = Game("u", "Unsure");
+  unsure.needs_check = true;
+  GameSummary broken = Game("b", "Broken");
+  broken.status = "broken";
+  GameLibraryModel library;
+  library.Replace({Game("f", "Fine"), unsure, broken});
+  GameFilterProxy proxy(&library);
+
+  proxy.SetFilterKey("attention");
+  CHECK(Shown(proxy) == std::vector<std::string>{"b", "u"});
+}
+
 TEST_CASE("A source's view lists only that source's games, hidden ones included") {
   GameLibraryModel library;
   library.Replace({Game("a", "Alpha"), Game("e1", "Epic One", {}, "epic"), Game("e2", "Epic Two", {"hidden"}, "epic")});

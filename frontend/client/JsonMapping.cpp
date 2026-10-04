@@ -43,8 +43,7 @@ GameSummary ToGameSummary(const json& entry) {
   game.runner_ref = entry.value("runner_ref", std::string());
   game.last_error = entry.value("last_error", std::string());
   game.install_path = entry.value("install_path", std::string());
-  game.reviewed = entry.value("reviewed", false);
-  game.confidence = entry.value("confidence", 0.0);
+  game.needs_check = entry.value("needs_check", false);
   if (entry.contains("last_played_at") && entry["last_played_at"].is_number()) {
     game.last_played_at = entry["last_played_at"].get<std::int64_t>();
   }
@@ -79,8 +78,7 @@ GameDetail ToGameDetail(const json& entry) {
   game.runner_ref = entry.value("runner_ref", std::string());
   game.data_dir = entry.value("data_dir", std::string());
   game.last_error = entry.value("last_error", std::string());
-  game.reviewed = entry.value("reviewed", false);
-  game.confidence = entry.value("confidence", 0.0);
+  game.needs_check = entry.value("needs_check", false);
   if (entry.contains("last_played_at") && entry["last_played_at"].is_number()) {
     game.last_played_at = entry["last_played_at"].get<std::int64_t>();
   }

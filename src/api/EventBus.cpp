@@ -29,16 +29,18 @@ void EventBus::DecorateGames(const std::string& type, nlohmann::json& payload) {
     if (art && payload.contains("id")) payload["art"] = art(payload.value("id", std::string()));
     return;
   }
-  // A state change says outright whether it runs; asking the supervisor
-  // could race its own bookkeeping.
-  if (type == "game.state") {
-    payload["running"] = payload.value("state", std::string()) == "running";
-    return;
-  }
   std::function<void(nlohmann::json&)> hook;
   {
     std::lock_guard lock(hook_mutex_);
     hook = game_hook_;
+  }
+  if (type == "game.state") {
+    // A full record gets the rest of a record's fields too.
+    if (hook && payload.contains("name")) hook(payload);
+    // A state change says outright whether it runs; asking the supervisor
+    // could race its own bookkeeping.
+    payload["running"] = payload.value("state", std::string()) == "running";
+    return;
   }
   if (!hook) return;
   if (type == "game.added" || type == "game.updated") {

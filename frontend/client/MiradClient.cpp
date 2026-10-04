@@ -188,6 +188,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.runner_ref) body["runner_ref"] = *patch.runner_ref;
   if (patch.data_dir) body["data_dir"] = *patch.data_dir;
   if (patch.tags) body["tags"] = *patch.tags;
+  if (patch.reviewed) body["reviewed"] = *patch.reviewed;
 
   const auto parse_object = [&](const std::string& text, const char* field,
                                 const char* message) -> bool {

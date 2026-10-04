@@ -166,7 +166,15 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   }
   // A correction counts as the human having looked; a patch that changed nothing doesn't.
   if (model::ToJson(game) != model::ToJson(base)) game.reviewed = true;
+  if (patch.contains("reviewed") && patch["reviewed"].is_boolean()) game.reviewed = patch["reviewed"];
   return game;
+}
+
+// `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
+void AddNeedsCheck(json& game, double threshold) {
+  const json candidates = game.value("candidates", json::array());
+  game["needs_check"] = candidates.is_array() && !candidates.empty() && !game.value("reviewed", false) &&
+                        game.value("confidence", 1.0) < threshold;
 }
 
 // The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently ignored.
@@ -178,6 +186,7 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
   if (patch.contains("tags") && !patch["tags"].is_array()) return "\"tags\" must be an array";
   if (patch.contains("runner_config") && !patch["runner_config"].is_object()) return "\"runner_config\" must be an object";
   if (patch.contains("env") && !patch["env"].is_object() && !patch["env"].is_null()) return "\"env\" must be an object or null";
+  if (patch.contains("reviewed") && !patch["reviewed"].is_boolean()) return "\"reviewed\" must be true or false";
   return std::nullopt;
 }
 
@@ -427,6 +436,7 @@ Server::Server(config::Config& config, store::GameStore& games, EventBus& events
     const std::string id = game.value("id", "");
     game["running"] = supervisor_.IsRunning(id);
     game["art"] = art_index_.For(id);
+    AddNeedsCheck(game, config_.GetDouble("detect.low_confidence_threshold"));
   });
   events_.SetArtHook([this](const std::string& id) { return art_index_.For(id); });
   supervisor_.SetExitHook([this](const std::string& id) { CheckForInstall(id); });
@@ -454,6 +464,7 @@ json Server::Record(const model::Game& game) {
   // So a client can resync after a reconnect.
   body["running"] = supervisor_.IsRunning(game.id);
   body["art"] = art_index_.For(game.id);
+  AddNeedsCheck(body, config_.GetDouble("detect.low_confidence_threshold"));
   return body;
 }
 

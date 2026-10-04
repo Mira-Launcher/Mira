@@ -88,6 +88,15 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   connect(exe_combo_, &QComboBox::activated, this, &GameEditForm::OnExeComboActivated);
   auto* browse = new QPushButton("Browse…", launch);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
+  // Shown while mirad wants its pick confirmed; saving any change confirms it too.
+  check_tag_ = new QLabel("Not checked", launch);
+  check_tag_->setObjectName("check_tag");
+  check_tag_->setToolTip("Mira wasn't sure which program starts this game");
+  check_tag_->hide();
+  looks_right_ = new QPushButton("Looks right", launch);
+  looks_right_->setToolTip("Keep this executable and stop asking");
+  looks_right_->hide();
+  connect(looks_right_, &QPushButton::clicked, this, &GameEditForm::ConfirmExecutable);
   // Shown for a store that launches the game its own way, where the field isn't what runs.
   source_note_label_ = new QLabel(launch);
   source_note_label_->setWordWrap(true);
@@ -97,9 +106,10 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* exe_box_layout = new QVBoxLayout(exe_box);
   exe_box_layout->setContentsMargins(0, 0, 0, 0);
   exe_box_layout->setSpacing(6);
-  exe_box_layout->addWidget(FieldLine(exe_box, exe_combo_, {browse}));
+  exe_box_layout->addWidget(FieldLine(exe_box, exe_combo_, {browse, looks_right_}));
   exe_box_layout->addWidget(source_note_label_);
   exe_row_ = new SettingRow("Executable", QString(), launch);
+  exe_row_->AddAfterLabel(check_tag_);
   exe_row_->SetBelow(exe_box);
   launch->AddRow(exe_row_);
 
@@ -305,6 +315,9 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   }
   source_note_label_->setVisible(game.source == "steam" || game.source == "lutris");
 
+  check_tag_->setVisible(game.needs_check);
+  looks_right_->setVisible(game.needs_check);
+
   last_error_label_->setText(QString("Error: %1").arg(QString::fromStdString(game.last_error)));
   last_error_label_->setVisible(!game.last_error.empty());
 
@@ -445,6 +458,21 @@ void GameEditForm::MoveFolder(bool prefix) {
                                    button->setEnabled(true);
                                    UpdateModified();
                                  });
+}
+
+void GameEditForm::ConfirmExecutable() {
+  mira_gui::GamePatch patch;
+  patch.reviewed = true;
+  looks_right_->setEnabled(false);
+  MiradClient::PatchGameAsync(this, id_, patch, [this](PatchGameResult result) {
+    looks_right_->setEnabled(true);
+    if (!result.ok) {
+      notify::FailedRequest(this, "Could not confirm the executable.", result.error);
+      return;
+    }
+    check_tag_->hide();
+    looks_right_->hide();
+  });
 }
 
 mira_gui::GamePatch GameEditForm::CurrentPatch() const {

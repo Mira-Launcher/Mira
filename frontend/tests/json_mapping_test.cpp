@@ -16,7 +16,7 @@ TEST_CASE("ToGameSummary reads the fields a library row shows") {
   const json entry = json::parse(R"({
     "id": "animal-well", "name": "Animal Well", "status": "ready",
     "platform": "windows", "runner_ref": "proton_umu:GE-Proton11-7",
-    "last_error": "", "reviewed": true, "confidence": 0.75,
+    "last_error": "", "needs_check": true,
     "last_played_at": 1789620825, "play_seconds": 4210, "running": true
   })");
 
@@ -27,8 +27,7 @@ TEST_CASE("ToGameSummary reads the fields a library row shows") {
   CHECK(game.status == "ready");
   CHECK(game.platform == "windows");
   CHECK(game.runner_ref == "proton_umu:GE-Proton11-7");
-  CHECK(game.reviewed);
-  CHECK(game.confidence == doctest::Approx(0.75));
+  CHECK(game.needs_check);
   REQUIRE(game.last_played_at.has_value());
   CHECK(*game.last_played_at == 1789620825);
   CHECK(game.play_seconds == 4210);
@@ -60,8 +59,7 @@ TEST_CASE("ToGameSummary tolerates a record missing every optional field") {
   CHECK(game.id == "x");
   CHECK(game.name.empty());
   CHECK(game.status.empty());
-  CHECK_FALSE(game.reviewed);
-  CHECK(game.confidence == doctest::Approx(0.0));
+  CHECK_FALSE(game.needs_check);
   CHECK(game.play_seconds == 0);
   CHECK_FALSE(game.last_played_at.has_value());
 }

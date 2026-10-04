@@ -40,8 +40,8 @@ struct GameSummary {
   std::string runner_ref;
   std::string last_error;
   std::string install_path;
-  bool reviewed = false;
-  double confidence = 0.0;
+  // mirad picked the executable itself, wasn't sure, and nobody has confirmed it.
+  bool needs_check = false;
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
   // Free-form, user-assigned (docs/api.md). "hidden" is the one convention
@@ -319,8 +319,7 @@ struct GameDetail {
   std::string runner_ref;
   std::string data_dir;
   std::string last_error;
-  bool reviewed = false;
-  double confidence = 0.0;
+  bool needs_check = false;  // as GameSummary's
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
   // `runner_config`/`env` are arbitrary JSON objects (docs/api.md) with no
@@ -353,6 +352,8 @@ struct GamePatch {
   // Replaces the whole set (docs/api.md); there's no per-entry merge for a
   // plain list the way env's null-removes-a-key convention gives it one.
   std::optional<std::vector<std::string>> tags;
+  // true confirms mirad's pick of executable without changing anything else.
+  std::optional<bool> reviewed;
 };
 
 struct PatchGameResult {

@@ -641,6 +641,15 @@ QLabel#kind_tag {
   padding: 0px 6px;
 }
 
+/* The game card's "Not checked" beside Executable, when mirad wasn't sure of its pick. */
+QLabel#check_tag {
+  color: @warning;
+  font-size: @font_size_small;
+  border: 1px solid @warning;
+  border-radius: 8px;
+  padding: 0px 6px;
+}
+
 /* ui/ListEdit: a list setting as rows in one box. */
 QWidget#list_edit {
   background: @window;

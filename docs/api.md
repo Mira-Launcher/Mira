@@ -83,7 +83,8 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
   "source": "scan", "exe_path": "Celeste", "args": "", "working_dir": "", "runner_ref": "",
   "data_dir": "", "runner_config": {}, "overrides": {}, "last_error": "",
   "created_at": 0, "updated_at": 0, "last_played_at": null, "play_seconds": 0,
-  "env": {}, "candidates": [], "tags": [], "running": false, "art": {"cover": "18f3a2c07d4e1b00-2c41"}
+  "env": {}, "candidates": [], "tags": [], "running": false, "needs_check": false,
+  "art": {"cover": "18f3a2c07d4e1b00-2c41"}
 }
 ```
 
@@ -91,14 +92,15 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 
 - `art` lists the art slots Mira has an image cached for, each with a version: `{"cover": "18f3a…-2c41", "hero": "…"}`. A slot left out has no image, so `GET /v1/games/{id}/artwork` for it would 404. The version changes whenever the slot's image does, so a client can keep its copy until then. Every game record has it, and so do `game.metadata_ready`, `game.metadata_failed` and `game.artwork_selected`.
 
-- `confidence` and `reviewed` let a client surface games nobody has checked since detection.
+- `confidence` is how sure the detector was of its pick of executable; it stays 0 for games an importer added, which have no `candidates`. `reviewed` turns true once someone changes or confirms the game.
+- `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at.
 - `candidates` lists every executable the detector considered.
 - `runner_config` belongs to the runner named by `runner_ref`.
 - `data_dir` is the game's prefix.
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args`, `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args`, `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
