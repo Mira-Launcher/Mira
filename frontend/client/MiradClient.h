@@ -201,6 +201,9 @@ public:
   // GET /v1/runners/tools and POST /v1/runners/tools/{id}/setup (reported as
   // <id>.setup.* events).
   static void ListRunnerToolsAsync(QObject* context, std::function<void(RunnerToolsResult)> callback);
+  // GET /v1/runners/{kind}/schema: the options a kind's runner_config takes.
+  static void GetRunnerSchemaAsync(QObject* context, const std::string& kind,
+                                   std::function<void(RunnerSchemaResult)> callback);
   static void SetupRunnerToolAsync(QObject* context, const std::string& id,
                                    std::function<void(RunnerDownloadResult)> callback);
 

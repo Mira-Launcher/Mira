@@ -322,11 +322,12 @@ struct GameDetail {
   bool needs_check = false;  // as GameSummary's
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
-  // `runner_config`/`env` are arbitrary JSON objects (docs/api.md) with no
-  // fixed shape to build widgets for, so they round-trip as raw JSON text,
-  // pretty-printed for display, re-parsed on save (MiradClient.cpp).
+  // `runner_config`/`env` as JSON object text; GameEditForm edits them as rows
+  // and sends only the keys that changed.
   std::string runner_config_json;
   std::string env_json;
+  // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
+  std::string default_runner;
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
 };
@@ -563,6 +564,19 @@ struct RunnerToolsResult {
   bool ok = false;
   ApiError error;
   std::vector<RunnerTool> tools;
+};
+
+// GET /v1/runners/{kind}/schema: one key a runner's runner_config takes.
+struct RunnerOption {
+  std::string key;
+  std::string label;
+  std::string doc;
+};
+
+struct RunnerSchemaResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<RunnerOption> options;
 };
 
 // POST /v1/runners/download returns 202 immediately and reports progress on

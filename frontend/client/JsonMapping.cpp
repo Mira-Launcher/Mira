@@ -85,6 +85,7 @@ GameDetail ToGameDetail(const json& entry) {
   game.play_seconds = entry.value("play_seconds", std::int64_t{0});
   game.runner_config_json = entry.value("runner_config", json::object()).dump(2);
   game.env_json = entry.value("env", json::object()).dump(2);
+  game.default_runner = entry.value("default_runner", std::string());
   game.tags = ReadTags(entry);
 
   for (const json& candidate : entry.value("candidates", json::array())) {
@@ -122,6 +123,21 @@ void FlattenConfig(const json& node, const std::string& prefix,
       out[dotted] = ToDisplayString(value);
     }
   }
+}
+
+json MergePatchBetween(const json& before, const json& after) {
+  json patch = json::object();
+  if (before.is_object()) {
+    for (const auto& [key, value] : before.items()) {
+      if (!after.is_object() || !after.contains(key)) patch[key] = nullptr;
+    }
+  }
+  if (after.is_object()) {
+    for (const auto& [key, value] : after.items()) {
+      if (!before.is_object() || !before.contains(key) || before[key] != value) patch[key] = value;
+    }
+  }
+  return patch;
 }
 
 std::vector<std::string> ParseListText(const std::string& text) {

@@ -50,6 +50,8 @@ public:
 
   // A page of the host's own, listed before the schema's categories.
   SettingsPage* AddPage(const QString& title, icons::Glyph glyph);
+  // Re-splits the pages after the host's cards changed, and starts at the top.
+  void ShowFromTop();
 
 signals:
   void Changed();

@@ -714,7 +714,12 @@ void Server::RegisterRoutes() {
   http_->Get(R"(/v1/games/([^/]+))", [this](const Request& req, Response& res) {
     auto game = games_.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    SendJson(res, Record(*game));
+    json body = Record(*game);
+    // What an empty runner_ref runs with, so an editor can show that runner's options.
+    model::Game unpinned = *game;
+    unpinned.runner_ref.clear();
+    body["default_runner"] = runner::RunnerRegistry(config_).ResolveRef(unpinned);
+    SendJson(res, body);
   });
 
   // The tail of mira-run's log for this game. No log yet is an empty list.

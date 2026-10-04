@@ -100,6 +100,8 @@ public:
   QHBoxLayout* Header() const { return header_layout_; }
   // A widget before the title, e.g. a source's colored initial.
   void SetLeading(QWidget* widget);
+  // Retitles the card; empty hides the header.
+  void SetTitle(const QString& title);
   // Replaces the plain title with a richer one (e.g. a name over a status line).
   void SetTitleWidget(QWidget* widget);
   // A heading-sized title, for a card that stands alone over the window.

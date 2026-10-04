@@ -96,6 +96,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at.
 - `candidates` lists every executable the detector considered.
 - `runner_config` belongs to the runner named by `runner_ref`.
+- `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
 - `data_dir` is the game's prefix.
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
@@ -298,7 +299,7 @@ Installs the latest umu-launcher zipapp (needs python3) or winetricks script int
 Removes a build that lives inside a search path. `400` for system builds, `auto`/`latest`, or kinds without builds; `404` if the build isn't installed. Publishes `runners.removed`.
 
 ### `GET /v1/runners/{kind}/schema`
-What `runner_config` accepts for a kind: `[{"key": "gameid", "type": "string", "doc": "..."}]`. Empty for every kind but `proton`. `404` for an unknown kind.
+What `runner_config` accepts for a kind: `[{"key": "gameid", "label": "Steam game ID", "type": "string", "doc": "..."}]`, `label` in sentence case. Empty for every kind but `proton`. `404` for an unknown kind.
 
 ## Steam
 

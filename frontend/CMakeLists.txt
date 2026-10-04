@@ -122,6 +122,8 @@ qt_add_executable(mira-gui
   ui/AppearancePreviews.h
   ui/ListEdit.cpp
   ui/ListEdit.h
+  ui/KeyValueEdit.cpp
+  ui/KeyValueEdit.h
   ui/SettingsSearch.cpp
   ui/SettingsSearch.h
   ui/ErrorHelp.cpp

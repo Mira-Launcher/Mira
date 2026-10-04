@@ -177,6 +177,11 @@ SettingsPage* OverridesEditor::AddPage(const QString& title, icons::Glyph glyph)
   return nav_->AddCategory(title, glyph);
 }
 
+void OverridesEditor::ShowFromTop() {
+  nav_->RearrangePages();
+  nav_->ScrollToTop();
+}
+
 void OverridesEditor::ResetField(size_t index) {
   const Field& field = fields_[index];
   resetting_key_ = field.entry.key;

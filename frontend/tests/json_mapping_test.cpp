@@ -127,6 +127,16 @@ TEST_CASE("A list setting round-trips unchanged, items with commas included") {
   CHECK(mapping::ParseListText(mapping::ToDisplayString(json::array())).empty());
 }
 
+TEST_CASE("A merge patch between two objects sends changed keys and removes cleared ones") {
+  const json before = json::parse(R"({"gameid": "umu-123", "store": "ea", "kept": "x"})");
+  const json after = json::parse(R"({"gameid": "umu-456", "kept": "x", "new": "y"})");
+  const json patch = mapping::MergePatchBetween(before, after);
+  CHECK(patch == json::parse(R"({"gameid": "umu-456", "store": null, "new": "y"})"));
+  json applied = before;
+  applied.merge_patch(patch);
+  CHECK(applied == after);
+}
+
 TEST_CASE("A list setting drops empty items rather than sending them") {
   CHECK(mapping::ParseListText(R"(["", "a", ""])") == std::vector<std::string>{"a"});
   CHECK(mapping::ParseListText("").empty());

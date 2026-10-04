@@ -771,6 +771,27 @@ RunnerToolsResult ListRunnerToolsSync() {
   return result;
 }
 
+RunnerSchemaResult GetRunnerSchemaSync(const std::string& kind) {
+  RunnerSchemaResult result;
+  const std::string path = "/v1/runners/" + QueryEncode(kind) + "/schema";
+  const transport::Reply reply = transport::Get(path);
+  if (!reply.ok) {
+    result.error = reply.error;
+    return result;
+  }
+  if (!reply.body.is_array()) {
+    result.error = transport::UnexpectedResponse("GET " + path);
+    return result;
+  }
+  result.ok = true;
+  for (const json& entry : reply.body) {
+    if (!entry.is_object()) continue;
+    const std::string key = entry.value("key", std::string());
+    result.options.push_back({key, entry.value("label", key), entry.value("doc", std::string())});
+  }
+  return result;
+}
+
 RunnerDownloadResult SetupRunnerToolSync(const std::string& id) {
   const transport::Reply reply = transport::Post("/v1/runners/tools/" + id + "/setup",
                                                  {.read_timeout = std::chrono::seconds(30)});
@@ -1538,6 +1559,11 @@ void MiradClient::UpdateRunnerAsync(QObject* context, const std::string& referen
 
 void MiradClient::ListRunnerToolsAsync(QObject* context, std::function<void(RunnerToolsResult)> callback) {
   async::Run(context, [] { return ListRunnerToolsSync(); }, std::move(callback));
+}
+
+void MiradClient::GetRunnerSchemaAsync(QObject* context, const std::string& kind,
+                                       std::function<void(RunnerSchemaResult)> callback) {
+  async::Run(context, [kind] { return GetRunnerSchemaSync(kind); }, std::move(callback));
 }
 
 void MiradClient::SetupRunnerToolAsync(QObject* context, const std::string& id,

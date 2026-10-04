@@ -1,8 +1,10 @@
 #include "GameEditForm.h"
 
 #include "../client/EventHub.h"
+#include "../client/JsonMapping.h"
 #include "../dialogs/OverridesEditor.h"
 #include "ErrorHelp.h"
+#include "KeyValueEdit.h"
 #include "Notify.h"
 #include "SettingEditor.h"
 #include "SettingsCard.h"
@@ -15,7 +17,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -202,22 +203,15 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   // --- Advanced: the runner options page, then the overrides' own categories.
   overrides_ = new mira_gui::OverridesEditor(id_, pages_);
-  SettingsCard* options = overrides_->AddPage("Runner options", icons::Glyph::Sliders)->AddCard(QString());
-  runner_config_edit_ = new QPlainTextEdit(options);
-  runner_config_edit_->setFixedHeight(80);
-  runner_config_row_ = new SettingRow(
-      "Runner config", "Runner settings as a JSON object. They are merged with the defaults, not replacing them.",
-      options);
-  runner_config_row_->SetBelow(runner_config_edit_);
-  options->AddRow(runner_config_row_);
-  env_edit_ = new QPlainTextEdit(options);
-  env_edit_->setFixedHeight(120);
-  env_row_ = new SettingRow(
-      "Environment variables",
-      "Extra environment variables as a JSON object of strings. They are added to the defaults, not replacing them.",
-      options);
+  SettingsPage* options_page = overrides_->AddPage("Runner options", icons::Glyph::Sliders);
+  runner_options_card_ = options_page->AddCard(QString());  // titled and filled per runner kind
+  runner_options_card_->hide();
+  SettingsCard* env_card = options_page->AddCard(QString());
+  env_edit_ = new KeyValueEdit("Add variable", env_card);
+  env_row_ = new SettingRow("Environment variables",
+                            "Added to the runner's own environment. A variable set here wins over both.", env_card);
   env_row_->SetBelow(env_edit_);
-  options->AddRow(env_row_);
+  env_card->AddRow(env_row_);
   pages_->addWidget(overrides_);
   connect(overrides_, &OverridesEditor::Changed, this, &GameEditForm::Changed);
 
@@ -227,9 +221,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   for (QComboBox* combo : {exe_combo_, runner_combo_}) {
     connect(combo, &QComboBox::editTextChanged, this, &GameEditForm::UpdateModified);
   }
-  for (QPlainTextEdit* edit : {runner_config_edit_, env_edit_}) {
-    connect(edit, &QPlainTextEdit::textChanged, this, &GameEditForm::UpdateModified);
-  }
+  connect(runner_combo_, &QComboBox::editTextChanged, this, &GameEditForm::ShowRunnerOptions);
+  connect(env_edit_, &KeyValueEdit::Changed, this, &GameEditForm::UpdateModified);
   connect(tags_edit_, &TagEdit::Changed, this, &GameEditForm::UpdateModified);
   const auto revert = [this](SettingRow* row, auto member) {
     connect(row, &SettingRow::RevertClicked, this, [this, member] {
@@ -248,7 +241,6 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   revert(tags_row_, &mira_gui::GamePatch::tags);
   revert(runner_row_, &mira_gui::GamePatch::runner_ref);
   revert(data_dir_row_, &mira_gui::GamePatch::data_dir);
-  revert(runner_config_row_, &mira_gui::GamePatch::runner_config_json);
   revert(env_row_, &mira_gui::GamePatch::env_json);
   connect(data_dir_edit_, &QLineEdit::textChanged, this,
           [this](const QString& path) { open_data_dir_->setEnabled(!path.isEmpty() && QDir(path).exists()); });
@@ -269,6 +261,7 @@ void GameEditForm::SetBottomRoom(int height) {
 
 void GameEditForm::OpenAdvanced() {
   pages_->setCurrentIndex(1);
+  overrides_->ShowFromTop();  // the runner's card may have come or gone since last time
   emit AdvancedChanged(true);
 }
 
@@ -333,11 +326,13 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.data_dir = game.data_dir;
   patch.runner_config_json = game.runner_config_json;
   patch.env_json = game.env_json;
+  default_runner_ = game.default_runner;
   ShowPatch(patch);
   populating_ = false;
 
   original_patch_ = CurrentPatch();
   move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
+  ShowRunnerOptions();
   UpdateModified();
 }
 
@@ -353,8 +348,84 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
   show(exe_combo_->lineEdit(), patch.exe_path);
   ShowRunnerRef(runner_combo_, QString::fromStdString(patch.runner_ref.value_or(std::string())));
   tags_edit_->SetTags(patch.tags.value_or(std::vector<std::string>()));
-  runner_config_edit_->setPlainText(QString::fromStdString(patch.runner_config_json.value_or(std::string())));
-  env_edit_->setPlainText(QString::fromStdString(patch.env_json.value_or(std::string())));
+  runner_config_ = nlohmann::json::parse(patch.runner_config_json.value_or("{}"), nullptr, false);
+  if (!runner_config_.is_object()) runner_config_ = nlohmann::json::object();
+  ShowRunnerFieldValues();
+  std::map<std::string, std::string> env;
+  const nlohmann::json env_json = nlohmann::json::parse(patch.env_json.value_or("{}"), nullptr, false);
+  if (env_json.is_object()) {
+    for (const auto& [key, value] : env_json.items()) env[key] = value.is_string() ? value.get<std::string>() : value.dump();
+  }
+  env_edit_->SetValues(env);
+}
+
+std::string GameEditForm::RunnerKind() const {
+  std::string ref = RunnerRef(runner_combo_).toStdString();
+  if (ref.empty()) ref = default_runner_;
+  return ref.substr(0, ref.find(':'));
+}
+
+void GameEditForm::ShowRunnerOptions() {
+  const std::string kind = RunnerKind();
+  if (kind == options_kind_) return;
+  options_kind_ = kind;
+  if (const auto known = runner_schemas_.find(kind); known != runner_schemas_.end() || kind.empty()) {
+    BuildRunnerFields(kind.empty() ? std::vector<RunnerOption>() : known->second);
+    return;
+  }
+  MiradClient::GetRunnerSchemaAsync(this, kind, [this, kind](RunnerSchemaResult result) {
+    // An unknown kind (a typed-in reference) simply has no options to show.
+    runner_schemas_[kind] = result.ok ? result.options : std::vector<RunnerOption>();
+    if (kind == options_kind_) BuildRunnerFields(runner_schemas_[kind]);
+  });
+}
+
+void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
+  runner_options_card_->ClearRows();
+  runner_fields_.clear();
+  QString title = QString::fromStdString(options_kind_);
+  if (!title.isEmpty()) title[0] = title[0].toUpper();
+  runner_options_card_->SetTitle(title);
+  for (const RunnerOption& option : options) {
+    auto* row = new SettingRow(QString::fromStdString(option.label), QString::fromStdString(option.doc),
+                               runner_options_card_);
+    QLineEdit* edit = LineEdit(runner_options_card_, "Not set");
+    row->SetBelow(edit);
+    runner_options_card_->AddRow(row);
+    const std::string key = option.key;
+    connect(edit, &QLineEdit::textEdited, this, [this, key](const QString& text) {
+      if (text.isEmpty()) {
+        runner_config_.erase(key);
+      } else {
+        runner_config_[key] = text.toStdString();
+      }
+      UpdateModified();
+    });
+    connect(row, &SettingRow::RevertClicked, this, [this, key] {
+      const nlohmann::json saved = nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
+      if (saved.is_object() && saved.contains(key)) {
+        runner_config_[key] = saved[key];
+      } else {
+        runner_config_.erase(key);
+      }
+      ShowRunnerFieldValues();
+      UpdateModified();
+    });
+    runner_fields_.push_back({key, row, edit});
+  }
+  runner_options_card_->setVisible(!options.empty());
+  ShowRunnerFieldValues();
+  UpdateModified();
+}
+
+void GameEditForm::ShowRunnerFieldValues() {
+  for (const RunnerField& field : runner_fields_) {
+    const auto it = runner_config_.find(field.key);
+    field.edit->setText(it == runner_config_.end() ? QString()
+                        : it->is_string()          ? QString::fromStdString(it->get<std::string>())
+                                                   : QString::fromStdString(it->dump()));
+    field.edit->setCursorPosition(0);
+  }
 }
 
 void GameEditForm::ShowInstallPath() {
@@ -484,8 +555,8 @@ mira_gui::GamePatch GameEditForm::CurrentPatch() const {
   patch.tags = tags_edit_->Tags();
   patch.runner_ref = RunnerRef(runner_combo_).toStdString();
   patch.data_dir = data_dir_edit_->text().toStdString();
-  patch.runner_config_json = runner_config_edit_->toPlainText().toStdString();
-  patch.env_json = env_edit_->toPlainText().toStdString();
+  patch.runner_config_json = runner_config_.dump(2);
+  patch.env_json = nlohmann::json(env_edit_->Values()).dump(2);
   return patch;
 }
 
@@ -500,7 +571,12 @@ void GameEditForm::UpdateModified() {
   runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
   data_dir_row_->SetModified(now.data_dir != original_patch_.data_dir);
   move_prefix_->setEnabled(now.data_dir == original_patch_.data_dir);  // moves the saved prefix
-  runner_config_row_->SetModified(now.runner_config_json != original_patch_.runner_config_json);
+  const nlohmann::json saved_config =
+      nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
+  for (const RunnerField& field : runner_fields_) {
+    const nlohmann::json was = saved_config.is_object() ? saved_config.value(field.key, nlohmann::json()) : nlohmann::json();
+    field.row->SetModified(runner_config_.value(field.key, nlohmann::json()) != was);
+  }
   env_row_->SetModified(now.env_json != original_patch_.env_json);
   emit Changed();
 }
@@ -510,10 +586,13 @@ int GameEditForm::ChangeCount() const {
   const int fields = (now.name != original_patch_.name) + (now.exe_path != original_patch_.exe_path) +
                      (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
                      (now.tags != original_patch_.tags) + (now.runner_ref != original_patch_.runner_ref) +
-                     (now.data_dir != original_patch_.data_dir) +
-                     (now.runner_config_json != original_patch_.runner_config_json) +
-                     (now.env_json != original_patch_.env_json);
-  return fields + static_cast<int>(overrides_->PendingEdits().size());
+                     (now.data_dir != original_patch_.data_dir) + (now.env_json != original_patch_.env_json);
+  // One per runner option, since each is its own row.
+  const int runner_options = static_cast<int>(
+      mapping::MergePatchBetween(nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false),
+                                 runner_config_)
+          .size());
+  return fields + runner_options + static_cast<int>(overrides_->PendingEdits().size());
 }
 
 bool GameEditForm::IsDirty() const { return ChangeCount() > 0; }
@@ -545,6 +624,14 @@ void GameEditForm::Save() {
   changed(current.data_dir, original_patch_.data_dir, patch.data_dir);
   changed(current.runner_config_json, original_patch_.runner_config_json, patch.runner_config_json);
   changed(current.env_json, original_patch_.env_json, patch.env_json);
+  // mirad merges both objects, so only changed keys go, and a removed one as null.
+  for (auto [now, before] : {std::pair{&patch.runner_config_json, &original_patch_.runner_config_json},
+                             std::pair{&patch.env_json, &original_patch_.env_json}}) {
+    if (!*now) continue;
+    *now = mapping::MergePatchBetween(nlohmann::json::parse(before->value_or("{}"), nullptr, false),
+                                      nlohmann::json::parse(**now, nullptr, false))
+               .dump();
+  }
   const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir || patch.runner_ref ||
                               patch.data_dir || patch.runner_config_json || patch.env_json;
 
