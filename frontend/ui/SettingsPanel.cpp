@@ -14,6 +14,7 @@
 #include <optional>
 #include <utility>
 
+#include "../client/EventHub.h"
 #include "AppearancePreviews.h"
 #include "ErrorHelp.h"
 #include "KeyBindings.h"
@@ -564,7 +565,11 @@ void SettingsPanel::Load() {
     }
     BuildSchemaPages();
 
-    MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
+    const auto list_runners = [this] {
+      MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
+    };
+    list_runners();
+    connect(EventHub::Instance(), &EventHub::RunnersChanged, this, list_runners);
 
     MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {

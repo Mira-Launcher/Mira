@@ -1927,11 +1927,14 @@ void MiradClient::RelocateGamesAsync(QObject* context, const std::vector<std::st
 }
 
 void MiradClient::RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
-                                    std::function<void(GameDetailResult)> callback) {
+                                    const std::string& data_dir, std::function<void(GameDetailResult)> callback) {
+  json body = json::object();
+  if (!install_path.empty()) body["install_path"] = install_path;
+  if (!data_dir.empty()) body["data_dir"] = data_dir;
   RunJob<GameDetailResult>(
       context, "relocate",
-      [id, install_path](const std::string& query) {
-        return transport::PostJson("/v1/games/" + id + "/relocate" + query, {{"install_path", install_path}});
+      [id, body](const std::string& query) {
+        return transport::PostJson("/v1/games/" + id + "/relocate" + query, body);
       },
       [id](GameDetailResult& result, const json& body) {
         if (!body.is_object()) throw std::runtime_error(transport::UnexpectedResponse("POST /v1/games/" + id + "/relocate"));
@@ -2056,6 +2059,8 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
     }
   } else if (out->kind == "download") {
     out->ref = entry.value("bundle_key", std::string());
+    out->path = entry.value("path", std::string());
+    out->downloaded = entry.value("downloaded", true);
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
   }

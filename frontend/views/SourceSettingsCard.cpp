@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "../client/EventHub.h"
 #include "../client/MiradClient.h"
 #include "../ui/ErrorHelp.h"
 #include "../ui/Theme.h"
@@ -34,6 +35,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   Header()->addWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
+  connect(EventHub::Instance(), &EventHub::RunnersChanged, this, &SourceSettingsCard::RunnersChanged);
 
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
@@ -235,6 +237,34 @@ void SourceSettingsCard::SelectRunner(const QString& runner_ref) {
   runner_->setCurrentIndex(index);
 }
 
+void SourceSettingsCard::FillRunners(const RunnersResult& runners, const QString& pick) {
+  runner_->clear();
+  runner_->addItem("Default (from Runners settings)", QString());
+  runner_->addItem("Auto (best available)", QString("auto"));
+  if (runners.ok) {
+    for (const RunnerInfo& info : runners.runners) {
+      if (info.kind != "wine" && info.kind != "proton") continue;
+      const QString label = QString::fromStdString(info.label.empty() ? info.name : info.label);
+      runner_->addItem(QString("%1 (%2)").arg(label, QString::fromStdString(info.kind)),
+                       QString::fromStdString(info.reference));
+    }
+  }
+  SelectRunner(pick);
+}
+
+void SourceSettingsCard::RunnersChanged() {
+  MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+    // Keeps an unsaved pick; a removed one shows as not installed.
+    if (runner_ != nullptr && runner_->isEnabled()) {
+      FillRunners(runners, runner_->currentData().toString());
+      UpdateButtons();
+    }
+    for (SettingEditor& editor : settings_) {
+      if (editor.combo != nullptr && editor.entry.is_runner_ref) FillRunnerCombo(editor.combo, runners);
+    }
+  });
+}
+
 void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
   runner_can_apply_ = false;
   UpdateButtons();
@@ -247,18 +277,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
   }
   runner_ref_ = QString::fromStdString(runner.runner_ref);
   MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
-    runner_->clear();
-    runner_->addItem("Default (from Runners settings)", QString());
-    runner_->addItem("Auto (best available)", QString("auto"));
-    if (runners.ok) {
-      for (const RunnerInfo& info : runners.runners) {
-        if (info.kind != "wine" && info.kind != "proton") continue;
-        const QString label = QString::fromStdString(info.label.empty() ? info.name : info.label);
-        runner_->addItem(QString("%1 (%2)").arg(label, QString::fromStdString(info.kind)),
-                         QString::fromStdString(info.reference));
-      }
-    }
-    SelectRunner(runner_ref_);
+    FillRunners(runners, runner_ref_);
     runner_->setEnabled(true);
     UpdateButtons();
   });

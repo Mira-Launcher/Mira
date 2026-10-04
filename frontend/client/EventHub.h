@@ -25,6 +25,8 @@ signals:
   void Received(const std::string& type, const std::string& data, bool live);
   // A (re)connect or a drop. A reconnect's events resume where the drop left off.
   void ConnectionChanged(bool connected);
+  // A runner build was installed or removed, live: runner pickers list them again.
+  void RunnersChanged();
 
 private:
   explicit EventHub(QObject* parent);

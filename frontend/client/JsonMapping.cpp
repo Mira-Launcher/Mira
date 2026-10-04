@@ -106,15 +106,7 @@ std::string ToDisplayString(const json& value) {
   if (value.is_number_integer()) return std::to_string(value.get<std::int64_t>());
   if (value.is_number()) return value.dump();
   if (value.is_string()) return value.get<std::string>();
-  if (value.is_array()) {
-    std::string joined;
-    for (const json& item : value) {
-      if (!joined.empty()) joined += ", ";
-      joined += item.is_string() ? item.get<std::string>() : item.dump();
-    }
-    return joined;
-  }
-  return value.dump();
+  return value.dump();  // an array stays JSON, so an item may hold a comma
 }
 
 void FlattenConfig(const json& node, const std::string& prefix,
@@ -134,20 +126,21 @@ void FlattenConfig(const json& node, const std::string& prefix,
   }
 }
 
-std::vector<std::string> SplitCommaSeparated(const std::string& text) {
+std::vector<std::string> ParseListText(const std::string& text) {
   std::vector<std::string> items;
-  size_t start = 0;
-  while (start <= text.size()) {
-    size_t end = text.find(',', start);
-    if (end == std::string::npos) end = text.size();
-    std::string item = text.substr(start, end - start);
-    const size_t first = item.find_first_not_of(" \t\r\n");
-    const size_t last = item.find_last_not_of(" \t\r\n");
-    if (first != std::string::npos) items.push_back(item.substr(first, last - first + 1));
-    start = end + 1;
+  const json parsed = json::parse(text, nullptr, false);
+  if (!parsed.is_array()) {
+    if (!text.empty()) items.push_back(text);
+    return items;
+  }
+  for (const json& item : parsed) {
+    std::string value = item.is_string() ? item.get<std::string>() : item.dump();
+    if (!value.empty()) items.push_back(std::move(value));
   }
   return items;
 }
+
+std::string ListText(const std::vector<std::string>& items) { return json(items).dump(); }
 
 json TypedValueFromText(const std::string& type, const std::string& value) {
   if (type == "a boolean") return value == "true";
@@ -165,7 +158,7 @@ json TypedValueFromText(const std::string& type, const std::string& value) {
       return value;
     }
   }
-  if (type == "an array of strings") return SplitCommaSeparated(value);
+  if (type == "an array of strings") return ParseListText(value);
   return value;
 }
 

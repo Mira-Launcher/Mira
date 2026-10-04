@@ -1,5 +1,6 @@
 #include "GameEditForm.h"
 
+#include "../client/EventHub.h"
 #include "../dialogs/OverridesEditor.h"
 #include "ErrorHelp.h"
 #include "Notify.h"
@@ -154,7 +155,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   install_path_edit_->setReadOnly(true);
   move_button_ = new QPushButton("Move…", files);
   move_button_->setToolTip("Move this game's files to another folder");
-  connect(move_button_, &QPushButton::clicked, this, &GameEditForm::MoveInstall);
+  connect(move_button_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/false); });
   auto* install_row = new SettingRow("Install folder", QString(), files);
   install_row->SetBelow(FieldLine(files, install_path_edit_, {move_button_}));
   files->AddRow(install_row);
@@ -166,9 +167,14 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   connect(open_data_dir_, &QPushButton::clicked, this, [this] {
     QDesktopServices::openUrl(QUrl::fromLocalFile(data_dir_edit_->text()));
   });
+  // Editing the path repoints the record to another prefix; Move… moves this one.
+  move_prefix_ = new QPushButton("Move…", files);
+  move_prefix_->setToolTip("Move this game's prefix to another folder");
+  move_prefix_->setVisible(false);
+  connect(move_prefix_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/true); });
   data_dir_row_ = new SettingRow("Prefix and data folder",
                                  "The folder holding this game's Wine or Proton prefix and its data.", files);
-  data_dir_row_->SetBelow(FieldLine(files, data_dir_edit_, {open_data_dir_}));
+  data_dir_row_->SetBelow(FieldLine(files, data_dir_edit_, {open_data_dir_, move_prefix_}));
   files->AddRow(data_dir_row_);
 
   // Two columns stacked separately, not a grid, so a short card leaves no gap under it.
@@ -239,6 +245,9 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   setEnabled(false);
   Load();
+  connect(EventHub::Instance(), &EventHub::RunnersChanged, this, [this] {
+    MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombo(result); });
+  });
 }
 
 void GameEditForm::SetTagSuggestions(const QStringList& tags) { tags_edit_->SetSuggestions(tags); }
@@ -315,6 +324,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   populating_ = false;
 
   original_patch_ = CurrentPatch();
+  move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
   UpdateModified();
 }
 
@@ -394,33 +404,47 @@ void GameEditForm::BrowseExecutable() {
   exe_combo_->lineEdit()->setCursorPosition(0);
 }
 
-void GameEditForm::MoveInstall() {
+void GameEditForm::MoveFolder(bool prefix) {
+  const std::string current = prefix ? original_patch_.data_dir.value_or(std::string()) : install_path_;
   const QString parent_dir =
-      install_path_.empty() ? QString() : QString::fromStdString(std::filesystem::path(install_path_).parent_path().string());
-  const QString picked = QFileDialog::getExistingDirectory(this, "Move the game's folder into", parent_dir);
+      current.empty() ? QString() : QString::fromStdString(std::filesystem::path(current).parent_path().string());
+  const QString picked = QFileDialog::getExistingDirectory(
+      this, prefix ? "Move the prefix folder into" : "Move the game's folder into", parent_dir);
   if (picked.isEmpty()) return;
   const std::string target =
-      (std::filesystem::path(picked.toStdString()) / std::filesystem::path(install_path_).filename()).string();
-  if (target == install_path_) return;
-  if (!notify::Confirm(this, "Move game",
-                       QString("Move this game's files to %1? A move to another drive copies them first, which "
-                               "can take a while.")
-                           .arg(QString::fromStdString(target)),
+      (std::filesystem::path(picked.toStdString()) / std::filesystem::path(current).filename()).string();
+  if (target == current) return;
+  const QString what = prefix ? "this game's prefix" : "this game's files";
+  if (!notify::Confirm(this, prefix ? "Move prefix" : "Move game",
+                       QString("Move %1 to %2? A move to another drive copies them first, which can take a while.")
+                           .arg(what, QString::fromStdString(target)),
                        "Move")) {
     return;
   }
-  move_button_->setEnabled(false);
-  move_button_->setText("Moving…");
-  MiradClient::RelocateGameAsync(this, id_, target, [this](GameDetailResult result) {
-    move_button_->setEnabled(true);
-    move_button_->setText("Move…");
-    if (!result.ok) {
-      notify::FailedRequest(this, "Could not move the game.", result.error);
-      return;
-    }
-    install_path_ = result.game.install_path;
-    ShowInstallPath();
-  });
+  QPushButton* button = prefix ? move_prefix_ : move_button_;
+  button->setEnabled(false);
+  button->setText("Moving…");
+  MiradClient::RelocateGameAsync(this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
+                                 [this, button, prefix](GameDetailResult result) {
+                                   button->setText("Move…");
+                                   if (!result.ok) {
+                                     button->setEnabled(true);
+                                     notify::FailedRequest(
+                                         this, prefix ? "Could not move the prefix." : "Could not move the game.",
+                                         result.error);
+                                     return;
+                                   }
+                                   install_path_ = result.game.install_path;
+                                   ShowInstallPath();
+                                   // Moved on disk and saved, so not an unsaved change.
+                                   original_patch_.data_dir = result.game.data_dir;
+                                   populating_ = true;
+                                   data_dir_edit_->setText(QString::fromStdString(result.game.data_dir));
+                                   data_dir_edit_->setCursorPosition(0);
+                                   populating_ = false;
+                                   button->setEnabled(true);
+                                   UpdateModified();
+                                 });
 }
 
 mira_gui::GamePatch GameEditForm::CurrentPatch() const {
@@ -447,6 +471,7 @@ void GameEditForm::UpdateModified() {
   tags_row_->SetModified(now.tags != original_patch_.tags);
   runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
   data_dir_row_->SetModified(now.data_dir != original_patch_.data_dir);
+  move_prefix_->setEnabled(now.data_dir == original_patch_.data_dir);  // moves the saved prefix
   runner_config_row_->SetModified(now.runner_config_json != original_patch_.runner_config_json);
   env_row_->SetModified(now.env_json != original_patch_.env_json);
   emit Changed();

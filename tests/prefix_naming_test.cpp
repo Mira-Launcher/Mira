@@ -94,6 +94,32 @@ TEST_CASE("Relocate leaves a prefix already at its named directory in place") {
   CHECK(fs::is_directory(root / "celeste" / "drive_c"));
 }
 
+TEST_CASE("Relocate with only an install target moves the files and leaves the prefix where it is") {
+  config::Config config(TempConfigFile("relocate-only-given.toml"));
+  config.Load();
+  const fs::path library = TempDir("relocate-only-given-lib");
+  const fs::path elsewhere = TempDir("relocate-only-given-elsewhere");
+  REQUIRE(config.Set("library_roots", nlohmann::json::array({library.string()})).has_value());
+  REQUIRE(config.Set("prefix_root", TempDir("relocate-only-given-prefixes").string()).has_value());
+  fs::create_directories(library / "old" / "Celeste");
+  fs::create_directories(elsewhere / "pfx" / "drive_c");
+
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.install_path = (library / "old" / "Celeste").string();
+  game.data_dir = (elsewhere / "pfx").string();  // outside prefix_root
+  library::RelocateRequest request;
+  request.install_path = library / "new" / "Celeste";
+  request.only_given = true;
+  const auto relocated = library::Relocate(config, game, request);
+  REQUIRE(relocated.has_value());
+  CHECK(relocated->install_path == (library / "new" / "Celeste").string());
+  CHECK(fs::is_directory(library / "new" / "Celeste"));
+  CHECK(relocated->data_dir == game.data_dir);
+  CHECK(fs::is_directory(elsewhere / "pfx" / "drive_c"));
+}
+
 TEST_CASE("NeedsProvisioning retries a broken store game") {
   model::Game game;
   game.runner_ref = "proton:GE-Proton9-20";

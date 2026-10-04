@@ -127,7 +127,11 @@ std::string SettingEditor::Text() const {
   if (toggle) return toggle->isChecked() ? "true" : "false";
   if (spin) return spin->cleanText().toStdString();
   if (combo) return (combo->isEditable() ? RunnerRef(combo) : combo->currentText()).toStdString();
-  if (list) return list->Items().join(", ").toStdString();  // mapping::ToDisplayString's form
+  if (list) {
+    std::vector<std::string> items;
+    for (const QString& item : list->Items()) items.push_back(item.toStdString());
+    return mapping::ListText(items);
+  }
   return line->text().toStdString();
 }
 
@@ -147,7 +151,7 @@ void SettingEditor::SetText(const std::string& text) {
   }
   if (list) {
     QStringList items;
-    for (const std::string& item : mapping::SplitCommaSeparated(text)) items << QString::fromStdString(item);
+    for (const std::string& item : mapping::ParseListText(text)) items << QString::fromStdString(item);
     list->SetItems(items);
     return;
   }

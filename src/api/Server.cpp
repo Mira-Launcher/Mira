@@ -1999,6 +1999,7 @@ void Server::RegisterRoutes() {
       if (body.is_discarded() || !body.is_object()) {
         return SendError(res, 400, "invalid_body", R"(expected {"install_path"?: "...", "data_dir"?: "..."})");
       }
+      request.only_given = true;
       if (body.contains("install_path") && body["install_path"].is_string()) {
         request.install_path = std::filesystem::path(body["install_path"].get<std::string>());
       }

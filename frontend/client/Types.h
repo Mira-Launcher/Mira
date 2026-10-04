@@ -410,7 +410,7 @@ struct ConfigResult {
   // Every leaf of GET /v1/config's document, flattened to dotted keys
   // matching Schema entries' own `key` (e.g. "scan.debounce_ms"), each
   // stringified for display/editing: a bool as "true"/"false", a number in
-  // its natural text form, an array of strings comma-joined. The opaque
+  // its natural text form, an array as JSON (mapping::ParseListText). The opaque
   // `frontend` table (docs/architecture.md) is excluded because it isn't part of
   // the schema this screen renders.
   std::map<std::string, std::string> values;
@@ -978,6 +978,8 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+  std::string path;         // download "finished": the folder it landed in
+  bool downloaded = true;   // download "finished": false when the bundle had nothing to download
 };
 
 }  // namespace mira_gui

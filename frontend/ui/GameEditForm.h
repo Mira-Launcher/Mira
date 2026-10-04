@@ -72,8 +72,8 @@ private:
   void PopulateRunnerCombo(const mira_gui::RunnersResult& result);
   void OnExeComboActivated(int index);
   void BrowseExecutable();
-  // POST /v1/games/{id}/relocate into a folder the user picks.
-  void MoveInstall();
+  // POST /v1/games/{id}/relocate of the install folder or the prefix into a folder the user picks.
+  void MoveFolder(bool prefix);
   void ShowInstallPath();
   void ResetScroll();
   void UpdateModified();
@@ -89,6 +89,7 @@ private:
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* move_button_ = nullptr;
   QPushButton* open_data_dir_ = nullptr;
+  QPushButton* move_prefix_ = nullptr;
 
   QLineEdit* name_edit_ = nullptr;
   QComboBox* exe_combo_ = nullptr;

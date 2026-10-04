@@ -12,6 +12,7 @@ namespace mira::library {
 struct RelocateRequest {
   std::optional<std::filesystem::path> install_path;  // explicit target, else canonical
   std::optional<std::filesystem::path> data_dir;       // explicit target, else canonical
+  bool only_given = false;  // leave a half without a target where it is, instead of canonical
 };
 
 // Moves game.install_path/data_dir to new locations -- explicit targets if

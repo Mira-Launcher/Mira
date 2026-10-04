@@ -16,6 +16,7 @@
 #include <QVBoxLayout>
 
 #include "../client/MiradClient.h"
+#include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/ItchCollectionsDialog.h"
 #include "../ui/ArtworkStore.h"
 #include "../ui/CoverArt.h"
@@ -587,6 +588,12 @@ QWidget* SourcePage::BuildOwnedSection() {
       StartInstall(ref, /*update=*/false);
       return;
     }
+    if (humble_paths_.contains(ref)) {
+      AddManualGameDialog dialog(this);
+      dialog.Prefill(humble_paths_.value(ref), index.data(GameTileDelegate::NameRole).toString());
+      dialog.exec();
+      return;
+    }
     owned_state_.insert(ref, "Downloading…");
     RebuildOwnedTiles();
     MiradClient::DownloadHumbleBundleAsync(this, ref.toStdString(), [this, ref](StoreActionResult r) {
@@ -952,7 +959,8 @@ void SourcePage::RebuildOwnedTiles() {
       item->setToolTip(title + "\nA paid game from a collection. Buy it on itch.io to install it here.");
       continue;
     }
-    item->setData(state.isEmpty() ? idle : state, GameTileDelegate::ActionRole);
+    const QString action = humble_paths_.contains(ref) ? QString("Add to library…") : idle;
+    item->setData(state.isEmpty() ? action : state, GameTileDelegate::ActionRole);
     item->setData(state.isEmpty(), GameTileDelegate::ActionEnabledRole);
   }
   owned_heading_->setText(Heading(id_ == "humble" ? "Your purchases" : "Not installed",
@@ -1003,9 +1011,13 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     hover_card_->ShowGame(*game, game->running);
   } else {
     // A tile's pill says what's under way; an idle one just says Install.
-    const QString status = index.data(GameTileDelegate::ActionEnabledRole).toBool()
-                               ? (id_ == "humble" ? "Not downloaded" : "Not installed")
-                               : index.data(GameTileDelegate::ActionRole).toString();
+    const QString ref = index.data(GameTileDelegate::IdRole).toString();
+    QString status = index.data(GameTileDelegate::ActionRole).toString();
+    if (humble_paths_.contains(ref)) {
+      status = "Downloaded to " + humble_paths_.value(ref);
+    } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
+      status = id_ == "humble" ? "Not downloaded" : "Not installed";
+    }
     hover_card_->ShowTitle(index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
   }
   const QRect tile = grid->visualRect(index);
@@ -1049,8 +1061,11 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   for (const QModelIndex& it : SelectForMenu(owned_grid_, index)) {
     if (it.data(GameTileDelegate::ActionEnabledRole).toBool()) refs << it.data(GameTileDelegate::IdRole).toString();
   }
+  // One downloaded bundle adds to the library; several only download the rest.
+  const bool add = refs.size() == 1 && humble_paths_.contains(refs.front());
+  if (!add) refs.removeIf([this](const QString& ref) { return humble_paths_.contains(ref); });
   QMenu menu(this);
-  const QString verb = id_ == "humble" ? "Download" : "Install";
+  const QString verb = add ? "Add to library…" : id_ == "humble" ? "Download" : "Install";
   QAction* start = menu.addAction(refs.size() > 1 ? QString("%1 (%2)").arg(verb).arg(refs.size()) : verb);
   start->setEnabled(!refs.isEmpty());
   if (menu.exec(owned_grid_->viewport()->mapToGlobal(pos)) != start || !owned_grid_->on_action) return;
@@ -1107,8 +1122,11 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     owned_state_.remove(ref);
     ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
   } else if (event.state == "finished") {
-    if (event.kind == "download") {
-      owned_state_.insert(ref, "Downloaded");
+    if (event.kind == "download" && !event.downloaded) {
+      owned_state_.insert(ref, "Nothing to download");  // e.g. only a Steam key
+    } else if (event.kind == "download") {
+      owned_state_.remove(ref);
+      humble_paths_.insert(ref, QString::fromStdString(event.path));
     } else if (id_ == "steam") {
       owned_state_.insert(ref, "Sent to Steam");
     } else {

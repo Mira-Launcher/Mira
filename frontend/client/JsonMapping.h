@@ -34,8 +34,7 @@ GameSummary ToGameSummary(const nlohmann::json& entry);
 std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);
 
-// A settings value as editable text, a bool, a natural number, an array of
-// strings joined with ", ". Anything else falls back to its JSON dump.
+// A settings value as text: a string as is, anything else (an array included) as JSON.
 std::string ToDisplayString(const nlohmann::json& value);
 
 // Flattens GET /v1/config's nested document to the dotted keys Schema
@@ -43,9 +42,9 @@ std::string ToDisplayString(const nlohmann::json& value);
 void FlattenConfig(const nlohmann::json& node, const std::string& prefix,
                    std::map<std::string, std::string>& out);
 
-// The inverse of ToDisplayString's ", " join, so round-tripping an unedited
-// field is a no-op.
-std::vector<std::string> SplitCommaSeparated(const std::string& text);
+// A list setting's text (ToDisplayString of an array) as its items, and back.
+std::vector<std::string> ParseListText(const std::string& text);
+std::string ListText(const std::vector<std::string>& items);
 
 // Converts edited display text back to the JSON kind its schema `type`
 // calls for. Falls back to sending raw text for a malformed number.
