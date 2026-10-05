@@ -4,7 +4,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 
-#include "ui/DaemonSupervisor.h"
+#include "app/DaemonSupervisor.h"
 
 using namespace mira_gui;
 

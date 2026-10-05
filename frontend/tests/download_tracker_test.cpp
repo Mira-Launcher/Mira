@@ -1,6 +1,6 @@
 #include <doctest.h>
 
-#include "ui/DownloadTracker.h"
+#include "activity/DownloadTracker.h"
 
 using namespace mira_gui;
 using State = DownloadTracker::State;

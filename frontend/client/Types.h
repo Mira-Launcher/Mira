@@ -5,6 +5,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -13,7 +14,7 @@
 // The plain data mirad's REST API speaks, as C++ structs.
 //
 // Deliberately free of Qt and of httplib: these are what the endpoints in
-// MiradClient.h return and what every widget in the frontend reads, so they
+// client/api/ return and what every widget in the frontend reads, so they
 // are the one part of the client layer the UI is allowed to depend on
 // directly. See docs/api.md for the JSON each one mirrors.
 namespace mira_gui {
@@ -59,10 +60,24 @@ struct GameSummary {
   bool operator==(const GameSummary&) const = default;
 };
 
-// A program rather than a game ("app" tag): kept out of Continue, with no playtime shown.
-inline bool IsApp(const GameSummary& game) {
-  return std::ranges::find(game.tags, "app") != game.tags.end();
+// The tags the frontend gives a meaning to.
+namespace tags {
+// Pinned to the sidebar. "favorite" because Lutris imports its favorites under it.
+inline constexpr const char* kPinned = "favorite";
+inline constexpr const char* kHidden = "hidden";
+// A program rather than a game: kept out of Continue, with no playtime shown.
+inline constexpr const char* kApp = "app";
+}  // namespace tags
+
+inline bool HasTag(const GameSummary& game, std::string_view tag) {
+  return std::ranges::find(game.tags, tag) != game.tags.end();
 }
+inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
+inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+inline bool IsPinned(const GameSummary& game) { return HasTag(game, tags::kPinned); }
+
+// Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a 409.
+inline bool CanPlayOrStop(const GameSummary& game) { return game.running || game.status == "ready"; }
 
 struct GamesResult {
   bool ok = false;
@@ -279,7 +294,7 @@ struct ArtworkSelectResult {
 };
 
 // A `notification` event: mirad's own decision that this is worth telling
-// the user about; the UI just renders it (see MiradClient::ParseNotification
+// the user about; the UI just renders it (see events::ParseNotification
 // and mira_gui::notify::Warn/Notice).
 struct NotificationEvent {
   std::string level;  // "info" | "success" | "warning" | "error"

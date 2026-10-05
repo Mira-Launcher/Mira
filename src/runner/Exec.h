@@ -65,7 +65,7 @@ std::optional<std::string> FindOnPath(std::string_view name);
 // Mira binary sits in one directory -- an AppImage, a dev build), else falls
 // back to $PATH. A pure function so it's testable without touching
 // /proc/self/exe -- the caller resolves its own directory and passes it in,
-// same split as frontend/ui/DaemonSupervisor.cpp's ResolveMiradPath.
+// same split as frontend/app/DaemonSupervisor.cpp's ResolveMiradPath.
 std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir, std::string_view name);
 
 }  // namespace mira::runner

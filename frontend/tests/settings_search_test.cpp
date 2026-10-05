@@ -1,6 +1,6 @@
 #include <doctest.h>
 
-#include "ui/SettingsSearch.h"
+#include "settings/SettingsSearch.h"
 
 using namespace mira_gui::settings_search;
 

@@ -9,11 +9,12 @@
 
 #include <utility>
 
-#include "../client/MiradClient.h"
+#include "../client/Events.h"
+#include "../client/api/Games.h"
 #include "../client/EventHub.h"
-#include "../ui/ErrorHelp.h"
-#include "../ui/Notify.h"
-#include "../ui/Theme.h"
+#include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 
@@ -83,7 +84,7 @@ void WinetricksDialog::Run() {
   run_->setEnabled(false);
   SetStatus(QString("Starting %1…").arg(QString::fromStdString(verb)));
 
-  MiradClient::RunWinetricksAsync(this, game_id_, verb, [this, verb](TricksResult result) {
+  api::RunWinetricksAsync(this, game_id_, verb, [this, verb](TricksResult result) {
     if (!result.ok) {
       verb_->setEnabled(true);
       run_->setEnabled(true);
@@ -98,7 +99,7 @@ void WinetricksDialog::Run() {
 
 void WinetricksDialog::HandleEvent(const std::string& type, const std::string& data) {
   TricksEvent event;
-  if (!MiradClient::ParseTricksEvent(type, data, &event)) return;
+  if (!events::ParseTricksEvent(type, data, &event)) return;
   if (event.id != game_id_) return;
 
   const QString verb = QString::fromStdString(event.verb);

@@ -11,7 +11,7 @@
 #include <thread>
 #include <utility>
 
-// How every MiradClient call gets off the UI thread and back onto it.
+// How every api:: call gets off the UI thread and back onto it.
 namespace mira_gui::async {
 
 // Which worker a request runs on.

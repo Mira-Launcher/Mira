@@ -33,6 +33,9 @@ GameSummary ToGameSummary(const nlohmann::json& entry);
 // A record's or art event's `art`; unset when it has none.
 std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);
+ArtCandidate ToArtCandidate(const nlohmann::json& item);
+// `reply[key]`'s [{"id", "error"}] entries, as batch endpoints and jobs report failures.
+std::vector<GameFailure> ToGameFailures(const nlohmann::json& reply, const char* key);
 
 // A settings value as text: a string as is, anything else (an array included) as JSON.
 std::string ToDisplayString(const nlohmann::json& value);
