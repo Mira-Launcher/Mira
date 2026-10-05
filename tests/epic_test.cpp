@@ -169,24 +169,9 @@ TEST_CASE("EpicImporter is idempotent") {
   CHECK(fixture.games.All().size() == 1);
 }
 
-TEST_CASE("EpicImporter never persists entitlements that aren't installed") {
-  // The whole library/tracked-games split: `list` has two titles, only one
-  // of which is installed. Exactly one row may end up in games.toml.
-  Fixture fixture("epic-no-catalog-rows");
-  fixture.UseFakeLegendary(
-      kNoise, kLoggedIn,
-      R"([{"app_name": "abc", "title": "A Game", "install_path": "/tmp/mira-tests/agame", "executable": "A.exe"}])",
-      R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Not Installed"}])");
-
-  epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
-  REQUIRE(importer.Import());
-
-  CHECK(fixture.games.All().size() == 1);
-  CHECK(fixture.games.Find("epic-abc"));
-  CHECK_FALSE(fixture.games.Find("epic-xyz"));
-}
-
 TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones") {
+  // `list` has two titles, only one of them installed: both are listed, but
+  // only the installed one may end up in games.toml.
   Fixture fixture("epic-catalog");
   fixture.UseFakeLegendary(
       kNoise, kLoggedIn,
@@ -195,6 +180,8 @@ TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones"
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
   REQUIRE(importer.Import());
+  CHECK(fixture.games.All().size() == 1);
+  CHECK_FALSE(fixture.games.Find("epic-xyz"));
 
   const Result<std::vector<library::CatalogEntry>> entries =
       library::ListCatalog(fixture.config, fixture.games, "epic");

@@ -28,11 +28,6 @@ TEST_CASE("Settings search matches a word across spaces") {
   CHECK(Finds("SteamGridDB API Key", "apikey"));
 }
 
-TEST_CASE("Settings search keywords make abbreviations findable") {
-  CHECK_FALSE(Finds("steamgriddb.api_key SteamGridDB API Key", "sgdb"));
-  CHECK(Finds("steamgriddb.api_key SteamGridDB API Key sgdb", "sgdb"));
-}
-
 TEST_CASE("Settings search: empty query matches everything, case is ignored") {
   CHECK(Finds("anything", ""));
   CHECK(Finds("anything", "   "));

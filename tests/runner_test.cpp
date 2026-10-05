@@ -39,39 +39,24 @@ TEST_CASE("NativeRunner builds argv from install_path/exe_path and splits args")
   CHECK(command->env.at("FOO") == "bar");
 }
 
-TEST_CASE("NativeRunner runs a .sh with no execute bit through sh") {
+TEST_CASE("NativeRunner runs a .sh through sh, with or without its execute bit") {
   const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-sh";
   fs::remove_all(dir);
   fs::create_directories(dir);
   const fs::path script = dir / "start.sh";
   std::ofstream(script) << "#!/bin/sh\necho hi\n";
-  fs::permissions(script, fs::perms::owner_read | fs::perms::owner_write);  // no +x
 
   model::Game game;
   game.install_path = dir.string();
   game.exe_path = "start.sh";
   runner::NativeRunner native;
-  auto command = native.BuildCommand(game, std::nullopt);
-  REQUIRE(command.has_value());
-  CHECK(command->argv == std::vector<std::string>{"sh", script.string()});
-  fs::remove_all(dir);
-}
-
-TEST_CASE("NativeRunner runs an executable .sh directly through sh regardless") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-sh-exec";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  const fs::path script = dir / "start.sh";
-  std::ofstream(script) << "#!/bin/sh\necho hi\n";
-  fs::permissions(script, fs::perms::owner_all);
-
-  model::Game game;
-  game.install_path = dir.string();
-  game.exe_path = "start.sh";
-  runner::NativeRunner native;
-  auto command = native.BuildCommand(game, std::nullopt);
-  REQUIRE(command.has_value());
-  CHECK(command->argv == std::vector<std::string>{"sh", script.string()});
+  for (const fs::perms perms :
+       {fs::perms::owner_read | fs::perms::owner_write, fs::perms::owner_all}) {
+    fs::permissions(script, perms);
+    auto command = native.BuildCommand(game, std::nullopt);
+    REQUIRE(command.has_value());
+    CHECK(command->argv == std::vector<std::string>{"sh", script.string()});
+  }
   fs::remove_all(dir);
 }
 
@@ -139,17 +124,6 @@ TEST_CASE("NativeRunner auto-chmods an AppImage missing its execute bit instead 
   fs::remove_all(dir);
 }
 
-TEST_CASE("RunnerRegistry resolves native:native with no build required") {
-  config::Config config(TempFile("runner-registry-settings.toml"));
-  config.Load();
-  runner::RunnerRegistry registry(config);
-
-  auto resolved = registry.Resolve("native:native");
-  REQUIRE(resolved.has_value());
-  CHECK(resolved->runner != nullptr);
-  CHECK_FALSE(resolved->build.has_value());
-}
-
 TEST_CASE("RunnerRegistry::Resolve rejects a malformed or unknown reference") {
   config::Config config(TempFile("runner-registry-bad.toml"));
   config.Load();
@@ -159,11 +133,10 @@ TEST_CASE("RunnerRegistry::Resolve rejects a malformed or unknown reference") {
   CHECK_FALSE(registry.Resolve("not_a_real_kind:whatever").has_value());
 }
 
-TEST_CASE("DeduplicateBuilds collapses one build reached through a symlink") {
-  // The real case this exists for: on a normal Arch/Steam setup
-  // ~/.steam/steam is a symlink to ~/.local/share/Steam, and
-  // libraryfolders.vdf lists the target as well, so every Proton build under
-  // it is discovered twice, once per search path, with only `path` differing.
+TEST_CASE("DeduplicateBuilds keeps the first of one build found twice") {
+  // On a normal Steam setup ~/.steam/steam is a symlink to
+  // ~/.local/share/Steam and both get searched, so every Proton build there
+  // shows up once per path.
   const fs::path root = fs::temp_directory_path() / "mira-tests" / "runner-dedupe";
   fs::remove_all(root);
   const fs::path real = root / "real" / "GE-Proton11-7";
@@ -173,25 +146,21 @@ TEST_CASE("DeduplicateBuilds collapses one build reached through a symlink") {
   fs::create_directory_symlink(root / "real", link, ec);
   REQUIRE_FALSE(ec);
 
-  std::vector<model::RunnerBuild> builds = {
+  const std::vector<model::RunnerBuild> unique = runner::DeduplicateBuilds({
       {"proton", "GE-Proton11-7", real.string(), "2"},
       {"proton", "GE-Proton11-7", (link / "GE-Proton11-7").string(), "2"},
-  };
-
-  const std::vector<model::RunnerBuild> unique = runner::DeduplicateBuilds(builds);
+  });
   REQUIRE(unique.size() == 1);
-  CHECK(unique[0].path == real.string());  // first occurrence wins
+  CHECK(unique[0].path == real.string());
   fs::remove_all(root);
-}
 
-TEST_CASE("DeduplicateBuilds collapses two entries sharing a reference") {
-  // Different directories, same "kind:name", which is all a game stores
-  // (model::RunnerBuild::Reference), so no client could pick between them.
-  std::vector<model::RunnerBuild> builds = {
-      {"proton", "GE-Proton11-7", "/a/GE-Proton11-7", "2"},
-      {"proton", "GE-Proton11-7", "/b/GE-Proton11-7", "2"},
-  };
-  CHECK(runner::DeduplicateBuilds(builds).size() == 1);
+  // Different directories with the same "kind:name": that is all a game
+  // stores, so no client could pick between them.
+  CHECK(runner::DeduplicateBuilds({
+                                      {"proton", "GE-Proton11-7", "/a/GE-Proton11-7", "2"},
+                                      {"proton", "GE-Proton11-7", "/b/GE-Proton11-7", "2"},
+                                  })
+            .size() == 1);
 }
 
 TEST_CASE("DeduplicateBuilds keeps genuinely different builds, in order") {

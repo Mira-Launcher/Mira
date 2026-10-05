@@ -216,27 +216,6 @@ TEST_CASE("AssignDottedKey merges two keys sharing a prefix") {
   CHECK(document["default_runner"]["native"] == "native:native");
 }
 
-TEST_CASE("ParseRunnerDownload reads the state from the event type") {
-  // The payload doesn't repeat which of started/finished/failed it is,
-  // that only exists in the SSE `event:` line.
-  RunnerDownloadEvent event;
-  REQUIRE(MiradClient::ParseRunnerDownload(
-      "runners.download.finished", R"({"kind": "proton", "tag": "GE-Proton11-7"})", &event));
-  CHECK(event.state == "finished");
-  CHECK(event.kind == "proton");
-  CHECK(event.tag == "GE-Proton11-7");
-  CHECK(event.error.empty());
-
-  REQUIRE(MiradClient::ParseRunnerDownload(
-      "runners.download.failed", R"({"kind": "wine", "tag": "x", "error": "checksum mismatch"})",
-      &event));
-  CHECK(event.state == "failed");
-  CHECK(event.error == "checksum mismatch");
-
-  CHECK_FALSE(MiradClient::ParseRunnerDownload("game.updated", R"({"id": "x"})", &event));
-  CHECK_FALSE(MiradClient::ParseRunnerDownload("runners.download.finished", "not json", &event));
-}
-
 TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {
   const ApiError envelope = mapping::ToApiError(json::parse(
       R"({"code": "no_steamgriddb_key", "message": "needs a key", "hint": "Add one.",

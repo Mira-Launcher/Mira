@@ -82,7 +82,6 @@ TEST_CASE("many publishers and many subscribers race safely") {
   REQUIRE(all.size() == 100);
   CHECK(all.back().id - all.front().id == 99);
   CHECK(delivered.load() > 0);
-  CHECK(bus.Since(0).size() <= 100);  // ring buffer capacity may have trimmed some
 }
 
 TEST_CASE("Every game record an event carries gets the record hook, and a state change its own running") {

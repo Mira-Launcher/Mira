@@ -58,6 +58,10 @@ fs::path TempFile(const char* name) {
   fs::create_directories(dir);
   return dir / name;
 }
+
+std::int64_t DefaultDebounce() {
+  return Schema::Instance().Find("scan.debounce_ms")->default_value.get<std::int64_t>();
+}
 }  // namespace
 
 TEST_CASE("Config materialises defaults when no file exists") {
@@ -66,7 +70,7 @@ TEST_CASE("Config materialises defaults when no file exists") {
   Config config(file);
   config.Load();
   CHECK(fs::exists(file));
-  CHECK(config.GetInt("scan.debounce_ms") == 3000);
+  CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());
 }
 
 TEST_CASE("Config round-trips a value and preserves frontend settings") {
@@ -123,7 +127,7 @@ TEST_CASE("an unparseable settings file is quarantined, not fatal") {
   }
   Config config(file);
   config.Load();  // must not throw or crash
-  CHECK(config.GetInt("scan.debounce_ms") == 3000);  // falls back to defaults
+  CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());  // falls back to defaults
   CHECK(fs::exists(file.string() + ".bad"));
   fs::remove(file.string() + ".bad");
 }

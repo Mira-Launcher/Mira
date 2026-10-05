@@ -315,7 +315,7 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   // waitpid() this (it isn't this process's child), which is exactly the
   // case it exists to handle.
   Command command;
-  command.argv = {"sh", "-c", "sleep 2"};
+  command.argv = {"sh", "-c", "sleep 30"};
   auto pid = runner::SpawnDetached(command);
   REQUIRE(pid.has_value());
 
@@ -333,6 +333,7 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
 
   CHECK(supervisor.IsRunning("celeste"));
 
+  ::kill(*pid, SIGKILL);
   ::waitpid(*pid, nullptr, 0);  // reap it ourselves; Reconcile's watcher only polls kill(pid, 0)
   CHECK(WaitFor([&] { return !supervisor.IsRunning("celeste"); }, std::chrono::seconds(5)));
 }
