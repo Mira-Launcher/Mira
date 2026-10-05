@@ -89,7 +89,9 @@
 #include "../theme/Theme.h"
 #include "../widgets/TabRow.h"
 #include "../widgets/TileView.h"
+#include "../widgets/ModalOverlay.h"
 #include "AboutPanel.h"
+#include "FramelessRoot.h"
 
 // setViewportMargins is protected on QAbstractScrollArea; this republishes
 // it so ApplyLayoutTokens() can pad the tiles without also insetting the
@@ -173,94 +175,6 @@ QWidget* MakeFilterRow(mira_gui::icons::Glyph glyph, const QString& label, QWidg
   return row;
 }
 
-constexpr int kResizeMargin = 5;
-
-Qt::Edges EdgesAt(const QSize& size, const QPoint& pos) {
-  Qt::Edges edges;
-  if (pos.x() <= kResizeMargin) edges |= Qt::LeftEdge;
-  if (pos.x() >= size.width() - kResizeMargin) edges |= Qt::RightEdge;
-  if (pos.y() <= kResizeMargin) edges |= Qt::TopEdge;
-  if (pos.y() >= size.height() - kResizeMargin) edges |= Qt::BottomEdge;
-  return edges;
-}
-
-// The frameless window's own background: a thin margin around the real
-// content, the only thing left to grab for an edge resize with no OS
-// titlebar. QWindow::startSystemResize hands the drag to the compositor,
-// which is what makes this work under Wayland.
-class RootWidget : public QWidget {
-public:
-  explicit RootWidget(QMainWindow* window) : window_(window) { setMouseTracking(true); }
-
-protected:
-  void mousePressEvent(QMouseEvent* event) override {
-    QWindow* handle = window_->windowHandle();
-    if (event->button() == Qt::LeftButton && !window_->isMaximized() && handle != nullptr) {
-      const Qt::Edges edges = ResizableEdgesAt(event->pos());
-      if (edges != Qt::Edges()) {
-        handle->startSystemResize(edges);
-        event->accept();
-        return;
-      }
-      // The strip above the top bar moves the window like the bar does.
-      if (event->pos().y() <= kResizeMargin) {
-        handle->startSystemMove();
-        event->accept();
-        return;
-      }
-    }
-    QWidget::mousePressEvent(event);
-  }
-
-  void mouseDoubleClickEvent(QMouseEvent* event) override {
-    if (event->pos().y() <= kResizeMargin && ResizableEdgesAt(event->pos()) == Qt::Edges()) {
-      window_->isMaximized() ? window_->showNormal() : window_->showMaximized();
-      return;
-    }
-    QWidget::mouseDoubleClickEvent(event);
-  }
-
-  void mouseMoveEvent(QMouseEvent* event) override {
-    if (window_->isMaximized()) {
-      unsetCursor();
-      return;
-    }
-    const Qt::Edges edges = ResizableEdgesAt(event->pos());
-    if ((edges & Qt::LeftEdge) && (edges & Qt::TopEdge)) {
-      setCursor(Qt::SizeFDiagCursor);
-    } else if ((edges & Qt::RightEdge) && (edges & Qt::BottomEdge)) {
-      setCursor(Qt::SizeFDiagCursor);
-    } else if ((edges & Qt::RightEdge) && (edges & Qt::TopEdge)) {
-      setCursor(Qt::SizeBDiagCursor);
-    } else if ((edges & Qt::LeftEdge) && (edges & Qt::BottomEdge)) {
-      setCursor(Qt::SizeBDiagCursor);
-    } else if (edges & (Qt::LeftEdge | Qt::RightEdge)) {
-      setCursor(Qt::SizeHorCursor);
-    } else if (edges & (Qt::TopEdge | Qt::BottomEdge)) {
-      setCursor(Qt::SizeVerCursor);
-    } else {
-      unsetCursor();
-    }
-  }
-
-private:
-  // Edges under `pos` that resize. The top edge only resizes at its
-  // corners; the rest of it moves the window, since a drag up there (often
-  // toward the top of the screen, e.g. out of a tiled corner) is meant to
-  // move it. Wayland doesn't tell a window where it is, so this can't
-  // depend on the screen edges.
-  Qt::Edges ResizableEdgesAt(const QPoint& pos) const {
-    constexpr int kCorner = 14;
-    Qt::Edges edges = EdgesAt(size(), pos);
-    if (!(edges & Qt::TopEdge)) return edges;
-    if (pos.x() <= kCorner) return Qt::TopEdge | Qt::LeftEdge;
-    if (pos.x() >= width() - kCorner) return Qt::TopEdge | Qt::RightEdge;
-    return edges & ~Qt::Edges(Qt::TopEdge);
-  }
-
-  QMainWindow* window_;
-};
-
 // Sidebar's filter+sort pill. Plain QWidget, not QPushButton: needs two
 // icon+label pairs and a chevron, not one icon+text. Plain callback (like
 // LibraryGrid), not a signal, since it is too small to need one.
@@ -276,66 +190,6 @@ protected:
   void mousePressEvent(QMouseEvent* event) override {
     if (event->button() == Qt::LeftButton && on_clicked) on_clicked();
   }
-};
-
-// The game-edit card's dimmed backdrop. A click that lands here (never on
-// the card itself, which is a child widget and consumes its own clicks
-// first) closes the card, same as clicking outside any other modal.
-class ModalOverlay : public QWidget {
-public:
-  explicit ModalOverlay(QWidget* parent) : QWidget(parent) {
-    setAttribute(Qt::WA_StyledBackground, true);
-  }
-  std::function<void()> on_backdrop_clicked;
-  // Set: painted here instead of by a stylesheet, around `clear` (in this
-  // widget's coordinates), which stays undimmed so its live changes show.
-  QColor scrim;
-  std::function<QRect()> clear;
-
-protected:
-  void paintEvent(QPaintEvent* event) override {
-    if (!scrim.isValid()) return QWidget::paintEvent(event);
-    QPainter painter(this);
-    QRegion region(rect());
-    if (clear) region -= clear();
-    painter.setClipRegion(region);
-    painter.fillRect(rect(), scrim);
-  }
-
-  // A press on the card's own empty space propagates up to here too, so
-  // only one that lands on no child at all counts as the backdrop.
-  void mousePressEvent(QMouseEvent* event) override {
-    if (event->button() != Qt::LeftButton || !on_backdrop_clicked) return;
-    if (childAt(event->position().toPoint()) != nullptr) return;
-    on_backdrop_clicked();
-  }
-};
-
-// A click on anything that can't take focus itself (a page's background, a
-// label) drops keyboard focus from a text box or button, the way a browser
-// does, so Enter and Delete go back to the window's own shortcuts.
-class FocusDropper : public QObject {
-public:
-  explicit FocusDropper(QWidget* window) : QObject(window), window_(window) {}
-
-protected:
-  bool eventFilter(QObject* watched, QEvent* event) override {
-    if (event->type() != QEvent::MouseButtonPress) return false;
-    auto* target = qobject_cast<QWidget*>(watched);
-    if (target == nullptr || target->window() != window_ || target->focusPolicy() & Qt::ClickFocus) return false;
-    // A viewport forwards to its view, which takes focus on its own.
-    if (qobject_cast<QAbstractScrollArea*>(target->parentWidget()) != nullptr &&
-        target->parentWidget()->focusPolicy() & Qt::ClickFocus) {
-      return false;
-    }
-    if (QWidget* focused = QApplication::focusWidget(); focused != nullptr && focused->window() == window_) {
-      focused->clearFocus();
-    }
-    return false;
-  }
-
-private:
-  QWidget* window_;
 };
 
 QLabel* SidebarHeading(QWidget* parent, const QString& text) {
@@ -456,7 +310,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   content_stack_ = new QStackedWidget(this);
   content_stack_->addWidget(splitter_);
 
-  auto* central = new RootWidget(this);
+  auto* central = new mira_gui::FramelessRoot(this);
   // StackAll: the game-edit overlay is a chrome sibling, not a
   // content_stack_ page, so the grid/sidebar stay visible (dimmed)
   // underneath. current_widget only picks which one is raised.
@@ -466,10 +320,11 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   auto* chrome = new QWidget(central);
   auto* layout = new QVBoxLayout(chrome);
-  layout->setContentsMargins(kResizeMargin, kResizeMargin, kResizeMargin, kResizeMargin);
+  layout->setContentsMargins(mira_gui::kResizeMargin, mira_gui::kResizeMargin, mira_gui::kResizeMargin,
+                             mira_gui::kResizeMargin);
   layout->setSpacing(0);
   QWidget* top_bar = BuildTopBar();
-  // Without an explicit cursor here, a resize cursor RootWidget set at its
+  // Without an explicit cursor here, a resize cursor FramelessRoot set at its
   // edge margin would keep showing over the whole window after the drag ends.
   top_bar->setCursor(Qt::ArrowCursor);
   layout->addWidget(top_bar);
@@ -499,7 +354,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(hub, &mira_gui::EventHub::ConnectionChanged, this, &LibraryWindow::ConnectionChanged);
   hub->Start();
 
-  qApp->installEventFilter(new FocusDropper(this));
+  qApp->installEventFilter(new mira_gui::FocusDropper(this));
 
   RefreshSourceNavs();
   Reload(/*force_scan=*/false);
@@ -2617,7 +2472,7 @@ QWidget* LibraryWindow::BuildSettingsPage() {
 QWidget* LibraryWindow::BuildGameEditOverlay() {
   // Parented to nullptr here -- root_stack_->addWidget(overlay) reparents it
   // to central, same as any other widget added to a layout.
-  auto* overlay = new ModalOverlay(nullptr);
+  auto* overlay = new mira_gui::ModalOverlay(nullptr);
   overlay->setObjectName("game_edit_overlay");
   // Plain black, not theme::window -- the theme's dark surfaces already
   // sit close to black, so tinting toward window barely dims anything.
@@ -2637,7 +2492,7 @@ QWidget* LibraryWindow::BuildGameEditOverlay() {
 }
 
 QWidget* LibraryWindow::BuildSidebarCardOverlay() {
-  auto* overlay = new ModalOverlay(nullptr);
+  auto* overlay = new mira_gui::ModalOverlay(nullptr);
   overlay->scrim = QColor(0, 0, 0, 150);
   // The sidebar stays bright: it is the preview.
   overlay->clear = [this, overlay] {
@@ -2659,7 +2514,7 @@ void LibraryWindow::ShowSidebarCard(QWidget* card) {
   if (sidebar_card_ != nullptr) sidebar_card_->deleteLater();
   sidebar_card_ = card;
   // Centred over the content, beside the sidebar it changes.
-  sidebar_card_layout_->setContentsMargins(splitter_->widget(0)->width() + kResizeMargin + 24, 24, 24, 24);
+  sidebar_card_layout_->setContentsMargins(splitter_->widget(0)->width() + mira_gui::kResizeMargin + 24, 24, 24, 24);
   sidebar_card_layout_->addWidget(card, 0, 0, Qt::AlignCenter);
   SetGridControlsEnabled(false);
   root_stack_->setCurrentWidget(sidebar_card_overlay_);
