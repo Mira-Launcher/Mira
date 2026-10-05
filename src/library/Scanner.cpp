@@ -135,7 +135,30 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     if (!game.installer_dir.empty()) installer_dirs.insert(game.installer_dir);
   }
 
+  // An AppImage is a whole game in one file, so one loose in the root is a game too.
+  std::set<std::string> seen_appimages;  // file names, for the games whose install_path is the root itself
+
   for (const auto& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
+    if (entry.is_regular_file(ec) && strings::ToLower(entry.path().extension().string()) == ".appimage") {
+      const std::string file = entry.path().filename().string();
+      seen_appimages.insert(file);
+      const std::vector<model::Game> all = games_.All();
+      const auto known = std::ranges::find_if(all, [&](const model::Game& game) {
+        return fs::path(game.install_path) == root && game.exe_path == file;
+      });
+      if (known == all.end()) {
+        const model::Game game = auto_setup.CreateAppImageGame(root, entry.path());
+        ++summary.added;
+        summary.added_games.push_back(game);
+        log::Info("detected new game: {}", entry.path().string());
+      } else if (known->status == model::GameStatus::Missing) {
+        if (auto restored = games_.Update(known->id, [](model::Game& game) { game.status = model::GameStatus::Ready; })) {
+          events_.Publish("game.updated", model::ToJson(*restored));
+          ++summary.restored;
+        }
+      }
+      continue;
+    }
     if (!entry.is_directory(ec)) continue;
     const fs::path& dir = entry.path();
     if (dir.filename().string().starts_with(kExtractingPrefix)) continue;  // an archive mid-extraction
@@ -210,8 +233,14 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   // same as DELETE /v1/games/{id}.
   const bool remove_missing = config_.GetBool("library.remove_missing");
   for (const model::Game& game : games_.All()) {
-    if (fs::path(game.install_path).parent_path() != root) continue;
-    if (seen_install_paths.contains(game.install_path)) continue;
+    const bool loose_appimage = fs::path(game.install_path) == root && fs::path(game.exe_path).parent_path().empty() &&
+                                strings::ToLower(game.exe_path).ends_with(".appimage");
+    if (loose_appimage) {
+      if (seen_appimages.contains(game.exe_path)) continue;
+    } else {
+      if (fs::path(game.install_path).parent_path() != root) continue;
+      if (seen_install_paths.contains(game.install_path)) continue;
+    }
 
     // Checked before the already-Missing skip below, not after: otherwise
     // turning the toggle on would only ever catch a game the *next* time it

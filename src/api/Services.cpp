@@ -248,15 +248,9 @@ Result<void> Services::DeleteGameData(const model::Game& game, bool files, bool 
   if (supervisor.IsRunning(game.id)) return std::unexpected(GameRunningError(game.id));
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
-  if (files && game.source == "epic" && !game.source_ref.empty()) {
-    // Uninstall through Legendary so its manifest stays in sync.
-    if (auto uninstalled = epic::RunLegendary(config, {"uninstall", game.source_ref, "-y"}); !uninstalled) {
-      return std::unexpected(uninstalled.error());
-    }
-  } else if (files) {
-    if (auto deleted = DeleteUnderRoot(game.install_path, config.GetPathArray("library_roots")); !deleted) {
-      return deleted;
-    }
+  // Through the store's own tool where it has one, so its records stay in sync.
+  if (files) {
+    if (auto deleted = library::DeleteGameFiles(config, game, games.All()); !deleted) return deleted;
   }
   if (prefix) {
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;

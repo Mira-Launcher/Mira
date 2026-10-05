@@ -482,11 +482,12 @@ void GameEditForm::BrowseExecutable() {
   const QString selected = QFileDialog::getOpenFileName(this, "Select executable", start_dir);
   if (selected.isEmpty()) return;
 
+  // Relative only inside the game's folder; a "../" path would break when the folder moves.
   std::error_code ec;
   const std::filesystem::path relative =
       std::filesystem::relative(selected.toStdString(), install_path_, ec);
-  exe_combo_->setEditText(!ec && !relative.empty() ? QString::fromStdString(relative.string())
-                                                    : selected);
+  const bool inside = !ec && !relative.empty() && *relative.begin() != "..";
+  exe_combo_->setEditText(inside ? QString::fromStdString(relative.string()) : selected);
   exe_combo_->lineEdit()->setCursorPosition(0);
 }
 

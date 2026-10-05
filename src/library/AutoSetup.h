@@ -18,6 +18,8 @@ public:
   AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   model::Game CreateGame(const std::filesystem::path& install_path, const Detector::Result& detected);
+  // A game that is one AppImage file loose in `root`, named after the file.
+  model::Game CreateAppImageGame(const std::filesystem::path& root, const std::filesystem::path& appimage);
 
 private:
   config::Config& config_;

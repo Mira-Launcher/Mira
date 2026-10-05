@@ -220,4 +220,64 @@ TEST_CASE("Relocate refuses to move an install folder that holds other games") {
   CHECK(relocated.error().code == "shared_folder");
   CHECK(fs::exists(shared / "Game.exe"));
   CHECK(fs::exists(shared / "jump-king" / "Game.exe"));
+
+  SUBCASE("and a program the game only runs stays where it is, without an error") {
+    test::Touch(setup.outside / "Applications" / "Eden.AppImage", "appimage", /*executable=*/true);
+    test::Touch(shared / "Xenoblade.xci", "rom");
+    loose.exe_path = (setup.outside / "Applications" / "Eden.AppImage").string();
+    loose.args = "-f -g '" + (shared / "Xenoblade.xci").string() + "'";
+    const auto kept = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+    REQUIRE(kept.has_value());
+    CHECK(kept->install_path == loose.install_path);
+    CHECK(fs::exists(setup.outside / "Applications" / "Eden.AppImage"));
+  }
+
+  SUBCASE("but an AppImage leaves it on its own, into a folder of its own") {
+    test::Touch(shared / "osu.AppImage", "appimage", /*executable=*/true);
+    loose.exe_path = "osu.AppImage";
+    const auto moved = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+    REQUIRE(moved.has_value());
+    CHECK(paths::IsWithin(moved->install_path, {setup.library}));
+    CHECK(fs::exists(fs::path(moved->install_path) / "osu.AppImage"));
+    CHECK_FALSE(fs::exists(shared / "osu.AppImage"));
+    CHECK(fs::exists(shared / "jump-king" / "Game.exe"));
+  }
+}
+
+TEST_CASE("Relocate moves an AppImage game as the file alone, even from a folder of other files") {
+  RelocateEnv setup;
+  const fs::path folder = setup.outside / "Installed-Games";
+  test::Touch(folder / "osu.AppImage", "appimage", /*executable=*/true);
+  test::Touch(folder / "Switch-Games" / "game.xci", "rom");  // no game Mira knows, but not osu!'s
+  model::Game osu;
+  osu.id = "osu";
+  osu.name = "osu!";
+  osu.source = "lutris";
+  osu.install_path = folder.string();
+  osu.exe_path = "osu.AppImage";
+
+  const auto moved = library::Relocate(setup.env.config, osu, {}, std::vector{osu});
+  REQUIRE(moved.has_value());
+  CHECK(paths::IsWithin(moved->install_path, {setup.library}));
+  CHECK(fs::exists(fs::path(moved->install_path) / "osu.AppImage"));
+  CHECK_FALSE(fs::exists(folder / "osu.AppImage"));
+  CHECK(fs::exists(folder / "Switch-Games" / "game.xci"));
+}
+
+TEST_CASE("Relocate leaves a program outside the game's folder alone and keeps pointing at it") {
+  RelocateEnv setup;
+  test::Touch(setup.outside / "Applications" / "Eden.AppImage", "appimage", /*executable=*/true);
+  test::Touch(setup.outside / "Games" / "Xenoblade.xci", "rom");
+  model::Game xenoblade;
+  xenoblade.id = "xenoblade";
+  xenoblade.name = "Xenoblade";
+  xenoblade.install_path = (setup.outside / "Games").string();
+  xenoblade.exe_path = "../Applications/Eden.AppImage";  // picked relative to the game's folder
+  xenoblade.args = "-g '" + (setup.outside / "Games" / "Xenoblade.xci").string() + "'";
+
+  const auto kept = library::Relocate(setup.env.config, xenoblade, {}, std::vector{xenoblade});
+  REQUIRE(kept.has_value());
+  CHECK(kept->install_path == xenoblade.install_path);
+  CHECK(kept->exe_path == (setup.outside / "Applications" / "Eden.AppImage").string());
+  CHECK(fs::exists(setup.outside / "Applications" / "Eden.AppImage"));
 }

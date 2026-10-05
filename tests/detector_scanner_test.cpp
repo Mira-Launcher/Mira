@@ -154,6 +154,40 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
 }
 
+TEST_CASE("Scanner finds an AppImage loose in a library folder as a game of its own") {
+  const fs::path lib = TempDir("scan-appimage-library");
+  Touch(lib / "osu.AppImage", "appimage", /*executable=*/true);
+  Touch(lib / "notes.txt", "not a game");
+
+  test::TestEnv env("scan-appimage-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  library::Scanner scanner(env.config, env.games, env.events);
+
+  CHECK(scanner.ScanAll().added == 1);
+  const auto osu = env.games.Find("osu");
+  REQUIRE(osu.has_value());
+  CHECK(osu->exe_path == "osu.AppImage");
+  CHECK(osu->status == model::GameStatus::Ready);
+  CHECK(scanner.ScanAll().added == 0);
+
+  fs::remove(lib / "osu.AppImage");
+  CHECK(scanner.ScanAll().missing == 1);
+  CHECK(env.games.Find("osu")->status == model::GameStatus::Missing);
+  Touch(lib / "osu.AppImage", "appimage", /*executable=*/true);
+  CHECK(scanner.ScanAll().restored == 1);
+
+  // One added by hand from a subfolder, recorded against the library folder, is still there.
+  Touch(lib / "emu" / "Eden.AppImage", "appimage", /*executable=*/true);
+  model::Game eden;
+  eden.id = "eden";
+  eden.install_path = lib.string();
+  eden.exe_path = "emu/Eden.AppImage";
+  eden.status = model::GameStatus::Ready;
+  REQUIRE(env.games.Upsert(eden).has_value());
+  scanner.ScanAll();
+  CHECK(env.games.Find("eden")->status == model::GameStatus::Ready);
+}
+
 TEST_CASE("Detector never descends into a nested wine prefix during its own walk") {
   // Regression: a wrapper folder whose actual prefix sits one level below
   // itself (umu's own layout, e.g. <root>/umu/umu-default/) must not have

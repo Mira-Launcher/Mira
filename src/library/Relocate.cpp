@@ -5,7 +5,9 @@
 #include <system_error>
 
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "launchers/Launchers.h"
+#include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
 
 namespace mira::library {
@@ -39,9 +41,8 @@ std::string Rebase(const fs::path& inner, const fs::path& outer, const fs::path&
   return (relative.empty() || relative == "." ? moved_outer : moved_outer / relative).string();
 }
 
-// Why `game`'s install folder can't move on its own: it holds a library
-// root or another game's files (e.g. an exe sitting loose in a shared
-// games folder). Empty when it's the game's alone.
+}  // namespace
+
 std::string SharedFolder(const config::Config& config, const model::Game& game, std::span<const model::Game> library) {
   const std::vector<fs::path> install = {game.install_path};
   for (const fs::path& root : config.GetPathArray("library_roots")) {
@@ -56,7 +57,21 @@ std::string SharedFolder(const config::Config& config, const model::Game& game, 
   return {};
 }
 
-}  // namespace
+bool RunsExternalProgram(const model::Game& game) {
+  if (game.exe_path.empty()) return false;
+  if (fs::path(StoredExePath(game.install_path, game.exe_path)).is_absolute()) return true;  // outside its folder
+  if (!strings::ToLower(game.exe_path).ends_with(".appimage")) return false;
+  std::error_code ec;
+  return std::ranges::any_of(strings::SplitArgs(game.args), [&](const std::string& arg) {
+    return fs::path(arg).is_absolute() && fs::is_regular_file(arg, ec);
+  });
+}
+
+bool RunsFromAppImage(const model::Game& game) {
+  std::error_code ec;
+  return strings::ToLower(game.exe_path).ends_with(".appimage") && !RunsExternalProgram(game) &&
+         fs::is_regular_file(fs::path(game.install_path) / game.exe_path, ec);
+}
 
 Result<model::Game> Relocate(const config::Config& config, model::Game game, const RelocateRequest& request,
                              std::span<const model::Game> library) {
@@ -64,6 +79,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   // Lutris only launches what it found, so its games are Mira's to move.
   const std::string original_install = game.install_path;
   const std::string original_data = game.data_dir;
+  game.exe_path = StoredExePath(game.install_path, game.exe_path);
   const bool store_managed = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
                              game.source == "itch" || game.source == "amazon" || launchers::ForGame(game) != nullptr;
   const bool both = !game.install_path.empty() && !game.data_dir.empty();
@@ -71,9 +87,11 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
                                  paths::IsWithin(game.install_path, {game.data_dir}, /*allow_equal=*/true);
   const bool prefix_in_install =
       both && !install_in_prefix && !request.data_dir && paths::IsWithin(game.data_dir, {game.install_path});
+  bool single_file = false;  // only the program moved, out of a shared folder
 
+  // A program the game only runs (an emulator in ~/Applications) stays where it is.
   if (!game.install_path.empty() && !install_in_prefix &&
-      (request.install_path || (!request.only_given && !store_managed))) {
+      (request.install_path || (!request.only_given && !store_managed && !RunsExternalProgram(game)))) {
     const std::vector<fs::path> library_roots = config.GetPathArray("library_roots");
     fs::path target;
     if (request.install_path) {
@@ -90,14 +108,20 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
                  "Pick a folder inside one of the library folders, or add it as one.", Fix::Setting("library_roots"));
     }
     if (fs::path(game.install_path) != target) {
-      if (const std::string shared = SharedFolder(config, game, library); !shared.empty()) {
+      // An AppImage carries everything it needs, so it moves on its own, whatever else its folder holds.
+      const fs::path program = fs::path(game.install_path) / game.exe_path;
+      single_file = RunsFromAppImage(game);
+      const std::string shared = single_file ? std::string() : SharedFolder(config, game, library);
+      if (!shared.empty()) {
         return Err("shared_folder",
                    std::format("\"{}\" also holds {}, so it can't move with this game", game.install_path, shared),
                    "Put the game in a folder of its own, then point the game at it.");
       }
-      if (auto moved = Move(game.install_path, target, config.GetBool("relocate.allow_copy")); !moved) return std::unexpected(moved.error());
+      const fs::path from = single_file ? program : fs::path(game.install_path);
+      const fs::path to = single_file ? target / game.exe_path : target;
+      if (auto moved = Move(from, to, config.GetBool("relocate.allow_copy")); !moved) return std::unexpected(moved.error());
       game.install_path = target.string();
-      if (prefix_in_install) game.data_dir = Rebase(original_data, original_install, target);
+      if (prefix_in_install && !single_file) game.data_dir = Rebase(original_data, original_install, target);
     }
   }
 
@@ -107,7 +131,12 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
                                              : NamedDir(config, game, prefix_root, game.data_dir);
     // Put the install back on failure, so the stored paths stay true.
     const auto undo_install = [&] {
-      if (game.install_path != original_install) (void)Move(game.install_path, original_install, true);
+      if (game.install_path == original_install) return;
+      if (single_file) {
+        (void)Move(fs::path(game.install_path) / game.exe_path, fs::path(original_install) / game.exe_path, true);
+      } else {
+        (void)Move(game.install_path, original_install, true);
+      }
     };
     if (!paths::IsWithin(target, {prefix_root})) {
       undo_install();

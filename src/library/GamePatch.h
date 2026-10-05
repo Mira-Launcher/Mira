@@ -9,6 +9,10 @@
 
 namespace mira::library {
 
+// `exe_path` as a game stores it: a relative path that leaves `install_path` becomes absolute,
+// since a "../" path would point somewhere else once the folder moves.
+std::string StoredExePath(const std::string& install_path, const std::string& exe_path);
+
 // `base` with the fields of a PATCH /v1/games/{id} body applied.
 model::Game ParseGamePatch(const model::Game& base, const nlohmann::json& patch);
 

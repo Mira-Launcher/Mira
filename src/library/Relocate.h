@@ -34,6 +34,20 @@ struct RelocateRequest {
 // source_ref is this plus its Lutris slug, so LutrisImporter skips that row.
 inline constexpr std::string_view kClaimedLutrisPrefix = "lutris:";
 
+// Why `game`'s install folder isn't the game's alone: it is or holds a
+// library root, or holds another game in `library` (e.g. an AppImage sitting
+// loose in a games folder). Empty when it's the game's alone.
+std::string SharedFolder(const config::Config& config, const model::Game& game, std::span<const model::Game> library);
+
+// The game is one AppImage file, which carries everything it needs: it moves
+// and is deleted as that file alone, never with the folder it sits in.
+bool RunsFromAppImage(const model::Game& game);
+
+// The game runs a program that isn't its own files: an executable outside the
+// game's folder, or an AppImage handed the game's file in its arguments (an
+// emulator). Moving and deleting the game leave that program where it is.
+bool RunsExternalProgram(const model::Game& game);
+
 // When one folder is inside the other (a Lutris prefix that holds the
 // game), the outer one moves and the inner follows, unless the inner has
 // its own target. An install folder that also holds another game in

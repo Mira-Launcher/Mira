@@ -105,7 +105,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -125,7 +125,7 @@ Adds a game from any path:
   "name": "My Game", "platform": "windows", "is_installer": true }
 ```
 
-`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name and `platform` to `windows` for `.exe`, else `native`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` again updates the game. Returns the game and publishes `game.added` or `game.updated`.
+`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
 
 ### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true]`
 Removes the game from the library. Nothing on disk is touched unless asked:
@@ -135,7 +135,7 @@ Removes the game from the library. Nothing on disk is touched unless asked:
 - `delete_metadata` removes cached metadata and art.
 - `purge` does all three.
 
-Files and prefixes are only deleted when they resolve inside a library root or `prefix_root`, and never for a `desktop-entry` game, whose files belong to another app. For Epic games, `delete_files` runs `legendary uninstall` so Legendary's records stay correct. Publishes `game.removed`.
+Files are only deleted when they resolve inside a library root, a store's install root (`gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root`; never for a `desktop-entry` game, whose files belong to another app. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
 
 ### `POST /v1/games/delete`
 The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. A [job](#jobs) whose result is `{"removed": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
@@ -193,7 +193,7 @@ Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the i
 An optional body `{"install_path"?, "exe_path"?}` switches the game to a program installed in its prefix first: `install_path` must be inside the game's `data_dir` (`400` otherwise, `409` while the game runs), and the game's candidates are detected again there. The move is handled like an install's: `installer_dir`, the name and a metadata refetch.
 
 ### `POST /v1/games/{id}/relocate`
-Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it; Lutris games don't: once moved they become `manual` games (their `source_ref` is `lutris:<slug>`), which a later Lutris import leaves alone. When one folder is inside the other (a prefix holding the game), the outer one moves and the inner one follows. An install folder that holds another game or a library root isn't moved (`shared_folder`). Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
+Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it; Lutris games don't: once moved they become `manual` games (their `source_ref` is `lutris:<slug>`), which a later Lutris import leaves alone. When one folder is inside the other (a prefix holding the game), the outer one moves and the inner one follows. A game run from an AppImage moves as that file alone, into a folder of its own, whatever else its folder holds. Otherwise an install folder that holds another game or a library root isn't moved (`shared_folder`). A program the game only runs (an executable outside the game's folder, or an AppImage handed the game's file in `args`, like an emulator) stays where it is. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
 
 ### `POST /v1/games/{id}/tricks`
 Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). A job (kind `tricks`) that runs one at a time. Events: `tricks.started`/`finished`/`failed`.
@@ -203,7 +203,7 @@ Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game'
 `library_roots` is an ordinary setting. Changing it through the API also updates the watcher.
 
 ### `POST /v1/library/scan`
-Scans every library root now: adds new games, marks vanished ones `missing` (or removes them with `library.remove_missing`), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
+Scans every library root now: adds new games (each folder in a root, and each AppImage loose in one), marks vanished ones `missing` (or removes them with `library.remove_missing`), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
 
 ### `POST /v1/library/relocate`
 Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout, one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.

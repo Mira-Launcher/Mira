@@ -571,6 +571,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
                if (!relocated) return std::unexpected(relocated.error());
                auto saved = s.games.Update(game.id, [&](model::Game& g) {
                  g.install_path = relocated->install_path;
+                 g.exe_path = relocated->exe_path;
                  g.data_dir = relocated->data_dir;
                  g.source = relocated->source;
                  g.source_ref = relocated->source_ref;

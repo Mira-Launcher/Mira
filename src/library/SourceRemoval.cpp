@@ -11,6 +11,7 @@
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "launchers/Launchers.h"
+#include "library/Relocate.h"
 #include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
 
@@ -70,21 +71,9 @@ Result<void> UninstallItch(const config::Config& config, const std::string& game
 }
 
 Result<void> UninstallGame(const config::Config& config, const model::Game& game,
-                           std::string_view source) {
+                           std::string_view source, std::span<const model::Game> library) {
   if (FilesOwnedElsewhere(source) || game.install_path.empty()) return {};
-  if (source == "epic") {
-    if (auto done = epic::RunLegendary(config, {"uninstall", game.source_ref, "-y"}); !done) {
-      return std::unexpected(done.error());
-    }
-    return {};
-  }
-  if (source == "amazon") {
-    if (auto done = amazon::RunNile(config, {"uninstall", game.source_ref}); !done)
-      return std::unexpected(done.error());
-    return {};
-  }
-  if (source == "itch") return UninstallItch(config, game.source_ref);
-  return DeleteInside(game.install_path, DeleteRoots(config, game.data_dir));
+  return DeleteGameFiles(config, game, library);
 }
 
 // Deletes everything in `dir` except the `keep` entries (by name).
@@ -129,6 +118,31 @@ Result<void> DeleteInside(const std::string& target, const std::vector<fs::path>
   fs::remove_all(resolved, ec);
   if (ec) return Err("delete_failed", ec.message());
   return {};
+}
+
+Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
+                             std::span<const model::Game> library) {
+  if (game.source == "epic" && !game.source_ref.empty()) {
+    if (auto done = epic::RunLegendary(config, {"uninstall", game.source_ref, "-y"}); !done) {
+      return std::unexpected(done.error());
+    }
+    return {};
+  }
+  if (game.source == "amazon" && !game.source_ref.empty()) {
+    if (auto done = amazon::RunNile(config, {"uninstall", game.source_ref}); !done) return std::unexpected(done.error());
+    return {};
+  }
+  if (game.source == "itch" && !game.source_ref.empty()) return UninstallItch(config, game.source_ref);
+  // A program the game only runs (an emulator) isn't the game's to delete.
+  if (RunsExternalProgram(game)) return {};
+  const std::vector<fs::path> roots = DeleteRoots(config, game.data_dir);
+  // An AppImage is the whole game, so only that file goes, wherever it sits.
+  if (RunsFromAppImage(game)) return DeleteInside((fs::path(game.install_path) / game.exe_path).string(), roots);
+  const std::string shared = SharedFolder(config, game, library);
+  if (shared.empty()) return DeleteInside(game.install_path, roots);
+  return Err("shared_folder",
+             std::format("\"{}\" also holds {}, so its files weren't deleted", game.install_path, shared),
+             "Delete the files by hand, or move the game to a folder of its own first.");
 }
 
 Result<RemovalPlan> PlanRemoval(const config::Config& /*config*/, const store::GameStore& games,
@@ -178,7 +192,7 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     const auto folders_lock = games.LockFolders();
     const std::optional<model::Game> game = games.Find(planned.id);
     if (!game) continue;
-    if (auto done = UninstallGame(config, *game, source); !done) {
+    if (auto done = UninstallGame(config, *game, source, games.All()); !done) {
       // Files stay; the record goes anyway so the source can still be removed.
       result.problems.push_back(std::format("{}: {}", game->name, done.error().message));
     }

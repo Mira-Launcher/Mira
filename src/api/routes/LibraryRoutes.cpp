@@ -70,9 +70,13 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                    errors.push_back(BatchFailure(game.id, relocated.error()));
                    continue;
                  }
-                 if (relocated->install_path == game.install_path && relocated->data_dir == game.data_dir) continue;
+                 if (relocated->install_path == game.install_path && relocated->data_dir == game.data_dir &&
+                     relocated->exe_path == game.exe_path) {
+                   continue;
+                 }
                  auto saved = s.games.Update(game.id, [&](model::Game& g) {
                    g.install_path = relocated->install_path;
+                   g.exe_path = relocated->exe_path;
                    g.data_dir = relocated->data_dir;
                    g.source = relocated->source;
                    g.source_ref = relocated->source_ref;
