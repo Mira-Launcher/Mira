@@ -20,7 +20,7 @@ These hold across every screen; a new one follows them without being told.
 
 ### Library page
 
-The grid page opens on the same tab row as a source page (`widgets/TabRow`): tabs for All, Installed, Playing now, Needs attention and Never played, then the filter and sort menu and the search box. When the window narrows, the search box gives way first (320 px down to 160, then a search button that opens it again, as does Ctrl+F), then the last tabs move into a More menu; the current tab always stays, and source pages' rows do the same. There's no page title; the sidebar says where you are. Under them, *Continue playing* (`library/ContinueRow`) shows large cards for running and recently played games while the whole library is shown. Tiles show a status line and a small mark for the source a game came from. A game with `needs_check` (Mira wasn't sure which program starts it) reads *Not checked* on its status line and is listed under Needs attention; its card marks the Executable row and offers *Looks right*, and saving any change also clears it. Each part can be turned off in Settings → Interface.
+The grid page (`library/LibraryPage`) opens on the same tab row as a source page (`widgets/TabRow`): tabs for All, Installed, Playing now, Needs attention and Never played, then the filter and sort menu (`library/FilterSortPill`) and the search box. When the window narrows, the search box gives way first (320 px down to 160, then a search button that opens it again, as does Ctrl+F), then the last tabs move into a More menu; the current tab always stays, and source pages' rows do the same. There's no page title; the sidebar says where you are. Under them, *Continue playing* (`library/ContinueRow`) shows large cards for running and recently played games while the whole library is shown. Tiles show a status line and a small mark for the source a game came from. A game with `needs_check` (Mira wasn't sure which program starts it) reads *Not checked* on its status line and is listed under Needs attention; its card marks the Executable row and offers *Looks right*, and saving any change also clears it. Each part can be turned off in Settings → Interface.
 
 ### Sidebar
 
@@ -119,7 +119,7 @@ dialogs/   modal dialogs
 
 `async::Deliver` posts results to `qApp` and checks a `QPointer` to the requesting widget on the main thread. Posting to the widget itself would read a possibly deleted object on the worker thread.
 
-`LibraryWindow` fetches the whole library once and filters it on the client, which keeps search instant and makes "Playing now" and "Never played" possible. Events then patch the view directly. There is no polling.
+`LibraryWindow` fetches the whole library once into `library/GameLibraryModel`, and `library/LibraryPage` filters it on the client, which keeps search instant and makes "Playing now" and "Never played" possible. Events then patch the view directly. There is no polling.
 
 Only `game.added` and `game.updated` carry a game record, so views check the event type before parsing one. `game.state` carries only the state and launch details, so an exit triggers a re-fetch. A game handed to Steam or a launcher reports `tracked` in the launch reply and `game.launched`, and isn't marked running unless it is tracked.
 
