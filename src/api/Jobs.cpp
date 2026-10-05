@@ -16,16 +16,6 @@ using nlohmann::json;
 // Finished jobs kept for GET /v1/jobs/{id}, oldest dropped first.
 constexpr std::size_t kKeptJobs = 100;
 
-json ErrorJson(const Error& error) {
-  json out = {{"code", error.code}, {"message", error.message}};
-  if (!error.hint.empty()) out["hint"] = error.hint;
-  if (!error.fix.kind.empty()) {
-    out["fix"] = {{"kind", error.fix.kind}, {"target", error.fix.target}};
-    if (!error.fix.step.empty()) out["fix"]["step"] = error.fix.step;
-  }
-  return out;
-}
-
 }  // namespace
 
 bool JobRegistry::IsValidId(const std::string& id) {

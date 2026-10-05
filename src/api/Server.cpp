@@ -19,6 +19,7 @@
 
 #include <httplib.h>
 
+#include "api/Http.h"
 #include "config/Resolver.h"
 #include "config/Schema.h"
 #include "core/Json.h"
@@ -67,66 +68,6 @@ namespace {
 using nlohmann::json;
 using httplib::Request;
 using httplib::Response;
-
-json ErrorBody(std::string_view code, std::string_view message) {
-  return {{"error", {{"code", code}, {"message", message}}}};
-}
-
-void SendError(Response& res, int status, std::string_view code, std::string_view message) {
-  res.status = status;
-  res.set_content(ErrorBody(code, message).dump(), "application/json");
-}
-
-
-// Same, keeping the error's hint and fix for the client to offer.
-void SendError(Response& res, int status, const Error& error) {
-  json body = ErrorBody(error.code, error.message);
-  AddHintAndFix(body["error"], error);
-  res.status = status;
-  res.set_content(body.dump(), "application/json");
-}
-
-// body[key] as strings: empty if absent, nullopt if not an array of strings.
-std::optional<std::vector<std::string>> StringList(const json& body, const char* key) {
-  if (!body.contains(key)) return std::vector<std::string>{};
-  if (!body[key].is_array()) return std::nullopt;
-  std::vector<std::string> out;
-  for (const json& item : body[key]) {
-    if (!item.is_string()) return std::nullopt;
-    out.push_back(item.get<std::string>());
-  }
-  return out;
-}
-
-Error GameRunningError(const std::string& id) {
-  return Error{"game_running", std::format("\"{}\" is running", id), "Stop the game first.", {}};
-}
-
-// One game's failure inside a batch reply: {id, error: {code, message, hint?, fix?}}.
-json BatchFailure(const std::string& id, const Error& error) {
-  json body = ErrorBody(error.code, error.message);
-  AddHintAndFix(body["error"], error);
-  body["id"] = id;
-  return body;
-}
-
-// A GameStore failure: an unknown id is 404, a failed save is the daemon's fault.
-void SendStoreError(Response& res, const Error& error) {
-  SendError(res, error.code == "game_not_found" ? 404 : 500, error);
-}
-
-void SendJson(Response& res, json body, int status = 200) {
-  res.status = status;
-  res.set_content(body.dump(), "application/json");
-}
-
-void SendResult(Response& res, const Result<void>& result) {
-  if (result) {
-    SendJson(res, json::object());
-  } else {
-    SendError(res, 400, result.error());
-  }
-}
 
 model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   model::Game game = base;
@@ -709,7 +650,7 @@ void Server::RegisterRoutes() {
     json out = json::array();
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
-    const bool include_hidden = req.get_param_value("include_hidden") == "true";
+    const bool include_hidden = BoolParam(req, "include_hidden");
     for (const model::Game& game : all) {
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {
@@ -842,9 +783,9 @@ void Server::RegisterRoutes() {
     auto game = games_.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
-    const bool purge = req.has_param("purge") && req.get_param_value("purge") == "true";
+    const bool purge = BoolParam(req, "purge");
     const auto flag = [&](const char* name) {
-      return purge || (req.has_param(name) && req.get_param_value(name) == "true");
+      return purge || BoolParam(req, name);
     };
     const auto folders_lock = games_.LockFolders();
     if (auto deleted = DeleteGameData(*game, flag("delete_files"), flag("delete_prefix"), flag("delete_metadata"));
@@ -1423,7 +1364,7 @@ void Server::RegisterRoutes() {
   // --- library (what the account owns, across sources) ------------------
 
   http_->Get("/v1/library", [this](const Request& req, Response& res) {
-    const std::string source = req.has_param("source") ? req.get_param_value("source") : "";
+    const std::string source = Param(req, "source");
     auto entries = library::ListCatalog(config_, games_, source);
     if (!entries) return SendError(res, 400, entries.error());
     json out = json::array();
@@ -1475,8 +1416,8 @@ void Server::RegisterRoutes() {
     SendJson(res, {{"status", is_update ? "updating" : "installing"}, {"ref", ref}}, 202);
   };
   http_->Get("/v1/library/artwork", [this](const Request& req, Response& res) {
-    const std::string source = req.has_param("source") ? req.get_param_value("source") : "";
-    const std::string ref = req.has_param("ref") ? req.get_param_value("ref") : "";
+    const std::string source = Param(req, "source");
+    const std::string ref = Param(req, "ref");
     if (library::FindSource(source) == nullptr || !IsSafeRef(ref)) {
       return SendError(res, 400, "invalid_request", "expected ?source=<store>&ref=<ref>");
     }
@@ -2116,7 +2057,7 @@ void Server::RegisterRoutes() {
   http_->Get(R"(/v1/games/([^/]+)/artwork)", [this](const Request& req, Response& res) {
     if (!games_.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
     // The "cover" slot is stored as "artwork".
-    SendCachedArtwork(config_, req.matches[1], req.has_param("type") ? req.get_param_value("type") : "cover", res);
+    SendCachedArtwork(config_, req.matches[1], Param(req, "type", "cover"), res);
   });
 
   // Takes a candidate id, never a URL, so the daemon can't be made to fetch an
@@ -2147,12 +2088,12 @@ void Server::RegisterRoutes() {
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     int page = 0;
-    const std::string raw = req.has_param("page") ? req.get_param_value("page") : "0";
+    const std::string raw = Param(req, "page", "0");
     if (std::from_chars(raw.data(), raw.data() + raw.size(), page).ec != std::errc() || page < 0) {
       return SendError(res, 400, "invalid_page", "?page= must be 0 or more");
     }
     // Echoed back, so a caller can tell its answer from a replayed one.
-    const std::string request = req.has_param("request") ? req.get_param_value("request") : "";
+    const std::string request = Param(req, "request");
     artwork_thumbs_.Post([this, id, slot, page, request] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
       if (auto fetched = metadata::FetchCandidatePage(config_, id, slot, page); fetched) {
@@ -2196,9 +2137,9 @@ void Server::RegisterRoutes() {
   http_->Get(R"(/v1/games/([^/]+)/artwork/thumb)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
     if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
-    const std::string slot = req.has_param("type") ? req.get_param_value("type") : "cover";
+    const std::string slot = Param(req, "type", "cover");
     std::int64_t candidate_id = 0;
-    const std::string raw = req.has_param("candidate_id") ? req.get_param_value("candidate_id") : "";
+    const std::string raw = Param(req, "candidate_id");
     if (std::from_chars(raw.data(), raw.data() + raw.size(), candidate_id).ec != std::errc() || raw.empty()) {
       return SendError(res, 400, "missing_candidate_id", "?candidate_id= is required");
     }
@@ -2220,7 +2161,7 @@ void Server::RegisterRoutes() {
     auto game = games_.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     // Only user-initiated refreshes report failure as a notification.
-    const bool announce = req.get_param_value("announce") == "1";
+    const bool announce = BoolParam(req, "announce");
     metadata_fetches_.Enqueue(config_, events_, *game, /*force=*/true, announce);
     SendJson(res, {{"status", "fetching"}}, 202);
   });
@@ -2228,7 +2169,7 @@ void Server::RegisterRoutes() {
   http_->Get(R"(/v1/games/([^/]+)/metadata/matches)", [this](const Request& req, Response& res) {
     auto game = games_.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    const std::string query = req.has_param("q") ? req.get_param_value("q") : game->name;
+    const std::string query = Param(req, "q", game->name);
     auto matches = metadata::SearchSteamGridDb(config_, query);
     if (!matches) return SendError(res, 502, matches.error());
     const std::int64_t chosen = config::Resolver(config_, game->overrides).GetInt("metadata.steamgriddb_id");
@@ -2313,7 +2254,7 @@ void Server::RegisterRoutes() {
   });
 
   http_->Get("/v1/runners/sources", [this](const Request& req, Response& res) {
-    const std::string kind = req.has_param("kind") ? req.get_param_value("kind") : "";
+    const std::string kind = Param(req, "kind");
     json out = json::array();
     for (const runner::RunnerFamily& family : runner::Families(config_, kind)) {
       out.push_back({{"id", family.id}, {"kind", family.kind}, {"label", family.label}});
@@ -2322,8 +2263,8 @@ void Server::RegisterRoutes() {
   });
 
   http_->Get("/v1/runners/catalog", [this](const Request& req, Response& res) {
-    const std::string kind = req.has_param("kind") ? req.get_param_value("kind") : "proton";
-    auto family = FamilyFor(config_, kind, req.has_param("source") ? req.get_param_value("source") : "");
+    const std::string kind = Param(req, "kind", "proton");
+    auto family = FamilyFor(config_, kind, Param(req, "source"));
     if (!family) return SendError(res, 404, family.error());
     auto releases = runner::ListFamilyReleases(*family);
     if (!releases) return SendError(res, 502, releases.error());
