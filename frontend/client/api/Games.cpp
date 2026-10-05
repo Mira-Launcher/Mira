@@ -41,11 +41,17 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
 
 LaunchResult LaunchGameSync(const std::string& id) {
   const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/launch");
-  // mirad answers `tracked` directly (docs/api.md): whether game.state
-  // events are coming for this launch.
-  const bool tracked = !reply.body.is_object() ||
-                       reply.body.value("tracked", reply.body.value("status", std::string()) !=
-                                                       "launched_via_steam");
+  // `tracked` (docs/api.md): whether game.state events are coming for this
+  // launch. An older mirad only says `status`; with neither, assume so.
+  bool tracked = true;
+  if (reply.body.is_object()) {
+    const json& body = reply.body;
+    if (body.contains("tracked") && body["tracked"].is_boolean()) {
+      tracked = body["tracked"].get<bool>();
+    } else if (body.contains("status") && body["status"].is_string()) {
+      tracked = body["status"].get<std::string>() != "launched_via_steam";
+    }
+  }
   return {reply.ok, reply.error, tracked};
 }
 
@@ -54,21 +60,13 @@ StopResult StopGameSync(const std::string& id) {
   return {reply.ok, reply.error};
 }
 
-GameDetailResult GetGameSync(const std::string& id) {
-  GameDetailResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id));
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET /v1/games/" + id);
-    return result;
-  }
+void FillGameDetail(GameDetailResult& result, const json& body) {
+  result.game = mapping::ToGameDetail(body);
+}
 
-  result.ok = true;
-  result.game = mapping::ToGameDetail(reply.body);
-  return result;
+GameDetailResult GetGameSync(const std::string& id) {
+  return ReadReply<GameDetailResult>(transport::Get("/v1/games/" + PercentEncode(id)),
+                                     "GET /v1/games/" + id, Shape::Object, FillGameDetail);
 }
 
 PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
@@ -107,28 +105,20 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
 }
 
 GameConfigResult GetGameConfigSync(const std::string& id) {
-  GameConfigResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/config");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET /v1/games/" + id + "/config");
-    return result;
-  }
-
-  result.ok = true;
-  // Schema::Entries() order.
-  for (const auto& [key, entry] : reply.body.items()) {
-    GameConfigEntry e;
-    e.key = key;
-    e.value_display = mapping::ToDisplayString(entry.value("value", json()));
-    e.layer = entry.value("layer", std::string());
-    e.overridable = entry.value("overridable", false);
-    result.entries.push_back(std::move(e));
-  }
-  return result;
+  return ReadReply<GameConfigResult>(transport::Get("/v1/games/" + PercentEncode(id) + "/config"),
+                                     "GET /v1/games/" + id + "/config", Shape::Object,
+                                     [](GameConfigResult& result, const json& body) {
+                                       // Schema::Entries() order.
+                                       for (const auto& [key, entry] : body.items()) {
+                                         GameConfigEntry e;
+                                         e.key = key;
+                                         e.value_display =
+                                             mapping::ToDisplayString(entry.value("value", json()));
+                                         e.layer = entry.value("layer", std::string());
+                                         e.overridable = entry.value("overridable", false);
+                                         result.entries.push_back(std::move(e));
+                                       }
+                                     });
 }
 
 GameActionResult DeleteInstallerSync(const std::string& id) {
@@ -196,25 +186,14 @@ PatchGamesResult PatchGamesSync(const GamesPatch& patch) {
 }
 
 GameLogResult GetGameLogSync(const std::string& id, int lines) {
-  GameLogResult result;
-  const transport::Reply reply =
-      transport::Get("/v1/games/" + PercentEncode(id) + "/log?lines=" + std::to_string(lines));
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET /v1/games/" + id + "/log");
-    return result;
-  }
-
-  result.ok = true;
-  if (reply.body.contains("lines") && reply.body["lines"].is_array()) {
-    for (const json& line : reply.body["lines"]) {
-      if (line.is_string()) result.lines.push_back(line.get<std::string>());
-    }
-  }
-  return result;
+  return ReadReply<GameLogResult>(
+      transport::Get("/v1/games/" + PercentEncode(id) + "/log?lines=" + std::to_string(lines)),
+      "GET /v1/games/" + id + "/log", Shape::Object, [](GameLogResult& result, const json& body) {
+        if (!body.contains("lines") || !body["lines"].is_array()) return;
+        for (const json& line : body["lines"]) {
+          if (line.is_string()) result.lines.push_back(line.get<std::string>());
+        }
+      });
 }
 
 TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
@@ -230,37 +209,21 @@ GameDetailResult AddManualGameSync(const std::string& install_path, const std::s
   if (!name.empty()) body["name"] = name;
   if (!platform.empty()) body["platform"] = platform;
 
-  GameDetailResult result;
-  const transport::Reply reply = transport::PostJson("/v1/games/manual", body);
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("POST /v1/games/manual");
-    return result;
-  }
-
-  result.ok = true;
-  result.game = mapping::ToGameDetail(reply.body);
-  return result;
+  return ReadReply<GameDetailResult>(transport::PostJson("/v1/games/manual", body),
+                                     "POST /v1/games/manual", Shape::Object, FillGameDetail);
 }
 
 InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::string& path) {
-  InstallerInfoResult result;
   std::string url = "/v1/games/" + PercentEncode(id) + "/installer";
   if (!path.empty()) url += "?path=" + PercentEncode(path);
-  const transport::Reply reply = transport::Get(url);
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  result.ok = true;
-  result.path = reply.body.value("path", std::string());
-  result.size_bytes = reply.body.value("size_bytes", std::int64_t{0});
-  result.format = reply.body.value("format", std::string("unknown"));
-  result.silent = reply.body.value("silent", false);
-  return result;
+  return ReadReply<InstallerInfoResult>(
+      transport::Get(url), "GET /v1/games/" + id + "/installer", Shape::Object,
+      [](InstallerInfoResult& result, const json& body) {
+        result.path = body.value("path", std::string());
+        result.size_bytes = body.value("size_bytes", std::int64_t{0});
+        result.format = body.value("format", std::string("unknown"));
+        result.silent = body.value("silent", false);
+      });
 }
 
 GameActionResult InstallGameSync(const std::string& id, bool interactive,
@@ -273,17 +236,13 @@ GameActionResult InstallGameSync(const std::string& id, bool interactive,
 }
 
 InstallProgressResult GetInstallProgressSync(const std::string& id) {
-  InstallProgressResult result;
-  const transport::Reply reply =
-      transport::Get("/v1/games/" + PercentEncode(id) + "/install/progress");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  result.ok = true;
-  result.state = reply.body.value("state", std::string("idle"));
-  result.bytes_written = reply.body.value("bytes_written", std::int64_t{0});
-  return result;
+  return ReadReply<InstallProgressResult>(
+      transport::Get("/v1/games/" + PercentEncode(id) + "/install/progress"),
+      "GET /v1/games/" + id + "/install/progress", Shape::Object,
+      [](InstallProgressResult& result, const json& body) {
+        result.state = body.value("state", std::string("idle"));
+        result.bytes_written = body.value("bytes_written", std::int64_t{0});
+      });
 }
 
 void FillDeleteGames(DeleteGamesResult& result, const json& body) {

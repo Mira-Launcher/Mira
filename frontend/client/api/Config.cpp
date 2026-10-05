@@ -23,28 +23,21 @@ HealthStatus GetHealthSync() {
   HealthStatus status;
   const transport::Reply reply = transport::Get("/v1/health");
   status.reachable = reply.ok;
-  status.detail = reply.ok ? reply.body.value("status", std::string("ok")) : reply.error.message;
-  if (reply.ok && reply.body.is_object() && reply.body.contains("api") &&
-      reply.body["api"].is_number_integer()) {
+  if (!reply.ok) {
+    status.detail = reply.error.message;
+    return status;
+  }
+  const bool object = reply.body.is_object();
+  const json detail = object ? reply.body.value("status", json("ok")) : json("ok");
+  status.detail = detail.is_string() ? detail.get<std::string>() : "ok";
+  if (object && reply.body.contains("api") && reply.body["api"].is_number_integer()) {
     status.api = reply.body["api"].get<int>();
   }
   return status;
 }
 
-ConfigSchemaResult GetConfigSchemaSync() {
-  ConfigSchemaResult result;
-  const transport::Reply reply = transport::Get("/v1/config/schema");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/config/schema");
-    return result;
-  }
-
-  result.ok = true;
-  for (const json& entry : reply.body) {
+void FillConfigSchema(ConfigSchemaResult& result, const json& body) {
+  for (const json& entry : body) {
     ConfigSchemaEntry e;
     e.key = entry.value("key", std::string());
     e.type = entry.value("type", std::string());
@@ -79,24 +72,18 @@ ConfigSchemaResult GetConfigSchemaSync() {
     }
     result.entries.push_back(std::move(e));
   }
-  return result;
+}
+
+ConfigSchemaResult GetConfigSchemaSync() {
+  return ReadReply<ConfigSchemaResult>(transport::Get("/v1/config/schema"), "GET /v1/config/schema",
+                                       Shape::Array, FillConfigSchema);
 }
 
 ConfigResult GetConfigSync() {
-  ConfigResult result;
-  const transport::Reply reply = transport::Get("/v1/config");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET /v1/config");
-    return result;
-  }
-
-  result.ok = true;
-  mapping::FlattenConfig(reply.body, "", result.values);
-  return result;
+  return ReadReply<ConfigResult>(transport::Get("/v1/config"), "GET /v1/config", Shape::Object,
+                                 [](ConfigResult& result, const json& body) {
+                                   mapping::FlattenConfig(body, "", result.values);
+                                 });
 }
 
 PatchConfigResult PatchConfigSync(const std::vector<ConfigEdit>& edits) {
@@ -113,19 +100,18 @@ PatchConfigResult ResetConfigKeySync(const std::string& key) {
   return {reply.ok, reply.error};
 }
 
-FrontendPrefsResult GetFrontendPrefsSync() {
-  FrontendPrefsResult result;
-  const transport::Reply reply = transport::Get("/v1/config");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
+void FillFrontendPrefs(FrontendPrefsResult& result, const json& body);
 
-  result.ok = true;
+FrontendPrefsResult GetFrontendPrefsSync() {
+  return ReadReply<FrontendPrefsResult>(transport::Get("/v1/config"), "GET /v1/config",
+                                        Shape::Object, FillFrontendPrefs);
+}
+
+void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   // Frontend falls back to defaults rather than refusing to start on absense
   // or wrong kind after a hand-edit.
-  const json table = reply.body.value("frontend", json::object());
-  if (!table.is_object()) return result;
+  const json table = body.value("frontend", json::object());
+  if (!table.is_object()) return;
 
   const auto read_int = [&table](const char* key, std::optional<int>& out) {
     if (table.contains(key) && table[key].is_number_integer()) out = table[key].get<int>();
@@ -199,7 +185,6 @@ FrontendPrefsResult GetFrontendPrefsSync() {
     }
     result.prefs.source_imported_at = std::move(imported);
   }
-  return result;
 }
 
 PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
@@ -257,16 +242,12 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
 }
 
 GameModeStatusResult GetGameModeStatusSync() {
-  GameModeStatusResult result;
-  const transport::Reply reply = transport::Get("/v1/gamemode/status");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  result.ok = true;
-  result.installed = reply.body.value("installed", false);
-  result.daemon_running = reply.body.value("daemon_running", false);
-  return result;
+  return ReadReply<GameModeStatusResult>(
+      transport::Get("/v1/gamemode/status"), "GET /v1/gamemode/status", Shape::Object,
+      [](GameModeStatusResult& result, const json& body) {
+        result.installed = body.value("installed", false);
+        result.daemon_running = body.value("daemon_running", false);
+      });
 }
 
 }  // namespace

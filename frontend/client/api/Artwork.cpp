@@ -43,25 +43,9 @@ ArtworkResult GetArtworkSync(const std::string& id, const std::string& slot) {
   return result;
 }
 
-GameMetadataResult GetMetadataSync(const std::string& id) {
-  GameMetadataResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/metadata");
-  if (reply.status == 404) {
-    result.missing = true;
-    return result;
-  }
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-
-  if (!reply.body.is_object()) {
-    result.error = "mirad sent metadata that isn't a JSON object";
-    return result;
-  }
-  result.ok = true;
+void FillMetadata(GameMetadataResult& result, const json& body) {
   GameMetadata& out = result.metadata;
-  out.source = reply.body.value("source", std::string());
+  out.source = body.value("source", std::string());
 
   const auto strings = [](const json& array) {
     std::vector<std::string> values;
@@ -74,8 +58,8 @@ GameMetadataResult GetMetadataSync(const std::string& id) {
 
   // Every block is optional: which ones mirad cached depends on the source,
   // and on what that source had for this game.
-  if (reply.body.contains("steam") && reply.body["steam"].is_object()) {
-    const json& steam = reply.body["steam"];
+  if (body.contains("steam") && body["steam"].is_object()) {
+    const json& steam = body["steam"];
     out.description = steam.value("short_description", std::string());
     out.release_date = steam.value("release_date", std::string());
     out.developers = strings(steam.value("developers", json::array()));
@@ -99,35 +83,35 @@ GameMetadataResult GetMetadataSync(const std::string& id) {
     out.trailers = strings(steam.value("movies", json::array()));
   }
   // From Legendary's catalog cache: only a description and a developer.
-  if (reply.body.contains("epic") && reply.body["epic"].is_object()) {
-    const json& epic = reply.body["epic"];
+  if (body.contains("epic") && body["epic"].is_object()) {
+    const json& epic = body["epic"];
     if (out.description.empty()) out.description = epic.value("description", std::string());
     if (const std::string developer = epic.value("developer", std::string());
         !developer.empty() && out.developers.empty()) {
       out.developers.push_back(developer);
     }
   }
-  if (reply.body.contains("steam_reviews") && reply.body["steam_reviews"].is_object()) {
-    const json& reviews = reply.body["steam_reviews"];
+  if (body.contains("steam_reviews") && body["steam_reviews"].is_object()) {
+    const json& reviews = body["steam_reviews"];
     out.review_summary = reviews.value("score_description", std::string());
     out.review_total = reviews.value("total_reviews", 0);
   }
-  if (reply.body.contains("protondb") && reply.body["protondb"].is_object()) {
-    out.protondb_tier = reply.body["protondb"].value("tier", std::string());
+  if (body.contains("protondb") && body["protondb"].is_object()) {
+    out.protondb_tier = body["protondb"].value("tier", std::string());
   }
   // "artwork" is the cover slot under its pre-`hero` name; see docs/api.md.
   for (const char* key : {"artwork", "hero", "capsule", "header", "logo", "icon"}) {
-    if (!reply.body.contains(key) || !reply.body[key].is_object()) continue;
+    if (!body.contains(key) || !body[key].is_object()) continue;
     out.art_slots.push_back(std::string(key) == "artwork" ? "cover" : key);
   }
 
   const auto candidates = [&](const char* slot) {
     std::vector<ArtCandidate> list;
-    if (!reply.body.contains("art_candidates") || !reply.body["art_candidates"].is_object() ||
-        !reply.body["art_candidates"].contains(slot)) {
+    if (!body.contains("art_candidates") || !body["art_candidates"].is_object() ||
+        !body["art_candidates"].contains(slot)) {
       return list;
     }
-    for (const json& item : reply.body["art_candidates"][slot])
+    for (const json& item : body["art_candidates"][slot])
       list.push_back(mapping::ToArtCandidate(item));
     return list;
   };
@@ -135,15 +119,24 @@ GameMetadataResult GetMetadataSync(const std::string& id) {
   out.hero_candidates = candidates("hero");
 
   const auto active_id = [&](const char* key) -> std::optional<std::int64_t> {
-    if (!reply.body.contains(key) || !reply.body[key].is_object() ||
-        !reply.body[key].contains("candidate_id")) {
+    if (!body.contains(key) || !body[key].is_object() || !body[key].contains("candidate_id")) {
       return std::nullopt;
     }
-    return reply.body[key].value("candidate_id", std::int64_t{0});
+    return body[key].value("candidate_id", std::int64_t{0});
   };
   out.cover_active_candidate_id = active_id("artwork");
   out.hero_active_candidate_id = active_id("hero");
-  return result;
+}
+
+GameMetadataResult GetMetadataSync(const std::string& id) {
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/metadata");
+  if (reply.status == 404) {
+    GameMetadataResult result;
+    result.missing = true;
+    return result;
+  }
+  return ReadReply<GameMetadataResult>(reply, "GET /v1/games/" + id + "/metadata", Shape::Object,
+                                       FillMetadata);
 }
 
 MetadataRefreshResult RefreshMetadataSync(const std::string& id, bool announce) {
@@ -194,29 +187,27 @@ ArtThumbsResult GetArtThumbsSync(const std::string& id, const std::string& slot,
 }
 
 GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::string& query) {
-  GriddbMatchesResult result;
   std::string url = "/v1/games/" + PercentEncode(id) + "/metadata/matches";
   if (!query.empty()) url += "?q=" + PercentEncode(query);
-  const transport::Reply reply = transport::Get(url, {.read_timeout = std::chrono::seconds(30)});
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  result.ok = true;
-  result.query = reply.body.value("query", std::string());
-  result.chosen = reply.body.value("chosen", std::int64_t{0});
-  for (const json& entry : reply.body.value("matches", json::array())) {
-    GriddbMatch match;
-    match.id = entry.value("id", std::int64_t{0});
-    match.name = entry.value("name", std::string());
-    if (const std::int64_t released = entry.value("release_date", std::int64_t{0}); released > 0) {
-      const auto day = std::chrono::floor<std::chrono::days>(
-          std::chrono::sys_seconds{std::chrono::seconds{released}});
-      match.year = static_cast<int>(std::chrono::year_month_day{day}.year());
-    }
-    result.matches.push_back(std::move(match));
-  }
-  return result;
+  return ReadReply<GriddbMatchesResult>(
+      transport::Get(url, {.read_timeout = std::chrono::seconds(30)}),
+      "GET /v1/games/" + id + "/metadata/matches", Shape::Object,
+      [](GriddbMatchesResult& result, const json& body) {
+        result.query = body.value("query", std::string());
+        result.chosen = body.value("chosen", std::int64_t{0});
+        for (const json& entry : body.value("matches", json::array())) {
+          GriddbMatch match;
+          match.id = entry.value("id", std::int64_t{0});
+          match.name = entry.value("name", std::string());
+          if (const std::int64_t released = entry.value("release_date", std::int64_t{0});
+              released > 0) {
+            const auto day = std::chrono::floor<std::chrono::days>(
+                std::chrono::sys_seconds{std::chrono::seconds{released}});
+            match.year = static_cast<int>(std::chrono::year_month_day{day}.year());
+          }
+          result.matches.push_back(std::move(match));
+        }
+      });
 }
 
 GameActionResult SetGriddbMatchSync(const std::string& id, std::int64_t griddb_id) {

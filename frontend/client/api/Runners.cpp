@@ -1,16 +1,10 @@
 #include "Runners.h"
 
-#include <cctype>
 #include <chrono>
 #include <json.hpp>
-#include <optional>
-#include <stdexcept>
-#include <string_view>
 #include <utility>
 
 #include "../Async.h"
-#include "../Jobs.h"
-#include "../JsonMapping.h"
 #include "../Transport.h"
 #include "Request.h"
 
@@ -20,64 +14,45 @@ namespace {
 using nlohmann::json;
 
 RunnersResult GetRunnersSync() {
-  RunnersResult result;
-  const transport::Reply reply = transport::Get("/v1/runners");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/runners");
-    return result;
-  }
-
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    RunnerInfo runner;
-    runner.kind = entry.value("kind", std::string());
-    runner.name = entry.value("name", std::string());
-    runner.version = entry.value("version", std::string());
-    runner.reference = entry.value("reference", std::string());
-    runner.path = entry.value("path", std::string());
-    runner.label = entry.value("label", runner.name);
-    runner.source = entry.value("source", std::string());
-    runner.removable = entry.value("removable", false);
-    result.runners.push_back(std::move(runner));
-  }
-  return result;
+  return ReadReply<RunnersResult>(transport::Get("/v1/runners"), "GET /v1/runners", Shape::Array,
+                                  [](RunnersResult& result, const json& body) {
+                                    for (const json& entry : body) {
+                                      RunnerInfo runner;
+                                      runner.kind = entry.value("kind", std::string());
+                                      runner.name = entry.value("name", std::string());
+                                      runner.version = entry.value("version", std::string());
+                                      runner.reference = entry.value("reference", std::string());
+                                      runner.path = entry.value("path", std::string());
+                                      runner.label = entry.value("label", runner.name);
+                                      runner.source = entry.value("source", std::string());
+                                      runner.removable = entry.value("removable", false);
+                                      result.runners.push_back(std::move(runner));
+                                    }
+                                  });
 }
 
 RunnerCatalogResult GetRunnerCatalogSync(const std::string& kind, const std::string& source) {
-  RunnerCatalogResult result;
-  // Leaves the machine (GitHub releases), so the default timeout is nowhere
-  // near enough.
   std::string path = "/v1/runners/catalog?kind=" + PercentEncode(kind);
   if (!source.empty()) path += "&source=" + source;
-  const transport::Reply reply = transport::Get(path, {.read_timeout = std::chrono::seconds(30)});
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/runners/catalog");
-    return result;
-  }
-
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    RunnerRelease release;
-    release.tag = entry.value("tag", std::string());
-    release.name = entry.value("name", release.tag);
-    release.label = entry.value("label", release.name);
-    release.source = entry.value("source", std::string());
-    release.installed = entry.value("installed", false);
-    release.asset_name = entry.value("asset_name", std::string());
-    release.size_bytes = entry.value("size_bytes", std::int64_t{0});
-    release.published_at = entry.value("published_at", std::string());
-    release.has_checksum = entry.value("has_checksum", false);
-    result.releases.push_back(std::move(release));
-  }
-  return result;
+  // Leaves the machine (GitHub releases), so the default timeout is nowhere
+  // near enough.
+  return ReadReply<RunnerCatalogResult>(
+      transport::Get(path, {.read_timeout = std::chrono::seconds(30)}), "GET /v1/runners/catalog",
+      Shape::Array, [](RunnerCatalogResult& result, const json& body) {
+        for (const json& entry : body) {
+          RunnerRelease release;
+          release.tag = entry.value("tag", std::string());
+          release.name = entry.value("name", release.tag);
+          release.label = entry.value("label", release.name);
+          release.source = entry.value("source", std::string());
+          release.installed = entry.value("installed", false);
+          release.asset_name = entry.value("asset_name", std::string());
+          release.size_bytes = entry.value("size_bytes", std::int64_t{0});
+          release.published_at = entry.value("published_at", std::string());
+          release.has_checksum = entry.value("has_checksum", false);
+          result.releases.push_back(std::move(release));
+        }
+      });
 }
 
 RunnerDownloadResult DownloadRunnerSync(const std::string& kind, const std::string& tag,
@@ -90,44 +65,27 @@ RunnerDownloadResult DownloadRunnerSync(const std::string& kind, const std::stri
 }
 
 RunnerSourcesResult ListRunnerSourcesSync(const std::string& kind) {
-  RunnerSourcesResult result;
-  const transport::Reply reply = transport::Get("/v1/runners/sources?kind=" + PercentEncode(kind));
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/runners/sources");
-    return result;
-  }
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    result.sources.push_back(
-        {entry.value("id", std::string()), entry.value("label", std::string())});
-  }
-  return result;
+  return ReadReply<RunnerSourcesResult>(
+      transport::Get("/v1/runners/sources?kind=" + PercentEncode(kind)), "GET /v1/runners/sources",
+      Shape::Array, [](RunnerSourcesResult& result, const json& body) {
+        for (const json& entry : body) {
+          result.sources.push_back(
+              {entry.value("id", std::string()), entry.value("label", std::string())});
+        }
+      });
 }
 
 RunnerUpdatesResult GetRunnerUpdatesSync() {
-  RunnerUpdatesResult result;
-  const transport::Reply reply =
-      transport::Get("/v1/runners/updates", {.read_timeout = std::chrono::seconds(60)});
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/runners/updates");
-    return result;
-  }
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    result.updates.push_back({entry.value("reference", std::string()),
-                              entry.value("source", std::string()),
-                              entry.value("tag", std::string()), entry.value("name", std::string()),
-                              entry.value("label", std::string())});
-  }
-  return result;
+  return ReadReply<RunnerUpdatesResult>(
+      transport::Get("/v1/runners/updates", {.read_timeout = std::chrono::seconds(60)}),
+      "GET /v1/runners/updates", Shape::Array, [](RunnerUpdatesResult& result, const json& body) {
+        for (const json& entry : body) {
+          result.updates.push_back(
+              {entry.value("reference", std::string()), entry.value("source", std::string()),
+               entry.value("tag", std::string()), entry.value("name", std::string()),
+               entry.value("label", std::string())});
+        }
+      });
 }
 
 RunnerDownloadResult UpdateRunnerSync(const std::string& reference) {
@@ -138,44 +96,30 @@ RunnerDownloadResult UpdateRunnerSync(const std::string& reference) {
 }
 
 RunnerToolsResult ListRunnerToolsSync() {
-  RunnerToolsResult result;
-  const transport::Reply reply = transport::Get("/v1/runners/tools");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/runners/tools");
-    return result;
-  }
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    result.tools.push_back({entry.value("id", std::string()), entry.value("label", std::string()),
-                            entry.value("doc", std::string()), entry.value("path", std::string()),
-                            entry.value("installed", false)});
-  }
-  return result;
+  return ReadReply<RunnerToolsResult>(
+      transport::Get("/v1/runners/tools"), "GET /v1/runners/tools", Shape::Array,
+      [](RunnerToolsResult& result, const json& body) {
+        for (const json& entry : body) {
+          result.tools.push_back(
+              {entry.value("id", std::string()), entry.value("label", std::string()),
+               entry.value("doc", std::string()), entry.value("path", std::string()),
+               entry.value("installed", false)});
+        }
+      });
 }
 
 RunnerSchemaResult GetRunnerSchemaSync(const std::string& kind) {
-  RunnerSchemaResult result;
   const std::string path = "/v1/runners/" + PercentEncode(kind) + "/schema";
-  const transport::Reply reply = transport::Get(path);
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET " + path);
-    return result;
-  }
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    if (!entry.is_object()) continue;
-    const std::string key = entry.value("key", std::string());
-    result.options.push_back({key, entry.value("label", key), entry.value("doc", std::string())});
-  }
-  return result;
+  return ReadReply<RunnerSchemaResult>(
+      transport::Get(path), "GET " + path, Shape::Array,
+      [](RunnerSchemaResult& result, const json& body) {
+        for (const json& entry : body) {
+          if (!entry.is_object()) continue;
+          const std::string key = entry.value("key", std::string());
+          result.options.push_back(
+              {key, entry.value("label", key), entry.value("doc", std::string())});
+        }
+      });
 }
 
 RunnerDownloadResult SetupRunnerToolSync(const std::string& id) {

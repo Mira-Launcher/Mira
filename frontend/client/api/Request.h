@@ -55,6 +55,35 @@ void RunJob(QObject* context, const std::string& kind,
       }));
 }
 
+// The JSON shape an endpoint promises for its body.
+enum class Shape { Object, Array };
+
+// `reply` as an R: its error when the request failed; an unexpected-response
+// error naming `endpoint` when the body isn't `shape` or `fill` can't read it
+// (nlohmann throws on a field of the wrong type); otherwise what `fill` read.
+template <typename R, typename Fill>
+R ReadReply(const transport::Reply& reply, const std::string& endpoint, Shape shape, Fill&& fill) {
+  R result;
+  if (!reply.ok) {
+    result.error = reply.error;
+    return result;
+  }
+  const bool fits = shape == Shape::Array ? reply.body.is_array() : reply.body.is_object();
+  if (!fits) {
+    result.error = transport::UnexpectedResponse(endpoint);
+    return result;
+  }
+  try {
+    fill(result, reply.body);
+  } catch (const std::exception&) {
+    R failed;
+    failed.error = transport::UnexpectedResponse(endpoint);
+    return failed;
+  }
+  result.ok = true;
+  return result;
+}
+
 // Steam scans, store and launcher imports all answer {added, updated}.
 template <typename R>
 void FillAddedUpdated(R& result, const nlohmann::json& body) {

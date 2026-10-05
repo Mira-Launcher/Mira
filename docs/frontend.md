@@ -110,7 +110,7 @@ dialogs/   modal dialogs
 | `Transport` | One socket round trip: timeouts and the error envelope. |
 | `JsonMapping` | JSON to and from the structs in `Types.h`. |
 | `Async` | Runs a call on a worker thread and delivers the result on the main thread. |
-| `api/` | One function per endpoint, in `namespace api`, one file per area: `Games`, `Library`, `Config`, `Artwork`, `Runners`, `Stores`. `Request` holds what they share. |
+| `api/` | One function per endpoint, in `namespace api`, one file per area: `Games`, `Library`, `Config`, `Artwork`, `Runners`, `Stores`. `Request` holds what they share: `ReadReply` turns a reply into a result, checking the body's shape and catching a field of the wrong type, and `RunJob` waits on a job. |
 | `Jobs` | Waits for a job's `job.finished` or `job.failed`. |
 | `EventStream` | The `GET /v1/events` connection, reconnecting with `Last-Event-ID`. |
 | `EventHub` | Shares one event connection between every window. |

@@ -21,7 +21,6 @@ using nlohmann::json;
 
 GamesResult GetGamesSync(const std::string& status_filter, const std::string& tag_filter,
                          bool include_hidden) {
-  GamesResult result;
   std::string path = "/v1/games";
   std::string separator = "?";
   if (!status_filter.empty()) {
@@ -33,19 +32,12 @@ GamesResult GetGamesSync(const std::string& status_filter, const std::string& ta
     separator = "&";
   }
   if (include_hidden) path += separator + "include_hidden=true";
-  const transport::Reply reply = transport::Get(path);
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/games");
-    return result;
-  }
-
-  result.ok = true;
-  for (const json& entry : reply.body) result.games.push_back(mapping::ToGameSummary(entry));
-  return result;
+  return ReadReply<GamesResult>(transport::Get(path), "GET /v1/games", Shape::Array,
+                                [](GamesResult& result, const json& body) {
+                                  for (const json& entry : body) {
+                                    result.games.push_back(mapping::ToGameSummary(entry));
+                                  }
+                                });
 }
 
 void FillScan(ScanResult& result, const json& body) {
@@ -62,40 +54,23 @@ void FillLutrisImport(LutrisImportResult& result, const json& body) {
 }
 
 DesktopEntryCandidatesResult GetDesktopEntryCandidatesSync() {
-  DesktopEntryCandidatesResult result;
-  const transport::Reply reply = transport::Get("/v1/desktop-entries/candidates");
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/desktop-entries/candidates");
-    return result;
-  }
-
-  result.ok = true;
-  for (const json& entry : reply.body) {
-    DesktopEntryCandidate c;
-    c.id = entry.value("id", std::string());
-    c.name = entry.value("name", std::string());
-    c.icon = entry.value("icon", std::string());
-    result.candidates.push_back(std::move(c));
-  }
-  return result;
+  return ReadReply<DesktopEntryCandidatesResult>(
+      transport::Get("/v1/desktop-entries/candidates"), "GET /v1/desktop-entries/candidates",
+      Shape::Array, [](DesktopEntryCandidatesResult& result, const json& body) {
+        for (const json& entry : body) {
+          DesktopEntryCandidate c;
+          c.id = entry.value("id", std::string());
+          c.name = entry.value("name", std::string());
+          c.icon = entry.value("icon", std::string());
+          result.candidates.push_back(std::move(c));
+        }
+      });
 }
 
 DesktopEntryImportResult ImportDesktopEntriesSync(const std::vector<std::string>& ids) {
-  DesktopEntryImportResult result;
-  const transport::Reply reply =
-      transport::PostJson("/v1/desktop-entries/import", json{{"ids", ids}});
-  if (!reply.ok) {
-    result.error = reply.error;
-    return result;
-  }
-  result.ok = true;
-  result.added = reply.body.value("added", 0);
-  result.updated = reply.body.value("updated", 0);
-  return result;
+  return ReadReply<DesktopEntryImportResult>(
+      transport::PostJson("/v1/desktop-entries/import", json{{"ids", ids}}),
+      "POST /v1/desktop-entries/import", Shape::Object, FillAddedUpdated<DesktopEntryImportResult>);
 }
 
 DesktopEntrySyncResult SyncDesktopEntriesSync() {
