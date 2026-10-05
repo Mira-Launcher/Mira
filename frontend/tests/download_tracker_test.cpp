@@ -110,6 +110,23 @@ TEST_CASE("DownloadTracker shows a store install once, under the game's name") {
   CHECK(tracker.Entries().size() == 2);
 }
 
+TEST_CASE("DownloadTracker knows the job behind a running install, and a cancelled one leaves no row") {
+  DownloadTracker tracker;
+  tracker.HandleEvent("library.install.started", R"({"source": "epic", "ref": "Fortnite", "update": false})");
+  const DownloadTracker::Entry* entry = tracker.Find("epic:Fortnite");
+  REQUIRE(entry != nullptr);
+  CHECK(tracker.JobFor(*entry).isEmpty());
+  tracker.HandleEvent("job.started", R"({"id": "install-7", "kind": "install", "target": "epic-Fortnite", "label": "x"})");
+  CHECK(tracker.JobFor(*tracker.Find("epic:Fortnite")).toStdString() == "install-7");
+
+  tracker.HandleEvent("library.install.failed",
+                      R"({"source": "epic", "ref": "Fortnite", "update": false, "error": "Cancelled", "code": "cancelled"})");
+  tracker.HandleEvent("job.failed", R"({"id": "install-7", "kind": "install", "target": "epic-Fortnite",
+                                        "error": {"code": "cancelled", "message": "Cancelled"}})");
+  CHECK(tracker.Find("epic:Fortnite") == nullptr);
+  CHECK(tracker.RunningCount() == 0);
+}
+
 TEST_CASE("DownloadTracker shows a runner download once, with its progress") {
   DownloadTracker tracker;
   tracker.HandleEvent("job.started", R"({"id": "runner-1", "kind": "runner", "target": "proton:GE-Proton10-4",

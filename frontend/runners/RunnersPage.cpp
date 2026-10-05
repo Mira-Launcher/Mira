@@ -543,7 +543,10 @@ void RunnersPage::DownloadChanged(const QString& key) {
   }
   if (!key.startsWith("runner:")) return;
   const DownloadTracker::Entry* entry = downloads_->Find(key);
-  if (entry == nullptr) return;
+  if (entry == nullptr) {  // cancelled: its row offers Install again
+    if (progress_rows_.contains(key)) RebuildCatalog();
+    return;
+  }
   if (const auto row = progress_rows_.find(key);
       row != progress_rows_.end() && entry->state == DownloadTracker::State::Running) {
     SetProgress(row->second, entry->progress);

@@ -36,6 +36,9 @@ Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total,
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
 
+### `POST /v1/jobs/{id}/cancel`
+Stops a running job: the programs it runs (a store tool, an installer and the Wine processes in its prefix, a download) are killed, and it ends as `job.failed` with code `cancelled`. Its own failure event (`library.install.failed`, `game.install.failed`, `launcher.install.failed`, `runners.download.failed`, `<tool>.setup.failed`) carries `code: "cancelled"` too. Store tools keep what they downloaded, so installing again resumes. `{"status": "cancelling"}`; `404 job_not_found`, or `409 not_running` once it has ended.
+
 ## Health
 
 ### `GET /v1/health`

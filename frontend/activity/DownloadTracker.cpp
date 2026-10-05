@@ -53,6 +53,21 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
   return QString();
 }
 
+QString DownloadTracker::JobFor(const Entry& entry) const {
+  if (entry.state != State::Running) return {};
+  QString target;  // the target mirad started the job with
+  switch (entry.kind) {
+    case Kind::Title: target = entry.source + "-" + entry.ref; break;
+    case Kind::Game: target = entry.ref; break;
+    case Kind::Launcher:
+    case Kind::Tool: target = entry.source; break;
+    case Kind::Runner: target = entry.source + ":" + entry.ref; break;
+    case Kind::Job: return {};
+  }
+  const auto found = job_by_target_.find(target);
+  return found == job_by_target_.end() ? QString() : found->second;
+}
+
 QString DownloadTracker::ProgressText(const Entry& entry, bool short_form) {
   if (entry.progress < 0) return {};
   QStringList parts{QString("%1%").arg(qRound(entry.progress * 100))};
@@ -76,11 +91,18 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   // runner tool setups (umu./winetricks.setup.*). A store's own setup is only a job.
   const std::string kind = mapping::Str(event, "kind");
   const std::string target = mapping::Str(event, "target");
+  const QString id = QString::fromStdString(mapping::Str(event, "id"));
   if (kind == "install" || kind == "update" || kind == "runner" ||
       (kind == "setup" && (target == "umu" || target == "winetricks"))) {
+    // Kept so that row can cancel it.
+    if (type == "job.started") {
+      job_by_target_[QString::fromStdString(target)] = id;
+      emit Changed(QString());  // its row can offer Cancel now
+    } else if (type == "job.finished" || type == "job.failed") {
+      std::erase_if(job_by_target_, [&id](const auto& entry) { return entry.second == id; });
+    }
     return true;
   }
-  const QString id = QString::fromStdString(mapping::Str(event, "id"));
   const QString key = KeyFor(Kind::Job, QString(), id);
   // Progress for a job whose start this stream never saw has no name to show.
   if (type != "job.started" && Find(key) == nullptr) return true;
@@ -133,6 +155,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     entry.state = state;
     entry.error = install.error;
     if (state == State::Running) entry.bytes = 0;
+    if (DropIfCancelled(entry)) return true;
     emit Changed(entry.key);
     return true;
   }
@@ -150,6 +173,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     entry.state = state;
     entry.error = runner.error;
     entry.progress = progress ? runner.progress : -1;
+    if (DropIfCancelled(entry)) return true;
     emit Changed(entry.key);
     return true;
   }
@@ -180,8 +204,17 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     entry.eta_seconds = -1;
     entry.bytes_per_second = -1;
   }
+  if (DropIfCancelled(entry)) return true;
   const QString key = entry.key;
   if (kind == Kind::Title && NameFor(entry) == ref) ResolveNames(source);
+  emit Changed(key);
+  return true;
+}
+
+bool DownloadTracker::DropIfCancelled(const Entry& entry) {
+  if (entry.state != State::Failed || entry.error.code != "cancelled") return false;
+  const QString key = entry.key;
+  std::erase_if(entries_, [&key](const Entry& e) { return e.key == key; });
   emit Changed(key);
   return true;
 }

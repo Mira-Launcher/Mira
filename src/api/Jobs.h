@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <mutex>
+#include <stop_token>
 #include <optional>
 #include <string>
 
@@ -22,7 +24,8 @@ namespace mira::api {
 //
 // Events: job.started {id, kind, target, label}, job.progress {id, done,
 // total, message}, then job.finished {id, kind, target, result} or
-// job.failed {id, kind, target, error: {code, message, hint?, fix?}}.
+// job.failed {id, kind, target, error: {code, message, hint?, fix?}}, whose
+// code is "cancelled" after Cancel().
 class JobRegistry {
 public:
   // What a job's work gets: a way to say how far along it is.
@@ -52,8 +55,13 @@ public:
   // The job as GET /v1/jobs/{id} shows it, while running and for a while after.
   std::optional<nlohmann::json> Find(const std::string& id) const;
 
+  // Stops a running job: the processes it runs are killed and it ends as
+  // job.failed with code "cancelled". Err job_not_found or not_running.
+  Result<void> Cancel(const std::string& id);
+
 private:
   void Update(const std::string& id, const std::function<void(nlohmann::json&)>& change);
+  std::map<std::string, std::stop_source> cancels_;  // running jobs, under mutex_
 
   EventBus& events_;
   mutable std::mutex mutex_;

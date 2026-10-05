@@ -10,6 +10,8 @@
 #include <QVBoxLayout>
 
 #include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../client/Jobs.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -160,6 +162,8 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
     QWidget* row = rows_->itemAt(i)->widget();
     if (row == nullptr || row->property("download_key").toString() != key) continue;
     if (!row->property("download_running").toBool()) return false;
+    // Its job became known after the row was built: rebuilt with Cancel.
+    if ((row->findChild<QPushButton*>("download_cancel") == nullptr) != tracker_->JobFor(*entry).isEmpty()) return false;
     const QString origin = Origin(*tracker_, *entry);
     const QString state = RunningText(*entry);
     row->findChild<QLabel*>("download_title")->setText(tracker_->NameFor(*entry));
@@ -245,7 +249,17 @@ QWidget* DownloadsPanel::BuildRow(int index) {
 
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
-  if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
+  if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
+    auto* cancel = new QPushButton("Cancel", row);
+    cancel->setObjectName("download_cancel");
+    connect(cancel, &QPushButton::clicked, this, [this, cancel, job] {
+      cancel->setEnabled(false);  // the row goes once mirad says it's cancelled
+      jobs::Cancel(this, job.toStdString(), [this](ApiError error) {
+        if (!error.message.empty()) notify::FailedRequest(this, "Could not cancel it.", error);
+      });
+    });
+    layout->addWidget(cancel, 0, Qt::AlignVCenter);
+  } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
     auto* show = new QPushButton("Show", row);
     connect(show, &QPushButton::clicked, this, [this, game_id] {
       hide();

@@ -1,5 +1,7 @@
 #include "api/EventBus.h"
 
+#include "core/Lane.h"
+
 namespace mira::api {
 
 EventBus::EventBus(size_t capacity)
@@ -119,6 +121,12 @@ nlohmann::json ErrorJson(const Error& error) {
 }
 
 nlohmann::json FailedEvent(nlohmann::json fields, const Error& error) {
+  // A cancelled job's work fails in whatever words its tool used; it was a cancel.
+  if (ThisTaskCancelled()) {
+    fields["error"] = "Cancelled";
+    fields["code"] = "cancelled";
+    return fields;
+  }
   fields["error"] = error.message;
   fields["code"] = error.code;
   AddHintAndFix(fields, error);

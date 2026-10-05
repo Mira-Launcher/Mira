@@ -7,9 +7,29 @@
 namespace mira {
 namespace {
 thread_local std::stop_token current_stop;
+thread_local std::stop_token current_cancel;
 }  // namespace
 
 std::stop_token ThisTaskStop() { return current_stop; }
+
+bool ThisTaskCancelled() { return current_cancel.stop_requested(); }
+
+void RunCancellable(std::stop_token cancel, const std::function<void()>& body) {
+  std::stop_source either;
+  const std::stop_token outer = current_stop;
+  const std::stop_callback on_shutdown(outer, [&either] { either.request_stop(); });
+  const std::stop_callback on_cancel(cancel, [&either] { either.request_stop(); });
+  current_stop = either.get_token();
+  current_cancel = cancel;
+  struct Restore {
+    std::stop_token stop;
+    ~Restore() {
+      current_stop = stop;
+      current_cancel = {};
+    }
+  } restore{outer};
+  body();
+}
 
 Lane::Lane(std::string name, int workers) : name_(std::move(name)), max_workers_(workers) {}
 

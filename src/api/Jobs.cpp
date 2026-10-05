@@ -42,6 +42,7 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
                                                 .count(),
                                             next_++);
     jobs_.push_back({{"id", id}, {"kind", kind}, {"target", target}, {"label", label}, {"state", "running"}});
+    cancels_[id] = std::stop_source();
     // Oldest ended job first: a running one must stay findable.
     while (jobs_.size() > kKeptJobs) {
       const auto ended = std::ranges::find_if(jobs_, [](const json& job) { return job.value("state", "") != "running"; });
@@ -56,13 +57,26 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
 
   (lane != nullptr ? *lane : queue_).Post([this, id, identity, work = std::move(work)] {
     Progress progress(*this, id);
+    std::stop_source cancel;
+    {
+      std::lock_guard lock(mutex_);
+      cancel = cancels_[id];
+    }
     Result<json> result;
     // Caught here so the job still ends: the queue would only log it.
-    try {
-      result = work(progress);
-    } catch (const std::exception& e) {
-      result = std::unexpected(Error{"internal_error", e.what(), "", {}});
+    RunCancellable(cancel.get_token(), [&] {
+      try {
+        result = work(progress);
+      } catch (const std::exception& e) {
+        result = std::unexpected(Error{"internal_error", e.what(), "", {}});
+      }
+    });
+    {
+      std::lock_guard lock(mutex_);
+      cancels_.erase(id);
     }
+    // However the work reported it, a cancelled job ends as one.
+    if (cancel.stop_requested() && !result) result = std::unexpected(Error{"cancelled", "Cancelled", "", {}});
     json event = identity;
     if (result) {
       event["result"] = *result;
@@ -82,6 +96,16 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
     }
   });
   return id;
+}
+
+Result<void> JobRegistry::Cancel(const std::string& id) {
+  std::lock_guard lock(mutex_);
+  if (const auto found = cancels_.find(id); found != cancels_.end()) {
+    found->second.request_stop();
+    return {};
+  }
+  const bool known = std::ranges::any_of(jobs_, [&](const json& job) { return job.value("id", "") == id; });
+  return known ? Err("not_running", "the job has already ended") : Err("job_not_found", "no such job");
 }
 
 std::optional<json> JobRegistry::Find(const std::string& id) const {

@@ -242,6 +242,7 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
 
   int status = 0;
   if (waitpid(pid, &status, 0) < 0) return Err("exec_wait_failed", std::strerror(errno));
+  if (stopped && ThisTaskCancelled()) return Err("cancelled", std::format("{} was cancelled", command.argv[0]));
   if (stopped) return Err("shutting_down", std::format("{} was stopped because mirad is shutting down", command.argv[0]));
   if (timed_out) {
     return Err("exec_timeout", std::format("{} gave no result within {}s", command.argv[0], command.timeout_s));

@@ -1368,7 +1368,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     const QString name = game != nullptr ? QString::fromStdString(game->name) : QString("A game");
     if (!live) {
       // History: the grid below still picks up the result.
-    } else if (install.state == "failed") {
+    } else if (install.state == "failed" && install.error.code != "cancelled") {
       mira_gui::notify::FailedRequest(this, "Could not install " + name + ".", install.error);
     } else if (install.state == "finished") {
       mira_gui::notify::Notice(this, name + " is installed.");

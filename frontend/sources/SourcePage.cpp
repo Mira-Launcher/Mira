@@ -807,7 +807,11 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     } else if (event.state == "failed") {
       launcher_installing_ = false;
       tool_updating_ = false;
-      setup_card_->ShowSetupFailed(event.error, IsStore() && tool_installed_);
+      if (event.error.code == "cancelled") {
+        RefreshStatus();
+      } else {
+        setup_card_->ShowSetupFailed(event.error, IsStore() && tool_installed_);
+      }
       UpdateStatusLine();
     }
     return;
@@ -816,7 +820,9 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   const QString ref = QString::fromStdString(event.ref);
   if (event.state == "failed") {
     owned_state_.remove(ref);
-    ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
+    if (event.error.code != "cancelled") {
+      ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
+    }
   } else if (event.state == "finished") {
     if (id_ == "steam") {
       owned_state_.insert(ref, "Sent to Steam");
