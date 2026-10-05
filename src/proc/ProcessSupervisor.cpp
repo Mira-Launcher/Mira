@@ -18,7 +18,6 @@
 #include "core/Log.h"
 #include "proc/ProcessIndex.h"
 #include "proc/Session.h"
-#include "proc/Stats.h"
 #include "runner/Exec.h"
 
 namespace mira::proc {
@@ -523,8 +522,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
 }
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
-// record, update the store, publish the event, roll it into stats.toml,
-// delete the session file.
+// record, update the store, publish the event, delete the session file.
 void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
                                                const std::filesystem::path& session_path) {
   // Mirrors Watch()'s classification. A record with no exit info at all
@@ -545,7 +543,11 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   }
 
   auto updated = games_.Update(game_id, [&](model::Game& game) {
-    game.play_seconds += record.duration_seconds;
+    // Counted once even if mirad dies before the session file is removed and finds it again.
+    if (record.started_at > game.last_session_at) {
+      game.play_seconds += record.duration_seconds;
+      game.last_session_at = record.started_at;
+    }
     game.last_error = error;
   });
   if (!updated) {
@@ -568,11 +570,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 
-  // Rolled into the durable journal and removed -- the session file only
-  // ever covered the gap until mirad got a chance to see it finished.
-  if (auto appended = AppendSession(games_.Dir() / "stats.toml", record); !appended) {
-    log::Warn("failed to append session for {} to stats.toml: {}", game_id, appended.error().message);
-  }
+  // The session file only ever covered the gap until mirad got a chance to see it finished.
   std::error_code ec;
   std::filesystem::remove(session_path, ec);
 }
