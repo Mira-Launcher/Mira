@@ -519,7 +519,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       g.last_error.clear();
     });
     if (!result) return SendStoreError(res, result.error());
-    s.SyncDesktopEntries();
+    s.SyncDesktopEntry(result->id);
     s.events.Publish("game.updated", s.Record(*result));
     // Its art and store info were looked up by the installer's name.
     if (moved) {
@@ -575,7 +575,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
                });
                folders_lock.unlock();
                if (!saved) return std::unexpected(saved.error());
-               s.SyncDesktopEntries();
+               s.SyncDesktopEntry(saved->id);
                json record = s.Record(*saved);
                s.events.Publish("game.updated", record);
                return record;

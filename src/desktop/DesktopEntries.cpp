@@ -10,6 +10,7 @@
 #include <json.hpp>
 
 #include "config/Resolver.h"
+#include "core/AtomicFile.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "metadata/MetadataFetcher.h"
@@ -101,6 +102,18 @@ std::string DesktopEntries::Render(const model::Game& game) const {
       Sanitize(categories), game.id);
 }
 
+Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::optional<model::Game>& game) {
+  const fs::path path = EntryPath(game_id);
+  if (!game || !config_.GetBool("desktop_entries.enabled") || !IsWanted(*game)) {
+    std::error_code ec;
+    fs::remove(path, ec);
+    return {};
+  }
+  const std::string content = Render(*game);
+  if (ReadFile(path) == content) return {};  // every write makes the desktop re-index its menu
+  return WriteFileAtomic(path, content, "desktop_write_failed");
+}
+
 Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
   // The global switch still gates everything -- a per-game override can
   // exclude one game while the rest of the menu stays on, but it can't turn
@@ -131,12 +144,9 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
     // Unchanged entries are left alone: every write makes the desktop re-index its menu.
     const std::string content = Render(game);
     if (ReadFile(path) == content) continue;
-    std::ofstream out(path);
-    if (!out) {
-      log::Warn("could not write desktop entry {}", path.string());
-      continue;
+    if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) {
+      log::Warn("could not write desktop entry {}: {}", path.string(), written.error().message);
     }
-    out << content;
   }
 
   // Remove ours that are no longer wanted: a game deleted, gone missing, or

@@ -222,7 +222,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                    return std::unexpected(result.error());
                  }
                  log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
-                 s.SyncDesktopEntries();
+                 s.SyncDesktopEntry(source + "-" + ref);
                  if (const auto game = s.games.Find(source + "-" + ref)) s.fetches.Enqueue(s.config, s.events, *game);
                  s.events.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
                  return json{{"source", source}, {"ref", ref}};

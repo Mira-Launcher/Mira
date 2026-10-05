@@ -75,6 +75,8 @@ public:
 
   // Rewrites the application menu entries to match the library.
   void SyncDesktopEntries();
+  // The same for one game, after a change to just that game (also once it is deleted).
+  void SyncDesktopEntry(const std::string& game_id);
   // Fetches metadata and art for games added outside a request.
   void QueueMetadata(const std::vector<model::Game>& games);
   // What every import and scan ends with: menu entries, then metadata for what it added.

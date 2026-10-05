@@ -96,7 +96,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
 
     auto result = s.games.Update(id, [&](model::Game& game) { game = library::ParseGamePatch(game, patch); });
     if (!result) return SendStoreError(res, result.error());
-    s.SyncDesktopEntries();
+    s.SyncDesktopEntry(id);
     s.events.Publish("game.updated", s.Record(*result));
     SendJson(res, s.Record(*result));
   });
@@ -131,7 +131,9 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     for (const model::Game& game : *updated) games.push_back(s.Record(game));
     if (!updated->empty()) {
       // Tags never change a menu entry; only an override can.
-      if (!config.empty()) s.SyncDesktopEntries();
+      if (!config.empty()) {
+        for (const model::Game& game : *updated) s.SyncDesktopEntry(game.id);
+      }
       s.events.Publish("games.updated", {{"games", games}});
     }
     SendJson(res, {{"games", std::move(games)}});
@@ -157,7 +159,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
         s.games.Update(id, [&](model::Game& game) { library::ApplyOverridesPatch(game, patch); });
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
-    s.SyncDesktopEntries();
+    s.SyncDesktopEntry(id);
     s.events.Publish("game.updated", s.Record(*result));
     SendJson(res, s.Record(*result));
   });
@@ -178,7 +180,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
 
     auto result = s.games.Remove(req.matches[1]);
     if (!result) return SendStoreError(res, result.error());
-    s.SyncDesktopEntries();
+    s.SyncDesktopEntry(req.matches[1]);
     s.events.Publish("game.removed", {{"id", req.matches[1].str()}});
     SendJson(res, json::object());
   });
@@ -217,7 +219,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       folders_lock.unlock();
       if (!removed) return std::unexpected(removed.error());
       if (!removed->empty()) {
-        s.SyncDesktopEntries();
+        for (const std::string& removed_id : *removed) s.SyncDesktopEntry(removed_id);
         s.events.Publish("games.removed", {{"ids", *removed}});
       }
       return json{{"removed", *removed}, {"failed", std::move(failed)}};
@@ -288,7 +290,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       if (saved) game = *saved;
     }
 
-    s.SyncDesktopEntries();
+    s.SyncDesktopEntry(game.id);
     if (!existing) s.fetches.Enqueue(s.config, s.events, game);
     s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game));
     SendJson(res, s.Record(game));

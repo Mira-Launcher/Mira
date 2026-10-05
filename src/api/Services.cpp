@@ -85,6 +85,12 @@ void Services::SyncDesktopEntries() {
   }
 }
 
+void Services::SyncDesktopEntry(const std::string& game_id) {
+  if (auto synced = desktop::DesktopEntries(config).SyncOne(game_id, games.Find(game_id)); !synced) {
+    log::Warn("could not update the application menu entry of {}: {}", game_id, synced.error().message);
+  }
+}
+
 void Services::AfterImport(const std::vector<model::Game>& added) {
   SyncDesktopEntries();
   QueueMetadata(added);
