@@ -296,17 +296,16 @@ bool Confirm(QWidget* parent, const QString& title, const QString& question, con
   return dialog.exec() == QDialog::Accepted;
 }
 
-UnsavedAction ConfirmUnsaved(QWidget* parent, const QString& what) {
+bool LeaveUnsaved(QWidget* parent, const QString& what, const std::function<void()>& save) {
   PopupDialog dialog(parent, Level::Warning, "Unsaved changes");
   dialog.SetMessage(what);
-  constexpr int kDiscard = static_cast<int>(UnsavedAction::DiscardAndExit);
-  constexpr int kSave = static_cast<int>(UnsavedAction::SaveAndExit);
+  constexpr int kSave = 1;
+  constexpr int kDiscard = 2;
   dialog.AddButton("Save and exit", kSave, /*default_button=*/true);
   dialog.AddButton("Exit without saving", kDiscard, /*default_button=*/false);
   const int result = dialog.exec();
-  if (result == kSave) return UnsavedAction::SaveAndExit;
-  if (result == kDiscard) return UnsavedAction::DiscardAndExit;
-  return UnsavedAction::Cancel;
+  if (result == kSave) save();
+  return result == kDiscard;
 }
 
 Level LevelFromString(const QString& text) {

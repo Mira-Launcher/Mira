@@ -798,37 +798,32 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
   const bool settings_dirty = settings_panel_ != nullptr && settings_panel_->IsDirty();
   const bool game_dirty =
       game_edit_form_ != nullptr && GameEditOpen() && game_edit_form_->IsDirty();
-  if (settings_dirty || game_dirty) {
-    switch (mira_gui::notify::ConfirmUnsaved(
-        this, settings_dirty ? "Settings changed but not saved."
-                             : "This game's edits aren't saved.")) {
-      case mira_gui::notify::UnsavedAction::Cancel:
-        event->ignore();
-        return;
-      case mira_gui::notify::UnsavedAction::SaveAndExit:
-        event->ignore();
-        // Neither Save() finishes synchronously, so quit for real only once it
-        // has, via the one-shot below, not this closeEvent call.
-        if (settings_dirty) {
-          close_settings_after_save_ = true;
-          connect(settings_panel_, &mira_gui::SettingsPanel::SaveFinished, this,
-                  [this](bool ok, QString) {
-                    if (ok) QuitOrClose();
-                  },
-                  Qt::SingleShotConnection);
-          settings_panel_->Save();
-        } else {
-          connect(game_edit_form_, &mira_gui::GameEditForm::SaveFinished, this,
-                  [this](bool ok, QString) {
-                    if (ok) QuitOrClose();
-                  },
-                  Qt::SingleShotConnection);
-          game_edit_form_->Save();
-        }
-        return;
-      case mira_gui::notify::UnsavedAction::DiscardAndExit:
-        break;  // fall through to the ordinary close below
+  // Neither Save() finishes synchronously, so quit for real only once it
+  // has, via the one-shot below, not this closeEvent call.
+  const auto save = [this, settings_dirty] {
+    if (settings_dirty) {
+      close_settings_after_save_ = true;
+      connect(settings_panel_, &mira_gui::SettingsPanel::SaveFinished, this,
+              [this](bool ok, QString) {
+                if (ok) QuitOrClose();
+              },
+              Qt::SingleShotConnection);
+      settings_panel_->Save();
+    } else {
+      connect(game_edit_form_, &mira_gui::GameEditForm::SaveFinished, this,
+              [this](bool ok, QString) {
+                if (ok) QuitOrClose();
+              },
+              Qt::SingleShotConnection);
+      game_edit_form_->Save();
     }
+  };
+  if ((settings_dirty || game_dirty) &&
+      !mira_gui::notify::LeaveUnsaved(
+          this, settings_dirty ? "Settings changed but not saved." : "This game's edits aren't saved.",
+          save)) {
+    event->ignore();
+    return;
   }
 
   FlushPrefs();
@@ -1962,20 +1957,12 @@ void LibraryWindow::UpdateGameEditPlay() {
 }
 
 void LibraryWindow::RequestCloseGameEdit() {
-  if (game_edit_form_ == nullptr || !game_edit_form_->IsDirty()) {
+  if (game_edit_form_ == nullptr || !game_edit_form_->IsDirty() ||
+      mira_gui::notify::LeaveUnsaved(this, "This game's edits aren't saved.", [this] {
+        close_game_edit_after_save_ = true;
+        game_edit_form_->Save();  // SaveFinished, connected in BuildGameEditCard, closes on success
+      })) {
     CloseGameEdit();
-    return;
-  }
-  switch (mira_gui::notify::ConfirmUnsaved(this, "This game's edits aren't saved.")) {
-    case mira_gui::notify::UnsavedAction::Cancel:
-      return;
-    case mira_gui::notify::UnsavedAction::SaveAndExit:
-      close_game_edit_after_save_ = true;
-      game_edit_form_->Save();  // SaveFinished, connected in BuildGameEditCard, closes on success
-      return;
-    case mira_gui::notify::UnsavedAction::DiscardAndExit:
-      CloseGameEdit();
-      return;
   }
 }
 
@@ -2103,20 +2090,12 @@ QIcon LibraryWindow::SourceIcon(const mira_gui::SourceInfo& source, bool active)
 }
 
 void LibraryWindow::RequestCloseSettings() {
-  if (settings_panel_ == nullptr || !settings_panel_->IsDirty()) {
+  if (settings_panel_ == nullptr || !settings_panel_->IsDirty() ||
+      mira_gui::notify::LeaveUnsaved(this, "Settings changed but not saved.", [this] {
+        close_settings_after_save_ = true;
+        settings_panel_->Save();  // SaveFinished, connected in BuildSettingsPage, closes on success
+      })) {
     CloseSettings();
-    return;
-  }
-  switch (mira_gui::notify::ConfirmUnsaved(this, "Settings changed but not saved.")) {
-    case mira_gui::notify::UnsavedAction::Cancel:
-      return;
-    case mira_gui::notify::UnsavedAction::SaveAndExit:
-      close_settings_after_save_ = true;
-      settings_panel_->Save();  // SaveFinished, connected in BuildSettingsPage, closes on success
-      return;
-    case mira_gui::notify::UnsavedAction::DiscardAndExit:
-      CloseSettings();
-      return;
   }
 }
 
@@ -2522,26 +2501,19 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
 bool LibraryWindow::ConfirmLeaveSource(std::function<void()> retry) {
   mira_gui::SourceSettingsCard* card = source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
   if (card == nullptr || !card->IsDirty()) return true;
-  const mira_gui::notify::UnsavedAction action =
-      mira_gui::notify::ConfirmUnsaved(this, "This source's settings changed but aren't saved.");
+  const bool leave =
+      mira_gui::notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [&] {
+        // A failed save stays on the page, with its error on the card.
+        connect(card, &mira_gui::SourceSettingsCard::SaveFinished, this,
+                [retry = std::move(retry)](bool ok) {
+                  if (ok) retry();
+                },
+                Qt::SingleShotConnection);
+        card->Save();
+      });
   // The nav row that was clicked checked itself; staying put unchecks it.
   UpdateLibraryNavActive();
-  switch (action) {
-    case mira_gui::notify::UnsavedAction::Cancel:
-      return false;
-    case mira_gui::notify::UnsavedAction::SaveAndExit:
-      // A failed save stays on the page, with its error on the card.
-      connect(card, &mira_gui::SourceSettingsCard::SaveFinished, this,
-              [retry = std::move(retry)](bool ok) {
-                if (ok) retry();
-              },
-              Qt::SingleShotConnection);
-      card->Save();
-      return false;
-    case mira_gui::notify::UnsavedAction::DiscardAndExit:
-      return true;
-  }
-  return true;
+  return leave;
 }
 
 bool LibraryWindow::CloseSource(std::function<void()> retry) {

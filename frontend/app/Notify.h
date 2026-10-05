@@ -70,12 +70,11 @@ void Info(QWidget* parent, const QString& title, const QString& message);
 bool Confirm(QWidget* parent, const QString& title, const QString& question,
              const QString& accept, bool destructive = false);
 
-// What a caller leaving a dirty form asked for.
-enum class UnsavedAction { Cancel, SaveAndExit, DiscardAndExit };
-
 // The unsaved-edits prompt every Back/Close/Quit path shares. `what` names
-// what's unsaved, as a sentence ("This game's edits aren't saved."). No
-// separate Cancel button: the popup's own top-right X is that answer.
-UnsavedAction ConfirmUnsaved(QWidget* parent, const QString& what);
+// what's unsaved, as a sentence ("This game's edits aren't saved."). True to
+// leave now (discarded); false to stay, cancelled or after calling `save`,
+// whose finishing is then the caller's cue to leave. No separate Cancel
+// button: the popup's own top-right X is that answer.
+bool LeaveUnsaved(QWidget* parent, const QString& what, const std::function<void()>& save);
 
 }  // namespace mira_gui::notify

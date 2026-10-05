@@ -43,7 +43,7 @@ public:
   // exec() then returns QDialog::Accepted or ::Rejected per `accept`.
   QPushButton* AddButton(const QString& text, bool accept, bool default_button = false);
   // Same, but exec() returns `result` verbatim, for a caller with more than
-  // two outcomes (see notify::ConfirmUnsaved).
+  // two outcomes (see notify::LeaveUnsaved).
   QPushButton* AddButton(const QString& text, int result, bool default_button = false);
 
 protected:
