@@ -30,12 +30,14 @@ void RegisterEventRoutes(httplib::Server& http, Services& s) {
     // history (show it) from news (announce it). A resuming one only missed news.
     const std::int64_t replay_end = resuming ? 0 : s.events.LatestId();
     bool live_sent = resuming;
+    // Ids are consecutive, so a jump means the client fell behind the buffer and missed events.
+    bool synced = resuming;
 
     res.set_header("Cache-Control", "no-cache");
     // The 20s wait only checks whether this client went away.
     res.set_chunked_content_provider(
         "text/event-stream",
-        [&s, after_id, replay_end, live_sent](size_t, httplib::DataSink& sink) mutable -> bool {
+        [&s, after_id, replay_end, live_sent, synced](size_t, httplib::DataSink& sink) mutable -> bool {
           if (s.stopping.load(std::memory_order_relaxed)) return false;
           if (!live_sent && after_id >= replay_end) {
             live_sent = true;
@@ -44,10 +46,14 @@ void RegisterEventRoutes(httplib::Server& http, Services& s) {
           }
           auto event = s.events.WaitNext(after_id, s.stopping, std::chrono::milliseconds(20000));
           if (!event) return sink.is_writable() && !s.stopping.load(std::memory_order_relaxed);
+          // `replace`: a payload with bytes that aren't UTF-8 (a game's name, a tool's output) must not throw here.
+          std::string frame = std::format("id: {}\nevent: {}\ndata: {}\n\n", event->id, event->type,
+                                          event->payload.dump(-1, ' ', false, json::error_handler_t::replace));
+          if (synced && event->id > after_id + 1) {
+            frame = std::format("event: stream.gap\ndata: {{\"missed\": {}}}\n\n", event->id - after_id - 1) + frame;
+          }
+          synced = true;
           after_id = event->id;
-          const std::string frame =
-              std::format("id: {}\nevent: {}\ndata: {}\n\n", event->id, event->type,
-                         event->payload.dump());
           return sink.write(frame.data(), frame.size());
         });
   });
