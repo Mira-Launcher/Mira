@@ -210,22 +210,24 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     if (!IsSafeRef(ref)) return SendError(res, 400, "invalid_ref", "that ref isn't a store id");
 
     s.events.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
-    s.operations.Post([&s, src, source, ref, is_update] {
-      const Result<void> result = is_update ? src->Update(s.config, s.games, s.events, ref)
-                                            : src->Install(s.config, s.games, s.events, ref);
-      if (!result) {
-        log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref, result.error().message);
-        s.events.Publish("library.install.failed",
-                        FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
-      } else {
-        log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
-        s.SyncDesktopEntries();
-        if (const auto game = s.games.Find(source + "-" + ref)) s.fetches.Enqueue(s.config, s.events, *game);
-        s.events.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
-      }
-    });
-
-    SendJson(res, {{"status", is_update ? "updating" : "installing"}, {"ref", ref}}, 202);
+    s.StartJob(req, res, is_update ? "update" : "install", source + "-" + ref, (is_update ? "Updating " : "Installing ") + ref,
+               [&s, src, source, ref, is_update](JobRegistry::Progress&) -> Result<json> {
+                 const Result<void> result = is_update ? src->Update(s.config, s.games, s.events, ref)
+                                                       : src->Install(s.config, s.games, s.events, ref);
+                 if (!result) {
+                   log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref,
+                              result.error().message);
+                   s.events.Publish("library.install.failed",
+                                    FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
+                   return std::unexpected(result.error());
+                 }
+                 log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
+                 s.SyncDesktopEntries();
+                 if (const auto game = s.games.Find(source + "-" + ref)) s.fetches.Enqueue(s.config, s.events, *game);
+                 s.events.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
+                 return json{{"source", source}, {"ref", ref}};
+               },
+               &s.operations);
   };
   http.Get("/v1/library/artwork", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");

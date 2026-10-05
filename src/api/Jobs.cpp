@@ -30,7 +30,7 @@ void JobRegistry::Progress::Report(int done, int total, const std::string& messa
 }
 
 std::string JobRegistry::Start(const std::string& kind, const std::string& target, const std::string& label,
-                               Work work, const std::string& requested) {
+                               Work work, const std::string& requested, Lane* lane) {
   std::string id;
   {
     std::lock_guard lock(mutex_);
@@ -54,7 +54,7 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
   started["label"] = label;
   events_.Publish("job.started", started);
 
-  queue_.Post([this, id, identity, work = std::move(work)] {
+  (lane != nullptr ? *lane : queue_).Post([this, id, identity, work = std::move(work)] {
     Progress progress(*this, id);
     Result<json> result;
     // Caught here so the job still ends: the queue would only log it.

@@ -88,17 +88,18 @@ public:
 
   // Runs `work` as a job and answers 202 {status, job}. The request's ?job=
   // names the job, so its client can listen for it before this reply lands.
+  // `lane` is where the work runs; the jobs' own lane when null.
   void StartJob(const httplib::Request& req, httplib::Response& res, const std::string& kind,
-                const std::string& target, const std::string& label, JobRegistry::Work work);
+                const std::string& target, const std::string& label, JobRegistry::Work work, Lane* lane = nullptr);
   // Queues a full metadata fetch for each game and reports as each finishes,
   // for a job: {refreshed, failed} once all have.
   Result<nlohmann::json> RefreshMetadata(std::vector<model::Game> games, JobRegistry::Progress& progress);
   // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed.
   Result<void> DeleteGameData(const model::Game& game, bool files, bool prefix, bool metadata);
-  // Installs a runner build in the background, publishing runners.download.*.
+  // Installs a runner build as a job, publishing runners.download.* as well.
   // With `replacing` ("kind:name"), games and the default using it move over.
-  void InstallRunnerAsync(const std::string& kind, const std::string& source, const runner::ReleaseAsset& asset,
-                          const std::string& replacing);
+  void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
+                     const std::string& source, const runner::ReleaseAsset& asset, const std::string& replacing);
 
   // Picks up games started outside Mira (the Steam client, a running launcher) so they show as playing.
   void StartExternalWatch();

@@ -44,9 +44,10 @@ public:
 
   // Starts `work` in the background and returns its id: `requested` when the
   // client picked one (so it can listen before this reply lands), else a new
-  // one. `label` is a human name for it ("Scanning your library").
+  // one. `label` is a human name for it ("Scanning your library"). Runs on `lane` when given, so work that
+  // must not overlap (winetricks in one prefix) shares one, else on the registry's own.
   std::string Start(const std::string& kind, const std::string& target, const std::string& label, Work work,
-                    const std::string& requested = std::string());
+                    const std::string& requested = std::string(), Lane* lane = nullptr);
 
   // The job as GET /v1/jobs/{id} shows it, while running and for a while after.
   std::optional<nlohmann::json> Find(const std::string& id) const;

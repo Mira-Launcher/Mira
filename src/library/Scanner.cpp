@@ -66,7 +66,7 @@ void QueueAutoInstall(const model::Game& game, config::Config& config, store::Ga
                       api::EventBus& events, metadata::FetchQueue* fetches, Lane* lane) {
   if (lane == nullptr || !AutoInstalls(config, game) || !BeginInstall(game.id)) return;
   lane->Post([id = game.id, &config, &games, &events, fetches] {
-    RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
+    [[maybe_unused]] const auto installed = RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
   });
 }
 

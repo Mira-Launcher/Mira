@@ -63,6 +63,8 @@ Services::~Services() {
   events.SetArtHook(nullptr);
   BeginStopping();
   if (external_watch_.joinable()) external_watch_.join();
+  // Their tasks report to `jobs`, which is destroyed before the lanes are.
+  for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs}) lane->Stop();
 }
 
 void Services::BeginStopping() {
@@ -195,8 +197,8 @@ void Services::ReconcileSessions() {
 }
 
 void Services::StartJob(const httplib::Request& req, httplib::Response& res, const std::string& kind, const std::string& target,
-                      const std::string& label, JobRegistry::Work work) {
-  const std::string id = jobs.Start(kind, target, label, std::move(work), req.get_param_value("job"));
+                      const std::string& label, JobRegistry::Work work, Lane* lane) {
+  const std::string id = jobs.Start(kind, target, label, std::move(work), req.get_param_value("job"), lane);
   SendJson(res, {{"status", "running"}, {"job", id}}, 202);
 }
 
@@ -264,47 +266,53 @@ Result<void> Services::DeleteGameData(const model::Game& game, bool files, bool 
   return {};
 }
 
-void Services::InstallRunnerAsync(const std::string& kind, const std::string& source,
-                                const runner::ReleaseAsset& asset, const std::string& replacing) {
+void Services::InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
+                             const std::string& source, const runner::ReleaseAsset& asset,
+                             const std::string& replacing) {
   const std::string name = runner::ReleaseName(kind, asset);
   const json base = {{"kind", kind}, {"tag", asset.tag}, {"name", name},
                      {"label", runner::BuildLabel(kind, name)}, {"source", source}};
   events.Publish("runners.download.started", base);
-  operations.Post([this, kind, asset, replacing, base] {
-    if (auto installed = runner::DownloadAndInstall(config, kind, asset); !installed) {
-      log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
-      events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
-      return;
-    }
-    log::Info("installed {} {}", kind, asset.tag);
-    library::RetryBrokenProvisioning(config, games, events);
-    json finished = base;
-    if (!replacing.empty()) {
-      // Move what used the old build onto the new one.
-      const runner::RunnerRegistry registry(config);
-      const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
-      const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-        return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
-      });
-      if (fresh != builds.end()) {
-        const std::string to = fresh->Reference();
-        json moved = json::array();
-        const auto batch = games.BatchSaves();
-        for (const model::Game& game : games.All()) {
-          if (game.runner_ref != replacing) continue;
-          if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-            moved.push_back(Record(*updated));
-          }
-        }
-        if (config.GetString("default_runner.windows") == replacing) (void)config.Set("default_runner.windows", to);
-        if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
-        events.Publish("runners.updated",
-                        {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
-        finished["replaced"] = replacing;
-      }
-    }
-    events.Publish("runners.download.finished", finished);
-  });
+  StartJob(req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
+           [this, kind, asset, replacing, base](JobRegistry::Progress&) -> Result<json> {
+             if (auto installed = runner::DownloadAndInstall(config, kind, asset); !installed) {
+               log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
+               events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
+               return std::unexpected(installed.error());
+             }
+             log::Info("installed {} {}", kind, asset.tag);
+             library::RetryBrokenProvisioning(config, games, events);
+             json finished = base;
+             if (!replacing.empty()) {
+               // Move what used the old build onto the new one.
+               const runner::RunnerRegistry registry(config);
+               const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
+               const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
+                 return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
+               });
+               if (fresh != builds.end()) {
+                 const std::string to = fresh->Reference();
+                 json moved = json::array();
+                 const auto batch = games.BatchSaves();
+                 for (const model::Game& game : games.All()) {
+                   if (game.runner_ref != replacing) continue;
+                   if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
+                     moved.push_back(Record(*updated));
+                   }
+                 }
+                 if (config.GetString("default_runner.windows") == replacing) {
+                   (void)config.Set("default_runner.windows", to);
+                 }
+                 if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
+                 events.Publish("runners.updated",
+                                {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
+                 finished["replaced"] = replacing;
+               }
+             }
+             events.Publish("runners.download.finished", finished);
+             return finished;
+           },
+           &operations);
 }
 
 }  // namespace mira::api

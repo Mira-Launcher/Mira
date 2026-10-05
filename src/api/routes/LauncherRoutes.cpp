@@ -41,22 +41,25 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
       return SendError(res, 409, "install_running", std::format("{} is already installing", launcher->name));
     }
     s.events.Publish("launcher.install.started", {{"id", launcher->id}});
-    s.operations.Post([&s, launcher] {
-      const auto done = launchers::Install(s.config, s.games, *launcher);
-      if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
-        s.events.Publish("game.updated", s.Record(*stored));
-      }
-      if (!done) {
-        s.events.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
-        return;
-      }
-      if (const auto imported = launchers::Import(s.config, s.games, s.events, *launcher)) {
-        for (const model::Game& game : imported->added_games) s.fetches.Enqueue(s.config, s.events, game);
-      }
-      s.SyncDesktopEntries();
-      s.events.Publish("launcher.install.finished", {{"id", launcher->id}});
-    });
-    SendJson(res, {{"status", "installing"}, {"id", launcher->id}}, 202);
+    s.StartJob(req, res, "install", launcher->id, "Installing " + launcher->name,
+               [&s, launcher](JobRegistry::Progress&) -> Result<json> {
+                 const auto done = launchers::Install(s.config, s.games, *launcher);
+                 if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
+                   s.events.Publish("game.updated", s.Record(*stored));
+                 }
+                 if (!done) {
+                   s.events.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
+                   return std::unexpected(done.error());
+                 }
+                 if (const auto imported = launchers::Import(s.config, s.games, s.events, *launcher)) {
+                   s.AfterImport(imported->added_games);
+                 } else {
+                   s.SyncDesktopEntries();
+                 }
+                 s.events.Publish("launcher.install.finished", {{"id", launcher->id}});
+                 return json{{"id", launcher->id}};
+               },
+               &s.operations);
   });
 
   http.Post(R"(/v1/launchers/([^/]+)/import)", [&s](const Request& req, Response& res) {

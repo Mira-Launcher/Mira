@@ -79,14 +79,17 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_id\": <id>}");
     }
     const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
-    s.artwork_selects.Post([&s, id, slot, candidate_id] {
-      if (auto selected = metadata::SelectArtwork(s.config, id, slot, candidate_id); !selected) {
-        s.events.Publish("game.artwork_select_failed", FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
-      } else {
-        s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
-      }
-    });
-    SendJson(res, {{"status", "selecting"}}, 202);
+    s.StartJob(req, res, "artwork", id, "Choosing artwork",
+               [&s, id, slot, candidate_id](JobRegistry::Progress&) -> Result<json> {
+                 if (auto selected = metadata::SelectArtwork(s.config, id, slot, candidate_id); !selected) {
+                   s.events.Publish("game.artwork_select_failed",
+                                    FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
+                   return std::unexpected(selected.error());
+                 }
+                 s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+                 return json{{"id", id}, {"type", slot}};
+               },
+               &s.artwork_selects);
   });
 
   http.Post(R"(/v1/games/([^/]+)/artwork/candidates)", [&s](const Request& req, Response& res) {

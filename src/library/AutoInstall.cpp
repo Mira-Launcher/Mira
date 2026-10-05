@@ -364,15 +364,15 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
   return {};
 }
 
-void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
-                metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
-                const std::optional<fs::path>& installer) {
+Result<void> RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
+                        metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
+                        const std::optional<fs::path>& installer) {
   events.Publish("game.install.started", {{"id", id}});
   const Result<model::Game> done = Install(config, games, id, mode, installer);
   if (!done) {
     if (const auto stored = games.Find(id)) events.Publish("game.updated", model::ToJson(*stored));
     events.Publish("game.install.failed", api::FailedEvent({{"id", id}}, done.error()));
-    return;
+    return std::unexpected(done.error());
   }
   if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
@@ -382,6 +382,7 @@ void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& 
   AnnounceInstallerLeftover(events, *done);
   // Its art and store info were looked up by the installer's name.
   if (fetches != nullptr) fetches->Enqueue(config, events, *done);
+  return {};
 }
 
 bool BeginInstall(const std::string& id) {

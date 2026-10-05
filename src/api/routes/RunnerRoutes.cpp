@@ -95,8 +95,7 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
     if (match == releases->end()) {
       return SendError(res, 404, "release_not_found", std::format("no {} release tagged \"{}\"", family->label, tag));
     }
-    s.InstallRunnerAsync(kind, family->id, *match, /*replacing=*/"");
-    SendJson(res, {{"status", "downloading"}, {"tag", tag}, {"name", runner::ReleaseName(kind, *match)}}, 202);
+    s.InstallRunner(req, res, kind, family->id, *match, /*replacing=*/"");
   });
 
   // Only removable builds; the distro updates its own packages.
@@ -121,11 +120,7 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
     const runner::RunnerRegistry registry(s.config);
     for (const auto& update : runner::FindRunnerUpdates(s.config, registry)) {
       if (update.build.Reference() != reference) continue;
-      s.InstallRunnerAsync(update.build.kind, update.family.id, update.latest, reference);
-      return SendJson(res,
-                      {{"status", "downloading"}, {"tag", update.latest.tag},
-                       {"name", runner::ReleaseName(update.build.kind, update.latest)}},
-                      202);
+      return s.InstallRunner(req, res, update.build.kind, update.family.id, update.latest, reference);
     }
     SendError(res, 409, "no_update", std::format("no newer release for \"{}\"", reference));
   });
@@ -143,30 +138,31 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
 
   http.Post(R"(/v1/runners/tools/(umu|winetricks)/setup)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    std::optional<runner::ReleaseAsset> asset;
-    if (id == "umu") {
-      auto releases = runner::ListReleases(s.config, "umu");
-      if (!releases) return SendError(res, 502, releases.error());
-      if (releases->empty()) return SendError(res, 404, "no_release_found", "no umu-launcher release found");
-      asset = releases->front();
-    }
     s.events.Publish(id + ".setup.started", json::object());
-    s.operations.Post([&s, id, asset] {
-      Result<void> installed;
-      if (asset) {
-        auto path = runner::InstallToolBinary(s.config, "umu", *asset, "umu-run");
-        if (!path) installed = std::unexpected(path.error());
-      } else {
-        installed = runner::InstallWinetricks();
-      }
-      if (!installed) {
-        log::Error("{} install failed: {}", id, installed.error().message);
-        s.events.Publish(id + ".setup.failed", FailedEvent(json::object(), installed.error()));
-      } else {
-        s.events.Publish(id + ".setup.finished", json::object());
-      }
-    });
-    SendJson(res, {{"status", "installing"}}, 202);
+    s.StartJob(req, res, "setup", id, "Setting up " + id,
+               [&s, id](JobRegistry::Progress&) -> Result<json> {
+                 Result<void> installed;
+                 if (id == "umu") {
+                   const auto releases = runner::ListReleases(s.config, "umu");
+                   if (!releases) {
+                     installed = std::unexpected(releases.error());
+                   } else if (releases->empty()) {
+                     installed = Err("no_release_found", "no umu-launcher release found");
+                   } else if (auto path = runner::InstallToolBinary(s.config, "umu", releases->front(), "umu-run"); !path) {
+                     installed = std::unexpected(path.error());
+                   }
+                 } else {
+                   installed = runner::InstallWinetricks();
+                 }
+                 if (!installed) {
+                   log::Error("{} install failed: {}", id, installed.error().message);
+                   s.events.Publish(id + ".setup.failed", FailedEvent(json::object(), installed.error()));
+                   return std::unexpected(installed.error());
+                 }
+                 s.events.Publish(id + ".setup.finished", json::object());
+                 return json{{"id", id}};
+               },
+               &s.operations);
   });
 
   http.Get(R"(/v1/runners/([^/]+)/schema)", [&s](const Request& req, Response& res) {

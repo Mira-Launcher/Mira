@@ -452,11 +452,17 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
 
-    s.operations.Post([&s, id = game->id, interactive, installer] {
-      library::RunInstall(s.config, s.games, s.events, &s.fetches, id,
-                          interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
-    });
-    SendJson(res, {{"status", "installing"}, {"id", game->id}}, 202);
+    s.StartJob(req, res, "install", game->id, "Installing " + game->name,
+               [&s, id = game->id, interactive, installer](JobRegistry::Progress&) -> Result<json> {
+                 if (auto done = library::RunInstall(
+                         s.config, s.games, s.events, &s.fetches, id,
+                         interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
+                     !done) {
+                   return std::unexpected(done.error());
+                 }
+                 return json{{"id", id}};
+               },
+               &s.operations);
   });
 
   http.Post(R"(/v1/games/([^/]+)/finish-install)", [&s](const Request& req, Response& res) {
@@ -588,22 +594,24 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     const std::string id = game->id;
 
     s.events.Publish("tricks.started", {{"id", id}, {"verb", verb}});
-    s.tricks.Post([&s, id, verb] {
-      const runner::RunnerRegistry registry(s.config);
-      const auto game = s.games.Find(id);
-      if (!game) {  // removed while queued
-        const Error removed{"game_not_found", "the game was removed", {}, {}};
-        s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
-        return;
-      }
-      if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
-        log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
-        s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
-      } else {
-        s.events.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
-      }
-    });
-    SendJson(res, {{"status", "running"}, {"verb", verb}}, 202);
+    s.StartJob(req, res, "tricks", id, "Running winetricks " + verb,
+               [&s, id, verb](JobRegistry::Progress&) -> Result<json> {
+                 const runner::RunnerRegistry registry(s.config);
+                 const auto game = s.games.Find(id);
+                 if (!game) {  // removed while queued
+                   const Error removed{"game_not_found", "the game was removed", {}, {}};
+                   s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
+                   return std::unexpected(removed);
+                 }
+                 if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
+                   log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
+                   s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
+                   return std::unexpected(ran.error());
+                 }
+                 s.events.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
+                 return json{{"id", id}, {"verb", verb}};
+               },
+               &s.tricks);
   });
 }
 
