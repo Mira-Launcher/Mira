@@ -862,7 +862,7 @@ struct DesktopEntrySyncResult {
   ApiError error;
 };
 
-// GET /v1/<store>/status for "epic", "gog", "itch" and "humble". `tool` is
+// GET /v1/stores/{id}/status. `tool` is
 // the helper mirad drives for that store (Legendary, gogdl, butler,
 // humble-cli).
 struct StoreStatusResult {
@@ -872,7 +872,6 @@ struct StoreStatusResult {
   std::string tool_version;
   bool authenticated = false;
   std::string account;  // Epic only
-  std::string login_url;
 };
 
 // Setup, sign-in, sign-out, and the detached install/download kick-offs:
@@ -882,7 +881,14 @@ struct StoreActionResult {
   ApiError error;
 };
 
-// POST /v1/<store>/import.
+// POST /v1/stores/humble/download, once its job has ended.
+struct HumbleDownloadResult {
+  bool ok = false;
+  ApiError error;
+  std::string path;
+};
+
+// POST /v1/stores/{id}/import.
 struct StoreImportResult {
   bool ok = false;
   ApiError error;
@@ -981,7 +987,7 @@ struct LaunchersResult {
   std::vector<LauncherInfo> launchers;
 };
 
-// POST /v1/amazon/login: the login page to open, made fresh each time.
+// POST /v1/stores/{id}/login/begin: the login page to open.
 struct LoginUrlResult {
   bool ok = false;
   ApiError error;

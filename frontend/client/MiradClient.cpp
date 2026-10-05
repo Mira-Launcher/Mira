@@ -982,75 +982,42 @@ DesktopEntrySyncResult SyncDesktopEntriesSync() {
   return {reply.ok, reply.error};
 }
 
-// Per-store endpoint names. Humble has no import or sign-out of its own.
-struct StoreEndpoints {
-  std::string status;
-  std::string tool_key;  // the tool's object in the status reply
-  std::string setup;
-  std::string credential_field;
-};
-
-std::optional<StoreEndpoints> EndpointsFor(const std::string& source) {
-  if (source == "epic") return StoreEndpoints{"/v1/epic/status", "legendary", "/v1/epic/legendary/install", "code"};
-  if (source == "gog") return StoreEndpoints{"/v1/gog/status", "gogdl", "/v1/gog/setup", "code"};
-  if (source == "itch") return StoreEndpoints{"/v1/itch/status", "butler", "/v1/itch/setup", "api_key"};
-  if (source == "humble") {
-    return StoreEndpoints{"/v1/humble/status", "humble_cli", "/v1/humble/setup", "session_key"};
-  }
-  if (source == "amazon") return StoreEndpoints{"/v1/amazon/status", "nile", "/v1/amazon/setup", "redirect"};
-  return std::nullopt;
+std::string StorePath(const std::string& source, const std::string& action) {
+  return "/v1/stores/" + source + "/" + action;
 }
-
-std::string UnknownStore(const std::string& source) { return "Unknown store \"" + source + "\"."; }
 
 StoreStatusResult GetStoreStatusSync(const std::string& source) {
   StoreStatusResult result;
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) {
-    result.error = UnknownStore(source);
-    return result;
-  }
   // Humble's status asks humble-cli itself, over the network.
-  const transport::Reply reply = transport::Get(endpoints->status, {.read_timeout = std::chrono::seconds(30)});
+  const std::string path = StorePath(source, "status");
+  const transport::Reply reply = transport::Get(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET " + endpoints->status);
+    result.error = transport::UnexpectedResponse("GET " + path);
     return result;
   }
   result.ok = true;
-  const json tool = reply.body.value(endpoints->tool_key, json::object());
+  const json tool = reply.body.value("tool", json::object());
   if (tool.is_object()) {
     result.tool_installed = tool.value("installed", false);
     result.tool_version = tool.value("version", std::string());
   }
   result.authenticated = reply.body.value("authenticated", false);
   result.account = reply.body.value("account", std::string());
-  result.login_url = reply.body.value("login_url", std::string());
   return result;
 }
 
-StoreActionResult SetupStoreToolSync(const std::string& source) {
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) return {false, UnknownStore(source)};
-  // Asks GitHub for the newest release before answering.
-  const transport::Reply reply = transport::Post(endpoints->setup, {.read_timeout = std::chrono::seconds(30)});
-  return {reply.ok, reply.error};
-}
-
 StoreActionResult SignInStoreSync(const std::string& source, const std::string& credential) {
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) return {false, UnknownStore(source)};
-  const transport::Reply reply = transport::PostJson("/v1/" + source + "/auth",
-                                                     {{endpoints->credential_field, credential}},
+  const transport::Reply reply = transport::PostJson(StorePath(source, "login"), {{"credential", credential}},
                                                      {.read_timeout = std::chrono::seconds(60)});
   return {reply.ok, reply.error};
 }
 
 StoreActionResult SignOutStoreSync(const std::string& source) {
-  const transport::Reply reply = transport::Post("/v1/" + source + "/logout");
+  const transport::Reply reply = transport::Post(StorePath(source, "logout"));
   return {reply.ok, reply.error};
 }
 
@@ -1085,13 +1052,13 @@ StoreActionResult InstallStoreTitleSync(const std::string& source, const std::st
 
 HumbleLibraryResult GetHumbleLibrarySync() {
   HumbleLibraryResult result;
-  const transport::Reply reply = transport::Get("/v1/humble/library", {.read_timeout = std::chrono::seconds(60)});
+  const transport::Reply reply = transport::Get("/v1/stores/humble/bundles", {.read_timeout = std::chrono::seconds(60)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/humble/library");
+    result.error = transport::UnexpectedResponse("GET /v1/stores/humble/bundles");
     return result;
   }
   result.ok = true;
@@ -1102,11 +1069,6 @@ HumbleLibraryResult GetHumbleLibrarySync() {
                               .claimed = entry.value("claimed", false)});
   }
   return result;
-}
-
-StoreActionResult DownloadHumbleBundleSync(const std::string& bundle_key) {
-  const transport::Reply reply = transport::PostJson("/v1/humble/download", {{"bundle_key", bundle_key}});
-  return {reply.ok, reply.error};
 }
 
 GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::string& query) {
@@ -1218,13 +1180,13 @@ SourceRunnerResult SetSourceRunnerSync(const std::string& source, const std::str
 
 ItchCollectionsResult GetItchCollectionsSync() {
   ItchCollectionsResult result;
-  const transport::Reply reply = transport::Get("/v1/itch/collections");
+  const transport::Reply reply = transport::Get("/v1/stores/itch/collections");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/itch/collections");
+    result.error = transport::UnexpectedResponse("GET /v1/stores/itch/collections");
     return result;
   }
   result.ok = true;
@@ -1239,12 +1201,12 @@ ItchCollectionsResult GetItchCollectionsSync() {
 }
 
 StoreActionResult AddItchCollectionSync(const std::string& link) {
-  const transport::Reply reply = transport::PostJson("/v1/itch/collections", {{"link", link}});
+  const transport::Reply reply = transport::PostJson("/v1/stores/itch/collections", {{"link", link}});
   return {reply.ok, reply.error};
 }
 
 StoreActionResult RemoveItchCollectionSync(std::int64_t id) {
-  const transport::Reply reply = transport::Delete("/v1/itch/collections/" + std::to_string(id));
+  const transport::Reply reply = transport::Delete("/v1/stores/itch/collections/" + std::to_string(id));
   return {reply.ok, reply.error};
 }
 
@@ -1322,16 +1284,17 @@ void FillDeleteGames(DeleteGamesResult& result, const json& body) {
   result.failed = ToGameFailures(body, "failed");
 }
 
-LoginUrlResult BeginAmazonLoginSync() {
+LoginUrlResult BeginStoreLoginSync(const std::string& source) {
   LoginUrlResult result;
-  const transport::Reply reply = transport::Post("/v1/amazon/login", {.read_timeout = std::chrono::seconds(30)});
+  const std::string path = StorePath(source, "login/begin");
+  const transport::Reply reply = transport::Post(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   result.url = reply.body.value("url", std::string());
   result.ok = !result.url.empty();
-  if (!result.ok) result.error = transport::UnexpectedResponse("POST /v1/amazon/login");
+  if (!result.ok) result.error = transport::UnexpectedResponse("POST " + path);
   return result;
 }
 
@@ -1813,7 +1776,9 @@ void MiradClient::GetStoreStatusAsync(QObject* context, const std::string& sourc
 
 void MiradClient::SetupStoreToolAsync(QObject* context, const std::string& source,
                                       std::function<void(StoreActionResult)> callback) {
-  async::Run(context, [source] { return SetupStoreToolSync(source); }, std::move(callback), async::Lane::Slow);
+  RunJob<StoreActionResult>(
+      context, "setup", [source](const std::string& query) { return transport::Post(StorePath(source, "setup") + query); },
+      [](StoreActionResult&, const json&) {}, std::move(callback));
 }
 
 void MiradClient::SignInStoreAsync(QObject* context, const std::string& source,
@@ -1832,7 +1797,7 @@ void MiradClient::ImportStoreAsync(QObject* context, const std::string& source,
                                    std::function<void(StoreImportResult)> callback) {
   RunJob<StoreImportResult>(
       context, "import",
-      [source](const std::string& query) { return transport::Post("/v1/" + source + "/import" + query); },
+      [source](const std::string& query) { return transport::Post(StorePath(source, "import") + query); },
       FillAddedUpdated<StoreImportResult>, std::move(callback));
 }
 
@@ -1926,9 +1891,14 @@ void MiradClient::GetHumbleLibraryAsync(QObject* context,
 }
 
 void MiradClient::DownloadHumbleBundleAsync(QObject* context, const std::string& bundle_key,
-                                            std::function<void(StoreActionResult)> callback) {
-  async::Run(context, [bundle_key] { return DownloadHumbleBundleSync(bundle_key); },
-             std::move(callback));
+                                            std::function<void(HumbleDownloadResult)> callback) {
+  RunJob<HumbleDownloadResult>(
+      context, "download",
+      [bundle_key](const std::string& query) {
+        return transport::PostJson("/v1/stores/humble/download" + query, {{"bundle_key", bundle_key}});
+      },
+      [](HumbleDownloadResult& result, const json& body) { result.path = body.value("path", std::string()); },
+      std::move(callback));
 }
 
 void MiradClient::GetInstallerInfoAsync(QObject* context, const std::string& id, const std::string& path,
@@ -2032,9 +2002,9 @@ bool MiradClient::ParseInstallEvent(const std::string& event_type, const std::st
   return !out->id.empty();
 }
 
-void MiradClient::BeginAmazonLoginAsync(QObject* context,
-                                        std::function<void(LoginUrlResult)> callback) {
-  async::Run(context, [] { return BeginAmazonLoginSync(); }, std::move(callback), async::Lane::Slow);
+void MiradClient::BeginStoreLoginAsync(QObject* context, const std::string& source,
+                                       std::function<void(LoginUrlResult)> callback) {
+  async::Run(context, [source] { return BeginStoreLoginSync(source); }, std::move(callback));
 }
 
 void MiradClient::GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> callback) {

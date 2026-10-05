@@ -369,8 +369,11 @@ void SourcePage::UpdateTool() {
   tool_updating_ = true;
   UpdateStatusLine();
   MiradClient::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
-    if (result.ok) return;  // the setup event finishes the job
     tool_updating_ = false;
+    if (result.ok) {
+      RefreshStatus();
+      return;
+    }
     UpdateStatusLine();
     setup_card_->setVisible(true);
     ShowError(setup_error_, "Could not update " + CopyFor(id_).tool + ".", result.error);
@@ -436,7 +439,17 @@ QWidget* SourcePage::BuildSetupCard() {
       MiradClient::InstallLauncherAsync(this, id_, failed);
     } else {
       setup_button_->setText("Downloading…");
-      MiradClient::SetupStoreToolAsync(this, id_, failed);
+      MiradClient::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
+        if (result.ok) {
+          RefreshStatus();
+          return;
+        }
+        setup_card_->setVisible(true);
+        setup_button_->setEnabled(true);
+        setup_button_->setText("Retry download");
+        ShowError(setup_error_, "It failed.", result.error);
+        UpdateStatusLine();
+      });
     }
   });
   auto* button_row = new QHBoxLayout();
@@ -596,11 +609,17 @@ QWidget* SourcePage::BuildOwnedSection() {
     }
     owned_state_.insert(ref, "Downloading…");
     RebuildOwnedTiles();
-    MiradClient::DownloadHumbleBundleAsync(this, ref.toStdString(), [this, ref](StoreActionResult r) {
-      if (r.ok) return;
-      owned_state_.remove(ref);
+    MiradClient::DownloadHumbleBundleAsync(this, ref.toStdString(), [this, ref](HumbleDownloadResult r) {
+      if (r.ok) {
+        owned_state_.remove(ref);
+        humble_paths_.insert(ref, QString::fromStdString(r.path));
+      } else if (r.error.code == "nothing_to_download") {
+        owned_state_.insert(ref, "Nothing to download");  // e.g. only a Steam key
+      } else {
+        owned_state_.remove(ref);
+        ShowError(owned_note_, "The download failed.", r.error);
+      }
       RebuildOwnedTiles();
-      ShowError(owned_note_, "Could not start the download.", r.error);
     });
   };
   // Double-click does what the tile's button does, while it's clickable.
@@ -678,7 +697,6 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   tool_version_ = status.tool_version;
   authenticated_ = status.authenticated;
   account_ = status.account;
-  login_url_ = status.login_url;
   setup_error_->setVisible(false);
 
   // One step at a time: the tool, then the account.
@@ -693,7 +711,7 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
     setup_button_->setText("Download " + copy.tool);
   } else if (!authenticated_) {
     setup_text_->setText(copy.sign_in_steps);
-    open_login_->setVisible(id_ == "amazon" || !login_url_.empty());
+    open_login_->setVisible(true);
   }
 
   banner_primary_->setText("Sign out");
@@ -787,12 +805,8 @@ void SourcePage::UpdateSections() {
 }
 
 void SourcePage::OpenLogin() {
-  if (id_ != "amazon") {
-    QDesktopServices::openUrl(QUrl(QString::fromStdString(login_url_)));
-    return;
-  }
   open_login_->setEnabled(false);
-  MiradClient::BeginAmazonLoginAsync(this, [this](LoginUrlResult result) {
+  MiradClient::BeginStoreLoginAsync(this, id_, [this](LoginUrlResult result) {
     open_login_->setEnabled(true);
     if (!result.ok) {
       ShowError(setup_error_, "Could not start the login.", result.error);
