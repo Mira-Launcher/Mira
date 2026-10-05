@@ -1198,24 +1198,16 @@ int CmdSet(int argc, char** argv) {
   auto client = Connect();
   bool changed = false;
 
-  // --tag/--untag add or remove from whatever this game's tags already are
-  // -- PATCH itself replaces the array wholesale (see ParseGamePatch), so
-  // the current set has to be fetched first to edit it rather than blow it
-  // away.
+  // --tag/--untag go through the batch PATCH, which adds and removes on the server instead of
+  // replacing the whole list from one read here.
   if (!add_tags.empty() || !remove_tags.empty()) {
-    auto current = client.Get(std::format("/v1/games/{}", id));
-    if (!Ok(current)) {
-      PrintError(current);
+    const json body = {{"ids", json::array({id})}, {"add_tags", add_tags}, {"remove_tags", remove_tags}};
+    auto res = client.Patch("/v1/games", body.dump(), "application/json");
+    if (!Ok(res)) {
+      PrintError(res);
       return 1;
     }
-    json tags = json::parse(current->body).value("tags", json::array());
-    std::vector<std::string> merged;
-    for (const auto& t : tags) merged.push_back(t.get<std::string>());
-    for (const std::string& t : remove_tags) std::erase(merged, t);
-    for (const std::string& t : add_tags) {
-      if (std::ranges::find(merged, t) == merged.end()) merged.push_back(t);
-    }
-    patch["tags"] = merged;
+    changed = true;
   }
 
   if (!patch.empty()) {
