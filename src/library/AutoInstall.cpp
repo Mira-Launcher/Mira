@@ -7,9 +7,14 @@
 #include <mutex>
 #include <set>
 
+#include "api/EventBus.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "core/Strings.h"
+#include "desktop/DesktopEntries.h"
 #include "library/Detector.h"
+#include "library/SourceRemoval.h"
+#include "metadata/FetchQueue.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 
@@ -299,6 +304,67 @@ std::optional<InstallProgress> Progress(const std::string& id) {
   return entry.progress;
 }
 
+bool AutoInstalls(const config::Config& config, const model::Game& game) {
+  if (game.status != model::GameStatus::NeedsInstall) return false;
+  if (!config.GetBool("auto_setup") || !config.GetBool("scan.auto_run_installers")) return false;
+  if (!config.GetBool("install.retry_failed") && game.last_error.starts_with("Install didn't finish")) return false;
+  return DetectInstallerFormat(fs::path(game.install_path) / game.exe_path) != InstallerFormat::kUnknown;
+}
+
+void AdoptInstallFolder(model::Game& game, const std::string& install_path) {
+  if (install_path.empty() || install_path == game.install_path) return;
+  // Still the name cleaned from the installer's folder, not one the user gave: take the installed folder's.
+  if (game.name == strings::CleanGameName(fs::path(game.install_path).filename().string())) {
+    game.name = strings::CleanGameName(fs::path(install_path).filename().string());
+  }
+  if (game.installer_dir.empty()) game.installer_dir = game.install_path;
+  game.install_path = install_path;
+}
+
+void AnnounceInstallerLeftover(api::EventBus& events, const model::Game& game) {
+  std::error_code ec;
+  if (game.installer_dir.empty() || !fs::is_directory(game.installer_dir, ec)) return;
+  events.Publish("game.installer_leftover", {{"id", game.id},
+                                             {"installer_dir", game.installer_dir},
+                                             {"bytes", TreeBytes(game.installer_dir)}});
+}
+
+Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game) {
+  if (game.installer_dir.empty()) {
+    return Err("no_installer_dir", "this game has no installer folder left over from its install");
+  }
+  const fs::path folder = fs::weakly_canonical(game.installer_dir);
+  for (const std::string& kept : {game.install_path, game.data_dir}) {
+    if (!kept.empty() && paths::IsWithin(fs::weakly_canonical(kept), {folder}, /*allow_equal=*/true)) {
+      return Err("installer_dir_in_use", "the installer folder also holds the game or its prefix");
+    }
+  }
+  if (auto deleted = DeleteInside(game.installer_dir, config.GetPathArray("library_roots")); !deleted) {
+    return std::unexpected(deleted.error());
+  }
+  return {};
+}
+
+void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
+                metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
+                const std::optional<fs::path>& installer) {
+  events.Publish("game.install.started", {{"id", id}});
+  const Result<model::Game> done = Install(config, games, id, mode, installer);
+  if (!done) {
+    if (const auto stored = games.Find(id)) events.Publish("game.updated", model::ToJson(*stored));
+    events.Publish("game.install.failed", api::FailedEvent({{"id", id}}, done.error()));
+    return;
+  }
+  if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
+    log::Warn("could not update application menu entries: {}", synced.error().message);
+  }
+  events.Publish("game.updated", model::ToJson(*done));
+  events.Publish("game.install.finished", {{"id", id}});
+  AnnounceInstallerLeftover(events, *done);
+  // Its art and store info were looked up by the installer's name.
+  if (fetches != nullptr) fetches->Enqueue(config, events, *done, /*force=*/true);
+}
+
 bool BeginInstall(const std::string& id) {
   const std::lock_guard lock(tracked_mutex);
   const auto it = tracked.find(id);
@@ -351,7 +417,7 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
   if (!done) log::Warn("install for {} failed: {}", id, done.error().message);
   auto saved = games.Update(id, [&](model::Game& stored) {
     if (done) {
-      stored.install_path = done->install_path;
+      AdoptInstallFolder(stored, done->install_path);
       stored.exe_path = done->exe_path;
       stored.candidates = done->candidates;
       stored.confidence = done->confidence;
@@ -360,7 +426,7 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.status = done->status;
       stored.last_error.clear();
     } else {
-      stored.last_error = std::format("Install didn't finish ({}). Run the installer again with its window shown.",
+      stored.last_error = std::format("Install didn't finish: {}. Run the installer again with its window shown.",
                                       done.error().message);
     }
     stored.updated_at = model::NowSeconds();

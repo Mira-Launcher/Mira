@@ -26,6 +26,14 @@ TEST_CASE("CleanGameName strips repack/store noise but keeps the title") {
   CHECK(CleanGameName("Half-Life 2") == "Half Life 2");  // real hyphenated title kept
 }
 
+TEST_CASE("CleanGameName turns an installer's folder into the game's name") {
+  CHECK(CleanGameName("setup_crate_escape") == "Crate Escape");
+  CHECK(CleanGameName("setup_clustertruck_2.1.0_(64bit)_(12345)") == "Clustertruck");
+  CHECK(CleanGameName("Install Celeste") == "Celeste");
+  CHECK(CleanGameName("Setup") == "Setup");  // nothing else to name it by
+  CHECK(CleanGameName("inFAMOUS") == "inFAMOUS");  // mixed case is deliberate, kept
+}
+
 TEST_CASE("Similarity rates containment and exact matches highly") {
   CHECK(Similarity("Celeste", "Celeste") == doctest::Approx(1.0));
   CHECK(Similarity("Celeste", "CelesteLauncher") > 0.5);

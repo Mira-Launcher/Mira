@@ -117,7 +117,14 @@ std::string CleanGameName(std::string_view directory_name) {
     const std::string trimmed = Trim(token);
     if (trimmed.empty()) continue;
     if (IsNoiseToken(trimmed)) continue;
+    // "(64bit)", "(12345)": GOG installers' build and architecture tags.
+    if (trimmed.starts_with('(') && trimmed.ends_with(')')) continue;
     kept.push_back(trimmed);
+  }
+  // An installer's folder ("setup_crate_escape") names the game after its first word.
+  if (kept.size() > 1) {
+    const std::string first = ToLower(kept.front());
+    if (first == "setup" || first == "install" || first == "installer") kept.erase(kept.begin());
   }
   if (kept.empty()) return Trim(directory_name);
 
@@ -125,6 +132,15 @@ std::string CleanGameName(std::string_view directory_name) {
   for (const std::string& token : kept) {
     if (!out.empty()) out += ' ';
     out += token;
+  }
+  // An all-lowercase folder name reads as a title once each word is capitalised; any capital means
+  // the casing was chosen ("inFAMOUS") and stays.
+  if (std::ranges::none_of(out, [](unsigned char c) { return std::isupper(c); })) {
+    bool word_start = true;
+    for (char& c : out) {
+      if (word_start && std::isalpha(static_cast<unsigned char>(c))) c = static_cast<char>(std::toupper(c));
+      word_start = c == ' ';
+    }
   }
   return out;
 }

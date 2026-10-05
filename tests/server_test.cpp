@@ -211,6 +211,41 @@ TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   CHECK(stored->env.empty());
 }
 
+TEST_CASE("DELETE /v1/games/{id}/installer removes a leftover installer folder, never the game's own") {
+  const fs::path state = TempDir("server-delete-installer");
+  LiveServer server(state);
+  const fs::path lib = state / "lib";
+  fs::create_directories(lib / "Setup Clustertruck");
+  std::ofstream(lib / "Setup Clustertruck" / "setup.exe") << "x";
+  fs::create_directories(lib / "Clustertruck");
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+
+  model::Game moved;
+  moved.id = "clustertruck";
+  moved.name = "ClusterTruck";
+  moved.install_path = (state / "prefix" / "drive_c" / "ClusterTruck").string();
+  moved.installer_dir = (lib / "Setup Clustertruck").string();
+  REQUIRE(server.games().Upsert(moved).has_value());
+  model::Game in_place;  // the installer folder is also where the game lives
+  in_place.id = "in-place";
+  in_place.name = "In Place";
+  in_place.install_path = (lib / "Clustertruck").string();
+  in_place.installer_dir = (lib / "Clustertruck").string();
+  REQUIRE(server.games().Upsert(in_place).has_value());
+
+  httplib::Client client = server.Client();
+  auto deleted = client.Delete("/v1/games/clustertruck/installer");
+  REQUIRE(deleted != nullptr);
+  CHECK(deleted->status == 200);
+  CHECK_FALSE(fs::exists(lib / "Setup Clustertruck"));
+  CHECK(server.games().Find("clustertruck")->installer_dir.empty());
+
+  auto refused = client.Delete("/v1/games/in-place/installer");
+  REQUIRE(refused != nullptr);
+  CHECK(refused->status == 409);
+  CHECK(fs::exists(lib / "Clustertruck"));
+}
+
 TEST_CASE("A detected game Mira wasn't sure about needs a check until someone confirms it") {
   LiveServer server(TempDir("server-needs-check"));
 

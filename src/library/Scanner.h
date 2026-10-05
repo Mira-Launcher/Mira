@@ -9,6 +9,10 @@
 #include "model/Types.h"
 #include "store/GameStore.h"
 
+namespace mira::metadata {
+class FetchQueue;
+}
+
 namespace mira::library {
 
 struct ScanSummary {
@@ -37,10 +41,15 @@ public:
   ScanSummary ScanAll();
   ScanSummary ScanRoot(const std::filesystem::path& root);
 
+  // Where an installer it runs on its own (scan.auto_run_installers) queues the installed
+  // game's art. Must outlive the install, which continues after the scan.
+  void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
+
 private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;
+  metadata::FetchQueue* metadata_fetches_ = nullptr;
 };
 
 // Provisions again every Windows game left broken by a missing or failing

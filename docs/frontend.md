@@ -57,6 +57,8 @@ The top bar's download button opens `ui/DownloadsPanel`, titled Activity. It lis
 
 When a launched game turns out to have been an installer (`game.install_detected`), `ui/InstallPromptCard` asks over the library, in the same overlay as Manage sources: the program found (or *Choose…* one inside the installed folder), a switch to mark it as an app, and *Keep as is* or *Use this program* (`finish-install`). While Mira is hidden or minimized, a notification asks first and its *Review…* button opens the card.
 
+Two more cards share that overlay (`ui/InstallerCards`). `InstallerCard` runs a game's installer: the file found (*Change…* picks another), then *Not now*, *Install quietly* when the format allows, and *Show the installer*. It opens from *Install…* and double-clicking a game that needs installing, and on its own when a new installer is found (`game.added` with `needs_install`), unless the scan already runs it (`auto_install`). `InstallerLeftoverCard` follows `game.installer_leftover`: the folder and its size, *Keep* (the default) or *Delete* (`DELETE /v1/games/{id}/installer`). Every such card waits its turn in one queue (`LibraryWindow::QueueCard`) and never covers Settings, a game's card or another card.
+
 Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for each one's `job.finished` or `job.failed` on the shared event connection, and after a reconnect asks `GET /v1/jobs/{id}` about any it was still waiting on, so the `MiradClient` calls that start them still hand their caller one result.
 
 ### Selection and hover
@@ -186,7 +188,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
 | `POST /v1/games/manual` | `AddManualGameDialog` |
 | `POST /v1/games/{id}/run` | `RunInPrefixDialog` |
-| `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install` | `InstallGameDialog`, *Mark as installed*, `ui/InstallPromptCard`, `DownloadTracker` |
+| `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install`, `DELETE .../installer` | `ui/InstallerCards`, *Mark as installed*, `ui/InstallPromptCard`, `DownloadTracker` |
 | `POST /v1/games/{id}/tricks` | `WinetricksDialog` |
 | `GET /v1/games/{id}/log` | `LogViewerDialog` |
 | `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…*, and the game card's *Move…* buttons for the install folder and the prefix |

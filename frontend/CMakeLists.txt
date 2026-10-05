@@ -124,6 +124,8 @@ qt_add_executable(mira-gui
   ui/ListEdit.h
   ui/KeyValueEdit.cpp
   ui/KeyValueEdit.h
+  ui/InstallerCards.cpp
+  ui/InstallerCards.h
   ui/SettingsSearch.cpp
   ui/SettingsSearch.h
   ui/ErrorHelp.cpp
@@ -154,8 +156,6 @@ qt_add_executable(mira-gui
   dialogs/DesktopEntryImportDialog.h
   dialogs/GameDetailPageDialog.cpp
   dialogs/GameDetailPageDialog.h
-  dialogs/InstallGameDialog.cpp
-  dialogs/InstallGameDialog.h
   dialogs/ItchCollectionsDialog.cpp
   dialogs/ItchCollectionsDialog.h
   dialogs/LogViewerDialog.cpp

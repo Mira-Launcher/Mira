@@ -401,6 +401,12 @@ public:
 
   // A game.added payload's `open_config` (open_config_on_add).
   static bool ParseOpenConfig(const std::string& data);
+  // game.added's `auto_install`: the scan runs this installer on its own.
+  static bool ParseAutoInstall(const std::string& data);
+  static bool ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out);
+  // DELETE /v1/games/{id}/installer: the folder an install left its installer in.
+  static void DeleteInstallerAsync(QObject* context, const std::string& id,
+                                   std::function<void(GameActionResult)> callback);
 
   // Parses a `game.state` payload (`{"id", "state": "running" | "exited" |
   // "crashed", ...}`, docs/api.md) down to just id/state, enough to know

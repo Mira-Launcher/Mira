@@ -220,6 +220,30 @@ TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
   CHECK_FALSE(fs::exists(celeste->data_dir));
 }
 
+TEST_CASE("Scanner leaves alone the folder of an installer whose game now lives elsewhere") {
+  const fs::path lib = TempDir("scan-installer-dir-library");
+  Touch(lib / "Setup Clustertruck" / "setup_clustertruck.exe");
+  const fs::path state = TempDir("scan-installer-dir-state");
+  config::Config config(state / "settings.toml");
+  config.Load();
+  REQUIRE(config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(config.Set("prefix_root", (state / "prefixes").string()).has_value());
+  REQUIRE(config.Set("auto_setup", false).has_value());
+
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  model::Game installed;
+  installed.id = "clustertruck";
+  installed.name = "ClusterTruck";
+  installed.install_path = (state / "prefixes" / "clustertruck" / "drive_c" / "ClusterTruck").string();
+  installed.installer_dir = (lib / "Setup Clustertruck").string();
+  REQUIRE(games.Upsert(installed).has_value());
+  api::EventBus events;
+
+  CHECK(library::Scanner(config, games, events).ScanAll().added == 0);
+  CHECK(games.All().size() == 1);
+}
+
 TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a missing runner") {
   const fs::path lib = TempDir("scan-retry-library");
   Touch(lib / "Celeste" / "Celeste.exe");

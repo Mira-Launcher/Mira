@@ -44,11 +44,6 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
 // the failure message matters more here than elsewhere.
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished);
 
-// Opens InstallGameDialog, which starts the install; its progress arrives
-// as game.install.* events.
-void Install(QWidget* parent, const std::string& id, const std::string& install_path,
-             const QString& name);
-
 // Asks, then moves each game's files and prefix into Mira's own layout.
 // `on_done` runs once every move has answered, whatever the outcome.
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,

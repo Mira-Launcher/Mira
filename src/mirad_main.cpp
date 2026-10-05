@@ -119,6 +119,7 @@ int main(int argc, char** argv) {
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     mira::library::Scanner startup_scan(config, games, events);
+    startup_scan.UseMetadataQueue(server.MetadataQueue());
     const mira::library::ScanSummary summary = startup_scan.ScanAll();
     mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
                     summary.missing, summary.restored);
