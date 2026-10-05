@@ -274,7 +274,7 @@ Releases from one source (the kind's first by default), newest first, cached for
 `name` identifies the release in events: the tag for Proton, the archive name for Wine.
 
 ### `POST /v1/runners/download`
-Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`. When a download finishes, games left broken by a missing runner are provisioned again.
+Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`, and `runners.download.progress` with those plus `progress` (0 to 1) as each percent arrives, when the release's size is known. When a download finishes, games left broken by a missing runner are provisioned again.
 
 ### `GET /v1/runners/updates`
 Removable builds whose source has a newer release:

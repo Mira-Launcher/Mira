@@ -4,7 +4,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScreen>
@@ -14,6 +13,7 @@
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/ProgressRail.h"
 #include "DownloadTracker.h"
 
 namespace mira_gui {
@@ -37,7 +37,10 @@ QString RunningText(const DownloadTracker::Entry& entry) {
     }
     case Kind::Launcher: return "Installing…";
     case Kind::Job: return entry.message.isEmpty() ? QString("Working…") : entry.message;
-    default: return "Downloading…";
+    default: {
+      const QString progress = DownloadTracker::ProgressText(entry);
+      return progress.isEmpty() ? QString("Downloading…") : "Downloading… " + progress;
+    }
   }
 }
 
@@ -161,13 +164,7 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
     const QString state = RunningText(*entry);
     row->findChild<QLabel*>("download_title")->setText(tracker_->NameFor(*entry));
     row->findChild<QLabel*>("download_status")->setText(origin.isEmpty() ? state : origin + "  ·  " + state);
-    auto* bar = row->findChild<QProgressBar*>();
-    if (entry->progress >= 0) {
-      bar->setRange(0, 100);
-      bar->setValue(qRound(entry->progress * 100));
-    } else {
-      bar->setRange(0, 0);
-    }
+    row->findChild<ProgressRail*>()->SetProgress(entry->progress);
     return true;
   }
   return false;
@@ -239,16 +236,9 @@ QWidget* DownloadsPanel::BuildRow(int index) {
 
   if (entry.state == State::Running) {
     // Busy unless the source reports how far along it is.
-    auto* bar = new QProgressBar(row);
-    if (entry.progress >= 0) {
-      bar->setRange(0, 100);
-      bar->setValue(qRound(entry.progress * 100));
-    } else {
-      bar->setRange(0, 0);
-    }
-    bar->setTextVisible(false);
-    bar->setFixedHeight(4);
-    text->addWidget(bar);
+    auto* rail = new ProgressRail(row);
+    rail->SetProgress(entry.progress);
+    text->addWidget(rail);
   }
   text->addStretch(1);
   layout->addLayout(text, /*stretch=*/1);

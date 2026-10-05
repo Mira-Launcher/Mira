@@ -616,7 +616,8 @@ struct RunnerDownloadEvent {
   std::string label;
   std::string source;
   std::string replaced;  // on "finished" after an update: the "kind:name" it replaced
-  std::string state;  // "started" | "finished" | "failed"
+  std::string state;  // "started" | "progress" | "finished" | "failed"
+  double progress = -1;  // 0..1, only on "progress"
   ApiError error;     // only on "failed"
 };
 

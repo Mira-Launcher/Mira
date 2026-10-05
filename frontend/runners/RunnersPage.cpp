@@ -7,7 +7,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QToolButton>
@@ -24,6 +23,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/ProgressRail.h"
 
 namespace mira_gui {
 namespace {
@@ -57,12 +57,29 @@ SettingRow* NoteRow(const QString& text) {
   return row;
 }
 
-QProgressBar* Busy(QWidget* parent) {
-  auto* progress = new QProgressBar(parent);
-  progress->setRange(0, 0);
-  progress->setTextVisible(false);
-  progress->setFixedSize(90, 4);
-  return progress;
+void SetProgress(QWidget* holder, double fraction);
+
+// A row's download progress: the percentage, when known, beside the rail.
+QWidget* Progress(QWidget* parent, double fraction) {
+  auto* holder = new QWidget(parent);
+  auto* layout = new QHBoxLayout(holder);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(8);
+  auto* percent = new QLabel(holder);
+  percent->setProperty("role", "subtle");
+  layout->addWidget(percent);
+  auto* rail = new ProgressRail(holder);
+  rail->setFixedWidth(90);
+  layout->addWidget(rail, 0, Qt::AlignVCenter);
+  SetProgress(holder, fraction);
+  return holder;
+}
+
+void SetProgress(QWidget* holder, double fraction) {
+  auto* percent = holder->findChild<QLabel*>();
+  percent->setText(fraction >= 0 ? QString("%1%").arg(qRound(fraction * 100)) : QString());
+  percent->setVisible(fraction >= 0);
+  holder->findChild<ProgressRail*>()->SetProgress(fraction);
 }
 
 }  // namespace
@@ -386,6 +403,7 @@ void RunnersPage::RebuildInstalled() {
 
 void RunnersPage::RebuildCatalog() {
   catalog_->ClearRows();
+  progress_rows_.clear();
   if (!catalog_loaded_) return;
   const std::string kind = CurrentKind();
   const theme::Tokens& tokens = theme::Current();
@@ -400,11 +418,14 @@ void RunnersPage::RebuildCatalog() {
     ElidedLabel* details = Facts(facts.join(" · "), row);
     if (!release.has_checksum) details->setStyleSheet(QString("color: %1;").arg(tokens.warning.name()));
 
-    const DownloadTracker::Entry* entry = downloads_->Find(DownloadTracker::KeyFor(
-        DownloadTracker::Kind::Runner, QString::fromStdString(kind), QString::fromStdString(release.name)));
+    const QString key = DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
+                                                QString::fromStdString(release.name));
+    const DownloadTracker::Entry* entry = downloads_->Find(key);
     const bool downloading = entry != nullptr && entry->state == DownloadTracker::State::Running;
     if (downloading) {
-      row->AddControl(Busy(row));
+      QWidget* progress = Progress(row, entry->progress);
+      progress_rows_[key] = progress;
+      row->AddControl(progress);
     } else if (release.installed) {
       auto* label = new QLabel("Installed", row);
       label->setProperty("role", "subtle");
@@ -434,7 +455,7 @@ void RunnersPage::RebuildTools() {
     const DownloadTracker::Entry* entry = downloads_->Find(
         DownloadTracker::KeyFor(DownloadTracker::Kind::Tool, QString::fromStdString(tool.id), QString()));
     if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
-      row->AddControl(Busy(row));
+      row->AddControl(Progress(row, entry->progress));
     } else {
       auto* install = new QPushButton("Install", row);
       install->setDefault(true);
@@ -523,6 +544,11 @@ void RunnersPage::DownloadChanged(const QString& key) {
   if (!key.startsWith("runner:")) return;
   const DownloadTracker::Entry* entry = downloads_->Find(key);
   if (entry == nullptr) return;
+  if (const auto row = progress_rows_.find(key);
+      row != progress_rows_.end() && entry->state == DownloadTracker::State::Running) {
+    SetProgress(row->second, entry->progress);
+    return;
+  }
   if (entry->state == DownloadTracker::State::Failed) {
     const QString name = downloads_->NameFor(*entry);
     SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)), true);

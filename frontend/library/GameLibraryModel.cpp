@@ -128,6 +128,10 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::RunningRole: return game.running;
     case GameTileDelegate::PinnedRole: return IsPinned(game);
     case GameTileDelegate::StatusTextRole: return status_text ? status_text(game.id) : QString();
+    case GameTileDelegate::ProgressRole: {
+      const std::optional<double> fraction = progress ? progress(game.id) : std::nullopt;
+      return fraction ? QVariant(*fraction) : QVariant();
+    }
     case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
     case GameTileDelegate::NeedsCheckRole: return game.needs_check;
     default: return {};

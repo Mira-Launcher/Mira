@@ -71,6 +71,9 @@ private:
   std::vector<RunnerUpdate> updates_;
   std::vector<RunnerTool> tools_;
   std::map<std::string, std::string> replacing_;  // new release name -> reference it updates
+  // Each downloading catalog row's progress, by download key, so a new percent
+  // doesn't rebuild the list. Reset by RebuildCatalog.
+  std::map<QString, QWidget*> progress_rows_;
   bool catalog_loaded_ = false;
   std::string default_windows_;  // default_runner.windows
 };

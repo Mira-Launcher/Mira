@@ -96,6 +96,37 @@ TEST_CASE("DownloadTracker keeps the newest activity first and tells kinds apart
   CHECK(tracker.Find("launcher:battlenet") == nullptr);
 }
 
+TEST_CASE("DownloadTracker shows a store install once, under the game's name") {
+  DownloadTracker tracker;
+  tracker.NoteTitle("gog", "1207658924", "Alan Wake");
+  tracker.HandleEvent("job.started", R"({"id": "install-1", "kind": "install", "target": "gog-1207658924",
+                                         "label": "Installing 1207658924"})");
+  tracker.HandleEvent("library.install.started", R"({"source": "gog", "ref": "1207658924", "update": false})");
+  REQUIRE(tracker.Entries().size() == 1);
+  CHECK(tracker.NameFor(tracker.Entries()[0]).toStdString() == "Alan Wake");
+
+  // A store's own tool setup has no other row, so its job stays.
+  tracker.HandleEvent("job.started", R"({"id": "setup-1", "kind": "setup", "target": "gog", "label": "Setting up gogdl"})");
+  CHECK(tracker.Entries().size() == 2);
+}
+
+TEST_CASE("DownloadTracker shows a runner download once, with its progress") {
+  DownloadTracker tracker;
+  tracker.HandleEvent("job.started", R"({"id": "runner-1", "kind": "runner", "target": "proton:GE-Proton10-4",
+                                         "label": "Downloading GE-Proton10-4"})");
+  tracker.HandleEvent("runners.download.started", R"({"kind": "proton", "tag": "GE-Proton10-4", "name": "GE-Proton10-4"})");
+  tracker.HandleEvent("runners.download.progress",
+                      R"({"kind": "proton", "tag": "GE-Proton10-4", "name": "GE-Proton10-4", "progress": 0.39})");
+  REQUIRE(tracker.Entries().size() == 1);
+  CHECK(tracker.Entries()[0].state == State::Running);
+  CHECK(tracker.Entries()[0].progress == doctest::Approx(0.39));
+  CHECK(DownloadTracker::ProgressText(tracker.Entries()[0]).contains("39%"));
+
+  tracker.HandleEvent("runners.download.finished", R"({"kind": "proton", "tag": "GE-Proton10-4", "name": "GE-Proton10-4"})");
+  CHECK(tracker.Entries()[0].state == State::Finished);
+  CHECK(tracker.RunningCount() == 0);
+}
+
 TEST_CASE("DownloadTracker follows a job by its label and steps") {
   DownloadTracker tracker;
   CHECK(tracker.HandleEvent("job.started",

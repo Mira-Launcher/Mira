@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -77,9 +78,10 @@ Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config, con
 // runner_search_paths[0] for "proton", wine_search_paths[0] for "wine",
 // so the next Discover() call finds it. Shells out
 // to curl + tar rather than linking an archive/TLS library, for the same
-// reason as ListReleases.
+// reason as ListReleases. `on_progress` gets the downloaded fraction (0..1)
+// as it changes, when the release's size is known.
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
-                                const ReleaseAsset& asset);
+                                const ReleaseAsset& asset, const std::function<void(double)>& on_progress = {});
 
 // Downloads and installs a tool binary that isn't a runner build (gogdl,
 // butler, ...) into "<config dir>/tools/<tool_name>/<binary_name>",

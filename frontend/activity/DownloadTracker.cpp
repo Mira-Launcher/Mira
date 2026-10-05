@@ -71,6 +71,15 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   if (!type.starts_with("job.")) return false;
   const nlohmann::json event = nlohmann::json::parse(data, nullptr, false);
   if (!event.is_object()) return true;
+  // Jobs whose work already has its own row: installs and updates (library.,
+  // launcher. and game.install.*), runner downloads (runners.download.*) and
+  // runner tool setups (umu./winetricks.setup.*). A store's own setup is only a job.
+  const std::string kind = mapping::Str(event, "kind");
+  const std::string target = mapping::Str(event, "target");
+  if (kind == "install" || kind == "update" || kind == "runner" ||
+      (kind == "setup" && (target == "umu" || target == "winetricks"))) {
+    return true;
+  }
   const QString id = QString::fromStdString(mapping::Str(event, "id"));
   const QString key = KeyFor(Kind::Job, QString(), id);
   // Progress for a job whose start this stream never saw has no name to show.
@@ -128,13 +137,19 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     return true;
   }
   if (RunnerDownloadEvent runner; events::ParseRunnerDownload(type, data, &runner)) {
-    if (!ToState(runner.state, &state)) return true;
+    const bool progress = runner.state == "progress";
+    if (progress) {
+      state = State::Running;
+    } else if (!ToState(runner.state, &state)) {
+      return true;
+    }
     // Kron4ek's variants share a tag, so key by the release's name.
     const std::string& ref = runner.name.empty() ? runner.tag : runner.name;
     Entry& entry = Upsert(Kind::Runner, QString::fromStdString(runner.kind), QString::fromStdString(ref));
     if (!runner.label.empty()) NoteTitle("runner:" + entry.source, entry.ref, QString::fromStdString(runner.label));
     entry.state = state;
     entry.error = runner.error;
+    entry.progress = progress ? runner.progress : -1;
     emit Changed(entry.key);
     return true;
   }

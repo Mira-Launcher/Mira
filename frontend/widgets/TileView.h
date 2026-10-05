@@ -26,6 +26,9 @@ public:
   std::function<void(const QModelIndex&)> on_hover;
 
   void SetDragSelectEnabled(bool enabled);
+  // A tile painted something that moves (a busy progress rail): repaint soon.
+  // Stops by itself once no paint asks again.
+  void KeepAnimating();
 
 protected:
   void mousePressEvent(QMouseEvent* event) override;
@@ -56,6 +59,7 @@ private:
   Qt::KeyboardModifiers drag_modifiers_;  // at the press
   QRubberBand* rubber_band_ = nullptr;
   QTimer* autoscroll_timer_ = nullptr;
+  QTimer* animation_timer_ = nullptr;
   QItemSelection base_selection_;  // what was selected when the drag began
   HoverDwell hover_{[this](const QModelIndex& index) {
     if (on_hover) on_hover(index);

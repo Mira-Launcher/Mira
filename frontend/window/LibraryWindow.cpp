@@ -91,6 +91,12 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // The one copy of the library every view reads; see GameLibraryModel.
   library_ = new mira_gui::GameLibraryModel(this);
   library_->status_text = [this](const std::string& id) { return InstallText(id); };
+  library_->progress = [this](const std::string& id) -> std::optional<double> {
+    const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(mira_gui::DownloadTracker::KeyFor(
+        mira_gui::DownloadTracker::Kind::Game, QString(), QString::fromStdString(id)));
+    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return std::nullopt;
+    return entry->progress;
+  };
   connect(library_, &mira_gui::GameLibraryModel::Changed, this, &LibraryWindow::LibraryChanged);
   menus_ = new mira_gui::GameMenus(
       this, {.find = [this](const std::string& id) { return FindGame(id); },

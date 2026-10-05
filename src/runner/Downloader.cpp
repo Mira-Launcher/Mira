@@ -10,6 +10,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <thread>
 
 #include <json.hpp>
 
@@ -331,7 +332,7 @@ Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family)
 }
 
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
-                                const ReleaseAsset& asset) {
+                                const ReleaseAsset& asset, const std::function<void(double)>& on_progress) {
   // Two requests for one build would download and extract into the same folder.
   static std::mutex in_flight_mutex;
   static std::set<std::string> in_flight;
@@ -363,7 +364,26 @@ Result<void> DownloadAndInstall(const config::Config& config, const std::string&
   // both the archive and (if present) its checksum file are removed again
   // once extraction succeeds.
   const fs::path archive = install_dir / asset.asset_name;
-  if (auto downloaded = DownloadVerified(asset, archive); !downloaded) return downloaded;
+  std::jthread watch;
+  if (on_progress && asset.size_bytes > 0) {
+    // curl writes straight into `archive`, so its size against the release's says how far along it is.
+    watch = std::jthread([&archive, &on_progress, total = asset.size_bytes](std::stop_token stop) {
+      int reported = -1;
+      while (!stop.stop_requested()) {
+        std::error_code size_ec;
+        const auto size = fs::file_size(archive, size_ec);
+        const int percent = size_ec ? 0 : static_cast<int>(std::min<std::uintmax_t>(size * 100 / total, 100));
+        if (percent != reported) on_progress((reported = percent) / 100.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      }
+    });
+  }
+  auto downloaded = DownloadVerified(asset, archive);
+  if (watch.joinable()) {
+    watch.request_stop();
+    watch.join();
+  }
+  if (!downloaded) return downloaded;
 
   // Extracted aside and moved in, so a failed extraction never leaves a half-built runner Discover accepts.
   const fs::path staging = install_dir / (".extracting-" + asset.asset_name);

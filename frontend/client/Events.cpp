@@ -253,6 +253,7 @@ bool ParseRunnerDownload(const std::string& event_type, const std::string& data,
   out->label = entry.value("label", out->name);
   out->source = entry.value("source", std::string());
   out->replaced = entry.value("replaced", std::string());
+  out->progress = entry.value("progress", -1.0);
   out->error = mapping::ToApiError(entry);
   return true;
 }

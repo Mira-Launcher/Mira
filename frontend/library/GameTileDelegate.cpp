@@ -13,6 +13,8 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/ProgressRail.h"
+#include "../widgets/TileView.h"
 
 namespace mira_gui {
 namespace {
@@ -114,11 +116,14 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   gradient.setColorAt(1.0, QColor(0, 0, 0, 0));
   painter->fillRect(scrim, gradient);
 
-  if (const QVariant progress = index.data(ProgressRole); progress.isValid()) {
-    const QRect track(rect.left(), rect.bottom() - 5, rect.width(), 6);
-    painter->fillRect(track, QColor(0, 0, 0, 160));
-    const int filled = qRound(track.width() * std::clamp(progress.toDouble(), 0.0, 1.0));
-    painter->fillRect(track.adjusted(0, 0, filled - track.width(), 0), tokens.accent);
+  // Between the title and the status line, which says how far along it is.
+  const QVariant progress = index.data(ProgressRole);
+  if (progress.isValid()) {
+    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 22, rect.width() - 16, 4), progress.toDouble(),
+              tokens.accent, QColor(255, 255, 255, 40));
+    if (progress.toDouble() < 0) {
+      if (auto* view = dynamic_cast<TileView*>(const_cast<QWidget*>(option.widget))) view->KeepAnimating();
+    }
   }
   painter->restore();
 
@@ -129,7 +134,7 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   title_font.setWeight(QFont::DemiBold);
   painter->setFont(title_font);
   painter->setPen(QColor(255, 255, 255, 235));
-  const QRect title_rect(rect.left() + 8, rect.bottom() - 36, rect.width() - 16, 18);
+  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 42 : 36), rect.width() - 16, 18);
   painter->drawText(title_rect, Qt::AlignLeft | Qt::AlignVCenter,
                     QFontMetrics(title_font).elidedText(name, Qt::ElideRight, title_rect.width()));
 

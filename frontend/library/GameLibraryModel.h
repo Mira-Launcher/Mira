@@ -5,6 +5,7 @@
 #include <QString>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,8 @@ public:
 
   // The status line override for a game mid-install ("Installing… 1.2 GB").
   std::function<QString(const std::string& id)> status_text;
+  // ProgressRole for a game mid-install: 0..1, -1 when it isn't known, or nullopt.
+  std::function<std::optional<double>(const std::string& id)> progress;
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   QVariant data(const QModelIndex& index, int role) const override;

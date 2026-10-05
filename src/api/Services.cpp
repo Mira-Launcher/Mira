@@ -281,7 +281,12 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
   events.Publish("runners.download.started", base);
   StartJob(req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
            [this, kind, asset, replacing, base](JobRegistry::Progress&) -> Result<json> {
-             if (auto installed = runner::DownloadAndInstall(config, kind, asset); !installed) {
+             const auto on_progress = [this, &base](double fraction) {
+               json event = base;
+               event["progress"] = fraction;
+               events.Publish("runners.download.progress", std::move(event));
+             };
+             if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress); !installed) {
                log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
                events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
                return std::unexpected(installed.error());

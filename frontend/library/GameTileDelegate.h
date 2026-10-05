@@ -31,7 +31,8 @@ public:
     PinnedRole,
     // Optional: the game's source id, drawn as a small colored mark.
     SourceRole,
-    // Optional: 0..1, drawn as a bar along the tile's bottom edge.
+    // Optional: 0..1, or below 0 while busy with no percentage, drawn as a
+    // rail under the status line.
     ProgressRole,
     // mirad wants its pick of executable checked: "Not checked" on the status line.
     NeedsCheckRole,
