@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <iterator>
+#include <mutex>
 #include <set>
 
 #include "core/Lane.h"
@@ -47,12 +48,24 @@ model::GameStatus RestoredStatus(const model::Game& game) {
 void TryProvision(model::Game game, const runner::RunnerRegistry& runners, store::GameStore& games,
                   api::EventBus& events) {
   if (game.status != model::GameStatus::SettingUp) return;
+  // Scans no longer hold the folders lock while provisioning, so two can reach the same game.
+  static std::mutex provisioning_mutex;
+  static std::set<std::string> provisioning;
+  {
+    const std::lock_guard lock(provisioning_mutex);
+    if (!provisioning.insert(game.id).second) return;
+  }
+  const auto done = [&] {
+    const std::lock_guard lock(provisioning_mutex);
+    provisioning.erase(game.id);
+  };
   const model::Game provisioned = runners.ProvisionGame(game);
   auto result = games.Update(game.id, [&](model::Game& stored) {
     stored.runner_ref = provisioned.runner_ref;
     stored.status = provisioned.status;
     stored.last_error = provisioned.last_error;
   });
+  done();
   if (!result) {
     log::Error("failed to save provisioning result for {}: {}", game.id, result.error().message);
     return;
@@ -94,7 +107,7 @@ ScanSummary Scanner::ScanAll() {
 }
 
 ScanSummary Scanner::ScanRoot(const fs::path& root) {
-  const auto folders_lock = games_.LockFolders();
+  auto folders_lock = games_.LockFolders();
   ScanSummary summary;
   std::error_code ec;
   if (!fs::is_directory(root, ec)) {
@@ -112,9 +125,10 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   const DetectorSettings detector_settings = SettingsFromConfig(config_);
   const Detector detector(detector_settings);
   AutoSetup auto_setup(config_, games_, events_);
-  const runner::RunnerRegistry runners(config_);
+  const bool setup = config_.GetBool("auto_setup");
 
   std::set<std::string> seen_install_paths;
+  std::vector<std::string> to_set_up;  // provisioned once the folders lock is released
   // An installer's folder whose game now lives elsewhere (usually in its prefix) isn't a new game.
   std::set<std::string> installer_dirs;
   for (const model::Game& game : games_.All()) {
@@ -173,10 +187,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       // previous attempt may have failed transiently, or the daemon may have
       // restarted mid-provision last time. Without this, SettingUp is a dead
       // end reachable only by the one provisioning attempt at detection time.
-      if (config_.GetBool("auto_setup")) {
-        TryProvision(*existing, runners, games_, events_);
-        QueueAutoInstall(*existing, config_, games_, events_, metadata_fetches_, installs_);
-      }
+      if (setup) to_set_up.push_back(existing->id);
       continue;  // already known; never re-detect over a user's configuration
     }
 
@@ -188,13 +199,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
     // With auto_setup off, a game is still detected and stored (so it shows
     // up for the frontend to configure) but never auto-provisioned.
-    // Only Windows games reach here still SettingUp (AutoSetup marks native
-    // ready immediately, broken if nothing was found). Provisioning blocks
-    // this thread for the few seconds umu/Proton's first-run init takes.
-    if (config_.GetBool("auto_setup")) {
-      TryProvision(game, runners, games_, events_);
-      QueueAutoInstall(game, config_, games_, events_, metadata_fetches_, installs_);
-    }
+    if (setup) to_set_up.push_back(game.id);
   }
 
   // Anything previously known under this root but not seen this pass has
@@ -236,6 +241,18 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     }
     ++summary.missing;
     log::Info("game folder disappeared, marking missing: {}", game.install_path);
+  }
+
+  // Provisioning can take minutes (umu downloads its runtime on first use), so scans, the watcher, relocation
+  // and source removal don't wait for it.
+  folders_lock.unlock();
+  const runner::RunnerRegistry runners(config_);
+  for (const std::string& id : to_set_up) {
+    auto game = games_.Find(id);
+    if (!game) continue;
+    TryProvision(*game, runners, games_, events_);
+    game = games_.Find(id);
+    if (game) QueueAutoInstall(*game, config_, games_, events_, metadata_fetches_, installs_);
   }
 
   // The application menu follows the library: a game that just became
