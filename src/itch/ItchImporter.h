@@ -11,8 +11,6 @@
 
 namespace mira::itch {
 
-using ItchImportSummary = library::ImportSummary;
-
 // Reads butlerd's own installed-games state (Fetch.Caves -- a "cave" is
 // butler's own word for one installed copy of a game) and upserts it into
 // the same GameStore as everything else, same shape as
@@ -22,7 +20,7 @@ class ItchImporter {
 public:
   ItchImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<ItchImportSummary> Import();
+  Result<library::ImportSummary> Import();
 
 private:
   config::Config& config_;

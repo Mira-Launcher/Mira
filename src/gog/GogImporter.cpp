@@ -130,9 +130,9 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   return game;
 }
 
-Result<GogImportSummary> GogImporter::Import() {
+Result<library::ImportSummary> GogImporter::Import() {
   const auto batch = games_.BatchSaves();
-  GogImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("gog.enabled")) return summary;
 
   const fs::path root = InstallRoot(config_);

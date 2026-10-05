@@ -8,7 +8,6 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "epic/Legendary.h"
-#include "gog/Gog.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "launchers/Launchers.h"

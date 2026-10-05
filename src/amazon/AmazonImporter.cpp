@@ -29,9 +29,9 @@ std::string ForwardSlashes(std::string path) {
 AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<AmazonImportSummary> AmazonImporter::Import() {
+Result<library::ImportSummary> AmazonImporter::Import() {
   const auto batch = games_.BatchSaves();
-  AmazonImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("amazon.enabled")) return summary;
   const json installed = ReadNileFile("installed.json");
   if (!installed.is_array()) return summary;  // nothing installed yet

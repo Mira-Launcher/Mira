@@ -23,7 +23,6 @@ struct Store {
   const char* tool;          // "gogdl"
   const char* release_kind;  // what runner::ListReleases is asked for to download the tool
 
-  runner::ToolStatus (*detect)(const config::Config& config);
   Result<void> (*install_tool)(const config::Config& config, const runner::ReleaseAsset& asset);
   runner::AuthStatus (*status)(const config::Config& config);
   // The page to sign in at; for Amazon it also starts the sign-in the credential completes.

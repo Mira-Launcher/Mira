@@ -21,18 +21,18 @@ Result<ImportSummary> ImportWith(config::Config& config, store::GameStore& games
 
 std::vector<Store> BuildStores() {
   return {
-      {"epic", "Epic Games", "legendary", "legendary", epic::DetectLegendary, epic::InstallLegendaryBinary,
+      {"epic", "Epic Games", "legendary", "legendary", epic::InstallLegendaryBinary,
        epic::Status, [](const config::Config&) -> Result<std::string> { return std::string(epic::kLoginUrl); },
        epic::Login, epic::Logout, ImportWith<epic::EpicImporter>},
-      {"gog", "GOG", "gogdl", "gog", gog::DetectGog, gog::InstallGogBinary, gog::Status,
+      {"gog", "GOG", "gogdl", "gog", gog::InstallGogBinary, gog::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(gog::kLoginUrl); }, gog::Login,
        gog::Logout, ImportWith<gog::GogImporter>},
-      {"amazon", "Amazon Games", "nile", "amazon", amazon::DetectNile, amazon::InstallNileBinary, amazon::Status,
+      {"amazon", "Amazon Games", "nile", "amazon", amazon::InstallNileBinary, amazon::Status,
        amazon::BeginLogin, amazon::FinishLogin, amazon::Logout, ImportWith<amazon::AmazonImporter>},
-      {"itch", "itch.io", "butler", "itch", itch::DetectButler, itch::InstallButlerBinary, itch::Status,
+      {"itch", "itch.io", "butler", "itch", itch::InstallButlerBinary, itch::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(itch::kApiKeysUrl); }, itch::Login,
        itch::Logout, ImportWith<itch::ItchImporter>},
-      {"humble", "Humble Bundle", "humble-cli", "humble", humble::DetectHumbleCli, humble::InstallHumbleCliBinary,
+      {"humble", "Humble Bundle", "humble-cli", "humble", humble::InstallHumbleCliBinary,
        humble::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(humble::kLoginUrl); }, humble::Login,
        nullptr, nullptr},

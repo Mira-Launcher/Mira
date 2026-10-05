@@ -13,8 +13,6 @@
 
 namespace mira::gog {
 
-using GogImportSummary = library::ImportSummary;
-
 // The installed game directory under gog.install_root holding
 // goggame-<id>.info, or empty if none does.
 std::filesystem::path FindGameDir(const config::Config& config, const std::string& id);
@@ -29,7 +27,7 @@ class GogImporter {
 public:
   GogImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<GogImportSummary> Import();
+  Result<library::ImportSummary> Import();
 
   // Identifies and upserts one already-unpacked install at `path` --
   // what GogInstaller calls right after a fresh download (already knows

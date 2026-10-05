@@ -12,15 +12,13 @@
 
 namespace mira::amazon {
 
-using AmazonImportSummary = library::ImportSummary;
-
 // Turns every game in nile's installed.json into a Mira game, launched from
 // its fuel.json the way `nile launch` would.
 class AmazonImporter {
 public:
   AmazonImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<AmazonImportSummary> Import();
+  Result<library::ImportSummary> Import();
 
 private:
   config::Config& config_;

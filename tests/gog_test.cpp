@@ -166,7 +166,7 @@ TEST_CASE("GogImporter::Import scans install_root's subdirectories") {
   REQUIRE(fixture.config.Set("gog.install_root", root.string()));
 
   gog::GogImporter importer(fixture.config, fixture.games, fixture.events);
-  const Result<gog::GogImportSummary> summary = importer.Import();
+  const Result<library::ImportSummary> summary = importer.Import();
   REQUIRE(summary);
   CHECK(summary->added == 2);
   CHECK(fixture.games.All().size() == 2);

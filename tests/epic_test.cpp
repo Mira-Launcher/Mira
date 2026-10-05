@@ -143,7 +143,7 @@ TEST_CASE("EpicImporter imports installed titles and tags them") {
       R"([{"app_name": "abc", "title": "A Game", "install_path": "/tmp/mira-tests/agame", "executable": "A.exe"}])");
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
-  const Result<epic::EpicImportSummary> summary = importer.Import();
+  const Result<library::ImportSummary> summary = importer.Import();
   REQUIRE(summary);
   CHECK(summary->added == 1);
   CHECK(summary->updated == 0);
@@ -170,7 +170,7 @@ TEST_CASE("EpicImporter is idempotent") {
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
   REQUIRE(importer.Import());
-  const Result<epic::EpicImportSummary> second = importer.Import();
+  const Result<library::ImportSummary> second = importer.Import();
   REQUIRE(second);
   CHECK(second->added == 0);
   CHECK(second->updated == 1);

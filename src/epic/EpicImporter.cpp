@@ -45,9 +45,9 @@ std::vector<InstalledTitle> ParseInstalled(const json& parsed) {
 EpicImporter::EpicImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<EpicImportSummary> EpicImporter::Import() {
+Result<library::ImportSummary> EpicImporter::Import() {
   const auto batch = games_.BatchSaves();
-  EpicImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("epic.enabled")) return summary;
 
   const Result<json> installed_json = RunLegendaryJson(config_, {"list-installed"});

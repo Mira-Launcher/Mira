@@ -38,9 +38,7 @@ void SendStoreError(httplib::Response& res, const Error& error) {
   SendError(res, error.code == "game_not_found" ? 404 : 500, error);
 }
 
-std::optional<json> BodyObject(const httplib::Request& req, httplib::Response& res, std::string_view expected,
-                               bool allow_empty) {
-  if (allow_empty && req.body.empty()) return json::object();
+std::optional<json> BodyObject(const httplib::Request& req, httplib::Response& res, std::string_view expected) {
   json body = json::parse(req.body, nullptr, false);
   if (body.is_discarded()) {
     SendError(res, 400, "invalid_json", "body is not valid JSON");

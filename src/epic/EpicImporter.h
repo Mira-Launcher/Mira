@@ -11,8 +11,6 @@
 
 namespace mira::epic {
 
-using EpicImportSummary = library::ImportSummary;
-
 // Reads Legendary's own installed-titles list (and, if epic.import_uninstalled
 // is on, its full catalog too) and upserts them into the same GameStore as
 // everything else: an Epic game is a normal model::Game, runner_ref left
@@ -30,7 +28,7 @@ class EpicImporter {
 public:
   EpicImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<EpicImportSummary> Import();
+  Result<library::ImportSummary> Import();
 
 private:
   config::Config& config_;

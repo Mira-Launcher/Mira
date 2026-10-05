@@ -29,9 +29,9 @@ void SendResult(httplib::Response& res, const Result<void>& result);
 void SendStoreError(httplib::Response& res, const Error& error);
 
 // The request body as a JSON object, or nullopt after a 400: invalid_json when it doesn't parse,
-// invalid_body (saying `expected`) when it isn't an object. An empty body is {} when `allow_empty`.
+// invalid_body (saying `expected`) when it isn't an object.
 std::optional<nlohmann::json> BodyObject(const httplib::Request& req, httplib::Response& res,
-                                         std::string_view expected, bool allow_empty = false);
+                                         std::string_view expected);
 
 // A query parameter, or `fallback` when absent.
 std::string Param(const httplib::Request& req, const char* name, const std::string& fallback = std::string());
