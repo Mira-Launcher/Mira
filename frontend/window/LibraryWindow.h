@@ -49,19 +49,15 @@ class QTimer;
 class LibraryGrid;
 
 namespace mira_gui {
-class ArtPickerPanel;
-class ChangeBar;
 class ContinueRow;
+class GameCard;
 class GameFilterProxy;
 class GameLibraryModel;
 class GameMenus;
-class CoverChip;
 class DaemonSupervisor;
 class DownloadTracker;
 class DownloadsPanel;
-class GameEditForm;
 class GameTileDelegate;
-class HeroBackdrop;
 class HoverCard;
 class RunnersPage;
 class SettingsPanel;
@@ -187,21 +183,11 @@ private:
   // than swapped into content_stack_, so the grid and sidebar stay live
   // underneath it.
   QWidget* BuildGameEditOverlay();
-  // The card's own content, rebuilt fresh on every open, for the same reasoning as
-  // settings_page_: starts synced to what's actually saved, not stale edits
-  // from a discarded previous open.
-  QWidget* BuildGameEditCard(const std::string& id);
   void SizeGameEditCard(QWidget* card);
   void CloseGameEdit();
-  // Confirms first if game_edit_form_ is dirty; the card's own Back
-  // button, the sidebar's Library nav row, and a click on the scrim.
+  // Confirms first if the card has unsaved edits; the sidebar's Library nav
+  // row, and a click on the scrim.
   void RequestCloseGameEdit();
-  // The card's Back and Esc: out of the art picker, then Advanced, then the card.
-  void GameEditBack();
-  // The form's change count, and room under its cards while the bar shows.
-  void UpdateGameEditBar();
-  // Play or Stop, as the game's state allows.
-  void UpdateGameEditPlay();
   bool GameEditOpen() const;
   // `focus_key` jumps straight to that schema field once loaded.
   void OpenSettings(const QString& focus_key = QString());
@@ -292,10 +278,6 @@ private:
   QString InstallText(const std::string& id) const;  // `announce` is false for the bulk path, where one toast covers the batch
   // and per-game messages would be one notification per game.
   void RefreshMetadata(const std::string& id, bool announce = true);
-  // Swaps the game card's fields for its art picker, and back.
-  void OpenArtPicker();
-  void CloseArtPicker(bool applied = false);
-  bool ArtPickerOpen() const;
   void FetchMissingArtwork();
   void ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiError& error);
   // Routes ui/ErrorHelp's fix-it buttons to this window's pages.
@@ -409,23 +391,11 @@ private:
   // not a content_stack_ page, so the grid stays visible (dimmed) underneath.
   QWidget* game_edit_overlay_ = nullptr;
   QGridLayout* game_edit_overlay_layout_ = nullptr;
-  QWidget* game_edit_card_ = nullptr;
+  mira_gui::GameCard* game_card_ = nullptr;
   // Owns chrome (top_bar_ + content_stack_) at index 0 and game_edit_overlay_
   // at index 1 -- StackAll shows both always; this just decides which one is
   // raised on top, toggled in OpenGameDialog/CloseGameEdit.
   QStackedLayout* root_stack_ = nullptr;
-  mira_gui::GameEditForm* game_edit_form_ = nullptr;
-  mira_gui::HeroBackdrop* game_edit_backdrop_ = nullptr;  // the card itself
-  mira_gui::CoverChip* game_edit_cover_ = nullptr;
-  // The form, and the art picker once first opened.
-  QStackedWidget* game_edit_stack_ = nullptr;
-  mira_gui::ArtPickerPanel* game_edit_picker_ = nullptr;
-  QLabel* game_edit_title_ = nullptr;
-  QPushButton* game_edit_art_button_ = nullptr;
-  QPushButton* game_edit_play_ = nullptr;
-  // The form's unsaved changes, or the picker's pick while it's open.
-  mira_gui::ChangeBar* game_edit_bar_ = nullptr;
-  bool close_game_edit_after_save_ = false;
   QLabel* footer_ = nullptr;
   QLabel* empty_hint_ = nullptr;
   mira_gui::HoverCard* hover_card_ = nullptr;
