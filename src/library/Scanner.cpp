@@ -4,8 +4,8 @@
 #include <format>
 #include <iterator>
 #include <set>
-#include <thread>
 
+#include "core/Lane.h"
 #include "core/Log.h"
 #include "core/Strings.h"
 #include "desktop/DesktopEntries.h"
@@ -63,11 +63,11 @@ void TryProvision(model::Game game, const runner::RunnerRegistry& runners, store
 // Silently runs a recognized installer off the scan thread (installs can
 // take minutes). A failed attempt sets last_error and isn't retried.
 void QueueAutoInstall(const model::Game& game, config::Config& config, store::GameStore& games,
-                      api::EventBus& events, metadata::FetchQueue* fetches) {
-  if (!AutoInstalls(config, game) || !BeginInstall(game.id)) return;
-  std::thread([id = game.id, &config, &games, &events, fetches] {
+                      api::EventBus& events, metadata::FetchQueue* fetches, Lane* lane) {
+  if (lane == nullptr || !AutoInstalls(config, game) || !BeginInstall(game.id)) return;
+  lane->Post([id = game.id, &config, &games, &events, fetches] {
     RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
-  }).detach();
+  });
 }
 
 }  // namespace
@@ -175,7 +175,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       // end reachable only by the one provisioning attempt at detection time.
       if (config_.GetBool("auto_setup")) {
         TryProvision(*existing, runners, games_, events_);
-        QueueAutoInstall(*existing, config_, games_, events_, metadata_fetches_);
+        QueueAutoInstall(*existing, config_, games_, events_, metadata_fetches_, installs_);
       }
       continue;  // already known; never re-detect over a user's configuration
     }
@@ -193,7 +193,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     // this thread for the few seconds umu/Proton's first-run init takes.
     if (config_.GetBool("auto_setup")) {
       TryProvision(game, runners, games_, events_);
-      QueueAutoInstall(game, config_, games_, events_, metadata_fetches_);
+      QueueAutoInstall(game, config_, games_, events_, metadata_fetches_, installs_);
     }
   }
 

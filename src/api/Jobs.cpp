@@ -64,7 +64,7 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
   started["label"] = label;
   events_.Publish("job.started", started);
 
-  queue_.Run([this, id, identity, work = std::move(work)] {
+  queue_.Post([this, id, identity, work = std::move(work)] {
     Progress progress(*this, id);
     Result<json> result;
     // Caught here so the job still ends: the queue would only log it.

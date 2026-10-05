@@ -14,7 +14,7 @@
 #include "api/EventBus.h"
 #include "api/Jobs.h"
 #include "config/Config.h"
-#include "core/BackgroundQueue.h"
+#include "core/Lane.h"
 #include "core/Result.h"
 #include "metadata/ArtIndex.h"
 #include "metadata/FetchQueue.h"
@@ -61,6 +61,7 @@ public:
   // Queues metadata and art for games added outside a request (the startup scan).
   void QueueMetadata(const std::vector<model::Game>& games);
   metadata::FetchQueue& MetadataQueue() { return metadata_fetches_; }
+  Lane& InstallLane() { return installs_; }
 
   void SetOnLibraryRootsChanged(std::function<void()> callback) { on_roots_changed_ = std::move(callback); }
 
@@ -98,10 +99,11 @@ private:
   proc::ProcessSupervisor supervisor_;
   metadata::ArtIndex art_index_{config_};
   metadata::FetchQueue metadata_fetches_;
-  BackgroundQueue tricks_queue_;
-  BackgroundQueue artwork_selects_;
-  BackgroundQueue artwork_thumbs_;
-  BackgroundQueue operations_;  // installs and downloads; joined with the Server so none outlive it
+  Lane tricks_lane_{"tricks", 1};  // one at a time: winetricks runs overlap badly in one prefix
+  Lane artwork_selects_{"artwork-select", 2};
+  Lane artwork_thumbs_{"artwork-thumbs", 4};
+  Lane operations_{"operations", 4};  // installs and downloads; joined with the Server so none outlive it
+  Lane installs_{"installs", 1};      // installers a scan runs on its own
   // After everything a job's work touches, so it's joined first on the way down.
   JobRegistry jobs_{events_};
   std::function<void()> on_roots_changed_;

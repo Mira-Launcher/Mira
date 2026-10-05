@@ -906,6 +906,7 @@ void Server::RegisterRoutes() {
     StartJob(req, res, "scan", "", "Scanning your library", [this](JobRegistry::Progress&) -> Result<json> {
       library::Scanner scanner(config_, games_, events_);
       scanner.UseMetadataQueue(metadata_fetches_);
+      scanner.UseInstallLane(installs_);
       const library::ScanSummary summary = scanner.ScanAll();
       for (const model::Game& game : summary.added_games) metadata_fetches_.Enqueue(config_, events_, game);
       return json{{"added", summary.added}, {"missing", summary.missing}, {"restored", summary.restored}};
@@ -1007,7 +1008,7 @@ void Server::RegisterRoutes() {
 
       const runner::ReleaseAsset asset = releases->front();  // newest first
       events_.Publish(event_prefix + ".started", {{"tag", asset.tag}});
-      operations_.Run([this, asset, tool, event_prefix, install] {
+      operations_.Post([this, asset, tool, event_prefix, install] {
         if (auto installed = install(config_, asset); !installed) {
           log::Error("{} install failed ({}): {}", tool, asset.tag, installed.error().message);
           events_.Publish(event_prefix + ".failed", FailedEvent({{"tag", asset.tag}}, installed.error()));
@@ -1174,7 +1175,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 409, "install_running", std::format("{} is already installing", launcher->name));
     }
     events_.Publish("launcher.install.started", {{"id", launcher->id}});
-    operations_.Run([this, launcher] {
+    operations_.Post([this, launcher] {
       const auto done = launchers::Install(config_, games_, *launcher);
       if (const auto stored = games_.Find(launchers::GameId(*launcher))) {
         events_.Publish("game.updated", Record(*stored));
@@ -1392,7 +1393,7 @@ void Server::RegisterRoutes() {
     }
 
     events_.Publish("humble.download.started", {{"bundle_key", bundle_key}});
-    operations_.Run([this, bundle_key, item_numbers] {
+    operations_.Post([this, bundle_key, item_numbers] {
       const Result<bool> result = humble::Download(config_, bundle_key, item_numbers);
       if (!result) {
         log::Error("humble download failed ({}): {}", bundle_key, result.error().message);
@@ -1456,7 +1457,7 @@ void Server::RegisterRoutes() {
     if (!IsSafeRef(ref)) return SendError(res, 400, "invalid_ref", "that ref isn't a store id");
 
     events_.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
-    operations_.Run([this, src, source, ref, is_update] {
+    operations_.Post([this, src, source, ref, is_update] {
       const Result<void> result = is_update ? src->Update(config_, games_, events_, ref)
                                             : src->Install(config_, games_, events_, ref);
       if (!result) {
@@ -1946,7 +1947,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
 
-    operations_.Run([this, id = game->id, interactive, installer] {
+    operations_.Post([this, id = game->id, interactive, installer] {
       library::RunInstall(config_, games_, events_, &metadata_fetches_, id,
                           interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
     });
@@ -2082,7 +2083,7 @@ void Server::RegisterRoutes() {
     const std::string id = game->id;
 
     events_.Publish("tricks.started", {{"id", id}, {"verb", verb}});
-    tricks_queue_.Run([this, id, verb] {
+    tricks_lane_.Post([this, id, verb] {
       const runner::RunnerRegistry registry(config_);
       const auto game = games_.Find(id);
       if (!game) {  // removed while queued
@@ -2130,7 +2131,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_id\": <id>}");
     }
     const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
-    artwork_selects_.Run([this, id, slot, candidate_id] {
+    artwork_selects_.Post([this, id, slot, candidate_id] {
       if (auto selected = metadata::SelectArtwork(config_, id, slot, candidate_id); !selected) {
         events_.Publish("game.artwork_select_failed", FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
       } else {
@@ -2152,7 +2153,7 @@ void Server::RegisterRoutes() {
     }
     // Echoed back, so a caller can tell its answer from a replayed one.
     const std::string request = req.has_param("request") ? req.get_param_value("request") : "";
-    artwork_thumbs_.Run([this, id, slot, page, request] {
+    artwork_thumbs_.Post([this, id, slot, page, request] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
       if (auto fetched = metadata::FetchCandidatePage(config_, id, slot, page); fetched) {
         event.update(*fetched);
@@ -2177,7 +2178,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_ids\": [<id>, ...]}, 1 to 64 ids");
     }
     const std::vector<std::int64_t> candidate_ids = ids.get<std::vector<std::int64_t>>();
-    artwork_thumbs_.Run([this, id, slot, candidate_ids] {
+    artwork_thumbs_.Post([this, id, slot, candidate_ids] {
       json event = {{"id", id}, {"type", slot}};
       if (auto batch = metadata::FetchCandidateThumbs(config_, id, slot, candidate_ids); batch) {
         event["ready"] = batch->ready;
@@ -2412,7 +2413,7 @@ void Server::RegisterRoutes() {
       asset = releases->front();
     }
     events_.Publish(id + ".setup.started", json::object());
-    operations_.Run([this, id, asset] {
+    operations_.Post([this, id, asset] {
       Result<void> installed;
       if (asset) {
         auto path = runner::InstallToolBinary(config_, "umu", *asset, "umu-run");
@@ -2571,7 +2572,7 @@ void Server::InstallRunnerAsync(const std::string& kind, const std::string& sour
   const json base = {{"kind", kind}, {"tag", asset.tag}, {"name", name},
                      {"label", runner::BuildLabel(kind, name)}, {"source", source}};
   events_.Publish("runners.download.started", base);
-  operations_.Run([this, kind, asset, replacing, base] {
+  operations_.Post([this, kind, asset, replacing, base] {
     if (auto installed = runner::DownloadAndInstall(config_, kind, asset); !installed) {
       log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
       events_.Publish("runners.download.failed", FailedEvent(base, installed.error()));

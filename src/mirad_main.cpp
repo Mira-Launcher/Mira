@@ -120,6 +120,7 @@ int main(int argc, char** argv) {
   std::thread startup_scan_thread([&] {
     mira::library::Scanner startup_scan(config, games, events);
     startup_scan.UseMetadataQueue(server.MetadataQueue());
+    startup_scan.UseInstallLane(server.InstallLane());
     const mira::library::ScanSummary summary = startup_scan.ScanAll();
     mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
                     summary.missing, summary.restored);
@@ -128,6 +129,7 @@ int main(int argc, char** argv) {
 
   mira::library::Watcher watcher(config, games, events);
   watcher.UseMetadataQueue(server.MetadataQueue());
+  watcher.UseInstallLane(server.InstallLane());
   server.SetOnLibraryRootsChanged([&watcher] { watcher.ReloadRoots(); });
   std::thread watcher_thread([&] { watcher.Run(); });
 

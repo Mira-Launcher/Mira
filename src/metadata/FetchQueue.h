@@ -11,7 +11,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
-#include "core/BackgroundQueue.h"
+#include "core/Lane.h"
 #include "model/Types.h"
 
 namespace mira::metadata {
@@ -70,7 +70,7 @@ private:
   int running_ = 0;
   std::set<std::string> running_ids_;
   std::atomic<bool> stopping_{false};
-  BackgroundQueue threads_;  // last: joined before the rest is torn down
+  Lane threads_{"metadata", kWorkers};  // last: joined before the rest is torn down
 };
 
 }  // namespace mira::metadata

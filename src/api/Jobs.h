@@ -10,7 +10,7 @@
 #include <json.hpp>
 
 #include "api/EventBus.h"
-#include "core/BackgroundQueue.h"
+#include "core/Lane.h"
 #include "core/Result.h"
 
 namespace mira::api {
@@ -58,7 +58,7 @@ private:
   mutable std::mutex mutex_;
   std::deque<nlohmann::json> jobs_;  // newest last, capped
   std::uint64_t next_ = 0;
-  BackgroundQueue queue_;  // declared last: joined before the rest go
+  Lane queue_{"jobs", 4};  // declared last: joined before the rest go
 };
 
 }  // namespace mira::api

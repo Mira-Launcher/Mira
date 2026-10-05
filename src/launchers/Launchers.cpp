@@ -33,6 +33,15 @@ void SetState(const Launcher& launcher, std::string state) {
   states[launcher.id] = std::move(state);
 }
 
+std::vector<pid_t> orphans;  // installer processes left running, reaped by a later call
+
+// Reaps what has exited, then keeps `pid` (if any) to reap later.
+void ReapOrphans(pid_t pid = -1) {
+  const std::lock_guard lock(state_mutex);
+  if (pid > 0) orphans.push_back(pid);
+  std::erase_if(orphans, [](pid_t orphan) { return ::waitpid(orphan, nullptr, WNOHANG) != 0; });
+}
+
 // The Windows user folder the launcher writes its settings under.
 fs::path UserDir(const fs::path& prefix) {
   const fs::path users = prefix / "drive_c" / "users";
@@ -79,6 +88,7 @@ std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix
 }
 
 Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const model::Game& game) {
+  ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
   const fs::path setup = downloads / std::format("{}-setup.exe", launcher.id);
   std::error_code ec;
@@ -116,11 +126,11 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
     if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && FindExe(launcher, game.data_dir)) {
-      std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();  // reaped whenever it ends
+      ReapOrphans(*pid);
       return {};
     }
     if (std::chrono::steady_clock::now() >= deadline) {
-      std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();
+      ReapOrphans(*pid);
       return Err("launcher_install_timeout", std::format("the {} installer didn't finish in 30 minutes", launcher.name));
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
