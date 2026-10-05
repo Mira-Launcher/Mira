@@ -9,14 +9,6 @@
 #include "LibrarySort.h"
 
 namespace mira_gui {
-namespace {
-
-bool HasTag(const GameSummary& game, std::string_view tag) { return std::ranges::contains(game.tags, tag); }
-
-// A pinned game's tag. "favorite" because Lutris imports its favorites under it.
-constexpr std::string_view kPinnedTag = "favorite";
-
-}  // namespace
 
 GameLibraryModel::GameLibraryModel(QObject* parent) : QAbstractListModel(parent) {}
 
@@ -134,7 +126,7 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::NameRole: return QString::fromStdString(game.name);
     case GameTileDelegate::StatusRole: return QString::fromStdString(game.status);
     case GameTileDelegate::RunningRole: return game.running;
-    case GameTileDelegate::PinnedRole: return HasTag(game, kPinnedTag);
+    case GameTileDelegate::PinnedRole: return IsPinned(game);
     case GameTileDelegate::StatusTextRole: return status_text ? status_text(game.id) : QString();
     case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
     case GameTileDelegate::NeedsCheckRole: return game.needs_check;
@@ -167,10 +159,10 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
 bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key) {
   // Store launchers (Battle.net, ...) live on their source pages, not here.
   if (game.source == "launcher") return false;
-  if (key == "hidden") return HasTag(game, "hidden");
+  if (key == "hidden") return IsHidden(game);
   // Every other filter excludes a hidden game: "not displayed by default"
   // means not in "All games" either, not just off the initial screen.
-  if (HasTag(game, "hidden")) return false;
+  if (IsHidden(game)) return false;
   if (key == "all") return true;
   if (key == "running") return game.running;
   if (key == "apps") return IsApp(game);

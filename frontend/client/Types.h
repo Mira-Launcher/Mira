@@ -5,6 +5,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -59,10 +60,24 @@ struct GameSummary {
   bool operator==(const GameSummary&) const = default;
 };
 
-// A program rather than a game ("app" tag): kept out of Continue, with no playtime shown.
-inline bool IsApp(const GameSummary& game) {
-  return std::ranges::find(game.tags, "app") != game.tags.end();
+// The tags the frontend gives a meaning to.
+namespace tags {
+// Pinned to the sidebar. "favorite" because Lutris imports its favorites under it.
+inline constexpr const char* kPinned = "favorite";
+inline constexpr const char* kHidden = "hidden";
+// A program rather than a game: kept out of Continue, with no playtime shown.
+inline constexpr const char* kApp = "app";
+}  // namespace tags
+
+inline bool HasTag(const GameSummary& game, std::string_view tag) {
+  return std::ranges::find(game.tags, tag) != game.tags.end();
 }
+inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
+inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+inline bool IsPinned(const GameSummary& game) { return HasTag(game, tags::kPinned); }
+
+// Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a 409.
+inline bool CanPlayOrStop(const GameSummary& game) { return game.running || game.status == "ready"; }
 
 struct GamesResult {
   bool ok = false;

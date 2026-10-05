@@ -152,13 +152,6 @@ const std::pair<const char*, const char*> kFilterTabs[] = {
 // A crash within this many seconds of launch reads as "failed to start".
 constexpr std::int64_t kFailedStartSeconds = 30;
 
-// A pinned game's tag. "favorite" because Lutris imports its favorites under it.
-constexpr const char* kPinnedTag = "favorite";
-
-bool HasTag(const mira_gui::GameSummary& game, const std::string& tag) {
-  return std::find(game.tags.begin(), game.tags.end(), tag) != game.tags.end();
-}
-
 // Icon + label (label also stashed in Qt::UserRole + 1, for the pill) + a
 // live count (see UpdateFilterCounts). Transparent background: the list's
 // own selection highlight marks the active row.
@@ -637,10 +630,7 @@ void LibraryWindow::BuildShortcuts() {
   grid_action("play_stop", "Play the selected game, or stop it while it runs", QKeySequence(Qt::Key_Return),
              {QKeySequence(Qt::Key_Enter)}, [this] {
                const mira_gui::GameSummary* game = FindGame(SelectedId());
-               if (game == nullptr) return;
-               // Same rule as the context menu's Play entry: a game that isn't
-               // ready has nothing to launch.
-               if (!game->running && game->status != "ready") return;
+               if (game == nullptr || !mira_gui::CanPlayOrStop(*game)) return;
                ToggleRunning(std::string(game->id));
              });
 
@@ -1608,10 +1598,7 @@ QWidget* LibraryWindow::BuildGrid() {
       OfferInstall(id);
       return;
     }
-    // Same rule as the context menu's Play entry and the Enter shortcut: a
-    // game that isn't ready has nothing to launch, and /launch would just 409.
-    if (!game->running && game->status != "ready") return;
-    ToggleRunning(id);
+    if (mira_gui::CanPlayOrStop(*game)) ToggleRunning(id);
   });
   grid_->on_hover = [this](const QModelIndex& index) { ShowHoverCard(index); };
   grid_->on_ctrl_wheel = [this](int steps) {
@@ -1993,12 +1980,12 @@ void LibraryWindow::ShowGameMenu(const std::string& id, const QPoint& global_pos
 
   QMenu menu(this);
   QAction* play = menu.addAction(running ? "Stop" : "Play");
-  play->setEnabled(running || status == "ready");
+  play->setEnabled(mira_gui::CanPlayOrStop(game));
   if (extra) extra(menu);
   QAction* details = menu.addAction("Game settings…");
   QAction* folder = menu.addAction("Open install folder");
   QAction* more_details = menu.addAction("More details…");
-  const bool pinned = HasTag(game, kPinnedTag);
+  const bool pinned = mira_gui::IsPinned(game);
   QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");
   menu.addSeparator();
   // Both halves of the needs_install escape hatch: run the installer inside
@@ -2039,7 +2026,7 @@ void LibraryWindow::ShowGameMenu(const std::string& id, const QPoint& global_pos
         desktop_entry->setEnabled(true);
       });
   menu.addSeparator();
-  const bool hidden = HasTag(game, "hidden");
+  const bool hidden = mira_gui::IsHidden(game);
   QAction* toggle_hidden = menu.addAction(hidden ? "Unhide" : "Hide");
   toggle_hidden->setToolTip(hidden
                                 ? "Show this game in the library again"
@@ -2077,11 +2064,11 @@ void LibraryWindow::ShowGameMenu(const std::string& id, const QPoint& global_pos
   } else if (chosen == desktop_entry) {
     mira_gui::actions::ToggleDesktopEntry(this, id, *desktop_entry_enabled);
   } else if (chosen == toggle_pinned) {
-    ToggleTag(id, kPinnedTag);
+    ToggleTag(id, mira_gui::tags::kPinned);
   } else if (chosen == toggle_hidden) {
-    ToggleTag(id, "hidden");
+    ToggleTag(id, mira_gui::tags::kHidden);
   } else if (chosen == toggle_app) {
-    ToggleTag(id, "app");
+    ToggleTag(id, mira_gui::tags::kApp);
   } else if (chosen == remove) {
     mira_gui::actions::Delete(this, id, name, [this, id] { RemoveGame(id); });
   }
@@ -2102,8 +2089,8 @@ void LibraryWindow::ShowBatchMenu(const std::vector<std::string>& ids, const QPo
   int apps = 0;
   for (const std::string& id : ids) {
     const mira_gui::GameSummary* game = FindGame(id);
-    if (game != nullptr && HasTag(*game, kPinnedTag)) ++pinned;
-    if (game != nullptr && HasTag(*game, "hidden")) ++hidden;
+    if (game != nullptr && mira_gui::IsPinned(*game)) ++pinned;
+    if (game != nullptr && mira_gui::IsHidden(*game)) ++hidden;
     if (game != nullptr && mira_gui::IsApp(*game)) ++apps;
   }
 
@@ -2138,11 +2125,11 @@ void LibraryWindow::ShowBatchMenu(const std::vector<std::string>& ids, const QPo
       }
     });
   } else if (chosen == pin || chosen == unpin) {
-    BatchSetTag(ids, kPinnedTag, chosen == pin);
+    BatchSetTag(ids, mira_gui::tags::kPinned, chosen == pin);
   } else if (chosen == hide || chosen == unhide) {
-    BatchSetTag(ids, "hidden", chosen == hide);
+    BatchSetTag(ids, mira_gui::tags::kHidden, chosen == hide);
   } else if (chosen == mark_app || chosen == mark_game) {
-    BatchSetTag(ids, "app", chosen == mark_app);
+    BatchSetTag(ids, mira_gui::tags::kApp, chosen == mark_app);
   } else if (chosen == add_desktop_entry) {
     mira_gui::actions::BatchSetDesktopEntry(this, ids, /*enabled=*/true);
   } else if (chosen == remove_desktop_entry) {
@@ -2158,7 +2145,7 @@ void LibraryWindow::BatchSetTag(const std::vector<std::string>& ids, const std::
   mira_gui::GamesPatch patch;
   for (const std::string& id : ids) {
     const mira_gui::GameSummary* game = FindGame(id);
-    if (game != nullptr && HasTag(*game, tag) != present) patch.ids.push_back(id);
+    if (game != nullptr && mira_gui::HasTag(*game, tag) != present) patch.ids.push_back(id);
   }
   if (patch.ids.empty()) return;
   (present ? patch.add_tags : patch.remove_tags).push_back(tag);
@@ -2168,8 +2155,8 @@ void LibraryWindow::BatchSetTag(const std::vector<std::string>& ids, const std::
     if (!result.ok) {
       const QString games = one ? "this game's" : "these games'";
       mira_gui::notify::FailedRequest(this,
-                                      tag == "hidden" ? QString("Could not change %1 visibility.").arg(games)
-                                      : tag == "app"  ? QString("Could not change what %1 marked as.")
+                                      tag == mira_gui::tags::kHidden ? QString("Could not change %1 visibility.").arg(games)
+                                      : tag == mira_gui::tags::kApp  ? QString("Could not change what %1 marked as.")
                                                             .arg(one ? "this is" : "these are")
                                                       : QString("Could not change whether %1 pinned.")
                                                             .arg(one ? "this game is" : "these games are"),
@@ -2184,7 +2171,7 @@ void LibraryWindow::BatchSetTag(const std::vector<std::string>& ids, const std::
 
 void LibraryWindow::ToggleTag(const std::string& id, const std::string& tag) {
   const mira_gui::GameSummary* game = FindGame(id);
-  if (game != nullptr) BatchSetTag({id}, tag, !HasTag(*game, tag));
+  if (game != nullptr) BatchSetTag({id}, tag, !mira_gui::HasTag(*game, tag));
 }
 
 void LibraryWindow::AskAboutInstall(const mira_gui::InstallDetectedEvent& event) {
@@ -2269,7 +2256,7 @@ void LibraryWindow::ShowInstallPrompt(const mira_gui::InstallDetectedEvent& even
                                                       result.error);
                       return;
                     }
-                    if (is_app) BatchSetTag({id}, "app", true);
+                    if (is_app) BatchSetTag({id}, mira_gui::tags::kApp, true);
                   },
                   install_path, exe_path);
             });
@@ -2403,10 +2390,8 @@ void LibraryWindow::GameEditBack() {
 void LibraryWindow::UpdateGameEditPlay() {
   if (game_edit_play_ == nullptr || game_edit_form_ == nullptr) return;
   const mira_gui::GameSummary* game = FindGame(game_edit_form_->id());
-  const bool running = game != nullptr && game->running;
-  game_edit_play_->setText(running ? "Stop" : "Play");
-  // Same rule as the context menu's Play entry.
-  game_edit_play_->setEnabled(game != nullptr && (running || game->status == "ready"));
+  game_edit_play_->setText(game != nullptr && game->running ? "Stop" : "Play");
+  game_edit_play_->setEnabled(game != nullptr && mira_gui::CanPlayOrStop(*game));
 }
 
 void LibraryWindow::RequestCloseGameEdit() {
@@ -2954,8 +2939,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
           });
   connect(source_page_, &mira_gui::SourcePage::PlayRequested, this, [this](const QString& id) {
     const mira_gui::GameSummary* game = FindGame(id.toStdString());
-    if (game == nullptr) return;
-    if (game->running || game->status == "ready") ToggleRunning(game->id);
+    if (game != nullptr && mira_gui::CanPlayOrStop(*game)) ToggleRunning(game->id);
   });
   main_stack_->addWidget(source_page_);
   main_stack_->setCurrentWidget(source_page_);
@@ -3288,7 +3272,7 @@ std::vector<const mira_gui::GameSummary*> LibraryWindow::PinnedGames() const {
   const bool showing_hidden = CurrentFilterKey() == "hidden";
   std::vector<const mira_gui::GameSummary*> pinned;
   for (const mira_gui::GameSummary& game : library_->Games()) {
-    if (HasTag(game, kPinnedTag) && HasTag(game, "hidden") == showing_hidden) pinned.push_back(&game);
+    if (mira_gui::IsPinned(game) && mira_gui::IsHidden(game) == showing_hidden) pinned.push_back(&game);
   }
   std::ranges::sort(pinned, [](const mira_gui::GameSummary* a, const mira_gui::GameSummary* b) {
     return QString::compare(QString::fromStdString(a->name), QString::fromStdString(b->name),
@@ -3306,7 +3290,7 @@ std::vector<const mira_gui::GameSummary*> LibraryWindow::RecentGames(int count, 
   for (const mira_gui::GameSummary& game : library_->Games()) {
     if (game.running) {
       running.push_back(&game);
-    } else if (game.last_played_at && !HasTag(game, "hidden")) {
+    } else if (game.last_played_at && !mira_gui::IsHidden(game)) {
       played.push_back(&game);
     }
   }
@@ -3407,8 +3391,7 @@ void LibraryWindow::RowClicked(const std::string& id) {
   if (last_row_click_.isValid() && last_row_click_.elapsed() < QApplication::doubleClickInterval()) return;
   last_row_click_.start();
   const mira_gui::GameSummary* game = FindGame(id);
-  if (game == nullptr) return;
-  if (game->running || game->status == "ready") ToggleRunning(id);
+  if (game != nullptr && mira_gui::CanPlayOrStop(*game)) ToggleRunning(id);
 }
 
 void LibraryWindow::RefreshContinue() {
@@ -3417,7 +3400,7 @@ void LibraryWindow::RefreshContinue() {
   std::vector<const mira_gui::GameSummary*> games;
   if (continue_row_enabled_ && CurrentFilterKey() == "all" && search_->text().trimmed().isEmpty()) {
     for (const mira_gui::GameSummary& game : library_->Games()) {
-      if (HasTag(game, "hidden") || mira_gui::IsApp(game) || game.source == "launcher") continue;
+      if (mira_gui::IsHidden(game) || mira_gui::IsApp(game) || game.source == "launcher") continue;
       if (game.running || game.last_played_at) games.push_back(&game);
     }
     const size_t keep = std::min(games.size(), static_cast<size_t>(continue_count_));
