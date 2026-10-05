@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="Linux game launcher for native games and Windows games via Wine/Proton"
 arch=('x86_64')
 url="https://github.com/Mira-Launcher/Mira"
-license=('GPL3')
+license=('GPL-3.0-or-later')
 depends=('gcc-libs' 'curl' 'qt6-base')
 makedepends=('cmake' 'ninja' 'clang')
 optdepends=('wine: run Windows games without Proton'
@@ -14,7 +14,7 @@ optdepends=('wine: run Windows games without Proton'
            '7zip: auto-extract archives dropped into a library root')
 backup=()
 source=("mira-$pkgver.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('3170c5b408760a1c43f9310eb738fab6644b5b2a6cc98d538636677a878e38a5')
 
 build() {
   # GitHub's archive directory name varies by endpoint (Mira-<version> vs.
