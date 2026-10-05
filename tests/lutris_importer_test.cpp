@@ -6,6 +6,7 @@
 #include <map>
 
 #include "config/Config.h"
+#include "library/Relocate.h"
 #include "lutris/LutrisImporter.h"
 #include "runner/Exec.h"
 #include "store/GameStore.h"
@@ -199,6 +200,70 @@ TEST_CASE("LutrisImporter skips non-wine runners and updates known games in plac
   REQUIRE(second.has_value());
   CHECK(second->added == 0);
   CHECK(second->updated == 1);
+  CHECK(fx.games.All().size() == 1);
+}
+
+TEST_CASE("LutrisImporter keeps a game Mira moved into its own folders on re-import") {
+  if (!HaveSqlite3()) return;
+
+  Fixture fx("lutris-moved");
+  const fs::path library = fx.state_dir / "library";
+  REQUIRE(fx.config.Set("library_roots", nlohmann::json::array({library.string()})).has_value());
+  const fs::path game_dir = fx.lutris_dir.parent_path() / "lutris-moved-game" / "Blue Prince";
+  const fs::path prefix_dir = fx.lutris_dir.parent_path() / "lutris-moved-prefix";
+  test::Touch(game_dir / "BLUE PRINCE.exe", "exe");
+  fs::create_directories(prefix_dir / "drive_c");
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Blue Prince", "blue-prince", "wine", "blue-prince-1", {}}})
+              .has_value());
+  test::Touch(fx.lutris_dir / "games" / "blue-prince-1.yml",
+              std::format("game:\n  exe: {}/BLUE PRINCE.exe\n  prefix: {}\n", game_dir.string(), prefix_dir.string()));
+
+  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
+  REQUIRE(importer.Import().has_value());
+  const auto imported = fx.games.Find("blue-prince");
+  REQUIRE(imported.has_value());
+  const auto moved = library::Relocate(fx.config, *imported, {}, fx.games.All());
+  REQUIRE(moved.has_value());
+  REQUIRE(fx.games.Upsert(*moved).has_value());
+
+  const auto again = importer.Import();
+  REQUIRE(again.has_value());
+  CHECK(again->added == 0);
+  CHECK(fx.games.All().size() == 1);
+  const auto kept = fx.games.Find("blue-prince");
+  REQUIRE(kept.has_value());
+  CHECK(kept->install_path == moved->install_path);
+  CHECK(kept->data_dir == moved->data_dir);
+  CHECK(fs::exists(fs::path(kept->install_path) / kept->exe_path));
+  CHECK(kept->source == "manual");  // Lutris can't run it from there, so it's Mira's own
+}
+
+TEST_CASE("LutrisImporter takes over a game an older Mira moved but left as a Lutris game") {
+  if (!HaveSqlite3()) return;
+
+  Fixture fx("lutris-old-move");
+  const fs::path game_dir = fx.lutris_dir.parent_path() / "lutris-old-move-game";
+  const fs::path prefix_dir = fx.lutris_dir.parent_path() / "lutris-old-move-prefix";
+  test::Touch(game_dir / "Game.exe", "exe");
+  fs::create_directories(prefix_dir / "drive_c");
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Jump King", "jump-king", "wine", "jump-king-1", {}}}).has_value());
+  test::Touch(fx.lutris_dir / "games" / "jump-king-1.yml",
+              std::format("game:\n  exe: {}/Game.exe\n  prefix: {}\n", game_dir.string(), prefix_dir.string()));
+  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
+  REQUIRE(importer.Import().has_value());
+
+  // Only the prefix moved, the way the old move left Lutris games.
+  const fs::path moved_prefix = fx.state_dir / "prefixes" / "jump-king";
+  fs::create_directories(moved_prefix.parent_path());
+  fs::rename(prefix_dir, moved_prefix);
+  REQUIRE(fx.games.Update("jump-king", [&](model::Game& g) { g.data_dir = moved_prefix.string(); }).has_value());
+
+  REQUIRE(importer.Import().has_value());
+  const auto taken = fx.games.Find("jump-king");
+  REQUIRE(taken.has_value());
+  CHECK(taken->source == "manual");
+  CHECK(taken->data_dir == moved_prefix.string());
+  REQUIRE(importer.Import().has_value());
   CHECK(fx.games.All().size() == 1);
 }
 

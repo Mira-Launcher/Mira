@@ -566,11 +566,13 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     s.StartJob(req, res, "relocate", game->id, "Moving " + game->name,
              [&s, game = *game, request](JobRegistry::Progress&) -> Result<json> {
                auto folders_lock = s.games.LockFolders();
-               auto relocated = library::Relocate(s.config, game, request);
+               auto relocated = library::Relocate(s.config, game, request, s.games.All());
                if (!relocated) return std::unexpected(relocated.error());
                auto saved = s.games.Update(game.id, [&](model::Game& g) {
                  g.install_path = relocated->install_path;
                  g.data_dir = relocated->data_dir;
+                 g.source = relocated->source;
+                 g.source_ref = relocated->source_ref;
                  g.updated_at = model::NowSeconds();
                });
                folders_lock.unlock();

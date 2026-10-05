@@ -185,8 +185,9 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
                 .arg(games.size());
   if (!notify::Confirm(parent, "Move to Mira's folders",
                        question + " Folders are named after the game. Games installed by a store "
-                                  "(Steam, Epic, GOG, itch.io) keep their install folder; only the "
-                                  "prefix moves.",
+                                  "(Steam, Epic, GOG, itch.io, Amazon) keep their install folder; only "
+                                  "the prefix moves. Games from Lutris move completely and become Mira's "
+                                  "own, since Lutris can't start them from there.",
                        "Move")) {
     return;
   }

@@ -64,7 +64,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                  }
                  // Per game, so scans can run between moves.
                  auto folders_lock = s.games.LockFolders();
-                 auto relocated = library::Relocate(s.config, game);
+                 auto relocated = library::Relocate(s.config, game, {}, s.games.All());
                  if (!relocated) {
                    log::Warn("relocate failed for {}: {}", game.id, relocated.error().message);
                    errors.push_back(BatchFailure(game.id, relocated.error()));
@@ -74,6 +74,8 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                  auto saved = s.games.Update(game.id, [&](model::Game& g) {
                    g.install_path = relocated->install_path;
                    g.data_dir = relocated->data_dir;
+                   g.source = relocated->source;
+                   g.source_ref = relocated->source_ref;
                    g.updated_at = model::NowSeconds();
                  });
                  if (!saved) {

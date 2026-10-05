@@ -17,6 +17,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/Relocate.h"
 #include "runner/Exec.h"
 
 namespace mira::lutris {
@@ -265,7 +266,37 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       continue;
     }
 
-    const auto existing = games_.FindByInstallPath(install_path);
+    // Moved into Mira's folders, so Mira's own game now (see library::Relocate).
+    const std::string claimed = std::string(library::kClaimedLutrisPrefix) + row.slug;
+    if (!row.slug.empty() && std::ranges::any_of(games_.All(), [&](const model::Game& known) {
+          return known.source_ref == claimed;
+        })) {
+      continue;
+    }
+
+    // By slug too: a game moved into Mira's folders no longer sits at Lutris's path.
+    auto existing = games_.FindByInstallPath(install_path);
+    if (!existing && !row.slug.empty()) {
+      for (const model::Game& known : games_.All()) {
+        if (known.source == "lutris" && known.source_ref == row.slug) existing = known;
+      }
+    }
+
+    // Moved by an older Mira, which left it a Lutris game: Lutris points at
+    // folders that are gone, so it's Mira's own now, as a move makes it today.
+    std::error_code ec;
+    const bool install_moved = existing && existing->install_path != install_path && !fs::exists(exe_abs, ec);
+    const bool prefix_moved =
+        existing && !data_dir_path.empty() && existing->data_dir != data_dir_path && !fs::exists(prefix, ec);
+    if (install_moved || prefix_moved) {
+      if (auto taken = games_.Update(existing->id, [&](model::Game& g) {
+            g.source = "manual";
+            g.source_ref = claimed;
+          })) {
+        events_.Publish("game.updated", model::ToJson(*taken));
+      }
+      continue;
+    }
 
     // Preserve anything the user already configured across a re-import,
     // only the fields Lutris itself owns get overwritten, same contract as
