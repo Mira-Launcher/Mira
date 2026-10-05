@@ -15,7 +15,7 @@ namespace {
 // strictly an enrichment on top of a scan that works fine without it.
 std::map<std::string, std::int64_t> PlaytimeByAppid(const config::Config& config) {
   std::map<std::string, std::int64_t> playtime;
-  if (!config.GetBool("steam.import_playtime")) return playtime;
+  if (!config.GetBool("steam.import_playtime") || config.GetString("steam.web_api_key").empty()) return playtime;
 
   const Result<std::vector<OwnedGame>> owned = ListOwnedGames(config);
   if (!owned) {
@@ -42,6 +42,9 @@ Result<SteamScanSummary> SteamScanner::Scan() {
   }
 
   const std::map<std::string, std::int64_t> steam_playtime = PlaytimeByAppid(config_);
+  const std::map<std::string, AppActivity> activity = config_.GetBool("steam.import_playtime")
+                                                          ? ReadAppActivity(*root, config_.GetString("steam.steamid64"))
+                                                          : std::map<std::string, AppActivity>{};
   const auto batch = games_.BatchSaves();
 
   for (const SteamApp& app : ListApps(*root)) {
@@ -67,6 +70,13 @@ Result<SteamScanSummary> SteamScanner::Scan() {
     // Steam's simply overwriting.
     if (const auto it = steam_playtime.find(app.appid); it != steam_playtime.end()) {
       game.play_seconds = std::max(game.play_seconds, it->second);
+    }
+    // Steam's own record covers launches from Steam itself; the later date and larger total win.
+    if (const auto it = activity.find(app.appid); it != activity.end()) {
+      game.play_seconds = std::max(game.play_seconds, it->second.play_seconds);
+      if (it->second.last_played_at > game.last_played_at.value_or(0)) {
+        game.last_played_at = it->second.last_played_at;
+      }
     }
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;

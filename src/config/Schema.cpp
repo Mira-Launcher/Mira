@@ -276,12 +276,14 @@ Schema::Schema() {
   s.Group("Steam account");
 
   s.Add({.key = "steam.import_playtime",
-         .label = "Import Steam playtime",
+         .label = "Import Steam playtime and last played",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "When scanning Steam, use Steam's total playtime for a game if it is higher than "
-                "what Mira recorded. Steam counts time from before Mira and from other computers. "
-                "Mira keeps the larger of the two totals. Needs the Steam Web API key and Steam ID."});
+         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
+                "they are higher or later than what Mira recorded, so games started from Steam "
+                "itself count too. Read from Steam's files for the account signed in last, or the "
+                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
+         .keywords = "recently played last played date"});
 
   s.Add({.key = "steam.web_api_key",
          .label = "Steam Web API key",
@@ -299,7 +301,8 @@ Schema::Schema() {
          .type = Type::String,
          .default_value = "",
          .doc = "Your 64-bit Steam ID, a 17-digit number. It appears in your Steam profile URL or "
-                "on a Steam ID lookup site. Needed together with the Steam Web API key.",
+                "on a Steam ID lookup site. Needed together with the Steam Web API key. It also "
+                "picks whose playtime to read when several Steam accounts use this computer.",
          .link = "https://store.steampowered.com/account/",
          .keywords = "steamid account user number"});
 
