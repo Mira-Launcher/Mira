@@ -73,6 +73,11 @@ std::optional<std::vector<std::string>> StringList(const json& body, const char*
   return out;
 }
 
+bool IsSafeRef(const std::string& ref) {
+  return !ref.empty() && !ref.starts_with('-') && ref.find('/') == std::string::npos &&
+         ref.find('\0') == std::string::npos;
+}
+
 Error GameRunningError(const std::string& id) {
   return Error{"game_running", std::format("\"{}\" is running", id), "Stop the game first.", {}};
 }

@@ -41,6 +41,10 @@ bool BoolParam(const httplib::Request& req, const char* name);
 // body[key] as strings: empty if absent, nullopt if not an array of strings.
 std::optional<std::vector<std::string>> StringList(const nlohmann::json& body, const char* key);
 
+// A store ref ends up in a path ("<source>-<ref>" art) and on a store
+// tool's command line, where a leading '-' would read as an option.
+bool IsSafeRef(const std::string& ref);
+
 Error GameRunningError(const std::string& id);
 // One game's failure inside a batch reply: {id, error: {code, message, hint?, fix?}}.
 nlohmann::json BatchFailure(const std::string& id, const Error& error);
