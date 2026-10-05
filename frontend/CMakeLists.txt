@@ -248,7 +248,9 @@ add_executable(mira_gui_tests
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Widgets only for the game model's headers (its roles are the tile
 # delegate's) and theme colors; no test opens a window or runs an event loop.
-target_link_libraries(mira_gui_tests PRIVATE mira_third_party Qt6::Widgets)
+# Test for QAbstractItemModelTester, which checks the models' row signals.
+find_package(Qt6 REQUIRED COMPONENTS Test)
+target_link_libraries(mira_gui_tests PRIVATE mira_third_party Qt6::Widgets Qt6::Test)
 target_compile_features(mira_gui_tests PRIVATE cxx_std_20)
 target_compile_options(mira_gui_tests PRIVATE -Wall -Wextra)
 add_test(NAME frontend_unit COMMAND mira_gui_tests)
