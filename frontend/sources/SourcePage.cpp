@@ -1,6 +1,5 @@
 #include "SourcePage.h"
 
-#include <QDesktopServices>
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -12,7 +11,6 @@
 #include <QScrollArea>
 #include <QStyle>
 #include <QToolButton>
-#include <QUrl>
 #include <QVBoxLayout>
 
 #include "../client/Events.h"
@@ -37,6 +35,7 @@
 #include "../widgets/TabRow.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
+#include "SourceSetupCard.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -65,7 +64,17 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   content_layout_->setContentsMargins(22, 14, 22, 16);
   content_layout_->setSpacing(14);
   content_layout_->addWidget(BuildTopRow());
-  content_layout_->addWidget(BuildSetupCard());
+  setup_card_ = new SourceSetupCard(source_, this);
+  connect(setup_card_, &SourceSetupCard::StatusChanged, this, &SourcePage::RefreshStatus);
+  connect(setup_card_, &SourceSetupCard::LauncherInstallStarted, this, [this] {
+    launcher_installing_ = true;
+    UpdateStatusLine();
+  });
+  connect(setup_card_, &SourceSetupCard::LauncherInstallFailed, this, [this] {
+    launcher_installing_ = false;
+    UpdateStatusLine();
+  });
+  content_layout_->addWidget(setup_card_);
   if (id_ != "humble") content_layout_->addWidget(BuildLibrarySection());
   if (HasOwned()) content_layout_->addWidget(BuildOwnedSection());
   UpdateSections();
@@ -131,8 +140,7 @@ QWidget* SourcePage::BuildTopRow() {
       api::OpenLauncherAsync(this, id_, [this](StoreActionResult result) {
         banner_primary_->setEnabled(true);
         if (!result.ok) {
-          setup_card_->setVisible(true);
-          ShowError(setup_error_, "Could not open " + source_.name + ".", result.error);
+          setup_card_->ShowError("Could not open " + source_.name + ".", result.error);
         }
       });
       return;
@@ -140,8 +148,7 @@ QWidget* SourcePage::BuildTopRow() {
     api::SignOutStoreAsync(this, id_, [this](StoreActionResult result) {
       banner_primary_->setEnabled(true);
       if (!result.ok) {
-        setup_card_->setVisible(true);
-        ShowError(setup_error_, "Could not sign out.", result.error);
+        setup_card_->ShowError("Could not sign out.", result.error);
         return;
       }
       RefreshStatus();
@@ -242,132 +249,8 @@ void SourcePage::UpdateTool() {
       return;
     }
     UpdateStatusLine();
-    setup_card_->setVisible(true);
-    ShowError(setup_error_, "Could not update " + CopyFor(id_).tool + ".", result.error);
+    setup_card_->ShowError("Could not update " + CopyFor(id_).tool + ".", result.error);
   });
-}
-
-QWidget* SourcePage::BuildSetupCard() {
-  const SourceCopy copy = CopyFor(id_);
-  auto* card = new mira_gui::SettingsCard("Set up " + source_.name, this);
-  setup_card_ = card;
-  setup_card_->setVisible(false);
-
-  QStringList titles;
-  if (IsStore()) titles << "Get " + copy.tool << "Sign in to " + source_.name;
-  if (IsLauncher()) titles << "Install " + source_.name;
-  if (!titles.isEmpty() && HasImport()) titles << "Import your games";
-  for (int i = 0; i < titles.size(); ++i) {
-    Step step;
-    step.row = new QWidget(card);
-    auto* column = new QVBoxLayout(step.row);
-    column->setContentsMargins(18, 10, 18, 10);
-    column->setSpacing(8);
-    auto* line = new QHBoxLayout();
-    line->setSpacing(12);
-    step.marker = new QLabel(QString::number(i + 1), step.row);
-    step.marker->setObjectName("step_marker");
-    step.marker->setFixedSize(26, 26);
-    step.marker->setAlignment(Qt::AlignCenter);
-    line->addWidget(step.marker);
-    step.title = new QLabel(titles[i], step.row);
-    step.title->setObjectName("step_title");
-    line->addWidget(step.title, /*stretch=*/1);
-    column->addLayout(line);
-    card->AddRow(step.row);
-    steps_.push_back(step);
-  }
-
-  // Moved into whichever step is current (SetStep).
-  setup_body_ = new QWidget(card);
-  auto* body = new QVBoxLayout(setup_body_);
-  body->setContentsMargins(38, 0, 0, 4);
-  body->setSpacing(8);
-  setup_text_ = MakeLabel(setup_body_, QString());
-  body->addWidget(setup_text_);
-
-  setup_button_ = new QPushButton(setup_body_);
-  setup_button_->setIcon(icons::For(icons::Glyph::Download, theme::Current().on_accent));
-  setup_button_->setDefault(true);
-  setup_button_->setVisible(false);
-  connect(setup_button_, &QPushButton::clicked, this, [this] {
-    setup_button_->setEnabled(false);
-    setup_error_->setVisible(false);
-    const auto failed = [this](StoreActionResult result) {
-      if (result.ok) return;  // the event finishes the job
-      launcher_installing_ = false;
-      setup_button_->setEnabled(true);
-      ShowError(setup_error_, "Could not start it.", result.error);
-    };
-    if (IsLauncher()) {
-      launcher_installing_ = true;
-      setup_button_->setText("Installing…");
-      UpdateStatusLine();
-      api::InstallLauncherAsync(this, id_, failed);
-    } else {
-      setup_button_->setText("Downloading…");
-      api::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
-        if (result.ok) {
-          RefreshStatus();
-          return;
-        }
-        setup_card_->setVisible(true);
-        setup_button_->setEnabled(true);
-        setup_button_->setText("Retry download");
-        ShowError(setup_error_, "It failed.", result.error);
-        UpdateStatusLine();
-      });
-    }
-  });
-  auto* button_row = new QHBoxLayout();
-  button_row->addWidget(setup_button_);
-  button_row->addStretch(1);
-  body->addLayout(button_row);
-
-  sign_in_row_ = new QWidget(setup_body_);
-  sign_in_row_->setVisible(false);
-  auto* sign_in_layout = new QHBoxLayout(sign_in_row_);
-  sign_in_layout->setContentsMargins(0, 0, 0, 0);
-  open_login_ = new QPushButton("Open login page", sign_in_row_);
-  connect(open_login_, &QPushButton::clicked, this, &SourcePage::OpenLogin);
-  credential_ = new QLineEdit(sign_in_row_);
-  credential_->setPlaceholderText(copy.credential_placeholder);
-  connect(credential_, &QLineEdit::returnPressed, this, &SourcePage::SignIn);
-  sign_in_ = new QPushButton("Sign in", sign_in_row_);
-  sign_in_->setDefault(true);
-  connect(sign_in_, &QPushButton::clicked, this, &SourcePage::SignIn);
-  sign_in_layout->addWidget(open_login_);
-  sign_in_layout->addWidget(credential_, /*stretch=*/1);
-  sign_in_layout->addWidget(sign_in_);
-  body->addWidget(sign_in_row_);
-
-  setup_error_ = MakeLabel(setup_body_, QString(), "error");
-  setup_error_->setVisible(false);
-  body->addWidget(setup_error_);
-  setup_body_->hide();
-  return setup_card_;
-}
-
-void SourcePage::SetStep(int current) {
-  for (int i = 0; i < static_cast<int>(steps_.size()); ++i) {
-    const Step& step = steps_[i];
-    const char* state = i < current ? "done" : i == current ? "current" : "todo";
-    step.marker->setText(i < current ? QString::fromUtf8("\xe2\x9c\x93") : QString::number(i + 1));
-    step.marker->setProperty("state", state);
-    step.marker->style()->unpolish(step.marker);
-    step.marker->style()->polish(step.marker);
-    step.title->setProperty("state", state);
-    step.title->style()->unpolish(step.title);
-    step.title->style()->polish(step.title);
-    // In code: a stylesheet font-weight on a property state didn't apply here.
-    QFont font = step.title->font();
-    font.setWeight(i == current ? QFont::DemiBold : QFont::Normal);
-    step.title->setFont(font);
-  }
-  if (current >= 0 && current < static_cast<int>(steps_.size())) {
-    static_cast<QVBoxLayout*>(steps_[current].row->layout())->addWidget(setup_body_);
-    setup_body_->show();
-  }
 }
 
 QWidget* SourcePage::BuildLibrarySection() {
@@ -539,8 +422,7 @@ void SourcePage::RefreshStatus() {
   } else if (IsLauncher()) {
     api::GetLaunchersAsync(this, [this](LaunchersResult result) {
       if (!result.ok) {
-        setup_card_->setVisible(true);
-        ShowError(setup_error_, "Could not ask mirad about " + source_.name + ".", result.error);
+        setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
         return;
       }
       for (const LauncherInfo& launcher : result.launchers) {
@@ -553,10 +435,8 @@ void SourcePage::RefreshStatus() {
 }
 
 void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
-  const SourceCopy copy = CopyFor(id_);
   if (!status.ok) {
-    setup_card_->setVisible(true);
-    ShowError(setup_error_, "Could not ask mirad about " + source_.name + ".", status.error);
+    setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", status.error);
     return;
   }
   const bool was_authenticated = authenticated_;
@@ -564,22 +444,7 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   tool_version_ = status.tool_version;
   authenticated_ = status.authenticated;
   account_ = status.account;
-  setup_error_->setVisible(false);
-
-  // One step at a time: the tool, then the account.
-  setup_card_->setVisible(!tool_installed_ || !authenticated_);
-  setup_button_->setVisible(!tool_installed_);
-  setup_button_->setEnabled(true);
-  sign_in_row_->setVisible(tool_installed_ && !authenticated_);
-  SetStep(!tool_installed_ ? 0 : !authenticated_ ? 1 : 2);
-  if (!tool_installed_) {
-    setup_text_->setText("Mira uses " + copy.tool + " to talk to " + source_.name +
-                         ". It's downloaded once, from its own releases.");
-    setup_button_->setText("Download " + copy.tool);
-  } else if (!authenticated_) {
-    setup_text_->setText(copy.sign_in_steps);
-    open_login_->setVisible(true);
-  }
+  setup_card_->ShowStore(tool_installed_, authenticated_);
 
   banner_primary_->setText("Sign out");
   banner_primary_->setVisible(authenticated_ && id_ != "humble");
@@ -598,22 +463,7 @@ void SourcePage::ApplyLauncher(const LauncherInfo& launcher) {
   launcher_prefix_ = launcher.prefix;
   // Its runner row only works once there's a prefix.
   if (launcher_installed_ != was_installed && settings_card_ != nullptr) settings_card_->Refresh();
-  setup_card_->setVisible(!launcher_installed_);
-  SetStep(launcher_installed_ ? 1 : 0);
-  if (!launcher_installed_) {
-    setup_text_->setText(
-        launcher.interactive_install
-            ? "Mira makes a Wine prefix for it and runs its installer. The installer's window "
-              "opens: click through it, then sign in."
-            : "Mira makes a Wine prefix for it and installs it there silently. Sign in once it "
-              "opens.");
-    setup_button_->setVisible(true);
-    setup_button_->setEnabled(!launcher_installing_);
-    setup_button_->setText(launcher_installing_ ? "Installing…" : "Install " + source_.name);
-    if (launcher.install_state == "failed" && !launcher.error.empty()) {
-      ShowError(setup_error_, "The last install failed.", launcher.error);
-    }
-  }
+  setup_card_->ShowLauncher(launcher, launcher_installing_);
   banner_primary_->setText("Open " + source_.name);
   banner_primary_->setVisible(launcher_installed_);
   import_button_->setVisible(launcher_installed_);
@@ -669,36 +519,6 @@ void SourcePage::UpdateSections() {
   // A tab names its section already.
   if (library_heading_ != nullptr) library_heading_->setVisible(!tabbed);
   if (owned_heading_ != nullptr) owned_heading_->setVisible(!tabbed);
-}
-
-void SourcePage::OpenLogin() {
-  open_login_->setEnabled(false);
-  api::BeginStoreLoginAsync(this, id_, [this](LoginUrlResult result) {
-    open_login_->setEnabled(true);
-    if (!result.ok) {
-      ShowError(setup_error_, "Could not start the login.", result.error);
-      return;
-    }
-    QDesktopServices::openUrl(QUrl(QString::fromStdString(result.url)));
-  });
-}
-
-void SourcePage::SignIn() {
-  const QString pasted = credential_->text().trimmed();
-  if (pasted.isEmpty()) return;
-  sign_in_->setEnabled(false);
-  sign_in_->setText("Signing in…");
-  setup_error_->setVisible(false);
-  api::SignInStoreAsync(this, id_, pasted.toStdString(), [this](StoreActionResult result) {
-    sign_in_->setEnabled(true);
-    sign_in_->setText("Sign in");
-    if (!result.ok) {
-      ShowError(setup_error_, "Could not sign in.", result.error);
-      return;
-    }
-    credential_->clear();
-    RefreshStatus();
-  });
 }
 
 void SourcePage::Import() {
@@ -987,13 +807,7 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     } else if (event.state == "failed") {
       launcher_installing_ = false;
       tool_updating_ = false;
-      setup_card_->setVisible(true);
-      if (IsStore() && tool_installed_) {
-        setup_text_->setText("Updating " + CopyFor(id_).tool + " failed.");
-      }
-      setup_button_->setEnabled(true);
-      setup_button_->setText(IsLauncher() ? "Install " + source_.name : "Retry download");
-      ShowError(setup_error_, "It failed.", event.error);
+      setup_card_->ShowSetupFailed(event.error, IsStore() && tool_installed_);
       UpdateStatusLine();
     }
     return;

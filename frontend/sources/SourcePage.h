@@ -32,6 +32,7 @@ class GameFilterProxy;
 class GameLibraryModel;
 class HoverCard;
 class SourceSettingsCard;
+class SourceSetupCard;
 class TabRow;
 class TileGrid;
 
@@ -83,7 +84,6 @@ private:
   bool IsOwnGame(const GameSummary& game) const;
 
   QWidget* BuildTopRow();
-  QWidget* BuildSetupCard();
   QWidget* BuildLibrarySection();
   QWidget* BuildOwnedSection();
 
@@ -95,12 +95,8 @@ private:
   void ApplyStoreStatus(const StoreStatusResult& status);
   void ApplyLauncher(const LauncherInfo& launcher);
   void UpdateStatusLine();
-  // Marks steps before `current` done and shows the setup body under it.
-  void SetStep(int current);
   // Which of the two sections shows, per the tabs and the account.
   void UpdateSections();
-  void OpenLogin();
-  void SignIn();
   void Import();
   void RefreshOwned();
   void ShowOwned(const StoreLibraryResult& result);
@@ -144,22 +140,7 @@ private:
   QVBoxLayout* content_layout_ = nullptr;
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
 
-  // Setup card: numbered steps, the current one holding the body below.
-  struct Step {
-    QWidget* row = nullptr;
-    QLabel* marker = nullptr;
-    QLabel* title = nullptr;
-  };
-  QWidget* setup_card_ = nullptr;
-  std::vector<Step> steps_;
-  QWidget* setup_body_ = nullptr;
-  QLabel* setup_text_ = nullptr;
-  QPushButton* setup_button_ = nullptr;  // download the tool / install the launcher
-  QWidget* sign_in_row_ = nullptr;
-  QPushButton* open_login_ = nullptr;
-  QLineEdit* credential_ = nullptr;
-  QPushButton* sign_in_ = nullptr;
-  QLabel* setup_error_ = nullptr;
+  SourceSetupCard* setup_card_ = nullptr;
 
   QWidget* library_section_ = nullptr;
   QLabel* library_heading_ = nullptr;

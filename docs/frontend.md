@@ -95,7 +95,7 @@ app/       process-wide services: notifications, error help, shortcuts, tray, st
 library/   the library model, the library page and how a game is drawn: tiles, covers, hover card, game menus and actions
 game/      a game's card: its edit form, overrides, art picker and installer cards
 sidebar/   the sidebar: nav rows, source rows, pinned and recently played rows and their style card
-sources/   the source list, source pages, their settings card and Manage sources
+sources/   the source list, source pages with their setup and settings cards, removing a source, and Manage sources
 runners/   the Runners page
 activity/  the download and job tracker and the Activity panel
 settings/  the Settings screen and the card and row pieces every settings screen shares
