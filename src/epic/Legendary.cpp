@@ -11,6 +11,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 
 namespace mira::epic {
@@ -55,14 +56,7 @@ Result<void> InstallLegendaryBinary(const config::Config& config, const runner::
 
   // Downloaded beside the target, so a failed or stalled download never leaves a broken binary there.
   const fs::path part = target.string() + ".part";
-  Command download;
-  download.argv = {"curl", "-fsSL", "--connect-timeout", "10", "--max-time", "600", "-o", part.string(), asset.download_url};
-  const Result<runner::ExecResult> result = runner::RunAndWait(download);
-  if (!result || result->exit_code != 0) {
-    fs::remove(part, ec);
-    return Err("download_failed", !result ? result.error().message
-                                          : std::format("curl exited {}: {}", result->exit_code, result->output));
-  }
+  if (auto downloaded = runner::CurlDownload(asset.download_url, part); !downloaded) return downloaded;
 
   fs::rename(part, target, ec);
   if (ec) {

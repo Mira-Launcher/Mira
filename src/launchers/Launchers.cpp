@@ -18,6 +18,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -95,12 +96,9 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
-  Command download;
-  download.argv = {"curl", "-sSLf", "--max-time", "600", "-o", setup.string(), launcher.installer_url};
-  const auto fetched = runner::RunAndWait(download);
-  if (!fetched) return std::unexpected(fetched.error());
-  if (fetched->exit_code != 0) {
-    return Err("download_failed", std::format("couldn't download the {} installer", launcher.name), kConnectionHint);
+  if (auto fetched = runner::CurlDownload(launcher.installer_url, setup); !fetched) {
+    return Err("download_failed", std::format("couldn't download the {} installer: {}", launcher.name,
+                                              fetched.error().message), kConnectionHint);
   }
 
   const runner::RunnerRegistry runners(config);

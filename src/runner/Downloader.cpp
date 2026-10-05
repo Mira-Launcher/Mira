@@ -17,6 +17,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Strings.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 
 namespace mira::runner {
@@ -98,15 +99,12 @@ bool Excluded(const std::vector<std::string>& exclude, const std::string& text) 
 // Lists `repo`'s releases, keeping the first asset per release that matches.
 Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const std::string& pattern,
                                                 const std::vector<std::string>& exclude) {
-  Command command;
-  command.argv = {"curl", "-sSL", "--connect-timeout", "10", "--max-time", "30",
-                  std::format("https://api.github.com/repos/{}/releases?per_page=10", repo)};
-  const Result<ExecResult> result = RunAndWait(command);
-  if (!result) return std::unexpected(result.error());
-
-  const json parsed = json::parse(result->output, nullptr, false);
-  if (parsed.is_discarded() || !parsed.is_array()) {
-    return Err("github_api_error", std::format("couldn't list releases for {}: {}", repo, result->output),
+  const Result<json> listed = CurlJson(std::format("https://api.github.com/repos/{}/releases?per_page=10", repo));
+  if (!listed) return Err("github_api_error", std::format("couldn't list releases for {}: {}", repo, listed.error().message),
+                          kConnectionHint);
+  const json& parsed = *listed;
+  if (!parsed.is_array()) {
+    return Err("github_api_error", std::format("couldn't list releases for {}: {}", repo, parsed.dump()),
                kConnectionHint);
   }
 
@@ -141,17 +139,7 @@ Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const s
 // callers that want a different final name rename after this returns.
 Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target) {
   std::error_code ec;
-  Command download;
-  // -f: an HTTP error must fail here, not get saved as the "archive".
-  download.argv = {"curl", "-sSLf", "--connect-timeout", "10", "--speed-limit", "1024", "--speed-time", "60", "-o", target.string(), asset.download_url};
-  if (Result<ExecResult> result = RunAndWait(download); !result || result->exit_code != 0) {
-    fs::remove(target, ec);
-    return Err("download_failed",
-               std::format("couldn't download {}: {}", asset.asset_name,
-                           !result ? result.error().message
-                                   : std::format("curl exited {}: {}", result->exit_code, result->output)),
-               kConnectionHint);
-  }
+  if (auto downloaded = CurlDownload(asset.download_url, target); !downloaded) return downloaded;
 
   if (asset.checksum_url.empty()) {
     log::Warn("no checksum available for {}, installing unverified", asset.asset_name);
@@ -160,9 +148,7 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
 
   const fs::path checksum_file =
       target.parent_path() / (asset.asset_name + (asset.checksum_is_sha256 ? ".sha256sum" : ".sha512sum"));
-  Command fetch_checksum;
-  fetch_checksum.argv = {"curl", "-sSLf", "--connect-timeout", "10", "--max-time", "60", "-o", checksum_file.string(), asset.checksum_url};
-  if (Result<ExecResult> result = RunAndWait(fetch_checksum); !result || result->exit_code != 0) {
+  if (auto fetched = CurlDownload(asset.checksum_url, checksum_file); !fetched) {
     fs::remove(target, ec);
     fs::remove(checksum_file, ec);
     return Err("checksum_fetch_failed", "couldn't fetch the checksum file to verify the download");
