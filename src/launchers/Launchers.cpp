@@ -151,7 +151,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
-  if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, game).string();
+  if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();
   game.status = model::GameStatus::SettingUp;
   game.last_error.clear();
   game.updated_at = model::NowSeconds();

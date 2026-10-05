@@ -102,7 +102,7 @@ Result<AmazonImportSummary> AmazonImporter::Import() {
       game.status = model::GameStatus::Broken;
       game.last_error = "no fuel.json launch command in this install";
     } else if (library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, game).string();
+      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
       const model::Game provisioned = runner::RunnerRegistry(config_).ProvisionGame(game);
       game.runner_ref = provisioned.runner_ref;
       game.data_dir = provisioned.data_dir;

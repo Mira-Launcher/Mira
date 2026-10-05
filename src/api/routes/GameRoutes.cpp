@@ -264,7 +264,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     if (platform != model::Platform::Windows) {
       game.data_dir.clear();
     } else if (game.data_dir.empty()) {
-      game.data_dir = library::PrefixDir(s.config, game).string();
+      game.data_dir = library::PrefixDir(s.config, s.games, game).string();
     }
 
     if (is_installer) {

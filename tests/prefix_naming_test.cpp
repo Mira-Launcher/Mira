@@ -60,6 +60,26 @@ TEST_CASE("PrefixDir appends a numeric suffix on a real directory collision") {
   CHECK(library::PrefixDir(config, game).filename() == "celeste-2");
 }
 
+TEST_CASE("PrefixDir skips a folder another game already owns even though it isn't created yet") {
+  config::Config config(TempConfigFile("prefix-naming-owned.toml"));
+  config.Load();
+  const fs::path root = TempDir("prefix-naming-owned-root");
+  REQUIRE(config.Set("prefix_root", root.string()).has_value());
+  store::GameStore games(root / "games.toml");
+  games.Load();
+  model::Game first;
+  first.id = "a";
+  first.name = "Celeste";
+  first.data_dir = (root / "celeste").string();  // not provisioned: nothing on disk
+  REQUIRE(games.Upsert(first).has_value());
+
+  model::Game second;
+  second.id = "b";
+  second.name = "Celeste";
+  CHECK(library::PrefixDir(config, games, second).filename() == "celeste-2");
+  CHECK(library::PrefixDir(config, games, first).filename() == "celeste");  // its own, not a collision
+}
+
 TEST_CASE("PrefixDir falls back to strings::Slugify's own \"game\" default for a name with no letters or digits") {
   config::Config config(TempConfigFile("prefix-naming-empty.toml"));
   config.Load();
