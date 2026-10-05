@@ -2011,7 +2011,7 @@ void Server::RegisterRoutes() {
     events_.Publish("game.updated", Record(*result));
     // Its art and store info were looked up by the installer's name.
     if (moved) {
-      metadata_fetches_.Enqueue(config_, events_, *result, /*force=*/true);
+      metadata_fetches_.Enqueue(config_, events_, *result);
       library::AnnounceInstallerLeftover(events_, *result);
     }
     SendJson(res, Record(*result));

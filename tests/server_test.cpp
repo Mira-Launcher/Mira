@@ -1107,6 +1107,45 @@ TEST_CASE("POST /v1/games/{id}/finish-install adopts a program installed in the 
   CHECK(adopted->exe_path == "app.exe");
 }
 
+TEST_CASE("finish-install looks up the moved game's art only while automatic metadata is on") {
+  LiveServer server(TempDir("server-adopt-metadata-state"));
+  // No SteamGridDB key and no Steam lookup, so each fetch that runs fails offline with
+  // game.metadata_failed.
+  REQUIRE(server.MutableConfig().Set("metadata.steam_art_by_name", false).has_value());
+  httplib::Client client = server.Client();
+
+  const auto adopt = [&](const std::string& id) {
+    const fs::path prefix = TempDir("server-adopt-metadata-" + id);
+    const fs::path app = prefix / "drive_c" / "Program Files" / "App";
+    fs::create_directories(app);
+    std::ofstream(app / "app.exe") << "app";
+    model::Game game;
+    game.id = id;
+    game.name = "Setup";
+    game.install_path = TempDir("server-adopt-metadata-game-" + id).string();
+    game.exe_path = "Setup.exe";
+    game.data_dir = prefix.string();
+    game.platform = model::Platform::Windows;
+    game.status = model::GameStatus::NeedsInstall;
+    REQUIRE(server.games().Upsert(game));
+    auto res =
+        client.Post("/v1/games/" + id + "/finish-install",
+                    nlohmann::json{{"install_path", app.string()}, {"exe_path", "app.exe"}}.dump(),
+                    "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    server.server().MetadataQueue().WaitIdle();
+    return std::ranges::any_of(server.events().Since(0), [&](const model::Event& event) {
+      return event.type == "game.metadata_failed" && event.payload.value("id", std::string()) == id;
+    });
+  };
+
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", false).has_value());
+  CHECK_FALSE(adopt("off"));
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
+  CHECK(adopt("on"));
+}
+
 TEST_CASE("POST /v1/games/{id}/install refuses a game that isn't needs_install") {
   LiveServer server(TempDir("server-install-ready-state"));
   model::Game game;

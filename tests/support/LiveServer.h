@@ -30,6 +30,7 @@ class LiveServer {
   const std::filesystem::path& socket_path() const { return socket_path_; }
   const config::Config& config() const { return config_; }
   config::Config& MutableConfig() { return config_; }
+  api::Server& server() { return server_; }
 
  private:
   config::Config config_;

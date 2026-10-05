@@ -45,6 +45,29 @@ TEST_CASE("A game installed elsewhere takes the installed folder's name unless i
   renamed.name = "My Trucks";
   library::AdoptInstallFolder(renamed, "/prefixes/ct/drive_c/GOG Games/ClusterTruck");
   CHECK(renamed.name == "My Trucks");
+
+  // Named before CleanGameName dropped "setup" and capitalised.
+  model::Game older;
+  older.install_path = "/games/setup_crate_escape_(64bit)";
+  older.name = "setup crate escape (64bit)";
+  library::AdoptInstallFolder(older, "/prefixes/ce/drive_c/GOG Games/Crate Escape");
+  CHECK(older.name == "Crate Escape");
+}
+
+TEST_CASE("A program installed under a publisher's folder is found in its own folder") {
+  const fs::path prefix = test::TempDir("auto-install-publisher-prefix");
+  const fs::path ubisoft = prefix / "drive_c" / "Program Files" / "Ubisoft";
+  test::Touch(ubisoft / "Ubisoft Game Launcher" / "data" / "cache.bin", "cache");
+  test::Touch(ubisoft / "Crate Escape" / "bin" / "CrateEscape.exe", "game");
+  test::Touch(ubisoft / "Crate Escape" / "unins000.dat", "uninstall");
+  config::Config config(prefix / "settings.toml");
+  config.Load();
+  test::Isolate(config);
+
+  const auto installed = library::NewInstall(config, prefix, {});
+  REQUIRE(installed);
+  CHECK(installed->dir == ubisoft / "Crate Escape");
+  CHECK(installed->exe_path == "bin/CrateEscape.exe");
 }
 
 TEST_CASE("DetectInstallerFormat recognizes Inno Setup near the head") {
@@ -167,6 +190,28 @@ TEST_CASE("An installer that puts the game in its prefix moves the game there, r
   const auto leftover = test::WaitForEvent(server.events(), "game.installer_leftover");
   REQUIRE(leftover);
   CHECK(leftover->payload["installer_dir"] == (state / "setup_celeste_1.4").string());
+}
+
+TEST_CASE("An installer that uses a publisher's folder moves the game to the game's own folder") {
+  const fs::path state = test::TempDir("auto-install-publisher");
+  test::LiveServer server(state);
+  const fs::path game_dir =
+      state / "prefix" / "drive_c" / "Program Files" / "Ubisoft" / "Crate Escape";
+  AddWaitingGame(server, state / "setup_crate_escape",
+                 "mkdir -p '" + game_dir.string() + "/bin'\nprintf game > '" + game_dir.string() +
+                     "/bin/CrateEscape.exe'\nprintf x > '" + game_dir.string() +
+                     "/unins000.dat'\n");
+  httplib::Client client = server.Client();
+
+  auto started = client.Post("/v1/games/celeste/install");
+  REQUIRE(started != nullptr);
+  REQUIRE(test::WaitForEvent(server.events(), "game.install.finished"));
+
+  const auto game = server.games().Find("celeste");
+  REQUIRE(game);
+  CHECK(game->install_path == game_dir.string());
+  CHECK(game->exe_path == "bin/CrateEscape.exe");
+  CHECK(game->name == "Crate Escape");
 }
 
 TEST_CASE("An installer that installs nothing leaves the game waiting, with a way forward") {
