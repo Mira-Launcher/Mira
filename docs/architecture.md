@@ -82,7 +82,7 @@ The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock`. `mirad --socket` and `$MIRA
 The daemon should cost nothing when idle:
 
 - `EventBus::WaitNext` waits on a condition variable. The 20-second timeout only runs while an SSE client is connected, to notice when it goes away.
-- Shutdown uses `sigwait`, not a polled flag.
+- Shutdown uses `sigwait`, not a polled flag. Stopping wakes every background wait at once (open event streams, the external-game watcher, the per-game exit watchers), so quitting never waits out a poll interval.
 - `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes. There is one non-recursive watch per library root.
 
 ## Detection and scanning

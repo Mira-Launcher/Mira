@@ -51,6 +51,9 @@ public:
   std::optional<model::Event> WaitNext(std::int64_t after_id, const std::atomic<bool>& stop,
                                        std::chrono::milliseconds timeout);
 
+  // Wakes every WaitNext, so one whose `stop` was just set returns at once.
+  void WakeWaiters();
+
   // Events strictly after `after_id`, for a client reconnecting with
   // Last-Event-ID. May be a partial replay if the id has aged out of the
   // buffer; the frontend is expected to re-fetch state wholesale in that case.

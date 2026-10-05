@@ -482,6 +482,7 @@ void Server::BeginStopping() {
     stopping_.store(true, std::memory_order_relaxed);
   }
   stop_wake_.notify_all();
+  events_.WakeWaiters();  // open event streams
 }
 
 // Picks up games started outside Mira (the Steam client, a running launcher) so

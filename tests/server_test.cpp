@@ -5,10 +5,14 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <memory>
+#include <sstream>
 #include <thread>
 
 #include <json.hpp>
@@ -1238,4 +1242,90 @@ TEST_CASE("A library scan job adds a new game folder, then marks it missing once
   auto res = client.Get("/v1/games/celeste");
   REQUIRE(res != nullptr);
   CHECK(nlohmann::json::parse(res->body)["status"] == "missing");
+}
+
+namespace {
+
+struct Frame {
+  std::string id;
+  std::string event;
+  nlohmann::json data;
+};
+
+// Reads GET /v1/events until `enough` is true of the frames so far.
+std::vector<Frame> ReadEvents(httplib::Client& client, const httplib::Headers& headers,
+                              const std::function<bool(const std::vector<Frame>&)>& enough) {
+  client.set_read_timeout(std::chrono::seconds(5));  // a missing event fails instead of hanging
+  std::string buffer;
+  std::vector<Frame> frames;
+  client.Get("/v1/events", headers, [&](const char* data, size_t length) {
+    buffer.append(data, length);
+    for (size_t end = buffer.find("\n\n"); end != std::string::npos; end = buffer.find("\n\n")) {
+      Frame frame;
+      std::istringstream block(buffer.substr(0, end));
+      for (std::string line; std::getline(block, line);) {
+        if (line.starts_with("id: ")) frame.id = line.substr(4);
+        if (line.starts_with("event: ")) frame.event = line.substr(7);
+        if (line.starts_with("data: ")) frame.data = nlohmann::json::parse(line.substr(6));
+      }
+      frames.push_back(std::move(frame));
+      buffer.erase(0, end + 2);
+    }
+    return !enough(frames);
+  });
+  return frames;
+}
+
+}  // namespace
+
+TEST_CASE("The event stream replays history, marks where news starts, and resumes without gaps") {
+  auto owned = std::make_unique<LiveServer>(TempDir("server-events"));
+  LiveServer& server = *owned;
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+  httplib::Client other = server.Client();
+  const auto rename = [&](const std::string& name) {
+    auto res =
+        other.Patch("/v1/games/celeste", nlohmann::json{{"name", name}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  rename("Celeste Classic");
+
+  bool renamed_live = false;
+  const auto first = ReadEvents(client, {}, [&](const std::vector<Frame>& frames) {
+    if (frames.back().event == "stream.live" && !renamed_live) {
+      renamed_live = true;
+      rename("Celeste 64");
+    }
+    return frames.back().event == "game.updated" && frames.back().data["name"] == "Celeste 64";
+  });
+  const auto live = std::ranges::find(first, "stream.live", &Frame::event);
+  REQUIRE(live != first.end());
+  CHECK(live->id.empty());
+  // History first, as state; the change made while connected comes after the marker.
+  const auto replayed = std::ranges::find(first.begin(), live, "game.updated", &Frame::event);
+  REQUIRE(replayed != live);
+  CHECK(replayed->data["name"] == "Celeste Classic");
+  CHECK(std::stoll(first.back().id) > std::stoll(replayed->id));
+
+  // Back after a drop: only what came after the last id seen, and no marker.
+  const auto resumed = ReadEvents(client, {{"Last-Event-ID", replayed->id}},
+                                  [](const std::vector<Frame>& frames) {
+                                    return frames.back().data.value("name", "") == "Celeste 64";
+                                  });
+  CHECK(std::ranges::none_of(resumed,
+                             [](const Frame& frame) { return frame.event == "stream.live"; }));
+  CHECK(std::ranges::none_of(resumed, [](const Frame& frame) {
+    return frame.data.value("name", "") == "Celeste Classic";
+  }));
+  CHECK(resumed.back().id == first.back().id);
+
+  // A stream still waiting on the next event doesn't hold up quitting.
+  const auto quitting = std::chrono::steady_clock::now();
+  owned.reset();
+  CHECK(std::chrono::steady_clock::now() - quitting < std::chrono::seconds(1));
 }
