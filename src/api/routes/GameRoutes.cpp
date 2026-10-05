@@ -158,6 +158,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntries();
+    s.events.Publish("game.updated", s.Record(*result));
     SendJson(res, s.Record(*result));
   });
 

@@ -127,6 +127,48 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
   return result;
 }
 
+
+struct RunProgram {
+  std::string exe_path;
+  std::string args;
+};
+
+// The command that starts `game` (or `program` in its prefix) under its resolved runner, with launch.env and
+// command wrappers applied. Pins the runner on the game when launch.pin_runner is on and none was set.
+Result<Command> PrepareCommand(Services& s, model::Game& game, const std::optional<RunProgram>& program) {
+  const runner::RunnerRegistry registry(s.config);
+  auto resolved = registry.Resolve(registry.ResolveRef(game));
+  if (!resolved) return std::unexpected(resolved.error());
+
+  if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
+    const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
+    game.runner_ref = pinned;
+    [[maybe_unused]] auto _ = s.games.Update(game.id, [&](model::Game& g) { g.runner_ref = pinned; });
+  }
+
+  model::Game target = game;
+  if (program) {
+    target.exe_path = program->exe_path;
+    target.args = program->args;
+  }
+  auto command = resolved->runner->BuildCommand(target, resolved->build);
+  if (!command) return std::unexpected(command.error());
+  // Otherwise the spawned child's chdir fails and it exits 127 before anything is logged.
+  if (std::error_code ec; !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
+    return Err("working_dir_missing",
+               std::format("the folder the game starts in, \"{}\", doesn't exist", command->cwd.string()),
+               "Check the game's folder is still there, or choose its executable again.",
+               Fix::Game(game.id, "exe"));
+  }
+
+  const config::Resolver resolver(s.config, game.overrides);
+  const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
+  if (auto checked = CheckCommandWrappers(wrappers); !checked) return std::unexpected(checked.error());
+  ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
+  ApplyCommandWrappers(*command, wrappers);
+  return command;
+}
+
 }  // namespace
 
 void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
@@ -210,33 +252,8 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       }
     }
 
-    const runner::RunnerRegistry registry(s.config);
-    auto resolved = registry.Resolve(registry.ResolveRef(*game));
-    if (!resolved) return SendError(res, 400, resolved.error());
-
-    if (game->runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
-      const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
-      game->runner_ref = pinned;
-      [[maybe_unused]] auto _ = s.games.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
-    }
-
-    auto command = resolved->runner->BuildCommand(*game, resolved->build);
-    if (!command) return SendError(res, 400, command.error());
-    // Otherwise the spawned child's chdir fails and it exits 127 before anything is logged.
-    if (std::error_code ec; !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
-      return SendError(res, 409,
-                       Error{"working_dir_missing",
-                             std::format("the folder the game starts in, \"{}\", doesn't exist", command->cwd.string()),
-                             "Check the game's folder is still there, or choose its executable again.",
-                             Fix::Game(game->id, "exe")});
-    }
-
-    const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
-    if (auto checked = CheckCommandWrappers(wrappers); !checked) {
-      return SendError(res, 400, checked.error());
-    }
-    ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
-    ApplyCommandWrappers(*command, wrappers);
+    auto command = PrepareCommand(s, *game, std::nullopt);
+    if (!command) return SendError(res, command.error().code == "working_dir_missing" ? 409 : 400, command.error());
 
     // A Windows "game" that turns out to be an installer is caught at exit (CheckForInstall).
     // Only for an existing prefix: a new one's own Program Files would all look installed.
@@ -372,29 +389,8 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       }
     }
 
-    const runner::RunnerRegistry registry(s.config);
-    auto resolved = registry.Resolve(registry.ResolveRef(*game));
-    if (!resolved) return SendError(res, 400, resolved.error());
-
-    if (game->runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
-      const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
-      game->runner_ref = pinned;
-      [[maybe_unused]] auto _ = s.games.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
-    }
-
-    model::Game run_as = *game;
-    run_as.exe_path = exe_path;
-    run_as.args = args;
-
-    auto command = resolved->runner->BuildCommand(run_as, resolved->build);
-    if (!command) return SendError(res, 400, command.error());
-    const config::Resolver resolver(s.config, game->overrides);
-    const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
-    if (auto checked = CheckCommandWrappers(wrappers); !checked) {
-      return SendError(res, 400, checked.error());
-    }
-    ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
-    ApplyCommandWrappers(*command, wrappers);
+    auto command = PrepareCommand(s, *game, RunProgram{exe_path, args});
+    if (!command) return SendError(res, command.error().code == "working_dir_missing" ? 409 : 400, command.error());
 
     if (auto launched = s.supervisor.Launch(*game, *command); !launched) {
       return SendError(res, 409, launched.error());
