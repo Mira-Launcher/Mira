@@ -28,7 +28,7 @@ src/
   proc/       ProcessSupervisor, Session, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
   steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi
-  epic/       Legendary wrapper, importer, installer and source
+  epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
   gog/        gogdl wrapper, importer, installer and source
   itch/       butlerd JSON-RPC client, importer, installer and source
   amazon/     Nile wrapper, importer and source

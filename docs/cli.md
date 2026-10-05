@@ -122,33 +122,23 @@ A source that isn't set up lists nothing. Steam needs `steam.web_api_key` and `s
 ### `mira lutris import`
 `POST /v1/lutris/import`. Imports games from Lutris's database.
 
-### `mira epic setup|status|login|logout|import`
-Epic Games Store through [Legendary](https://github.com/derrod/legendary).
+### `mira store [list]`
+Lists the stores: `epic`, `gog`, `itch`, `amazon` and `humble`. Each wraps a command-line tool and shares one set of verbs, `mira store <id> <verb>` (see [Stores](api.md#stores)).
 
-- `setup` downloads Legendary into `~/.config/mira/tools/legendary`. Run it again to update.
-- `status` shows whether Legendary is installed and logged in.
-- `login` prints Epic's login URL, then reads back the `authorizationCode` or the whole JSON the page shows.
-- `logout` logs out.
-- `import` adds installed Epic games, tagged `epic`.
+### `mira store <id> status|setup|login [credential]|logout|import`
+- `status` (the default) shows whether the store's tool is installed and the account signed in.
+- `setup` downloads the tool into `~/.config/mira/tools` and waits for it. Run it again to update.
+- `login` prints the sign-in URL, then reads back what to paste: Epic's `authorizationCode` or the whole JSON the page shows; GOG's `code` or the whole redirect URL; the amazon.com URL Amazon's login ends on; an itch.io API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys); or Humble's `_simpleauth_sess` cookie. Pass the credential as an argument to skip the prompt.
+- `logout` forgets the sign-in. Not for Humble.
+- `import` adds what the tool reports as installed, tagged with the store. Not for Humble. GOG only looks under `gog.install_root` (default `~/Games/GOG`).
 
-### `mira gog setup|status|login|logout|import`
-GOG through [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. Same verbs as `epic`. `login` reads back the `code` from the redirect URL. `import` only looks under `gog.install_root` (default `~/Games/GOG`).
+Epic wraps [Legendary](https://github.com/derrod/legendary), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
 
-### `mira itch setup|status|login|logout|import|collections`
-itch.io through [butler](https://itch.io/docs/butler/). `mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart.
+### `mira store itch collections [list | add <link> | remove <id>]`
+Manages the collections whose games show in `mira library itch`: your own plus any added by link. Free games from them can be installed.
 
-- `login` asks for an API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys).
-- `collections [list | add <link> | remove <id>]` manages the collections whose games show in `mira library itch`: your own plus any added by link. Free games from them can be installed.
-
-### `mira amazon setup|status|login|logout|import`
-Amazon Games through [nile](https://github.com/imLinguin/nile). `login` prints a login URL, then asks for the amazon.com URL the browser ends on. Install with `mira library install amazon <product id>`.
-
-### `mira humble setup|status|login|library|download`
-Humble Bundle through [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs, only downloads, so it isn't part of `mira library`.
-
-- `login <session-key>` takes the `_simpleauth_sess` cookie from a logged-in browser.
-- `library` lists purchased bundles.
-- `download <bundle-key> [items]` downloads items (humble-cli's `1,3,5-7` syntax) into `<humble.download_root>/<bundle_key>/` in the background. Add the result with `mira add`.
+### `mira store humble bundles | download <bundle-key> [items]`
+Humble has no installs, only downloads, so it isn't part of `mira library`. `bundles` lists purchased bundles. `download` fetches items (humble-cli's `1,3,5-7` syntax) into `<humble.download_root>/<bundle_key>/` and waits. Add the result with `mira add`.
 
 ### `mira launcher list|install|import|open`
 Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`) and the EA app (`ea`), each in its own prefix.
