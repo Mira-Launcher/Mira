@@ -14,7 +14,8 @@ LiveServer::LiveServer(const fs::path& state_dir)
     : config_(state_dir / "settings.toml"),
       games_(state_dir / "games.toml"),
       socket_path_(state_dir / "mirad.sock"),
-      server_(config_, games_, events_) {
+      services_(config_, games_, events_),
+      server_(services_) {
   config_.Load();
   Isolate(config_);
   games_.Load();

@@ -112,13 +112,6 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   return game;
 }
 
-// `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
-void AddNeedsCheck(json& game, double threshold) {
-  const json candidates = game.value("candidates", json::array());
-  game["needs_check"] = candidates.is_array() && !candidates.empty() && !game.value("reviewed", false) &&
-                        game.value("confidence", 1.0) < threshold;
-}
-
 // The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently ignored.
 std::optional<std::string> GamePatchProblem(const json& patch) {
   if (!patch.is_object()) return "expected a JSON object";
@@ -291,12 +284,6 @@ bool IsSafeRef(const std::string& ref) {
          ref.find('\0') == std::string::npos;
 }
 
-void SyncDesktopEntries(config::Config& config, store::GameStore& games) {
-  if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
-    log::Warn("could not update application menu entries: {}", synced.error().message);
-  }
-}
-
 // Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
 Result<void> DeleteUnderRoot(const std::string& target, const std::vector<std::filesystem::path>& roots) {
   return library::DeleteInside(target, roots);
@@ -304,140 +291,9 @@ Result<void> DeleteUnderRoot(const std::string& target, const std::vector<std::f
 
 }  // namespace
 
-Server::Server(config::Config& config, store::GameStore& games, EventBus& events)
-    : config_(config),
-      games_(games),
-      events_(events),
-      http_(std::make_unique<httplib::Server>()),
-      supervisor_(games, events, config.GetInt("launch.stop_timeout_s")) {
-  // Importers and the scanner publish bare records; this gives every game
-  // event the same `running` and `art` as GET /v1/games.
-  events_.SetGameRecordHook([this](json& game) {
-    const std::string id = game.value("id", "");
-    game["running"] = supervisor_.IsRunning(id);
-    game["art"] = art_index_.For(id);
-    AddNeedsCheck(game, config_.GetDouble("detect.low_confidence_threshold"));
-  });
-  events_.SetArtHook([this](const std::string& id) { return art_index_.For(id); });
-  supervisor_.SetExitHook([this](const std::string& id) { CheckForInstall(id); });
-}
+Server::Server(Services& services) : s_(services), http_(std::make_unique<httplib::Server>()) {}
 
-void Server::CheckForInstall(const std::string& game_id) {
-  std::set<std::filesystem::path> before;
-  {
-    const std::lock_guard lock(install_watch_mutex_);
-    auto watched = install_watch_.extract(game_id);
-    if (watched.empty()) return;
-    before = std::move(watched.mapped());
-  }
-  const auto game = games_.Find(game_id);
-  if (!game) return;
-  const auto installed = library::NewInstall(config_, game->data_dir, before);
-  if (!installed) return;
-  log::Info("{} installed {} when run; asking whether to use it", game_id, installed->dir.string());
-  events_.Publish("game.install_detected",
-                  {{"id", game_id}, {"install_path", installed->dir.string()}, {"exe_path", installed->exe_path}});
-}
-
-json Server::Record(const model::Game& game) {
-  json body = model::ToJson(game);
-  // So a client can resync after a reconnect.
-  body["running"] = supervisor_.IsRunning(game.id);
-  body["art"] = art_index_.For(game.id);
-  AddNeedsCheck(body, config_.GetDouble("detect.low_confidence_threshold"));
-  return body;
-}
-
-Server::~Server() {
-  events_.SetGameRecordHook(nullptr);
-  events_.SetArtHook(nullptr);
-  BeginStopping();
-  if (external_watch_.joinable()) external_watch_.join();
-}
-
-void Server::BeginStopping() {
-  {
-    // Under the lock, so the watcher can't check the flag and then miss the wake.
-    const std::lock_guard lock(stop_mutex_);
-    stopping_.store(true, std::memory_order_relaxed);
-  }
-  stop_wake_.notify_all();
-  events_.WakeWaiters();  // open event streams
-}
-
-// Picks up games started outside Mira (the Steam client, a running launcher) so
-// they show as playing and count playtime.
-void Server::WatchExternalGames() {
-  constexpr auto kTick = std::chrono::milliseconds(500);
-  constexpr int kTicksPerScan = 6;
-  proc::ProcessIndex index;
-  for (int tick = 0;; ++tick) {
-    {
-      std::unique_lock lock(stop_mutex_);
-      const auto stopped = [this] { return stopping_.load(std::memory_order_relaxed); };
-      if (stop_wake_.wait_for(lock, kTick, stopped)) return;
-    }
-    if (tick % kTicksPerScan != 0) continue;
-
-    struct Candidate {
-      model::Game game;
-      std::string appid;    // Steam
-      std::string win_dir;  // launcher
-    };
-    std::vector<Candidate> candidates;
-    for (const model::Game& game : games_.All()) {
-      if (supervisor_.IsRunning(game.id)) continue;
-      if (game.runner_ref.starts_with("steam:")) {
-        if (config::Resolver(config_, game.overrides).GetBool("steam.track_process")) {
-          candidates.push_back({game, game.runner_ref.substr(6), ""});
-        }
-      } else if (launchers::Find(game.source) && !game.data_dir.empty()) {
-        candidates.push_back({game, "", launchers::WindowsDir(game)});
-      }
-    }
-    if (candidates.empty()) continue;  // nothing to watch: don't touch /proc
-
-    index.Refresh();
-    std::set<std::string> steam_running;
-    for (const auto& [pid, info] : index.Processes()) {
-      if (!info.steam_launch.empty()) steam_running.insert(info.steam_launch);
-    }
-    for (const Candidate& candidate : candidates) {
-      const std::string post_script =
-          config::Resolver(config_, candidate.game.overrides).GetString("launch.post_script");
-      if (!candidate.appid.empty()) {
-        if (!steam_running.contains(candidate.appid)) continue;
-        if (supervisor_.TrackSteamLaunch(candidate.game, candidate.appid, post_script)) {
-          events_.Publish("game.launched", {{"id", candidate.game.id}, {"via", "steam"}, {"tracked", true}});
-        }
-        continue;
-      }
-      const bool running = std::ranges::any_of(index.Processes(), [&](const auto& item) {
-        return proc::InPrefix(item.second.prefix, candidate.game.data_dir) &&
-               item.second.argv0.starts_with(candidate.win_dir + "/");
-      });
-      if (running && supervisor_.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10, post_script)) {
-        events_.Publish("game.launched", {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});
-      }
-    }
-  }
-}
-
-void Server::QueueMetadata(const std::vector<model::Game>& games) {
-  for (const model::Game& game : games) metadata_fetches_.Enqueue(config_, events_, game);
-}
-
-void Server::ReconcileSessions() {
-  supervisor_.Reconcile(games_.Dir() / "sessions");
-  // A client that stayed open across a restart may still show games from
-  // the old daemon as running.
-  for (const model::Game& game : games_.All()) {
-    if (supervisor_.IsRunning(game.id)) continue;
-    json event = Record(game);
-    event["state"] = "idle";
-    events_.Publish("game.state", std::move(event));
-  }
-}
+Server::~Server() = default;
 
 Result<void> Server::Serve(const std::filesystem::path& socket_path) {
   std::error_code ec;
@@ -459,8 +315,8 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
                                ec);
 
   log::Info("listening on {}", socket_path.string());
-  if (stopping_) return {};  // Stop() came before listening, where it would have done nothing
-  external_watch_ = std::thread(&Server::WatchExternalGames, this);
+  if (s_.stopping) return {};  // Stop() came before listening, where it would have done nothing
+  s_.StartExternalWatch();
   if (!http_->listen_after_bind()) {
     return Err("socket_listen_failed", "httplib server exited unexpectedly");
   }
@@ -468,7 +324,7 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
 }
 
 void Server::Stop() {
-  BeginStopping();
+  s_.BeginStopping();
   http_->stop();
 }
 
@@ -492,18 +348,17 @@ void Server::RegisterRoutes() {
   // A store's import as a job; `Importer` is its XxxImporter.
   const auto import_job = [this]<typename Importer>(const Request& req, Response& res, std::type_identity<Importer>,
                                                     const std::string& source, const std::string& label) {
-    StartJob(req, res, "import", source, label, [this](JobRegistry::Progress&) -> Result<json> {
-      Importer importer(config_, games_, events_);
+    s_.StartJob(req, res, "import", source, label, [this](JobRegistry::Progress&) -> Result<json> {
+      Importer importer(s_.config, s_.games, s_.events);
       auto summary = importer.Import();
       if (!summary) return std::unexpected(summary.error());
-      SyncDesktopEntries(config_, games_);
-      for (const model::Game& game : summary->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+      s_.AfterImport(summary->added_games);
       return json{{"added", summary->added}, {"updated", summary->updated}};
     });
   };
 
   http_->Get("/v1/jobs/([A-Za-z0-9_-]+)", [this](const Request& req, Response& res) {
-    const auto job = jobs_.Find(req.matches[1].str());
+    const auto job = s_.jobs.Find(req.matches[1].str());
     if (!job) return SendError(res, 404, "job_not_found", "no such job, or it finished too long ago");
     SendJson(res, *job);
   });
@@ -519,8 +374,8 @@ void Server::RegisterRoutes() {
   // --- settings -----------------------------------------------------------
 
   http_->Get("/v1/config", [this](const Request&, Response& res) {
-    json body = config_.Document();
-    body["frontend"] = config_.FrontendSettings();
+    json body = s_.config.Document();
+    body["frontend"] = s_.config.FrontendSettings();
     SendJson(res, std::move(body));
   });
 
@@ -560,9 +415,9 @@ void Server::RegisterRoutes() {
   http_->Patch("/v1/config", [this](const Request& req, Response& res) {
     json patch = json::parse(req.body, nullptr, false);
     if (patch.is_discarded()) return SendError(res, 400, "invalid_json", "body is not valid JSON");
-    Result<void> result = config_.Patch(patch);
-    if (result) SyncDesktopEntries(config_, games_);
-    if (result && patch.is_object() && patch.contains("library_roots") && on_roots_changed_) on_roots_changed_();
+    Result<void> result = s_.config.Patch(patch);
+    if (result) s_.SyncDesktopEntries();
+    if (result && patch.is_object() && patch.contains("library_roots") && s_.on_roots_changed) s_.on_roots_changed();
     SendResult(res, result);
   });
 
@@ -570,14 +425,14 @@ void Server::RegisterRoutes() {
     Result<void> result;
     bool roots_reset = true;
     if (auto it = req.params.find("key"); it != req.params.end()) {
-      result = config_.Reset(it->second);
+      result = s_.config.Reset(it->second);
       roots_reset = it->second == "library_roots";
     } else {
-      config_.ResetAll();
-      result = config_.Save();
+      s_.config.ResetAll();
+      result = s_.config.Save();
     }
-    if (result) SyncDesktopEntries(config_, games_);
-    if (result && roots_reset && on_roots_changed_) on_roots_changed_();
+    if (result) s_.SyncDesktopEntries();
+    if (result && roots_reset && s_.on_roots_changed) s_.on_roots_changed();
     SendResult(res, result);
   });
 
@@ -585,7 +440,7 @@ void Server::RegisterRoutes() {
 
   // Games tagged "hidden" are left out unless a tag is asked for, or include_hidden=true.
   http_->Get("/v1/games", [this](const Request& req, Response& res) {
-    std::vector<model::Game> all = games_.All();
+    std::vector<model::Game> all = s_.games.All();
     json out = json::array();
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
@@ -600,25 +455,25 @@ void Server::RegisterRoutes() {
       } else if (!include_hidden && std::ranges::contains(game.tags, std::string("hidden"))) {
         continue;
       }
-      out.push_back(Record(game));
+      out.push_back(s_.Record(game));
     }
     SendJson(res, std::move(out));
   });
 
   http_->Get(R"(/v1/games/([^/]+))", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    json body = Record(*game);
+    json body = s_.Record(*game);
     // What an empty runner_ref runs with, so an editor can show that runner's options.
     model::Game unpinned = *game;
     unpinned.runner_ref.clear();
-    body["default_runner"] = runner::RunnerRegistry(config_).ResolveRef(unpinned);
+    body["default_runner"] = runner::RunnerRegistry(s_.config).ResolveRef(unpinned);
     SendJson(res, body);
   });
 
   // The tail of mira-run's log for this game. No log yet is an empty list.
   http_->Get(R"(/v1/games/([^/]+)/log)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     int requested_lines = 200;
@@ -626,7 +481,7 @@ void Server::RegisterRoutes() {
       requested_lines = std::max(1, std::atoi(it->second.c_str()));
     }
 
-    const std::filesystem::path log_file = games_.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path log_file = s_.games.Dir() / "logs" / std::format("{}.log", game->id);
     std::ifstream in(log_file, std::ios::binary);
     if (!in) return SendJson(res, {{"lines", json::array()}});
 
@@ -651,11 +506,11 @@ void Server::RegisterRoutes() {
     if (patch.is_discarded()) return SendError(res, 400, "invalid_json", "body is not valid JSON");
     if (const auto problem = GamePatchProblem(patch)) return SendError(res, 400, "invalid_body", *problem);
 
-    auto result = games_.Update(id, [&](model::Game& game) { game = ParseGamePatch(game, patch); });
+    auto result = s_.games.Update(id, [&](model::Game& game) { game = ParseGamePatch(game, patch); });
     if (!result) return SendStoreError(res, result.error());
-    SyncDesktopEntries(config_, games_);
-    events_.Publish("game.updated", Record(*result));
-    SendJson(res, Record(*result));
+    s_.SyncDesktopEntries();
+    s_.events.Publish("game.updated", s_.Record(*result));
+    SendJson(res, s_.Record(*result));
   });
 
   // One save, one menu sync and one event for any number of games, so a
@@ -672,7 +527,7 @@ void Server::RegisterRoutes() {
     }
     if (auto problem = ValidateOverridesPatch(config)) return SendError(res, 400, "invalid_setting", *problem);
 
-    auto updated = games_.UpdateMany(*ids, [&](model::Game& game) {
+    auto updated = s_.games.UpdateMany(*ids, [&](model::Game& game) {
       const std::vector<std::string> old_tags = game.tags;
       const json old_overrides = game.overrides;
       std::erase_if(game.tags, [&](const std::string& tag) { return std::ranges::contains(*remove_tags, tag); });
@@ -685,19 +540,19 @@ void Server::RegisterRoutes() {
     if (!updated) return SendStoreError(res, updated.error());
 
     json games = json::array();
-    for (const model::Game& game : *updated) games.push_back(Record(game));
+    for (const model::Game& game : *updated) games.push_back(s_.Record(game));
     if (!updated->empty()) {
       // Tags never change a menu entry; only an override can.
-      if (!config.empty()) SyncDesktopEntries(config_, games_);
-      events_.Publish("games.updated", {{"games", games}});
+      if (!config.empty()) s_.SyncDesktopEntries();
+      s_.events.Publish("games.updated", {{"games", games}});
     }
     SendJson(res, {{"games", std::move(games)}});
   });
 
   http_->Get(R"(/v1/games/([^/]+)/config)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    config::Resolver resolver(config_, game->overrides);
+    config::Resolver resolver(s_.config, game->overrides);
     SendJson(res, resolver.EffectiveDocument());
   });
 
@@ -711,31 +566,31 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_setting", *problem);
     }
     auto result =
-        games_.Update(id, [&](model::Game& game) { ApplyOverridesPatch(game, patch); });
+        s_.games.Update(id, [&](model::Game& game) { ApplyOverridesPatch(game, patch); });
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
-    SyncDesktopEntries(config_, games_);
-    SendJson(res, Record(*result));
+    s_.SyncDesktopEntries();
+    SendJson(res, s_.Record(*result));
   });
 
   http_->Delete(R"(/v1/games/([^/]+))", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     const bool purge = BoolParam(req, "purge");
     const auto flag = [&](const char* name) {
       return purge || BoolParam(req, name);
     };
-    const auto folders_lock = games_.LockFolders();
-    if (auto deleted = DeleteGameData(*game, flag("delete_files"), flag("delete_prefix"), flag("delete_metadata"));
+    const auto folders_lock = s_.games.LockFolders();
+    if (auto deleted = s_.DeleteGameData(*game, flag("delete_files"), flag("delete_prefix"), flag("delete_metadata"));
         !deleted) {
       return SendError(res, deleted.error().code == "game_running" ? 409 : 400, deleted.error());
     }
 
-    auto result = games_.Remove(req.matches[1]);
+    auto result = s_.games.Remove(req.matches[1]);
     if (!result) return SendStoreError(res, result.error());
-    SyncDesktopEntries(config_, games_);
-    events_.Publish("game.removed", {{"id", req.matches[1].str()}});
+    s_.SyncDesktopEntries();
+    s_.events.Publish("game.removed", {{"id", req.matches[1].str()}});
     SendJson(res, json::object());
   });
 
@@ -753,28 +608,28 @@ void Server::RegisterRoutes() {
     const bool prefix = purge || body.value("delete_prefix", false);
     const bool metadata = purge || body.value("delete_metadata", false);
 
-    StartJob(req, res, "delete", "", "Removing games", [this, ids = *ids, files, prefix, metadata](
+    s_.StartJob(req, res, "delete", "", "Removing games", [this, ids = *ids, files, prefix, metadata](
                                                             JobRegistry::Progress& progress) -> Result<json> {
       std::vector<std::string> deletable;
       json failed = json::array();
-      auto folders_lock = games_.LockFolders();
+      auto folders_lock = s_.games.LockFolders();
       int done = 0;
       for (const std::string& id : ids) {
         progress.Report(done++, static_cast<int>(ids.size()));
-        const auto game = games_.Find(id);
+        const auto game = s_.games.Find(id);
         if (!game) continue;
-        if (auto deleted = DeleteGameData(*game, files, prefix, metadata); !deleted) {
+        if (auto deleted = s_.DeleteGameData(*game, files, prefix, metadata); !deleted) {
           failed.push_back(BatchFailure(id, deleted.error()));
           continue;
         }
         deletable.push_back(id);
       }
-      auto removed = games_.RemoveMany(deletable);
+      auto removed = s_.games.RemoveMany(deletable);
       folders_lock.unlock();
       if (!removed) return std::unexpected(removed.error());
       if (!removed->empty()) {
-        SyncDesktopEntries(config_, games_);
-        events_.Publish("games.removed", {{"ids", *removed}});
+        s_.SyncDesktopEntries();
+        s_.events.Publish("games.removed", {{"ids", *removed}});
       }
       return json{{"removed", *removed}, {"failed", std::move(failed)}};
     });
@@ -783,12 +638,12 @@ void Server::RegisterRoutes() {
   // --- library ------------------------------------------------------------
 
   http_->Post("/v1/library/scan", [this](const Request& req, Response& res) {
-    StartJob(req, res, "scan", "", "Scanning your library", [this](JobRegistry::Progress&) -> Result<json> {
-      library::Scanner scanner(config_, games_, events_);
-      scanner.UseMetadataQueue(metadata_fetches_);
-      scanner.UseInstallLane(installs_);
+    s_.StartJob(req, res, "scan", "", "Scanning your library", [this](JobRegistry::Progress&) -> Result<json> {
+      library::Scanner scanner(s_.config, s_.games, s_.events);
+      scanner.UseMetadataQueue(s_.fetches);
+      scanner.UseInstallLane(s_.installs);
       const library::ScanSummary summary = scanner.ScanAll();
-      for (const model::Game& game : summary.added_games) metadata_fetches_.Enqueue(config_, events_, game);
+      for (const model::Game& game : summary.added_games) s_.fetches.Enqueue(s_.config, s_.events, game);
       return json{{"added", summary.added}, {"missing", summary.missing}, {"restored", summary.restored}};
     });
   });
@@ -800,31 +655,31 @@ void Server::RegisterRoutes() {
     const auto ids = body.is_object() ? StringList(body, "ids") : std::nullopt;
     if (!ids) return SendError(res, 400, "invalid_body", R"(expected no body, or {"ids": [...]})");
 
-    std::vector<model::Game> games = games_.All();
+    std::vector<model::Game> games = s_.games.All();
     if (body.contains("ids")) {
       std::erase_if(games, [&](const model::Game& game) { return !std::ranges::contains(*ids, game.id); });
     }
-    StartJob(req, res, "relocate", "", "Moving games into Mira's folders",
+    s_.StartJob(req, res, "relocate", "", "Moving games into Mira's folders",
              [this, games = std::move(games)](JobRegistry::Progress& progress) -> Result<json> {
                int moved = 0;
                int done = 0;
                json errors = json::array();
                for (const model::Game& game : games) {
                  progress.Report(done++, static_cast<int>(games.size()), game.name);
-                 if (supervisor_.IsRunning(game.id)) {
+                 if (s_.supervisor.IsRunning(game.id)) {
                    errors.push_back(BatchFailure(game.id, GameRunningError(game.id)));
                    continue;
                  }
                  // Per game, so scans can run between moves.
-                 auto folders_lock = games_.LockFolders();
-                 auto relocated = library::Relocate(config_, game);
+                 auto folders_lock = s_.games.LockFolders();
+                 auto relocated = library::Relocate(s_.config, game);
                  if (!relocated) {
                    log::Warn("relocate failed for {}: {}", game.id, relocated.error().message);
                    errors.push_back(BatchFailure(game.id, relocated.error()));
                    continue;
                  }
                  if (relocated->install_path == game.install_path && relocated->data_dir == game.data_dir) continue;
-                 auto saved = games_.Update(game.id, [&](model::Game& g) {
+                 auto saved = s_.games.Update(game.id, [&](model::Game& g) {
                    g.install_path = relocated->install_path;
                    g.data_dir = relocated->data_dir;
                    g.updated_at = model::NowSeconds();
@@ -833,10 +688,10 @@ void Server::RegisterRoutes() {
                    errors.push_back(BatchFailure(game.id, saved.error()));
                    continue;
                  }
-                 events_.Publish("game.updated", Record(*saved));
+                 s_.events.Publish("game.updated", s_.Record(*saved));
                  ++moved;
                }
-               SyncDesktopEntries(config_, games_);
+               s_.SyncDesktopEntries();
                const int failed = static_cast<int>(errors.size());
                return json{{"moved", moved}, {"failed", failed}, {"errors", std::move(errors)}};
              });
@@ -845,12 +700,11 @@ void Server::RegisterRoutes() {
   // --- steam ------------------------------------------------------------
 
   http_->Post("/v1/steam/scan", [this](const Request& req, Response& res) {
-    StartJob(req, res, "import", "steam", "Importing from Steam", [this](JobRegistry::Progress&) -> Result<json> {
-      steam::SteamScanner scanner(config_, games_, events_);
+    s_.StartJob(req, res, "import", "steam", "Importing from Steam", [this](JobRegistry::Progress&) -> Result<json> {
+      steam::SteamScanner scanner(s_.config, s_.games, s_.events);
       auto summary = scanner.Scan();
       if (!summary) return std::unexpected(summary.error());
-      SyncDesktopEntries(config_, games_);
-      for (const model::Game& game : summary->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+      s_.AfterImport(summary->added_games);
       return json{{"added", summary->added}, {"updated", summary->updated}};
     });
   });
@@ -858,12 +712,11 @@ void Server::RegisterRoutes() {
   // --- lutris -----------------------------------------------------------
 
   http_->Post("/v1/lutris/import", [this](const Request& req, Response& res) {
-    StartJob(req, res, "import", "lutris", "Importing from Lutris", [this](JobRegistry::Progress&) -> Result<json> {
-      lutris::LutrisImporter importer(config_, games_, events_);
+    s_.StartJob(req, res, "import", "lutris", "Importing from Lutris", [this](JobRegistry::Progress&) -> Result<json> {
+      lutris::LutrisImporter importer(s_.config, s_.games, s_.events);
       auto summary = importer.Import();
       if (!summary) return std::unexpected(summary.error());
-      SyncDesktopEntries(config_, games_);
-      for (const model::Game& game : summary->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+      s_.AfterImport(summary->added_games);
       return json{{"added", summary->added},
                   {"updated", summary->updated},
                   {"other_runner", summary->other_runner},
@@ -880,21 +733,21 @@ void Server::RegisterRoutes() {
   const auto register_cli_setup = [this](const char* route, const std::string& kind, const std::string& tool,
                                          const std::string& event_prefix, BinaryInstaller install) {
     http_->Post(route, [this, kind, tool, event_prefix, install](const Request&, Response& res) {
-      auto releases = runner::ListReleases(config_, kind);
+      auto releases = runner::ListReleases(s_.config, kind);
       if (!releases) return SendError(res, 502, releases.error());
       if (releases->empty()) {
         return SendError(res, 404, "no_release_found", std::format("no matching {} release found", tool));
       }
 
       const runner::ReleaseAsset asset = releases->front();  // newest first
-      events_.Publish(event_prefix + ".started", {{"tag", asset.tag}});
-      operations_.Post([this, asset, tool, event_prefix, install] {
-        if (auto installed = install(config_, asset); !installed) {
+      s_.events.Publish(event_prefix + ".started", {{"tag", asset.tag}});
+      s_.operations.Post([this, asset, tool, event_prefix, install] {
+        if (auto installed = install(s_.config, asset); !installed) {
           log::Error("{} install failed ({}): {}", tool, asset.tag, installed.error().message);
-          events_.Publish(event_prefix + ".failed", FailedEvent({{"tag", asset.tag}}, installed.error()));
+          s_.events.Publish(event_prefix + ".failed", FailedEvent({{"tag", asset.tag}}, installed.error()));
         } else {
           log::Info("installed {} {}", tool, asset.tag);
-          events_.Publish(event_prefix + ".finished", {{"tag", asset.tag}});
+          s_.events.Publish(event_prefix + ".finished", {{"tag", asset.tag}});
         }
       });
 
@@ -911,7 +764,7 @@ void Server::RegisterRoutes() {
   // --- epic -------------------------------------------------------------
 
   http_->Get("/v1/epic/legendary/status", [this](const Request&, Response& res) {
-    const epic::LegendaryStatus status = epic::DetectLegendary(config_);
+    const epic::LegendaryStatus status = epic::DetectLegendary(s_.config);
     SendJson(res, {{"installed", status.installed},
                   {"source", status.source},
                   {"path", status.path},
@@ -919,7 +772,7 @@ void Server::RegisterRoutes() {
   });
 
   http_->Get("/v1/epic/status", [this](const Request&, Response& res) {
-    const epic::EpicAuthStatus status = epic::Status(config_);
+    const epic::EpicAuthStatus status = epic::Status(s_.config);
     SendJson(res, {{"legendary", {{"installed", status.legendary.installed},
                                   {"source", status.legendary.source},
                                   {"path", status.legendary.path},
@@ -934,15 +787,15 @@ void Server::RegisterRoutes() {
     if (body.is_discarded() || !body.contains("code") || !body["code"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"code": "..."})");
     }
-    if (auto logged_in = epic::Login(config_, body["code"]); !logged_in) {
+    if (auto logged_in = epic::Login(s_.config, body["code"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
-    const epic::EpicAuthStatus status = epic::Status(config_);
+    const epic::EpicAuthStatus status = epic::Status(s_.config);
     SendJson(res, {{"authenticated", status.authenticated}, {"account", status.account}});
   });
 
   http_->Post("/v1/epic/logout", [this](const Request&, Response& res) {
-    if (auto logged_out = epic::Logout(config_); !logged_out) {
+    if (auto logged_out = epic::Logout(s_.config); !logged_out) {
       return SendError(res, 400, logged_out.error());
     }
     SendJson(res, {{"status", "logged_out"}});
@@ -951,7 +804,7 @@ void Server::RegisterRoutes() {
   // --- gog ----------------------------------------------------------------
 
   http_->Get("/v1/gog/status", [this](const Request&, Response& res) {
-    const gog::GogAuthStatus status = gog::Status(config_);
+    const gog::GogAuthStatus status = gog::Status(s_.config);
     SendJson(res, {{"gogdl", {{"installed", status.gogdl.installed},
                               {"source", status.gogdl.source},
                               {"path", status.gogdl.path},
@@ -965,15 +818,15 @@ void Server::RegisterRoutes() {
     if (body.is_discarded() || !body.contains("code") || !body["code"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"code": "..."})");
     }
-    if (auto logged_in = gog::Login(config_, body["code"]); !logged_in) {
+    if (auto logged_in = gog::Login(s_.config, body["code"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
-    const gog::GogAuthStatus status = gog::Status(config_);
+    const gog::GogAuthStatus status = gog::Status(s_.config);
     SendJson(res, {{"authenticated", status.authenticated}});
   });
 
   http_->Post("/v1/gog/logout", [this](const Request&, Response& res) {
-    if (auto logged_out = gog::Logout(config_); !logged_out) {
+    if (auto logged_out = gog::Logout(s_.config); !logged_out) {
       return SendError(res, 400, logged_out.error());
     }
     SendJson(res, {{"status", "logged_out"}});
@@ -982,7 +835,7 @@ void Server::RegisterRoutes() {
   // --- amazon -------------------------------------------------------------
 
   http_->Get("/v1/amazon/status", [this](const Request&, Response& res) {
-    const amazon::AmazonAuthStatus status = amazon::Status(config_);
+    const amazon::AmazonAuthStatus status = amazon::Status(s_.config);
     SendJson(res, {{"nile", {{"installed", status.nile.installed},
                              {"source", status.nile.source},
                              {"path", status.nile.path},
@@ -991,7 +844,7 @@ void Server::RegisterRoutes() {
   });
 
   http_->Post("/v1/amazon/login", [this](const Request&, Response& res) {
-    const auto url = amazon::BeginLogin(config_);
+    const auto url = amazon::BeginLogin(s_.config);
     if (!url) return SendError(res, 409, url.error());
     SendJson(res, {{"url", *url}});
   });
@@ -1001,14 +854,14 @@ void Server::RegisterRoutes() {
     if (body.is_discarded() || !body.contains("redirect") || !body["redirect"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"redirect": "..."})");
     }
-    if (auto logged_in = amazon::FinishLogin(config_, body["redirect"]); !logged_in) {
+    if (auto logged_in = amazon::FinishLogin(s_.config, body["redirect"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
     SendJson(res, {{"authenticated", true}});
   });
 
   http_->Post("/v1/amazon/logout", [this](const Request&, Response& res) {
-    if (auto logged_out = amazon::Logout(config_); !logged_out) {
+    if (auto logged_out = amazon::Logout(s_.config); !logged_out) {
       return SendError(res, 400, logged_out.error());
     }
     SendJson(res, {{"status", "logged_out"}});
@@ -1034,11 +887,11 @@ void Server::RegisterRoutes() {
   http_->Get("/v1/launchers", [this](const Request&, Response& res) {
     json list = json::array();
     for (const launchers::Launcher& launcher : launchers::All()) {
-      const auto game = games_.Find(launchers::GameId(launcher));
+      const auto game = s_.games.Find(launchers::GameId(launcher));
       list.push_back({{"id", launcher.id},
                       {"name", launcher.name},
                       {"game_id", launchers::GameId(launcher)},
-                      {"installed", launchers::Installed(games_, launcher)},
+                      {"installed", launchers::Installed(s_.games, launcher)},
                       {"install_state", launchers::InstallState(launcher)},
                       {"interactive_install", launcher.interactive},
                       {"prefix", game ? game->data_dir : ""},
@@ -1054,21 +907,21 @@ void Server::RegisterRoutes() {
     if (!launchers::BeginInstall(*launcher)) {
       return SendError(res, 409, "install_running", std::format("{} is already installing", launcher->name));
     }
-    events_.Publish("launcher.install.started", {{"id", launcher->id}});
-    operations_.Post([this, launcher] {
-      const auto done = launchers::Install(config_, games_, *launcher);
-      if (const auto stored = games_.Find(launchers::GameId(*launcher))) {
-        events_.Publish("game.updated", Record(*stored));
+    s_.events.Publish("launcher.install.started", {{"id", launcher->id}});
+    s_.operations.Post([this, launcher] {
+      const auto done = launchers::Install(s_.config, s_.games, *launcher);
+      if (const auto stored = s_.games.Find(launchers::GameId(*launcher))) {
+        s_.events.Publish("game.updated", s_.Record(*stored));
       }
       if (!done) {
-        events_.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
+        s_.events.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
         return;
       }
-      if (const auto imported = launchers::Import(config_, games_, events_, *launcher)) {
-        for (const model::Game& game : imported->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+      if (const auto imported = launchers::Import(s_.config, s_.games, s_.events, *launcher)) {
+        for (const model::Game& game : imported->added_games) s_.fetches.Enqueue(s_.config, s_.events, game);
       }
-      SyncDesktopEntries(config_, games_);
-      events_.Publish("launcher.install.finished", {{"id", launcher->id}});
+      s_.SyncDesktopEntries();
+      s_.events.Publish("launcher.install.finished", {{"id", launcher->id}});
     });
     SendJson(res, {{"status", "installing"}, {"id", launcher->id}}, 202);
   });
@@ -1076,12 +929,11 @@ void Server::RegisterRoutes() {
   http_->Post(R"(/v1/launchers/([^/]+)/import)", [this](const Request& req, Response& res) {
     const launchers::Launcher* launcher = launchers::Find(req.matches[1].str());
     if (!launcher) return SendError(res, 404, "launcher_not_found", "no such launcher");
-    StartJob(req, res, "import", launcher->id, "Importing from " + launcher->name,
+    s_.StartJob(req, res, "import", launcher->id, "Importing from " + launcher->name,
              [this, launcher](JobRegistry::Progress&) -> Result<json> {
-               const auto summary = launchers::Import(config_, games_, events_, *launcher);
+               const auto summary = launchers::Import(s_.config, s_.games, s_.events, *launcher);
                if (!summary) return std::unexpected(summary.error());
-               SyncDesktopEntries(config_, games_);
-               for (const model::Game& game : summary->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+               s_.AfterImport(summary->added_games);
                return json{{"added", summary->added}, {"updated", summary->updated}};
              });
   });
@@ -1102,7 +954,7 @@ void Server::RegisterRoutes() {
       target.source = launcher->id;
       target.source_ref = ref;
     }
-    auto command = launchers::BuildCommand(config_, games_, target, action);
+    auto command = launchers::BuildCommand(s_.config, s_.games, target, action);
     if (!command) return SendError(res, 409, command.error());
     if (auto spawned = runner::SpawnDetached(*command); !spawned) {
       return SendError(res, 500, spawned.error());
@@ -1113,7 +965,7 @@ void Server::RegisterRoutes() {
   // --- itch -----------------------------------------------------------
 
   http_->Get("/v1/itch/status", [this](const Request&, Response& res) {
-    const itch::ItchAuthStatus status = itch::Status(config_);
+    const itch::ItchAuthStatus status = itch::Status(s_.config);
     SendJson(res, {{"butler", {{"installed", status.butler.installed},
                                {"source", status.butler.source},
                                {"path", status.butler.path},
@@ -1127,14 +979,14 @@ void Server::RegisterRoutes() {
     if (body.is_discarded() || !body.contains("api_key") || !body["api_key"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"api_key": "..."})");
     }
-    if (auto logged_in = itch::Login(config_, body["api_key"]); !logged_in) {
+    if (auto logged_in = itch::Login(s_.config, body["api_key"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
     SendJson(res, {{"authenticated", true}});
   });
 
   http_->Post("/v1/itch/logout", [this](const Request&, Response& res) {
-    if (auto logged_out = itch::Logout(config_); !logged_out) {
+    if (auto logged_out = itch::Logout(s_.config); !logged_out) {
       return SendError(res, 400, logged_out.error());
     }
     SendJson(res, {{"status", "logged_out"}});
@@ -1143,7 +995,7 @@ void Server::RegisterRoutes() {
   // --- sources --------------------------------------------------------------
 
   http_->Get(R"(/v1/sources/([a-z0-9-]+)/removal)", [this](const Request& req, Response& res) {
-    auto plan = library::PlanRemoval(config_, games_, req.matches[1].str());
+    auto plan = library::PlanRemoval(s_.config, s_.games, req.matches[1].str());
     if (!plan) return SendError(res, 404, plan.error());
     json games = json::array();
     for (const library::RemovalGame& game : plan->games) {
@@ -1159,12 +1011,12 @@ void Server::RegisterRoutes() {
   http_->Post(R"(/v1/sources/([a-z0-9-]+)/remove)", [this](const Request& req, Response& res) {
     const std::string source = req.matches[1].str();
     // Checked now, so an unknown source is a 404 rather than a failed job.
-    if (auto plan = library::PlanRemoval(config_, games_, source); !plan) return SendError(res, 404, plan.error());
-    StartJob(req, res, "remove_source", source, "Removing " + source,
+    if (auto plan = library::PlanRemoval(s_.config, s_.games, source); !plan) return SendError(res, 404, plan.error());
+    s_.StartJob(req, res, "remove_source", source, "Removing " + source,
              [this, source](JobRegistry::Progress&) -> Result<json> {
-               auto removed = library::RemoveSource(config_, games_, events_, source);
+               auto removed = library::RemoveSource(s_.config, s_.games, s_.events, source);
                if (!removed) return std::unexpected(removed.error());
-               SyncDesktopEntries(config_, games_);
+               s_.SyncDesktopEntries();
                return json{{"removed", removed->removed}, {"problems", removed->problems}};
              });
   });
@@ -1178,7 +1030,7 @@ void Server::RegisterRoutes() {
   };
 
   http_->Get(R"(/v1/sources/([a-z0-9-]+)/runner)", [this, send_source_runner](const Request& req, Response& res) {
-    send_source_runner(res, library::GetSourceRunner(config_, games_, req.matches[1].str()));
+    send_source_runner(res, library::GetSourceRunner(s_.config, s_.games, req.matches[1].str()));
   });
 
   http_->Post(R"(/v1/sources/([a-z0-9-]+)/runner)", [this, send_source_runner](const Request& req, Response& res) {
@@ -1186,19 +1038,19 @@ void Server::RegisterRoutes() {
     if (!body.is_object() || !body.contains("runner_ref") || !body["runner_ref"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"runner_ref": "kind:name", "apply_to_games"?: bool})");
     }
-    const auto runner = library::SetSourceRunner(config_, games_, req.matches[1].str(),
+    const auto runner = library::SetSourceRunner(s_.config, s_.games, req.matches[1].str(),
                                                  body["runner_ref"].get<std::string>(),
                                                  body.value("apply_to_games", false));
     if (runner) {
       for (const std::string& id : runner->changed) {
-        if (const auto game = games_.Find(id)) events_.Publish("game.updated", Record(*game));
+        if (const auto game = s_.games.Find(id)) s_.events.Publish("game.updated", s_.Record(*game));
       }
     }
     send_source_runner(res, runner);
   });
 
   http_->Get("/v1/itch/collections", [this](const Request&, Response& res) {
-    auto collections = itch::ListCollections(config_);
+    auto collections = itch::ListCollections(s_.config);
     if (!collections) return SendError(res, 400, collections.error());
     json out = json::array();
     for (const itch::ItchCollection& collection : *collections) out.push_back(CollectionJson(collection));
@@ -1210,7 +1062,7 @@ void Server::RegisterRoutes() {
     if (!body.is_object() || !body.contains("link") || !body["link"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"link": "https://itch.io/c/<id>/..."})");
     }
-    auto added = itch::AddCollection(config_, body["link"].get<std::string>());
+    auto added = itch::AddCollection(s_.config, body["link"].get<std::string>());
     if (!added) return SendError(res, 400, added.error());
     SendJson(res, CollectionJson(*added), 201);
   });
@@ -1221,13 +1073,13 @@ void Server::RegisterRoutes() {
     if (std::from_chars(digits.data(), digits.data() + digits.size(), id).ec != std::errc()) {
       return SendError(res, 400, "invalid_id", "that collection id is out of range");
     }
-    SendResult(res, itch::RemoveCollection(config_, id));
+    SendResult(res, itch::RemoveCollection(s_.config, id));
   });
 
   // --- humble -------------------------------------------------------------
 
   http_->Get("/v1/humble/status", [this](const Request&, Response& res) {
-    const humble::HumbleAuthStatus status = humble::Status(config_);
+    const humble::HumbleAuthStatus status = humble::Status(s_.config);
     SendJson(res, {{"humble_cli", {{"installed", status.humble_cli.installed},
                                    {"source", status.humble_cli.source},
                                    {"path", status.humble_cli.path},
@@ -1241,14 +1093,14 @@ void Server::RegisterRoutes() {
     if (body.is_discarded() || !body.contains("session_key") || !body["session_key"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"session_key": "..."})");
     }
-    if (auto logged_in = humble::Login(config_, body["session_key"]); !logged_in) {
+    if (auto logged_in = humble::Login(s_.config, body["session_key"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
     SendJson(res, {{"authenticated", true}});
   });
 
   http_->Get("/v1/humble/library", [this](const Request&, Response& res) {
-    auto bundles = humble::ListBundles(config_);
+    auto bundles = humble::ListBundles(s_.config);
     if (!bundles) return SendError(res, 400, bundles.error());
     json out = json::array();
     for (const humble::BundleSummary& bundle : *bundles) {
@@ -1272,31 +1124,31 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_body", "bundle_key must be letters and digits, and item_numbers digits, commas and dashes");
     }
 
-    events_.Publish("humble.download.started", {{"bundle_key", bundle_key}});
-    operations_.Post([this, bundle_key, item_numbers] {
-      const Result<bool> result = humble::Download(config_, bundle_key, item_numbers);
+    s_.events.Publish("humble.download.started", {{"bundle_key", bundle_key}});
+    s_.operations.Post([this, bundle_key, item_numbers] {
+      const Result<bool> result = humble::Download(s_.config, bundle_key, item_numbers);
       if (!result) {
         log::Error("humble download failed ({}): {}", bundle_key, result.error().message);
-        events_.Publish("humble.download.failed", FailedEvent({{"bundle_key", bundle_key}}, result.error()));
+        s_.events.Publish("humble.download.failed", FailedEvent({{"bundle_key", bundle_key}}, result.error()));
       } else if (!*result) {
         log::Warn("humble download for {} had nothing to download (a redeemed key with no Humble-hosted "
                  "files, most likely)",
                  bundle_key);
-        events_.Publish("humble.download.finished",
+        s_.events.Publish("humble.download.finished",
                        {{"bundle_key", bundle_key},
-                        {"path", humble::DownloadDir(config_, bundle_key).string()},
+                        {"path", humble::DownloadDir(s_.config, bundle_key).string()},
                         {"downloaded", false}});
       } else {
         log::Info("humble download finished: {}", bundle_key);
-        events_.Publish("humble.download.finished",
+        s_.events.Publish("humble.download.finished",
                        {{"bundle_key", bundle_key},
-                        {"path", humble::DownloadDir(config_, bundle_key).string()},
+                        {"path", humble::DownloadDir(s_.config, bundle_key).string()},
                         {"downloaded", true}});
       }
     });
 
     SendJson(res, {{"status", "downloading"}, {"bundle_key", bundle_key},
-                  {"path", humble::DownloadDir(config_, bundle_key).string()}},
+                  {"path", humble::DownloadDir(s_.config, bundle_key).string()}},
             202);
   });
 
@@ -1304,7 +1156,7 @@ void Server::RegisterRoutes() {
 
   http_->Get("/v1/library", [this](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
-    auto entries = library::ListCatalog(config_, games_, source);
+    auto entries = library::ListCatalog(s_.config, s_.games, source);
     if (!entries) return SendError(res, 400, entries.error());
     json out = json::array();
     for (const library::CatalogEntry& entry : *entries) {
@@ -1336,19 +1188,19 @@ void Server::RegisterRoutes() {
     }
     if (!IsSafeRef(ref)) return SendError(res, 400, "invalid_ref", "that ref isn't a store id");
 
-    events_.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
-    operations_.Post([this, src, source, ref, is_update] {
-      const Result<void> result = is_update ? src->Update(config_, games_, events_, ref)
-                                            : src->Install(config_, games_, events_, ref);
+    s_.events.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
+    s_.operations.Post([this, src, source, ref, is_update] {
+      const Result<void> result = is_update ? src->Update(s_.config, s_.games, s_.events, ref)
+                                            : src->Install(s_.config, s_.games, s_.events, ref);
       if (!result) {
         log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref, result.error().message);
-        events_.Publish("library.install.failed",
+        s_.events.Publish("library.install.failed",
                         FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
       } else {
         log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
-        SyncDesktopEntries(config_, games_);
-        if (const auto game = games_.Find(source + "-" + ref)) metadata_fetches_.Enqueue(config_, events_, *game);
-        events_.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
+        s_.SyncDesktopEntries();
+        if (const auto game = s_.games.Find(source + "-" + ref)) s_.fetches.Enqueue(s_.config, s_.events, *game);
+        s_.events.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
       }
     });
 
@@ -1360,7 +1212,7 @@ void Server::RegisterRoutes() {
     if (library::FindSource(source) == nullptr || !IsSafeRef(ref)) {
       return SendError(res, 400, "invalid_request", "expected ?source=<store>&ref=<ref>");
     }
-    SendCachedArtwork(config_, source + "-" + ref, "cover", res);
+    SendCachedArtwork(s_.config, source + "-" + ref, "cover", res);
   });
 
   http_->Post("/v1/library/artwork", [this](const Request& req, Response& res) {
@@ -1374,7 +1226,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_body",
                        R"(expected {"source": "...", "titles": [{"ref": "...", "title": "..."}]})");
     }
-    if (!config_.GetBool("metadata.enabled")) return SendJson(res, {{"queued", 0}});
+    if (!s_.config.GetBool("metadata.enabled")) return SendJson(res, {{"queued", 0}});
 
     std::vector<model::Game> titles;
     for (const json& entry : body["titles"]) {
@@ -1384,12 +1236,12 @@ void Server::RegisterRoutes() {
       title.source_ref = text(entry, "ref");
       title.name = text(entry, "title");
       title.id = source + "-" + title.source_ref;
-      if (!IsSafeRef(title.source_ref) || title.name.empty() || art_index_.For(title.id).contains("cover")) continue;
+      if (!IsSafeRef(title.source_ref) || title.name.empty() || s_.art_index.For(title.id).contains("cover")) continue;
       // How Fetch tells a Steam game apart.
       if (source == "steam") title.runner_ref = "steam:" + title.source_ref;
       titles.push_back(std::move(title));
     }
-    SendJson(res, {{"queued", metadata_fetches_.EnqueueTitles(config_, events_, std::move(titles))}}, 202);
+    SendJson(res, {{"queued", s_.fetches.EnqueueTitles(s_.config, s_.events, std::move(titles))}}, 202);
   });
 
   http_->Post("/v1/library/install", [library_install_or_update](const Request& req, Response& res) {
@@ -1402,7 +1254,7 @@ void Server::RegisterRoutes() {
   // --- desktop entries --------------------------------------------------
 
   http_->Get("/v1/desktop-entries/candidates", [this](const Request&, Response& res) {
-    desktop::DesktopEntryScanner scanner(config_, games_, events_);
+    desktop::DesktopEntryScanner scanner(s_.config, s_.games, s_.events);
     auto candidates = scanner.ListCandidates();
     if (!candidates) return SendError(res, 404, candidates.error());
     json out = json::array();
@@ -1416,16 +1268,15 @@ void Server::RegisterRoutes() {
     if (!listed) return SendError(res, 400, "invalid_body", R"(expected {"ids": ["..."]})");
     const std::vector<std::string>& ids = *listed;
 
-    desktop::DesktopEntryScanner scanner(config_, games_, events_);
+    desktop::DesktopEntryScanner scanner(s_.config, s_.games, s_.events);
     auto summary = scanner.Import(ids);
     if (!summary) return SendError(res, 404, summary.error());
-    SyncDesktopEntries(config_, games_);
-    for (const model::Game& game : summary->added_games) metadata_fetches_.Enqueue(config_, events_, game);
+    s_.AfterImport(summary->added_games);
     SendJson(res, {{"added", summary->added}, {"updated", summary->updated}});
   });
 
   http_->Post("/v1/desktop-entries/sync", [this](const Request&, Response& res) {
-    SyncDesktopEntries(config_, games_);
+    s_.SyncDesktopEntries();
     SendJson(res, {{"ok", true}});
   });
 
@@ -1452,10 +1303,10 @@ void Server::RegisterRoutes() {
     }
 
     model::Game game;
-    const auto existing = games_.FindByInstallPath(install_path.string());
+    const auto existing = s_.games.FindByInstallPath(install_path.string());
     if (existing) game = *existing;
     game.name = body.value("name", strings::CleanGameName(install_path.filename().string()));
-    game.id = existing ? game.id : games_.NextId(game.name);
+    game.id = existing ? game.id : s_.games.NextId(game.name);
     game.source = "manual";
     game.install_path = install_path.string();
     game.exe_path = exe_path;
@@ -1467,7 +1318,7 @@ void Server::RegisterRoutes() {
     if (platform != model::Platform::Windows) {
       game.data_dir.clear();
     } else if (game.data_dir.empty()) {
-      game.data_dir = library::PrefixDir(config_, game).string();
+      game.data_dir = library::PrefixDir(s_.config, game).string();
     }
 
     if (is_installer) {
@@ -1479,13 +1330,13 @@ void Server::RegisterRoutes() {
       game.last_error.clear();
     }
 
-    auto result = games_.Upsert(game);
+    auto result = s_.games.Upsert(game);
     if (!result) return SendError(res, 500, result.error());
 
     if (game.status == model::GameStatus::Ready && game.platform == model::Platform::Windows) {
-      const runner::RunnerRegistry provisioner(config_);
+      const runner::RunnerRegistry provisioner(s_.config);
       const model::Game provisioned = provisioner.ProvisionGame(game);
-      auto saved = games_.Update(game.id, [&](model::Game& g) {
+      auto saved = s_.games.Update(game.id, [&](model::Game& g) {
         g.runner_ref = provisioned.runner_ref;
         g.status = provisioned.status;
         g.last_error = provisioned.last_error;
@@ -1493,20 +1344,20 @@ void Server::RegisterRoutes() {
       if (saved) game = *saved;
     }
 
-    SyncDesktopEntries(config_, games_);
-    if (!existing) metadata_fetches_.Enqueue(config_, events_, game);
-    events_.Publish(existing ? "game.updated" : "game.added", Record(game));
-    SendJson(res, Record(game));
+    s_.SyncDesktopEntries();
+    if (!existing) s_.fetches.Enqueue(s_.config, s_.events, game);
+    s_.events.Publish(existing ? "game.updated" : "game.added", s_.Record(game));
+    SendJson(res, s_.Record(game));
   });
 
   // --- launching ------------------------------------------------------------
 
   http_->Post(R"(/v1/games/([^/]+)/launch)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     if (game->status == model::GameStatus::Broken &&
-        library::RetryBrokenProvisioning(config_, games_, events_, game->id)) {
-      game = games_.Find(game->id);
+        library::RetryBrokenProvisioning(s_.config, s_.games, s_.events, game->id)) {
+      game = s_.games.Find(game->id);
       if (!game) return SendError(res, 404, "game_not_found", "no such game");
     }
     if (game->status == model::GameStatus::NeedsInstall) {
@@ -1520,19 +1371,19 @@ void Server::RegisterRoutes() {
                                   model::ToString(game->status)));
     }
 
-    const auto reservation = supervisor_.Reserve(game->id);
+    const auto reservation = s_.supervisor.Reserve(game->id);
     if (!reservation) {
       return SendError(res, 409, "already_running", std::format("\"{}\" is already running", game->id));
     }
 
-    const config::Resolver resolver(config_, game->overrides);
+    const config::Resolver resolver(s_.config, game->overrides);
     const std::string pre_script = resolver.GetString("launch.pre_script");
     const std::string post_script = resolver.GetString("launch.post_script");
 
     // A launcher game is started by its launcher, which keeps running after the
     // game exits; the game's own processes are tracked.
     if (launchers::ForGame(*game)) {
-      auto command = launchers::BuildCommand(config_, games_, *game);
+      auto command = launchers::BuildCommand(s_.config, s_.games, *game);
       if (!command) return SendError(res, 409, command.error());
       if (auto ran = RunPreScriptInline(pre_script); !ran) {
         return SendError(res, 409, ran.error());
@@ -1542,10 +1393,10 @@ void Server::RegisterRoutes() {
         return SendError(res, 500, spawned.error());
       }
       [[maybe_unused]] auto _ =
-          games_.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
-      events_.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
-      if (auto started = supervisor_.TrackLauncherLaunch(*game, launchers::WindowsDir(*game),
-                                                         config_.GetInt("launchers.detect_timeout_s"), post_script);
+          s_.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
+      s_.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
+      if (auto started = s_.supervisor.TrackLauncherLaunch(*game, launchers::WindowsDir(*game),
+                                                         s_.config.GetInt("launchers.detect_timeout_s"), post_script);
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
       }
@@ -1566,12 +1417,12 @@ void Server::RegisterRoutes() {
           return SendError(res, 500, spawned.error());
         }
         [[maybe_unused]] auto _ =
-            games_.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
+            s_.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
         const bool track = resolver.GetBool("steam.track_process");
-        events_.Publish("game.launched",
+        s_.events.Publish("game.launched",
                         {{"id", game->id}, {"via", "steam"}, {"tracked", track}});
         if (track) {
-          if (auto started = supervisor_.TrackSteamLaunch(*game, appid, post_script); !started) {
+          if (auto started = s_.supervisor.TrackSteamLaunch(*game, appid, post_script); !started) {
             log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
           }
         }
@@ -1579,14 +1430,14 @@ void Server::RegisterRoutes() {
       }
     }
 
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     auto resolved = registry.Resolve(registry.ResolveRef(*game));
     if (!resolved) return SendError(res, 400, resolved.error());
 
-    if (game->runner_ref.empty() && resolved->build && config_.GetBool("launch.pin_runner")) {
+    if (game->runner_ref.empty() && resolved->build && s_.config.GetBool("launch.pin_runner")) {
       const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
       game->runner_ref = pinned;
-      [[maybe_unused]] auto _ = games_.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
+      [[maybe_unused]] auto _ = s_.games.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
     }
 
     auto command = resolved->runner->BuildCommand(*game, resolved->build);
@@ -1611,9 +1462,7 @@ void Server::RegisterRoutes() {
     // Only for an existing prefix: a new one's own Program Files would all look installed.
     if (std::error_code ec; game->platform == model::Platform::Windows && !game->data_dir.empty() &&
                             std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec)) {
-      auto folders = library::InstallFolders(config_, game->data_dir);
-      const std::lock_guard lock(install_watch_mutex_);
-      install_watch_[game->id] = std::move(folders);
+      s_.WatchForInstall(game->id, library::InstallFolders(s_.config, game->data_dir));
     }
 
     // mira-run owns the session so it survives mirad dying. Without it the game is
@@ -1624,15 +1473,15 @@ void Server::RegisterRoutes() {
       if (auto ran = RunPreScriptInline(pre_script); !ran) {
         return SendError(res, 409, ran.error());
       }
-      if (auto launched = supervisor_.Launch(*game, *command, post_script); !launched) {
+      if (auto launched = s_.supervisor.Launch(*game, *command, post_script); !launched) {
         return SendError(res, 409, launched.error());
       }
       return SendJson(res, {{"status", "running"}, {"tracked", true}});
     }
 
     const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
-    const std::filesystem::path sessions_dir = games_.Dir() / "sessions";
-    const std::filesystem::path log_file = games_.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path sessions_dir = s_.games.Dir() / "sessions";
+    const std::filesystem::path log_file = s_.games.Dir() / "logs" / std::format("{}.log", game->id);
     Command wrapped;
     wrapped.env = command->env;
     wrapped.cwd = command->cwd;
@@ -1684,7 +1533,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 500, "wrapper_failed", std::format("unexpected mira-run status: {}", status.code));
     }
 
-    if (auto launched = supervisor_.LaunchWrapped(*game, *wrapper_pid, std::filesystem::path(status.detail));
+    if (auto launched = s_.supervisor.LaunchWrapped(*game, *wrapper_pid, std::filesystem::path(status.detail));
         !launched) {
       return SendError(res, 409, launched.error());
     }
@@ -1692,13 +1541,13 @@ void Server::RegisterRoutes() {
   });
 
   http_->Post(R"(/v1/games/([^/]+)/stop)", [this](const Request& req, Response& res) {
-    if (auto stopped = supervisor_.Stop(req.matches[1]); !stopped) {
+    if (auto stopped = s_.supervisor.Stop(req.matches[1]); !stopped) {
       // A client that missed the exit gets told it's stopped instead of an error.
       if (stopped.error().code == "not_running") {
-        if (const auto game = games_.Find(req.matches[1])) {
-          json event = Record(*game);
+        if (const auto game = s_.games.Find(req.matches[1])) {
+          json event = s_.Record(*game);
           event["state"] = "idle";
-          events_.Publish("game.state", std::move(event));
+          s_.events.Publish("game.state", std::move(event));
           return SendJson(res, {{"status", "not_running"}});
         }
       }
@@ -1708,7 +1557,7 @@ void Server::RegisterRoutes() {
   });
 
   http_->Post(R"(/v1/games/([^/]+)/run)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     json body = json::parse(req.body, nullptr, false);
@@ -1723,9 +1572,9 @@ void Server::RegisterRoutes() {
     const bool needs_provisioning = game->platform == model::Platform::Windows &&
         (game->runner_ref.empty() || !std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec));
     if (needs_provisioning) {
-      const runner::RunnerRegistry provisioner(config_);
+      const runner::RunnerRegistry provisioner(s_.config);
       const model::Game provisioned = provisioner.ProvisionGame(*game);
-      auto saved = games_.Update(game->id, [&](model::Game& g) {
+      auto saved = s_.games.Update(game->id, [&](model::Game& g) {
         g.runner_ref = provisioned.runner_ref;
         if (provisioned.status == model::GameStatus::Broken) {
           g.status = model::GameStatus::Broken;
@@ -1743,14 +1592,14 @@ void Server::RegisterRoutes() {
       }
     }
 
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     auto resolved = registry.Resolve(registry.ResolveRef(*game));
     if (!resolved) return SendError(res, 400, resolved.error());
 
-    if (game->runner_ref.empty() && resolved->build && config_.GetBool("launch.pin_runner")) {
+    if (game->runner_ref.empty() && resolved->build && s_.config.GetBool("launch.pin_runner")) {
       const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
       game->runner_ref = pinned;
-      [[maybe_unused]] auto _ = games_.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
+      [[maybe_unused]] auto _ = s_.games.Update(game->id, [&](model::Game& g) { g.runner_ref = pinned; });
     }
 
     model::Game run_as = *game;
@@ -1759,7 +1608,7 @@ void Server::RegisterRoutes() {
 
     auto command = resolved->runner->BuildCommand(run_as, resolved->build);
     if (!command) return SendError(res, 400, command.error());
-    const config::Resolver resolver(config_, game->overrides);
+    const config::Resolver resolver(s_.config, game->overrides);
     const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
     if (auto checked = CheckCommandWrappers(wrappers); !checked) {
       return SendError(res, 400, checked.error());
@@ -1767,7 +1616,7 @@ void Server::RegisterRoutes() {
     ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
     ApplyCommandWrappers(*command, wrappers);
 
-    if (auto launched = supervisor_.Launch(*game, *command); !launched) {
+    if (auto launched = s_.supervisor.Launch(*game, *command); !launched) {
       return SendError(res, 409, launched.error());
     }
     SendJson(res, {{"status", "running"}});
@@ -1775,10 +1624,10 @@ void Server::RegisterRoutes() {
 
   // Describes a game's installer, or the file at ?path=.
   http_->Get(R"(/v1/games/([^/]+)/installer)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     if (req.has_param("path")) game->exe_path = req.get_param_value("path");
-    const auto info = library::DescribeInstaller(config_, *game);
+    const auto info = library::DescribeInstaller(s_.config, *game);
     if (!info) return SendError(res, 404, info.error());
     SendJson(res, {{"path", info->path.string()},
                    {"size_bytes", info->size_bytes},
@@ -1789,7 +1638,7 @@ void Server::RegisterRoutes() {
 
   http_->Get(R"(/v1/games/([^/]+)/install/progress)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     const auto progress = library::Progress(id);
     if (!progress) return SendJson(res, {{"state", "idle"}});
     SendJson(res, {{"state", progress->state},
@@ -1801,7 +1650,7 @@ void Server::RegisterRoutes() {
   });
 
   http_->Post(R"(/v1/games/([^/]+)/install)", [this](const Request& req, Response& res) {
-    const auto game = games_.Find(req.matches[1]);
+    const auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
     if (body.is_discarded() || !body.is_object()) return SendError(res, 400, "invalid_body", "expected a JSON object");
@@ -1827,15 +1676,15 @@ void Server::RegisterRoutes() {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
 
-    operations_.Post([this, id = game->id, interactive, installer] {
-      library::RunInstall(config_, games_, events_, &metadata_fetches_, id,
+    s_.operations.Post([this, id = game->id, interactive, installer] {
+      library::RunInstall(s_.config, s_.games, s_.events, &s_.fetches, id,
                           interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
     });
     SendJson(res, {{"status", "installing"}, {"id", game->id}}, 202);
   });
 
   http_->Post(R"(/v1/games/([^/]+)/finish-install)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     const auto needs_exe = [&](std::string message) {
       SendError(res, 409,
@@ -1853,9 +1702,9 @@ void Server::RegisterRoutes() {
         if (!paths::IsWithin(install_path, {game->data_dir})) {
           return SendError(res, 400, "invalid_install_path", "the install folder must be inside the game's prefix");
         }
-        if (supervisor_.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+        if (s_.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
         const library::Detector::Result detected =
-            library::Detector(library::SettingsFromConfig(config_)).Detect(install_path);
+            library::Detector(library::SettingsFromConfig(s_.config)).Detect(install_path);
         library::AdoptInstallFolder(*game, install_path);
         game->working_dir.clear();
         game->candidates = detected.candidates;
@@ -1875,8 +1724,8 @@ void Server::RegisterRoutes() {
     if (!std::filesystem::exists(std::filesystem::path(game->install_path) / game->exe_path, ec)) {
       return needs_exe("the game's executable isn't in its install folder");
     }
-    const bool moved = games_.Find(game->id).value_or(*game).install_path != game->install_path;
-    auto result = games_.Update(game->id, [&](model::Game& g) {
+    const bool moved = s_.games.Find(game->id).value_or(*game).install_path != game->install_path;
+    auto result = s_.games.Update(game->id, [&](model::Game& g) {
       g.install_path = game->install_path;
       g.installer_dir = game->installer_dir;
       g.name = game->name;
@@ -1888,31 +1737,31 @@ void Server::RegisterRoutes() {
       g.last_error.clear();
     });
     if (!result) return SendStoreError(res, result.error());
-    SyncDesktopEntries(config_, games_);
-    events_.Publish("game.updated", Record(*result));
+    s_.SyncDesktopEntries();
+    s_.events.Publish("game.updated", s_.Record(*result));
     // Its art and store info were looked up by the installer's name.
     if (moved) {
-      metadata_fetches_.Enqueue(config_, events_, *result);
-      library::AnnounceInstallerLeftover(events_, *result);
+      s_.fetches.Enqueue(s_.config, s_.events, *result);
+      library::AnnounceInstallerLeftover(s_.events, *result);
     }
-    SendJson(res, Record(*result));
+    SendJson(res, s_.Record(*result));
   });
 
   http_->Delete(R"(/v1/games/([^/]+)/installer)", [this](const Request& req, Response& res) {
-    const auto game = games_.Find(req.matches[1]);
+    const auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    if (supervisor_.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
-    if (auto deleted = library::DeleteInstallerFolder(config_, *game); !deleted) {
+    if (s_.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+    if (auto deleted = library::DeleteInstallerFolder(s_.config, *game); !deleted) {
       return SendError(res, deleted.error().code == "no_installer_dir" ? 404 : 409, deleted.error());
     }
-    auto result = games_.Update(game->id, [](model::Game& g) { g.installer_dir.clear(); });
+    auto result = s_.games.Update(game->id, [](model::Game& g) { g.installer_dir.clear(); });
     if (!result) return SendStoreError(res, result.error());
-    events_.Publish("game.updated", Record(*result));
-    SendJson(res, Record(*result));
+    s_.events.Publish("game.updated", s_.Record(*result));
+    SendJson(res, s_.Record(*result));
   });
 
   http_->Post(R"(/v1/games/([^/]+)/relocate)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     library::RelocateRequest request;
@@ -1930,29 +1779,29 @@ void Server::RegisterRoutes() {
       }
     }
 
-    if (supervisor_.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+    if (s_.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
 
-    StartJob(req, res, "relocate", game->id, "Moving " + game->name,
+    s_.StartJob(req, res, "relocate", game->id, "Moving " + game->name,
              [this, game = *game, request](JobRegistry::Progress&) -> Result<json> {
-               auto folders_lock = games_.LockFolders();
-               auto relocated = library::Relocate(config_, game, request);
+               auto folders_lock = s_.games.LockFolders();
+               auto relocated = library::Relocate(s_.config, game, request);
                if (!relocated) return std::unexpected(relocated.error());
-               auto saved = games_.Update(game.id, [&](model::Game& g) {
+               auto saved = s_.games.Update(game.id, [&](model::Game& g) {
                  g.install_path = relocated->install_path;
                  g.data_dir = relocated->data_dir;
                  g.updated_at = model::NowSeconds();
                });
                folders_lock.unlock();
                if (!saved) return std::unexpected(saved.error());
-               SyncDesktopEntries(config_, games_);
-               json record = Record(*saved);
-               events_.Publish("game.updated", record);
+               s_.SyncDesktopEntries();
+               json record = s_.Record(*saved);
+               s_.events.Publish("game.updated", record);
                return record;
              });
   });
 
   http_->Post(R"(/v1/games/([^/]+)/tricks)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     json body = json::parse(req.body, nullptr, false);
@@ -1962,20 +1811,20 @@ void Server::RegisterRoutes() {
     const std::string verb = body["verb"];
     const std::string id = game->id;
 
-    events_.Publish("tricks.started", {{"id", id}, {"verb", verb}});
-    tricks_lane_.Post([this, id, verb] {
-      const runner::RunnerRegistry registry(config_);
-      const auto game = games_.Find(id);
+    s_.events.Publish("tricks.started", {{"id", id}, {"verb", verb}});
+    s_.tricks.Post([this, id, verb] {
+      const runner::RunnerRegistry registry(s_.config);
+      const auto game = s_.games.Find(id);
       if (!game) {  // removed while queued
         const Error removed{"game_not_found", "the game was removed", {}, {}};
-        events_.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
+        s_.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
         return;
       }
       if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
         log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
-        events_.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
+        s_.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
       } else {
-        events_.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
+        s_.events.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
       }
     });
     SendJson(res, {{"status", "running"}, {"verb", verb}}, 202);
@@ -1984,8 +1833,8 @@ void Server::RegisterRoutes() {
   // --- metadata ---------------------------------------------------------
 
   http_->Get(R"(/v1/games/([^/]+)/metadata)", [this](const Request& req, Response& res) {
-    if (!games_.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
-    const std::filesystem::path file = metadata::MetadataFile(config_, req.matches[1]);
+    if (!s_.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    const std::filesystem::path file = metadata::MetadataFile(s_.config, req.matches[1]);
     std::ifstream in(file);
     if (!in) return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
     std::ostringstream buffer;
@@ -1994,16 +1843,16 @@ void Server::RegisterRoutes() {
   });
 
   http_->Get(R"(/v1/games/([^/]+)/artwork)", [this](const Request& req, Response& res) {
-    if (!games_.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
     // The "cover" slot is stored as "artwork".
-    SendCachedArtwork(config_, req.matches[1], Param(req, "type", "cover"), res);
+    SendCachedArtwork(s_.config, req.matches[1], Param(req, "type", "cover"), res);
   });
 
   // Takes a candidate id, never a URL, so the daemon can't be made to fetch an
   // arbitrary address.
   http_->Post(R"(/v1/games/([^/]+)/artwork)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const json body = json::parse(req.body, nullptr, false);
@@ -2011,11 +1860,11 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_id\": <id>}");
     }
     const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
-    artwork_selects_.Post([this, id, slot, candidate_id] {
-      if (auto selected = metadata::SelectArtwork(config_, id, slot, candidate_id); !selected) {
-        events_.Publish("game.artwork_select_failed", FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
+    s_.artwork_selects.Post([this, id, slot, candidate_id] {
+      if (auto selected = metadata::SelectArtwork(s_.config, id, slot, candidate_id); !selected) {
+        s_.events.Publish("game.artwork_select_failed", FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
       } else {
-        events_.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+        s_.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
       }
     });
     SendJson(res, {{"status", "selecting"}}, 202);
@@ -2023,7 +1872,7 @@ void Server::RegisterRoutes() {
 
   http_->Post(R"(/v1/games/([^/]+)/artwork/candidates)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     int page = 0;
@@ -2033,14 +1882,14 @@ void Server::RegisterRoutes() {
     }
     // Echoed back, so a caller can tell its answer from a replayed one.
     const std::string request = Param(req, "request");
-    artwork_thumbs_.Post([this, id, slot, page, request] {
+    s_.artwork_thumbs.Post([this, id, slot, page, request] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
-      if (auto fetched = metadata::FetchCandidatePage(config_, id, slot, page); fetched) {
+      if (auto fetched = metadata::FetchCandidatePage(s_.config, id, slot, page); fetched) {
         event.update(*fetched);
       } else {
         event = FailedEvent(std::move(event), fetched.error());
       }
-      events_.Publish("game.artwork_candidates_ready", event);
+      s_.events.Publish("game.artwork_candidates_ready", event);
     });
     SendJson(res, {{"status", "fetching"}}, 202);
   });
@@ -2048,7 +1897,7 @@ void Server::RegisterRoutes() {
   // Cached previews are ready at once; the rest are fetched in the background.
   http_->Post(R"(/v1/games/([^/]+)/artwork/thumbs)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const json body = json::parse(req.body, nullptr, false);
@@ -2058,9 +1907,9 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_ids\": [<id>, ...]}, 1 to 64 ids");
     }
     const std::vector<std::int64_t> candidate_ids = ids.get<std::vector<std::int64_t>>();
-    artwork_thumbs_.Post([this, id, slot, candidate_ids] {
+    s_.artwork_thumbs.Post([this, id, slot, candidate_ids] {
       json event = {{"id", id}, {"type", slot}};
-      if (auto batch = metadata::FetchCandidateThumbs(config_, id, slot, candidate_ids); batch) {
+      if (auto batch = metadata::FetchCandidateThumbs(s_.config, id, slot, candidate_ids); batch) {
         event["ready"] = batch->ready;
         event["failed"] = batch->failed;
       } else {
@@ -2068,21 +1917,21 @@ void Server::RegisterRoutes() {
         event["failed"] = candidate_ids;
         event = FailedEvent(std::move(event), batch.error());
       }
-      events_.Publish("game.artwork_thumbs_ready", event);
+      s_.events.Publish("game.artwork_thumbs_ready", event);
     });
     SendJson(res, {{"status", "fetching"}}, 202);
   });
 
   http_->Get(R"(/v1/games/([^/]+)/artwork/thumb)", [this](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!games_.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s_.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     const std::string slot = Param(req, "type", "cover");
     std::int64_t candidate_id = 0;
     const std::string raw = Param(req, "candidate_id");
     if (std::from_chars(raw.data(), raw.data() + raw.size(), candidate_id).ec != std::errc() || raw.empty()) {
       return SendError(res, 400, "missing_candidate_id", "?candidate_id= is required");
     }
-    const std::filesystem::path file = metadata::CandidateThumbFile(config_, id, slot, candidate_id);
+    const std::filesystem::path file = metadata::CandidateThumbFile(s_.config, id, slot, candidate_id);
     std::ifstream in(file, std::ios::binary);
     if (file.empty() || !in) return SendError(res, 404, "thumb_not_cached", "no preview cached for that candidate");
     std::ostringstream buffer;
@@ -2091,36 +1940,36 @@ void Server::RegisterRoutes() {
   });
 
   http_->Delete("/v1/artwork/thumbs", [this](const Request&, Response& res) {
-    metadata::ClearCandidateThumbs(config_);
+    metadata::ClearCandidateThumbs(s_.config);
     res.status = 204;
   });
 
   // force=true: an explicit refresh works even with metadata.enabled off.
   http_->Post(R"(/v1/games/([^/]+)/metadata/refresh)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     // Only user-initiated refreshes report failure as a notification.
     const bool announce = BoolParam(req, "announce");
-    metadata_fetches_.Enqueue(config_, events_, *game, /*force=*/true, announce);
+    s_.fetches.Enqueue(s_.config, s_.events, *game, /*force=*/true, announce);
     SendJson(res, {{"status", "fetching"}}, 202);
   });
 
   http_->Get(R"(/v1/games/([^/]+)/metadata/matches)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     const std::string query = Param(req, "q", game->name);
-    auto matches = metadata::SearchSteamGridDb(config_, query);
+    auto matches = metadata::SearchSteamGridDb(s_.config, query);
     if (!matches) return SendError(res, 502, matches.error());
-    const std::int64_t chosen = config::Resolver(config_, game->overrides).GetInt("metadata.steamgriddb_id");
+    const std::int64_t chosen = config::Resolver(s_.config, game->overrides).GetInt("metadata.steamgriddb_id");
     SendJson(res, {{"query", query}, {"chosen", chosen}, {"matches", *matches}});
   });
 
   http_->Post(R"(/v1/games/([^/]+)/metadata/wrong-match)", [this](const Request& req, Response& res) {
-    auto game = games_.Find(req.matches[1]);
+    auto game = s_.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    auto matches = metadata::SearchSteamGridDb(config_, game->name);
+    auto matches = metadata::SearchSteamGridDb(s_.config, game->name);
     if (!matches) return SendError(res, 502, matches.error());
-    const std::int64_t current = config::Resolver(config_, game->overrides).GetInt("metadata.steamgriddb_id");
+    const std::int64_t current = config::Resolver(s_.config, game->overrides).GetInt("metadata.steamgriddb_id");
     std::size_t next = 1;  // no choice yet: the top match was in use
     for (std::size_t i = 0; i < matches->size(); ++i) {
       if ((*matches)[i].value("id", std::int64_t{0}) == current) next = i + 1;
@@ -2131,9 +1980,9 @@ void Server::RegisterRoutes() {
     }
     const json& match = (*matches)[next];
     const json patch = {{"metadata.steamgriddb_id", match.value("id", std::int64_t{0})}};
-    auto updated = games_.Update(game->id, [&](model::Game& g) { ApplyOverridesPatch(g, patch); });
+    auto updated = s_.games.Update(game->id, [&](model::Game& g) { ApplyOverridesPatch(g, patch); });
     if (!updated) return SendError(res, 500, updated.error());
-    metadata_fetches_.Enqueue(config_, events_, *updated, /*force=*/true, /*announce=*/true);
+    s_.fetches.Enqueue(s_.config, s_.events, *updated, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"match", match}}, 202);
   });
 
@@ -2145,9 +1994,9 @@ void Server::RegisterRoutes() {
     }
     const std::int64_t id = body["steamgriddb_id"];
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
-    auto game = games_.Update(req.matches[1], [&](model::Game& g) { ApplyOverridesPatch(g, patch); });
+    auto game = s_.games.Update(req.matches[1], [&](model::Game& g) { ApplyOverridesPatch(g, patch); });
     if (!game) return SendError(res, 404, game.error());
-    metadata_fetches_.Enqueue(config_, events_, *game, /*force=*/true, /*announce=*/true);
+    s_.fetches.Enqueue(s_.config, s_.events, *game, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"steamgriddb_id", id}}, 202);
   });
 
@@ -2158,33 +2007,33 @@ void Server::RegisterRoutes() {
     if (!ids) return SendError(res, 400, "invalid_body", R"(expected {"ids": [...]})");
     std::vector<model::Game> games;
     for (const std::string& id : *ids) {
-      if (auto game = games_.Find(id)) games.push_back(std::move(*game));
+      if (auto game = s_.games.Find(id)) games.push_back(std::move(*game));
     }
-    StartJob(req, res, "metadata", "", "Refreshing metadata",
-             [this, games = std::move(games)](JobRegistry::Progress& progress) { return RefreshMetadata(games, progress); });
+    s_.StartJob(req, res, "metadata", "", "Refreshing metadata",
+             [this, games = std::move(games)](JobRegistry::Progress& progress) { return s_.RefreshMetadata(games, progress); });
   });
 
   http_->Post("/v1/games/metadata/refresh-missing", [this](const Request& req, Response& res) {
     std::vector<model::Game> games;
-    for (const model::Game& game : games_.All()) {
-      if (!art_index_.For(game.id).contains("cover")) games.push_back(game);
+    for (const model::Game& game : s_.games.All()) {
+      if (!s_.art_index.For(game.id).contains("cover")) games.push_back(game);
     }
-    StartJob(req, res, "metadata", "", "Fetching missing cover art",
-             [this, games = std::move(games)](JobRegistry::Progress& progress) { return RefreshMetadata(games, progress); });
+    s_.StartJob(req, res, "metadata", "", "Fetching missing cover art",
+             [this, games = std::move(games)](JobRegistry::Progress& progress) { return s_.RefreshMetadata(games, progress); });
   });
 
   // --- runners --------------------------------------------------------------
 
   http_->Get("/v1/runners", [this](const Request&, Response& res) {
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     json out = json::array();
     for (const model::RunnerBuild& build : registry.DiscoverAll()) {
       json entry = model::ToJson(build);
       entry["label"] = runner::BuildLabel(build.kind, build.name);
       if (build.kind == "proton" || build.kind == "wine") {
         const std::filesystem::path dir = runner::BuildDir(build);
-        entry["removable"] = paths::IsWithin(dir, runner::RunnerRoots(config_, build.kind));
-        const auto family = runner::FamilyOfBuild(config_, build.kind, build.name, dir.filename().string());
+        entry["removable"] = paths::IsWithin(dir, runner::RunnerRoots(s_.config, build.kind));
+        const auto family = runner::FamilyOfBuild(s_.config, build.kind, build.name, dir.filename().string());
         entry["source"] = family ? family->id : "";
       }
       out.push_back(std::move(entry));
@@ -2195,7 +2044,7 @@ void Server::RegisterRoutes() {
   http_->Get("/v1/runners/sources", [this](const Request& req, Response& res) {
     const std::string kind = Param(req, "kind");
     json out = json::array();
-    for (const runner::RunnerFamily& family : runner::Families(config_, kind)) {
+    for (const runner::RunnerFamily& family : runner::Families(s_.config, kind)) {
       out.push_back({{"id", family.id}, {"kind", family.kind}, {"label", family.label}});
     }
     SendJson(res, std::move(out));
@@ -2203,11 +2052,11 @@ void Server::RegisterRoutes() {
 
   http_->Get("/v1/runners/catalog", [this](const Request& req, Response& res) {
     const std::string kind = Param(req, "kind", "proton");
-    auto family = runner::FamilyFor(config_, kind, Param(req, "source"));
+    auto family = runner::FamilyFor(s_.config, kind, Param(req, "source"));
     if (!family) return SendError(res, 404, family.error());
     auto releases = runner::ListFamilyReleases(*family);
     if (!releases) return SendError(res, 502, releases.error());
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     const std::vector<model::RunnerBuild> installed = runner::BuildsOfKind(registry, kind);
     json out = json::array();
     for (const auto& r : *releases) {
@@ -2228,7 +2077,7 @@ void Server::RegisterRoutes() {
     }
     const std::string kind = body["kind"];
     const std::string tag = body["tag"];
-    auto family = runner::FamilyFor(config_, kind, body.value("source", std::string()));
+    auto family = runner::FamilyFor(s_.config, kind, body.value("source", std::string()));
     if (!family) return SendError(res, 404, family.error());
 
     auto releases = runner::ListFamilyReleases(*family);
@@ -2237,15 +2086,15 @@ void Server::RegisterRoutes() {
     if (match == releases->end()) {
       return SendError(res, 404, "release_not_found", std::format("no {} release tagged \"{}\"", family->label, tag));
     }
-    InstallRunnerAsync(kind, family->id, *match, /*replacing=*/"");
+    s_.InstallRunnerAsync(kind, family->id, *match, /*replacing=*/"");
     SendJson(res, {{"status", "downloading"}, {"tag", tag}, {"name", runner::ReleaseName(kind, *match)}}, 202);
   });
 
   // Only removable builds; the distro updates its own packages.
   http_->Get("/v1/runners/updates", [this](const Request&, Response& res) {
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     json out = json::array();
-    for (const auto& update : runner::FindRunnerUpdates(config_, registry)) {
+    for (const auto& update : runner::FindRunnerUpdates(s_.config, registry)) {
       out.push_back({{"reference", update.build.Reference()}, {"source", update.family.id},
                      {"tag", update.latest.tag}, {"name", runner::ReleaseName(update.build.kind, update.latest)},
                      {"label", runner::BuildLabel(update.build.kind,
@@ -2260,10 +2109,10 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_body", R"(expected {"reference": "kind:name"})");
     }
     const std::string reference = body["reference"];
-    const runner::RunnerRegistry registry(config_);
-    for (const auto& update : runner::FindRunnerUpdates(config_, registry)) {
+    const runner::RunnerRegistry registry(s_.config);
+    for (const auto& update : runner::FindRunnerUpdates(s_.config, registry)) {
       if (update.build.Reference() != reference) continue;
-      InstallRunnerAsync(update.build.kind, update.family.id, update.latest, reference);
+      s_.InstallRunnerAsync(update.build.kind, update.family.id, update.latest, reference);
       return SendJson(res,
                       {{"status", "downloading"}, {"tag", update.latest.tag},
                        {"name", runner::ReleaseName(update.build.kind, update.latest)}},
@@ -2287,32 +2136,32 @@ void Server::RegisterRoutes() {
     const std::string id = req.matches[1];
     std::optional<runner::ReleaseAsset> asset;
     if (id == "umu") {
-      auto releases = runner::ListReleases(config_, "umu");
+      auto releases = runner::ListReleases(s_.config, "umu");
       if (!releases) return SendError(res, 502, releases.error());
       if (releases->empty()) return SendError(res, 404, "no_release_found", "no umu-launcher release found");
       asset = releases->front();
     }
-    events_.Publish(id + ".setup.started", json::object());
-    operations_.Post([this, id, asset] {
+    s_.events.Publish(id + ".setup.started", json::object());
+    s_.operations.Post([this, id, asset] {
       Result<void> installed;
       if (asset) {
-        auto path = runner::InstallToolBinary(config_, "umu", *asset, "umu-run");
+        auto path = runner::InstallToolBinary(s_.config, "umu", *asset, "umu-run");
         if (!path) installed = std::unexpected(path.error());
       } else {
         installed = runner::InstallWinetricks();
       }
       if (!installed) {
         log::Error("{} install failed: {}", id, installed.error().message);
-        events_.Publish(id + ".setup.failed", FailedEvent(json::object(), installed.error()));
+        s_.events.Publish(id + ".setup.failed", FailedEvent(json::object(), installed.error()));
       } else {
-        events_.Publish(id + ".setup.finished", json::object());
+        s_.events.Publish(id + ".setup.finished", json::object());
       }
     });
     SendJson(res, {{"status", "installing"}}, 202);
   });
 
   http_->Get(R"(/v1/runners/([^/]+)/schema)", [this](const Request& req, Response& res) {
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     const runner::IRunner* found = registry.FindByKind(req.matches[1]);
     if (!found) return SendError(res, 404, "unknown_runner_kind", "no runner of that kind");
     SendJson(res, found->SettingsSchema());
@@ -2326,17 +2175,17 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "invalid_reference", "name a concrete build, not \"auto\"/\"latest\"");
     }
 
-    const runner::RunnerRegistry registry(config_);
+    const runner::RunnerRegistry registry(s_.config);
     auto resolved = registry.Resolve(kind + ":" + name);
     if (!resolved) return SendError(res, 404, resolved.error());
     if (!resolved->build) {
       return SendError(res, 400, "not_a_build", std::format("\"{}\" has no separate installed builds", kind));
     }
 
-    if (auto deleted = DeleteUnderRoot(runner::BuildDir(*resolved->build).string(), runner::RunnerRoots(config_, kind)); !deleted) {
+    if (auto deleted = DeleteUnderRoot(runner::BuildDir(*resolved->build).string(), runner::RunnerRoots(s_.config, kind)); !deleted) {
       return SendError(res, 400, deleted.error());
     }
-    events_.Publish("runners.removed", {{"kind", kind}, {"name", name}});
+    s_.events.Publish("runners.removed", {{"kind", kind}, {"name", name}});
     SendJson(res, json::object());
   });
 
@@ -2351,7 +2200,7 @@ void Server::RegisterRoutes() {
     }
     // A new client gets the buffer replayed, then `stream.live` so it can tell
     // history (show it) from news (announce it). A resuming one only missed news.
-    const std::int64_t replay_end = resuming ? 0 : events_.LatestId();
+    const std::int64_t replay_end = resuming ? 0 : s_.events.LatestId();
     bool live_sent = resuming;
 
     res.set_header("Cache-Control", "no-cache");
@@ -2359,133 +2208,20 @@ void Server::RegisterRoutes() {
     res.set_chunked_content_provider(
         "text/event-stream",
         [this, after_id, replay_end, live_sent](size_t, httplib::DataSink& sink) mutable -> bool {
-          if (stopping_.load(std::memory_order_relaxed)) return false;
+          if (s_.stopping.load(std::memory_order_relaxed)) return false;
           if (!live_sent && after_id >= replay_end) {
             live_sent = true;
             static constexpr std::string_view kLive = "event: stream.live\ndata: {}\n\n";
             return sink.write(kLive.data(), kLive.size());
           }
-          auto event = events_.WaitNext(after_id, stopping_, std::chrono::milliseconds(20000));
-          if (!event) return sink.is_writable() && !stopping_.load(std::memory_order_relaxed);
+          auto event = s_.events.WaitNext(after_id, s_.stopping, std::chrono::milliseconds(20000));
+          if (!event) return sink.is_writable() && !s_.stopping.load(std::memory_order_relaxed);
           after_id = event->id;
           const std::string frame =
               std::format("id: {}\nevent: {}\ndata: {}\n\n", event->id, event->type,
                          event->payload.dump());
           return sink.write(frame.data(), frame.size());
         });
-  });
-}
-
-void Server::StartJob(const Request& req, Response& res, const std::string& kind, const std::string& target,
-                      const std::string& label, JobRegistry::Work work) {
-  const std::string id = jobs_.Start(kind, target, label, std::move(work), req.get_param_value("job"));
-  SendJson(res, {{"status", "running"}, {"job", id}}, 202);
-}
-
-Result<json> Server::RefreshMetadata(std::vector<model::Game> games, JobRegistry::Progress& progress) {
-  struct Tally {
-    std::mutex mutex;
-    std::condition_variable changed;
-    int done = 0;
-    int failed = 0;
-  };
-  const auto tally = std::make_shared<Tally>();
-  const int total = static_cast<int>(games.size());
-  progress.Report(0, total);
-  for (model::Game& game : games) {
-    metadata_fetches_.Enqueue(config_, events_, std::move(game), /*force=*/true, /*announce=*/false,
-                              [tally](bool ok) {
-                                std::lock_guard lock(tally->mutex);
-                                ++tally->done;
-                                if (!ok) ++tally->failed;
-                                tally->changed.notify_all();
-                              });
-  }
-  std::unique_lock lock(tally->mutex);
-  int reported = 0;
-  while (tally->done < total) {
-    // Polled, so quitting mid-refresh doesn't wait out every fetch still queued.
-    if (stopping_.load(std::memory_order_relaxed)) {
-      return Err("shutting_down", "mirad stopped before the refresh finished");
-    }
-    tally->changed.wait_for(lock, std::chrono::milliseconds(250));
-    if (tally->done == reported) continue;
-    reported = tally->done;
-    lock.unlock();
-    progress.Report(reported, total);
-    lock.lock();
-  }
-  return json{{"refreshed", total - tally->failed}, {"failed", tally->failed}};
-}
-
-Result<void> Server::DeleteGameData(const model::Game& game, bool files, bool prefix, bool metadata) {
-  if (supervisor_.IsRunning(game.id)) return std::unexpected(GameRunningError(game.id));
-  // A desktop-entry import only links to another app's own files.
-  if (game.source == "desktop-entry") files = prefix = false;
-  if (files && game.source == "epic" && !game.source_ref.empty()) {
-    // Uninstall through Legendary so its manifest stays in sync.
-    if (auto uninstalled = epic::RunLegendary(config_, {"uninstall", game.source_ref, "-y"}); !uninstalled) {
-      return std::unexpected(uninstalled.error());
-    }
-  } else if (files) {
-    if (auto deleted = DeleteUnderRoot(game.install_path, config_.GetPathArray("library_roots")); !deleted) {
-      return deleted;
-    }
-  }
-  if (prefix) {
-    if (auto deleted = DeleteUnderRoot(game.data_dir, {config_.GetPath("prefix_root")}); !deleted) return deleted;
-  }
-  if (metadata) {
-    // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
-    std::error_code ec;
-    std::filesystem::remove(metadata::MetadataFile(config_, game.id), ec);
-    if (ec) log::Warn("could not remove metadata for {}: {}", game.id, ec.message());
-    std::filesystem::remove_all(metadata::ArtworkDir(config_, game.id), ec);
-    if (ec) log::Warn("could not remove artwork for {}: {}", game.id, ec.message());
-  }
-  return {};
-}
-
-void Server::InstallRunnerAsync(const std::string& kind, const std::string& source,
-                                const runner::ReleaseAsset& asset, const std::string& replacing) {
-  const std::string name = runner::ReleaseName(kind, asset);
-  const json base = {{"kind", kind}, {"tag", asset.tag}, {"name", name},
-                     {"label", runner::BuildLabel(kind, name)}, {"source", source}};
-  events_.Publish("runners.download.started", base);
-  operations_.Post([this, kind, asset, replacing, base] {
-    if (auto installed = runner::DownloadAndInstall(config_, kind, asset); !installed) {
-      log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
-      events_.Publish("runners.download.failed", FailedEvent(base, installed.error()));
-      return;
-    }
-    log::Info("installed {} {}", kind, asset.tag);
-    library::RetryBrokenProvisioning(config_, games_, events_);
-    json finished = base;
-    if (!replacing.empty()) {
-      // Move what used the old build onto the new one.
-      const runner::RunnerRegistry registry(config_);
-      const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
-      const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-        return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
-      });
-      if (fresh != builds.end()) {
-        const std::string to = fresh->Reference();
-        json moved = json::array();
-        const auto batch = games_.BatchSaves();
-        for (const model::Game& game : games_.All()) {
-          if (game.runner_ref != replacing) continue;
-          if (auto updated = games_.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-            moved.push_back(Record(*updated));
-          }
-        }
-        if (config_.GetString("default_runner.windows") == replacing) (void)config_.Set("default_runner.windows", to);
-        if (!moved.empty()) events_.Publish("games.updated", {{"games", moved}});
-        events_.Publish("runners.updated",
-                        {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
-        finished["replaced"] = replacing;
-      }
-    }
-    events_.Publish("runners.download.finished", finished);
   });
 }
 

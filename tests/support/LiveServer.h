@@ -11,6 +11,7 @@
 
 #include "api/EventBus.h"
 #include "api/Server.h"
+#include "api/Services.h"
 #include "config/Config.h"
 #include "store/GameStore.h"
 
@@ -30,13 +31,14 @@ class LiveServer {
   const std::filesystem::path& socket_path() const { return socket_path_; }
   const config::Config& config() const { return config_; }
   config::Config& MutableConfig() { return config_; }
-  api::Server& server() { return server_; }
+  api::Services& services() { return services_; }
 
  private:
   config::Config config_;
   store::GameStore games_;
   api::EventBus events_;
   std::filesystem::path socket_path_;
+  api::Services services_;
   api::Server server_;
   std::thread thread_;
 };
