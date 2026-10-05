@@ -54,6 +54,7 @@ class ChangeBar;
 class ContinueRow;
 class GameFilterProxy;
 class GameLibraryModel;
+class GameMenus;
 class CoverChip;
 class DaemonSupervisor;
 class DownloadTracker;
@@ -167,19 +168,9 @@ private:
   void ShowHoverCardFor(const mira_gui::GameSummary& game, const QRect& anchor,
                         const QString& hint = QString());
   void ShowContextMenu(const QPoint& pos);
-  // `extra` adds entries after Play (e.g. a store's Update).
-  void ShowGameMenu(const std::string& id, const QPoint& global_pos,
-                    const std::function<void(QMenu&)>& extra = nullptr);
   void ShowSidebarMenu(const QPoint& global_pos);
   void ShowSourceMenu(const mira_gui::SourceInfo& source, const QPoint& global_pos);
-  // More than one tile selected: a reduced set of actions applied to all
-  // of them at once, chosen at the pos the right-click landed on.
-  void ShowBatchMenu(const std::vector<std::string>& ids, const QPoint& global_pos);
   void ToggleRunning(const std::string& id);
-  // Adds or removes `tag` ("hidden", "favorite") on one game.
-  void ToggleTag(const std::string& id, const std::string& tag);
-  // Adds (`present`) or removes `tag` on each id in one request.
-  void BatchSetTag(const std::vector<std::string>& ids, const std::string& tag, bool present);
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
   void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
@@ -453,6 +444,7 @@ private:
   QPointer<QWidget> recent_hover_row_;
 
   mira_gui::GameLibraryModel* library_ = nullptr;
+  mira_gui::GameMenus* menus_ = nullptr;
   mira_gui::GameFilterProxy* grid_games_ = nullptr;
   mira_gui::DownloadTracker* downloads_ = nullptr;
   mira_gui::DaemonSupervisor* daemon_supervisor_ = nullptr;  // "Start mirad" from a failure
