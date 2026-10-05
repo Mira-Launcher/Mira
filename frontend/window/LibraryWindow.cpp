@@ -94,6 +94,7 @@
 #include "../widgets/ModalOverlay.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
+#include "TopBar.h"
 
 // setViewportMargins is protected on QAbstractScrollArea; this republishes
 // it so ApplyLayoutTokens() can pad the tiles without also insetting the
@@ -335,11 +336,18 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   layout->setContentsMargins(mira_gui::kResizeMargin, mira_gui::kResizeMargin, mira_gui::kResizeMargin,
                              mira_gui::kResizeMargin);
   layout->setSpacing(0);
-  QWidget* top_bar = BuildTopBar();
+  top_bar_ = new mira_gui::TopBar(kMinTileWidth, kMaxTileWidth, tile_width_, chrome);
+  zoom_ = top_bar_->zoom();
+  connect(zoom_, &QSlider::valueChanged, this, &LibraryWindow::Zoom);
+  connect(top_bar_, &mira_gui::TopBar::ActivityClicked, this,
+          [this] { downloads_panel_->ShowBelow(top_bar_->activity_button()); });
+  connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, [this] { Reload(/*force_scan=*/true); });
+  connect(top_bar_, &mira_gui::TopBar::ShortcutsClicked, this, [this] { common_.reference->trigger(); });
+  connect(top_bar_, &mira_gui::TopBar::AboutClicked, this, &LibraryWindow::OpenAbout);
   // Without an explicit cursor here, a resize cursor FramelessRoot set at its
   // edge margin would keep showing over the whole window after the drag ends.
-  top_bar->setCursor(Qt::ArrowCursor);
-  layout->addWidget(top_bar);
+  top_bar_->setCursor(Qt::ArrowCursor);
+  layout->addWidget(top_bar_);
   content_stack_->setCursor(Qt::ArrowCursor);
   layout->addWidget(content_stack_, /*stretch=*/1);
   root_stack_->addWidget(chrome);
@@ -613,16 +621,6 @@ void LibraryWindow::ApplyLayoutTokens() {
 void LibraryWindow::ApplyTopBarIcons() {
   using mira_gui::icons::Glyph;
   settings_button_->setIcon(mira_gui::icons::For(Glyph::Settings));
-  refresh_button_->setIcon(mira_gui::icons::For(Glyph::Refresh));
-  downloads_button_->setIcon(mira_gui::icons::For(Glyph::Download));
-  shortcuts_button_->setIcon(mira_gui::icons::For(Glyph::Keyboard));
-  about_button_->setIcon(mira_gui::icons::For(Glyph::Info));
-  top_bar_divider_->setStyleSheet(
-      QString("background: %1;").arg(mira_gui::theme::Current().border.name()));
-  minimize_button_->setIcon(mira_gui::icons::For(Glyph::Minimize));
-  maximize_button_->setIcon(
-      mira_gui::icons::For(isMaximized() ? Glyph::Restore : Glyph::Maximize));
-  close_button_->setIcon(mira_gui::icons::For(Glyph::Close));
   add_games_->setIcon(mira_gui::icons::For(Glyph::Plus, mira_gui::theme::Current().on_accent));
   runners_nav_->setIcon(mira_gui::icons::For(Glyph::Wrench));
   fetch_art_button_->setIcon(mira_gui::icons::For(Glyph::Image));
@@ -642,19 +640,9 @@ void LibraryWindow::ApplyTopBarIcons() {
   UpdateFilterSortSummary();
 }
 
-void LibraryWindow::ToggleMaximize() {
-  if (isMaximized()) {
-    showNormal();
-  } else {
-    showMaximized();
-  }
-}
-
 void LibraryWindow::changeEvent(QEvent* event) {
-  if (event->type() == QEvent::WindowStateChange && maximize_button_ != nullptr) {
-    maximize_button_->setIcon(mira_gui::icons::For(
-        isMaximized() ? mira_gui::icons::Glyph::Restore : mira_gui::icons::Glyph::Maximize));
-    maximize_button_->setToolTip(isMaximized() ? "Restore" : "Maximize");
+  if (event->type() == QEvent::WindowStateChange && top_bar_ != nullptr) {
+    top_bar_->SyncMaximized();
     ScheduleSavePrefs();
   }
   QMainWindow::changeEvent(event);
@@ -728,20 +716,6 @@ bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
       }
       default:
         break;
-    }
-  }
-  // The top bar's own background, plus labels on it (a label passes its
-  // clicks up); a click on a control goes to it instead.
-  if (watched == top_bar_) {
-    if (event->type() == QEvent::MouseButtonPress) {
-      auto* mouse = static_cast<QMouseEvent*>(event);
-      if (mouse->button() == Qt::LeftButton && windowHandle() != nullptr) {
-        windowHandle()->startSystemMove();
-        return true;
-      }
-    } else if (event->type() == QEvent::MouseButtonDblClick) {
-      ToggleMaximize();
-      return true;
     }
   }
   // A recently played row shows its game's hover card, after a tile's dwell.
@@ -883,93 +857,6 @@ void LibraryWindow::ImportDesktopEntries() {
 void LibraryWindow::AddGameManually() {
   mira_gui::AddManualGameDialog dialog(this);
   dialog.exec();
-}
-
-QWidget* LibraryWindow::BuildTopBar() {
-  top_bar_ = new QWidget(this);
-  top_bar_->setObjectName("top_bar");
-  // Catches a press/double-click on the bar's own empty background; see
-  // eventFilter. A click on any child widget never reaches here.
-  top_bar_->installEventFilter(this);
-
-  auto* layout = new QHBoxLayout(top_bar_);
-  layout->setContentsMargins(12, 4, 6, 4);
-  layout->setSpacing(8);
-
-  // Labels pass their clicks up, so the brand drags the window like the bar.
-  auto* badge = new QLabel("M", top_bar_);
-  badge->setObjectName("brand_badge");
-  badge->setFixedSize(22, 22);
-  badge->setAlignment(Qt::AlignCenter);
-  layout->addWidget(badge);
-  auto* title = new QLabel("Mira", top_bar_);
-  title->setObjectName("brand_title");
-  layout->addWidget(title);
-
-  layout->addStretch(1);
-
-  zoom_ = new QSlider(Qt::Horizontal, top_bar_);
-  zoom_->setRange(kMinTileWidth, kMaxTileWidth);
-  zoom_->setValue(tile_width_);
-  zoom_->setMaximumWidth(120);
-  zoom_->setToolTip("Tile size");
-  connect(zoom_, &QSlider::valueChanged, this, &LibraryWindow::Zoom);
-  layout->addWidget(zoom_);
-
-  downloads_button_ = new QToolButton(top_bar_);
-  downloads_button_->setAutoRaise(true);
-  downloads_button_->setToolTip("Activity");
-  // Its count's text is taller than the icon; the bar shouldn't grow for it.
-  downloads_button_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
-  connect(downloads_button_, &QToolButton::clicked, this,
-          [this] { downloads_panel_->ShowBelow(downloads_button_); });
-  layout->addWidget(downloads_button_);
-
-  // Moved from the sidebar's old hamburger menu -- generic actions that fit
-  // the top bar (window chrome) better than a library-focused sidebar.
-  refresh_button_ = new QToolButton(top_bar_);
-  refresh_button_->setAutoRaise(true);
-  refresh_button_->setToolTip("Refresh library");
-  connect(refresh_button_, &QToolButton::clicked, this, [this] { Reload(/*force_scan=*/true); });
-  layout->addWidget(refresh_button_);
-
-  shortcuts_button_ = new QToolButton(top_bar_);
-  shortcuts_button_->setAutoRaise(true);
-  shortcuts_button_->setToolTip("Keyboard shortcuts");
-  connect(shortcuts_button_, &QToolButton::clicked, this, [this] { common_.reference->trigger(); });
-  layout->addWidget(shortcuts_button_);
-
-  about_button_ = new QToolButton(top_bar_);
-  about_button_->setAutoRaise(true);
-  about_button_->setToolTip("About Mira");
-  connect(about_button_, &QToolButton::clicked, this, &LibraryWindow::OpenAbout);
-  layout->addWidget(about_button_);
-
-  top_bar_divider_ = new QWidget(top_bar_);
-  top_bar_divider_->setFixedSize(1, 20);
-  layout->addWidget(top_bar_divider_);
-
-  minimize_button_ = new QToolButton(top_bar_);
-  minimize_button_->setAutoRaise(true);
-  minimize_button_->setToolTip("Minimize");
-  connect(minimize_button_, &QToolButton::clicked, this, &QWidget::showMinimized);
-  layout->addWidget(minimize_button_);
-
-  maximize_button_ = new QToolButton(top_bar_);
-  maximize_button_->setAutoRaise(true);
-  maximize_button_->setToolTip("Maximize");
-  connect(maximize_button_, &QToolButton::clicked, this, &LibraryWindow::ToggleMaximize);
-  layout->addWidget(maximize_button_);
-
-  close_button_ = new QToolButton(top_bar_);
-  close_button_->setAutoRaise(true);
-  close_button_->setObjectName("close_button");
-  close_button_->setToolTip("Close");
-  connect(close_button_, &QToolButton::clicked, this, &QWidget::close);
-  layout->addWidget(close_button_);
-
-  ApplyTopBarIcons();
-  return top_bar_;
 }
 
 QWidget* LibraryWindow::BuildFilterSortPopover() {
@@ -2551,11 +2438,7 @@ QString LibraryWindow::InstallText(const std::string& id) const {
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {
-  const int running = downloads_->RunningCount();
-  downloads_button_->setText(running > 0 ? QString::number(running) : QString());
-  downloads_button_->setToolButtonStyle(running > 0 ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
-  downloads_button_->setToolTip(running == 0 ? QString("Activity")
-                                             : QString("Activity: %1 running").arg(running));
+  top_bar_->SetActivityCount(downloads_->RunningCount());
 
   // That game's row repaints with its new install text.
   if (key.startsWith("game:")) library_->Touch(key.mid(5).toStdString());

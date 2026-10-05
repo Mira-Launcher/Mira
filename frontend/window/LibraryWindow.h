@@ -67,6 +67,7 @@ class RunnersPage;
 class SettingsPanel;
 class SourcePage;
 class TabRow;
+class TopBar;
 struct SourceInfo;
 }
 
@@ -87,7 +88,6 @@ public:
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
 
 private:
-  QWidget* BuildTopBar();
   QWidget* BuildSidebar();
   QWidget* BuildGrid();
   QWidget* BuildLibraryHeader();
@@ -119,7 +119,6 @@ private:
   void QuitOrClose();
   void changeEvent(QEvent* event) override;
   bool eventFilter(QObject* watched, QEvent* event) override;
-  void ToggleMaximize();
   // Redrawn rather than stored: each glyph is painted in the theme's text
   // color, so a theme change has to regenerate them.
   void ApplyTopBarIcons();
@@ -307,7 +306,7 @@ private:
   void HandleGameEvent(const std::string& type, const std::string& data, bool live);
   int FilterRow(const QString& key) const;
 
-  QWidget* top_bar_ = nullptr;
+  mira_gui::TopBar* top_bar_ = nullptr;
   QLineEdit* search_ = nullptr;
   // One row per kFilters entry, each carrying its key in Qt::UserRole and a
   // live count via a custom row widget (see UpdateFilterCounts), which lives
@@ -338,15 +337,6 @@ private:
   QPushButton* settings_button_ = nullptr;
   // Set by "Save and leave", so the save that follows closes Settings.
   bool close_settings_after_save_ = false;
-  // Moved here from the sidebar's old hamburger menu; see BuildTopBar.
-  QToolButton* downloads_button_ = nullptr;
-  QToolButton* refresh_button_ = nullptr;
-  QToolButton* shortcuts_button_ = nullptr;
-  QToolButton* about_button_ = nullptr;
-  QWidget* top_bar_divider_ = nullptr;
-  QToolButton* minimize_button_ = nullptr;
-  QToolButton* maximize_button_ = nullptr;
-  QToolButton* close_button_ = nullptr;
 
   // Library is checked/highlighted whenever content_stack_ shows splitter_
   // (see UpdateLibraryNavActive).

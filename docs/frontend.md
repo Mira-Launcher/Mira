@@ -16,7 +16,7 @@ These hold across every screen; a new one follows them without being told.
 
 ## Windows
 
-`mira-gui` opens on the **grid** (`window/LibraryWindow`): cover tiles, a left sidebar and a custom top bar in place of a native titlebar. The window is frameless. The top bar carries the Mira badge and name; dragging its empty area moves the window, double-clicking the top bar toggles maximize, and the edges resize. Moves and resizes go through `QWindow::startSystemMove`/`startSystemResize` so they work on Wayland and X11.
+`mira-gui` opens on the **grid** (`window/LibraryWindow`): cover tiles, a left sidebar and a custom top bar (`window/TopBar`) in place of a native titlebar. The window is frameless. The top bar carries the Mira badge and name; dragging its empty area moves the window, double-clicking the top bar toggles maximize, and the edges resize. Moves and resizes go through `QWindow::startSystemMove`/`startSystemResize` so they work on Wayland and X11.
 
 ### Library page
 
@@ -99,7 +99,7 @@ sources/   the source list, source pages, their settings card and Manage sources
 runners/   the Runners page
 activity/  the download and job tracker and the Activity panel
 settings/  the Settings screen and the card and row pieces every settings screen shares
-window/    the main window and About
+window/    the main window, its top bar and frameless edge, and About
 dialogs/   modal dialogs
 ```
 
