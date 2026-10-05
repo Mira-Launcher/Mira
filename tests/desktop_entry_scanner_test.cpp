@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <map>
+#include <optional>
 
 #include <json.hpp>
 
@@ -11,23 +13,13 @@
 #include "config/Config.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "store/GameStore.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
-void WriteFile(const fs::path& path, std::string_view contents) {
-  fs::create_directories(path.parent_path());
-  std::ofstream(path) << contents;
-}
 
 // The scanner also walks $XDG_DATA_HOME/applications, $XDG_DATA_DIRS, and
 // the two well-known Flatpak export dirs unconditionally -- on a real
@@ -37,12 +29,13 @@ void WriteFile(const fs::path& path, std::string_view contents) {
 // only this fixture's extra_dirs entry is ever actually scanned.
 // PATH is a fixture dir holding only the commands the entries name, so
 // resolving them doesn't depend on what the machine has installed.
+// All three are put back afterwards, so later tests see the real environment.
 struct Fixture {
   fs::path apps_dir;
   fs::path state_dir;
   fs::path empty_data_home;
   fs::path bin_dir;
-  std::string old_path;
+  std::map<std::string, std::optional<std::string>> saved_env;
   config::Config config;
   store::GameStore games;
   api::EventBus events;
@@ -52,22 +45,32 @@ struct Fixture {
         state_dir(TempDir((std::string(name) + "-state").c_str())),
         empty_data_home(TempDir((std::string(name) + "-empty-data-home").c_str())),
         bin_dir(TempDir((std::string(name) + "-bin").c_str())),
-        old_path(std::getenv("PATH") != nullptr ? std::getenv("PATH") : ""),
         config(state_dir / "settings.toml"),
         games(state_dir / "games.toml") {
+    for (const char* var : {"XDG_DATA_HOME", "XDG_DATA_DIRS", "PATH"}) {
+      const char* value = std::getenv(var);
+      saved_env[var] = value != nullptr ? std::optional<std::string>(value) : std::nullopt;
+    }
     setenv("XDG_DATA_HOME", empty_data_home.string().c_str(), 1);
     setenv("XDG_DATA_DIRS", empty_data_home.string().c_str(), 1);
     setenv("PATH", bin_dir.c_str(), 1);
     for (const char* command : {"flatpak", "first-game", "second-game", "app-game"}) {
-      WriteFile(bin_dir / command, "#!/bin/sh\n");
-      fs::permissions(bin_dir / command, fs::perms::owner_exec, fs::perm_options::add);
+      test::Touch(bin_dir / command, "#!/bin/sh\n", /*executable=*/true);
     }
     config.Load();
     REQUIRE(config.Set("desktop_import.extra_dirs", nlohmann::json::array({apps_dir.string()})).has_value());
     games.Load();
   }
 
-  ~Fixture() { setenv("PATH", old_path.c_str(), 1); }
+  ~Fixture() {
+    for (const auto& [var, value] : saved_env) {
+      if (value) {
+        setenv(var.c_str(), value->c_str(), 1);
+      } else {
+        unsetenv(var.c_str());
+      }
+    }
+  }
 };
 
 }  // namespace
@@ -76,45 +79,45 @@ TEST_CASE("DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain
           "skips Mira's own, Steam's, NoDisplay, and non-Application entries") {
   Fixture fx("desktop-scan-candidates");
 
-  WriteFile(fx.apps_dir / "com.example.App.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Example App\n"
-            "Icon=com.example.App\n"
-            "Exec=flatpak run --branch=stable --command=example com.example.App @@u %u @@\n"
-            "X-Flatpak=com.example.App\n");
+  test::Touch(fx.apps_dir / "com.example.App.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Example App\n"
+              "Icon=com.example.App\n"
+              "Exec=flatpak run --branch=stable --command=example com.example.App @@u %u @@\n"
+              "X-Flatpak=com.example.App\n");
 
-  WriteFile(fx.apps_dir / "native-game.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Native Game\n"
-            "Exec=\"/opt/nativegame/game\" --fullscreen\n");
+  test::Touch(fx.apps_dir / "native-game.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Native Game\n"
+              "Exec=\"/opt/nativegame/game\" --fullscreen\n");
 
-  WriteFile(fx.apps_dir / "mira-celeste.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Celeste\n"
-            "Exec=mira launch celeste\n"
-            "X-Mira-Game-Id=celeste\n");
+  test::Touch(fx.apps_dir / "mira-celeste.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Celeste\n"
+              "Exec=mira launch celeste\n"
+              "X-Mira-Game-Id=celeste\n");
 
-  WriteFile(fx.apps_dir / "steam-game.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Some Steam Game\n"
-            "Exec=steam steam://rungameid/12345\n");
+  test::Touch(fx.apps_dir / "steam-game.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Some Steam Game\n"
+              "Exec=steam steam://rungameid/12345\n");
 
-  WriteFile(fx.apps_dir / "hidden.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Hidden Thing\n"
-            "Exec=/usr/bin/hiddenthing\n"
-            "NoDisplay=true\n");
+  test::Touch(fx.apps_dir / "hidden.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Hidden Thing\n"
+              "Exec=/usr/bin/hiddenthing\n"
+              "NoDisplay=true\n");
 
-  WriteFile(fx.apps_dir / "not-an-app.desktop",
-            "[Desktop Entry]\n"
-            "Type=Link\n"
-            "Name=A Link\n"
-            "URL=https://example.com\n");
+  test::Touch(fx.apps_dir / "not-an-app.desktop",
+              "[Desktop Entry]\n"
+              "Type=Link\n"
+              "Name=A Link\n"
+              "URL=https://example.com\n");
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto candidates = scanner.ListCandidates();
@@ -147,12 +150,12 @@ TEST_CASE("DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain
 TEST_CASE("DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<app-id> convention") {
   Fixture fx("desktop-scan-import-flatpak");
 
-  WriteFile(fx.apps_dir / "com.example.App.desktop",
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Example App\n"
-            "Exec=flatpak run com.example.App\n"
-            "X-Flatpak=com.example.App\n");
+  test::Touch(fx.apps_dir / "com.example.App.desktop",
+              "[Desktop Entry]\n"
+              "Type=Application\n"
+              "Name=Example App\n"
+              "Exec=flatpak run com.example.App\n"
+              "X-Flatpak=com.example.App\n");
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto summary = scanner.Import({"com.example.App"});
@@ -171,14 +174,12 @@ TEST_CASE("DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<
 
 TEST_CASE("DesktopEntryScanner: Import adds a plain native entry, and re-importing updates rather than duplicates") {
   Fixture fx("desktop-scan-import-native");
-  fs::create_directories(fx.apps_dir.parent_path() / "opt" / "nativegame");
-
   const fs::path exe_dir = TempDir("desktop-scan-import-native-exe");
-  WriteFile(fx.apps_dir / "native-game.desktop", std::format("[Desktop Entry]\n"
-                                                              "Type=Application\n"
-                                                              "Name=Native Game\n"
-                                                              "Exec=\"{}/game\" --fullscreen\n",
-                                                              exe_dir.string()));
+  test::Touch(fx.apps_dir / "native-game.desktop", std::format("[Desktop Entry]\n"
+                                                               "Type=Application\n"
+                                                               "Name=Native Game\n"
+                                                               "Exec=\"{}/game\" --fullscreen\n",
+                                                               exe_dir.string()));
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto first = scanner.Import({"native-game"});
@@ -198,8 +199,10 @@ TEST_CASE("DesktopEntryScanner: Import adds a plain native entry, and re-importi
 
 TEST_CASE("DesktopEntryScanner: two bare-command entries import as two games and stay listed until imported") {
   Fixture fx("desktop-scan-import-bare");
-  WriteFile(fx.apps_dir / "first.desktop", "[Desktop Entry]\nType=Application\nName=First\nExec=first-game\n");
-  WriteFile(fx.apps_dir / "second.desktop", "[Desktop Entry]\nType=Application\nName=Second\nExec=second-game\n");
+  test::Touch(fx.apps_dir / "first.desktop",
+              "[Desktop Entry]\nType=Application\nName=First\nExec=first-game\n");
+  test::Touch(fx.apps_dir / "second.desktop",
+              "[Desktop Entry]\nType=Application\nName=Second\nExec=second-game\n");
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   REQUIRE(scanner.Import({"first"}).has_value());
@@ -222,7 +225,8 @@ TEST_CASE("DesktopEntryScanner: two bare-command entries import as two games and
 
 TEST_CASE("DesktopEntryScanner: an entry whose command isn't installed isn't offered") {
   Fixture fx("desktop-scan-missing-command");
-  WriteFile(fx.apps_dir / "gone.desktop", "[Desktop Entry]\nType=Application\nName=Gone\nExec=not-installed\n");
+  test::Touch(fx.apps_dir / "gone.desktop",
+              "[Desktop Entry]\nType=Application\nName=Gone\nExec=not-installed\n");
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto candidates = scanner.ListCandidates();
@@ -232,9 +236,10 @@ TEST_CASE("DesktopEntryScanner: an entry whose command isn't installed isn't off
 
 TEST_CASE("DesktopEntryScanner: re-importing an app imported with a bare command updates it to an absolute one") {
   Fixture fx("desktop-scan-import-legacy");
-  WriteFile(fx.apps_dir / "com.example.App.desktop",
-            "[Desktop Entry]\nType=Application\nName=Example App\nExec=flatpak run com.example.App\n"
-            "X-Flatpak=com.example.App\n");
+  test::Touch(
+      fx.apps_dir / "com.example.App.desktop",
+      "[Desktop Entry]\nType=Application\nName=Example App\nExec=flatpak run com.example.App\n"
+      "X-Flatpak=com.example.App\n");
   model::Game legacy;
   legacy.id = "example-app";
   legacy.source = "desktop-entry";
@@ -252,7 +257,8 @@ TEST_CASE("DesktopEntryScanner: re-importing an app imported with a bare command
 
 TEST_CASE("DesktopEntryScanner: an imported app gets no Mira menu entry by default, and keeps a user's choice") {
   Fixture fx("desktop-scan-import-menu");
-  WriteFile(fx.apps_dir / "app.desktop", "[Desktop Entry]\nType=Application\nName=App\nExec=app-game\n");
+  test::Touch(fx.apps_dir / "app.desktop",
+              "[Desktop Entry]\nType=Application\nName=App\nExec=app-game\n");
 
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto added = scanner.Import({"app"});

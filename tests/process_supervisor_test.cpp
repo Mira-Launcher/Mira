@@ -1,6 +1,4 @@
 #include <doctest.h>
-
-#include <sstream>
 #include <signal.h>
 #include <sys/wait.h>
 
@@ -9,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <memory>
+#include <sstream>
 #include <thread>
 
 #include "api/EventBus.h"
@@ -18,18 +18,13 @@
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "store/GameStore.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
 // Waits up to `timeout` for `predicate()` to become true, polling rather
 // than sleeping the whole timeout. These tests spawn real subprocesses, so
 // exact timing isn't guaranteed.
@@ -97,6 +92,35 @@ TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens th
   CHECK(crashed.value("exit_code", 0) == 3);
   CHECK_FALSE(crashed.value("hint", "").empty());
   CHECK(crashed["fix"] == nlohmann::json{{"kind", "game"}, {"target", "crasher"}, {"step", "log"}});
+}
+
+TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") {
+  const fs::path state = TempDir("proc-quit-state");
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  api::EventBus events;
+  auto supervisor = std::make_unique<proc::ProcessSupervisor>(games, events);
+
+  model::Game game;
+  game.id = "still-playing";
+  REQUIRE(games.Upsert(game).has_value());
+  Command command;
+  command.argv = {"sleep", "30"};
+  command.env["WINEPREFIX"] = (state / "pfx").string();  // to find the game again below
+  REQUIRE(supervisor->Launch(game, command).has_value());
+  REQUIRE(WaitFor([&] { return !proc::FindPrefixProcesses((state / "pfx").string()).empty(); },
+                  std::chrono::seconds(5)));
+
+  const auto started = std::chrono::steady_clock::now();
+  supervisor.reset();
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(500));
+  const auto left = proc::FindPrefixProcesses((state / "pfx").string());
+  CHECK_FALSE(left.empty());
+
+  for (pid_t pid : left) {
+    ::kill(pid, SIGKILL);
+    ::waitpid(pid, nullptr, 0);
+  }
 }
 
 TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is already running") {
@@ -320,7 +344,7 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   // waitpid() this (it isn't this process's child), which is exactly the
   // case it exists to handle.
   Command command;
-  command.argv = {"sh", "-c", "sleep 2"};
+  command.argv = {"sh", "-c", "sleep 30"};
   auto pid = runner::SpawnDetached(command);
   REQUIRE(pid.has_value());
 
@@ -338,6 +362,7 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
 
   CHECK(supervisor.IsRunning("celeste"));
 
+  ::kill(*pid, SIGKILL);
   ::waitpid(*pid, nullptr, 0);  // reap it ourselves; Reconcile's watcher only polls kill(pid, 0)
   CHECK(WaitFor([&] { return !supervisor.IsRunning("celeste"); }, std::chrono::seconds(5)));
 }

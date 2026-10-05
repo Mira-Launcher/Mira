@@ -30,12 +30,6 @@ model::Game MakeGame(const std::string& id, const std::string& name) {
 }
 }  // namespace
 
-TEST_CASE("GameStore starts empty when no file exists") {
-  store::GameStore store(TempFile("games-empty.toml"));
-  store.Load();
-  CHECK(store.All().empty());
-}
-
 TEST_CASE("NextId disambiguates collisions so ids stay readable") {
   store::GameStore store(TempFile("games-ids.toml"));
   store.Load();

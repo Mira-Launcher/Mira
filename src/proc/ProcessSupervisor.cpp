@@ -191,7 +191,11 @@ ProcessSupervisor::ProcessSupervisor(store::GameStore& games, api::EventBus& eve
     : games_(games), events_(events), stop_timeout_s_(stop_timeout_s) {}
 
 ProcessSupervisor::~ProcessSupervisor() {
-  stopping_.store(true, std::memory_order_relaxed);
+  {
+    const std::lock_guard lock(stop_mutex_);
+    stopping_.store(true, std::memory_order_relaxed);
+  }
+  stop_wake_.notify_all();
   // Games are deliberately left running: quitting the daemon shouldn't kill
   // what the player is playing. The watchers just stop watching.
   std::map<std::string, std::thread> watchers;
@@ -207,6 +211,12 @@ ProcessSupervisor::~ProcessSupervisor() {
   for (std::thread& thread : retired) {
     if (thread.joinable()) thread.join();
   }
+}
+
+bool ProcessSupervisor::PollWaitStopping() {
+  std::unique_lock lock(stop_mutex_);
+  const auto stopped = [this] { return stopping_.load(std::memory_order_relaxed); };
+  return stop_wake_.wait_for(lock, kPollInterval, stopped);
 }
 
 // A record still unfinished once its mira-run is gone (killed with the game) has only its start; close it out with the elapsed time.
@@ -394,7 +404,7 @@ void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t start
       });
       if (checkpoint) credited = elapsed;
     }
-    std::this_thread::sleep_for(kPollInterval);
+    if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
@@ -489,7 +499,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
         kill_deadlines_.erase(deadline);
       }
     }
-    std::this_thread::sleep_for(kPollInterval);
+    if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
@@ -571,7 +581,7 @@ void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_p
                                             std::filesystem::path session_path) {
   // Not this mirad's child, so waitpid() can't work -- poll liveness instead.
   while (!stopping_.load(std::memory_order_relaxed) && ::kill(wrapper_pid, 0) == 0) {
-    std::this_thread::sleep_for(kPollInterval);
+    if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
@@ -699,7 +709,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
       external_.erase(game_id);
       return;
     }
-    std::this_thread::sleep_for(kPollInterval);
+    if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
@@ -744,7 +754,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
       auto checkpoint = games_.Update(game_id, [&](model::Game& game) { game.play_seconds += delta; });
       if (checkpoint) credited = elapsed;
     }
-    std::this_thread::sleep_for(kPollInterval);
+    if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 

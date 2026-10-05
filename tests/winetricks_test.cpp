@@ -9,6 +9,7 @@
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
@@ -68,4 +69,44 @@ TEST_CASE("RunTricksVerb rejects an unprovisioned prefix") {
   CHECK(ran.error().code == "not_provisioned");
 
   fs::remove_all(data_dir);
+}
+
+TEST_CASE("RunTricksVerb runs winetricks unattended against the game's own Wine and prefix") {
+  test::TestEnv env("tricks-run");
+  const fs::path wine = env.dir / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine";
+  test::Touch(wine, "#!/bin/sh\necho wine-9.0\n", /*executable=*/true);
+  test::Touch(wine.parent_path() / "wineserver", "", /*executable=*/true);
+  const fs::path bin = env.dir / "bin";
+  const fs::path log = env.dir / "winetricks.log";
+  test::Touch(bin / "winetricks",
+              "#!/bin/sh\necho \"$WINE|$WINESERVER|$WINEPREFIX|$*\" >> '" + log.string() +
+                  "'\n[ \"$2\" = broken ] && exit 3\nexit 0\n",
+              /*executable=*/true);
+  const test::PathPrepend path(bin);
+
+  model::Game game;
+  game.id = "celeste";
+  game.runner_ref = "wine:wine-9.0-amd64";
+  game.data_dir = (env.dir / "prefixes" / "celeste").string();
+  fs::create_directories(fs::path(game.data_dir) / "drive_c");
+  const runner::RunnerRegistry registry(env.config);
+
+  REQUIRE(runner::RunTricksVerb(registry, game, "corefonts"));
+  const auto failed = runner::RunTricksVerb(registry, game, "broken");
+  REQUIRE_FALSE(failed);
+  CHECK(failed.error().code == "tricks_failed");
+  // Anything that could pass as an option or a second command never reaches winetricks.
+  for (const char* verb : {"-q", "corefonts;rm", "a b", ""}) {
+    CHECK(runner::RunTricksVerb(registry, game, verb).error().code == "invalid_verb");
+  }
+
+  std::ifstream in(log);
+  std::string first;
+  std::getline(in, first);
+  const std::string wineserver = (wine.parent_path() / "wineserver").string();
+  CHECK(first ==
+        wine.string() + "|" + wineserver + "|" + game.data_dir + "|--unattended corefonts");
+  std::string second, third;
+  std::getline(in, second);
+  CHECK_FALSE(std::getline(in, third));  // the two valid verbs, nothing else
 }

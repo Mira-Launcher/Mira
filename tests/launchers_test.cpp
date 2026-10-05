@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "launchers/Launchers.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
@@ -25,6 +26,60 @@ TEST_CASE("launchers: Ubisoft installs are read from system.reg") {
   const std::string dir = installs.at("5595").at("InstallDir");
   CHECK(launchers::HostPath(prefix, dir) ==
         prefix / "drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/Trackmania");
+}
+
+TEST_CASE("launchers: Battle.net and EA games are found in their prefixes, and go missing") {
+  test::TestEnv env("launcher-import");
+  const fs::path battlenet = env.dir / "prefixes" / "battle-net";
+  const fs::path ea = env.dir / "prefixes" / "ea";
+  test::Touch(battlenet / "drive_c" / "Program Files (x86)" / "Hearthstone" / "Hearthstone.exe");
+  test::Touch(battlenet / "drive_c" / "Program Files" / "Diablo IV" / "Diablo IV.exe");
+  const fs::path titanfall = ea / "drive_c" / "Program Files" / "EA Games" / "Titanfall2";
+  test::Touch(titanfall / "Titanfall2.exe");
+  test::Touch(titanfall / "__Installer" / "installerdata.xml",
+              "<DiPManifest>"
+              "<contentIDs><contentID>1063734</contentID><contentID>1065733</contentID>"
+              "</contentIDs>"
+              "<gameTitles><gameTitle locale=\"en_US\">Titanfall 2</gameTitle></gameTitles>"
+              "</DiPManifest>");
+
+  for (const auto& [id, prefix] : {std::pair{"battlenet", battlenet}, std::pair{"ea", ea}}) {
+    model::Game host;
+    host.id = "launcher-" + std::string(id);
+    host.source = "launcher";
+    host.source_ref = id;
+    host.data_dir = prefix.string();
+    host.status = model::GameStatus::Ready;
+    REQUIRE(env.games.Upsert(host));
+  }
+
+  const auto import = [&env](const char* launcher) {
+    return launchers::Import(env.config, env.games, env.events, *launchers::Find(launcher));
+  };
+  const auto blizzard = import("battlenet");
+  REQUIRE(blizzard);
+  CHECK(blizzard->added == 2);
+  const auto hearthstone = env.games.Find("battlenet-wtcg");
+  REQUIRE(hearthstone);
+  CHECK(hearthstone->name == "Hearthstone");
+  CHECK(hearthstone->source_ref == "WTCG");
+  CHECK(hearthstone->exe_path == "Hearthstone.exe");
+  CHECK(env.games.Find("battlenet-fen"));
+
+  REQUIRE(import("ea"));
+  const auto game = env.games.Find("ea-titanfall2");
+  REQUIRE(game);
+  CHECK(game->name == "Titanfall 2");
+  CHECK(game->source_ref == "1063734,1065733");
+
+  // Uninstalled through Battle.net itself.
+  fs::remove_all(battlenet / "drive_c" / "Program Files" / "Diablo IV");
+  REQUIRE(import("battlenet"));
+  CHECK(env.games.Find("battlenet-fen")->status == model::GameStatus::Missing);
+  CHECK(env.games.Find("battlenet-wtcg")->status == model::GameStatus::Ready);
+
+  // Nothing to import from a launcher that isn't installed.
+  CHECK_FALSE(import("ubisoft"));
 }
 
 TEST_CASE("launchers: games are matched by their folder as Wine shows it") {

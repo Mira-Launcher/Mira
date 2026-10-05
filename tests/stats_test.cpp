@@ -7,18 +7,13 @@
 
 #include "core/TomlJson.h"
 #include "proc/Stats.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
 proc::SessionRecord MakeRecord(const std::string& game_id, std::int64_t started_at) {
   proc::SessionRecord record;
   record.game_id = game_id;

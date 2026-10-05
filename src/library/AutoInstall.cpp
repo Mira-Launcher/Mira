@@ -125,6 +125,25 @@ std::set<fs::path> InstallDirs(const std::vector<std::string>& parents, const fs
   return dirs;
 }
 
+bool HoldsFiles(const fs::path& dir) {
+  std::error_code ec;
+  for (const auto& entry : fs::directory_iterator(dir, ec)) {
+    if (entry.is_regular_file(ec)) return true;
+  }
+  return false;
+}
+
+// A publisher's folder ("Program Files/Ubisoft/<Game>") holds only folders; the game's own is the
+// first one on the way to its executable that holds files.
+fs::path GameFolder(const fs::path& dir, const fs::path& exe_rel_path) {
+  fs::path folder = dir;
+  for (const fs::path& part : exe_rel_path.parent_path()) {
+    if (HoldsFiles(folder)) break;
+    folder /= part;
+  }
+  return folder;
+}
+
 std::optional<model::Candidate> FirstGameExe(const Detector::Result& detected, const fs::path& root,
                                              const fs::path& installer) {
   std::error_code ec;
@@ -218,7 +237,13 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     if (before.contains(dir)) continue;
     detected = detector.Detect(dir);
     exe = FirstGameExe(detected, dir, installer);
-    if (exe) done.install_path = dir.string();
+    if (!exe) continue;
+    const fs::path folder = GameFolder(dir, exe->rel_path);
+    if (folder != dir) {
+      detected = detector.Detect(folder);
+      exe = FirstGameExe(detected, folder, installer);
+    }
+    if (exe) done.install_path = folder.string();
   }
   if (!exe) {
     return Err("no_executable", "the installer finished, but Mira couldn't find the installed game",
@@ -262,9 +287,15 @@ std::optional<InstalledApp> NewInstall(const config::Config& config, const fs::p
   std::optional<InstalledApp> found;
   for (const fs::path& dir : InstallFolders(config, prefix)) {
     if (before.contains(dir) || kWineFolders.contains(dir.filename().string())) continue;
-    const Detector::Result detected = detector.Detect(dir);
-    const auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
-    if (exe != detected.candidates.end()) return InstalledApp{dir, exe->rel_path};
+    Detector::Result detected = detector.Detect(dir);
+    auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
+    if (exe != detected.candidates.end()) {
+      const fs::path folder = GameFolder(dir, exe->rel_path);
+      if (folder == dir) return InstalledApp{dir, exe->rel_path};
+      detected = detector.Detect(folder);
+      exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
+      if (exe != detected.candidates.end()) return InstalledApp{folder, exe->rel_path};
+    }
     if (!found) found = InstalledApp{dir, ""};
   }
   return found;
@@ -313,8 +344,10 @@ bool AutoInstalls(const config::Config& config, const model::Game& game) {
 
 void AdoptInstallFolder(model::Game& game, const std::string& install_path) {
   if (install_path.empty() || install_path == game.install_path) return;
-  // Still the name cleaned from the installer's folder, not one the user gave: take the installed folder's.
-  if (game.name == strings::CleanGameName(fs::path(game.install_path).filename().string())) {
+  // Still the name cleaned from the installer's folder, not one the user gave: take the installed
+  // folder's. Cleaning the stored name too matches an older CleanGameName's ("setup crate escape").
+  if (strings::CleanGameName(game.name) ==
+      strings::CleanGameName(fs::path(game.install_path).filename().string())) {
     game.name = strings::CleanGameName(fs::path(install_path).filename().string());
   }
   if (game.installer_dir.empty()) game.installer_dir = game.install_path;
@@ -362,7 +395,7 @@ void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& 
   events.Publish("game.install.finished", {{"id", id}});
   AnnounceInstallerLeftover(events, *done);
   // Its art and store info were looked up by the installer's name.
-  if (fetches != nullptr) fetches->Enqueue(config, events, *done, /*force=*/true);
+  if (fetches != nullptr) fetches->Enqueue(config, events, *done);
 }
 
 bool BeginInstall(const std::string& id) {

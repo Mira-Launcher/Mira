@@ -40,6 +40,36 @@ TEST_CASE("DownloadTracker follows a store install from start to finish") {
   CHECK(tracker.RunningCount() == 0);
 }
 
+TEST_CASE("DownloadTracker shows a store download's progress and follows a game's own installer") {
+  DownloadTracker tracker;
+  tracker.HandleEvent(
+      "library.install.progress",
+      R"({"source": "gog", "ref": "1", "progress": 0.425, "eta": 3725, "bps": 1048576})");
+  const DownloadTracker::Entry* download = tracker.Find("gog:1");
+  REQUIRE(download != nullptr);
+  CHECK(download->state == State::Running);
+  CHECK(download->progress == doctest::Approx(0.425));
+  // Time left rounds up to whole minutes, and past an hour reads in hours.
+  const QString full = DownloadTracker::ProgressText(*download, /*short_form=*/false);
+  CHECK(full.contains("43%"));
+  CHECK(full.contains("1 h 3 min left"));
+  CHECK(full.contains("/s"));
+  CHECK_FALSE(DownloadTracker::ProgressText(*download, /*short_form=*/true).contains("/s"));
+  tracker.HandleEvent("library.install.progress",
+                      R"({"source": "gog", "ref": "1", "progress": 0.9, "eta": 30})");
+  CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1"), true).contains("1 min left"));
+
+  CHECK(tracker.HandleEvent("game.install.started", R"({"id": "celeste"})"));
+  const QString game_key =
+      DownloadTracker::KeyFor(DownloadTracker::Kind::Game, QString(), "celeste");
+  CHECK(StateOf(tracker, game_key) == State::Running);
+  tracker.HandleEvent("game.install.failed", R"({"id": "celeste", "error": "the installer quit",
+                                                 "fix": {"kind": "game", "target": "celeste", "step": "install"}})");
+  CHECK(StateOf(tracker, game_key) == State::Failed);
+  CHECK(tracker.Find(game_key)->error.fix.step == "install");
+  CHECK(tracker.RunningCount() == 1);
+}
+
 TEST_CASE("DownloadTracker keeps the newest activity first and tells kinds apart") {
   DownloadTracker tracker;
   tracker.source_name = [](const QString& source) { return source == "battlenet" ? "Battle.net" : source; };

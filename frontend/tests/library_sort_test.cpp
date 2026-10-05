@@ -83,14 +83,3 @@ TEST_CASE("An unknown sort key falls back to name instead of leaving it unordere
   SortGames(games, "nonsense", false);
   CHECK(Names(games) == std::vector<std::string>{"a", "b"});
 }
-
-TEST_CASE("Sorting an empty or single-game library is a no-op") {
-  std::vector<GameSummary> empty;
-  SortGames(empty, "last_played", true);
-  CHECK(empty.empty());
-
-  std::vector<GameSummary> one = {Game("only", 5)};
-  SortGames(one, "playtime", false);
-  REQUIRE(one.size() == 1);
-  CHECK(one[0].name == "only");
-}

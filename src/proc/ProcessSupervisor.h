@@ -3,16 +3,15 @@
 #include <sys/types.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <functional>
 #include <map>
-#include <set>
 #include <mutex>
 #include <optional>
-#include <optional>
+#include <set>
 #include <string>
 #include <thread>
-#include <utility>
 #include <utility>
 #include <vector>
 
@@ -149,6 +148,11 @@ private:
   // Watchers replaced by a relaunch of the same game; joined at destruction.
   std::vector<std::thread> retired_;
   std::atomic<bool> stopping_{false};
+  std::mutex stop_mutex_;
+  std::condition_variable stop_wake_;  // ends a watcher's poll wait as soon as stopping_ is set
+
+  // Waits one poll interval; true once the supervisor is shutting down.
+  bool PollWaitStopping();
 };
 
 }  // namespace mira::proc

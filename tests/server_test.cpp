@@ -5,10 +5,14 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <memory>
+#include <sstream>
 #include <thread>
 
 #include <json.hpp>
@@ -16,83 +20,19 @@
 #include "api/EventBus.h"
 #include "api/Server.h"
 #include "config/Config.h"
+#include "config/Schema.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/GameStore.h"
+#include "support/LiveServer.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::AwaitJob;
+using test::LiveServer;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
-// A long request answers 202 {job}; this waits for the job and returns it
-// as GET /v1/jobs/{id} shows it once done (`state`, then `result` or `error`).
-nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started) {
-  REQUIRE(started != nullptr);
-  REQUIRE(started->status == 202);
-  const std::string id = nlohmann::json::parse(started->body).value("job", "");
-  REQUIRE_FALSE(id.empty());
-  for (int attempt = 0; attempt < 300; ++attempt) {
-    auto job = client.Get("/v1/jobs/" + id);
-    REQUIRE(job != nullptr);
-    nlohmann::json state = nlohmann::json::parse(job->body);
-    if (state.value("state", "") != "running") return state;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  FAIL("job never finished");
-  return {};
-}
-
-// Runs a real Server over a real UDS socket for the lifetime of the test,
-// PATCH /v1/games/{id} env handling is otherwise only ever exercised by hand
-// over curl/the CLI, which is exactly the kind of "looks right, isn't" gap
-// this project has repeatedly found by testing real behavior instead.
-class LiveServer {
-public:
-  explicit LiveServer(const fs::path& state_dir)
-      : config_(state_dir / "settings.toml"), games_(state_dir / "games.toml"),
-        socket_path_(state_dir / "mirad.sock"), server_(config_, games_, events_) {
-    config_.Load();
-    games_.Load();
-    thread_ = std::thread([this] { [[maybe_unused]] auto _ = server_.Serve(socket_path_); });
-    // Serve() binds synchronously before it blocks accepting, but the thread
-    // itself needs a moment to actually start running; poll for the socket
-    // file rather than a fixed sleep.
-    for (int i = 0; i < 200 && !fs::exists(socket_path_); ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-  }
-
-  ~LiveServer() {
-    server_.Stop();
-    if (thread_.joinable()) thread_.join();
-  }
-
-  httplib::Client Client() {
-    httplib::Client client(socket_path_.string(), 80);
-    client.set_address_family(AF_UNIX);
-    return client;
-  }
-
-  store::GameStore& games() { return games_; }
-  const fs::path& socket_path() const { return socket_path_; }
-  const config::Config& config() const { return config_; }
-  config::Config& MutableConfig() { return config_; }
-
-private:
-  config::Config config_;
-  store::GameStore games_;
-  api::EventBus events_;
-  fs::path socket_path_;
-  api::Server server_;
-  std::thread thread_;
-};
 
 // Polling POST .../stop is the only externally-visible "has this launch
 // actually finished yet" signal available over the API (ProcessSupervisor's
@@ -356,7 +296,6 @@ TEST_CASE("A game record lists its cached art slots, with a version that changes
 TEST_CASE("POST /v1/games/metadata/refresh is a job that reports each known game's outcome") {
   LiveServer server(TempDir("server-refresh-many"));
   // Offline: with no SteamGridDB key and no lookup by name, a non-Steam fetch fails at once.
-  REQUIRE(server.MutableConfig().Set("metadata.steam_art_by_name", false).has_value());
   model::Game game;
   game.id = "celeste";
   game.name = "Celeste";
@@ -727,6 +666,7 @@ TEST_CASE("Artwork thumb routes validate the batch and serve only a cached previ
 
 TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it when queuing") {
   LiveServer server(TempDir("server-library-artwork"));
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
 
   const fs::path artwork_dir = metadata::ArtworkDir(server.config(), "epic-Fortnite");
   fs::create_directories(artwork_dir);
@@ -964,24 +904,23 @@ TEST_CASE("POST /v1/library/relocate with ids moves only those games") {
   CHECK(fs::exists(elsewhere / "left" / "run.sh"));
 }
 
-TEST_CASE("DELETE /v1/runners/{reference} refuses a path outside every configured search root") {
+TEST_CASE("DELETE /v1/runners/{reference} refuses the system Wine, outside every search root") {
+  // A stand-in system wine first on PATH, so this runs whether or not the machine has Wine.
+  const fs::path bin = TempDir("server-runner-delete-outside-bin");
+  test::Touch(bin / "wine", "#!/bin/sh\necho wine-9.0\n", /*executable=*/true);
+  const test::PathPrepend path(bin);
   LiveServer server(TempDir("server-runner-delete-outside"));
   httplib::Client client = server.Client();
 
   auto listed = client.Get("/v1/runners");
   REQUIRE(listed != nullptr);
-  const bool has_system_wine = listed->body.find("\"wine:system\"") != std::string::npos;
-  INFO("has_system_wine=", has_system_wine, " (depends on whether this machine has wine installed)");
+  REQUIRE(listed->body.find("\"wine:system\"") != std::string::npos);
 
-  // wine:system is discovered via PATH, not wine_search_paths -- must never
-  // be deletable, since that's the real system wine binary. Only makes
-  // sense to check when there's a real one to try against.
-  if (has_system_wine) {
-    auto deleted = client.Delete("/v1/runners/wine:system");
-    REQUIRE(deleted != nullptr);
-    CHECK(deleted->status == 400);
-    CHECK(deleted->body.find("path_outside_root") != std::string::npos);
-  }
+  auto deleted = client.Delete("/v1/runners/wine:system");
+  REQUIRE(deleted != nullptr);
+  CHECK(deleted->status == 400);
+  CHECK(deleted->body.find("path_outside_root") != std::string::npos);
+  CHECK(fs::exists(bin / "wine"));
 }
 
 TEST_CASE("DELETE /v1/runners/{reference} rejects a kind with no separate builds, or a non-concrete name") {
@@ -1168,6 +1107,45 @@ TEST_CASE("POST /v1/games/{id}/finish-install adopts a program installed in the 
   CHECK(adopted->exe_path == "app.exe");
 }
 
+TEST_CASE("finish-install looks up the moved game's art only while automatic metadata is on") {
+  LiveServer server(TempDir("server-adopt-metadata-state"));
+  // No SteamGridDB key and no Steam lookup, so each fetch that runs fails offline with
+  // game.metadata_failed.
+  REQUIRE(server.MutableConfig().Set("metadata.steam_art_by_name", false).has_value());
+  httplib::Client client = server.Client();
+
+  const auto adopt = [&](const std::string& id) {
+    const fs::path prefix = TempDir("server-adopt-metadata-" + id);
+    const fs::path app = prefix / "drive_c" / "Program Files" / "App";
+    fs::create_directories(app);
+    std::ofstream(app / "app.exe") << "app";
+    model::Game game;
+    game.id = id;
+    game.name = "Setup";
+    game.install_path = TempDir("server-adopt-metadata-game-" + id).string();
+    game.exe_path = "Setup.exe";
+    game.data_dir = prefix.string();
+    game.platform = model::Platform::Windows;
+    game.status = model::GameStatus::NeedsInstall;
+    REQUIRE(server.games().Upsert(game));
+    auto res =
+        client.Post("/v1/games/" + id + "/finish-install",
+                    nlohmann::json{{"install_path", app.string()}, {"exe_path", "app.exe"}}.dump(),
+                    "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    server.server().MetadataQueue().WaitIdle();
+    return std::ranges::any_of(server.events().Since(0), [&](const model::Event& event) {
+      return event.type == "game.metadata_failed" && event.payload.value("id", std::string()) == id;
+    });
+  };
+
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", false).has_value());
+  CHECK_FALSE(adopt("off"));
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
+  CHECK(adopt("on"));
+}
+
 TEST_CASE("POST /v1/games/{id}/install refuses a game that isn't needs_install") {
   LiveServer server(TempDir("server-install-ready-state"));
   model::Game game;
@@ -1224,4 +1202,243 @@ TEST_CASE("PATCH /v1/config merges the frontend table, and a null deletes that k
   const nlohmann::json frontend = nlohmann::json::parse(config->body)["frontend"];
   CHECK_FALSE(frontend.contains("tile_radius"));
   CHECK(frontend.value("theme", "") == "mira-dark");
+}
+
+TEST_CASE("A game's settings override the global ones, all or nothing, until set back to null") {
+  LiveServer server(TempDir("server-game-config"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+  const auto setting = [&](const std::string& key) {
+    auto res = client.Get("/v1/games/celeste/config");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body)[key];
+  };
+  const auto patch = [&](const std::string& body) {
+    auto res = client.Patch("/v1/games/celeste/config", body, "application/json");
+    REQUIRE(res != nullptr);
+    return res->status;
+  };
+
+  CHECK(patch(R"({"launch.gamemode": true, "launch.log_max_mb": 10})") == 200);
+  CHECK(setting("launch.gamemode")["layer"] == "game");
+  CHECK(setting("launch.gamemode")["value"] == true);
+  CHECK_FALSE(setting("library_roots")["overridable"].get<bool>());
+
+  // A daemon-wide key in the batch rejects all of it.
+  CHECK(patch(R"({"launch.log_max_mb": 20, "library_roots": []})") == 400);
+  CHECK(setting("launch.log_max_mb")["value"] == 10);
+
+  CHECK(patch(R"({"launch.gamemode": null})") == 200);
+  CHECK(setting("launch.gamemode")["layer"] != "game");
+
+  auto missing = client.Get("/v1/games/nope/config");
+  REQUIRE(missing != nullptr);
+  CHECK(missing->status == 404);
+}
+
+TEST_CASE("Running a picked program in a game with no prefix first makes one with its runner") {
+  const fs::path state = TempDir("server-run-in-prefix");
+  // A stand-in Wine: wineboot makes the prefix, anything else is logged as run.
+  const fs::path log = state / "wine.log";
+  test::Touch(state / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine",
+              "#!/bin/sh\ncase \"$1\" in\n  --version) echo wine-9.0 ;;\n"
+              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n"
+              "  *) echo \"$WINEPREFIX|$*\" >> '" + log.string() + "' ;;\nesac\n",
+              /*executable=*/true);
+  LiveServer server(state);
+  REQUIRE(server.MutableConfig().Set("default_runner.windows", "wine:wine-9.0-amd64"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.platform = model::Platform::Windows;
+  game.install_path = (state / "Celeste").string();
+  game.exe_path = "Celeste.exe";
+  game.data_dir = (state / "prefixes" / "celeste").string();
+  test::Touch(state / "Celeste" / "Setup.exe");
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto ran = client.Post("/v1/games/celeste/run",
+                         R"({"exe_path": "Setup.exe", "args": "/lang=en /x"})", "application/json");
+  REQUIRE(ran != nullptr);
+  CHECK(ran->status == 200);
+  CHECK(fs::is_directory(fs::path(game.data_dir) / "drive_c"));
+
+  std::string logged;
+  for (int i = 0; i < 100 && logged.empty(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::ifstream in(log);
+    std::getline(in, logged);
+  }
+  const std::string setup = (state / "Celeste" / "Setup.exe").string();
+  CHECK(logged == game.data_dir + "|" + setup + " /lang=en /x");
+  const auto stored = server.games().Find("celeste");
+  CHECK(stored->runner_ref == "wine:wine-9.0-amd64");
+  CHECK(stored->exe_path == "Celeste.exe");  // running something else doesn't change the game
+}
+
+TEST_CASE("Every setting the schema offers per game is one a game's settings accept") {
+  // The GUI builds its settings pages from the schema, so what it lists must be what mirad takes.
+  LiveServer server(TempDir("server-schema"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto res = client.Get("/v1/config/schema");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  const auto schema = nlohmann::json::parse(res->body);
+  REQUIRE_FALSE(schema.empty());
+  nlohmann::json per_game = nlohmann::json::object();
+  for (const auto& entry : schema) {
+    INFO("key: ", entry.value("key", ""));
+    for (const char* field :
+         {"key", "label", "type", "default", "scope", "category", "group", "group_label"}) {
+      CHECK(entry.contains(field));
+    }
+    const std::string scope = entry.value("scope", "");
+    CHECK((scope == "global" || scope == "per_game" || scope == "game_only"));
+    if (scope != "global") per_game[entry["key"].get<std::string>()] = entry["default"];
+  }
+  REQUIRE_FALSE(per_game.empty());
+
+  auto patched = client.Patch("/v1/games/celeste/config", per_game.dump(), "application/json");
+  REQUIRE(patched != nullptr);
+  INFO(patched->body);
+  CHECK(patched->status == 200);
+}
+
+TEST_CASE("Resetting one setting leaves the others alone") {
+  // Only a single key here: a full reset would also reset the test's isolation.
+  LiveServer server(TempDir("server-config-reset"));
+  httplib::Client client = server.Client();
+  auto set = client.Patch("/v1/config",
+                          R"({"scan": {"debounce_ms": 9000}, "launch": {"log_max_mb": 6}})",
+                          "application/json");
+  REQUIRE(set != nullptr);
+  REQUIRE(set->status == 200);
+
+  auto reset = client.Post("/v1/config/reset?key=scan.debounce_ms");
+  REQUIRE(reset != nullptr);
+  CHECK(reset->status == 200);
+  CHECK(server.config().GetInt("scan.debounce_ms") ==
+        config::Schema::Instance().Find("scan.debounce_ms")->default_value.get<std::int64_t>());
+  CHECK(server.config().GetInt("launch.log_max_mb") == 6);
+
+  auto unknown = client.Post("/v1/config/reset?key=no.such.key");
+  REQUIRE(unknown != nullptr);
+  CHECK(unknown->status == 400);
+}
+
+TEST_CASE("A library scan job adds a new game folder, then marks it missing once it's gone") {
+  const fs::path state = TempDir("server-library-scan");
+  const fs::path library = state / "Games";
+  test::Touch(library / "Celeste" / "Celeste", "", /*executable=*/true);
+  LiveServer server(state);
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({library.string()})));
+  httplib::Client client = server.Client();
+
+  const auto first = AwaitJob(client, client.Post("/v1/library/scan"));
+  REQUIRE(first["state"] == "finished");
+  CHECK(first["result"]["added"] == 1);
+  REQUIRE(server.games().Find("celeste"));
+
+  fs::remove_all(library / "Celeste");
+  const auto second = AwaitJob(client, client.Post("/v1/library/scan"));
+  CHECK(second["result"]["missing"] == 1);
+  auto res = client.Get("/v1/games/celeste");
+  REQUIRE(res != nullptr);
+  CHECK(nlohmann::json::parse(res->body)["status"] == "missing");
+}
+
+namespace {
+
+struct Frame {
+  std::string id;
+  std::string event;
+  nlohmann::json data;
+};
+
+// Reads GET /v1/events until `enough` is true of the frames so far.
+std::vector<Frame> ReadEvents(httplib::Client& client, const httplib::Headers& headers,
+                              const std::function<bool(const std::vector<Frame>&)>& enough) {
+  client.set_read_timeout(std::chrono::seconds(5));  // a missing event fails instead of hanging
+  std::string buffer;
+  std::vector<Frame> frames;
+  client.Get("/v1/events", headers, [&](const char* data, size_t length) {
+    buffer.append(data, length);
+    for (size_t end = buffer.find("\n\n"); end != std::string::npos; end = buffer.find("\n\n")) {
+      Frame frame;
+      std::istringstream block(buffer.substr(0, end));
+      for (std::string line; std::getline(block, line);) {
+        if (line.starts_with("id: ")) frame.id = line.substr(4);
+        if (line.starts_with("event: ")) frame.event = line.substr(7);
+        if (line.starts_with("data: ")) frame.data = nlohmann::json::parse(line.substr(6));
+      }
+      frames.push_back(std::move(frame));
+      buffer.erase(0, end + 2);
+    }
+    return !enough(frames);
+  });
+  return frames;
+}
+
+}  // namespace
+
+TEST_CASE("The event stream replays history, marks where news starts, and resumes without gaps") {
+  auto owned = std::make_unique<LiveServer>(TempDir("server-events"));
+  LiveServer& server = *owned;
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+  httplib::Client other = server.Client();
+  const auto rename = [&](const std::string& name) {
+    auto res =
+        other.Patch("/v1/games/celeste", nlohmann::json{{"name", name}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  rename("Celeste Classic");
+
+  bool renamed_live = false;
+  const auto first = ReadEvents(client, {}, [&](const std::vector<Frame>& frames) {
+    if (frames.back().event == "stream.live" && !renamed_live) {
+      renamed_live = true;
+      rename("Celeste 64");
+    }
+    return frames.back().event == "game.updated" && frames.back().data["name"] == "Celeste 64";
+  });
+  const auto live = std::ranges::find(first, "stream.live", &Frame::event);
+  REQUIRE(live != first.end());
+  CHECK(live->id.empty());
+  // History first, as state; the change made while connected comes after the marker.
+  const auto replayed = std::ranges::find(first.begin(), live, "game.updated", &Frame::event);
+  REQUIRE(replayed != live);
+  CHECK(replayed->data["name"] == "Celeste Classic");
+  CHECK(std::stoll(first.back().id) > std::stoll(replayed->id));
+
+  // Back after a drop: only what came after the last id seen, and no marker.
+  const auto resumed = ReadEvents(client, {{"Last-Event-ID", replayed->id}},
+                                  [](const std::vector<Frame>& frames) {
+                                    return frames.back().data.value("name", "") == "Celeste 64";
+                                  });
+  CHECK(std::ranges::none_of(resumed,
+                             [](const Frame& frame) { return frame.event == "stream.live"; }));
+  CHECK(std::ranges::none_of(resumed, [](const Frame& frame) {
+    return frame.data.value("name", "") == "Celeste Classic";
+  }));
+  CHECK(resumed.back().id == first.back().id);
+
+  // A stream still waiting on the next event doesn't hold up quitting.
+  const auto quitting = std::chrono::steady_clock::now();
+  owned.reset();
+  CHECK(std::chrono::steady_clock::now() - quitting < std::chrono::seconds(1));
 }

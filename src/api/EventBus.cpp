@@ -84,6 +84,12 @@ std::optional<model::Event> EventBus::WaitNext(std::int64_t after_id, const std:
   return std::nullopt;  // unreachable given the wait predicate, but keeps the type honest
 }
 
+void EventBus::WakeWaiters() {
+  // Under the lock, so a waiter can't check `stop` and then miss this.
+  const std::lock_guard lock(mutex_);
+  cv_.notify_all();
+}
+
 std::vector<model::Event> EventBus::Since(std::int64_t after_id) const {
   std::lock_guard lock(mutex_);
   std::vector<model::Event> out;

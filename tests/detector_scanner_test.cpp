@@ -13,22 +13,11 @@
 #include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
+using test::Touch;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
-void Touch(const fs::path& path, bool executable = false) {
-  fs::create_directories(path.parent_path());
-  std::ofstream(path).close();
-  if (executable) fs::permissions(path, fs::perms::owner_exec, fs::perm_options::add);
-}
 
 library::DetectorSettings DefaultSettings() {
   library::DetectorSettings settings;
@@ -67,7 +56,7 @@ TEST_CASE("Detector prefers the shallower, name-matching exe in a nested folder"
 
 TEST_CASE("Detector finds a native ELF binary via its execute bit, ignoring redist noise") {
   const fs::path dir = TempDir("celeste-native-detect");
-  Touch(dir / "Celeste", /*executable=*/true);
+  Touch(dir / "Celeste", "", /*executable=*/true);
   Touch(dir / "Redist" / "somelib.so");  // matches the */Redist* ignore glob
 
   const library::Detector detector(DefaultSettings());
@@ -87,13 +76,8 @@ TEST_CASE("Detector returns no candidates and low confidence for an empty folder
 }
 
 TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting_up") {
-  const fs::path dir = TempDir("autosetup-config");
-  config::Config config(dir / "settings.toml");
-  config.Load();
-  store::GameStore games(dir / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::AutoSetup auto_setup(config, games, events);
+  test::TestEnv env("autosetup-config");
+  library::AutoSetup auto_setup(env.config, env.games, env.events);
 
   library::Detector::Result native_result;
   native_result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
@@ -115,21 +99,16 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   CHECK(windows_game.status == model::GameStatus::SettingUp);
   CHECK_FALSE(windows_game.data_dir.empty());
 
-  auto stream = events.Since(0);
+  auto stream = env.events.Since(0);
   REQUIRE(stream.size() == 2);
   CHECK(stream[0].type == "game.added");
   CHECK(stream[0].payload.value("open_config", false) == true);
 }
 
 TEST_CASE("AutoSetup skips the automatic root tag when scan.tag_by_root is off") {
-  const fs::path dir = TempDir("autosetup-no-tag-config");
-  config::Config config(dir / "settings.toml");
-  config.Load();
-  REQUIRE(config.Set("scan.tag_by_root", false).has_value());
-  store::GameStore games(dir / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::AutoSetup auto_setup(config, games, events);
+  test::TestEnv env("autosetup-no-tag-config");
+  REQUIRE(env.config.Set("scan.tag_by_root", false).has_value());
+  library::AutoSetup auto_setup(env.config, env.games, env.events);
 
   library::Detector::Result result;
   result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
@@ -142,7 +121,7 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   // A native game: this is about scanning, and a Windows one would pay for
   // provisioning a real prefix.
   const fs::path lib = TempDir("scan-library");
-  Touch(lib / "Celeste" / "Celeste", /*executable=*/true);
+  Touch(lib / "Celeste" / "Celeste", "", /*executable=*/true);
 
   test::TestEnv env("scan-state");
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
@@ -169,7 +148,7 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   CHECK(third.missing == 1);
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Missing);
 
-  Touch(lib / "Celeste" / "Celeste", /*executable=*/true);
+  Touch(lib / "Celeste" / "Celeste", "", /*executable=*/true);
   library::ScanSummary fourth = scanner.ScanAll();
   CHECK(fourth.restored == 1);
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
@@ -195,22 +174,16 @@ TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
   fs::create_directories(lib / "Celeste");
   Touch(lib / "Celeste" / "Celeste.exe");
 
-  const fs::path state = TempDir("scan-no-autosetup-state");
-  config::Config config(state / "settings.toml");
-  config.Load();
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (lib / "prefix").string()).has_value());
-  REQUIRE(config.Set("auto_setup", false).has_value());
-
-  store::GameStore games(state / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::Scanner scanner(config, games, events);
+  test::TestEnv env("scan-no-autosetup-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(env.config.Set("prefix_root", (lib / "prefix").string()).has_value());
+  REQUIRE(env.config.Set("auto_setup", false).has_value());
+  library::Scanner scanner(env.config, env.games, env.events);
 
   library::ScanSummary summary = scanner.ScanAll();
   CHECK(summary.added == 1);
 
-  auto celeste = games.Find("celeste");
+  auto celeste = env.games.Find("celeste");
   REQUIRE(celeste.has_value());
   // Detected and stored (the frontend can still see and configure it), but
   // never auto-provisioned: still setting_up, no runner_ref pinned, no
@@ -223,25 +196,20 @@ TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
 TEST_CASE("Scanner leaves alone the folder of an installer whose game now lives elsewhere") {
   const fs::path lib = TempDir("scan-installer-dir-library");
   Touch(lib / "Setup Clustertruck" / "setup_clustertruck.exe");
-  const fs::path state = TempDir("scan-installer-dir-state");
-  config::Config config(state / "settings.toml");
-  config.Load();
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (state / "prefixes").string()).has_value());
-  REQUIRE(config.Set("auto_setup", false).has_value());
+  test::TestEnv env("scan-installer-dir-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(env.config.Set("auto_setup", false).has_value());
 
-  store::GameStore games(state / "games.toml");
-  games.Load();
   model::Game installed;
   installed.id = "clustertruck";
   installed.name = "ClusterTruck";
-  installed.install_path = (state / "prefixes" / "clustertruck" / "drive_c" / "ClusterTruck").string();
+  installed.install_path =
+      (env.dir / "prefixes" / "clustertruck" / "drive_c" / "ClusterTruck").string();
   installed.installer_dir = (lib / "Setup Clustertruck").string();
-  REQUIRE(games.Upsert(installed).has_value());
-  api::EventBus events;
+  REQUIRE(env.games.Upsert(installed).has_value());
 
-  CHECK(library::Scanner(config, games, events).ScanAll().added == 0);
-  CHECK(games.All().size() == 1);
+  CHECK(library::Scanner(env.config, env.games, env.events).ScanAll().added == 0);
+  CHECK(env.games.All().size() == 1);
 }
 
 TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a missing runner") {
@@ -309,13 +277,8 @@ TEST_CASE("A name match under the size floor is not flagged as an installer") {
 }
 
 TEST_CASE("AutoSetup stores an installer candidate as needs_install, not launchable") {
-  const fs::path dir = TempDir("autosetup-installer-config");
-  config::Config config(dir / "settings.toml");
-  config.Load();
-  store::GameStore games(dir / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::AutoSetup auto_setup(config, games, events);
+  test::TestEnv env("autosetup-installer-config");
+  library::AutoSetup auto_setup(env.config, env.games, env.events);
 
   library::Detector::Result detected;
   detected.candidates.push_back({"setup_hollow_knight.exe", model::Platform::Windows, 4.0, true, true});
@@ -380,7 +343,6 @@ TEST_CASE("a restored game keeps needs_install instead of becoming launchable") 
   // a drive silently promoted needs_install to ready, pointed straight at
   // setup.exe, undoing the installer guard entirely.
   const fs::path lib = TempDir("restore-installer-library");
-  const fs::path state = TempDir("restore-installer-state");
   fs::create_directories(lib / "game-hollow");
   const fs::path installer = lib / "game-hollow" / "setup_hollow_knight.exe";
   {
@@ -389,48 +351,36 @@ TEST_CASE("a restored game keeps needs_install instead of becoming launchable") 
     out.put('\0');
   }
 
-  config::Config config(state / "settings.toml");
-  config.Load();
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (lib / "prefixes").string()).has_value());
-
-  store::GameStore games(state / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::Scanner scanner(config, games, events);
+  test::TestEnv env("restore-installer-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(env.config.Set("prefix_root", (lib / "prefixes").string()).has_value());
+  library::Scanner scanner(env.config, env.games, env.events);
 
   REQUIRE(scanner.ScanAll().added == 1);
-  REQUIRE(games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
+  REQUIRE(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
 
   fs::rename(lib / "game-hollow", lib / "game-hollow-away");  // "drive unplugged"
   REQUIRE(scanner.ScanAll().missing == 1);
-  REQUIRE(games.Find("game-hollow")->status == model::GameStatus::Missing);
+  REQUIRE(env.games.Find("game-hollow")->status == model::GameStatus::Missing);
 
   fs::rename(lib / "game-hollow-away", lib / "game-hollow");  // and back
   scanner.ScanAll();
-  CHECK(games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
-  CHECK_FALSE(games.Find("game-hollow")->last_error.empty());
+  CHECK(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
+  CHECK_FALSE(env.games.Find("game-hollow")->last_error.empty());
 }
 
 TEST_CASE("a restored windows game with no prefix is not claimed ready") {
   const fs::path lib = TempDir("restore-unprovisioned-library");
-  const fs::path state = TempDir("restore-unprovisioned-state");
-  fs::create_directories(lib / "Celeste");
   Touch(lib / "Celeste" / "Celeste.exe");
 
-  config::Config config(state / "settings.toml");
-  config.Load();
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (lib / "prefixes").string()).has_value());
-  REQUIRE(config.Set("auto_setup", false).has_value());  // never provisioned
-
-  store::GameStore games(state / "games.toml");
-  games.Load();
-  api::EventBus events;
-  library::Scanner scanner(config, games, events);
+  test::TestEnv env("restore-unprovisioned-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(env.config.Set("prefix_root", (lib / "prefixes").string()).has_value());
+  REQUIRE(env.config.Set("auto_setup", false).has_value());  // never provisioned
+  library::Scanner scanner(env.config, env.games, env.events);
 
   REQUIRE(scanner.ScanAll().added == 1);
-  REQUIRE(games.Find("celeste")->status == model::GameStatus::SettingUp);
+  REQUIRE(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
 
   fs::rename(lib / "Celeste", lib / "Celeste-away");
   REQUIRE(scanner.ScanAll().missing == 1);
@@ -438,5 +388,5 @@ TEST_CASE("a restored windows game with no prefix is not claimed ready") {
   scanner.ScanAll();
 
   // No runner_ref, no prefix on disk: "ready" would be a lie.
-  CHECK(games.Find("celeste")->status == model::GameStatus::SettingUp);
+  CHECK(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
 }

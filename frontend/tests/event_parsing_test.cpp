@@ -138,14 +138,29 @@ TEST_CASE("ParseRemovedId returns an empty id rather than throwing") {
   CHECK(MiradClient::ParseRemovedId("").empty());
 }
 
-TEST_CASE("ParseRunnerDownload ignores unrelated event types") {
-  // HandleEvent is called for every event on the stream, not just runner
-  // ones, so the type check is what keeps a game.updated from being read as
-  // a download.
+TEST_CASE("ParseRunnerDownload reads the state from the event type and ignores unrelated events") {
+  // The payload doesn't repeat which of started/finished/failed it is, that
+  // only exists in the SSE `event:` line. HandleEvent sees every event on the
+  // stream, so the type check is what keeps a game.updated from being read
+  // as a download.
   RunnerDownloadEvent event;
-  CHECK_FALSE(MiradClient::ParseRunnerDownload("game.added", R"({"id": "x"})", &event));
-  CHECK_FALSE(MiradClient::ParseRunnerDownload("runners.updated", R"({})", &event));
+  REQUIRE(MiradClient::ParseRunnerDownload(
+      "runners.download.finished", R"({"kind": "proton", "tag": "GE-Proton11-7"})", &event));
+  CHECK(event.state == "finished");
+  CHECK(event.kind == "proton");
+  CHECK(event.tag == "GE-Proton11-7");
+  CHECK(event.error.empty());
+
+  REQUIRE(MiradClient::ParseRunnerDownload(
+      "runners.download.failed", R"({"kind": "wine", "tag": "x", "error": "checksum mismatch"})",
+      &event));
+  CHECK(event.state == "failed");
+  CHECK(event.error == "checksum mismatch");
+
   CHECK(MiradClient::ParseRunnerDownload("runners.download.started", R"({})", &event));
+  CHECK_FALSE(MiradClient::ParseRunnerDownload("game.updated", R"({"id": "x"})", &event));
+  CHECK_FALSE(MiradClient::ParseRunnerDownload("runners.updated", R"({})", &event));
+  CHECK_FALSE(MiradClient::ParseRunnerDownload("runners.download.finished", "not json", &event));
 }
 
 TEST_CASE("ParseTricksEvent ignores unrelated event types") {

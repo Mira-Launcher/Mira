@@ -6,18 +6,13 @@
 #include "config/Config.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
+#include "itch/ItchImporter.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 // A stand-in for the real `butler`, pointed at by itch.butler_bin.
 // Unlike Legendary/gogdl's one-shot-subprocess fakes, this has to be a
@@ -34,7 +29,7 @@ void WriteFakeButler(const fs::path& path) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   out << R"PY(#!/usr/bin/env python3
-import json, socket, sys, threading
+import json, os, socket, sys, threading
 
 # DetectButler's own VersionOf() runs "<path> --version" directly (not
 # through "daemon") to probe the binary -- has to actually answer that and
@@ -83,7 +78,15 @@ while True:
             f.write((json.dumps({"jsonrpc": "2.0", "id": rid,
                                  "error": {"message": "invalid API key"}}) + "\n").encode())
         else:
-            f.write((json.dumps({"jsonrpc": "2.0", "id": rid, "result": {}}) + "\n").encode())
+            f.write((json.dumps({"jsonrpc": "2.0", "id": rid,
+                                 "result": {"profile": {"id": 7}}}) + "\n").encode())
+    elif method == "Fetch.Caves":
+        # Installed games. mirad keeps one butlerd for the whole process, so
+        # whichever test started this one, the list is in the shared test dir.
+        shared = os.path.dirname(os.path.dirname(sys.argv[0]))
+        with open(os.path.join(shared, "itch-caves.json")) as caves:
+            f.write((json.dumps({"jsonrpc": "2.0", "id": rid,
+                                 "result": {"items": json.load(caves)}}) + "\n").encode())
     else:
         f.write((json.dumps({"jsonrpc": "2.0", "id": rid, "result": {}}) + "\n").encode())
     f.flush()
@@ -92,11 +95,8 @@ while True:
   fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
 }
 
-struct Fixture {
-  fs::path dir;
-  config::Config config;
-
-  explicit Fixture(const char* name) : dir(TempDir(name)), config(dir / "settings.toml") { config.Load(); }
+struct Fixture : test::TestEnv {
+  explicit Fixture(const char* name) : TestEnv(name) {}
 
   void UseFakeButler() {
     const fs::path bin = dir / "butler";
@@ -159,4 +159,48 @@ TEST_CASE("ParseCollectionLink reads the id from each link form") {
   CHECK(itch::ParseCollectionLink(" 8213205 ") == 8213205);
   CHECK_FALSE(itch::ParseCollectionLink("https://noelcody.itch.io/moss-moss"));
   CHECK_FALSE(itch::ParseCollectionLink(""));
+}
+
+TEST_CASE("An itch.io import tracks installed games, finds what to run, and keeps a fixed exe") {
+  Fixture fixture("itch-import");
+  fixture.UseFakeButler();
+  const fs::path moss = fixture.dir / "installs" / "moss-moss";
+  const fs::path ripples = fixture.dir / "installs" / "ripples";
+  test::Touch(moss / "MossMoss.x86_64", "", /*executable=*/true);
+  test::Touch(ripples / "Ripples.exe");
+  const auto cave = [](int id, const char* title, const fs::path& folder, const char* platform) {
+    return nlohmann::json{{"id", "cave-" + std::to_string(id)},
+                          {"game", {{"id", id}, {"title", title}}},
+                          {"installInfo", {{"installFolder", folder.string()}}},
+                          {"upload", {{"platforms", {{platform, "all"}}}}}};
+  };
+  test::Touch(fixture.dir.parent_path() / "itch-caves.json",
+              nlohmann::json::array({cave(101, "Moss Moss", moss, "linux"),
+                                     cave(202, "Ripples", ripples, "windows")})
+                  .dump());
+
+  itch::ItchImporter importer(fixture.config, fixture.games, fixture.events);
+  CHECK_FALSE(importer.Import());  // not signed in yet
+  REQUIRE(itch::Login(fixture.config, "good-key"));
+
+  const auto first = importer.Import();
+  REQUIRE(first);
+  CHECK(first->added == 2);
+  const auto native = fixture.games.Find("itch-101");
+  REQUIRE(native);
+  CHECK(native->platform == model::Platform::Native);
+  CHECK(native->exe_path == "MossMoss.x86_64");
+  CHECK(native->status == model::GameStatus::Ready);
+  const auto windows = fixture.games.Find("itch-202");
+  REQUIRE(windows);
+  CHECK(windows->platform == model::Platform::Windows);
+  CHECK(windows->exe_path == "Ripples.exe");
+  CHECK_FALSE(windows->data_dir.empty());
+
+  REQUIRE(fixture.games.Update("itch-202",
+                               [](model::Game& game) { game.exe_path = "bin/Launcher.exe"; }));
+  const auto second = importer.Import();
+  REQUIRE(second);
+  CHECK(second->updated == 2);
+  CHECK(fixture.games.Find("itch-202")->exe_path == "bin/Launcher.exe");
 }

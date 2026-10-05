@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include <QAbstractItemModelTester>
 #include <QPersistentModelIndex>
 
 #include <string>
@@ -45,6 +46,43 @@ TEST_CASE("A relist keeps the rows it still lists, so a view's selection survive
   CHECK(beta.data(GameTileDelegate::NameRole).toString() == "Beta Remastered");
   CHECK(library.Find("c") == nullptr);
   CHECK(library.Games().size() == 2);
+}
+
+TEST_CASE("Removing scattered games, a source, or everything keeps each row where views expect") {
+  GameLibraryModel library;
+  // Aborts the test run on any row signal that disagrees with the model's contents.
+  QAbstractItemModelTester tester(&library, QAbstractItemModelTester::FailureReportingMode::Fatal);
+  library.Replace({Game("a", "A"), Game("b", "B", {}, "epic"), Game("c", "C"),
+                   Game("d", "D", {}, "epic"), Game("e", "E"), Game("f", "F")});
+  const auto ids = [&] {
+    std::vector<std::string> out;
+    for (const GameSummary& game : library.Games()) out.push_back(game.id);
+    return out;
+  };
+  const auto findable = [&] {
+    for (const GameSummary& game : library.Games()) {
+      const QVariant id = library.IndexOf(game.id).data(GameTileDelegate::IdRole);
+      if (id.toString().toStdString() != game.id) return false;
+    }
+    return true;
+  };
+
+  library.Remove({"a", "e", "c", "nope"});  // not adjacent, out of order, one unknown
+  CHECK(ids() == std::vector<std::string>{"b", "d", "f"});
+  CHECK(findable());
+
+  library.RemoveSource("epic");
+  CHECK(ids() == std::vector<std::string>{"f"});
+  CHECK(findable());
+
+  // A batch naming one new game twice adds it once, as its last copy says.
+  library.Upsert({Game("g", "First"), Game("g", "Second")});
+  CHECK(ids() == std::vector<std::string>{"f", "g"});
+  CHECK(library.Find("g")->name == "Second");
+
+  library.Remove({"f", "g"});
+  CHECK(library.Games().empty());
+  CHECK(library.Find("f") == nullptr);
 }
 
 TEST_CASE("Filters hide hidden games except under Hidden, and launchers everywhere") {
@@ -95,6 +133,7 @@ TEST_CASE("Search, the sidebar sort, and running all follow the model's changes"
   GameLibraryModel library;
   library.Replace({Game("b", "Beta"), Game("a", "Alpha"), Game("c", "Gamma")});
   GameFilterProxy proxy(&library);
+  QAbstractItemModelTester tester(&proxy, QAbstractItemModelTester::FailureReportingMode::Fatal);
 
   CHECK(Shown(proxy) == std::vector<std::string>{"a", "b", "c"});
   proxy.SetSort("name", /*descending=*/true);

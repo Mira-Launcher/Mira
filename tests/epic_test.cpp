@@ -11,6 +11,7 @@
 #include "library/Catalog.h"
 #include "library/StoreProgress.h"
 #include "store/GameStore.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -27,9 +28,12 @@ namespace {
 // `status_body`/`installed_body`/`list_body` are what it prints on stdout
 // for each subcommand; `stderr_noise` is written to stderr first, which is
 // the part that matters -- see the noise tests below.
+// `install` prints a download progress line and from then on lists
+// `after_install_body` as installed, the way a real install changes it.
 void WriteFakeLegendary(const fs::path& path, const std::string& stderr_noise,
                         const std::string& status_body, const std::string& installed_body,
-                        const std::string& list_body) {
+                        const std::string& list_body,
+                        const std::string& after_install_body = "[]") {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   out << "#!/bin/sh\n"
@@ -40,7 +44,11 @@ void WriteFakeLegendary(const fs::path& path, const std::string& stderr_noise,
       << "printf '%b' \"" << stderr_noise << "\" >&2\n"
       << "case \"$1\" in\n"
       << "  status) printf '%s\\n' '" << status_body << "' ;;\n"
-      << "  list-installed) printf '%s\\n' '" << installed_body << "' ;;\n"
+      << "  list-installed) if [ -f \"$0.installed\" ]; then cat \"$0.installed\";"
+      << " else printf '%s\\n' '" << installed_body << "'; fi ;;\n"
+      << "  install)\n"
+      << "    printf '%s\\n' '[DLManager] INFO: = Progress: 50.00% (1/2), ETA: 00:00:30' >&2\n"
+      << "    printf '%s\\n' '" << after_install_body << "' > \"$0.installed\" ;;\n"
       << "  list) printf '%s\\n' '" << list_body << "' ;;\n"
       << "  --version) printf 'legendary version \"0.20.34\"\\n' ;;\n"
       << "esac\n"
@@ -169,24 +177,9 @@ TEST_CASE("EpicImporter is idempotent") {
   CHECK(fixture.games.All().size() == 1);
 }
 
-TEST_CASE("EpicImporter never persists entitlements that aren't installed") {
-  // The whole library/tracked-games split: `list` has two titles, only one
-  // of which is installed. Exactly one row may end up in games.toml.
-  Fixture fixture("epic-no-catalog-rows");
-  fixture.UseFakeLegendary(
-      kNoise, kLoggedIn,
-      R"([{"app_name": "abc", "title": "A Game", "install_path": "/tmp/mira-tests/agame", "executable": "A.exe"}])",
-      R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Not Installed"}])");
-
-  epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
-  REQUIRE(importer.Import());
-
-  CHECK(fixture.games.All().size() == 1);
-  CHECK(fixture.games.Find("epic-abc"));
-  CHECK_FALSE(fixture.games.Find("epic-xyz"));
-}
-
 TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones") {
+  // `list` has two titles, only one of them installed: both are listed, but
+  // only the installed one may end up in games.toml.
   Fixture fixture("epic-catalog");
   fixture.UseFakeLegendary(
       kNoise, kLoggedIn,
@@ -195,6 +188,8 @@ TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones"
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
   REQUIRE(importer.Import());
+  CHECK(fixture.games.All().size() == 1);
+  CHECK_FALSE(fixture.games.Find("epic-xyz"));
 
   const Result<std::vector<library::CatalogEntry>> entries =
       library::ListCatalog(fixture.config, fixture.games, "epic");
@@ -211,6 +206,72 @@ TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones"
   CHECK(owned_only->title == "Not Installed");
   CHECK_FALSE(owned_only->installed);
   CHECK(owned_only->game_id.empty());
+}
+
+TEST_CASE("Installing an owned Epic title reports progress, then tracks it as installed") {
+  const fs::path state = test::TempDir("epic-api-install");
+  const fs::path game_dir = state / "Games" / "AGame";
+  test::Touch(game_dir / "A.exe");
+  test::LiveServer server(state);
+  WriteFakeLegendary(state / "legendary", kNoise, kLoggedIn, "[]",
+                     R"([{"app_name": "abc", "app_title": "A Game"}])",
+                     R"([{"app_name": "abc", "title": "A Game", "install_path": ")" +
+                         game_dir.string() + R"(", "executable": "A.exe"}])");
+  REQUIRE(server.MutableConfig().Set("epic.legendary_bin", (state / "legendary").string()));
+  httplib::Client client = server.Client();
+  const auto library = [&] {
+    auto res = client.Get("/v1/library?source=epic");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body);
+  };
+
+  REQUIRE(library().size() == 1);
+  CHECK_FALSE(library()[0]["installed"].get<bool>());
+
+  const auto install = [&](const std::string& ref) {
+    const nlohmann::json body = {{"source", "epic"}, {"ref", ref}};
+    return client.Post("/v1/library/install", body.dump(), "application/json");
+  };
+  auto started = install("abc");
+  REQUIRE(started != nullptr);
+  CHECK(started->status == 202);
+  REQUIRE(test::WaitForEvent(server.events(), "library.install.finished"));
+  const auto progress = test::WaitForEvent(server.events(), "library.install.progress");
+  REQUIRE(progress);
+  CHECK(progress->payload["progress"] == doctest::Approx(0.5));
+  CHECK(progress->payload["eta"] == 30);
+
+  const auto game = server.games().Find("epic-abc");
+  REQUIRE(game);
+  CHECK(game->install_path == game_dir.string());
+  CHECK(library()[0]["installed"].get<bool>());
+  CHECK(library()[0]["game_id"] == "epic-abc");
+
+  auto bad = install("../x");
+  REQUIRE(bad != nullptr);
+  CHECK(bad->status == 400);
+}
+
+TEST_CASE("An Epic install while signed out fails with a way to sign in") {
+  const fs::path state = test::TempDir("epic-api-install-signed-out");
+  test::LiveServer server(state);
+  WriteFakeLegendary(state / "legendary", "", kLoggedOut, "[]", "[]");
+  REQUIRE(server.MutableConfig().Set("epic.legendary_bin", (state / "legendary").string()));
+  httplib::Client client = server.Client();
+
+  auto started = client.Post("/v1/library/install", R"({"source": "epic", "ref": "abc"})",
+                             "application/json");
+  REQUIRE(started != nullptr);
+  const auto failed = test::WaitForEvent(server.events(), "library.install.failed");
+  REQUIRE(failed);
+  CHECK(failed->payload["ref"] == "abc");
+  CHECK(failed->payload["code"] == "not_authenticated");
+  CHECK(failed->payload["fix"]["kind"] == "source");
+  CHECK(failed->payload["fix"]["target"] == "epic");
+  CHECK(std::ranges::none_of(server.events().Since(0), [](const model::Event& event) {
+    return event.type == "library.install.finished";
+  }));
 }
 
 TEST_CASE("ParseProgressLine reads legendary and gogdl download lines") {

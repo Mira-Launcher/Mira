@@ -1,24 +1,20 @@
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
 #include "config/Config.h"
 #include "runner/Downloader.h"
 #include "runner/Exec.h"
+#include "runner/RunnerRegistry.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 void RunOrFail(const std::vector<std::string>& argv, const fs::path& cwd = {}) {
   Command command;
@@ -141,4 +137,88 @@ TEST_CASE("Installed builds map to their download source, and release names read
   CHECK(runner::IsInstalledAs("wine", "lutris-GE-Proton8-26-x86_64", "lutris-GE-Proton8-26-x86_64", wine_ge));
   CHECK(runner::BuildLabel("wine", runner::ReleaseName("wine", wine_ge)) == "Wine-GE 8-26");
   CHECK(runner::BuildLabel("wine", "wine-11.18-staging-tkg-amd64") == "Wine 11.18 staging-tkg");
+}
+
+namespace {
+
+// A release as GitHub serves it: `name`.tar.gz holding a `name` folder, beside its checksum file.
+runner::ReleaseAsset Release(const fs::path& dir, const std::string& name,
+                             const std::string& checksum_name, const std::string& checksum_text) {
+  RunOrFail({"tar", "-czf", (dir / (name + ".tar.gz")).string(), name}, dir);
+  test::Touch(dir / checksum_name, checksum_text);
+  return {.tag = name,
+          .asset_name = name + ".tar.gz",
+          .download_url = "file://" + (dir / (name + ".tar.gz")).string(),
+          .checksum_url = "file://" + (dir / checksum_name).string()};
+}
+
+std::string Checksum(const char* tool, const fs::path& file) {
+  Command command;
+  command.argv = {tool, file.filename().string()};
+  command.cwd = file.parent_path();
+  const auto result = runner::RunAndWait(command);
+  REQUIRE(result);
+  return result->output;  // "<hash>  <name>\n"
+}
+
+// Nothing a failed install could leave for Discover to pick up.
+bool OnlyHolds(const fs::path& dir, const std::vector<std::string>& names) {
+  std::vector<std::string> found;
+  for (const auto& entry : fs::directory_iterator(dir)) {
+    found.push_back(entry.path().filename().string());
+  }
+  std::ranges::sort(found);
+  return found == names;
+}
+
+}  // namespace
+
+TEST_CASE("A Proton download installs only when its checksum matches, and leaves nothing else") {
+  test::TestEnv env("downloader-proton");
+  const fs::path releases = env.dir / "releases";
+  test::Touch(releases / "GE-Proton9-1" / "proton");
+  test::Touch(releases / "GE-Proton9-1" / "toolmanifest.vdf");
+  test::Touch(releases / "GE-Proton9-1" / "version", "1700000000 GE-Proton9-1");
+  const fs::path runners = env.dir / "runners" / "proton";
+
+  // A tampered download: the checksum is for other bytes.
+  runner::ReleaseAsset bad = Release(releases, "GE-Proton9-1", "GE-Proton9-1.sha512sum",
+                                     std::string(128, '0') + "  GE-Proton9-1.tar.gz\n");
+  const auto refused = runner::DownloadAndInstall(env.config, "proton", bad);
+  REQUIRE_FALSE(refused);
+  CHECK(refused.error().code == "checksum_mismatch");
+  CHECK(OnlyHolds(runners, {}));
+
+  test::Touch(releases / "GE-Proton9-1.sha512sum",
+              Checksum("sha512sum", releases / "GE-Proton9-1.tar.gz"));
+  REQUIRE(runner::DownloadAndInstall(env.config, "proton", bad));
+  CHECK(OnlyHolds(runners, {"GE-Proton9-1"}));
+  CHECK(runner::RunnerRegistry(env.config).Resolve("proton:GE-Proton9-1"));
+}
+
+TEST_CASE("A Wine download is checked against its line in a shared checksum list") {
+  test::TestEnv env("downloader-wine");
+  const fs::path releases = env.dir / "releases";
+  test::Touch(releases / "wine-9.0-amd64" / "bin" / "wine", "#!/bin/sh\necho wine-9.0\n",
+              /*executable=*/true);
+  const fs::path runners = env.dir / "runners" / "wine";
+
+  runner::ReleaseAsset asset = Release(releases, "wine-9.0-amd64", "sha256sums.txt", "");
+  asset.checksum_is_sha256 = true;
+  asset.checksum_is_list = true;
+  const std::string others = std::string(64, 'a') + "  wine-9.0-staging-amd64.tar.gz\n";
+
+  // A list that doesn't name this archive verifies nothing, so it's refused.
+  test::Touch(releases / "sha256sums.txt", others);
+  const auto unlisted = runner::DownloadAndInstall(env.config, "wine", asset);
+  REQUIRE_FALSE(unlisted);
+  CHECK(unlisted.error().code == "checksum_missing");
+  CHECK(OnlyHolds(runners, {}));
+
+  // Other entries in the list don't matter, only this archive's line.
+  test::Touch(releases / "sha256sums.txt",
+              others + Checksum("sha256sum", releases / "wine-9.0-amd64.tar.gz"));
+  REQUIRE(runner::DownloadAndInstall(env.config, "wine", asset));
+  CHECK(OnlyHolds(runners, {"wine-9.0-amd64"}));
+  CHECK(runner::RunnerRegistry(env.config).Resolve("wine:wine-9.0-amd64"));
 }

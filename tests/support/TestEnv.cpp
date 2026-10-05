@@ -1,9 +1,10 @@
 #include "support/TestEnv.h"
 
+#include <cstdlib>
 #include <fstream>
+#include <utility>
 
-#include "model/Types.h"
-#include "runner/RunnerRegistry.h"
+#include <json.hpp>
 
 namespace mira::test {
 namespace fs = std::filesystem;
@@ -21,36 +22,45 @@ void Touch(const fs::path& path, std::string_view content, bool executable) {
   if (executable) fs::permissions(path, fs::perms::owner_exec, fs::perm_options::add);
 }
 
+PathPrepend::PathPrepend(const fs::path& dir)
+    : old_(std::getenv("PATH") != nullptr ? std::getenv("PATH") : "") {
+  setenv("PATH", (dir.string() + ":" + old_).c_str(), 1);
+}
+
+PathPrepend::~PathPrepend() { setenv("PATH", old_.c_str(), 1); }
+
+void Isolate(config::Config& config) {
+  for (const char* key : {"metadata.enabled", "metadata.steam_art_by_name", "launchers.umu_lookup",
+                          "steam.import_playtime", "runner_scan_common_dirs"}) {
+    [[maybe_unused]] auto off = config.Set(key, false);
+  }
+  // Every folder Mira reads or writes, moved next to the settings file.
+  const fs::path dir = config.File().parent_path();
+  const std::pair<const char*, nlohmann::json> folders[] = {
+      {"library_roots", nlohmann::json::array()},
+      {"prefix_root", (dir / "prefixes").string()},
+      {"gog.install_root", (dir / "gog").string()},
+      {"itch.install_root", (dir / "itch").string()},
+      {"amazon.install_root", (dir / "amazon").string()},
+      {"humble.download_root", (dir / "humble").string()},
+      {"runner_search_paths", nlohmann::json::array({(dir / "runners" / "proton").string()})},
+      {"wine_search_paths", nlohmann::json::array({(dir / "runners" / "wine").string()})},
+      {"desktop_entries.directory", (dir / "applications").string()},
+      {"steam.root", (dir / "steam").string()},
+      {"lutris.data_dir", (dir / "lutris").string()},
+  };
+  for (const auto& [key, value] : folders) {
+    [[maybe_unused]] auto set = config.Set(key, value);
+  }
+  // Windows games run natively: provisioning through the machine's Wine builds a real prefix.
+  [[maybe_unused]] auto runner = config.Set("default_runner.windows", "native:native");
+}
+
 TestEnv::TestEnv(std::string_view name)
     : dir(TempDir(name)), config(dir / "settings.toml"), games(dir / "games.toml") {
   config.Load();
   games.Load();
-  [[maybe_unused]] auto a = config.Set("prefix_root", (dir / "prefixes").string());
-  [[maybe_unused]] auto b = config.Set("default_runner.windows", "native:native");
-  [[maybe_unused]] auto c = config.Set("metadata.enabled", false);
-  [[maybe_unused]] auto d = config.Set("metadata.steam_art_by_name", false);  // no network in tests
-  [[maybe_unused]] auto e = config.Set("runner_scan_common_dirs", false);  // only runners a test puts there
-}
-
-fs::path SharedProtonPrefix() {
-  static const fs::path prefix = [] {
-    const fs::path root = fs::temp_directory_path() / "mira-tests-shared";
-    const fs::path data_dir = root / "proton-prefix";
-    std::error_code ec;
-    if (fs::exists(data_dir / "drive_c", ec)) return data_dir;
-
-    config::Config config(root / "settings.toml");
-    config.Load();
-    [[maybe_unused]] auto set = config.Set("default_runner.windows", "proton:latest");
-    const runner::RunnerRegistry runners(config);
-    model::Game game;
-    game.id = "shared-test-prefix";
-    game.platform = model::Platform::Windows;
-    game.data_dir = data_dir.string();
-    const model::Game provisioned = runners.ProvisionGame(game);
-    return provisioned.status == model::GameStatus::Ready ? data_dir : fs::path();
-  }();
-  return prefix;
+  Isolate(config);
 }
 
 }  // namespace mira::test

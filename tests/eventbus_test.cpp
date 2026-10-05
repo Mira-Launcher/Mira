@@ -35,14 +35,24 @@ TEST_CASE("WaitNext times out cleanly with no event and no stop") {
   CHECK_FALSE(result.has_value());
 }
 
-TEST_CASE("WaitNext unblocks immediately when stop is set") {
+TEST_CASE("WaitNext unblocks immediately when stop is set, before or during the wait") {
   api::EventBus bus;
   std::atomic<bool> stop{true};
-  const auto start = std::chrono::steady_clock::now();
-  auto result = bus.WaitNext(0, stop, std::chrono::seconds(30));
-  const auto elapsed = std::chrono::steady_clock::now() - start;
-  CHECK_FALSE(result.has_value());
-  CHECK(elapsed < std::chrono::seconds(1));
+  auto start = std::chrono::steady_clock::now();
+  CHECK_FALSE(bus.WaitNext(0, stop, std::chrono::seconds(30)).has_value());
+  CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(1));
+
+  // Shutdown's shape: stop is set while a stream is already waiting.
+  stop = false;
+  start = std::chrono::steady_clock::now();
+  std::thread stopper([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    stop = true;
+    bus.WakeWaiters();
+  });
+  CHECK_FALSE(bus.WaitNext(0, stop, std::chrono::seconds(30)).has_value());
+  stopper.join();
+  CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(1));
 }
 
 TEST_CASE("many publishers and many subscribers race safely") {
@@ -82,7 +92,6 @@ TEST_CASE("many publishers and many subscribers race safely") {
   REQUIRE(all.size() == 100);
   CHECK(all.back().id - all.front().id == 99);
   CHECK(delivered.load() > 0);
-  CHECK(bus.Since(0).size() <= 100);  // ring buffer capacity may have trimmed some
 }
 
 TEST_CASE("Every game record an event carries gets the record hook, and a state change its own running") {

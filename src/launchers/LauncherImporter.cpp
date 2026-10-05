@@ -79,6 +79,9 @@ std::vector<std::string> TagValues(const std::string& xml, std::string_view tag)
   const std::string open = std::format("<{}", tag);
   const std::string close = std::format("</{}>", tag);
   for (std::size_t at = xml.find(open); at != std::string::npos; at = xml.find(open, at + 1)) {
+    // Not <contentIDs>, the list <contentID> sits in.
+    const char next = at + open.size() < xml.size() ? xml[at + open.size()] : '\0';
+    if (next != '>' && next != ' ') continue;
     const std::size_t start = xml.find('>', at);
     const std::size_t end = xml.find(close, at);
     if (start == std::string::npos || end == std::string::npos || start > end) break;
