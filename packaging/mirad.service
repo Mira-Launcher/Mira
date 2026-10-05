@@ -1,6 +1,6 @@
 [Unit]
 Description=Mira game launcher backend
-Documentation=https://github.com/
+Documentation=https://github.com/Mira-Launcher/Mira
 # Not required by default: the frontend can spawn and supervise mirad itself
 # (see docs/architecture.md) for anyone who would rather not run a persistent
 # background process. Enabling this unit is the other supported path.

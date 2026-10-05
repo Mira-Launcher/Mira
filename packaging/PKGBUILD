@@ -11,7 +11,8 @@ makedepends=('cmake' 'ninja' 'clang')
 optdepends=('wine: run Windows games without Proton'
            'umu-launcher: Proton support (AUR)'
            'winetricks: install DLL/redistributable fixes into a game prefix'
-           '7zip: auto-extract archives dropped into a library root')
+           '7zip: auto-extract archives dropped into a library root'
+           'sqlite: import Lutris libraries')
 backup=()
 source=("mira-$pkgver.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
@@ -31,4 +32,5 @@ build() {
 package() {
   cd "$srcdir"/*/
   DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

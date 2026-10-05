@@ -15,6 +15,7 @@ pkgbase = mira-launcher
 	optdepends = umu-launcher: Proton support (AUR)
 	optdepends = winetricks: install DLL/redistributable fixes into a game prefix
 	optdepends = 7zip: auto-extract archives dropped into a library root
+	optdepends = sqlite: import Lutris libraries
 	source = mira-0.12.1.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v0.12.1.tar.gz
 	sha256sums = SKIP
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <charconv>
 #include <format>
 #include <fstream>
 
@@ -66,7 +67,10 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
 
     int requested_lines = 200;
     if (auto it = req.params.find("lines"); it != req.params.end()) {
-      requested_lines = std::max(1, std::atoi(it->second.c_str()));
+      const std::string& raw = it->second;
+      if (std::from_chars(raw.data(), raw.data() + raw.size(), requested_lines).ec != std::errc() || requested_lines < 1) {
+        return SendError(res, 400, "invalid_param", "?lines= must be a whole number, 1 or more");
+      }
     }
 
     const std::filesystem::path log_file = s.games.Dir() / "logs" / std::format("{}.log", game->id);
