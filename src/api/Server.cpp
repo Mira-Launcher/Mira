@@ -60,6 +60,7 @@
 #include "runner/GameMode.h"
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/RunnerUpdates.h"
 #include "runner/Winetricks.h"
 #include "steam/SteamScanner.h"
 
@@ -299,68 +300,6 @@ void SyncDesktopEntries(config::Config& config, store::GameStore& games) {
 // Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
 Result<void> DeleteUnderRoot(const std::string& target, const std::vector<std::filesystem::path>& roots) {
   return library::DeleteInside(target, roots);
-}
-
-// A build's own directory. Wine's path is <dir>/bin/wine.
-std::filesystem::path BuildDir(const model::RunnerBuild& build) {
-  const std::filesystem::path path(build.path);
-  return build.kind == "wine" ? path.parent_path().parent_path() : path;
-}
-
-// The folders Mira installs builds of `kind` into, and may delete them from.
-std::vector<std::filesystem::path> RunnerRoots(const config::Config& config, const std::string& kind) {
-  return config.GetPathArray(kind == "wine" ? "wine_search_paths" : "runner_search_paths");
-}
-
-// `source`, or the kind's preferred source when empty.
-Result<runner::RunnerFamily> FamilyFor(const config::Config& config, const std::string& kind,
-                                       const std::string& source) {
-  if (source.empty()) {
-    const auto families = runner::Families(config, kind);
-    if (families.empty()) return Err("unknown_runner_kind", std::format("nothing to download for \"{}\"", kind));
-    return families.front();
-  }
-  auto family = runner::FindFamily(config, source);
-  if (!family || family->kind != kind) {
-    return Err("unknown_runner_source", std::format("no {} source \"{}\"", kind, source));
-  }
-  return *family;
-}
-
-std::vector<model::RunnerBuild> BuildsOfKind(const runner::RunnerRegistry& registry, const std::string& kind) {
-  std::vector<model::RunnerBuild> out = registry.DiscoverAll();
-  std::erase_if(out, [&](const model::RunnerBuild& build) { return build.kind != kind; });
-  return out;
-}
-
-bool HasInstalled(const std::vector<model::RunnerBuild>& builds, const runner::ReleaseAsset& release) {
-  return std::ranges::any_of(builds, [&](const model::RunnerBuild& build) {
-    return runner::IsInstalledAs(build.kind, build.name, BuildDir(build).filename().string(), release);
-  });
-}
-
-struct RunnerUpdate {
-  model::RunnerBuild build;
-  runner::RunnerFamily family;
-  runner::ReleaseAsset latest;
-};
-
-// Removable builds whose source's newest release isn't installed yet.
-std::vector<RunnerUpdate> FindRunnerUpdates(const config::Config& config, const runner::RunnerRegistry& registry) {
-  std::vector<RunnerUpdate> out;
-  for (const std::string kind : {"proton", "wine"}) {
-    const std::vector<model::RunnerBuild> builds = BuildsOfKind(registry, kind);
-    for (const model::RunnerBuild& build : builds) {
-      const std::filesystem::path dir = BuildDir(build);
-      if (!paths::IsWithin(dir, RunnerRoots(config, kind))) continue;
-      auto family = runner::FamilyOfBuild(config, kind, build.name, dir.filename().string());
-      if (!family) continue;
-      auto releases = runner::ListFamilyReleases(*family);
-      if (!releases || releases->empty() || HasInstalled(builds, releases->front())) continue;
-      out.push_back({build, std::move(*family), releases->front()});
-    }
-  }
-  return out;
 }
 
 }  // namespace
@@ -2243,8 +2182,8 @@ void Server::RegisterRoutes() {
       json entry = model::ToJson(build);
       entry["label"] = runner::BuildLabel(build.kind, build.name);
       if (build.kind == "proton" || build.kind == "wine") {
-        const std::filesystem::path dir = BuildDir(build);
-        entry["removable"] = paths::IsWithin(dir, RunnerRoots(config_, build.kind));
+        const std::filesystem::path dir = runner::BuildDir(build);
+        entry["removable"] = paths::IsWithin(dir, runner::RunnerRoots(config_, build.kind));
         const auto family = runner::FamilyOfBuild(config_, build.kind, build.name, dir.filename().string());
         entry["source"] = family ? family->id : "";
       }
@@ -2264,19 +2203,19 @@ void Server::RegisterRoutes() {
 
   http_->Get("/v1/runners/catalog", [this](const Request& req, Response& res) {
     const std::string kind = Param(req, "kind", "proton");
-    auto family = FamilyFor(config_, kind, Param(req, "source"));
+    auto family = runner::FamilyFor(config_, kind, Param(req, "source"));
     if (!family) return SendError(res, 404, family.error());
     auto releases = runner::ListFamilyReleases(*family);
     if (!releases) return SendError(res, 502, releases.error());
     const runner::RunnerRegistry registry(config_);
-    const std::vector<model::RunnerBuild> installed = BuildsOfKind(registry, kind);
+    const std::vector<model::RunnerBuild> installed = runner::BuildsOfKind(registry, kind);
     json out = json::array();
     for (const auto& r : *releases) {
       out.push_back({{"tag", r.tag}, {"name", runner::ReleaseName(kind, r)},
                      {"label", runner::BuildLabel(kind, runner::ReleaseName(kind, r))}, {"source", family->id},
                      {"asset_name", r.asset_name}, {"size_bytes", r.size_bytes},
                      {"published_at", r.published_at}, {"has_checksum", !r.checksum_url.empty()},
-                     {"installed", HasInstalled(installed, r)}});
+                     {"installed", runner::HasInstalled(installed, r)}});
     }
     SendJson(res, std::move(out));
   });
@@ -2289,7 +2228,7 @@ void Server::RegisterRoutes() {
     }
     const std::string kind = body["kind"];
     const std::string tag = body["tag"];
-    auto family = FamilyFor(config_, kind, body.value("source", std::string()));
+    auto family = runner::FamilyFor(config_, kind, body.value("source", std::string()));
     if (!family) return SendError(res, 404, family.error());
 
     auto releases = runner::ListFamilyReleases(*family);
@@ -2306,7 +2245,7 @@ void Server::RegisterRoutes() {
   http_->Get("/v1/runners/updates", [this](const Request&, Response& res) {
     const runner::RunnerRegistry registry(config_);
     json out = json::array();
-    for (const auto& update : FindRunnerUpdates(config_, registry)) {
+    for (const auto& update : runner::FindRunnerUpdates(config_, registry)) {
       out.push_back({{"reference", update.build.Reference()}, {"source", update.family.id},
                      {"tag", update.latest.tag}, {"name", runner::ReleaseName(update.build.kind, update.latest)},
                      {"label", runner::BuildLabel(update.build.kind,
@@ -2322,7 +2261,7 @@ void Server::RegisterRoutes() {
     }
     const std::string reference = body["reference"];
     const runner::RunnerRegistry registry(config_);
-    for (const auto& update : FindRunnerUpdates(config_, registry)) {
+    for (const auto& update : runner::FindRunnerUpdates(config_, registry)) {
       if (update.build.Reference() != reference) continue;
       InstallRunnerAsync(update.build.kind, update.family.id, update.latest, reference);
       return SendJson(res,
@@ -2394,7 +2333,7 @@ void Server::RegisterRoutes() {
       return SendError(res, 400, "not_a_build", std::format("\"{}\" has no separate installed builds", kind));
     }
 
-    if (auto deleted = DeleteUnderRoot(BuildDir(*resolved->build).string(), RunnerRoots(config_, kind)); !deleted) {
+    if (auto deleted = DeleteUnderRoot(runner::BuildDir(*resolved->build).string(), runner::RunnerRoots(config_, kind)); !deleted) {
       return SendError(res, 400, deleted.error());
     }
     events_.Publish("runners.removed", {{"kind", kind}, {"name", name}});
@@ -2525,9 +2464,9 @@ void Server::InstallRunnerAsync(const std::string& kind, const std::string& sour
     if (!replacing.empty()) {
       // Move what used the old build onto the new one.
       const runner::RunnerRegistry registry(config_);
-      const std::vector<model::RunnerBuild> builds = BuildsOfKind(registry, kind);
+      const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
       const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-        return runner::IsInstalledAs(kind, build.name, BuildDir(build).filename().string(), asset);
+        return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
       });
       if (fresh != builds.end()) {
         const std::string to = fresh->Reference();
