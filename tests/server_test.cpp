@@ -16,79 +16,19 @@
 #include "api/EventBus.h"
 #include "api/Server.h"
 #include "config/Config.h"
+#include "config/Schema.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/GameStore.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
+using test::AwaitJob;
+using test::LiveServer;
 using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-// A long request answers 202 {job}; this waits for the job and returns it
-// as GET /v1/jobs/{id} shows it once done (`state`, then `result` or `error`).
-nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started) {
-  REQUIRE(started != nullptr);
-  REQUIRE(started->status == 202);
-  const std::string id = nlohmann::json::parse(started->body).value("job", "");
-  REQUIRE_FALSE(id.empty());
-  for (int attempt = 0; attempt < 300; ++attempt) {
-    auto job = client.Get("/v1/jobs/" + id);
-    REQUIRE(job != nullptr);
-    nlohmann::json state = nlohmann::json::parse(job->body);
-    if (state.value("state", "") != "running") return state;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  FAIL("job never finished");
-  return {};
-}
-
-// Runs a real Server over a real UDS socket for the lifetime of the test,
-// PATCH /v1/games/{id} env handling is otherwise only ever exercised by hand
-// over curl/the CLI, which is exactly the kind of "looks right, isn't" gap
-// this project has repeatedly found by testing real behavior instead.
-class LiveServer {
-public:
-  explicit LiveServer(const fs::path& state_dir)
-      : config_(state_dir / "settings.toml"), games_(state_dir / "games.toml"),
-        socket_path_(state_dir / "mirad.sock"), server_(config_, games_, events_) {
-    config_.Load();
-    test::Isolate(config_);
-    games_.Load();
-    thread_ = std::thread([this] { [[maybe_unused]] auto _ = server_.Serve(socket_path_); });
-    // Serve() binds synchronously before it blocks accepting, but the thread
-    // itself needs a moment to actually start running; poll for the socket
-    // file rather than a fixed sleep.
-    for (int i = 0; i < 200 && !fs::exists(socket_path_); ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-  }
-
-  ~LiveServer() {
-    server_.Stop();
-    if (thread_.joinable()) thread_.join();
-  }
-
-  httplib::Client Client() {
-    httplib::Client client(socket_path_.string(), 80);
-    client.set_address_family(AF_UNIX);
-    return client;
-  }
-
-  store::GameStore& games() { return games_; }
-  const fs::path& socket_path() const { return socket_path_; }
-  const config::Config& config() const { return config_; }
-  config::Config& MutableConfig() { return config_; }
-
-private:
-  config::Config config_;
-  store::GameStore games_;
-  api::EventBus events_;
-  fs::path socket_path_;
-  api::Server server_;
-  std::thread thread_;
-};
 
 // Polling POST .../stop is the only externally-visible "has this launch
 // actually finished yet" signal available over the API (ProcessSupervisor's
@@ -1220,4 +1160,83 @@ TEST_CASE("PATCH /v1/config merges the frontend table, and a null deletes that k
   const nlohmann::json frontend = nlohmann::json::parse(config->body)["frontend"];
   CHECK_FALSE(frontend.contains("tile_radius"));
   CHECK(frontend.value("theme", "") == "mira-dark");
+}
+
+TEST_CASE("A game's settings override the global ones, all or nothing, until set back to null") {
+  LiveServer server(TempDir("server-game-config"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+  const auto setting = [&](const std::string& key) {
+    auto res = client.Get("/v1/games/celeste/config");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body)[key];
+  };
+  const auto patch = [&](const std::string& body) {
+    auto res = client.Patch("/v1/games/celeste/config", body, "application/json");
+    REQUIRE(res != nullptr);
+    return res->status;
+  };
+
+  CHECK(patch(R"({"launch.gamemode": true, "launch.log_max_mb": 10})") == 200);
+  CHECK(setting("launch.gamemode")["layer"] == "game");
+  CHECK(setting("launch.gamemode")["value"] == true);
+  CHECK_FALSE(setting("library_roots")["overridable"].get<bool>());
+
+  // A daemon-wide key in the batch rejects all of it.
+  CHECK(patch(R"({"launch.log_max_mb": 20, "library_roots": []})") == 400);
+  CHECK(setting("launch.log_max_mb")["value"] == 10);
+
+  CHECK(patch(R"({"launch.gamemode": null})") == 200);
+  CHECK(setting("launch.gamemode")["layer"] != "game");
+
+  auto missing = client.Get("/v1/games/nope/config");
+  REQUIRE(missing != nullptr);
+  CHECK(missing->status == 404);
+}
+
+TEST_CASE("Resetting one setting leaves the others alone") {
+  // Only a single key here: a full reset would also reset the test's isolation.
+  LiveServer server(TempDir("server-config-reset"));
+  httplib::Client client = server.Client();
+  auto set = client.Patch("/v1/config",
+                          R"({"scan": {"debounce_ms": 9000}, "launch": {"log_max_mb": 6}})",
+                          "application/json");
+  REQUIRE(set != nullptr);
+  REQUIRE(set->status == 200);
+
+  auto reset = client.Post("/v1/config/reset?key=scan.debounce_ms");
+  REQUIRE(reset != nullptr);
+  CHECK(reset->status == 200);
+  CHECK(server.config().GetInt("scan.debounce_ms") ==
+        config::Schema::Instance().Find("scan.debounce_ms")->default_value.get<std::int64_t>());
+  CHECK(server.config().GetInt("launch.log_max_mb") == 6);
+
+  auto unknown = client.Post("/v1/config/reset?key=no.such.key");
+  REQUIRE(unknown != nullptr);
+  CHECK(unknown->status == 400);
+}
+
+TEST_CASE("A library scan job adds a new game folder, then marks it missing once it's gone") {
+  const fs::path state = TempDir("server-library-scan");
+  const fs::path library = state / "Games";
+  test::Touch(library / "Celeste" / "Celeste", "", /*executable=*/true);
+  LiveServer server(state);
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({library.string()})));
+  httplib::Client client = server.Client();
+
+  const auto first = AwaitJob(client, client.Post("/v1/library/scan"));
+  REQUIRE(first["state"] == "finished");
+  CHECK(first["result"]["added"] == 1);
+  REQUIRE(server.games().Find("celeste"));
+
+  fs::remove_all(library / "Celeste");
+  const auto second = AwaitJob(client, client.Post("/v1/library/scan"));
+  CHECK(second["result"]["missing"] == 1);
+  auto res = client.Get("/v1/games/celeste");
+  REQUIRE(res != nullptr);
+  CHECK(nlohmann::json::parse(res->body)["status"] == "missing");
 }
