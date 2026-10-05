@@ -152,12 +152,12 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
   // Remove ours that are no longer wanted: a game deleted, gone missing, or
   // now needing an install. Anything not named mira-<id>.desktop is left
   // strictly alone.
-  for (const auto& entry : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
-    const std::string name = entry.path().filename().string();
+  for (const fs::path& entry : paths::ListDir(dir)) {
+    const std::string name = entry.filename().string();
     if (!name.starts_with(kPrefix) || !name.ends_with(kSuffix)) continue;
     const std::string id = name.substr(kPrefix.size(), name.size() - kPrefix.size() - kSuffix.size());
     if (wanted.contains(id)) continue;
-    fs::remove(entry.path(), ec);
+    fs::remove(entry, ec);
   }
   return {};
 }
