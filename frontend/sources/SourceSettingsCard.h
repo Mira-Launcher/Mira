@@ -6,7 +6,7 @@
 
 #include "../settings/SettingEditor.h"
 #include "../settings/SettingsCard.h"
-#include "SourcePage.h"
+#include "Sources.h"
 
 class QComboBox;
 class QLabel;

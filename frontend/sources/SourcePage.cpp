@@ -35,141 +35,11 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/TabRow.h"
+#include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
+#include "SourceText.h"
 
 namespace mira_gui {
-namespace {
-
-// What differs per source, in words. Endpoints live in client/api/Stores.
-struct SourceCopy {
-  QString blurb;  // one line under the page title
-  QString tool;   // stores: the helper mirad drives
-  QString sign_in_steps;
-  QString credential_placeholder;
-  QString import_button;  // empty: no import
-};
-
-SourceCopy CopyFor(const std::string& id) {
-  if (id == "steam") {
-    return {"Your installed Steam games. Steam itself still installs and updates them.", "", "", "",
-            "Scan Steam library"};
-  }
-  if (id == "epic") {
-    return {"Epic Games Store, through Legendary. Games run through Mira's own Wine/Proton.",
-            "Legendary",
-            "Open Epic's login page and sign in, then paste the code it shows (or the whole "
-            "page) here.",
-            "authorizationCode, or the whole page", "Import installed games"};
-  }
-  if (id == "gog") {
-    return {"GOG, through gogdl. Games install into your games folder.", "gogdl",
-            "Open GOG's login page and sign in. It ends on a blank page: paste that page's "
-            "address here.",
-            "Address of the blank page, or its code", "Import installed games"};
-  }
-  if (id == "itch") {
-    return {"itch.io, through butler.", "butler",
-            "Create an API key on itch.io and paste it here. Keys don't expire.", "API key",
-            "Import installed games"};
-  }
-  if (id == "amazon") {
-    return {"Amazon Games, through nile.", "nile",
-            "Open Amazon's login page and sign in. It ends on an amazon.com page: paste that "
-            "page's address here.",
-            "Address of the page login ends on", "Import installed games"};
-  }
-  if (id == "humble") {
-    return {"Humble Bundle purchases, through humble-cli. Downloads land in your games folder.",
-            "humble-cli",
-            "Sign in to Humble Bundle in your browser, then copy the value of its "
-            "_simpleauth_sess cookie (developer tools → Storage or Application → Cookies) and "
-            "paste it here.",
-            "_simpleauth_sess cookie value", ""};
-  }
-  if (id == "battlenet") {
-    return {"Battle.net runs in its own Wine prefix. Games you install in it show up here.", "", "",
-            "", "Import games"};
-  }
-  if (id == "ubisoft") {
-    return {"Ubisoft Connect runs in its own Wine prefix. Games you install in it show up here.",
-            "", "", "", "Import games"};
-  }
-  if (id == "ea") {
-    return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",
-            "", "", "Import games"};
-  }
-  return {"Lutris's Wine and native games. Nothing is moved; they stay playable in Lutris too.",
-          "", "", "", "Import Lutris games"};
-}
-
-
-void ShowLine(QLabel* label, const QString& text, const char* role) {
-  label->setProperty("role", role);
-  label->style()->unpolish(label);
-  label->style()->polish(label);
-  label->setText(text);
-  label->setVisible(!text.isEmpty());
-}
-
-// mirad's messages start lowercase; this one follows a sentence. Adds mirad's hint.
-void ShowError(QLabel* label, const QString& what, const ApiError& error) {
-  QString text = error_help::Describe(error);
-  if (!text.isEmpty()) text[0] = text[0].toUpper();
-  ShowLine(label, (what + " " + text).trimmed(), "error");
-}
-
-QString Added(int added, int updated) {
-  if (added == 0 && updated == 0) return "No new games found.";
-  if (added == 0) return QString("No new games; %1 updated.").arg(updated);
-  return QString("Added %1 game%2.").arg(added).arg(added == 1 ? "" : "s");
-}
-
-QString Heading(const QString& text, int count) {
-  return count > 0 ? QString("%1  <span style='font-weight:400; opacity:0.6'>%2</span>").arg(text).arg(count)
-                   : text;
-}
-
-}  // namespace
-
-void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void()> on_removed) {
-  const QString name = source.name;
-  const std::string id = source.id.toStdString();
-  api::GetRemovalPlanAsync(parent, id, [parent, id, name, on_removed](RemovalPlanResult plan) {
-    if (!plan.ok) {
-      notify::FailedRequest(parent, "Could not plan the removal.", plan.error);
-      return;
-    }
-    QStringList lines;
-    const auto uninstalled = std::ranges::count_if(plan.games, [](const auto& g) { return !g.deletes.empty(); });
-    if (uninstalled > 0) lines << QString("Uninstalls %1 game%2:").arg(uninstalled).arg(uninstalled == 1 ? "" : "s");
-    for (const auto& game : plan.games) {
-      if (!game.deletes.empty()) lines << "  • " + QString::fromStdString(game.name);
-    }
-    const auto dropped = static_cast<qsizetype>(plan.games.size()) - uninstalled;
-    if (dropped > 0) {
-      lines << QString("Removes %1 game%2 from Mira only (their files stay where they are).")
-                   .arg(dropped)
-                   .arg(dropped == 1 ? "" : "s");
-    }
-    if (!plan.launcher_dir.empty()) lines << "Deletes " + name + " itself.";
-    if (plan.signs_out) lines << "Signs you out of " + name + ".";
-    if (!plan.kept.empty()) lines << "Keeps game data and saves (prefixes stay on disk).";
-    lines << name + " is turned off; turn it on again in Manage sources any time.";
-    if (!notify::Confirm(parent, "Remove " + name, lines.join("\n"), "Remove", /*destructive=*/true)) return;
-    api::RemoveSourceAsync(parent, id, [parent, name, on_removed](RemoveSourceResult r) {
-      if (!r.ok) {
-        notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);
-        return;
-      }
-      if (!r.problems.empty()) {
-        QStringList problems;
-        for (const std::string& problem : r.problems) problems << QString::fromStdString(problem);
-        notify::Failed(parent, name + " was removed, but some steps failed.", problems.join("\n"));
-      }
-      on_removed();
-    });
-  });
-}
 
 SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork,
                        DownloadTracker* downloads, bool tabs, int tile_width, QWidget* parent)
@@ -630,7 +500,7 @@ QWidget* SourcePage::BuildOwnedSection() {
 void SourcePage::LibraryUpdated() {
   library_count_ = static_cast<int>(
       std::ranges::count_if(library_->Games(), [this](const GameSummary& game) { return IsOwnGame(game); }));
-  if (library_heading_ != nullptr) library_heading_->setText(Heading("In your library", library_count_));
+  if (library_heading_ != nullptr) library_heading_->setText(CountedHeading("In your library", library_count_));
   tabs_->SetCount("installed", library_count_);
   UpdateStatusLine();
   if (library_grid_ != nullptr) library_grid_->FitHeight();
@@ -834,10 +704,11 @@ void SourcePage::SignIn() {
 void SourcePage::Import() {
   import_button_->setEnabled(false);
   import_result_->setVisible(false);
-  const auto done = [this](bool ok, const std::string& error, int added, int updated) {
+  // The whole ApiError, so the line keeps mirad's hint.
+  const auto done = [this](bool ok, const ApiError& error, int added, int updated) {
     import_button_->setEnabled(true);
     if (ok) {
-      ShowLine(import_result_, Added(added, updated), "muted");
+      ShowLine(import_result_, ImportOutcome(added, updated), "muted");
     } else {
       ShowError(import_result_, "Could not import.", error);
     }
@@ -974,7 +845,7 @@ void SourcePage::RebuildOwnedTiles() {
     item->setData(state.isEmpty() ? action : state, GameTileDelegate::ActionRole);
     item->setData(state.isEmpty(), GameTileDelegate::ActionEnabledRole);
   }
-  owned_heading_->setText(Heading(id_ == "humble" ? "Your purchases" : "Not installed",
+  owned_heading_->setText(CountedHeading(id_ == "humble" ? "Your purchases" : "Not installed",
                                   static_cast<int>(owned_.size())));
   tabs_->SetCount("owned", static_cast<int>(owned_.size()));
   ApplyFilter();

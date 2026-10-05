@@ -35,10 +35,6 @@ class SourceSettingsCard;
 class TabRow;
 class TileGrid;
 
-// Shows what removing `source` would do, asks, then removes it.
-// `on_removed` runs only once it's gone.
-void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void()> on_removed);
-
 // One store, launcher or other program's page in the library window: the
 // games that came from it as cover tiles, whatever setup it still needs, and
 // (stores) what the account owns but hasn't installed. Rebuilt on every
