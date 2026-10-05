@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -66,6 +67,7 @@ public:
 private:
   void RegisterRoutes();
   void WatchExternalGames();
+  void BeginStopping();
   // Installs a runner build in the background, publishing runners.download.*.
   // With `replacing` ("kind:name"), games and the default using it move over.
   void InstallRunnerAsync(const std::string& kind, const std::string& source, const runner::ReleaseAsset& asset,
@@ -104,6 +106,8 @@ private:
   JobRegistry jobs_{events_};
   std::function<void()> on_roots_changed_;
   std::atomic<bool> stopping_{false};  // checked by open SSE connections; see EventBus::WaitNext
+  std::mutex stop_mutex_;
+  std::condition_variable stop_wake_;  // wakes WatchExternalGames as soon as stopping_ is set
   std::thread external_watch_;
 };
 

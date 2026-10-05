@@ -471,8 +471,17 @@ json Server::Record(const model::Game& game) {
 Server::~Server() {
   events_.SetGameRecordHook(nullptr);
   events_.SetArtHook(nullptr);
-  stopping_.store(true, std::memory_order_relaxed);
+  BeginStopping();
   if (external_watch_.joinable()) external_watch_.join();
+}
+
+void Server::BeginStopping() {
+  {
+    // Under the lock, so the watcher can't check the flag and then miss the wake.
+    const std::lock_guard lock(stop_mutex_);
+    stopping_.store(true, std::memory_order_relaxed);
+  }
+  stop_wake_.notify_all();
 }
 
 // Picks up games started outside Mira (the Steam client, a running launcher) so
@@ -481,8 +490,12 @@ void Server::WatchExternalGames() {
   constexpr auto kTick = std::chrono::milliseconds(500);
   constexpr int kTicksPerScan = 6;
   proc::ProcessIndex index;
-  for (int tick = 0; !stopping_.load(std::memory_order_relaxed); ++tick) {
-    std::this_thread::sleep_for(kTick);
+  for (int tick = 0;; ++tick) {
+    {
+      std::unique_lock lock(stop_mutex_);
+      const auto stopped = [this] { return stopping_.load(std::memory_order_relaxed); };
+      if (stop_wake_.wait_for(lock, kTick, stopped)) return;
+    }
     if (tick % kTicksPerScan != 0) continue;
 
     struct Candidate {
@@ -574,7 +587,7 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
 }
 
 void Server::Stop() {
-  stopping_.store(true, std::memory_order_relaxed);
+  BeginStopping();
   http_->stop();
 }
 

@@ -1,6 +1,4 @@
 #include <doctest.h>
-
-#include <sstream>
 #include <signal.h>
 #include <sys/wait.h>
 
@@ -9,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <memory>
+#include <sstream>
 #include <thread>
 
 #include "api/EventBus.h"
@@ -92,6 +92,35 @@ TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens th
   CHECK(crashed.value("exit_code", 0) == 3);
   CHECK_FALSE(crashed.value("hint", "").empty());
   CHECK(crashed["fix"] == nlohmann::json{{"kind", "game"}, {"target", "crasher"}, {"step", "log"}});
+}
+
+TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") {
+  const fs::path state = TempDir("proc-quit-state");
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  api::EventBus events;
+  auto supervisor = std::make_unique<proc::ProcessSupervisor>(games, events);
+
+  model::Game game;
+  game.id = "still-playing";
+  REQUIRE(games.Upsert(game).has_value());
+  Command command;
+  command.argv = {"sleep", "30"};
+  command.env["WINEPREFIX"] = (state / "pfx").string();  // to find the game again below
+  REQUIRE(supervisor->Launch(game, command).has_value());
+  REQUIRE(WaitFor([&] { return !proc::FindPrefixProcesses((state / "pfx").string()).empty(); },
+                  std::chrono::seconds(5)));
+
+  const auto started = std::chrono::steady_clock::now();
+  supervisor.reset();
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(500));
+  const auto left = proc::FindPrefixProcesses((state / "pfx").string());
+  CHECK_FALSE(left.empty());
+
+  for (pid_t pid : left) {
+    ::kill(pid, SIGKILL);
+    ::waitpid(pid, nullptr, 0);
+  }
 }
 
 TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is already running") {
