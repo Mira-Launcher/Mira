@@ -17,7 +17,7 @@ class QTimer;
 namespace mira_gui {
 
 // Everything mirad is installing or downloading, built from the event
-// stream: game installers, store installs and updates, Humble downloads,
+// stream: game installers, store installs and updates,
 // launcher installs, store helper downloads and runner downloads. mirad
 // replays its recent events to a new stream, so this also knows about work
 // started before the GUI was.
@@ -30,7 +30,7 @@ class DownloadTracker : public QObject {
   Q_OBJECT
 
 public:
-  enum class Kind { Game, Title, Humble, Launcher, Tool, Runner, Job };
+  enum class Kind { Game, Title, Launcher, Tool, Runner, Job };
   enum class State { Running, Finished, Failed };
 
   struct Entry {

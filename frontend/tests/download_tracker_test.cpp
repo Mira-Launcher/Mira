@@ -75,25 +75,24 @@ TEST_CASE("DownloadTracker keeps the newest activity first and tells kinds apart
   tracker.source_name = [](const QString& source) { return source == "battlenet" ? "Battle.net" : source; };
 
   tracker.HandleEvent("launcher.install.started", R"({"id": "battlenet"})");
-  tracker.HandleEvent("gog.setup.started", R"({"tag": "v1.1"})");
-  tracker.HandleEvent("humble.download.started", R"({"bundle_key": "abc"})");
+  tracker.HandleEvent("umu.setup.started", R"({})");
   tracker.HandleEvent("runners.download.started", R"({"kind": "proton", "tag": "GE-Proton10-4"})");
   CHECK_FALSE(tracker.HandleEvent("game.added", R"({"id": "x"})"));
 
-  REQUIRE(tracker.Entries().size() == 4);
+  REQUIRE(tracker.Entries().size() == 3);
   CHECK(tracker.Entries()[0].kind == DownloadTracker::Kind::Runner);
   CHECK(tracker.NameFor(tracker.Entries()[0]).toStdString() == "GE-Proton10-4");
-  CHECK(tracker.Entries()[3].kind == DownloadTracker::Kind::Launcher);
-  CHECK(tracker.NameFor(tracker.Entries()[3]).toStdString() == "Battle.net");
-  CHECK(tracker.NameFor(*tracker.Find("tool:gog")).toStdString() == "gogdl");
+  CHECK(tracker.Entries()[2].kind == DownloadTracker::Kind::Launcher);
+  CHECK(tracker.NameFor(tracker.Entries()[2]).toStdString() == "Battle.net");
+  CHECK(tracker.NameFor(*tracker.Find("tool:umu")).toStdString() == "umu-launcher");
 
   // Moves back to the top when it changes.
   tracker.HandleEvent("launcher.install.finished", R"({"id": "battlenet"})");
   CHECK(tracker.Entries()[0].key.toStdString() == "launcher:battlenet");
-  CHECK(tracker.RunningCount() == 3);
+  CHECK(tracker.RunningCount() == 2);
 
   tracker.ClearFinished();
-  CHECK(tracker.Entries().size() == 3);
+  CHECK(tracker.Entries().size() == 2);
   CHECK(tracker.Find("launcher:battlenet") == nullptr);
 }
 

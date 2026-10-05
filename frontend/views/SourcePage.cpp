@@ -1136,12 +1136,7 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     owned_state_.remove(ref);
     ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
   } else if (event.state == "finished") {
-    if (event.kind == "download" && !event.downloaded) {
-      owned_state_.insert(ref, "Nothing to download");  // e.g. only a Steam key
-    } else if (event.kind == "download") {
-      owned_state_.remove(ref);
-      humble_paths_.insert(ref, QString::fromStdString(event.path));
-    } else if (id_ == "steam") {
+    if (id_ == "steam") {
       owned_state_.insert(ref, "Sent to Steam");
     } else {
       // Now a tracked game: it moves to "In your library" on the next relist.

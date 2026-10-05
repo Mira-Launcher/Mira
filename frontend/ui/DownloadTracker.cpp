@@ -29,13 +29,8 @@ bool ToState(const std::string& state, DownloadTracker::State* out) {
   return true;
 }
 
-// The helper each store's setup downloads.
+// The helper a setup downloads.
 QString ToolName(const QString& source) {
-  if (source == "epic") return "Legendary";
-  if (source == "gog") return "gogdl";
-  if (source == "itch") return "butler";
-  if (source == "humble") return "humble-cli";
-  if (source == "amazon") return "nile";
   if (source == "umu") return "umu-launcher";
   return source;
 }
@@ -48,7 +43,6 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
   switch (kind) {
     case Kind::Game: return "game:" + ref;
     case Kind::Title: return source + ":" + ref;
-    case Kind::Humble: return "humble:" + ref;
     case Kind::Launcher: return "launcher:" + source;
     case Kind::Tool: return "tool:" + source;
     case Kind::Runner: return "runner:" + source + "/" + ref;
@@ -157,9 +151,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
   const QString source = QString::fromStdString(store.source);
   const QString ref = QString::fromStdString(store.ref);
   Kind kind = Kind::Title;
-  if (store.kind == "download") {
-    kind = Kind::Humble;
-  } else if (store.kind == "setup") {
+  if (store.kind == "setup") {
     kind = type.starts_with("launcher.") ? Kind::Launcher : Kind::Tool;
   }
   Entry& entry = Upsert(kind, source, ref);
@@ -238,10 +230,6 @@ QString DownloadTracker::NameFor(const Entry& entry) const {
       if (const QString title = titles_.value(entry.source + ":" + entry.ref); !title.isEmpty()) return title;
       const QString name = game(entry.source + "-" + entry.ref);
       return name.isEmpty() ? entry.ref : name;
-    }
-    case Kind::Humble: {
-      const QString title = titles_.value("humble:" + entry.ref);
-      return title.isEmpty() ? QString("Humble Bundle purchase") : title;
     }
     case Kind::Launcher: return source(entry.source);
     case Kind::Tool: return ToolName(entry.source);

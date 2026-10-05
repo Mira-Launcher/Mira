@@ -2031,14 +2031,8 @@ void MiradClient::OpenLauncherAsync(QObject* context, const std::string& id,
 
 bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::string& data,
                                   StoreEvent* out) {
-  // Each store's setup event has its own prefix; installs and downloads
-  // share one each.
+  // Each runner tool's setup event has its own prefix. (A store's setup is a job.)
   static const std::pair<std::string_view, std::string_view> kSetupPrefixes[] = {
-      {"epic.legendary.install.", "epic"},
-      {"gog.setup.", "gog"},
-      {"itch.setup.", "itch"},
-      {"humble.setup.", "humble"},
-      {"amazon.setup.", "amazon"},
       {"umu.setup.", "umu"},
       {"winetricks.setup.", "winetricks"},
   };
@@ -2051,7 +2045,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
     }
   }
   constexpr std::string_view kInstall = "library.install.";
-  constexpr std::string_view kDownload = "humble.download.";
   constexpr std::string_view kLauncher = "launcher.install.";
   if (event_type.starts_with(kLauncher)) {
     out->kind = "setup";  // source is the launcher id, read below
@@ -2059,10 +2052,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
   } else if (event_type.starts_with(kInstall)) {
     out->kind = "install";
     state = std::string_view(event_type).substr(kInstall.size());
-  } else if (event_type.starts_with(kDownload)) {
-    out->source = "humble";
-    out->kind = "download";
-    state = std::string_view(event_type).substr(kDownload.size());
   }
   if (state.empty()) return false;
 
@@ -2078,10 +2067,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
       out->eta_seconds = static_cast<std::int64_t>(entry.value("eta", -1.0));
       out->bytes_per_second = entry.value("bps", -1.0);
     }
-  } else if (out->kind == "download") {
-    out->ref = entry.value("bundle_key", std::string());
-    out->path = entry.value("path", std::string());
-    out->downloaded = entry.value("downloaded", true);
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
   }

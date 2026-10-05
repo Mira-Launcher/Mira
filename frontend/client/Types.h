@@ -1006,8 +1006,6 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
-  std::string path;         // download "finished": the folder it landed in
-  bool downloaded = true;   // download "finished": false when the bundle had nothing to download
 };
 
 }  // namespace mira_gui
