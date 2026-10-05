@@ -5,18 +5,13 @@
 
 #include "config/Config.h"
 #include "humble/Humble.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 // A stand-in for the real `humble-cli`, pointed at by humble.humble_cli_bin.
 // humble-cli's --field output is plain CSV, no header row (confirmed

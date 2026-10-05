@@ -6,18 +6,13 @@
 #include "config/Config.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 // A stand-in for the real `butler`, pointed at by itch.butler_bin.
 // Unlike Legendary/gogdl's one-shot-subprocess fakes, this has to be a

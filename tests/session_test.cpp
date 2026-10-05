@@ -4,18 +4,11 @@
 #include <fstream>
 
 #include "proc/Session.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
-
-namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-}  // namespace
 
 TEST_CASE("WriteSessionRecord then ReadSessionRecord round-trips every field") {
   const fs::path dir = TempDir("session-roundtrip");

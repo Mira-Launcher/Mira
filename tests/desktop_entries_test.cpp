@@ -9,18 +9,11 @@
 #include "config/Config.h"
 #include "desktop/DesktopEntries.h"
 #include "metadata/MetadataFetcher.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
-
-namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-}  // namespace
 
 TEST_CASE("DesktopEntries never writes an entry for a Steam-sourced game -- Steam already has one") {
   const fs::path state = TempDir("desktop-entries-steam-state");

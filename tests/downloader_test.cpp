@@ -9,16 +9,10 @@
 #include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 void RunOrFail(const std::vector<std::string>& argv, const fs::path& cwd = {}) {
   Command command;

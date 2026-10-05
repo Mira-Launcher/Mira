@@ -18,18 +18,13 @@
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "store/GameStore.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-
 // Waits up to `timeout` for `predicate()` to become true, polling rather
 // than sleeping the whole timeout. These tests spawn real subprocesses, so
 // exact timing isn't guaranteed.

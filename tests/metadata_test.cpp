@@ -13,18 +13,11 @@
 #include "metadata/FetchQueue.h"
 #include "metadata/MetadataFetcher.h"
 #include "model/Types.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
-
-namespace {
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
-}  // namespace
 
 // Everything here deliberately exercises only the non-Steam path with no
 // steamgriddb.api_key set: that's the one branch that's fully offline (see
@@ -42,6 +35,7 @@ TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches n
   const fs::path dir = TempDir("metadata-nonsteam");
   config::Config config(dir / "settings.toml");
   config.Load();
+  test::Isolate(config);
 
   model::Game game;
   game.id = "some-game";

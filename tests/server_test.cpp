@@ -18,18 +18,13 @@
 #include "config/Config.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/GameStore.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
+using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-
-fs::path TempDir(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
 
 // A long request answers 202 {job}; this waits for the job and returns it
 // as GET /v1/jobs/{id} shows it once done (`state`, then `result` or `error`).
@@ -59,6 +54,7 @@ public:
       : config_(state_dir / "settings.toml"), games_(state_dir / "games.toml"),
         socket_path_(state_dir / "mirad.sock"), server_(config_, games_, events_) {
     config_.Load();
+    test::Isolate(config_);
     games_.Load();
     thread_ = std::thread([this] { [[maybe_unused]] auto _ = server_.Serve(socket_path_); });
     // Serve() binds synchronously before it blocks accepting, but the thread
@@ -356,7 +352,6 @@ TEST_CASE("A game record lists its cached art slots, with a version that changes
 TEST_CASE("POST /v1/games/metadata/refresh is a job that reports each known game's outcome") {
   LiveServer server(TempDir("server-refresh-many"));
   // Offline: with no SteamGridDB key and no lookup by name, a non-Steam fetch fails at once.
-  REQUIRE(server.MutableConfig().Set("metadata.steam_art_by_name", false).has_value());
   model::Game game;
   game.id = "celeste";
   game.name = "Celeste";
@@ -727,6 +722,7 @@ TEST_CASE("Artwork thumb routes validate the batch and serve only a cached previ
 
 TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it when queuing") {
   LiveServer server(TempDir("server-library-artwork"));
+  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
 
   const fs::path artwork_dir = metadata::ArtworkDir(server.config(), "epic-Fortnite");
   fs::create_directories(artwork_dir);
