@@ -1,6 +1,9 @@
 #include "core/Strings.h"
 #include "itch/Itch.h"
 
+#include <map>
+#include <mutex>
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -30,9 +33,20 @@ std::filesystem::path ManagedButlerPath(const config::Config& config) {
   // flattening it -- so this has to search for the binary, not assume a
   // flat "tools/itch/butler" layout.
   const fs::path tools_dir = config.File().parent_path() / "tools" / "itch";
+  // Status checks and every butlerd start ask, so the search is remembered until the binary is gone.
+  static std::mutex mutex;
+  static std::map<fs::path, fs::path> found;
   std::error_code ec;
+  {
+    const std::lock_guard lock(mutex);
+    if (const auto it = found.find(tools_dir); it != found.end() && fs::exists(it->second, ec)) return it->second;
+  }
   for (const auto& entry : fs::recursive_directory_iterator(tools_dir, ec)) {
-    if (entry.is_regular_file(ec) && entry.path().filename() == "butler") return entry.path();
+    if (entry.is_regular_file(ec) && entry.path().filename() == "butler") {
+      const std::lock_guard lock(mutex);
+      found[tools_dir] = entry.path();
+      return entry.path();
+    }
   }
   return tools_dir / "butler";  // sensible default even if not installed yet
 }

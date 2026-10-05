@@ -41,6 +41,7 @@ struct Pending {
 // thread hands each reply back by id. butlerd runs with --keep-alive so it
 // would take more connections, and --destiny-pid so it exits with mirad.
 struct Connection {
+  std::mutex connect_mutex;  // one startup at a time; held without `mutex`, so calls on a live connection never wait on it
   std::mutex mutex;  // everything below except writes
   std::condition_variable replied;
   bool connected = false;
@@ -109,30 +110,41 @@ Result<Spawned> SpawnCapturingStdout(const std::vector<std::string>& argv) {
   return Spawned{pid, pipe_fds[0]};
 }
 
-// Reads from `fd` until a full line is available or `deadline` passes,
-// one byte at a time. poll() enforces the deadline; a bare read() would
-// block forever on a reply that never comes.
-Result<std::string> ReadLine(int fd, std::chrono::steady_clock::time_point deadline) {
-  std::string line;
-  char c = 0;
-  while (true) {
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-    if (left.count() <= 0) break;
-    pollfd ready{.fd = fd, .events = POLLIN, .revents = 0};
-    const int polled = poll(&ready, 1, static_cast<int>(std::min<std::int64_t>(left.count(), 60'000)));
-    if (polled < 0 && errno != EINTR) return Err("read_failed", std::strerror(errno));
-    if (polled <= 0) continue;
-    const ssize_t n = read(fd, &c, 1);
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      return Err("read_failed", std::strerror(errno));
+// Reads lines off `fd`, a block at a time. poll() enforces the deadline; a bare read() would block forever
+// on a reply that never comes. Bytes past a line stay buffered for the next call.
+class LineReader {
+public:
+  explicit LineReader(int fd) : fd_(fd) {}
+
+  Result<std::string> Read(std::chrono::steady_clock::time_point deadline) {
+    while (true) {
+      if (const size_t newline = buffer_.find('\n'); newline != std::string::npos) {
+        std::string line = buffer_.substr(0, newline);
+        buffer_.erase(0, newline + 1);
+        return line;
+      }
+      const auto left =
+          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      if (left.count() <= 0) return Err("timeout", "no response within the deadline");
+      pollfd ready{.fd = fd_, .events = POLLIN, .revents = 0};
+      const int polled = poll(&ready, 1, static_cast<int>(std::min<std::int64_t>(left.count(), 60'000)));
+      if (polled < 0 && errno != EINTR) return Err("read_failed", std::strerror(errno));
+      if (polled <= 0) continue;
+      char chunk[4096];
+      const ssize_t n = read(fd_, chunk, sizeof(chunk));
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        return Err("read_failed", std::strerror(errno));
+      }
+      if (n == 0) return Err("eof", "connection closed before a full line arrived");
+      buffer_.append(chunk, static_cast<size_t>(n));
     }
-    if (n == 0) return Err("eof", "connection closed before a full line arrived");
-    if (c == '\n') return line;
-    line.push_back(c);
   }
-  return Err("timeout", "no response within the deadline");
-}
+
+private:
+  int fd_;
+  std::string buffer_;
+};
 
 Result<void> ConnectSocket(int& out_fd, const std::string& host, int port) {
   addrinfo hints{};
@@ -211,12 +223,12 @@ void AnswerServerRequest(int fd, const json& request, std::mutex* write_mutex = 
 // Runs for the life of one butlerd connection: replies go to their pending
 // call, notifications to every call that wants them, and butlerd's own
 // requests get answered. When the connection drops, every waiting call fails.
-void ReadLoop(Connection& connection, int fd) {
+void ReadLoop(Connection& connection, int fd, LineReader reader) {
   const auto forever = std::chrono::steady_clock::now() + std::chrono::hours(24 * 365);
   // A throw (odd JSON, a handler) ends up as a disconnect, so waiting callers still fail instead of the daemon terminating.
   try {
   while (true) {
-    const Result<std::string> line = ReadLine(fd, forever);
+    const Result<std::string> line = reader.Read(forever);
     if (!line) break;
     const json parsed = json::parse(*line, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) continue;
@@ -269,10 +281,11 @@ void ReadLoop(Connection& connection, int fd) {
 // `request_id` (a "result"/"error" field alongside a matching "id").
 // Server requests are answered; notifications (e.g. install progress) go
 // to `on_notification`, if set.
-Result<json> ReadResponse(int fd, int request_id, std::chrono::steady_clock::time_point deadline,
+Result<json> ReadResponse(int fd, LineReader& reader, int request_id,
+                          std::chrono::steady_clock::time_point deadline,
                           const NotificationHandler& on_notification = nullptr) {
   while (true) {
-    const Result<std::string> line = ReadLine(fd, deadline);
+    const Result<std::string> line = reader.Read(deadline);
     if (!line) return std::unexpected(line.error());
     const json parsed = json::parse(*line, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) continue;
@@ -296,10 +309,14 @@ Result<json> ReadResponse(int fd, int request_id, std::chrono::steady_clock::tim
   }
 }
 
-// Starts butler (if not already connected) and performs Meta.Authenticate.
-// Assumes `connection.mutex` is already held.
-Result<void> EnsureConnectedLocked(const config::Config& config, Connection& connection) {
-  if (connection.connected) return {};
+// Starts butler (if not already connected) and performs Meta.Authenticate. Waits on butlerd holding only
+// `connect_mutex`, so calls on a live connection are never held up by a startup.
+Result<void> EnsureConnected(const config::Config& config, Connection& connection) {
+  const std::lock_guard connect_lock(connection.connect_mutex);
+  {
+    const std::lock_guard lock(connection.mutex);
+    if (connection.connected) return {};
+  }
 
   const runner::ToolStatus status = DetectButler(config);
   if (!status.installed) {
@@ -323,8 +340,9 @@ Result<void> EnsureConnectedLocked(const config::Config& config, Connection& con
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
   std::string secret;
   std::string address;
+  LineReader stdout_reader(stdout_fd);
   while (secret.empty()) {
-    const Result<std::string> line = ReadLine(stdout_fd, deadline);
+    const Result<std::string> line = stdout_reader.Read(deadline);
     if (!line) {
       close(stdout_fd);
       StopDaemon(pid);
@@ -362,7 +380,11 @@ Result<void> EnsureConnectedLocked(const config::Config& config, Connection& con
     return std::unexpected(connected.error());
   }
 
-  const int auth_id = connection.next_id++;
+  int auth_id = 0;
+  {
+    const std::lock_guard lock(connection.mutex);
+    auth_id = connection.next_id++;
+  }
   if (auto sent = SendLine(socket_fd, {{"jsonrpc", "2.0"}, {"id", auth_id}, {"method", "Meta.Authenticate"},
                                        {"params", {{"secret", secret}}}});
       !sent) {
@@ -370,17 +392,21 @@ Result<void> EnsureConnectedLocked(const config::Config& config, Connection& con
     StopDaemon(pid);
     return std::unexpected(sent.error());
   }
-  const Result<json> auth_result = ReadResponse(socket_fd, auth_id, deadline);
+  LineReader socket_reader(socket_fd);
+  const Result<json> auth_result = ReadResponse(socket_fd, socket_reader, auth_id, deadline);
   if (!auth_result) {
     close(socket_fd);
     StopDaemon(pid);
     return std::unexpected(auth_result.error());
   }
 
-  connection.socket_fd = socket_fd;
-  connection.daemon_pid = pid;
-  connection.connected = true;
-  std::thread(ReadLoop, std::ref(connection), socket_fd).detach();
+  {
+    const std::lock_guard lock(connection.mutex);
+    connection.socket_fd = socket_fd;
+    connection.daemon_pid = pid;
+    connection.connected = true;
+  }
+  std::thread(ReadLoop, std::ref(connection), socket_fd, std::move(socket_reader)).detach();
   log::Info("connected to butlerd at {}", address);
   return {};
 }
@@ -395,13 +421,16 @@ Result<json> Send(const config::Config& config, const std::string& method, const
   Pending call{.reply = std::nullopt, .on_notification = on_notification};
   int id = 0;
   int fd = -1;
-  {
+  // Twice: the connection can drop between connecting and registering the call.
+  for (int attempt = 0; attempt < 2 && fd < 0; ++attempt) {
+    if (auto ready = EnsureConnected(config, connection); !ready) return std::unexpected(ready.error());
     const std::lock_guard<std::mutex> lock(connection.mutex);
-    if (auto ready = EnsureConnectedLocked(config, connection); !ready) return std::unexpected(ready.error());
+    if (!connection.connected) continue;
     id = connection.next_id++;
     fd = connection.socket_fd;
     connection.pending[id] = &call;
   }
+  if (fd < 0) return Err("butlerd_disconnected", "lost the connection to butlerd");
   Result<void> sent;
   {
     const std::lock_guard<std::mutex> lock(connection.write_mutex);
