@@ -86,9 +86,7 @@ Result<Command> NativeRunner::BuildCommand(const model::Game& game,
     command.argv.push_back(exe.string());
   }
 
-  // game.args is a plain space-separated string, not shell-quoted, so no
-  // support for an argument containing a literal space yet.
-  for (const std::string& arg : strings::Split(game.args, ' ')) {
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
   }
   command.env = game.env;

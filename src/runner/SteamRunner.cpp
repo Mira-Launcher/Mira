@@ -59,7 +59,7 @@ Result<Command> SteamRunner::BuildCommand(const model::Game& game,
     command.env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = info->client_install_path.string();
   }
 
-  for (const std::string& arg : strings::Split(game.args, ' ')) {
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
   }
   for (const auto& [key, value] : game.env) command.env[key] = value;  // game-specific wins

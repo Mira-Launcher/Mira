@@ -1,4 +1,5 @@
 #include "core/Json.h"
+#include "core/Strings.h"
 #include "amazon/AmazonImporter.h"
 
 #include <algorithm>
@@ -76,9 +77,11 @@ Result<AmazonImportSummary> AmazonImporter::Import() {
     game.install_path = path.string();
     if (!command.empty()) game.exe_path = command;
     if (const json args = main.contains("Args") ? main["Args"] : json::array(); args.is_array() && game.args.empty()) {
+      std::vector<std::string> list;
       for (const json& arg : args) {
-        if (arg.is_string()) game.args += (game.args.empty() ? "" : " ") + arg.get<std::string>();
+        if (arg.is_string()) list.push_back(arg.get<std::string>());
       }
+      game.args = strings::JoinArgs(list);
     }
     if (main.contains("WorkingSubdirOverride") && main["WorkingSubdirOverride"].is_string()) {
       game.working_dir = ForwardSlashes(main["WorkingSubdirOverride"].get<std::string>());

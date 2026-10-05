@@ -130,7 +130,7 @@ Result<Command> WineRunner::BuildCommand(const model::Game& game,
   Command command;
   command.argv = {build->path};
   std::ranges::move(WindowsProgram(exe), std::back_inserter(command.argv));
-  for (const std::string& arg : strings::Split(game.args, ' ')) {
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
   }
 

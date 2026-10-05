@@ -63,6 +63,56 @@ std::vector<std::string> Split(std::string_view input, char delimiter) {
   return parts;
 }
 
+std::vector<std::string> SplitArgs(std::string_view text) {
+  std::vector<std::string> args;
+  std::string current;
+  bool have_token = false;
+  char quote = 0;
+  for (size_t i = 0; i < text.size(); ++i) {
+    const char c = text[i];
+    if (quote != 0) {
+      if (c == quote) {
+        quote = 0;
+      } else if (c == '\\' && quote == '"' && i + 1 < text.size() && (text[i + 1] == '"' || text[i + 1] == '\\')) {
+        current += text[++i];
+      } else {
+        current += c;
+      }
+    } else if (c == '"' || c == '\'') {
+      quote = c;
+      have_token = true;
+    } else if (c == ' ' || c == '\t') {
+      if (have_token) args.push_back(std::move(current));
+      current.clear();
+      have_token = false;
+    } else {
+      current += c;
+      have_token = true;
+    }
+  }
+  if (have_token) args.push_back(std::move(current));
+  return args;
+}
+
+std::string JoinArgs(const std::vector<std::string>& args) {
+  std::string out;
+  for (const std::string& arg : args) {
+    if (!out.empty()) out += ' ';
+    const bool plain = !arg.empty() && arg.find_first_of(" \t\"'\\") == std::string::npos;
+    if (plain) {
+      out += arg;
+      continue;
+    }
+    out += '"';
+    for (const char c : arg) {
+      if (c == '"' || c == '\\') out += '\\';
+      out += c;
+    }
+    out += '"';
+  }
+  return out;
+}
+
 bool GlobMatch(std::string_view pattern, std::string_view text) {
   size_t p = 0, t = 0, star = std::string_view::npos, retry = 0;
   while (t < text.size()) {
