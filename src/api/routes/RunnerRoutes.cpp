@@ -38,11 +38,11 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
     json out = json::array();
     for (const model::RunnerBuild& build : registry.DiscoverAll()) {
       json entry = model::ToJson(build);
-      entry["label"] = runner::BuildLabel(build.kind, build.name);
+      entry["label"] = runner::BuildLabel(build.kind, build.release);
       if (build.kind == "proton" || build.kind == "wine") {
         const std::filesystem::path dir = runner::BuildDir(build);
         entry["removable"] = paths::IsWithin(dir, runner::RunnerRoots(s.config, build.kind));
-        const auto family = runner::FamilyOfBuild(s.config, build.kind, build.name, dir.filename().string());
+        const auto family = runner::FamilyOfBuild(s.config, build.kind, build.release, dir.filename().string());
         entry["source"] = family ? family->id : "";
       }
       out.push_back(std::move(entry));

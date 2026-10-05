@@ -47,6 +47,12 @@ constexpr const char* kKnownProtonDirs[] = {
     "~/.config/heroic/tools/proton",
 };
 
+// A distro package (/usr, /opt) or Steam's own Proton (steamapps/common).
+bool UpdatedInPlace(const fs::path& dir) {
+  const std::string path = dir.string();
+  return path.starts_with("/usr/") || path.starts_with("/opt/") || dir.parent_path().filename() == "common";
+}
+
 }  // namespace
 
 fs::path BundledUmuRun() { return paths::UserDir() / "tools" / "umu" / "umu" / "umu-run"; }
@@ -89,10 +95,13 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
       if (version_file && std::getline(version_file, line)) {
         if (const auto space = line.find(' '); space != std::string::npos) {
           build.version = line.substr(0, space);
-          build.name = strings::Trim(line.substr(space + 1));
+          build.release = strings::Trim(line.substr(space + 1));
         }
       }
-      if (build.name.empty()) build.name = dir.filename().string();  // fallback
+      if (build.release.empty()) build.release = dir.filename().string();  // fallback
+      // A distro package or Steam's own Proton is replaced in place by its
+      // updates, and its release name changes with them; its folder doesn't.
+      build.name = UpdatedInPlace(dir) ? dir.filename().string() : build.release;
 
       builds.push_back(std::move(build));
     }

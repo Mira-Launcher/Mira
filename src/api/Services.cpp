@@ -299,7 +299,7 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                const runner::RunnerRegistry registry(config);
                const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
                const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-                 return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
+                 return runner::IsInstalledAs(kind, build.release, runner::BuildDir(build).filename().string(), asset);
                });
                if (fresh != builds.end()) {
                  const std::string to = fresh->Reference();

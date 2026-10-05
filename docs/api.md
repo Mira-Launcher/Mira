@@ -246,11 +246,11 @@ Every installed build, discovered on each call:
 ```json
 [{ "kind": "proton", "name": "GE-Proton11-7", "label": "GE-Proton11-7",
    "path": "/home/x/.steam/steam/compatibilitytools.d/GE-Proton11-7-x86_64",
-   "version": "1789520217", "reference": "proton:GE-Proton11-7",
+   "version": "1789520217", "release": "GE-Proton11-7", "reference": "proton:GE-Proton11-7",
    "source": "proton_ge", "removable": true }]
 ```
 
-`reference` is what `runner_ref` and `default_runner.*` use. `label` is a readable name, such as "Wine 11.18 staging-tkg". `source` is the download source the build matches, or empty. `removable` is false for builds outside `runner_search_paths`/`wine_search_paths`, such as distro, Steam or system builds.
+`reference` is what `runner_ref` and `default_runner.*` use. `release` is the name the build's own files give. A Proton build is named by it, except one its owner replaces in place (a distro package under `/usr` or `/opt`, Steam's own Proton in `steamapps/common`), which is named by its folder (`proton-cachyos-slr`) so references survive its updates. At startup, references to such a build's older release names are moved to the folder name, when exactly one build matches: the same major version, or any version for a folder without one in its name. `label` is a readable name, such as "Wine 11.18 staging-tkg". `source` is the download source the build matches, or empty. `removable` is false for builds outside `runner_search_paths`/`wine_search_paths`, such as distro, Steam or system builds.
 
 Discovery also looks where Steam, the distro, Heroic, Bottles and Lutris keep builds, plus `/opt/*`, unless `runner_scan_common_dirs` is off. Proton builds only appear when `umu-run` is available. A build reachable through several paths is listed once. `native` and `steam` have no builds and never appear.
 

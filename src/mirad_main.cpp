@@ -25,6 +25,7 @@
 #include "library/Scanner.h"
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
+#include "runner/RefMigration.h"
 #include "store/GameStore.h"
 
 namespace {
@@ -97,6 +98,7 @@ int main(int argc, char** argv) {
   // before Serve() so a re-adopted still-running game is already tracked by
   // the time the very first client request arrives.
   services.ReconcileSessions();
+  mira::runner::MigrateInPlaceRefs(config, games);
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
 
