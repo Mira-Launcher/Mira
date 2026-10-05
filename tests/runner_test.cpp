@@ -264,11 +264,15 @@ TEST_CASE("the old proton_umu: runner_ref spelling still resolves after the rena
   // rename must keep working.
   config::Config config(TempFile("legacy-ref.toml"));
   config.Load();
+  const fs::path runners = fs::temp_directory_path() / "mira-tests" / "legacy-ref-runners";
+  fs::remove_all(runners);
+  fs::create_directories(runners / "Fake-Proton-1");
+  std::ofstream(runners / "Fake-Proton-1" / "proton").close();
+  std::ofstream(runners / "Fake-Proton-1" / "toolmanifest.vdf").close();
+  std::ofstream(runners / "Fake-Proton-1" / "version") << "1700000000 Fake-Proton-1";
+  REQUIRE(config.Set("runner_search_paths", nlohmann::json::array({runners.string()})));
+  REQUIRE(config.Set("runner_scan_common_dirs", false));
   runner::RunnerRegistry registry(config);
-
-  const bool has_proton = std::ranges::any_of(
-      registry.DiscoverAll(), [](const model::RunnerBuild& b) { return b.kind == "proton"; });
-  if (!has_proton) return;  // nothing installed to resolve against on this machine
 
   auto legacy = registry.Resolve("proton_umu:latest");
   REQUIRE(legacy.has_value());

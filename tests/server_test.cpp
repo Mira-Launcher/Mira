@@ -900,24 +900,23 @@ TEST_CASE("POST /v1/library/relocate with ids moves only those games") {
   CHECK(fs::exists(elsewhere / "left" / "run.sh"));
 }
 
-TEST_CASE("DELETE /v1/runners/{reference} refuses a path outside every configured search root") {
+TEST_CASE("DELETE /v1/runners/{reference} refuses the system Wine, outside every search root") {
+  // A stand-in system wine first on PATH, so this runs whether or not the machine has Wine.
+  const fs::path bin = TempDir("server-runner-delete-outside-bin");
+  test::Touch(bin / "wine", "#!/bin/sh\necho wine-9.0\n", /*executable=*/true);
+  const test::PathPrepend path(bin);
   LiveServer server(TempDir("server-runner-delete-outside"));
   httplib::Client client = server.Client();
 
   auto listed = client.Get("/v1/runners");
   REQUIRE(listed != nullptr);
-  const bool has_system_wine = listed->body.find("\"wine:system\"") != std::string::npos;
-  INFO("has_system_wine=", has_system_wine, " (depends on whether this machine has wine installed)");
+  REQUIRE(listed->body.find("\"wine:system\"") != std::string::npos);
 
-  // wine:system is discovered via PATH, not wine_search_paths -- must never
-  // be deletable, since that's the real system wine binary. Only makes
-  // sense to check when there's a real one to try against.
-  if (has_system_wine) {
-    auto deleted = client.Delete("/v1/runners/wine:system");
-    REQUIRE(deleted != nullptr);
-    CHECK(deleted->status == 400);
-    CHECK(deleted->body.find("path_outside_root") != std::string::npos);
-  }
+  auto deleted = client.Delete("/v1/runners/wine:system");
+  REQUIRE(deleted != nullptr);
+  CHECK(deleted->status == 400);
+  CHECK(deleted->body.find("path_outside_root") != std::string::npos);
+  CHECK(fs::exists(bin / "wine"));
 }
 
 TEST_CASE("DELETE /v1/runners/{reference} rejects a kind with no separate builds, or a non-concrete name") {

@@ -64,6 +64,13 @@ Result<void> BuildFixtureDb(const fs::path& db_path, const std::vector<FixtureRo
   return {};
 }
 
+// The fixtures build pga.db with the sqlite3 tool, which the importer also reads it with.
+bool HaveSqlite3() {
+  if (runner::FindOnPath("sqlite3")) return true;
+  WARN_MESSAGE(false, "skipped: sqlite3 isn't installed");
+  return false;
+}
+
 struct Fixture {
   fs::path lutris_dir;
   fs::path state_dir;
@@ -87,7 +94,7 @@ struct Fixture {
 }  // namespace
 
 TEST_CASE("LutrisImporter derives install_path from the exe's own directory, data_dir verbatim from prefix") {
-  if (!runner::FindOnPath("sqlite3")) return;  // soft dependency, same posture as winetricks
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-combined");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "batman";
@@ -119,7 +126,7 @@ TEST_CASE("LutrisImporter derives install_path from the exe's own directory, dat
 }
 
 TEST_CASE("LutrisImporter keeps a relative exe relative to prefix, per the yaml itself") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-relative-exe");
   const fs::path prefix_dir = fx.lutris_dir.parent_path() / "epic-games-store";
@@ -147,7 +154,7 @@ TEST_CASE("LutrisImporter keeps a relative exe relative to prefix, per the yaml 
 }
 
 TEST_CASE("LutrisImporter skips a row with no prefix recorded in its yaml") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-no-prefix");
   REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Celeste", "celeste", "wine", "celeste-456", {}}}).has_value());
@@ -162,7 +169,7 @@ TEST_CASE("LutrisImporter skips a row with no prefix recorded in its yaml") {
 }
 
 TEST_CASE("LutrisImporter skips non-wine runners and updates known games in place") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-skip-and-update");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
@@ -196,7 +203,7 @@ TEST_CASE("LutrisImporter skips non-wine runners and updates known games in plac
 }
 
 TEST_CASE("LutrisImporter refuses an install_path that's really the whole shared prefix") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-broad-install-path");
   const fs::path prefix_dir = fx.lutris_dir.parent_path() / "battlenet";
@@ -222,7 +229,7 @@ TEST_CASE("LutrisImporter refuses an install_path that's really the whole shared
 }
 
 TEST_CASE("LutrisImporter maps .hidden to the hidden tag, favorites to favorite, and everything else verbatim") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-categories");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
@@ -251,7 +258,7 @@ TEST_CASE("LutrisImporter maps .hidden to the hidden tag, favorites to favorite,
 }
 
 TEST_CASE("LutrisImporter merges Lutris categories with tags the user already added, on re-import") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-tag-merge");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
@@ -284,7 +291,7 @@ TEST_CASE("LutrisImporter merges Lutris categories with tags the user already ad
 }
 
 TEST_CASE("LutrisImporter imports a native (\"linux\" runner) game with no prefix at all") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-native");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "MyAppImageGame";
@@ -317,7 +324,7 @@ TEST_CASE("LutrisImporter imports a native (\"linux\" runner) game with no prefi
 }
 
 TEST_CASE("LutrisImporter skips a \"linux\" row whose exe is relative -- nothing to resolve it against") {
-  if (!runner::FindOnPath("sqlite3")) return;
+  if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-native-relative-exe");
   REQUIRE(
