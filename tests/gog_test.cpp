@@ -90,8 +90,8 @@ TEST_CASE("Login stores what gogdl wrote, and Status reads it back") {
   fixture.UseFakeGogdl();
 
   REQUIRE(gog::Login(fixture.config, "good-code"));
-  const gog::GogAuthStatus status = gog::Status(fixture.config);
-  REQUIRE(status.gogdl.installed);
+  const runner::AuthStatus status = gog::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK(status.authenticated);
 }
 

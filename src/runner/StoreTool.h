@@ -22,6 +22,13 @@ struct ToolStatus {
 
 nlohmann::json ToJson(const ToolStatus& status);
 
+// A store's tool, and whether its account is signed in.
+struct AuthStatus {
+  ToolStatus tool;
+  bool authenticated = false;
+  std::string account;  // when the tool reports one
+};
+
 // One store's command-line tool (legendary, gogdl, nile, butler, humble-cli).
 struct StoreTool {
   const char* store;         // "gog": the store's id in settings, errors and events
@@ -33,6 +40,9 @@ struct StoreTool {
 
 // The override setting first, then Mira's own download, then $PATH. Doesn't need the tool to work.
 ToolStatus DetectTool(const config::Config& config, const StoreTool& tool);
+
+// Ok when the tool is installed and the account signed in, else the error that tells the user what to fix.
+Result<void> CheckStoreReady(const StoreTool& tool, const AuthStatus& status);
 
 // Runs the tool with `leading` then `args` and returns its combined output: Err("<binary>_missing") when it
 // isn't there and Err("<binary>_failed") on a nonzero exit.

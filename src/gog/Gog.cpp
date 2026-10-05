@@ -74,16 +74,20 @@ Result<std::string> RunGogdl(const config::Config& config, std::vector<std::stri
   return runner::RunTool(config, kTool, args, on_output, {"--auth-config-path", AuthConfigPath(config).string()});
 }
 
-GogAuthStatus Status(const config::Config& config) {
-  GogAuthStatus status;
-  status.gogdl = DetectGog(config);
-  if (!status.gogdl.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectGog(config);
+  if (!status.tool.installed) return status;
 
   const auto stored = ReadAuthConfig(config);
   if (!stored) return status;
   status.authenticated = stored->contains("access_token") && (*stored)["access_token"].is_string() &&
                         !(*stored)["access_token"].get<std::string>().empty();
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
@@ -99,7 +103,7 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
   if (auto output = RunGogdl(config, {"auth", "--code", code}); !output) {
     return std::unexpected(output.error());
   }
-  if (const GogAuthStatus status = Status(config); !status.authenticated) {
+  if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "gogdl didn't accept that code. It may be wrong, expired, or already used");
   }
   return {};

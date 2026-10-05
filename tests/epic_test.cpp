@@ -92,8 +92,8 @@ TEST_CASE("Status treats legendary's \"<not logged in>\" placeholder as unauthen
   Fixture fixture("epic-logged-out");
   fixture.UseFakeLegendary("", kLoggedOut);
 
-  const epic::EpicAuthStatus status = epic::Status(fixture.config);
-  REQUIRE(status.legendary.installed);
+  const runner::AuthStatus status = epic::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
   CHECK(status.account.empty());
 }
@@ -108,8 +108,8 @@ TEST_CASE("Status reads the account through legendary's stderr log noise") {
   Fixture fixture("epic-noisy-status");
   fixture.UseFakeLegendary(kNoise, kLoggedIn);
 
-  const epic::EpicAuthStatus status = epic::Status(fixture.config);
-  REQUIRE(status.legendary.installed);
+  const runner::AuthStatus status = epic::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK(status.authenticated);
   CHECK(status.account == "Tester");
 }

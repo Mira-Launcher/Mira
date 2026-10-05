@@ -25,6 +25,12 @@ ToolStatus DetectTool(const config::Config& config, const StoreTool& tool) {
   return {};
 }
 
+Result<void> CheckStoreReady(const StoreTool& tool, const AuthStatus& status) {
+  if (!status.tool.installed) return StoreToolMissing(tool.store, tool.store_name, tool.binary);
+  if (!status.authenticated) return StoreNotSignedIn(tool.store, tool.store_name);
+  return {};
+}
+
 Result<std::string> RunTool(const config::Config& config, const StoreTool& tool, const std::vector<std::string>& args,
                             const OutputFn& on_output, const std::vector<std::string>& leading) {
   const ToolStatus status = DetectTool(config, tool);

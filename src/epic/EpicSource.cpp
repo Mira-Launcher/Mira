@@ -35,17 +35,6 @@ Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(const config::Con
   return entries;
 }
 
-namespace {
-// Shared precondition for Install/Update: never assume legendary is set up
-// and authenticated, same as every direct /v1/epic/* route already checks.
-Result<void> CheckReady(const config::Config& config) {
-  const EpicAuthStatus auth = Status(config);
-  if (!auth.legendary.installed) return StoreToolMissing("epic", "Epic Games", "legendary");
-  if (!auth.authenticated) return StoreNotSignedIn("epic", "Epic Games");
-  return {};
-}
-}  // namespace
-
 Result<void> EpicSource::Install(config::Config& config, store::GameStore& games, api::EventBus& events,
                                 const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;

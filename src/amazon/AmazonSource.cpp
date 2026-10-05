@@ -12,13 +12,6 @@ namespace mira::amazon {
 namespace {
 using nlohmann::json;
 
-Result<void> CheckReady(const config::Config& config) {
-  const AmazonAuthStatus auth = Status(config);
-  if (!auth.nile.installed) return StoreToolMissing("amazon", "Amazon Games", "nile");
-  if (!auth.authenticated) return StoreNotSignedIn("amazon", "Amazon Games");
-  return {};
-}
-
 Result<void> Download(config::Config& config, store::GameStore& games, api::EventBus& events,
                       const std::string& verb, const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;

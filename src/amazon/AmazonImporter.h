@@ -6,16 +6,13 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
 namespace mira::amazon {
 
-struct AmazonImportSummary {
-  int added = 0;
-  int updated = 0;
-  std::vector<model::Game> added_games;
-};
+using AmazonImportSummary = library::ImportSummary;
 
 // Turns every game in nile's installed.json into a Mira game, launched from
 // its fuel.json the way `nile launch` would.

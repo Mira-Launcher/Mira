@@ -16,13 +16,6 @@ namespace mira::itch {
 namespace {
 using nlohmann::json;
 
-Result<void> CheckReady(const config::Config& config) {
-  const ItchAuthStatus auth = Status(config);
-  if (!auth.butler.installed) return StoreToolMissing("itch", "itch.io", "butler");
-  if (!auth.authenticated) return StoreNotSignedIn("itch", "itch.io");
-  return {};
-}
-
 }  // namespace
 
 ItchInstaller::ItchInstaller(config::Config& config, store::GameStore& games, api::EventBus& events)

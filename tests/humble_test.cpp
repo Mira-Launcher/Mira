@@ -70,8 +70,8 @@ TEST_CASE("Status reports unauthenticated when humble-cli has no session key yet
   Fixture fixture("humble-status-unauth");
   fixture.UseFakeHumbleCli(false);
 
-  const humble::HumbleAuthStatus status = humble::Status(fixture.config);
-  REQUIRE(status.humble_cli.installed);
+  const runner::AuthStatus status = humble::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
 }
 
@@ -79,8 +79,8 @@ TEST_CASE("Status reports authenticated once a session key works") {
   Fixture fixture("humble-status-auth");
   fixture.UseFakeHumbleCli(true);
 
-  const humble::HumbleAuthStatus status = humble::Status(fixture.config);
-  REQUIRE(status.humble_cli.installed);
+  const runner::AuthStatus status = humble::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK(status.authenticated);
 }
 

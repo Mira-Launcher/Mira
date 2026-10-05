@@ -95,17 +95,17 @@ Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::str
   return parsed;
 }
 
-EpicAuthStatus Status(const config::Config& config) {
-  EpicAuthStatus status;
-  status.legendary = DetectLegendary(config);
-  if (!status.legendary.installed) return status;  // authenticated=false, no subprocess needed
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectLegendary(config);
+  if (!status.tool.installed) return status;  // authenticated=false, no subprocess needed
 
   // Not RunLegendaryJson: "not logged in" is an ordinary result of this
   // specific call, not an error to propagate. A failed/unparseable run
   // just leaves authenticated=false rather than failing the whole status
   // call the way every other legendary invocation here does.
   Command command;
-  command.argv = {status.legendary.path, "status", "--json"};
+  command.argv = {status.tool.path, "status", "--json"};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result) return status;
 
@@ -120,6 +120,10 @@ EpicAuthStatus Status(const config::Config& config) {
     status.account = account;
   }
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
@@ -139,7 +143,7 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
   if (auto output = RunLegendary(config, {"auth", "--code", code}); !output) {
     return std::unexpected(output.error());
   }
-  if (const EpicAuthStatus status = Status(config); !status.authenticated) {
+  if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "legendary didn't accept that code. It may be wrong, expired, or already used");
   }
   return {};

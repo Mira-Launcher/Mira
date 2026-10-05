@@ -76,10 +76,10 @@ Result<std::string> RunHumbleCli(const config::Config& config, std::vector<std::
   return runner::RunTool(config, kTool, args, {});
 }
 
-HumbleAuthStatus Status(const config::Config& config) {
-  HumbleAuthStatus status;
-  status.humble_cli = DetectHumbleCli(config);
-  if (!status.humble_cli.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectHumbleCli(config);
+  if (!status.tool.installed) return status;
 
   // No separate "am I logged in" call exists -- `list` is the cheapest
   // real one, and fails with a specific, recognizable message
@@ -91,7 +91,7 @@ HumbleAuthStatus Status(const config::Config& config) {
 
 Result<void> Login(const config::Config& config, const std::string& session_key) {
   if (auto output = RunHumbleCli(config, {"auth", session_key}); !output) return std::unexpected(output.error());
-  if (const HumbleAuthStatus status = Status(config); !status.authenticated) {
+  if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "humble-cli didn't accept that session key");
   }
   return {};

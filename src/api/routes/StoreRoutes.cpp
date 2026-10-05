@@ -102,11 +102,11 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Get("/v1/epic/status", [&s](const Request&, Response& res) {
-    const epic::EpicAuthStatus status = epic::Status(s.config);
-    SendJson(res, {{"legendary", {{"installed", status.legendary.installed},
-                                  {"source", status.legendary.source},
-                                  {"path", status.legendary.path},
-                                  {"version", status.legendary.version}}},
+    const runner::AuthStatus status = epic::Status(s.config);
+    SendJson(res, {{"legendary", {{"installed", status.tool.installed},
+                                  {"source", status.tool.source},
+                                  {"path", status.tool.path},
+                                  {"version", status.tool.version}}},
                   {"authenticated", status.authenticated},
                   {"account", status.account},
                   {"login_url", epic::kLoginUrl}});
@@ -120,7 +120,7 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (auto logged_in = epic::Login(s.config, body["code"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
-    const epic::EpicAuthStatus status = epic::Status(s.config);
+    const runner::AuthStatus status = epic::Status(s.config);
     SendJson(res, {{"authenticated", status.authenticated}, {"account", status.account}});
   });
 
@@ -134,11 +134,11 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   // --- gog ----------------------------------------------------------------
 
   http.Get("/v1/gog/status", [&s](const Request&, Response& res) {
-    const gog::GogAuthStatus status = gog::Status(s.config);
-    SendJson(res, {{"gogdl", {{"installed", status.gogdl.installed},
-                              {"source", status.gogdl.source},
-                              {"path", status.gogdl.path},
-                              {"version", status.gogdl.version}}},
+    const runner::AuthStatus status = gog::Status(s.config);
+    SendJson(res, {{"gogdl", {{"installed", status.tool.installed},
+                              {"source", status.tool.source},
+                              {"path", status.tool.path},
+                              {"version", status.tool.version}}},
                   {"authenticated", status.authenticated},
                   {"login_url", gog::kLoginUrl}});
   });
@@ -151,7 +151,7 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (auto logged_in = gog::Login(s.config, body["code"]); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
-    const gog::GogAuthStatus status = gog::Status(s.config);
+    const runner::AuthStatus status = gog::Status(s.config);
     SendJson(res, {{"authenticated", status.authenticated}});
   });
 
@@ -165,11 +165,11 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   // --- amazon -------------------------------------------------------------
 
   http.Get("/v1/amazon/status", [&s](const Request&, Response& res) {
-    const amazon::AmazonAuthStatus status = amazon::Status(s.config);
-    SendJson(res, {{"nile", {{"installed", status.nile.installed},
-                             {"source", status.nile.source},
-                             {"path", status.nile.path},
-                             {"version", status.nile.version}}},
+    const runner::AuthStatus status = amazon::Status(s.config);
+    SendJson(res, {{"nile", {{"installed", status.tool.installed},
+                             {"source", status.tool.source},
+                             {"path", status.tool.path},
+                             {"version", status.tool.version}}},
                   {"authenticated", status.authenticated}});
   });
 
@@ -295,11 +295,11 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   // --- itch -----------------------------------------------------------
 
   http.Get("/v1/itch/status", [&s](const Request&, Response& res) {
-    const itch::ItchAuthStatus status = itch::Status(s.config);
-    SendJson(res, {{"butler", {{"installed", status.butler.installed},
-                               {"source", status.butler.source},
-                               {"path", status.butler.path},
-                               {"version", status.butler.version}}},
+    const runner::AuthStatus status = itch::Status(s.config);
+    SendJson(res, {{"butler", {{"installed", status.tool.installed},
+                               {"source", status.tool.source},
+                               {"path", status.tool.path},
+                               {"version", status.tool.version}}},
                   {"authenticated", status.authenticated},
                   {"login_url", itch::kApiKeysUrl}});
   });
@@ -352,11 +352,11 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   // --- humble -------------------------------------------------------------
 
   http.Get("/v1/humble/status", [&s](const Request&, Response& res) {
-    const humble::HumbleAuthStatus status = humble::Status(s.config);
-    SendJson(res, {{"humble_cli", {{"installed", status.humble_cli.installed},
-                                   {"source", status.humble_cli.source},
-                                   {"path", status.humble_cli.path},
-                                   {"version", status.humble_cli.version}}},
+    const runner::AuthStatus status = humble::Status(s.config);
+    SendJson(res, {{"humble_cli", {{"installed", status.tool.installed},
+                                   {"source", status.tool.source},
+                                   {"path", status.tool.path},
+                                   {"version", status.tool.version}}},
                   {"authenticated", status.authenticated},
                   {"login_url", humble::kLoginUrl}});
   });

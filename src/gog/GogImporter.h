@@ -7,16 +7,13 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
 namespace mira::gog {
 
-struct GogImportSummary {
-  int added = 0;
-  int updated = 0;
-  std::vector<model::Game> added_games;
-};
+using GogImportSummary = library::ImportSummary;
 
 // The installed game directory under gog.install_root holding
 // goggame-<id>.info, or empty if none does.

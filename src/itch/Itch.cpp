@@ -51,14 +51,18 @@ std::filesystem::path ApiKeyFile(const config::Config& config) {
   return config.File().parent_path() / "itch-api-key";
 }
 
-ItchAuthStatus Status(const config::Config& config) {
-  ItchAuthStatus status;
-  status.butler = DetectButler(config);
-  if (!status.butler.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectButler(config);
+  if (!status.tool.installed) return status;
 
   std::error_code ec;
   status.authenticated = fs::exists(ApiKeyFile(config), ec) && fs::file_size(ApiKeyFile(config), ec) > 0;
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted_key) {

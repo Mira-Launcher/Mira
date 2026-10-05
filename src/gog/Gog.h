@@ -37,15 +37,13 @@ std::filesystem::path AuthConfigPath(const config::Config& config);
 Result<std::string> RunGogdl(const config::Config& config, std::vector<std::string> args,
                                const runner::OutputFn& on_output = {});
 
-struct GogAuthStatus {
-  runner::ToolStatus gogdl;
-  bool authenticated = false;
-};
-
 // installed-only if gogdl itself isn't present; otherwise checks whether
 // AuthConfigPath holds an unexpired access token -- never shells out just
 // to check this, unlike epic::Status (gogdl has no cheap "status" call).
-GogAuthStatus Status(const config::Config& config);
+runner::AuthStatus Status(const config::Config& config);
+
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // GOG Galaxy's own public login page, the one gogdl's client_id belongs to.
 // It ends on a blank page whose URL carries the code.

@@ -6,17 +6,6 @@
 #include "library/StoreProgress.h"
 
 namespace mira::gog {
-namespace {
-
-Result<void> CheckReady(const config::Config& config) {
-  const GogAuthStatus auth = Status(config);
-  if (!auth.gogdl.installed) return StoreToolMissing("gog", "GOG", "gogdl");
-  if (!auth.authenticated) return StoreNotSignedIn("gog", "GOG");
-  return {};
-}
-
-}  // namespace
-
 GogInstaller::GogInstaller(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 

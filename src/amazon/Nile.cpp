@@ -56,15 +56,19 @@ Result<std::string> RunNile(const config::Config& config, std::vector<std::strin
   return runner::RunTool(config, kTool, args, on_output);
 }
 
-AmazonAuthStatus Status(const config::Config& config) {
-  AmazonAuthStatus status;
-  status.nile = DetectNile(config);
-  if (!status.nile.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectNile(config);
+  if (!status.tool.installed) return status;
   const Result<std::string> output = RunNile(config, {"auth", "--status"});
   if (!output) return status;
   const json parsed = core::ParseJsonTail(*output);
   status.authenticated = parsed.is_object() && parsed.value("LoggedIn", false);
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<std::string> BeginLogin(const config::Config& config) {

@@ -31,12 +31,10 @@ nlohmann::json ReadNileFile(const std::string& name);
 Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args,
                                const runner::OutputFn& on_output = {});
 
-struct AmazonAuthStatus {
-  runner::ToolStatus nile;
-  bool authenticated = false;
-};
+runner::AuthStatus Status(const config::Config& config);
 
-AmazonAuthStatus Status(const config::Config& config);
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // Starts a login: returns the Amazon URL to open. The PKCE values nile
 // generated are kept in memory until FinishLogin.

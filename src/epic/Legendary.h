@@ -66,17 +66,14 @@ inline constexpr std::string_view kLoginUrl =
     "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId"
     "%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 
-struct EpicAuthStatus {
-  runner::ToolStatus legendary;
-  bool authenticated = false;
-  std::string account;
-};
-
 // The layered "don't assume setup" status call: checks legendary is
 // installed first (no subprocess if not), only runs `legendary status
 // --json` if it is. Never itself errors: "not installed" and "not
 // authenticated" are both just fields on the result, not failures.
-EpicAuthStatus Status(const config::Config& config);
+runner::AuthStatus Status(const config::Config& config);
+
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // Runs `legendary auth --code <code>`, the headless login path (see
 // kLoginUrl's comment): the user visits kLoginUrl in their own browser,
