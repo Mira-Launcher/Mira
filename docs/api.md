@@ -227,7 +227,7 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title in the backgroun
 - `amazon`: `nile install` into `amazon.install_root`.
 - `steam`: opens `steam://install/<appid>`. The game appears on the next Steam scan.
 
-Missing tools or logins fail with `409` before anything starts. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
+A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
 
 ### `POST /v1/library/update`
 Same body and events as install. Steam returns `400 unsupported`.

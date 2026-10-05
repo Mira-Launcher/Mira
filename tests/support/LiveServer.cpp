@@ -52,4 +52,15 @@ nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started)
   return {};
 }
 
+std::optional<model::Event> WaitForEvent(const api::EventBus& events, std::string_view type) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (true) {
+    for (const model::Event& event : events.Since(0)) {
+      if (event.type == type) return event;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) return std::nullopt;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+}
+
 }  // namespace mira::test

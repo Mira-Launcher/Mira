@@ -10,6 +10,7 @@
 #include "gog/Gog.h"
 #include "gog/GogImporter.h"
 #include "store/GameStore.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -56,14 +57,15 @@ void WriteFakeGogdl(const fs::path& path, const std::string& auth_success_body, 
   fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
 }
 
+// gogdl nests the fields one level down, keyed by client_id (see Gog.cpp's ReadAuthConfig).
+constexpr const char* kFreshToken =
+    R"({"46899977096215655": {"access_token": "tok", "refresh_token": "ref", )"
+    R"("expires_in": 3600, "loginTime": 9999999999}})";
+
 struct Fixture : test::TestEnv {
   explicit Fixture(const char* name) : TestEnv(name) {}
 
-  // gogdl nests the fields one level down, keyed by client_id (see Gog.cpp's
-  // ReadAuthConfig).
-  void UseFakeGogdl(const std::string& auth_success_body =
-                       R"({"46899977096215655": {"access_token": "tok", "refresh_token": "ref", )"
-                       R"("expires_in": 3600, "loginTime": 9999999999}})",
+  void UseFakeGogdl(const std::string& auth_success_body = kFreshToken,
                     const std::string& import_body = R"({"title": "A GOG Game"})") {
     const fs::path bin = dir / "gogdl";
     WriteFakeGogdl(bin, auth_success_body, import_body);
@@ -186,4 +188,39 @@ TEST_CASE("GogImporter::Import reads the id from goggame-<id>.info in a title-na
   const auto game = fixture.games.Find("gog-1328670078");
   REQUIRE(game);
   CHECK(game->install_path == (root / "Hollow Knight").string());
+}
+
+TEST_CASE("GOG sign-in through mirad refuses a bad code and keeps a good one until sign-out") {
+  const fs::path state = test::TempDir("gog-api-sign-in");
+  test::LiveServer server(state);
+  WriteFakeGogdl(state / "gogdl", kFreshToken, "{}");
+  REQUIRE(server.MutableConfig().Set("gog.gogdl_bin", (state / "gogdl").string()));
+  httplib::Client client = server.Client();
+  const auto status = [&] {
+    auto res = client.Get("/v1/gog/status");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body);
+  };
+  const auto sign_in = [&](const std::string& code) {
+    auto res =
+        client.Post("/v1/gog/auth", nlohmann::json{{"code", code}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    return res->status;
+  };
+
+  const nlohmann::json before = status();
+  CHECK(before["gogdl"]["installed"].get<bool>());
+  CHECK_FALSE(before["authenticated"].get<bool>());
+  CHECK_FALSE(before["login_url"].get<std::string>().empty());
+
+  CHECK(sign_in("bad-code") == 400);
+  CHECK_FALSE(status()["authenticated"].get<bool>());
+  CHECK(sign_in("https://embed.gog.com/on_login_success?origin=client&code=good-code") == 200);
+  CHECK(status()["authenticated"].get<bool>());
+
+  auto out = client.Post("/v1/gog/logout");
+  REQUIRE(out != nullptr);
+  CHECK(out->status == 200);
+  CHECK_FALSE(status()["authenticated"].get<bool>());
 }

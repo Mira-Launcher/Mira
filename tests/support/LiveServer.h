@@ -3,6 +3,8 @@
 #include <httplib.h>
 
 #include <filesystem>
+#include <optional>
+#include <string_view>
 #include <thread>
 
 #include <json.hpp>
@@ -24,6 +26,7 @@ class LiveServer {
   httplib::Client Client();
 
   store::GameStore& games() { return games_; }
+  api::EventBus& events() { return events_; }
   const std::filesystem::path& socket_path() const { return socket_path_; }
   const config::Config& config() const { return config_; }
   config::Config& MutableConfig() { return config_; }
@@ -40,5 +43,8 @@ class LiveServer {
 // A long request answers 202 {job}; this waits for the job and returns it
 // as GET /v1/jobs/{id} shows it once done (`state`, then `result` or `error`).
 nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started);
+
+// The first event of `type` published so far or within 10 s; nullopt if none came.
+std::optional<model::Event> WaitForEvent(const api::EventBus& events, std::string_view type);
 
 }  // namespace mira::test

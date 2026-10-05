@@ -1201,6 +1201,80 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
   CHECK(missing->status == 404);
 }
 
+TEST_CASE("Running a picked program in a game with no prefix first makes one with its runner") {
+  const fs::path state = TempDir("server-run-in-prefix");
+  // A stand-in Wine: wineboot makes the prefix, anything else is logged as run.
+  const fs::path log = state / "wine.log";
+  test::Touch(state / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine",
+              "#!/bin/sh\ncase \"$1\" in\n  --version) echo wine-9.0 ;;\n"
+              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n"
+              "  *) echo \"$WINEPREFIX|$*\" >> '" + log.string() + "' ;;\nesac\n",
+              /*executable=*/true);
+  LiveServer server(state);
+  REQUIRE(server.MutableConfig().Set("default_runner.windows", "wine:wine-9.0-amd64"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.platform = model::Platform::Windows;
+  game.install_path = (state / "Celeste").string();
+  game.exe_path = "Celeste.exe";
+  game.data_dir = (state / "prefixes" / "celeste").string();
+  test::Touch(state / "Celeste" / "Setup.exe");
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto ran = client.Post("/v1/games/celeste/run",
+                         R"({"exe_path": "Setup.exe", "args": "/lang=en /x"})", "application/json");
+  REQUIRE(ran != nullptr);
+  CHECK(ran->status == 200);
+  CHECK(fs::is_directory(fs::path(game.data_dir) / "drive_c"));
+
+  std::string logged;
+  for (int i = 0; i < 100 && logged.empty(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::ifstream in(log);
+    std::getline(in, logged);
+  }
+  const std::string setup = (state / "Celeste" / "Setup.exe").string();
+  CHECK(logged == game.data_dir + "|" + setup + " /lang=en /x");
+  const auto stored = server.games().Find("celeste");
+  CHECK(stored->runner_ref == "wine:wine-9.0-amd64");
+  CHECK(stored->exe_path == "Celeste.exe");  // running something else doesn't change the game
+}
+
+TEST_CASE("Every setting the schema offers per game is one a game's settings accept") {
+  // The GUI builds its settings pages from the schema, so what it lists must be what mirad takes.
+  LiveServer server(TempDir("server-schema"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto res = client.Get("/v1/config/schema");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  const auto schema = nlohmann::json::parse(res->body);
+  REQUIRE_FALSE(schema.empty());
+  nlohmann::json per_game = nlohmann::json::object();
+  for (const auto& entry : schema) {
+    INFO("key: ", entry.value("key", ""));
+    for (const char* field :
+         {"key", "label", "type", "default", "scope", "category", "group", "group_label"}) {
+      CHECK(entry.contains(field));
+    }
+    const std::string scope = entry.value("scope", "");
+    CHECK((scope == "global" || scope == "per_game" || scope == "game_only"));
+    if (scope != "global") per_game[entry["key"].get<std::string>()] = entry["default"];
+  }
+  REQUIRE_FALSE(per_game.empty());
+
+  auto patched = client.Patch("/v1/games/celeste/config", per_game.dump(), "application/json");
+  REQUIRE(patched != nullptr);
+  INFO(patched->body);
+  CHECK(patched->status == 200);
+}
+
 TEST_CASE("Resetting one setting leaves the others alone") {
   // Only a single key here: a full reset would also reset the test's isolation.
   LiveServer server(TempDir("server-config-reset"));

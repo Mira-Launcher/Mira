@@ -6,6 +6,8 @@
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
 #include "runner/IRunner.h"
+#include "support/LiveServer.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
@@ -78,4 +80,107 @@ TEST_CASE("MSI installers are detected by extension and run through msiexec") {
   CHECK(runner::WindowsProgram("/g/setup.msi") == std::vector<std::string>{"msiexec", "/i", "/g/setup.msi"});
   CHECK(runner::WindowsProgram("/g/start.BAT") == std::vector<std::string>{"cmd", "/c", "/g/start.BAT"});
   CHECK(runner::WindowsProgram("/g/game.exe") == std::vector<std::string>{"/g/game.exe"});
+}
+
+namespace {
+
+// A game waiting on `installer`, a shell script standing in for the .exe. Tests run
+// Windows games natively, so it runs as itself with the arguments Wine would get.
+model::Game AddWaitingGame(test::LiveServer& server, const fs::path& folder,
+                           const std::string& script) {
+  test::Touch(folder / "setup_celeste.exe", "#!/bin/sh\n" + script, /*executable=*/true);
+  model::Game game;
+  game.id = "celeste";
+  game.name = strings::CleanGameName(folder.filename().string());
+  game.platform = model::Platform::Windows;
+  game.status = model::GameStatus::NeedsInstall;
+  game.install_path = folder.string();
+  game.exe_path = "setup_celeste.exe";
+  game.data_dir = (folder.parent_path() / "prefix").string();
+  fs::create_directories(fs::path(game.data_dir) / "drive_c");
+  REQUIRE(server.games().Upsert(game));
+  return game;
+}
+
+}  // namespace
+
+TEST_CASE("A recognised installer runs quietly into the game's folder, which becomes playable") {
+  const fs::path state = test::TempDir("auto-install-quiet");
+  test::LiveServer server(state);
+  // "Inno Setup" in the file is what marks it as one; it installs where /DIR= says.
+  AddWaitingGame(server, state / "setup_celeste",
+                 "# Inno Setup\necho \"$@\" > \"$0.args\"\n"
+                 "for arg; do case \"$arg\" in\n"
+                 "  /DIR=Z:*) dir=$(printf '%s' \"${arg#/DIR=Z:}\" | tr '\\\\' /) ;;\n"
+                 "esac; done\n"
+                 "printf game > \"$dir/Celeste.exe\"\n");
+  REQUIRE(server.MutableConfig().Set("install.inno_args", "/QUIET /SP-"));
+  REQUIRE(server.MutableConfig().Set("install.show_progress", false));
+  httplib::Client client = server.Client();
+
+  auto started = client.Post("/v1/games/celeste/install");
+  REQUIRE(started != nullptr);
+  CHECK(started->status == 202);
+  REQUIRE(test::WaitForEvent(server.events(), "game.install.finished"));
+
+  const auto game = server.games().Find("celeste");
+  REQUIRE(game);
+  CHECK(game->status == model::GameStatus::Ready);
+  CHECK(game->install_path == (state / "setup_celeste").string());
+  CHECK(game->exe_path == "Celeste.exe");
+  std::ifstream args(state / "setup_celeste" / "setup_celeste.exe.args");
+  std::string passed;
+  std::getline(args, passed);
+  CHECK(passed.starts_with("/QUIET /SP- /DIR=Z:"));  // the configured arguments, then the target
+
+  auto progress = client.Get("/v1/games/celeste/install/progress");
+  REQUIRE(progress != nullptr);
+  const auto shown = nlohmann::json::parse(progress->body);
+  CHECK(shown["state"] == "finished");
+  CHECK(shown["mode"] == "silent");
+
+  auto again = client.Post("/v1/games/celeste/install");
+  REQUIRE(again != nullptr);
+  CHECK(again->status == 409);
+}
+
+TEST_CASE("An installer that puts the game in its prefix moves the game there, renamed to match") {
+  const fs::path state = test::TempDir("auto-install-into-prefix");
+  test::LiveServer server(state);
+  const fs::path installed = state / "prefix" / "drive_c" / "Program Files" / "Celeste Classic";
+  AddWaitingGame(server, state / "setup_celeste_1.4",
+                 "mkdir -p '" + installed.string() + "'\nprintf game > '" + installed.string() +
+                     "/Celeste.exe'\n");
+  httplib::Client client = server.Client();
+
+  auto started = client.Post("/v1/games/celeste/install");
+  REQUIRE(started != nullptr);
+  REQUIRE(test::WaitForEvent(server.events(), "game.install.finished"));
+
+  const auto game = server.games().Find("celeste");
+  REQUIRE(game);
+  CHECK(game->status == model::GameStatus::Ready);
+  CHECK(game->install_path == installed.string());
+  CHECK(game->exe_path == "Celeste.exe");
+  CHECK(game->name == "Celeste Classic");
+  CHECK(game->installer_dir == (state / "setup_celeste_1.4").string());
+  const auto leftover = test::WaitForEvent(server.events(), "game.installer_leftover");
+  REQUIRE(leftover);
+  CHECK(leftover->payload["installer_dir"] == (state / "setup_celeste_1.4").string());
+}
+
+TEST_CASE("An installer that installs nothing leaves the game waiting, with a way forward") {
+  const fs::path state = test::TempDir("auto-install-nothing");
+  test::LiveServer server(state);
+  AddWaitingGame(server, state / "setup_celeste", "exit 0\n");
+  httplib::Client client = server.Client();
+
+  REQUIRE(client.Post("/v1/games/celeste/install"));
+  const auto failed = test::WaitForEvent(server.events(), "game.install.failed");
+  REQUIRE(failed);
+  CHECK(failed->payload["code"] == "no_executable");
+  CHECK(failed->payload["fix"]["step"] == "exe");
+  const auto game = server.games().Find("celeste");
+  CHECK(game->status == model::GameStatus::NeedsInstall);
+  CHECK_FALSE(game->last_error.empty());
 }
