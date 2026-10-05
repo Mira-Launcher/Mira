@@ -14,6 +14,7 @@
 #include "config/Resolver.h"
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
+#include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::api {
@@ -73,7 +74,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       }
     }
 
-    const std::filesystem::path log_file = s.games.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
     std::ifstream in(log_file, std::ios::binary);
     if (!in) return SendJson(res, {{"lines", json::array()}});
 

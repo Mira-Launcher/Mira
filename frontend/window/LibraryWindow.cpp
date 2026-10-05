@@ -63,13 +63,6 @@
 #include "FramelessRoot.h"
 #include "TopBar.h"
 
-namespace {
-
-// A crash within this many seconds of launch reads as "failed to start".
-constexpr std::int64_t kFailedStartSeconds = 30;
-
-}  // namespace
-
 LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent) : QMainWindow(parent) {
   setWindowTitle("Mira");
   // Custom top bar takes over move/resize/minimize/maximize/close, so no OS
@@ -1400,12 +1393,13 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     } else {
       library_->SetRunning(state.id, state.state == "running");
     }
-    // A crash soon after launch is a game that failed to start. A later one is
-    // left to the game's status: plenty of games exit non-zero on a normal quit.
-    if (live && state.state == "crashed" && state.played_seconds < kFailedStartSeconds) {
+    // mirad only reports a real crash, a kill or a failed start; a non-zero exit alone is a normal quit.
+    if (live && state.state == "crashed") {
       const mira_gui::GameSummary* crashed = FindGame(state.id);
       const QString name = crashed != nullptr ? QString::fromStdString(crashed->name) : QString("The game");
-      mira_gui::notify::FailedRequest(this, name + " closed right after starting.", state.error);
+      const std::string& code = state.error.code;
+      const QString what = code == "start_failed" ? " couldn't start." : code == "killed" ? " was killed." : " crashed.";
+      mira_gui::notify::FailedRequest(this, name + what, state.error);
     }
     return;
   }

@@ -63,6 +63,10 @@ std::filesystem::path SessionFilePath(const std::filesystem::path& sessions_dir,
   return sessions_dir / std::format("{}-{}.toml", game_id, started_at);
 }
 
+std::filesystem::path GameLogPath(const std::filesystem::path& state_dir, const std::string& game_id) {
+  return state_dir / "logs" / std::format("{}.log", game_id);
+}
+
 Result<void> WriteSessionRecord(const std::filesystem::path& path, const SessionRecord& record) {
   std::ostringstream text;
   text << tomljson::ToToml(ToJson(record));

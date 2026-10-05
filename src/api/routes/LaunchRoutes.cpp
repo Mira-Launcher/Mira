@@ -24,6 +24,7 @@
 #include "library/Detector.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
+#include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -278,7 +279,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
     const std::filesystem::path sessions_dir = s.games.Dir() / "sessions";
-    const std::filesystem::path log_file = s.games.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
     Command wrapped;
     wrapped.env = command->env;
     wrapped.cwd = command->cwd;

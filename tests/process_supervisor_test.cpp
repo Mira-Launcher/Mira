@@ -77,7 +77,7 @@ TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens th
   REQUIRE(games.Upsert(game).has_value());
 
   Command command;
-  command.argv = {"sh", "-c", "exit 3"};
+  command.argv = {"sh", "-c", "kill -SEGV $$"};
   REQUIRE(supervisor.Launch(game, command, "").has_value());
 
   nlohmann::json crashed;
@@ -89,9 +89,40 @@ TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens th
         return !crashed.is_null();
       },
       std::chrono::seconds(5)));
-  CHECK(crashed.value("exit_code", 0) == 3);
+  CHECK(crashed.value("signal", 0) == SIGSEGV);
+  CHECK(crashed.value("error", "").find("segmentation fault") != std::string::npos);
   CHECK_FALSE(crashed.value("hint", "").empty());
   CHECK(crashed["fix"] == nlohmann::json{{"kind", "game"}, {"target", "crasher"}, {"step", "log"}});
+  CHECK(games.Find("crasher")->last_error == crashed.value("error", ""));
+}
+
+TEST_CASE("ProcessSupervisor treats a non-zero exit as an ordinary quit") {
+  const fs::path state = TempDir("proc-nonzero-state");
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  api::EventBus events;
+  proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
+
+  model::Game game;
+  game.id = "quitter";
+  game.last_error = "Crashed after 4 minutes: invalid memory access (segmentation fault)";
+  REQUIRE(games.Upsert(game).has_value());
+
+  Command command;
+  command.argv = {"sh", "-c", "exit 241"};
+  REQUIRE(supervisor.Launch(game, command, "").has_value());
+
+  nlohmann::json exited;
+  CHECK(WaitFor(
+      [&] {
+        for (const model::Event& e : events.Since(0)) {
+          if (e.type == "game.state" && e.payload.value("state", "") == "exited") exited = e.payload;
+        }
+        return !exited.is_null();
+      },
+      std::chrono::seconds(5)));
+  CHECK(exited.value("exit_code", 0) == 241);
+  CHECK(games.Find("quitter")->last_error.empty());  // an earlier crash doesn't stick
 }
 
 TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") {
@@ -302,6 +333,43 @@ TEST_CASE("Reconcile archives a finished session a previous mirad never got to s
   REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
   supervisor.Reconcile(sessions_dir);
   CHECK(games.Find("celeste")->play_seconds == 142);
+}
+
+TEST_CASE("A Windows game whose log has Wine's unhandled-exception report counts as crashed") {
+  const fs::path state = TempDir("proc-wine-crash-state");
+  const fs::path sessions_dir = state / "sessions";
+  store::GameStore games(state / "games.toml");
+  games.Load();
+  model::Game game;
+  game.id = "splodey";
+  game.platform = model::Platform::Windows;
+  REQUIRE(games.Upsert(game).has_value());
+
+  const auto finish = [&](int exit_code, std::int64_t started_at) {
+    proc::SessionRecord record;
+    record.game_id = "splodey";
+    record.started_at = started_at;
+    record.finished = true;
+    record.duration_seconds = 250;
+    record.exit_code = exit_code;
+    REQUIRE(proc::WriteSessionRecord(proc::SessionFilePath(sessions_dir, "splodey", started_at), record).has_value());
+  };
+  test::Touch(proc::GameLogPath(state, "splodey"),
+              "Proton: Executable is a unix path, launching with 'umu.exe'.\n"
+              "wine: Unhandled page fault on read access to 0000000000000000 at address 0000000140001000 "
+              "(thread 0024), starting debugger...\n"
+              "[mira-run] game exited: exit_code=5 signal=0 duration=250s\n");
+
+  api::EventBus events;
+  proc::ProcessSupervisor supervisor(games, events);
+  finish(5, 1700000000);
+  supervisor.Reconcile(sessions_dir);
+  CHECK(games.Find("splodey")->last_error == "Crashed after 4 minutes with an unhandled page fault on read access");
+
+  // A helper process crashing while the game itself quits cleanly isn't the game crashing.
+  finish(0, 1700000500);
+  supervisor.Reconcile(sessions_dir);
+  CHECK(games.Find("splodey")->last_error.empty());
 }
 
 TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone too") {

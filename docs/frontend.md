@@ -170,7 +170,7 @@ Messages are plain text, since `mirad`'s errors quote paths and commands. Failur
 
 Every request result carries an `ApiError`: `mirad`'s message, code, `hint` and `fix` (see the error envelope in [`api.md`](api.md)). `notify::FailedRequest` shows the hint under the message and turns the fix into a button through `app/ErrorHelp`: the setting to fill in, the Runners page, the game's settings or log, running its installer with the window shown, or the store's page. What to say and where to point is `mirad`'s knowledge, so a new error needs no frontend change. The one case `ErrorHelp` words itself is `mirad_unreachable`, set by the transport when a request never reaches `mirad`, which gets a *Start mirad* button. Status lines use `error_help::Describe` for the same text inline. Failure events carry the same fields, so an Activity row for a failed install or download shows the hint and a button for the fix. `LibraryWindow` registers the routes with `error_help::SetNavigator`.
 
-A game that crashes within 30 seconds of launch gets a failure with a *View log* button. Later crashes only change the game's status, since many games exit non-zero on a normal quit.
+A `crashed` `game.state` gets a failure with a *View log* button, titled by its `code`: "couldn't start", "was killed" or "crashed". `mirad` only reports one for a real crash, so a game that exits non-zero on a normal quit stays quiet.
 
 On connect, `mirad` replays its event buffer and then sends `stream.live`. Windows apply replayed events but only announce (notifications, install results, crashes) what comes after it, so a restart doesn't repeat old messages.
 

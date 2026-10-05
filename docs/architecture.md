@@ -25,7 +25,7 @@ src/
               PrefixNaming, Relocate, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
   runner/     IRunner with Native, Proton, Wine and Steam runners, RunnerRegistry, Downloader,
               Exec, GameMode, Winetricks
-  proc/       ProcessSupervisor, Session, Stats, ProcessIndex
+  proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
   steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi
   epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
@@ -119,7 +119,7 @@ A direct launch goes through `mira-run` (`src/wrapper/main.cpp`). `mirad` resolv
 
 `mira-run` shares its process group with the game, so `kill(-pid)` stops the whole tree. It ignores SIGTERM and SIGINT so it can still run the post script and write the final record.
 
-`proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record to decide between a crash and a clean exit. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. A finished session is added to the game's `play_seconds` once: the game remembers the newest session it counted (`last_session_at`).
+`proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record, plus the end of the game's log for Wine's crash report, and `proc::ClassifyExit` decides between a crash and an ordinary exit for every launch path. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. A finished session is added to the game's `play_seconds` once: the game remembers the newest session it counted (`last_session_at`).
 
 If `mira-run` can't be found or started, `mirad` launches the game directly with no session record or log.
 
