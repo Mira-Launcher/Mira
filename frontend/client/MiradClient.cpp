@@ -25,8 +25,8 @@ QImage DecodeImage(const std::string& bytes) {
   return image;
 }
 
-// Percent-encodes everything outside RFC 3986's unreserved set.
-std::string QueryEncode(const std::string& text) {
+// Percent-encodes everything outside RFC 3986's unreserved set, for a path segment or a query value.
+std::string PercentEncode(const std::string& text) {
   static constexpr char kHex[] = "0123456789ABCDEF";
   std::string out;
   for (const unsigned char c : text) {
@@ -88,7 +88,7 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
                             bool delete_metadata) {
   // Every flag is opt-in server-side too: the bare DELETE never touches
   // disk, so an omitted param and "false" mean the same thing.
-  std::string path = "/v1/games/" + id;
+  std::string path = "/v1/games/" + PercentEncode(id);
   std::string separator = "?";
   if (delete_files) {
     path += separator + "delete_files=true";
@@ -105,7 +105,7 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
 }
 
 LaunchResult LaunchGameSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/launch");
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/launch");
   // mirad answers `tracked` directly (docs/api.md): whether game.state
   // events are coming for this launch.
   const bool tracked = !reply.body.is_object() ||
@@ -116,7 +116,7 @@ LaunchResult LaunchGameSync(const std::string& id) {
 }
 
 StopResult StopGameSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/stop");
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/stop");
   return {reply.ok, reply.error};
 }
 
@@ -163,7 +163,7 @@ void FillScan(ScanResult& result, const json& body) {
 
 GameDetailResult GetGameSync(const std::string& id) {
   GameDetailResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id);
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -210,7 +210,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
     return result;
   }
 
-  const transport::Reply reply = transport::Patch("/v1/games/" + id, body);
+  const transport::Reply reply = transport::Patch("/v1/games/" + PercentEncode(id), body);
   return {reply.ok, reply.error};
 }
 
@@ -326,7 +326,7 @@ RunnersResult GetRunnersSync() {
 
 GameConfigResult GetGameConfigSync(const std::string& id) {
   GameConfigResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/config");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/config");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -494,7 +494,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
 ArtworkResult GetArtworkSync(const std::string& id, const std::string& slot) {
   ArtworkResult result;
   const transport::Blob blob =
-      transport::GetBinary("/v1/games/" + id + "/artwork?type=" + slot);
+      transport::GetBinary("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot);
   if (blob.status == 404) {
     result.missing = true;
     return result;
@@ -523,7 +523,7 @@ ArtCandidate ParseArtCandidate(const json& item) {
 
 GameMetadataResult GetMetadataSync(const std::string& id) {
   GameMetadataResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/metadata");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/metadata");
   if (reply.status == 404) {
     result.missing = true;
     return result;
@@ -624,7 +624,7 @@ GameMetadataResult GetMetadataSync(const std::string& id) {
 
 MetadataRefreshResult RefreshMetadataSync(const std::string& id, bool announce) {
   const transport::Reply reply =
-      transport::Post("/v1/games/" + id + "/metadata/refresh?announce=" + (announce ? "1" : "0"));
+      transport::Post("/v1/games/" + PercentEncode(id) + "/metadata/refresh?announce=" + (announce ? "1" : "0"));
   return {reply.ok, reply.error};
 }
 
@@ -636,25 +636,25 @@ void FillMetadataBatch(MetadataBatchResult& result, const json& body) {
 ArtworkSelectResult SelectArtworkSync(const std::string& id, const std::string& slot,
                                       std::int64_t candidate_id) {
   const transport::Reply reply = transport::PostJson(
-      "/v1/games/" + id + "/artwork?type=" + slot, json{{"candidate_id", candidate_id}});
+      "/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot, json{{"candidate_id", candidate_id}});
   return {reply.ok, reply.error};
 }
 
 GameActionResult FetchArtCandidatesSync(const std::string& id, const std::string& slot, int page,
                                         const std::string& request) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/artwork/candidates?type=" + slot +
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/artwork/candidates?type=" + slot +
                                                  "&page=" + std::to_string(page) + "&request=" + request);
   return {reply.ok, reply.error};
 }
 
 GameActionResult DeleteInstallerSync(const std::string& id) {
-  const transport::Reply reply = transport::Delete("/v1/games/" + id + "/installer");
+  const transport::Reply reply = transport::Delete("/v1/games/" + PercentEncode(id) + "/installer");
   return {reply.ok, reply.error};
 }
 
 GameActionResult FetchArtThumbsSync(const std::string& id, const std::string& slot,
                                     const std::vector<std::int64_t>& candidate_ids) {
-  const transport::Reply reply = transport::PostJson("/v1/games/" + id + "/artwork/thumbs?type=" + slot,
+  const transport::Reply reply = transport::PostJson("/v1/games/" + PercentEncode(id) + "/artwork/thumbs?type=" + slot,
                                                      json{{"candidate_ids", candidate_ids}});
   return {reply.ok, reply.error};
 }
@@ -663,7 +663,7 @@ ArtThumbsResult GetArtThumbsSync(const std::string& id, const std::string& slot,
                                  const std::vector<std::int64_t>& candidate_ids) {
   ArtThumbsResult result;
   for (const std::int64_t candidate_id : candidate_ids) {
-    const transport::Blob blob = transport::GetBinary("/v1/games/" + id + "/artwork/thumb?type=" + slot +
+    const transport::Blob blob = transport::GetBinary("/v1/games/" + PercentEncode(id) + "/artwork/thumb?type=" + slot +
                                                       "&candidate_id=" + std::to_string(candidate_id));
     if (blob.ok) result.images.emplace_back(candidate_id, blob.bytes);
   }
@@ -674,7 +674,7 @@ RunnerCatalogResult GetRunnerCatalogSync(const std::string& kind, const std::str
   RunnerCatalogResult result;
   // Leaves the machine (GitHub releases), so the default timeout is nowhere
   // near enough.
-  std::string path = "/v1/runners/catalog?kind=" + kind;
+  std::string path = "/v1/runners/catalog?kind=" + PercentEncode(kind);
   if (!source.empty()) path += "&source=" + source;
   const transport::Reply reply = transport::Get(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
@@ -714,7 +714,7 @@ RunnerDownloadResult DownloadRunnerSync(const std::string& kind, const std::stri
 
 RunnerSourcesResult ListRunnerSourcesSync(const std::string& kind) {
   RunnerSourcesResult result;
-  const transport::Reply reply = transport::Get("/v1/runners/sources?kind=" + kind);
+  const transport::Reply reply = transport::Get("/v1/runners/sources?kind=" + PercentEncode(kind));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -778,7 +778,7 @@ RunnerToolsResult ListRunnerToolsSync() {
 
 RunnerSchemaResult GetRunnerSchemaSync(const std::string& kind) {
   RunnerSchemaResult result;
-  const std::string path = "/v1/runners/" + QueryEncode(kind) + "/schema";
+  const std::string path = "/v1/runners/" + PercentEncode(kind) + "/schema";
   const transport::Reply reply = transport::Get(path);
   if (!reply.ok) {
     result.error = reply.error;
@@ -820,7 +820,7 @@ void FillAddedUpdated(R& result, const json& body) {
 RunInPrefixResult RunInPrefixSync(const std::string& id, const std::string& exe_path,
                                   const std::string& args) {
   const transport::Reply reply = transport::PostJson(
-      "/v1/games/" + id + "/run", json{{"exe_path", exe_path}, {"args", args}},
+      "/v1/games/" + PercentEncode(id) + "/run", json{{"exe_path", exe_path}, {"args", args}},
       // Provisions a prefix on demand if there isn't one yet, which is
       // genuinely slow (it's initialising Wine/Proton, see
       // docs/architecture.md).
@@ -833,8 +833,8 @@ FinishInstallResult FinishInstallSync(const std::string& id, const std::string& 
   json body = json::object();
   if (!install_path.empty()) body["install_path"] = install_path;
   if (!exe_path.empty()) body["exe_path"] = exe_path;
-  const transport::Reply reply = body.empty() ? transport::Post("/v1/games/" + id + "/finish-install")
-                                              : transport::PostJson("/v1/games/" + id + "/finish-install", body);
+  const transport::Reply reply = body.empty() ? transport::Post("/v1/games/" + PercentEncode(id) + "/finish-install")
+                                              : transport::PostJson("/v1/games/" + PercentEncode(id) + "/finish-install", body);
   return {reply.ok, reply.error};
 }
 
@@ -845,7 +845,7 @@ PatchGameConfigResult PatchGameConfigSync(const std::string& id,
     body[edit.key] =
         edit.clear ? json(nullptr) : mapping::TypedValueFromText(edit.type, edit.value);
   }
-  const transport::Reply reply = transport::Patch("/v1/games/" + id + "/config", body);
+  const transport::Reply reply = transport::Patch("/v1/games/" + PercentEncode(id) + "/config", body);
   return {reply.ok, reply.error};
 }
 
@@ -874,7 +874,7 @@ PatchGamesResult PatchGamesSync(const GamesPatch& patch) {
 GameLogResult GetGameLogSync(const std::string& id, int lines) {
   GameLogResult result;
   const transport::Reply reply =
-      transport::Get("/v1/games/" + id + "/log?lines=" + std::to_string(lines));
+      transport::Get("/v1/games/" + PercentEncode(id) + "/log?lines=" + std::to_string(lines));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -908,12 +908,12 @@ GameModeStatusResult GetGameModeStatusSync() {
 
 TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
   const transport::Reply reply =
-      transport::PostJson("/v1/games/" + id + "/tricks", json{{"verb", verb}});
+      transport::PostJson("/v1/games/" + PercentEncode(id) + "/tricks", json{{"verb", verb}});
   return {reply.ok, reply.error};
 }
 
 RunnerRemoveResult DeleteRunnerSync(const std::string& kind, const std::string& name) {
-  const transport::Reply reply = transport::Delete("/v1/runners/" + kind + ":" + QueryEncode(name));
+  const transport::Reply reply = transport::Delete("/v1/runners/" + kind + ":" + PercentEncode(name));
   return {reply.ok, reply.error};
 }
 
@@ -1024,7 +1024,7 @@ StoreActionResult SignOutStoreSync(const std::string& source) {
 StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
   StoreLibraryResult result;
   const transport::Reply reply =
-      transport::Get("/v1/library?source=" + source, {.read_timeout = std::chrono::seconds(60)});
+      transport::Get("/v1/library?source=" + PercentEncode(source), {.read_timeout = std::chrono::seconds(60)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1073,8 +1073,8 @@ HumbleLibraryResult GetHumbleLibrarySync() {
 
 GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::string& query) {
   GriddbMatchesResult result;
-  std::string url = "/v1/games/" + id + "/metadata/matches";
-  if (!query.empty()) url += "?q=" + QueryEncode(query);
+  std::string url = "/v1/games/" + PercentEncode(id) + "/metadata/matches";
+  if (!query.empty()) url += "?q=" + PercentEncode(query);
   const transport::Reply reply = transport::Get(url, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
@@ -1098,14 +1098,14 @@ GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::strin
 
 GameActionResult SetGriddbMatchSync(const std::string& id, std::int64_t griddb_id) {
   const transport::Reply reply =
-      transport::PostJson("/v1/games/" + id + "/metadata/match", {{"steamgriddb_id", griddb_id}});
+      transport::PostJson("/v1/games/" + PercentEncode(id) + "/metadata/match", {{"steamgriddb_id", griddb_id}});
   return {reply.ok, reply.error};
 }
 
 ArtworkResult GetTitleArtworkSync(const std::string& source, const std::string& ref) {
   ArtworkResult result;
   const transport::Blob blob =
-      transport::GetBinary("/v1/library/artwork?source=" + QueryEncode(source) + "&ref=" + QueryEncode(ref));
+      transport::GetBinary("/v1/library/artwork?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
   if (blob.status == 404) {
     result.missing = true;
     return result;
@@ -1129,7 +1129,7 @@ StoreActionResult QueueTitleArtworkSync(const std::string& source, const std::ve
 
 RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
   RemovalPlanResult result;
-  const transport::Reply reply = transport::Get("/v1/sources/" + source + "/removal");
+  const transport::Reply reply = transport::Get("/v1/sources/" + PercentEncode(source) + "/removal");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1169,13 +1169,13 @@ SourceRunnerResult SourceRunnerFrom(const transport::Reply& reply) {
 }
 
 SourceRunnerResult GetSourceRunnerSync(const std::string& source) {
-  return SourceRunnerFrom(transport::Get("/v1/sources/" + source + "/runner"));
+  return SourceRunnerFrom(transport::Get("/v1/sources/" + PercentEncode(source) + "/runner"));
 }
 
 SourceRunnerResult SetSourceRunnerSync(const std::string& source, const std::string& runner_ref,
                                        bool apply_to_games) {
   return SourceRunnerFrom(transport::PostJson(
-      "/v1/sources/" + source + "/runner", {{"runner_ref", runner_ref}, {"apply_to_games", apply_to_games}}));
+      "/v1/sources/" + PercentEncode(source) + "/runner", {{"runner_ref", runner_ref}, {"apply_to_games", apply_to_games}}));
 }
 
 ItchCollectionsResult GetItchCollectionsSync() {
@@ -1212,8 +1212,8 @@ StoreActionResult RemoveItchCollectionSync(std::int64_t id) {
 
 InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::string& path) {
   InstallerInfoResult result;
-  std::string url = "/v1/games/" + id + "/installer";
-  if (!path.empty()) url += "?path=" + QueryEncode(path);
+  std::string url = "/v1/games/" + PercentEncode(id) + "/installer";
+  if (!path.empty()) url += "?path=" + PercentEncode(path);
   const transport::Reply reply = transport::Get(url);
   if (!reply.ok) {
     result.error = reply.error;
@@ -1230,13 +1230,13 @@ InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::strin
 GameActionResult InstallGameSync(const std::string& id, bool interactive, const std::string& installer) {
   json body = {{"interactive", interactive}};
   if (!installer.empty()) body["installer"] = installer;
-  const transport::Reply reply = transport::PostJson("/v1/games/" + id + "/install", body);
+  const transport::Reply reply = transport::PostJson("/v1/games/" + PercentEncode(id) + "/install", body);
   return {reply.ok, reply.error};
 }
 
 InstallProgressResult GetInstallProgressSync(const std::string& id) {
   InstallProgressResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/install/progress");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/install/progress");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1326,12 +1326,12 @@ LaunchersResult GetLaunchersSync() {
 }
 
 StoreActionResult InstallLauncherSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/launchers/" + id + "/install");
+  const transport::Reply reply = transport::Post("/v1/launchers/" + PercentEncode(id) + "/install");
   return {reply.ok, reply.error};
 }
 
 StoreActionResult OpenLauncherSync(const std::string& id) {
-  const transport::Reply reply = transport::PostJson("/v1/launchers/" + id + "/open", json::object());
+  const transport::Reply reply = transport::PostJson("/v1/launchers/" + PercentEncode(id) + "/open", json::object());
   return {reply.ok, reply.error};
 }
 
@@ -1839,7 +1839,7 @@ void MiradClient::RemoveSourceAsync(QObject* context, const std::string& source,
                                     std::function<void(RemoveSourceResult)> callback) {
   RunJob<RemoveSourceResult>(
       context, "remove_source",
-      [source](const std::string& query) { return transport::Post("/v1/sources/" + source + "/remove" + query); },
+      [source](const std::string& query) { return transport::Post("/v1/sources/" + PercentEncode(source) + "/remove" + query); },
       FillRemoveSource, std::move(callback));
 }
 
@@ -1936,7 +1936,7 @@ void MiradClient::RelocateGameAsync(QObject* context, const std::string& id, con
   RunJob<GameDetailResult>(
       context, "relocate",
       [id, body](const std::string& query) {
-        return transport::PostJson("/v1/games/" + id + "/relocate" + query, body);
+        return transport::PostJson("/v1/games/" + PercentEncode(id) + "/relocate" + query, body);
       },
       [id](GameDetailResult& result, const json& body) {
         if (!body.is_object()) throw std::runtime_error(transport::UnexpectedResponse("POST /v1/games/" + id + "/relocate"));
@@ -2020,7 +2020,7 @@ void MiradClient::ImportLauncherAsync(QObject* context, const std::string& id,
                                       std::function<void(StoreImportResult)> callback) {
   RunJob<StoreImportResult>(
       context, "import",
-      [id](const std::string& query) { return transport::Post("/v1/launchers/" + id + "/import" + query); },
+      [id](const std::string& query) { return transport::Post("/v1/launchers/" + PercentEncode(id) + "/import" + query); },
       FillAddedUpdated<StoreImportResult>, std::move(callback));
 }
 
