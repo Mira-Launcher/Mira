@@ -77,6 +77,7 @@
 #include "../library/GamePresentation.h"
 #include "../library/GameTileDelegate.h"
 #include "../library/HoverCard.h"
+#include "../library/LibraryActions.h"
 #include "../library/LibrarySort.h"
 #include "../runners/RunnersPage.h"
 #include "../settings/SettingsCard.h"
@@ -868,51 +869,6 @@ void LibraryWindow::OpenGameDetailPage(const std::string& id) {
   dialog.exec();
 }
 
-void LibraryWindow::ScanLibrary() {
-  mira_gui::api::ScanLibraryAsync(this, [this](mira_gui::ScanResult result) {
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not scan the library.", result.error);
-      return;
-    }
-    // New games show up in the grid on their own; only "nothing happened"
-    // has no visible result of its own.
-    if (result.added == 0 && result.missing == 0 && result.restored == 0) {
-      mira_gui::notify::Notice(this, "Scan finished. No changes.");
-    }
-  });
-}
-
-// Every import below reports its games as events, so none relists.
-void LibraryWindow::ImportSteamLibrary() {
-  mira_gui::api::ScanSteamAsync(this, [this](mira_gui::SteamScanResult result) {
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not import from Steam.", result.error);
-      return;
-    }
-    NoteImported("steam");
-    if (result.added == 0) mira_gui::notify::Notice(this, "No new Steam games found.");
-  });
-}
-
-void LibraryWindow::ImportLutrisLibrary() {
-  mira_gui::api::ImportLutrisAsync(this, [this](mira_gui::LutrisImportResult result) {
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not import from Lutris.", result.error);
-      return;
-    }
-    NoteImported("lutris");
-    QStringList skipped;
-    if (result.other_runner > 0) {
-      skipped << QString("%1 use a runner Mira leaves to Lutris (Steam, DOSBox, …)").arg(result.other_runner);
-    }
-    if (result.incomplete > 0) skipped << QString("%1 have a setup Mira can't import").arg(result.incomplete);
-    QString text = result.added == 0 ? QString("No new Lutris games found.")
-                                     : QString("Added %1 Lutris game%2.").arg(result.added).arg(result.added == 1 ? "" : "s");
-    if (!skipped.isEmpty()) text += " Skipped: " + skipped.join("; ") + ".";
-    if (result.added == 0 || !skipped.isEmpty()) mira_gui::notify::Notice(this, text);
-  });
-}
-
 void LibraryWindow::ImportDesktopEntries() {
   mira_gui::DesktopEntryImportDialog dialog(this);
   dialog.exec();
@@ -921,47 +877,6 @@ void LibraryWindow::ImportDesktopEntries() {
 void LibraryWindow::AddGameManually() {
   mira_gui::AddManualGameDialog dialog(this);
   dialog.exec();
-}
-
-void LibraryWindow::SyncDesktopEntries() {
-  mira_gui::api::SyncDesktopEntriesAsync(this, [this](mira_gui::DesktopEntrySyncResult result) {
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not regenerate desktop entries.", result.error);
-      return;
-    }
-    mira_gui::notify::Notice(this, "Desktop entries regenerated.");
-  });
-}
-
-void LibraryWindow::RemoveAllDesktopEntries() {
-  // desktop_entries.enabled is the only lever that actually makes Sync()
-  // remove every mira-<id>.desktop entry rather than immediately rewriting
-  // them (see desktop::DesktopEntries::Sync), so there's no "wipe once, stay
-  // enabled" concept, so this is honest about turning the setting off too.
-  if (!mira_gui::notify::Confirm(
-          this, "Remove All Desktop Entries",
-          "This turns off desktop entries and deletes every one Mira generated. "
-          "Re-enable them any time in Settings → Desktop Entries.",
-          "Remove all", /*destructive=*/true)) {
-    return;
-  }
-  const mira_gui::ConfigEdit edit{"desktop_entries.enabled", "a boolean", "false"};
-  mira_gui::api::PatchConfigAsync(
-      this, {edit}, [this](mira_gui::PatchConfigResult patch_result) {
-        if (!patch_result.ok) {
-          mira_gui::notify::FailedRequest(this, "Could not turn off desktop entries.", patch_result.error);
-          return;
-        }
-        mira_gui::api::SyncDesktopEntriesAsync(
-            this, [this](mira_gui::DesktopEntrySyncResult sync_result) {
-              if (!sync_result.ok) {
-                mira_gui::notify::FailedRequest(this, "Could not remove the desktop entries.",
-                                                sync_result.error);
-                return;
-              }
-              mira_gui::notify::Notice(this, "Desktop entries removed.");
-            });
-      });
 }
 
 QWidget* LibraryWindow::BuildTopBar() {
@@ -1313,10 +1228,12 @@ QWidget* LibraryWindow::BuildSidebar() {
   // QToolButton stays content-sized otherwise.
   add_games_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   auto* add_games_menu = new QMenu(add_games_);
-  add_games_menu->addAction("Scan library folders", this, &LibraryWindow::ScanLibrary);
-  add_games_menu->addAction("Import Steam library", this, &LibraryWindow::ImportSteamLibrary);
+  add_games_menu->addAction("Scan library folders", this, [this] { mira_gui::actions::ScanLibrary(this); });
+  add_games_menu->addAction("Import Steam library", this,
+                            [this] { mira_gui::actions::ImportSteam(this, [this] { NoteImported("steam"); }); });
   add_games_menu
-      ->addAction("Import Lutris games", this, &LibraryWindow::ImportLutrisLibrary)
+      ->addAction("Import Lutris games", this,
+                  [this] { mira_gui::actions::ImportLutris(this, [this] { NoteImported("lutris"); }); })
       ->setToolTip(
           "Add the Wine games from Lutris's database. Nothing is moved or renamed, so the games "
           "stay playable in Lutris too.");
@@ -1595,19 +1512,9 @@ void LibraryWindow::ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiErr
 }
 
 void LibraryWindow::FetchMissingArtwork() {
-  // One job for the whole library; mirad decides what's missing, and Activity shows it going.
   // Asked for, so a missing SteamGridDB key is worth saying (ShowSteamGridDbNotice).
   artwork_fetch_requested_ = true;
-  mira_gui::api::RefreshMissingArtworkAsync(this, [this](mira_gui::MetadataBatchResult result) {
-    artwork_fetch_requested_ = false;
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not fetch missing cover art.", result.error);
-    } else if (result.refreshed + result.failed == 0) {
-      mira_gui::notify::Notice(this, "Every game already has cover art.");
-    } else {
-      mira_gui::notify::Notice(this, mira_gui::BatchRefreshSummary(result));
-    }
-  });
+  mira_gui::actions::FetchMissingArtwork(this, [this] { artwork_fetch_requested_ = false; });
 }
 
 void LibraryWindow::RefreshMetadata(const std::string& id, bool announce) {
@@ -2457,15 +2364,20 @@ QWidget* LibraryWindow::BuildSettingsPage() {
       "Library", "Moving games", "Move games into Mira's folders",
       "Moves each game's files into the library folder and its prefix into the prefix folder. "
       "Changing those folders does not move anything until you run this.",
-      "Move games…", [this] { RelocateLibrary(); });
+      "Move games…", [this] {
+        mira_gui::actions::RelocateLibrary(this, [this](const std::string& id) {
+          const mira_gui::GameSummary* game = FindGame(id);
+          return game != nullptr ? QString::fromStdString(game->name) : QString();
+        });
+      });
   settings_panel_->AddSectionAction(
       "Desktop entries", "Menu entries", "Regenerate desktop entries",
       "Rewrites Mira's desktop entries now, so changes to the desktop entry settings apply "
       "without waiting for the next library change.",
-      "Regenerate", [this] { SyncDesktopEntries(); });
+      "Regenerate", [this] { mira_gui::actions::SyncDesktopEntries(this); });
   settings_panel_->AddSectionAction("Desktop entries", "Menu entries", "Remove all desktop entries",
                                     "Turns off desktop entries and deletes every one Mira generated.",
-                                    "Remove…", [this] { RemoveAllDesktopEntries(); });
+                                    "Remove…", [this] { mira_gui::actions::RemoveAllDesktopEntries(this); });
   return page;
 }
 
@@ -2882,41 +2794,6 @@ void LibraryWindow::ShowGame(const std::string& id) {
     return;
   }
   OpenGameDialog(id);  // filtered out of the grid: its settings instead
-}
-
-void LibraryWindow::RelocateLibrary() {
-  if (!mira_gui::notify::Confirm(
-          this, "Move Games into Mira's Folders",
-          "Move every game's files into your games folder, and each prefix into the prefixes "
-          "folder, named after the game? Games installed by a store (Steam, Epic, GOG, itch.io) "
-          "keep their install folder; only the prefix moves. Games on another drive are copied "
-          "then deleted, which can take a while.",
-          "Move games")) {
-    return;
-  }
-  mira_gui::notify::Notice(this, "Moving games into Mira's folders…");
-  mira_gui::api::RelocateLibraryAsync(this, [this](mira_gui::RelocateLibraryResult result) {
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not move the games.", result.error);
-      return;
-    }
-    // The moved games arrive as game.updated events.
-    if (result.moved > 0 || result.errors.empty()) {
-      mira_gui::notify::Notice(this, result.moved == 0 ? QString("Every game was already in place.")
-                                                       : QString("Moved %1 game%2.")
-                                                             .arg(result.moved)
-                                                             .arg(result.moved == 1 ? "" : "s"));
-    }
-    if (!result.errors.empty()) {
-      QStringList failed;
-      for (const mira_gui::GameFailure& failure : result.errors) {
-        const mira_gui::GameSummary* game = FindGame(failure.id);
-        failed << QString::fromStdString(game != nullptr ? game->name : failure.id);
-      }
-      mira_gui::notify::FailedRequest(this, QString("Could not move %1.").arg(failed.join(", ")),
-                                      result.errors.front().error);
-    }
-  });
 }
 
 void LibraryWindow::RefreshSourceNavs() {

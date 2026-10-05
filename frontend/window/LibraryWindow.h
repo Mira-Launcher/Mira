@@ -277,9 +277,6 @@ private:
   void CloseRunners();
   void OpenAbout();
   void OpenGameDetailPage(const std::string& id);
-  void ScanLibrary();
-  void ImportSteamLibrary();
-  void ImportLutrisLibrary();
   void ImportDesktopEntries();
   void AddGameManually();
   // A store or launcher's page, rebuilt fresh on each open.
@@ -297,7 +294,6 @@ private:
   void SetSourceControlsEnabled(bool enabled);
   // The grid is what's on screen: not Settings, Runners, or a source page.
   bool GridShown() const;
-  void RelocateLibrary();
   // A download or install moved along: tile text and the top bar's count.
   void DownloadChanged(const QString& key);
   // Back to the grid with this game selected; its settings if filtered out.
@@ -311,8 +307,6 @@ private:
   void CloseArtPicker(bool applied = false);
   bool ArtPickerOpen() const;
   void FetchMissingArtwork();
-  void SyncDesktopEntries();
-  void RemoveAllDesktopEntries();
   void ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiError& error);
   // Routes ui/ErrorHelp's fix-it buttons to this window's pages.
   void InstallErrorNavigator();
