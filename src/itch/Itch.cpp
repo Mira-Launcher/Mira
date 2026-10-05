@@ -1,6 +1,9 @@
 #include "core/Strings.h"
 #include "itch/Itch.h"
 
+#include <map>
+#include <mutex>
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -30,28 +33,27 @@ std::filesystem::path ManagedButlerPath(const config::Config& config) {
   // flattening it -- so this has to search for the binary, not assume a
   // flat "tools/itch/butler" layout.
   const fs::path tools_dir = config.File().parent_path() / "tools" / "itch";
+  // Status checks and every butlerd start ask, so the search is remembered until the binary is gone.
+  static std::mutex mutex;
+  static std::map<fs::path, fs::path> found;
   std::error_code ec;
+  {
+    const std::lock_guard lock(mutex);
+    if (const auto it = found.find(tools_dir); it != found.end() && fs::exists(it->second, ec)) return it->second;
+  }
   for (const auto& entry : fs::recursive_directory_iterator(tools_dir, ec)) {
-    if (entry.is_regular_file(ec) && entry.path().filename() == "butler") return entry.path();
+    if (entry.is_regular_file(ec) && entry.path().filename() == "butler") {
+      const std::lock_guard lock(mutex);
+      found[tools_dir] = entry.path();
+      return entry.path();
+    }
   }
   return tools_dir / "butler";  // sensible default even if not installed yet
 }
 
-ItchStatus DetectButler(const config::Config& config) {
-  const std::string override_path = config.GetString("itch.butler_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
+const runner::StoreTool kTool = {"itch", "itch.io", "butler", "itch.butler_bin", ManagedButlerPath};
 
-  const fs::path managed = ManagedButlerPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-  if (const auto on_path = runner::FindOnPath("butler")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectButler(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallButlerBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   auto installed = runner::InstallToolBinary(config, "itch", asset, "butler");
@@ -63,14 +65,18 @@ std::filesystem::path ApiKeyFile(const config::Config& config) {
   return config.File().parent_path() / "itch-api-key";
 }
 
-ItchAuthStatus Status(const config::Config& config) {
-  ItchAuthStatus status;
-  status.butler = DetectButler(config);
-  if (!status.butler.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectButler(config);
+  if (!status.tool.installed) return status;
 
   std::error_code ec;
   status.authenticated = fs::exists(ApiKeyFile(config), ec) && fs::file_size(ApiKeyFile(config), ec) > 0;
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted_key) {

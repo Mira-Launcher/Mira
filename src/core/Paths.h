@@ -31,4 +31,9 @@ std::filesystem::path Expand(std::string_view raw);
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,
               bool allow_equal = false);
 
+// The entries directly under `dir`, or none when it can't be read. Unlike a
+// range-for over directory_iterator this never throws, even if the folder
+// changes or a node becomes unreadable mid-listing.
+std::vector<std::filesystem::path> ListDir(const std::filesystem::path& dir);
+
 }  // namespace mira::paths

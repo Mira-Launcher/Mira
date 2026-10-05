@@ -1,6 +1,9 @@
 #include "core/Json.h"
 #include "amazon/AmazonSource.h"
 
+#include <chrono>
+#include <filesystem>
+
 #include <json.hpp>
 
 #include "amazon/AmazonImporter.h"
@@ -11,13 +14,7 @@
 namespace mira::amazon {
 namespace {
 using nlohmann::json;
-
-Result<void> CheckReady(const config::Config& config) {
-  const AmazonAuthStatus auth = Status(config);
-  if (!auth.nile.installed) return StoreToolMissing("amazon", "Amazon Games", "nile");
-  if (!auth.authenticated) return StoreNotSignedIn("amazon", "Amazon Games");
-  return {};
-}
+namespace fs = std::filesystem;
 
 Result<void> Download(config::Config& config, store::GameStore& games, api::EventBus& events,
                       const std::string& verb, const std::string& ref) {
@@ -33,14 +30,23 @@ Result<void> Download(config::Config& config, store::GameStore& games, api::Even
   return {};
 }
 
+// Listing the catalog is cheap only if it doesn't sync with Amazon every time.
+bool LibraryIsFresh() {
+  std::error_code ec;
+  const auto written = fs::last_write_time(NileConfigDir() / "library.json", ec);
+  return !ec && fs::file_time_type::clock::now() - written < std::chrono::minutes(10);
+}
+
 }  // namespace
 
 Result<std::vector<library::CatalogEntry>> AmazonSource::Catalog(const config::Config& config,
                                                                  const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
   if (!config.GetBool("amazon.enabled")) return entries;
-  if (auto ready = CheckReady(config); !ready) return std::unexpected(ready.error());
-  if (auto synced = RunNile(config, {"library", "sync"}); !synced) return std::unexpected(synced.error());
+  if (!LibraryIsFresh()) {
+    if (auto ready = CheckReady(config); !ready) return std::unexpected(ready.error());
+    if (auto synced = RunNile(config, {"library", "sync"}); !synced) return std::unexpected(synced.error());
+  }
 
   const json library = ReadNileFile("library.json");
   if (!library.is_array()) return entries;

@@ -80,9 +80,9 @@ Result<model::Game> Install(config::Config& config, store::GameStore& games, con
 // Install, reported: game.install.started, game.updated, then game.install.finished or
 // .failed (with the error's hint and fix). On success it updates the menu entries and,
 // with `fetches`, fetches the game's art and store info again. After BeginInstall.
-void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
-                metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
-                const std::optional<std::filesystem::path>& installer);
+Result<void> RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
+                        metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
+                        const std::optional<std::filesystem::path>& installer);
 
 // Publishes game.installer_leftover when the game's installer folder (installer_dir) is still
 // on disk, so a client can offer to delete it.

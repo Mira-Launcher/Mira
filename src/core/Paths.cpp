@@ -75,4 +75,13 @@ bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesy
   });
 }
 
+std::vector<std::filesystem::path> ListDir(const std::filesystem::path& dir) {
+  std::vector<std::filesystem::path> entries;
+  std::error_code ec;
+  for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    entries.push_back(it->path());
+  }
+  return entries;
+}
+
 }  // namespace mira::paths

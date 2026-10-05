@@ -265,6 +265,7 @@ void Watcher::HandleInotify() {
   if (!deleted_from.empty()) {
     library::Scanner scanner(config_, games_, events_);
     scanner.UseMetadataQueue(*metadata_fetches_);
+    if (installs_) scanner.UseInstallLane(*installs_);
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
@@ -313,6 +314,7 @@ void Watcher::HandleDebounceTick() {
     }
     library::Scanner scanner(config_, games_, events_);
     scanner.UseMetadataQueue(*metadata_fetches_);
+    if (installs_) scanner.UseInstallLane(*installs_);
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);

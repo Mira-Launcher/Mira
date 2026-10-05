@@ -11,12 +11,14 @@
 #include <optional>
 #include <thread>
 
+#include "core/Lane.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
 #include "proc/ProcessSupervisor.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -31,6 +33,15 @@ std::map<std::string, std::string> states;  // launcher id -> running, finished,
 void SetState(const Launcher& launcher, std::string state) {
   const std::lock_guard lock(state_mutex);
   states[launcher.id] = std::move(state);
+}
+
+std::vector<pid_t> orphans;  // installer processes left running, reaped by a later call
+
+// Reaps what has exited, then keeps `pid` (if any) to reap later.
+void ReapOrphans(pid_t pid = -1) {
+  const std::lock_guard lock(state_mutex);
+  if (pid > 0) orphans.push_back(pid);
+  std::erase_if(orphans, [](pid_t orphan) { return ::waitpid(orphan, nullptr, WNOHANG) != 0; });
 }
 
 // The Windows user folder the launcher writes its settings under.
@@ -79,17 +90,15 @@ std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix
 }
 
 Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const model::Game& game) {
+  ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
   const fs::path setup = downloads / std::format("{}-setup.exe", launcher.id);
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
-  Command download;
-  download.argv = {"curl", "-sSLf", "--max-time", "600", "-o", setup.string(), launcher.installer_url};
-  const auto fetched = runner::RunAndWait(download);
-  if (!fetched) return std::unexpected(fetched.error());
-  if (fetched->exit_code != 0) {
-    return Err("download_failed", std::format("couldn't download the {} installer", launcher.name), kConnectionHint);
+  if (auto fetched = runner::CurlDownload(launcher.installer_url, setup); !fetched) {
+    return Err("download_failed", std::format("couldn't download the {} installer: {}", launcher.name,
+                                              fetched.error().message), kConnectionHint);
   }
 
   const runner::RunnerRegistry runners(config);
@@ -113,15 +122,14 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // launcher exe exists afterwards decides.
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
     if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && FindExe(launcher, game.data_dir)) {
-      std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();  // reaped whenever it ends
+      ReapOrphans(*pid);
       return {};
     }
-    if (std::chrono::steady_clock::now() >= deadline) {
-      std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();
-      return Err("launcher_install_timeout", std::format("the {} installer didn't finish in 30 minutes", launcher.name));
+    if (ThisTaskStop().stop_requested()) {
+      ReapOrphans(*pid);
+      return Err("shutting_down", "mirad stopped before the installer finished");
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
   }
@@ -143,7 +151,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
-  if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, game).string();
+  if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();
   game.status = model::GameStatus::SettingUp;
   game.last_error.clear();
   game.updated_at = model::NowSeconds();

@@ -28,7 +28,7 @@ src/
   proc/       ProcessSupervisor, Session, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
   steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi
-  epic/       Legendary wrapper, importer, installer and source
+  epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
   gog/        gogdl wrapper, importer, installer and source
   itch/       butlerd JSON-RPC client, importer, installer and source
   amazon/     Nile wrapper, importer and source
@@ -58,8 +58,7 @@ All user state lives in `$XDG_CONFIG_HOME/mira` (normally `~/.config/mira`):
 settings.toml   backend settings, validated against config/Schema.cpp
 games.toml      the library, one [[game]] per entry
 frontend.toml   GUI settings, stored and returned verbatim by the backend
-stats.toml      finished play sessions
-sessions/       records for sessions still running
+sessions/       records for sessions still running, or finished but not yet counted
 logs/           per-game output from the last launches
 ```
 
@@ -120,7 +119,7 @@ A direct launch goes through `mira-run` (`src/wrapper/main.cpp`). `mirad` resolv
 
 `mira-run` shares its process group with the game, so `kill(-pid)` stops the whole tree. It ignores SIGTERM and SIGINT so it can still run the post script and write the final record.
 
-`proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record to decide between a crash and a clean exit. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. Finished sessions are added to `stats.toml`.
+`proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record to decide between a crash and a clean exit. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. A finished session is added to the game's `play_seconds` once: the game remembers the newest session it counted (`last_session_at`).
 
 If `mira-run` can't be found or started, `mirad` launches the game directly with no session record or log.
 
@@ -133,6 +132,6 @@ If `mira-run` can't be found or started, `mirad` launches the game directly with
 - A `winetricks_defaults` setting that runs baseline verbs on every new prefix.
 - Reading Steam's `appinfo.vdf` to fill in the launch executable for `steam.launch_mode: "direct"`.
 - `mirad --scan-once`: scan, provision, print a summary and exit.
-- An endpoint for per-session play history from `stats.toml`. Steam launches are not recorded there yet.
+- An endpoint for per-session play history.
 - Steam achievements through the Steam Web API, when a key is configured.
 - Provisioning EOS and EasyAntiCheat for Epic games that need them.

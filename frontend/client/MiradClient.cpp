@@ -25,8 +25,8 @@ QImage DecodeImage(const std::string& bytes) {
   return image;
 }
 
-// Percent-encodes everything outside RFC 3986's unreserved set.
-std::string QueryEncode(const std::string& text) {
+// Percent-encodes everything outside RFC 3986's unreserved set, for a path segment or a query value.
+std::string PercentEncode(const std::string& text) {
   static constexpr char kHex[] = "0123456789ABCDEF";
   std::string out;
   for (const unsigned char c : text) {
@@ -88,7 +88,7 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
                             bool delete_metadata) {
   // Every flag is opt-in server-side too: the bare DELETE never touches
   // disk, so an omitted param and "false" mean the same thing.
-  std::string path = "/v1/games/" + id;
+  std::string path = "/v1/games/" + PercentEncode(id);
   std::string separator = "?";
   if (delete_files) {
     path += separator + "delete_files=true";
@@ -105,7 +105,7 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
 }
 
 LaunchResult LaunchGameSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/launch");
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/launch");
   // mirad answers `tracked` directly (docs/api.md): whether game.state
   // events are coming for this launch.
   const bool tracked = !reply.body.is_object() ||
@@ -116,7 +116,7 @@ LaunchResult LaunchGameSync(const std::string& id) {
 }
 
 StopResult StopGameSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/stop");
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/stop");
   return {reply.ok, reply.error};
 }
 
@@ -163,7 +163,7 @@ void FillScan(ScanResult& result, const json& body) {
 
 GameDetailResult GetGameSync(const std::string& id) {
   GameDetailResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id);
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -210,7 +210,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
     return result;
   }
 
-  const transport::Reply reply = transport::Patch("/v1/games/" + id, body);
+  const transport::Reply reply = transport::Patch("/v1/games/" + PercentEncode(id), body);
   return {reply.ok, reply.error};
 }
 
@@ -326,7 +326,7 @@ RunnersResult GetRunnersSync() {
 
 GameConfigResult GetGameConfigSync(const std::string& id) {
   GameConfigResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/config");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/config");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -494,7 +494,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
 ArtworkResult GetArtworkSync(const std::string& id, const std::string& slot) {
   ArtworkResult result;
   const transport::Blob blob =
-      transport::GetBinary("/v1/games/" + id + "/artwork?type=" + slot);
+      transport::GetBinary("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot);
   if (blob.status == 404) {
     result.missing = true;
     return result;
@@ -523,7 +523,7 @@ ArtCandidate ParseArtCandidate(const json& item) {
 
 GameMetadataResult GetMetadataSync(const std::string& id) {
   GameMetadataResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/metadata");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/metadata");
   if (reply.status == 404) {
     result.missing = true;
     return result;
@@ -624,7 +624,7 @@ GameMetadataResult GetMetadataSync(const std::string& id) {
 
 MetadataRefreshResult RefreshMetadataSync(const std::string& id, bool announce) {
   const transport::Reply reply =
-      transport::Post("/v1/games/" + id + "/metadata/refresh?announce=" + (announce ? "1" : "0"));
+      transport::Post("/v1/games/" + PercentEncode(id) + "/metadata/refresh?announce=" + (announce ? "1" : "0"));
   return {reply.ok, reply.error};
 }
 
@@ -636,25 +636,25 @@ void FillMetadataBatch(MetadataBatchResult& result, const json& body) {
 ArtworkSelectResult SelectArtworkSync(const std::string& id, const std::string& slot,
                                       std::int64_t candidate_id) {
   const transport::Reply reply = transport::PostJson(
-      "/v1/games/" + id + "/artwork?type=" + slot, json{{"candidate_id", candidate_id}});
+      "/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot, json{{"candidate_id", candidate_id}});
   return {reply.ok, reply.error};
 }
 
 GameActionResult FetchArtCandidatesSync(const std::string& id, const std::string& slot, int page,
                                         const std::string& request) {
-  const transport::Reply reply = transport::Post("/v1/games/" + id + "/artwork/candidates?type=" + slot +
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/artwork/candidates?type=" + slot +
                                                  "&page=" + std::to_string(page) + "&request=" + request);
   return {reply.ok, reply.error};
 }
 
 GameActionResult DeleteInstallerSync(const std::string& id) {
-  const transport::Reply reply = transport::Delete("/v1/games/" + id + "/installer");
+  const transport::Reply reply = transport::Delete("/v1/games/" + PercentEncode(id) + "/installer");
   return {reply.ok, reply.error};
 }
 
 GameActionResult FetchArtThumbsSync(const std::string& id, const std::string& slot,
                                     const std::vector<std::int64_t>& candidate_ids) {
-  const transport::Reply reply = transport::PostJson("/v1/games/" + id + "/artwork/thumbs?type=" + slot,
+  const transport::Reply reply = transport::PostJson("/v1/games/" + PercentEncode(id) + "/artwork/thumbs?type=" + slot,
                                                      json{{"candidate_ids", candidate_ids}});
   return {reply.ok, reply.error};
 }
@@ -663,7 +663,7 @@ ArtThumbsResult GetArtThumbsSync(const std::string& id, const std::string& slot,
                                  const std::vector<std::int64_t>& candidate_ids) {
   ArtThumbsResult result;
   for (const std::int64_t candidate_id : candidate_ids) {
-    const transport::Blob blob = transport::GetBinary("/v1/games/" + id + "/artwork/thumb?type=" + slot +
+    const transport::Blob blob = transport::GetBinary("/v1/games/" + PercentEncode(id) + "/artwork/thumb?type=" + slot +
                                                       "&candidate_id=" + std::to_string(candidate_id));
     if (blob.ok) result.images.emplace_back(candidate_id, blob.bytes);
   }
@@ -674,7 +674,7 @@ RunnerCatalogResult GetRunnerCatalogSync(const std::string& kind, const std::str
   RunnerCatalogResult result;
   // Leaves the machine (GitHub releases), so the default timeout is nowhere
   // near enough.
-  std::string path = "/v1/runners/catalog?kind=" + kind;
+  std::string path = "/v1/runners/catalog?kind=" + PercentEncode(kind);
   if (!source.empty()) path += "&source=" + source;
   const transport::Reply reply = transport::Get(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
@@ -714,7 +714,7 @@ RunnerDownloadResult DownloadRunnerSync(const std::string& kind, const std::stri
 
 RunnerSourcesResult ListRunnerSourcesSync(const std::string& kind) {
   RunnerSourcesResult result;
-  const transport::Reply reply = transport::Get("/v1/runners/sources?kind=" + kind);
+  const transport::Reply reply = transport::Get("/v1/runners/sources?kind=" + PercentEncode(kind));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -778,7 +778,7 @@ RunnerToolsResult ListRunnerToolsSync() {
 
 RunnerSchemaResult GetRunnerSchemaSync(const std::string& kind) {
   RunnerSchemaResult result;
-  const std::string path = "/v1/runners/" + QueryEncode(kind) + "/schema";
+  const std::string path = "/v1/runners/" + PercentEncode(kind) + "/schema";
   const transport::Reply reply = transport::Get(path);
   if (!reply.ok) {
     result.error = reply.error;
@@ -820,7 +820,7 @@ void FillAddedUpdated(R& result, const json& body) {
 RunInPrefixResult RunInPrefixSync(const std::string& id, const std::string& exe_path,
                                   const std::string& args) {
   const transport::Reply reply = transport::PostJson(
-      "/v1/games/" + id + "/run", json{{"exe_path", exe_path}, {"args", args}},
+      "/v1/games/" + PercentEncode(id) + "/run", json{{"exe_path", exe_path}, {"args", args}},
       // Provisions a prefix on demand if there isn't one yet, which is
       // genuinely slow (it's initialising Wine/Proton, see
       // docs/architecture.md).
@@ -833,8 +833,8 @@ FinishInstallResult FinishInstallSync(const std::string& id, const std::string& 
   json body = json::object();
   if (!install_path.empty()) body["install_path"] = install_path;
   if (!exe_path.empty()) body["exe_path"] = exe_path;
-  const transport::Reply reply = body.empty() ? transport::Post("/v1/games/" + id + "/finish-install")
-                                              : transport::PostJson("/v1/games/" + id + "/finish-install", body);
+  const transport::Reply reply = body.empty() ? transport::Post("/v1/games/" + PercentEncode(id) + "/finish-install")
+                                              : transport::PostJson("/v1/games/" + PercentEncode(id) + "/finish-install", body);
   return {reply.ok, reply.error};
 }
 
@@ -845,7 +845,7 @@ PatchGameConfigResult PatchGameConfigSync(const std::string& id,
     body[edit.key] =
         edit.clear ? json(nullptr) : mapping::TypedValueFromText(edit.type, edit.value);
   }
-  const transport::Reply reply = transport::Patch("/v1/games/" + id + "/config", body);
+  const transport::Reply reply = transport::Patch("/v1/games/" + PercentEncode(id) + "/config", body);
   return {reply.ok, reply.error};
 }
 
@@ -874,7 +874,7 @@ PatchGamesResult PatchGamesSync(const GamesPatch& patch) {
 GameLogResult GetGameLogSync(const std::string& id, int lines) {
   GameLogResult result;
   const transport::Reply reply =
-      transport::Get("/v1/games/" + id + "/log?lines=" + std::to_string(lines));
+      transport::Get("/v1/games/" + PercentEncode(id) + "/log?lines=" + std::to_string(lines));
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -908,12 +908,12 @@ GameModeStatusResult GetGameModeStatusSync() {
 
 TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
   const transport::Reply reply =
-      transport::PostJson("/v1/games/" + id + "/tricks", json{{"verb", verb}});
+      transport::PostJson("/v1/games/" + PercentEncode(id) + "/tricks", json{{"verb", verb}});
   return {reply.ok, reply.error};
 }
 
 RunnerRemoveResult DeleteRunnerSync(const std::string& kind, const std::string& name) {
-  const transport::Reply reply = transport::Delete("/v1/runners/" + kind + ":" + QueryEncode(name));
+  const transport::Reply reply = transport::Delete("/v1/runners/" + kind + ":" + PercentEncode(name));
   return {reply.ok, reply.error};
 }
 
@@ -982,82 +982,49 @@ DesktopEntrySyncResult SyncDesktopEntriesSync() {
   return {reply.ok, reply.error};
 }
 
-// Per-store endpoint names. Humble has no import or sign-out of its own.
-struct StoreEndpoints {
-  std::string status;
-  std::string tool_key;  // the tool's object in the status reply
-  std::string setup;
-  std::string credential_field;
-};
-
-std::optional<StoreEndpoints> EndpointsFor(const std::string& source) {
-  if (source == "epic") return StoreEndpoints{"/v1/epic/status", "legendary", "/v1/epic/legendary/install", "code"};
-  if (source == "gog") return StoreEndpoints{"/v1/gog/status", "gogdl", "/v1/gog/setup", "code"};
-  if (source == "itch") return StoreEndpoints{"/v1/itch/status", "butler", "/v1/itch/setup", "api_key"};
-  if (source == "humble") {
-    return StoreEndpoints{"/v1/humble/status", "humble_cli", "/v1/humble/setup", "session_key"};
-  }
-  if (source == "amazon") return StoreEndpoints{"/v1/amazon/status", "nile", "/v1/amazon/setup", "redirect"};
-  return std::nullopt;
+std::string StorePath(const std::string& source, const std::string& action) {
+  return "/v1/stores/" + source + "/" + action;
 }
-
-std::string UnknownStore(const std::string& source) { return "Unknown store \"" + source + "\"."; }
 
 StoreStatusResult GetStoreStatusSync(const std::string& source) {
   StoreStatusResult result;
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) {
-    result.error = UnknownStore(source);
-    return result;
-  }
   // Humble's status asks humble-cli itself, over the network.
-  const transport::Reply reply = transport::Get(endpoints->status, {.read_timeout = std::chrono::seconds(30)});
+  const std::string path = StorePath(source, "status");
+  const transport::Reply reply = transport::Get(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_object()) {
-    result.error = transport::UnexpectedResponse("GET " + endpoints->status);
+    result.error = transport::UnexpectedResponse("GET " + path);
     return result;
   }
   result.ok = true;
-  const json tool = reply.body.value(endpoints->tool_key, json::object());
+  const json tool = reply.body.value("tool", json::object());
   if (tool.is_object()) {
     result.tool_installed = tool.value("installed", false);
     result.tool_version = tool.value("version", std::string());
   }
   result.authenticated = reply.body.value("authenticated", false);
   result.account = reply.body.value("account", std::string());
-  result.login_url = reply.body.value("login_url", std::string());
   return result;
 }
 
-StoreActionResult SetupStoreToolSync(const std::string& source) {
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) return {false, UnknownStore(source)};
-  // Asks GitHub for the newest release before answering.
-  const transport::Reply reply = transport::Post(endpoints->setup, {.read_timeout = std::chrono::seconds(30)});
-  return {reply.ok, reply.error};
-}
-
 StoreActionResult SignInStoreSync(const std::string& source, const std::string& credential) {
-  const std::optional<StoreEndpoints> endpoints = EndpointsFor(source);
-  if (!endpoints) return {false, UnknownStore(source)};
-  const transport::Reply reply = transport::PostJson("/v1/" + source + "/auth",
-                                                     {{endpoints->credential_field, credential}},
+  const transport::Reply reply = transport::PostJson(StorePath(source, "login"), {{"credential", credential}},
                                                      {.read_timeout = std::chrono::seconds(60)});
   return {reply.ok, reply.error};
 }
 
 StoreActionResult SignOutStoreSync(const std::string& source) {
-  const transport::Reply reply = transport::Post("/v1/" + source + "/logout");
+  const transport::Reply reply = transport::Post(StorePath(source, "logout"));
   return {reply.ok, reply.error};
 }
 
 StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
   StoreLibraryResult result;
   const transport::Reply reply =
-      transport::Get("/v1/library?source=" + source, {.read_timeout = std::chrono::seconds(60)});
+      transport::Get("/v1/library?source=" + PercentEncode(source), {.read_timeout = std::chrono::seconds(60)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1085,13 +1052,13 @@ StoreActionResult InstallStoreTitleSync(const std::string& source, const std::st
 
 HumbleLibraryResult GetHumbleLibrarySync() {
   HumbleLibraryResult result;
-  const transport::Reply reply = transport::Get("/v1/humble/library", {.read_timeout = std::chrono::seconds(60)});
+  const transport::Reply reply = transport::Get("/v1/stores/humble/bundles", {.read_timeout = std::chrono::seconds(60)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/humble/library");
+    result.error = transport::UnexpectedResponse("GET /v1/stores/humble/bundles");
     return result;
   }
   result.ok = true;
@@ -1104,15 +1071,10 @@ HumbleLibraryResult GetHumbleLibrarySync() {
   return result;
 }
 
-StoreActionResult DownloadHumbleBundleSync(const std::string& bundle_key) {
-  const transport::Reply reply = transport::PostJson("/v1/humble/download", {{"bundle_key", bundle_key}});
-  return {reply.ok, reply.error};
-}
-
 GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::string& query) {
   GriddbMatchesResult result;
-  std::string url = "/v1/games/" + id + "/metadata/matches";
-  if (!query.empty()) url += "?q=" + QueryEncode(query);
+  std::string url = "/v1/games/" + PercentEncode(id) + "/metadata/matches";
+  if (!query.empty()) url += "?q=" + PercentEncode(query);
   const transport::Reply reply = transport::Get(url, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
@@ -1136,14 +1098,14 @@ GriddbMatchesResult GetGriddbMatchesSync(const std::string& id, const std::strin
 
 GameActionResult SetGriddbMatchSync(const std::string& id, std::int64_t griddb_id) {
   const transport::Reply reply =
-      transport::PostJson("/v1/games/" + id + "/metadata/match", {{"steamgriddb_id", griddb_id}});
+      transport::PostJson("/v1/games/" + PercentEncode(id) + "/metadata/match", {{"steamgriddb_id", griddb_id}});
   return {reply.ok, reply.error};
 }
 
 ArtworkResult GetTitleArtworkSync(const std::string& source, const std::string& ref) {
   ArtworkResult result;
   const transport::Blob blob =
-      transport::GetBinary("/v1/library/artwork?source=" + QueryEncode(source) + "&ref=" + QueryEncode(ref));
+      transport::GetBinary("/v1/library/artwork?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
   if (blob.status == 404) {
     result.missing = true;
     return result;
@@ -1167,7 +1129,7 @@ StoreActionResult QueueTitleArtworkSync(const std::string& source, const std::ve
 
 RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
   RemovalPlanResult result;
-  const transport::Reply reply = transport::Get("/v1/sources/" + source + "/removal");
+  const transport::Reply reply = transport::Get("/v1/sources/" + PercentEncode(source) + "/removal");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1207,24 +1169,24 @@ SourceRunnerResult SourceRunnerFrom(const transport::Reply& reply) {
 }
 
 SourceRunnerResult GetSourceRunnerSync(const std::string& source) {
-  return SourceRunnerFrom(transport::Get("/v1/sources/" + source + "/runner"));
+  return SourceRunnerFrom(transport::Get("/v1/sources/" + PercentEncode(source) + "/runner"));
 }
 
 SourceRunnerResult SetSourceRunnerSync(const std::string& source, const std::string& runner_ref,
                                        bool apply_to_games) {
   return SourceRunnerFrom(transport::PostJson(
-      "/v1/sources/" + source + "/runner", {{"runner_ref", runner_ref}, {"apply_to_games", apply_to_games}}));
+      "/v1/sources/" + PercentEncode(source) + "/runner", {{"runner_ref", runner_ref}, {"apply_to_games", apply_to_games}}));
 }
 
 ItchCollectionsResult GetItchCollectionsSync() {
   ItchCollectionsResult result;
-  const transport::Reply reply = transport::Get("/v1/itch/collections");
+  const transport::Reply reply = transport::Get("/v1/stores/itch/collections");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   if (!reply.body.is_array()) {
-    result.error = transport::UnexpectedResponse("GET /v1/itch/collections");
+    result.error = transport::UnexpectedResponse("GET /v1/stores/itch/collections");
     return result;
   }
   result.ok = true;
@@ -1239,19 +1201,19 @@ ItchCollectionsResult GetItchCollectionsSync() {
 }
 
 StoreActionResult AddItchCollectionSync(const std::string& link) {
-  const transport::Reply reply = transport::PostJson("/v1/itch/collections", {{"link", link}});
+  const transport::Reply reply = transport::PostJson("/v1/stores/itch/collections", {{"link", link}});
   return {reply.ok, reply.error};
 }
 
 StoreActionResult RemoveItchCollectionSync(std::int64_t id) {
-  const transport::Reply reply = transport::Delete("/v1/itch/collections/" + std::to_string(id));
+  const transport::Reply reply = transport::Delete("/v1/stores/itch/collections/" + std::to_string(id));
   return {reply.ok, reply.error};
 }
 
 InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::string& path) {
   InstallerInfoResult result;
-  std::string url = "/v1/games/" + id + "/installer";
-  if (!path.empty()) url += "?path=" + QueryEncode(path);
+  std::string url = "/v1/games/" + PercentEncode(id) + "/installer";
+  if (!path.empty()) url += "?path=" + PercentEncode(path);
   const transport::Reply reply = transport::Get(url);
   if (!reply.ok) {
     result.error = reply.error;
@@ -1268,13 +1230,13 @@ InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::strin
 GameActionResult InstallGameSync(const std::string& id, bool interactive, const std::string& installer) {
   json body = {{"interactive", interactive}};
   if (!installer.empty()) body["installer"] = installer;
-  const transport::Reply reply = transport::PostJson("/v1/games/" + id + "/install", body);
+  const transport::Reply reply = transport::PostJson("/v1/games/" + PercentEncode(id) + "/install", body);
   return {reply.ok, reply.error};
 }
 
 InstallProgressResult GetInstallProgressSync(const std::string& id) {
   InstallProgressResult result;
-  const transport::Reply reply = transport::Get("/v1/games/" + id + "/install/progress");
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/install/progress");
   if (!reply.ok) {
     result.error = reply.error;
     return result;
@@ -1322,16 +1284,17 @@ void FillDeleteGames(DeleteGamesResult& result, const json& body) {
   result.failed = ToGameFailures(body, "failed");
 }
 
-LoginUrlResult BeginAmazonLoginSync() {
+LoginUrlResult BeginStoreLoginSync(const std::string& source) {
   LoginUrlResult result;
-  const transport::Reply reply = transport::Post("/v1/amazon/login", {.read_timeout = std::chrono::seconds(30)});
+  const std::string path = StorePath(source, "login/begin");
+  const transport::Reply reply = transport::Post(path, {.read_timeout = std::chrono::seconds(30)});
   if (!reply.ok) {
     result.error = reply.error;
     return result;
   }
   result.url = reply.body.value("url", std::string());
   result.ok = !result.url.empty();
-  if (!result.ok) result.error = transport::UnexpectedResponse("POST /v1/amazon/login");
+  if (!result.ok) result.error = transport::UnexpectedResponse("POST " + path);
   return result;
 }
 
@@ -1363,12 +1326,12 @@ LaunchersResult GetLaunchersSync() {
 }
 
 StoreActionResult InstallLauncherSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/launchers/" + id + "/install");
+  const transport::Reply reply = transport::Post("/v1/launchers/" + PercentEncode(id) + "/install");
   return {reply.ok, reply.error};
 }
 
 StoreActionResult OpenLauncherSync(const std::string& id) {
-  const transport::Reply reply = transport::PostJson("/v1/launchers/" + id + "/open", json::object());
+  const transport::Reply reply = transport::PostJson("/v1/launchers/" + PercentEncode(id) + "/open", json::object());
   return {reply.ok, reply.error};
 }
 
@@ -1813,7 +1776,9 @@ void MiradClient::GetStoreStatusAsync(QObject* context, const std::string& sourc
 
 void MiradClient::SetupStoreToolAsync(QObject* context, const std::string& source,
                                       std::function<void(StoreActionResult)> callback) {
-  async::Run(context, [source] { return SetupStoreToolSync(source); }, std::move(callback), async::Lane::Slow);
+  RunJob<StoreActionResult>(
+      context, "setup", [source](const std::string& query) { return transport::Post(StorePath(source, "setup") + query); },
+      [](StoreActionResult&, const json&) {}, std::move(callback));
 }
 
 void MiradClient::SignInStoreAsync(QObject* context, const std::string& source,
@@ -1832,7 +1797,7 @@ void MiradClient::ImportStoreAsync(QObject* context, const std::string& source,
                                    std::function<void(StoreImportResult)> callback) {
   RunJob<StoreImportResult>(
       context, "import",
-      [source](const std::string& query) { return transport::Post("/v1/" + source + "/import" + query); },
+      [source](const std::string& query) { return transport::Post(StorePath(source, "import") + query); },
       FillAddedUpdated<StoreImportResult>, std::move(callback));
 }
 
@@ -1874,7 +1839,7 @@ void MiradClient::RemoveSourceAsync(QObject* context, const std::string& source,
                                     std::function<void(RemoveSourceResult)> callback) {
   RunJob<RemoveSourceResult>(
       context, "remove_source",
-      [source](const std::string& query) { return transport::Post("/v1/sources/" + source + "/remove" + query); },
+      [source](const std::string& query) { return transport::Post("/v1/sources/" + PercentEncode(source) + "/remove" + query); },
       FillRemoveSource, std::move(callback));
 }
 
@@ -1926,9 +1891,14 @@ void MiradClient::GetHumbleLibraryAsync(QObject* context,
 }
 
 void MiradClient::DownloadHumbleBundleAsync(QObject* context, const std::string& bundle_key,
-                                            std::function<void(StoreActionResult)> callback) {
-  async::Run(context, [bundle_key] { return DownloadHumbleBundleSync(bundle_key); },
-             std::move(callback));
+                                            std::function<void(HumbleDownloadResult)> callback) {
+  RunJob<HumbleDownloadResult>(
+      context, "download",
+      [bundle_key](const std::string& query) {
+        return transport::PostJson("/v1/stores/humble/download" + query, {{"bundle_key", bundle_key}});
+      },
+      [](HumbleDownloadResult& result, const json& body) { result.path = body.value("path", std::string()); },
+      std::move(callback));
 }
 
 void MiradClient::GetInstallerInfoAsync(QObject* context, const std::string& id, const std::string& path,
@@ -1966,7 +1936,7 @@ void MiradClient::RelocateGameAsync(QObject* context, const std::string& id, con
   RunJob<GameDetailResult>(
       context, "relocate",
       [id, body](const std::string& query) {
-        return transport::PostJson("/v1/games/" + id + "/relocate" + query, body);
+        return transport::PostJson("/v1/games/" + PercentEncode(id) + "/relocate" + query, body);
       },
       [id](GameDetailResult& result, const json& body) {
         if (!body.is_object()) throw std::runtime_error(transport::UnexpectedResponse("POST /v1/games/" + id + "/relocate"));
@@ -2032,9 +2002,9 @@ bool MiradClient::ParseInstallEvent(const std::string& event_type, const std::st
   return !out->id.empty();
 }
 
-void MiradClient::BeginAmazonLoginAsync(QObject* context,
-                                        std::function<void(LoginUrlResult)> callback) {
-  async::Run(context, [] { return BeginAmazonLoginSync(); }, std::move(callback), async::Lane::Slow);
+void MiradClient::BeginStoreLoginAsync(QObject* context, const std::string& source,
+                                       std::function<void(LoginUrlResult)> callback) {
+  async::Run(context, [source] { return BeginStoreLoginSync(source); }, std::move(callback));
 }
 
 void MiradClient::GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> callback) {
@@ -2050,7 +2020,7 @@ void MiradClient::ImportLauncherAsync(QObject* context, const std::string& id,
                                       std::function<void(StoreImportResult)> callback) {
   RunJob<StoreImportResult>(
       context, "import",
-      [id](const std::string& query) { return transport::Post("/v1/launchers/" + id + "/import" + query); },
+      [id](const std::string& query) { return transport::Post("/v1/launchers/" + PercentEncode(id) + "/import" + query); },
       FillAddedUpdated<StoreImportResult>, std::move(callback));
 }
 
@@ -2061,14 +2031,8 @@ void MiradClient::OpenLauncherAsync(QObject* context, const std::string& id,
 
 bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::string& data,
                                   StoreEvent* out) {
-  // Each store's setup event has its own prefix; installs and downloads
-  // share one each.
+  // Each runner tool's setup event has its own prefix. (A store's setup is a job.)
   static const std::pair<std::string_view, std::string_view> kSetupPrefixes[] = {
-      {"epic.legendary.install.", "epic"},
-      {"gog.setup.", "gog"},
-      {"itch.setup.", "itch"},
-      {"humble.setup.", "humble"},
-      {"amazon.setup.", "amazon"},
       {"umu.setup.", "umu"},
       {"winetricks.setup.", "winetricks"},
   };
@@ -2081,7 +2045,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
     }
   }
   constexpr std::string_view kInstall = "library.install.";
-  constexpr std::string_view kDownload = "humble.download.";
   constexpr std::string_view kLauncher = "launcher.install.";
   if (event_type.starts_with(kLauncher)) {
     out->kind = "setup";  // source is the launcher id, read below
@@ -2089,10 +2052,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
   } else if (event_type.starts_with(kInstall)) {
     out->kind = "install";
     state = std::string_view(event_type).substr(kInstall.size());
-  } else if (event_type.starts_with(kDownload)) {
-    out->source = "humble";
-    out->kind = "download";
-    state = std::string_view(event_type).substr(kDownload.size());
   }
   if (state.empty()) return false;
 
@@ -2108,10 +2067,6 @@ bool MiradClient::ParseStoreEvent(const std::string& event_type, const std::stri
       out->eta_seconds = static_cast<std::int64_t>(entry.value("eta", -1.0));
       out->bytes_per_second = entry.value("bps", -1.0);
     }
-  } else if (out->kind == "download") {
-    out->ref = entry.value("bundle_key", std::string());
-    out->path = entry.value("path", std::string());
-    out->downloaded = entry.value("downloaded", true);
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
   }

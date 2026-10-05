@@ -162,11 +162,6 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     return Err("installer_unsupported", "not a known silent-install format",
                "Run the installer with its window shown and click through it.", Fix::Game(game.id, "install"));
   }
-  const std::int64_t timeout_s = config.GetInt("install.timeout_s");
-  if (silent && timeout_s > 0 && !runner::FindOnPath("timeout")) {
-    return Err("timeout_missing", "'timeout' (coreutils) isn't on PATH",
-               "Install coreutils, or set the installer timeout to 0.", Fix::Setting("install.timeout_s"));
-  }
 
   const runner::RunnerRegistry runners(config);
   model::Game to_provision = game;
@@ -193,9 +188,6 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
                        : format == InstallerFormat::kMsi   ? "TARGETDIR="
                                                            : "/D=";
     run.argv.push_back(flag + target);
-    if (timeout_s > 0) {
-      run.argv.insert(run.argv.begin(), {"timeout", "--kill-after=10s", std::format("{}s", timeout_s)});
-    }
   }
 
   const std::set<fs::path> before = InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir);
@@ -217,12 +209,6 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   if (!result) return std::unexpected(result.error());
   // A GUI installer's exit code isn't reliable; detection below decides.
   if (silent && result->exit_code != 0) {
-    // 124 and 137 are timeout's own codes: it stopped the installer.
-    if (timeout_s > 0 && (result->exit_code == 124 || result->exit_code == 137)) {
-      return Err("installer_timeout", std::format("the quiet install didn't finish within {} s", timeout_s),
-                 "Run the installer with its window shown, or raise the installer timeout.",
-                 Fix::Game(game.id, "install"));
-    }
     return Err("installer_failed", std::format("the quiet install failed (exit code {})", result->exit_code),
                "Some installers only work with their window shown. Run it that way and click through it.",
                Fix::Game(game.id, "install"));
@@ -378,15 +364,15 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
   return {};
 }
 
-void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
-                metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
-                const std::optional<fs::path>& installer) {
+Result<void> RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
+                        metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
+                        const std::optional<fs::path>& installer) {
   events.Publish("game.install.started", {{"id", id}});
   const Result<model::Game> done = Install(config, games, id, mode, installer);
   if (!done) {
     if (const auto stored = games.Find(id)) events.Publish("game.updated", model::ToJson(*stored));
     events.Publish("game.install.failed", api::FailedEvent({{"id", id}}, done.error()));
-    return;
+    return std::unexpected(done.error());
   }
   if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
@@ -396,6 +382,7 @@ void RunInstall(config::Config& config, store::GameStore& games, api::EventBus& 
   AnnounceInstallerLeftover(events, *done);
   // Its art and store info were looked up by the installer's name.
   if (fetches != nullptr) fetches->Enqueue(config, events, *done);
+  return {};
 }
 
 bool BeginInstall(const std::string& id) {

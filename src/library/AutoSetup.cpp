@@ -22,7 +22,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
   game.candidates = detected.candidates;
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
-  game.data_dir = PrefixDir(config_, game).string();
+  game.data_dir = PrefixDir(config_, games_, game).string();
 
   // install_path's parent is which library root this came from (see the
   // field's own comment in model/Types.h) -- the root's own leaf folder

@@ -79,7 +79,7 @@ TEST_CASE("DetectGog honours the gog.gogdl_bin override") {
   Fixture fixture("gog-detect");
   fixture.UseFakeGogdl();
 
-  const gog::GogStatus status = gog::DetectGog(fixture.config);
+  const runner::ToolStatus status = gog::DetectGog(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
   CHECK(status.path == (fixture.dir / "gogdl").string());
@@ -90,8 +90,8 @@ TEST_CASE("Login stores what gogdl wrote, and Status reads it back") {
   fixture.UseFakeGogdl();
 
   REQUIRE(gog::Login(fixture.config, "good-code"));
-  const gog::GogAuthStatus status = gog::Status(fixture.config);
-  REQUIRE(status.gogdl.installed);
+  const runner::AuthStatus status = gog::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK(status.authenticated);
 }
 
@@ -166,7 +166,7 @@ TEST_CASE("GogImporter::Import scans install_root's subdirectories") {
   REQUIRE(fixture.config.Set("gog.install_root", root.string()));
 
   gog::GogImporter importer(fixture.config, fixture.games, fixture.events);
-  const Result<gog::GogImportSummary> summary = importer.Import();
+  const Result<library::ImportSummary> summary = importer.Import();
   REQUIRE(summary);
   CHECK(summary->added == 2);
   CHECK(fixture.games.All().size() == 2);
@@ -197,30 +197,39 @@ TEST_CASE("GOG sign-in through mirad refuses a bad code and keeps a good one unt
   REQUIRE(server.MutableConfig().Set("gog.gogdl_bin", (state / "gogdl").string()));
   httplib::Client client = server.Client();
   const auto status = [&] {
-    auto res = client.Get("/v1/gog/status");
+    auto res = client.Get("/v1/stores/gog/status");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
     return nlohmann::json::parse(res->body);
   };
   const auto sign_in = [&](const std::string& code) {
     auto res =
-        client.Post("/v1/gog/auth", nlohmann::json{{"code", code}}.dump(), "application/json");
+        client.Post("/v1/stores/gog/login", nlohmann::json{{"credential", code}}.dump(), "application/json");
     REQUIRE(res != nullptr);
     return res->status;
   };
 
   const nlohmann::json before = status();
-  CHECK(before["gogdl"]["installed"].get<bool>());
+  CHECK(before["tool"]["installed"].get<bool>());
   CHECK_FALSE(before["authenticated"].get<bool>());
-  CHECK_FALSE(before["login_url"].get<std::string>().empty());
+  auto begun = client.Post("/v1/stores/gog/login/begin");
+  REQUIRE(begun != nullptr);
+  CHECK_FALSE(nlohmann::json::parse(begun->body)["url"].get<std::string>().empty());
 
   CHECK(sign_in("bad-code") == 400);
   CHECK_FALSE(status()["authenticated"].get<bool>());
   CHECK(sign_in("https://embed.gog.com/on_login_success?origin=client&code=good-code") == 200);
   CHECK(status()["authenticated"].get<bool>());
 
-  auto out = client.Post("/v1/gog/logout");
+  auto out = client.Post("/v1/stores/gog/logout");
   REQUIRE(out != nullptr);
   CHECK(out->status == 200);
   CHECK_FALSE(status()["authenticated"].get<bool>());
+
+  auto listed = client.Get("/v1/stores");
+  REQUIRE(listed != nullptr);
+  CHECK(nlohmann::json::parse(listed->body).size() == 5);
+  auto unknown = client.Get("/v1/stores/nope/status");
+  REQUIRE(unknown != nullptr);
+  CHECK(unknown->status == 404);
 }

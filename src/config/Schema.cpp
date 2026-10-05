@@ -771,13 +771,6 @@ Schema::Schema() {
                 "\"wine:latest\". Empty uses the default Wine/Proton runner. The game keeps this "
                 "runner afterward, because its prefix was created with it."});
 
-  s.Add({.key = "install.timeout_s",
-         .label = "Installer timeout (seconds)",
-         .type = Type::Int,
-         .default_value = 0,
-         .doc = "Stop a silent installer after this many seconds. 0 means no limit.",
-         .constraint = Range(0, 86400)});
-
   s.Add({.key = "install.show_progress",
          .label = "Show installer progress",
          .type = Type::Bool,

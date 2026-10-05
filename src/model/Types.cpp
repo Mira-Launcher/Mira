@@ -90,6 +90,7 @@ json ToJson(const Game& game) {
       {"created_at", game.created_at},
       {"updated_at", game.updated_at},
       {"play_seconds", game.play_seconds},
+      {"last_session_at", game.last_session_at},
       {"env", game.env},
   };
   out["last_played_at"] = game.last_played_at ? json(*game.last_played_at) : json(nullptr);
@@ -148,6 +149,7 @@ Game GameFromJson(const json& document) {
     game.last_played_at = document["last_played_at"].get<std::int64_t>();
   }
   game.play_seconds = document.value("play_seconds", std::int64_t{0});
+  game.last_session_at = document.value("last_session_at", std::int64_t{0});
 
   if (document.contains("env") && document["env"].is_object()) {
     for (const auto& [key, value] : document["env"].items()) {

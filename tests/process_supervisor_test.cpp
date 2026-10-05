@@ -297,7 +297,11 @@ TEST_CASE("Reconcile archives a finished session a previous mirad never got to s
   auto stored = games.Find("celeste");
   REQUIRE(stored.has_value());
   CHECK(stored->play_seconds == 142);  // 100 already banked + 42 from the reconciled session
-  CHECK(fs::exists(state / "stats.toml"));
+
+  // A mirad that died before deleting the file finds the same session again: it isn't counted twice.
+  REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
+  supervisor.Reconcile(sessions_dir);
+  CHECK(games.Find("celeste")->play_seconds == 142);
 }
 
 TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone too") {
@@ -326,7 +330,6 @@ TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone
   auto stored = games.Find("celeste");
   REQUIRE(stored.has_value());
   CHECK(stored->last_error.find("restarted") != std::string::npos);
-  CHECK(fs::exists(state / "stats.toml"));
 }
 
 TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking it as running") {

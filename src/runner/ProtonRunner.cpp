@@ -116,7 +116,6 @@ Result<void> ProtonRunner::Provision(const model::Game& game,
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
   ApplyGameId(command, game);
-  command.timeout_s = 1800;  // a first run downloads the Steam runtime
 
   auto result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());
@@ -145,7 +144,7 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
   Command command;
   command.argv = {UmuRunPath()};
   std::ranges::move(WindowsProgram(exe), std::back_inserter(command.argv));
-  for (const std::string& arg : strings::Split(game.args, ' ')) {
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
   }
 

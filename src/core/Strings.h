@@ -10,6 +10,12 @@ std::string ToLower(std::string_view input);
 std::string Trim(std::string_view input);
 std::vector<std::string> Split(std::string_view input, char delimiter);
 
+// Splits one command line like a shell: on spaces, with 'single' and "double" quotes keeping an argument
+// together (a backslash escapes inside double quotes). How a game's `args` string reads.
+std::vector<std::string> SplitArgs(std::string_view text);
+// The inverse: quotes what needs it, so SplitArgs gives `args` back.
+std::string JoinArgs(const std::vector<std::string>& args);
+
 // Shell-style glob with '*' and '?', matched against the whole string.
 bool GlobMatch(std::string_view pattern, std::string_view text);
 

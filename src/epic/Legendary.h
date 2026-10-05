@@ -10,6 +10,7 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 #include "runner/Exec.h"
 
 // Epic Games Store support: wraps Legendary, a native-Linux Epic CLI client,
@@ -20,13 +21,6 @@
 // find or fetch the `legendary` binary and run it; it has no game-library
 // knowledge (see EpicImporter/EpicInstaller for that).
 namespace mira::epic {
-
-struct LegendaryStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
 
 // Where Mira's own managed download lives, if it ever fetches one. It never
 // requires the file to actually exist.
@@ -43,7 +37,7 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name);
 // Detects legendary in this order: epic.legendary_bin override, Mira's own
 // managed download, then $PATH. Never itself requires legendary to already
 // work, so it is safe to call before anything is set up, unlike everything below.
-LegendaryStatus DetectLegendary(const config::Config& config);
+runner::ToolStatus DetectLegendary(const config::Config& config);
 
 // Downloads legendary's latest matching GitHub release asset (a standalone
 // binary, not an archive) into ManagedLegendaryPath and marks it executable.
@@ -72,17 +66,14 @@ inline constexpr std::string_view kLoginUrl =
     "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId"
     "%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 
-struct EpicAuthStatus {
-  LegendaryStatus legendary;
-  bool authenticated = false;
-  std::string account;
-};
-
 // The layered "don't assume setup" status call: checks legendary is
 // installed first (no subprocess if not), only runs `legendary status
 // --json` if it is. Never itself errors: "not installed" and "not
 // authenticated" are both just fields on the result, not failures.
-EpicAuthStatus Status(const config::Config& config);
+runner::AuthStatus Status(const config::Config& config);
+
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // Runs `legendary auth --code <code>`, the headless login path (see
 // kLoginUrl's comment): the user visits kLoginUrl in their own browser,

@@ -41,6 +41,8 @@ public:
   // Fetch through `queue` instead of a queue of its own, so one set of workers and one dedupe serve everything.
   // Before Run().
   void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
+  // Where a scan runs an installer it starts on its own. Before Run().
+  void UseInstallLane(Lane& lane) { installs_ = &lane; }
 
 private:
   struct Pending {
@@ -62,6 +64,7 @@ private:
   api::EventBus& events_;
   metadata::FetchQueue own_fetches_;
   metadata::FetchQueue* metadata_fetches_ = &own_fetches_;
+  Lane* installs_ = nullptr;
 
   int inotify_fd_ = -1;
   int epoll_fd_ = -1;

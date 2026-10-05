@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 #include "runner/Exec.h"
 
 // Amazon Games (Prime Gaming) support: wraps nile, Heroic's Amazon CLI
@@ -16,14 +17,7 @@
 // Mira's own runners, never `nile launch`.
 namespace mira::amazon {
 
-struct NileStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
-
-NileStatus DetectNile(const config::Config& config);
+runner::ToolStatus DetectNile(const config::Config& config);
 
 Result<void> InstallNileBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
@@ -37,12 +31,10 @@ nlohmann::json ReadNileFile(const std::string& name);
 Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args,
                                const runner::OutputFn& on_output = {});
 
-struct AmazonAuthStatus {
-  NileStatus nile;
-  bool authenticated = false;
-};
+runner::AuthStatus Status(const config::Config& config);
 
-AmazonAuthStatus Status(const config::Config& config);
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // Starts a login: returns the Amazon URL to open. The PKCE values nile
 // generated are kept in memory until FinishLogin.

@@ -16,6 +16,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::lutris {
@@ -38,37 +39,23 @@ struct LutrisRow {
   std::string slug;
   std::string runner;
   std::string configpath;
+  std::vector<std::string> categories;  // Mira tags, already mapped
 };
 
-Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const fs::path& pga_db) {
+// Runs one query and returns its rows. An empty result set prints nothing at all, not "[]".
+Result<json> Query(const std::string& sqlite3_bin, const fs::path& pga_db, const std::string& sql) {
   Command command;
-  command.argv = {sqlite3_bin, "-json", pga_db.string(), "SELECT id, name, slug, runner, configpath FROM games;"};
+  command.argv = {sqlite3_bin, "-json", pga_db.string(), sql};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result || result->exit_code != 0) {
     return Err("lutris_db_read_failed",
                !result ? result.error().message
                        : std::format("sqlite3 exited {}: {}", result->exit_code, result->output));
   }
-
-  // An empty result set prints nothing at all, not "[]".
-  if (result->output.find_first_not_of(" \t\r\n") == std::string::npos) return std::vector<LutrisRow>{};
-
-  const json parsed = json::parse(result->output, nullptr, false);
-  if (!parsed.is_array()) {
-    return Err("lutris_db_parse_failed", "unexpected output from sqlite3 -json");
-  }
-
-  std::vector<LutrisRow> rows;
-  for (const json& row : parsed) {
-    rows.push_back(LutrisRow{
-        .id = static_cast<int>(core::JsonInt(row, "id")),
-        .name = core::JsonString(row, "name"),
-        .slug = core::JsonString(row, "slug"),
-        .runner = core::JsonString(row, "runner"),
-        .configpath = core::JsonString(row, "configpath"),
-    });
-  }
-  return rows;
+  if (result->output.find_first_not_of(" \t\r\n") == std::string::npos) return json::array();
+  json parsed = json::parse(result->output, nullptr, false);
+  if (!parsed.is_array()) return Err("lutris_db_parse_failed", "unexpected output from sqlite3 -json");
+  return parsed;
 }
 
 // Lutris's "hidden" is a category named ".hidden", and "favorite" is
@@ -82,28 +69,35 @@ std::string TagForCategory(const std::string& category) {
   return category;
 }
 
-// categories/games_categories don't exist on every Lutris version, and a
-// missing table degrades to "no categories" rather than failing the whole
-// import; only a real sqlite3 dependency failure (already reported by
-// ReadCatalog above) is worth surfacing loudly.
-std::map<int, std::vector<std::string>> ReadCategories(const std::string& sqlite3_bin, const fs::path& pga_db) {
-  Command command;
-  command.argv = {sqlite3_bin, "-json", pga_db.string(),
-                  "SELECT games_categories.game_id AS game_id, categories.name AS name FROM "
-                  "games_categories JOIN categories ON categories.id = games_categories.category_id;"};
-  const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  std::map<int, std::vector<std::string>> by_game;
-  if (!result || result->exit_code != 0) return by_game;
-  if (result->output.find_first_not_of(" \t\r\n") == std::string::npos) return by_game;
+// The games with their categories in one query. categories/games_categories don't exist on every Lutris
+// version, and a missing table degrades to "no categories" rather than failing the whole import.
+Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const fs::path& pga_db) {
+  constexpr char kPlain[] = "SELECT id, name, slug, runner, configpath FROM games;";
+  constexpr char kWithCategories[] =
+      "SELECT games.id AS id, games.name AS name, games.slug AS slug, games.runner AS runner, "
+      "games.configpath AS configpath, group_concat(categories.name, char(31)) AS categories FROM games "
+      "LEFT JOIN games_categories ON games_categories.game_id = games.id "
+      "LEFT JOIN categories ON categories.id = games_categories.category_id GROUP BY games.id;";
+  Result<json> parsed = Query(sqlite3_bin, pga_db, kWithCategories);
+  if (!parsed) parsed = Query(sqlite3_bin, pga_db, kPlain);
+  if (!parsed) return std::unexpected(parsed.error());
 
-  const json parsed = json::parse(result->output, nullptr, false);
-  if (!parsed.is_array()) return by_game;
-  for (const json& row : parsed) {
-    const std::string category = core::JsonString(row, "name");
-    if (category.empty()) continue;
-    by_game[static_cast<int>(core::JsonInt(row, "game_id"))].push_back(TagForCategory(category));
+  std::vector<LutrisRow> rows;
+  for (const json& row : *parsed) {
+    LutrisRow entry{
+        .id = static_cast<int>(core::JsonInt(row, "id")),
+        .name = core::JsonString(row, "name"),
+        .slug = core::JsonString(row, "slug"),
+        .runner = core::JsonString(row, "runner"),
+        .configpath = core::JsonString(row, "configpath"),
+        .categories = {},
+    };
+    for (const std::string& category : strings::Split(core::JsonString(row, "categories"), '\x1f')) {
+      if (!category.empty()) entry.categories.push_back(TagForCategory(category));
+    }
+    rows.push_back(std::move(entry));
   }
-  return by_game;
+  return rows;
 }
 
 // Union, not replace: a re-import must keep tags the user added by hand,
@@ -212,7 +206,6 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
 
   const auto rows = ReadCatalog(*sqlite3, pga_db);
   if (!rows) return std::unexpected(rows.error());
-  const std::map<int, std::vector<std::string>> categories = ReadCategories(*sqlite3, pga_db);
 
   for (const LutrisRow& row : *rows) {
     // "wine" is a Windows game; "linux" is Lutris's own native-Linux runner
@@ -288,9 +281,7 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     game.data_dir = data_dir_path;
     game.platform = is_native ? model::Platform::Native : model::Platform::Windows;
     game.env = cfg->env;
-    if (const auto it = categories.find(row.id); it != categories.end()) {
-      game.tags = MergeTags(game.tags, it->second);
-    }
+    game.tags = MergeTags(game.tags, row.categories);
     // Lutris's own wine.version is often a generic alias ("ge-proton"), not
     // an exact installed build name Mira can resolve, so leave runner_ref
     // alone (empty for a new game) and let default_runner.windows pick one.

@@ -133,7 +133,6 @@ private:
   std::string launcher_game_id_;
   std::string launcher_prefix_;
   std::string account_;
-  std::string login_url_;
   int library_count_ = 0;
   QSize tile_;
   bool use_tabs_ = true;

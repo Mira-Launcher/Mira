@@ -5,19 +5,11 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
 namespace mira::epic {
-
-struct EpicImportSummary {
-  int added = 0;
-  int updated = 0;
-
-  // The newly-added games; see ScanSummary::added_games in
-  // library/Scanner.h for why a metadata fetch isn't triggered in here.
-  std::vector<model::Game> added_games;
-};
 
 // Reads Legendary's own installed-titles list (and, if epic.import_uninstalled
 // is on, its full catalog too) and upserts them into the same GameStore as
@@ -36,7 +28,7 @@ class EpicImporter {
 public:
   EpicImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<EpicImportSummary> Import();
+  Result<library::ImportSummary> Import();
 
 private:
   config::Config& config_;

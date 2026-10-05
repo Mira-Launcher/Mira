@@ -1,4 +1,5 @@
 #include "core/Json.h"
+#include "core/Strings.h"
 #include "amazon/AmazonImporter.h"
 
 #include <algorithm>
@@ -28,9 +29,9 @@ std::string ForwardSlashes(std::string path) {
 AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<AmazonImportSummary> AmazonImporter::Import() {
+Result<library::ImportSummary> AmazonImporter::Import() {
   const auto batch = games_.BatchSaves();
-  AmazonImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("amazon.enabled")) return summary;
   const json installed = ReadNileFile("installed.json");
   if (!installed.is_array()) return summary;  // nothing installed yet
@@ -76,9 +77,11 @@ Result<AmazonImportSummary> AmazonImporter::Import() {
     game.install_path = path.string();
     if (!command.empty()) game.exe_path = command;
     if (const json args = main.contains("Args") ? main["Args"] : json::array(); args.is_array() && game.args.empty()) {
+      std::vector<std::string> list;
       for (const json& arg : args) {
-        if (arg.is_string()) game.args += (game.args.empty() ? "" : " ") + arg.get<std::string>();
+        if (arg.is_string()) list.push_back(arg.get<std::string>());
       }
+      game.args = strings::JoinArgs(list);
     }
     if (main.contains("WorkingSubdirOverride") && main["WorkingSubdirOverride"].is_string()) {
       game.working_dir = ForwardSlashes(main["WorkingSubdirOverride"].get<std::string>());
@@ -99,7 +102,7 @@ Result<AmazonImportSummary> AmazonImporter::Import() {
       game.status = model::GameStatus::Broken;
       game.last_error = "no fuel.json launch command in this install";
     } else if (library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, game).string();
+      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
       const model::Game provisioned = runner::RunnerRegistry(config_).ProvisionGame(game);
       game.runner_ref = provisioned.runner_ref;
       game.data_dir = provisioned.data_dir;

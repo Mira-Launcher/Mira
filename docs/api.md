@@ -25,13 +25,13 @@ Every `*.failed` event (and `game.artwork_candidates_ready` or `game.artwork_thu
 curl --unix-socket "$XDG_RUNTIME_DIR/mira/mirad.sock" http://localhost/v1/health
 ```
 
-Long-running work (downloads, installs, winetricks) answers `202` straight away and reports progress on the [event stream](#events).
+Long-running work (scans, downloads, installs, winetricks) is a [job](#jobs): it answers `202` straight away, and a client that missed its events can ask `GET /v1/jobs/{id}`. Progress that a job has no steps for, such as an install's progress bar, arrives on the [event stream](#events).
 
 ## Jobs
 
-Scans, imports, moving games, removing games, removing a source and bulk metadata refreshes are jobs. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
+Scans, imports, moving games, removing games, removing a source, bulk metadata refreshes, installs, store and tool setup, Humble downloads, runner downloads, winetricks verbs and choosing artwork are jobs. Their own `*.started`, `*.finished` and `*.failed` events are published as well, for clients that follow one thing. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
 
-Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source` or `metadata`; `target` is the source or game it's about, or empty.
+Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks` or `artwork`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
 
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
@@ -102,7 +102,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args`, `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -164,7 +164,7 @@ The reply's `tracked` says whether `game.state` events will follow. It is false 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
 
 ### `GET /v1/games/{id}/log?lines=`
-`{"lines": [...]}`: the last `lines` (default 200) lines of the game's log, which holds its output plus `mira-run`'s own notes. Only the last 4 MB of the file is read. A game with no log returns an empty list. Each launch rotates the log to `.log.1`, unless it is over `launch.log_max_mb`.
+`{"lines": [...]}`: the last `lines` (default 200; `400 invalid_param` unless a whole number, 1 or more) lines of the game's log, which holds its output plus `mira-run`'s own notes. Only the last 4 MB of the file is read. A game with no log returns an empty list. Each launch rotates the log to `.log.1`, unless it is over `launch.log_max_mb`.
 
 ### `POST /v1/games/{id}/stop`
 Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
@@ -173,7 +173,7 @@ Sends SIGTERM to the game's process group and every process in its prefix, then 
 Body `{"exe_path": "...", "args": "..."}`. Runs any executable in the game's prefix with normal tracking, provisioning the prefix first if there isn't one. This is how an installer is run by hand.
 
 ### `POST /v1/games/{id}/install`
-Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_install` game's installer in its prefix. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and the game folder as the target; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time. Afterwards the game executable is looked for in `install_path` or in new folders under `install.detect_dirs` in `drive_c`. A game found in a new folder moves there, to its own folder rather than a publisher's folder around it (`Program Files/Ubisoft/<game>`): `installer_dir` keeps the old one, a game still named after the installer's folder takes the new folder's name, and its metadata is fetched again while `metadata.enabled` is on. Events: `game.install.started`/`finished`/`failed` and `game.updated`, also for an installer a scan runs on its own (`scan.auto_run_installers`). Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
+Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_install` game's installer in its prefix. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and the game folder as the target; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time. Afterwards the game executable is looked for in `install_path` or in new folders under `install.detect_dirs` in `drive_c`. A game found in a new folder moves there, to its own folder rather than a publisher's folder around it (`Program Files/Ubisoft/<game>`): `installer_dir` keeps the old one, a game still named after the installer's folder takes the new folder's name, and its metadata is fetched again while `metadata.enabled` is on. A job (kind `install`). Events: `game.install.started`/`finished`/`failed` and `game.updated`, also for an installer a scan runs on its own (`scan.auto_run_installers`). Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
 
 ### `GET /v1/games/{id}/installer[?path=]`
 `{"path", "size_bytes", "format": "inno"|"nsis"|"msi"|"unknown", "silent", "silent_args"}` for the game's installer, or for `path`.
@@ -193,7 +193,7 @@ An optional body `{"install_path"?, "exe_path"?}` switches the game to a program
 Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
 
 ### `POST /v1/games/{id}/tricks`
-Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). Events: `tricks.started`/`finished`/`failed`.
+Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). A job (kind `tricks`) that runs one at a time. Events: `tricks.started`/`finished`/`failed`.
 
 ## Library
 
@@ -219,7 +219,7 @@ What each account owns, whether or not it's installed:
 Owned titles aren't stored; they are read live from each source and become games once installed. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
 
 ### `POST /v1/library/install`
-Body `{"source": "...", "ref": "..."}`. Installs an owned title in the background and returns `202 {"status": "installing", "ref": ...}`.
+Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
 
 - `epic`: `legendary install`.
 - `gog`: `gogdl download` into `gog.install_root/<id>`.
@@ -274,7 +274,7 @@ Releases from one source (the kind's first by default), newest first, cached for
 `name` identifies the release in events: the tag for Proton, the archive name for Wine.
 
 ### `POST /v1/runners/download`
-Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`. When a download finishes, games left broken by a missing runner are provisioned again.
+Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`. When a download finishes, games left broken by a missing runner are provisioned again.
 
 ### `GET /v1/runners/updates`
 Removable builds whose source has a newer release:
@@ -297,7 +297,7 @@ Body `{"reference": "kind:name"}`. Installs the newer release like a download, t
 A copy on `PATH` wins over Mira's own in `~/.config/mira/tools`.
 
 ### `POST /v1/runners/tools/{umu|winetricks}/setup`
-Installs the latest umu-launcher zipapp (needs python3) or winetricks script into `~/.config/mira/tools`. Events: `umu.setup.*` or `winetricks.setup.*`.
+A job (kind `setup`) that installs the latest umu-launcher zipapp (needs python3) or winetricks script into `~/.config/mira/tools`. Events: `umu.setup.*` or `winetricks.setup.*`.
 
 ### `DELETE /v1/runners/{kind}:{name}`
 Removes a build that lives inside a search path. `400` for system builds, `auto`/`latest`, or kinds without builds; `404` if the build isn't installed. Publishes `runners.removed`.
@@ -327,71 +327,49 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 
 Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone.
 
-## Store tools
+## Stores
 
-Epic, GOG, itch, Amazon and Humble each wrap a command-line tool. Each store's import is a [job](#jobs) whose result is `{added, updated}`. Each has a status call and a setup call that downloads the tool's latest release into `~/.config/mira/tools`; run setup again to update. Status reports the tool as:
+Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five share one set of calls under `/v1/stores/{id}`, where `id` is `epic`, `gog`, `itch`, `amazon` or `humble` (`404 store_not_found` otherwise). Store games always launch through Mira's own runners, never through the store tool.
 
-```json
-{ "installed": true, "source": "managed", "path": "...", "version": "..." }
-```
-
-`source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy), `path` or `none`, in that order. Status calls never fail when the tool is missing.
-
-Store games always launch through Mira's own runners, never through the store tool.
+- `GET /v1/stores`: `[{"id", "name", "tool_name", "can_import", "can_logout"}]`.
+- `GET /v1/stores/{id}/status`: `{id, name, tool, authenticated, account}`. `account` is only known for Epic. `tool` is `{"installed", "source", "path", "version"}`, where `source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy in `~/.config/mira/tools`), `path` or `none`, in that order. A missing tool is not an error.
+- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`.
+- `POST /v1/stores/{id}/login/begin`: `{url}`, the page to sign in at. Amazon makes a fresh one each time.
+- `POST /v1/stores/{id}/login`: body `{"credential": "..."}`. Returns the status. What the credential is depends on the store:
+  - Epic: the `authorizationCode`, or the whole JSON the login page shows. Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
+  - GOG: the `code` from the redirect URL, or the whole URL. An expired token is refreshed once.
+  - itch: an API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys), checked with butler straight away.
+  - Amazon: the amazon.com URL the login ends on, or its `openid.oa2.authorization_code`, after `login/begin`.
+  - Humble: the `_simpleauth_sess` cookie from a logged-in browser.
+- `POST /v1/stores/{id}/logout`: forgets the sign-in. `400 logout_unsupported` for Humble, whose tool keeps its own session.
+- `POST /v1/stores/{id}/import`: a [job](#jobs) (kind `import`) that adds the games the store's tool reports as installed, tagged with the store, and provisions a prefix for each. Result `{added, updated}`. `400 import_unsupported` for Humble.
 
 ### Epic
 
-Wraps [Legendary](https://github.com/derrod/legendary).
-
-- `GET /v1/epic/legendary/status`: the tool status above.
-- `POST /v1/epic/legendary/install`: downloads Legendary. Events: `epic.legendary.install.*`.
-- `GET /v1/epic/status`: `{legendary, authenticated, account, login_url}`.
-- `POST /v1/epic/auth`: body `{"code": "..."}`, the `authorizationCode` or the whole JSON the login page shows. Legendary keeps the session. Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
-- `POST /v1/epic/logout`: `legendary auth --delete`.
-- `POST /v1/epic/import`: adds installed titles (`legendary list-installed`), tagged `epic`, and provisions a prefix for each. Returns `{added, updated}`.
+Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's files runs `legendary uninstall`.
 
 ### GOG
 
 Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/Games/GOG`).
 
-- `GET /v1/gog/status`: `{gogdl, authenticated, login_url}`. An expired token is refreshed once.
-- `POST /v1/gog/setup`: downloads gogdl. Events: `gog.setup.*`.
-- `POST /v1/gog/auth`: body `{"code": "..."}`, the `code` from the redirect URL or the whole URL.
-- `POST /v1/gog/logout`: deletes the stored token.
-- `POST /v1/gog/import`: adds games found under `gog.install_root`.
-
 ### itch.io
 
 Wraps [butler](https://itch.io/docs/butler/). `mirad` starts `butler daemon` on first use and keeps the connection, so changing `itch.butler_bin` needs a restart.
 
-- `GET /v1/itch/status`: `{butler, authenticated, login_url}`. `authenticated` means a key is stored.
-- `POST /v1/itch/setup`: downloads butler and its libraries. Events: `itch.setup.*`.
-- `POST /v1/itch/auth`: body `{"api_key": "..."}` from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys), checked with butler straight away.
-- `POST /v1/itch/logout`: deletes the stored key.
-- `POST /v1/itch/import`: adds installed games (butler's caves), tagged `itch`.
-- `GET /v1/itch/collections`: the collections whose games `GET /v1/library?source=itch` lists: the account's own, then any added by link. `[{"id", "title", "games_count", "own", "url"}]`.
-- `POST /v1/itch/collections`: body `{"link": "https://itch.io/c/8213205/..."}`, or a bare id. The collection is read through butler first, so bad or private links are refused. Returns the collection with `201`.
-- `DELETE /v1/itch/collections/{id}`: removes a collection added by link.
+- `GET /v1/stores/itch/collections`: the collections whose games `GET /v1/library?source=itch` lists: the account's own, then any added by link. `[{"id", "title", "games_count", "own", "url"}]`.
+- `POST /v1/stores/itch/collections`: body `{"link": "https://itch.io/c/8213205/..."}`, or a bare id. The collection is read through butler first, so bad or private links are refused. Returns the collection with `201`.
+- `DELETE /v1/stores/itch/collections/{id}`: removes a collection added by link.
 
 ### Amazon Games
 
 Wraps [nile](https://github.com/imLinguin/nile). Installed games (`amazon-<product id>`) run their `fuel.json` command through Mira's runner with the Amazon SDK variables `nile launch` would set.
 
-- `GET /v1/amazon/status`: `{nile, authenticated}`.
-- `POST /v1/amazon/setup`: downloads nile. Events: `amazon.setup.*`.
-- `POST /v1/amazon/login`: returns `{url}` to open in a browser.
-- `POST /v1/amazon/auth`: body `{"redirect": "..."}`, the amazon.com URL the login ends on or its `openid.oa2.authorization_code`.
-- `POST /v1/amazon/logout`
-- `POST /v1/amazon/import`: adds games from nile's `installed.json`. Returns `{added, updated}`.
-
 ### Humble Bundle
 
 Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs, only downloads, so it isn't a library source. humble-cli has no JSON output, so its table output is parsed.
 
-- `GET /v1/humble/status`, `POST /v1/humble/setup`: as above, with the tool under `humble_cli`. Events: `humble.setup.*`.
-- `POST /v1/humble/auth`: body `{"session_key": "..."}`, the `_simpleauth_sess` cookie from a logged-in browser.
-- `GET /v1/humble/library`: `[{"key", "name", "claimed"}]`.
-- `POST /v1/humble/download`: body `{"bundle_key", "item_numbers"?}` (humble-cli's `1,3,5-7` syntax). Downloads into `<humble.download_root>/<bundle_key>/`. Events: `humble.download.*`; `finished` carries `path` and `downloaded`, which is false when the bundle had nothing to download (such as a Steam key). Add the result with `POST /v1/games/manual`.
+- `GET /v1/stores/humble/bundles`: `[{"key", "name", "claimed"}]`.
+- `POST /v1/stores/humble/download`: body `{"bundle_key", "item_numbers"?}` (humble-cli's `1,3,5-7` syntax). A [job](#jobs) (kind `download`, target the bundle key) that downloads into `<humble.download_root>/<bundle_key>/`. Result `{bundle_key, path}`. A bundle with nothing to download, such as a Steam key, fails with `nothing_to_download`. Add the result with `POST /v1/games/manual`.
 
 ## Store launchers
 
@@ -401,7 +379,7 @@ Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is inst
 `[{id, name, game_id, installed, install_state, interactive_install, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`.
 
 ### `POST /v1/launchers/{id}/install`
-Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. `409 install_running`. Events: `launcher.install.*`.
+Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. A job (kind `install`). `409 install_running`. Events: `launcher.install.*`.
 
 ### `POST /v1/launchers/{id}/import`
 A [job](#jobs) whose result is `{added, updated}`. Battle.net games are found by their default folders, Ubisoft games by registry keys and EA games by `__Installer/installerdata.xml`. `409 launcher_not_installed`.
@@ -476,7 +454,7 @@ The cached JSON: `source`, `fetched_at`, and whichever of `steam`, `steam_review
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.
 
 ### `POST /v1/games/{id}/artwork?type=`
-Body `{"candidate_id": <id>}`. Switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
+Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
 
 ### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
 Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.
@@ -519,7 +497,7 @@ event: game.updated
 data: {"id":"celeste","name":"Celeste", ...}
 ```
 
-A new connection (no `Last-Event-ID`) first gets the buffered events replayed, then a `stream.live` event with no id: everything after it is new. Show replayed events as state, and announce only what arrives after `stream.live`. Reconnect with `Last-Event-ID` to replay what was missed; a resumed connection gets no `stream.live`. The buffer holds the last 500 events in memory. Ids start from the clock, so they keep increasing across a daemon restart.
+A new connection (no `Last-Event-ID`) first gets the buffered events replayed, then a `stream.live` event with no id: everything after it is new. Show replayed events as state, and announce only what arrives after `stream.live`. Reconnect with `Last-Event-ID` to replay what was missed; a resumed connection gets no `stream.live`. The buffer holds the last 500 events in memory. A client that falls further behind than that, or resumes from an id the buffer no longer holds, gets a `stream.gap {"missed": n}` event with no id just before the next event it can have, and should list what it shows again. Ids start from the clock, so they keep increasing across a daemon restart.
 
 | Event | Payload |
 |---|---|
@@ -541,8 +519,6 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |
-| `epic.legendary.install.*`, `gog.setup.*`, `itch.setup.*`, `amazon.setup.*`, `humble.setup.*` | Store tool downloads. |
-| `humble.download.*` | See `POST /v1/humble/download`. |
 | `launcher.install.*` | See `POST /v1/launchers/{id}/install`. |
 | `notification` | A message for the user, with its level. |
 

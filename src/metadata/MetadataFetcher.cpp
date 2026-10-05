@@ -329,9 +329,15 @@ void FetchProtonDb(const std::string& appid, json& info) {
 // (FetchGriddbCandidates) -- a generic title can still match the wrong
 // game, which is the accepted tradeoff of matching by name at all.
 //
-// `exact` only accepts a result whose name matches `name` ignoring case,
-// spaces and punctuation: for art, where a wrong match shows.
-std::string FindSteamAppId(const std::string& name, bool exact = false) {
+// One search gives both answers: `best` is Steam's top app, for ProtonDB, and
+// `exact` the first whose name matches `name` ignoring case, spaces and
+// punctuation, for art, where a wrong match shows.
+struct SteamMatch {
+  std::string best;
+  std::string exact;
+};
+
+SteamMatch FindSteamAppIds(const std::string& name) {
   const auto normalize = [](std::string_view text) {
     std::string out;
     for (const unsigned char c : text) {
@@ -354,15 +360,21 @@ std::string FindSteamAppId(const std::string& name, bool exact = false) {
   const json search = CurlJson(
       {"curl", "-sSL", std::format("https://store.steampowered.com/api/storesearch/?term={}&l=english&cc=us",
                                    UrlEncode(term))});
-  if (search.is_discarded()) return {};
+  SteamMatch match;
+  if (search.is_discarded()) return match;
   for (const auto& item : Value(search, "items", json::array())) {
     // "app" (games, DLC, demos), not "sub"/"bundle". It was checked against
     // "game", which Steam never sends, so this never matched anything.
     if (Value(item, "type", std::string()) != "app") continue;
-    if (exact && normalize(Value(item, "name", std::string())) != normalize(name)) continue;
-    if (const std::int64_t id = Value(item, "id", std::int64_t{0}); id != 0) return std::to_string(id);
+    const std::int64_t id = Value(item, "id", std::int64_t{0});
+    if (id == 0) continue;
+    if (match.best.empty()) match.best = std::to_string(id);
+    if (normalize(Value(item, "name", std::string())) == normalize(name)) {
+      match.exact = std::to_string(id);
+      break;
+    }
   }
-  return {};
+  return match;
 }
 
 // One of Epic's keyImages from Legendary's cached metadata. Epic names the
@@ -714,8 +726,13 @@ Result<void> FetchNonSteam(const config::Config& config, const std::string& name
   // lookup needs no key, only a best-matched AppID, so this runs first and
   // can still leave something cached even when there's no key for cover art.
   bool found_protondb = false;
+  std::optional<SteamMatch> steam;  // searched once, for ProtonDB and for art
+  const auto steam_match = [&]() -> const SteamMatch& {
+    if (!steam) steam = FindSteamAppIds(name);
+    return *steam;
+  };
   if (config.GetBool("metadata.protondb_for_non_steam")) {
-    if (const std::string appid = FindSteamAppId(name); !appid.empty()) {
+    if (const std::string& appid = steam_match().best; !appid.empty()) {
       FetchProtonDb(appid, info);
       found_protondb = true;
     }
@@ -727,7 +744,7 @@ Result<void> FetchNonSteam(const config::Config& config, const std::string& name
   // No key, or SteamGridDB had nothing: Steam's own art, if Steam sells a
   // game of exactly this name.
   if (!info.contains("artwork") && config.GetBool("metadata.steam_art_by_name")) {
-    if (const std::string appid = FindSteamAppId(name, /*exact=*/true); !appid.empty()) {
+    if (const std::string appid = steam_match().exact; !appid.empty()) {
       FetchArtworkInto(config, SteamCoverUrl(appid), game_id, "steam_cdn", "cover", info);
       if (!info.contains("hero")) {
         FetchArtworkInto(config, std::format("https://cdn.akamai.steamstatic.com/steam/apps/{}/library_hero.jpg", appid),
@@ -853,7 +870,7 @@ Result<void> FetchCover(const config::Config& config, const model::Game& game) {
   }
   // Same last resort as a tracked game's: Steam's art for the same name.
   if (!info.contains("artwork") && game.source != "steam" && config.GetBool("metadata.steam_art_by_name")) {
-    if (const std::string appid = FindSteamAppId(game.name, /*exact=*/true); !appid.empty()) {
+    if (const std::string appid = FindSteamAppIds(game.name).exact; !appid.empty()) {
       FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info);
     }
   }

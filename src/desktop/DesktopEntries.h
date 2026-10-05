@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,10 @@ public:
   // when desktop_entries.enabled is false, except that it then removes any
   // entries previously written.
   Result<void> Sync(const std::vector<model::Game>& games);
+
+  // Writes or removes just the entry of `game_id` (`game` is empty once it's deleted), for a change to
+  // one game, where Sync's pass over every game and the whole folder would be wasted.
+  Result<void> SyncOne(const std::string& game_id, const std::optional<model::Game>& game);
 
 private:
   std::filesystem::path EntryPath(const std::string& game_id) const;

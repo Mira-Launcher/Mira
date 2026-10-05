@@ -330,7 +330,7 @@ public:
 
   static void GetStoreStatusAsync(QObject* context, const std::string& source,
                                   std::function<void(StoreStatusResult)> callback);
-  // Downloads the store's helper tool, detached; a StoreEvent says when done.
+  // Downloads the store's helper tool as a job: the callback runs when it has finished or failed.
   static void SetupStoreToolAsync(QObject* context, const std::string& source,
                                   std::function<void(StoreActionResult)> callback);
   // `credential` is whatever the user pasted: a code, a whole login page or
@@ -363,7 +363,7 @@ public:
                                    std::function<void(SourceRunnerResult)> callback);
   static void SetSourceRunnerAsync(QObject* context, const std::string& source, const std::string& runner_ref,
                                    bool apply_to_games, std::function<void(SourceRunnerResult)> callback);
-  // GET/POST /v1/itch/collections, DELETE /v1/itch/collections/{id}.
+  // GET/POST /v1/stores/itch/collections, DELETE /v1/stores/itch/collections/{id}.
   static void GetItchCollectionsAsync(QObject* context, std::function<void(ItchCollectionsResult)> callback);
   static void AddItchCollectionAsync(QObject* context, const std::string& link,
                                      std::function<void(StoreActionResult)> callback);
@@ -371,11 +371,13 @@ public:
                                         std::function<void(StoreActionResult)> callback);
   static void GetHumbleLibraryAsync(QObject* context,
                                     std::function<void(HumbleLibraryResult)> callback);
+  // A job: the callback runs when the download has finished or failed (`nothing_to_download` for a key-only bundle).
   static void DownloadHumbleBundleAsync(QObject* context, const std::string& bundle_key,
-                                        std::function<void(StoreActionResult)> callback);
+                                        std::function<void(HumbleDownloadResult)> callback);
 
-  // Amazon's login URL is made per attempt (PKCE), not a fixed page.
-  static void BeginAmazonLoginAsync(QObject* context, std::function<void(LoginUrlResult)> callback);
+  // The page to sign in at. Amazon's is made per attempt (PKCE), not a fixed page.
+  static void BeginStoreLoginAsync(QObject* context, const std::string& source,
+                                   std::function<void(LoginUrlResult)> callback);
 
   // --- Store launchers (Battle.net, Ubisoft Connect, EA app) ----------------
 

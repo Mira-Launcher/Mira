@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 
+#include "core/AtomicFile.h"
 #include "core/Paths.h"
 
 namespace mira::setup {
@@ -35,13 +36,7 @@ bool IsOurs(const fs::path& path) {
 }
 
 Result<void> WriteFile(const fs::path& path, const std::string& content) {
-  std::error_code ec;
-  fs::create_directories(path.parent_path(), ec);
-  std::ofstream out(path, std::ios::trunc);
-  out << content;
-  out.close();
-  if (!out) return Err("setup_write_failed", std::format("couldn't write {}", path.string()));
-  return {};
+  return WriteFileAtomic(path, content, "setup_write_failed");
 }
 
 // Runs the bundled binary named like $0, re-extracting the AppImage only when
@@ -61,12 +56,20 @@ fi
 
 STAMP="$CACHE_DIR/.extracted-mtime"
 CURRENT_MTIME=$(stat -c %Y "$APPIMAGE")
+mkdir -p "$CACHE_DIR"
+# One process extracts at a time, and into a folder of its own that then replaces squashfs-root, so none
+# runs from a half-extracted tree.
+exec 9>"$CACHE_DIR/.lock"
+if command -v flock >/dev/null 2>&1; then flock 9; fi
 if [ ! -f "$STAMP" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$CURRENT_MTIME" ]; then
+  WORK_DIR=$(mktemp -d "$CACHE_DIR/extract.XXXXXX")
+  ( cd "$WORK_DIR" && "$APPIMAGE" --appimage-extract >/dev/null )
   rm -rf "$CACHE_DIR/squashfs-root"
-  mkdir -p "$CACHE_DIR"
-  ( cd "$CACHE_DIR" && "$APPIMAGE" --appimage-extract >/dev/null )
+  mv "$WORK_DIR/squashfs-root" "$CACHE_DIR/squashfs-root"
+  rm -rf "$WORK_DIR"
   echo "$CURRENT_MTIME" > "$STAMP"
 fi
+exec 9>&-
 
 export APPIMAGE
 exec "$CACHE_DIR/squashfs-root/usr/bin/$BIN_NAME" "$@"

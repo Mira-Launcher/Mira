@@ -22,25 +22,14 @@ fs::path ManagedNilePath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "amazon" / "nile";
 }
 
+const runner::StoreTool kTool = {"amazon", "Amazon Games", "nile", "amazon.nile_bin", ManagedNilePath};
+
 std::mutex pending_mutex;
 std::optional<json> pending_login;  // client_id, code_verifier, serial
 
 }  // namespace
 
-NileStatus DetectNile(const config::Config& config) {
-  const std::string override_path = config.GetString("amazon.nile_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
-  const fs::path managed = ManagedNilePath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-  if (const auto on_path = runner::FindOnPath("nile")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectNile(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallNileBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   auto installed = runner::InstallToolBinary(config, "amazon", asset, "nile");
@@ -63,32 +52,23 @@ json ReadNileFile(const std::string& name) {
   return parsed.is_discarded() ? json(nullptr) : parsed;
 }
 
-Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output) {
-  const NileStatus status = DetectNile(config);
-  if (!status.installed) {
-    return StoreToolMissing("amazon", "Amazon Games", "nile");
-  }
-  Command command;
-  command.argv = {status.path};
-  command.argv.insert(command.argv.end(), args.begin(), args.end());
-  const Result<runner::ExecResult> result = runner::RunAndWait(command, on_output);
-  if (!result) return std::unexpected(result.error());
-  if (result->exit_code != 0) {
-    return Err("nile_failed", std::format("nile exited {}: {}", result->exit_code, result->output));
-  }
-  return result->output;
+Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+  return runner::RunTool(config, kTool, args, on_output);
 }
 
-AmazonAuthStatus Status(const config::Config& config) {
-  AmazonAuthStatus status;
-  status.nile = DetectNile(config);
-  if (!status.nile.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectNile(config);
+  if (!status.tool.installed) return status;
   const Result<std::string> output = RunNile(config, {"auth", "--status"});
   if (!output) return status;
   const json parsed = core::ParseJsonTail(*output);
   status.authenticated = parsed.is_object() && parsed.value("LoggedIn", false);
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<std::string> BeginLogin(const config::Config& config) {

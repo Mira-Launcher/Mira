@@ -62,9 +62,9 @@ std::vector<Cave> ParseCaves(const json& items) {
 ItchImporter::ItchImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<ItchImportSummary> ItchImporter::Import() {
+Result<library::ImportSummary> ItchImporter::Import() {
   const auto batch = games_.BatchSaves();
-  ItchImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("itch.enabled")) return summary;
 
   const Result<std::int64_t> profile_id = CurrentProfileId(config_);
@@ -108,7 +108,7 @@ Result<ItchImportSummary> ItchImporter::Import() {
 
     if (game.platform == model::Platform::Windows &&
         library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, game).string();
+      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
       const model::Game provisioned = provisioner.ProvisionGame(game);
       game.runner_ref = provisioned.runner_ref;
       game.data_dir = provisioned.data_dir;

@@ -84,6 +84,7 @@ struct Game {
   std::int64_t updated_at = 0;
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
+  std::int64_t last_session_at = 0;  // started_at of the newest session counted in play_seconds, so none is counted twice
 
   std::map<std::string, std::string> env;
   std::vector<Candidate> candidates;

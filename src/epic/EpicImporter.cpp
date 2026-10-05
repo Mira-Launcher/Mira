@@ -45,9 +45,9 @@ std::vector<InstalledTitle> ParseInstalled(const json& parsed) {
 EpicImporter::EpicImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<EpicImportSummary> EpicImporter::Import() {
+Result<library::ImportSummary> EpicImporter::Import() {
   const auto batch = games_.BatchSaves();
-  EpicImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("epic.enabled")) return summary;
 
   const Result<json> installed_json = RunLegendaryJson(config_, {"list-installed"});
@@ -78,7 +78,7 @@ Result<EpicImportSummary> EpicImporter::Import() {
     // Legendary makes no prefix of its own. Provisioned on first sight or
     // after a failed attempt, not on every re-import.
     if (library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, game).string();
+      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
       const model::Game provisioned = provisioner.ProvisionGame(game);
       game.runner_ref = provisioned.runner_ref;
       game.data_dir = provisioned.data_dir;

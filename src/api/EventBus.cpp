@@ -112,6 +112,12 @@ void AddHintAndFix(nlohmann::json& out, const Error& error) {
   out["fix"] = std::move(fix);
 }
 
+nlohmann::json ErrorJson(const Error& error) {
+  nlohmann::json out = {{"code", error.code}, {"message", error.message}};
+  AddHintAndFix(out, error);
+  return out;
+}
+
 nlohmann::json FailedEvent(nlohmann::json fields, const Error& error) {
   fields["error"] = error.message;
   fields["code"] = error.code;

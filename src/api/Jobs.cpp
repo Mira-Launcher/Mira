@@ -16,16 +16,6 @@ using nlohmann::json;
 // Finished jobs kept for GET /v1/jobs/{id}, oldest dropped first.
 constexpr std::size_t kKeptJobs = 100;
 
-json ErrorJson(const Error& error) {
-  json out = {{"code", error.code}, {"message", error.message}};
-  if (!error.hint.empty()) out["hint"] = error.hint;
-  if (!error.fix.kind.empty()) {
-    out["fix"] = {{"kind", error.fix.kind}, {"target", error.fix.target}};
-    if (!error.fix.step.empty()) out["fix"]["step"] = error.fix.step;
-  }
-  return out;
-}
-
 }  // namespace
 
 bool JobRegistry::IsValidId(const std::string& id) {
@@ -40,7 +30,7 @@ void JobRegistry::Progress::Report(int done, int total, const std::string& messa
 }
 
 std::string JobRegistry::Start(const std::string& kind, const std::string& target, const std::string& label,
-                               Work work, const std::string& requested) {
+                               Work work, const std::string& requested, Lane* lane) {
   std::string id;
   {
     std::lock_guard lock(mutex_);
@@ -64,7 +54,7 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
   started["label"] = label;
   events_.Publish("job.started", started);
 
-  queue_.Run([this, id, identity, work = std::move(work)] {
+  (lane != nullptr ? *lane : queue_).Post([this, id, identity, work = std::move(work)] {
     Progress progress(*this, id);
     Result<json> result;
     // Caught here so the job still ends: the queue would only log it.

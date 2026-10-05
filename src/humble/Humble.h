@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 
 // Wraps humble-cli (github.com/smbl64/humble-cli, unofficial). Not built
 // on library::ILibrarySource like epic/steam/gog/itch: Humble Bundle has
@@ -18,16 +19,9 @@
 // fetches files from one bundle into a plain directory.
 namespace mira::humble {
 
-struct HumbleStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
-
 std::filesystem::path ManagedHumbleCliPath(const config::Config& config);
 
-HumbleStatus DetectHumbleCli(const config::Config& config);
+runner::ToolStatus DetectHumbleCli(const config::Config& config);
 
 Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
@@ -36,17 +30,12 @@ Result<std::string> RunHumbleCli(const config::Config& config, std::vector<std::
 // Log in here in a browser, then copy its _simpleauth_sess cookie.
 inline constexpr std::string_view kLoginUrl = "https://www.humblebundle.com/login";
 
-struct HumbleAuthStatus {
-  HumbleStatus humble_cli;
-  bool authenticated = false;
-};
-
 // Unlike epic/gog, there's no separate "is a token stored" file to check:
 // humble-cli owns its own config file entirely. The only way to know if
 // it's authenticated is to actually ask it something (`list`), so this
 // one *does* shell out, unlike epic::Status/gog::Status's "installed
 // check is free" posture.
-HumbleAuthStatus Status(const config::Config& config);
+runner::AuthStatus Status(const config::Config& config);
 
 // `session_key` is the _simpleauth_sess cookie value, copied from a
 // logged-in browser session (documented in humble-cli's own README).

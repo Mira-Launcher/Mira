@@ -8,6 +8,7 @@
 
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "gog/Gog.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
@@ -25,9 +26,8 @@ std::filesystem::path InstallRoot(const config::Config& config) { return config.
 
 // GOG's product id, from the goggame-<id>.info every gogdl install carries.
 std::optional<std::string> GogIdIn(const fs::path& dir) {
-  std::error_code ec;
-  for (const auto& entry : fs::directory_iterator(dir, ec)) {
-    const std::string name = entry.path().filename().string();
+  for (const fs::path& entry : paths::ListDir(dir)) {
+    const std::string name = entry.filename().string();
     if (!name.starts_with("goggame-") || !name.ends_with(".info")) continue;
     const std::string id = name.substr(8, name.size() - 8 - 5);
     if (!id.empty() && std::ranges::all_of(id, [](char c) { return c >= '0' && c <= '9'; })) return id;
@@ -42,9 +42,9 @@ fs::path ResolveGameDir(const fs::path& dir) {
   std::error_code ec;
   fs::path only;
   int count = 0;
-  for (const auto& entry : fs::directory_iterator(dir, ec)) {
-    if (!entry.is_directory()) continue;
-    only = entry.path();
+  for (const fs::path& entry : paths::ListDir(dir)) {
+    if (!fs::is_directory(entry, ec)) continue;
+    only = entry;
     if (++count > 1) break;
   }
   return count == 1 ? only : dir;
@@ -54,9 +54,9 @@ fs::path ResolveGameDir(const fs::path& dir) {
 
 std::filesystem::path FindGameDir(const config::Config& config, const std::string& id) {
   std::error_code ec;
-  for (const auto& entry : fs::directory_iterator(InstallRoot(config), ec)) {
-    if (!entry.is_directory()) continue;
-    const fs::path dir = ResolveGameDir(entry.path());
+  for (const fs::path& entry : paths::ListDir(InstallRoot(config))) {
+    if (!fs::is_directory(entry, ec)) continue;
+    const fs::path dir = ResolveGameDir(entry);
     if (GogIdIn(dir) == id) return dir;
   }
   return {};
@@ -113,7 +113,7 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
 
   if (library::NeedsProvisioning(existing)) {
     const runner::RunnerRegistry provisioner(config_);
-    if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, game).string();
+    if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
     const model::Game provisioned = provisioner.ProvisionGame(game);
     game.runner_ref = provisioned.runner_ref;
     game.data_dir = provisioned.data_dir;
@@ -130,29 +130,29 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   return game;
 }
 
-Result<GogImportSummary> GogImporter::Import() {
+Result<library::ImportSummary> GogImporter::Import() {
   const auto batch = games_.BatchSaves();
-  GogImportSummary summary;
+  library::ImportSummary summary;
   if (!config_.GetBool("gog.enabled")) return summary;
 
   const fs::path root = InstallRoot(config_);
   std::error_code ec;
   if (!fs::is_directory(root, ec)) return summary;  // nothing installed yet is not an error
 
-  for (const auto& entry : fs::directory_iterator(root, ec)) {
-    if (!entry.is_directory()) continue;
+  for (const fs::path& entry : paths::ListDir(root)) {
+    if (!fs::is_directory(entry, ec)) continue;
     // No goggame-*.info yet: gogdl is still downloading it, unless it's the
     // legacy <install_root>/<id>/ layout.
-    const std::string folder = entry.path().filename().string();
+    const std::string folder = entry.filename().string();
     const bool legacy_id = !folder.empty() && std::ranges::all_of(folder, [](char c) { return c >= '0' && c <= '9'; });
-    const std::optional<std::string> found = GogIdIn(ResolveGameDir(entry.path()));
+    const std::optional<std::string> found = GogIdIn(ResolveGameDir(entry));
     if (!found && !legacy_id) continue;
     const std::string id = found.value_or(folder);
     const bool existed = games_.Find("gog-" + id).has_value();
 
-    const Result<model::Game> imported = ImportPath(id, entry.path(), /*refresh=*/false);
+    const Result<model::Game> imported = ImportPath(id, entry, /*refresh=*/false);
     if (!imported) {
-      log::Error("failed to import gog game at {}: {}", entry.path().string(), imported.error().message);
+      log::Error("failed to import gog game at {}: {}", entry.string(), imported.error().message);
       continue;
     }
     if (existed) {

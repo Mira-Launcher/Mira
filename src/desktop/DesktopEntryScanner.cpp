@@ -8,6 +8,7 @@
 
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::desktop {
@@ -215,10 +216,7 @@ std::optional<Resolved> ResolveCandidate(const DesktopFile& file) {
   Resolved resolved;
   resolved.install_path = exe->parent_path().string();
   resolved.exe_path = exe->string();
-  for (size_t i = 1; i < tokens.size(); ++i) {
-    if (i > 1) resolved.args += ' ';
-    resolved.args += tokens[i];
-  }
+  resolved.args = strings::JoinArgs(std::vector<std::string>(tokens.begin() + 1, tokens.end()));
   resolved.platform = model::Platform::Native;
   return resolved;
 }

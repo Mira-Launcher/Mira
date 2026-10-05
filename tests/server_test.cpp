@@ -1134,7 +1134,7 @@ TEST_CASE("finish-install looks up the moved game's art only while automatic met
                     "application/json");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
-    server.server().MetadataQueue().WaitIdle();
+    server.services().fetches.WaitIdle();
     return std::ranges::any_of(server.events().Since(0), [&](const model::Event& event) {
       return event.type == "game.metadata_failed" && event.payload.value("id", std::string()) == id;
     });

@@ -18,7 +18,6 @@
 #include "core/Log.h"
 #include "proc/ProcessIndex.h"
 #include "proc/Session.h"
-#include "proc/Stats.h"
 #include "runner/Exec.h"
 
 namespace mira::proc {
@@ -99,47 +98,6 @@ bool AnyAlive(const std::set<pid_t>& pids) {
   return false;
 }
 
-// Calls fn(pid) for every process whose WINEPREFIX/STEAM_COMPAT_DATA_PATH is
-// data_dir or under it. Entry-by-entry, not substring: "…/prefix/animal"
-// must not match "…/prefix/animal-well". umu rewrites WINEPREFIX to
-// "<data_dir>/pfx/".
-template <typename Fn>
-void ForEachPrefixProcess(const std::string& data_dir, Fn&& fn) {
-  const auto matches = [&data_dir](std::string_view value) {
-    if (value == data_dir) return true;
-    return value.size() > data_dir.size() && value.starts_with(data_dir) && value[data_dir.size()] == '/';
-  };
-
-  DIR* proc_dir = ::opendir("/proc");
-  if (!proc_dir) return;
-  while (const dirent* entry = ::readdir(proc_dir)) {
-    const std::string name = entry->d_name;
-    if (name.empty() || !std::isdigit(static_cast<unsigned char>(name[0]))) continue;
-
-    std::ifstream environ_file("/proc/" + name + "/environ", std::ios::binary);
-    if (!environ_file) continue;  // gone, or not our own process
-    const std::string environ((std::istreambuf_iterator<char>(environ_file)),
-                              std::istreambuf_iterator<char>());
-
-    for (std::size_t start = 0; start < environ.size();) {
-      const std::size_t end = environ.find('\0', start);
-      const std::string_view item(environ.data() + start,
-                                  (end == std::string::npos ? environ.size() : end) - start);
-      start = (end == std::string::npos) ? environ.size() : end + 1;
-
-      const std::size_t equals = item.find('=');
-      if (equals == std::string_view::npos) continue;
-      const std::string_view key = item.substr(0, equals);
-      if (key != "WINEPREFIX" && key != "STEAM_COMPAT_DATA_PATH") continue;
-      if (matches(item.substr(equals + 1))) {
-        fn(name);
-        break;
-      }
-    }
-  }
-  ::closedir(proc_dir);
-}
-
 // Every process of the game, for signalling it.
 std::set<pid_t> FindExternal(const ExternalMatch& match) {
   return match.appid.empty() ? FindDirProcesses(match.data_dir, match.win_dir) : FindSteamProcesses(match.appid);
@@ -168,21 +126,22 @@ std::set<pid_t> MatchExternal(const ProcessIndex& index, const ExternalMatch& ma
 std::set<pid_t> FindPrefixProcesses(const std::string& data_dir) {
   std::set<pid_t> found;
   if (data_dir.empty()) return found;
-  ForEachPrefixProcess(data_dir, [&](const std::string& pid) { found.insert(std::atoi(pid.c_str())); });
+  ProcessIndex index;
+  index.Refresh();
+  for (const auto& [pid, info] : index.Processes()) {
+    if (InPrefix(info.prefix, data_dir)) found.insert(pid);
+  }
   return found;
 }
 
 std::set<pid_t> FindDirProcesses(const std::string& data_dir, const std::string& win_dir) {
   std::set<pid_t> found;
   if (data_dir.empty() || win_dir.empty()) return found;
-  ForEachPrefixProcess(data_dir, [&](const std::string& pid) {
-    std::ifstream cmdline_file("/proc/" + pid + "/cmdline", std::ios::binary);
-    std::string argv0;
-    std::getline(cmdline_file, argv0, '\0');
-    std::ranges::replace(argv0, '\\', '/');
-    for (char& ch : argv0) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    if (argv0.starts_with(win_dir + "/")) found.insert(std::atoi(pid.c_str()));
-  });
+  ProcessIndex index;
+  index.Refresh();
+  for (const auto& [pid, info] : index.Processes()) {
+    if (InPrefix(info.prefix, data_dir) && info.argv0.starts_with(win_dir + "/")) found.insert(pid);
+  }
   return found;
 }
 
@@ -198,18 +157,18 @@ ProcessSupervisor::~ProcessSupervisor() {
   stop_wake_.notify_all();
   // Games are deliberately left running: quitting the daemon shouldn't kill
   // what the player is playing. The watchers just stop watching.
-  std::map<std::string, std::thread> watchers;
-  std::vector<std::thread> retired;
+  std::map<std::string, Watcher> watchers;
+  std::vector<Watcher> retired;
   {
     std::lock_guard lock(mutex_);
     watchers.swap(watchers_);
     retired.swap(retired_);
   }
-  for (auto& [id, thread] : watchers) {
-    if (thread.joinable()) thread.join();
+  for (auto& [id, watcher] : watchers) {
+    if (watcher.thread.joinable()) watcher.thread.join();
   }
-  for (std::thread& thread : retired) {
-    if (thread.joinable()) thread.join();
+  for (Watcher& watcher : retired) {
+    if (watcher.thread.joinable()) watcher.thread.join();
   }
 }
 
@@ -228,14 +187,25 @@ static void CloseOutUnfinished(SessionRecord& record) {
   record.duration_seconds = std::max<std::int64_t>(0, now - record.started_at);
 }
 
-void ProcessSupervisor::AdoptWatcher(const std::string& game_id, std::thread watcher) {
+void ProcessSupervisor::AdoptWatcher(const std::string& game_id, std::function<void()> body) {
+  // Ones replaced earlier that have ended cost a join that returns at once.
+  std::erase_if(retired_, [](Watcher& watcher) {
+    if (!watcher.done->load()) return false;
+    if (watcher.thread.joinable()) watcher.thread.join();
+    return true;
+  });
   // The previous watcher for this id has erased itself from running_, but may
   // still be recording its exit, so it is kept to be joined, not detached.
   if (auto stale = watchers_.find(game_id); stale != watchers_.end()) {
-    if (stale->second.joinable()) retired_.push_back(std::move(stale->second));
+    if (stale->second.thread.joinable()) retired_.push_back(std::move(stale->second));
     watchers_.erase(stale);
   }
-  watchers_[game_id] = std::move(watcher);
+  auto done = std::make_shared<std::atomic<bool>>(false);
+  std::thread thread([body = std::move(body), done] {
+    body();
+    done->store(true);
+  });
+  watchers_[game_id] = Watcher{std::move(thread), std::move(done)};
 }
 
 Result<void> ProcessSupervisor::Launch(const model::Game& game, const Command& command,
@@ -255,8 +225,9 @@ Result<void> ProcessSupervisor::Launch(const model::Game& game, const Command& c
     std::lock_guard lock(mutex_);
     running_[game.id] = *pid;
     prefixes_[game.id] = game.data_dir;  // for Stop(), see FindPrefixProcesses
-    AdoptWatcher(game.id,
-                 std::thread(&ProcessSupervisor::Watch, this, game.id, *pid, started_at, std::move(post_script)));
+    AdoptWatcher(game.id, [this, id = game.id, pid = *pid, started_at, post_script = std::move(post_script)] {
+      Watch(id, pid, started_at, post_script);
+    });
   }
 
   // Written now, not at exit: this is "when you last started playing", and
@@ -289,8 +260,9 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
     // so Stop()'s kill(-pid) reaches mira-run and the game together.
     running_[game.id] = wrapper_pid;
     prefixes_[game.id] = game.data_dir;
-    AdoptWatcher(game.id,
-                 std::thread(&ProcessSupervisor::WatchWrapped, this, game.id, wrapper_pid, std::move(session_path)));
+    AdoptWatcher(game.id, [this, id = game.id, wrapper_pid, session_path = std::move(session_path)] {
+      WatchWrapped(id, wrapper_pid, session_path);
+    });
   }
 
   const std::int64_t started_at = model::NowSeconds();
@@ -523,8 +495,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
 }
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
-// record, update the store, publish the event, roll it into stats.toml,
-// delete the session file.
+// record, update the store, publish the event, delete the session file.
 void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
                                                const std::filesystem::path& session_path) {
   // Mirrors Watch()'s classification. A record with no exit info at all
@@ -545,7 +516,11 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   }
 
   auto updated = games_.Update(game_id, [&](model::Game& game) {
-    game.play_seconds += record.duration_seconds;
+    // Counted once even if mirad dies before the session file is removed and finds it again.
+    if (record.started_at > game.last_session_at) {
+      game.play_seconds += record.duration_seconds;
+      game.last_session_at = record.started_at;
+    }
     game.last_error = error;
   });
   if (!updated) {
@@ -568,11 +543,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 
-  // Rolled into the durable journal and removed -- the session file only
-  // ever covered the gap until mirad got a chance to see it finished.
-  if (auto appended = AppendSession(games_.Dir() / "stats.toml", record); !appended) {
-    log::Warn("failed to append session for {} to stats.toml: {}", game_id, appended.error().message);
-  }
+  // The session file only ever covered the gap until mirad got a chance to see it finished.
   std::error_code ec;
   std::filesystem::remove(session_path, ec);
 }
@@ -637,8 +608,9 @@ void ProcessSupervisor::Reconcile(const std::filesystem::path& sessions_dir) {
       log::Info("re-adopting live session for {} (mira-run pid {})", record->game_id, record->wrapper_pid);
       std::lock_guard lock(mutex_);
       running_[record->game_id] = record->wrapper_pid;
-      AdoptWatcher(record->game_id, std::thread(&ProcessSupervisor::WatchReconciledLive, this, record->game_id,
-                                                record->wrapper_pid, path));
+      AdoptWatcher(record->game_id, [this, id = record->game_id, wrapper_pid = record->wrapper_pid, path] {
+        WatchReconciledLive(id, wrapper_pid, path);
+      });
     } else {
       log::Warn("session for {} was left behind by a mira-run (pid {}) that's no longer running; closing it out "
                "as incomplete",
@@ -684,8 +656,10 @@ Result<void> ProcessSupervisor::TrackExternal(const model::Game& game, ExternalM
     // Stop()'s guard below) so it's unambiguous as "not confirmed yet".
     running_[game.id] = 0;
     external_[game.id] = match;  // for Stop()/WatchExternal()'s kill escalation
-    AdoptWatcher(game.id, std::thread(&ProcessSupervisor::WatchExternal, this, game.id, std::move(match),
-                                      model::NowSeconds(), std::move(post_script)));
+    AdoptWatcher(game.id, [this, id = game.id, match = std::move(match), requested_at = model::NowSeconds(),
+                           post_script = std::move(post_script)] {
+      WatchExternal(id, match, requested_at, post_script);
+    });
   }
   return {};
 }

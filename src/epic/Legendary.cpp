@@ -11,6 +11,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 
 namespace mira::epic {
@@ -31,6 +32,8 @@ std::filesystem::path ManagedLegendaryPath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "legendary";
 }
 
+const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin", ManagedLegendaryPath};
+
 std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
   const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME");
   fs::path config_dir;
@@ -43,23 +46,7 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
   return config_dir / "legendary" / "metadata" / (app_name + ".json");
 }
 
-LegendaryStatus DetectLegendary(const config::Config& config) {
-  const std::string override_path = config.GetString("epic.legendary_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
-
-  const fs::path managed = ManagedLegendaryPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-
-  if (const auto on_path = runner::FindOnPath("legendary")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectLegendary(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   const fs::path target = ManagedLegendaryPath(config);
@@ -69,14 +56,7 @@ Result<void> InstallLegendaryBinary(const config::Config& config, const runner::
 
   // Downloaded beside the target, so a failed or stalled download never leaves a broken binary there.
   const fs::path part = target.string() + ".part";
-  Command download;
-  download.argv = {"curl", "-fsSL", "--connect-timeout", "10", "--max-time", "600", "-o", part.string(), asset.download_url};
-  const Result<runner::ExecResult> result = runner::RunAndWait(download);
-  if (!result || result->exit_code != 0) {
-    fs::remove(part, ec);
-    return Err("download_failed", !result ? result.error().message
-                                          : std::format("curl exited {}: {}", result->exit_code, result->output));
-  }
+  if (auto downloaded = runner::CurlDownload(asset.download_url, part); !downloaded) return downloaded;
 
   fs::rename(part, target, ec);
   if (ec) {
@@ -95,22 +75,8 @@ Result<void> InstallLegendaryBinary(const config::Config& config, const runner::
   return {};
 }
 
-Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output) {
-  const LegendaryStatus status = DetectLegendary(config);
-  if (!status.installed) {
-    return StoreToolMissing("epic", "Epic Games", "legendary");
-  }
-
-  Command command;
-  command.argv = {status.path};
-  command.argv.insert(command.argv.end(), args.begin(), args.end());
-  const Result<runner::ExecResult> result = runner::RunAndWait(command, on_output);
-  if (!result) return std::unexpected(result.error());
-  if (result->exit_code != 0) {
-    return Err("legendary_failed", std::format("legendary exited {}: {}", result->exit_code, result->output));
-  }
-  return result->output;
+Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+  return runner::RunTool(config, kTool, args, on_output);
 }
 
 Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::string> args) {
@@ -123,17 +89,17 @@ Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::str
   return parsed;
 }
 
-EpicAuthStatus Status(const config::Config& config) {
-  EpicAuthStatus status;
-  status.legendary = DetectLegendary(config);
-  if (!status.legendary.installed) return status;  // authenticated=false, no subprocess needed
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectLegendary(config);
+  if (!status.tool.installed) return status;  // authenticated=false, no subprocess needed
 
   // Not RunLegendaryJson: "not logged in" is an ordinary result of this
   // specific call, not an error to propagate. A failed/unparseable run
   // just leaves authenticated=false rather than failing the whole status
   // call the way every other legendary invocation here does.
   Command command;
-  command.argv = {status.legendary.path, "status", "--json"};
+  command.argv = {status.tool.path, "status", "--json"};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result) return status;
 
@@ -148,6 +114,10 @@ EpicAuthStatus Status(const config::Config& config) {
     status.account = account;
   }
   return status;
+}
+
+Result<void> CheckReady(const config::Config& config) {
+  return runner::CheckStoreReady(kTool, Status(config));
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
@@ -167,7 +137,7 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
   if (auto output = RunLegendary(config, {"auth", "--code", code}); !output) {
     return std::unexpected(output.error());
   }
-  if (const EpicAuthStatus status = Status(config); !status.authenticated) {
+  if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "legendary didn't accept that code. It may be wrong, expired, or already used");
   }
   return {};

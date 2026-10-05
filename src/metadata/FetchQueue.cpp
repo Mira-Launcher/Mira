@@ -58,7 +58,7 @@ void FetchQueue::WaitIdle() {
 void FetchQueue::StartWorkers(const config::Config& config, api::EventBus& events) {
   const int wanted = std::min<int>(kWorkers, static_cast<int>(games_.size() + titles_.size()) + running_);
   for (; workers_ < wanted; ++workers_) {
-    threads_.Run([this, &config, &events] { Work(config, events); });
+    threads_.Post([this, &config, &events] { Work(config, events); });
   }
 }
 

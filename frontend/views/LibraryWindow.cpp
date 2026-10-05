@@ -3491,6 +3491,13 @@ void LibraryWindow::ShowLibrary() {
 }
 
 void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& data, bool live) {
+  if (type == "stream.gap") {
+    // This stream fell behind mirad's buffer, so what changed meanwhile has to be asked for.
+    RefreshGames();
+    RefreshSourceNavs();
+    downloads_->RecheckJobs();
+    return;
+  }
   if (type == "notification") {
     mira_gui::NotificationEvent event;
     if (live && mira_gui::MiradClient::ParseNotification(data, &event)) {

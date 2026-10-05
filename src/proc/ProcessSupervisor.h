@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -121,8 +122,13 @@ public:
 
 private:
   void Release(const std::string& game_id);
-  // Registers `watcher` for `game_id`; mutex_ must be held.
-  void AdoptWatcher(const std::string& game_id, std::thread watcher);
+  // A watcher thread, and whether it has finished, so a replaced one can be joined as soon as it ends.
+  struct Watcher {
+    std::thread thread;
+    std::shared_ptr<std::atomic<bool>> done;
+  };
+  // Starts `body` on a thread watching `game_id`; mutex_ must be held.
+  void AdoptWatcher(const std::string& game_id, std::function<void()> body);
   void Watch(std::string game_id, pid_t pid, std::int64_t started_at, std::string post_script);
   void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
   void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
@@ -144,9 +150,9 @@ private:
   std::map<std::string, std::int64_t> kill_deadlines_;  // game id -> when to SIGKILL
   std::set<std::string> reserved_;  // launches claimed by Reserve()
   std::set<std::string> stop_requested_;  // Stop() was called; the exit isn't a crash
-  std::map<std::string, std::thread> watchers_;
-  // Watchers replaced by a relaunch of the same game; joined at destruction.
-  std::vector<std::thread> retired_;
+  std::map<std::string, Watcher> watchers_;
+  // Watchers replaced by a relaunch of the same game; each is joined once it has finished.
+  std::vector<Watcher> retired_;
   std::atomic<bool> stopping_{false};
   std::mutex stop_mutex_;
   std::condition_variable stop_wake_;  // ends a watcher's poll wait as soon as stopping_ is set

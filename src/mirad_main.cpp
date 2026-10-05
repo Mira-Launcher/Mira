@@ -18,6 +18,7 @@
 
 #include "api/EventBus.h"
 #include "api/Server.h"
+#include "api/Services.h"
 #include "config/Config.h"
 #include "core/Log.h"
 #include "core/Paths.h"
@@ -87,14 +88,15 @@ int main(int argc, char** argv) {
   games.Load();
 
   mira::api::EventBus events;
-  mira::api::Server server(config, games, events);
+  mira::api::Services services(config, games, events);
+  mira::api::Server server(services);
 
   // Before anything else: close out any session a previous mirad (crashed,
   // killed, or just restarted) left behind; see
   // proc::ProcessSupervisor::Reconcile and docs/architecture.md. Must run
   // before Serve() so a re-adopted still-running game is already tracked by
   // the time the very first client request arrives.
-  server.ReconcileSessions();
+  services.ReconcileSessions();
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
 
@@ -119,16 +121,18 @@ int main(int argc, char** argv) {
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     mira::library::Scanner startup_scan(config, games, events);
-    startup_scan.UseMetadataQueue(server.MetadataQueue());
+    startup_scan.UseMetadataQueue(services.fetches);
+    startup_scan.UseInstallLane(services.installs);
     const mira::library::ScanSummary summary = startup_scan.ScanAll();
     mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
                     summary.missing, summary.restored);
-    server.QueueMetadata(summary.added_games);
+    services.QueueMetadata(summary.added_games);
   });
 
   mira::library::Watcher watcher(config, games, events);
-  watcher.UseMetadataQueue(server.MetadataQueue());
-  server.SetOnLibraryRootsChanged([&watcher] { watcher.ReloadRoots(); });
+  watcher.UseMetadataQueue(services.fetches);
+  watcher.UseInstallLane(services.installs);
+  services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 
   std::atomic<bool> serve_failed{false};

@@ -61,20 +61,9 @@ std::filesystem::path ManagedHumbleCliPath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "humble" / std::string(config::runner_sources::kHumbleCliBinaryName);
 }
 
-HumbleStatus DetectHumbleCli(const config::Config& config) {
-  const std::string override_path = config.GetString("humble.humble_cli_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
-  const fs::path managed = ManagedHumbleCliPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-  if (const auto on_path = runner::FindOnPath("humble-cli")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+const runner::StoreTool kTool = {"humble", "Humble Bundle", "humble-cli", "humble.humble_cli_bin", ManagedHumbleCliPath};
+
+runner::ToolStatus DetectHumbleCli(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   auto installed =
@@ -84,25 +73,13 @@ Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::
 }
 
 Result<std::string> RunHumbleCli(const config::Config& config, std::vector<std::string> args) {
-  const HumbleStatus status = DetectHumbleCli(config);
-  if (!status.installed) {
-    return StoreToolMissing("humble", "Humble Bundle", "humble-cli");
-  }
-  Command command;
-  command.argv = {status.path};
-  command.argv.insert(command.argv.end(), args.begin(), args.end());
-  const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  if (!result) return std::unexpected(result.error());
-  if (result->exit_code != 0) {
-    return Err("humble_cli_failed", std::format("humble-cli exited {}: {}", result->exit_code, result->output));
-  }
-  return result->output;
+  return runner::RunTool(config, kTool, args, {});
 }
 
-HumbleAuthStatus Status(const config::Config& config) {
-  HumbleAuthStatus status;
-  status.humble_cli = DetectHumbleCli(config);
-  if (!status.humble_cli.installed) return status;
+runner::AuthStatus Status(const config::Config& config) {
+  runner::AuthStatus status;
+  status.tool = DetectHumbleCli(config);
+  if (!status.tool.installed) return status;
 
   // No separate "am I logged in" call exists -- `list` is the cheapest
   // real one, and fails with a specific, recognizable message
@@ -114,7 +91,7 @@ HumbleAuthStatus Status(const config::Config& config) {
 
 Result<void> Login(const config::Config& config, const std::string& session_key) {
   if (auto output = RunHumbleCli(config, {"auth", session_key}); !output) return std::unexpected(output.error());
-  if (const HumbleAuthStatus status = Status(config); !status.authenticated) {
+  if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "humble-cli didn't accept that session key");
   }
   return {};
@@ -172,7 +149,7 @@ Result<bool> Download(const config::Config& config, const std::string& bundle_ke
   fs::create_directories(dir, ec);
   if (ec) return Err("download_dir_failed", ec.message());
 
-  const HumbleStatus status = DetectHumbleCli(config);
+  const runner::ToolStatus status = DetectHumbleCli(config);
   if (!status.installed) return StoreToolMissing("humble", "Humble Bundle", "humble-cli");
 
   Command command;

@@ -9,6 +9,7 @@
 
 #include "core/Command.h"
 #include "core/Paths.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "steam/SteamDetector.h"
 
@@ -58,11 +59,9 @@ std::string WinetricksPath() {
 
 // Its releases ship no script asset, so fetch the script at the latest tag.
 Result<void> InstallWinetricks() {
-  Command latest;
-  latest.argv = {"curl", "-sSL", "https://api.github.com/repos/Winetricks/winetricks/releases/latest"};
-  const Result<ExecResult> listed = RunAndWait(latest);
+  const Result<nlohmann::json> listed = CurlJson("https://api.github.com/repos/Winetricks/winetricks/releases/latest");
   if (!listed) return std::unexpected(listed.error());
-  const nlohmann::json release = nlohmann::json::parse(listed->output, nullptr, false);
+  const nlohmann::json& release = *listed;
   const std::string tag = release.is_object() ? release.value("tag_name", std::string()) : std::string();
   if (tag.empty()) return Err("github_api_error", "couldn't find the latest winetricks release", kConnectionHint);
 
@@ -70,14 +69,10 @@ Result<void> InstallWinetricks() {
   std::error_code ec;
   fs::create_directories(target.parent_path(), ec);
   if (ec) return Err("install_dir_failed", ec.message());
-  Command download;
-  download.argv = {"curl", "-sSLf", "-o", target.string(),
-                   std::format("https://raw.githubusercontent.com/Winetricks/winetricks/{}/src/winetricks", tag)};
-  const Result<ExecResult> fetched = RunAndWait(download);
-  if (!fetched || fetched->exit_code != 0) {
-    fs::remove(target, ec);
-    return Err("download_failed", "couldn't download winetricks: " + (fetched ? fetched->output : fetched.error().message),
-               kConnectionHint);
+  if (auto downloaded = CurlDownload(
+          std::format("https://raw.githubusercontent.com/Winetricks/winetricks/{}/src/winetricks", tag), target);
+      !downloaded) {
+    return downloaded;
   }
   fs::permissions(target, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
                   fs::perm_options::add, ec);
@@ -113,7 +108,6 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
   command.env["WINEPREFIX"] = game.data_dir;
   const fs::path wineserver = wine_binary->parent_path() / "wineserver";
   if (fs::exists(wineserver, ec)) command.env["WINESERVER"] = wineserver.string();
-  command.timeout_s = 1800;  // dotnet-sized verbs take many minutes
 
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());

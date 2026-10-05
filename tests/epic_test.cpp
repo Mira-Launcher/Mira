@@ -82,7 +82,7 @@ TEST_CASE("DetectLegendary honours the epic.legendary_bin override") {
   Fixture fixture("epic-detect");
   fixture.UseFakeLegendary("", kLoggedOut);
 
-  const epic::LegendaryStatus status = epic::DetectLegendary(fixture.config);
+  const runner::ToolStatus status = epic::DetectLegendary(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
   CHECK(status.path == (fixture.dir / "legendary").string());
@@ -92,8 +92,8 @@ TEST_CASE("Status treats legendary's \"<not logged in>\" placeholder as unauthen
   Fixture fixture("epic-logged-out");
   fixture.UseFakeLegendary("", kLoggedOut);
 
-  const epic::EpicAuthStatus status = epic::Status(fixture.config);
-  REQUIRE(status.legendary.installed);
+  const runner::AuthStatus status = epic::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
   CHECK(status.account.empty());
 }
@@ -108,8 +108,8 @@ TEST_CASE("Status reads the account through legendary's stderr log noise") {
   Fixture fixture("epic-noisy-status");
   fixture.UseFakeLegendary(kNoise, kLoggedIn);
 
-  const epic::EpicAuthStatus status = epic::Status(fixture.config);
-  REQUIRE(status.legendary.installed);
+  const runner::AuthStatus status = epic::Status(fixture.config);
+  REQUIRE(status.tool.installed);
   CHECK(status.authenticated);
   CHECK(status.account == "Tester");
 }
@@ -143,7 +143,7 @@ TEST_CASE("EpicImporter imports installed titles and tags them") {
       R"([{"app_name": "abc", "title": "A Game", "install_path": "/tmp/mira-tests/agame", "executable": "A.exe"}])");
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
-  const Result<epic::EpicImportSummary> summary = importer.Import();
+  const Result<library::ImportSummary> summary = importer.Import();
   REQUIRE(summary);
   CHECK(summary->added == 1);
   CHECK(summary->updated == 0);
@@ -170,7 +170,7 @@ TEST_CASE("EpicImporter is idempotent") {
 
   epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
   REQUIRE(importer.Import());
-  const Result<epic::EpicImportSummary> second = importer.Import();
+  const Result<library::ImportSummary> second = importer.Import();
   REQUIRE(second);
   CHECK(second->added == 0);
   CHECK(second->updated == 1);

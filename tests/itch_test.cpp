@@ -48,6 +48,7 @@ print(json.dumps({"type": "log", "message": "butlerd: creating new DB", "time": 
 print(json.dumps({"type": "butlerd/listen-notification", "secret": secret,
                   "tcp": {"address": "127.0.0.1:%d" % port}}), flush=True)
 
+srv.settimeout(5)  # a client that never connects fails the test instead of hanging it
 conn, _ = srv.accept()
 buf = b""
 f = conn.makefile("rwb")
@@ -111,7 +112,7 @@ TEST_CASE("DetectButler honours the itch.butler_bin override") {
   Fixture fixture("itch-detect");
   fixture.UseFakeButler();
 
-  const itch::ItchStatus status = itch::DetectButler(fixture.config);
+  const runner::ToolStatus status = itch::DetectButler(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
 }

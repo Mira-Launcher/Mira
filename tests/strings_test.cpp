@@ -39,3 +39,13 @@ TEST_CASE("Similarity rates containment and exact matches highly") {
   CHECK(Similarity("Celeste", "CelesteLauncher") > 0.5);
   CHECK(Similarity("Celeste", "TotallyUnrelated") < 0.3);
 }
+
+TEST_CASE("SplitArgs keeps quoted arguments together and JoinArgs reads back as the same list") {
+  using Args = std::vector<std::string>;
+  CHECK(mira::strings::SplitArgs("-windowed  -w 1280") == Args{"-windowed", "-w", "1280"});
+  CHECK(mira::strings::SplitArgs(R"(--save "C:\My Games\save 1" 'a b' "")") == Args{"--save", R"(C:\My Games\save 1)", "a b", ""});
+  CHECK(mira::strings::SplitArgs("").empty());
+
+  const Args tricky = {"plain", "has space", R"(a"quote)", "", R"(back\slash)"};
+  CHECK(mira::strings::SplitArgs(mira::strings::JoinArgs(tricky)) == tricky);
+}

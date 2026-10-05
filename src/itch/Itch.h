@@ -10,19 +10,13 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 
 namespace mira::itch {
 
-struct ItchStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
-
 std::filesystem::path ManagedButlerPath(const config::Config& config);
 
-ItchStatus DetectButler(const config::Config& config);
+runner::ToolStatus DetectButler(const config::Config& config);
 
 Result<void> InstallButlerBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
@@ -36,16 +30,14 @@ std::filesystem::path ApiKeyFile(const config::Config& config);
 // Where an itch.io API key is made. Keys don't expire.
 inline constexpr std::string_view kApiKeysUrl = "https://itch.io/user/settings/api-keys";
 
-struct ItchAuthStatus {
-  ItchStatus butler;
-  bool authenticated = false;
-};
-
 // installed-only if butler itself isn't present; otherwise just whether a
 // key is stored -- never connects to butlerd just to check this, matching
 // gog::Status's "no cheap status call" posture (here doubly true: starting
 // butlerd is a real subprocess spawn, not a quick one-shot command).
-ItchAuthStatus Status(const config::Config& config);
+runner::AuthStatus Status(const config::Config& config);
+
+// Ok when the tool is installed and the account signed in, else the error that says what to set up.
+Result<void> CheckReady(const config::Config& config);
 
 // Stores `api_key` and verifies it immediately via Profile.LoginWithAPIKey
 // (so a bad key is caught right here, not on the first real catalog
