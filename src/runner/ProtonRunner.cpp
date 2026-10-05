@@ -116,7 +116,6 @@ Result<void> ProtonRunner::Provision(const model::Game& game,
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
   ApplyGameId(command, game);
-  command.timeout_s = 1800;  // a first run downloads the Steam runtime
 
   auto result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());

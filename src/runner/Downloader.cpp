@@ -143,7 +143,7 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
   std::error_code ec;
   Command download;
   // -f: an HTTP error must fail here, not get saved as the "archive".
-  download.argv = {"curl", "-sSLf", "--connect-timeout", "10", "--max-time", "1800", "-o", target.string(), asset.download_url};
+  download.argv = {"curl", "-sSLf", "--connect-timeout", "10", "--speed-limit", "1024", "--speed-time", "60", "-o", target.string(), asset.download_url};
   if (Result<ExecResult> result = RunAndWait(download); !result || result->exit_code != 0) {
     fs::remove(target, ec);
     return Err("download_failed",

@@ -113,7 +113,6 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
   command.env["WINEPREFIX"] = game.data_dir;
   const fs::path wineserver = wine_binary->parent_path() / "wineserver";
   if (fs::exists(wineserver, ec)) command.env["WINESERVER"] = wineserver.string();
-  command.timeout_s = 1800;  // dotnet-sized verbs take many minutes
 
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());

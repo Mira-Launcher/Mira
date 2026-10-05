@@ -11,6 +11,7 @@
 #include <optional>
 #include <thread>
 
+#include "core/Lane.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
 #include "proc/ProcessSupervisor.h"
@@ -123,15 +124,14 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // launcher exe exists afterwards decides.
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
     if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && FindExe(launcher, game.data_dir)) {
       ReapOrphans(*pid);
       return {};
     }
-    if (std::chrono::steady_clock::now() >= deadline) {
+    if (ThisTaskStop().stop_requested()) {
       ReapOrphans(*pid);
-      return Err("launcher_install_timeout", std::format("the {} installer didn't finish in 30 minutes", launcher.name));
+      return Err("shutting_down", "mirad stopped before the installer finished");
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
   }
