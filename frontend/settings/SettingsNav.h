@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "Icons.h"
+#include "../theme/Icons.h"
 
 class QButtonGroup;
 class QLabel;

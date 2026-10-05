@@ -15,7 +15,7 @@
 #include "../client/MiradClient.h"
 #include "AppearancePreviews.h"
 #include "SettingEditor.h"
-#include "SidebarStyleCard.h"
+#include "../sidebar/SidebarStyleCard.h"
 
 class QButtonGroup;
 class QLabel;

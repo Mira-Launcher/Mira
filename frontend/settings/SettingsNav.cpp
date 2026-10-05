@@ -22,7 +22,7 @@
 
 #include "SettingsCard.h"
 #include "SettingsSearch.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 

@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "ui/GameLibraryModel.h"
-#include "ui/GameTileDelegate.h"
+#include "library/GameLibraryModel.h"
+#include "library/GameTileDelegate.h"
 
 using namespace mira_gui;
 

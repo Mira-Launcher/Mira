@@ -11,10 +11,10 @@
 #include <array>
 #include <utility>
 
-#include "ArtworkStore.h"
-#include "GameTileDelegate.h"
-#include "Icons.h"
-#include "Theme.h"
+#include "../library/ArtworkStore.h"
+#include "../library/GameTileDelegate.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

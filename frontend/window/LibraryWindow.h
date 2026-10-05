@@ -19,12 +19,12 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../ui/ArtworkStore.h"
-#include "../ui/InstallPromptCard.h"
-#include "../ui/InstallerCards.h"
-#include "../ui/ManageSourcesCard.h"
-#include "../ui/Shortcuts.h"
-#include "../ui/SidebarGames.h"
+#include "../app/Shortcuts.h"
+#include "../game/InstallPromptCard.h"
+#include "../game/InstallerCards.h"
+#include "../library/ArtworkStore.h"
+#include "../sidebar/SidebarGames.h"
+#include "../sources/ManageSourcesCard.h"
 
 class QLabel;
 class QMenu;

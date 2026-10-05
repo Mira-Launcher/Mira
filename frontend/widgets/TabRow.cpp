@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <QToolButton>
 
-#include "Icons.h"
+#include "../theme/Icons.h"
 
 namespace mira_gui {
 namespace {

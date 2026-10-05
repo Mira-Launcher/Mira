@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "ui/SettingsColumns.h"
+#include "settings/SettingsColumns.h"
 
 using namespace mira_gui::settings_columns;
 

@@ -4,11 +4,11 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
-#include "../ui/Icons.h"
-#include "../ui/Notify.h"
-#include "../ui/SettingsCard.h"
-#include "../ui/SettingsNav.h"
-#include "../ui/Theme.h"
+#include "../app/Notify.h"
+#include "../settings/SettingsCard.h"
+#include "../settings/SettingsNav.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 #include <algorithm>
 #include <utility>

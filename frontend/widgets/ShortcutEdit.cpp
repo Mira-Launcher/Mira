@@ -3,7 +3,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

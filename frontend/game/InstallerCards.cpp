@@ -9,9 +9,9 @@
 #include <QToolButton>
 
 #include "../client/MiradClient.h"
-#include "ArtworkStore.h"
-#include "ErrorHelp.h"
-#include "Icons.h"
+#include "../app/ErrorHelp.h"
+#include "../library/ArtworkStore.h"
+#include "../theme/Icons.h"
 
 namespace mira_gui {
 namespace {

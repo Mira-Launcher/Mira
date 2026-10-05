@@ -8,7 +8,7 @@
 #include <QVBoxLayout>
 
 #include "../client/MiradClient.h"
-#include "../ui/ErrorHelp.h"
+#include "../app/ErrorHelp.h"
 
 ItchCollectionsDialog::ItchCollectionsDialog(QWidget* parent) : QDialog(parent) {
   setWindowTitle("itch.io collections");

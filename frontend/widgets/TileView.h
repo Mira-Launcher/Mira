@@ -5,7 +5,7 @@
 
 #include <functional>
 
-#include "HoverCard.h"
+#include "../library/HoverCard.h"
 
 class QRubberBand;
 class QTimer;

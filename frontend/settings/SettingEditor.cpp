@@ -15,10 +15,10 @@
 #include <QUrl>
 
 #include "../client/JsonMapping.h"
-#include "Icons.h"
-#include "ListEdit.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "../widgets/ListEdit.h"
 #include "SettingsCard.h"
-#include "Theme.h"
 
 namespace mira_gui {
 

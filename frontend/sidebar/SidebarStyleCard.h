@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include "SettingsCard.h"
+#include "../settings/SettingsCard.h"
 #include "SidebarGames.h"
 
 class QAbstractButton;

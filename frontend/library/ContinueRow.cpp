@@ -10,7 +10,7 @@
 
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
-#include "Icons.h"
+#include "../theme/Icons.h"
 
 namespace mira_gui {
 namespace {

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "SettingsCard.h"
+#include "../settings/SettingsCard.h"
 #include "Sources.h"
 
 class QLabel;

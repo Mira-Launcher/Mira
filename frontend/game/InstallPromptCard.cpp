@@ -10,10 +10,10 @@
 #include <filesystem>
 
 #include "../client/Types.h"
-#include "ArtworkStore.h"
-#include "Icons.h"
-#include "Notify.h"
-#include "Theme.h"
+#include "../app/Notify.h"
+#include "../library/ArtworkStore.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

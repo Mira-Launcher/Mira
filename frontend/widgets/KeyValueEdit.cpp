@@ -7,8 +7,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
-#include "Icons.h"
-#include "Theme.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 

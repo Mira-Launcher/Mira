@@ -11,9 +11,9 @@
 
 #include "../client/MiradClient.h"
 #include "../client/EventHub.h"
-#include "../ui/ErrorHelp.h"
-#include "../ui/Notify.h"
-#include "../ui/Theme.h"
+#include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 

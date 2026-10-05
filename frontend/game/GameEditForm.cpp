@@ -2,13 +2,13 @@
 
 #include "../client/EventHub.h"
 #include "../client/JsonMapping.h"
-#include "../dialogs/OverridesEditor.h"
-#include "ErrorHelp.h"
-#include "KeyValueEdit.h"
-#include "Notify.h"
-#include "SettingEditor.h"
-#include "SettingsCard.h"
-#include "TagEdit.h"
+#include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../settings/SettingEditor.h"
+#include "../settings/SettingsCard.h"
+#include "../widgets/KeyValueEdit.h"
+#include "../widgets/TagEdit.h"
+#include "OverridesEditor.h"
 
 #include <QComboBox>
 #include <QDesktopServices>

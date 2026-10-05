@@ -14,8 +14,8 @@
 #include <algorithm>
 #include <optional>
 
-#include "HoverCard.h"
-#include "Theme.h"
+#include "../library/HoverCard.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui::tooltip {
 namespace {

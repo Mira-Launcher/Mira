@@ -14,7 +14,7 @@
 #include "../dialogs/LogViewerDialog.h"
 #include "../dialogs/RunInPrefixDialog.h"
 #include "../dialogs/WinetricksDialog.h"
-#include "Notify.h"
+#include "../app/Notify.h"
 
 namespace mira_gui::actions {
 namespace {

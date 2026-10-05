@@ -1,7 +1,7 @@
 #include "PopupDialog.h"
 
-#include "Icons.h"
-#include "Theme.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 #include <QDesktopServices>
 #include <QGuiApplication>

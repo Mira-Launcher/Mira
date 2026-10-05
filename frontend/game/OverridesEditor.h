@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../ui/Icons.h"
-#include "../ui/SettingEditor.h"
+#include "../settings/SettingEditor.h"
+#include "../theme/Icons.h"
 
 class QLabel;
 class QToolButton;

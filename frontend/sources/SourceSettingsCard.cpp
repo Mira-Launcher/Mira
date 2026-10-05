@@ -10,8 +10,8 @@
 
 #include "../client/EventHub.h"
 #include "../client/MiradClient.h"
-#include "../ui/ErrorHelp.h"
-#include "../ui/Theme.h"
+#include "../app/ErrorHelp.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

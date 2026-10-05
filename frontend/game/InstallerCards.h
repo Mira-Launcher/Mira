@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "SettingsCard.h"
+#include "../settings/SettingsCard.h"
 
 class QLabel;
 class QPushButton;

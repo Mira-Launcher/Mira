@@ -7,7 +7,7 @@
 #include <QVBoxLayout>
 
 #include "../client/MiradClient.h"
-#include "../ui/Notify.h"
+#include "../app/Notify.h"
 
 namespace mira_gui {
 

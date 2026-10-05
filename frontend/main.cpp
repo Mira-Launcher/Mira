@@ -9,14 +9,14 @@
 #include <QStringList>
 
 #include "client/MiradClient.h"
-#include "ui/DaemonSupervisor.h"
-#include "ui/KeyBindings.h"
-#include "ui/Notify.h"
-#include "ui/SystemNotifier.h"
-#include "ui/Theme.h"
-#include "ui/ToolTip.h"
-#include "ui/Tray.h"
-#include "views/LibraryWindow.h"
+#include "app/DaemonSupervisor.h"
+#include "app/KeyBindings.h"
+#include "app/Notify.h"
+#include "app/SystemNotifier.h"
+#include "app/Tray.h"
+#include "theme/Theme.h"
+#include "widgets/ToolTip.h"
+#include "window/LibraryWindow.h"
 
 namespace {
 

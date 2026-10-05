@@ -1,6 +1,6 @@
 #include "CoverArt.h"
 
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 #include <QFont>
 #include <QLinearGradient>

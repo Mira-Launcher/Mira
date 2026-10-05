@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 class QStandardItemModel;
 

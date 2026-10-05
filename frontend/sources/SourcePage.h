@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../ui/Sources.h"
+#include "Sources.h"
 
 class QLabel;
 class QLineEdit;

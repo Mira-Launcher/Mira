@@ -7,7 +7,7 @@
 #include <QLabel>
 #include <QLineEdit>
 
-#include "../ui/Notify.h"
+#include "../app/Notify.h"
 #include <QPushButton>
 #include <QVBoxLayout>
 

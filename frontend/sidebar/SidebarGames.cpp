@@ -9,9 +9,9 @@
 
 #include <algorithm>
 
-#include "ArtworkStore.h"
-#include "CoverArt.h"
-#include "Theme.h"
+#include "../library/ArtworkStore.h"
+#include "../library/CoverArt.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui::sidebar {
 namespace {

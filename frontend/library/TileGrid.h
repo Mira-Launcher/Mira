@@ -4,7 +4,7 @@
 
 #include <functional>
 
-#include "TileView.h"
+#include "../widgets/TileView.h"
 
 namespace mira_gui {
 

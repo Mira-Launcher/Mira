@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "../client/MiradClient.h"
-#include "../ui/ErrorHelp.h"
+#include "../app/ErrorHelp.h"
 
 namespace mira_gui {
 namespace {

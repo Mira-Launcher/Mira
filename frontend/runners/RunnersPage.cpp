@@ -17,11 +17,11 @@
 
 #include "../client/EventHub.h"
 #include "../client/MiradClient.h"
-#include "../ui/DownloadTracker.h"
-#include "../ui/Icons.h"
-#include "../ui/Notify.h"
-#include "../ui/SettingsCard.h"
-#include "../ui/Theme.h"
+#include "../activity/DownloadTracker.h"
+#include "../app/Notify.h"
+#include "../settings/SettingsCard.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

@@ -71,7 +71,7 @@ The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock`. `mirad --socket` and `$MIRA
 `mirad` never daemonizes itself. There are three ways to run it:
 
 1. **systemd user service.** `packaging/mirad.service` is a `Type=simple` unit with `Restart=on-failure`. The library stays watched with no window open. Logs go to `journalctl --user -u mirad`.
-2. **Started by the GUI.** `frontend/ui/DaemonSupervisor` probes `GET /v1/health`. If nothing answers, it starts `mirad` from next to its own binary or from `PATH` and stops it again on quit. A daemon it didn't start is left alone. `mira-gui` holds a `QLockFile` at `$XDG_RUNTIME_DIR/mira/mira-gui.lock` so a second launch exits instead of opening another window.
+2. **Started by the GUI.** `frontend/app/DaemonSupervisor` probes `GET /v1/health`. If nothing answers, it starts `mirad` from next to its own binary or from `PATH` and stops it again on quit. A daemon it didn't start is left alone. `mira-gui` holds a `QLockFile` at `$XDG_RUNTIME_DIR/mira/mira-gui.lock` so a second launch exits instead of opening another window.
 3. **By hand.** Run `mirad` in a terminal and stop it with Ctrl-C.
 
 `packaging/mira.desktop` launches `mira-gui`. There is no menu entry for `mirad`.

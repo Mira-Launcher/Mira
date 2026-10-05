@@ -11,7 +11,7 @@
 #include "../client/Async.h"
 #include "../client/MiradClient.h"
 #include "CoverArt.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

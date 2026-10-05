@@ -13,11 +13,11 @@
 #include <functional>
 #include <utility>
 
-#include "ArtworkStore.h"
-#include "GamePresentation.h"
-#include "Icons.h"
-#include "SettingsCard.h"
-#include "Theme.h"
+#include "../library/ArtworkStore.h"
+#include "../library/GamePresentation.h"
+#include "../settings/SettingsCard.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

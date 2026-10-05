@@ -3,7 +3,7 @@
 #include <QDialog>
 #include <QString>
 
-#include "Notify.h"
+#include "../app/Notify.h"
 
 class QLabel;
 class QToolButton;

@@ -12,7 +12,7 @@
 
 #include "../client/MiradClient.h"
 #include "GamePresentation.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

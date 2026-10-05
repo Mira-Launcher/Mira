@@ -10,9 +10,9 @@
 
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
-#include "Icons.h"
-#include "Sources.h"
-#include "Theme.h"
+#include "../sources/Sources.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {

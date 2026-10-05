@@ -25,148 +25,16 @@ message(STATUS "Qt6 ${Qt6_VERSION} found, building mira-gui")
 
 qt_standard_project_setup()
 
-qt_add_executable(mira-gui
-  main.cpp
+# Each folder is one area of the GUI; docs/frontend.md lists what each holds.
+set(MIRA_GUI_DIRS
+  activity app client dialogs game library runners settings sidebar sources theme widgets window)
+set(MIRA_GUI_SOURCES main.cpp)
+foreach(dir IN LISTS MIRA_GUI_DIRS)
+  file(GLOB dir_sources CONFIGURE_DEPENDS ${dir}/*.cpp ${dir}/*.h)
+  list(APPEND MIRA_GUI_SOURCES ${dir_sources})
+endforeach()
 
-  # client/: everything that talks to mirad, and nothing that draws.
-  client/Async.h
-  client/EventHub.cpp
-  client/EventHub.h
-  client/EventStream.cpp
-  client/EventStream.h
-  client/Jobs.cpp
-  client/Jobs.h
-  client/JsonMapping.cpp
-  client/JsonMapping.h
-  client/MiradClient.cpp
-  client/MiradClient.h
-  client/Transport.cpp
-  client/Transport.h
-  client/Types.h
-
-  # ui/: presentation shared by more than one view or dialog.
-  ui/AboutPanel.cpp
-  ui/AboutPanel.h
-  ui/ArtPickerPanel.cpp
-  ui/ArtPickerPanel.h
-  ui/ArtworkStore.cpp
-  ui/ArtworkStore.h
-  ui/ContinueRow.cpp
-  ui/ContinueRow.h
-  ui/CoverArt.cpp
-  ui/CoverArt.h
-  ui/DaemonSupervisor.cpp
-  ui/DaemonSupervisor.h
-  ui/DownloadTracker.cpp
-  ui/DownloadTracker.h
-  ui/DownloadsPanel.cpp
-  ui/DownloadsPanel.h
-  ui/GameLibraryModel.cpp
-  ui/GameLibraryModel.h
-  ui/GameActions.cpp
-  ui/GameActions.h
-  ui/HeroBackdrop.cpp
-  ui/HeroBackdrop.h
-  ui/HoverCard.cpp
-  ui/HoverCard.h
-  ui/GamePresentation.h
-  ui/LibrarySort.cpp
-  ui/LibrarySort.h
-  ui/GameTileDelegate.cpp
-  ui/GameTileDelegate.h
-  ui/Icons.cpp
-  ui/Icons.h
-  ui/KeyBindings.cpp
-  ui/KeyBindings.h
-  ui/Notify.cpp
-  ui/Notify.h
-  ui/PopupDialog.cpp
-  ui/PopupDialog.h
-  ui/SidebarGames.cpp
-  ui/SidebarGames.h
-  ui/ManageSourcesCard.cpp
-  ui/ManageSourcesCard.h
-  ui/InstallPromptCard.cpp
-  ui/InstallPromptCard.h
-  ui/SidebarStyleCard.cpp
-  ui/SidebarStyleCard.h
-  ui/Sources.cpp
-  ui/Sources.h
-  ui/SystemNotifier.cpp
-  ui/SystemNotifier.h
-  ui/Shortcuts.cpp
-  ui/Shortcuts.h
-  ui/Theme.cpp
-  ui/Theme.h
-  ui/TabRow.cpp
-  ui/TabRow.h
-  ui/TagEdit.cpp
-  ui/TagEdit.h
-  ui/TileGrid.cpp
-  ui/TileGrid.h
-  ui/TileView.cpp
-  ui/TileView.h
-  ui/ToolTip.cpp
-  ui/ToolTip.h
-  ui/Tray.cpp
-  ui/Tray.h
-  ui/SettingsNav.cpp
-  ui/SettingsNav.h
-  ui/SettingsCard.cpp
-  ui/SettingsCard.h
-  ui/SettingsColumns.cpp
-  ui/SettingsColumns.h
-  ui/ShortcutEdit.cpp
-  ui/ShortcutEdit.h
-  ui/AppearancePreviews.cpp
-  ui/AppearancePreviews.h
-  ui/ListEdit.cpp
-  ui/ListEdit.h
-  ui/KeyValueEdit.cpp
-  ui/KeyValueEdit.h
-  ui/InstallerCards.cpp
-  ui/InstallerCards.h
-  ui/SettingsSearch.cpp
-  ui/SettingsSearch.h
-  ui/ErrorHelp.cpp
-  ui/ErrorHelp.h
-  ui/SettingEditor.cpp
-  ui/SettingEditor.h
-  ui/SettingsPanel.cpp
-  ui/SettingsPanel.h
-  ui/GameEditForm.cpp
-  ui/GameEditForm.h
-
-  # views/: the library window and its full-page views.
-  views/LibraryWindow.cpp
-  views/LibraryWindow.h
-  views/RunnersPage.cpp
-  views/RunnersPage.h
-  views/SourcePage.cpp
-  views/SourcePage.h
-  views/SourceSettingsCard.cpp
-  views/SourceSettingsCard.h
-
-  # dialogs/
-  dialogs/AddManualGameDialog.cpp
-  dialogs/AddManualGameDialog.h
-  dialogs/DeleteGameDialog.cpp
-  dialogs/DeleteGameDialog.h
-  dialogs/DesktopEntryImportDialog.cpp
-  dialogs/DesktopEntryImportDialog.h
-  dialogs/GameDetailPageDialog.cpp
-  dialogs/GameDetailPageDialog.h
-  dialogs/ItchCollectionsDialog.cpp
-  dialogs/ItchCollectionsDialog.h
-  dialogs/LogViewerDialog.cpp
-  dialogs/LogViewerDialog.h
-  dialogs/RunInPrefixDialog.cpp
-  dialogs/RunInPrefixDialog.h
-  dialogs/OverridesEditor.cpp
-  dialogs/OverridesEditor.h
-  dialogs/WinetricksDialog.cpp
-  dialogs/WinetricksDialog.h
-)
+qt_add_executable(mira-gui ${MIRA_GUI_SOURCES})
 
 # The placeholder app icon, embedded so mira-gui has a window/taskbar icon
 # regardless of whether it's installed (packaging/mira.desktop's Icon=mira
@@ -185,7 +53,7 @@ qt_add_resources(mira-gui "icons"
     "${MIRA_ICON_DIR}/256x256/apps/mira.png"
 )
 
-# The stylesheet and the themes that fill it in (ui/Theme.cpp). Embedded so a
+# The stylesheet and the themes that fill it in (theme/Theme.cpp). Embedded so a
 # build tree, an AppImage and an installed copy all theme themselves the same
 # way; a user's own themes are read from ~/.config/mira/themes at run time.
 qt_add_resources(mira-gui "themes"
@@ -230,20 +98,20 @@ set_target_properties(mira-gui PROPERTIES
 file(GLOB MIRA_GUI_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 add_executable(mira_gui_tests
   ${MIRA_GUI_TEST_SOURCES}
-  client/JsonMapping.cpp
-  client/MiradClient.cpp
-  client/Jobs.cpp
+  activity/DownloadTracker.cpp
+  app/DaemonSupervisor.cpp
+  app/ErrorHelp.cpp
   client/EventHub.cpp
   client/EventStream.cpp
-  ui/LibrarySort.cpp
-  ui/GameLibraryModel.cpp
-  ui/Theme.cpp
-  ui/DaemonSupervisor.cpp
-  ui/DownloadTracker.cpp
-  ui/SettingsSearch.cpp
-  ui/SettingsColumns.cpp
-  ui/ErrorHelp.cpp
+  client/Jobs.cpp
+  client/JsonMapping.cpp
+  client/MiradClient.cpp
   client/Transport.cpp
+  library/GameLibraryModel.cpp
+  library/LibrarySort.cpp
+  settings/SettingsColumns.cpp
+  settings/SettingsSearch.cpp
+  theme/Theme.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Widgets only for the game model's headers (its roles are the tile

@@ -19,11 +19,11 @@
 #include <QVBoxLayout>
 #include <QVariantAnimation>
 
-#include "Icons.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "../widgets/ToolTip.h"
 #include "SettingsColumns.h"
 #include "SettingsNav.h"
-#include "Theme.h"
-#include "ToolTip.h"
 
 namespace mira_gui {
 namespace {

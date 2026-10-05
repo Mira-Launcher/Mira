@@ -10,8 +10,8 @@
 #include <algorithm>
 
 #include "../client/MiradClient.h"
-#include "../views/SourcePage.h"
-#include "Icons.h"
+#include "../theme/Icons.h"
+#include "SourcePage.h"
 
 namespace mira_gui {
 

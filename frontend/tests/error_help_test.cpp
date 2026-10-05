@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "ui/ErrorHelp.h"
+#include "app/ErrorHelp.h"
 
 using namespace mira_gui;
 

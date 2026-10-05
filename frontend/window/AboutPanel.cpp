@@ -4,7 +4,7 @@
 #include <QPixmap>
 #include <QVBoxLayout>
 
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 #ifndef MIRA_VERSION
 #define MIRA_VERSION "dev"

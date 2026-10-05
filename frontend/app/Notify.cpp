@@ -1,8 +1,8 @@
 #include "Notify.h"
 
-#include "PopupDialog.h"
+#include "../theme/Theme.h"
+#include "../widgets/PopupDialog.h"
 #include "SystemNotifier.h"
-#include "Theme.h"
 
 #include <QEvent>
 

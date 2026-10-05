@@ -4,8 +4,8 @@
 
 #include <vector>
 
-#include "../ui/SettingEditor.h"
-#include "../ui/SettingsCard.h"
+#include "../settings/SettingEditor.h"
+#include "../settings/SettingsCard.h"
 #include "SourcePage.h"
 
 class QComboBox;

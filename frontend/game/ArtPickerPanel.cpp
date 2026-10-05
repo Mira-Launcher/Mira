@@ -24,10 +24,10 @@
 #include <set>
 
 #include "../client/MiradClient.h"
-#include "ErrorHelp.h"
+#include "../app/ErrorHelp.h"
 #include "../client/EventHub.h"
-#include "TabRow.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
+#include "../widgets/TabRow.h"
 
 namespace mira_gui {
 namespace {

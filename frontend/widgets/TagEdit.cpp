@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-#include "Icons.h"
+#include "../theme/Icons.h"
 
 namespace mira_gui {
 namespace {

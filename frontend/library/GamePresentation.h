@@ -6,7 +6,7 @@
 #include <QString>
 
 #include "../client/Types.h"
-#include "Theme.h"
+#include "../theme/Theme.h"
 
 #include <cstdint>
 #include <optional>

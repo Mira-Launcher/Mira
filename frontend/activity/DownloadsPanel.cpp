@@ -10,11 +10,11 @@
 #include <QScreen>
 #include <QVBoxLayout>
 
-#include "ArtworkStore.h"
+#include "../app/ErrorHelp.h"
+#include "../library/ArtworkStore.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 #include "DownloadTracker.h"
-#include "ErrorHelp.h"
-#include "Icons.h"
-#include "Theme.h"
 
 namespace mira_gui {
 namespace {

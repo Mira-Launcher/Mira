@@ -16,14 +16,14 @@
 
 #include "../client/EventHub.h"
 #include "AppearancePreviews.h"
-#include "ErrorHelp.h"
-#include "KeyBindings.h"
-#include "Notify.h"
+#include "../app/ErrorHelp.h"
+#include "../app/KeyBindings.h"
+#include "../app/Notify.h"
+#include "../sources/Sources.h"
+#include "../theme/Theme.h"
+#include "../widgets/ShortcutEdit.h"
 #include "SettingsCard.h"
 #include "SettingsNav.h"
-#include "ShortcutEdit.h"
-#include "Sources.h"
-#include "Theme.h"
 
 namespace mira_gui {
 namespace {
