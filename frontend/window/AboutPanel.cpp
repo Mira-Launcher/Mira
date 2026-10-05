@@ -5,6 +5,7 @@
 #include <QVBoxLayout>
 
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 
 #ifndef MIRA_VERSION
 #define MIRA_VERSION "dev"
@@ -16,11 +17,9 @@ namespace {
 constexpr int kLogoSize = 88;
 
 QLabel* Line(QWidget* parent, const QString& text, const char* role = nullptr) {
-  auto* label = new QLabel(text, parent);
-  label->setWordWrap(true);
+  QLabel* label = MakeLabel(parent, text, role);
   label->setAlignment(Qt::AlignCenter);
   label->setOpenExternalLinks(true);
-  if (role != nullptr) label->setProperty("role", role);
   return label;
 }
 

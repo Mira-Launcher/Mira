@@ -12,14 +12,13 @@
 
 #include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {
 
 QLabel* SectionLabel(const QString& text, QWidget* parent) {
-  auto* label = new QLabel(text, parent);
-  label->setProperty("role", "section");
-  return label;
+  return MakeLabel(parent, text, "section", /*wrap=*/false);
 }
 
 QLabel* BodyLabel(QWidget* parent) {

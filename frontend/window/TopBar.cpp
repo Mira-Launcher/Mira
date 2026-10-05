@@ -9,6 +9,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui {
 
@@ -57,9 +58,7 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
   about_ = tool("About Mira");
   connect(about_, &QToolButton::clicked, this, &TopBar::AboutClicked);
 
-  divider_ = new QWidget(this);
-  divider_->setFixedSize(1, 20);
-  layout->addWidget(divider_);
+  layout->addWidget(MakeDivider(this, Qt::Vertical, 20));
 
   minimize_ = tool("Minimize");
   connect(minimize_, &QToolButton::clicked, this, [this] { window()->showMinimized(); });
@@ -93,7 +92,6 @@ void TopBar::ApplyIcons() {
   activity_->setIcon(icons::For(Glyph::Download));
   shortcuts_->setIcon(icons::For(Glyph::Keyboard));
   about_->setIcon(icons::For(Glyph::Info));
-  divider_->setStyleSheet(QString("background: %1;").arg(theme::Current().border.name()));
   minimize_->setIcon(icons::For(Glyph::Minimize));
   close_->setIcon(icons::For(Glyph::Close));
   SyncMaximized();

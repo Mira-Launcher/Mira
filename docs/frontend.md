@@ -90,7 +90,7 @@ Widgets don't set colors themselves. They set a style property (`setProperty("ro
 ```
 client/    talks to mirad, draws nothing
 theme/     the theme tokens, stylesheet and icons
-widgets/   general-purpose widgets that know nothing about games
+widgets/   general-purpose widgets that know nothing about games, and the label, heading and divider helpers
 app/       process-wide services: notifications, error help, shortcuts, tray, starting mirad
 library/   the library model, the library page and how a game is drawn: tiles, covers, hover card, game menus and actions
 game/      a game's card: its edit form, overrides, art picker and installer cards

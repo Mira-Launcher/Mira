@@ -33,6 +33,7 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/TabRow.h"
 
 namespace mira_gui {
@@ -41,10 +42,8 @@ namespace {
 constexpr const char* kSourceMime = "application/x-mira-source";
 
 QLabel* Heading(QWidget* parent, const QString& text) {
-  auto* label = new QLabel(text, parent);
-  label->setProperty("role", "muted");
-  label->setStyleSheet(
-      "font-weight: 600; letter-spacing: 0.04em; margin-top: 14px; margin-bottom: 2px;");
+  QLabel* label = MakeGroupHeading(parent, text);
+  label->setContentsMargins(0, 14, 0, 2);
   return label;
 }
 
@@ -149,6 +148,8 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   nav_content->setAcceptDrops(true);
   nav_content->installEventFilter(this);
   source_drop_line_ = new QWidget(nav_content);
+  source_drop_line_->setObjectName("drop_line");
+  source_drop_line_->setAttribute(Qt::WA_StyledBackground);
   source_drop_line_->setFixedHeight(2);
   source_drop_line_->hide();
   for (const SourceInfo& source : AllSources()) {
@@ -346,9 +347,7 @@ void Sidebar::ApplyIcons() {
   fetch_art_button_->setIcon(icons::For(Glyph::Image));
   for (QToolButton* button : {manage_sources_button_, pinned_customize_, recent_customize_}) {
     button->setIcon(icons::For(Glyph::Sliders, tokens.text_muted));
-  }
-  source_drop_line_->setStyleSheet(QString("background: %1;").arg(tokens.accent.name()));
-}
+  }}
 
 bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
   if (auto* nav = qobject_cast<QPushButton*>(watched);

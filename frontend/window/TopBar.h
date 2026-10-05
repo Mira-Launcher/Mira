@@ -46,7 +46,6 @@ class TopBar : public QWidget {
   QToolButton* refresh_ = nullptr;
   QToolButton* shortcuts_ = nullptr;
   QToolButton* about_ = nullptr;
-  QWidget* divider_ = nullptr;
   QToolButton* minimize_ = nullptr;
   QToolButton* maximize_ = nullptr;
   QToolButton* close_ = nullptr;

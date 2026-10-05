@@ -23,6 +23,7 @@
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {
@@ -40,12 +41,6 @@ QString FormatDate(const std::string& iso) {
   return when.isValid() ? QLocale().toString(when.date(), "MMM d, yyyy") : QString();
 }
 
-QLabel* Muted(const QString& text, QWidget* parent) {
-  auto* label = new QLabel(text, parent);
-  label->setProperty("role", "muted");
-  label->setWordWrap(true);
-  return label;
-}
 
 // A row's facts after its name, in one line that shrinks before the controls do.
 ElidedLabel* Facts(const QString& text, SettingRow* row) {
@@ -142,7 +137,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
 
   installed_ = new SettingsCard("Installed", canvas);
   left->addWidget(installed_);
-  default_note_ = Muted(QString(), canvas);
+  default_note_ = MakeLabel(canvas, QString(), "muted");
   default_note_->setContentsMargins(4, 0, 4, 0);
   default_note_->setTextFormat(Qt::RichText);
   connect(default_note_, &QLabel::linkActivated, this, [this] {
@@ -169,7 +164,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
   catalog_->Header()->addWidget(refresh);
   right->addWidget(catalog_);
-  status_ = Muted(QString(), canvas);
+  status_ = MakeLabel(canvas, QString(), "muted");
   status_->setContentsMargins(4, 0, 4, 0);
   right->addWidget(status_);
 

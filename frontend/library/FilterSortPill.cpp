@@ -11,6 +11,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/TabRow.h"
 #include "LibrarySort.h"
 
@@ -60,13 +61,6 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   return row;
 }
 
-QLabel* PopoverHeading(const QString& text, QWidget* parent) {
-  auto* heading = new QLabel(text, parent);
-  heading->setProperty("role", "muted");
-  heading->setStyleSheet("font-weight: 600; letter-spacing: 0.04em;");
-  return heading;
-}
-
 }  // namespace
 
 FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending, QWidget* parent)
@@ -83,9 +77,7 @@ FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending
   layout->addWidget(filter_icon_);
   filter_label_ = new QLabel(this);
   layout->addWidget(filter_label_, /*stretch=*/1);
-  divider_ = new QWidget(this);
-  divider_->setFixedSize(1, 14);
-  layout->addWidget(divider_);
+  layout->addWidget(MakeDivider(this, Qt::Vertical, 14));
   sort_icon_ = new QLabel(this);
   layout->addWidget(sort_icon_);
   sort_label_ = new QLabel(this);
@@ -111,7 +103,7 @@ QWidget* FilterSortPill::BuildPopover() {
   layout->setContentsMargins(8, 8, 8, 8);
   layout->setSpacing(2);
 
-  layout->addWidget(PopoverHeading("FILTER", popover));
+  layout->addWidget(MakeGroupHeading(popover, "FILTER"));
   filters_ = new QListWidget(popover);
   filters_->setObjectName("filter_list");
   filters_->setFrameShape(QFrame::NoFrame);
@@ -138,12 +130,10 @@ QWidget* FilterSortPill::BuildPopover() {
   filters_->setFixedHeight(filters_height);
   layout->addWidget(filters_);
 
-  popover_divider_ = new QWidget(popover);
-  popover_divider_->setFixedHeight(1);
-  layout->addWidget(popover_divider_);
+  layout->addWidget(MakeDivider(popover, Qt::Horizontal));
 
   auto* sort_heading_row = new QHBoxLayout();
-  sort_heading_row->addWidget(PopoverHeading("SORT", popover), /*stretch=*/1);
+  sort_heading_row->addWidget(MakeGroupHeading(popover, "SORT"), /*stretch=*/1);
   sort_direction_ = new QToolButton(popover);
   sort_direction_->setAutoRaise(true);
   connect(sort_direction_, &QToolButton::clicked, this, [this] {
@@ -259,9 +249,6 @@ void FilterSortPill::ApplyIcons() {
   filter_icon_->setPixmap(icons::For(icons::Glyph::Filter, muted).pixmap(14, 14));
   sort_icon_->setPixmap(icons::For(icons::Glyph::SortArrows, muted).pixmap(13, 13));
   chevron_->setPixmap(icons::For(icons::Glyph::ChevronDown, muted).pixmap(12, 12));
-  const QString border = QString("background: %1;").arg(theme::Current().border.name());
-  divider_->setStyleSheet(border);
-  popover_divider_->setStyleSheet(border);
   RestyleFilterRows();
   UpdateSummary();
 }

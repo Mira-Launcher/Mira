@@ -33,6 +33,7 @@
 #include "../library/TileGrid.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/TabRow.h"
 #include "SourceSettingsCard.h"
 
@@ -101,12 +102,6 @@ SourceCopy CopyFor(const std::string& id) {
           "", "", "", "Import Lutris games"};
 }
 
-QLabel* Text(QWidget* parent, const QString& text, const char* role = nullptr) {
-  auto* label = new QLabel(text, parent);
-  label->setWordWrap(true);
-  if (role != nullptr) label->setProperty("role", role);
-  return label;
-}
 
 void ShowLine(QLabel* label, const QString& text, const char* role) {
   label->setProperty("role", role);
@@ -418,7 +413,7 @@ QWidget* SourcePage::BuildSetupCard() {
   auto* body = new QVBoxLayout(setup_body_);
   body->setContentsMargins(38, 0, 0, 4);
   body->setSpacing(8);
-  setup_text_ = Text(setup_body_, QString());
+  setup_text_ = MakeLabel(setup_body_, QString());
   body->addWidget(setup_text_);
 
   setup_button_ = new QPushButton(setup_body_);
@@ -476,7 +471,7 @@ QWidget* SourcePage::BuildSetupCard() {
   sign_in_layout->addWidget(sign_in_);
   body->addWidget(sign_in_row_);
 
-  setup_error_ = Text(setup_body_, QString(), "error");
+  setup_error_ = MakeLabel(setup_body_, QString(), "error");
   setup_error_->setVisible(false);
   body->addWidget(setup_error_);
   setup_body_->hide();
@@ -517,13 +512,13 @@ QWidget* SourcePage::BuildLibrarySection() {
   library_heading_->setProperty("role", "heading");
   header->addWidget(library_heading_);
   header->addStretch(1);
-  import_result_ = Text(section, QString(), "muted");
+  import_result_ = MakeLabel(section, QString(), "muted");
   import_result_->setWordWrap(false);
   import_result_->setVisible(false);
   header->addWidget(import_result_);
   layout->addLayout(header);
 
-  library_empty_ = Text(section, QString(), "muted");
+  library_empty_ = MakeLabel(section, QString(), "muted");
   layout->addWidget(library_empty_);
 
   library_grid_ = new TileGrid(tile_, artwork_, section);
@@ -567,7 +562,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   header->addWidget(owned_refresh_);
   layout->addLayout(header);
 
-  owned_note_ = Text(owned_section_, QString(), "muted");
+  owned_note_ = MakeLabel(owned_section_, QString(), "muted");
   owned_note_->setVisible(false);
   layout->addWidget(owned_note_);
   if (id_ == "steam") {

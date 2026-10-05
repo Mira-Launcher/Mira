@@ -57,10 +57,8 @@ class FilterSortPill : public QWidget {
   QLabel* sort_icon_ = nullptr;
   QLabel* sort_label_ = nullptr;
   QLabel* chevron_ = nullptr;
-  QWidget* divider_ = nullptr;
   QWidget* popover_ = nullptr;
   QListWidget* filters_ = nullptr;
-  QWidget* popover_divider_ = nullptr;
   QToolButton* sort_direction_ = nullptr;
   QList<QPushButton*> sort_buttons_;
 };
