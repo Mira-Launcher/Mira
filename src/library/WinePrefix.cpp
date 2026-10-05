@@ -10,4 +10,8 @@ bool LooksLikeWinePrefix(const std::filesystem::path& dir) {
   return (has_registry && has_drive_c) || has_pfx;
 }
 
+bool IsPrefixSystemDir(const std::filesystem::path& rel) {
+  return rel.lexically_normal().generic_string() == "drive_c/windows";
+}
+
 }  // namespace mira::library

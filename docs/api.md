@@ -328,7 +328,7 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 - `other_runner` counts games using other runners, which are skipped. Steam and Flatpak games are covered by the Steam scan and desktop entry import.
 - `incomplete` counts Wine games with no `prefix` in their config and Linux games with a relative `exe`.
 
-Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone.
+Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone. Lutris sets `install_path`, `exe_path` and `data_dir` on the first import; after that Mira's stay (a different executable picked in Mira survives) unless what they point at is gone. `candidates` lists the executables in the game's folder, unless the folder holds other games too. Lutris's `playtime` and `lastplayed` fill `play_seconds` and `last_played_at` until Mira has recorded a session of its own (`last_session_at`); after that Mira's record stays.
 
 ## Stores
 

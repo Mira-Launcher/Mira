@@ -4,6 +4,7 @@
 #include <json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +18,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/Detector.h"
 #include "library/Relocate.h"
 #include "runner/Exec.h"
 
@@ -41,6 +43,8 @@ struct LutrisRow {
   std::string runner;
   std::string configpath;
   std::vector<std::string> categories;  // Mira tags, already mapped
+  std::int64_t lastplayed = 0;  // unix seconds; 0 if never
+  double playtime_hours = 0;
 };
 
 // Runs one query and returns its rows. An empty result set prints nothing at all, not "[]".
@@ -70,8 +74,9 @@ std::string TagForCategory(const std::string& category) {
   return category;
 }
 
-// The games with their categories in one query. categories/games_categories don't exist on every Lutris
-// version, and a missing table degrades to "no categories" rather than failing the whole import.
+// The games with their categories and play history in one query. Older
+// Lutris versions lack the categories tables or the playtime column, and
+// each missing piece degrades to "none" rather than failing the whole import.
 Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const fs::path& pga_db) {
   constexpr char kPlain[] = "SELECT id, name, slug, runner, configpath FROM games;";
   constexpr char kWithCategories[] =
@@ -79,7 +84,14 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
       "games.configpath AS configpath, group_concat(categories.name, char(31)) AS categories FROM games "
       "LEFT JOIN games_categories ON games_categories.game_id = games.id "
       "LEFT JOIN categories ON categories.id = games_categories.category_id GROUP BY games.id;";
-  Result<json> parsed = Query(sqlite3_bin, pga_db, kWithCategories);
+  constexpr char kWithPlay[] =
+      "SELECT games.id AS id, games.name AS name, games.slug AS slug, games.runner AS runner, "
+      "games.configpath AS configpath, games.lastplayed AS lastplayed, games.playtime AS playtime, "
+      "group_concat(categories.name, char(31)) AS categories FROM games "
+      "LEFT JOIN games_categories ON games_categories.game_id = games.id "
+      "LEFT JOIN categories ON categories.id = games_categories.category_id GROUP BY games.id;";
+  Result<json> parsed = Query(sqlite3_bin, pga_db, kWithPlay);
+  if (!parsed) parsed = Query(sqlite3_bin, pga_db, kWithCategories);
   if (!parsed) parsed = Query(sqlite3_bin, pga_db, kPlain);
   if (!parsed) return std::unexpected(parsed.error());
 
@@ -92,6 +104,8 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
         .runner = core::JsonString(row, "runner"),
         .configpath = core::JsonString(row, "configpath"),
         .categories = {},
+        .lastplayed = core::JsonInt(row, "lastplayed"),
+        .playtime_hours = row.contains("playtime") && row["playtime"].is_number() ? row["playtime"].get<double>() : 0,
     };
     for (const std::string& category : strings::Split(core::JsonString(row, "categories"), '\x1f')) {
       if (!category.empty()) entry.categories.push_back(TagForCategory(category));
@@ -306,12 +320,37 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     game.source = "lutris";
     game.source_ref = row.slug;  // joins Lutris's own cached banner/cover/icon files by slug
     game.name = row.name;
-    game.install_path = install_path;
-    game.exe_path = exe_path;
+    // Lutris sets where the game is when it arrives; after that the
+    // executable and folders are Mira's to change (a pick in the game's
+    // settings), and Lutris's only come back if Mira's are gone.
+    const bool own_program = existing && fs::exists(fs::path(existing->install_path) / existing->exe_path, ec);
+    if (!own_program) {
+      game.install_path = install_path;
+      game.exe_path = exe_path;
+    }
     game.args = cfg->args;
-    game.data_dir = data_dir_path;
+    if (!existing || existing->data_dir.empty() || !fs::exists(existing->data_dir, ec)) game.data_dir = data_dir_path;
+    // Lutris names one executable; the folder's others are offered to pick from,
+    // unless the folder holds other games too.
+    if (game.candidates.empty() && library::SharedFolder(config_, game, games_.All()).empty()) {
+      game.candidates = library::Detector(library::SettingsFromConfig(config_)).Detect(game.install_path).candidates;
+      for (model::Candidate& candidate : game.candidates) candidate.chosen = candidate.rel_path == game.exe_path;
+      if (std::ranges::none_of(game.candidates, &model::Candidate::chosen)) {
+        game.candidates.insert(game.candidates.begin(),
+                               {.rel_path = game.exe_path,
+                                .kind = is_native ? model::Platform::Native : model::Platform::Windows,
+                                .score = 1.0, .chosen = true,
+                                .is_installer = false});
+      }
+    }
     game.platform = is_native ? model::Platform::Native : model::Platform::Windows;
     game.env = cfg->env;
+    // Lutris's record, until Mira has a session of its own: then neither can
+    // say which is right, so Mira's own stays.
+    if (game.last_session_at == 0) {
+      if (row.playtime_hours > 0) game.play_seconds = std::llround(row.playtime_hours * 3600);
+      if (row.lastplayed > 0) game.last_played_at = row.lastplayed;
+    }
     game.tags = MergeTags(game.tags, row.categories);
     // Lutris's own wine.version is often a generic alias ("ge-proton"), not
     // an exact installed build name Mira can resolve, so leave runner_ref

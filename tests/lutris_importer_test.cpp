@@ -27,6 +27,8 @@ struct FixtureRow {
   std::string runner;
   std::string configpath;
   std::vector<std::string> categories;  // real Lutris category names, e.g. ".hidden"
+  std::int64_t lastplayed = 0;
+  double playtime = 0;  // hours, as Lutris keeps it
 };
 
 // Schema matches a real pga.db exactly (confirmed via `.schema` against a
@@ -34,15 +36,17 @@ struct FixtureRow {
 // plain join table of game_id/category_id.
 Result<void> BuildFixtureDb(const fs::path& db_path, const std::vector<FixtureRow>& rows) {
   std::string sql = "CREATE TABLE games (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, runner TEXT, "
-                    "configpath TEXT);"
+                    "configpath TEXT, lastplayed INTEGER, playtime REAL);"
                     "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT UNIQUE);"
                     "CREATE TABLE games_categories (game_id INTEGER, category_id INTEGER);";
   std::map<std::string, int> category_ids;
   int next_category_id = 1;
   int game_id = 1;
   for (const FixtureRow& row : rows) {
-    sql += std::format("INSERT INTO games (id, name, slug, runner, configpath) VALUES ({}, '{}', '{}', '{}', '{}');",
-                       game_id, row.name, row.slug, row.runner, row.configpath);
+    sql += std::format(
+        "INSERT INTO games (id, name, slug, runner, configpath, lastplayed, playtime) "
+        "VALUES ({}, '{}', '{}', '{}', '{}', {}, {});",
+        game_id, row.name, row.slug, row.runner, row.configpath, row.lastplayed, row.playtime);
     for (const std::string& category : row.categories) {
       const auto [it, inserted] = category_ids.try_emplace(category, next_category_id);
       if (inserted) {
@@ -236,6 +240,68 @@ TEST_CASE("LutrisImporter keeps a game Mira moved into its own folders on re-imp
   CHECK(kept->data_dir == moved->data_dir);
   CHECK(fs::exists(fs::path(kept->install_path) / kept->exe_path));
   CHECK(kept->source == "manual");  // Lutris can't run it from there, so it's Mira's own
+}
+
+TEST_CASE("LutrisImporter brings Lutris's playtime and last played until Mira has played the game itself") {
+  if (!HaveSqlite3()) return;
+
+  Fixture fx("lutris-play");
+  const fs::path game_dir = fx.lutris_dir.parent_path() / "lutris-play-game";
+  fs::create_directories(game_dir);
+  const auto build = [&](std::int64_t lastplayed, double hours) {
+    fs::remove(fx.lutris_dir / "pga.db");
+    REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                           {{"Celeste", "celeste", "wine", "celeste-1", {}, lastplayed, hours}})
+                .has_value());
+  };
+  test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
+              std::format("game:\n  exe: {}/Celeste.exe\n  prefix: {}\n", game_dir.string(), game_dir.string()));
+  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
+
+  build(1780112448, 118.5);
+  REQUIRE(importer.Import().has_value());
+  CHECK(fx.games.Find("celeste")->last_played_at == 1780112448);
+  CHECK(fx.games.Find("celeste")->play_seconds == 118 * 3600 + 1800);
+
+  build(1790000000, 120);  // played more in Lutris
+  REQUIRE(importer.Import().has_value());
+  CHECK(fx.games.Find("celeste")->play_seconds == 120 * 3600);
+
+  // Once Mira has a session of its own, its record stays.
+  REQUIRE(fx.games.Update("celeste", [](model::Game& g) {
+    g.last_session_at = 1791000000;
+    g.last_played_at = 1791000000;
+    g.play_seconds = 5;
+  }).has_value());
+  build(1792000000, 200);
+  REQUIRE(importer.Import().has_value());
+  CHECK(fx.games.Find("celeste")->last_played_at == 1791000000);
+  CHECK(fx.games.Find("celeste")->play_seconds == 5);
+}
+
+TEST_CASE("LutrisImporter offers the folder's executables and keeps the one picked in Mira") {
+  if (!HaveSqlite3()) return;
+
+  Fixture fx("lutris-pick");
+  const fs::path game_dir = fx.lutris_dir.parent_path() / "lutris-pick-game";
+  test::Touch(game_dir / "Launcher.exe", std::string(4096, 'x'));
+  test::Touch(game_dir / "bin" / "Game.exe", std::string(8192, 'x'));
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Hades", "hades", "wine", "hades-1", {}}}).has_value());
+  test::Touch(fx.lutris_dir / "games" / "hades-1.yml",
+              std::format("game:\n  exe: {}/Launcher.exe\n  prefix: {}\n", game_dir.string(), game_dir.string()));
+  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
+  REQUIRE(importer.Import().has_value());
+
+  const auto imported = fx.games.Find("hades");
+  REQUIRE(imported.has_value());
+  CHECK(std::ranges::any_of(imported->candidates, [](const model::Candidate& c) { return c.rel_path == "bin/Game.exe"; }));
+  CHECK(std::ranges::any_of(imported->candidates,
+                            [](const model::Candidate& c) { return c.rel_path == "Launcher.exe" && c.chosen; }));
+
+  REQUIRE(fx.games.Update("hades", [](model::Game& g) { g.exe_path = "bin/Game.exe"; }).has_value());
+  REQUIRE(importer.Import().has_value());
+  CHECK(fx.games.Find("hades")->exe_path == "bin/Game.exe");
+  CHECK(fx.games.Find("hades")->source == "lutris");
 }
 
 TEST_CASE("LutrisImporter takes over a game an older Mira moved but left as a Lutris game") {

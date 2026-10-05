@@ -203,6 +203,29 @@ TEST_CASE("Detector never descends into a nested wine prefix during its own walk
   CHECK(result.candidates.empty());
 }
 
+TEST_CASE("A game kept in its own prefix lists its own executables, not Wine's or what the prefix's links lead to") {
+  // Wine links dosdevices/z: to / and the user folders to the real home.
+  const fs::path outside = TempDir("prefix-links-outside");
+  Touch(outside / "bin" / "head", "elf", /*executable=*/true);
+  Touch(outside / "Documents" / "Tool.exe");
+  const fs::path prefix = TempDir("prefix-links-game");
+  Touch(prefix / "system.reg");
+  Touch(prefix / "Cuphead.exe");
+  Touch(prefix / "drive_c" / "windows" / "system32" / "notepad.exe");
+  fs::create_directories(prefix / "dosdevices");
+  fs::create_directory_symlink(outside, prefix / "dosdevices" / "z:");
+  fs::create_directories(prefix / "drive_c" / "users" / "me");
+  fs::create_directory_symlink(outside / "Documents", prefix / "drive_c" / "users" / "me" / "Documents");
+
+  const auto rel_paths = [](const std::vector<model::Candidate>& candidates) {
+    std::vector<std::string> paths;
+    for (const model::Candidate& candidate : candidates) paths.push_back(candidate.rel_path);
+    return paths;
+  };
+  const library::Detector detector(DefaultSettings());
+  CHECK(rel_paths(detector.Detect(prefix).candidates) == std::vector<std::string>{"Cuphead.exe"});
+}
+
 TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
   const fs::path lib = TempDir("scan-no-autosetup-library");
   fs::create_directories(lib / "Celeste");
