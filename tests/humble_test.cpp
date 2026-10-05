@@ -61,7 +61,7 @@ TEST_CASE("DetectHumbleCli honours the humble.humble_cli_bin override") {
   Fixture fixture("humble-detect");
   fixture.UseFakeHumbleCli(true);
 
-  const humble::HumbleStatus status = humble::DetectHumbleCli(fixture.config);
+  const runner::ToolStatus status = humble::DetectHumbleCli(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
 }

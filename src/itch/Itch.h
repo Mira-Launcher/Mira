@@ -10,19 +10,13 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 
 namespace mira::itch {
 
-struct ItchStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
-
 std::filesystem::path ManagedButlerPath(const config::Config& config);
 
-ItchStatus DetectButler(const config::Config& config);
+runner::ToolStatus DetectButler(const config::Config& config);
 
 Result<void> InstallButlerBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
@@ -37,7 +31,7 @@ std::filesystem::path ApiKeyFile(const config::Config& config);
 inline constexpr std::string_view kApiKeysUrl = "https://itch.io/user/settings/api-keys";
 
 struct ItchAuthStatus {
-  ItchStatus butler;
+  runner::ToolStatus butler;
   bool authenticated = false;
 };
 

@@ -82,7 +82,7 @@ TEST_CASE("DetectLegendary honours the epic.legendary_bin override") {
   Fixture fixture("epic-detect");
   fixture.UseFakeLegendary("", kLoggedOut);
 
-  const epic::LegendaryStatus status = epic::DetectLegendary(fixture.config);
+  const runner::ToolStatus status = epic::DetectLegendary(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
   CHECK(status.path == (fixture.dir / "legendary").string());

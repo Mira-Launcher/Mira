@@ -45,23 +45,9 @@ std::filesystem::path ManagedGogPath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "gog" / "gogdl";
 }
 
-GogStatus DetectGog(const config::Config& config) {
-  const std::string override_path = config.GetString("gog.gogdl_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
+const runner::StoreTool kTool = {"gog", "GOG", "gogdl", "gog.gogdl_bin", ManagedGogPath};
 
-  const fs::path managed = ManagedGogPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-
-  if (const auto on_path = runner::FindOnPath("gogdl")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectGog(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallGogBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   // gogdl is a Python zipapp ("#!/usr/bin/env python3" shebang), not a
@@ -84,22 +70,8 @@ std::filesystem::path AuthConfigPath(const config::Config& config) {
   return config.File().parent_path() / "gog-auth.json";
 }
 
-Result<std::string> RunGogdl(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output) {
-  const GogStatus status = DetectGog(config);
-  if (!status.installed) {
-    return StoreToolMissing("gog", "GOG", "gogdl");
-  }
-
-  Command command;
-  command.argv = {status.path, "--auth-config-path", AuthConfigPath(config).string()};
-  command.argv.insert(command.argv.end(), args.begin(), args.end());
-  const Result<runner::ExecResult> result = runner::RunAndWait(command, on_output);
-  if (!result) return std::unexpected(result.error());
-  if (result->exit_code != 0) {
-    return Err("gogdl_failed", std::format("gogdl exited {}: {}", result->exit_code, result->output));
-  }
-  return result->output;
+Result<std::string> RunGogdl(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+  return runner::RunTool(config, kTool, args, on_output, {"--auth-config-path", AuthConfigPath(config).string()});
 }
 
 GogAuthStatus Status(const config::Config& config) {

@@ -301,7 +301,7 @@ Result<json> ReadResponse(int fd, int request_id, std::chrono::steady_clock::tim
 Result<void> EnsureConnectedLocked(const config::Config& config, Connection& connection) {
   if (connection.connected) return {};
 
-  const ItchStatus status = DetectButler(config);
+  const runner::ToolStatus status = DetectButler(config);
   if (!status.installed) {
     return StoreToolMissing("itch", "itch.io", "butler");
   }

@@ -37,21 +37,9 @@ std::filesystem::path ManagedButlerPath(const config::Config& config) {
   return tools_dir / "butler";  // sensible default even if not installed yet
 }
 
-ItchStatus DetectButler(const config::Config& config) {
-  const std::string override_path = config.GetString("itch.butler_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
+const runner::StoreTool kTool = {"itch", "itch.io", "butler", "itch.butler_bin", ManagedButlerPath};
 
-  const fs::path managed = ManagedButlerPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-  if (const auto on_path = runner::FindOnPath("butler")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectButler(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallButlerBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   auto installed = runner::InstallToolBinary(config, "itch", asset, "butler");

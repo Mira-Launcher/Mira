@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
+#include "runner/StoreTool.h"
 
 // Wraps humble-cli (github.com/smbl64/humble-cli, unofficial). Not built
 // on library::ILibrarySource like epic/steam/gog/itch: Humble Bundle has
@@ -18,16 +19,9 @@
 // fetches files from one bundle into a plain directory.
 namespace mira::humble {
 
-struct HumbleStatus {
-  bool installed = false;
-  std::string source;  // "override" | "managed" | "path" | "none"
-  std::string path;
-  std::string version;
-};
-
 std::filesystem::path ManagedHumbleCliPath(const config::Config& config);
 
-HumbleStatus DetectHumbleCli(const config::Config& config);
+runner::ToolStatus DetectHumbleCli(const config::Config& config);
 
 Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
@@ -37,7 +31,7 @@ Result<std::string> RunHumbleCli(const config::Config& config, std::vector<std::
 inline constexpr std::string_view kLoginUrl = "https://www.humblebundle.com/login";
 
 struct HumbleAuthStatus {
-  HumbleStatus humble_cli;
+  runner::ToolStatus humble_cli;
   bool authenticated = false;
 };
 

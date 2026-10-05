@@ -31,6 +31,8 @@ std::filesystem::path ManagedLegendaryPath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "legendary";
 }
 
+const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin", ManagedLegendaryPath};
+
 std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
   const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME");
   fs::path config_dir;
@@ -43,23 +45,7 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
   return config_dir / "legendary" / "metadata" / (app_name + ".json");
 }
 
-LegendaryStatus DetectLegendary(const config::Config& config) {
-  const std::string override_path = config.GetString("epic.legendary_bin");
-  if (!override_path.empty() && fs::exists(override_path)) {
-    return {.installed = true, .source = "override", .path = override_path, .version = runner::ToolVersion(override_path)};
-  }
-
-  const fs::path managed = ManagedLegendaryPath(config);
-  if (fs::exists(managed)) {
-    return {.installed = true, .source = "managed", .path = managed.string(), .version = runner::ToolVersion(managed.string())};
-  }
-
-  if (const auto on_path = runner::FindOnPath("legendary")) {
-    return {.installed = true, .source = "path", .path = *on_path, .version = runner::ToolVersion(*on_path)};
-  }
-
-  return {.installed = false, .source = "none", .path = "", .version = ""};
-}
+runner::ToolStatus DetectLegendary(const config::Config& config) { return runner::DetectTool(config, kTool); }
 
 Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   const fs::path target = ManagedLegendaryPath(config);
@@ -95,22 +81,8 @@ Result<void> InstallLegendaryBinary(const config::Config& config, const runner::
   return {};
 }
 
-Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output) {
-  const LegendaryStatus status = DetectLegendary(config);
-  if (!status.installed) {
-    return StoreToolMissing("epic", "Epic Games", "legendary");
-  }
-
-  Command command;
-  command.argv = {status.path};
-  command.argv.insert(command.argv.end(), args.begin(), args.end());
-  const Result<runner::ExecResult> result = runner::RunAndWait(command, on_output);
-  if (!result) return std::unexpected(result.error());
-  if (result->exit_code != 0) {
-    return Err("legendary_failed", std::format("legendary exited {}: {}", result->exit_code, result->output));
-  }
-  return result->output;
+Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+  return runner::RunTool(config, kTool, args, on_output);
 }
 
 Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::string> args) {

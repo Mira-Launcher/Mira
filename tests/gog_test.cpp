@@ -79,7 +79,7 @@ TEST_CASE("DetectGog honours the gog.gogdl_bin override") {
   Fixture fixture("gog-detect");
   fixture.UseFakeGogdl();
 
-  const gog::GogStatus status = gog::DetectGog(fixture.config);
+  const runner::ToolStatus status = gog::DetectGog(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
   CHECK(status.path == (fixture.dir / "gogdl").string());

@@ -94,7 +94,7 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
   // --- epic -------------------------------------------------------------
 
   http.Get("/v1/epic/legendary/status", [&s](const Request&, Response& res) {
-    const epic::LegendaryStatus status = epic::DetectLegendary(s.config);
+    const runner::ToolStatus status = epic::DetectLegendary(s.config);
     SendJson(res, {{"installed", status.installed},
                   {"source", status.source},
                   {"path", status.path},

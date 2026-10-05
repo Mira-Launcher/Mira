@@ -111,7 +111,7 @@ TEST_CASE("DetectButler honours the itch.butler_bin override") {
   Fixture fixture("itch-detect");
   fixture.UseFakeButler();
 
-  const itch::ItchStatus status = itch::DetectButler(fixture.config);
+  const runner::ToolStatus status = itch::DetectButler(fixture.config);
   CHECK(status.installed);
   CHECK(status.source == "override");
 }
