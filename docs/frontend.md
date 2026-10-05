@@ -92,9 +92,9 @@ client/    talks to mirad, draws nothing
 theme/     the theme tokens, stylesheet and icons
 widgets/   general-purpose widgets that know nothing about games
 app/       process-wide services: notifications, error help, shortcuts, tray, starting mirad
-library/   the library model and how a game is drawn: tiles, covers, hover card, game actions
+library/   the library model, the library page and how a game is drawn: tiles, covers, hover card, game menus and actions
 game/      a game's card: its edit form, overrides, art picker and installer cards
-sidebar/   the sidebar's pinned and recently played rows and their style card
+sidebar/   the sidebar: nav rows, source rows, pinned and recently played rows and their style card
 sources/   the source list, source pages, their settings card and Manage sources
 runners/   the Runners page
 activity/  the download and job tracker and the Activity panel

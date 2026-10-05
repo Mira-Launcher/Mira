@@ -1,74 +1,50 @@
 #pragma once
 
 #include <QElapsedTimer>
-#include <QHash>
-#include <QList>
 #include <QMainWindow>
-#include <QPixmap>
-#include <QPointer>
-#include <QSet>
-#include <QSize>
 #include <QString>
 
-#include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <set>
 #include <string>
-#include <deque>
+#include <utility>
 #include <vector>
 
-#include "../client/Types.h"
 #include "../app/Shortcuts.h"
-#include "../game/InstallPromptCard.h"
-#include "../game/InstallerCards.h"
-#include "../library/ArtworkStore.h"
-#include "../sidebar/SidebarGames.h"
-#include "../sources/ManageSourcesCard.h"
+#include "../client/Types.h"
 
-class QLabel;
-class QMenu;
-class QLineEdit;
 class QGridLayout;
-class QListWidget;
-class QPushButton;
 class QSlider;
 class QSplitter;
 class QStackedLayout;
 class QStackedWidget;
-class QVBoxLayout;
-class QAction;
-class QToolButton;
-class QListWidgetItem;
-class QModelIndex;
 class QTimer;
 
 namespace mira_gui {
-class GameCard;
-class GameLibraryModel;
-class GameMenus;
+class ArtworkStore;
 class DaemonSupervisor;
 class DownloadTracker;
 class DownloadsPanel;
+class GameCard;
+class GameLibraryModel;
+class GameMenus;
 class HoverCard;
 class LibraryPage;
 class RunnersPage;
 class SettingsPanel;
+class Sidebar;
 class SourcePage;
-class TabRow;
 class TopBar;
 struct SourceInfo;
-}
+}  // namespace mira_gui
 
-// Primary library view: cover-art grid, a left sidebar (filters, sort,
-// search, Library/Runners nav, Settings), custom top bar in place of a
-// native titlebar. Frameless, so it owns its own
-// move/resize/minimize/maximize/close.
-//
-// Selection model: one click selects a tile, a second (double) click
-// launches, right-click opens the per-game menu. Hovering a tile shows a
-// HoverCard after a short dwell: the tile itself plus the right-click menu
-// and the per-game edit page cover everything the old right sidebar used to.
+// The main window: the top bar over the sidebar and, beside it, the library
+// page, a source page or Runners; Settings full-screen in their place; and a
+// game's card or a sidebar card in an overlay above. Frameless, so it owns
+// its own move/resize/minimize/maximize/close. This class puts the pieces
+// together: it decides what's on screen and routes each piece's requests.
 class LibraryWindow : public QMainWindow {
   Q_OBJECT
 
@@ -77,12 +53,9 @@ public:
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
 
 private:
-  QWidget* BuildSidebar();
+  mira_gui::Sidebar* BuildSidebar(const mira_gui::FrontendPrefs& prefs);
   mira_gui::LibraryPage* BuildLibraryPage(const mira_gui::FrontendPrefs& prefs, int tile_width);
   QWidget* BuildSettingsPage();
-  // Library-only actions as vertical icon+label rows. Refresh/Shortcuts/
-  // About moved to the top bar; Close window/Quit dropped (the frameless ×
-  // and the tray icon already cover them).
   void BuildShortcuts();
 
   // Frontend's own state (size, tile size, which filter) round-trips through
@@ -99,10 +72,6 @@ private:
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();
   void changeEvent(QEvent* event) override;
-  bool eventFilter(QObject* watched, QEvent* event) override;
-  // Redrawn rather than stored: each glyph is painted in the theme's text
-  // color, so a theme change has to regenerate them.
-  void ApplyTopBarIcons();
 
   // Lists the library and scans it at once; the scan's changes arrive as
   // events. `force_scan` is Refresh's: startup honours scan_on_startup.
@@ -110,7 +79,7 @@ private:
   void RefreshGames();
   void ConnectionChanged(bool connected);
 
-  // After any change to library_: footer, sidebar rows, source rows.
+  // After any change to library_: the footer, an open card, Runners.
   void LibraryChanged();
   void UpdateFooter();
   void UpsertGames(const std::vector<mira_gui::GameSummary>& games);
@@ -129,8 +98,6 @@ private:
   void ShowHoverCardFor(const mira_gui::GameSummary& game, const QRect& anchor,
                         const QString& hint = QString());
   void HideHoverCard();
-  void ShowSidebarMenu(const QPoint& global_pos);
-  void ShowSourceMenu(const mira_gui::SourceInfo& source, const QPoint& global_pos);
   void ToggleRunning(const std::string& id);
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
@@ -167,26 +134,10 @@ private:
   // Shared by SetSettingsChromeVisible and the per-game edit page: neither
   // filtering nor sorting means anything while the grid isn't on screen.
   void SetGridControlsEnabled(bool enabled);
-  // Highlights the sidebar's "Library" row exactly when the grid is the
-  // visible content (not Settings, not a game's edit page).
+  // Points the sidebar's highlight and the slider at what's on screen.
   void UpdateLibraryNavActive();
   void ShowLibrary();
   void OpenManageSources();
-  // A source was removed: drop its games and turn its sidebar row off.
-  void ForgetSource(const QString& id);
-  // The sidebar's PINNED and RECENTLY PLAYED rows.
-  void RefreshSidebarGames();
-  // What PINNED lists, and what RECENTLY PLAYED would list showing `count`
-  // (with `running_counts`, running games are part of the count, as on a shelf).
-  std::vector<const mira_gui::GameSummary*> PinnedGames() const;
-  std::vector<const mira_gui::GameSummary*> RecentGames(int count, bool running_counts = false) const;
-  // A row or cover's click, menu and hover card.
-  void WireSidebarGame(QPushButton* row, const mira_gui::GameSummary& game);
-  // Rebuilds one section's rows in `style`, only if what they'd show differs
-  // from `signature`. `recent` rows say when each was last played.
-  void FillSidebarSection(QWidget* heading, QVBoxLayout* layout,
-                          const std::vector<const mira_gui::GameSummary*>& games, mira_gui::sidebar::Style style,
-                          bool recent, QString& signature);
   // A card that changes the sidebar (the pinned and recently played style,
   // Manage sources), over the content with the sidebar left undimmed as its
   // preview. Showing one replaces any other.
@@ -195,21 +146,9 @@ private:
   void CloseSidebarCard();
   bool SidebarCardOpen() const;
   void OpenSidebarStyle();
-  // Redraws both sections and stores their styles and the recent count.
-  void SaveSidebarStyle();
   // A sidebar row or card's click. Ignores the second click of a double
   // click, which would otherwise land on whatever row moved under it.
   void RowClicked(const std::string& id);
-  QIcon SourceIcon(const mira_gui::SourceInfo& source, bool active) const;
-  void SetSourceHidden(const QString& id, bool hidden);
-  std::vector<QString> SourceOrder() const;
-  std::vector<mira_gui::ManageSourcesCard::Entry> SourceEntries() const;
-  // Shows and stores a new sidebar order.
-  void SetSourceOrder(std::vector<QString> order);
-  void NoteImported(const QString& id);
-  // Moves `id` to just before the visible row `before` (end if -1).
-  void MoveSource(const QString& id, int before);
-  int SourceDropRow(int y) const;
   // Closes Settings and a game's card, asking first if either has unsaved
   // edits. False while one stays open.
   bool LeaveOverlays();
@@ -218,8 +157,6 @@ private:
   void CloseRunners();
   void OpenAbout();
   void OpenGameDetailPage(const std::string& id);
-  void ImportDesktopEntries();
-  void AddGameManually();
   // A store or launcher's page, rebuilt fresh on each open.
   void OpenSource(const mira_gui::SourceInfo& source);
   // False while the page stays: its settings card's edits were kept, or are
@@ -227,11 +164,6 @@ private:
   bool CloseSource(std::function<void()> retry = {});
   // Asks about the open source page's unsaved settings; CloseSource's rules.
   bool ConfirmLeaveSource(std::function<void()> retry);
-  // Hides the sources turned off in Settings (`<id>.enabled`), and asks
-  // which stores are signed in and which launchers installed.
-  void RefreshSourceNavs();
-  // Greys out and moves down the sources with nothing set up yet.
-  void UpdateSourceNavs();
   void SetSourceControlsEnabled(bool enabled);
   // The grid is what's on screen: not Settings, Runners, or a source page.
   bool GridShown() const;
@@ -240,12 +172,13 @@ private:
   // Back to the grid with this game selected; its settings if filtered out.
   void ShowGame(const std::string& id);
   // "Installing… 1.2 GB" for a game mid-install, else empty.
-  QString InstallText(const std::string& id) const;  // `announce` is false for the bulk path, where one toast covers the batch
+  QString InstallText(const std::string& id) const;
+  // `announce` is false for the bulk path, where one toast covers the batch
   // and per-game messages would be one notification per game.
   void RefreshMetadata(const std::string& id, bool announce = true);
   void FetchMissingArtwork();
   void ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiError& error);
-  // Routes ui/ErrorHelp's fix-it buttons to this window's pages.
+  // Routes app/ErrorHelp's fix-it buttons to this window's pages.
   void InstallErrorNavigator();
   void UpdateTileCover(const QString& id);
 
@@ -254,61 +187,20 @@ private:
 
   mira_gui::TopBar* top_bar_ = nullptr;
   QSlider* zoom_ = nullptr;
-  QToolButton* add_games_ = nullptr;
-  // Sidebar nav row, styled like library_nav_. Settings' own back button
-  // lives on the settings page itself (BuildSettingsPage), rebuilt fresh
-  // alongside settings_panel_ on each open.
-  QPushButton* settings_button_ = nullptr;
+  mira_gui::Sidebar* sidebar_ = nullptr;
   // Set by "Save and leave", so the save that follows closes Settings.
   bool close_settings_after_save_ = false;
-
-  // Library is checked/highlighted whenever content_stack_ shows splitter_
-  // (see UpdateLibraryNavActive).
-  QPushButton* library_nav_ = nullptr;
-  QPushButton* runners_nav_ = nullptr;
-  QToolButton* manage_sources_button_ = nullptr;
-  QToolButton* fetch_art_button_ = nullptr;
-  // One sidebar row per mira_gui::AllSources() entry, same order; only set up
-  // sources that aren't hidden are visible.
-  QList<QPushButton*> source_navs_;
-  QList<QLabel*> source_counts_;
-  QSet<QString> hidden_sources_;    // unticked "In sidebar"
-  QSet<QString> disabled_sources_;  // <id>.enabled = false
-  std::vector<QString> source_order_;  // saved order; see SourceOrder()
-  QHash<QString, QString> source_account_;      // signed-in account, where a store says
-  QHash<QString, qint64> source_imported_at_;   // last import, unix seconds
-  QWidget* source_nav_container_ = nullptr;  // accepts source row drops
-  QWidget* source_drop_line_ = nullptr;
-  QPushButton* source_drag_row_ = nullptr;
-  QPoint source_drag_start_;
-  QWidget* pinned_heading_ = nullptr;
-  QVBoxLayout* pinned_layout_ = nullptr;
-  QString pinned_signature_;  // what the rows show now; see FillSidebarSection
-  QWidget* recent_heading_ = nullptr;
-  QString recent_signature_;
-  QVBoxLayout* recent_layout_ = nullptr;
-  int recent_count_ = 0;  // besides running games
-  QToolButton* pinned_customize_ = nullptr;
-  QToolButton* recent_customize_ = nullptr;
-  mira_gui::sidebar::Style pinned_style_ = mira_gui::sidebar::Style::Covers;
-  mira_gui::sidebar::Style recent_style_ = mira_gui::sidebar::Style::Covers;
-  bool recent_when_ = true;
   QWidget* sidebar_card_overlay_ = nullptr;
   QGridLayout* sidebar_card_layout_ = nullptr;
   QWidget* sidebar_card_ = nullptr;
   // Installer prompts waiting for Settings, a game's card or another card to close.
   std::deque<std::pair<std::string, std::function<void()>>> pending_cards_;  // key, show
-  bool show_source_counts_ = true;
-  bool source_icons_ = true;
   QElapsedTimer last_row_click_;
   bool source_page_tabs_ = true;
   bool drag_select_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.
   std::map<std::string, int> source_tile_widths_;
   bool tile_size_synced_ = false;
-  QVBoxLayout* source_nav_layout_ = nullptr;
-  // Store signed in / launcher installed, by source id, as last asked.
-  QHash<QString, bool> source_ready_;
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
 
@@ -316,29 +208,22 @@ private:
   // The splitter's right side: grid_page_, source_page_, or runners_page_.
   QStackedWidget* main_stack_ = nullptr;
   mira_gui::LibraryPage* grid_page_ = nullptr;
-  // Swaps the splitter out for Settings, full-screen. A
-  // game's edit card is a separate overlay (game_edit_overlay_) that stays
-  // over the grid instead.
+  // Swaps the splitter out for Settings, full-screen. A game's card is a
+  // separate overlay (game_edit_overlay_) that stays over the grid instead.
   QStackedWidget* content_stack_ = nullptr;
   // Rebuilt on every OpenSettings() so it starts synced to what's actually
   // saved, not stale edits left over from a discarded previous open.
   QWidget* settings_page_ = nullptr;
   mira_gui::SettingsPanel* settings_panel_ = nullptr;
-  // A game's editable form, in a centered overlay card; see OpenGameDialog.
-  // The overlay is a chrome sibling,
-  // not a content_stack_ page, so the grid stays visible (dimmed) underneath.
+  // A chrome sibling, not a content_stack_ page, so the grid stays visible
+  // (dimmed) underneath the game's card.
   QWidget* game_edit_overlay_ = nullptr;
   QGridLayout* game_edit_overlay_layout_ = nullptr;
   mira_gui::GameCard* game_card_ = nullptr;
-  // Owns chrome (top_bar_ + content_stack_) at index 0 and game_edit_overlay_
-  // at index 1 -- StackAll shows both always; this just decides which one is
-  // raised on top, toggled in OpenGameDialog/CloseGameEdit.
+  // Owns chrome (top_bar_ + content_stack_) at index 0 and the overlays
+  // after it. StackAll shows them all; this decides which one is raised.
   QStackedLayout* root_stack_ = nullptr;
-  QLabel* footer_ = nullptr;
   mira_gui::HoverCard* hover_card_ = nullptr;
-  // Dwell before a recently played row's hover card.
-  QTimer* recent_hover_ = nullptr;
-  QPointer<QWidget> recent_hover_row_;
 
   mira_gui::GameLibraryModel* library_ = nullptr;
   mira_gui::GameMenus* menus_ = nullptr;

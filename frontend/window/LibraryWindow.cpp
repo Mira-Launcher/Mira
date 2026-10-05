@@ -1,38 +1,18 @@
 #include "LibraryWindow.h"
-#include <algorithm>
 
-#include <QAbstractItemView>
 #include <QAction>
-#include <QButtonGroup>
-#include <QKeySequence>
-#include <QHBoxLayout>
-#include <QIcon>
-#include <QLabel>
-#include <QLineEdit>
-#include <QListWidget>
-#include <QPainter>
-#include <QListWidgetItem>
-#include <QLocale>
-#include <QMenu>
-#include <QMouseEvent>
-#include <QWheelEvent>
-#include <QCloseEvent>
-#include <QDrag>
-#include <QMimeData>
 #include <QApplication>
-#include <QDropEvent>
-#include <QDateTime>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QGuiApplication>
-#include <QPushButton>
-#include <QRubberBand>
+#include <QHBoxLayout>
+#include <QKeySequence>
+#include <QLabel>
+#include <QLocale>
+#include <QMenu>
 #include <QScreen>
-#include <QScrollBar>
-#include <QItemSelection>
-#include <QScrollArea>
-#include <QSet>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
@@ -42,53 +22,42 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
-#include <QWindow>
 
-#include <functional>
-#include <iterator>
-#include <optional>
-
-#include "../client/Events.h"
-#include "../client/api/Artwork.h"
-#include "../client/api/Config.h"
-#include "../client/api/Games.h"
-#include "../client/api/Library.h"
-#include "../client/api/Stores.h"
-#include "../dialogs/AddManualGameDialog.h"
-#include "../dialogs/DesktopEntryImportDialog.h"
-#include "../dialogs/GameDetailPageDialog.h"
+#include <algorithm>
 
 #include "../activity/DownloadTracker.h"
 #include "../activity/DownloadsPanel.h"
 #include "../app/DaemonSupervisor.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
-#include "../app/Shortcuts.h"
 #include "../app/Tray.h"
 #include "../client/EventHub.h"
+#include "../client/Events.h"
+#include "../client/api/Artwork.h"
+#include "../client/api/Config.h"
+#include "../client/api/Games.h"
+#include "../client/api/Library.h"
+#include "../dialogs/GameDetailPageDialog.h"
 #include "../game/GameCard.h"
-#include "../library/ContinueRow.h"
-#include "../library/CoverArt.h"
+#include "../game/InstallPromptCard.h"
+#include "../game/InstallerCards.h"
+#include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
-#include "../library/GamePresentation.h"
-#include "../library/GameTileDelegate.h"
-#include "../library/HoverCard.h"
 #include "../library/GameMenus.h"
+#include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
 #include "../library/LibraryPage.h"
-#include "../library/LibrarySort.h"
 #include "../runners/RunnersPage.h"
-#include "../settings/SettingsCard.h"
 #include "../settings/SettingsPanel.h"
+#include "../sidebar/Sidebar.h"
 #include "../sidebar/SidebarStyleCard.h"
+#include "../sources/ManageSourcesCard.h"
 #include "../sources/SourcePage.h"
 #include "../sources/SourceSettingsCard.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/TabRow.h"
-#include "../widgets/TileView.h"
 #include "../widgets/ModalOverlay.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
@@ -98,25 +67,6 @@ namespace {
 
 // A crash within this many seconds of launch reads as "failed to start".
 constexpr std::int64_t kFailedStartSeconds = 30;
-
-QLabel* SidebarHeading(QWidget* parent, const QString& text) {
-  auto* label = new QLabel(text, parent);
-  label->setProperty("role", "muted");
-  label->setStyleSheet("font-weight: 600; letter-spacing: 0.04em; margin-top: 14px; margin-bottom: 2px;");
-  return label;
-}
-
-// A muted label on the row's right, e.g. a game count.
-QLabel* AddTrailingLabel(QPushButton* row) {
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(0, 0, 10, 0);
-  layout->addStretch(1);
-  auto* label = new QLabel(row);
-  label->setProperty("role", "muted");
-  label->setAttribute(Qt::WA_TransparentForMouseEvents);
-  layout->addWidget(label);
-  return label;
-}
 
 }  // namespace
 
@@ -141,12 +91,6 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // Before the widgets that show them are built, so they start right.
   const int tile_width =
       prefs.tile_width ? std::clamp(*prefs.tile_width, kMinTileWidth, kMaxTileWidth) : kDefaultTileWidth;
-  for (const std::string& id : prefs.source_order.value_or(std::vector<std::string>{})) {
-    source_order_.push_back(QString::fromStdString(id));
-  }
-  for (const auto& [id, at] : prefs.source_imported_at.value_or(std::map<std::string, std::int64_t>{})) {
-    source_imported_at_[QString::fromStdString(id)] = at;
-  }
   for (const auto& [id, width] : prefs.source_tile_widths.value_or(std::map<std::string, int>{})) {
     source_tile_widths_[id] = std::clamp(width, kMinTileWidth, kMaxTileWidth);
   }
@@ -169,10 +113,6 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // Before the panel and the grid, because both ask it for covers.
   artwork_ = new mira_gui::ArtworkStore(this);
   connect(artwork_, &mira_gui::ArtworkStore::CoverChanged, this, &LibraryWindow::UpdateTileCover);
-  // Icons and hero art are only drawn in the sidebar.
-  connect(artwork_, &mira_gui::ArtworkStore::SlotArtChanged, this, [this](const QString& id) {
-    if (pinned_signature_.contains(id) || recent_signature_.contains(id)) RefreshSidebarGames();
-  });
 
   InstallErrorNavigator();
 
@@ -193,15 +133,13 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   // The stylesheet re-polishes every widget by itself; what it cannot reach
   // is what we paint: the placeholder covers drawn in the theme's own colors.
-  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, this, [this] {
-    artwork_->InvalidateAllRenderings();
-    LibraryChanged();  // the sidebar's rows are drawn in theme colors too
-    ApplyTopBarIcons();
-    UpdateLibraryNavActive();  // the checked rows' icons are on_accent
-  });
+  // Connected before the views are built, so it runs before they repaint.
+  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, this,
+          [this] { artwork_->InvalidateAllRenderings(); });
 
   splitter_ = new QSplitter(Qt::Horizontal, this);
-  splitter_->addWidget(BuildSidebar());
+  sidebar_ = BuildSidebar(prefs);
+  splitter_->addWidget(sidebar_);
   // A source page or Runners takes the grid's place here, leaving the sidebar up.
   main_stack_ = new QStackedWidget(this);
   grid_page_ = BuildLibraryPage(prefs, tile_width);
@@ -271,7 +209,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   qApp->installEventFilter(new mira_gui::FocusDropper(this));
 
-  RefreshSourceNavs();
+  sidebar_->RefreshSources();
   Reload(/*force_scan=*/false);
 }
 
@@ -412,22 +350,7 @@ void LibraryWindow::BuildShortcuts() {
 
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   scan_on_startup_ = prefs.scan_on_startup.value_or(true);
-  // Set only when changed in Settings; the sidebar may have changed them since.
-  if (prefs.hidden_sources) {
-    hidden_sources_.clear();
-    for (const std::string& id : *prefs.hidden_sources) hidden_sources_.insert(QString::fromStdString(id));
-  }
-  if (prefs.source_order) {
-    source_order_.clear();
-    for (const std::string& id : *prefs.source_order) source_order_.push_back(QString::fromStdString(id));
-  }
-  if (prefs.hidden_sources || prefs.source_order) UpdateSourceNavs();
-  recent_count_ = prefs.sidebar_recent_count.value_or(0);
-  show_source_counts_ = prefs.sidebar_source_counts.value_or(true);
-  source_icons_ = prefs.sidebar_source_icons.value_or(true);
-  pinned_style_ = mira_gui::sidebar::ParseStyle(prefs.sidebar_pinned_style.value_or("covers"));
-  recent_style_ = mira_gui::sidebar::ParseStyle(prefs.sidebar_recent_style.value_or("covers"));
-  recent_when_ = prefs.sidebar_recent_when.value_or(true);
+  sidebar_->ApplyPrefs(prefs);
   source_page_tabs_ = prefs.source_page_tabs.value_or(true);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
@@ -484,117 +407,12 @@ void LibraryWindow::resizeEvent(QResizeEvent* event) {
   ScheduleSavePrefs();
 }
 
-void LibraryWindow::ApplyTopBarIcons() {
-  using mira_gui::icons::Glyph;
-  settings_button_->setIcon(mira_gui::icons::For(Glyph::Settings));
-  add_games_->setIcon(mira_gui::icons::For(Glyph::Plus, mira_gui::theme::Current().on_accent));
-  runners_nav_->setIcon(mira_gui::icons::For(Glyph::Wrench));
-  fetch_art_button_->setIcon(mira_gui::icons::For(Glyph::Image));
-  manage_sources_button_->setIcon(mira_gui::icons::For(Glyph::Sliders, mira_gui::theme::Current().text_muted));
-  for (QToolButton* button : {pinned_customize_, recent_customize_}) {
-    button->setIcon(mira_gui::icons::For(Glyph::Sliders, mira_gui::theme::Current().text_muted));
-  }
-}
-
 void LibraryWindow::changeEvent(QEvent* event) {
   if (event->type() == QEvent::WindowStateChange && top_bar_ != nullptr) {
     top_bar_->SyncMaximized();
     ScheduleSavePrefs();
   }
   QMainWindow::changeEvent(event);
-}
-
-bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
-  constexpr const char* kSourceMime = "application/x-mira-source";
-  if (auto* nav = qobject_cast<QPushButton*>(watched); nav != nullptr && source_navs_.contains(nav)) {
-    auto* mouse = static_cast<QMouseEvent*>(event);
-    if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton) {
-      source_drag_row_ = nav;
-      source_drag_start_ = mouse->position().toPoint();
-    } else if (event->type() == QEvent::MouseMove && source_drag_row_ == nav &&
-               (mouse->buttons() & Qt::LeftButton) &&
-               (mouse->position().toPoint() - source_drag_start_).manhattanLength() >=
-                   QApplication::startDragDistance()) {
-      const qsizetype index = source_navs_.indexOf(nav);
-      auto* mime = new QMimeData();
-      mime->setData(kSourceMime, mira_gui::AllSources()[index].id.toUtf8());
-      auto* drag = new QDrag(nav);
-      drag->setMimeData(mime);
-      drag->setPixmap(nav->grab());
-      drag->setHotSpot(source_drag_start_);
-      source_drag_row_ = nullptr;
-      nav->setDown(false);
-      drag->exec(Qt::MoveAction);
-      return true;
-    }
-  }
-  if (watched == source_nav_container_) {
-    const auto* drop = static_cast<QDropEvent*>(event);
-    switch (event->type()) {
-      case QEvent::DragEnter:
-      case QEvent::DragMove: {
-        if (!drop->mimeData()->hasFormat(kSourceMime)) return false;
-        event->accept();
-        const int row = SourceDropRow(drop->position().toPoint().y());
-        QWidget* anchor = nullptr;
-        for (QPushButton* nav : source_navs_) {
-          if (nav->isVisible() && source_nav_layout_->indexOf(nav) == row) anchor = nav;
-        }
-        int y = 0;
-        if (anchor != nullptr) {
-          y = anchor->geometry().top() - 2;
-        } else {
-          for (QPushButton* nav : source_navs_) {
-            if (nav->isVisible()) y = std::max(y, nav->geometry().bottom());
-          }
-        }
-        source_drop_line_->setGeometry(0, y, source_nav_container_->width(), 2);
-        source_drop_line_->show();
-        source_drop_line_->raise();
-        return true;
-      }
-      case QEvent::DragLeave:
-        source_drop_line_->hide();
-        return true;
-      case QEvent::Drop: {
-        source_drop_line_->hide();
-        if (!drop->mimeData()->hasFormat(kSourceMime)) return false;
-        const QString id = QString::fromUtf8(drop->mimeData()->data(kSourceMime));
-        MoveSource(id, SourceDropRow(drop->position().toPoint().y()));
-        event->accept();
-        return true;
-      }
-      default:
-        break;
-    }
-  }
-  // A recently played row shows its game's hover card, after a tile's dwell.
-  if (watched->property("hover_game").isValid()) {
-    if (event->type() == QEvent::Enter) {
-      if (recent_hover_ == nullptr) {
-        recent_hover_ = new QTimer(this);
-        recent_hover_->setSingleShot(true);
-        recent_hover_->setInterval(mira_gui::card::kDwellMs);
-        connect(recent_hover_, &QTimer::timeout, this, [this] {
-          if (recent_hover_row_ == nullptr) return;
-          const mira_gui::GameSummary* game =
-              FindGame(recent_hover_row_->property("hover_game").toString().toStdString());
-          if (game == nullptr) return;
-          const QString hint = game->running             ? "Right-click to stop it."
-                               : game->status == "ready" ? "Click to play."
-                                                         : QString();
-          ShowHoverCardFor(*game, QRect(recent_hover_row_->mapToGlobal(QPoint(0, 0)), recent_hover_row_->size()),
-                           hint);
-        });
-      }
-      recent_hover_row_ = qobject_cast<QWidget*>(watched);
-      recent_hover_->start();
-    } else if (event->type() == QEvent::Leave || event->type() == QEvent::MouseButtonPress) {
-      if (recent_hover_ != nullptr) recent_hover_->stop();
-      HideHoverCard();
-    }
-  }
-  return QMainWindow::eventFilter(watched, event);
 }
 
 void LibraryWindow::QuitOrClose() {
@@ -695,177 +513,29 @@ void LibraryWindow::OpenGameDetailPage(const std::string& id) {
   dialog.exec();
 }
 
-void LibraryWindow::ImportDesktopEntries() {
-  mira_gui::DesktopEntryImportDialog dialog(this);
-  dialog.exec();
-}
-
-void LibraryWindow::AddGameManually() {
-  mira_gui::AddManualGameDialog dialog(this);
-  dialog.exec();
-}
-
-QWidget* LibraryWindow::BuildSidebar() {
-  auto* sidebar = new QWidget(this);
-  sidebar->setObjectName("left_sidebar");
-  // Rows with their own menu handle it first; the rest fall through to here.
-  sidebar->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(sidebar, &QWidget::customContextMenuRequested, this,
-          [this, sidebar](const QPoint& pos) { ShowSidebarMenu(sidebar->mapToGlobal(pos)); });
-  auto* layout = new QVBoxLayout(sidebar);
-  layout->setContentsMargins(10, 10, 10, 10);
-  layout->setSpacing(2);
-
-  // Always visible (not just a "back" affordance): checked/highlighted
-  // exactly when the grid is the current content; see UpdateLibraryNavActive.
-  library_nav_ = new QPushButton("Library", sidebar);
-  library_nav_->setObjectName("library_nav");
-  library_nav_->setFlat(true);
-  library_nav_->setCheckable(true);
-  library_nav_->setChecked(true);
-  connect(library_nav_, &QPushButton::clicked, this, &LibraryWindow::ShowLibrary);
-  layout->addWidget(library_nav_);
-
-  runners_nav_ = new QPushButton("Runners", sidebar);
-  runners_nav_->setFlat(true);
-  runners_nav_->setCheckable(true);
-  connect(runners_nav_, &QPushButton::clicked, this, &LibraryWindow::OpenRunners);
-  layout->addWidget(runners_nav_);
-
-  settings_button_ = new QPushButton("Settings", sidebar);
-  settings_button_->setObjectName("sidebar_settings");
-  settings_button_->setFlat(true);
-  connect(settings_button_, &QPushButton::clicked, this, [this] { OpenSettings(); });
-  layout->addWidget(settings_button_);
-
-  // The PINNED, SOURCES and RECENTLY PLAYED rows scroll, so they never set
-  // the window's minimum height.
-  auto* nav_scroll = new QScrollArea(sidebar);
-  nav_scroll->setWidgetResizable(true);
-  nav_scroll->setFrameShape(QFrame::NoFrame);
-  nav_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  nav_scroll->viewport()->setAutoFillBackground(false);
-  auto* nav_content = new QWidget();
-  nav_content->setAutoFillBackground(false);
-  auto* nav_layout = new QVBoxLayout(nav_content);
-  nav_layout->setContentsMargins(0, 0, 0, 0);
-  nav_layout->setSpacing(2);
-
-  // PINNED and RECENTLY PLAYED headings carry a button for the customize card.
-  const auto game_heading = [this, nav_content](const QString& text, QToolButton*& button) {
-    auto* heading = new QWidget(nav_content);
-    auto* heading_layout = new QHBoxLayout(heading);
-    heading_layout->setContentsMargins(0, 0, 0, 0);
-    heading_layout->addWidget(SidebarHeading(heading, text), /*stretch=*/1);
-    button = new QToolButton(heading);
-    button->setAutoRaise(true);
-    button->setToolTip("Customize how these look");
-    connect(button, &QToolButton::clicked, this, &LibraryWindow::OpenSidebarStyle);
-    heading_layout->addWidget(button, 0, Qt::AlignBottom);
-    heading->setVisible(false);
-    return heading;
-  };
-  pinned_heading_ = game_heading("PINNED", pinned_customize_);
-  nav_layout->addWidget(pinned_heading_);
-  pinned_layout_ = new QVBoxLayout();
-  pinned_layout_->setSpacing(2);
-  nav_layout->addLayout(pinned_layout_);
-
-  auto* sources_heading = new QWidget(nav_content);
-  auto* sources_heading_layout = new QHBoxLayout(sources_heading);
-  sources_heading_layout->setContentsMargins(0, 0, 0, 0);
-  sources_heading_layout->addWidget(SidebarHeading(sources_heading, "SOURCES"), /*stretch=*/1);
-  manage_sources_button_ = new QToolButton(sources_heading);
-  manage_sources_button_->setAutoRaise(true);
-  manage_sources_button_->setToolTip("Manage sources");
-  connect(manage_sources_button_, &QToolButton::clicked, this, &LibraryWindow::OpenManageSources);
-  sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignBottom);
-  nav_layout->addWidget(sources_heading);
-
-  source_nav_layout_ = new QVBoxLayout();
-  source_nav_layout_->setSpacing(4);
-  // Rows drag to reorder; see eventFilter.
-  source_nav_container_ = nav_content;
-  nav_content->setAcceptDrops(true);
-  nav_content->installEventFilter(this);
-  source_drop_line_ = new QWidget(nav_content);
-  source_drop_line_->setFixedHeight(2);
-  source_drop_line_->setStyleSheet(QString("background: %1;").arg(mira_gui::theme::Current().accent.name()));
-  source_drop_line_->hide();
-  for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
-    auto* nav = new QPushButton(source.name, nav_content);
-    nav->setFlat(true);
-    nav->setCheckable(true);
-    nav->setVisible(false);  // until UpdateSourceNavs knows it's set up
-    nav->setObjectName("source_nav");
-    nav->setIconSize(QSize(22, 22));
-    source_counts_.append(AddTrailingLabel(nav));
-    connect(nav, &QPushButton::clicked, this, [this, source] { OpenSource(source); });
-    nav->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(nav, &QWidget::customContextMenuRequested, this,
-            [this, nav, source](const QPoint& pos) { ShowSourceMenu(source, nav->mapToGlobal(pos)); });
-    nav->installEventFilter(this);
-    source_nav_layout_->addWidget(nav);
-    source_navs_.append(nav);
-  }
-  nav_layout->addLayout(source_nav_layout_);
-
-  recent_heading_ = game_heading("RECENTLY PLAYED", recent_customize_);
-  nav_layout->addWidget(recent_heading_);
-  recent_layout_ = new QVBoxLayout();
-  recent_layout_->setSpacing(2);
-  nav_layout->addLayout(recent_layout_);
-
-  nav_layout->addStretch(1);
-  nav_scroll->setWidget(nav_content);
-  layout->addWidget(nav_scroll, /*stretch=*/1);
-
-  auto* actions = new QHBoxLayout();
-  actions->setSpacing(6);
-  add_games_ = new QToolButton(sidebar);
-  add_games_->setObjectName("add_games");
-  add_games_->setText("Add games");
-  add_games_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  add_games_->setPopupMode(QToolButton::InstantPopup);
-  // QToolButton stays content-sized otherwise.
-  add_games_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  auto* add_games_menu = new QMenu(add_games_);
-  add_games_menu->addAction("Scan library folders", this, [this] { mira_gui::actions::ScanLibrary(this); });
-  add_games_menu->addAction("Import Steam library", this,
-                            [this] { mira_gui::actions::ImportSteam(this, [this] { NoteImported("steam"); }); });
-  add_games_menu
-      ->addAction("Import Lutris games", this,
-                  [this] { mira_gui::actions::ImportLutris(this, [this] { NoteImported("lutris"); }); })
-      ->setToolTip(
-          "Add the Wine games from Lutris's database. Nothing is moved or renamed, so the games "
-          "stay playable in Lutris too.");
-  add_games_menu
-      ->addAction("Import desktop entries…", this, &LibraryWindow::ImportDesktopEntries)
-      ->setToolTip(
-          "Pick installed apps from your application menu to add as games. This includes "
-          "Flatpak apps.");
-  add_games_menu->addSeparator();
-  add_games_menu->addAction("Add game manually…", this, &LibraryWindow::AddGameManually);
-  add_games_->setMenu(add_games_menu);
-  actions->addWidget(add_games_, /*stretch=*/1);
-
-  fetch_art_button_ = new QToolButton(sidebar);
-  fetch_art_button_->setObjectName("fetch_art");
-  // mirad only fetches on its own for a newly found game, so one that failed
-  // once stays bare until asked again.
-  fetch_art_button_->setToolTip("Fetch missing cover art for every game without one");
-  connect(fetch_art_button_, &QToolButton::clicked, this, &LibraryWindow::FetchMissingArtwork);
-  actions->addWidget(fetch_art_button_);
-  layout->addSpacing(6);
-  layout->addLayout(actions);
-
-  // Replaces the old bottom bar entirely.
-  footer_ = new QLabel(sidebar);
-  footer_->setProperty("role", "muted");
-  footer_->setContentsMargins(6, 8, 6, 2);
-  footer_->setWordWrap(true);
-  layout->addWidget(footer_);
-
+mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {
+  using mira_gui::Sidebar;
+  auto* sidebar = new Sidebar(library_, artwork_, prefs, this);
+  connect(sidebar, &Sidebar::LibraryClicked, this, &LibraryWindow::ShowLibrary);
+  connect(sidebar, &Sidebar::RunnersClicked, this, &LibraryWindow::OpenRunners);
+  connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
+  connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
+  connect(sidebar, &Sidebar::ManageSourcesRequested, this, &LibraryWindow::OpenManageSources);
+  connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
+  connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
+  connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);
+  connect(sidebar, &Sidebar::GameMenuRequested, this,
+          [this](const std::string& id, const QPoint& pos) { menus_->ShowGameMenu(id, pos); });
+  connect(sidebar, &Sidebar::HoverRequested, this,
+          [this](const std::string& id, const QRect& anchor, const QString& hint) {
+            if (const mira_gui::GameSummary* game = FindGame(id)) ShowHoverCardFor(*game, anchor, hint);
+          });
+  connect(sidebar, &Sidebar::HoverEnded, this, &LibraryWindow::HideHoverCard);
+  connect(sidebar, &Sidebar::SourcesChanged, this, [this] {
+    if (auto* card = qobject_cast<mira_gui::ManageSourcesCard*>(sidebar_card_)) {
+      card->SetEntries(sidebar_->SourceEntries());
+    }
+  });
   return sidebar;
 }
 
@@ -877,7 +547,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
   connect(page, &mira_gui::LibraryPage::SortChanged, this, &LibraryWindow::ScheduleSavePrefs);
   connect(page, &mira_gui::LibraryPage::ShownChanged, this, [this] {
     UpdateFooter();
-    RefreshSidebarGames();  // pinned rows follow the Hidden filter
+    sidebar_->SetShowingHidden(grid_page_->FilterKey() == "hidden");  // pinned rows follow it
   });
   connect(page, &mira_gui::LibraryPage::GameActivated, this, [this](const std::string& id) {
     const mira_gui::GameSummary* game = FindGame(id);
@@ -938,8 +608,6 @@ void LibraryWindow::UpdateTileCover(const QString& id) {
   grid_page_->UpdateCover(id.toStdString());
   // Whether or not the game has a tile.
   if (game_card_ != nullptr) game_card_->UpdateCover(id.toStdString());
-  // Sidebar rows draw the cover, or take their color from it.
-  if (pinned_signature_.contains(id) || recent_signature_.contains(id)) RefreshSidebarGames();
   // Every view of that game repaints its row.
   library_->Touch(id.toStdString());
 }
@@ -1067,7 +735,7 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
-    RefreshSourceNavs();
+    sidebar_->RefreshSources();
     downloads_->RecheckJobs();
   }
 }
@@ -1077,18 +745,11 @@ void LibraryWindow::LibraryChanged() {
   if (game_card_ != nullptr && library_->Find(game_card_->id()) == nullptr) CloseGameEdit();
   UpdateFooter();
   if (runners_page_ != nullptr) runners_page_->SetGames(library_->Games());
-  UpdateSourceNavs();
-  RefreshSidebarGames();
 }
 
 void LibraryWindow::UpdateFooter() {
-  // The connection only earns a line when it's gone.
-  QString text = QString("%1 of %2 games shown").arg(grid_page_->ShownCount()).arg(library_->Games().size());
-  if (!mirad_reachable_) {
-    text += QString("<br><span style='color:%1'>●</span> mirad isn't running")
-                .arg(mira_gui::theme::Current().error.name());
-  }
-  footer_->setText(text);
+  sidebar_->SetFooter(grid_page_->ShownCount(), static_cast<int>(library_->Games().size()),
+                      mirad_reachable_);
 }
 
 const mira_gui::GameSummary* LibraryWindow::FindGame(const std::string& id) const { return library_->Find(id); }
@@ -1318,32 +979,15 @@ void LibraryWindow::SetGridControlsEnabled(bool enabled) {
   // The grid itself is what's leaving the screen either way -- nothing left
   // to preview.
   if (!enabled) HideHoverCard();
-  // These act on a hidden grid. library_nav_ stays clickable, since it's the way
-  // back out. The zoom slider is SyncZoom's.
+  // These act on a hidden grid. The sidebar's nav rows stay clickable, since
+  // they're the way back out. The zoom slider is SyncZoom's.
   grid_page_->SetControlsEnabled(enabled);
-  for (QWidget* control : {static_cast<QWidget*>(add_games_), static_cast<QWidget*>(settings_button_),
-                           static_cast<QWidget*>(fetch_art_button_)}) {
-    control->setEnabled(enabled);
-  }
+  sidebar_->SetActionsEnabled(enabled);
   // Back from Settings onto a source page: the grid is still covered.
   if (enabled && (source_page_ != nullptr || runners_page_ != nullptr)) SetSourceControlsEnabled(false);
 }
 
 void LibraryWindow::UpdateLibraryNavActive() {
-  using mira_gui::icons::Glyph;
-  const mira_gui::theme::Tokens& tokens = mira_gui::theme::Current();
-
-  const bool library_active = GridShown() && !GameEditOpen();
-  if (library_nav_ != nullptr) {
-    library_nav_->setChecked(library_active);
-    library_nav_->setIcon(
-        mira_gui::icons::For(Glyph::Home, library_active ? tokens.on_accent : tokens.text));
-  }
-  if (runners_nav_ != nullptr) {
-    const bool runners_active = runners_page_ != nullptr && content_stack_->currentWidget() == splitter_;
-    runners_nav_->setChecked(runners_active);
-    runners_nav_->setIcon(mira_gui::icons::For(Glyph::Wrench, runners_active ? tokens.on_accent : tokens.text));
-  }
   // Only the pages it acts on show the tile size.
   if (zoom_ != nullptr) {
     const bool source_shown = content_stack_->currentWidget() == splitter_ && source_page_ != nullptr &&
@@ -1353,38 +997,13 @@ void LibraryWindow::UpdateLibraryNavActive() {
   const QString open_source = content_stack_->currentWidget() == splitter_ && source_page_ != nullptr
                                   ? source_page_->property("source_id").toString()
                                   : QString();
-  const std::vector<mira_gui::SourceInfo>& sources = mira_gui::AllSources();
-  for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
-    const bool active = sources[i].id == open_source;
-    source_navs_[i]->setChecked(active);
-    source_navs_[i]->setIcon(SourceIcon(sources[i], active));
-    source_counts_[i]->setStyleSheet(active ? QString("color: %1;").arg(tokens.on_accent.name()) : QString());
+  if (sidebar_ != nullptr) {
+    sidebar_->SetActive(GridShown() && !GameEditOpen(),
+                        runners_page_ != nullptr && content_stack_->currentWidget() == splitter_,
+                        open_source);
   }
   // Every page switch ends here, so the slider follows the page too.
   SyncZoom();
-}
-
-QIcon LibraryWindow::SourceIcon(const mira_gui::SourceInfo& source, bool active) const {
-  const mira_gui::theme::Tokens& tokens = mira_gui::theme::Current();
-  if (!source_icons_) return mira_gui::icons::For(mira_gui::icons::Glyph::Dot, active ? tokens.on_accent : source.color);
-  // The source's initial on its color, like its page's header.
-  const qreal ratio = devicePixelRatioF();
-  constexpr int kSize = 22;
-  QPixmap pixmap(QSize(kSize, kSize) * ratio);
-  pixmap.setDevicePixelRatio(ratio);
-  pixmap.fill(Qt::transparent);
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(source.color);
-  painter.drawRoundedRect(QRectF(0, 0, kSize, kSize), 6, 6);
-  QFont font = this->font();
-  font.setPixelSize(12);
-  font.setWeight(QFont::Bold);
-  painter.setFont(font);
-  painter.setPen(Qt::white);
-  painter.drawText(QRectF(0, 0, kSize, kSize), Qt::AlignCenter, source.name.left(1));
-  return QIcon(pixmap);
 }
 
 void LibraryWindow::RequestCloseSettings() {
@@ -1405,8 +1024,8 @@ QWidget* LibraryWindow::BuildSettingsPage() {
 
   mira_gui::SettingsPanel::Previews previews;
   previews.artwork = artwork_;
-  for (const mira_gui::GameSummary* game : PinnedGames()) previews.pinned.push_back(*game);
-  for (const mira_gui::GameSummary* game : RecentGames(10)) previews.recent.push_back(*game);
+  for (const mira_gui::GameSummary* game : sidebar_->PinnedGames()) previews.pinned.push_back(*game);
+  for (const mira_gui::GameSummary* game : sidebar_->RecentGames(10)) previews.recent.push_back(*game);
   settings_panel_ = new mira_gui::SettingsPanel(std::move(previews), page);
   close_settings_after_save_ = false;
   connect(settings_panel_, &mira_gui::SettingsPanel::LoadFailed, this, [this](QString error) {
@@ -1421,7 +1040,7 @@ QWidget* LibraryWindow::BuildSettingsPage() {
               return;
             }
             // The change bar going away is the feedback; no notice for a save the user just made.
-            RefreshSourceNavs();
+            sidebar_->RefreshSources();
             if (close) CloseSettings();
           });
   connect(settings_panel_, &mira_gui::SettingsPanel::PrefsSaved, this, &LibraryWindow::ApplySettingsPrefs);
@@ -1522,15 +1141,9 @@ void LibraryWindow::OpenSidebarStyle() {
     for (const mira_gui::GameSummary* game : games) out.push_back(*game);
     return out;
   };
-  auto* card = new mira_gui::SidebarStyleCard({pinned_style_, recent_style_, recent_count_, recent_when_},
-                                              copies(PinnedGames()), copies(RecentGames(10)), artwork_);
-  connect(card, &mira_gui::SidebarStyleCard::Changed, this, [this](const mira_gui::SidebarStyleCard::Choices& choices) {
-    pinned_style_ = choices.pinned;
-    recent_style_ = choices.recent;
-    recent_count_ = choices.recent_count;
-    recent_when_ = choices.recent_when;
-    SaveSidebarStyle();
-  });
+  auto* card = new mira_gui::SidebarStyleCard(sidebar_->StyleChoices(), copies(sidebar_->PinnedGames()),
+                                              copies(sidebar_->RecentGames(10)), artwork_);
+  connect(card, &mira_gui::SidebarStyleCard::Changed, sidebar_, &mira_gui::Sidebar::SetStyleChoices);
   connect(card, &mira_gui::SidebarStyleCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
   ShowSidebarCard(card);
 }
@@ -1549,19 +1162,6 @@ void LibraryWindow::CloseSidebarCard() {
 
 bool LibraryWindow::SidebarCardOpen() const {
   return sidebar_card_overlay_ != nullptr && sidebar_card_overlay_->isVisible();
-}
-
-void LibraryWindow::SaveSidebarStyle() {
-  RefreshSidebarGames();
-  mira_gui::FrontendPrefs prefs;
-  prefs.sidebar_pinned_style = mira_gui::sidebar::StyleKey(pinned_style_);
-  prefs.sidebar_recent_style = mira_gui::sidebar::StyleKey(recent_style_);
-  prefs.sidebar_recent_count = recent_count_;
-  prefs.sidebar_recent_when = recent_when_;
-  // Shown already, so a failed write would otherwise only surface as the old look after a restart.
-  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [this](mira_gui::PatchConfigResult result) {
-    if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not save the sidebar's look.", result.error);
-  });
 }
 
 // ~70% of the window, following it as it resizes.
@@ -1592,13 +1192,13 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   connect(source_page_, &mira_gui::SourcePage::ZoomRequested, this,
           [this](int steps) { zoom_->setValue(zoom_->value() + steps * zoom_->pageStep()); });
   // The games themselves arrive as events.
-  connect(source_page_, &mira_gui::SourcePage::LibraryChanged, this, [this, id = source.id] { NoteImported(id); });
+  connect(source_page_, &mira_gui::SourcePage::LibraryChanged, this, [this, id = source.id] { sidebar_->NoteImported(id); });
   connect(source_page_, &mira_gui::SourcePage::OpenSettingsRequested, this,
           [this](const QString& key) { OpenSettings(key); });
   connect(source_page_, &mira_gui::SourcePage::Removed, this, [this, id = source.id] {
     if (mira_gui::SourceSettingsCard* card = source_page_->SettingsCard()) card->Discard();
     CloseSource();
-    ForgetSource(id);
+    sidebar_->ForgetSource(id);
   });
   // Same rule as the grid's double-click: only a ready game has anything to launch.
   connect(source_page_, &mira_gui::SourcePage::GameMenuRequested, this,
@@ -1655,7 +1255,7 @@ bool LibraryWindow::CloseSource(std::function<void()> retry) {
   }
   SetSourceControlsEnabled(true);
   UpdateLibraryNavActive();
-  RefreshSourceNavs();  // a sign-in or launcher install there changes the order
+  sidebar_->RefreshSources();  // a sign-in or launcher install there changes the order
   return true;
 }
 
@@ -1692,127 +1292,20 @@ void LibraryWindow::ShowGame(const std::string& id) {
   if (!grid_page_->ShowGame(id)) OpenGameDialog(id);  // filtered out: its settings instead
 }
 
-void LibraryWindow::RefreshSourceNavs() {
-  mira_gui::api::GetConfigAsync(this, [this](mira_gui::ConfigResult result) {
-    if (!result.ok) return;
-    disabled_sources_.clear();
-    for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
-      const auto found = result.values.find(source.id.toStdString() + ".enabled");
-      if (found != result.values.end() && found->second == "false") disabled_sources_.insert(source.id);
-    }
-    UpdateSourceNavs();
-  });
-  // A store counts as set up once signed in, a launcher once installed.
-  for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
-    if (source.kind != mira_gui::SourceInfo::Kind::Store) continue;
-    const QString id = source.id;
-    mira_gui::api::GetStoreStatusAsync(
-        this, id.toStdString(), [this, id](mira_gui::StoreStatusResult status) {
-          if (!status.ok) return;  // a failed request says nothing about the account
-          source_ready_[id] = status.authenticated;
-          source_account_[id] = QString::fromStdString(status.account);
-          UpdateSourceNavs();
-        });
-  }
-  mira_gui::api::GetLaunchersAsync(this, [this](mira_gui::LaunchersResult result) {
-    if (!result.ok) return;
-    for (const mira_gui::LauncherInfo& launcher : result.launchers) {
-      source_ready_[QString::fromStdString(launcher.id)] = launcher.installed;
-    }
-    UpdateSourceNavs();
-  });
-}
-
-void LibraryWindow::UpdateSourceNavs() {
-  if (source_nav_layout_ == nullptr) return;
-  std::map<std::string, int> counts;
-  for (const mira_gui::GameSummary& game : library_->Games()) ++counts[game.source];
-
-  const std::vector<mira_gui::SourceInfo>& sources = mira_gui::AllSources();
-  for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
-    const QString& id = sources[i].id;
-    const auto count = counts.find(id.toStdString());
-    const int games = count == counts.end() ? 0 : count->second;
-    const bool ready = games > 0 || source_ready_.value(id, false);
-    source_navs_[i]->setVisible(ready && !hidden_sources_.contains(id) && !disabled_sources_.contains(id));
-    // A store with games whose account is signed out wants a look.
-    const bool signed_out = sources[i].kind == mira_gui::SourceInfo::Kind::Store && games > 0 &&
-                            source_ready_.contains(id) && !source_ready_.value(id);
-    QString label = show_source_counts_ ? QString::number(games) : QString();
-    if (signed_out) label = mira_gui::StatusDot(mira_gui::theme::Current().warning) + label;
-    source_counts_[i]->setText(label);
-    source_navs_[i]->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name) : QString());
-  }
-  int row = 0;
-  for (const QString& id : SourceOrder()) {
-    for (int i = 0; i < static_cast<int>(sources.size()); ++i) {
-      if (sources[i].id != id) continue;
-      source_nav_layout_->removeWidget(source_navs_[i]);
-      source_nav_layout_->insertWidget(row++, source_navs_[i]);
-    }
-  }
-  UpdateLibraryNavActive();
-  if (auto* card = qobject_cast<mira_gui::ManageSourcesCard*>(sidebar_card_)) card->SetEntries(SourceEntries());
-}
-
-std::vector<mira_gui::ManageSourcesCard::Entry> LibraryWindow::SourceEntries() const {
-  std::map<std::string, int> counts;
-  for (const mira_gui::GameSummary& game : library_->Games()) ++counts[game.source];
-  std::vector<mira_gui::ManageSourcesCard::Entry> entries;
-  for (const QString& id : SourceOrder()) {
-    const auto source = std::ranges::find(mira_gui::AllSources(), id, &mira_gui::SourceInfo::id);
-    const auto count = counts.find(id.toStdString());
-    const int games = count == counts.end() ? 0 : count->second;
-    entries.push_back({.source = *source,
-                       .ready = games > 0 || source_ready_.value(id, false),
-                       .enabled = !disabled_sources_.contains(id),
-                       .games = games,
-                       .in_sidebar = !hidden_sources_.contains(id),
-                       .account = source_account_.value(id).toStdString(),
-                       .imported_at = source_imported_at_.value(id, 0)});
-  }
-  return entries;
-}
-
-void LibraryWindow::NoteImported(const QString& id) {
-  source_imported_at_[id] = QDateTime::currentSecsSinceEpoch();
-  mira_gui::FrontendPrefs prefs;
-  std::map<std::string, std::int64_t> imported;
-  for (auto it = source_imported_at_.cbegin(); it != source_imported_at_.cend(); ++it) {
-    imported[it.key().toStdString()] = it.value();
-  }
-  prefs.source_imported_at = std::move(imported);
-  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
-}
-
 void LibraryWindow::OpenManageSources() {
   if (!LeaveOverlays()) return;
-  auto* card = new mira_gui::ManageSourcesCard();
-  card->SetEntries(SourceEntries());
-  connect(card, &mira_gui::ManageSourcesCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
-  connect(card, &mira_gui::ManageSourcesCard::SidebarToggled, this,
-          [this](const QString& id, bool shown) { SetSourceHidden(id, !shown); });
-  connect(card, &mira_gui::ManageSourcesCard::OrderChanged, this, [this](const QStringList& ids) {
-    SetSourceOrder(std::vector<QString>(ids.begin(), ids.end()));
+  using mira_gui::ManageSourcesCard;
+  auto* card = new ManageSourcesCard();
+  card->SetEntries(sidebar_->SourceEntries());
+  connect(card, &ManageSourcesCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+  connect(card, &ManageSourcesCard::SidebarToggled, this,
+          [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
+  connect(card, &ManageSourcesCard::OrderChanged, this, [this](const QStringList& ids) {
+    sidebar_->SetSourceOrder(std::vector<QString>(ids.begin(), ids.end()));
   });
-  connect(card, &mira_gui::ManageSourcesCard::EnabledToggled, this, [this](const QString& id, bool on) {
-    if (on) {
-      disabled_sources_.remove(id);
-    } else {
-      disabled_sources_.insert(id);
-    }
-    UpdateSourceNavs();
-    const mira_gui::ConfigEdit edit{(id + ".enabled").toStdString(), "a boolean", on ? "true" : "false"};
-    mira_gui::api::PatchConfigAsync(this, {edit}, [this](mira_gui::PatchConfigResult result) {
-      if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not change that source.", result.error);
-      RefreshSourceNavs();
-    });
-  });
-  connect(card, &mira_gui::ManageSourcesCard::Imported, this, [this](const QString& id) { NoteImported(id); });
-  connect(card, &mira_gui::ManageSourcesCard::Removed, this, [this](const QString& id) {
-    ForgetSource(id);
-    UpdateSourceNavs();
-  });
+  connect(card, &ManageSourcesCard::EnabledToggled, sidebar_, &mira_gui::Sidebar::SetSourceEnabled);
+  connect(card, &ManageSourcesCard::Imported, sidebar_, &mira_gui::Sidebar::NoteImported);
+  connect(card, &ManageSourcesCard::Removed, sidebar_, &mira_gui::Sidebar::ForgetSource);
   connect(card, &mira_gui::ManageSourcesCard::OpenRequested, this, [this](const QString& id) {
     CloseSidebarCard();
     if (const mira_gui::SourceInfo* source = mira_gui::FindSourceInfo(id)) OpenSource(*source);
@@ -1820,257 +1313,11 @@ void LibraryWindow::OpenManageSources() {
   ShowSidebarCard(card);
 }
 
-void LibraryWindow::ForgetSource(const QString& id) {
-  disabled_sources_.insert(id);
-  source_ready_[id] = false;
-  // mirad's game.removed events say the same; this just doesn't wait for them.
-  library_->RemoveSource(id.toStdString());
-  RefreshSourceNavs();
-}
-
-std::vector<QString> LibraryWindow::SourceOrder() const {
-  std::vector<QString> order;
-  for (const QString& id : source_order_) {
-    const bool known = std::ranges::any_of(mira_gui::AllSources(),
-                                           [&id](const mira_gui::SourceInfo& source) { return source.id == id; });
-    if (known && std::ranges::find(order, id) == order.end()) order.push_back(id);
-  }
-  for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
-    if (std::ranges::find(order, source.id) == order.end()) order.push_back(source.id);
-  }
-  return order;
-}
-
-int LibraryWindow::SourceDropRow(int y) const {
-  // The layout row of the first visible source whose middle is below `y`.
-  int best = -1;
-  int best_top = 0;
-  for (QPushButton* nav : source_navs_) {
-    if (!nav->isVisible() || y >= nav->geometry().center().y()) continue;
-    if (best == -1 || nav->geometry().top() < best_top) {
-      best = source_nav_layout_->indexOf(nav);
-      best_top = nav->geometry().top();
-    }
-  }
-  return best;
-}
-
-void LibraryWindow::MoveSource(const QString& id, int before) {
-  std::vector<QString> order = SourceOrder();
-  QString before_id;
-  if (before >= 0) {
-    if (auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(before)->widget())) {
-      before_id = mira_gui::AllSources()[source_navs_.indexOf(nav)].id;
-    }
-  }
-  if (before_id == id) return;
-  std::erase(order, id);
-  const auto at = before_id.isEmpty() ? order.end() : std::ranges::find(order, before_id);
-  order.insert(at, id);
-  SetSourceOrder(std::move(order));
-}
-
-void LibraryWindow::SetSourceOrder(std::vector<QString> order) {
-  source_order_ = order;
-  UpdateSourceNavs();
-  mira_gui::FrontendPrefs prefs;
-  std::vector<std::string> ids;
-  for (const QString& source : order) ids.push_back(source.toStdString());
-  prefs.source_order = std::move(ids);
-  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
-}
-
-void LibraryWindow::SetSourceHidden(const QString& id, bool hidden) {
-  if (hidden) {
-    hidden_sources_.insert(id);
-  } else {
-    hidden_sources_.remove(id);
-  }
-  UpdateSourceNavs();
-  mira_gui::FrontendPrefs prefs;
-  std::vector<std::string> ids;
-  for (const QString& hidden_id : hidden_sources_) ids.push_back(hidden_id.toStdString());
-  std::ranges::sort(ids);
-  prefs.hidden_sources = std::move(ids);
-  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
-}
-
-std::vector<const mira_gui::GameSummary*> LibraryWindow::PinnedGames() const {
-  // By name, matching the grid: hidden pins only under the Hidden filter.
-  const bool showing_hidden = grid_page_->FilterKey() == "hidden";
-  std::vector<const mira_gui::GameSummary*> pinned;
-  for (const mira_gui::GameSummary& game : library_->Games()) {
-    if (mira_gui::IsPinned(game) && mira_gui::IsHidden(game) == showing_hidden) pinned.push_back(&game);
-  }
-  std::ranges::sort(pinned, [](const mira_gui::GameSummary* a, const mira_gui::GameSummary* b) {
-    return QString::compare(QString::fromStdString(a->name), QString::fromStdString(b->name),
-                            Qt::CaseInsensitive) < 0;
-  });
-  return pinned;
-}
-
-std::vector<const mira_gui::GameSummary*> LibraryWindow::RecentGames(int count, bool running_counts) const {
-  // Every running game, then up to `count` others by last played, or with
-  // `running_counts` up to `count` in all. A hidden game shows only while it
-  // runs, so it can still be stopped.
-  std::vector<const mira_gui::GameSummary*> running;
-  std::vector<const mira_gui::GameSummary*> played;
-  for (const mira_gui::GameSummary& game : library_->Games()) {
-    if (game.running) {
-      running.push_back(&game);
-    } else if (game.last_played_at && !mira_gui::IsHidden(game)) {
-      played.push_back(&game);
-    }
-  }
-  std::ranges::sort(played, [](const mira_gui::GameSummary* a, const mira_gui::GameSummary* b) {
-    return *a->last_played_at > *b->last_played_at;
-  });
-  if (running_counts) count = std::max(0, count - static_cast<int>(running.size()));
-  if (played.size() > static_cast<size_t>(count)) played.resize(count);
-  played.insert(played.begin(), running.begin(), running.end());
-  return played;
-}
-
-void LibraryWindow::RefreshSidebarGames() {
-  if (recent_layout_ == nullptr) return;
-  FillSidebarSection(pinned_heading_, pinned_layout_, PinnedGames(), pinned_style_, /*recent=*/false,
-                     pinned_signature_);
-  // A shelf keeps the size it was given: running games take places in it.
-  FillSidebarSection(recent_heading_, recent_layout_,
-                     RecentGames(recent_count_, recent_style_ == mira_gui::sidebar::Style::Shelf), recent_style_,
-                     /*recent=*/true, recent_signature_);
-}
-
-void LibraryWindow::FillSidebarSection(QWidget* heading, QVBoxLayout* layout,
-                                       const std::vector<const mira_gui::GameSummary*>& games,
-                                       mira_gui::sidebar::Style style, bool recent, QString& signature) {
-  // Most refreshes (every game.updated) change nothing shown here; rebuilding
-  // anyway makes the rows flicker.
-  // A shelf cover is too narrow for "Yesterday": it gets "1d ago".
-  const bool shelf = style == mira_gui::sidebar::Style::Shelf;
-  const auto trailing = [recent, shelf, this](const mira_gui::GameSummary& game) {
-    if (game.running) return QString("Playing");
-    if (!recent || !recent_when_) return QString();
-    return shelf ? mira_gui::FormatPlayedAgoShort(game.last_played_at) : mira_gui::FormatPlayedAgo(game.last_played_at);
-  };
-  QString wanted = mira_gui::theme::Current().running.name() + mira_gui::sidebar::StyleKey(style);
-  for (const mira_gui::GameSummary* game : games) {
-    wanted += QString("\n%1\t%2\t%3\t%4\t%5\t%6")
-                  .arg(QString::fromStdString(game->id), QString::fromStdString(game->name),
-                       QString::fromStdString(game->status), game->running ? "1" : "0", trailing(*game),
-                       mira_gui::sidebar::ArtSignature(*game, style, artwork_));
-  }
-  if (wanted == signature) return;
-  signature = wanted;
-
-  QWidget* parent = heading->parentWidget();
-  parent->setUpdatesEnabled(false);
-  // deleteLater: a row's own click or menu may be what got us here. Hidden
-  // first: a popup's nested event loop would otherwise keep it painted.
-  while (QLayoutItem* item = layout->takeAt(0)) {
-    if (QWidget* row = item->widget()) {
-      // The hovered row is going away without a Leave, so its card would stay up.
-      if (recent_hover_row_ != nullptr && (row == recent_hover_row_ || row->isAncestorOf(recent_hover_row_))) {
-        if (recent_hover_ != nullptr) recent_hover_->stop();
-        recent_hover_row_ = nullptr;
-        HideHoverCard();
-      }
-      row->hide();
-      row->deleteLater();
-    }
-    delete item;
-  }
-  heading->setVisible(!games.empty());
-  using mira_gui::sidebar::Style;
-  if (style == Style::Shelf) {
-    auto* shelf = new mira_gui::sidebar::Shelf(parent);
-    for (const mira_gui::GameSummary* game : games) {
-      auto* cover = new mira_gui::sidebar::ShelfCover(*game, artwork_, trailing(*game), shelf);
-      WireSidebarGame(cover, *game);
-      shelf->Add(cover);
-    }
-    if (!games.empty()) layout->addWidget(shelf);
-    else shelf->deleteLater();
-  } else {
-    for (const mira_gui::GameSummary* game : games) {
-      QPushButton* row = style == Style::Hero
-                             ? new mira_gui::sidebar::HeroRow(*game, artwork_, trailing(*game), parent)
-                             : mira_gui::sidebar::MakeCoverRow(*game, artwork_, trailing(*game), parent);
-      WireSidebarGame(row, *game);
-      layout->addWidget(row);
-    }
-  }
-  parent->setUpdatesEnabled(true);
-}
-
-void LibraryWindow::WireSidebarGame(QPushButton* row, const mira_gui::GameSummary& game) {
-  const std::string id = game.id;
-  if (!game.running && game.status == "ready") {
-    connect(row, &QPushButton::clicked, this, [this, id] { RowClicked(id); });
-  }
-  row->setProperty("hover_game", QString::fromStdString(id));
-  row->installEventFilter(this);
-  row->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(row, &QWidget::customContextMenuRequested, this,
-          [this, row, id](const QPoint& pos) { menus_->ShowGameMenu(id, row->mapToGlobal(pos)); });
-}
-
 void LibraryWindow::RowClicked(const std::string& id) {
   if (last_row_click_.isValid() && last_row_click_.elapsed() < QApplication::doubleClickInterval()) return;
   last_row_click_.start();
   const mira_gui::GameSummary* game = FindGame(id);
   if (game != nullptr && mira_gui::CanPlayOrStop(*game)) ToggleRunning(id);
-}
-
-void LibraryWindow::ShowSourceMenu(const mira_gui::SourceInfo& source, const QPoint& global_pos) {
-  QMenu menu(this);
-  QAction* open = menu.addAction("Open " + source.name);
-  // Neighbours among the visible rows, in their shown order.
-  std::vector<QPushButton*> shown;
-  for (int row = 0; row < source_nav_layout_->count(); ++row) {
-    auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(row)->widget());
-    if (nav != nullptr && nav->isVisible()) shown.push_back(nav);
-  }
-  QPushButton* self = source_navs_[std::ranges::find(mira_gui::AllSources(), source.id, &mira_gui::SourceInfo::id) -
-                                   mira_gui::AllSources().begin()];
-  const auto position = std::ranges::find(shown, self);
-  QAction* up = menu.addAction("Move up");
-  up->setEnabled(position != shown.end() && position != shown.begin());
-  QAction* down = menu.addAction("Move down");
-  down->setEnabled(position != shown.end() && position + 1 != shown.end());
-  QAction* hide = menu.addAction("Hide from sidebar");
-  menu.addSeparator();
-  QAction* manage = menu.addAction("Manage sources…");
-  QAction* settings = menu.addAction("Sidebar settings…");
-  QAction* chosen = menu.exec(global_pos);
-  if (chosen == open) {
-    OpenSource(source);
-  } else if (chosen == up) {
-    MoveSource(source.id, source_nav_layout_->indexOf(*(position - 1)));
-  } else if (chosen == down) {
-    MoveSource(source.id, position + 2 == shown.end() ? -1 : source_nav_layout_->indexOf(*(position + 2)));
-  } else if (chosen == hide) {
-    SetSourceHidden(source.id, true);
-  } else if (chosen == manage) {
-    OpenManageSources();
-  } else if (chosen == settings) {
-    OpenSettings(mira_gui::SettingsPanel::kSidebarKey);
-  }
-}
-
-void LibraryWindow::ShowSidebarMenu(const QPoint& global_pos) {
-  QMenu menu(this);
-  QAction* manage = menu.addAction("Manage sources…");
-  QAction* customize = menu.addAction("Customize pinned and recent…");
-  QAction* settings = menu.addAction("Sidebar settings…");
-  QAction* chosen = menu.exec(global_pos);
-  if (chosen == manage) {
-    OpenManageSources();
-  } else if (chosen == customize) {
-    OpenSidebarStyle();
-  } else if (chosen == settings) {
-    OpenSettings(mira_gui::SettingsPanel::kSidebarKey);
-  }
 }
 
 void LibraryWindow::ShowLibrary() {
@@ -2090,7 +1337,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   if (type == "stream.gap") {
     // This stream fell behind mirad's buffer, so what changed meanwhile has to be asked for.
     RefreshGames();
-    RefreshSourceNavs();
+    sidebar_->RefreshSources();
     downloads_->RecheckJobs();
     return;
   }
