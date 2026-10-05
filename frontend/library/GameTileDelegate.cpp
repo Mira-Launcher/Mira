@@ -2,7 +2,9 @@
 
 #include <algorithm>
 
+#include <QAbstractItemView>
 #include <QFontMetrics>
+#include <QTimer>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
@@ -35,6 +37,20 @@ GameTileDelegate::GameTileDelegate(QObject* parent, QSize tile, ArtworkStore* ar
     : QStyledItemDelegate(parent), tile_(tile), artwork_(artwork) {}
 
 void GameTileDelegate::SetTileSize(QSize tile) { tile_ = tile; }
+
+void GameTileDelegate::ShowNote(QAbstractItemView* view, const QString& id, const QString& text) {
+  auto* delegate = dynamic_cast<GameTileDelegate*>(view->itemDelegate());
+  if (delegate == nullptr) return;
+  delegate->note_id_ = id;
+  delegate->note_ = text;
+  view->viewport()->update();
+  QTimer::singleShot(3000, view, [view, delegate, id] {
+    if (delegate->note_id_ != id) return;  // a newer note replaced it
+    delegate->note_.clear();
+    delegate->note_id_.clear();
+    view->viewport()->update();
+  });
+}
 
 QSize GameTileDelegate::sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const {
   return tile_;
@@ -200,6 +216,23 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->drawEllipse(badge);
     static const QIcon kPin = icons::For(icons::Glyph::Pin, QColor(255, 255, 255, 235));
     kPin.paint(painter, badge.adjusted(4, 4, -4, -4));
+  }
+
+  if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {
+    QFont note_font = option.font;
+    note_font.setWeight(QFont::DemiBold);
+    painter->setFont(note_font);
+    const QFontMetrics metrics(note_font);
+    // Wraps on a narrow tile rather than cutting the words off.
+    const QRect text = metrics.boundingRect(QRect(0, 0, rect.width() - 32, rect.height()),
+                                            Qt::AlignCenter | Qt::TextWordWrap, note_);
+    const QRect pill(rect.center().x() - (text.width() + 20) / 2, rect.center().y() - (text.height() + 12) / 2,
+                     text.width() + 20, text.height() + 12);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(0, 0, 0, 200));
+    painter->drawRoundedRect(pill, 12, 12);
+    painter->setPen(QColor(255, 255, 255, 240));
+    painter->drawText(pill, Qt::AlignCenter | Qt::TextWordWrap, note_);
   }
 
   // Border last, so selection reads on top of the artwork.

@@ -73,6 +73,8 @@ class Sidebar : public QWidget {
   SidebarStyleCard::Choices StyleChoices() const;
   // Redraws both sections and stores the choices.
   void SetStyleChoices(const SidebarStyleCard::Choices& choices);
+  // Marks these games' pinned and recently played rows as selected, as they are in the grid.
+  void SetSelectedGames(const QSet<QString>& ids);
 
  signals:
   void LibraryClicked();
@@ -86,6 +88,8 @@ class Sidebar : public QWidget {
   // A pinned or recently played row's click.
   void PlayRequested(const std::string& id);
   void GameMenuRequested(const std::string& id, const QPoint& global_pos);
+  // Ctrl+click on a game row: add it to the selection, or take it out.
+  void SelectionToggled(const std::string& id);
   // A game row's hover card after its dwell (`anchor` is global), and its end.
   void HoverRequested(const std::string& id, const QRect& anchor, const QString& hint);
   void HoverEnded();
@@ -168,6 +172,7 @@ class Sidebar : public QWidget {
   // Dwell before a game row's hover card.
   QTimer* hover_timer_ = nullptr;
   QPointer<QWidget> hover_row_;
+  QSet<QString> selected_games_;  // as the library grid has them
 };
 
 }  // namespace mira_gui

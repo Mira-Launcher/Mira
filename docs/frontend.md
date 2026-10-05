@@ -145,6 +145,7 @@ Settings takes over the window body. `settings/SettingsNav` lists the categories
 | `scan_on_startup` | Run a library scan when the GUI opens. |
 | `theme` | Theme name or `auto`. |
 | `drag_select` | Drag across the grid to select. |
+| `double_click_play` | Double-clicking a game plays or stops it. |
 | `tile_spacing`, `grid_margin`, `tile_radius`, `panel_radius`, `control_radius` | Shape overrides in pixels, `-1` for the theme's value. |
 | `shortcut_overrides` | Changed shortcuts by id. |
 | `hidden_sources`, `source_order` | Which sources the sidebar shows, and in what order. |

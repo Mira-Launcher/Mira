@@ -684,6 +684,8 @@ struct FrontendPrefs {
   std::optional<std::string> theme;
   // On (default): dragging across the grid rubber-band selects tiles.
   std::optional<bool> drag_select;
+  // On (default): double-clicking a game in a grid plays it, or stops it while it runs.
+  std::optional<bool> double_click_play;
   // Shape adjustments layered over whatever the theme sets, in pixels; see
   // theme::Overrides. Unset means "leave it to the theme".
   std::optional<int> tile_spacing;

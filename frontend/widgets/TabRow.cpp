@@ -77,6 +77,7 @@ void TabRow::Relabel(Tab& tab) {
   tab.button->setProperty("alert", tab.alert && tab.count > 0);
   tab.button->style()->unpolish(tab.button);
   tab.button->style()->polish(tab.button);
+  updateGeometry();
   Fit();
 }
 
@@ -97,6 +98,7 @@ void TabRow::SetAlert(const QString& key, bool alert) {
 void TabRow::SetCurrent(const QString& key) {
   current_ = by_key_.contains(key) ? key : QString();
   for (auto it = by_key_.begin(); it != by_key_.end(); ++it) it->button->setChecked(it.key() == current_);
+  updateGeometry();
   Fit();  // the current tab is bold, so wider, and always stays in the row
 }
 
@@ -104,12 +106,14 @@ QString TabRow::Current() const { return current_; }
 
 void TabRow::SetTabsVisible(bool visible) {
   tabs_visible_ = visible;
+  updateGeometry();
   Fit();
 }
 
 void TabRow::SetTrailing(QWidget* widget) {
   layout_->insertWidget(search_button_ != nullptr ? layout_->indexOf(search_button_) : layout_->count(), widget);
   trailing_.append(widget);
+  updateGeometry();
   Fit();
 }
 
@@ -129,12 +133,28 @@ void TabRow::SetSearch(QLineEdit* search) {
   });
   layout_->addWidget(search_button_);
   layout_->addWidget(search_);
+  updateGeometry();
   Fit();
 }
 
 void TabRow::OpenSearch() {
   search_open_ = true;
   Fit();
+}
+
+QSize TabRow::sizeHint() const {
+  QSize hint = QWidget::sizeHint();
+  const int spacing = layout_->spacing();
+  int width = kStretchMin;
+  if (tabs_visible_) {
+    for (const QString& key : order_) width += by_key_[key].button->sizeHint().width() + spacing;
+  }
+  for (const QWidget* widget : trailing_) {
+    if (!widget->isHidden()) width += WidthOf(widget) + spacing;
+  }
+  if (search_ != nullptr) width += kSearchMax + spacing;
+  hint.setWidth(width);
+  return hint;
 }
 
 bool TabRow::event(QEvent* event) {

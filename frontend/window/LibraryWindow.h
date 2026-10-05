@@ -99,6 +99,8 @@ private:
                         const QString& hint = QString());
   void HideHoverCard();
   void ToggleRunning(const std::string& id);
+  // A double-click that didn't play anything says why, on that game's tile, for a few seconds.
+  void ExplainDoubleClickOff(const std::string& id);
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
   void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
@@ -198,6 +200,7 @@ private:
   QElapsedTimer last_row_click_;
   bool source_page_tabs_ = true;
   bool drag_select_ = true;
+  bool double_click_play_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.
   std::map<std::string, int> source_tile_widths_;
   bool tile_size_synced_ = false;

@@ -93,6 +93,7 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   connect(grid_, &QAbstractItemView::doubleClicked, this, [this](const QModelIndex& index) {
     if (const GameSummary* game = games_->GameAt(index)) emit GameActivated(game->id);
   });
+  connect(grid_->selectionModel(), &QItemSelectionModel::selectionChanged, this, &LibraryPage::SelectionChanged);
   grid_->on_hover = [this](const QModelIndex& index) { Hover(index); };
   grid_->on_ctrl_wheel = [this](int steps) { emit ZoomStepped(steps); };
   layout->addWidget(grid_, /*stretch=*/1);
@@ -234,6 +235,17 @@ std::string LibraryPage::SelectedId() const {
   const QModelIndexList rows = grid_->selectionModel()->selectedIndexes();
   return rows.size() == 1 ? rows.front().data(GameTileDelegate::IdRole).toString().toStdString()
                           : std::string();
+}
+
+void LibraryPage::ShowTileNote(const std::string& id, const QString& text) {
+  GameTileDelegate::ShowNote(grid_, QString::fromStdString(id), text);
+}
+
+bool LibraryPage::ToggleSelected(const std::string& id) {
+  const QModelIndex tile = games_->mapFromSource(library_->IndexOf(id));
+  if (!tile.isValid()) return false;
+  grid_->selectionModel()->select(tile, QItemSelectionModel::Toggle);
+  return true;
 }
 
 bool LibraryPage::ShowGame(const std::string& id) {

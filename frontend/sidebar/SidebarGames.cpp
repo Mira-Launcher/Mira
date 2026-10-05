@@ -301,8 +301,9 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   row->setMinimumHeight(kThumb.height() + 8);
   // Only hover and press take the cover's color; at rest the rows stay plain.
   const QColor color = artwork->CoverColor(QString::fromStdString(game.id));
-  row->setStyleSheet(QString("QPushButton:hover { background: %1; } QPushButton:pressed { background: %2; }")
-                         .arg(Rgba(color, 0.3), Rgba(color, 0.45)));
+  row->setStyleSheet(QString("QPushButton:hover { background: %1; } QPushButton:pressed { background: %2; } "
+                             "QPushButton[selected=\"true\"] { background: %3; }")
+                         .arg(Rgba(color, 0.3), Rgba(color, 0.45), Rgba(theme::Current().accent, 0.3)));
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(8, 0, 10, 0);
   layout->setSpacing(10);
@@ -384,10 +385,12 @@ void HeroRow::paintEvent(QPaintEvent*) {
   painter.setPen(QColor(255, 255, 255, 240));
   painter.drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
                    QFontMetrics(font).elidedText(text(), Qt::ElideRight, text_rect.width()));
-  if (running_) {
+  // Selected in the library grid too: the grid's own accent outline.
+  const bool selected = property("selected").toBool();
+  if (running_ || selected) {
     painter.setClipping(false);
-    painter.setPen(QPen(tokens.running, 2));
-    painter.drawPath(clip);
+    painter.setPen(QPen(selected ? tokens.accent : tokens.running, 2));
+    painter.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), tokens.radius_control, tokens.radius_control);
   }
 }
 
@@ -414,8 +417,10 @@ void ShelfCover::paintEvent(QPaintEvent*) {
   painter.drawPixmap(rect(), artwork_->CoverById(id_, name_, size(), devicePixelRatioF()));
   DrawCoverLabel(&painter, QRectF(rect()), trailing_, tokens.font_size_small - 1);
   painter.setClipping(false);
-  if (running_ || underMouse()) {
-    painter.setPen(QPen(running_ ? tokens.running : QColor(255, 255, 255, 110), 2));
+  const bool selected = property("selected").toBool();
+  if (running_ || selected || underMouse()) {
+    const QColor edge = selected ? tokens.accent : running_ ? tokens.running : QColor(255, 255, 255, 110);
+    painter.setPen(QPen(edge, 2));
     painter.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), radius, radius);
   }
 }

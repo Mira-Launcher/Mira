@@ -59,6 +59,10 @@ class LibraryPage : public QWidget {
   std::string SelectedId() const;
   // Selects that game alone and scrolls to it; false while it's filtered out.
   bool ShowGame(const std::string& id);
+  // Adds that game to the selection, or takes it out; false while it's filtered out.
+  bool ToggleSelected(const std::string& id);
+  // A few seconds of `text` over that game's tile.
+  void ShowTileNote(const std::string& id, const QString& text);
   int ShownCount() const;
 
   int TileWidth() const { return tile_width_; }
@@ -75,6 +79,7 @@ class LibraryPage : public QWidget {
   void SortChanged();
   // What the grid shows changed: the filter, the search, or the library.
   void ShownChanged();
+  void SelectionChanged();
   void GameActivated(const std::string& id);  // a tile's double click
   void PlayRequested(const std::string& id);  // a Continue playing card
   void GameMenuRequested(const std::string& id, const QPoint& global_pos);

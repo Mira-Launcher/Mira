@@ -726,6 +726,10 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));
 }
 
+void SourcePage::ShowTileNote(const QString& id, const QString& text) {
+  if (library_grid_ != nullptr) GameTileDelegate::ShowNote(library_grid_, id, text);
+}
+
 void SourcePage::SetDragSelectEnabled(bool enabled) {
   for (TileGrid* grid : {library_grid_, owned_grid_}) {
     if (grid != nullptr) grid->SetDragSelectEnabled(enabled);

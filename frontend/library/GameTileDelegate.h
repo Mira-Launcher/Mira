@@ -3,6 +3,8 @@
 #include <QSize>
 #include <QStyledItemDelegate>
 
+class QAbstractItemView;
+
 namespace mira_gui {
 
 class ArtworkStore;
@@ -48,6 +50,8 @@ public:
   void SetShowSourceMark(bool show) { show_source_mark_ = show; }
   void SetShowPinBadge(bool show) { show_pin_badge_ = show; }
   QSize TileSize() const { return tile_; }
+  // Shows `text` over game `id`'s tile in `view` for a few seconds, e.g. why a double-click did nothing.
+  static void ShowNote(QAbstractItemView* view, const QString& id, const QString& text);
 
   QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override;
   void paint(QPainter* painter, const QStyleOptionViewItem& option,
@@ -59,6 +63,8 @@ private:
   bool show_source_mark_ = true;
   bool show_pin_badge_ = true;
   ArtworkStore* artwork_;
+  QString note_id_;  // the tile ShowNote is drawing on, if any
+  QString note_;
 };
 
 }  // namespace mira_gui

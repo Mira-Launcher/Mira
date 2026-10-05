@@ -43,6 +43,10 @@ public:
   // Shows the search box even when the row only has room for its button.
   void OpenSearch();
 
+  // Wide enough for every tab and the widest search box, whatever is folded
+  // into More right now, so a layout that sizes the row to its hint can unfold it.
+  QSize sizeHint() const override;
+
 signals:
   void CurrentChanged(QString key);
 
