@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <format>
+#include <fstream>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -34,7 +36,8 @@ std::filesystem::path ManagedLegendaryPath(const config::Config& config) {
 
 const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin", ManagedLegendaryPath};
 
-std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
+std::filesystem::path LegendaryConfigDir() {
+  if (const char* own = std::getenv("LEGENDARY_CONFIG_PATH"); own && *own) return own;
   const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME");
   fs::path config_dir;
   if (xdg_config_home && *xdg_config_home) {
@@ -43,7 +46,11 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
     const char* home = std::getenv("HOME");
     config_dir = (home && *home ? fs::path(home) : fs::path()) / ".config";
   }
-  return config_dir / "legendary" / "metadata" / (app_name + ".json");
+  return config_dir / "legendary";
+}
+
+std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
+  return LegendaryConfigDir() / "metadata" / (app_name + ".json");
 }
 
 runner::ToolStatus DetectLegendary(const config::Config& config) { return runner::DetectTool(config, kTool); }
@@ -92,24 +99,18 @@ Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::str
 runner::AuthStatus Status(const config::Config& config) {
   runner::AuthStatus status;
   status.tool = DetectLegendary(config);
-  if (!status.tool.installed) return status;  // authenticated=false, no subprocess needed
+  if (!status.tool.installed) return status;
 
-  // Not RunLegendaryJson: "not logged in" is an ordinary result of this
-  // specific call, not an error to propagate. A failed/unparseable run
-  // just leaves authenticated=false rather than failing the whole status
-  // call the way every other legendary invocation here does.
-  Command command;
-  command.argv = {status.tool.path, "status", "--json"};
-  const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  if (!result) return status;
-
-  const json parsed = core::ParseJsonTail(result->output);
-  if (parsed.is_discarded() || !parsed.is_object()) return status;
-
-  // legendary always includes this key -- logged out isn't its absence, it's
-  // this literal placeholder string.
-  const std::string account = parsed.value("account", std::string());
-  if (!account.empty() && account != "<not logged in>") {
+  // The session legendary keeps, read directly: `legendary status` signs in
+  // online and lists every owned game, about a second on each page open.
+  std::ifstream file(LegendaryConfigDir() / "user.json");
+  const json user = json::parse(file, nullptr, false);
+  if (!user.is_object()) return status;
+  const std::string account = user.value("displayName", std::string());
+  // ISO 8601 in UTC, so the text order is the time order. Past it legendary has to sign in again.
+  const std::string expires = user.value("refresh_expires_at", std::string());
+  const std::string now = std::format("{:%FT%T}", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+  if (!account.empty() && (expires.empty() || expires > now)) {
     status.authenticated = true;
     status.account = account;
   }

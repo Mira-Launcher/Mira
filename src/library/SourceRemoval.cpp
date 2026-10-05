@@ -37,7 +37,7 @@ bool Belongs(const model::Game& game, std::string_view source,
 
 std::vector<fs::path> DeleteRoots(const config::Config& config, const std::string& prefix) {
   std::vector<fs::path> roots = config.GetPathArray("library_roots");
-  for (const char* key : {"gog.install_root", "itch.install_root", "amazon.install_root"}) {
+  for (const char* key : {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
     roots.push_back(config.GetPath(key));
   }
   // A launcher game installed inside its prefix.

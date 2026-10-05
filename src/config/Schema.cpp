@@ -448,6 +448,14 @@ Schema::Schema() {
 
   s.Group("Install folders");
 
+  s.Add({.key = "epic.install_root",
+         .label = "Epic Games install folder",
+         .type = Type::String,
+         .default_value = "~/.local/share/mira/epic",
+         .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
+                "never scans it for games, so it can be inside a library folder.",
+         .path = PathKind::Folder});
+
   s.Add({.key = "gog.install_root",
          .label = "GOG install folder",
          .type = Type::String,
@@ -463,6 +471,14 @@ Schema::Schema() {
          .doc = "How each GOG game's folder is named: \"title\" (for example \"Hollow Knight\") or "
                 "\"id\" (the GOG product id).",
          .constraint = OneOf({"title", "id"})});
+
+  s.Add({.key = "gog.install_dlc",
+         .label = "Install DLC with GOG games",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Install the DLC you own for a GOG game along with it. Updating a game also adds "
+                "DLC bought since it was installed.",
+         .keywords = "dlc expansion add-on"});
 
   s.Add({.key = "itch.collections",
          .label = "itch.io collections",

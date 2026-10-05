@@ -135,7 +135,7 @@ Removes the game from the library. Nothing on disk is touched unless asked:
 - `delete_metadata` removes cached metadata and art.
 - `purge` does all three.
 
-Files are only deleted when they resolve inside a library root, a store's install root (`gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root`; never for a `desktop-entry` game, whose files belong to another app. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
+Files are only deleted when they resolve inside a library root, a store's install root (`epic.`, `gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root`; never for a `desktop-entry` game, whose files belong to another app. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
 
 ### `POST /v1/games/delete`
 The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. A [job](#jobs) whose result is `{"removed": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
@@ -224,7 +224,7 @@ Owned titles aren't stored; they are read live from each source and become games
 ### `POST /v1/library/install`
 Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
 
-- `epic`: `legendary install`.
+- `epic`: `legendary install` into `epic.install_root`.
 - `gog`: `gogdl download` into `gog.install_root/<id>`.
 - `itch`: butler's install sequence.
 - `amazon`: `nile install` into `amazon.install_root`.
@@ -353,7 +353,7 @@ Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's 
 
 ### GOG
 
-Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/Games/GOG`).
+Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/.local/share/mira/gog`). The listing leaves out packs, DLC and other entries that aren't installable games; a game's owned DLC installs with it (`--with-dlcs`) while `gog.install_dlc` is on, and an update adds DLC bought since.
 
 ### itch.io
 
