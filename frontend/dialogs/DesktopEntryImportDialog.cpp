@@ -6,7 +6,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Library.h"
 #include "../app/Notify.h"
 
 namespace mira_gui {
@@ -48,7 +48,7 @@ void DesktopEntryImportDialog::Load() {
   auto* loading = new QListWidgetItem("Loading…", list_);
   loading->setFlags(Qt::NoItemFlags);
 
-  MiradClient::GetDesktopEntryCandidatesAsync(this, [this](DesktopEntryCandidatesResult result) {
+  api::GetDesktopEntryCandidatesAsync(this, [this](DesktopEntryCandidatesResult result) {
     list_->clear();
     if (!result.ok) {
       notify::FailedRequest(this, "Could not list desktop entries.", result.error);
@@ -90,7 +90,7 @@ void DesktopEntryImportDialog::Import() {
 
   setEnabled(false);
   import_->setText("Importing…");
-  MiradClient::ImportDesktopEntriesAsync(this, ids, [this](DesktopEntryImportResult result) {
+  api::ImportDesktopEntriesAsync(this, ids, [this](DesktopEntryImportResult result) {
     setEnabled(true);
     import_->setText("Import selected");
     if (!result.ok) {

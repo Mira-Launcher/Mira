@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "../client/MiradClient.h"
+#include "../client/Types.h"
 #include "AppearancePreviews.h"
 #include "SettingEditor.h"
 #include "../sidebar/SidebarStyleCard.h"

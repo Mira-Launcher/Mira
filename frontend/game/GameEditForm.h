@@ -9,7 +9,7 @@
 
 #include <json.hpp>
 
-#include "../client/MiradClient.h"
+#include "../client/Types.h"
 
 namespace mira_gui {
 class KeyValueEdit;

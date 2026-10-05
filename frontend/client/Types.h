@@ -13,7 +13,7 @@
 // The plain data mirad's REST API speaks, as C++ structs.
 //
 // Deliberately free of Qt and of httplib: these are what the endpoints in
-// MiradClient.h return and what every widget in the frontend reads, so they
+// client/api/ return and what every widget in the frontend reads, so they
 // are the one part of the client layer the UI is allowed to depend on
 // directly. See docs/api.md for the JSON each one mirrors.
 namespace mira_gui {
@@ -279,7 +279,7 @@ struct ArtworkSelectResult {
 };
 
 // A `notification` event: mirad's own decision that this is worth telling
-// the user about; the UI just renders it (see MiradClient::ParseNotification
+// the user about; the UI just renders it (see events::ParseNotification
 // and mira_gui::notify::Warn/Notice).
 struct NotificationEvent {
   std::string level;  // "info" | "success" | "warning" | "error"

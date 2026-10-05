@@ -59,7 +59,7 @@ When a launched game turns out to have been an installer (`game.install_detected
 
 Two more cards share that overlay (`game/InstallerCards`). `InstallerCard` runs a game's installer: the file found (*Change…* picks another), then *Not now*, *Install quietly* when the format allows, and *Show the installer*. It opens from *Install…* and double-clicking a game that needs installing, and on its own when a new installer is found (`game.added` with `needs_install`), unless the scan already runs it (`auto_install`). `InstallerLeftoverCard` follows `game.installer_leftover`: the folder and its size, *Keep* (the default) or *Delete* (`DELETE /v1/games/{id}/installer`). Every such card waits its turn in one queue (`LibraryWindow::QueueCard`) and never covers Settings, a game's card or another card.
 
-Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for each one's `job.finished` or `job.failed` on the shared event connection, and after a reconnect asks `GET /v1/jobs/{id}` about any it was still waiting on, so the `MiradClient` calls that start them still hand their caller one result.
+Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for each one's `job.finished` or `job.failed` on the shared event connection, and after a reconnect asks `GET /v1/jobs/{id}` about any it was still waiting on, so the `client/api` calls that start them still hand their caller one result.
 
 ### Selection and hover
 
@@ -110,8 +110,11 @@ dialogs/   modal dialogs
 | `Transport` | One socket round trip: timeouts and the error envelope. |
 | `JsonMapping` | JSON to and from the structs in `Types.h`. |
 | `Async` | Runs a call on a worker thread and delivers the result on the main thread. |
-| `MiradClient` | One method per endpoint. |
+| `api/` | One function per endpoint, in `namespace api`, one file per area: `Games`, `Library`, `Config`, `Artwork`, `Runners`, `Stores`. `Request` holds what they share. |
+| `Jobs` | Waits for a job's `job.finished` or `job.failed`. |
 | `EventStream` | The `GET /v1/events` connection, reconnecting with `Last-Event-ID`. |
+| `EventHub` | Shares one event connection between every window. |
+| `Events` | Parses each event's payload (`events::ParseGameState` and so on). |
 | `Types.h` | Plain data the UI depends on. |
 
 `async::Deliver` posts results to `qApp` and checks a `QPointer` to the requesting widget on the main thread. Posting to the widget itself would read a possibly deleted object on the worker thread.

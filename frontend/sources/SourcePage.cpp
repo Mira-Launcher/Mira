@@ -15,7 +15,9 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-#include "../client/MiradClient.h"
+#include "../client/Events.h"
+#include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/ItchCollectionsDialog.h"
 #include "../activity/DownloadTracker.h"
@@ -37,7 +39,7 @@
 namespace mira_gui {
 namespace {
 
-// What differs per source, in words. Endpoints live in MiradClient.
+// What differs per source, in words. Endpoints live in client/api/Stores.
 struct SourceCopy {
   QString blurb;  // one line under the page title
   QString tool;   // stores: the helper mirad drives
@@ -137,7 +139,7 @@ QString Heading(const QString& text, int count) {
 void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void()> on_removed) {
   const QString name = source.name;
   const std::string id = source.id.toStdString();
-  MiradClient::GetRemovalPlanAsync(parent, id, [parent, id, name, on_removed](RemovalPlanResult plan) {
+  api::GetRemovalPlanAsync(parent, id, [parent, id, name, on_removed](RemovalPlanResult plan) {
     if (!plan.ok) {
       notify::FailedRequest(parent, "Could not plan the removal.", plan.error);
       return;
@@ -159,7 +161,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     if (!plan.kept.empty()) lines << "Keeps game data and saves (prefixes stay on disk).";
     lines << name + " is turned off; turn it on again in Manage sources any time.";
     if (!notify::Confirm(parent, "Remove " + name, lines.join("\n"), "Remove", /*destructive=*/true)) return;
-    MiradClient::RemoveSourceAsync(parent, id, [parent, name, on_removed](RemoveSourceResult r) {
+    api::RemoveSourceAsync(parent, id, [parent, name, on_removed](RemoveSourceResult r) {
       if (!r.ok) {
         notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);
         return;
@@ -261,7 +263,7 @@ QWidget* SourcePage::BuildTopRow() {
   connect(banner_primary_, &QPushButton::clicked, this, [this] {
     banner_primary_->setEnabled(false);
     if (IsLauncher()) {
-      MiradClient::OpenLauncherAsync(this, id_, [this](StoreActionResult result) {
+      api::OpenLauncherAsync(this, id_, [this](StoreActionResult result) {
         banner_primary_->setEnabled(true);
         if (!result.ok) {
           setup_card_->setVisible(true);
@@ -270,7 +272,7 @@ QWidget* SourcePage::BuildTopRow() {
       });
       return;
     }
-    MiradClient::SignOutStoreAsync(this, id_, [this](StoreActionResult result) {
+    api::SignOutStoreAsync(this, id_, [this](StoreActionResult result) {
       banner_primary_->setEnabled(true);
       if (!result.ok) {
         setup_card_->setVisible(true);
@@ -368,7 +370,7 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
 void SourcePage::UpdateTool() {
   tool_updating_ = true;
   UpdateStatusLine();
-  MiradClient::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
+  api::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
     tool_updating_ = false;
     if (result.ok) {
       RefreshStatus();
@@ -436,10 +438,10 @@ QWidget* SourcePage::BuildSetupCard() {
       launcher_installing_ = true;
       setup_button_->setText("Installing…");
       UpdateStatusLine();
-      MiradClient::InstallLauncherAsync(this, id_, failed);
+      api::InstallLauncherAsync(this, id_, failed);
     } else {
       setup_button_->setText("Downloading…");
-      MiradClient::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
+      api::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
         if (result.ok) {
           RefreshStatus();
           return;
@@ -609,7 +611,7 @@ QWidget* SourcePage::BuildOwnedSection() {
     }
     owned_state_.insert(ref, "Downloading…");
     RebuildOwnedTiles();
-    MiradClient::DownloadHumbleBundleAsync(this, ref.toStdString(), [this, ref](HumbleDownloadResult r) {
+    api::DownloadHumbleBundleAsync(this, ref.toStdString(), [this, ref](HumbleDownloadResult r) {
       if (r.ok) {
         owned_state_.remove(ref);
         humble_paths_.insert(ref, QString::fromStdString(r.path));
@@ -668,9 +670,9 @@ void SourcePage::UpdateCover(const QString& id) {
 
 void SourcePage::RefreshStatus() {
   if (IsStore()) {
-    MiradClient::GetStoreStatusAsync(this, id_, [this](StoreStatusResult s) { ApplyStoreStatus(s); });
+    api::GetStoreStatusAsync(this, id_, [this](StoreStatusResult s) { ApplyStoreStatus(s); });
   } else if (IsLauncher()) {
-    MiradClient::GetLaunchersAsync(this, [this](LaunchersResult result) {
+    api::GetLaunchersAsync(this, [this](LaunchersResult result) {
       if (!result.ok) {
         setup_card_->setVisible(true);
         ShowError(setup_error_, "Could not ask mirad about " + source_.name + ".", result.error);
@@ -806,7 +808,7 @@ void SourcePage::UpdateSections() {
 
 void SourcePage::OpenLogin() {
   open_login_->setEnabled(false);
-  MiradClient::BeginStoreLoginAsync(this, id_, [this](LoginUrlResult result) {
+  api::BeginStoreLoginAsync(this, id_, [this](LoginUrlResult result) {
     open_login_->setEnabled(true);
     if (!result.ok) {
       ShowError(setup_error_, "Could not start the login.", result.error);
@@ -822,7 +824,7 @@ void SourcePage::SignIn() {
   sign_in_->setEnabled(false);
   sign_in_->setText("Signing in…");
   setup_error_->setVisible(false);
-  MiradClient::SignInStoreAsync(this, id_, pasted.toStdString(), [this](StoreActionResult result) {
+  api::SignInStoreAsync(this, id_, pasted.toStdString(), [this](StoreActionResult result) {
     sign_in_->setEnabled(true);
     sign_in_->setText("Sign in");
     if (!result.ok) {
@@ -847,14 +849,14 @@ void SourcePage::Import() {
     if (ok && (added > 0 || updated > 0)) emit LibraryChanged();
   };
   if (id_ == "steam") {
-    MiradClient::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (id_ == "lutris") {
-    MiradClient::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsLauncher()) {
-    MiradClient::ImportLauncherAsync(this, id_,
+    api::ImportLauncherAsync(this, id_,
                                      [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else {
-    MiradClient::ImportStoreAsync(this, id_,
+    api::ImportStoreAsync(this, id_,
                                   [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   }
 }
@@ -863,9 +865,9 @@ void SourcePage::RefreshOwned() {
   owned_refresh_->setEnabled(false);
   ShowLine(owned_note_, "Loading…", "muted");
   if (id_ == "humble") {
-    MiradClient::GetHumbleLibraryAsync(this, [this](HumbleLibraryResult r) { ShowBundles(r); });
+    api::GetHumbleLibraryAsync(this, [this](HumbleLibraryResult r) { ShowBundles(r); });
   } else {
-    MiradClient::GetStoreLibraryAsync(this, id_, [this](StoreLibraryResult r) { ShowOwned(r); });
+    api::GetStoreLibraryAsync(this, id_, [this](StoreLibraryResult r) { ShowOwned(r); });
   }
 }
 
@@ -890,7 +892,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   }
   // Covers already fetched are skipped; the rest arrive as events.
   if (!uninstalled.empty()) {
-    MiradClient::QueueTitleArtworkAsync(this, id_, std::move(uninstalled), [](StoreActionResult) {});
+    api::QueueTitleArtworkAsync(this, id_, std::move(uninstalled), [](StoreActionResult) {});
   }
   if (result.titles.empty() && id_ == "steam") {
     ShowLine(owned_note_,
@@ -986,7 +988,7 @@ void SourcePage::RebuildOwnedTiles() {
 void SourcePage::StartInstall(const QString& ref, bool update) {
   owned_state_.insert(ref, update ? "Updating…" : "Installing…");
   if (owned_grid_ != nullptr) RebuildOwnedTiles();
-  MiradClient::InstallStoreTitleAsync(this, id_, ref.toStdString(), update,
+  api::InstallStoreTitleAsync(this, id_, ref.toStdString(), update,
                                       [this, ref](StoreActionResult r) {
                                         if (r.ok) return;  // events report the rest
                                         owned_state_.remove(ref);
@@ -1097,7 +1099,7 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
 void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/true); }
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
-  if (StoreEvent art; MiradClient::ParseTitleArtworkEvent(type, data, &art)) {
+  if (StoreEvent art; events::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
     if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&
         art.error.fix.kind == "setting" && art_key_ != nullptr) {
@@ -1109,7 +1111,7 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   }
 
   StoreEvent event;
-  if (!MiradClient::ParseStoreEvent(type, data, &event) || event.source != id_) return;
+  if (!events::ParseStoreEvent(type, data, &event) || event.source != id_) return;
 
   if (event.kind == "setup") {
     if (event.state == "finished") {

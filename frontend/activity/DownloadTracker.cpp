@@ -11,7 +11,9 @@
 #include <algorithm>
 
 #include "../client/Jobs.h"
-#include "../client/MiradClient.h"
+#include "../client/Events.h"
+#include "../client/api/Games.h"
+#include "../client/api/Stores.h"
 
 namespace mira_gui {
 namespace {
@@ -116,7 +118,7 @@ void DownloadTracker::RecheckJobs() {
 bool DownloadTracker::HandleEvent(const std::string& type, const std::string& data) {
   if (HandleJobEvent(type, data)) return true;
   State state;
-  if (InstallEvent install; MiradClient::ParseInstallEvent(type, data, &install)) {
+  if (InstallEvent install; events::ParseInstallEvent(type, data, &install)) {
     if (!ToState(install.state, &state)) return true;
     Entry& entry = Upsert(Kind::Game, QString(), QString::fromStdString(install.id));
     entry.state = state;
@@ -125,7 +127,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     emit Changed(entry.key);
     return true;
   }
-  if (RunnerDownloadEvent runner; MiradClient::ParseRunnerDownload(type, data, &runner)) {
+  if (RunnerDownloadEvent runner; events::ParseRunnerDownload(type, data, &runner)) {
     if (!ToState(runner.state, &state)) return true;
     // Kron4ek's variants share a tag, so key by the release's name.
     const std::string& ref = runner.name.empty() ? runner.tag : runner.name;
@@ -137,7 +139,7 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     return true;
   }
   StoreEvent store;
-  if (!MiradClient::ParseStoreEvent(type, data, &store)) return false;
+  if (!events::ParseStoreEvent(type, data, &store)) return false;
   if (store.state == "progress") {
     Entry& entry = Upsert(Kind::Title, QString::fromStdString(store.source), QString::fromStdString(store.ref));
     entry.state = State::Running;
@@ -262,7 +264,7 @@ void DownloadTracker::Poll() {
     if (entry.kind != Kind::Game || entry.state != State::Running) continue;
     any = true;
     const QString key = entry.key;
-    MiradClient::GetInstallProgressAsync(this, entry.ref.toStdString(), [this, key](InstallProgressResult progress) {
+    api::GetInstallProgressAsync(this, entry.ref.toStdString(), [this, key](InstallProgressResult progress) {
       auto found = std::find_if(entries_.begin(), entries_.end(), [&key](const Entry& e) { return e.key == key; });
       if (!progress.ok || found == entries_.end() || found->state != State::Running) return;
       found->bytes = progress.bytes_written;
@@ -278,7 +280,7 @@ void DownloadTracker::Poll() {
 void DownloadTracker::ResolveNames(const QString& source) {
   if (asked_sources_.contains(source)) return;
   asked_sources_.insert(source);
-  MiradClient::GetStoreLibraryAsync(this, source.toStdString(), [this, source](StoreLibraryResult result) {
+  api::GetStoreLibraryAsync(this, source.toStdString(), [this, source](StoreLibraryResult result) {
     if (!result.ok) return;
     for (const StoreTitle& title : result.titles) {
       NoteTitle(source, QString::fromStdString(title.ref), QString::fromStdString(title.title));

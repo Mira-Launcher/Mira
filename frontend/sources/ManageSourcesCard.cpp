@@ -9,7 +9,8 @@
 
 #include <algorithm>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../theme/Icons.h"
 #include "SourcePage.h"
 
@@ -156,14 +157,14 @@ void ManageSourcesCard::Import(const QString& id) {
   };
   const std::string source = id.toStdString();
   if (source == "steam") {
-    MiradClient::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (source == "lutris") {
-    MiradClient::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (row->entry.source.kind == SourceInfo::Kind::Launcher) {
-    MiradClient::ImportLauncherAsync(this, source,
+    api::ImportLauncherAsync(this, source,
                                      [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else {
-    MiradClient::ImportStoreAsync(this, source,
+    api::ImportStoreAsync(this, source,
                                   [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   }
 }

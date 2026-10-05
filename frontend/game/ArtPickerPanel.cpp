@@ -23,7 +23,8 @@
 #include <functional>
 #include <set>
 
-#include "../client/MiradClient.h"
+#include "../client/Events.h"
+#include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
 #include "../client/EventHub.h"
 #include "../theme/Theme.h"
@@ -273,7 +274,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
   connect(fetch_button_, &QPushButton::clicked, this, [this] {
     fetching_ = true;
     ShowMessage("Looking on SteamGridDB…", false);
-    MiradClient::RefreshMetadataAsync(this, id_, /*announce=*/false, [this](MetadataRefreshResult result) {
+    api::RefreshMetadataAsync(this, id_, /*announce=*/false, [this](MetadataRefreshResult result) {
       if (result.ok) return;  // game.metadata_ready reloads
       fetching_ = false;
       ShowMessage("Could not look on SteamGridDB: " + error_help::Describe(result.error), true);
@@ -299,7 +300,7 @@ void ArtPickerPanel::Open(const std::string& slot) {
     matches_loaded_ = true;
     LoadMatches(QString());
   }
-  MiradClient::GetMetadataAsync(this, id_, [this, slot](GameMetadataResult result) {
+  api::GetMetadataAsync(this, id_, [this, slot](GameMetadataResult result) {
     if (slot != slot_) return;
     Populate(result);
   });
@@ -382,7 +383,7 @@ void ArtPickerPanel::RequestPage() {
   page_loading_ = true;
   const std::string slot = slot_;
   page_request_ = std::to_string(QRandomGenerator::global()->generate64());
-  MiradClient::FetchArtCandidatesAsync(this, id_, slot, next_page_, page_request_, [this, slot](GameActionResult result) {
+  api::FetchArtCandidatesAsync(this, id_, slot, next_page_, page_request_, [this, slot](GameActionResult result) {
     if (result.ok || slot != slot_) return;  // game.artwork_candidates_ready follows
     page_loading_ = false;
     more_pages_ = false;
@@ -498,7 +499,7 @@ void ArtPickerPanel::RequestVisible() {
   if (ids.empty()) return;
   UpdatePulse();
   const std::string slot = slot_;
-  MiradClient::FetchArtThumbsAsync(this, id_, slot, ids, [this, slot, ids](GameActionResult result) {
+  api::FetchArtThumbsAsync(this, id_, slot, ids, [this, slot, ids](GameActionResult result) {
     if (!result.ok && slot == slot_) MarkFailed(ids);
   });
 }
@@ -572,7 +573,7 @@ void ArtPickerPanel::Apply() {
   const std::string slot = slot_;
   const std::int64_t candidate_id = *pick_;
   applying_ = {slot, candidate_id};
-  MiradClient::SelectArtworkAsync(this, id_, slot, candidate_id, [this, slot](ArtworkSelectResult result) {
+  api::SelectArtworkAsync(this, id_, slot, candidate_id, [this, slot](ArtworkSelectResult result) {
     if (result.ok) return;  // game.artwork_selected follows
     applying_.reset();
     emit ApplyFailed(QString::fromStdString(slot), error_help::Describe(result.error));
@@ -608,7 +609,7 @@ void ArtPickerPanel::ShowMessage(const QString& text, bool offer_fetch) {
 
 void ArtPickerPanel::LoadMatches(const QString& query) {
   match_->setEnabled(false);
-  MiradClient::GetGriddbMatchesAsync(this, id_, query.toStdString(), [this, query](GriddbMatchesResult result) {
+  api::GetGriddbMatchesAsync(this, id_, query.toStdString(), [this, query](GriddbMatchesResult result) {
     match_->setEnabled(true);
     match_search_->hide();
     match_->show();
@@ -650,7 +651,7 @@ void ArtPickerPanel::ChooseMatch(int index) {
   if (!id.isValid() || fetching_) return;
   fetching_ = true;
   ShowMessage("Fetching art for " + match_->itemText(index) + "…", false);
-  MiradClient::SetGriddbMatchAsync(this, id_, id.toLongLong(), [this](GameActionResult result) {
+  api::SetGriddbMatchAsync(this, id_, id.toLongLong(), [this](GameActionResult result) {
     if (result.ok) return;  // game.metadata_ready reloads
     fetching_ = false;
     ShowMessage("Could not switch games: " + error_help::Describe(result.error), false);
@@ -660,7 +661,7 @@ void ArtPickerPanel::ChooseMatch(int index) {
 void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& data) {
   if (type == "game.artwork_candidates_ready") {
     ArtCandidatesEvent event;
-    if (!MiradClient::ParseArtCandidatesEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
+    if (!events::ParseArtCandidatesEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
     if (!page_loading_ || event.request != page_request_) return;  // an earlier Open()'s, or a replay
     ShowPage(event);
     return;
@@ -668,12 +669,12 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
 
   if (type == "game.artwork_thumbs_ready") {
     ArtThumbsEvent event;
-    if (!MiradClient::ParseArtThumbsEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
+    if (!events::ParseArtThumbsEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
     MarkFailed(event.failed);
     if (event.ready.empty()) return;
     const std::string slot = event.slot;
     const std::vector<std::int64_t> ready = event.ready;
-    MiradClient::GetArtThumbsAsync(this, id_, slot, ready, [this, slot, ready](std::vector<std::pair<std::int64_t, QImage>> images) {
+    api::GetArtThumbsAsync(this, id_, slot, ready, [this, slot, ready](std::vector<std::pair<std::int64_t, QImage>> images) {
       ShowThumbs(slot, images);
       if (slot != slot_) return;
       std::vector<std::int64_t> missing;
@@ -687,7 +688,7 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
 
   if (type == "game.metadata_ready" || type == "game.metadata_failed") {
     MetadataEvent event;
-    if (!fetching_ || !MiradClient::ParseMetadataEvent(data, &event) || event.id != id_) return;
+    if (!fetching_ || !events::ParseMetadataEvent(data, &event) || event.id != id_) return;
     fetching_ = false;
     if (type == "game.metadata_failed") {
       ShowMessage("Could not fetch from SteamGridDB: " + error_help::Describe(event.error), true);
@@ -699,7 +700,7 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
 
   if (type != "game.artwork_selected" && type != "game.artwork_select_failed") return;
   ArtworkSelectEvent event;
-  if (!MiradClient::ParseArtworkSelectEvent(data, &event) || event.id != id_) return;
+  if (!events::ParseArtworkSelectEvent(data, &event) || event.id != id_) return;
   if (!applying_ || applying_->first != event.slot) return;
   const std::int64_t applied = applying_->second;
   applying_.reset();

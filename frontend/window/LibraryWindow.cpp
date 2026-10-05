@@ -49,7 +49,12 @@
 #include <iterator>
 #include <optional>
 
-#include "../client/MiradClient.h"
+#include "../client/Events.h"
+#include "../client/api/Artwork.h"
+#include "../client/api/Config.h"
+#include "../client/api/Games.h"
+#include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/DesktopEntryImportDialog.h"
 #include "../dialogs/GameDetailPageDialog.h"
@@ -699,7 +704,7 @@ void LibraryWindow::ScheduleSavePrefs() {
     // Long enough that dragging the zoom slider or the window edge saves once.
     save_prefs_timer_->setInterval(1000);
     connect(save_prefs_timer_, &QTimer::timeout, this, [this] {
-      mira_gui::MiradClient::SaveFrontendPrefsAsync(this, LayoutPrefs(), [](mira_gui::PatchConfigResult) {});
+      mira_gui::api::SaveFrontendPrefsAsync(this, LayoutPrefs(), [](mira_gui::PatchConfigResult) {});
     });
   }
   save_prefs_timer_->start();
@@ -710,7 +715,7 @@ void LibraryWindow::FlushPrefs() {
   save_prefs_timer_->stop();
   // Blocking: an async save's thread might not reach the socket before the
   // process exits. Failure isn't reported: the cost is a layout, not data.
-  mira_gui::MiradClient::SaveFrontendPrefsBlocking(LayoutPrefs());
+  mira_gui::api::SaveFrontendPrefsBlocking(LayoutPrefs());
 }
 
 mira_gui::FrontendPrefs LibraryWindow::LayoutPrefs() const {
@@ -970,7 +975,7 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
   }
 
   FlushPrefs();
-  mira_gui::MiradClient::ClearArtThumbsBlocking();
+  mira_gui::api::ClearArtThumbsBlocking();
   QMainWindow::closeEvent(event);
 }
 
@@ -1019,7 +1024,7 @@ void LibraryWindow::OpenGameDetailPage(const std::string& id) {
 }
 
 void LibraryWindow::ScanLibrary() {
-  mira_gui::MiradClient::ScanLibraryAsync(this, [this](mira_gui::ScanResult result) {
+  mira_gui::api::ScanLibraryAsync(this, [this](mira_gui::ScanResult result) {
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not scan the library.", result.error);
       return;
@@ -1034,7 +1039,7 @@ void LibraryWindow::ScanLibrary() {
 
 // Every import below reports its games as events, so none relists.
 void LibraryWindow::ImportSteamLibrary() {
-  mira_gui::MiradClient::ScanSteamAsync(this, [this](mira_gui::SteamScanResult result) {
+  mira_gui::api::ScanSteamAsync(this, [this](mira_gui::SteamScanResult result) {
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not import from Steam.", result.error);
       return;
@@ -1045,7 +1050,7 @@ void LibraryWindow::ImportSteamLibrary() {
 }
 
 void LibraryWindow::ImportLutrisLibrary() {
-  mira_gui::MiradClient::ImportLutrisAsync(this, [this](mira_gui::LutrisImportResult result) {
+  mira_gui::api::ImportLutrisAsync(this, [this](mira_gui::LutrisImportResult result) {
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not import from Lutris.", result.error);
       return;
@@ -1074,7 +1079,7 @@ void LibraryWindow::AddGameManually() {
 }
 
 void LibraryWindow::SyncDesktopEntries() {
-  mira_gui::MiradClient::SyncDesktopEntriesAsync(this, [this](mira_gui::DesktopEntrySyncResult result) {
+  mira_gui::api::SyncDesktopEntriesAsync(this, [this](mira_gui::DesktopEntrySyncResult result) {
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not regenerate desktop entries.", result.error);
       return;
@@ -1096,13 +1101,13 @@ void LibraryWindow::RemoveAllDesktopEntries() {
     return;
   }
   const mira_gui::ConfigEdit edit{"desktop_entries.enabled", "a boolean", "false"};
-  mira_gui::MiradClient::PatchConfigAsync(
+  mira_gui::api::PatchConfigAsync(
       this, {edit}, [this](mira_gui::PatchConfigResult patch_result) {
         if (!patch_result.ok) {
           mira_gui::notify::FailedRequest(this, "Could not turn off desktop entries.", patch_result.error);
           return;
         }
-        mira_gui::MiradClient::SyncDesktopEntriesAsync(
+        mira_gui::api::SyncDesktopEntriesAsync(
             this, [this](mira_gui::DesktopEntrySyncResult sync_result) {
               if (!sync_result.ok) {
                 mira_gui::notify::FailedRequest(this, "Could not remove the desktop entries.",
@@ -1708,7 +1713,7 @@ void LibraryWindow::InstallErrorNavigator() {
   };
   nav.install_shown = [self](const std::string& id) {
     if (!self) return;
-    mira_gui::MiradClient::InstallGameAsync(self, id, /*interactive=*/true, std::string(),
+    mira_gui::api::InstallGameAsync(self, id, /*interactive=*/true, std::string(),
                                             [self](mira_gui::GameActionResult result) {
                                               if (self && !result.ok) {
                                                 mira_gui::notify::FailedRequest(self, "Could not start the installer.",
@@ -1751,7 +1756,7 @@ void LibraryWindow::FetchMissingArtwork() {
   // One job for the whole library; mirad decides what's missing, and Activity shows it going.
   // Asked for, so a missing SteamGridDB key is worth saying (ShowSteamGridDbNotice).
   artwork_fetch_requested_ = true;
-  mira_gui::MiradClient::RefreshMissingArtworkAsync(this, [this](mira_gui::MetadataBatchResult result) {
+  mira_gui::api::RefreshMissingArtworkAsync(this, [this](mira_gui::MetadataBatchResult result) {
     artwork_fetch_requested_ = false;
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not fetch missing cover art.", result.error);
@@ -1764,7 +1769,7 @@ void LibraryWindow::FetchMissingArtwork() {
 }
 
 void LibraryWindow::RefreshMetadata(const std::string& id, bool announce) {
-  mira_gui::MiradClient::RefreshMetadataAsync(
+  mira_gui::api::RefreshMetadataAsync(
       this, id, announce, [this, id, announce](mira_gui::MetadataRefreshResult result) {
         if (!result.ok) {
           if (announce) {
@@ -1784,14 +1789,14 @@ void LibraryWindow::Reload(bool force_scan) {
   // skipping the startup scan costs nothing except a library that
   // changed while mirad was stopped.
   if (force_scan || scan_on_startup_) {
-    mira_gui::MiradClient::ScanLibraryAsync(this, [](mira_gui::ScanResult) {});
+    mira_gui::api::ScanLibraryAsync(this, [](mira_gui::ScanResult) {});
   }
 }
 
 void LibraryWindow::RefreshGames() {
   // Hidden games included, so Ctrl+H is a client-side filter switch, not a round trip.
   const int request = ++games_request_;
-  mira_gui::MiradClient::ListAllGamesAsync(this, [this, request](mira_gui::GamesResult result) {
+  mira_gui::api::ListAllGamesAsync(this, [this, request](mira_gui::GamesResult result) {
     if (request != games_request_) return;  // a newer refresh is on its way
     mirad_reachable_ = result.ok;
     if (!result.ok) {
@@ -2023,7 +2028,7 @@ void LibraryWindow::ShowGameMenu(const std::string& id, const QPoint& global_pos
   QAction* desktop_entry = menu.addAction("Desktop entry");
   desktop_entry->setEnabled(false);
   auto desktop_entry_enabled = std::make_shared<bool>(true);
-  mira_gui::MiradClient::GetGameConfigAsync(
+  mira_gui::api::GetGameConfigAsync(
       &menu, id, [desktop_entry, desktop_entry_enabled](mira_gui::GameConfigResult result) {
         if (!result.ok) return;
         const auto entry = std::ranges::find(result.entries, std::string("desktop_entries.enabled"),
@@ -2125,7 +2130,7 @@ void LibraryWindow::ShowBatchMenu(const std::vector<std::string>& ids, const QPo
   if (chosen == nullptr) return;  // dismissed; also keeps it from matching an action left out above
   if (chosen == refresh_metadata) {
     // Activity shows it going; a notice sums it up at the end.
-    mira_gui::MiradClient::RefreshMetadataManyAsync(this, ids, [this](mira_gui::MetadataBatchResult result) {
+    mira_gui::api::RefreshMetadataManyAsync(this, ids, [this](mira_gui::MetadataBatchResult result) {
       if (!result.ok) {
         mira_gui::notify::FailedRequest(this, "Could not refresh metadata.", result.error);
       } else {
@@ -2159,7 +2164,7 @@ void LibraryWindow::BatchSetTag(const std::vector<std::string>& ids, const std::
   (present ? patch.add_tags : patch.remove_tags).push_back(tag);
 
   const bool one = patch.ids.size() == 1;
-  mira_gui::MiradClient::PatchGamesAsync(this, patch, [this, tag, one](mira_gui::PatchGamesResult result) {
+  mira_gui::api::PatchGamesAsync(this, patch, [this, tag, one](mira_gui::PatchGamesResult result) {
     if (!result.ok) {
       const QString games = one ? "this game's" : "these games'";
       mira_gui::notify::FailedRequest(this,
@@ -2256,7 +2261,7 @@ void LibraryWindow::ShowInstallPrompt(const mira_gui::InstallDetectedEvent& even
     connect(card, &mira_gui::InstallPromptCard::Accepted, this,
             [this, id = event.id, install_path = event.install_path](const std::string& exe_path, bool is_app) {
               CloseSidebarCard();
-              mira_gui::MiradClient::FinishInstallAsync(
+              mira_gui::api::FinishInstallAsync(
                   this, id,
                   [this, id, is_app](mira_gui::FinishInstallResult result) {
                     if (!result.ok) {
@@ -2720,7 +2725,7 @@ void LibraryWindow::SaveSidebarStyle() {
   prefs.sidebar_recent_count = recent_count_;
   prefs.sidebar_recent_when = recent_when_;
   // Shown already, so a failed write would otherwise only surface as the old look after a restart.
-  mira_gui::MiradClient::SaveFrontendPrefsAsync(this, prefs, [this](mira_gui::PatchConfigResult result) {
+  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [this](mira_gui::PatchConfigResult result) {
     if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not save the sidebar's look.", result.error);
   });
 }
@@ -3051,7 +3056,7 @@ void LibraryWindow::RelocateLibrary() {
     return;
   }
   mira_gui::notify::Notice(this, "Moving games into Mira's folders…");
-  mira_gui::MiradClient::RelocateLibraryAsync(this, [this](mira_gui::RelocateLibraryResult result) {
+  mira_gui::api::RelocateLibraryAsync(this, [this](mira_gui::RelocateLibraryResult result) {
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not move the games.", result.error);
       return;
@@ -3076,7 +3081,7 @@ void LibraryWindow::RelocateLibrary() {
 }
 
 void LibraryWindow::RefreshSourceNavs() {
-  mira_gui::MiradClient::GetConfigAsync(this, [this](mira_gui::ConfigResult result) {
+  mira_gui::api::GetConfigAsync(this, [this](mira_gui::ConfigResult result) {
     if (!result.ok) return;
     disabled_sources_.clear();
     for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
@@ -3089,7 +3094,7 @@ void LibraryWindow::RefreshSourceNavs() {
   for (const mira_gui::SourceInfo& source : mira_gui::AllSources()) {
     if (source.kind != mira_gui::SourceInfo::Kind::Store) continue;
     const QString id = source.id;
-    mira_gui::MiradClient::GetStoreStatusAsync(
+    mira_gui::api::GetStoreStatusAsync(
         this, id.toStdString(), [this, id](mira_gui::StoreStatusResult status) {
           if (!status.ok) return;  // a failed request says nothing about the account
           source_ready_[id] = status.authenticated;
@@ -3097,7 +3102,7 @@ void LibraryWindow::RefreshSourceNavs() {
           UpdateSourceNavs();
         });
   }
-  mira_gui::MiradClient::GetLaunchersAsync(this, [this](mira_gui::LaunchersResult result) {
+  mira_gui::api::GetLaunchersAsync(this, [this](mira_gui::LaunchersResult result) {
     if (!result.ok) return;
     for (const mira_gui::LauncherInfo& launcher : result.launchers) {
       source_ready_[QString::fromStdString(launcher.id)] = launcher.installed;
@@ -3165,7 +3170,7 @@ void LibraryWindow::NoteImported(const QString& id) {
     imported[it.key().toStdString()] = it.value();
   }
   prefs.source_imported_at = std::move(imported);
-  mira_gui::MiradClient::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
+  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
 }
 
 void LibraryWindow::OpenManageSources() {
@@ -3186,7 +3191,7 @@ void LibraryWindow::OpenManageSources() {
     }
     UpdateSourceNavs();
     const mira_gui::ConfigEdit edit{(id + ".enabled").toStdString(), "a boolean", on ? "true" : "false"};
-    mira_gui::MiradClient::PatchConfigAsync(this, {edit}, [this](mira_gui::PatchConfigResult result) {
+    mira_gui::api::PatchConfigAsync(this, {edit}, [this](mira_gui::PatchConfigResult result) {
       if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not change that source.", result.error);
       RefreshSourceNavs();
     });
@@ -3260,7 +3265,7 @@ void LibraryWindow::SetSourceOrder(std::vector<QString> order) {
   std::vector<std::string> ids;
   for (const QString& source : order) ids.push_back(source.toStdString());
   prefs.source_order = std::move(ids);
-  mira_gui::MiradClient::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
+  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
 }
 
 void LibraryWindow::SetSourceHidden(const QString& id, bool hidden) {
@@ -3275,7 +3280,7 @@ void LibraryWindow::SetSourceHidden(const QString& id, bool hidden) {
   for (const QString& hidden_id : hidden_sources_) ids.push_back(hidden_id.toStdString());
   std::ranges::sort(ids);
   prefs.hidden_sources = std::move(ids);
-  mira_gui::MiradClient::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
+  mira_gui::api::SaveFrontendPrefsAsync(this, prefs, [](mira_gui::PatchConfigResult) {});
 }
 
 std::vector<const mira_gui::GameSummary*> LibraryWindow::PinnedGames() const {
@@ -3500,7 +3505,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   }
   if (type == "notification") {
     mira_gui::NotificationEvent event;
-    if (live && mira_gui::MiradClient::ParseNotification(data, &event)) {
+    if (live && mira_gui::events::ParseNotification(data, &event)) {
       const QString message = QString::fromStdString(event.message);
       // Only an error stays until dismissed; a warning ("no metadata found") is an answer, not an alarm.
       const auto level = mira_gui::notify::LevelFromString(QString::fromStdString(event.level));
@@ -3516,12 +3521,12 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   // Doesn't consume it: the toasts below still want installs.
   downloads_->HandleEvent(type, data);
 
-  if (mira_gui::StoreEvent art; mira_gui::MiradClient::ParseTitleArtworkEvent(type, data, &art)) {
+  if (mira_gui::StoreEvent art; mira_gui::events::ParseTitleArtworkEvent(type, data, &art)) {
     if (art.state == "ready") artwork_->TitleArtworkReady(art.source + "-" + art.ref);
     return;
   }
 
-  if (mira_gui::InstallEvent install; mira_gui::MiradClient::ParseInstallEvent(type, data, &install)) {
+  if (mira_gui::InstallEvent install; mira_gui::events::ParseInstallEvent(type, data, &install)) {
     const mira_gui::GameSummary* game = FindGame(install.id);
     const QString name = game != nullptr ? QString::fromStdString(game->name) : QString("A game");
     if (!live) {
@@ -3537,21 +3542,21 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   }
 
   if (type == "game.removed") {
-    const std::string id = mira_gui::MiradClient::ParseRemovedId(data);
+    const std::string id = mira_gui::events::ParseRemovedId(data);
     if (!id.empty()) RemoveGame(id);
     return;
   }
   if (type == "games.removed") {
-    const std::vector<std::string> ids = mira_gui::MiradClient::ParseRemovedIds(data);
+    const std::vector<std::string> ids = mira_gui::events::ParseRemovedIds(data);
     if (!ids.empty()) library_->Remove(ids);
     return;
   }
 
   if (type == "game.state") {
     mira_gui::GameStateEvent state;
-    if (!mira_gui::MiradClient::ParseGameState(data, &state)) return;
+    if (!mira_gui::events::ParseGameState(data, &state)) return;
     // The full record, `running` included; a bare {id, state} only moves running.
-    if (mira_gui::GameSummary game; mira_gui::MiradClient::ParseGameSummary(data, &game) && !game.name.empty()) {
+    if (mira_gui::GameSummary game; mira_gui::events::ParseGameSummary(data, &game) && !game.name.empty()) {
       game.running = state.state == "running";
       UpsertGames({game});
     } else {
@@ -3570,7 +3575,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   if (type == "game.metadata_ready" || type == "game.metadata_failed") {
     // History's outcomes are already in what the grid fetched at startup.
     mira_gui::MetadataEvent event;
-    if (!live || !mira_gui::MiradClient::ParseMetadataEvent(data, &event)) return;
+    if (!live || !mira_gui::events::ParseMetadataEvent(data, &event)) return;
     // The cover is fetched again only if this one changed it.
     artwork_->NoteArt(event.id, event.art);
     if (type == "game.metadata_ready") return;
@@ -3591,7 +3596,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
 
   if (type == "game.artwork_selected") {
     mira_gui::ArtworkSelectEvent event;
-    if (!live || !mira_gui::MiradClient::ParseArtworkSelectEvent(data, &event)) return;
+    if (!live || !mira_gui::events::ParseArtworkSelectEvent(data, &event)) return;
     if (event.slot == "cover") {
       artwork_->NoteArt(event.id, event.art);
     } else if (event.slot == "hero") {
@@ -3603,14 +3608,14 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   if (type == "game.installer_leftover") {
     // Asked once, as it happens; history would ask again after every reconnect.
     mira_gui::InstallerLeftoverEvent event;
-    if (live && mira_gui::MiradClient::ParseInstallerLeftover(data, &event)) OfferInstallerDelete(event);
+    if (live && mira_gui::events::ParseInstallerLeftover(data, &event)) OfferInstallerDelete(event);
     return;
   }
 
   if (type == "game.install_detected") {
     // History's would ask again after every reconnect.
     mira_gui::InstallDetectedEvent event;
-    if (!live || !mira_gui::MiradClient::ParseInstallDetected(data, &event)) return;
+    if (!live || !mira_gui::events::ParseInstallDetected(data, &event)) return;
     QTimer::singleShot(0, this, [this, event] { AskAboutInstall(event); });
     return;
   }
@@ -3620,7 +3625,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     // watching the process. Tracked: leave it alone, game.state is coming.
     // Untracked: clear it, since nothing will ever say it stopped.
     mira_gui::GameLaunchedEvent launched;
-    if (mira_gui::MiradClient::ParseGameLaunched(data, &launched) && !launched.tracked) {
+    if (mira_gui::events::ParseGameLaunched(data, &launched) && !launched.tracked) {
       library_->SetRunning(launched.id, false);
     }
     return;
@@ -3630,24 +3635,24 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   // left over": mirad also publishes runners.download.* and tricks.* here.
   if (type == "games.updated") {
     std::vector<mira_gui::GameSummary> games;
-    if (mira_gui::MiradClient::ParseGameSummaries(data, &games)) UpsertGames(games);
+    if (mira_gui::events::ParseGameSummaries(data, &games)) UpsertGames(games);
     return;
   }
   if (type != "game.added" && type != "game.updated") return;
 
   mira_gui::GameSummary game;
-  if (mira_gui::MiradClient::ParseGameSummary(data, &game)) UpsertGames({game});
+  if (mira_gui::events::ParseGameSummary(data, &game)) UpsertGames({game});
 
   // A new installer asks to be run instead of opening its settings, unless mirad already runs it.
   if (live && type == "game.added" && game.status == "needs_install" && !game.id.empty()) {
-    if (!mira_gui::MiradClient::ParseAutoInstall(data)) OfferInstall(game.id);
+    if (!mira_gui::events::ParseAutoInstall(data)) OfferInstall(game.id);
     return;
   }
 
   // open_config_on_add: open a newly detected game's settings to check them.
   // Only for a lone arrival; a scan that finds several opens nothing rather
   // than stacking cards. Never for history, which would open one at startup.
-  if (live && type == "game.added" && mira_gui::MiradClient::ParseOpenConfig(data) && !game.id.empty()) {
+  if (live && type == "game.added" && mira_gui::events::ParseOpenConfig(data) && !game.id.empty()) {
     pending_added_.push_back(game.id);
     if (added_timer_ == nullptr) {
       added_timer_ = new QTimer(this);

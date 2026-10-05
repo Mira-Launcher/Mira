@@ -3,7 +3,7 @@
 #include <json.hpp>
 
 #include "client/JsonMapping.h"
-#include "client/MiradClient.h"
+#include "client/Events.h"
 
 using nlohmann::json;
 using namespace mira_gui;
@@ -46,7 +46,7 @@ TEST_CASE("A record's art tells a game with no art apart from one that didn't sa
   CHECK_FALSE(mapping::ToGameSummary(json::parse(R"({"id": "x"})")).art.has_value());
 
   MetadataEvent event;
-  REQUIRE(MiradClient::ParseMetadataEvent(R"({"id": "x", "art": {"cover": "b"}})", &event));
+  REQUIRE(events::ParseMetadataEvent(R"({"id": "x", "art": {"cover": "b"}})", &event));
   REQUIRE(event.art.has_value());
   CHECK(event.art->at("cover") == "b");
 }

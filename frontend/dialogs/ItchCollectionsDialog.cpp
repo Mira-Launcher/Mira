@@ -7,7 +7,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Stores.h"
 #include "../app/ErrorHelp.h"
 
 ItchCollectionsDialog::ItchCollectionsDialog(QWidget* parent) : QDialog(parent) {
@@ -51,7 +51,7 @@ ItchCollectionsDialog::ItchCollectionsDialog(QWidget* parent) : QDialog(parent) 
 
 void ItchCollectionsDialog::Refresh() {
   status_->setText("Loading…");
-  mira_gui::MiradClient::GetItchCollectionsAsync(
+  mira_gui::api::GetItchCollectionsAsync(
       this, [this](mira_gui::ItchCollectionsResult result) { ShowCollections(result); });
 }
 
@@ -83,7 +83,7 @@ void ItchCollectionsDialog::ShowCollections(const mira_gui::ItchCollectionsResul
       auto* remove = new QPushButton("Remove", row);
       const std::int64_t id = collection.id;
       connect(remove, &QPushButton::clicked, this, [this, id] {
-        mira_gui::MiradClient::RemoveItchCollectionAsync(
+        mira_gui::api::RemoveItchCollectionAsync(
             this, id, [this](mira_gui::StoreActionResult r) {
               if (!r.ok) {
                 status_->setText("Could not remove it: " + mira_gui::error_help::Describe(r.error));
@@ -104,7 +104,7 @@ void ItchCollectionsDialog::Add() {
   if (link.isEmpty()) return;
   add_->setEnabled(false);
   status_->setText("Adding…");
-  mira_gui::MiradClient::AddItchCollectionAsync(
+  mira_gui::api::AddItchCollectionAsync(
       this, link.toStdString(), [this](mira_gui::StoreActionResult r) {
         add_->setEnabled(true);
         if (!r.ok) {

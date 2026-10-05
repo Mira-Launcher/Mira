@@ -9,7 +9,8 @@
 #include <memory>
 #include <utility>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Games.h"
+#include "../client/api/Library.h"
 #include "../dialogs/DeleteGameDialog.h"
 #include "../dialogs/LogViewerDialog.h"
 #include "../dialogs/RunInPrefixDialog.h"
@@ -44,7 +45,7 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
 }  // namespace
 
 void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched) {
-  MiradClient::LaunchGameAsync(parent, id, [parent, id, on_launched](LaunchResult result) {
+  api::LaunchGameAsync(parent, id, [parent, id, on_launched](LaunchResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not launch the game.", result.error);
       return;
@@ -54,7 +55,7 @@ void Launch(QWidget* parent, const std::string& id, std::function<void(bool trac
 }
 
 void Stop(QWidget* parent, const std::string& id) {
-  MiradClient::StopGameAsync(parent, id, [parent, id](StopResult result) {
+  api::StopGameAsync(parent, id, [parent, id](StopResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not stop the game.", result.error);
     }
@@ -66,7 +67,7 @@ void Delete(QWidget* parent, const std::string& id, const QString& name,
   // Paths come from a detail fetch; the list summary carries neither
   // install_path nor data_dir. A failed fetch still offers the plain
   // remove, with both options disabled.
-  MiradClient::GetGameAsync(parent, id, [parent, id, name, on_deleted](GameDetailResult detail) {
+  api::GetGameAsync(parent, id, [parent, id, name, on_deleted](GameDetailResult detail) {
     const QString install_path =
         detail.ok ? QString::fromStdString(detail.game.install_path) : QString();
     const QString data_dir = detail.ok ? QString::fromStdString(detail.game.data_dir) : QString();
@@ -75,7 +76,7 @@ void Delete(QWidget* parent, const std::string& id, const QString& name,
     const DeleteChoice choice = AskDeleteGame(parent, name, install_path, data_dir, source);
     if (!choice.confirmed) return;
 
-    MiradClient::DeleteGameAsync(
+    api::DeleteGameAsync(
         parent, id, choice.delete_files, choice.delete_prefix, choice.delete_metadata,
         [parent, name, on_deleted](DeleteResult result) {
           if (!result.ok) {
@@ -94,7 +95,7 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
 }
 
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished) {
-  MiradClient::FinishInstallAsync(parent, id, [parent, id, on_finished](FinishInstallResult result) {
+  api::FinishInstallAsync(parent, id, [parent, id, on_finished](FinishInstallResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not mark this game as installed.", result.error);
       return;
@@ -119,7 +120,7 @@ void ViewLog(QWidget* parent, const std::string& id, const QString& name) {
 }
 
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) {
-  MiradClient::GetGameAsync(parent, id, [parent, id, name](GameDetailResult result) {
+  api::GetGameAsync(parent, id, [parent, id, name](GameDetailResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not run winetricks.", result.error);
       return;
@@ -139,7 +140,7 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) 
 void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_enabled) {
   const GameConfigEdit edit{"desktop_entries.enabled", "a boolean",
                             currently_enabled ? "false" : "true", false};
-  MiradClient::PatchGameConfigAsync(
+  api::PatchGameConfigAsync(
       parent, id, {edit}, [parent, currently_enabled](PatchGameConfigResult result) {
         if (!result.ok) {
           notify::FailedRequest(parent, "Could not update the desktop entry.", result.error);
@@ -158,7 +159,7 @@ void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QStri
   if (!choice.confirmed) return;
 
   // mirad itself never deletes a desktop-entry game's files or prefix.
-  MiradClient::DeleteGamesAsync(
+  api::DeleteGamesAsync(
       parent, Ids(games), choice.delete_files, choice.delete_prefix, choice.delete_metadata,
       [parent, names = NamesById(games), on_done](DeleteGamesResult result) {
         if (!result.ok) {
@@ -190,7 +191,7 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
     return;
   }
 
-  MiradClient::RelocateGamesAsync(
+  api::RelocateGamesAsync(
       parent, Ids(games), [parent, names = NamesById(games), on_done](RelocateLibraryResult result) {
         if (!result.ok) {
           notify::FailedRequest(parent, "Could not move the games.", result.error);
@@ -212,7 +213,7 @@ void BatchSetDesktopEntry(QWidget* parent, const std::vector<std::string>& ids, 
   GamesPatch patch;
   patch.ids = ids;
   patch.config = {{"desktop_entries.enabled", "a boolean", enabled ? "true" : "false", false}};
-  MiradClient::PatchGamesAsync(parent, patch, [parent, enabled](PatchGamesResult result) {
+  api::PatchGamesAsync(parent, patch, [parent, enabled](PatchGamesResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not update the application menu.", result.error);
       return;

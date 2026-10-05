@@ -15,6 +15,8 @@
 #include <utility>
 
 #include "../client/EventHub.h"
+#include "../client/api/Config.h"
+#include "../client/api/Runners.h"
 #include "AppearancePreviews.h"
 #include "../app/ErrorHelp.h"
 #include "../app/KeyBindings.h"
@@ -508,7 +510,7 @@ void SettingsPanel::LoadFrontendPrefs() {
   theme_saved_ = theme::CurrentName();
   SelectTheme(theme_saved_);
 
-  MiradClient::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
+  api::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
     if (!result.ok) return;  // the defaults are already shown
     const FrontendPrefs& prefs = result.prefs;
     if (prefs.theme) {
@@ -552,7 +554,7 @@ void SettingsPanel::LoadFrontendPrefs() {
 // --- Schema pages ---------------------------------------------------------
 
 void SettingsPanel::Load() {
-  MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
+  api::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
       emit LoadFailed(error_help::Describe(schema.error));
       return;
@@ -566,12 +568,12 @@ void SettingsPanel::Load() {
     BuildSchemaPages();
 
     const auto list_runners = [this] {
-      MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
+      api::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombos(result); });
     };
     list_runners();
     connect(EventHub::Instance(), &EventHub::RunnersChanged, this, list_runners);
 
-    MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
+    api::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
         emit LoadFailed(error_help::Describe(config.error));
         return;
@@ -719,7 +721,7 @@ void SettingsPanel::AppendSectionAction(const SectionAction& action) {
 }
 
 void SettingsPanel::LoadGameModeStatus() {
-  MiradClient::GetGameModeStatusAsync(this, [this](GameModeStatusResult result) {
+  api::GetGameModeStatusAsync(this, [this](GameModeStatusResult result) {
     if (gamemode_status_ == nullptr) return;
     QString text;
     bool error = false;
@@ -863,7 +865,7 @@ void SettingsPanel::Save() {
     for (const PrefField& field : pref_fields_) field.mark_saved();
     hidden_sources_saved_ = CurrentHiddenSources();
     source_order_saved_ = CurrentSourceOrder();
-    MiradClient::SaveFrontendPrefsAsync(this, prefs, [this](PatchConfigResult result) {
+    api::SaveFrontendPrefsAsync(this, prefs, [this](PatchConfigResult result) {
       if (!result.ok) notify::FailedRequest(this, "Could not save the display settings.", result.error);
     });
     emit PrefsSaved(prefs);
@@ -898,12 +900,12 @@ void SettingsPanel::Save() {
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
   if (!edits.empty()) {
-    MiradClient::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
+    api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
       done(result.ok, result.error, edited);
     });
   }
   for (const size_t i : resets) {
-    MiradClient::ResetConfigKeyAsync(this, fields_[i].entry.key, [done, i](PatchConfigResult result) {
+    api::ResetConfigKeyAsync(this, fields_[i].entry.key, [done, i](PatchConfigResult result) {
       done(result.ok, result.error, {i});
     });
   }

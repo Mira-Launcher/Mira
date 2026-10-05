@@ -14,7 +14,7 @@
 
 #include <filesystem>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Games.h"
 #include "../app/Notify.h"
 
 namespace mira_gui {
@@ -131,7 +131,7 @@ void AddManualGameDialog::Submit() {
 
   setEnabled(false);
   add_->setText("Adding…");
-  MiradClient::AddManualGameAsync(
+  api::AddManualGameAsync(
       this, install_path, exe_path, name_->text().trimmed().toStdString(),
       platform_->currentData().toString().toStdString(), is_installer_->isChecked(),
       [this](GameDetailResult result) {

@@ -1,6 +1,8 @@
 #include "GameEditForm.h"
 
 #include "../client/EventHub.h"
+#include "../client/api/Games.h"
+#include "../client/api/Runners.h"
 #include "../client/JsonMapping.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -248,7 +250,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   setEnabled(false);
   Load();
   connect(EventHub::Instance(), &EventHub::RunnersChanged, this, [this] {
-    MiradClient::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombo(result); });
+    api::ListRunnersAsync(this, [this](RunnersResult result) { PopulateRunnerCombo(result); });
   });
 }
 
@@ -278,10 +280,10 @@ void GameEditForm::ResetScroll() {
 }
 
 void GameEditForm::Load() {
-  mira_gui::MiradClient::ListRunnersAsync(this, [this](mira_gui::RunnersResult result) {
+  mira_gui::api::ListRunnersAsync(this, [this](mira_gui::RunnersResult result) {
     PopulateRunnerCombo(result);
   });
-  mira_gui::MiradClient::GetGameAsync(this, id_, [this](mira_gui::GameDetailResult result) {
+  mira_gui::api::GetGameAsync(this, id_, [this](mira_gui::GameDetailResult result) {
     if (!result.ok) {
       emit LoadFailed(error_help::Describe(result.error));
       return;
@@ -373,7 +375,7 @@ void GameEditForm::ShowRunnerOptions() {
     BuildRunnerFields(kind.empty() ? std::vector<RunnerOption>() : known->second);
     return;
   }
-  MiradClient::GetRunnerSchemaAsync(this, kind, [this, kind](RunnerSchemaResult result) {
+  api::GetRunnerSchemaAsync(this, kind, [this, kind](RunnerSchemaResult result) {
     // An unknown kind (a typed-in reference) simply has no options to show.
     runner_schemas_[kind] = result.ok ? result.options : std::vector<RunnerOption>();
     if (kind == options_kind_) BuildRunnerFields(runner_schemas_[kind]);
@@ -508,7 +510,7 @@ void GameEditForm::MoveFolder(bool prefix) {
   QPushButton* button = prefix ? move_prefix_ : move_button_;
   button->setEnabled(false);
   button->setText("Moving…");
-  MiradClient::RelocateGameAsync(this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
+  api::RelocateGameAsync(this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
                                  [this, button, prefix](GameDetailResult result) {
                                    button->setText("Move…");
                                    if (!result.ok) {
@@ -535,7 +537,7 @@ void GameEditForm::ConfirmExecutable() {
   mira_gui::GamePatch patch;
   patch.reviewed = true;
   looks_right_->setEnabled(false);
-  MiradClient::PatchGameAsync(this, id_, patch, [this](PatchGameResult result) {
+  api::PatchGameAsync(this, id_, patch, [this](PatchGameResult result) {
     looks_right_->setEnabled(true);
     if (!result.ok) {
       notify::FailedRequest(this, "Could not confirm the executable.", result.error);
@@ -660,7 +662,7 @@ void GameEditForm::Save() {
   };
   const auto save_overrides = [this, override_edits, fail, succeed] {
     if (override_edits.empty()) return succeed();
-    mira_gui::MiradClient::PatchGameConfigAsync(
+    mira_gui::api::PatchGameConfigAsync(
         this, id_, override_edits, [this, fail, succeed](mira_gui::PatchGameConfigResult override_result) {
           if (!override_result.ok) return fail(override_result.error);
           overrides_->MarkSaved();
@@ -676,7 +678,7 @@ void GameEditForm::Save() {
       save_overrides();
       return;
     }
-    mira_gui::MiradClient::PatchGamesAsync(
+    mira_gui::api::PatchGamesAsync(
         this, tags, [this, current, fail, save_overrides](mira_gui::PatchGamesResult result) {
           if (!result.ok) {
             fail(result.error);
@@ -692,7 +694,7 @@ void GameEditForm::Save() {
     save_tags();
     return;
   }
-  mira_gui::MiradClient::PatchGameAsync(this, id_, patch, [fail, save_tags](mira_gui::PatchGameResult result) {
+  mira_gui::api::PatchGameAsync(this, id_, patch, [fail, save_tags](mira_gui::PatchGameResult result) {
     if (!result.ok) {
       fail(result.error);
       return;

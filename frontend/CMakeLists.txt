@@ -27,7 +27,7 @@ qt_standard_project_setup()
 
 # Each folder is one area of the GUI; docs/frontend.md lists what each holds.
 set(MIRA_GUI_DIRS
-  activity app client dialogs game library runners settings sidebar sources theme widgets window)
+  activity app client client/api dialogs game library runners settings sidebar sources theme widgets window)
 set(MIRA_GUI_SOURCES main.cpp)
 foreach(dir IN LISTS MIRA_GUI_DIRS)
   file(GLOB dir_sources CONFIGURE_DEPENDS ${dir}/*.cpp ${dir}/*.h)
@@ -95,7 +95,7 @@ set_target_properties(mira-gui PROPERTIES
 # here: client/JsonMapping (JSON <-> Types.h) and the parts of the client
 # that are pure functions. Anything needing a live mirad is exercised
 # against the real daemon instead; see docs/architecture.md.
-file(GLOB MIRA_GUI_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
+file(GLOB MIRA_GUI_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp client/api/*.cpp)
 add_executable(mira_gui_tests
   ${MIRA_GUI_TEST_SOURCES}
   activity/DownloadTracker.cpp
@@ -103,9 +103,9 @@ add_executable(mira_gui_tests
   app/ErrorHelp.cpp
   client/EventHub.cpp
   client/EventStream.cpp
+  client/Events.cpp
   client/Jobs.cpp
   client/JsonMapping.cpp
-  client/MiradClient.cpp
   client/Transport.cpp
   library/GameLibraryModel.cpp
   library/LibrarySort.cpp

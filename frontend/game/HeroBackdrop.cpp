@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Artwork.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../theme/Theme.h"
@@ -53,7 +53,7 @@ void HeroBackdrop::RefreshHero(const std::string& id) {
 void HeroBackdrop::LoadHero() {
   const std::string id = game_.id;
   // A game with no hero is a 404 here, when its record didn't already say so.
-  MiradClient::GetArtworkImageAsync(this, id, "hero", [this, id](QImage image) {
+  api::GetArtworkImageAsync(this, id, "hero", [this, id](QImage image) {
     if (game_.id != id || image.isNull()) return;
     hero_ = QPixmap::fromImage(std::move(image));
     hero_preview_ = QPixmap();

@@ -16,7 +16,8 @@
 #include <algorithm>
 
 #include "../client/EventHub.h"
-#include "../client/MiradClient.h"
+#include "../client/api/Config.h"
+#include "../client/api/Runners.h"
 #include "../activity/DownloadTracker.h"
 #include "../app/Notify.h"
 #include "../settings/SettingsCard.h"
@@ -145,7 +146,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   default_note_->setContentsMargins(4, 0, 4, 0);
   default_note_->setTextFormat(Qt::RichText);
   connect(default_note_, &QLabel::linkActivated, this, [this] {
-    MiradClient::ResetConfigKeyAsync(this, kDefaultKey, [this](PatchConfigResult result) {
+    api::ResetConfigKeyAsync(this, kDefaultKey, [this](PatchConfigResult result) {
       if (!result.ok) {
         SetStatus("Could not reset the default: " + error_help::Describe(result.error), true);
         return;
@@ -228,7 +229,7 @@ void RunnersPage::RefreshSources() {
     RefreshCatalog();
   };
   if (sources_.contains(kind)) return fill();
-  MiradClient::ListRunnerSourcesAsync(this, kind, [this, kind, fill](RunnerSourcesResult result) {
+  api::ListRunnerSourcesAsync(this, kind, [this, kind, fill](RunnerSourcesResult result) {
     if (!result.ok) {
       SetStatus("Could not list sources: " + error_help::Describe(result.error), true);
       return;
@@ -239,7 +240,7 @@ void RunnersPage::RefreshSources() {
 }
 
 void RunnersPage::RefreshUpdates() {
-  MiradClient::GetRunnerUpdatesAsync(this, [this](RunnerUpdatesResult result) {
+  api::GetRunnerUpdatesAsync(this, [this](RunnerUpdatesResult result) {
     if (!result.ok) return;  // offline; the catalog says so
     updates_ = result.updates;
     RebuildInstalled();
@@ -247,7 +248,7 @@ void RunnersPage::RefreshUpdates() {
 }
 
 void RunnersPage::RefreshTools() {
-  MiradClient::ListRunnerToolsAsync(this, [this](RunnerToolsResult result) {
+  api::ListRunnerToolsAsync(this, [this](RunnerToolsResult result) {
     if (!result.ok) return;
     tools_ = result.tools;
     RebuildTools();
@@ -264,13 +265,13 @@ QString RunnersPage::SourceLabel(const std::string& id) const {
 }
 
 void RunnersPage::RefreshInstalled() {
-  MiradClient::GetConfigAsync(this, [this](ConfigResult result) {
+  api::GetConfigAsync(this, [this](ConfigResult result) {
     if (!result.ok) return;
     const auto found = result.values.find(kDefaultKey);
     default_windows_ = found != result.values.end() ? found->second : std::string();
     RebuildInstalled();
   });
-  MiradClient::ListRunnersAsync(this, [this](RunnersResult result) {
+  api::ListRunnersAsync(this, [this](RunnersResult result) {
     if (!result.ok) {
       SetStatus(error_help::Describe(result.error), true);
       return;
@@ -287,7 +288,7 @@ void RunnersPage::RefreshCatalog() {
   SetStatus("Checking for builds…");
   const std::string kind = CurrentKind();
   const std::string source = source_->currentData().toString().toStdString();
-  MiradClient::GetRunnerCatalogAsync(this, kind, source, [this, kind, source](RunnerCatalogResult result) {
+  api::GetRunnerCatalogAsync(this, kind, source, [this, kind, source](RunnerCatalogResult result) {
     if (kind != CurrentKind() || source != source_->currentData().toString().toStdString()) return;
     if (!result.ok) {
       SetStatus("Could not list builds: " + error_help::Describe(result.error), true);
@@ -455,7 +456,7 @@ void RunnersPage::RebuildTools() {
 
 void RunnersPage::Update(const RunnerInfo& runner, const RunnerUpdate& update) {
   replacing_[update.name] = runner.reference;
-  MiradClient::UpdateRunnerAsync(this, runner.reference, [this, name = update.name](RunnerDownloadResult result) {
+  api::UpdateRunnerAsync(this, runner.reference, [this, name = update.name](RunnerDownloadResult result) {
     if (!result.ok) {
       replacing_.erase(name);
       SetStatus("Could not start the update: " + error_help::Describe(result.error), true);
@@ -465,7 +466,7 @@ void RunnersPage::Update(const RunnerInfo& runner, const RunnerUpdate& update) {
 }
 
 void RunnersPage::SetupTool(const RunnerTool& tool) {
-  MiradClient::SetupRunnerToolAsync(this, tool.id, [this, label = tool.label](RunnerDownloadResult result) {
+  api::SetupRunnerToolAsync(this, tool.id, [this, label = tool.label](RunnerDownloadResult result) {
     if (!result.ok) {
       SetStatus(QString("Could not install %1: %2").arg(QString::fromStdString(label), error_help::Describe(result.error)),
                 true);
@@ -475,7 +476,7 @@ void RunnersPage::SetupTool(const RunnerTool& tool) {
 }
 
 void RunnersPage::SetDefault(const std::string& reference) {
-  MiradClient::PatchConfigAsync(this, {ConfigEdit{kDefaultKey, "a string", reference}},
+  api::PatchConfigAsync(this, {ConfigEdit{kDefaultKey, "a string", reference}},
                                 [this](PatchConfigResult result) {
                                   if (!result.ok) {
                                     SetStatus("Could not set the default: " +
@@ -493,7 +494,7 @@ void RunnersPage::Remove(const RunnerInfo& runner) {
                        /*destructive=*/true)) {
     return;
   }
-  MiradClient::DeleteRunnerAsync(this, runner.kind, runner.name, [this](RunnerRemoveResult result) {
+  api::DeleteRunnerAsync(this, runner.kind, runner.name, [this](RunnerRemoveResult result) {
     if (!result.ok) {
       SetStatus("Could not remove that runner: " + error_help::Describe(result.error), true);
     }
@@ -504,7 +505,7 @@ void RunnersPage::Remove(const RunnerInfo& runner) {
 void RunnersPage::Download(const std::string& tag) {
   const std::string kind = CurrentKind();
   const std::string source = source_->currentData().toString().toStdString();
-  MiradClient::DownloadRunnerAsync(this, kind, tag, source, [this](RunnerDownloadResult result) {
+  api::DownloadRunnerAsync(this, kind, tag, source, [this](RunnerDownloadResult result) {
     // The tracker hears the rest on the event stream.
     if (!result.ok) SetStatus("Could not start the download: " + error_help::Describe(result.error), true);
   });
@@ -553,7 +554,7 @@ void RunnersPage::DownloadChanged(const QString& key) {
                           QString("Games that used %1 now use %2. Remove %1?")
                               .arg(QString::fromStdString(old->label), downloads_->NameFor(*entry)),
                           "Remove", /*destructive=*/true)) {
-        MiradClient::DeleteRunnerAsync(this, kind, name, [this](RunnerRemoveResult result) {
+        api::DeleteRunnerAsync(this, kind, name, [this](RunnerRemoveResult result) {
           if (!result.ok) SetStatus("Could not remove the old build: " + error_help::Describe(result.error), true);
         });
       }

@@ -9,7 +9,9 @@
 #include <algorithm>
 
 #include "../client/EventHub.h"
-#include "../client/MiradClient.h"
+#include "../client/api/Config.h"
+#include "../client/api/Runners.h"
+#include "../client/api/Stores.h"
 #include "../app/ErrorHelp.h"
 #include "../theme/Theme.h"
 
@@ -132,12 +134,12 @@ void SourceSettingsCard::Save() {
     SaveRunner();
   };
   if (!edits.empty()) {
-    MiradClient::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
+    api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
       done(result.ok, result.error, edited);
     });
   }
   for (const size_t i : resets) {
-    MiradClient::ResetConfigKeyAsync(this, settings_[i].entry.key, [done, i](PatchConfigResult result) {
+    api::ResetConfigKeyAsync(this, settings_[i].entry.key, [done, i](PatchConfigResult result) {
       done(result.ok, result.error, {i});
     });
   }
@@ -149,7 +151,7 @@ void SourceSettingsCard::SaveRunner() {
     FinishSave(true);
     return;
   }
-  MiradClient::SetSourceRunnerAsync(this, id_, runner_->currentData().toString().toStdString(),
+  api::SetSourceRunnerAsync(this, id_, runner_->currentData().toString().toStdString(),
                                     /*apply_to_games=*/false, [this](SourceRunnerResult result) {
                                       if (!result.ok) {
                                         ShowStatus("Could not change the runner: " + error_help::Describe(result.error),
@@ -206,7 +208,7 @@ void SourceSettingsCard::BuildRunnerRow() {
   runner_apply_->setVisible(false);
   connect(runner_apply_, &QPushButton::clicked, this, [this] {
     runner_apply_->setEnabled(false);
-    MiradClient::SetSourceRunnerAsync(this, id_, runner_ref_.toStdString(), /*apply_to_games=*/true,
+    api::SetSourceRunnerAsync(this, id_, runner_ref_.toStdString(), /*apply_to_games=*/true,
                                       [this](SourceRunnerResult result) {
                                         runner_apply_->setEnabled(true);
                                         if (!result.ok) {
@@ -225,7 +227,7 @@ void SourceSettingsCard::BuildRunnerRow() {
 
 void SourceSettingsCard::LoadRunner() {
   if (runner_ == nullptr) return;
-  MiradClient::GetSourceRunnerAsync(this, id_, [this](SourceRunnerResult runner) { ShowRunner(runner); });
+  api::GetSourceRunnerAsync(this, id_, [this](SourceRunnerResult runner) { ShowRunner(runner); });
 }
 
 void SourceSettingsCard::SelectRunner(const QString& runner_ref) {
@@ -253,7 +255,7 @@ void SourceSettingsCard::FillRunners(const RunnersResult& runners, const QString
 }
 
 void SourceSettingsCard::RunnersChanged() {
-  MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+  api::ListRunnersAsync(this, [this](RunnersResult runners) {
     // Keeps an unsaved pick; a removed one shows as not installed.
     if (runner_ != nullptr && runner_->isEnabled()) {
       FillRunners(runners, runner_->currentData().toString());
@@ -276,7 +278,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
     return;
   }
   runner_ref_ = QString::fromStdString(runner.runner_ref);
-  MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+  api::ListRunnersAsync(this, [this](RunnersResult runners) {
     FillRunners(runners, runner_ref_);
     runner_->setEnabled(true);
     UpdateButtons();
@@ -303,7 +305,7 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
 }
 
 void SourceSettingsCard::LoadSettings() {
-  MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
+  api::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) {
       ShowStatus("Could not load settings: " + error_help::Describe(schema.error), true);
       return;
@@ -325,13 +327,13 @@ void SourceSettingsCard::LoadSettings() {
         });
       }
       MoveRow(footer_, static_cast<int>(Rows().size()) - 1);  // the buttons stay last
-      MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+      api::ListRunnersAsync(this, [this](RunnersResult runners) {
         for (SettingEditor& editor : settings_) {
           if (editor.combo != nullptr && editor.entry.is_runner_ref) FillRunnerCombo(editor.combo, runners);
         }
       });
     }
-    MiradClient::GetConfigAsync(this, [this](ConfigResult config) {
+    api::GetConfigAsync(this, [this](ConfigResult config) {
       if (!config.ok) {
         ShowStatus("Could not load settings: " + error_help::Describe(config.error), true);
         return;

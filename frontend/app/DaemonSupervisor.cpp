@@ -4,7 +4,7 @@
 #include <QFileInfo>
 #include <QTimer>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Config.h"
 
 namespace mira_gui {
 
@@ -25,7 +25,7 @@ DaemonSupervisor::DaemonSupervisor(QObject* parent) : QObject(parent) {
 DaemonSupervisor::~DaemonSupervisor() { StopIfSelfStarted(); }
 
 void DaemonSupervisor::EnsureRunning() {
-  MiradClient::CheckHealthAsync(this, [this](HealthStatus status) {
+  api::CheckHealthAsync(this, [this](HealthStatus status) {
     if (status.reachable) {
       if (status.api != kExpectedApiVersion) {
         emit Outdated(status.api);
@@ -42,7 +42,7 @@ void DaemonSupervisor::EnsureRunning() {
       qWarning("mirad: %s", process_->readAllStandardError().constData());
     });
     // The socket this frontend talks to: mirad ignores $MIRA_SOCKET, which can move it.
-    process_->start(mirad_path, {"--socket", QString::fromStdString(MiradClient::ResolveSocketPath())});
+    process_->start(mirad_path, {"--socket", QString::fromStdString(api::ResolveSocketPath())});
     if (!process_->waitForStarted(2000)) {
       emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process_->errorString()));
       return;
@@ -53,7 +53,7 @@ void DaemonSupervisor::EnsureRunning() {
 }
 
 void DaemonSupervisor::PollHealth(int attempts_left) {
-  MiradClient::CheckHealthAsync(this, [this, attempts_left](HealthStatus status) {
+  api::CheckHealthAsync(this, [this, attempts_left](HealthStatus status) {
     if (status.reachable) {
       emit Ready();
       return;

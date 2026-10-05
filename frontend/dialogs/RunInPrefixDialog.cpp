@@ -14,7 +14,7 @@
 #include <filesystem>
 #include <utility>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Games.h"
 
 namespace mira_gui {
 
@@ -95,7 +95,7 @@ void RunInPrefixDialog::Run() {
   // so the dialog says what it's doing rather than appearing frozen.
   setEnabled(false);
   run_->setText("Starting…");
-  MiradClient::RunInPrefixAsync(this, game_id_, exe, args_->text().toStdString(),
+  api::RunInPrefixAsync(this, game_id_, exe, args_->text().toStdString(),
                                 [this](RunInPrefixResult result) {
                                   setEnabled(true);
                                   run_->setText("Run");

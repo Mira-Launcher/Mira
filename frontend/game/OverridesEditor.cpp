@@ -14,7 +14,9 @@
 #include <utility>
 
 #include "../client/EventHub.h"
-#include "../client/MiradClient.h"
+#include "../client/api/Config.h"
+#include "../client/api/Games.h"
+#include "../client/api/Runners.h"
 
 namespace mira_gui {
 
@@ -30,7 +32,7 @@ OverridesEditor::OverridesEditor(std::string game_id, QWidget* parent)
 }
 
 void OverridesEditor::Load() {
-  MiradClient::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
+  api::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) return;  // non-fatal: the main game fields still work without this section
     BuildRows(schema);
     Reload();
@@ -38,7 +40,7 @@ void OverridesEditor::Load() {
 }
 
 void OverridesEditor::Reload() {
-  MiradClient::GetGameConfigAsync(this, game_id_, [this](GameConfigResult config) {
+  api::GetGameConfigAsync(this, game_id_, [this](GameConfigResult config) {
     if (config.ok) ApplyValues(config);
   });
 }
@@ -100,7 +102,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     }
   }
   const auto list_runners = [this] {
-    MiradClient::ListRunnersAsync(this, [this](RunnersResult runners) {
+    api::ListRunnersAsync(this, [this](RunnersResult runners) {
       for (Field& field : fields_) {
         if (field.combo != nullptr && field.entry.is_runner_ref) FillRunnerCombo(field.combo, runners);
       }
@@ -185,7 +187,7 @@ void OverridesEditor::ShowFromTop() {
 void OverridesEditor::ResetField(size_t index) {
   const Field& field = fields_[index];
   resetting_key_ = field.entry.key;
-  MiradClient::PatchGameConfigAsync(
+  api::PatchGameConfigAsync(
       this, game_id_, {GameConfigEdit{field.entry.key, field.entry.type, std::string(), true}},
       [this](PatchGameConfigResult result) {
         if (!result.ok) {

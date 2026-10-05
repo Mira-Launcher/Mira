@@ -9,7 +9,7 @@
 #include <optional>
 
 #include "../client/Async.h"
-#include "../client/MiradClient.h"
+#include "../client/api/Artwork.h"
 #include "CoverArt.h"
 #include "../theme/Theme.h"
 
@@ -271,8 +271,8 @@ void ArtworkStore::Pump() {
     const std::string game = (hash < 0 ? id : id.left(hash)).toStdString();
     const std::string slot = hash < 0 ? std::string("cover") : id.mid(hash + 1).toStdString();
     auto fetch = [game, slot, title] {
-      const ArtworkResult result = title ? MiradClient::GetTitleArtworkBlocking(title->first, title->second)
-                                         : MiradClient::GetArtworkBlocking(game, slot);
+      const ArtworkResult result = title ? api::GetTitleArtworkBlocking(title->first, title->second)
+                                         : api::GetArtworkBlocking(game, slot);
       QImage image;
       if (!result.ok || !image.loadFromData(reinterpret_cast<const uchar*>(result.bytes.data()),
                                             static_cast<int>(result.bytes.size()))) {

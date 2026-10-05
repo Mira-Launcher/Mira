@@ -8,7 +8,7 @@
 #include <QPushButton>
 #include <QToolButton>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Games.h"
 #include "../app/ErrorHelp.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
@@ -123,7 +123,7 @@ void InstallerCard::LoadInfo(const std::string& path) {
   shown_->setEnabled(false);
   quiet_->hide();
   error_->hide();
-  MiradClient::GetInstallerInfoAsync(this, game_id_, path, [this, path](InstallerInfoResult info) {
+  api::GetInstallerInfoAsync(this, game_id_, path, [this, path](InstallerInfoResult info) {
     if (!info.ok) {
       file_->setText(QString());
       error_->setText("Could not read the installer: " + error_help::Describe(info.error));
@@ -146,7 +146,7 @@ void InstallerCard::Install(bool interactive) {
   shown_->setEnabled(false);
   quiet_->setEnabled(false);
   error_->hide();
-  MiradClient::InstallGameAsync(this, game_id_, interactive, installer_, [this](GameActionResult result) {
+  api::InstallGameAsync(this, game_id_, interactive, installer_, [this](GameActionResult result) {
     if (result.ok) {
       emit Started();
       return;
@@ -184,7 +184,7 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game, const std:
   connect(delete_, &QPushButton::clicked, this, [this] {
     delete_->setEnabled(false);
     error_->hide();
-    MiradClient::DeleteInstallerAsync(this, game_id_, [this](GameActionResult result) {
+    api::DeleteInstallerAsync(this, game_id_, [this](GameActionResult result) {
       if (result.ok) {
         emit CloseRequested();
         return;

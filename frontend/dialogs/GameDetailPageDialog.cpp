@@ -10,7 +10,7 @@
 
 #include <utility>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
 
 namespace mira_gui {
@@ -57,7 +57,7 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
   layout->addWidget(loading);
   layout->addStretch(1);
 
-  MiradClient::GetMetadataAsync(this, game_id_, [body, layout, loading](GameMetadataResult result) {
+  api::GetMetadataAsync(this, game_id_, [body, layout, loading](GameMetadataResult result) {
     delete loading;
 
     if (!result.ok || result.missing) {

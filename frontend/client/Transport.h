@@ -10,9 +10,8 @@
 
 // One request/response round trip against mirad's Unix socket.
 //
-// Every endpoint in MiradClient used to open its own httplib::Client, repeat
-// the same address family and timeouts, then repeat the same "2xx, or else
-// unwrap the {"error": {...}} envelope" check.
+// Owns the address family, the timeouts and the "2xx, or else unwrap the
+// {"error": {...}} envelope" check, so no endpoint in client/api/ repeats them.
 namespace mira_gui::transport {
 
 struct Reply {

@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-#include "../client/MiradClient.h"
+#include "../client/api/Artwork.h"
 #include "GamePresentation.h"
 #include "../theme/Theme.h"
 
@@ -159,7 +159,7 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
                           : QString("Not checked: Mira wasn't sure which program starts it. Open it to check."));
   Reposition();
 
-  MiradClient::GetMetadataAsync(this, game.id, [this, id = game.id](GameMetadataResult result) {
+  api::GetMetadataAsync(this, game.id, [this, id = game.id](GameMetadataResult result) {
     if (game_id_ != id || !result.ok || result.missing) return;
     ShowMetadata(result.metadata);
   });

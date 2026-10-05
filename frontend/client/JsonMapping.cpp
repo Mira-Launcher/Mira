@@ -192,4 +192,26 @@ void AssignDottedKey(json& document, const std::string& dotted_key, const json& 
   }
 }
 
+ArtCandidate ToArtCandidate(const json& item) {
+  ArtCandidate candidate;
+  if (!item.is_object()) return candidate;
+  candidate.id = item.value("id", std::int64_t{0});
+  candidate.width = item.value("width", 0);
+  candidate.height = item.value("height", 0);
+  candidate.style = item.value("style", std::string());
+  candidate.source = item.value("source", std::string("steamgriddb"));
+  candidate.nsfw = item.value("nsfw", false);
+  return candidate;
+}
+
+std::vector<GameFailure> ToGameFailures(const json& reply, const char* key) {
+  std::vector<GameFailure> out;
+  if (!reply.is_object() || !reply.contains(key) || !reply[key].is_array()) return out;
+  for (const json& entry : reply[key]) {
+    if (!entry.is_object()) continue;
+    out.push_back({entry.value("id", std::string()), ToApiError(entry.value("error", json::object()))});
+  }
+  return out;
+}
+
 }  // namespace mira_gui::mapping
