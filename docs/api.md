@@ -327,71 +327,49 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 
 Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone.
 
-## Store tools
+## Stores
 
-Epic, GOG, itch, Amazon and Humble each wrap a command-line tool. Each store's import is a [job](#jobs) whose result is `{added, updated}`. Each has a status call and a setup call that downloads the tool's latest release into `~/.config/mira/tools`; run setup again to update. Status reports the tool as:
+Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five share one set of calls under `/v1/stores/{id}`, where `id` is `epic`, `gog`, `itch`, `amazon` or `humble` (`404 store_not_found` otherwise). Store games always launch through Mira's own runners, never through the store tool.
 
-```json
-{ "installed": true, "source": "managed", "path": "...", "version": "..." }
-```
-
-`source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy), `path` or `none`, in that order. Status calls never fail when the tool is missing.
-
-Store games always launch through Mira's own runners, never through the store tool.
+- `GET /v1/stores`: `[{"id", "name", "tool_name", "can_import", "can_logout"}]`.
+- `GET /v1/stores/{id}/status`: `{id, name, tool, authenticated, account}`. `account` is only known for Epic. `tool` is `{"installed", "source", "path", "version"}`, where `source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy in `~/.config/mira/tools`), `path` or `none`, in that order. A missing tool is not an error.
+- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`.
+- `POST /v1/stores/{id}/login/begin`: `{url}`, the page to sign in at. Amazon makes a fresh one each time.
+- `POST /v1/stores/{id}/login`: body `{"credential": "..."}`. Returns the status. What the credential is depends on the store:
+  - Epic: the `authorizationCode`, or the whole JSON the login page shows. Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
+  - GOG: the `code` from the redirect URL, or the whole URL. An expired token is refreshed once.
+  - itch: an API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys), checked with butler straight away.
+  - Amazon: the amazon.com URL the login ends on, or its `openid.oa2.authorization_code`, after `login/begin`.
+  - Humble: the `_simpleauth_sess` cookie from a logged-in browser.
+- `POST /v1/stores/{id}/logout`: forgets the sign-in. `400 logout_unsupported` for Humble, whose tool keeps its own session.
+- `POST /v1/stores/{id}/import`: a [job](#jobs) (kind `import`) that adds the games the store's tool reports as installed, tagged with the store, and provisions a prefix for each. Result `{added, updated}`. `400 import_unsupported` for Humble.
 
 ### Epic
 
-Wraps [Legendary](https://github.com/derrod/legendary).
-
-- `GET /v1/epic/legendary/status`: the tool status above.
-- `POST /v1/epic/legendary/install`: downloads Legendary. Events: `epic.legendary.install.*`.
-- `GET /v1/epic/status`: `{legendary, authenticated, account, login_url}`.
-- `POST /v1/epic/auth`: body `{"code": "..."}`, the `authorizationCode` or the whole JSON the login page shows. Legendary keeps the session. Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
-- `POST /v1/epic/logout`: `legendary auth --delete`.
-- `POST /v1/epic/import`: adds installed titles (`legendary list-installed`), tagged `epic`, and provisions a prefix for each. Returns `{added, updated}`.
+Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's files runs `legendary uninstall`.
 
 ### GOG
 
 Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/Games/GOG`).
 
-- `GET /v1/gog/status`: `{gogdl, authenticated, login_url}`. An expired token is refreshed once.
-- `POST /v1/gog/setup`: downloads gogdl. Events: `gog.setup.*`.
-- `POST /v1/gog/auth`: body `{"code": "..."}`, the `code` from the redirect URL or the whole URL.
-- `POST /v1/gog/logout`: deletes the stored token.
-- `POST /v1/gog/import`: adds games found under `gog.install_root`.
-
 ### itch.io
 
 Wraps [butler](https://itch.io/docs/butler/). `mirad` starts `butler daemon` on first use and keeps the connection, so changing `itch.butler_bin` needs a restart.
 
-- `GET /v1/itch/status`: `{butler, authenticated, login_url}`. `authenticated` means a key is stored.
-- `POST /v1/itch/setup`: downloads butler and its libraries. Events: `itch.setup.*`.
-- `POST /v1/itch/auth`: body `{"api_key": "..."}` from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys), checked with butler straight away.
-- `POST /v1/itch/logout`: deletes the stored key.
-- `POST /v1/itch/import`: adds installed games (butler's caves), tagged `itch`.
-- `GET /v1/itch/collections`: the collections whose games `GET /v1/library?source=itch` lists: the account's own, then any added by link. `[{"id", "title", "games_count", "own", "url"}]`.
-- `POST /v1/itch/collections`: body `{"link": "https://itch.io/c/8213205/..."}`, or a bare id. The collection is read through butler first, so bad or private links are refused. Returns the collection with `201`.
-- `DELETE /v1/itch/collections/{id}`: removes a collection added by link.
+- `GET /v1/stores/itch/collections`: the collections whose games `GET /v1/library?source=itch` lists: the account's own, then any added by link. `[{"id", "title", "games_count", "own", "url"}]`.
+- `POST /v1/stores/itch/collections`: body `{"link": "https://itch.io/c/8213205/..."}`, or a bare id. The collection is read through butler first, so bad or private links are refused. Returns the collection with `201`.
+- `DELETE /v1/stores/itch/collections/{id}`: removes a collection added by link.
 
 ### Amazon Games
 
 Wraps [nile](https://github.com/imLinguin/nile). Installed games (`amazon-<product id>`) run their `fuel.json` command through Mira's runner with the Amazon SDK variables `nile launch` would set.
 
-- `GET /v1/amazon/status`: `{nile, authenticated}`.
-- `POST /v1/amazon/setup`: downloads nile. Events: `amazon.setup.*`.
-- `POST /v1/amazon/login`: returns `{url}` to open in a browser.
-- `POST /v1/amazon/auth`: body `{"redirect": "..."}`, the amazon.com URL the login ends on or its `openid.oa2.authorization_code`.
-- `POST /v1/amazon/logout`
-- `POST /v1/amazon/import`: adds games from nile's `installed.json`. Returns `{added, updated}`.
-
 ### Humble Bundle
 
 Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs, only downloads, so it isn't a library source. humble-cli has no JSON output, so its table output is parsed.
 
-- `GET /v1/humble/status`, `POST /v1/humble/setup`: as above, with the tool under `humble_cli`. Events: `humble.setup.*`.
-- `POST /v1/humble/auth`: body `{"session_key": "..."}`, the `_simpleauth_sess` cookie from a logged-in browser.
-- `GET /v1/humble/library`: `[{"key", "name", "claimed"}]`.
-- `POST /v1/humble/download`: body `{"bundle_key", "item_numbers"?}` (humble-cli's `1,3,5-7` syntax). Downloads into `<humble.download_root>/<bundle_key>/`. Events: `humble.download.*`; `finished` carries `path` and `downloaded`, which is false when the bundle had nothing to download (such as a Steam key). Add the result with `POST /v1/games/manual`.
+- `GET /v1/stores/humble/bundles`: `[{"key", "name", "claimed"}]`.
+- `POST /v1/stores/humble/download`: body `{"bundle_key", "item_numbers"?}` (humble-cli's `1,3,5-7` syntax). A [job](#jobs) (kind `download`, target the bundle key) that downloads into `<humble.download_root>/<bundle_key>/`. Result `{bundle_key, path}`. A bundle with nothing to download, such as a Steam key, fails with `nothing_to_download`. Add the result with `POST /v1/games/manual`.
 
 ## Store launchers
 
@@ -541,8 +519,6 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |
-| `epic.legendary.install.*`, `gog.setup.*`, `itch.setup.*`, `amazon.setup.*`, `humble.setup.*` | Store tool downloads. |
-| `humble.download.*` | See `POST /v1/humble/download`. |
 | `launcher.install.*` | See `POST /v1/launchers/{id}/install`. |
 | `notification` | A message for the user, with its level. |
 

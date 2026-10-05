@@ -12,6 +12,7 @@
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "launchers/Launchers.h"
+#include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
 
 namespace mira::library {
@@ -195,11 +196,8 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
   }
 
   if (plan->signs_out) {
-    Result<void> signed_out;
-    if (source == "epic") signed_out = epic::Logout(config);
-    if (source == "gog") signed_out = gog::Logout(config);
-    if (source == "itch") signed_out = itch::Logout(config);
-    if (source == "amazon") signed_out = amazon::Logout(config);
+    const Store* store = FindStore(source);
+    const Result<void> signed_out = store && store->logout ? store->logout(config) : Result<void>();
     if (!signed_out) result.problems.push_back("signing out: " + signed_out.error().message);
   }
 

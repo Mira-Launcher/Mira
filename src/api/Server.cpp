@@ -72,6 +72,7 @@ void Server::RegisterRoutes() {
   RegisterLaunchRoutes(*http_, s_);
   RegisterLibraryRoutes(*http_, s_);
   RegisterStoreRoutes(*http_, s_);
+  RegisterLauncherRoutes(*http_, s_);
   RegisterMetadataRoutes(*http_, s_);
   RegisterRunnerRoutes(*http_, s_);
   RegisterEventRoutes(*http_, s_);
