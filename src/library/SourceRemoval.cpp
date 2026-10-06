@@ -99,6 +99,13 @@ fs::path ProgramDir(const launchers::Launcher& launcher) {
   return launcher.id == "ea" ? dir.parent_path() : dir;
 }
 
+// A launcher's own apps (Word and Excel under Microsoft 365) live in its program folder, which goes with the
+// launcher: they have no files of their own to delete, and their folder is no "shared" one.
+bool InLauncherFolder(const model::Game& game, const launchers::Launcher* launcher) {
+  if (launcher == nullptr || game.install_path.empty() || game.data_dir.empty()) return false;
+  return paths::IsWithin(fs::path(game.install_path), {fs::path(game.data_dir) / "drive_c" / ProgramDir(*launcher)});
+}
+
 // Save folders some launchers keep inside their own program folder.
 std::vector<std::string> KeptInProgramDir(std::string_view launcher) {
   if (launcher == "ubisoft") return {"savegames"};
@@ -166,7 +173,8 @@ Result<RemovalPlan> PlanRemoval(const config::Config& /*config*/, const store::G
       continue;
     }
     plan.games.push_back(
-        {.id = game.id, .name = game.name, .deletes = WhatGetsDeleted(game, source)});
+        {.id = game.id, .name = game.name,
+         .deletes = InLauncherFolder(game, launcher) ? std::string() : WhatGetsDeleted(game, source)});
   }
   return plan;
 }
@@ -192,7 +200,9 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     const auto folders_lock = games.LockFolders();
     const std::optional<model::Game> game = games.Find(planned.id);
     if (!game) continue;
-    if (auto done = UninstallGame(config, *game, source, games.All()); !done) {
+    if (InLauncherFolder(*game, launcher)) {
+      // Its files go with the launcher's program folder, below.
+    } else if (auto done = UninstallGame(config, *game, source, games.All()); !done) {
       // Files stay; the record goes anyway so the source can still be removed.
       result.problems.push_back(std::format("{}: {}", game->name, done.error().message));
     }
