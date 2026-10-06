@@ -155,7 +155,7 @@ TEST_CASE("Search, the sidebar sort, and running all follow the model's changes"
   CHECK(Shown(proxy).empty());
 }
 
-TEST_CASE("Recently played lists running games first and keeps to its count, without apps") {
+TEST_CASE("Recently played lists running games first and keeps to its count; apps only while they run") {
   const auto played = [](const std::string& id, std::int64_t at,
                          std::vector<std::string> tags = {}) {
     GameSummary game = Game(id, id, std::move(tags));
@@ -178,9 +178,10 @@ TEST_CASE("Recently played lists running games first and keeps to its count, wit
   CHECK(ids(3) == std::vector<std::string>{"mid", "new", "old"});
   library.SetRunning("older", true);
   CHECK(ids(3) == std::vector<std::string>{"mid", "older", "new"});
-  // A running game always shows, past the count; a hidden one only while it runs.
+  // A running game always shows, past the count; a hidden one only while it runs, and an app likewise:
+  // closed, "writer" took no place above, though it was played last.
   library.SetRunning("secret", true);
   library.SetRunning("writer", true);
-  CHECK(ids(2) == std::vector<std::string>{"mid", "older", "secret"});
-  CHECK(ids(0).size() == 3);
+  CHECK(ids(2) == std::vector<std::string>{"mid", "older", "writer", "secret"});
+  CHECK(ids(0).size() == 4);
 }

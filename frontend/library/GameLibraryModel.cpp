@@ -112,10 +112,9 @@ std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count) cons
   std::vector<const GameSummary*> running;
   std::vector<const GameSummary*> played;
   for (const GameSummary& game : games_) {
-    if (IsApp(game)) continue;
-    if (game.running) {
+    if (game.running) {  // anything open shows, apps included
       running.push_back(&game);
-    } else if (game.last_played_at && !IsHidden(game)) {
+    } else if (!IsApp(game) && game.last_played_at && !IsHidden(game)) {
       played.push_back(&game);
     }
   }
