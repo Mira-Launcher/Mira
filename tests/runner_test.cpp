@@ -1,5 +1,9 @@
 #include <doctest.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -7,6 +11,7 @@
 #include <vector>
 
 #include "config/Config.h"
+#include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
 #include "runner/RefMigration.h"
@@ -377,4 +382,42 @@ TEST_CASE("RunAndWait kills a timed-out command and what it spawned") {
   REQUIRE_FALSE(result.has_value());
   CHECK(result.error().code == "exec_timeout");
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(5));
+}
+
+TEST_CASE("SpawnDetached gives the child /dev/null, not mirad's own pipes, which may have no reader left") {
+  // Mirad can outlive the window that started it, leaving its stdout and stderr as pipes nobody reads. A launch that
+  // inherited them died on its first write.
+  int broken[2];
+  REQUIRE(::pipe(broken) == 0);
+  ::close(broken[0]);  // nobody reads
+  const int saved_out = ::dup(1);
+  const int saved_err = ::dup(2);
+  ::signal(SIGPIPE, SIG_IGN);
+  ::dup2(broken[1], 1);
+  ::dup2(broken[1], 2);
+
+  Command command;
+  command.argv = {"sh", "-c", "echo out; echo err >&2"};
+  const auto pid = runner::SpawnDetached(command);
+  int status = -1;
+  if (pid) ::waitpid(*pid, &status, 0);
+
+  ::dup2(saved_out, 1);
+  ::dup2(saved_err, 2);
+  ::close(saved_out);
+  ::close(saved_err);
+  ::close(broken[1]);
+
+  REQUIRE(pid.has_value());
+  CHECK(WIFEXITED(status));
+  CHECK(WEXITSTATUS(status) == 0);
+}
+
+TEST_CASE("CurlDownload retries through a dropped network instead of failing on the first error") {
+  const Command command = runner::CurlDownloadCommand("https://example.invalid/file", "/tmp/mira-tests/file");
+  const auto has = [&](const char* flag) { return std::ranges::find(command.argv, flag) != command.argv.end(); };
+  CHECK(has("--retry"));
+  CHECK(has("--retry-all-errors"));  // a dropped network is a timeout, a reset or a DNS failure
+  CHECK(has("--retry-max-time"));    // but not forever
+  CHECK(has("-sSLf"));  // never saves an HTTP error page as the file
 }

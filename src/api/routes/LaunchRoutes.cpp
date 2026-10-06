@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <format>
 
+#include <fcntl.h>
+
 #include <httplib.h>
 
 #include "api/Http.h"
@@ -241,9 +243,14 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         return SendError(res, 409, ran.error());
       }
       ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
-      if (auto spawned = runner::SpawnDetached(*command); !spawned) {
-        return SendError(res, 500, spawned.error());
-      }
+      // Its output goes to the game's log, where the live log reads it, not to mirad's own stdout.
+      const std::filesystem::path launch_log = proc::GameLogPath(s.games.Dir(), game->id);
+      std::error_code log_ec;
+      std::filesystem::create_directories(launch_log.parent_path(), log_ec);
+      const int log_fd = ::open(launch_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+      auto spawned = runner::SpawnDetached(*command, log_fd);
+      if (log_fd >= 0) ::close(log_fd);
+      if (!spawned) return SendError(res, 500, spawned.error());
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});

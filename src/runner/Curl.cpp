@@ -6,11 +6,19 @@
 
 namespace mira::runner {
 
-Result<void> CurlDownload(const std::string& url, const std::filesystem::path& dest) {
+Command CurlDownloadCommand(const std::string& url, const std::filesystem::path& dest) {
   Command command;
-  // -f: an HTTP error must fail here, not get saved as the file.
-  command.argv = {"curl", "-sSLf", "--connect-timeout", "10", "--speed-limit", "1024", "--speed-time", "60",
-                  "-o",   dest.string(), url};
+  // -f: an HTTP error must fail here, not get saved as the file. --retry-all-errors: a dropped network shows up as
+  // a timeout, a refused or reset connection or a DNS failure, none of which curl retries by default.
+  command.argv = {"curl",         "-sSLf",       "--connect-timeout", "20",  "--retry",       "20",
+                  "--retry-delay", "3",           "--retry-max-time",  "600", "--retry-all-errors",
+                  "--speed-limit", "1024",        "--speed-time",      "60",  "-o",            dest.string(),
+                  url};
+  return command;
+}
+
+Result<void> CurlDownload(const std::string& url, const std::filesystem::path& dest) {
+  const Command command = CurlDownloadCommand(url, dest);
   const Result<ExecResult> result = RunAndWait(command);
   if (result && result->exit_code == 0) return {};
   std::error_code ec;
