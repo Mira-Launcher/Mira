@@ -234,6 +234,7 @@ bool ParseStoreEvent(const std::string& event_type, const std::string& data, Sto
     }
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());
+    if (out->state == "progress") out->progress = entry.value("progress", 0.0);
   }
   out->error = mapping::ToApiError(entry);
   return true;

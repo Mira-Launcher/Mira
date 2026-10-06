@@ -113,13 +113,24 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
     return Err("exec_fork_failed", message);
   }
   if (pid == 0) {
-    // Child: async-signal-safe calls only. stdout/stderr are inherited.
+    // Child: async-signal-safe calls only.
     // Its own process group, so stopping the game can signal the whole tree:
     // a real launch is umu -> proton -> wine -> game.exe, and signalling just
     // the direct child leaves the actual game running.
     close(report[0]);
     setpgid(0, 0);
     UnblockSignals();
+    // Never mirad's own stdin/stdout/stderr: the process that started mirad may be gone, leaving pipes nobody
+    // reads, and a program that writes to one (umu-run's first log line) dies on the spot.
+    const int null_fd = open("/dev/null", O_RDWR);
+    if (null_fd >= 0) {
+      dup2(null_fd, 0);
+      if (output_fd < 0) {
+        dup2(null_fd, 1);
+        dup2(null_fd, 2);
+      }
+      if (null_fd > 2) close(null_fd);
+    }
     if (output_fd >= 0) {
       dup2(output_fd, 1);
       dup2(output_fd, 2);

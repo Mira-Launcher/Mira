@@ -1,5 +1,8 @@
 #include <doctest.h>
 
+#include <filesystem>
+#include <fstream>
+
 #include "core/LogHub.h"
 
 using namespace mira;
@@ -65,4 +68,36 @@ TEST_CASE("Repeated download progress lines are one live line, kept once somethi
   CHECK(page.lines.size() == 3);
   CHECK(page.lines[1].find("99%") != std::string::npos);  // the last reading, not every one
   CHECK(page.live.empty());
+}
+
+TEST_CASE("A channel is journaled to disk as it is written, and read back from there after a restart") {
+  const std::filesystem::path dir = std::filesystem::temp_directory_path() / "mira-loghub-journal-test";
+  std::filesystem::remove_all(dir);
+  loghub::SetJournalDirectory(dir);
+
+  loghub::Begin("setup:journal-test");
+  loghub::Append("setup:journal-test", "first\nsecond\n");
+  // On disk already, before End: this is what a crash leaves behind.
+  std::ifstream on_disk(dir / "setup_journal-test.log");
+  std::string line;
+  std::getline(on_disk, line);
+  CHECK(line == "first");
+  std::getline(on_disk, line);
+  CHECK(line == "second");
+
+  // Channels nothing has written to since mirad started are read from their file.
+  {
+    std::ofstream(dir / "setup_earlier-run.log") << "from\nbefore\n";
+    const loghub::Page page = loghub::Read("setup:earlier-run", nullptr, 10);
+    CHECK(page.lines == std::vector<std::string>{"from", "before"});
+    CHECK_FALSE(page.active);
+  }
+
+  // Game and daemon logs have files of their own.
+  loghub::Begin("game:journal-test");
+  CHECK_FALSE(std::filesystem::exists(dir / "game_journal-test.log"));
+
+  loghub::End("setup:journal-test");
+  loghub::SetJournalDirectory({});
+  std::filesystem::remove_all(dir);
 }

@@ -1,6 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,6 +38,20 @@ std::string Configuration(const config::Config& config);
 // Installs a newer shims release into `host`'s prefix when one is out, checked
 // at most every few hours. Quiet and harmless when offline.
 Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host);
+
+// How far the install has got, 0-100, from the log Click-to-Run writes in the
+// prefix's Temp folder (the installer itself prints nothing). Only logs written
+// since `since` count, so an earlier install's 100 isn't read as this one's.
+// Empty until Office has reported a figure.
+std::optional<int> InstallPercent(const std::filesystem::path& prefix, std::filesystem::file_time_type since);
+
+// Bytes on disk under Office's download and install folders in `prefix`: sampled over time, the speed of
+// the download and then of the unpacking. Counts blocks, not file sizes, as files are sized before they are filled.
+std::uint64_t InstallBytes(const std::filesystem::path& prefix);
+
+// How much of what Office has asked to download has arrived, as the BITS shim reports it (done, total): Office
+// itself says nothing while it downloads. Empty before the shim has been given a file.
+std::optional<std::pair<std::uint64_t, std::uint64_t>> DownloadProgress(const std::filesystem::path& prefix);
 
 // Registry settings, the shim DLLs and the deployment configuration, written
 // into `host`'s prefix before WebView2 and Office are installed.

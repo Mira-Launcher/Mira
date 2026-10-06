@@ -2,6 +2,8 @@
 
 #include <QString>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "../client/ApiError.h"
 
@@ -17,6 +19,8 @@ struct SourceCopy {
   QString credential_placeholder;
   QString import_button;  // empty: no import
   QString item = "game";   // what it imports, singular
+  // A launcher made of several apps, (ref, name) each, that can be installed separately: Microsoft 365.
+  std::vector<std::pair<QString, QString>> parts;
 };
 
 SourceCopy CopyFor(const std::string& id);

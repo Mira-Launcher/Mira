@@ -1,7 +1,9 @@
 #include "core/LogHub.h"
 
+#include <algorithm>
 #include <cctype>
 #include <deque>
+#include <fstream>
 #include <map>
 #include <mutex>
 
@@ -17,9 +19,19 @@ struct Channel {
   std::string redraw;    // the line a '\r' cut off, which the next text replaces
   std::string progress;  // the latest download progress line, which the next one replaces
   bool active = false;
+  std::ofstream journal;  // open while the channel is being kept on disk (Journal)
 };
 
 std::mutex g_mutex;
+std::filesystem::path g_journal_dir;  // empty: channels are kept in memory only
+
+// <dir>/setup_office.log for "setup:office"; empty for channels that are not journaled.
+std::filesystem::path JournalFile(std::string_view name) {
+  if (g_journal_dir.empty() || name == "daemon" || name.starts_with("game:")) return {};
+  std::string file(name);
+  std::ranges::replace(file, ':', '_');
+  return g_journal_dir / (file + ".log");
+}
 std::map<std::string, Channel, std::less<>>& Channels() {
   static std::map<std::string, Channel, std::less<>> channels;
   return channels;
@@ -33,6 +45,7 @@ Channel& Find(std::string_view name) {
 }
 
 void Push(Channel& channel, std::string line) {
+  if (channel.journal.is_open()) channel.journal << line << std::endl;  // flushed: it has to survive a crash
   channel.lines.push_back(std::move(line));
   if (channel.lines.size() > kKeepLines) {
     channel.lines.pop_front();
@@ -73,7 +86,18 @@ void Begin(std::string_view name) {
   channel.partial.clear();
   channel.redraw.clear();
   channel.progress.clear();
+  channel.journal.close();
+  if (const std::filesystem::path file = JournalFile(name); !file.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    channel.journal.open(file, std::ios::trunc);
+  }
   channel.active = true;
+}
+
+void SetJournalDirectory(const std::filesystem::path& dir) {
+  const std::lock_guard lock(g_mutex);
+  g_journal_dir = dir;
 }
 
 void End(std::string_view name) {
@@ -86,6 +110,7 @@ void End(std::string_view name) {
   channel.redraw.clear();
   channel.progress.clear();
   channel.active = false;
+  channel.journal.close();
 }
 
 void Append(std::string_view name, std::string_view text) {
@@ -120,7 +145,19 @@ Page Read(std::string_view name, const std::uint64_t* after, int tail) {
   const std::lock_guard lock(g_mutex);
   Page page;
   const auto it = Channels().find(name);
-  if (it == Channels().end()) return page;
+  if (it == Channels().end()) {
+    // Not written since mirad started: what an earlier run kept on disk.
+    if (const std::filesystem::path file = JournalFile(name); !file.empty()) {
+      std::ifstream saved(file);
+      std::deque<std::string> lines;
+      for (std::string line; std::getline(saved, line);) {
+        lines.push_back(std::move(line));
+        if (lines.size() > static_cast<std::size_t>(tail)) lines.pop_front();
+      }
+      page.lines.assign(lines.begin(), lines.end());
+    }
+    return page;
+  }
   const Channel& channel = it->second;
   const std::uint64_t end = channel.first + channel.lines.size();
   std::uint64_t from = after != nullptr ? *after : (end > static_cast<std::uint64_t>(tail) ? end - tail : 0);

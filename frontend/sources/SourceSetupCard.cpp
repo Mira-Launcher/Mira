@@ -1,21 +1,27 @@
 #include "SourceSetupCard.h"
 
+#include <QCheckBox>
 #include <QDesktopServices>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QStyle>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "../client/api/Config.h"
 #include "../client/api/Logs.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/LogWindow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/ProgressRail.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -59,6 +65,28 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   text_ = MakeLabel(body_, QString());
   body->addWidget(text_);
 
+  if (IsLauncher() && !copy.parts.empty()) {
+    parts_row_ = new QWidget(body_);
+    auto* row = new QHBoxLayout(parts_row_);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->addWidget(new QLabel("Install:", parts_row_));
+    for (const auto& [ref, name] : copy.parts) {
+      auto* box = new QCheckBox(name, parts_row_);
+      box->setChecked(true);
+      row->addWidget(box);
+      parts_.emplace_back(ref.toStdString(), box);
+    }
+    row->addStretch(1);
+    body->addWidget(parts_row_);
+    // What was picked last time.
+    const std::string key = "launchers." + id_ + ".apps";
+    api::GetConfigAsync(this, [this, key](ConfigResult result) {
+      if (!result.ok || !result.values.contains(key)) return;
+      const QJsonArray picked = QJsonDocument::fromJson(QByteArray::fromStdString(result.values.at(key))).array();
+      for (auto& [ref, box] : parts_) box->setChecked(picked.contains(QString::fromStdString(ref)));
+    });
+  }
+
   button_ = new QPushButton(body_);
   icons::Follow(button_, icons::Glyph::Download, &theme::Tokens::on_accent);
   button_->setDefault(true);
@@ -96,6 +124,9 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   auto* log_layout = new QVBoxLayout(log_box_);
   log_layout->setContentsMargins(0, 0, 0, 0);
   log_layout->setSpacing(4);
+  progress_ = new ProgressRail(log_box_);
+  progress_->setVisible(false);
+  log_layout->addWidget(progress_);
   log_tail_ = new QLabel(log_box_);
   log_tail_->setObjectName("setup_log_tail");
   log_tail_->setWordWrap(true);
@@ -151,6 +182,7 @@ void SourceSetupCard::ShowLauncher(const LauncherInfo& launcher, bool installing
                        "once it opens.");
   button_->setVisible(true);
   button_->setEnabled(!installing);
+  if (parts_row_ != nullptr) parts_row_->setVisible(!installing);
   button_->setText(installing ? "Installing…" : "Install " + source_.name);
   WatchLog(installing);
   if (!installing && launcher.install_state == "failed") log_box_->setVisible(true);
@@ -176,6 +208,7 @@ void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed
 
 void SourceSetupCard::WatchLog(bool on) {
   if (on) {
+    progress_->setVisible(false);
     log_box_->setVisible(true);
     if (!log_timer_->isActive()) log_timer_->start(1500);
     PollLog();
@@ -195,6 +228,15 @@ void SourceSetupCard::PollLog() {
     for (const std::string& line : result.lines) lines << QString::fromStdString(line);
     if (!result.live.empty()) lines << QString::fromStdString(result.live);
     while (lines.size() > 6) lines.removeFirst();
+    // The newest "42% of ..." line the installer reported, as the rail above the log.
+    static const QRegularExpression percent_line(R"(^\s*(\d+(?:\.\d+)?)%)");
+    for (auto line = lines.crbegin(); line != lines.crend(); ++line) {
+      const QRegularExpressionMatch match = percent_line.match(*line);
+      if (!match.hasMatch()) continue;
+      progress_->SetProgress(match.captured(1).toDouble() / 100);
+      progress_->setVisible(true);
+      break;
+    }
     log_tail_->setTextFormat(Qt::PlainText);
     log_tail_->setText(lines.isEmpty() ? QString("Waiting for output…") : lines.join('\n'));
   });
@@ -205,6 +247,7 @@ void SourceSetupCard::StartSetup() {
   error_->setVisible(false);
   WatchLog(true);
   if (IsLauncher()) {
+    if (parts_row_ != nullptr) return InstallPickedParts();
     button_->setText("Installing…");
     emit LauncherInstallStarted();
     api::InstallLauncherAsync(this, id_, [this](StoreActionResult result) {
@@ -225,6 +268,37 @@ void SourceSetupCard::StartSetup() {
     button_->setEnabled(true);
     button_->setText("Retry download");
     mira_gui::ShowError(error_, "It failed.", result.error);
+  });
+}
+
+void SourceSetupCard::InstallPickedParts() {
+  QJsonArray picked;
+  for (const auto& [ref, box] : parts_) {
+    if (box->isChecked()) picked.append(QString::fromStdString(ref));
+  }
+  if (picked.isEmpty()) {
+    button_->setEnabled(true);
+    WatchLog(false);
+    ShowLine(error_, "Pick at least one app to install.", "error");
+    return;
+  }
+  const ConfigEdit edit{"launchers." + id_ + ".apps", "an array of strings",
+                        QJsonDocument(picked).toJson(QJsonDocument::Compact).toStdString()};
+  api::PatchConfigAsync(this, {edit}, [this](PatchConfigResult saved) {
+    if (!saved.ok) {
+      button_->setEnabled(true);
+      WatchLog(false);
+      mira_gui::ShowError(error_, "Could not save the choice of apps.", saved.error);
+      return;
+    }
+    button_->setText("Installing…");
+    emit LauncherInstallStarted();
+    api::InstallLauncherAsync(this, id_, [this](StoreActionResult result) {
+      if (result.ok) return;  // the event finishes the job
+      emit LauncherInstallFailed();
+      button_->setEnabled(true);
+      mira_gui::ShowError(error_, "Could not start it.", result.error);
+    });
   });
 }
 

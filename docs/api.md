@@ -390,7 +390,7 @@ Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is inst
 `[{id, name, game_id, installed, install_state, interactive_install, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`.
 
 ### `POST /v1/launchers/{id}/install`
-Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. A job (kind `install`). `409 install_running`. Events: `launcher.install.*`.
+Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. A job (kind `install`). `409 install_running`. Events: `launcher.install.*`; `launcher.install.progress` (`progress` 0..1) when the installer reports how far along it is (Microsoft 365 does).
 
 ### `POST /v1/launchers/{id}/import`
 A [job](#jobs) whose result is `{added, updated}`. Battle.net games are found by their default folders, Ubisoft games by registry keys and EA games by `__Installer/installerdata.xml`. `409 launcher_not_installed`.

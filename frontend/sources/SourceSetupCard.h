@@ -8,12 +8,15 @@
 #include "../settings/SettingsCard.h"
 #include "Sources.h"
 
+class QCheckBox;
 class QLabel;
 class QTimer;
 class QLineEdit;
 class QPushButton;
 
 namespace mira_gui {
+
+class ProgressRail;
 
 // What a store or launcher still needs before its page is useful, as
 // numbered steps: get the store's helper tool, then sign in; or install the
@@ -49,6 +52,8 @@ class SourceSetupCard : public SettingsCard {
   void WatchLog(bool on);
   void PollLog();
   void SignIn();
+  // A launcher of several apps: the ones ticked, saved as its setting, then the install.
+  void InstallPickedParts();
 
   struct Step {
     QWidget* row = nullptr;
@@ -66,8 +71,11 @@ class SourceSetupCard : public SettingsCard {
   QPushButton* open_login_ = nullptr;
   QLineEdit* credential_ = nullptr;
   QPushButton* sign_in_ = nullptr;
+  QWidget* parts_row_ = nullptr;  // tick the apps to install (Microsoft 365)
+  std::vector<std::pair<std::string, QCheckBox*>> parts_;
   QLabel* error_ = nullptr;
   QWidget* log_box_ = nullptr;
+  ProgressRail* progress_ = nullptr;  // shown once setup reports a percentage
   QLabel* log_tail_ = nullptr;
   QTimer* log_timer_ = nullptr;
   bool log_busy_ = false;

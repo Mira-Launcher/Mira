@@ -206,7 +206,10 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
   StoreEvent store;
   if (!events::ParseStoreEvent(type, data, &store)) return false;
   if (store.state == "progress") {
-    Entry& entry = Upsert(Kind::Title, QString::fromStdString(store.source), QString::fromStdString(store.ref));
+    // A launcher's install reports how far along it is too (Office's own figure); it has no title.
+    const bool launcher = store.kind == "setup" && type.starts_with("launcher.");
+    Entry& entry = Upsert(launcher ? Kind::Launcher : Kind::Title, QString::fromStdString(store.source),
+                          QString::fromStdString(store.ref));
     entry.state = State::Running;
     entry.progress = store.progress;
     entry.eta_seconds = store.eta_seconds;

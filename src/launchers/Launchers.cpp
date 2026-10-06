@@ -55,9 +55,16 @@ void CopyNewOutput(const Launcher& launcher, const fs::path& file, std::uintmax_
   if (!in) return;
   in.seekg(static_cast<std::streamoff>(offset));
   std::string chunk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  // Whole lines only, so a line cut in two by the read is filtered as one. An "Unhandled Exception:" heading waits
+  // for its next line too: whether it is noise depends on it.
+  chunk.resize(chunk.find_last_of('\n') == std::string::npos ? 0 : chunk.find_last_of('\n') + 1);
+  constexpr std::string_view kHeading = "Unhandled Exception:\n";
+  if (chunk.ends_with(kHeading) && (chunk.size() == kHeading.size() || chunk[chunk.size() - kHeading.size() - 1] == '\n')) {
+    chunk.resize(chunk.size() - kHeading.size());
+  }
   if (chunk.empty()) return;
   offset += chunk.size();
-  loghub::Append(LogChannel(launcher), chunk);
+  loghub::Append(LogChannel(launcher), WithoutNoise(chunk));
 }
 
 std::vector<pid_t> orphans;  // installer processes left running, reaped by a later call
@@ -100,7 +107,8 @@ void WriteDefaults(const config::Config& config, const Launcher& launcher, const
 }
 
 // `rel` (relative to drive_c), or the same file name anywhere under its top
-// folder (the EA app sometimes nests its exe under a version folder).
+// folder (the EA app sometimes nests its exe under a version folder). Office's
+// "Updates" folder holds files it has downloaded but not installed: not a match.
 std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
   const fs::path expected = prefix / "drive_c" / rel;
   std::error_code ec;
@@ -108,6 +116,10 @@ std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
   const fs::path top = prefix / "drive_c" / *rel.begin() / *std::next(rel.begin());
   for (fs::recursive_directory_iterator it(top, fs::directory_options::skip_permission_denied, ec), end;
        !ec && it != end; it.increment(ec)) {
+    if (it->is_directory(ec) && it->path().filename() == "Updates") {
+      it.disable_recursion_pending();
+      continue;
+    }
     if (it->path().filename() == rel.filename() && it->is_regular_file(ec)) return it->path();
   }
   return std::nullopt;
@@ -130,7 +142,60 @@ bool SetupRunning(const model::Game& game, const std::string& setup_dir, const s
   });
 }
 
-Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game) {
+// "4:05", or "1:02:03" past an hour.
+std::string Clock(std::chrono::seconds total) {
+  const auto seconds = total.count();
+  return seconds >= 3600 ? std::format("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+                         : std::format("{}:{:02}", seconds / 60, seconds % 60);
+}
+
+struct Download {
+  std::uint64_t done = 0;
+  std::uint64_t total = 0;
+  double speed = 0;  // bytes a second
+};
+
+std::string Megabytes(std::uint64_t bytes) {
+  return bytes >= (1ull << 30) ? std::format("{:.2f} GB", bytes / double(1ull << 30))
+                               : std::format("{:.0f} MB", bytes / double(1ull << 20));
+}
+
+// "46% downloading Microsoft 365 - 753 MB of 1.63 GB at 19.4 MB/s - 0:46 left": each phase of an install has its
+// own percentage, which is the one the rest of the line is about. `elapsed` is the time in this phase.
+std::string DownloadLine(const Launcher& launcher, const Download& download, std::chrono::seconds elapsed) {
+  std::string line = std::format("{:.0f}% downloading {} - {} of {}", 100.0 * download.done / download.total,
+                                 launcher.name, Megabytes(download.done), Megabytes(download.total));
+  if (download.speed >= 100 * 1024) {
+    line += std::format(" at {:.1f} MB/s - ", download.speed / (1024 * 1024));
+    line += Clock(std::chrono::seconds(static_cast<long long>((download.total - download.done) / download.speed))) + " left";
+  } else {
+    line += " - " + Clock(elapsed) + " elapsed";
+  }
+  return line + "\n";
+}
+
+// `left` is how long the install should still take, when there is a guess to show.
+std::string InstallLine(const Launcher& launcher, double percent, std::chrono::seconds elapsed, double disk_speed,
+                        std::optional<std::chrono::seconds> left) {
+  std::string line = std::format("{:.0f}% installing {}", percent, launcher.name);
+  if (disk_speed >= 100 * 1024) line += std::format(" - {:.1f} MB/s", disk_speed / (1024 * 1024));
+  line += " - " + Clock(elapsed) + " elapsed";
+  if (left) line += " - about " + Clock(*left) + " left";
+  return line + "\n";
+}
+
+// Stops everything running in `prefix`: asks, then insists. The installer's own session has done its job.
+void EndSession(const Launcher& launcher, const std::string& prefix) {
+  const auto alive = [&] { return !proc::FindPrefixProcesses(prefix).empty(); };
+  if (!alive()) return;
+  Say(launcher, "Closing what the installer left running");
+  for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGTERM);
+  for (int i = 0; i < 20 && alive(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGKILL);
+}
+
+Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game,
+                          const std::function<void(double)>& on_progress) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
   const fs::path setup = downloads / step.file;
@@ -174,7 +239,18 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   if (!pid) return std::unexpected(pid.error());
   std::uintmax_t copied = 0;
   const auto started = std::chrono::steady_clock::now();
+  const auto started_at = fs::file_time_type::clock::now();
   auto last_note = started;
+  int percent = -1;  // the last figure `step.progress` gave
+  std::uint64_t last_bytes = step.bytes ? step.bytes(game.data_dir) : 0;
+  auto last_sample = started;
+  double speed = 0;  // bytes a second on disk, smoothed
+  double download_speed = 0;  // bytes a second over the network, smoothed
+  std::uint64_t last_downloaded = 0;
+  double shown = 0;  // this phase's percentage; never goes backwards within it
+  bool downloading = false;
+  auto phase_started = started;
+  auto deadline = started;  // when the install should end, by the latest guess; it only moves earlier
   // umu-run only exits once everything in the prefix has, and a freshly
   // installed launcher (and the EA app's background service) keeps
   // running. So wait for the setup process itself instead. Exit codes
@@ -184,9 +260,66 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
     CopyNewOutput(launcher, output_file, copied);
+    if (step.progress) {
+      // One line in the log that keeps updating (LogHub treats a leading "NN%" as a progress reading).
+      const auto office_percent = step.progress(game.data_dir, started_at);
+      const auto fetched = step.download ? step.download(game.data_dir) : std::nullopt;
+      if (office_percent || fetched) {
+        const auto sampled = std::chrono::steady_clock::now();
+        const double seconds = std::chrono::duration<double>(sampled - last_sample).count();
+        if (step.bytes) {
+          const std::uint64_t bytes = step.bytes(game.data_dir);
+          if (seconds > 0 && bytes >= last_bytes) speed = speed == 0 ? (bytes - last_bytes) / seconds : 0.6 * speed + 0.4 * ((bytes - last_bytes) / seconds);
+          last_bytes = bytes;
+        }
+        std::optional<Download> download;
+        if (fetched) {
+          if (seconds > 0 && fetched->first >= last_downloaded) {
+            const double rate = (fetched->first - last_downloaded) / seconds;
+            download_speed = download_speed == 0 ? rate : 0.6 * download_speed + 0.4 * rate;
+          }
+          last_downloaded = fetched->first;
+          download = Download{fetched->first, fetched->second, download_speed};
+        }
+        last_sample = sampled;
+        // Two phases, each with its own percentage: the download (the installer reports nothing while it runs,
+        // so the shim's byte counts stand in), then the installer's own figure, which starts near 10% once the
+        // download is done.
+        const bool fetching = download && download->done < download->total && !(office_percent && *office_percent >= 10);
+        if (fetching != downloading || phase_started == started) {
+          if (fetching != downloading) shown = 0;
+          downloading = fetching;
+          phase_started = sampled;
+        }
+        const auto in_phase = std::chrono::duration_cast<std::chrono::seconds>(sampled - phase_started);
+        std::string line;
+        if (fetching) {
+          shown = std::max(shown, 100.0 * download->done / download->total);
+          line = DownloadLine(launcher, *download, in_phase);
+        } else {
+          shown = std::max(shown, office_percent ? std::clamp((*office_percent - 10) * 100.0 / 90.0, 0.0, 100.0) : 0.0);
+          // The installer's percentage moves in steps, so a guess made from it swings. Each new guess can only
+          // pull the finish earlier, until it has passed: then the guess starts over.
+          std::optional<std::chrono::seconds> left;
+          if (shown >= 3 && shown < 100) {
+            const auto guess = sampled + std::chrono::seconds(static_cast<long long>(in_phase.count() * (100.0 - shown) / shown));
+            deadline = deadline > sampled ? std::min(deadline, guess) : guess;
+            left = std::chrono::duration_cast<std::chrono::seconds>(deadline - sampled);
+          }
+          line = InstallLine(launcher, shown, in_phase, speed, left);
+        }
+        if (static_cast<int>(shown) != percent && static_cast<int>(shown) % 5 == 0) {
+          log::Info("{}: {} {}%", launcher.name, fetching ? "downloading" : "installing", static_cast<int>(shown));
+        }
+        percent = static_cast<int>(shown);
+        loghub::Append(LogChannel(launcher), line);
+        if (on_progress) on_progress(shown / 100.0);
+      }
+    }
     if (!SetupRunning(game, setup_dir, step.file) && finished()) {
       CopyNewOutput(launcher, output_file, copied);
       Say(launcher, std::format("{} finished", step.file));
+      if (step.end_session) EndSession(launcher, game.data_dir);
       ReapOrphans(*pid);
       return {};
     }
@@ -203,7 +336,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
     std::this_thread::sleep_for(std::chrono::seconds(2));
     // Wine installers say little: a line now and then shows it hasn't stalled.
     const auto now = std::chrono::steady_clock::now();
-    if (now - last_note >= std::chrono::seconds(15)) {
+    if (percent < 0 && now - last_note >= std::chrono::seconds(15)) {
       last_note = now;
       const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - started).count();
       Say(launcher, std::format("Still running {} ({}:{:02})", step.file, elapsed / 60, elapsed % 60));
@@ -216,7 +349,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   return {};
 }
 
-Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher) {
+Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher,
+                                const std::function<void(double)>& on_progress) {
   const std::string id = GameId(launcher);
   model::Game game = games.Find(id).value_or(model::Game{});
   const bool existed = !game.id.empty();
@@ -267,7 +401,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
     }
     for (const Setup& step : launcher.setups) {
       if (!step.done.empty() && FindFile(game.data_dir, step.done)) continue;  // left from an earlier try
-      if (auto ran = RunInstaller(config, launcher, step, game); !ran) return std::unexpected(ran.error());
+      if (auto ran = RunInstaller(config, launcher, step, game, on_progress); !ran) return std::unexpected(ran.error());
     }
     exe = FindExe(launcher, game.data_dir);
   }
@@ -280,6 +414,33 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
 
 }  // namespace
 
+std::string WithoutNoise(std::string_view text) {
+  // Messages that mean nothing is wrong: umu marks the mount that holds the install as a Steam library and Proton
+  // says it is not one; Office's telemetry helper cannot load a Windows assembly under Wine (it prints a few lines
+  // every few seconds).
+  constexpr std::array kNoise = {std::string_view("unable to use parent for game drive"),
+                                 std::string_view("'Windows, Version=255.255.255.255"),
+                                 std::string_view("InspectorOfficeGadget"),
+                                 std::string_view("xpdAgent.Log:telemetryService")};
+  const auto noise = [&](std::string_view line) {
+    return std::ranges::any_of(kNoise, [&](std::string_view part) { return line.contains(part); });
+  };
+  std::vector<std::string_view> lines;
+  for (std::size_t at = 0; at < text.size();) {
+    const std::size_t end = text.find('\n', at);
+    lines.push_back(text.substr(at, end == std::string_view::npos ? std::string_view::npos : end - at + 1));
+    at = end == std::string_view::npos ? text.size() : end + 1;
+  }
+  std::string kept;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const bool heading = lines[i] == "Unhandled Exception:\n" || lines[i] == "Unhandled Exception:\r\n";
+    if (noise(lines[i])) continue;
+    if (heading && i + 1 < lines.size() && noise(lines[i + 1])) continue;  // the heading of a noise block
+    kept += lines[i];
+  }
+  return kept;
+}
+
 const std::vector<Launcher>& All() {
   static const std::vector<Launcher> kLaunchers = [] {
     Launcher battlenet;
@@ -290,7 +451,7 @@ const std::vector<Launcher>& All() {
     battlenet.setups = {{"https://downloader.battle.net/download/getInstaller?os=win&installer=Battle.net-Setup.exe",
                          "battlenet-setup.exe",
                          {"--lang=enUS", "--installpath=C:\\Program Files (x86)\\Battle.net"},
-                         ""}};
+                         "", nullptr}};
     battlenet.interactive = true;
     battlenet.env = {{"WINEDLLOVERRIDES", "locationapi=d"}, {"WINE_SIMULATE_WRITECOPY", "1"}};
 
@@ -307,7 +468,7 @@ const std::vector<Launcher>& All() {
     ea.umu_store = "ea";
     ea.exe = "Program Files/Electronic Arts/EA Desktop/EA Desktop/EALauncher.exe";
     ea.setups = {{"https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",
-                  "ea-setup.exe", {"/silent"}, ""}};
+                  "ea-setup.exe", {"/silent"}, "", nullptr}};
     ea.tricks = {"corefonts", "d3dcompiler_47"};
     ea.env = {{"LC_ALL", "en_US.UTF-8"}};
 
@@ -319,9 +480,9 @@ const std::vector<Launcher>& All() {
     // Both from Microsoft: the Edge WebView2 runtime Office signs in with, then
     // the Office Deployment Tool, which downloads and installs Office.
     m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
-                      "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe"},
+                      "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe", nullptr},
                      {"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
-                      {"/configure", "{downloads}\\office-configuration.xml"}, ""}};
+                      {"/configure", "{downloads}\\office-configuration.xml"}, "", office::InstallPercent, office::InstallBytes, office::DownloadProgress, true}};
     // Office presents with sync interval 0; under DXVK that tears into flicker.
     m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
@@ -359,10 +520,11 @@ std::string InstallState(const Launcher& launcher) {
   return it == states.end() ? "idle" : it->second;
 }
 
-Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher) {
+Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher,
+                            const std::function<void(double)>& on_progress) {
   loghub::Begin(LogChannel(launcher));
   Say(launcher, std::format("Installing {}", launcher.name));
-  const Result<model::Game> done = InstallInto(config, games, launcher);
+  const Result<model::Game> done = InstallInto(config, games, launcher, on_progress);
   Say(launcher, done ? "Done." : "Failed: " + done.error().message);
   loghub::End(LogChannel(launcher));
   SetState(launcher, done ? "finished" : "failed");
