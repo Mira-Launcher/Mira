@@ -129,3 +129,25 @@ TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark s
   CHECK(runner::PrefixPrefersDark(reg) == std::optional(true));
   CHECK_FALSE(runner::PrefixPrefersDark("[Software\\\\Wine] 1\n").has_value());
 }
+
+TEST_CASE("launchers: setup output drops the lines that only look like trouble, and keeps real ones") {
+  const std::string noisy =
+      "Proton: Error: unable to use parent for game drive, path /home\n"
+      "Running office-setup.exe\n"
+      "Unhandled Exception:\n"
+      "System.IO.FileNotFoundException: Could not load file or assembly 'Windows, Version=255.255.255.255, Culture=neutral'\n"
+      "File name: 'Windows, Version=255.255.255.255, Culture=neutral, PublicKeyToken=null'\n"
+      "  at Microsoft.Office.C2R.InspectorOfficeGadget.Main (System.String[] args) [0x00133]\n"
+      "[ERROR] FATAL UNHANDLED EXCEPTION: System.IO.FileNotFoundException: 'Windows, Version=255.255.255.255\n"
+      "Unhandled Exception:\n"
+      "System.TypeLoadException: Could not load type of field 'xpdAgent.Log:telemetryService' (5) due to: x\n"
+      "Unhandled Exception:\n"
+      "System.NullReferenceException: something that is wrong\n"
+      "done\n";
+  CHECK(launchers::WithoutNoise(noisy) ==
+        "Running office-setup.exe\n"
+        "Unhandled Exception:\n"
+        "System.NullReferenceException: something that is wrong\n"
+        "done\n");
+  CHECK(launchers::WithoutNoise("") == "");
+}

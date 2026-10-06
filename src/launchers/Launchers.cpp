@@ -55,9 +55,16 @@ void CopyNewOutput(const Launcher& launcher, const fs::path& file, std::uintmax_
   if (!in) return;
   in.seekg(static_cast<std::streamoff>(offset));
   std::string chunk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  // Whole lines only, so a line cut in two by the read is filtered as one. An "Unhandled Exception:" heading waits
+  // for its next line too: whether it is noise depends on it.
+  chunk.resize(chunk.find_last_of('\n') == std::string::npos ? 0 : chunk.find_last_of('\n') + 1);
+  constexpr std::string_view kHeading = "Unhandled Exception:\n";
+  if (chunk.ends_with(kHeading) && (chunk.size() == kHeading.size() || chunk[chunk.size() - kHeading.size() - 1] == '\n')) {
+    chunk.resize(chunk.size() - kHeading.size());
+  }
   if (chunk.empty()) return;
   offset += chunk.size();
-  loghub::Append(LogChannel(launcher), chunk);
+  loghub::Append(LogChannel(launcher), WithoutNoise(chunk));
 }
 
 std::vector<pid_t> orphans;  // installer processes left running, reaped by a later call
@@ -284,6 +291,33 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
 }
 
 }  // namespace
+
+std::string WithoutNoise(std::string_view text) {
+  // Messages that mean nothing is wrong: umu marks the mount that holds the install as a Steam library and Proton
+  // says it is not one; Office's telemetry helper cannot load a Windows assembly under Wine (it prints a few lines
+  // every few seconds).
+  constexpr std::array kNoise = {std::string_view("unable to use parent for game drive"),
+                                 std::string_view("'Windows, Version=255.255.255.255"),
+                                 std::string_view("InspectorOfficeGadget"),
+                                 std::string_view("xpdAgent.Log:telemetryService")};
+  const auto noise = [&](std::string_view line) {
+    return std::ranges::any_of(kNoise, [&](std::string_view part) { return line.contains(part); });
+  };
+  std::vector<std::string_view> lines;
+  for (std::size_t at = 0; at < text.size();) {
+    const std::size_t end = text.find('\n', at);
+    lines.push_back(text.substr(at, end == std::string_view::npos ? std::string_view::npos : end - at + 1));
+    at = end == std::string_view::npos ? text.size() : end + 1;
+  }
+  std::string kept;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const bool heading = lines[i] == "Unhandled Exception:\n" || lines[i] == "Unhandled Exception:\r\n";
+    if (noise(lines[i])) continue;
+    if (heading && i + 1 < lines.size() && noise(lines[i + 1])) continue;  // the heading of a noise block
+    kept += lines[i];
+  }
+  return kept;
+}
 
 const std::vector<Launcher>& All() {
   static const std::vector<Launcher> kLaunchers = [] {

@@ -40,6 +40,9 @@ struct Launcher {
 
 const std::vector<Launcher>& All();
 const Launcher* Find(std::string_view id);
+
+// `text` (whole lines of an installer's output) without the lines that only look like trouble.
+std::string WithoutNoise(std::string_view text);
 std::string GameId(const Launcher& launcher);  // "launcher-<id>"
 
 // The launcher a game belongs to: its own entry, or one it imported.
