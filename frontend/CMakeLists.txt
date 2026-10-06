@@ -133,6 +133,12 @@ find_package(Qt6 REQUIRED COMPONENTS Test)
 target_link_libraries(mira_gui_tests PRIVATE mira_third_party Qt6::Widgets Qt6::Test)
 target_compile_features(mira_gui_tests PRIVATE cxx_std_20)
 target_compile_options(mira_gui_tests PRIVATE -Wall -Wextra)
+if(MIRA_PCH)
+  # The app's headers (see above): the tests compile many of the same files and parsed Qt for each.
+  target_precompile_headers(mira_gui_tests PRIVATE
+    <QString> <QStringList> <QObject> <QWidget> <QLabel> <QPushButton> <QVBoxLayout> <QHBoxLayout>
+    <QPointer> <QTimer> <QHash> <QSet> <algorithm> <functional> <map> <memory> <optional> <string> <vector>)
+endif()
 add_test(NAME frontend_unit COMMAND mira_gui_tests)
 
 include(GNUInstallDirs)

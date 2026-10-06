@@ -89,10 +89,14 @@ if(MIRA_PCH AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # The headers nearly every file pulls in (json.hpp alone is ~900 KB), parsed once for the whole library.
+# The same headers for every target that compiles code of its own: mira_core's, and the daemon's, the CLI's, the
+# wrapper's and the tests' (which add doctest). Without them each of those files parsed <json.hpp> and the standard
+# library again, and they were the slowest files in the build.
+set(MIRA_PCH_HEADERS
+  <json.hpp> <algorithm> <chrono> <filesystem> <format> <functional> <map> <memory> <optional>
+  <string> <string_view> <vector> <expected>)
 if(MIRA_PCH)
-  target_precompile_headers(mira_core PRIVATE
-    <json.hpp> <algorithm> <chrono> <filesystem> <format> <functional> <map> <memory> <optional>
-    <string> <string_view> <vector> <expected>)
+  target_precompile_headers(mira_core PRIVATE ${MIRA_PCH_HEADERS})
 endif()
 
 # The GUI keeps the shared runtime: the Qt libraries it loads use it too, and the AppImage bundles that one.
@@ -109,10 +113,17 @@ add_executable(mirad src/mirad_main.cpp)
 mira_static_runtime(mirad)
 target_link_libraries(mirad PRIVATE mira_core mira_flags)
 target_compile_definitions(mirad PRIVATE MIRA_VERSION="${PROJECT_VERSION}")
+if(MIRA_PCH)
+  # Its own: a PCH can only be shared by targets with the same definitions, and this one adds MIRA_VERSION.
+  target_precompile_headers(mirad PRIVATE ${MIRA_PCH_HEADERS})
+endif()
 
 add_executable(mira src/cli/main.cpp)
 mira_static_runtime(mira)
 target_link_libraries(mira PRIVATE mira_core mira_flags)
+if(MIRA_PCH)
+  target_precompile_headers(mira REUSE_FROM mira_core)
+endif()
 
 # The process mirad actually spawns for a game launch (see proc/Session.h,
 # docs/architecture.md), a separate binary, not a mirad-internal thread, so
@@ -139,6 +150,12 @@ file(GLOB MIRA_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp tests/support/*.cpp)
 add_executable(mira_tests ${MIRA_TEST_SOURCES})
 target_include_directories(mira_tests PRIVATE tests)
 target_link_libraries(mira_tests PRIVATE mira_core mira_flags_test)
+if(MIRA_PCH)
+  target_precompile_headers(mira_tests PRIVATE ${MIRA_PCH_HEADERS} <doctest.h>)
+  # It defines DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN before including doctest, which a precompiled doctest.h would
+  # make too late.
+  set_source_files_properties(tests/main.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()
 add_test(NAME unit COMMAND mira_tests)
 
 include(GNUInstallDirs)
