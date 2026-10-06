@@ -899,7 +899,13 @@ int CmdLibrary(int argc, char** argv) {
   if (argc > 0 && std::string_view(argv[0]) == "update") {
     return CmdLibraryInstallOrUpdate(argc - 1, argv + 1, true);
   }
-  if (argc > 0 && std::string_view(argv[0]) == "relocate") return CmdLibraryRelocate();
+  if (argc > 0 && std::string_view(argv[0]) == "relocate") {
+    if (argc > 1) {
+      std::fprintf(stderr, "mira library relocate takes no options; it moves every tracked game\n");
+      return 2;
+    }
+    return CmdLibraryRelocate();
+  }
   // `mira library` / `mira library <source>` both list.
   return CmdLibraryList(argc, argv);
 }

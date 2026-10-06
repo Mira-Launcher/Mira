@@ -136,6 +136,29 @@ TEST_CASE("Relocate with only an install target moves the files and leaves the p
   CHECK(fs::is_directory(elsewhere / "pfx" / "drive_c"));
 }
 
+TEST_CASE("Relocate leaves a store launcher's shared prefix where it is") {
+  config::Config config(TempConfigFile("relocate-shared.toml"));
+  config.Load();
+  const fs::path prefixes = TempDir("relocate-shared-prefixes");
+  REQUIRE(config.Set("prefix_root", prefixes.string()).has_value());
+  fs::create_directories(prefixes / "microsoft-365" / "drive_c");
+
+  model::Game word;
+  word.id = "office-word";
+  word.name = "Word";
+  word.source = "office";
+  word.source_ref = "word";
+  word.data_dir = (prefixes / "microsoft-365").string();
+  const auto relocated = library::Relocate(config, word);
+  REQUIRE(relocated.has_value());
+  CHECK(relocated->data_dir == word.data_dir);
+  CHECK(fs::is_directory(prefixes / "microsoft-365" / "drive_c"));
+
+  library::RelocateRequest request;
+  request.data_dir = prefixes / "word";
+  CHECK_FALSE(library::Relocate(config, word, request).has_value());
+}
+
 TEST_CASE("NeedsProvisioning retries a broken store game") {
   model::Game game;
   game.runner_ref = "proton:GE-Proton9-20";
