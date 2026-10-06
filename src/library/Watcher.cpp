@@ -103,8 +103,8 @@ void CreateMissingRoots(const config::Config& config) {
     const fs::path relative = normal.lexically_relative(home);
     if (relative.empty() || relative == "." || *relative.begin() == "..") continue;
     std::error_code ec;
-    if (fs::exists(normal, ec) || !fs::is_directory(normal.parent_path(), ec)) continue;
-    if (fs::create_directory(normal, ec)) {
+    if (fs::exists(normal, ec)) continue;
+    if (fs::create_directories(normal, ec)) {
       log::Info("created library root {}", normal.string());
     } else if (ec) {
       log::Warn("could not create library root {}: {}", normal.string(), ec.message());

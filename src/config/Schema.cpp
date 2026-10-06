@@ -146,15 +146,15 @@ Schema::Schema() {
   s.Add({.key = "library_roots",
          .label = "Library folders",
          .type = Type::StringArray,
-         .default_value = json::array({"~/Games"}),
-         .doc = "Folders Mira watches for new games. Drop a game folder into one to add it. A missing "
+         .default_value = json::array({"~/Mira/Games", "~/Mira/Applications"}),
+         .doc = "Folders Mira watches for new games and apps. Drop a folder into one to add it. A missing "
                 "folder in your home folder is created.",
          .path = PathKind::Folder});
 
   s.Add({.key = "prefix_root",
          .label = "Prefix folder",
          .type = Type::String,
-         .default_value = "~/Games/prefixes",
+         .default_value = "~/Mira/prefixes",
          .doc = "The folder where each game's Wine or Proton prefix is created. Mira never scans it "
                 "for games.",
          .path = PathKind::Folder});

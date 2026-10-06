@@ -142,7 +142,7 @@ Every setting as it resolves for this game, with the layer it came from:
 
 ```json
 { "launch.gamemode": { "value": true, "layer": "game", "overridable": true },
-  "library_roots": { "value": ["~/Games"], "layer": "default", "overridable": false } }
+  "library_roots": { "value": ["~/Mira/Games", "~/Mira/Applications"], "layer": "default", "overridable": false } }
 ```
 
 ### `PATCH /v1/games/{id}/config`
@@ -394,9 +394,9 @@ What removing a source would do:
 
 ```json
 { "source": "ubisoft", "games": [ { "id": "ubisoft-5595", "name": "Trackmania",
-    "deletes": "/home/me/Games/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
+    "deletes": "/home/me/Mira/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
   "launcher_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
-  "kept": [ "/home/me/Games/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
+  "kept": [ "/home/me/Mira/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
   "signs_out": false }
 ```
 
