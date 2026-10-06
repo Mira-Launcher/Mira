@@ -9,6 +9,7 @@
 #include "core/StoreErrors.h"
 #include "core/Strings.h"
 #include "launchers/Launchers.h"
+#include "launchers/Office.h"
 #include "library/Detector.h"
 #include "runner/Exec.h"
 
@@ -20,6 +21,7 @@ struct Found {
   std::string ref;   // what the launcher's own launch command takes
   std::string name;
   fs::path dir;
+  std::string exe = {};  // known up front (Microsoft 365); else detected
 };
 
 // Battle.net keeps its install list in a protobuf (product.db); default
@@ -108,6 +110,17 @@ std::vector<Found> FindEa(const fs::path& prefix) {
   return found;
 }
 
+std::vector<Found> FindOffice(const fs::path& prefix) {
+  std::vector<Found> found;
+  const fs::path dir = prefix / "drive_c" / office::kProgramDir;
+  std::error_code ec;
+  for (const office::App& app : office::Apps()) {
+    if (!fs::is_regular_file(dir / app.exe, ec)) continue;
+    found.push_back({std::string(app.ref), std::string(app.name), dir, std::string(app.exe)});
+  }
+  return found;
+}
+
 // umu's id for a store game, so protonfixes find it. Best effort.
 std::string LookupUmuId(const std::string& store, const std::string& ref) {
   const std::string codename = ref.substr(0, ref.find(','));
@@ -134,6 +147,7 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
   if (launcher.id == "battlenet") found = FindBattleNet(prefix);
   if (launcher.id == "ubisoft") found = FindUbisoft(prefix);
   if (launcher.id == "ea") found = FindEa(prefix);
+  if (launcher.id == "office") found = FindOffice(prefix);
 
   ImportSummary summary;
   const auto batch = games.BatchSaves();
@@ -161,6 +175,7 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
         }
       }
     }
+    if (!item.exe.empty()) game.exe_path = item.exe;
     // Launched through the launcher; the exe is only for art and menus.
     if (game.exe_path.empty()) {
       const library::Detector::Result detected = detector.Detect(item.dir);
@@ -169,6 +184,7 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
       if (exe != detected.candidates.end()) game.exe_path = exe->rel_path;
     }
     if (std::ranges::find(game.tags, launcher.id) == game.tags.end()) game.tags.push_back(launcher.id);
+    if (launcher.id == "office" && std::ranges::find(game.tags, "app") == game.tags.end()) game.tags.push_back("app");
     game.status = model::GameStatus::Ready;
     game.last_error.clear();
     if (existing && model::ToJson(game) == model::ToJson(*existing)) continue;  // nothing new

@@ -142,7 +142,7 @@ Every setting as it resolves for this game, with the layer it came from:
 
 ```json
 { "launch.gamemode": { "value": true, "layer": "game", "overridable": true },
-  "library_roots": { "value": ["~/Games"], "layer": "default", "overridable": false } }
+  "library_roots": { "value": ["~/Mira/Games", "~/Mira/Applications"], "layer": "default", "overridable": false } }
 ```
 
 ### `PATCH /v1/games/{id}/config`
@@ -373,7 +373,7 @@ Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs
 
 ## Store launchers
 
-Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
+Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. Microsoft 365 (`office`) works the same way: its install sets up the prefix with the [mira-winapp-shims](https://github.com/Mira-Launcher/mira-winapp-shims) DLLs, then runs Microsoft's Edge WebView2 and Office Deployment Tool installers for the edition in `launchers.office.plan`; Word, Excel, PowerPoint, Outlook, OneNote, Access and Publisher are imported as `office-<app>`, tagged `app`. Office signs in and checks the subscription itself; Mira never sees the account. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
 
 ### `GET /v1/launchers`
 `[{id, name, game_id, installed, install_state, interactive_install, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`.
@@ -394,9 +394,9 @@ What removing a source would do:
 
 ```json
 { "source": "ubisoft", "games": [ { "id": "ubisoft-5595", "name": "Trackmania",
-    "deletes": "/home/me/Games/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
+    "deletes": "/home/me/Mira/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
   "launcher_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
-  "kept": [ "/home/me/Games/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
+  "kept": [ "/home/me/Mira/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
   "signs_out": false }
 ```
 
