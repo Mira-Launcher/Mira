@@ -23,6 +23,7 @@ LogResult GetLogSync(const std::string& channel, const std::optional<std::uint64
                                 }
                                 result.next = body.value("next", std::uint64_t{0});
                                 result.active = body.value("active", false);
+                                result.live = body.value("live", std::string());
                               });
 }
 

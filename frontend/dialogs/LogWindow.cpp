@@ -155,7 +155,9 @@ void LogWindow::Poll() {
     if (cursor_ && result.next < *cursor_) Clear();
     cursor_ = result.next;
     active_ = result.active;
+    RemoveLive();
     Add(result.lines);
+    ShowLive(QString::fromStdString(result.live));
     UpdateStatus();
     // Quieter once nothing is writing; it still notices a restart.
     timer_->setInterval(active_ ? 700 : 3000);
@@ -192,18 +194,45 @@ void LogWindow::AppendLine(const QString& line) {
   cursor.insertText(line, format);
 }
 
+void LogWindow::RemoveLive() {
+  if (!has_live_) return;
+  has_live_ = false;
+  if (view_->document()->blockCount() <= 1) {
+    view_->clear();
+    return;
+  }
+  QTextCursor cursor(view_->document());
+  cursor.movePosition(QTextCursor::End);
+  cursor.select(QTextCursor::BlockUnderCursor);
+  cursor.removeSelectedText();
+}
+
+void LogWindow::ShowLive(const QString& text) {
+  live_ = text;
+  if (text.isEmpty() || (!filter_->text().isEmpty() && !text.contains(filter_->text(), Qt::CaseInsensitive))) return;
+  QScrollBar* bar = view_->verticalScrollBar();
+  const bool at_end = bar->value() >= bar->maximum() - 4;
+  AppendLine(text);
+  has_live_ = true;
+  if (follow_->isChecked() && at_end) bar->setValue(bar->maximum());
+}
+
 void LogWindow::Clear() {
   lines_.clear();
+  has_live_ = false;
+  live_.clear();
   view_->clear();
   count_->setText("0 lines");
 }
 
 void LogWindow::Render() {
   view_->clear();
+  has_live_ = false;
   const QString needle = filter_->text();
   for (const QString& line : lines_) {
     if (needle.isEmpty() || line.contains(needle, Qt::CaseInsensitive)) AppendLine(line);
   }
+  ShowLive(live_);
   view_->verticalScrollBar()->setValue(view_->verticalScrollBar()->maximum());
 }
 

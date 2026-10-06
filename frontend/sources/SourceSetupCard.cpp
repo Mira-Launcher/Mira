@@ -193,6 +193,8 @@ void SourceSetupCard::PollLog() {
     if (!result.ok) return;
     QStringList lines;
     for (const std::string& line : result.lines) lines << QString::fromStdString(line);
+    if (!result.live.empty()) lines << QString::fromStdString(result.live);
+    while (lines.size() > 6) lines.removeFirst();
     log_tail_->setTextFormat(Qt::PlainText);
     log_tail_->setText(lines.isEmpty() ? QString("Waiting for output…") : lines.join('\n'));
   });

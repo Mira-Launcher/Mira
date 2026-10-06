@@ -39,6 +39,9 @@ private:
   void Clear();
   void Render();
   void AppendLine(const QString& line);
+  // The line being redrawn (a download's progress) sits last and is replaced in place, never repeated.
+  void RemoveLive();
+  void ShowLive(const QString& text);
   void UpdateStatus();
   void Save();
 
@@ -59,6 +62,8 @@ private:
   bool paused_ = false;
   bool polling_ = false;
   bool failed_ = false;
+  bool has_live_ = false;
+  QString live_;
 };
 
 }  // namespace mira_gui

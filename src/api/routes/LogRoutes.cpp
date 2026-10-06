@@ -37,6 +37,13 @@ json GameLog(Services& s, const std::string& id, const std::optional<std::uint64
   const std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   std::vector<std::string> lines = strings::Split(content, '\n');
   if (!lines.empty() && lines.back().empty()) lines.pop_back();
+  // A progress bar redrawn with '\r' is its last drawing, not every one.
+  for (std::string& line : lines) {
+    if (const std::size_t cr = line.find_last_of('\r'); cr != std::string::npos) {
+      const std::size_t start = line.find_last_of('\r', cr == 0 ? 0 : cr - 1);
+      line = cr + 1 < line.size() ? line.substr(cr + 1) : (start == std::string::npos ? line.substr(0, cr) : line.substr(start + 1, cr - start - 1));
+    }
+  }
   if (from_end && lines.size() > static_cast<std::size_t>(tail)) lines.erase(lines.begin(), lines.end() - tail);
   return {{"lines", lines}, {"next", size}, {"active", active}};
 }
@@ -71,7 +78,7 @@ void RegisterLogRoutes(httplib::Server& http, Services& s) {
       return SendJson(res, GameLog(s, id, after, tail));
     }
     const loghub::Page page = loghub::Read(channel, after ? &*after : nullptr, tail);
-    SendJson(res, {{"lines", page.lines}, {"next", page.next}, {"active", page.active}});
+    SendJson(res, {{"lines", page.lines}, {"next", page.next}, {"active", page.active}, {"live", page.live}});
   });
 }
 

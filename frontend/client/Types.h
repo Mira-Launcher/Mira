@@ -838,6 +838,7 @@ struct LogResult {
   std::vector<std::string> lines;
   std::uint64_t next = 0;
   bool active = false;
+  std::string live;  // a line still being redrawn (a progress bar); not in `lines` until it ends
 };
 
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.
