@@ -49,6 +49,9 @@ public:
   bool AdvancedOpen() const;
 
   void Save();
+  // Fetches the game again, so a change made elsewhere shows; skipped while
+  // there are unsaved edits, which it would otherwise overwrite.
+  void Reload();
   // Puts every field back to what was last loaded or saved.
   void DiscardChanges();
 

@@ -6,9 +6,12 @@
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <utility>
 
 #include "../app/Notify.h"
+#include "../client/EventHub.h"
+#include "../client/Events.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
 #include "../settings/SettingsCard.h"
@@ -69,35 +72,19 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   header->setSpacing(16);
   auto* identity = new QVBoxLayout();
   identity->setSpacing(4);
-  auto* title =
-      new QLabel(game != nullptr ? QString::fromStdString(game->name) : "Game settings", this);
-  title->setObjectName("game_edit_title");
-  title->setWordWrap(true);
-  auto* shadow = new QGraphicsDropShadowEffect(title);
+  title_ = new QLabel("Game settings", this);
+  title_->setObjectName("game_edit_title");
+  title_->setWordWrap(true);
+  auto* shadow = new QGraphicsDropShadowEffect(title_);
   shadow->setColor(tokens.surface);
   shadow->setBlurRadius(18);
   shadow->setOffset(0, 1);
-  title->setGraphicsEffect(shadow);
-  identity->addWidget(title);
-  if (game != nullptr) {
-    const bool running = game->running;
-    const QColor status_color = StatusColor(running ? "running" : game->status);
-    const SourceInfo* info = FindSourceInfo(QString::fromStdString(game->source));
-    const QString source = info != nullptr ? info->name : StatusLabel(game->source);
-    QStringList facts;
-    if (!source.isEmpty()) facts << source;
-    if (!game->platform.empty()) facts << StatusLabel(game->platform);
-    if (game->play_seconds > 0 && !IsApp(*game)) {
-      facts << FormatPlaytime(game->play_seconds) + " played";
-    }
-    auto* status =
-        new QLabel(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
-                       .arg(status_color.name(), running ? RunningLabel(*game) : StatusLabel(game->status),
-                            facts.join(" · ").toHtmlEscaped()),
-                   this);
-    status->setTextFormat(Qt::RichText);
-    identity->addWidget(status);
-  }
+  title_->setGraphicsEffect(shadow);
+  identity->addWidget(title_);
+  status_ = new QLabel(this);
+  status_->setTextFormat(Qt::RichText);
+  identity->addWidget(status_);
+  UpdateIdentity();
   // The cover, which the hero otherwise hides, and where a picked one previews.
   cover_ = new CoverChip(artwork_, this);
   if (game != nullptr) cover_->ShowGame(*game);
@@ -106,9 +93,15 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   play_->setIcon(icons::For(icons::Glyph::Play, tokens.on_accent));
   play_->setDefault(true);
   connect(play_, &QPushButton::clicked, this, &GameCard::PlayClicked);
-  // Follows the game starting and stopping.
+  // Follows the game starting and stopping, and changes made elsewhere (the CLI, a batch edit).
   connect(library_, &QAbstractItemModel::dataChanged, this, &GameCard::UpdatePlay);
   connect(library_, &QAbstractItemModel::modelReset, this, &GameCard::UpdatePlay);
+  connect(library_, &QAbstractItemModel::dataChanged, this, &GameCard::UpdateIdentity);
+  connect(library_, &QAbstractItemModel::modelReset, this, &GameCard::UpdateIdentity);
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string& data, bool live) {
+            if (live && ChangesThisGame(type, data)) form_->Reload();
+          });
   header->addWidget(cover_, 0, Qt::AlignBottom);
   header->addLayout(identity, /*stretch=*/1);
   header->addWidget(play_, 0, Qt::AlignBottom);
@@ -166,7 +159,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   connect(form_, &GameEditForm::Changed, this, [this] {
     if (!ArtPickerOpen()) UpdateBar();
   });
-  connect(form_, &GameEditForm::Loaded, title, &QLabel::setText);
+  connect(form_, &GameEditForm::Loaded, title_, &QLabel::setText);
   connect(form_, &GameEditForm::LoadFailed, this, [this](QString error) {
     notify::Failed(window(), "Could not load this game.", error);
     emit CloseRequested();
@@ -279,6 +272,37 @@ void GameCard::UpdatePlay() {
   const GameSummary* game = library_->Find(id_);
   play_->setText(game == nullptr ? "Play" : game->running ? "Stop" : RunVerb(*game));
   play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
+}
+
+void GameCard::UpdateIdentity() {
+  const GameSummary* game = library_->Find(id_);
+  status_->setVisible(game != nullptr);
+  if (game == nullptr) return;
+  title_->setText(QString::fromStdString(game->name));
+  const bool running = game->running;
+  const QColor status_color = StatusColor(running ? "running" : game->status);
+  const SourceInfo* info = FindSourceInfo(QString::fromStdString(game->source));
+  const QString source = info != nullptr ? info->name : StatusLabel(game->source);
+  QStringList facts;
+  if (!source.isEmpty()) facts << source;
+  if (!game->platform.empty()) facts << StatusLabel(game->platform);
+  if (game->play_seconds > 0 && !IsApp(*game)) facts << FormatPlaytime(game->play_seconds) + " played";
+  status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
+                       .arg(status_color.name(), running ? RunningLabel(*game) : StatusLabel(game->status),
+                            facts.join(" · ").toHtmlEscaped()));
+}
+
+bool GameCard::ChangesThisGame(const std::string& type, const std::string& data) const {
+  if (type == "game.updated") {
+    GameSummary game;
+    return events::ParseGameSummary(data, &game) && game.id == id_;
+  }
+  if (type == "games.updated") {
+    std::vector<GameSummary> games;
+    return events::ParseGameSummaries(data, &games) &&
+           std::ranges::any_of(games, [&](const GameSummary& game) { return game.id == id_; });
+  }
+  return false;
 }
 
 }  // namespace mira_gui

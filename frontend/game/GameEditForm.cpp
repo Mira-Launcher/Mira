@@ -279,6 +279,10 @@ void GameEditForm::ResetScroll() {
   if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0))) scroll->verticalScrollBar()->setValue(0);
 }
 
+void GameEditForm::Reload() {
+  if (!IsDirty()) Load();
+}
+
 void GameEditForm::Load() {
   mira_gui::api::ListRunnersAsync(this, [this](mira_gui::RunnersResult result) {
     PopulateRunnerCombo(result);
