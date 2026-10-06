@@ -1347,6 +1347,30 @@ TEST_CASE("PATCH /v1/config merges the frontend table, and a null deletes that k
   CHECK(frontend.value("theme", "") == "mira-dark");
 }
 
+TEST_CASE("A settings change is announced with the frontend table and the changed keys, never their values") {
+  LiveServer server(TempDir("server-config-changed"));
+  httplib::Client client = server.Client();
+  const std::int64_t before = server.events().LatestId();
+
+  auto set = client.Patch("/v1/config", R"({"steamgriddb": {"api_key": "secret-key"}, "frontend": {"theme": "mira-light"}})",
+                          "application/json");
+  REQUIRE(set != nullptr);
+  REQUIRE(set->status == 200);
+  auto reset = client.Post("/v1/config/reset?key=steamgriddb.api_key");
+  REQUIRE(reset != nullptr);
+  REQUIRE(reset->status == 200);
+
+  std::vector<nlohmann::json> changes;
+  for (const model::Event& event : server.events().Since(before)) {
+    if (event.type == "config.changed") changes.push_back(event.payload);
+  }
+  REQUIRE(changes.size() == 2);
+  CHECK(changes[0]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
+  CHECK(changes[0]["frontend"].value("theme", "") == "mira-light");
+  CHECK(changes[0].dump().find("secret-key") == std::string::npos);
+  CHECK(changes[1]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
+}
+
 TEST_CASE("A game's settings override the global ones, all or nothing, until set back to null") {
   LiveServer server(TempDir("server-game-config"));
   model::Game game;

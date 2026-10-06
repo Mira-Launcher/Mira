@@ -28,6 +28,7 @@
 #include "../activity/DownloadTracker.h"
 #include "../activity/DownloadsPanel.h"
 #include "../dialogs/LogWindow.h"
+#include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
@@ -370,6 +371,15 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
   grid_page_->ApplyPrefs(prefs);
+}
+
+void LibraryWindow::ApplyChangedPrefs(const std::string& payload) {
+  // An echo of the window's own layout save, or of Settings' save, changes nothing here.
+  std::optional<mira_gui::api::ChangedPrefs> changed = mira_gui::api::ParseChangedPrefs(payload);
+  if (!changed || changed->fingerprint == applied_prefs_) return;
+  applied_prefs_ = std::move(changed->fingerprint);
+  mira_gui::ApplyAppearance(changed->prefs);
+  ApplySettingsPrefs(changed->prefs);
 }
 
 void LibraryWindow::ScheduleSavePrefs() {
@@ -1415,6 +1425,10 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     RefreshGames();
     sidebar_->RefreshSources();
     downloads_->RecheckJobs();
+    return;
+  }
+  if (type == "config.changed") {
+    if (live) ApplyChangedPrefs(data);
     return;
   }
   if (type == "notification") {

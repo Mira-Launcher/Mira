@@ -10,6 +10,7 @@
 
 #include "client/api/Config.h"
 #include "dialogs/FirstRunWizard.h"
+#include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
@@ -18,27 +19,6 @@
 #include "theme/Theme.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
-
-namespace {
-
-// Theme, shape overrides and shortcut overrides from frontend.toml.
-void ApplyAppearance(const mira_gui::FrontendPrefs& prefs) {
-  // Unset leaves it to the theme; a negative value is how older builds wrote that.
-  const auto shape = [](const std::optional<int>& pref) -> std::optional<int> {
-    if (pref && *pref >= 0) return pref;
-    return std::nullopt;
-  };
-  mira_gui::theme::Overrides overrides;
-  overrides.tile_spacing = shape(prefs.tile_spacing);
-  overrides.grid_margin = shape(prefs.grid_margin);
-  overrides.radius_tile = shape(prefs.tile_radius);
-  overrides.radius_panel = shape(prefs.panel_radius);
-  overrides.radius_control = shape(prefs.control_radius);
-  mira_gui::theme::Configure(QString::fromStdString(prefs.theme.value_or("auto")), overrides);
-  if (prefs.shortcut_overrides) mira_gui::keybindings::LoadOverrides(*prefs.shortcut_overrides);
-}
-
-}  // namespace
 
 int main(int argc, char** argv) {
   QApplication app(argc, argv);
@@ -101,7 +81,7 @@ int main(int argc, char** argv) {
       const mira_gui::FrontendPrefsResult after = mira_gui::api::GetFrontendPrefsBlocking();
       if (after.ok) prefs = after.prefs;
     }
-    ApplyAppearance(prefs);
+    mira_gui::ApplyAppearance(prefs);
     auto* window = new LibraryWindow(prefs);
     window->setAttribute(Qt::WA_DeleteOnClose);
     // A no-op on a desktop with no tray (Tray.cpp): window->close() then

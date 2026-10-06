@@ -49,9 +49,10 @@ std::optional<QKeySequence> Override(const QString& id);
 // what FrontendPrefs.shortcut_overrides round-trips.
 std::map<std::string, std::string> Current();
 
-// Applies a saved FrontendPrefs.shortcut_overrides map, id by id; see the
-// class comment for why this composes correctly regardless of whether it
-// runs before or after the ids in question are Register()ed.
+// Makes a saved FrontendPrefs.shortcut_overrides map the whole set of
+// overrides: ids missing from it go back to their defaults. See the class
+// comment for why this composes correctly regardless of whether it runs
+// before or after the ids in question are Register()ed.
 void LoadOverrides(const std::map<std::string, std::string>& saved);
 
 // Sets (or, with an empty QKeySequence, deliberately clears) `id`'s override

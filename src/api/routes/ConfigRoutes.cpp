@@ -13,6 +13,12 @@ using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
 
+// The settings keys that changed (names only: values can be secrets) and the whole frontend
+// table, so a client applies another client's change without asking again.
+void PublishConfigChanged(Services& s, json keys) {
+  s.events.Publish("config.changed", {{"keys", std::move(keys)}, {"frontend", s.config.FrontendSettings()}});
+}
+
 }  // namespace
 
 void RegisterConfigRoutes(httplib::Server& http, Services& s) {
@@ -84,6 +90,13 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
     Result<void> result = s.config.Patch(patch);
     if (result) s.SyncDesktopEntries();
     if (result && patch.is_object() && patch.contains("library_roots") && s.on_roots_changed) s.on_roots_changed();
+    if (result) {
+      json keys = json::array();
+      for (const config::Entry& entry : config::Schema::Instance().Entries()) {
+        if (patch.contains(config::Schema::Pointer(entry.key))) keys.push_back(entry.key);
+      }
+      PublishConfigChanged(s, std::move(keys));
+    }
     SendResult(res, result);
   });
 
@@ -99,6 +112,15 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
     }
     if (result) s.SyncDesktopEntries();
     if (result && roots_reset && s.on_roots_changed) s.on_roots_changed();
+    if (result) {
+      json keys = json::array();
+      if (auto it = req.params.find("key"); it != req.params.end()) {
+        keys.push_back(it->second);
+      } else {
+        for (const config::Entry& entry : config::Schema::Instance().Entries()) keys.push_back(entry.key);
+      }
+      PublishConfigChanged(s, std::move(keys));
+    }
     SendResult(res, result);
   });
 }
