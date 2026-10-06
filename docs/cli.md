@@ -141,7 +141,7 @@ Manages the collections whose games show in `mira library itch`: your own plus a
 Humble has no installs, only downloads, so it isn't part of `mira library`. `bundles` lists purchased bundles. `download` fetches items (humble-cli's `1,3,5-7` syntax) into `<humble.download_root>/<bundle_key>/` and waits. Add the result with `mira add`.
 
 ### `mira launcher list|install|import|open`
-Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`) and the EA app (`ea`), each in its own prefix.
+Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Microsoft 365 (`office`), each in its own prefix. Microsoft 365's apps (Word, Excel, ...) are imported as apps.
 
 - `install <id>` sets up the prefix, installs the launcher and imports its games.
 - `import <id>` imports games installed through the launcher since.

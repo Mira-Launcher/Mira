@@ -52,6 +52,12 @@ SourceCopy CopyFor(const std::string& id) {
     return {"Ubisoft Connect runs in its own Wine prefix. Games you install in it show up here.",
             "", "", "", "Import games"};
   }
+  if (id == "office") {
+    return {"Word, Excel, PowerPoint and the other Microsoft 365 apps, in their own Wine prefix. They "
+            "show up under Apps. Sign in to your Microsoft account in any app; it needs a Microsoft "
+            "365 subscription.",
+            "", "", "", "Import apps"};
+  }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "", "",
             "", "Import games"};

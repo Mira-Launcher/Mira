@@ -106,6 +106,7 @@ Result<void> DeleteKeeping(const fs::path& dir, const std::vector<std::string>& 
 // folders one level up from its exe.
 fs::path ProgramDir(const launchers::Launcher& launcher) {
   const fs::path dir = fs::path(launcher.exe).parent_path();
+  if (launcher.id == "office") return "Program Files/Microsoft Office";
   return launcher.id == "ea" ? dir.parent_path() : dir;
 }
 

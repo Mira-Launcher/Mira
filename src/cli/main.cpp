@@ -658,7 +658,7 @@ int CmdLauncher(int argc, char** argv) {
   }
   std::fprintf(stderr,
                "usage: mira launcher list\n"
-               "       mira launcher install|import <battlenet|ubisoft|ea>\n"
+               "       mira launcher install|import <battlenet|ubisoft|ea|office>\n"
                "       mira launcher open <id> [--launch REF | --install REF]\n");
   return 2;
 }

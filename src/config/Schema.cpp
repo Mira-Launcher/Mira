@@ -80,7 +80,7 @@ Validator NonEmptyString() {
 // "runner_sources.gog.repo" (a download location) and "scan.max_depth" don't.
 std::string SourceOf(std::string_view key) {
   static constexpr std::string_view kSources[] = {"steam", "epic", "gog", "itch", "humble", "amazon",
-                                                  "lutris", "battlenet", "ubisoft", "ea"};
+                                                  "lutris", "battlenet", "ubisoft", "ea", "office"};
   if (key.starts_with("launchers.")) key.remove_prefix(std::string_view("launchers.").size());
   const std::string_view head = key.substr(0, key.find('.'));
   if (head.size() == key.size()) return {};
@@ -812,7 +812,7 @@ Schema::Schema() {
   s.Section("Store launchers", "Launchers");
 
   for (const auto& [id, name] : {std::pair{"battlenet", "Battle.net"}, std::pair{"ubisoft", "Ubisoft Connect"},
-                                 std::pair{"ea", "EA app"}}) {
+                                 std::pair{"ea", "EA app"}, std::pair{"office", "Microsoft 365"}}) {
     s.Add({.key = std::format("{}.enabled", id),
            .label = std::format("Enable {}", name),
            .type = Type::Bool,
@@ -827,7 +827,7 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = true,
          .doc = "On every scan, import games installed through Battle.net, Ubisoft Connect or the "
-                "EA app."});
+                "EA app, and Microsoft 365 apps."});
 
   s.Add({.key = "launchers.runner",
          .label = "Launcher runner",
@@ -869,6 +869,32 @@ Schema::Schema() {
          .default_value = true,
          .doc = "Turn off Battle.net's hardware acceleration when installing it; its UI renders blank under "
                 "Wine otherwise."});
+
+  s.Group("Microsoft 365");
+
+  s.Add({.key = "launchers.office.plan",
+         .label = "Microsoft 365 plan",
+         .type = Type::String,
+         .default_value = "O365HomePremRetail",
+         .doc = "The Office edition to install, which must match your subscription: O365HomePremRetail for "
+                "Microsoft 365 Personal or Family, O365BusinessRetail for Business plans, O365ProPlusRetail "
+                "for Apps for enterprise.",
+         .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
+
+  s.Add({.key = "launchers.office.shims_url",
+         .label = "Office shims download",
+         .type = Type::String,
+         .default_value = "https://github.com/Mira-Launcher/mira-winapp-shims/releases/latest/download/"
+                          "mira-winapp-shims.tar.gz",
+         .doc = "Where Mira downloads the mira-winapp-shims DLLs Office needs under Wine."});
+
+  s.Add({.key = "launchers.office.shims_dir",
+         .label = "Office shims folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as your own "
+                "build. Empty downloads them.",
+         .path = PathKind::Folder});
 
   // --- Detection -------------------------------------------------------------
   s.Section("Detection", "Scoring");

@@ -14,18 +14,25 @@
 #include "store/GameStore.h"
 
 // Store launchers with no Linux client (Battle.net, Ubisoft Connect, EA
-// app): each is installed once into its own prefix, and the games it
-// installs are imported as Mira games sharing that prefix and launched
-// through it.
+// app), and Microsoft 365: each is installed once into its own prefix, and
+// the games or apps it installs are imported as Mira games sharing that
+// prefix and launched through it.
 namespace mira::launchers {
+
+// One installer a launcher's install downloads and runs.
+struct Setup {
+  std::string url;
+  std::string file;               // saved under Mira's downloads folder
+  std::vector<std::string> args;  // "{downloads}" is the downloads folder as Wine sees it
+  std::string done;               // relative to drive_c, there once it finished; empty: the launcher's exe
+};
 
 struct Launcher {
   std::string id;    // also the imported games' source
   std::string name;
   std::string umu_store;  // umu's STORE, so protonfixes apply; empty if umu has none
   std::string exe;   // relative to drive_c
-  std::string installer_url;              // empty: the last winetricks verb installs it
-  std::vector<std::string> installer_args;
+  std::vector<Setup> setups;              // run in order; none: the last winetricks verb installs it
   std::vector<std::string> tricks;        // winetricks verbs run before the installer
   bool interactive = false;               // the installer needs clicking through
   std::map<std::string, std::string> env;

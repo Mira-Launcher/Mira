@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "core/Lane.h"
+#include "launchers/Office.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
 #include "proc/ProcessSupervisor.h"
@@ -74,13 +75,12 @@ void WriteDefaults(const config::Config& config, const Launcher& launcher, const
   }
 }
 
-// The launcher exe, or the same file name anywhere under its top folder
-// (the EA app sometimes nests it under a version folder).
-std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix) {
-  const fs::path expected = prefix / "drive_c" / launcher.exe;
+// `rel` (relative to drive_c), or the same file name anywhere under its top
+// folder (the EA app sometimes nests its exe under a version folder).
+std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
+  const fs::path expected = prefix / "drive_c" / rel;
   std::error_code ec;
   if (fs::is_regular_file(expected, ec)) return expected;
-  const fs::path rel(launcher.exe);
   const fs::path top = prefix / "drive_c" / *rel.begin() / *std::next(rel.begin());
   for (fs::recursive_directory_iterator it(top, fs::directory_options::skip_permission_denied, ec), end;
        !ec && it != end; it.increment(ec)) {
@@ -89,14 +89,20 @@ std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix
   return std::nullopt;
 }
 
-Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const model::Game& game) {
+std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix) {
+  return FindFile(prefix, launcher.exe);
+}
+
+Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
-  const fs::path setup = downloads / std::format("{}-setup.exe", launcher.id);
+  const fs::path setup = downloads / step.file;
+  const fs::path done = step.done.empty() ? fs::path(launcher.exe) : fs::path(step.done);
+  const auto finished = [&] { return FindFile(game.data_dir, done).has_value(); };
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
-  if (auto fetched = runner::CurlDownload(launcher.installer_url, setup); !fetched) {
+  if (auto fetched = runner::CurlDownload(step.url, setup); !fetched) {
     return Err("download_failed", std::format("couldn't download the {} installer: {}", launcher.name,
                                               fetched.error().message), kConnectionHint);
   }
@@ -110,9 +116,16 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   run_as.args.clear();
   auto command = resolved->runner->BuildCommand(run_as, resolved->build);
   if (!command) return std::unexpected(command.error());
-  command->argv.insert(command->argv.end(), launcher.installer_args.begin(), launcher.installer_args.end());
+  std::string windows_downloads = "Z:" + downloads.string();
+  std::ranges::replace(windows_downloads, '/', '\\');
+  for (std::string arg : step.args) {
+    if (const std::size_t at = arg.find("{downloads}"); at != std::string::npos) {
+      arg.replace(at, std::string_view("{downloads}").size(), windows_downloads);
+    }
+    command->argv.push_back(std::move(arg));
+  }
 
-  log::Info("running the {} installer", launcher.name);
+  log::Info("running {} for {}", step.file, launcher.name);
   const auto pid = runner::SpawnDetached(*command);
   if (!pid) return std::unexpected(pid.error());
   // umu-run only exits once everything in the prefix has, and a freshly
@@ -123,7 +136,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
-    if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && FindExe(launcher, game.data_dir)) {
+    if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && finished()) {
       ReapOrphans(*pid);
       return {};
     }
@@ -133,8 +146,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
   }
-  if (!FindExe(launcher, game.data_dir)) {
-    return Err("launcher_not_installed", std::format("the {} installer finished but its launcher wasn't found", launcher.name));
+  if (!finished()) {
+    return Err("launcher_not_installed", std::format("{} finished but {} wasn't installed", step.file, launcher.name));
   }
   return {};
 }
@@ -179,8 +192,14 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
       log::Info("winetricks {} for {}", verb, launcher.name);
       if (auto tricked = runner::RunTricksVerb(runners, game, verb); !tricked) return std::unexpected(tricked.error());
     }
-    if (!launcher.installer_url.empty()) {
-      if (auto ran = RunInstaller(config, launcher, game); !ran) return std::unexpected(ran.error());
+    if (launcher.id == "office") {
+      if (auto prepared = office::Prepare(config, runners, game, paths::UserDir() / "downloads"); !prepared) {
+        return std::unexpected(prepared.error());
+      }
+    }
+    for (const Setup& step : launcher.setups) {
+      if (!step.done.empty() && FindFile(game.data_dir, step.done)) continue;  // left from an earlier try
+      if (auto ran = RunInstaller(config, launcher, step, game); !ran) return std::unexpected(ran.error());
     }
     exe = FindExe(launcher, game.data_dir);
   }
@@ -200,8 +219,10 @@ const std::vector<Launcher>& All() {
     battlenet.name = "Battle.net";
     battlenet.umu_store = "battlenet";
     battlenet.exe = "Program Files (x86)/Battle.net/Battle.net Launcher.exe";
-    battlenet.installer_url = "https://downloader.battle.net/download/getInstaller?os=win&installer=Battle.net-Setup.exe";
-    battlenet.installer_args = {"--lang=enUS", "--installpath=C:\\Program Files (x86)\\Battle.net"};
+    battlenet.setups = {{"https://downloader.battle.net/download/getInstaller?os=win&installer=Battle.net-Setup.exe",
+                         "battlenet-setup.exe",
+                         {"--lang=enUS", "--installpath=C:\\Program Files (x86)\\Battle.net"},
+                         ""}};
     battlenet.interactive = true;
     battlenet.env = {{"WINEDLLOVERRIDES", "locationapi=d"}, {"WINE_SIMULATE_WRITECOPY", "1"}};
 
@@ -217,11 +238,24 @@ const std::vector<Launcher>& All() {
     ea.name = "EA app";
     ea.umu_store = "ea";
     ea.exe = "Program Files/Electronic Arts/EA Desktop/EA Desktop/EALauncher.exe";
-    ea.installer_url = "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe";
-    ea.installer_args = {"/silent"};
+    ea.setups = {{"https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",
+                  "ea-setup.exe", {"/silent"}, ""}};
     ea.tricks = {"corefonts", "d3dcompiler_47"};
     ea.env = {{"LC_ALL", "en_US.UTF-8"}};
-    return std::vector<Launcher>{battlenet, ubisoft, ea};
+
+    Launcher m365;
+    m365.id = "office";
+    m365.name = "Microsoft 365";
+    m365.exe = std::format("{}/EXCEL.EXE", office::kProgramDir);
+    m365.tricks = {"corefonts", "msxml6", "riched20", "gdiplus"};
+    // Both from Microsoft: the Edge WebView2 runtime Office signs in with, then
+    // the Office Deployment Tool, which downloads and installs Office.
+    m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
+                      "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe"},
+                     {"https://officecdn.microsoft.com/pr/wsus/setup.exe", "office-setup.exe",
+                      {"/configure", "{downloads}\\office-configuration.xml"}, ""}};
+    m365.env = {{"PROTON_USE_XALIA", "0"}};
+    return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
   }();
   return kLaunchers;
 }
@@ -298,6 +332,11 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
     }
   }
   run_as.args.clear();
+  // A Microsoft 365 app is its own program in the shared prefix.
+  if (launcher->id == "office" && game.source != "launcher" && !game.exe_path.empty()) {
+    run_as.install_path = game.install_path;
+    run_as.exe_path = game.exe_path;
+  }
   // The game's own id, so its window is its own app rather than the launcher's.
   run_as.id = game.id;
   if (const auto gameid = game.runner_config.find("gameid"); gameid != game.runner_config.end()) {

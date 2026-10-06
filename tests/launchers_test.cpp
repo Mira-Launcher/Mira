@@ -90,3 +90,29 @@ TEST_CASE("launchers: games are matched by their folder as Wine shows it") {
   game.install_path = "/mnt/Games/Trackmania/";
   CHECK(launchers::WindowsDir(game) == "z:/mnt/games/trackmania");
 }
+
+TEST_CASE("launchers: Microsoft 365 apps are imported as apps with their own exe") {
+  test::TestEnv env("launcher-office");
+  const fs::path prefix = env.dir / "prefixes" / "microsoft-365";
+  const fs::path office16 = prefix / "drive_c" / "Program Files" / "Microsoft Office" / "root" / "Office16";
+  test::Touch(office16 / "EXCEL.EXE");
+  test::Touch(office16 / "WINWORD.EXE");
+
+  model::Game host;
+  host.id = "launcher-office";
+  host.source = "launcher";
+  host.source_ref = "office";
+  host.data_dir = prefix.string();
+  host.status = model::GameStatus::Ready;
+  REQUIRE(env.games.Upsert(host));
+
+  const auto imported = launchers::Import(env.config, env.games, env.events, *launchers::Find("office"));
+  REQUIRE(imported);
+  CHECK(imported->added == 2);
+  const auto excel = env.games.Find("office-excel");
+  REQUIRE(excel);
+  CHECK(excel->name == "Excel");
+  CHECK(excel->exe_path == "EXCEL.EXE");
+  CHECK(std::ranges::find(excel->tags, "app") != excel->tags.end());
+  CHECK_FALSE(env.games.Find("office-powerpoint"));
+}

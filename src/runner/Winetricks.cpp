@@ -19,6 +19,8 @@ namespace fs = std::filesystem;
 
 fs::path BundledWinetricks() { return paths::UserDir() / "tools" / "winetricks" / "winetricks"; }
 
+}  // namespace
+
 Result<fs::path> ResolveWineBinary(const RunnerRegistry& runners, const model::Game& game) {
   const std::string ref = game.runner_ref.empty() ? "native:native" : game.runner_ref;
   const auto resolved = runners.Resolve(ref);
@@ -48,8 +50,6 @@ Result<fs::path> ResolveWineBinary(const RunnerRegistry& runners, const model::G
   return Err("not_wine_based",
             std::format("winetricks only applies to a Wine or Proton runner, not \"{}\"", kind));
 }
-
-}  // namespace
 
 std::string WinetricksPath() {
   if (auto found = FindOnPath("winetricks")) return *found;
@@ -115,6 +115,19 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
     return Err("tricks_failed", std::format("winetricks {} exited {}: {}", verb, result->exit_code, result->output));
   }
   return {};
+}
+
+Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& game, const std::vector<std::string>& args) {
+  if (game.data_dir.empty()) return NoPrefix(game);
+  const Result<fs::path> wine_binary = ResolveWineBinary(runners, game);
+  if (!wine_binary) return std::unexpected(wine_binary.error());
+  const auto prefix_lock = LockPrefix(game.data_dir);
+  Command command;
+  command.argv = {wine_binary->string()};
+  command.argv.insert(command.argv.end(), args.begin(), args.end());
+  command.env["WINEPREFIX"] = game.data_dir;
+  command.env["WINEDEBUG"] = "-all";
+  return RunAndWait(command);
 }
 
 }  // namespace mira::runner
