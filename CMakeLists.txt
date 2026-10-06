@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mira LANGUAGES CXX VERSION 0.12.1)
+project(mira LANGUAGES CXX VERSION 0.12.2)
 
 # Dependencies are header-only and vendored in third_party/, so a build needs
 # nothing fetched at configure time, and the only external dependency is the
