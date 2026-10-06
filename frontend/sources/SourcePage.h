@@ -60,6 +60,9 @@ public:
   void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.
   SourceSettingsCard* SettingsCard() const { return settings_card_; }
+  bool SettingsModalOpen() const;
+  // Esc: closes the settings dialog, asking first when it has unsaved edits.
+  void CloseSettingsModal();
 
 signals:
   // An import added or changed games.
@@ -94,7 +97,6 @@ private:
   QWidget* BuildOwnedSection();
 
   void OpenSettingsModal();
-  void CloseSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
 

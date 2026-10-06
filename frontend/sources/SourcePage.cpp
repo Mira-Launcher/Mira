@@ -2,7 +2,6 @@
 
 #include <QEvent>
 #include <QGridLayout>
-#include <QShortcut>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -231,19 +230,29 @@ void SourcePage::OpenSettingsModal() {
   if (settings_overlay_ == nullptr) {
     settings_overlay_ = new ModalOverlay(this);
     settings_overlay_->scrim = QColor(0, 0, 0, 150);
+    settings_overlay_->setFocusPolicy(Qt::StrongFocus);
     settings_overlay_->on_backdrop_clicked = [this] { CloseSettingsModal(); };
-    auto* escape = new QShortcut(Qt::Key_Escape, settings_overlay_);
-    escape->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(escape, &QShortcut::activated, this, &SourcePage::CloseSettingsModal);
     auto* scroll = new QScrollArea(settings_overlay_);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setMaximumWidth(560);
-    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-    scroll->setWidget(settings_card_);
-    auto* grid = new QGridLayout(settings_overlay_);
-    grid->setContentsMargins(32, 32, 32, 32);
-    grid->addWidget(scroll, 0, 0, Qt::AlignHCenter);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // Only the viewport: the card keeps its own background.
+    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    // The card keeps its own height; the viewport's spare room stays empty.
+    auto* holder = new QWidget();
+    holder->setObjectName("settings_holder");
+    holder->setStyleSheet("QWidget#settings_holder { background: transparent; }");
+    auto* holder_layout = new QVBoxLayout(holder);
+    holder_layout->setContentsMargins(0, 0, 0, 0);
+    holder_layout->addWidget(settings_card_);
+    holder_layout->addStretch(1);
+    scroll->setWidget(holder);
+    auto* row = new QHBoxLayout(settings_overlay_);
+    row->setContentsMargins(32, 32, 32, 32);
+    row->addStretch(1);
+    row->addWidget(scroll, 100);
+    row->addStretch(1);
   }
   settings_overlay_->setGeometry(rect());
   settings_overlay_->show();
@@ -251,14 +260,17 @@ void SourcePage::OpenSettingsModal() {
   settings_overlay_->setFocus();
 }
 
+bool SourcePage::SettingsModalOpen() const { return settings_overlay_ != nullptr && settings_overlay_->isVisible(); }
+
 void SourcePage::CloseSettingsModal() {
-  if (settings_overlay_ == nullptr || !settings_overlay_->isVisible()) return;
+  if (!SettingsModalOpen()) return;
   if (settings_card_ != nullptr && settings_card_->IsDirty()) {
     const bool leave = notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
       connect(settings_card_, &SourceSettingsCard::SaveFinished, this,
               [this](bool ok) {
-                if (ok) settings_overlay_->hide();
-              },
+                if (!ok) return;
+                settings_overlay_->hide();
+                            },
               Qt::SingleShotConnection);
       settings_card_->Save();
     });

@@ -274,6 +274,10 @@ void LibraryWindow::BuildShortcuts() {
       CloseSidebarCard();
       return;
     }
+    if (source_page_ != nullptr && source_page_->SettingsModalOpen()) {
+      source_page_->CloseSettingsModal();
+      return;
+    }
     if (SettingsOpen()) {
       RequestCloseSettings();
       return;
