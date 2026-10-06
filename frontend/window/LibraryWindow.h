@@ -32,6 +32,7 @@ class GameLibraryModel;
 class GameMenus;
 class HoverCard;
 class LibraryPage;
+class OwnedTitles;
 class RunnersPage;
 class SettingsPanel;
 class Sidebar;
@@ -231,6 +232,7 @@ private:
   mira_gui::GameLibraryModel* library_ = nullptr;
   mira_gui::GameMenus* menus_ = nullptr;
   mira_gui::DownloadTracker* downloads_ = nullptr;
+  mira_gui::OwnedTitles* owned_titles_ = nullptr;  // what a library search finds in the stores
   mira_gui::DaemonSupervisor* daemon_supervisor_ = nullptr;  // "Start mirad" from a failure
   bool mirad_reachable_ = true;  // as of the last request or event connection, for the footer
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list

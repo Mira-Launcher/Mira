@@ -109,6 +109,7 @@ add_executable(mira_gui_tests
   client/Transport.cpp
   library/GameLibraryModel.cpp
   library/LibrarySort.cpp
+  library/OwnedTitles.cpp
   settings/SettingsColumns.cpp
   settings/SettingsSearch.cpp
   theme/Theme.cpp

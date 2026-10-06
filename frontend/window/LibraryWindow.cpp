@@ -37,6 +37,7 @@
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../dialogs/GameDetailPageDialog.h"
 #include "../game/GameCard.h"
 #include "../game/InstallPromptCard.h"
@@ -47,6 +48,7 @@
 #include "../library/GameMenus.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
+#include "../library/OwnedTitles.h"
 #include "../library/LibraryPage.h"
 #include "../runners/RunnersPage.h"
 #include "../settings/SettingsPanel.h"
@@ -117,6 +119,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   // Before the top bar, which shows its count.
   downloads_ = new mira_gui::DownloadTracker(this);
+  owned_titles_ = new mira_gui::OwnedTitles(this);
   downloads_->game_name = [this](const std::string& id) {
     const mira_gui::GameSummary* game = FindGame(id);
     return game != nullptr ? QString::fromStdString(game->name) : QString();
@@ -575,6 +578,21 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
     if (mira_gui::CanPlayOrStop(*game)) ToggleRunning(id);
   });
   connect(page, &mira_gui::LibraryPage::PlayRequested, this, &LibraryWindow::RowClicked);
+  page->SetOwnedTitles(owned_titles_);
+  page->title_state = [this](const QString& source, const QString& ref) {
+    const mira_gui::DownloadTracker::Entry* entry =
+        downloads_->Find(mira_gui::DownloadTracker::KeyFor(mira_gui::DownloadTracker::Kind::Title, source, ref));
+    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return QString();
+    const QString progress = mira_gui::DownloadTracker::ProgressText(*entry, /*short_form=*/true);
+    return progress.isEmpty() ? QString("Installing…") : progress;
+  };
+  connect(page, &mira_gui::LibraryPage::InstallTitleRequested, this, [this](const QString& source, const QString& ref) {
+    mira_gui::api::InstallStoreTitleAsync(this, source.toStdString(), ref.toStdString(), /*update=*/false,
+                                          [this](mira_gui::StoreActionResult result) {
+                                            // Progress and the outcome arrive as events.
+                                            if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not start the install.", result.error);
+                                          });
+  });
   connect(page, &mira_gui::LibraryPage::SelectionChanged, this, [this, page] {
     QSet<QString> ids;
     for (const auto& [id, name] : page->SelectedGames()) ids.insert(QString::fromStdString(id));
@@ -752,6 +770,8 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   }
   mirad_reachable_ = true;
   UpdateFooter();
+  // Ready before the first search; after startup's own requests, since it asks every store.
+  QTimer::singleShot(5000, owned_titles_, &mira_gui::OwnedTitles::RefreshIfStale);
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
@@ -1317,6 +1337,13 @@ void LibraryWindow::DownloadChanged(const QString& key) {
 
   // That game's row repaints with its new install text.
   if (key.startsWith("game:")) library_->Touch(key.mid(5).toStdString());
+
+  // A store title's install shows on its search match, and once done it's no longer "not installed".
+  const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(key);
+  if (entry != nullptr && entry->kind == mira_gui::DownloadTracker::Kind::Title) {
+    grid_page_->RefreshOwnedStates();
+    if (entry->state == mira_gui::DownloadTracker::State::Finished) owned_titles_->Refresh();
+  }
 }
 
 void LibraryWindow::ShowGame(const std::string& id) {
@@ -1392,6 +1419,17 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
 
   // Doesn't consume it: the toasts below still want installs.
   downloads_->HandleEvent(type, data);
+
+  // A store install started from a search has nothing else on screen to say it
+  // failed; a source page shows its own.
+  if (mira_gui::StoreEvent store; live && type == "library.install.failed" &&
+                                  mira_gui::events::ParseStoreEvent(type, data, &store) &&
+                                  store.error.code != "cancelled" && !SourcePageShown()) {
+    const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(mira_gui::DownloadTracker::KeyFor(
+        mira_gui::DownloadTracker::Kind::Title, QString::fromStdString(store.source), QString::fromStdString(store.ref)));
+    const QString name = entry != nullptr ? downloads_->NameFor(*entry) : QString::fromStdString(store.ref);
+    mira_gui::notify::FailedRequest(this, "Could not install " + name + ".", store.error);
+  }
 
   if (mira_gui::StoreEvent art; mira_gui::events::ParseTitleArtworkEvent(type, data, &art)) {
     if (art.state == "ready") artwork_->TitleArtworkReady(art.source + "-" + art.ref);

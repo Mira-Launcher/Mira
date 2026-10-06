@@ -32,7 +32,7 @@ void SignOutStoreAsync(QObject* context, const std::string& source,
 void ImportStoreAsync(QObject* context, const std::string& source,
                       std::function<void(StoreImportResult)> callback);
 
-// GET /v1/library?source=: owned titles, installed or not.
+// GET /v1/library?source=: owned titles, installed or not. An empty source lists every store's.
 void GetStoreLibraryAsync(QObject* context, const std::string& source,
                           std::function<void(StoreLibraryResult)> callback);
 

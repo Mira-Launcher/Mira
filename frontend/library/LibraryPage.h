@@ -6,11 +6,18 @@
 #include <utility>
 #include <vector>
 
+#include <functional>
+#include <set>
+
 #include "../client/Types.h"
+#include "OwnedTitles.h"
 
 class QLabel;
 class QLineEdit;
 class QModelIndex;
+class QScrollArea;
+class QStandardItemModel;
+class QVBoxLayout;
 
 namespace mira_gui {
 
@@ -22,6 +29,7 @@ class GameLibraryModel;
 class GameTileDelegate;
 class LibraryGrid;
 class TabRow;
+class TileGrid;
 
 // The library's own page: a tab row holding the filter tabs, the filter and
 // sort pill and the search box, then the Continue playing cards, then the
@@ -63,6 +71,13 @@ class LibraryPage : public QWidget {
   bool ToggleSelected(const std::string& id);
   // A few seconds of `text` over that game's tile.
   void ShowTileNote(const std::string& id, const QString& text);
+
+  // The stores' titles a search also looks through, below the library's own matches.
+  void SetOwnedTitles(OwnedTitles* titles);
+  // Set by the owner: a store title's install state ("Installing… 42%"), empty while idle.
+  std::function<QString(const QString& source, const QString& ref)> title_state;
+  // Redraws the store matches' install states.
+  void RefreshOwnedStates();
   int ShownCount() const;
 
   int TileWidth() const { return tile_width_; }
@@ -81,6 +96,8 @@ class LibraryPage : public QWidget {
   void ShownChanged();
   void SelectionChanged();
   void GameActivated(const std::string& id);  // a tile's double click
+  // Install pressed on a store match (the store picked, when several sell it).
+  void InstallTitleRequested(const QString& source, const QString& ref);
   void PlayRequested(const std::string& id);  // a Continue playing card
   void GameMenuRequested(const std::string& id, const QPoint& global_pos);
   void BatchMenuRequested(const std::vector<std::string>& ids, const QPoint& global_pos);
@@ -104,6 +121,12 @@ class LibraryPage : public QWidget {
   void Hover(const QModelIndex& index);
   QSize TileSize() const;
   void ApplyLayoutTokens();
+  QWidget* BuildOwnedSection();
+  // Lists the store titles matching the search, and sizes the grid for it.
+  void UpdateOwnedMatches();
+  // While store matches show under it, the grid is as tall as its tiles and the page scrolls.
+  void FitGrid();
+  void InstallMatch(const QModelIndex& index, const QPoint& global_pos);
 
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
@@ -115,6 +138,15 @@ class LibraryPage : public QWidget {
   LibraryGrid* grid_ = nullptr;
   GameTileDelegate* delegate_ = nullptr;
   QLabel* empty_hint_ = nullptr;
+  QScrollArea* scroll_ = nullptr;  // scrolls only while store matches show
+  QVBoxLayout* content_layout_ = nullptr;
+  QWidget* owned_section_ = nullptr;
+  QLabel* owned_heading_ = nullptr;
+  TileGrid* owned_grid_ = nullptr;
+  QStandardItemModel* owned_model_ = nullptr;
+  OwnedTitles* owned_titles_ = nullptr;
+  std::vector<OwnedMatch> owned_matches_;
+  std::set<QString> covers_asked_;  // "<source>-<ref>" whose cover fetch was queued
   int tile_width_ = 0;
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;

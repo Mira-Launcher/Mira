@@ -121,6 +121,8 @@ dialogs/   modal dialogs
 
 `LibraryWindow` fetches the whole library once into `library/GameLibraryModel`, and `library/LibraryPage` filters it on the client, which keeps search instant and makes "Playing now" and "Never played" possible. Events then patch the view directly. There is no polling.
 
+A search also looks through the games you own but haven't installed. `library/OwnedTitles` fetches every store's titles (`GET /v1/library`) in the background a few seconds after connecting, again when a typed search finds the list more than ten minutes old, and after a store install finishes. Matches (`MatchOwned`, one per game across stores by name) show under the library's own in a *Not installed* section with an Install button; a game owned on several stores asks which copy to install. While that section shows, the grid sizes to its tiles and the page scrolls as one. Their covers are fetched only for titles a search showed.
+
 Only `game.added` and `game.updated` carry a game record, so views check the event type before parsing one. `game.state` carries only the state and launch details, so an exit triggers a re-fetch. A game handed to Steam or a launcher reports `tracked` in the launch reply and `game.launched`, and isn't marked running unless it is tracked.
 
 ## Game card
