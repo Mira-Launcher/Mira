@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QStyle>
 #include <QTimer>
 #include <QUrl>
@@ -16,6 +17,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/ProgressRail.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -96,6 +98,9 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   auto* log_layout = new QVBoxLayout(log_box_);
   log_layout->setContentsMargins(0, 0, 0, 0);
   log_layout->setSpacing(4);
+  progress_ = new ProgressRail(log_box_);
+  progress_->setVisible(false);
+  log_layout->addWidget(progress_);
   log_tail_ = new QLabel(log_box_);
   log_tail_->setObjectName("setup_log_tail");
   log_tail_->setWordWrap(true);
@@ -176,6 +181,7 @@ void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed
 
 void SourceSetupCard::WatchLog(bool on) {
   if (on) {
+    progress_->setVisible(false);
     log_box_->setVisible(true);
     if (!log_timer_->isActive()) log_timer_->start(1500);
     PollLog();
@@ -195,6 +201,15 @@ void SourceSetupCard::PollLog() {
     for (const std::string& line : result.lines) lines << QString::fromStdString(line);
     if (!result.live.empty()) lines << QString::fromStdString(result.live);
     while (lines.size() > 6) lines.removeFirst();
+    // The newest "42% of ..." line the installer reported, as the rail above the log.
+    static const QRegularExpression percent_line(R"(^\s*(\d+(?:\.\d+)?)%)");
+    for (auto line = lines.crbegin(); line != lines.crend(); ++line) {
+      const QRegularExpressionMatch match = percent_line.match(*line);
+      if (!match.hasMatch()) continue;
+      progress_->SetProgress(match.captured(1).toDouble() / 100);
+      progress_->setVisible(true);
+      break;
+    }
     log_tail_->setTextFormat(Qt::PlainText);
     log_tail_->setText(lines.isEmpty() ? QString("Waiting for output…") : lines.join('\n'));
   });

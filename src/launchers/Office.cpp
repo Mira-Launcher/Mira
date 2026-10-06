@@ -1,10 +1,13 @@
 #include "launchers/Office.h"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <chrono>
 #include <mutex>
 #include <optional>
@@ -27,13 +30,15 @@ constexpr std::array kApps = {
 };
 
 // Each shim replaces a Wine DLL and forwards to Wine's own copy, kept under a
-// second name. sppc has no Wine copy to forward to.
+// second name. sppc has no Wine copy to forward to, and neither has qmgr: it is
+// a whole BITS service of its own (Wine's cannot take the file ranges Office
+// downloads with).
 struct Shim {
   std::string_view name;
   std::string_view wine_copy;
 };
 constexpr std::array kShims = {Shim{"sppc", ""}, Shim{"ole32", "ole32w"}, Shim{"uiautomationcore", "uiautomationcorew"},
-                               Shim{"d2d1", "d2d1w"}, Shim{"xmllite", "xmllitew"}};
+                               Shim{"d2d1", "d2d1w"}, Shim{"xmllite", "xmllitew"}, Shim{"qmgr", ""}};
 
 // Wine loads its own builtin in place of a file that carries this marker.
 constexpr std::size_t kBuiltinMarkerAt = 64;
@@ -256,6 +261,63 @@ Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegi
   if (auto shims = InstallShims(config, runners, host, downloads, &version); !shims) return shims;
   std::ofstream(marker) << version << "\n";
   return {};
+}
+
+std::optional<int> InstallPercent(const fs::path& prefix, fs::file_time_type since) {
+  constexpr std::string_view kMarker = "UpdateScenarioProgress";
+  constexpr std::streamoff kTail = 256 * 1024;
+  std::error_code ec;
+  fs::file_time_type newest_time = since;  // a log has to be at least this new
+  std::optional<int> percent;
+  for (const auto& user : fs::directory_iterator(prefix / "drive_c" / "users", ec)) {
+    for (const auto& entry : fs::directory_iterator(user.path() / "AppData/Local/Temp", ec)) {
+      std::error_code entry_ec;
+      if (entry.path().extension() != ".log" || !entry.is_regular_file(entry_ec)) continue;
+      const auto written = entry.last_write_time(entry_ec);
+      if (entry_ec || written < newest_time) continue;
+      // The tail only: these logs run to megabytes. Some are UTF-16, so drop the NULs and read it as text.
+      std::ifstream in(entry.path(), std::ios::binary);
+      in.seekg(0, std::ios::end);
+      const std::streamoff size = in.tellg();
+      in.seekg(size > kTail ? size - kTail : 0);
+      std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      std::erase(text, '\0');
+      // "ScenarioController::UpdateScenarioProgress - {guid}=11"
+      const std::size_t at = text.rfind(kMarker);
+      if (at == std::string::npos) continue;
+      const std::size_t equals = text.find('=', at);
+      if (equals == std::string::npos) continue;
+      const int value = std::atoi(text.c_str() + equals + 1);
+      if (value < 0 || value > 100) continue;
+      newest_time = written;
+      percent = value;
+    }
+  }
+  return percent;
+}
+
+std::uint64_t InstallBytes(const fs::path& prefix) {
+  std::uint64_t total = 0;
+  std::error_code ec;
+  for (const char* folder : {"ProgramData/Microsoft/ClickToRun", "Program Files/Microsoft Office",
+                             "Program Files/Common Files/Microsoft Shared/ClickToRun"}) {
+    for (fs::recursive_directory_iterator it(prefix / "drive_c" / folder, fs::directory_options::skip_permission_denied, ec),
+         end;
+         !ec && it != end; it.increment(ec)) {
+      struct stat info;
+      if (it->is_regular_file(ec) && ::stat(it->path().c_str(), &info) == 0) total += static_cast<std::uint64_t>(info.st_blocks) * 512;
+    }
+    ec.clear();
+  }
+  return total;
+}
+
+std::optional<std::pair<std::uint64_t, std::uint64_t>> DownloadProgress(const fs::path& prefix) {
+  std::ifstream in(prefix / "drive_c" / "windows" / "temp" / "mira-bits.txt");
+  long long done = 0;
+  long long total = 0;
+  if (!(in >> done >> total) || total <= 0 || done < 0) return std::nullopt;
+  return std::pair{static_cast<std::uint64_t>(done), static_cast<std::uint64_t>(total)};
 }
 
 Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host,

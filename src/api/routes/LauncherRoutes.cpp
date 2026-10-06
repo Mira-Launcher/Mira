@@ -43,7 +43,9 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
     s.events.Publish("launcher.install.started", {{"id", launcher->id}});
     s.StartJob(req, res, "install", launcher->id, "Installing " + launcher->name,
                [&s, launcher](JobRegistry::Progress&) -> Result<json> {
-                 const auto done = launchers::Install(s.config, s.games, *launcher);
+                 const auto done = launchers::Install(s.config, s.games, *launcher, [&s, launcher](double fraction) {
+                   s.events.Publish("launcher.install.progress", {{"id", launcher->id}, {"progress", fraction}});
+                 });
                  if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
                    s.events.Publish("game.updated", s.Record(*stored));
                  }

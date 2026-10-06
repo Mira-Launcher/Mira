@@ -1,7 +1,11 @@
 #pragma once
 
 #include <filesystem>
+#include <cstdint>
+#include <functional>
 #include <map>
+#include <optional>
+#include <utility>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +29,16 @@ struct Setup {
   std::string file;               // saved under Mira's downloads folder
   std::vector<std::string> args;  // "{downloads}" is the downloads folder as Wine sees it
   std::string done;               // relative to drive_c, there once it finished; empty: the launcher's exe
+  // How far along it is, 0-100, when the installer says so somewhere other than its output. Given the
+  // prefix and the time the installer started.
+  std::function<std::optional<int>(const std::filesystem::path&, std::filesystem::file_time_type)> progress;
+  // Bytes the installer has put on disk so far: sampled for the speed in the progress line.
+  std::function<std::uint64_t(const std::filesystem::path&)> bytes{};
+  // (done, total) bytes of the downloads the installer has started, for a bar while it says nothing.
+  std::function<std::optional<std::pair<std::uint64_t, std::uint64_t>>(const std::filesystem::path&)> download{};
+  // The installer's Wine session ends with it: what it left running in the prefix (Office's Click-to-Run service and
+  // Wine server) is stopped, since a later launch of an app waits on that session instead of starting.
+  bool end_session = false;
 };
 
 struct Launcher {
@@ -53,7 +67,9 @@ bool Installed(const store::GameStore& games, const Launcher& launcher);
 // False if this launcher is already installing.
 bool BeginInstall(const Launcher& launcher);
 std::string InstallState(const Launcher& launcher);  // idle, running, finished, failed
-Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher);
+// `on_progress` gets the install's progress, 0..1, when the installer reports it.
+Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher,
+                            const std::function<void(double)>& on_progress = {});
 
 // Runs the launcher, asking it to start `game` unless it is the launcher's
 // own entry. `action` is launch or install.

@@ -15,6 +15,8 @@ class QPushButton;
 
 namespace mira_gui {
 
+class ProgressRail;
+
 // What a store or launcher still needs before its page is useful, as
 // numbered steps: get the store's helper tool, then sign in; or install the
 // launcher. Then import. The current step holds its text, its button or
@@ -68,6 +70,7 @@ class SourceSetupCard : public SettingsCard {
   QPushButton* sign_in_ = nullptr;
   QLabel* error_ = nullptr;
   QWidget* log_box_ = nullptr;
+  ProgressRail* progress_ = nullptr;  // shown once setup reports a percentage
   QLabel* log_tail_ = nullptr;
   QTimer* log_timer_ = nullptr;
   bool log_busy_ = false;
