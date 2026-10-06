@@ -13,6 +13,13 @@ if(NOT MIRA_CONTAINER_ENGINE)
   return()
 endif()
 
+# "host" lets the build use the host's network, for a container engine with no bridge network.
+set(MIRA_CONTAINER_NETWORK "" CACHE STRING "Value for --network when building and running the container")
+set(MIRA_CONTAINER_NETWORK_ARGS "")
+if(MIRA_CONTAINER_NETWORK)
+  set(MIRA_CONTAINER_NETWORK_ARGS --network "${MIRA_CONTAINER_NETWORK}")
+endif()
+
 set(MIRA_CONTAINER_IMAGE "mira-appimage-builder")
 set(MIRA_CONTAINER_OUT "${CMAKE_BINARY_DIR}/appimage-container")
 
@@ -28,10 +35,12 @@ endif()
 add_custom_target(appimage-container
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_CONTAINER_OUT}"
   COMMAND "${MIRA_CONTAINER_ENGINE}" build
+          ${MIRA_CONTAINER_NETWORK_ARGS}
           -t "${MIRA_CONTAINER_IMAGE}"
           -f "${CMAKE_SOURCE_DIR}/packaging/appimage/Dockerfile"
           "${CMAKE_SOURCE_DIR}/packaging/appimage"
   COMMAND "${MIRA_CONTAINER_ENGINE}" run --rm
+          ${MIRA_CONTAINER_NETWORK_ARGS}
           ${MIRA_CONTAINER_USER_ARGS}
           -e HOME=/tmp
           -v "${CMAKE_SOURCE_DIR}:/src:ro"
