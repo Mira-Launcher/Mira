@@ -222,6 +222,12 @@ Result<void> InstallShims(const config::Config& config, const runner::RunnerRegi
 std::span<const App> Apps() { return kApps; }
 
 std::string Configuration(const config::Config& config) {
+  // The apps left out of `launchers.office.apps` are excluded from the install.
+  const std::vector<std::string> wanted = config.GetStringArray("launchers.office.apps");
+  std::string excluded;
+  for (const App& app : kApps) {
+    if (std::ranges::find(wanted, std::string(app.ref)) == wanted.end()) excluded += std::format("      <ExcludeApp ID=\"{}\"/>\n", app.name);
+  }
   // No AcceptEULA: Office shows Microsoft's license terms on first start.
   return std::format(R"(<Configuration>
   <Add OfficeClientEdition="64" Channel="Current">
@@ -233,12 +239,12 @@ std::string Configuration(const config::Config& config) {
       <ExcludeApp ID="Teams"/>
       <ExcludeApp ID="Access"/>
       <ExcludeApp ID="Publisher"/>
-    </Product>
+{}    </Product>
   </Add>
   <Display Level="None"/>
 </Configuration>
 )",
-                     config.GetString("launchers.office.plan"));
+                     config.GetString("launchers.office.plan"), excluded);
 }
 
 Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host) {

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "config/Config.h"
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "runner/WindowsTheme.h"
@@ -157,6 +158,29 @@ TEST_CASE("launchers: Office's install percent comes from Click-to-Run's log, UT
 
   // A log from before the installer started is an earlier run's.
   CHECK_FALSE(launchers::office::InstallPercent(prefix, since + std::chrono::hours(1)).has_value());
+}
+
+TEST_CASE("launchers: Office installs only the apps picked, and refuses an empty or unknown pick") {
+  const fs::path state = test::TempDir("office-apps");
+  config::Config config(state / "settings.toml");
+  config.Load();
+
+  // The default is everything: nothing the five apps are named for is excluded.
+  const std::string all = launchers::office::Configuration(config);
+  for (const char* app : {"Word", "Excel", "PowerPoint", "Outlook", "OneNote"}) {
+    CHECK(all.find(std::string("<ExcludeApp ID=\"") + app + "\"/>") == std::string::npos);
+  }
+
+  REQUIRE(config.Set("launchers.office.apps", nlohmann::json::array({"excel", "word"})));
+  const std::string some = launchers::office::Configuration(config);
+  CHECK(some.find("<ExcludeApp ID=\"Excel\"/>") == std::string::npos);
+  CHECK(some.find("<ExcludeApp ID=\"Word\"/>") == std::string::npos);
+  for (const char* app : {"PowerPoint", "Outlook", "OneNote"}) {
+    CHECK(some.find(std::string("<ExcludeApp ID=\"") + app + "\"/>") != std::string::npos);
+  }
+
+  CHECK_FALSE(config.Set("launchers.office.apps", nlohmann::json::array()));
+  CHECK_FALSE(config.Set("launchers.office.apps", nlohmann::json::array({"excel", "access"})));
 }
 
 TEST_CASE("launchers: setup output drops the lines that only look like trouble, and keeps real ones") {
