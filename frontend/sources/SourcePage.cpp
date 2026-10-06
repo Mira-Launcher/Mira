@@ -37,6 +37,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
@@ -64,6 +65,7 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   auto* scroll = new QScrollArea(this);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
+  SetUpScrolling(scroll, this);
   auto* content = new QWidget();
   content_layout_ = new QVBoxLayout(content);
   content_layout_->setContentsMargins(22, 14, 22, 16);
@@ -244,6 +246,7 @@ void SourcePage::OpenSettingsModal() {
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    SetUpScrolling(scroll, settings_overlay_);  // set up after the page's, so it's asked first
     // Only the viewport: the card keeps its own background.
     scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
     // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.

@@ -23,6 +23,7 @@
 #include "SettingsCard.h"
 #include "SettingsSearch.h"
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
 
 namespace mira_gui {
 
@@ -117,6 +118,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sections_->setSpacing(36);
   sections_->addStretch(1);
   scroll_->setWidget(canvas_);
+  SetUpScrolling(scroll_, this);  // the nav column and search box beside it page the settings too
   canvas_->installEventFilter(this);
   scroll_->viewport()->installEventFilter(this);
   qApp->installEventFilter(this);  // wheel events over the scroll's controls

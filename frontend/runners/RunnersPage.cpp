@@ -24,6 +24,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
+#include "../widgets/Scrolling.h"
 
 namespace mira_gui {
 namespace {
@@ -128,6 +129,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   scroll->setObjectName("settings_page");
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
+  SetUpScrolling(scroll, this);
   auto* canvas = new QWidget();
   canvas->setObjectName("settings_canvas");
   columns_ = new QBoxLayout(QBoxLayout::LeftToRight, canvas);

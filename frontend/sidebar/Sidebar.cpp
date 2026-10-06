@@ -35,6 +35,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
 
 namespace mira_gui {
@@ -119,6 +120,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   nav_scroll->setFrameShape(QFrame::NoFrame);
   nav_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   nav_scroll->viewport()->setAutoFillBackground(false);
+  SetUpScrolling(nav_scroll);
   auto* nav_content = new QWidget();
   nav_content->setAutoFillBackground(false);
   auto* nav_layout = new QVBoxLayout(nav_content);

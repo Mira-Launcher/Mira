@@ -13,6 +13,7 @@
 #include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
 #include "../widgets/Labels.h"
+#include "../widgets/Scrolling.h"
 
 namespace mira_gui {
 namespace {
@@ -40,6 +41,7 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
   auto* scroll = new QScrollArea(this);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
+  SetUpScrolling(scroll, this);
   outer->addWidget(scroll, /*stretch=*/1);
 
   auto* body = new QWidget(scroll);

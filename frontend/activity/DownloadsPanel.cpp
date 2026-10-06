@@ -17,6 +17,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
+#include "../widgets/Scrolling.h"
 #include "DownloadTracker.h"
 
 namespace mira_gui {
@@ -105,6 +106,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setWidgetResizable(true);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  SetUpScrolling(scroll, this);
   auto* list = new QWidget(scroll);
   rows_ = new QVBoxLayout(list);
   rows_->setContentsMargins(0, 0, 0, 0);
