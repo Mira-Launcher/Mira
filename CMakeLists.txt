@@ -24,8 +24,10 @@ option(MIRA_STATIC_LIBSTDCXX "Link libstdc++ and libgcc statically into mirad, m
 
 # A compiler cache, when one is installed, makes every rebuild after the first cheap.
 find_program(MIRA_CCACHE NAMES ccache sccache)
+# The sloppiness lets it cache files that use the precompiled headers.
 if(MIRA_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${MIRA_CCACHE}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_COMMAND}" -E env
+      "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" "${MIRA_CCACHE}")
 endif()
 
 find_package(Threads REQUIRED)
@@ -77,6 +79,21 @@ add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
 target_link_libraries(mira_core PRIVATE mira_flags)
 target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
+
+option(MIRA_PCH "Precompile the common headers" ON)
+
+# Clang writes a timestamp into a precompiled header, which changes the file on every build and so
+# keeps ccache from ever matching a file that uses it.
+if(MIRA_PCH AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Xclang -fno-pch-timestamp)
+endif()
+
+# The headers nearly every file pulls in (json.hpp alone is ~900 KB), parsed once for the whole library.
+if(MIRA_PCH)
+  target_precompile_headers(mira_core PRIVATE
+    <json.hpp> <algorithm> <chrono> <filesystem> <format> <functional> <map> <memory> <optional>
+    <string> <string_view> <vector> <expected>)
+endif()
 
 # The GUI keeps the shared runtime: the Qt libraries it loads use it too, and the AppImage bundles that one.
 # Its glibc 2.36+ calls are answered by cmake/glibc_shims.cpp.

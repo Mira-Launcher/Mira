@@ -71,6 +71,13 @@ qt_add_resources(mira-gui "themes"
 # uses, not a shortcut past the API.
 target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
+
+# The Qt and standard headers most files include, parsed once.
+if(MIRA_PCH)
+  target_precompile_headers(mira-gui PRIVATE
+    <QString> <QStringList> <QObject> <QWidget> <QLabel> <QPushButton> <QVBoxLayout> <QHBoxLayout>
+    <QPointer> <QTimer> <QHash> <QSet> <algorithm> <functional> <map> <memory> <optional> <string> <vector>)
+endif()
 if(TARGET mira_glibc_compat)
   target_link_libraries(mira-gui PRIVATE mira_glibc_compat)
 endif()

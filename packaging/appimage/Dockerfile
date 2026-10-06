@@ -24,4 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir aqtinstall \
  && aqt install-qt linux desktop ${QT_VERSION} gcc_64 --outputdir /opt/Qt
 
+# Compiler cache: its directory is mounted from the host (cmake/AppImageContainer.cmake), so a rebuilt
+# container, a changed Dockerfile or a clean build directory still reuses every object file it has seen.
+RUN apt-get update && apt-get install -y --no-install-recommends ccache && rm -rf /var/lib/apt/lists/*
+ENV CCACHE_DIR=/tmp/ccache CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime \
+    CCACHE_MAXSIZE=5G
+
 ENV CC=gcc-13 CXX=g++-13 CMAKE_PREFIX_PATH=${QT_ROOT} PATH=${QT_ROOT}/bin:${PATH}
