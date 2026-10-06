@@ -173,6 +173,7 @@ bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key) {
   if (IsHidden(game)) return false;
   if (key == "all") return true;
   if (key == "running") return game.running;
+  if (key == "games") return !IsApp(game);
   if (key == "apps") return IsApp(game);
   if (key == "never") return !game.last_played_at.has_value() && !IsApp(game);
   if (key == "attention") {

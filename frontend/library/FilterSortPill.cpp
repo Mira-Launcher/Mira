@@ -39,6 +39,7 @@ const FilterEntry kFilters[] = {
     // After Hidden so Ctrl+1…9 keep their filters.
     {"Needs attention", "attention", icons::Glyph::Warning},
     {"Apps", "apps", icons::Glyph::Wrench},
+    {"Games", "games", icons::Glyph::Target},
 };
 
 // Icon + label + a live count. Transparent background: the list's own

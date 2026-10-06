@@ -720,6 +720,7 @@ struct FrontendPrefs {
   std::optional<bool> library_filter_tabs;
   std::optional<bool> library_continue_row;
   std::optional<int> library_continue_count;
+  std::optional<bool> library_continue_apps;  // apps in the Continue row; off by default
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
   std::optional<bool> tile_source_mark;

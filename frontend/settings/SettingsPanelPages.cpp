@@ -160,7 +160,7 @@ void SettingsPanel::BuildInterfacePage() {
   preview_layout->addWidget(tile_preview_);
   preview_layout->addStretch(1);
   library->AddRow(preview_holder);
-  AddToggle(library, "Filter tabs", "Tabs above the grid for All, Installed, Playing now and the other filters.",
+  AddToggle(library, "Filter tabs", "Tabs above the grid for All, Games, Apps, Installed and the other filters.",
             "library chips", &FrontendPrefs::library_filter_tabs, true);
   continue_row_ = AddToggle(library, "Continue playing",
                             "Large cards for running and recently played games above the grid.",
@@ -180,6 +180,9 @@ void SettingsPanel::BuildInterfacePage() {
                 .revert = [this] { continue_count_->setValue(continue_count_saved_); },
                 .reset = [this] { continue_count_->setValue(3); },
                 .mark_saved = [this] { continue_count_saved_ = continue_count_->value(); }});
+  AddToggle(library, "Apps in Continue playing",
+            "Show recently used apps in the Continue playing row, not only games.",
+            "library cards recently played recent apps", &FrontendPrefs::library_continue_apps, false);
   tile_status_ = AddToggle(library, "Status on tiles", "Show Needs install, Broken, Playing and the like on a tile.",
                            "tile badge", &FrontendPrefs::tile_status, true);
   tile_mark_ = AddToggle(library, "Source mark on tiles", "Show which store or launcher a game came from on its tile.",
