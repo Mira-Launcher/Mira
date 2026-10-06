@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "launchers/Launchers.h"
+#include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -115,4 +116,16 @@ TEST_CASE("launchers: Microsoft 365 apps are imported as apps with their own exe
   CHECK(excel->exe_path == "EXCEL.EXE");
   CHECK(std::ranges::find(excel->tags, "app") != excel->tags.end());
   CHECK_FALSE(env.games.Find("office-powerpoint"));
+}
+
+TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark setting are read") {
+  CHECK(runner::ParseColorScheme("v u 1\n") == std::optional(true));
+  CHECK(runner::ParseColorScheme("(<<uint32 2>>,)\n") == std::optional(false));
+  CHECK_FALSE(runner::ParseColorScheme("v u 0\n").has_value());
+
+  const std::string reg =
+      "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize] 1791\n#time=1\n"
+      "\"AppsUseLightTheme\"=dword:00000000\n\n[Software\\\\Wine] 1\n";
+  CHECK(runner::PrefixPrefersDark(reg) == std::optional(true));
+  CHECK_FALSE(runner::PrefixPrefersDark("[Software\\\\Wine] 1\n").has_value());
 }

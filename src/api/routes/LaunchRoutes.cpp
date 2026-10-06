@@ -27,6 +27,7 @@
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/WindowsTheme.h"
 #include "runner/Winetricks.h"
 
 namespace mira::api {
@@ -201,6 +202,12 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     const config::Resolver resolver(s.config, game->overrides);
     const std::string pre_script = resolver.GetString("launch.pre_script");
+    if (game->platform == model::Platform::Windows && resolver.GetBool("launch.follow_system_theme") &&
+        !game->runner_ref.starts_with("steam:")) {
+      if (auto synced = runner::SyncWindowsTheme(runner::RunnerRegistry(s.config), *game); !synced) {
+        log::Warn("couldn't set {}'s Windows theme: {}", game->id, synced.error().message);
+      }
+    }
     const std::string post_script = resolver.GetString("launch.post_script");
 
     // A launcher game is started by its launcher, which keeps running after the
