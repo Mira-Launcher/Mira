@@ -39,7 +39,7 @@ struct Candidate {
   Platform kind = Platform::Unknown;
   double score = 0.0;
   bool chosen = false;
-  bool is_installer = false;  // name + size say this is a setup.exe, not the game
+  bool is_installer = false;  // an installer builder's mark, or name + size, say this is a setup.exe, not the game
 };
 
 // A game's id is a filesystem-safe slug derived from its name (e.g.

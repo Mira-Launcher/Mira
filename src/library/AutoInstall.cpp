@@ -57,30 +57,52 @@ std::string SilentArgsFor(const config::Config& config, InstallerFormat format) 
 
 }  // namespace
 
-// An .msi by its extension; an .exe by sniffing both ends, since the marker
-// can sit anywhere in a large installer.
+namespace {
+
+// Both ends of a file, since an installer builder's mark can sit anywhere in a large installer.
+struct Sniffed {
+  std::string head;
+  std::string tail;
+  bool Has(std::string_view needle) const {
+    return head.find(needle) != std::string::npos || tail.find(needle) != std::string::npos;
+  }
+};
+
+std::optional<Sniffed> Sniff(const fs::path& file) {
+  std::error_code ec;
+  const std::uintmax_t size = fs::file_size(file, ec);
+  if (ec || size == 0) return std::nullopt;
+  std::ifstream in(file, std::ios::binary);
+  if (!in) return std::nullopt;
+  Sniffed sniffed;
+  sniffed.head = ReadWindow(in, 0, std::min<std::uintmax_t>(size, kSniffWindow));
+  if (size > kSniffWindow) sniffed.tail = ReadWindow(in, size - kSniffWindow, kSniffWindow);
+  return sniffed;
+}
+
+InstallerFormat SilentFormat(const Sniffed& sniffed) {
+  if (sniffed.Has("Inno Setup")) return InstallerFormat::kInnoSetup;
+  if (sniffed.Has("Nullsoft")) return InstallerFormat::kNsis;
+  return InstallerFormat::kUnknown;
+}
+
+}  // namespace
+
+// An .msi by its extension; an .exe by its builder's mark.
 InstallerFormat DetectInstallerFormat(const fs::path& file) {
   const std::string ext = strings::ToLower(file.extension().string());
   if (ext == ".msi") return InstallerFormat::kMsi;
   if (ext != ".exe") return InstallerFormat::kUnknown;
+  const std::optional<Sniffed> sniffed = Sniff(file);
+  return sniffed ? SilentFormat(*sniffed) : InstallerFormat::kUnknown;
+}
 
-  std::error_code ec;
-  const std::uintmax_t size = fs::file_size(file, ec);
-  if (ec || size == 0) return InstallerFormat::kUnknown;
-
-  std::ifstream in(file, std::ios::binary);
-  if (!in) return InstallerFormat::kUnknown;
-
-  const std::string head = ReadWindow(in, 0, std::min<std::uintmax_t>(size, kSniffWindow));
-  std::string tail;
-  if (size > kSniffWindow) tail = ReadWindow(in, size - kSniffWindow, kSniffWindow);
-
-  const auto has = [&](std::string_view needle) {
-    return head.find(needle) != std::string::npos || tail.find(needle) != std::string::npos;
-  };
-  if (has("Inno Setup")) return InstallerFormat::kInnoSetup;
-  if (has("Nullsoft")) return InstallerFormat::kNsis;
-  return InstallerFormat::kUnknown;
+bool IsBuiltInstaller(const fs::path& file) {
+  if (strings::ToLower(file.extension().string()) == ".msi") return true;
+  const std::optional<Sniffed> sniffed = Sniff(file);
+  if (!sniffed) return false;
+  return SilentFormat(*sniffed) != InstallerFormat::kUnknown || sniffed->Has(".wixburn") ||
+         sniffed->Has("InstallShield") || sniffed->Has("MojoSetup");
 }
 
 namespace {

@@ -979,9 +979,9 @@ Schema::Schema() {
          .label = "Minimum installer size (MB)",
          .type = Type::Int,
          .default_value = 50,
-         .doc = "The minimum size, of the file itself or of a file beside it, for a name match to "
-                "count as an installer. This keeps small helper programs with installer-like names "
-                "from being misjudged.",
+         .doc = "Installers built with Inno Setup, NSIS, WiX or InstallShield are recognised at any "
+                "size. For other files, the minimum size, of the file itself or of a file beside it, "
+                "for an installer-like name to count as an installer.",
          .constraint = Range(0, 1'000'000)});
 
   // --- Scanning --------------------------------------------------------------
