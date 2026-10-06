@@ -220,6 +220,7 @@ private:
   // Rebuilt on every OpenSettings() so it starts synced to what's actually
   // saved, not stale edits left over from a discarded previous open.
   QWidget* settings_page_ = nullptr;
+  bool settings_loading_ = false;  // built, and shown once its panel is Ready
   mira_gui::SettingsPanel* settings_panel_ = nullptr;
   // A chrome sibling, not a content_stack_ page, so the grid stays visible
   // (dimmed) underneath the game's card.

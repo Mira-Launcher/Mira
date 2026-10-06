@@ -64,6 +64,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/Scrolling.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
@@ -285,6 +286,10 @@ void LibraryWindow::BuildShortcuts() {
       source_page_->CloseSettingsModal();
       return;
     }
+    if (settings_loading_) {
+      CloseSettings();
+      return;
+    }
     if (SettingsOpen()) {
       RequestCloseSettings();
       return;
@@ -503,6 +508,7 @@ void LibraryWindow::OpenRunners() {
   runners_page_->SetGames(library_->Games());
   main_stack_->addWidget(runners_page_);
   main_stack_->setCurrentWidget(runners_page_);
+  mira_gui::FocusPage(runners_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }
@@ -1004,8 +1010,8 @@ bool LibraryWindow::GameEditOpen() const {
 }
 
 void LibraryWindow::OpenSettings(const QString& focus_key) {
-  // Already open: rebuilding would throw away whatever is half-typed.
-  if (SettingsOpen()) {
+  // Already open, or loading to open: rebuilding would throw away whatever is half-typed.
+  if (SettingsOpen() || settings_loading_) {
     if (!focus_key.isEmpty() && settings_panel_ != nullptr) settings_panel_->FocusKey(focus_key);
     return;
   }
@@ -1017,19 +1023,35 @@ void LibraryWindow::OpenSettings(const QString& focus_key) {
     settings_page_->deleteLater();
   }
   settings_page_ = BuildSettingsPage();
+  // Plus the splitter's 1 px handle, which is the sidebar's divider: Settings draws its own at that x.
+  settings_panel_->SetNavWidth(sidebar_->width() + splitter_->handleWidth());
   content_stack_->addWidget(settings_page_);
-  content_stack_->setCurrentWidget(settings_page_);
-  SetSettingsChromeVisible(true);
-  if (!focus_key.isEmpty()) settings_panel_->FocusKey(focus_key);
+  // Shown once loaded: before that it's half built (one group, every switch off) for a few frames.
+  settings_loading_ = true;
+  connect(settings_panel_, &mira_gui::SettingsPanel::Ready, this, [this, focus_key, panel = settings_panel_] {
+    // A load cancelled by going elsewhere can still finish before its panel is deleted.
+    if (!settings_loading_ || panel != settings_panel_) return;
+    settings_loading_ = false;
+    content_stack_->setCurrentWidget(settings_page_);
+    SetSettingsChromeVisible(true);
+    // Focus can't go into the panel before now: it's disabled while loading.
+    if (focus_key.isEmpty()) {
+      mira_gui::FocusPage(settings_page_);
+    } else {
+      settings_panel_->FocusKey(focus_key);
+    }
+  });
 }
 
 void LibraryWindow::CloseSettings() {
+  settings_loading_ = false;  // a load that failed never showed it
   content_stack_->setCurrentWidget(splitter_);
   SetSettingsChromeVisible(false);
   // Torn down rather than left alive off-screen: IsDirty() on a discarded
   // panel would otherwise still read dirty, and wrongly prompt again on the
   // next Ctrl+Q from the grid.
   if (settings_page_ != nullptr) {
+    if (settings_panel_ != nullptr) disconnect(settings_panel_, &mira_gui::SettingsPanel::Ready, this, nullptr);
     content_stack_->removeWidget(settings_page_);
     settings_page_->deleteLater();
     settings_page_ = nullptr;
@@ -1120,9 +1142,11 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   connect(settings_panel_, &mira_gui::SettingsPanel::PrefsSaved, this, &LibraryWindow::ApplySettingsPrefs);
   layout->addWidget(settings_panel_, /*stretch=*/1);
 
+  // As tall as the sidebar's Library row it replaces, so the column's top doesn't shift.
   auto* header = new QWidget();
+  header->setFixedHeight(sidebar_->FirstRowHeight());
   auto* header_layout = new QHBoxLayout(header);
-  header_layout->setContentsMargins(0, 0, 0, 2);
+  header_layout->setContentsMargins(0, 0, 0, 0);
   header_layout->setSpacing(6);
   auto* back = new QToolButton(header);
   back->setAutoRaise(true);
@@ -1246,6 +1270,7 @@ void LibraryWindow::SizeGameEditCard(QWidget* card) {
 
 bool LibraryWindow::LeaveOverlays() {
   CloseSidebarCard();  // nothing unsaved: every choice is stored as it's made
+  if (settings_loading_) CloseSettings();  // asked for, not shown yet: going elsewhere wins
   if (SettingsOpen()) RequestCloseSettings();
   if (GameEditOpen()) RequestCloseGameEdit();
   // Still open: cancelled, or saving first.
@@ -1301,6 +1326,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   });
   main_stack_->addWidget(source_page_);
   main_stack_->setCurrentWidget(source_page_);
+  mira_gui::FocusPage(source_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }
@@ -1407,6 +1433,7 @@ void LibraryWindow::RowClicked(const std::string& id) {
 }
 
 void LibraryWindow::ShowLibrary() {
+  if (settings_loading_) CloseSettings();
   if (SettingsOpen()) {
     RequestCloseSettings();
   } else if (GameEditOpen()) {

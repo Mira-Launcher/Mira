@@ -10,4 +10,9 @@ namespace mira_gui {
 // except in a control that uses those keys itself.
 void SetUpScrolling(QAbstractScrollArea* area, QWidget* scope = nullptr);
 
+// Moves focus into `page`'s own scroll (one set up above with a wider scope), so
+// Page Down works as soon as the page opens rather than reaching whatever was
+// clicked to open it. A no-op when `page` has none.
+void FocusPage(QWidget* page);
+
 }  // namespace mira_gui

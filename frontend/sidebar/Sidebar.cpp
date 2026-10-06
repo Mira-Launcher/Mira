@@ -736,6 +736,8 @@ void Sidebar::ShowMenu(const QPoint& global_pos) {
   }
 }
 
+int Sidebar::FirstRowHeight() const { return library_nav_->sizeHint().height(); }
+
 std::vector<const GameSummary*> Sidebar::PinnedGames() const {
   // By name, matching the grid: hidden pins only under the Hidden filter.
   std::vector<const GameSummary*> pinned;

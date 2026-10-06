@@ -224,10 +224,8 @@ QLabel#brand_title {
  * (see ui/GameTileDelegate.cpp's own status-dot styling for the same
  * "flatten it, then restyle by objectName" approach elsewhere). */
 
-QWidget#left_sidebar {
-  background: @surface;
-  border-right: 1px solid @border;
-}
+/* The sidebar paints no background of its own: it shows the window's color, and
+ * the splitter's handle is its divider. */
 
 /* The pinned/sources/recent list scrolls; it shows the sidebar's own surface. */
 QWidget#left_sidebar QScrollArea,
@@ -548,11 +546,11 @@ QListWidget#library_grid {
 }
 
 /* --- Settings (ui/SettingsNav, ui/SettingsCard) --------------------------
- * The nav is the main sidebar's twin: the same surface and the same flat rows,
- * under small uppercase group headings. */
+ * The nav is the main sidebar's twin: the window's color, as the sidebar shows,
+ * and the same flat rows, under small uppercase group headings. */
 
 QWidget#settings_nav {
-  background: @surface;
+  background: @window;
   border-right: 1px solid @border;
 }
 
@@ -565,7 +563,7 @@ QWidget#settings_nav QPushButton {
   background: transparent;
   border: none;
   border-radius: @radius_control;
-  padding: 6px 10px;
+  padding: 7px 10px;
   text-align: left;
 }
 

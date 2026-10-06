@@ -68,6 +68,8 @@ class Sidebar : public QWidget {
 
   // What PINNED lists.
   std::vector<const GameSummary*> PinnedGames() const;
+  // The Library row's height, which Settings' back row matches.
+  int FirstRowHeight() const;
   SidebarStyleCard::Choices StyleChoices() const;
   // Redraws both sections and stores the choices.
   void SetStyleChoices(const SidebarStyleCard::Choices& choices);
