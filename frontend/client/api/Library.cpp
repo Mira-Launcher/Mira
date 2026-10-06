@@ -118,6 +118,18 @@ void ScanSteamAsync(QObject* context, std::function<void(SteamScanResult)> callb
       FillAddedUpdated<SteamScanResult>, std::move(callback));
 }
 
+void SetSteamStatusAsync(QObject* context, const std::string& status,
+                         std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context,
+      [status] {
+        const transport::Reply reply =
+            transport::PostJson("/v1/steam/status", json{{"status", status}});
+        return StoreActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback) {
   RunJob<LutrisImportResult>(
       context, "import",

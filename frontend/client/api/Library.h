@@ -25,6 +25,10 @@ void ScanLibraryAsync(QObject* context, std::function<void(ScanResult)> callback
 // touching anything the user configured.
 void ScanSteamAsync(QObject* context, std::function<void(SteamScanResult)> callback);
 
+// POST /v1/steam/status: `status` is "online" or "invisible". Fails while Steam isn't running.
+void SetSteamStatusAsync(QObject* context, const std::string& status,
+                         std::function<void(StoreActionResult)> callback);
+
 // Upserts every wine game Lutris has, reading Lutris's own database and
 // configs. Nothing on disk moves; see docs/api.md, POST /v1/lutris/import.
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback);

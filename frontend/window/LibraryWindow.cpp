@@ -1075,7 +1075,8 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   mira_gui::SettingsPanel::Previews previews;
   previews.artwork = artwork_;
   for (const mira_gui::GameSummary* game : sidebar_->PinnedGames()) previews.pinned.push_back(*game);
-  for (const mira_gui::GameSummary* game : sidebar_->RecentGames(10)) previews.recent.push_back(*game);
+  for (const mira_gui::GameSummary* game : library_->RecentlyPlayed(10))
+    previews.recent.push_back(*game);
   settings_panel_ = new mira_gui::SettingsPanel(std::move(previews), page);
   close_settings_after_save_ = false;
   connect(settings_panel_, &mira_gui::SettingsPanel::LoadFailed, this, [this](QString error) {
@@ -1191,8 +1192,9 @@ void LibraryWindow::OpenSidebarStyle() {
     for (const mira_gui::GameSummary* game : games) out.push_back(*game);
     return out;
   };
-  auto* card = new mira_gui::SidebarStyleCard(sidebar_->StyleChoices(), copies(sidebar_->PinnedGames()),
-                                              copies(sidebar_->RecentGames(10)), artwork_);
+  auto* card =
+      new mira_gui::SidebarStyleCard(sidebar_->StyleChoices(), copies(sidebar_->PinnedGames()),
+                                     copies(library_->RecentlyPlayed(10)), artwork_);
   connect(card, &mira_gui::SidebarStyleCard::Changed, sidebar_, &mira_gui::Sidebar::SetStyleChoices);
   connect(card, &mira_gui::SidebarStyleCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
   ShowSidebarCard(card);

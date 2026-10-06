@@ -431,7 +431,56 @@ Shelf::Shelf(QWidget* parent) : QWidget(parent) {
   setSizePolicy(policy);
 }
 
-void Shelf::Add(ShelfCover* cover) {
+PlaceholderRow::PlaceholderRow(Style style, int index, QWidget* parent)
+    : QWidget(parent), style_(style), index_(index) {
+  setAttribute(Qt::WA_TransparentForMouseEvents);
+  setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+}
+
+QSize PlaceholderRow::sizeHint() const {
+  return QSize(200, style_ == Style::Hero ? kHeroHeight : kThumb.height() + 8);
+}
+
+void PlaceholderRow::paintEvent(QPaintEvent*) {
+  const theme::Tokens& tokens = theme::Current();
+  const QColor art = theme::SampleArt(tokens)[index_ % 4];
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setPen(Qt::NoPen);
+  painter.setOpacity(0.35);
+  // Name bars shorten down the list, as in the sketch.
+  const qreal bar = 0.55 - 0.08 * (index_ % 4);
+  switch (style_) {
+    case Style::Covers: {
+      // Where MakeCoverRow puts its thumbnail and name.
+      const QRectF thumb(8, (height() - kThumb.height()) / 2.0, kThumb.width(), kThumb.height());
+      painter.setBrush(art);
+      painter.drawRoundedRect(thumb, 3, 3);
+      painter.setBrush(tokens.text_muted);
+      painter.drawRoundedRect(
+          QRectF(thumb.right() + 10, height() / 2.0 - 3, (width() - thumb.right() - 20) * bar, 6),
+          3, 3);
+      break;
+    }
+    case Style::Hero: {
+      QLinearGradient fill(0, 0, width(), 0);
+      fill.setColorAt(0.0, art.darker(220));
+      fill.setColorAt(1.0, art);
+      painter.setBrush(fill);
+      painter.drawRoundedRect(QRectF(rect()), tokens.radius_control, tokens.radius_control);
+      painter.setBrush(QColor(255, 255, 255, 220));
+      painter.drawRoundedRect(QRectF(12, height() / 2.0 - 3, width() * (bar - 0.13), 6), 3, 3);
+      break;
+    }
+    case Style::Shelf:
+      painter.setBrush(art);
+      painter.drawRoundedRect(QRectF(rect()), std::min(tokens.radius_tile, 4),
+                              std::min(tokens.radius_tile, 4));
+      break;
+  }
+}
+
+void Shelf::Add(QWidget* cover) {
   cover->setParent(this);
   covers_.push_back(cover);
   updateGeometry();

@@ -154,3 +154,33 @@ TEST_CASE("Search, the sidebar sort, and running all follow the model's changes"
   library.Remove({"a"});
   CHECK(Shown(proxy).empty());
 }
+
+TEST_CASE("Recently played lists running games first and keeps to its count, without apps") {
+  const auto played = [](const std::string& id, std::int64_t at,
+                         std::vector<std::string> tags = {}) {
+    GameSummary game = Game(id, id, std::move(tags));
+    game.last_played_at = at;
+    return game;
+  };
+  GameLibraryModel library;
+  library.Replace({played("old", 100), played("mid", 200), played("new", 300), played("older", 50),
+                   played("writer", 400, {"app"}), played("secret", 500, {"hidden"}),
+                   Game("never", "never")});
+  const auto ids = [&](int count) {
+    std::vector<std::string> out;
+    for (const GameSummary* game : library.RecentlyPlayed(count)) out.push_back(game->id);
+    return out;
+  };
+
+  CHECK(ids(3) == std::vector<std::string>{"new", "mid", "old"});
+  // Launching one of the three moves it to the top; nothing older takes a fourth place.
+  library.SetRunning("mid", true);
+  CHECK(ids(3) == std::vector<std::string>{"mid", "new", "old"});
+  library.SetRunning("older", true);
+  CHECK(ids(3) == std::vector<std::string>{"mid", "older", "new"});
+  // A running game always shows, past the count; a hidden one only while it runs.
+  library.SetRunning("secret", true);
+  library.SetRunning("writer", true);
+  CHECK(ids(2) == std::vector<std::string>{"mid", "older", "secret"});
+  CHECK(ids(0).size() == 3);
+}

@@ -42,6 +42,10 @@ public:
 
   const GameSummary* Find(const std::string& id) const;
   const std::vector<GameSummary>& Games() const { return games_; }
+  // What recently played lists at `count`: running games first, then the last
+  // played, `count` in all, more only when more than `count` run. Hidden games
+  // only while they run, so they can still be stopped; never apps.
+  std::vector<const GameSummary*> RecentlyPlayed(int count) const;
   QModelIndex IndexOf(const std::string& id) const;
 
   // A game mid-install: its rail, status line and detail line; nullopt otherwise.
@@ -99,6 +103,7 @@ private:
   bool apps_in_all_ = true;
   std::string source_;
   std::string sort_key_ = "name";
-  bool descending_ = false;};
+  bool descending_ = false;
+};
 
 }  // namespace mira_gui

@@ -1,11 +1,10 @@
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <algorithm>
 #include <format>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
@@ -16,6 +15,7 @@
 #include "library/SourceRemoval.h"
 #include "library/SourceRunner.h"
 #include "lutris/LutrisImporter.h"
+#include "steam/FriendsStatus.h"
 #include "steam/SteamScanner.h"
 
 namespace mira::api {
@@ -105,6 +105,15 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       s.AfterImport(summary->added_games);
       return json{{"added", summary->added}, {"updated", summary->updated}};
     });
+  });
+
+  http.Post("/v1/steam/status", [](const Request& req, Response& res) {
+    const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
+    if (body.is_discarded() || !body.is_object())
+      return SendError(res, 400, "invalid_body", "expected a JSON object");
+    const auto set = steam::SetFriendsStatus(body.value("status", std::string()));
+    if (!set) return SendError(res, set.error().code == "invalid_status" ? 400 : 409, set.error());
+    SendJson(res, {{"status", body.value("status", std::string())}});
   });
 
   // --- lutris -----------------------------------------------------------

@@ -89,12 +89,27 @@ private:
   ArtworkStore* artwork_;
 };
 
-// Lays its ShelfCovers out ShelfColumns across at the sidebar's width, so
-// fewer games get bigger covers; the height follows.
+// An empty place in a section, drawn like the customize card's sketch of
+// `style`: faded sample art and a bar where the name would be. `index` varies them.
+class PlaceholderRow : public QWidget {
+ public:
+  PlaceholderRow(Style style, int index, QWidget* parent);
+  QSize sizeHint() const override;
+
+ protected:
+  void paintEvent(QPaintEvent* event) override;
+
+ private:
+  Style style_;
+  int index_;
+};
+
+// Lays its covers (ShelfCovers or Shelf PlaceholderRows) out ShelfColumns
+// across at the sidebar's width, so fewer games get bigger covers; the height follows.
 class Shelf : public QWidget {
 public:
   explicit Shelf(QWidget* parent);
-  void Add(ShelfCover* cover);
+  void Add(QWidget* cover);
 
   bool hasHeightForWidth() const override { return true; }
   int heightForWidth(int width) const override;
@@ -107,7 +122,7 @@ private:
   static constexpr int kGap = 6;
   int Columns() const;
   int CellWidth(int width) const;
-  std::vector<ShelfCover*> covers_;
+  std::vector<QWidget*> covers_;
 };
 
 // Whether the art a style draws for this game has landed yet, so a section

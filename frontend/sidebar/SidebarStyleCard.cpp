@@ -91,7 +91,7 @@ SidebarStyleChoices::SidebarStyleChoices(const Choices& choices, std::vector<Gam
   });
   when_row_->AddControl(when_);
 
-  count_row_ = new SettingRow("Games to show", "Running games always show.");
+  count_row_ = new SettingRow("Games to show", "Running games show first and count toward this.");
   recent_count_ = new QSpinBox(count_row_);
   recent_count_->setRange(0, 10);
   recent_count_->setSpecialValueText("Off");

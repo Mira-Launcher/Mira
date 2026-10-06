@@ -108,6 +108,26 @@ const GameSummary* GameLibraryModel::Find(const std::string& id) const {
   return found != rows_.end() ? &games_[found->second] : nullptr;
 }
 
+std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count) const {
+  std::vector<const GameSummary*> running;
+  std::vector<const GameSummary*> played;
+  for (const GameSummary& game : games_) {
+    if (IsApp(game)) continue;
+    if (game.running) {
+      running.push_back(&game);
+    } else if (game.last_played_at && !IsHidden(game)) {
+      played.push_back(&game);
+    }
+  }
+  std::ranges::sort(played, [](const GameSummary* a, const GameSummary* b) {
+    return *a->last_played_at > *b->last_played_at;
+  });
+  played.resize(std::min(
+      played.size(), static_cast<size_t>(std::max(0, count - static_cast<int>(running.size())))));
+  played.insert(played.begin(), running.begin(), running.end());
+  return played;
+}
+
 QModelIndex GameLibraryModel::IndexOf(const std::string& id) const {
   const auto found = rows_.find(id);
   return found != rows_.end() ? index(found->second, 0) : QModelIndex();
