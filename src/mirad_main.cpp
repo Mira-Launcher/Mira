@@ -19,6 +19,7 @@
 #include "api/EventBus.h"
 #include "api/Server.h"
 #include "api/Services.h"
+#include "core/LogHub.h"
 #include "config/Config.h"
 #include "core/Log.h"
 #include "core/Paths.h"
@@ -89,6 +90,7 @@ int main(int argc, char** argv) {
   games.Load();
 
   mira::api::EventBus events;
+  mira::loghub::SetJournalDirectory(mira::paths::UserDir() / "logs");
   mira::api::Services services(config, games, events);
   mira::api::Server server(services);
 
