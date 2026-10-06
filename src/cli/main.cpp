@@ -573,9 +573,20 @@ int CmdSteamScan() {
   return 0;
 }
 
+int CmdSteamStatus(const char* status) {
+  auto client = Connect();
+  auto res = client.Post("/v1/steam/status", json{{"status", status}}.dump(), "application/json");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  return 0;
+}
+
 int CmdSteam(int argc, char** argv) {
   if (argc > 0 && std::string_view(argv[0]) == "scan") return CmdSteamScan();
-  std::fprintf(stderr, "usage: mira steam scan\n");
+  if (argc > 1 && std::string_view(argv[0]) == "status") return CmdSteamStatus(argv[1]);
+  std::fprintf(stderr, "usage: mira steam scan\n       mira steam status online|invisible\n");
   return 2;
 }
 
@@ -1495,6 +1506,7 @@ void PrintUsage() {
       "  relocate <id>           move a game's files into Mira's canonical layout\n"
       "  library relocate        relocate every tracked game (see `mira relocate`)\n"
       "  steam scan             detect installed Steam games\n"
+      "  steam status online|invisible   set your Steam friends status\n"
       "  lutris import          import games from Lutris's own database\n"
       "  launcher list|install|import|open   Battle.net, Ubisoft Connect and EA app\n"
       "  store [list]           list the stores: Epic, GOG, itch, Amazon Games, Humble Bundle\n"

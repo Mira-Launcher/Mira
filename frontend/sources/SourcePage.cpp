@@ -156,6 +156,25 @@ QWidget* SourcePage::BuildTopRow() {
   });
   tabs_->SetTrailing(banner_primary_);
 
+  // Steam can't report the status back, so neither button shows one as current.
+  if (id_ == "steam") {
+    const auto status_button = [this](const QString& label, icons::Glyph glyph, const QColor& color,
+                                      const std::string& status) {
+      auto* button = new QPushButton(icons::For(glyph, color), label, tabs_);
+      connect(button, &QPushButton::clicked, this, [this, button, status] {
+        button->setEnabled(false);
+        api::SetSteamStatusAsync(this, status, [this, button](StoreActionResult result) {
+          button->setEnabled(true);
+          if (!result.ok)
+            notify::FailedRequest(this, "Could not set your Steam status.", result.error);
+        });
+      });
+      tabs_->SetTrailing(button);
+    };
+    status_button("Go online", icons::Glyph::Dot, theme::Current().running, "online");
+    status_button("Go invisible", icons::Glyph::EyeSlash, theme::Current().text, "invisible");
+  }
+
   import_button_ = new QPushButton(CopyFor(id_).import_button, tabs_);
   import_button_->setIcon(icons::For(icons::Glyph::Refresh));
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).

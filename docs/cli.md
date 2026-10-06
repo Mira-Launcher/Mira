@@ -119,6 +119,9 @@ A source that isn't set up lists nothing. Steam needs `steam.web_api_key` and `s
 ### `mira steam scan`
 `POST /v1/steam/scan`. Adds or updates installed Steam games and prints `added: N  updated: N`.
 
+### `mira steam status online|invisible`
+`POST /v1/steam/status`. Sets your Steam friends status. Fails while Steam isn't running.
+
 ### `mira lutris import`
 `POST /v1/lutris/import`. Imports games from Lutris's database.
 

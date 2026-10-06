@@ -315,6 +315,9 @@ Steam games are ordinary games with `runner_ref` `steam:<appid>`.
 ### `POST /v1/steam/scan`
 Reads Steam's `libraryfolders.vdf`, `appmanifest_*.acf` and `compatdata/<id>/config_info` directly and adds or updates installed games. A [job](#jobs) whose result is `{"added": 2, "updated": 0}`. A rescan updates `name`, `install_path` and `data_dir` and leaves user settings alone. `exe_path` is never filled in, because Steam keeps the launch command in its `appinfo` cache; only `steam.launch_mode: "direct"` needs it.
 
+### `POST /v1/steam/status`
+Body `{"status": "online" | "invisible"}`. Sets the Steam friends status through `steam steam://friends/status/<status>` and answers `{"status": "invisible"}`. Steam can't report the status back, so there is no GET. Answers 409 `steam_not_running` while Steam isn't running (by `~/.steam/steam.pid`), since the URL would start the client just to set a status, and 400 `invalid_status` for any other value.
+
 ## Lutris
 
 ### `POST /v1/lutris/import`

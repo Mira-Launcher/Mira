@@ -27,7 +27,7 @@ src/
               Exec, GameMode, Winetricks
   proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
-  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi
+  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus
   epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
   gog/        gogdl wrapper, importer, installer and source
   itch/       butlerd JSON-RPC client, importer, installer and source
