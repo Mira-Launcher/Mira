@@ -61,6 +61,10 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
 // the game once the launcher starts it ("c:/program files (x86)/hearthstone").
 std::string WindowsDir(const model::Game& game);
 
+// What tracks the game while it runs: WindowsDir, or for a Microsoft 365 app
+// its own exe, since all of them share one folder.
+std::string TrackedPath(const model::Game& game);
+
 // Host path of a Windows path inside `prefix`.
 std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_view windows_path);
 

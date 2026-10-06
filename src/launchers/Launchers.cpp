@@ -392,6 +392,11 @@ std::string WindowsDir(const model::Game& game) {
   return strings::ToLower(dir);
 }
 
+std::string TrackedPath(const model::Game& game) {
+  if (game.source == "office" && !game.exe_path.empty()) return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
+  return WindowsDir(game);
+}
+
 fs::path HostPath(const fs::path& prefix, std::string_view windows_path) {
   if (windows_path.size() < 2 || windows_path[1] != ':') return {};
   const char letter = static_cast<char>(std::tolower(static_cast<unsigned char>(windows_path[0])));

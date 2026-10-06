@@ -218,7 +218,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
-      if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::WindowsDir(*game),
+      if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::TrackedPath(*game),
                                                          s.config.GetInt("launchers.detect_timeout_s"), post_script);
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
