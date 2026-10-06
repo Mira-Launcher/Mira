@@ -144,7 +144,7 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
   name_->setText(QString::fromStdString(game.name));
   status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>")
                        .arg(StatusColor(running ? "running" : game.status).name(),
-                            running ? "Playing" : StatusLabel(game.status)));
+                            running ? RunningLabel(game) : StatusLabel(game.status)));
 
   const bool native = game.platform == "native";
   QString platform_label = QString::fromStdString(game.platform);

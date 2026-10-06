@@ -72,6 +72,10 @@ void ProcessIndex::Refresh() {
   std::erase_if(processes_, [&](const auto& item) { return !alive.contains(item.first); });
 }
 
+bool UnderWindowsPath(std::string_view argv0, std::string_view win_path) {
+  return argv0.starts_with(win_path) && (argv0.size() == win_path.size() || argv0[win_path.size()] == '/');
+}
+
 bool InPrefix(std::string_view value, std::string_view data_dir) {
   if (data_dir.empty()) return false;
   if (value == data_dir) return true;

@@ -154,7 +154,7 @@ void Services::WatchExternalGames() {
           candidates.push_back({game, game.runner_ref.substr(6), ""});
         }
       } else if (launchers::Find(game.source) && !game.data_dir.empty()) {
-        candidates.push_back({game, "", launchers::WindowsDir(game)});
+        candidates.push_back({game, "", launchers::TrackedPath(game)});
       }
     }
     wait = candidates.empty() ? kIdleScanEvery : kScanEvery;
@@ -177,7 +177,7 @@ void Services::WatchExternalGames() {
       }
       const bool running = std::ranges::any_of(index.Processes(), [&](const auto& item) {
         return proc::InPrefix(item.second.prefix, candidate.game.data_dir) &&
-               item.second.argv0.starts_with(candidate.win_dir + "/");
+               proc::UnderWindowsPath(item.second.argv0, candidate.win_dir);
       });
       if (running && supervisor.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10, post_script)) {
         events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});

@@ -123,7 +123,7 @@ std::set<pid_t> MatchExternal(const ProcessIndex& index, const ExternalMatch& ma
   std::set<pid_t> found;
   for (const auto& [pid, info] : index.Processes()) {
     const bool hit = match.appid.empty()
-                         ? InPrefix(info.prefix, match.data_dir) && info.argv0.starts_with(match.win_dir + "/")
+                         ? InPrefix(info.prefix, match.data_dir) && UnderWindowsPath(info.argv0, match.win_dir)
                          : info.steam_launch == match.appid;
     if (hit) found.insert(pid);
   }
@@ -154,7 +154,7 @@ std::set<pid_t> FindDirProcesses(const std::string& data_dir, const std::string&
   ProcessIndex index;
   index.Refresh();
   for (const auto& [pid, info] : index.Processes()) {
-    if (InPrefix(info.prefix, data_dir) && info.argv0.starts_with(win_dir + "/")) found.insert(pid);
+    if (InPrefix(info.prefix, data_dir) && UnderWindowsPath(info.argv0, win_dir)) found.insert(pid);
   }
   return found;
 }

@@ -151,6 +151,8 @@ class LibraryPage : public QWidget {
   int tile_width_ = 0;
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;
+  bool continue_apps_ = false;
+  bool apps_in_all_ = true;
 };
 
 }  // namespace mira_gui

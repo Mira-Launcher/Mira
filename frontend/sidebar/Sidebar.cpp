@@ -788,7 +788,7 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   // A shelf cover is too narrow for "Yesterday": it gets "1d ago".
   const bool shelf = style == sidebar::Style::Shelf;
   const auto trailing = [recent, shelf, this](const GameSummary& game) {
-    if (game.running) return QString("Playing");
+    if (game.running) return QString(RunningLabel(game));
     if (!recent || !style_.recent_when) return QString();
     return shelf ? FormatPlayedAgoShort(game.last_played_at) : FormatPlayedAgo(game.last_played_at);
   };

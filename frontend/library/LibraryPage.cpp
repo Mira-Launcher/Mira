@@ -66,6 +66,8 @@ namespace {
 // The filters the tab row offers, with its own shorter labels.
 const std::pair<const char*, const char*> kFilterTabs[] = {
     {"all", "All"},
+    {"games", "Games"},
+    {"apps", "Apps"},
     {"ready", "Installed"},
     {"running", "Playing now"},
     {"attention", "Needs attention"},
@@ -198,6 +200,10 @@ void LibraryPage::ApplyPrefs(const FrontendPrefs& prefs) {
   tabs_->SetTabsVisible(prefs.library_filter_tabs.value_or(true));
   continue_row_enabled_ = prefs.library_continue_row.value_or(true);
   continue_count_ = prefs.library_continue_count.value_or(3);
+  continue_apps_ = prefs.library_continue_apps.value_or(false);
+  apps_in_all_ = prefs.library_apps_in_all.value_or(true);
+  games_->SetAppsInAll(apps_in_all_);
+  UpdateCounts();  // All's count follows apps_in_all_
   delegate_->SetShowStatus(prefs.tile_status.value_or(true));
   delegate_->SetShowSourceMark(prefs.tile_source_mark.value_or(true));
   delegate_->SetShowPinBadge(prefs.tile_pin_badge.value_or(true));
@@ -493,7 +499,7 @@ void LibraryPage::ApplyFilter() {
   grid_->scrollToTop();  // a new filter or search starts at the top
   scroll_->verticalScrollBar()->setValue(0);
   UpdateOwnedMatches();
-  RefreshContinue();  // only shown under All with no search
+  RefreshContinue();  // only shown under All, Games or Apps with no search
   emit ShownChanged();
 }
 
@@ -507,8 +513,8 @@ void LibraryPage::LibraryChanged() {
 
 void LibraryPage::UpdateCounts() {
   for (const QString& key : pill_->FilterKeys()) {
-    const auto count = std::ranges::count_if(library_->Games(), [&key](const GameSummary& game) {
-      return GameFilterProxy::MatchesKey(game, key);
+    const auto count = std::ranges::count_if(library_->Games(), [this, &key](const GameSummary& game) {
+      return GameFilterProxy::MatchesKey(game, key, apps_in_all_);
     });
     pill_->SetCount(key, static_cast<int>(count));
     tabs_->SetCount(key, static_cast<int>(count));
@@ -519,18 +525,22 @@ void LibraryPage::UpdateEmptyState() {
   const int shown = games_->rowCount();
   empty_hint_->setVisible(shown == 0);
   if (shown == 0) {
-    empty_hint_->setText(library_->Games().empty() ? "No games in the library yet."
-                         : !owned_matches_.empty() ? "Nothing installed matches."
-                                                   : "No games match this filter.");
+    const QString items = FilterKey() == "apps" ? "apps" : "games";
+    empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet.").arg(items)
+                         : !owned_matches_.empty() ? QString("Nothing installed matches.")
+                                                   : QString("No %1 match this filter.").arg(items));
   }
 }
 
 void LibraryPage::RefreshContinue() {
-  // Only over the whole library: under a filter or a search it's noise.
+  // Only over All, Games or Apps: under another filter or a search it's noise.
   std::vector<const GameSummary*> games;
-  if (continue_row_enabled_ && FilterKey() == "all" && search_->text().trimmed().isEmpty()) {
+  const QString key = FilterKey();
+  if (continue_row_enabled_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
+      search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
-      if (IsHidden(game) || IsApp(game) || game.source == "launcher") continue;
+      if (IsHidden(game) || game.source == "launcher" || !GameFilterProxy::MatchesKey(game, key, apps_in_all_)) continue;
+      if (IsApp(game) && !continue_apps_) continue;
       if (game.running || game.last_played_at) games.push_back(&game);
     }
     const size_t keep = std::min(games.size(), static_cast<size_t>(continue_count_));

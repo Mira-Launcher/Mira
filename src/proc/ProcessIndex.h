@@ -36,6 +36,9 @@ private:
 // the command line after argv0. Empty for any other process.
 std::string SteamLaunchAppId(const std::string& argv0, std::istream& rest);
 
+// `argv0` is `win_path` itself or a file under it (both lowercase, forward slashes).
+bool UnderWindowsPath(std::string_view argv0, std::string_view win_path);
+
 // `value` is data_dir or a path under it (umu uses "<data_dir>/pfx/").
 bool InPrefix(std::string_view value, std::string_view data_dir);
 

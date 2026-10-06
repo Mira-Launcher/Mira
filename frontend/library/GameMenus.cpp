@@ -29,7 +29,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   const bool running = game.running;
 
   QMenu menu(parent_);
-  QAction* play = menu.addAction(running ? "Stop" : "Play");
+  QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
   play->setEnabled(CanPlayOrStop(game));
   if (extra) extra(menu);
   QAction* details = menu.addAction("Game settings…");

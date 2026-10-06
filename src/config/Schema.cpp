@@ -729,6 +729,15 @@ Schema::Schema() {
   s.Group("Scripts");
   s.ResetTogether();
 
+  s.Add({.key = "launch.follow_system_theme",
+         .label = "Follow the system theme",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
+                "match your desktop, so programs such as Microsoft 365 that follow the system theme "
+                "match it too."});
+
   s.Add({.key = "launch.pre_script",
          .label = "Pre-launch script",
          .type = Type::String,

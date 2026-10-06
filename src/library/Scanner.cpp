@@ -173,6 +173,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     const std::string install_path = dir.string();
     auto existing = games_.FindByInstallPath(install_path);
     if (!existing && installer_dirs.contains(install_path)) continue;
+    // A known game runs from a subfolder of it (Binaries/, bin/): not a new game.
+    if (!existing && games_.HasInstallUnder(install_path)) continue;
 
     // A combined install+prefix layout (Lutris colocates a Wine prefix
     // inside the game's own folder) legitimately looks like a Wine prefix

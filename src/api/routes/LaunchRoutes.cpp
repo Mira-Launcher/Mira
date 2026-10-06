@@ -20,6 +20,7 @@
 #include "core/Result.h"
 #include "core/Strings.h"
 #include "launchers/Launchers.h"
+#include "launchers/Office.h"
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/Relocate.h"
@@ -27,6 +28,7 @@
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/WindowsTheme.h"
 #include "runner/Winetricks.h"
 
 namespace mira::api {
@@ -201,11 +203,25 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     const config::Resolver resolver(s.config, game->overrides);
     const std::string pre_script = resolver.GetString("launch.pre_script");
+    if (game->platform == model::Platform::Windows && resolver.GetBool("launch.follow_system_theme") &&
+        !game->runner_ref.starts_with("steam:")) {
+      if (auto synced = runner::SyncWindowsTheme(runner::RunnerRegistry(s.config), *game); !synced) {
+        log::Warn("couldn't set {}'s Windows theme: {}", game->id, synced.error().message);
+      }
+    }
     const std::string post_script = resolver.GetString("launch.post_script");
 
     // A launcher game is started by its launcher, which keeps running after the
     // game exits; the game's own processes are tracked.
-    if (launchers::ForGame(*game)) {
+    if (const launchers::Launcher* launcher = launchers::ForGame(*game)) {
+      if (launcher->id == "office") {
+        if (const auto host = s.games.Find(launchers::GameId(*launcher)); host && !host->data_dir.empty()) {
+          if (auto refreshed = launchers::office::RefreshShims(s.config, runner::RunnerRegistry(s.config), *host);
+              !refreshed) {
+            log::Warn("couldn't update the Microsoft 365 shims: {}", refreshed.error().message);
+          }
+        }
+      }
       auto command = launchers::BuildCommand(s.config, s.games, *game);
       if (!command) return SendError(res, 409, command.error());
       if (auto ran = RunPreScriptInline(pre_script); !ran) {
@@ -218,7 +234,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
-      if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::WindowsDir(*game),
+      if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::TrackedPath(*game),
                                                          s.config.GetInt("launchers.detect_timeout_s"), post_script);
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);

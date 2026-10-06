@@ -80,8 +80,14 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   const std::string original_install = game.install_path;
   const std::string original_data = game.data_dir;
   game.exe_path = StoredExePath(game.install_path, game.exe_path);
+  // A store launcher's prefix holds the launcher and every game installed in it.
+  const bool shared_prefix = launchers::ForGame(game) != nullptr;
   const bool store_managed = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
-                             game.source == "itch" || game.source == "amazon" || launchers::ForGame(game) != nullptr;
+                             game.source == "itch" || game.source == "amazon" || shared_prefix;
+  if (shared_prefix && request.data_dir) {
+    return Err("shared_prefix", std::format("{}'s prefix is shared with its launcher and the launcher's other games", game.name),
+               "Move the launcher's prefix folder yourself, then point each of its games at the new folder.");
+  }
   const bool both = !game.install_path.empty() && !game.data_dir.empty();
   const bool install_in_prefix = both && !request.install_path &&
                                  paths::IsWithin(game.install_path, {game.data_dir}, /*allow_equal=*/true);
@@ -125,7 +131,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     }
   }
 
-  if (!game.data_dir.empty() && !prefix_in_install && (request.data_dir || !request.only_given)) {
+  if (!game.data_dir.empty() && !prefix_in_install && !shared_prefix && (request.data_dir || !request.only_given)) {
     const fs::path prefix_root = config.GetPath("prefix_root");
     const fs::path target = request.data_dir ? *request.data_dir
                                              : NamedDir(config, game, prefix_root, game.data_dir);

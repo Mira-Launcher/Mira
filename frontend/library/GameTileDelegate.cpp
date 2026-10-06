@@ -198,7 +198,7 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->setPen(QColor(255, 255, 255, 170));
     painter->drawText(status_rect.adjusted(12, 0, 0, 0), Qt::AlignLeft | Qt::AlignVCenter,
                       !status_text.isEmpty() ? status_text
-                      : running              ? QString("Playing")
+                      : running              ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
                       : unchecked            ? QString("Not checked")
                                              : StatusLabel(status));
   }

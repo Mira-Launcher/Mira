@@ -138,6 +138,7 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     }
     case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
     case GameTileDelegate::NeedsCheckRole: return game.needs_check;
+    case GameTileDelegate::AppRole: return IsApp(game);
     default: return {};
   }
 }
@@ -164,15 +165,16 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
   QSortFilterProxyModel::sort(0, Qt::AscendingOrder);
 }
 
-bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key) {
+bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, bool apps_in_all) {
   // Store launchers (Battle.net, ...) live on their source pages, not here.
   if (game.source == "launcher") return false;
   if (key == "hidden") return IsHidden(game);
   // Every other filter excludes a hidden game: "not displayed by default"
   // means not in "All games" either, not just off the initial screen.
   if (IsHidden(game)) return false;
-  if (key == "all") return true;
+  if (key == "all") return apps_in_all || !IsApp(game);
   if (key == "running") return game.running;
+  if (key == "games") return !IsApp(game);
   if (key == "apps") return IsApp(game);
   if (key == "never") return !game.last_played_at.has_value() && !IsApp(game);
   if (key == "attention") {
@@ -203,6 +205,11 @@ void GameFilterProxy::SetSearch(const QString& text) {
   ChangeFilter([&] { search_ = trimmed; });
 }
 
+void GameFilterProxy::SetAppsInAll(bool apps_in_all) {
+  if (apps_in_all == apps_in_all_) return;
+  ChangeFilter([&] { apps_in_all_ = apps_in_all; });
+}
+
 void GameFilterProxy::SetSource(const std::string& source) {
   ChangeFilter([&] { source_ = source; });
 }
@@ -226,7 +233,7 @@ bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const
   const GameSummary& game = library_->Games()[source_row];
   if (!search_.isEmpty() && !QString::fromStdString(game.name).contains(search_, Qt::CaseInsensitive)) return false;
   if (!source_.empty()) return game.source == source_;
-  return MatchesKey(game, key_);
+  return MatchesKey(game, key_, apps_in_all_);
 }
 
 bool GameFilterProxy::lessThan(const QModelIndex& left, const QModelIndex& right) const {

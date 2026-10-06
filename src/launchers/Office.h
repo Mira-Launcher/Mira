@@ -23,12 +23,18 @@ struct App {
 };
 
 inline constexpr std::string_view kProgramDir = "Program Files/Microsoft Office/root/Office16";
+// The Office Deployment Tool as Mira saves it; Wine settings for it are keyed by this name.
+inline constexpr std::string_view kSetupFile = "office-setup.exe";
 
 // Every app Mira imports when its exe is installed.
 std::span<const App> Apps();
 
 // The Office Deployment Tool configuration for the configured plan.
 std::string Configuration(const config::Config& config);
+
+// Installs a newer shims release into `host`'s prefix when one is out, checked
+// at most every few hours. Quiet and harmless when offline.
+Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host);
 
 // Registry settings, the shim DLLs and the deployment configuration, written
 // into `host`'s prefix before WebView2 and Office are installed.
