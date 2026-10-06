@@ -9,6 +9,7 @@
 #include <functional>
 #include <set>
 
+#include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
 #include "OwnedTitles.h"
 
@@ -74,8 +75,8 @@ class LibraryPage : public QWidget {
 
   // The stores' titles a search also looks through, below the library's own matches.
   void SetOwnedTitles(OwnedTitles* titles);
-  // Set by the owner: a store title's install state ("Installing… 42%"), empty while idle.
-  std::function<QString(const QString& source, const QString& ref)> title_state;
+  // Set by the owner: a store title's running install, nullopt while idle.
+  std::function<std::optional<DownloadTracker::TileProgress>(const QString& source, const QString& ref)> title_progress;
   // Redraws the store matches' install states.
   void RefreshOwnedStates();
   int ShownCount() const;

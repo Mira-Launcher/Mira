@@ -60,6 +60,7 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
@@ -92,12 +93,11 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   // The one copy of the library every view reads; see GameLibraryModel.
   library_ = new mira_gui::GameLibraryModel(this);
-  library_->status_text = [this](const std::string& id) { return InstallText(id); };
-  library_->progress = [this](const std::string& id) -> std::optional<double> {
+  library_->install_progress = [this](const std::string& id) -> std::optional<mira_gui::DownloadTracker::TileProgress> {
     const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(mira_gui::DownloadTracker::KeyFor(
         mira_gui::DownloadTracker::Kind::Game, QString(), QString::fromStdString(id)));
     if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return std::nullopt;
-    return entry->progress;
+    return mira_gui::DownloadTracker::TileProgressFor(*entry);
   };
   connect(library_, &mira_gui::GameLibraryModel::Changed, this, &LibraryWindow::LibraryChanged);
   menus_ = new mira_gui::GameMenus(
@@ -579,12 +579,12 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
   });
   connect(page, &mira_gui::LibraryPage::PlayRequested, this, &LibraryWindow::RowClicked);
   page->SetOwnedTitles(owned_titles_);
-  page->title_state = [this](const QString& source, const QString& ref) {
+  page->title_progress = [this](const QString& source,
+                                const QString& ref) -> std::optional<mira_gui::DownloadTracker::TileProgress> {
     const mira_gui::DownloadTracker::Entry* entry =
         downloads_->Find(mira_gui::DownloadTracker::KeyFor(mira_gui::DownloadTracker::Kind::Title, source, ref));
-    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return QString();
-    const QString progress = mira_gui::DownloadTracker::ProgressText(*entry, /*short_form=*/true);
-    return progress.isEmpty() ? QString("Installing…") : progress;
+    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return std::nullopt;
+    return mira_gui::DownloadTracker::TileProgressFor(*entry);
   };
   connect(page, &mira_gui::LibraryPage::InstallTitleRequested, this, [this](const QString& source, const QString& ref) {
     mira_gui::api::InstallStoreTitleAsync(this, source.toStdString(), ref.toStdString(), /*update=*/false,
@@ -1329,7 +1329,7 @@ QString LibraryWindow::InstallText(const std::string& id) const {
                                                          QString::fromStdString(id)));
   if (entry == nullptr || entry->state != State::Running) return QString();
   if (entry->bytes <= 0) return "Installing…";
-  return "Installing… " + QLocale().formattedDataSize(entry->bytes);
+  return "Installing… " + mira_gui::SizeText(entry->bytes);
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {

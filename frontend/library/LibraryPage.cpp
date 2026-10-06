@@ -425,14 +425,13 @@ void LibraryPage::UpdateOwnedMatches() {
 
 void LibraryPage::RefreshOwnedStates() {
   for (int row = 0; row < owned_model_->rowCount() && row < static_cast<int>(owned_matches_.size()); ++row) {
-    QString state;
+    std::optional<DownloadTracker::TileProgress> installing;
     for (const auto& [source, ref] : owned_matches_[row].copies) {
-      if (title_state) state = title_state(source, ref);
-      if (!state.isEmpty()) break;
+      if (title_progress) installing = title_progress(source, ref);
+      if (installing) break;
     }
     QStandardItem* item = owned_model_->item(row);
-    item->setData(state.isEmpty() ? QString("Install") : state, GameTileDelegate::ActionRole);
-    item->setData(state.isEmpty(), GameTileDelegate::ActionEnabledRole);
+    GameTileDelegate::SetTileProgress(*item, installing, "Install");
   }
 }
 

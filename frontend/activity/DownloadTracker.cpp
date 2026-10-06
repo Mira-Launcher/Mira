@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "../client/JsonMapping.h"
+#include "../widgets/Labels.h"
 
 #include <algorithm>
 
@@ -72,7 +73,7 @@ QString DownloadTracker::ProgressText(const Entry& entry, bool short_form) {
   if (entry.progress < 0) return {};
   QStringList parts{QString("%1%").arg(qRound(entry.progress * 100))};
   if (!short_form && entry.bytes_per_second > 0) {
-    parts << QLocale().formattedDataSize(static_cast<qint64>(entry.bytes_per_second)) + "/s";
+    parts << SizeText(static_cast<qint64>(entry.bytes_per_second)) + "/s";
   }
   if (entry.eta_seconds > 0) {
     const qint64 minutes = (entry.eta_seconds + 59) / 60;
@@ -80,6 +81,19 @@ QString DownloadTracker::ProgressText(const Entry& entry, bool short_form) {
                             : QString("%1 min left").arg(minutes));
   }
   return parts.join(" · ");
+}
+
+DownloadTracker::TileProgress DownloadTracker::TileProgressFor(const Entry& entry) {
+  TileProgress tile;
+  tile.fraction = entry.progress;
+  const QString doing = entry.source == "humble" ? "Downloading…" : entry.update ? "Updating…" : "Installing…";
+  tile.status = entry.progress >= 0 ? ProgressText(entry, /*short_form=*/true) : doing;
+  if (entry.bytes_per_second > 0) {
+    tile.detail = SizeText(static_cast<qint64>(entry.bytes_per_second)) + "/s";
+  } else if (entry.bytes > 0) {
+    tile.detail = SizeText(entry.bytes) + " written";
+  }
+  return tile;
 }
 
 bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string& data) {

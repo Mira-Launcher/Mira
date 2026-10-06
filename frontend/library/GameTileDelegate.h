@@ -3,7 +3,12 @@
 #include <QSize>
 #include <QStyledItemDelegate>
 
+#include <optional>
+
+#include "../activity/DownloadTracker.h"
+
 class QAbstractItemView;
+class QStandardItem;
 
 namespace mira_gui {
 
@@ -34,14 +39,20 @@ public:
     // Optional: the game's source id, drawn as a small colored mark.
     SourceRole,
     // Optional: 0..1, or below 0 while busy with no percentage, drawn as a
-    // rail under the status line.
+    // rail between the title and the status line.
     ProgressRole,
+    // Optional, with ProgressRole: a quieter line under the status line ("12.5 MB/s").
+    ProgressDetailRole,
     // mirad wants its pick of executable checked: "Not checked" on the status line.
     NeedsCheckRole,
   };
 
   // Where the ActionRole pill sits inside a tile's cell.
   static QRect ActionRect(const QRect& cell, const QString& text, const QFont& font);
+  // A store title's tile: a running install's rail and lines in place of the pill, or the
+  // `idle_action` pill ("Install") while nothing runs.
+  static void SetTileProgress(QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,
+                              const QString& idle_action);
 
   GameTileDelegate(QObject* parent, QSize tile, ArtworkStore* artwork = nullptr);
 

@@ -1,8 +1,13 @@
 #include "Labels.h"
 
 #include <QLabel>
+#include <QLocale>
 
 namespace mira_gui {
+
+QString SizeText(qint64 bytes) {
+  return QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeTraditionalFormat);
+}
 
 QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role, bool wrap) {
   auto* label = new QLabel(text, parent);

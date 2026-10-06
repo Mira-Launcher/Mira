@@ -15,6 +15,7 @@
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
 #include "DownloadTracker.h"
 
@@ -29,7 +30,7 @@ const QSize kCover(40, 60);
 QString RunningText(const DownloadTracker::Entry& entry) {
   switch (entry.kind) {
     case Kind::Game:
-      return entry.bytes > 0 ? "Installing… " + QLocale().formattedDataSize(entry.bytes) + " written"
+      return entry.bytes > 0 ? "Installing… " + SizeText(entry.bytes) + " written"
                              : QString("Installing…");
     case Kind::Title: {
       if (entry.source == "steam" && !entry.update) return "Handing to Steam…";

@@ -55,6 +55,11 @@ TEST_CASE("DownloadTracker shows a store download's progress and follows a game'
   CHECK(full.contains("1 h 3 min left"));
   CHECK(full.contains("/s"));
   CHECK_FALSE(DownloadTracker::ProgressText(*download, /*short_form=*/true).contains("/s"));
+  // A cover shows the percentage and time left over the speed.
+  const DownloadTracker::TileProgress tile = DownloadTracker::TileProgressFor(*download);
+  CHECK(tile.fraction == doctest::Approx(0.425));
+  CHECK(tile.status == DownloadTracker::ProgressText(*download, /*short_form=*/true));
+  CHECK(tile.detail.endsWith("/s"));
   tracker.HandleEvent("library.install.progress",
                       R"({"source": "gog", "ref": "1", "progress": 0.9, "eta": 30})");
   CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1"), true).contains("1 min left"));
@@ -63,6 +68,11 @@ TEST_CASE("DownloadTracker shows a store download's progress and follows a game'
   const QString game_key =
       DownloadTracker::KeyFor(DownloadTracker::Kind::Game, QString(), "celeste");
   CHECK(StateOf(tracker, game_key) == State::Running);
+  // An installer with no percentage: a busy rail, what it's doing, and nothing under it yet.
+  const DownloadTracker::TileProgress installing = DownloadTracker::TileProgressFor(*tracker.Find(game_key));
+  CHECK(installing.fraction < 0);
+  CHECK(installing.status == "Installing…");
+  CHECK(installing.detail.isEmpty());
   tracker.HandleEvent("game.install.failed", R"({"id": "celeste", "error": "the installer quit",
                                                  "fix": {"kind": "game", "target": "celeste", "step": "install"}})");
   CHECK(StateOf(tracker, game_key) == State::Failed);

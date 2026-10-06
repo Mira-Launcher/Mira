@@ -57,6 +57,15 @@ public:
   // when it reported nothing. `short_form` leaves out the speed.
   static QString ProgressText(const Entry& entry, bool short_form = false);
 
+  // What a cover shows for a running install: the rail's fraction (negative while unknown), the
+  // status line ("42% · 3 min left", or what it's doing) and a quieter line under it (the speed).
+  struct TileProgress {
+    double fraction = -1;
+    QString status;
+    QString detail;
+  };
+  static TileProgress TileProgressFor(const Entry& entry);
+
   // Returns whether the event was one of ours.
   bool HandleEvent(const std::string& type, const std::string& data);
   // After a reconnect: ends running jobs whose finish event was missed.

@@ -113,6 +113,7 @@ add_executable(mira_gui_tests
   settings/SettingsColumns.cpp
   settings/SettingsSearch.cpp
   theme/Theme.cpp
+  widgets/Labels.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Widgets only for the game model's headers (its roles are the tile

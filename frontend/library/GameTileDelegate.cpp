@@ -9,6 +9,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QStandardItem>
 
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
@@ -31,6 +32,16 @@ QRect GameTileDelegate::ActionRect(const QRect& cell, const QString& text, const
   bold.setWeight(QFont::DemiBold);
   const int width = QFontMetrics(bold).horizontalAdvance(text) + 20;
   return QRect(cell.right() - inset - 6 - width + 1, cell.top() + inset + 6, width, 24);
+}
+
+void GameTileDelegate::SetTileProgress(QStandardItem& item,
+                                       const std::optional<DownloadTracker::TileProgress>& installing,
+                                       const QString& idle_action) {
+  item.setData(installing ? QString() : idle_action, ActionRole);
+  item.setData(!installing, ActionEnabledRole);
+  item.setData(installing ? QVariant(installing->fraction) : QVariant(), ProgressRole);
+  item.setData(installing ? QVariant(installing->status) : QVariant(), StatusTextRole);
+  item.setData(installing ? QVariant(installing->detail) : QVariant(), ProgressDetailRole);
 }
 
 GameTileDelegate::GameTileDelegate(QObject* parent, QSize tile, ArtworkStore* artwork)
@@ -125,7 +136,9 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // regardless of the artwork underneath. +1 on the top edge:
   // QRect::bottom() is the last pixel, so without it the scrim fell one
   // pixel short of the tile's actual bottom edge.
-  const int scrim_height = qMin(rect.height(), kScrimHeight);
+  const QVariant progress = index.data(ProgressRole);
+  // Taller under an install's two lines.
+  const int scrim_height = qMin(rect.height(), progress.isValid() ? kScrimHeight + 28 : kScrimHeight);
   const QRect scrim(rect.left(), rect.bottom() - scrim_height + 1, rect.width(), scrim_height);
   QLinearGradient gradient(scrim.bottomLeft(), scrim.topLeft());
   gradient.setColorAt(0.0, QColor(0, 0, 0, tokens.scrim_alpha));
@@ -133,9 +146,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   painter->fillRect(scrim, gradient);
 
   // Between the title and the status line, which says how far along it is.
-  const QVariant progress = index.data(ProgressRole);
   if (progress.isValid()) {
-    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 22, rect.width() - 16, 4), progress.toDouble(),
+    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 40, rect.width() - 16, 4), progress.toDouble(),
               tokens.accent, QColor(255, 255, 255, 40));
     if (progress.toDouble() < 0) {
       if (auto* view = dynamic_cast<TileView*>(const_cast<QWidget*>(option.widget))) view->KeepAnimating();
@@ -150,19 +162,33 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   title_font.setWeight(QFont::DemiBold);
   painter->setFont(title_font);
   painter->setPen(QColor(255, 255, 255, 235));
-  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 42 : 36), rect.width() - 16, 18);
+  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 60 : 36), rect.width() - 16, 18);
   painter->drawText(title_rect, Qt::AlignLeft | Qt::AlignVCenter,
                     QFontMetrics(title_font).elidedText(name, Qt::ElideRight, title_rect.width()));
+
+  QFont small_font = option.font;
+  small_font.setPixelSize(qMax(9, small_font.pixelSize() > 0 ? small_font.pixelSize() - 2 : 10));
+  // An install: how far along under the rail, and its speed or size under that.
+  if (progress.isValid()) {
+    painter->setFont(small_font);
+    const QFontMetrics metrics(small_font);
+    const QRect status_rect(rect.left() + 8, rect.bottom() - 34, rect.width() - 16, 15);
+    painter->setPen(QColor(255, 255, 255, 235));
+    painter->drawText(status_rect, Qt::AlignLeft | Qt::AlignVCenter,
+                      metrics.elidedText(index.data(StatusTextRole).toString(), Qt::ElideRight, status_rect.width()));
+    const QRect detail_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
+    painter->setPen(QColor(255, 255, 255, 160));
+    painter->drawText(detail_rect, Qt::AlignLeft | Qt::AlignVCenter,
+                      metrics.elidedText(index.data(ProgressDetailRole).toString(), Qt::ElideRight, detail_rect.width()));
+  }
 
   // "Ready" says nothing worth a line on every tile, only a state that
   // needs attention (or Playing) earns one.
   const QString status_text = index.data(StatusTextRole).toString();
   // Only when nothing more pressing is on the line.
   const bool unchecked = !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
-  if (show_status_ && (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
-    QFont status_font = option.font;
-    status_font.setPixelSize(qMax(9, status_font.pixelSize() > 0 ? status_font.pixelSize() - 2 : 10));
-    painter->setFont(status_font);
+  if (!progress.isValid() && show_status_ && (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
+    painter->setFont(small_font);
     const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
     QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
     if (unchecked) dot = tokens.warning;
