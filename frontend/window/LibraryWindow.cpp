@@ -27,6 +27,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../activity/DownloadsPanel.h"
+#include "../dialogs/LogWindow.h"
 #include "../app/DaemonSupervisor.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
@@ -130,6 +131,11 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   };
   connect(downloads_, &mira_gui::DownloadTracker::Changed, this, &LibraryWindow::DownloadChanged);
   downloads_panel_ = new mira_gui::DownloadsPanel(downloads_, artwork_, this);
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::LogRequested, this,
+          [this](const QString& channel, const QString& title) {
+            downloads_panel_->hide();
+            mira_gui::LogWindow::Open(this, channel, title);
+          });
   connect(downloads_panel_, &mira_gui::DownloadsPanel::ShowGameRequested, this,
           [this](const QString& id) { ShowGame(id.toStdString()); });
 
@@ -507,6 +513,9 @@ void LibraryWindow::OpenAbout() {
   auto* layout = new QVBoxLayout(&dialog);
   layout->addWidget(new mira_gui::AboutPanel(&dialog));
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+  auto* daemon_log = buttons->addButton("Service log", QDialogButtonBox::ActionRole);
+  daemon_log->setToolTip("What Mira's background service is doing, live");
+  connect(daemon_log, &QPushButton::clicked, this, [this] { mira_gui::LogWindow::Open(this, "daemon", "Mira service"); });
   connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
   layout->addWidget(buttons);
   dialog.resize(560, dialog.sizeHint().height());

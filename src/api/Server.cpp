@@ -76,6 +76,7 @@ void Server::RegisterRoutes() {
   RegisterMetadataRoutes(*http_, s_);
   RegisterRunnerRoutes(*http_, s_);
   RegisterEventRoutes(*http_, s_);
+  RegisterLogRoutes(*http_, s_);
 }
 
 }  // namespace mira::api

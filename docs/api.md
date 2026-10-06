@@ -169,6 +169,9 @@ Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to s
 ### `GET /v1/games/{id}/log?lines=`
 `{"lines": [...]}`: the last `lines` (default 200; `400 invalid_param` unless a whole number, 1 or more) lines of the game's log, which holds its output plus `mira-run`'s own notes. Only the last 4 MB of the file is read. A game with no log returns an empty list. Each launch rotates the log to `.log.1`, unless it is over `launch.log_max_mb`.
 
+### `GET /v1/logs/{channel}?after=&lines=`
+A live log, one per task so two running at once don't mix. Channels: `daemon` (mirad's own output), `game:<id>` (the game's log file, as above), `setup:<source>` (a launcher's install or a store tool's download), `install:<source>:<ref>` (a store title's install or update) and `runner:<kind>:<name>` (a runner download). Reply: `{"lines": [...], "next": N, "active": bool}`. Send `next` back as `after` to get only what came since; with no `after` the last `lines` (default 300) are returned. `active` is whether the task is still writing. A channel nothing has written to is an empty list. `400 invalid_param` for a bad `after` or `lines`. Non-game channels are kept in memory (the last 4000 lines) and start over when the task starts again.
+
 ### `POST /v1/games/{id}/stop`
 Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
 

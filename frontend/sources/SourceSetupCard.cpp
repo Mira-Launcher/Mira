@@ -6,10 +6,13 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QStyle>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "../client/api/Logs.h"
 #include "../client/api/Stores.h"
+#include "../dialogs/LogWindow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -86,12 +89,41 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   error_ = MakeLabel(body_, QString(), "error");
   error_->setVisible(false);
   body->addWidget(error_);
+
+  // What setup is doing, so it's plain it hasn't stalled.
+  log_box_ = new QWidget(body_);
+  log_box_->setVisible(false);
+  auto* log_layout = new QVBoxLayout(log_box_);
+  log_layout->setContentsMargins(0, 0, 0, 0);
+  log_layout->setSpacing(4);
+  log_tail_ = new QLabel(log_box_);
+  log_tail_->setObjectName("setup_log_tail");
+  log_tail_->setWordWrap(true);
+  log_tail_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  QFont mono("monospace");
+  mono.setStyleHint(QFont::Monospace);
+  mono.setPointSizeF(mono.pointSizeF() * 0.9);
+  log_tail_->setFont(mono);
+  log_tail_->setProperty("role", "muted");
+  log_layout->addWidget(log_tail_);
+  auto* open_log = new QPushButton("View full log", log_box_);
+  open_log->setObjectName("text_button");
+  connect(open_log, &QPushButton::clicked, this,
+          [this] { LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup"); });
+  auto* log_row = new QHBoxLayout();
+  log_row->addWidget(open_log);
+  log_row->addStretch(1);
+  log_layout->addLayout(log_row);
+  body->addWidget(log_box_);
+  log_timer_ = new QTimer(this);
+  connect(log_timer_, &QTimer::timeout, this, &SourceSetupCard::PollLog);
   body_->hide();
 }
 
 void SourceSetupCard::ShowStore(bool tool_installed, bool authenticated) {
   const SourceCopy copy = CopyFor(id_);
   error_->setVisible(false);
+  if (tool_installed) log_timer_->stop();
   // One step at a time: the tool, then the account.
   setVisible(!tool_installed || !authenticated);
   button_->setVisible(!tool_installed);
@@ -120,6 +152,8 @@ void SourceSetupCard::ShowLauncher(const LauncherInfo& launcher, bool installing
   button_->setVisible(true);
   button_->setEnabled(!installing);
   button_->setText(installing ? "Installing…" : "Install " + source_.name);
+  WatchLog(installing);
+  if (!installing && launcher.install_state == "failed") log_box_->setVisible(true);
   if (launcher.install_state == "failed" && !launcher.error.empty()) {
     mira_gui::ShowError(error_, "The last install failed.", launcher.error);
   }
@@ -131,6 +165,8 @@ void SourceSetupCard::ShowError(const QString& what, const ApiError& error) {
 }
 
 void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed) {
+  WatchLog(false);
+  log_box_->setVisible(true);
   setVisible(true);
   if (tool_installed) text_->setText("Updating " + CopyFor(id_).tool + " failed.");
   button_->setEnabled(true);
@@ -138,9 +174,34 @@ void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed
   mira_gui::ShowError(error_, "It failed.", error);
 }
 
+void SourceSetupCard::WatchLog(bool on) {
+  if (on) {
+    log_box_->setVisible(true);
+    if (!log_timer_->isActive()) log_timer_->start(1500);
+    PollLog();
+  } else {
+    log_timer_->stop();
+    if (log_box_->isVisible()) PollLog();  // the last lines, with how it ended
+  }
+}
+
+void SourceSetupCard::PollLog() {
+  if (log_busy_) return;
+  log_busy_ = true;
+  api::GetLogAsync(this, "setup:" + id_, std::nullopt, 6, [this](LogResult result) {
+    log_busy_ = false;
+    if (!result.ok) return;
+    QStringList lines;
+    for (const std::string& line : result.lines) lines << QString::fromStdString(line);
+    log_tail_->setTextFormat(Qt::PlainText);
+    log_tail_->setText(lines.isEmpty() ? QString("Waiting for output…") : lines.join('\n'));
+  });
+}
+
 void SourceSetupCard::StartSetup() {
   button_->setEnabled(false);
   error_->setVisible(false);
+  WatchLog(true);
   if (IsLauncher()) {
     button_->setText("Installing…");
     emit LauncherInstallStarted();

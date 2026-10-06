@@ -97,7 +97,7 @@ PreparedCommand Prepare(const Command& command) {
 
 }  // namespace
 
-Result<pid_t> SpawnDetached(const Command& command) {
+Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
   PreparedCommand prepared = Prepare(command);
 
@@ -110,6 +110,10 @@ Result<pid_t> SpawnDetached(const Command& command) {
     // the direct child leaves the actual game running.
     setpgid(0, 0);
     UnblockSignals();
+    if (output_fd >= 0) {
+      dup2(output_fd, 1);
+      dup2(output_fd, 2);
+    }
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
     execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);

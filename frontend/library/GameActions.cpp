@@ -12,7 +12,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../dialogs/DeleteGameDialog.h"
-#include "../dialogs/LogViewerDialog.h"
+#include "../dialogs/LogWindow.h"
 #include "../dialogs/RunInPrefixDialog.h"
 #include "../dialogs/WinetricksDialog.h"
 #include "../app/Notify.h"
@@ -115,8 +115,7 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path) {
 }
 
 void ViewLog(QWidget* parent, const std::string& id, const QString& name) {
-  LogViewerDialog dialog(id, name, parent);
-  dialog.exec();
+  LogWindow::Open(parent, "game:" + QString::fromStdString(id), name.isEmpty() ? QString::fromStdString(id) : name);
 }
 
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) {

@@ -831,6 +831,15 @@ struct GameLogResult {
   std::vector<std::string> lines;
 };
 
+// GET /v1/logs/<channel>. `next` is the cursor for the following read; `active` is whether the task is still going.
+struct LogResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> lines;
+  std::uint64_t next = 0;
+  bool active = false;
+};
+
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.
 // Purely informational; `launch.gamemode` (a plain config key) is the toggle.
 struct GameModeStatusResult {

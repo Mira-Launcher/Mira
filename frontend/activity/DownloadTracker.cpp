@@ -54,6 +54,18 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
   return QString();
 }
 
+QString DownloadTracker::LogChannelFor(const Entry& entry) {
+  switch (entry.kind) {
+    case Kind::Game: return "game:" + entry.ref;
+    case Kind::Title: return entry.source == "steam" ? QString("daemon") : "install:" + entry.source + ":" + entry.ref;
+    case Kind::Launcher:
+    case Kind::Tool: return "setup:" + entry.source;
+    case Kind::Runner: return "runner:" + entry.source + ":" + entry.ref;
+    case Kind::Job: return "daemon";
+  }
+  return "daemon";
+}
+
 QString DownloadTracker::JobFor(const Entry& entry) const {
   if (entry.state != State::Running) return {};
   QString target;  // the target mirad started the job with

@@ -19,6 +19,7 @@
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/ItchCollectionsDialog.h"
+#include "../dialogs/LogWindow.h"
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -295,6 +296,9 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     update->setEnabled(!tool_updating_);
     update->setToolTip("Download the latest release of " + tool + " again.");
   }
+  if (IsLauncher() || IsStore()) {
+    menu->addAction("View setup log", this, [this] { LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup"); });
+  }
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
     menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this, [this] {
@@ -305,7 +309,7 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     menu->addAction("Run a program in its prefix…", this, [this, game_id] {
       actions::RunInPrefix(this, game_id, launcher_prefix_ + "/drive_c", source_.name);
     });
-    menu->addAction("View log", this, [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
+    menu->addAction("View launcher log", this, [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
   }
 
   // What removing does differs per kind; RemoveSource spells it out before anything happens.

@@ -1,3 +1,4 @@
+#include "core/LogHub.h"
 #include "api/Routes.h"
 
 #include <algorithm>
@@ -69,16 +70,28 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (!store) return;
     s.StartJob(req, res, "setup", store->id, std::format("Setting up {}", store->tool),
                [&s, store](JobRegistry::Progress&) -> Result<json> {
+                 const std::string channel = std::string("setup:") + store->id;
+                 loghub::Begin(channel);
+                 const auto say = [&channel](const std::string& line) { loghub::Append(channel, line + "\n"); };
+                 const auto fail = [&](const Error& error) -> Result<json> {
+                   say("Failed: " + error.message);
+                   loghub::End(channel);
+                   return std::unexpected(error);
+                 };
+                 say(std::format("Looking up the newest {} release", store->tool));
                  const auto releases = runner::ListReleases(s.config, store->release_kind);
-                 if (!releases) return std::unexpected(releases.error());
+                 if (!releases) return fail(releases.error());
                  if (releases->empty()) {
-                   return Err("no_release_found", std::format("no matching {} release found", store->tool));
+                   return fail(Error{.code = "no_release_found",
+                                     .message = std::format("no matching {} release found", store->tool),
+                                     .hint = {}});
                  }
                  const runner::ReleaseAsset& asset = releases->front();  // newest first
-                 if (auto installed = store->install_tool(s.config, asset); !installed) {
-                   return std::unexpected(installed.error());
-                 }
+                 say(std::format("Downloading {} {}", store->tool, asset.tag));
+                 if (auto installed = store->install_tool(s.config, asset); !installed) return fail(installed.error());
                  log::Info("installed {} {}", store->tool, asset.tag);
+                 say(std::format("Installed {} {}", store->tool, asset.tag));
+                 loghub::End(channel);
                  return json{{"tag", asset.tag}};
                });
   });

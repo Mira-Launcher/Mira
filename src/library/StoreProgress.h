@@ -26,10 +26,16 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress);
 class StoreProgress {
 public:
   StoreProgress(api::EventBus& events, std::string source, std::string ref);
+  ~StoreProgress();
+  StoreProgress(const StoreProgress&) = delete;
+  StoreProgress& operator=(const StoreProgress&) = delete;
 
   void Feed(std::string_view chunk);
 
 private:
+  // The log of this install: "install:<source>:<ref>".
+  std::string channel() const { return "install:" + source_ + ":" + ref_; }
+
   api::EventBus& events_;
   std::string source_;
   std::string ref_;
