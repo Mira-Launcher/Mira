@@ -100,7 +100,8 @@ void WriteDefaults(const config::Config& config, const Launcher& launcher, const
 }
 
 // `rel` (relative to drive_c), or the same file name anywhere under its top
-// folder (the EA app sometimes nests its exe under a version folder).
+// folder (the EA app sometimes nests its exe under a version folder). Office's
+// "Updates" folder holds files it has downloaded but not installed: not a match.
 std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
   const fs::path expected = prefix / "drive_c" / rel;
   std::error_code ec;
@@ -108,6 +109,10 @@ std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
   const fs::path top = prefix / "drive_c" / *rel.begin() / *std::next(rel.begin());
   for (fs::recursive_directory_iterator it(top, fs::directory_options::skip_permission_denied, ec), end;
        !ec && it != end; it.increment(ec)) {
+    if (it->is_directory(ec) && it->path().filename() == "Updates") {
+      it.disable_recursion_pending();
+      continue;
+    }
     if (it->path().filename() == rel.filename() && it->is_regular_file(ec)) return it->path();
   }
   return std::nullopt;
