@@ -131,6 +131,12 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
 }
 
 
+// A missing folder or program is the game's state (409); anything else PrepareCommand refuses is the request's (400).
+int PrepareStatus(const Error& error) {
+  return error.code == "working_dir_missing" || error.code == "program_missing" || error.code == "not_executable" ? 409
+                                                                                                               : 400;
+}
+
 struct RunProgram {
   std::string exe_path;
   std::string args;
@@ -151,6 +157,13 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
 
   model::Game target = game;
   if (program) {
+    // Wine would start and fail out of sight, so a program that isn't there is refused here.
+    const bool windows_path = program->exe_path.size() > 1 && program->exe_path[1] == ':';
+    const std::filesystem::path full = std::filesystem::path(game.install_path) / program->exe_path;
+    if (std::error_code ec; !windows_path && !std::filesystem::is_regular_file(full, ec)) {
+      return Err("program_missing", std::format("\"{}\" doesn't exist", full.string()),
+                 "Check the file is still there, or pick it again.");
+    }
     target.exe_path = program->exe_path;
     target.args = program->args;
   }
@@ -270,7 +283,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     }
 
     auto command = PrepareCommand(s, *game, std::nullopt);
-    if (!command) return SendError(res, command.error().code == "working_dir_missing" ? 409 : 400, command.error());
+    if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
 
     // A Windows "game" that turns out to be an installer is caught at exit (CheckForInstall).
     // Only for an existing prefix: a new one's own Program Files would all look installed.
@@ -407,7 +420,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     }
 
     auto command = PrepareCommand(s, *game, RunProgram{exe_path, args});
-    if (!command) return SendError(res, command.error().code == "working_dir_missing" ? 409 : 400, command.error());
+    if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
 
     if (auto launched = s.supervisor.Launch(*game, *command); !launched) {
       return SendError(res, 409, launched.error());

@@ -101,24 +101,55 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
   PreparedCommand prepared = Prepare(command);
 
+  // The child reports a failed chdir or exec here; a successful exec closes it (O_CLOEXEC) unwritten.
+  int report[2];
+  if (pipe2(report, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
+
   const pid_t pid = fork();
-  if (pid < 0) return Err("exec_fork_failed", std::strerror(errno));
+  if (pid < 0) {
+    const std::string message = std::strerror(errno);
+    close(report[0]);
+    close(report[1]);
+    return Err("exec_fork_failed", message);
+  }
   if (pid == 0) {
     // Child: async-signal-safe calls only. stdout/stderr are inherited.
     // Its own process group, so stopping the game can signal the whole tree:
     // a real launch is umu -> proton -> wine -> game.exe, and signalling just
     // the direct child leaves the actual game running.
+    close(report[0]);
     setpgid(0, 0);
     UnblockSignals();
     if (output_fd >= 0) {
       dup2(output_fd, 1);
       dup2(output_fd, 2);
     }
-    if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
-    execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
+    int failure[2] = {0, 0};  // {stage (1 chdir, 2 exec), errno}
+    if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) {
+      failure[0] = 1;
+    } else {
+      execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
+      failure[0] = 2;
+    }
+    failure[1] = errno;
+    [[maybe_unused]] const ssize_t written = write(report[1], failure, sizeof(failure));
     _exit(127);
   }
-  return pid;
+
+  close(report[1]);
+  int failure[2] = {0, 0};
+  ssize_t got;
+  do {
+    got = read(report[0], failure, sizeof(failure));
+  } while (got < 0 && errno == EINTR);
+  close(report[0]);
+  if (got != static_cast<ssize_t>(sizeof(failure))) return pid;
+
+  ::waitpid(pid, nullptr, 0);
+  if (failure[0] == 1) {
+    return Err("exec_failed", std::format("couldn't open the folder \"{}\": {}", prepared.cwd, std::strerror(failure[1])));
+  }
+  return Err("exec_failed", std::format("couldn't start \"{}\": {}", command.argv.front(), std::strerror(failure[1])));
 }
 
 Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_fd) {

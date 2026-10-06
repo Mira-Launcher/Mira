@@ -1422,6 +1422,39 @@ TEST_CASE("Running a picked program in a game with no prefix first makes one wit
   const auto stored = server.games().Find("celeste");
   CHECK(stored->runner_ref == "wine:wine-9.0-amd64");
   CHECK(stored->exe_path == "Celeste.exe");  // running something else doesn't change the game
+
+  auto missing = client.Post("/v1/games/celeste/run", R"({"exe_path": "Gone.exe"})", "application/json");
+  REQUIRE(missing != nullptr);
+  CHECK(missing->status == 409);
+  CHECK(missing->body.find("program_missing") != std::string::npos);
+}
+
+TEST_CASE("POST /v1/games/{id}/run refuses a native program that can't start") {
+  const fs::path state = TempDir("server-run-cannot-start");
+  LiveServer server(state);
+  model::Game game;
+  game.id = "tool";
+  game.name = "Tool";
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;
+  game.install_path = (state / "Tool").string();
+  game.exe_path = "run.sh";
+  test::Touch(state / "Tool" / "notes.txt", "not a program", /*executable=*/false);
+  test::Touch(state / "Tool" / "broken", "#!/no/such/interpreter\n", /*executable=*/true);
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto not_executable = client.Post("/v1/games/tool/run", R"({"exe_path": "notes.txt"})", "application/json");
+  REQUIRE(not_executable != nullptr);
+  CHECK(not_executable->status == 409);
+
+  auto ran = client.Post("/v1/games/tool/run", R"({"exe_path": "broken"})", "application/json");
+  REQUIRE(ran != nullptr);
+  CHECK(ran->status == 409);
+  CHECK(ran->body.find("exec_failed") != std::string::npos);
+  auto record = client.Get("/v1/games/tool");
+  REQUIRE(record != nullptr);
+  CHECK(nlohmann::json::parse(record->body).value("running", true) == false);
 }
 
 TEST_CASE("Every setting the schema offers per game is one a game's settings accept") {
