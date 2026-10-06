@@ -16,6 +16,7 @@
 #include "launchers/Office.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
@@ -94,6 +95,19 @@ std::optional<fs::path> FindExe(const Launcher& launcher, const fs::path& prefix
   return FindFile(prefix, launcher.exe);
 }
 
+// Whether `file` is still running in the game's prefix: started from
+// `setup_dir`, or relaunched from anywhere (the Office Deployment Tool
+// restarts itself from another drive letter).
+bool SetupRunning(const model::Game& game, const std::string& setup_dir, const std::string& file) {
+  if (!proc::FindDirProcesses(game.data_dir, setup_dir).empty()) return true;
+  proc::ProcessIndex index;
+  index.Refresh();
+  const std::string name = "/" + strings::ToLower(file);
+  return std::ranges::any_of(index.Processes(), [&](const auto& item) {
+    return proc::InPrefix(item.second.prefix, game.data_dir) && item.second.argv0.ends_with(name);
+  });
+}
+
 Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
@@ -137,7 +151,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
-    if (proc::FindDirProcesses(game.data_dir, setup_dir).empty() && finished()) {
+    if (!SetupRunning(game, setup_dir, step.file) && finished()) {
       ReapOrphans(*pid);
       return {};
     }
@@ -259,7 +273,7 @@ const std::vector<Launcher>& All() {
     // the Office Deployment Tool, which downloads and installs Office.
     m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
                       "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe"},
-                     {"https://officecdn.microsoft.com/pr/wsus/setup.exe", "office-setup.exe",
+                     {"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
                       {"/configure", "{downloads}\\office-configuration.xml"}, ""}};
     m365.env = {{"PROTON_USE_XALIA", "0"}};
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365};

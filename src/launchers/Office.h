@@ -23,6 +23,8 @@ struct App {
 };
 
 inline constexpr std::string_view kProgramDir = "Program Files/Microsoft Office/root/Office16";
+// The Office Deployment Tool as Mira saves it; Wine settings for it are keyed by this name.
+inline constexpr std::string_view kSetupFile = "office-setup.exe";
 
 // Every app Mira imports when its exe is installed.
 std::span<const App> Apps();

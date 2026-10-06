@@ -69,8 +69,9 @@ std::string Registry(const config::Config& config) {
   reg += "[HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides]\n"
          "\"appxdeploymentclient\"=\"\"\n\"hvsimanagementapi\"=\"\"\n";
   for (const Shim& shim : kShims) reg += std::format("\"{}\"=\"native,builtin\"\n", shim.name);
-  reg += "\n[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\setup.exe\\DllOverrides]\n"
-         "\"appxdeploymentclient\"=\"builtin\"\n\n";
+  reg += std::format("\n[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\{}\\DllOverrides]\n"
+                     "\"appxdeploymentclient\"=\"builtin\"\n\n",
+                     kSetupFile);
 
   // Sign-in through the browser flow in WebView2, not the Windows account
   // broker Wine doesn't have.
