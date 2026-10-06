@@ -129,6 +129,9 @@ foreach(icon_size IN ITEMS 16 32 48 64 128 256)
           DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps)
 endforeach()
 
+# Builds the AppImage in an Ubuntu 22.04 container (target appimage-container); needs docker or podman.
+include(cmake/AppImageContainer.cmake)
+
 option(MIRA_BUILD_FRONTEND "Build the Qt frontend skeleton if Qt6 is available" ON)
 if(MIRA_BUILD_FRONTEND)
   add_subdirectory(frontend)
