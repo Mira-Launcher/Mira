@@ -53,7 +53,7 @@ PopupDialog::PopupDialog(QWidget* parent, notify::Level level, const QString& ti
   // font has one.
   close_button_ = new QToolButton(this);
   close_button_->setAutoRaise(true);
-  close_button_->setIcon(icons::For(icons::Glyph::Close));
+  icons::Follow(close_button_, icons::Glyph::Close);
   close_button_->setCursor(Qt::PointingHandCursor);
   connect(close_button_, &QToolButton::clicked, this, &QDialog::reject);
   heading_row->addWidget(close_button_, 0, Qt::AlignTop);

@@ -63,6 +63,8 @@ private:
   // frontend.toml, not settings.toml. The window's own layout is read in the
   // constructor; these are what the settings screen also changes.
   void ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs);
+  // A config.changed event's prefs, made by another client (the CLI, another window).
+  void ApplyChangedPrefs(const std::string& payload);
   // The layout this window owns (size, zoom, filter, sort, sidebar), saved
   // in the background a moment after it last changed, so a crash loses at
   // most that moment. FlushPrefs writes a pending one now, for quitting.
@@ -218,6 +220,7 @@ private:
   // Rebuilt on every OpenSettings() so it starts synced to what's actually
   // saved, not stale edits left over from a discarded previous open.
   QWidget* settings_page_ = nullptr;
+  bool settings_loading_ = false;  // built, and shown once its panel is Ready
   mira_gui::SettingsPanel* settings_panel_ = nullptr;
   // A chrome sibling, not a content_stack_ page, so the grid stays visible
   // (dimmed) underneath the game's card.
@@ -258,6 +261,7 @@ private:
   static constexpr int kMaxTileWidth = 260;
   static constexpr int kDefaultSourceTileWidth = 150;  // smaller: a source page holds two grids
   bool scan_on_startup_ = true;
+  std::string applied_prefs_;  // the frontend table (minus window layout) last applied from config.changed
   // Keyed by "<id>@<tile width>". A generated cover is cheap but not free,
   // and a filter or search change redraws every visible tile.
   mira_gui::ArtworkStore* artwork_ = nullptr;

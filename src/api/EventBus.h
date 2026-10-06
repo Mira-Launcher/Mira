@@ -87,7 +87,8 @@ private:
 // Adds an error's optional hint and fix to `out` (an error envelope or an event).
 void AddHintAndFix(nlohmann::json& out, const Error& error);
 
-// {code, message, hint?, fix?}: an error as every reply, event and job reports it.
+// {code, message, hint?, fix?}: an error as every reply, event and job reports it. An empty
+// message is filled from the code.
 nlohmann::json ErrorJson(const Error& error);
 
 // A *.failed event: `fields` plus the error's message (`error`), code, hint and

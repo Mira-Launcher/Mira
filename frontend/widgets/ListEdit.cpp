@@ -30,7 +30,8 @@ ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent) : QWidge
   empty_->setContentsMargins(10, 6, 10, 6);
   layout->addWidget(empty_);
 
-  auto* add = new QPushButton(icons::For(icons::Glyph::Plus, theme::Current().accent), add_text, this);
+  auto* add = new QPushButton(add_text, this);
+  icons::Follow(add, icons::Glyph::Plus, &theme::Tokens::accent);
   add->setObjectName("list_add");
   add->setCursor(Qt::PointingHandCursor);
   connect(add, &QPushButton::clicked, this, [this] {
@@ -78,7 +79,7 @@ void ListEdit::AddRow(const QString& text, bool edit) {
   layout->setSpacing(8);
   if (kind_ == Kind::Folder) {
     auto* icon = new QLabel(row);
-    icon->setPixmap(icons::For(icons::Glyph::Folder, theme::Current().text_muted).pixmap(16, 16));
+    icons::Follow(icon, icons::Glyph::Folder, 16);
     layout->addWidget(icon);
   }
   // A frameless field, so an item can be corrected in place.
@@ -89,7 +90,7 @@ void ListEdit::AddRow(const QString& text, bool edit) {
   layout->addWidget(line, /*stretch=*/1);
   auto* remove = new QToolButton(row);
   remove->setAutoRaise(true);
-  remove->setIcon(icons::For(icons::Glyph::Close, theme::Current().text_muted));
+  icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
   remove->setToolTip("Remove");
   connect(remove, &QToolButton::clicked, this, [this, row] {
     rows_->removeWidget(row);

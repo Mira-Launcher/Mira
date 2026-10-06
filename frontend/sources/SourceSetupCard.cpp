@@ -60,7 +60,7 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   body->addWidget(text_);
 
   button_ = new QPushButton(body_);
-  button_->setIcon(icons::For(icons::Glyph::Download, theme::Current().on_accent));
+  icons::Follow(button_, icons::Glyph::Download, &theme::Tokens::on_accent);
   button_->setDefault(true);
   button_->setVisible(false);
   connect(button_, &QPushButton::clicked, this, &SourceSetupCard::StartSetup);

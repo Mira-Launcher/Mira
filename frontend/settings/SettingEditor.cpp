@@ -67,8 +67,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
       line->setEchoMode(QLineEdit::Password);
       line->setPlaceholderText("Not set");
       // The eye sits inside the field, so a key field is as wide as any other.
-      QAction* show = line->addAction(icons::For(icons::Glyph::Eye, theme::Current().text_muted),
-                                      QLineEdit::TrailingPosition);
+      QAction* show = line->addAction(QIcon(), QLineEdit::TrailingPosition);
+      icons::Follow(show, icons::Glyph::Eye, &theme::Tokens::text_muted);
       show->setCheckable(true);
       show->setToolTip("Show");
       QObject::connect(show, &QAction::toggled, line, [line = line, show](bool shown) {
@@ -95,7 +95,7 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     const QUrl url(QString::fromStdString(entry.link));
     auto* link = new QToolButton(row);
     link->setAutoRaise(true);
-    link->setIcon(icons::For(icons::Glyph::External, theme::Current().accent));
+    icons::Follow(link, icons::Glyph::External, &theme::Tokens::accent);
     link->setToolTip(QString("Open %1").arg(url.host()));
     link->setCursor(Qt::PointingHandCursor);
     QObject::connect(link, &QToolButton::clicked, link, [url] { QDesktopServices::openUrl(url); });

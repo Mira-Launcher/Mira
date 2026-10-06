@@ -13,6 +13,9 @@ namespace mira::library {
 // since a "../" path would point somewhere else once the folder moves.
 std::string StoredExePath(const std::string& install_path, const std::string& exe_path);
 
+// "windows" or "native": the platforms a client may give a game. "unknown" is only ever detected.
+bool IsSettablePlatform(const nlohmann::json& value);
+
 // `base` with the fields of a PATCH /v1/games/{id} body applied.
 model::Game ParseGamePatch(const model::Game& base, const nlohmann::json& patch);
 

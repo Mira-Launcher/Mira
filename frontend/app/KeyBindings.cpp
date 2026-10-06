@@ -79,6 +79,9 @@ std::map<std::string, std::string> Current() {
 }
 
 void LoadOverrides(const std::map<std::string, std::string>& saved) {
+  for (const QString& id : Overrides().keys()) {
+    if (!saved.contains(id.toStdString())) ResetOverride(id);
+  }
   for (const auto& [id, keys] : saved) {
     SetOverride(QString::fromStdString(id),
                QKeySequence::fromString(QString::fromStdString(keys), QKeySequence::PortableText));

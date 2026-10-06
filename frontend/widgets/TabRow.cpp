@@ -122,7 +122,7 @@ void TabRow::SetSearch(QLineEdit* search) {
   search_->setFixedHeight(kControlHeight);
   search_->installEventFilter(this);
   search_button_ = new QToolButton(this);
-  search_button_->setIcon(icons::For(icons::Glyph::Search));
+  icons::Follow(search_button_, icons::Glyph::Search);
   search_button_->setToolTip("Search");
   search_button_->setAutoRaise(true);
   search_button_->setFixedSize(kControlHeight, kControlHeight);

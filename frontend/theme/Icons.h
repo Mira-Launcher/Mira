@@ -2,7 +2,11 @@
 
 #include <QIcon>
 
-class QColor;
+#include "Theme.h"
+
+class QAbstractButton;
+class QAction;
+class QLabel;
 
 namespace mira_gui::icons {
 
@@ -55,12 +59,21 @@ enum class Glyph {
 };
 
 // Drawn on demand in the current theme's text color, at the handful of sizes
-// Qt might ask for. Regenerate after a theme change, since the color is baked in
-// (see LibraryWindow's theme::Notifier connection).
+// Qt might ask for. The color is baked in, so a widget that outlives a theme
+// change uses Follow below, or redraws on theme::Notifier::Changed itself.
 QIcon For(Glyph glyph);
 
 // Same, in a caller-chosen color, such as a muted row or an on_accent icon,
 // neither the plain text color the no-argument overload assumes.
 QIcon For(Glyph glyph, const QColor& color);
+
+// Sets the icon in one of the theme's colors now and again on every theme
+// change, for as long as the widget lives. A fixed color (white on art) uses
+// For(glyph, color) instead, since it never needs redrawing.
+using Role = QColor theme::Tokens::*;
+void Follow(QAbstractButton* button, Glyph glyph, Role role = &theme::Tokens::text);
+void Follow(QAction* action, Glyph glyph, Role role = &theme::Tokens::text);
+// A label showing the glyph as a `size` px pixmap.
+void Follow(QLabel* label, Glyph glyph, int size, Role role = &theme::Tokens::text_muted);
 
 }  // namespace mira_gui::icons

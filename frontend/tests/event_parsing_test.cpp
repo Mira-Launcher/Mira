@@ -1,6 +1,7 @@
 #include <doctest.h>
 
 #include "client/Events.h"
+#include "client/api/Config.h"
 
 using namespace mira_gui;
 
@@ -186,4 +187,22 @@ TEST_CASE("ParseTricksEvent extracts id, verb, state and error") {
                                         &event));
   CHECK(event.state == "finished");
   CHECK(event.error.empty());
+}
+
+TEST_CASE("A config.changed that only moves the window's own layout reads the same as before") {
+  const auto before = api::ParseChangedPrefs(
+      R"({"keys": [], "frontend": {"theme": "mira-dark", "tile_width": 180, "sidebar_width": 232}})");
+  const auto resized = api::ParseChangedPrefs(
+      R"({"keys": [], "frontend": {"theme": "mira-dark", "tile_width": 240, "sidebar_width": 300}})");
+  const auto rethemed = api::ParseChangedPrefs(
+      R"({"keys": [], "frontend": {"theme": "mira-light", "tile_width": 180, "sidebar_width": 232}})");
+  REQUIRE(before);
+  REQUIRE(resized);
+  REQUIRE(rethemed);
+  CHECK(before->fingerprint == resized->fingerprint);
+  CHECK(before->fingerprint != rethemed->fingerprint);
+  CHECK(rethemed->prefs.theme == "mira-light");
+
+  CHECK_FALSE(api::ParseChangedPrefs("not json"));
+  CHECK_FALSE(api::ParseChangedPrefs(R"({"keys": ["scan.debounce_ms"]})"));
 }

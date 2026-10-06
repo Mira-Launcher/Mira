@@ -65,6 +65,8 @@ public:
 
   // Above the nav, e.g. the window's back button and title.
   void SetHeader(QWidget* header);
+  // The nav column's width, e.g. the sidebar's, so opening Settings doesn't move the divider.
+  void SetNavWidth(int width);
 
   // A button row at the end of `category`'s card titled `card`, for a one-off
   // action that belongs next to those settings. Added once the schema loads.
@@ -79,6 +81,8 @@ public:
   void DiscardChanges();
 
 signals:
+  // Settings and display prefs have both loaded, so the panel can be shown complete.
+  void Ready();
   void LoadFailed(QString error);
   void SaveFinished(bool ok, QString error);
   // The frontend.toml values just saved; the theme and shortcuts are already applied.
@@ -218,6 +222,8 @@ private:
   // Read-only "is Feral GameMode installed/running" on the Launching page; not a config key.
   QLabel* gamemode_status_ = nullptr;
   int saves_pending_ = 0;
+  int loads_pending_ = 2;  // the settings and the display prefs; Ready at zero
+  void LoadDone();
   QString save_error_;
 };
 

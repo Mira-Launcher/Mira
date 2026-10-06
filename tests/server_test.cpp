@@ -152,6 +152,28 @@ TEST_CASE("PATCH /v1/games/{id} keeps an executable outside the game's folder po
   CHECK(patch("/opt/game/run.sh") == "/opt/game/run.sh");
 }
 
+TEST_CASE("PATCH /v1/games/{id} sets a game's platform and refuses one Mira can't run") {
+  LiveServer server(TempDir("server-platform-patch"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.platform = model::Platform::Windows;
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto set = client.Patch("/v1/games/celeste", R"({"platform": "native"})", "application/json");
+  REQUIRE(set != nullptr);
+  CHECK(set->status == 200);
+  CHECK(server.games().Find("celeste")->platform == model::Platform::Native);
+
+  for (const char* bad : {R"({"platform": "macos"})", R"({"platform": "unknown"})", R"({"platform": 1})"}) {
+    auto res = client.Patch("/v1/games/celeste", bad, "application/json");
+    REQUIRE(res != nullptr);
+    CHECK(res->status == 400);
+  }
+  CHECK(server.games().Find("celeste")->platform == model::Platform::Native);
+}
+
 TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   LiveServer server(TempDir("server-env-patch-clear"));
 
@@ -1038,6 +1060,19 @@ TEST_CASE("POST /v1/games/manual adds a ready native game outside any configured
   CHECK(server.games().Find(id).has_value());
 }
 
+TEST_CASE("POST /v1/games/manual refuses a platform Mira can't run instead of adding the game") {
+  LiveServer server(TempDir("server-manual-bad-platform"));
+  const fs::path folder = TempDir("server-manual-bad-platform-game");
+  std::ofstream(folder / "game") << "not really an exe";
+
+  httplib::Client client = server.Client();
+  const nlohmann::json body = {{"install_path", folder.string()}, {"exe_path", "game"}, {"platform", "macos"}};
+  auto res = client.Post("/v1/games/manual", body.dump(), "application/json");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 400);
+  CHECK(server.games().All().empty());
+}
+
 TEST_CASE("POST /v1/games/manual adds each AppImage in a shared folder as its own game, named after it") {
   LiveServer server(TempDir("server-manual-appimages"));
   const fs::path applications = TempDir("server-manual-applications");
@@ -1312,6 +1347,30 @@ TEST_CASE("PATCH /v1/config merges the frontend table, and a null deletes that k
   CHECK(frontend.value("theme", "") == "mira-dark");
 }
 
+TEST_CASE("A settings change is announced with the frontend table and the changed keys, never their values") {
+  LiveServer server(TempDir("server-config-changed"));
+  httplib::Client client = server.Client();
+  const std::int64_t before = server.events().LatestId();
+
+  auto set = client.Patch("/v1/config", R"({"steamgriddb": {"api_key": "secret-key"}, "frontend": {"theme": "mira-light"}})",
+                          "application/json");
+  REQUIRE(set != nullptr);
+  REQUIRE(set->status == 200);
+  auto reset = client.Post("/v1/config/reset?key=steamgriddb.api_key");
+  REQUIRE(reset != nullptr);
+  REQUIRE(reset->status == 200);
+
+  std::vector<nlohmann::json> changes;
+  for (const model::Event& event : server.events().Since(before)) {
+    if (event.type == "config.changed") changes.push_back(event.payload);
+  }
+  REQUIRE(changes.size() == 2);
+  CHECK(changes[0]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
+  CHECK(changes[0]["frontend"].value("theme", "") == "mira-light");
+  CHECK(changes[0].dump().find("secret-key") == std::string::npos);
+  CHECK(changes[1]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
+}
+
 TEST_CASE("A game's settings override the global ones, all or nothing, until set back to null") {
   LiveServer server(TempDir("server-game-config"));
   model::Game game;
@@ -1387,6 +1446,39 @@ TEST_CASE("Running a picked program in a game with no prefix first makes one wit
   const auto stored = server.games().Find("celeste");
   CHECK(stored->runner_ref == "wine:wine-9.0-amd64");
   CHECK(stored->exe_path == "Celeste.exe");  // running something else doesn't change the game
+
+  auto missing = client.Post("/v1/games/celeste/run", R"({"exe_path": "Gone.exe"})", "application/json");
+  REQUIRE(missing != nullptr);
+  CHECK(missing->status == 409);
+  CHECK(missing->body.find("program_missing") != std::string::npos);
+}
+
+TEST_CASE("POST /v1/games/{id}/run refuses a native program that can't start") {
+  const fs::path state = TempDir("server-run-cannot-start");
+  LiveServer server(state);
+  model::Game game;
+  game.id = "tool";
+  game.name = "Tool";
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;
+  game.install_path = (state / "Tool").string();
+  game.exe_path = "run.sh";
+  test::Touch(state / "Tool" / "notes.txt", "not a program", /*executable=*/false);
+  test::Touch(state / "Tool" / "broken", "#!/no/such/interpreter\n", /*executable=*/true);
+  REQUIRE(server.games().Upsert(game));
+  httplib::Client client = server.Client();
+
+  auto not_executable = client.Post("/v1/games/tool/run", R"({"exe_path": "notes.txt"})", "application/json");
+  REQUIRE(not_executable != nullptr);
+  CHECK(not_executable->status == 409);
+
+  auto ran = client.Post("/v1/games/tool/run", R"({"exe_path": "broken"})", "application/json");
+  REQUIRE(ran != nullptr);
+  CHECK(ran->status == 409);
+  CHECK(ran->body.find("exec_failed") != std::string::npos);
+  auto record = client.Get("/v1/games/tool");
+  REQUIRE(record != nullptr);
+  CHECK(nlohmann::json::parse(record->body).value("running", true) == false);
 }
 
 TEST_CASE("Every setting the schema offers per game is one a game's settings accept") {

@@ -1,9 +1,12 @@
 #include "Transport.h"
 
 #include <httplib.h>
+#include <toml.hpp>
 
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 
 #include "JsonMapping.h"
 
@@ -25,12 +28,15 @@ ApiError Unreachable(const httplib::Result& res) {
                   ApiError::kUnreachable);
 }
 
-// mirad's {"error": {...}} envelope, or the raw body if it isn't one.
-ApiError FromBody(const std::string& body_text) {
+// mirad's {"error": {...}} envelope, or the raw body if it isn't one. Never JSON shown as a message.
+ApiError FromBody(int status, const std::string& body_text) {
   const json body = json::parse(body_text, nullptr, false);
-  if (body.is_discarded() || !body.contains("error") || !body["error"].is_object()) return ApiError(body_text);
+  if (body.is_discarded() || !body.contains("error") || !body["error"].is_object()) {
+    return ApiError(body_text.empty() || !body.is_discarded() ? "mirad answered HTTP " + std::to_string(status)
+                                                               : body_text);
+  }
   ApiError error = mapping::ToApiError(body["error"]);
-  if (error.message.empty()) error.message = body_text;
+  if (error.message.empty()) error.message = error.code.empty() ? "mirad answered HTTP " + std::to_string(status) : error.code;
   return error;
 }
 
@@ -46,8 +52,37 @@ Reply Finish(const httplib::Result& res) {
     return reply;
   }
 
-  reply.error = res ? FromBody(res->body) : Unreachable(res);
+  reply.error = res ? FromBody(res->status, res->body) : Unreachable(res);
   return reply;
+}
+
+// mirad's socket_path setting from settings.toml, with `~` and `$VAR` expanded as mirad does,
+// or "" when it isn't set there. Read once: mirad itself only reads it at startup.
+std::string ConfiguredSocket() {
+  const char* config_home = std::getenv("XDG_CONFIG_HOME");
+  const char* home = std::getenv("HOME");
+  const std::filesystem::path base = config_home && *config_home ? std::filesystem::path(config_home)
+                                     : std::filesystem::path(home && *home ? home : ".") / ".config";
+  toml::parse_result parsed = toml::parse_file((base / "mira" / "settings.toml").string());
+  if (!parsed) return {};
+  const std::optional<std::string> raw = parsed.table()["socket_path"].value<std::string>();
+  if (!raw || raw->empty()) return {};
+
+  std::string out;
+  for (size_t i = 0; i < raw->size(); ++i) {
+    const char c = (*raw)[i];
+    if (c == '~' && i == 0 && (raw->size() == 1 || (*raw)[1] == '/')) {
+      out += home && *home ? home : "";
+    } else if (c == '$' && i + 1 < raw->size()) {
+      size_t end = i + 1;
+      while (end < raw->size() && (std::isalnum(static_cast<unsigned char>((*raw)[end])) || (*raw)[end] == '_')) ++end;
+      if (const char* value = std::getenv(raw->substr(i + 1, end - i - 1).c_str())) out += value;
+      i = end - 1;
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 }  // namespace
@@ -55,6 +90,9 @@ Reply Finish(const httplib::Result& res) {
 std::string SocketPath() {
   const char* override_path = std::getenv("MIRA_SOCKET");
   if (override_path && *override_path) return override_path;
+
+  static const std::string configured = ConfiguredSocket();
+  if (!configured.empty()) return configured;
 
   const char* runtime_dir = std::getenv("XDG_RUNTIME_DIR");
   const std::filesystem::path base = runtime_dir && *runtime_dir ? runtime_dir : "/tmp";
@@ -75,7 +113,7 @@ Blob GetBinary(const std::string& path, const Options& options) {
 
   blob.status = res->status;
   if (res->status < 200 || res->status >= 300) {
-    blob.error = FromBody(res->body);
+    blob.error = FromBody(res->status, res->body);
     return blob;
   }
 

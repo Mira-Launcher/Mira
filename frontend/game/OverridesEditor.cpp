@@ -81,7 +81,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
       row->AddAfterLabel(field.layer_label);
       field.clear = new QToolButton(row);
       field.clear->setAutoRaise(true);
-      field.clear->setIcon(icons::For(icons::Glyph::Close, theme::Current().text_muted));
+      icons::Follow(field.clear, icons::Glyph::Close, &theme::Tokens::text_muted);
       field.clear->setToolTip("Use the global setting again");
       field.clear->hide();
       row->AddAfterLabel(field.clear);

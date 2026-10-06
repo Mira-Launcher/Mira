@@ -51,12 +51,18 @@ class GameCard : public HeroBackdrop {
   void UpdateBar();
   // Play or Stop, as the game's state allows.
   void UpdatePlay();
+  // The name and status line, from the library's copy of the game.
+  void UpdateIdentity();
+  // Whether a live event carries a new record of this game.
+  bool ChangesThisGame(const std::string& type, const std::string& data) const;
 
   std::string id_;
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
   GameEditForm* form_ = nullptr;
   CoverChip* cover_ = nullptr;
+  QLabel* title_ = nullptr;
+  QLabel* status_ = nullptr;
   // The form, and the art picker once first opened.
   QStackedWidget* stack_ = nullptr;
   ArtPickerPanel* picker_ = nullptr;

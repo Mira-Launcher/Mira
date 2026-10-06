@@ -52,12 +52,17 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent) : QWidget(paren
 
 void SettingsPanel::SetHeader(QWidget* header) { nav_->SetHeaderWidget(header); }
 
+void SettingsPanel::SetNavWidth(int width) { nav_->SetNavWidth(width); }
+
 void SettingsPanel::LoadFrontendPrefs() {
   theme_saved_ = theme::CurrentName();
   SelectTheme(theme_saved_);
 
   api::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
-    if (!result.ok) return;  // the defaults are already shown
+    if (!result.ok) {
+      LoadDone();  // the defaults are already shown
+      return;
+    }
     const FrontendPrefs& prefs = result.prefs;
     if (prefs.theme) {
       theme_saved_ = QString::fromStdString(*prefs.theme);
@@ -94,7 +99,12 @@ void SettingsPanel::LoadFrontendPrefs() {
     ArrangeSources(order);
     source_order_saved_ = CurrentSourceOrder();
     Refresh();
+    LoadDone();
   });
+}
+
+void SettingsPanel::LoadDone() {
+  if (--loads_pending_ == 0) emit Ready();
 }
 
 // --- Schema pages ---------------------------------------------------------
@@ -133,6 +143,7 @@ void SettingsPanel::Load() {
       nav_->RearrangePages();  // lists and paths now hold their rows, so cards have their real heights
       setEnabled(true);
       Refresh();
+      LoadDone();
       if (!pending_focus_key_.isEmpty()) FocusKey(std::exchange(pending_focus_key_, QString()));
     });
   });
@@ -395,7 +406,7 @@ void SettingsPanel::Save() {
     prefs.sidebar_recent_count = style.recent_count;
     prefs.sidebar_recent_when = style.recent_when;
 
-    // Only when changed here: the sidebar edits both too while Settings is open.
+    // Only when changed here, so an untouched list doesn't overwrite one another client changed meanwhile.
     if (CurrentHiddenSources() != hidden_sources_saved_) {
       std::vector<std::string> hidden;
       for (const QString& id : CurrentHiddenSources()) hidden.push_back(id.toStdString());

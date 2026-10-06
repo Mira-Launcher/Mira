@@ -23,6 +23,7 @@
 #include "SettingsCard.h"
 #include "SettingsSearch.h"
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
 
 namespace mira_gui {
 
@@ -72,8 +73,10 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   left_->setObjectName("settings_nav");
   left_->setAttribute(Qt::WA_StyledBackground);
   left_->setFixedWidth(236);
+  // The sidebar's margins, so its rows and these sit in the same column; one more on the
+  // right for the border, which beside the sidebar is the splitter's handle instead.
   left_layout_ = new QVBoxLayout(left_);
-  left_layout_->setContentsMargins(12, 12, 12, 12);
+  left_layout_->setContentsMargins(10, 10, 11, 10);
   left_layout_->setSpacing(10);
 
   search_ = new QLineEdit(left_);
@@ -95,7 +98,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   nav_ = new QWidget(scroll);
   nav_layout_ = new QVBoxLayout(nav_);
   nav_layout_->setContentsMargins(0, 0, 0, 0);
-  nav_layout_->setSpacing(1);
+  nav_layout_->setSpacing(2);  // the sidebar's row gap
   nav_layout_->addStretch(1);
   scroll->setWidget(nav_);
   left_layout_->addWidget(scroll, /*stretch=*/1);
@@ -117,6 +120,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sections_->setSpacing(36);
   sections_->addStretch(1);
   scroll_->setWidget(canvas_);
+  SetUpScrolling(scroll_, this);  // the nav column and search box beside it page the settings too
   canvas_->installEventFilter(this);
   scroll_->viewport()->installEventFilter(this);
   qApp->installEventFilter(this);  // wheel events over the scroll's controls

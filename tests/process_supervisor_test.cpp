@@ -253,6 +253,31 @@ TEST_CASE("ProcessSupervisor::Stop refuses a not-yet-confirmed TrackSteamLaunch 
 // 1 of 16 processes on a real Proton launch (umu-run, wineserver, etc. all
 // setsid()). These cover what the prefix match must and must not catch.
 
+TEST_CASE("SpawnDetached reports a program that can't start instead of a pid") {
+  const fs::path dir = TempDir("spawn-cannot-start");
+  Command missing;
+  missing.argv = {(dir / "not-there").string()};
+  auto not_found = runner::SpawnDetached(missing);
+  REQUIRE_FALSE(not_found.has_value());
+  CHECK(not_found.error().code == "exec_failed");
+
+  test::Touch(dir / "not-executable", "#!/bin/sh\n", /*executable=*/false);
+  Command denied;
+  denied.argv = {(dir / "not-executable").string()};
+  CHECK_FALSE(runner::SpawnDetached(denied).has_value());
+
+  Command gone_folder;
+  gone_folder.argv = {"true"};
+  gone_folder.cwd = dir / "gone";
+  CHECK_FALSE(runner::SpawnDetached(gone_folder).has_value());
+
+  Command fine;
+  fine.argv = {"true"};
+  auto pid = runner::SpawnDetached(fine);
+  REQUIRE(pid.has_value());
+  ::waitpid(*pid, nullptr, 0);
+}
+
 TEST_CASE("FindPrefixProcesses finds a process that left its process group") {
   const fs::path prefix = TempDir("proc-prefix-escaped");
 

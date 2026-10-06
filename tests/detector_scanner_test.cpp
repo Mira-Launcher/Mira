@@ -343,6 +343,36 @@ TEST_CASE("A name match under the size floor is not flagged as an installer") {
   CHECK_FALSE(result.candidates[0].is_installer);
 }
 
+TEST_CASE("A small installer is recognised by its builder's mark, whatever its name") {
+  const fs::path dir = TempDir("signature-installer-detect");
+  const auto installer_like = [](const fs::path& path, std::string_view mark) {
+    std::ofstream out(path, std::ios::binary);
+    out << "MZ" << std::string(300 * 1024, '\0') << "<assemblyIdentity name=\"" << mark << "\"/>";
+  };
+  installer_like(dir / "Moonleap-1.2-win.exe", "Inno Setup");
+  installer_like(dir / "setup_tiny.exe", "Nullsoft.NSIS.exehead");
+  installer_like(dir / "unins000.exe", "Inno Setup");         // its uninstaller, on the deny list
+  installer_like(dir / "VC_redist.x64.exe", ".wixburn");       // a redistributable, likewise
+  Touch(dir / "Moonleap.exe");
+
+  library::DetectorSettings settings = DefaultSettings();
+  settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
+  settings.deny_name_patterns = {"unins*", "*redist*"};
+  settings.installer_min_size_mb = 50;
+  const auto result = library::Detector(settings).Detect(dir);
+
+  const auto flagged = [&](const std::string& name) {
+    const auto it = std::ranges::find_if(result.candidates, [&](const auto& c) { return c.rel_path == name; });
+    REQUIRE(it != result.candidates.end());
+    return it->is_installer;
+  };
+  CHECK(flagged("Moonleap-1.2-win.exe"));
+  CHECK(flagged("setup_tiny.exe"));
+  CHECK_FALSE(flagged("unins000.exe"));
+  CHECK_FALSE(flagged("VC_redist.x64.exe"));
+  CHECK_FALSE(flagged("Moonleap.exe"));
+}
+
 TEST_CASE("AutoSetup stores an installer candidate as needs_install, not launchable") {
   test::TestEnv env("autosetup-installer-config");
   library::AutoSetup auto_setup(env.config, env.games, env.events);

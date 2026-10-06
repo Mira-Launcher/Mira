@@ -1,5 +1,7 @@
 #include "api/EventBus.h"
 
+#include <algorithm>
+
 #include "core/Lane.h"
 
 namespace mira::api {
@@ -114,8 +116,20 @@ void AddHintAndFix(nlohmann::json& out, const Error& error) {
   out["fix"] = std::move(fix);
 }
 
+namespace {
+
+// Never empty: a tool that failed without a word still gets its code read out ("store_failed" -> "store failed").
+std::string ErrorMessage(const Error& error) {
+  if (!error.message.empty()) return error.message;
+  std::string words = error.code.empty() ? std::string("failed") : error.code;
+  std::ranges::replace(words, '_', ' ');
+  return words;
+}
+
+}  // namespace
+
 nlohmann::json ErrorJson(const Error& error) {
-  nlohmann::json out = {{"code", error.code}, {"message", error.message}};
+  nlohmann::json out = {{"code", error.code}, {"message", ErrorMessage(error)}};
   AddHintAndFix(out, error);
   return out;
 }
@@ -127,7 +141,7 @@ nlohmann::json FailedEvent(nlohmann::json fields, const Error& error) {
     fields["code"] = "cancelled";
     return fields;
   }
-  fields["error"] = error.message;
+  fields["error"] = ErrorMessage(error);
   fields["code"] = error.code;
   AddHintAndFix(fields, error);
   return fields;

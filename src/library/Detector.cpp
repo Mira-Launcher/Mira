@@ -6,6 +6,7 @@
 #include <fstream>
 
 #include "core/Strings.h"
+#include "library/AutoInstall.h"
 #include "library/WinePrefix.h"
 
 namespace mira::library {
@@ -67,12 +68,17 @@ bool DirectoryHasLargeFile(const fs::path& dir, std::uintmax_t min_bytes) {
   return false;
 }
 
-// Name-pattern match plus a size signal: either the exe itself is large
-// (a monolithic installer), or it shares a directory with a large payload
-// file (a split installer). Name alone would flag legitimate small helpers
-// too readily; size alone would miss both real packaging shapes above.
-bool LooksLikeInstaller(const fs::path& path, const DetectorSettings& settings, bool dir_has_large_file) {
-  if (!MatchesAny(settings.installer_name_patterns, path.filename().string())) return false;
+// An installer builder's mark, unless the name says it's a redistributable or an uninstaller
+// (they carry the same marks). Failing that, an installer's name plus a size signal: the exe
+// itself is large (a monolithic installer), or it shares a directory with a large payload (a
+// split installer). Only shallow files are opened for a mark, since that reads up to 4 MB of each.
+bool LooksLikeInstaller(const fs::path& path, const DetectorSettings& settings, bool dir_has_large_file, int depth) {
+  const std::string name = path.filename().string();
+  const bool named = MatchesAny(settings.installer_name_patterns, name);
+  if ((named || depth <= 1) && !MatchesAny(settings.deny_name_patterns, name) && IsBuiltInstaller(path)) {
+    return true;
+  }
+  if (!named) return false;
   if (dir_has_large_file) return true;
   std::error_code ec;
   const std::uintmax_t size = fs::file_size(path, ec);
@@ -120,7 +126,7 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
       const std::string ext = strings::ToLower(entry.path().extension().string());
       if (ext == ".exe") {
         found.push_back({rel, model::Platform::Windows, depth,
-                         LooksLikeInstaller(entry.path(), settings, dir_has_large_file)});
+                         LooksLikeInstaller(entry.path(), settings, dir_has_large_file, depth)});
       } else if (ext == ".msi") {
         found.push_back({rel, model::Platform::Windows, depth, /*is_installer=*/true});
       } else if (ext == ".sh" || HasExecuteBit(entry.path()) || (MightBeElf(ext) && LooksLikeElf(entry.path()))) {
@@ -128,7 +134,7 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
         // routinely lose it); anything else needs the bit or ELF magic so a
         // stray data file doesn't get treated as a launcher.
         found.push_back({rel, model::Platform::Native, depth,
-                         LooksLikeInstaller(entry.path(), settings, dir_has_large_file)});
+                         LooksLikeInstaller(entry.path(), settings, dir_has_large_file, depth)});
       }
     }
   };

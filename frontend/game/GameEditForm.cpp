@@ -9,6 +9,7 @@
 #include "../settings/SettingEditor.h"
 #include "../settings/SettingsCard.h"
 #include "../widgets/KeyValueEdit.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/TagEdit.h"
 #include "OverridesEditor.h"
 
@@ -71,6 +72,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
   scroll->viewport()->setAutoFillBackground(false);
+  SetUpScrolling(scroll);
   auto* cards_page = new QWidget();
   auto* cards_layout = new QVBoxLayout(cards_page);
   cards_layout_ = cards_layout;
@@ -277,6 +279,10 @@ bool GameEditForm::AdvancedOpen() const { return pages_->currentIndex() == 1; }
 
 void GameEditForm::ResetScroll() {
   if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0))) scroll->verticalScrollBar()->setValue(0);
+}
+
+void GameEditForm::Reload() {
+  if (!IsDirty()) Load();
 }
 
 void GameEditForm::Load() {

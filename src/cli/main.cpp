@@ -27,10 +27,13 @@
 namespace {
 using nlohmann::json;
 
-// Read-only: Config::Load would write defaults or quarantine a bad file
-// under the running daemon.
+// $MIRA_SOCKET, else the socket_path setting, as the GUI resolves it. Read-only: Config::Load
+// would write defaults or quarantine a bad file under the running daemon.
 std::filesystem::path ResolveSocketPath() {
   static const std::filesystem::path path = [] {
+    if (const char* override_path = std::getenv("MIRA_SOCKET"); override_path && *override_path) {
+      return mira::paths::Expand(override_path);
+    }
     const auto pointer = mira::config::Schema::Pointer("socket_path");
     json settings = mira::config::Schema::Instance().Defaults();
     if (toml::parse_result parsed = toml::parse_file(mira::paths::SettingsFile().string()); parsed) {

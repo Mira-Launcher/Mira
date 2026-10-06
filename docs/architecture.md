@@ -64,7 +64,7 @@ logs/           per-game output from the last launches
 
 TOML was picked over SQLite so the files stay readable, editable by hand and easy to back up. `Config` and `GameStore` keep their data in memory behind a mutex and rewrite the file on every change. A file that fails to parse is renamed to `.bad` and the daemon starts with defaults.
 
-The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock`. `mirad --socket` and `$MIRA_SOCKET` override it.
+The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
 
 ## Running the daemon
 
@@ -86,7 +86,7 @@ The daemon should cost nothing when idle:
 
 ## Detection and scanning
 
-`library::Detector` scores the executables in one game folder using the `detect.*` settings. Each rule in `detect.rules` is a plain function run in the listed order, and removing a rule from the list disables it. Windows candidates are `.exe` and `.msi` files; Wine runs an `.msi` through `msiexec` and a `.bat` or `.cmd` through `cmd`. A candidate can be flagged `is_installer` by name (`detect.installer_name_patterns`) plus size, and an `.msi` always is. A game whose best candidate is an installer is stored `needs_install`. The default deny and installer patterns live in `src/config/KnownExePatterns.h`.
+`library::Detector` scores the executables in one game folder using the `detect.*` settings. Each rule in `detect.rules` is a plain function run in the listed order, and removing a rule from the list disables it. Windows candidates are `.exe` and `.msi` files; Wine runs an `.msi` through `msiexec` and a `.bat` or `.cmd` through `cmd`. A candidate is flagged `is_installer` when the first or last 2 MB carry an installer builder's mark (Inno Setup, NSIS, WiX Burn, InstallShield, MojoSetup; `library::IsBuiltInstaller`, which shares its sniff with the silent-install check) and its name isn't in `detect.deny_name_patterns` (which covers their uninstallers and redistributables); only files named like installers or at most one folder deep are opened for this. Otherwise an installer name (`detect.installer_name_patterns`) plus size (`detect.installer_min_size_mb`) flags it. An `.msi` always is. A game whose best candidate is an installer is stored `needs_install`. The default deny and installer patterns live in `src/config/KnownExePatterns.h`.
 
 `library::Scanner` treats each folder directly under a library root as one game. A folder already known by `install_path` is never detected again, so a scan never overwrites a user's changes. `prefix_root` and anything that looks like a Wine prefix are skipped. Folders that disappear are marked `missing`, or removed when `library.remove_missing` is on.
 

@@ -262,6 +262,19 @@ GameModeStatusResult GetGameModeStatusSync() {
 
 }  // namespace
 
+std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
+  const json body = json::parse(payload, nullptr, false);
+  if (!body.is_object() || !body.contains("frontend") || !body["frontend"].is_object()) return std::nullopt;
+  FrontendPrefsResult result;
+  FillFrontendPrefs(result, body);
+  json table = body["frontend"];
+  for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width", "sidebar_width",
+                          "library_filter", "sort_by", "sort_descending", "source_tile_widths"}) {
+    table.erase(key);
+  }
+  return ChangedPrefs{std::move(result.prefs), table.dump()};
+}
+
 std::string ResolveSocketPath() {
   return transport::SocketPath();
 }

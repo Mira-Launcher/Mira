@@ -4,6 +4,7 @@
 #include <QObject>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,15 @@ void PatchConfigAsync(QObject* context, const std::vector<ConfigEdit>& edits,
 // POST /v1/config/reset?key=<dotted.key>.
 void ResetConfigKeyAsync(QObject* context, const std::string& key,
                          std::function<void(PatchConfigResult)> callback);
+
+// A config.changed event's prefs, read as GET /v1/config's are, and a fingerprint
+// of its frontend table without the window layout the window saves itself, so an
+// echo of that layout compares equal. Nothing when the payload has no table.
+struct ChangedPrefs {
+  FrontendPrefs prefs;
+  std::string fingerprint;
+};
+std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload);
 
 // GET /v1/config, reading only the opaque `frontend` table.
 void GetFrontendPrefsAsync(QObject* context, std::function<void(FrontendPrefsResult)> callback);

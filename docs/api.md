@@ -1,6 +1,6 @@
 # API reference
 
-REST over HTTP/1.1 on a Unix socket, never TCP. The default socket is `$XDG_RUNTIME_DIR/mira/mirad.sock`; the `socket_path` setting or `mirad --socket <path>` changes it. Routes are registered in `Server::RegisterRoutes` in `src/api/Server.cpp`, and the code wins if this file disagrees.
+REST over HTTP/1.1 on a Unix socket, never TCP. The default socket is `$XDG_RUNTIME_DIR/mira/mirad.sock`; the `socket_path` setting or `mirad --socket <path>` changes it, and `$MIRA_SOCKET` points the GUI and CLI elsewhere. Routes are registered in `Server::RegisterRoutes` in `src/api/Server.cpp`, and the code wins if this file disagrees.
 
 Bodies are JSON. Errors share one envelope:
 
@@ -8,7 +8,7 @@ Bodies are JSON. Errors share one envelope:
 { "error": { "code": "invalid_setting", "message": "scan.debounce_ms: must be between 0 and 600000" } }
 ```
 
-`code` is stable and meant for code; `message` is meant for people and says what went wrong. Two optional fields say what to do about it:
+`code` is stable and meant for code; `message` is meant for people and says what went wrong; it is never empty (a failure with nothing to say gets its code in words). Two optional fields say what to do about it:
 
 - `hint`: one sentence for the user, worded for any client (no CLI commands, no GUI paths).
 - `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown).
@@ -105,7 +105,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `platform` (`windows` or `native`; anything else is `400 invalid_body`, and a ready game turned `windows` gets its prefix straight away), `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -125,7 +125,7 @@ Adds a game from any path:
   "name": "My Game", "platform": "windows", "is_installer": true }
 ```
 
-`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
+`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`; a `platform` other than those two is `400 invalid_body`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
 
 ### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true]`
 Removes the game from the library. Nothing on disk is touched unless asked:
@@ -176,7 +176,9 @@ A live log, one per task so two running at once don't mix. Channels: `daemon` (m
 Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
 
 ### `POST /v1/games/{id}/run`
-Body `{"exe_path": "...", "args": "..."}`. Runs any executable in the game's prefix with normal tracking, provisioning the prefix first if there isn't one. This is how an installer is run by hand.
+Body `{"exe_path": "...", "args": "..."}`. Runs any executable in the game's prefix with normal tracking, provisioning the prefix first if there isn't one. This is how an installer is run by hand. `409 program_missing` when `exe_path` (relative to the game's folder, or absolute) isn't a file; a Windows path such as `C:\...` isn't checked.
+
+A native program without its executable bit is `409 not_executable`. A launch or run whose program still can't be started (its interpreter is missing, exec is refused) answers `409 exec_failed` rather than `200`.
 
 ### `POST /v1/games/{id}/install`
 Body (optional) `{"interactive": bool, "installer": "path"}`. Runs a `needs_install` game's installer in its prefix. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and the game folder as the target; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time. Afterwards the game executable is looked for in `install_path` or in new folders under `install.detect_dirs` in `drive_c`. A game found in a new folder moves there, to its own folder rather than a publisher's folder around it (`Program Files/Ubisoft/<game>`): `installer_dir` keeps the old one, a game still named after the installer's folder takes the new folder's name, and its metadata is fetched again while `metadata.enabled` is on. A job (kind `install`). Events: `game.install.started`/`finished`/`failed` and `game.updated`, also for an installer a scan runs on its own (`scan.auto_run_installers`). Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
@@ -515,6 +517,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed. |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
+| `config.changed` | `{keys, frontend}` after `PATCH /v1/config` or a reset: the dotted settings keys that changed (names only, never values) and the whole `frontend` table, so a client applies a change made elsewhere. |
 | `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. `crashed` means a crash signal (or a shell's 128 + one), exit code 126/127 or a program Wine couldn't load, or Wine's "Unhandled ..." report in the log followed by a non-zero exit; a plain non-zero exit is `exited`, and so is anything after a stop. A crash adds `code` (`crashed`, `killed` or `start_failed`), a plain-language `error` that is also the game's `last_error`, a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
 | `game.installer_leftover` | `{id, installer_dir, bytes}`, after an install or `finish-install` left the game somewhere other than its installer's folder, which is still on disk. Delete it with `DELETE /v1/games/{id}/installer`. |

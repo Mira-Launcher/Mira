@@ -22,8 +22,14 @@ namespace mira::library {
 
 enum class InstallerFormat { kUnknown, kInnoSetup, kNsis, kMsi };
 
+// The formats Mira can run silently; anything else is kUnknown.
 InstallerFormat DetectInstallerFormat(const std::filesystem::path& file);
 std::string_view ToString(InstallerFormat format);
+
+// Whether an installer builder made the file: the silent formats above, plus WiX Burn bundles,
+// InstallShield and GOG's MojoSetup scripts. Their uninstallers and redistributables carry the
+// same marks, so a caller filters those by name.
+bool IsBuiltInstaller(const std::filesystem::path& file);
 
 struct InstallerInfo {
   std::filesystem::path path;
