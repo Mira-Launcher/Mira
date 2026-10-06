@@ -28,7 +28,8 @@ KeyValueEdit::KeyValueEdit(const QString& add_text, QWidget* parent) : QWidget(p
   empty_->setContentsMargins(10, 6, 10, 6);
   layout->addWidget(empty_);
 
-  auto* add = new QPushButton(icons::For(icons::Glyph::Plus, theme::Current().accent), add_text, this);
+  auto* add = new QPushButton(add_text, this);
+  icons::Follow(add, icons::Glyph::Plus, &theme::Tokens::accent);
   add->setObjectName("list_add");
   add->setCursor(Qt::PointingHandCursor);
   connect(add, &QPushButton::clicked, this, [this] { AddRow({}, {}, /*edit=*/true); });
@@ -90,7 +91,7 @@ void KeyValueEdit::AddRow(const QString& name, const QString& value, bool edit) 
   layout->addWidget(value_edit, /*stretch=*/3);
   auto* remove = new QToolButton(row);
   remove->setAutoRaise(true);
-  remove->setIcon(icons::For(icons::Glyph::Close, theme::Current().text_muted));
+  icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
   remove->setToolTip("Remove");
   connect(remove, &QToolButton::clicked, this, [this, row] {
     rows_->removeWidget(row);

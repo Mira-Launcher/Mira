@@ -189,7 +189,7 @@ SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSumma
   SetProminentTitle();
   auto* close = new QToolButton(this);
   close->setAutoRaise(true);
-  close->setIcon(icons::For(icons::Glyph::Close));
+  icons::Follow(close, icons::Glyph::Close);
   close->setToolTip("Close");
   connect(close, &QToolButton::clicked, this, &SidebarStyleCard::CloseRequested);
   Header()->addWidget(close);

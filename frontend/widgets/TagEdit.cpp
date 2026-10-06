@@ -85,7 +85,7 @@ TagEdit::TagEdit(QWidget* parent) : QWidget(parent) {
 
   add_ = new QPushButton("Add tag", this);
   add_->setObjectName("text_button");
-  add_->setIcon(icons::For(icons::Glyph::Plus));
+  icons::Follow(add_, icons::Glyph::Plus);
   connect(add_, &QPushButton::clicked, this, &TagEdit::StartAdding);
   layout->addWidget(add_);
 
@@ -132,7 +132,7 @@ void TagEdit::Rebuild() {
     chip_layout->addWidget(new QLabel(QString::fromStdString(tag), chip));
     auto* remove = new QToolButton(chip);
     remove->setObjectName("tag_remove");
-    remove->setIcon(icons::For(icons::Glyph::Close));
+    icons::Follow(remove, icons::Glyph::Close);
     remove->setIconSize(QSize(12, 12));
     remove->setToolTip(QString("Remove %1").arg(QString::fromStdString(tag)));
     connect(remove, &QToolButton::clicked, this, [this, tag] {

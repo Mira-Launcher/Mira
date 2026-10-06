@@ -1150,7 +1150,7 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   header_layout->setSpacing(6);
   auto* back = new QToolButton(header);
   back->setAutoRaise(true);
-  back->setIcon(mira_gui::icons::For(mira_gui::icons::Glyph::ArrowLeft));
+  mira_gui::icons::Follow(back, mira_gui::icons::Glyph::ArrowLeft);
   back->setToolTip("Back to the library");
   connect(back, &QToolButton::clicked, this, &LibraryWindow::RequestCloseSettings);
   header_layout->addWidget(back);

@@ -87,7 +87,7 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   text->addStretch(1);
 
   auto* play = new QPushButton(running ? "Stop" : RunVerb(game), card);
-  play->setIcon(icons::For(icons::Glyph::Play));
+  icons::Follow(play, icons::Glyph::Play);
   play->setEnabled(CanPlayOrStop(game));
   connect(play, &QPushButton::clicked, this, [this, id] { emit PlayToggled(id); });
   auto* actions = new QHBoxLayout();

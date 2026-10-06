@@ -43,7 +43,7 @@ ManageSourcesCard::ManageSourcesCard(QWidget* parent) : SettingsCard("Manage sou
   setFixedWidth(720);
   auto* close = new QToolButton(this);
   close->setAutoRaise(true);
-  close->setIcon(icons::For(icons::Glyph::Close));
+  icons::Follow(close, icons::Glyph::Close);
   close->setToolTip("Close");
   connect(close, &QToolButton::clicked, this, &ManageSourcesCard::CloseRequested);
   Header()->addWidget(close);
@@ -101,7 +101,7 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
 
   row.more = new QToolButton(row.row);
   row.more->setAutoRaise(true);
-  row.more->setIcon(icons::For(icons::Glyph::More));
+  icons::Follow(row.more, icons::Glyph::More);
   row.more->setToolTip("More");
   row.more->setSizePolicy(keep);
   connect(row.more, &QToolButton::clicked, this, [this, id] { ShowMenu(id); });

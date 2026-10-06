@@ -90,7 +90,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   if (game != nullptr) cover_->ShowGame(*game);
   identity->insertStretch(0, 1);
   play_ = new QPushButton(this);
-  play_->setIcon(icons::For(icons::Glyph::Play, tokens.on_accent));
+  icons::Follow(play_, icons::Glyph::Play, &theme::Tokens::on_accent);
   play_->setDefault(true);
   connect(play_, &QPushButton::clicked, this, &GameCard::PlayClicked);
   // Follows the game starting and stopping, and changes made elsewhere (the CLI, a batch edit).
@@ -111,17 +111,22 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   auto* panel = new QWidget(this);
   panel->setObjectName("game_edit_panel");
   panel->setAttribute(Qt::WA_StyledBackground);
-  QColor panel_color = tokens.window;
-  panel_color.setAlphaF(0.82);
-  panel->setStyleSheet(
-      QString("QWidget#game_edit_panel { background: rgba(%1, %2, %3, %4); border: 1px solid "
-              "%5; border-radius: %6px; }")
-          .arg(panel_color.red())
-          .arg(panel_color.green())
-          .arg(panel_color.blue())
-          .arg(panel_color.alpha())
-          .arg(tokens.border.name())
-          .arg(tokens.radius_panel));
+  const auto style_panel = [panel] {
+    const theme::Tokens& current = theme::Current();
+    QColor panel_color = current.window;
+    panel_color.setAlphaF(0.82);
+    panel->setStyleSheet(
+        QString("QWidget#game_edit_panel { background: rgba(%1, %2, %3, %4); border: 1px solid "
+                "%5; border-radius: %6px; }")
+            .arg(panel_color.red())
+            .arg(panel_color.green())
+            .arg(panel_color.blue())
+            .arg(panel_color.alpha())
+            .arg(current.border.name())
+            .arg(current.radius_panel));
+  };
+  style_panel();
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, panel, style_panel);
   auto* panel_layout = new QVBoxLayout(panel);
   panel_layout->setContentsMargins(0, 0, 0, 0);
   auto* panel_row = new QHBoxLayout();

@@ -41,7 +41,7 @@ void BuildHeader(SettingsCard* card, const GameSummary& game, const QString& tit
 
   auto* button = new QToolButton(card);
   button->setAutoRaise(true);
-  button->setIcon(icons::For(icons::Glyph::Close));
+  icons::Follow(button, icons::Glyph::Close);
   button->setToolTip(close_tip);
   QObject::connect(button, &QToolButton::clicked, card, close);
   card->Header()->addWidget(button, 0, Qt::AlignTop);

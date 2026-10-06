@@ -157,7 +157,7 @@ SettingRow::SettingRow(const QString& label, const QString& doc, QWidget* parent
   revert_ = new QToolButton(this);
   revert_->setObjectName("row_revert");
   revert_->setAutoRaise(true);
-  revert_->setIcon(icons::For(icons::Glyph::Undo, theme::Current().text_muted));
+  icons::Follow(revert_, icons::Glyph::Undo, &theme::Tokens::text_muted);
   revert_->setToolTip("Undo this change");
   revert_->setAccessibleName("Undo the change to " + label);
   KeepSpaceWhenHidden(revert_);
@@ -181,7 +181,7 @@ void SettingRow::ShowGrip() {
   auto* grip = new QToolButton(this);
   grip->setObjectName("row_grip");
   grip->setAutoRaise(true);
-  grip->setIcon(icons::For(icons::Glyph::Grip, theme::Current().text_muted));
+  icons::Follow(grip, icons::Glyph::Grip, &theme::Tokens::text_muted);
   grip->setCursor(Qt::OpenHandCursor);
   grip->setToolTip("Drag to reorder, or press Alt+Up or Alt+Down");
   grip->setAccessibleName("Reorder " + label_->text());
@@ -365,6 +365,8 @@ void SettingsCard::SetCollapsible(bool collapsed) {
     chevron_->setAutoRaise(true);
     chevron_->setFocusPolicy(Qt::StrongFocus);
     connect(chevron_, &QToolButton::clicked, this, [this] { SetExpanded(!Expanded()); });
+    // Redrawn in the new theme's color.
+    connect(theme::Notifier::Instance(), &theme::Notifier::Changed, chevron_, [this] { SetExpanded(Expanded()); });
     header_layout_->addWidget(chevron_);
     header_->setCursor(Qt::PointingHandCursor);
     header_->installEventFilter(this);

@@ -60,7 +60,7 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
 
   auto* close = new QToolButton(this);
   close->setAutoRaise(true);
-  close->setIcon(icons::For(icons::Glyph::Close));
+  icons::Follow(close, icons::Glyph::Close);
   close->setToolTip("Keep as is");
   connect(close, &QToolButton::clicked, this, &InstallPromptCard::CloseRequested);
   Header()->addWidget(close, 0, Qt::AlignTop);

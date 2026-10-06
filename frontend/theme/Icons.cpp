@@ -1,5 +1,8 @@
 #include "Icons.h"
 
+#include <QAbstractButton>
+#include <QAction>
+#include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
 #include <QTransform>
@@ -328,6 +331,26 @@ QIcon For(Glyph glyph, const QColor& color) {
   QIcon icon;
   for (const int size : {16, 20, 24, 32, 48}) icon.addPixmap(Render(glyph, size, color));
   return icon;
+}
+
+void Follow(QAbstractButton* button, Glyph glyph, Role role) {
+  const auto apply = [button, glyph, role] { button->setIcon(For(glyph, theme::Current().*role)); };
+  apply();
+  QObject::connect(theme::Notifier::Instance(), &theme::Notifier::Changed, button, apply);
+}
+
+void Follow(QAction* action, Glyph glyph, Role role) {
+  const auto apply = [action, glyph, role] { action->setIcon(For(glyph, theme::Current().*role)); };
+  apply();
+  QObject::connect(theme::Notifier::Instance(), &theme::Notifier::Changed, action, apply);
+}
+
+void Follow(QLabel* label, Glyph glyph, int size, Role role) {
+  const auto apply = [label, glyph, size, role] {
+    label->setPixmap(For(glyph, theme::Current().*role).pixmap(size, size));
+  };
+  apply();
+  QObject::connect(theme::Notifier::Instance(), &theme::Notifier::Changed, label, apply);
 }
 
 }  // namespace mira_gui::icons

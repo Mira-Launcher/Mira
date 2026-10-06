@@ -171,9 +171,10 @@ QWidget* SourcePage::BuildTopRow() {
 
   // Steam can't report the status back, so neither button shows one as current.
   if (id_ == "steam") {
-    const auto status_button = [this](const QString& label, icons::Glyph glyph, const QColor& color,
+    const auto status_button = [this](const QString& label, icons::Glyph glyph, icons::Role color,
                                       const std::string& status) {
-      auto* button = new QPushButton(icons::For(glyph, color), label, tabs_);
+      auto* button = new QPushButton(label, tabs_);
+      icons::Follow(button, glyph, color);
       connect(button, &QPushButton::clicked, this, [this, button, status] {
         button->setEnabled(false);
         api::SetSteamStatusAsync(this, status, [this, button](StoreActionResult result) {
@@ -184,19 +185,19 @@ QWidget* SourcePage::BuildTopRow() {
       });
       tabs_->SetTrailing(button);
     };
-    status_button("Go online", icons::Glyph::Dot, theme::Current().running, "online");
-    status_button("Go invisible", icons::Glyph::EyeSlash, theme::Current().text, "invisible");
+    status_button("Go online", icons::Glyph::Dot, &theme::Tokens::running, "online");
+    status_button("Go invisible", icons::Glyph::EyeSlash, &theme::Tokens::text, "invisible");
   }
 
   import_button_ = new QPushButton(CopyFor(id_).import_button, tabs_);
-  import_button_->setIcon(icons::For(icons::Glyph::Refresh));
+  icons::Follow(import_button_, icons::Glyph::Refresh);
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).
   import_button_->setVisible(HasImport() && !IsStore() && !IsLauncher());
   connect(import_button_, &QPushButton::clicked, this, &SourcePage::Import);
   tabs_->SetTrailing(import_button_);
 
   settings_button_ = new QToolButton(tabs_);
-  settings_button_->setIcon(icons::For(icons::Glyph::Settings));
+  icons::Follow(settings_button_, icons::Glyph::Settings);
   settings_button_->setToolTip(source_.name + " settings");
   settings_button_->setAutoRaise(true);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
@@ -229,7 +230,7 @@ void SourcePage::OpenSettingsModal() {
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
     auto* close = new QToolButton(settings_card_);
-    close->setIcon(icons::For(icons::Glyph::Close));
+    icons::Follow(close, icons::Glyph::Close);
     close->setToolTip("Close");
     close->setAutoRaise(true);
     connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
@@ -408,7 +409,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   header->addWidget(owned_heading_);
   header->addStretch(1);
   owned_refresh_ = new QPushButton("Refresh", owned_section_);
-  owned_refresh_->setIcon(icons::For(icons::Glyph::Refresh));
+  icons::Follow(owned_refresh_, icons::Glyph::Refresh);
   connect(owned_refresh_, &QPushButton::clicked, this, &SourcePage::RefreshOwned);
   if (id_ == "itch") {
     auto* collections = new QPushButton("Manage collections…", owned_section_);
@@ -438,7 +439,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   }
   if (id_ != "humble") {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
-    art_key_->setIcon(icons::For(icons::Glyph::Image));
+    icons::Follow(art_key_, icons::Glyph::Image);
     art_key_->setVisible(false);
     connect(art_key_, &QPushButton::clicked, this, [this] { emit OpenSettingsRequested(art_key_setting_); });
     auto* row = new QHBoxLayout();

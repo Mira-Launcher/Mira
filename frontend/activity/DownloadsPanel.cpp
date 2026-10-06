@@ -211,7 +211,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       if (entry.source == "metadata") glyph = icons::Glyph::Image;
       if (entry.source == "delete" || entry.source == "remove_source") glyph = icons::Glyph::Trash;
     }
-    cover->setPixmap(icons::For(glyph, tokens.text_muted).pixmap(22, 22));
+    icons::Follow(cover, glyph, 22);
   }
   layout->addWidget(cover);
 

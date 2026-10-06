@@ -178,7 +178,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   catalog_->Header()->addWidget(source_);
   auto* refresh = new QToolButton(catalog_);
   refresh->setAutoRaise(true);
-  refresh->setIcon(icons::For(icons::Glyph::Refresh, theme::Current().text_muted));
+  icons::Follow(refresh, icons::Glyph::Refresh, &theme::Tokens::text_muted);
   refresh->setToolTip("Check again");
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
   catalog_->Header()->addWidget(refresh);
@@ -368,7 +368,7 @@ void RunnersPage::RebuildInstalled() {
 
     auto* more = new QToolButton(row);
     more->setAutoRaise(true);
-    more->setIcon(icons::For(icons::Glyph::More));
+    icons::Follow(more, icons::Glyph::More);
     more->setToolTip("More");
     QSizePolicy keep = more->sizePolicy();
     keep.setRetainSizeWhenHidden(true);
@@ -418,7 +418,11 @@ void RunnersPage::RebuildCatalog() {
     // knowing before a 500 MB download.
     facts << (release.has_checksum ? "verified" : "no checksum");
     ElidedLabel* details = Facts(facts.join(" · "), row);
-    if (!release.has_checksum) details->setStyleSheet(QString("color: %1;").arg(tokens.warning.name()));
+    if (!release.has_checksum) {
+      const auto warn = [details] { details->setStyleSheet(QString("color: %1;").arg(theme::Current().warning.name())); };
+      warn();
+      connect(theme::Notifier::Instance(), &theme::Notifier::Changed, details, warn);
+    }
 
     const QString key = DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
                                                 QString::fromStdString(release.name));
