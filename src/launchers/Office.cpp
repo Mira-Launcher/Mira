@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <chrono>
+#include <mutex>
 #include <optional>
 
 #include "core/Log.h"
@@ -36,6 +38,9 @@ constexpr std::array kShims = {Shim{"sppc", ""}, Shim{"ole32", "ole32w"}, Shim{"
 // Wine loads its own builtin in place of a file that carries this marker.
 constexpr std::size_t kBuiltinMarkerAt = 64;
 constexpr char kNativeMarker[16] = "Mira native DLL";
+
+// In the prefix: the shims release installed there.
+constexpr std::string_view kShimsMarker = "mira-shims-release";
 
 // Xft.dpi from the X resources, so Office matches the desktop's scale; 96 if unset.
 int DesktopDpi() {
@@ -108,9 +113,26 @@ std::string Registry(const config::Config& config) {
   return reg;
 }
 
+// The release the shims URL points at now: the address its first redirect
+// names (".../download/v0.1.2/..."), or empty when offline.
+std::string LatestShims(const std::string& url) {
+  Command command;
+  command.argv = {"curl", "-sI", "--max-time", "5", "-o", "/dev/null", "-w", "%{redirect_url}", url};
+  const auto result = runner::RunAndWait(command);
+  return result && result->exit_code == 0 ? result->output : std::string();
+}
+
+std::string ReadLine(const fs::path& file) {
+  std::ifstream in(file);
+  std::string line;
+  std::getline(in, line);
+  return line;
+}
+
 // The folder holding the shim DLLs: launchers.office.shims_dir if set, else
-// the release from launchers.office.shims_url, downloaded once.
-Result<fs::path> ShimsDir(const config::Config& config, const fs::path& downloads) {
+// the release from launchers.office.shims_url, downloaded again when a newer
+// one is out. `version` is the release the folder holds (empty for shims_dir).
+Result<fs::path> ShimsDir(const config::Config& config, const fs::path& downloads, std::string* version = nullptr) {
   std::error_code ec;
   if (const fs::path local = config.GetPath("launchers.office.shims_dir"); !local.empty()) {
     if (!fs::is_regular_file(local / "sppc.dll", ec)) {
@@ -120,6 +142,10 @@ Result<fs::path> ShimsDir(const config::Config& config, const fs::path& download
     return local;
   }
   const fs::path dir = paths::UserDir() / "tools" / "mira-winapp-shims";
+  const fs::path marker = dir / ".release";
+  const std::string url = config.GetString("launchers.office.shims_url");
+  const std::string latest = LatestShims(url);
+  const std::string have = ReadLine(marker);
   const auto find = [&dir]() -> std::optional<fs::path> {
     std::error_code walk;
     for (fs::recursive_directory_iterator it(dir, walk), end; !walk && it != end; it.increment(walk)) {
@@ -127,15 +153,24 @@ Result<fs::path> ShimsDir(const config::Config& config, const fs::path& download
     }
     return std::nullopt;
   };
-  if (const auto found = find()) return *found;
+  // Keep what is here unless a different release is out (offline: keep it).
+  if (const auto found = find(); found && (latest.empty() || latest == have)) {
+    if (version) *version = have;
+    return *found;
+  }
   const fs::path archive = downloads / "mira-winapp-shims.tar.gz";
-  if (auto fetched = runner::CurlDownload(config.GetString("launchers.office.shims_url"), archive); !fetched) {
+  if (auto fetched = runner::CurlDownload(url, archive); !fetched) {
+    if (const auto found = find()) return *found;  // an older copy beats none
     return Err("download_failed", "couldn't download the Office shims: " + fetched.error().message, kConnectionHint);
   }
+  fs::remove_all(dir, ec);
   fs::create_directories(dir, ec);
   if (auto extracted = runner::Extract(archive, dir); !extracted) return std::unexpected(extracted.error());
-  if (const auto found = find()) return *found;
-  return Err("office_shims_missing", "the Office shims download has no DLLs in it");
+  const auto found = find();
+  if (!found) return Err("office_shims_missing", "the Office shims download has no DLLs in it");
+  std::ofstream(marker) << latest << "\n";
+  if (version) *version = latest;
+  return *found;
 }
 
 Result<void> CopyFile(const fs::path& from, const fs::path& to) {
@@ -147,8 +182,8 @@ Result<void> CopyFile(const fs::path& from, const fs::path& to) {
 }
 
 Result<void> InstallShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host,
-                          const fs::path& downloads) {
-  const auto shims = ShimsDir(config, downloads);
+                          const fs::path& downloads, std::string* version = nullptr) {
+  const auto shims = ShimsDir(config, downloads, version);
   if (!shims) return std::unexpected(shims.error());
   const auto wine = runner::ResolveWineBinary(runners, host);
   if (!wine) return std::unexpected(wine.error());
@@ -201,6 +236,28 @@ std::string Configuration(const config::Config& config) {
                      config.GetString("launchers.office.plan"));
 }
 
+Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host) {
+  // At most one check every few hours; a launch never waits on it twice.
+  static std::mutex mutex;
+  static std::chrono::steady_clock::time_point last;
+  std::lock_guard lock(mutex);
+  const auto now = std::chrono::steady_clock::now();
+  if (last != std::chrono::steady_clock::time_point{} && now - last < std::chrono::hours(6)) return {};
+  last = now;
+
+  const fs::path marker = fs::path(host.data_dir) / kShimsMarker;
+  const fs::path downloads = paths::UserDir() / "downloads";
+  std::string version;
+  auto dir = ShimsDir(config, downloads, &version);
+  if (!dir) return std::unexpected(dir.error());
+  if (!version.empty() && version == ReadLine(marker)) return {};
+  if (version.empty() && fs::exists(marker)) return {};  // shims_dir: Prepare installed them
+  log::Info("updating the Microsoft 365 shims to {}", version.empty() ? "the local build" : version);
+  if (auto shims = InstallShims(config, runners, host, downloads, &version); !shims) return shims;
+  std::ofstream(marker) << version << "\n";
+  return {};
+}
+
 Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host,
                      const fs::path& downloads) {
   std::error_code ec;
@@ -215,7 +272,9 @@ Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry&
   if (imported->exit_code != 0) return Err("regedit_failed", "couldn't write Microsoft 365's registry settings");
 
   log::Info("installing the Microsoft 365 shims");
-  if (auto shims = InstallShims(config, runners, host, downloads); !shims) return shims;
+  std::string version;
+  if (auto shims = InstallShims(config, runners, host, downloads, &version); !shims) return shims;
+  std::ofstream(fs::path(host.data_dir) / kShimsMarker) << version << "\n";
 
   std::ofstream(downloads / "office-configuration.xml") << Configuration(config);
   return {};

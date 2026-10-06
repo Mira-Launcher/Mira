@@ -20,6 +20,7 @@
 #include "core/Result.h"
 #include "core/Strings.h"
 #include "launchers/Launchers.h"
+#include "launchers/Office.h"
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/Relocate.h"
@@ -212,7 +213,15 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     // A launcher game is started by its launcher, which keeps running after the
     // game exits; the game's own processes are tracked.
-    if (launchers::ForGame(*game)) {
+    if (const launchers::Launcher* launcher = launchers::ForGame(*game)) {
+      if (launcher->id == "office") {
+        if (const auto host = s.games.Find(launchers::GameId(*launcher)); host && !host->data_dir.empty()) {
+          if (auto refreshed = launchers::office::RefreshShims(s.config, runner::RunnerRegistry(s.config), *host);
+              !refreshed) {
+            log::Warn("couldn't update the Microsoft 365 shims: {}", refreshed.error().message);
+          }
+        }
+      }
       auto command = launchers::BuildCommand(s.config, s.games, *game);
       if (!command) return SendError(res, 409, command.error());
       if (auto ran = RunPreScriptInline(pre_script); !ran) {

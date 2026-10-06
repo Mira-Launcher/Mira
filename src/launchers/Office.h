@@ -32,6 +32,10 @@ std::span<const App> Apps();
 // The Office Deployment Tool configuration for the configured plan.
 std::string Configuration(const config::Config& config);
 
+// Installs a newer shims release into `host`'s prefix when one is out, checked
+// at most every few hours. Quiet and harmless when offline.
+Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host);
+
 // Registry settings, the shim DLLs and the deployment configuration, written
 // into `host`'s prefix before WebView2 and Office are installed.
 Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host,
