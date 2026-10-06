@@ -132,6 +132,26 @@ TEST_CASE("PATCH /v1/games/{id} env: per-key null removes just that key") {
   CHECK(stored->env.at("BAZ") == "3");
 }
 
+TEST_CASE("PATCH /v1/games/{id} keeps an executable outside the game's folder pointing at the same file") {
+  LiveServer server(TempDir("server-exe-patch"));
+  model::Game game;
+  game.id = "xenoblade";
+  game.name = "Xenoblade";
+  game.install_path = "/home/u/Games";
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  const auto patch = [&](const std::string& exe) {
+    auto res = client.Patch("/v1/games/xenoblade", nlohmann::json{{"exe_path", exe}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return server.games().Find("xenoblade")->exe_path;
+  };
+  CHECK(patch("../Applications/Eden.AppImage") == "/home/u/Applications/Eden.AppImage");
+  CHECK(patch("bin/Game.exe") == "bin/Game.exe");
+  CHECK(patch("/opt/game/run.sh") == "/opt/game/run.sh");
+}
+
 TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   LiveServer server(TempDir("server-env-patch-clear"));
 
@@ -827,6 +847,63 @@ TEST_CASE("DELETE /v1/games/{id}?purge=true removes files, prefix, and metadata 
   CHECK_FALSE(server.games().Find("celeste").has_value());
 }
 
+TEST_CASE("DELETE /v1/games/{id}?delete_files=true removes a store game from Mira's store folder, and only an AppImage from a shared one") {
+  LiveServer server(TempDir("server-delete-store-files"));
+  const fs::path gog_root = server.config().GetPath("gog.install_root");
+  const fs::path library_root = TempDir("server-delete-store-library");
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({library_root.string()})).has_value());
+
+  test::Touch(gog_root / "Sapphire Safari" / "game.exe", "exe");
+  model::Game gog;
+  gog.id = "gog-1804860967";
+  gog.name = "Sapphire Safari";
+  gog.source = "gog";
+  gog.source_ref = "1804860967";
+  gog.install_path = (gog_root / "Sapphire Safari").string();
+  REQUIRE(server.games().Upsert(gog).has_value());
+
+  // An AppImage loose in a library root, next to another game.
+  test::Touch(library_root / "osu.AppImage", "appimage", /*executable=*/true);
+  test::Touch(library_root / "Celeste" / "Celeste.exe", "exe");
+  model::Game osu;
+  osu.id = "osu";
+  osu.name = "osu!";
+  osu.install_path = library_root.string();
+  osu.exe_path = "osu.AppImage";
+  model::Game celeste;
+  celeste.id = "celeste";
+  celeste.name = "Celeste";
+  celeste.install_path = (library_root / "Celeste").string();
+  REQUIRE(server.games().Upsert(osu).has_value());
+  REQUIRE(server.games().Upsert(celeste).has_value());
+
+  httplib::Client client = server.Client();
+  auto res = client.Delete("/v1/games/gog-1804860967?delete_files=true");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 200);
+  CHECK_FALSE(fs::exists(gog_root / "Sapphire Safari"));
+
+  res = client.Delete("/v1/games/osu?delete_files=true");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 200);
+  CHECK_FALSE(fs::exists(library_root / "osu.AppImage"));
+  CHECK(fs::exists(library_root / "Celeste" / "Celeste.exe"));
+
+  // A folder two games run from is neither game's alone to delete.
+  model::Game launcher;
+  launcher.id = "celeste-launcher";
+  launcher.name = "Celeste Launcher";
+  launcher.install_path = celeste.install_path;
+  launcher.exe_path = "Launcher.exe";
+  REQUIRE(server.games().Upsert(launcher).has_value());
+  res = client.Delete("/v1/games/celeste?delete_files=true");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 400);
+  CHECK(nlohmann::json::parse(res->body)["error"]["code"] == "shared_folder");
+  CHECK(fs::exists(library_root / "Celeste" / "Celeste.exe"));
+  CHECK(server.games().Find("celeste").has_value());
+}
+
 TEST_CASE("POST /v1/games/delete removes many games, deletes files only where allowed, and keeps a failed one") {
   LiveServer server(TempDir("server-batch-delete-state"));
   const fs::path library_root = TempDir("server-batch-delete-library");
@@ -959,6 +1036,37 @@ TEST_CASE("POST /v1/games/manual adds a ready native game outside any configured
   const std::string id = parsed.value("id", "");
   REQUIRE_FALSE(id.empty());
   CHECK(server.games().Find(id).has_value());
+}
+
+TEST_CASE("POST /v1/games/manual adds each AppImage in a shared folder as its own game, named after it") {
+  LiveServer server(TempDir("server-manual-appimages"));
+  const fs::path applications = TempDir("server-manual-applications");
+  test::Touch(applications / "Eden.AppImage", "appimage", /*executable=*/true);
+  test::Touch(applications / "osu.AppImage", "appimage", /*executable=*/true);
+
+  httplib::Client client = server.Client();
+  const auto add = [&](const fs::path& folder, const std::string& exe) {
+    const nlohmann::json body = {{"install_path", folder.string()}, {"exe_path", exe}};
+    auto res = client.Post("/v1/games/manual", body.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  // Adding them again updates each one rather than adding copies.
+  for (int pass = 0; pass < 2; ++pass) {
+    for (const char* file : {"Eden.AppImage", "osu.AppImage"}) add(applications, file);
+  }
+  REQUIRE(server.games().All().size() == 2);
+  CHECK(server.games().Find("eden").has_value());
+  CHECK(server.games().Find("osu").has_value());
+
+  // A folder of its own is one game, whichever of its programs is picked.
+  const fs::path celeste = TempDir("server-manual-celeste");
+  test::Touch(celeste / "Celeste", "elf", /*executable=*/true);
+  test::Touch(celeste / "Celeste.bin.x86_64", "elf", /*executable=*/true);
+  add(celeste, "Celeste");
+  add(celeste, "Celeste.bin.x86_64");
+  REQUIRE(server.games().All().size() == 3);
+  CHECK(server.games().FindByInstallPath(celeste.string())->exe_path == "Celeste.bin.x86_64");
 }
 
 TEST_CASE("POST /v1/games/manual with is_installer=true creates a needs_install game") {

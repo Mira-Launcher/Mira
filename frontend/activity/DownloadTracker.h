@@ -7,6 +7,7 @@
 #include <QString>
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,15 @@ public:
   // when it reported nothing. `short_form` leaves out the speed.
   static QString ProgressText(const Entry& entry, bool short_form = false);
 
+  // What a cover shows for a running install: the rail's fraction (negative while unknown), the
+  // status line ("42% · 3 min left", or what it's doing) and a quieter line under it (the speed).
+  struct TileProgress {
+    double fraction = -1;
+    QString status;
+    QString detail;
+  };
+  static TileProgress TileProgressFor(const Entry& entry);
+
   // Returns whether the event was one of ours.
   bool HandleEvent(const std::string& type, const std::string& data);
   // After a reconnect: ends running jobs whose finish event was missed.
@@ -74,6 +84,8 @@ public:
 
   // The installed game an entry is, or became; empty if none.
   static QString GameIdFor(const Entry& entry);
+  // The mirad job a running entry's work runs as, for cancelling it; empty if none is known.
+  QString JobFor(const Entry& entry) const;
 
   // Set by the owner: a tracked game's name, or empty.
   std::function<QString(const std::string& id)> game_name;
@@ -86,6 +98,8 @@ signals:
 
 private:
   Entry& Upsert(Kind kind, const QString& source, const QString& ref);
+  // A cancelled entry's row goes away rather than reading as a failure. True if it was one.
+  bool DropIfCancelled(const Entry& entry);
   bool HandleJobEvent(const std::string& type, const std::string& data);
   void Poll();
   void ResolveNames(const QString& source);
@@ -93,6 +107,7 @@ private:
   std::vector<Entry> entries_;
   QHash<QString, QString> titles_;  // "<source>:<ref>" -> title
   QSet<QString> asked_sources_;     // title lists already fetched to name entries
+  std::map<QString, QString> job_by_target_;  // running jobs with their own rows: target -> job id
   QTimer* poll_ = nullptr;
 };
 

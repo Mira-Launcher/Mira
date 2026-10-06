@@ -20,6 +20,16 @@ void TileView::SetDragSelectEnabled(bool enabled) {
   if (!enabled) EndDrag();
 }
 
+void TileView::KeepAnimating() {
+  if (animation_timer_ == nullptr) {
+    animation_timer_ = new QTimer(this);
+    animation_timer_->setSingleShot(true);
+    animation_timer_->setInterval(33);
+    connect(animation_timer_, &QTimer::timeout, viewport(), qOverload<>(&QWidget::update));
+  }
+  if (!animation_timer_->isActive()) animation_timer_->start();
+}
+
 void TileView::mousePressEvent(QMouseEvent* event) {
   // A plain click between or below the tiles deselects, like a file manager.
   if (event->button() == Qt::LeftButton && !indexAt(event->pos()).isValid() &&

@@ -103,6 +103,11 @@ struct RunnerBuild {
   std::string name;
   std::string path;
   std::string version;
+  // The release its own files name, e.g. "cachyos-11.0-20261005-slr". The
+  // same as `name` except for a build updated in place (a distro package,
+  // Steam's own Proton), which is named by its folder so references to it
+  // survive updates.
+  std::string release;
 
   std::string Reference() const { return kind + ":" + name; }
 };

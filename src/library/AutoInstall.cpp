@@ -1,5 +1,7 @@
 #include "library/AutoInstall.h"
 
+#include <signal.h>
+
 #include <algorithm>
 #include <fstream>
 #include <map>
@@ -15,6 +17,7 @@
 #include "library/Detector.h"
 #include "library/SourceRemoval.h"
 #include "metadata/FetchQueue.h"
+#include "proc/ProcessSupervisor.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 
@@ -206,7 +209,13 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
   log::Info("running {} installer for {}: {}", silent ? "silent" : "interactive", game.id, installer.string());
   const Result<runner::ExecResult> result = runner::RunAndWait(run);
-  if (!result) return std::unexpected(result.error());
+  if (!result) {
+    // Wine's own processes leave the installer's group, so a cancel ends them through the prefix.
+    if (result.error().code == "cancelled" && !provisioned.data_dir.empty()) {
+      for (pid_t found : proc::FindPrefixProcesses(provisioned.data_dir)) ::kill(found, SIGKILL);
+    }
+    return std::unexpected(result.error());
+  }
   // A GUI installer's exit code isn't reliable; detection below decides.
   if (silent && result->exit_code != 0) {
     return Err("installer_failed", std::format("the quiet install failed (exit code {})", result->exit_code),

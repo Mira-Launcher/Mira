@@ -4,16 +4,19 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScreen>
 #include <QVBoxLayout>
 
 #include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../client/Jobs.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
+#include "../widgets/ProgressRail.h"
 #include "DownloadTracker.h"
 
 namespace mira_gui {
@@ -27,7 +30,7 @@ const QSize kCover(40, 60);
 QString RunningText(const DownloadTracker::Entry& entry) {
   switch (entry.kind) {
     case Kind::Game:
-      return entry.bytes > 0 ? "Installing… " + QLocale().formattedDataSize(entry.bytes) + " written"
+      return entry.bytes > 0 ? "Installing… " + SizeText(entry.bytes) + " written"
                              : QString("Installing…");
     case Kind::Title: {
       if (entry.source == "steam" && !entry.update) return "Handing to Steam…";
@@ -37,7 +40,10 @@ QString RunningText(const DownloadTracker::Entry& entry) {
     }
     case Kind::Launcher: return "Installing…";
     case Kind::Job: return entry.message.isEmpty() ? QString("Working…") : entry.message;
-    default: return "Downloading…";
+    default: {
+      const QString progress = DownloadTracker::ProgressText(entry);
+      return progress.isEmpty() ? QString("Downloading…") : "Downloading… " + progress;
+    }
   }
 }
 
@@ -157,17 +163,13 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
     QWidget* row = rows_->itemAt(i)->widget();
     if (row == nullptr || row->property("download_key").toString() != key) continue;
     if (!row->property("download_running").toBool()) return false;
+    // Its job became known after the row was built: rebuilt with Cancel.
+    if ((row->findChild<QPushButton*>("download_cancel") == nullptr) != tracker_->JobFor(*entry).isEmpty()) return false;
     const QString origin = Origin(*tracker_, *entry);
     const QString state = RunningText(*entry);
     row->findChild<QLabel*>("download_title")->setText(tracker_->NameFor(*entry));
     row->findChild<QLabel*>("download_status")->setText(origin.isEmpty() ? state : origin + "  ·  " + state);
-    auto* bar = row->findChild<QProgressBar*>();
-    if (entry->progress >= 0) {
-      bar->setRange(0, 100);
-      bar->setValue(qRound(entry->progress * 100));
-    } else {
-      bar->setRange(0, 0);
-    }
+    row->findChild<ProgressRail*>()->SetProgress(entry->progress);
     return true;
   }
   return false;
@@ -239,23 +241,26 @@ QWidget* DownloadsPanel::BuildRow(int index) {
 
   if (entry.state == State::Running) {
     // Busy unless the source reports how far along it is.
-    auto* bar = new QProgressBar(row);
-    if (entry.progress >= 0) {
-      bar->setRange(0, 100);
-      bar->setValue(qRound(entry.progress * 100));
-    } else {
-      bar->setRange(0, 0);
-    }
-    bar->setTextVisible(false);
-    bar->setFixedHeight(4);
-    text->addWidget(bar);
+    auto* rail = new ProgressRail(row);
+    rail->SetProgress(entry.progress);
+    text->addWidget(rail);
   }
   text->addStretch(1);
   layout->addLayout(text, /*stretch=*/1);
 
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
-  if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
+  if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
+    auto* cancel = new QPushButton("Cancel", row);
+    cancel->setObjectName("download_cancel");
+    connect(cancel, &QPushButton::clicked, this, [this, cancel, job] {
+      cancel->setEnabled(false);  // the row goes once mirad says it's cancelled
+      jobs::Cancel(this, job.toStdString(), [this](ApiError error) {
+        if (!error.message.empty()) notify::FailedRequest(this, "Could not cancel it.", error);
+      });
+    });
+    layout->addWidget(cancel, 0, Qt::AlignVCenter);
+  } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
     auto* show = new QPushButton("Show", row);
     connect(show, &QPushButton::clicked, this, [this, game_id] {
       hide();

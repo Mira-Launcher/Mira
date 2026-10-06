@@ -53,6 +53,8 @@ public:
   void UpdateCover(const QString& id);
   void SetTileWidth(int width);
   void SetDragSelectEnabled(bool enabled);
+  // A few seconds of `text` over that game's tile in "In your library".
+  void ShowTileNote(const QString& id, const QString& text);
   // Starts an update of an installed store title.
   void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.

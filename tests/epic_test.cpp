@@ -47,6 +47,7 @@ void WriteFakeLegendary(const fs::path& path, const std::string& stderr_noise,
       << "  list-installed) if [ -f \"$0.installed\" ]; then cat \"$0.installed\";"
       << " else printf '%s\\n' '" << installed_body << "'; fi ;;\n"
       << "  install)\n"
+      << "    printf '%s\\n' \"$*\" > \"$0.args\"\n"
       << "    printf '%s\\n' '[DLManager] INFO: = Progress: 50.00% (1/2), ETA: 00:00:30' >&2\n"
       << "    printf '%s\\n' '" << after_install_body << "' > \"$0.installed\" ;;\n"
       << "  list) printf '%s\\n' '" << list_body << "' ;;\n"
@@ -55,6 +56,16 @@ void WriteFakeLegendary(const fs::path& path, const std::string& stderr_noise,
       << "exit 0\n";
   out.close();
   fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
+
+  // The saved session epic::Status reads, matching what `status` reports.
+  const fs::path user = epic::LegendaryConfigDir() / "user.json";
+  const std::string account = nlohmann::json::parse(status_body).value("account", "");
+  if (account == "<not logged in>") {
+    fs::remove(user);
+  } else {
+    fs::create_directories(user.parent_path());
+    std::ofstream(user) << nlohmann::json{{"displayName", account}, {"refresh_expires_at", "2999-01-01T00:00:00.000Z"}};
+  }
 }
 
 constexpr const char* kLoggedIn = R"({"account": "Tester", "games_available": 2, "games_installed": 1})";
@@ -88,30 +99,23 @@ TEST_CASE("DetectLegendary honours the epic.legendary_bin override") {
   CHECK(status.path == (fixture.dir / "legendary").string());
 }
 
-TEST_CASE("Status treats legendary's \"<not logged in>\" placeholder as unauthenticated") {
-  Fixture fixture("epic-logged-out");
+TEST_CASE("Status reads legendary's saved session: signed out, signed in, or expired") {
+  Fixture fixture("epic-status");
   fixture.UseFakeLegendary("", kLoggedOut);
-
-  const runner::AuthStatus status = epic::Status(fixture.config);
+  runner::AuthStatus status = epic::Status(fixture.config);
   REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
   CHECK(status.account.empty());
-}
 
-TEST_CASE("Status reads the account through legendary's stderr log noise") {
-  // The regression that actually shipped: legendary logs to stderr,
-  // RunAndWait merges stderr into stdout, and the merged text is no longer
-  // parseable as JSON from byte zero. Worse, the log lines are tagged
-  // "[Core]"/"[cli]", so scanning for the first '{' or '[' finds the log
-  // tag rather than the payload. Authenticated is exactly when legendary
-  // has something to log about, so this broke only once logged in.
-  Fixture fixture("epic-noisy-status");
   fixture.UseFakeLegendary(kNoise, kLoggedIn);
-
-  const runner::AuthStatus status = epic::Status(fixture.config);
-  REQUIRE(status.tool.installed);
+  status = epic::Status(fixture.config);
   CHECK(status.authenticated);
   CHECK(status.account == "Tester");
+
+  // Past its refresh token's expiry legendary can't sign in without a new code.
+  std::ofstream(epic::LegendaryConfigDir() / "user.json")
+      << R"({"displayName": "Tester", "refresh_expires_at": "2020-01-01T00:00:00.000Z"})";
+  CHECK_FALSE(epic::Status(fixture.config).authenticated);
 }
 
 TEST_CASE("Login rejects a pasted JSON page with no authorizationCode") {
@@ -246,6 +250,11 @@ TEST_CASE("Installing an owned Epic title reports progress, then tracks it as in
   REQUIRE(game);
   CHECK(game->install_path == game_dir.string());
   CHECK(library()[0]["installed"].get<bool>());
+  // Into Mira's Epic folder, not legendary's own default.
+  std::ifstream args_file(state / "legendary.args");
+  std::string args;
+  std::getline(args_file, args);
+  CHECK(args.find("--base-path " + server.config().GetPath("epic.install_root").string()) != std::string::npos);
   CHECK(library()[0]["game_id"] == "epic-abc");
 
   auto bad = install("../x");

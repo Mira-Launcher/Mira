@@ -15,7 +15,7 @@ public:
   std::string kind() const override { return "native"; }
   bool UsesBuilds() const override { return false; }
   std::vector<model::RunnerBuild> Discover(const config::Config&) const override {
-    return {model::RunnerBuild{.kind = "native", .name = "native", .path = "", .version = ""}};
+    return {model::RunnerBuild{.kind = "native", .name = "native", .path = "", .version = "", .release = "native"}};
   }
   Result<void> Provision(const model::Game&, const std::optional<model::RunnerBuild>&) const override {
     return {};

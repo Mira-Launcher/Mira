@@ -106,4 +106,12 @@ void Check(QObject* context, const std::string& token, std::function<void(Outcom
 
 bool Forget(const std::string& token) { return Pending().erase(token) > 0; }
 
+void Cancel(QObject* context, const std::string& token, std::function<void(ApiError)> done) {
+  async::Run(context, [token] { return transport::Post("/v1/jobs/" + token + "/cancel"); },
+             std::function<void(transport::Reply)>([done](transport::Reply reply) {
+               // Already over: nothing left to cancel.
+               done(reply.ok || reply.status == 409 ? ApiError() : reply.error);
+             }));
+}
+
 }  // namespace mira_gui::jobs

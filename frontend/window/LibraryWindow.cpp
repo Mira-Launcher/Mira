@@ -37,6 +37,7 @@
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../dialogs/GameDetailPageDialog.h"
 #include "../game/GameCard.h"
 #include "../game/InstallPromptCard.h"
@@ -47,6 +48,7 @@
 #include "../library/GameMenus.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
+#include "../library/OwnedTitles.h"
 #include "../library/LibraryPage.h"
 #include "../runners/RunnersPage.h"
 #include "../settings/SettingsPanel.h"
@@ -58,17 +60,11 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
-
-namespace {
-
-// A crash within this many seconds of launch reads as "failed to start".
-constexpr std::int64_t kFailedStartSeconds = 30;
-
-}  // namespace
 
 LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent) : QMainWindow(parent) {
   setWindowTitle("Mira");
@@ -97,7 +93,12 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   // The one copy of the library every view reads; see GameLibraryModel.
   library_ = new mira_gui::GameLibraryModel(this);
-  library_->status_text = [this](const std::string& id) { return InstallText(id); };
+  library_->install_progress = [this](const std::string& id) -> std::optional<mira_gui::DownloadTracker::TileProgress> {
+    const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(mira_gui::DownloadTracker::KeyFor(
+        mira_gui::DownloadTracker::Kind::Game, QString(), QString::fromStdString(id)));
+    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return std::nullopt;
+    return mira_gui::DownloadTracker::TileProgressFor(*entry);
+  };
   connect(library_, &mira_gui::GameLibraryModel::Changed, this, &LibraryWindow::LibraryChanged);
   menus_ = new mira_gui::GameMenus(
       this, {.find = [this](const std::string& id) { return FindGame(id); },
@@ -118,6 +119,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   // Before the top bar, which shows its count.
   downloads_ = new mira_gui::DownloadTracker(this);
+  owned_titles_ = new mira_gui::OwnedTitles(this);
   downloads_->game_name = [this](const std::string& id) {
     const mira_gui::GameSummary* game = FindGame(id);
     return game != nullptr ? QString::fromStdString(game->name) : QString();
@@ -354,6 +356,7 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   source_page_tabs_ = prefs.source_page_tabs.value_or(true);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
+  double_click_play_ = prefs.double_click_play.value_or(true);
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
   grid_page_->ApplyPrefs(prefs);
@@ -524,8 +527,19 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
   connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
   connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);
-  connect(sidebar, &Sidebar::GameMenuRequested, this,
-          [this](const std::string& id, const QPoint& pos) { menus_->ShowGameMenu(id, pos); });
+  connect(sidebar, &Sidebar::GameMenuRequested, this, [this](const std::string& id, const QPoint& pos) {
+    // A row that's part of a larger selection acts for all of it, as a tile does.
+    const auto selected = grid_page_->SelectedGames();
+    if (selected.size() > 1 && std::ranges::contains(selected, id, &std::pair<std::string, QString>::first)) {
+      std::vector<std::string> ids;
+      for (const auto& [game_id, name] : selected) ids.push_back(game_id);
+      menus_->ShowBatchMenu(ids, pos);
+      return;
+    }
+    menus_->ShowGameMenu(id, pos);
+  });
+  connect(sidebar, &Sidebar::SelectionToggled, this,
+          [this](const std::string& id) { grid_page_->ToggleSelected(id); });
   connect(sidebar, &Sidebar::HoverRequested, this,
           [this](const std::string& id, const QRect& anchor, const QString& hint) {
             if (const mira_gui::GameSummary* game = FindGame(id)) ShowHoverCardFor(*game, anchor, hint);
@@ -552,6 +566,10 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
   connect(page, &mira_gui::LibraryPage::GameActivated, this, [this](const std::string& id) {
     const mira_gui::GameSummary* game = FindGame(id);
     if (game == nullptr) return;
+    if (!double_click_play_) {
+      ExplainDoubleClickOff(id);
+      return;
+    }
     // A game that still needs installing installs instead.
     if (game->status == "needs_install" && InstallText(id).isEmpty()) {
       OfferInstall(id);
@@ -560,6 +578,26 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
     if (mira_gui::CanPlayOrStop(*game)) ToggleRunning(id);
   });
   connect(page, &mira_gui::LibraryPage::PlayRequested, this, &LibraryWindow::RowClicked);
+  page->SetOwnedTitles(owned_titles_);
+  page->title_progress = [this](const QString& source,
+                                const QString& ref) -> std::optional<mira_gui::DownloadTracker::TileProgress> {
+    const mira_gui::DownloadTracker::Entry* entry =
+        downloads_->Find(mira_gui::DownloadTracker::KeyFor(mira_gui::DownloadTracker::Kind::Title, source, ref));
+    if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running) return std::nullopt;
+    return mira_gui::DownloadTracker::TileProgressFor(*entry);
+  };
+  connect(page, &mira_gui::LibraryPage::InstallTitleRequested, this, [this](const QString& source, const QString& ref) {
+    mira_gui::api::InstallStoreTitleAsync(this, source.toStdString(), ref.toStdString(), /*update=*/false,
+                                          [this](mira_gui::StoreActionResult result) {
+                                            // Progress and the outcome arrive as events.
+                                            if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not start the install.", result.error);
+                                          });
+  });
+  connect(page, &mira_gui::LibraryPage::SelectionChanged, this, [this, page] {
+    QSet<QString> ids;
+    for (const auto& [id, name] : page->SelectedGames()) ids.insert(QString::fromStdString(id));
+    if (sidebar_ != nullptr) sidebar_->SetSelectedGames(ids);
+  });
   connect(page, &mira_gui::LibraryPage::GameMenuRequested, this,
           [this](const std::string& id, const QPoint& pos) { menus_->ShowGameMenu(id, pos); });
   connect(page, &mira_gui::LibraryPage::BatchMenuRequested, this,
@@ -732,6 +770,8 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   }
   mirad_reachable_ = true;
   UpdateFooter();
+  // Ready before the first search; after startup's own requests, since it asks every store.
+  QTimer::singleShot(5000, owned_titles_, &mira_gui::OwnedTitles::RefreshIfStale);
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
@@ -865,6 +905,16 @@ void LibraryWindow::ShowInstallPrompt(const mira_gui::InstallDetectedEvent& even
             });
     ShowSidebarCard(card);
   });
+}
+
+void LibraryWindow::ExplainDoubleClickOff(const std::string& id) {
+  // On the tile itself: a tooltip would close with the double-click's own release.
+  const QString note = "Double-click to play is off";
+  if (SourcePageShown()) {
+    source_page_->ShowTileNote(QString::fromStdString(id), note);
+  } else {
+    grid_page_->ShowTileNote(id, note);
+  }
 }
 
 void LibraryWindow::ToggleRunning(const std::string& id) {
@@ -1218,7 +1268,11 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
           });
   connect(source_page_, &mira_gui::SourcePage::PlayRequested, this, [this](const QString& id) {
     const mira_gui::GameSummary* game = FindGame(id.toStdString());
-    if (game != nullptr && mira_gui::CanPlayOrStop(*game)) ToggleRunning(game->id);
+    if (game != nullptr && !double_click_play_) {
+      ExplainDoubleClickOff(game->id);
+    } else if (game != nullptr && mira_gui::CanPlayOrStop(*game)) {
+      ToggleRunning(game->id);
+    }
   });
   main_stack_->addWidget(source_page_);
   main_stack_->setCurrentWidget(source_page_);
@@ -1275,7 +1329,7 @@ QString LibraryWindow::InstallText(const std::string& id) const {
                                                          QString::fromStdString(id)));
   if (entry == nullptr || entry->state != State::Running) return QString();
   if (entry->bytes <= 0) return "Installing…";
-  return "Installing… " + QLocale().formattedDataSize(entry->bytes);
+  return "Installing… " + mira_gui::SizeText(entry->bytes);
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {
@@ -1283,6 +1337,13 @@ void LibraryWindow::DownloadChanged(const QString& key) {
 
   // That game's row repaints with its new install text.
   if (key.startsWith("game:")) library_->Touch(key.mid(5).toStdString());
+
+  // A store title's install shows on its search match, and once done it's no longer "not installed".
+  const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(key);
+  if (entry != nullptr && entry->kind == mira_gui::DownloadTracker::Kind::Title) {
+    grid_page_->RefreshOwnedStates();
+    if (entry->state == mira_gui::DownloadTracker::State::Finished) owned_titles_->Refresh();
+  }
 }
 
 void LibraryWindow::ShowGame(const std::string& id) {
@@ -1359,6 +1420,17 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   // Doesn't consume it: the toasts below still want installs.
   downloads_->HandleEvent(type, data);
 
+  // A store install started from a search has nothing else on screen to say it
+  // failed; a source page shows its own.
+  if (mira_gui::StoreEvent store; live && type == "library.install.failed" &&
+                                  mira_gui::events::ParseStoreEvent(type, data, &store) &&
+                                  store.error.code != "cancelled" && !SourcePageShown()) {
+    const mira_gui::DownloadTracker::Entry* entry = downloads_->Find(mira_gui::DownloadTracker::KeyFor(
+        mira_gui::DownloadTracker::Kind::Title, QString::fromStdString(store.source), QString::fromStdString(store.ref)));
+    const QString name = entry != nullptr ? downloads_->NameFor(*entry) : QString::fromStdString(store.ref);
+    mira_gui::notify::FailedRequest(this, "Could not install " + name + ".", store.error);
+  }
+
   if (mira_gui::StoreEvent art; mira_gui::events::ParseTitleArtworkEvent(type, data, &art)) {
     if (art.state == "ready") artwork_->TitleArtworkReady(art.source + "-" + art.ref);
     return;
@@ -1369,7 +1441,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     const QString name = game != nullptr ? QString::fromStdString(game->name) : QString("A game");
     if (!live) {
       // History: the grid below still picks up the result.
-    } else if (install.state == "failed") {
+    } else if (install.state == "failed" && install.error.code != "cancelled") {
       mira_gui::notify::FailedRequest(this, "Could not install " + name + ".", install.error);
     } else if (install.state == "finished") {
       mira_gui::notify::Notice(this, name + " is installed.");
@@ -1400,12 +1472,13 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     } else {
       library_->SetRunning(state.id, state.state == "running");
     }
-    // A crash soon after launch is a game that failed to start. A later one is
-    // left to the game's status: plenty of games exit non-zero on a normal quit.
-    if (live && state.state == "crashed" && state.played_seconds < kFailedStartSeconds) {
+    // mirad only reports a real crash, a kill or a failed start; a non-zero exit alone is a normal quit.
+    if (live && state.state == "crashed") {
       const mira_gui::GameSummary* crashed = FindGame(state.id);
       const QString name = crashed != nullptr ? QString::fromStdString(crashed->name) : QString("The game");
-      mira_gui::notify::FailedRequest(this, name + " closed right after starting.", state.error);
+      const std::string& code = state.error.code;
+      const QString what = code == "start_failed" ? " couldn't start." : code == "killed" ? " was killed." : " crashed.";
+      mira_gui::notify::FailedRequest(this, name + what, state.error);
     }
     return;
   }

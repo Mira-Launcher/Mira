@@ -21,7 +21,8 @@ Result<void> GogInstaller::Run(const std::string& id) {
     root /= id;
   }
   library::StoreProgress progress(events_, "gog", id);
-  if (auto output = RunGogdl(config_, {"download", id, "--path", root.string(), "--platform", "windows"},
+  const char* dlcs = config_.GetBool("gog.install_dlc") ? "--with-dlcs" : "--skip-dlcs";
+  if (auto output = RunGogdl(config_, {"download", id, "--path", root.string(), "--platform", "windows", dlcs},
                              [&progress](std::string_view chunk) { progress.Feed(chunk); });
       !output) {
     return std::unexpected(output.error());

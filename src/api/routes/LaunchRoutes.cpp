@@ -24,6 +24,7 @@
 #include "library/Detector.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
+#include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -278,7 +279,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
     const std::filesystem::path sessions_dir = s.games.Dir() / "sessions";
-    const std::filesystem::path log_file = s.games.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
     Command wrapped;
     wrapped.env = command->env;
     wrapped.cwd = command->cwd;
@@ -566,11 +567,14 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     s.StartJob(req, res, "relocate", game->id, "Moving " + game->name,
              [&s, game = *game, request](JobRegistry::Progress&) -> Result<json> {
                auto folders_lock = s.games.LockFolders();
-               auto relocated = library::Relocate(s.config, game, request);
+               auto relocated = library::Relocate(s.config, game, request, s.games.All());
                if (!relocated) return std::unexpected(relocated.error());
                auto saved = s.games.Update(game.id, [&](model::Game& g) {
                  g.install_path = relocated->install_path;
+                 g.exe_path = relocated->exe_path;
                  g.data_dir = relocated->data_dir;
+                 g.source = relocated->source;
+                 g.source_ref = relocated->source_ref;
                  g.updated_at = model::NowSeconds();
                });
                folders_lock.unlock();

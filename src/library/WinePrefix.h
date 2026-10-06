@@ -12,4 +12,7 @@ namespace mira::library {
 // drive_c .exe files picked up as game candidates.
 bool LooksLikeWinePrefix(const std::filesystem::path& dir);
 
+// Inside a prefix, relative to it: Wine's own programs (drive_c/windows), not a game's.
+bool IsPrefixSystemDir(const std::filesystem::path& rel);
+
 }  // namespace mira::library

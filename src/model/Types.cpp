@@ -108,6 +108,7 @@ json ToJson(const RunnerBuild& runner) {
       {"name", runner.name},
       {"path", runner.path},
       {"version", runner.version},
+      {"release", runner.release},
       {"reference", runner.Reference()},
   };
 }

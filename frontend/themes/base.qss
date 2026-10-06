@@ -144,17 +144,6 @@ QFrame#download_row[first="true"] {
   border-top: none;
 }
 
-QWidget#downloads_popover QProgressBar {
-  background: @border;
-  border: none;
-  border-radius: 2px;
-}
-
-QWidget#downloads_popover QProgressBar::chunk {
-  background: @accent;
-  border-radius: 2px;
-}
-
 QWidget#filter_sort_popover QToolButton {
   background: transparent;
   border: none;
@@ -953,13 +942,3 @@ QWidget#segmented QPushButton:checked {
   font-weight: 600;
 }
 
-QWidget#runners_page QProgressBar {
-  background: @border;
-  border: none;
-  border-radius: 2px;
-}
-
-QWidget#runners_page QProgressBar::chunk {
-  background: @accent;
-  border-radius: 2px;
-}

@@ -62,7 +62,7 @@ std::vector<model::RunnerBuild> WineRunner::Discover(const config::Config& confi
 
   if (auto system_wine = FindOnPath("wine")) {
     builds.push_back({.kind = "wine", .name = "system", .path = *system_wine,
-                      .version = ToolVersion(*system_wine)});
+                      .version = ToolVersion(*system_wine), .release = "system"});
   }
 
   std::vector<fs::path> search_dirs = config.GetPathArray("wine_search_paths");
@@ -77,8 +77,9 @@ std::vector<model::RunnerBuild> WineRunner::Discover(const config::Config& confi
       if (!entry.is_directory(ec)) continue;
       const fs::path wine_binary = entry.path() / "bin" / "wine";
       if (!fs::exists(wine_binary, ec)) continue;
-      builds.push_back({.kind = "wine", .name = entry.path().filename().string(),
-                        .path = wine_binary.string(), .version = ToolVersion(wine_binary.string())});
+      const std::string name = entry.path().filename().string();
+      builds.push_back({.kind = "wine", .name = name, .path = wine_binary.string(),
+                        .version = ToolVersion(wine_binary.string()), .release = name});
     }
   }
   return builds;

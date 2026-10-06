@@ -67,4 +67,30 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
   return game;
 }
 
+model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& appimage) {
+  model::Game game;
+  game.name = strings::CleanGameName(appimage.stem().string());
+  game.id = games_.NextId(game.name);
+  game.install_path = root.string();
+  game.exe_path = appimage.filename().string();
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;  // an AppImage carries everything it needs
+  game.confidence = 1.0;
+  game.candidates = {{.rel_path = game.exe_path, .kind = model::Platform::Native, .score = 1.0, .chosen = true,
+                      .is_installer = false}};
+  game.created_at = model::NowSeconds();
+  game.updated_at = game.created_at;
+  if (config_.GetBool("scan.tag_by_root") && !root.filename().empty()) game.tags.push_back(root.filename().string());
+
+  if (auto result = games_.Upsert(game); !result) {
+    log::Error("failed to save new game \"{}\": {}", game.id, result.error().message);
+    return game;
+  }
+  nlohmann::json payload = model::ToJson(game);
+  payload["open_config"] = config_.GetBool("open_config_on_add");
+  payload["auto_install"] = false;
+  events_.Publish("game.added", std::move(payload));
+  return game;
+}
+
 }  // namespace mira::library

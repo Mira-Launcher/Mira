@@ -52,16 +52,18 @@ StoreActionResult SignOutStoreSync(const std::string& source) {
 }
 
 StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
+  // Every store at once asks each in turn, so it gets longer.
+  const std::string path = source.empty() ? "/v1/library" : "/v1/library?source=" + PercentEncode(source);
   return ReadReply<StoreLibraryResult>(
-      transport::Get("/v1/library?source=" + PercentEncode(source),
-                     {.read_timeout = std::chrono::seconds(60)}),
-      "GET /v1/library", Shape::Array, [](StoreLibraryResult& result, const json& body) {
+      transport::Get(path, {.read_timeout = std::chrono::seconds(source.empty() ? 180 : 60)}),
+      "GET /v1/library", Shape::Array, [source](StoreLibraryResult& result, const json& body) {
         for (const json& entry : body) {
           if (!entry.is_object()) continue;
           result.titles.push_back({.ref = entry.value("ref", std::string()),
                                    .title = entry.value("title", std::string()),
                                    .installed = entry.value("installed", false),
-                                   .owned = entry.value("owned", true)});
+                                   .owned = entry.value("owned", true),
+                                   .source = entry.value("source", source)});
         }
       });
 }

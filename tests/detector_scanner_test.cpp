@@ -154,6 +154,40 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
 }
 
+TEST_CASE("Scanner finds an AppImage loose in a library folder as a game of its own") {
+  const fs::path lib = TempDir("scan-appimage-library");
+  Touch(lib / "osu.AppImage", "appimage", /*executable=*/true);
+  Touch(lib / "notes.txt", "not a game");
+
+  test::TestEnv env("scan-appimage-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  library::Scanner scanner(env.config, env.games, env.events);
+
+  CHECK(scanner.ScanAll().added == 1);
+  const auto osu = env.games.Find("osu");
+  REQUIRE(osu.has_value());
+  CHECK(osu->exe_path == "osu.AppImage");
+  CHECK(osu->status == model::GameStatus::Ready);
+  CHECK(scanner.ScanAll().added == 0);
+
+  fs::remove(lib / "osu.AppImage");
+  CHECK(scanner.ScanAll().missing == 1);
+  CHECK(env.games.Find("osu")->status == model::GameStatus::Missing);
+  Touch(lib / "osu.AppImage", "appimage", /*executable=*/true);
+  CHECK(scanner.ScanAll().restored == 1);
+
+  // One added by hand from a subfolder, recorded against the library folder, is still there.
+  Touch(lib / "emu" / "Eden.AppImage", "appimage", /*executable=*/true);
+  model::Game eden;
+  eden.id = "eden";
+  eden.install_path = lib.string();
+  eden.exe_path = "emu/Eden.AppImage";
+  eden.status = model::GameStatus::Ready;
+  REQUIRE(env.games.Upsert(eden).has_value());
+  scanner.ScanAll();
+  CHECK(env.games.Find("eden")->status == model::GameStatus::Ready);
+}
+
 TEST_CASE("Detector never descends into a nested wine prefix during its own walk") {
   // Regression: a wrapper folder whose actual prefix sits one level below
   // itself (umu's own layout, e.g. <root>/umu/umu-default/) must not have
@@ -167,6 +201,29 @@ TEST_CASE("Detector never descends into a nested wine prefix during its own walk
   const library::Detector detector(DefaultSettings());
   auto result = detector.Detect(dir);
   CHECK(result.candidates.empty());
+}
+
+TEST_CASE("A game kept in its own prefix lists its own executables, not Wine's or what the prefix's links lead to") {
+  // Wine links dosdevices/z: to / and the user folders to the real home.
+  const fs::path outside = TempDir("prefix-links-outside");
+  Touch(outside / "bin" / "head", "elf", /*executable=*/true);
+  Touch(outside / "Documents" / "Tool.exe");
+  const fs::path prefix = TempDir("prefix-links-game");
+  Touch(prefix / "system.reg");
+  Touch(prefix / "Cuphead.exe");
+  Touch(prefix / "drive_c" / "windows" / "system32" / "notepad.exe");
+  fs::create_directories(prefix / "dosdevices");
+  fs::create_directory_symlink(outside, prefix / "dosdevices" / "z:");
+  fs::create_directories(prefix / "drive_c" / "users" / "me");
+  fs::create_directory_symlink(outside / "Documents", prefix / "drive_c" / "users" / "me" / "Documents");
+
+  const auto rel_paths = [](const std::vector<model::Candidate>& candidates) {
+    std::vector<std::string> paths;
+    for (const model::Candidate& candidate : candidates) paths.push_back(candidate.rel_path);
+    return paths;
+  };
+  const library::Detector detector(DefaultSettings());
+  CHECK(rel_paths(detector.Detect(prefix).candidates) == std::vector<std::string>{"Cuphead.exe"});
 }
 
 TEST_CASE("Scanner does not auto-provision when auto_setup is off") {

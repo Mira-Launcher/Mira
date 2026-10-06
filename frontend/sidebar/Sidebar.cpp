@@ -13,6 +13,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -411,6 +412,18 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
       }
       default:
         break;
+    }
+  }
+  // Ctrl+click selects instead of playing, as in the grid.
+  if (watched->property("hover_game").isValid() &&
+      (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
+       event->type() == QEvent::MouseButtonDblClick)) {
+    const auto* mouse = static_cast<QMouseEvent*>(event);
+    if (mouse->button() == Qt::LeftButton && (mouse->modifiers() & Qt::ControlModifier)) {
+      if (event->type() == QEvent::MouseButtonPress) {
+        emit SelectionToggled(watched->property("hover_game").toString().toStdString());
+      }
+      return true;
     }
   }
   // A game row shows its game's hover card, after a tile's dwell.
@@ -831,12 +844,28 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   parent->setUpdatesEnabled(true);
 }
 
+void Sidebar::SetSelectedGames(const QSet<QString>& ids) {
+  if (ids == selected_games_) return;
+  selected_games_ = ids;
+  for (QPushButton* row : findChildren<QPushButton*>()) {
+    const QVariant id = row->property("hover_game");
+    if (!id.isValid()) continue;
+    const bool selected = ids.contains(id.toString());
+    if (row->property("selected").toBool() == selected) continue;
+    row->setProperty("selected", selected);
+    row->style()->unpolish(row);  // a cover row's background comes from its style sheet
+    row->style()->polish(row);
+    row->update();
+  }
+}
+
 void Sidebar::WireGame(QPushButton* row, const GameSummary& game) {
   const std::string id = game.id;
   if (!game.running && game.status == "ready") {
     connect(row, &QPushButton::clicked, this, [this, id] { emit PlayRequested(id); });
   }
   row->setProperty("hover_game", QString::fromStdString(id));
+  row->setProperty("selected", selected_games_.contains(QString::fromStdString(id)));
   row->installEventFilter(this);
   row->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(row, &QWidget::customContextMenuRequested, this, [this, row, id](const QPoint& pos) {

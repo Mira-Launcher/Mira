@@ -53,7 +53,7 @@ A Missing tools card above Installed offers to install umu-launcher or winetrick
 
 ### Activity
 
-The top bar's download button opens `activity/DownloadsPanel`, titled Activity. It lists everything `activity/DownloadTracker` has seen from the event stream: game installers, store installs and updates, Humble downloads, launcher installs, tool downloads, runner downloads and `mirad`'s jobs (scans, imports, moving and deleting games, removing a source). `mirad` replays recent events on connect, so work started before the GUI opened also shows. Game installers report bytes written; Epic, GOG, Amazon and itch installs report percent, speed and time left (`library.install.progress`), also drawn as a bar on the title's tile; jobs with steps report how far along they are. A finished install offers *Show*, which selects the game.
+The top bar's download button opens `activity/DownloadsPanel`, titled Activity. It lists everything `activity/DownloadTracker` has seen from the event stream: game installers, store installs and updates, Humble downloads, launcher installs, tool downloads, runner downloads and `mirad`'s jobs (scans, imports, moving and deleting games, removing a source). `mirad` replays recent events on connect, so work started before the GUI opened also shows. Game installers report bytes written; Epic, GOG, Amazon and itch installs report percent, speed and time left (`library.install.progress`), also drawn on the title's tile in the library, on its source page and in search: the title, a rail (moving while no percentage is known), the percentage and time left, and the speed or bytes written under it (`DownloadTracker::TileProgressFor`); jobs with steps report how far along they are. A finished install offers *Show*, which selects the game.
 
 When a launched game turns out to have been an installer (`game.install_detected`), `game/InstallPromptCard` asks over the library, in the same overlay as Manage sources: the program found (or *Choose…* one inside the installed folder), a switch to mark it as an app, and *Keep as is* or *Use this program* (`finish-install`). While Mira is hidden or minimized, a notification asks first and its *Review…* button opens the card.
 
@@ -121,6 +121,8 @@ dialogs/   modal dialogs
 
 `LibraryWindow` fetches the whole library once into `library/GameLibraryModel`, and `library/LibraryPage` filters it on the client, which keeps search instant and makes "Playing now" and "Never played" possible. Events then patch the view directly. There is no polling.
 
+A search also looks through the games you own but haven't installed. `library/OwnedTitles` fetches every store's titles (`GET /v1/library`) in the background a few seconds after connecting, again when a typed search finds the list more than ten minutes old, and after a store install finishes. Matches (`MatchOwned`, one per game across stores by name) show under the library's own in a *Not installed* section with an Install button; a game owned on several stores asks which copy to install. While that section shows, the grid sizes to its tiles and the page scrolls as one. Their covers are fetched only for titles a search showed.
+
 Only `game.added` and `game.updated` carry a game record, so views check the event type before parsing one. `game.state` carries only the state and launch details, so an exit triggers a re-fetch. A game handed to Steam or a launcher reports `tracked` in the launch reply and `game.launched`, and isn't marked running unless it is tracked.
 
 ## Game card
@@ -145,6 +147,7 @@ Settings takes over the window body. `settings/SettingsNav` lists the categories
 | `scan_on_startup` | Run a library scan when the GUI opens. |
 | `theme` | Theme name or `auto`. |
 | `drag_select` | Drag across the grid to select. |
+| `double_click_play` | Double-clicking a game plays or stops it. |
 | `tile_spacing`, `grid_margin`, `tile_radius`, `panel_radius`, `control_radius` | Shape overrides in pixels, `-1` for the theme's value. |
 | `shortcut_overrides` | Changed shortcuts by id. |
 | `hidden_sources`, `source_order` | Which sources the sidebar shows, and in what order. |
@@ -170,7 +173,7 @@ Messages are plain text, since `mirad`'s errors quote paths and commands. Failur
 
 Every request result carries an `ApiError`: `mirad`'s message, code, `hint` and `fix` (see the error envelope in [`api.md`](api.md)). `notify::FailedRequest` shows the hint under the message and turns the fix into a button through `app/ErrorHelp`: the setting to fill in, the Runners page, the game's settings or log, running its installer with the window shown, or the store's page. What to say and where to point is `mirad`'s knowledge, so a new error needs no frontend change. The one case `ErrorHelp` words itself is `mirad_unreachable`, set by the transport when a request never reaches `mirad`, which gets a *Start mirad* button. Status lines use `error_help::Describe` for the same text inline. Failure events carry the same fields, so an Activity row for a failed install or download shows the hint and a button for the fix. `LibraryWindow` registers the routes with `error_help::SetNavigator`.
 
-A game that crashes within 30 seconds of launch gets a failure with a *View log* button. Later crashes only change the game's status, since many games exit non-zero on a normal quit.
+A `crashed` `game.state` gets a failure with a *View log* button, titled by its `code`: "couldn't start", "was killed" or "crashed". `mirad` only reports one for a real crash, so a game that exits non-zero on a normal quit stays quiet.
 
 On connect, `mirad` replays its event buffer and then sends `stream.live`. Windows apply replayed events but only announce (notifications, install results, crashes) what comes after it, so a restart doesn't repeat old messages.
 

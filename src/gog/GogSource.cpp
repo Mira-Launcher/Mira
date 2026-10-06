@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <format>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <json.hpp>
 
@@ -53,6 +54,8 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
   // GOG's products API rejects more than 50 ids per request (HTTP 400).
   constexpr std::size_t kIdsPerRequest = 50;
   std::unordered_map<std::string, std::string> titles;
+  // Owned packs (a bundle's own entry), DLC and promo items aren't games to install.
+  std::unordered_set<std::string> not_games;
   for (std::size_t start = 0; start < ids.size(); start += kIdsPerRequest) {
     std::string joined;
     for (std::size_t i = start; i < std::min(ids.size(), start + kIdsPerRequest); ++i) {
@@ -64,11 +67,14 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
       for (const json& product : *products) {
         const std::string id = std::to_string(core::JsonInt(product, "id"));
         titles[id] = core::JsonString(product, "title");
+        const std::string type = core::JsonString(product, "game_type");
+        if ((!type.empty() && type != "game") || product.value("is_installable", true) == false) not_games.insert(id);
       }
     }
   }
 
   for (const std::string& id : ids) {
+    if (not_games.contains(id)) continue;
     library::CatalogEntry entry;
     entry.source = "gog";
     entry.ref = id;

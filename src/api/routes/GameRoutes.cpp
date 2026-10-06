@@ -5,6 +5,7 @@
 #include <charconv>
 #include <format>
 #include <fstream>
+#include <optional>
 
 #include <httplib.h>
 
@@ -14,6 +15,7 @@
 #include "config/Resolver.h"
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
+#include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::api {
@@ -73,7 +75,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       }
     }
 
-    const std::filesystem::path log_file = s.games.Dir() / "logs" / std::format("{}.log", game->id);
+    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
     std::ifstream in(log_file, std::ios::binary);
     if (!in) return SendJson(res, {{"lines", json::array()}});
 
@@ -240,7 +242,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
                        R"(expected {"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})");
     }
     const std::filesystem::path install_path = body["install_path"].get<std::string>();
-    const std::string exe_path = body["exe_path"];
+    const std::string exe_path = library::StoredExePath(install_path.string(), body["exe_path"]);
     const bool is_installer = body.value("is_installer", false);
 
     model::Platform platform;
@@ -252,10 +254,29 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       platform = windows ? model::Platform::Windows : model::Platform::Native;
     }
 
+    const auto is_appimage = [](const std::string& exe) {
+      return strings::ToLower(std::filesystem::path(exe).extension().string()) == ".appimage";
+    };
+    const bool appimage = is_appimage(exe_path);
+    // The same program again updates its game, and so does another program in a folder that is
+    // one game's. An AppImage is a game of its own (two in ~/Applications are two games).
+    std::optional<model::Game> existing;
+    std::optional<model::Game> folder_game;
+    for (const model::Game& known : s.games.All()) {
+      if (known.install_path != install_path.string()) continue;
+      if (known.exe_path == exe_path) {
+        existing = known;
+        break;
+      }
+      if (!appimage && !is_appimage(known.exe_path) && !folder_game) folder_game = known;
+    }
+    if (!existing) existing = folder_game;
     model::Game game;
-    const auto existing = s.games.FindByInstallPath(install_path.string());
     if (existing) game = *existing;
-    game.name = body.value("name", strings::CleanGameName(install_path.filename().string()));
+    // An AppImage is the program itself, so it names the game rather than the folder it sits in.
+    const std::string default_name = appimage ? std::filesystem::path(exe_path).stem().string()
+                                              : install_path.filename().string();
+    game.name = body.value("name", strings::CleanGameName(default_name));
     game.id = existing ? game.id : s.games.NextId(game.name);
     game.source = "manual";
     game.install_path = install_path.string();

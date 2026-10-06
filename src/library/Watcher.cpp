@@ -14,6 +14,7 @@
 
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "library/ArchiveExtractor.h"
 #include "library/Scanner.h"
 
@@ -36,6 +37,7 @@ std::int64_t NowMs() {
 std::uintmax_t TotalSize(const fs::path& dir) {
   std::uintmax_t total = 0;
   std::error_code ec;
+  if (fs::is_regular_file(dir, ec)) return fs::file_size(dir, ec);  // a game in one file, an AppImage
   for (const auto& entry : fs::recursive_directory_iterator(
            dir, fs::directory_options::skip_permission_denied, ec)) {
     std::error_code size_ec;
@@ -248,6 +250,8 @@ void Watcher::HandleInotify() {
           if (!path.filename().string().starts_with(kExtractingPrefix)) {
             ScheduleCheck(root_it->second, path, /*is_archive=*/false);
           }
+        } else if (strings::ToLower(path.extension().string()) == ".appimage") {
+          ScheduleCheck(root_it->second, path, /*is_archive=*/false);  // a game in one file
         } else if (extract && LooksLikeArchive(path)) {
           ScheduleCheck(root_it->second, path, /*is_archive=*/true);
         } else if (extract && IsLaterVolume(path)) {

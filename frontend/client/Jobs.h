@@ -40,4 +40,9 @@ void Check(QObject* context, const std::string& token, std::function<void(Outcom
 // Stops waiting. False when the job already ended and `done` has run.
 bool Forget(const std::string& token);
 
+// Asks mirad to cancel job `token` (POST /v1/jobs/{id}/cancel). The job then
+// ends as failed with code "cancelled". `done` gets the error when mirad
+// refused, an empty one otherwise.
+void Cancel(QObject* context, const std::string& token, std::function<void(ApiError)> done);
+
 }  // namespace mira_gui::jobs

@@ -53,7 +53,7 @@ std::tuple<bool, int, std::int64_t> AutoRank(const config::Config& config, const
   const std::filesystem::path dir =
       build.kind == "wine" ? std::filesystem::path(build.path).parent_path().parent_path() : std::filesystem::path(build.path);
   int preference = 0;
-  if (auto family = FamilyOfBuild(config, build.kind, build.name, dir.filename().string())) {
+  if (auto family = FamilyOfBuild(config, build.kind, build.release, dir.filename().string())) {
     const auto at = std::ranges::find(families, family->id, &RunnerFamily::id);
     preference = static_cast<int>(families.end() - at);
   }

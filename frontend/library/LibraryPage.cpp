@@ -1,13 +1,20 @@
 #include "LibraryPage.h"
 
+#include <QCursor>
 #include <QItemSelectionModel>
+#include <QResizeEvent>
+#include <QTimer>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
+#include <QScrollArea>
 #include <QScrollBar>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <algorithm>
+#include <map>
 
 #include "../theme/Theme.h"
 #include "../widgets/TabRow.h"
@@ -17,6 +24,9 @@
 #include "FilterSortPill.h"
 #include "GameLibraryModel.h"
 #include "GameTileDelegate.h"
+#include "TileGrid.h"
+#include "../client/api/Stores.h"
+#include "../sources/Sources.h"
 
 namespace mira_gui {
 
@@ -30,6 +40,8 @@ class LibraryGrid : public TileView {
 
   // One call per notch, positive to grow.
   std::function<void(int steps)> on_ctrl_wheel;
+  // Sized to its tiles inside the page's scroll (see LibraryPage::FitGrid), so the wheel is the page's.
+  bool page_scrolls = false;
 
  protected:
   void wheelEvent(QWheelEvent* event) override {
@@ -38,6 +50,11 @@ class LibraryGrid : public TileView {
       const int steps = event->angleDelta().y() / 120;
       if (steps != 0 && on_ctrl_wheel) on_ctrl_wheel(steps);
       event->accept();
+      return;
+    }
+    if (page_scrolls) {
+      StopHover();
+      event->ignore();
       return;
     }
     TileView::wheelEvent(event);
@@ -93,19 +110,37 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   connect(grid_, &QAbstractItemView::doubleClicked, this, [this](const QModelIndex& index) {
     if (const GameSummary* game = games_->GameAt(index)) emit GameActivated(game->id);
   });
+  connect(grid_->selectionModel(), &QItemSelectionModel::selectionChanged, this, &LibraryPage::SelectionChanged);
   grid_->on_hover = [this](const QModelIndex& index) { Hover(index); };
   grid_->on_ctrl_wheel = [this](int steps) { emit ZoomStepped(steps); };
-  layout->addWidget(grid_, /*stretch=*/1);
   ApplyLayoutTokens();
   // The padding around the tiles is background too; see eventFilter.
   grid_->installEventFilter(this);
   installEventFilter(this);
 
-  empty_hint_ = new QLabel(this);
+  // The grid fills this and scrolls itself, until a search also lists store
+  // titles below it: then the grid fits its tiles and this scrolls both.
+  scroll_ = new QScrollArea(this);
+  scroll_->setObjectName("library_scroll");
+  scroll_->setWidgetResizable(true);
+  scroll_->setFrameShape(QFrame::NoFrame);
+  scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  auto* content = new QWidget(scroll_);
+  auto* content_layout = new QVBoxLayout(content);
+  content_layout->setContentsMargins(0, 0, 0, 0);
+  content_layout->setSpacing(6);
+  content_layout->addWidget(grid_, /*stretch=*/1);
+  empty_hint_ = new QLabel(content);
   empty_hint_->setAlignment(Qt::AlignCenter);
   empty_hint_->setProperty("role", "muted");
   empty_hint_->setVisible(false);
-  layout->addWidget(empty_hint_);
+  content_layout->addWidget(empty_hint_);
+  content_layout->addWidget(BuildOwnedSection());
+  content_layout->addStretch(0);  // takes the spare height while the grid fits its tiles; see FitGrid
+  content_layout_ = content_layout;
+  scroll_->setWidget(content);
+  scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // see FitGrid
+  layout->addWidget(scroll_, /*stretch=*/1);
 
   connect(library_, &GameLibraryModel::Changed, this, &LibraryPage::LibraryChanged);
   // The tiles are painted, so the stylesheet can't restyle them.
@@ -236,6 +271,17 @@ std::string LibraryPage::SelectedId() const {
                           : std::string();
 }
 
+void LibraryPage::ShowTileNote(const std::string& id, const QString& text) {
+  GameTileDelegate::ShowNote(grid_, QString::fromStdString(id), text);
+}
+
+bool LibraryPage::ToggleSelected(const std::string& id) {
+  const QModelIndex tile = games_->mapFromSource(library_->IndexOf(id));
+  if (!tile.isValid()) return false;
+  grid_->selectionModel()->select(tile, QItemSelectionModel::Toggle);
+  return true;
+}
+
 bool LibraryPage::ShowGame(const std::string& id) {
   const QModelIndex tile = games_->mapFromSource(library_->IndexOf(id));
   if (!tile.isValid()) return false;
@@ -260,6 +306,9 @@ void LibraryPage::SetTileWidth(int width) {
   artwork_->InvalidateAllRenderings();
   delegate_->SetTileSize(TileSize());
   grid_->setGridSize(TileSize());
+  owned_grid_->SetTileSize(TileSize());
+  if (!owned_matches_.empty()) UpdateOwnedMatches();  // covers at the new size
+  FitGrid();
 }
 
 void LibraryPage::UpdateCover(const std::string& id) {
@@ -277,12 +326,155 @@ QWidget* LibraryPage::ShortcutScope() const {
 }
 
 bool LibraryPage::eventFilter(QObject* watched, QEvent* event) {
+  // A new width wraps the tiles into a different number of rows.
+  if (watched == grid_ && event->type() == QEvent::Resize && grid_->page_scrolls) {
+    const auto* resize = static_cast<QResizeEvent*>(event);
+    if (resize->size().width() != resize->oldSize().width()) QTimer::singleShot(0, this, &LibraryPage::FitGrid);
+  }
   // Clicks in the grid's own padding (outside its viewport) or around it deselect.
   if ((watched == grid_ || watched == this) && event->type() == QEvent::MouseButtonPress &&
       static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
     ClearSelection();
   }
   return QWidget::eventFilter(watched, event);
+}
+
+QWidget* LibraryPage::BuildOwnedSection() {
+  owned_section_ = new QWidget(this);
+  owned_section_->setVisible(false);
+  auto* layout = new QVBoxLayout(owned_section_);
+  // The grid's own viewport margins, so the heading lines up with the tiles above.
+  const int margin = theme::Current().grid_margin;
+  layout->setContentsMargins(margin, 8, margin, margin);
+  layout->setSpacing(6);
+  owned_heading_ = new QLabel(owned_section_);
+  owned_heading_->setProperty("role", "heading");
+  layout->addWidget(owned_heading_);
+
+  owned_model_ = new QStandardItemModel(this);
+  owned_grid_ = new TileGrid(TileSize(), artwork_, owned_section_);
+  owned_grid_->setModel(owned_model_);
+  owned_grid_->setSelectionMode(QAbstractItemView::NoSelection);
+  owned_grid_->on_action = [this](const QModelIndex& index) {
+    InstallMatch(index, owned_grid_->viewport()->mapToGlobal(owned_grid_->visualRect(index).topRight()));
+  };
+  owned_grid_->on_ctrl_wheel = [this](int steps) { emit ZoomStepped(steps); };
+  owned_grid_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(owned_grid_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+    const QModelIndex index = owned_grid_->indexAt(pos);
+    if (index.isValid()) InstallMatch(index, owned_grid_->viewport()->mapToGlobal(pos));
+  });
+  connect(owned_grid_, &QAbstractItemView::doubleClicked, this,
+          [this](const QModelIndex& index) { InstallMatch(index, QCursor::pos()); });
+  layout->addWidget(owned_grid_);
+
+  // A store title's cover arriving after the search drew its placeholder.
+  connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
+    for (int row = 0; row < owned_model_->rowCount(); ++row) {
+      QStandardItem* item = owned_model_->item(row);
+      if (item->data(GameTileDelegate::IdRole).toString() != id) continue;
+      const auto& [source, ref] = owned_matches_[row].copies.front();
+      item->setData(artwork_->TitleCover(source, ref, owned_matches_[row].title, TileSize(), devicePixelRatioF()),
+                    Qt::DecorationRole);
+    }
+  });
+  return owned_section_;
+}
+
+void LibraryPage::SetOwnedTitles(OwnedTitles* titles) {
+  owned_titles_ = titles;
+  connect(titles, &OwnedTitles::Changed, this, &LibraryPage::UpdateOwnedMatches);
+  // Kept current ahead of the first search, so typing never waits on a store.
+  connect(search_, &QLineEdit::textEdited, titles, &OwnedTitles::RefreshIfStale);
+}
+
+void LibraryPage::UpdateOwnedMatches() {
+  const QString query = search_->text().trimmed();
+  owned_matches_ = owned_titles_ != nullptr ? MatchOwned(owned_titles_->Titles(), query) : std::vector<OwnedMatch>{};
+  owned_model_->clear();
+  std::map<std::string, std::vector<StoreTitle>> art_to_fetch;
+  for (const OwnedMatch& match : owned_matches_) {
+    const auto& [source, ref] = match.copies.front();
+    auto* item = new QStandardItem();
+    item->setData(source + "-" + ref, GameTileDelegate::IdRole);
+    item->setData(match.title, GameTileDelegate::NameRole);
+    item->setData(QString("ready"), GameTileDelegate::StatusRole);
+    item->setData(source, GameTileDelegate::SourceRole);
+    item->setData(artwork_->TitleCover(source, ref, match.title, TileSize(), devicePixelRatioF()), Qt::DecorationRole);
+    QStringList stores;
+    for (const auto& [store, store_ref] : match.copies) {
+      const SourceInfo* info = FindSourceInfo(store);
+      stores << (info != nullptr ? info->name : store);
+    }
+    item->setData(stores.join(", "), GameTileDelegate::StatusTextRole);
+    item->setToolTip(match.title + "\n" + stores.join(", "));
+    owned_model_->appendRow(item);
+    if (covers_asked_.insert(source + "-" + ref).second) {
+      art_to_fetch[source.toStdString()].push_back({.ref = ref.toStdString(), .title = match.title.toStdString(),
+                                                    .installed = false, .owned = true, .source = source.toStdString()});
+    }
+  }
+  // Covers come from each store, once per title, only for what a search showed.
+  for (auto& [source, titles] : art_to_fetch) api::QueueTitleArtworkAsync(this, source, std::move(titles), {});
+  RefreshOwnedStates();
+  owned_heading_->setText(QString("Not installed  %1").arg(owned_matches_.size()));
+  owned_section_->setVisible(!owned_matches_.empty());
+  UpdateEmptyState();
+  FitGrid();
+}
+
+void LibraryPage::RefreshOwnedStates() {
+  for (int row = 0; row < owned_model_->rowCount() && row < static_cast<int>(owned_matches_.size()); ++row) {
+    std::optional<DownloadTracker::TileProgress> installing;
+    for (const auto& [source, ref] : owned_matches_[row].copies) {
+      if (title_progress) installing = title_progress(source, ref);
+      if (installing) break;
+    }
+    QStandardItem* item = owned_model_->item(row);
+    GameTileDelegate::SetTileProgress(*item, installing, "Install");
+  }
+}
+
+void LibraryPage::InstallMatch(const QModelIndex& index, const QPoint& global_pos) {
+  if (!index.isValid() || index.row() >= static_cast<int>(owned_matches_.size())) return;
+  if (!index.data(GameTileDelegate::ActionEnabledRole).toBool()) return;  // already installing
+  const OwnedMatch& match = owned_matches_[index.row()];
+  if (match.copies.size() == 1) {
+    emit InstallTitleRequested(match.copies.front().first, match.copies.front().second);
+    return;
+  }
+  // Owned on several stores: which copy to install is the player's call.
+  QMenu menu(this);
+  for (const auto& [source, ref] : match.copies) {
+    const SourceInfo* info = FindSourceInfo(source);
+    connect(menu.addAction("Install from " + (info != nullptr ? info->name : source)), &QAction::triggered, this,
+            [this, source, ref] { emit InstallTitleRequested(source, ref); });
+  }
+  menu.exec(global_pos);
+}
+
+void LibraryPage::FitGrid() {
+  const bool page_scrolls = owned_section_->isVisible();
+  grid_->page_scrolls = page_scrolls;
+  // The grid fills the page, or the results sit at the top with the space left below them.
+  content_layout_->setStretchFactor(grid_, page_scrolls ? 0 : 1);
+  content_layout_->setStretch(content_layout_->count() - 1, page_scrolls ? 1 : 0);
+  if (!page_scrolls) {
+    grid_->setVisible(true);
+    grid_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    grid_->setMinimumHeight(0);
+    grid_->setMaximumHeight(QWIDGETSIZE_MAX);
+    scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    return;
+  }
+  scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  grid_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  grid_->setVisible(games_->rowCount() > 0);
+  const QSize cell = grid_->gridSize();
+  const int margin = theme::Current().grid_margin;
+  const int per_row = std::max(1, (grid_->width() - 2 * margin) / std::max(1, cell.width()));
+  const int rows = (games_->rowCount() + per_row - 1) / per_row;
+  grid_->setFixedHeight(rows * cell.height() + 2 * margin + 2 * grid_->frameWidth());
 }
 
 void LibraryPage::ApplyLayoutTokens() {
@@ -299,7 +491,8 @@ void LibraryPage::ApplyFilter() {
   games_->SetFilterKey(FilterKey());
   games_->SetSearch(search_->text());
   grid_->scrollToTop();  // a new filter or search starts at the top
-  UpdateEmptyState();
+  scroll_->verticalScrollBar()->setValue(0);
+  UpdateOwnedMatches();
   RefreshContinue();  // only shown under All with no search
   emit ShownChanged();
 }
@@ -307,6 +500,7 @@ void LibraryPage::ApplyFilter() {
 void LibraryPage::LibraryChanged() {
   UpdateCounts();
   UpdateEmptyState();
+  FitGrid();
   RefreshContinue();
   emit ShownChanged();
 }
@@ -326,6 +520,7 @@ void LibraryPage::UpdateEmptyState() {
   empty_hint_->setVisible(shown == 0);
   if (shown == 0) {
     empty_hint_->setText(library_->Games().empty() ? "No games in the library yet."
+                         : !owned_matches_.empty() ? "Nothing installed matches."
                                                    : "No games match this filter.");
   }
 }

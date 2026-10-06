@@ -1,6 +1,8 @@
 #include "steam/SteamDetector.h"
 
 #include <algorithm>
+#include <charconv>
+#include <climits>
 #include <fstream>
 #include <sstream>
 
@@ -22,6 +24,37 @@ std::optional<std::string> ReadFile(const fs::path& path) {
   std::stringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
+}
+
+// A VDF leaf as a number; 0 when missing or not one.
+std::int64_t ParseInt64(const VdfValue* value) {
+  std::int64_t number = 0;
+  if (value == nullptr || !value->scalar) return 0;
+  const std::string& text = *value->scalar;
+  if (std::from_chars(text.data(), text.data() + text.size(), number).ec != std::errc()) return 0;
+  return number;
+}
+
+// The SteamID64 of the account flagged MostRecent in loginusers.vdf, else
+// of the newest sign-in; empty when there is none.
+std::string LastSignedIn(const fs::path& steam_root) {
+  const auto text = ReadFile(steam_root / "config" / "loginusers.vdf");
+  if (!text) return {};
+  const auto parsed = ParseVdf(*text);
+  const VdfValue* users = parsed ? parsed->Get({"users"}) : nullptr;
+  if (users == nullptr) return {};
+  std::string account;
+  std::int64_t newest = -1;
+  for (const auto& [id, user] : users->children) {
+    const VdfValue* recent = user.Get({"MostRecent"});
+    const std::int64_t stamp =
+        recent != nullptr && recent->scalar == "1" ? INT64_MAX : ParseInt64(user.Get({"Timestamp"}));
+    if (stamp > newest) {
+      newest = stamp;
+      account = id;
+    }
+  }
+  return account;
 }
 
 // True if `install_dir` looks like a compatibility tool (Proton, Steam Linux
@@ -167,6 +200,32 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
     }
   }
   return apps;
+}
+
+std::map<std::string, AppActivity> ReadAppActivity(const fs::path& steam_root, std::string_view steamid64) {
+  std::map<std::string, AppActivity> activity;
+  const std::string account = steamid64.empty() ? LastSignedIn(steam_root) : std::string(steamid64);
+  // userdata/ is keyed by the 32-bit account id, the SteamID64 minus its fixed individual-account base.
+  constexpr std::uint64_t kSteamId64Base = 76561197960265728ULL;
+  std::uint64_t id64 = 0;
+  if (std::from_chars(account.data(), account.data() + account.size(), id64).ec != std::errc() ||
+      id64 <= kSteamId64Base) {
+    return activity;
+  }
+  const fs::path local_config =
+      steam_root / "userdata" / std::to_string(id64 - kSteamId64Base) / "config" / "localconfig.vdf";
+  const auto text = ReadFile(local_config);
+  if (!text) return activity;
+  const auto parsed = ParseVdf(*text);
+  if (!parsed) return activity;
+  const VdfValue* apps = parsed->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps"});
+  if (apps == nullptr) return activity;
+  for (const auto& [appid, app] : apps->children) {
+    const AppActivity entry{.last_played_at = ParseInt64(app.Get({"LastPlayed"})),
+                            .play_seconds = ParseInt64(app.Get({"Playtime"})) * 60};  // Steam stores minutes
+    if (entry.last_played_at > 0 || entry.play_seconds > 0) activity[appid] = entry;
+  }
+  return activity;
 }
 
 }  // namespace mira::steam

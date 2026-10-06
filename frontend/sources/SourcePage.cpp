@@ -644,26 +644,25 @@ void SourcePage::RebuildOwnedTiles() {
     item->setData(id_ == "humble" ? PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF())
                                   : artwork_->TitleCover(source_.id, ref, title, tile_, devicePixelRatioF()),
                   Qt::DecorationRole);
-    QString state = owned_state_.value(ref);
-    QVariant progress;  // cleared once the install stops: the item is reused
+    // Cleared once the install stops: the item is reused.
+    const QString state = owned_state_.value(ref);
+    std::optional<DownloadTracker::TileProgress> installing;
     const DownloadTracker::Entry* running = downloads_->Find(source_.id + ":" + ref);
     if (running != nullptr && running->state == DownloadTracker::State::Running) {
-      state = id_ == "humble" ? "Downloading…" : running->update ? "Updating…" : "Installing…";
-      if (running->progress >= 0) {
-        state = DownloadTracker::ProgressText(*running, /*short_form=*/true);
-        progress = running->progress;
-      }
+      installing = DownloadTracker::TileProgressFor(*running);
+    } else if (state.endsWith("…")) {  // asked for, before mirad's first event
+      installing = DownloadTracker::TileProgress{.fraction = -1, .status = state, .detail = {}};
     }
-    item->setData(progress, GameTileDelegate::ProgressRole);
     if (not_owned_.contains(ref)) {
-      item->setData(QString("Not owned"), GameTileDelegate::ActionRole);
+      GameTileDelegate::SetTileProgress(*item, std::nullopt, "Not owned");
       item->setData(false, GameTileDelegate::ActionEnabledRole);
       item->setToolTip(title + "\nA paid game from a collection. Buy it on itch.io to install it here.");
       continue;
     }
     const QString action = humble_paths_.contains(ref) ? QString("Add to library…") : idle;
-    item->setData(state.isEmpty() ? action : state, GameTileDelegate::ActionRole);
-    item->setData(state.isEmpty(), GameTileDelegate::ActionEnabledRole);
+    GameTileDelegate::SetTileProgress(*item, installing, installing || state.isEmpty() ? action : state);
+    // An outcome ("Sent to Steam") shows on the pill until the list refreshes.
+    if (!installing && !state.isEmpty()) item->setData(false, GameTileDelegate::ActionEnabledRole);
   }
   owned_heading_->setText(CountedHeading(id_ == "humble" ? "Your purchases" : "Not installed",
                                   static_cast<int>(owned_.size())));
@@ -712,9 +711,10 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     if (game == nullptr) return;
     hover_card_->ShowGame(*game, game->running);
   } else {
-    // A tile's pill says what's under way; an idle one just says Install.
+    // A running install's status line, else the pill's outcome; an idle one just says Install.
     const QString ref = index.data(GameTileDelegate::IdRole).toString();
-    QString status = index.data(GameTileDelegate::ActionRole).toString();
+    QString status = index.data(GameTileDelegate::StatusTextRole).toString();
+    if (status.isEmpty()) status = index.data(GameTileDelegate::ActionRole).toString();
     if (humble_paths_.contains(ref)) {
       status = "Downloaded to " + humble_paths_.value(ref);
     } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
@@ -724,6 +724,10 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));
+}
+
+void SourcePage::ShowTileNote(const QString& id, const QString& text) {
+  if (library_grid_ != nullptr) GameTileDelegate::ShowNote(library_grid_, id, text);
 }
 
 void SourcePage::SetDragSelectEnabled(bool enabled) {
@@ -807,7 +811,11 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     } else if (event.state == "failed") {
       launcher_installing_ = false;
       tool_updating_ = false;
-      setup_card_->ShowSetupFailed(event.error, IsStore() && tool_installed_);
+      if (event.error.code == "cancelled") {
+        RefreshStatus();
+      } else {
+        setup_card_->ShowSetupFailed(event.error, IsStore() && tool_installed_);
+      }
       UpdateStatusLine();
     }
     return;
@@ -816,7 +824,9 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   const QString ref = QString::fromStdString(event.ref);
   if (event.state == "failed") {
     owned_state_.remove(ref);
-    ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
+    if (event.error.code != "cancelled") {
+      ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
+    }
   } else if (event.state == "finished") {
     if (id_ == "steam") {
       owned_state_.insert(ref, "Sent to Steam");

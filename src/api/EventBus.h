@@ -90,7 +90,8 @@ void AddHintAndFix(nlohmann::json& out, const Error& error);
 // {code, message, hint?, fix?}: an error as every reply, event and job reports it.
 nlohmann::json ErrorJson(const Error& error);
 
-// A *.failed event: `fields` plus the error's message (`error`), code, hint and fix.
+// A *.failed event: `fields` plus the error's message (`error`), code, hint and
+// fix; inside a cancelled job, just code "cancelled".
 nlohmann::json FailedEvent(nlohmann::json fields, const Error& error);
 
 }  // namespace mira::api

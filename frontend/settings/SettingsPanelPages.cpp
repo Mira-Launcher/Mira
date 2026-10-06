@@ -148,6 +148,9 @@ void SettingsPanel::BuildInterfacePage() {
             "scan startup", &FrontendPrefs::scan_on_startup, true);
   AddToggle(general, "Drag to select games", "Drag across the library to select several games at once.",
             "rubber band multiple", &FrontendPrefs::drag_select, true);
+  AddToggle(general, "Double-click a game to play it",
+            "Double-clicking a game in the library or on a source page starts it, or stops it while it runs.",
+            "double click launch start play", &FrontendPrefs::double_click_play, true);
 
   SettingsCard* library = page->AddCard("Library");
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);

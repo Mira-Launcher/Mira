@@ -127,7 +127,15 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::StatusRole: return QString::fromStdString(game.status);
     case GameTileDelegate::RunningRole: return game.running;
     case GameTileDelegate::PinnedRole: return IsPinned(game);
-    case GameTileDelegate::StatusTextRole: return status_text ? status_text(game.id) : QString();
+    case GameTileDelegate::StatusTextRole:
+    case GameTileDelegate::ProgressRole:
+    case GameTileDelegate::ProgressDetailRole: {
+      const auto installing = install_progress ? install_progress(game.id) : std::nullopt;
+      if (!installing) return {};
+      if (role == GameTileDelegate::StatusTextRole) return installing->status;
+      if (role == GameTileDelegate::ProgressDetailRole) return installing->detail;
+      return installing->fraction;
+    }
     case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
     case GameTileDelegate::NeedsCheckRole: return game.needs_check;
     default: return {};

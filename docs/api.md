@@ -36,6 +36,9 @@ Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total,
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
 
+### `POST /v1/jobs/{id}/cancel`
+Stops a running job: the programs it runs (a store tool, an installer and the Wine processes in its prefix, a download) are killed, and it ends as `job.failed` with code `cancelled`. Its own failure event (`library.install.failed`, `game.install.failed`, `launcher.install.failed`, `runners.download.failed`, `<tool>.setup.failed`) carries `code: "cancelled"` too. Store tools keep what they downloaded, so installing again resumes. `{"status": "cancelling"}`; `404 job_not_found`, or `409 not_running` once it has ended.
+
 ## Health
 
 ### `GET /v1/health`
@@ -102,7 +105,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -122,7 +125,7 @@ Adds a game from any path:
   "name": "My Game", "platform": "windows", "is_installer": true }
 ```
 
-`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name and `platform` to `windows` for `.exe`, else `native`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` again updates the game. Returns the game and publishes `game.added` or `game.updated`.
+`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`. `is_installer` stores the game `needs_install`. A ready Windows game is provisioned straight away. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
 
 ### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true]`
 Removes the game from the library. Nothing on disk is touched unless asked:
@@ -132,7 +135,7 @@ Removes the game from the library. Nothing on disk is touched unless asked:
 - `delete_metadata` removes cached metadata and art.
 - `purge` does all three.
 
-Files and prefixes are only deleted when they resolve inside a library root or `prefix_root`, and never for a `desktop-entry` game, whose files belong to another app. For Epic games, `delete_files` runs `legendary uninstall` so Legendary's records stay correct. Publishes `game.removed`.
+Files are only deleted when they resolve inside a library root, a store's install root (`epic.`, `gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root`; never for a `desktop-entry` game, whose files belong to another app. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
 
 ### `POST /v1/games/delete`
 The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. A [job](#jobs) whose result is `{"removed": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
@@ -190,7 +193,7 @@ Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the i
 An optional body `{"install_path"?, "exe_path"?}` switches the game to a program installed in its prefix first: `install_path` must be inside the game's `data_dir` (`400` otherwise, `409` while the game runs), and the game's candidates are detected again there. The move is handled like an install's: `installer_dir`, the name and a metadata refetch.
 
 ### `POST /v1/games/{id}/relocate`
-Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
+Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, named per `prefix_naming`). Targets must be inside a library root or `prefix_root`. Store games keep their install folder unless one is given, since their store tool tracks it; Lutris games don't: once moved they become `manual` games (their `source_ref` is `lutris:<slug>`), which a later Lutris import leaves alone. When one folder is inside the other (a prefix holding the game), the outer one moves and the inner one follows. A game run from an AppImage moves as that file alone, into a folder of its own, whatever else its folder holds. Otherwise an install folder that holds another game or a library root isn't moved (`shared_folder`). A program the game only runs (an executable outside the game's folder, or an AppImage handed the game's file in `args`, like an emulator) stays where it is. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
 
 ### `POST /v1/games/{id}/tricks`
 Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). A job (kind `tricks`) that runs one at a time. Events: `tricks.started`/`finished`/`failed`.
@@ -200,7 +203,7 @@ Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game'
 `library_roots` is an ordinary setting. Changing it through the API also updates the watcher.
 
 ### `POST /v1/library/scan`
-Scans every library root now: adds new games, marks vanished ones `missing` (or removes them with `library.remove_missing`), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
+Scans every library root now: adds new games (each folder in a root, and each AppImage loose in one), marks vanished ones `missing` (or removes them with `library.remove_missing`), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
 
 ### `POST /v1/library/relocate`
 Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout, one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
@@ -221,7 +224,7 @@ Owned titles aren't stored; they are read live from each source and become games
 ### `POST /v1/library/install`
 Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
 
-- `epic`: `legendary install`.
+- `epic`: `legendary install` into `epic.install_root`.
 - `gog`: `gogdl download` into `gog.install_root/<id>`.
 - `itch`: butler's install sequence.
 - `amazon`: `nile install` into `amazon.install_root`.
@@ -246,11 +249,11 @@ Every installed build, discovered on each call:
 ```json
 [{ "kind": "proton", "name": "GE-Proton11-7", "label": "GE-Proton11-7",
    "path": "/home/x/.steam/steam/compatibilitytools.d/GE-Proton11-7-x86_64",
-   "version": "1789520217", "reference": "proton:GE-Proton11-7",
+   "version": "1789520217", "release": "GE-Proton11-7", "reference": "proton:GE-Proton11-7",
    "source": "proton_ge", "removable": true }]
 ```
 
-`reference` is what `runner_ref` and `default_runner.*` use. `label` is a readable name, such as "Wine 11.18 staging-tkg". `source` is the download source the build matches, or empty. `removable` is false for builds outside `runner_search_paths`/`wine_search_paths`, such as distro, Steam or system builds.
+`reference` is what `runner_ref` and `default_runner.*` use. `release` is the name the build's own files give. A Proton build is named by it, except one its owner replaces in place (a distro package under `/usr` or `/opt`, Steam's own Proton in `steamapps/common`), which is named by its folder (`proton-cachyos-slr`) so references survive its updates. At startup, references to such a build's older release names are moved to the folder name, when exactly one build matches: the same major version, or any version for a folder without one in its name. `label` is a readable name, such as "Wine 11.18 staging-tkg". `source` is the download source the build matches, or empty. `removable` is false for builds outside `runner_search_paths`/`wine_search_paths`, such as distro, Steam or system builds.
 
 Discovery also looks where Steam, the distro, Heroic, Bottles and Lutris keep builds, plus `/opt/*`, unless `runner_scan_common_dirs` is off. Proton builds only appear when `umu-run` is available. A build reachable through several paths is listed once. `native` and `steam` have no builds and never appear.
 
@@ -274,7 +277,7 @@ Releases from one source (the kind's first by default), newest first, cached for
 `name` identifies the release in events: the tag for Proton, the archive name for Wine.
 
 ### `POST /v1/runners/download`
-Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`. When a download finishes, games left broken by a missing runner are provisioned again.
+Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`, and `runners.download.progress` with those plus `progress` (0 to 1) as each percent arrives, when the release's size is known. When a download finishes, games left broken by a missing runner are provisioned again.
 
 ### `GET /v1/runners/updates`
 Removable builds whose source has a newer release:
@@ -325,7 +328,7 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 - `other_runner` counts games using other runners, which are skipped. Steam and Flatpak games are covered by the Steam scan and desktop entry import.
 - `incomplete` counts Wine games with no `prefix` in their config and Linux games with a relative `exe`.
 
-Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone.
+Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags. Re-importing updates Lutris's fields and leaves overrides alone. Lutris sets `install_path`, `exe_path` and `data_dir` on the first import; after that Mira's stay (a different executable picked in Mira survives) unless what they point at is gone. `candidates` lists the executables in the game's folder, unless the folder holds other games too. Lutris's `playtime` and `lastplayed` fill `play_seconds` and `last_played_at` until Mira has recorded a session of its own (`last_session_at`); after that Mira's record stays.
 
 ## Stores
 
@@ -350,7 +353,7 @@ Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's 
 
 ### GOG
 
-Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/Games/GOG`).
+Wraps [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl), which needs `python3`. gogdl can't list owned or installed games, so the library listing uses GOG's own API with gogdl's token, and import only looks under `gog.install_root` (default `~/.local/share/mira/gog`). The listing leaves out packs, DLC and other entries that aren't installable games; a game's owned DLC installs with it (`--with-dlcs`) while `gog.install_dlc` is on, and an update adds DLC bought since.
 
 ### itch.io
 
@@ -506,7 +509,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed. |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
-| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. A crash adds a `hint` and a `fix` that opens the game's log. |
+| `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. `crashed` means a crash signal (or a shell's 128 + one), exit code 126/127 or a program Wine couldn't load, or Wine's "Unhandled ..." report in the log followed by a non-zero exit; a plain non-zero exit is `exited`, and so is anything after a stop. A crash adds `code` (`crashed`, `killed` or `start_failed`), a plain-language `error` that is also the game's `last_error`, a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
 | `game.installer_leftover` | `{id, installer_dir, bytes}`, after an install or `finish-install` left the game somewhere other than its installer's folder, which is still on disk. Delete it with `DELETE /v1/games/{id}/installer`. |
 | `game.launched` | `{id, via, tracked}` for launches handed to Steam or a store launcher. |

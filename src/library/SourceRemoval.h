@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,5 +45,14 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
 // itself).
 Result<void> DeleteInside(const std::string& target,
                           const std::vector<std::filesystem::path>& roots);
+
+// Deletes one game's installed files the way its source does: through
+// legendary, nile or butler for Epic, Amazon and itch.io, else the install
+// folder when it's inside a Mira folder (a library root, a store's install
+// root, or the game's own prefix). A game run from an AppImage in a shared
+// folder loses just the AppImage, and a program the game only runs (see
+// RunsExternalProgram) is left alone.
+Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
+                             std::span<const model::Game> library);
 
 }  // namespace mira::library

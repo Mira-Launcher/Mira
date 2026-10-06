@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "config/Config.h"
@@ -56,5 +59,17 @@ std::vector<SteamApp> ListApps(const std::filesystem::path& steam_root);
 // prefix. Returns nullopt if compat_data_dir has no config_info yet (the
 // app has never actually been launched through Steam).
 std::optional<ProtonCompatInfo> ResolveProtonCompatInfo(const std::filesystem::path& compat_data_dir);
+
+// What Steam recorded for one app on the account, however it was launched.
+struct AppActivity {
+  std::int64_t last_played_at = 0;  // unix seconds; 0 if never played
+  std::int64_t play_seconds = 0;
+};
+
+// appid -> activity, from userdata/<account>/config/localconfig.vdf. The
+// account is `steamid64` when set, else the one Steam signed in last
+// (config/loginusers.vdf). Empty when neither file can be read.
+std::map<std::string, AppActivity> ReadAppActivity(const std::filesystem::path& steam_root,
+                                                   std::string_view steamid64);
 
 }  // namespace mira::steam

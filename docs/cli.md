@@ -130,7 +130,7 @@ Lists the stores: `epic`, `gog`, `itch`, `amazon` and `humble`. Each wraps a com
 - `setup` downloads the tool into `~/.config/mira/tools` and waits for it. Run it again to update.
 - `login` prints the sign-in URL, then reads back what to paste: Epic's `authorizationCode` or the whole JSON the page shows; GOG's `code` or the whole redirect URL; the amazon.com URL Amazon's login ends on; an itch.io API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys); or Humble's `_simpleauth_sess` cookie. Pass the credential as an argument to skip the prompt.
 - `logout` forgets the sign-in. Not for Humble.
-- `import` adds what the tool reports as installed, tagged with the store. Not for Humble. GOG only looks under `gog.install_root` (default `~/Games/GOG`).
+- `import` adds what the tool reports as installed, tagged with the store. Not for Humble. GOG only looks under `gog.install_root` (default `~/.local/share/mira/gog`).
 
 Epic wraps [Legendary](https://github.com/derrod/legendary), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
 

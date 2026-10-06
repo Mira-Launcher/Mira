@@ -12,6 +12,7 @@
 #include "../app/ErrorHelp.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {
@@ -132,7 +133,7 @@ void InstallerCard::LoadInfo(const std::string& path) {
     }
     installer_ = path;
     QStringList parts{QFileInfo(QString::fromStdString(info.path)).fileName(),
-                      QLocale().formattedDataSize(info.size_bytes)};
+                      SizeText(info.size_bytes)};
     if (const QString format = FormatName(info.format); !format.isEmpty()) parts << format;
     file_->setText(parts.join("  ·  "));
     file_->setToolTip(QString::fromStdString(info.path));
@@ -167,7 +168,7 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game, const std:
 
   auto* folder = new SettingRow("Installer folder", QString(), this);
   auto* path = new QLabel(QString("%1  ·  %2").arg(QString::fromStdString(installer_dir),
-                                                  QLocale().formattedDataSize(bytes)),
+                                                  SizeText(bytes)),
                           folder);
   path->setWordWrap(true);
   path->setTextInteractionFlags(Qt::TextSelectableByMouse);

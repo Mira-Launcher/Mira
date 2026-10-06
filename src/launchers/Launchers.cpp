@@ -1,5 +1,6 @@
 #include "launchers/Launchers.h"
 
+#include <signal.h>
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -141,8 +142,14 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
       return {};
     }
     if (ThisTaskStop().stop_requested()) {
+      const bool cancelled = ThisTaskCancelled();
+      if (cancelled) {
+        ::kill(-*pid, SIGKILL);
+        for (pid_t found : proc::FindPrefixProcesses(game.data_dir)) ::kill(found, SIGKILL);
+      }
       ReapOrphans(*pid);
-      return Err("shutting_down", "mirad stopped before the installer finished");
+      return cancelled ? Err("cancelled", "the installer was cancelled")
+                       : Err("shutting_down", "mirad stopped before the installer finished");
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
   }

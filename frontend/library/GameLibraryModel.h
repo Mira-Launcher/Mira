@@ -5,10 +5,12 @@
 #include <QString>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
 
 namespace mira_gui {
@@ -42,8 +44,8 @@ public:
   const std::vector<GameSummary>& Games() const { return games_; }
   QModelIndex IndexOf(const std::string& id) const;
 
-  // The status line override for a game mid-install ("Installing… 1.2 GB").
-  std::function<QString(const std::string& id)> status_text;
+  // A game mid-install: its rail, status line and detail line; nullopt otherwise.
+  std::function<std::optional<DownloadTracker::TileProgress>(const std::string& id)> install_progress;
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   QVariant data(const QModelIndex& index, int role) const override;

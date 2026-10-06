@@ -87,6 +87,9 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
   std::vector<RawCandidate> found;
 
   const std::uintmax_t min_installer_bytes = MinInstallerBytes(settings);
+  // A game kept in its own prefix: the prefix's links (dosdevices/z: is /, users/<name>/Documents
+  // is the real home) lead out of it and drive_c/windows is Wine's own, so neither is walked.
+  const bool in_prefix = LooksLikeWinePrefix(folder);
 
   const std::function<void(const fs::path&, int)> walk = [&](const fs::path& dir, int depth) {
     if (depth > settings.max_depth) return;
@@ -108,6 +111,7 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
         // (umu's own layout: <root>/umu/umu-default/), and never descend into
         // one, or its own drive_c full of .exe files gets read as candidates.
         if (LooksLikeWinePrefix(entry.path())) continue;
+        if (in_prefix && (entry.is_symlink(ec) || IsPrefixSystemDir(rel))) continue;
         walk(entry.path(), depth + 1);
         continue;
       }

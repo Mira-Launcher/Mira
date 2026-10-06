@@ -133,7 +133,9 @@ private:
   void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
   void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
   void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
-                              const std::filesystem::path& session_path);
+                              const std::filesystem::path& session_path, bool requested_stop);
+  // Takes a finished game off every running list; true if Stop() had asked it to quit.
+  bool Forget(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);
   void WatchExternal(std::string game_id, ExternalMatch match, std::int64_t requested_at,
                      std::string post_script);

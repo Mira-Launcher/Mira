@@ -13,7 +13,10 @@ Result<void> EpicInstaller::Run(const std::string& verb, const std::string& app_
   // A leading '-' would be read as an option.
   if (app_name.empty() || app_name.starts_with('-')) return Err("invalid_ref", "that isn't an Epic app name");
   library::StoreProgress progress(events_, "epic", app_name);
-  if (auto output = RunLegendary(config_, {verb, app_name, "-y"},
+  std::vector<std::string> args = {verb, app_name, "-y"};
+  // Without it legendary installs into its own default, ~/Games. An update stays where the game is.
+  if (verb == "install") args.insert(args.end(), {"--base-path", config_.GetPath("epic.install_root").string()});
+  if (auto output = RunLegendary(config_, args,
                                  [&progress](std::string_view chunk) { progress.Feed(chunk); });
       !output) {
     return std::unexpected(output.error());

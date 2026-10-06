@@ -42,4 +42,10 @@ private:
 // The stop token of the Lane task running on this thread, or one that never stops elsewhere.
 std::stop_token ThisTaskStop();
 
+// Runs `body` with ThisTaskStop() also stopping once `cancel` does, for one
+// job that can be cancelled on its own.
+void RunCancellable(std::stop_token cancel, const std::function<void()>& body);
+// Whether ThisTaskStop() stopped because the task was cancelled, not because mirad is shutting down.
+bool ThisTaskCancelled();
+
 }  // namespace mira

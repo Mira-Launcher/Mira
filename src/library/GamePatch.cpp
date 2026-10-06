@@ -1,5 +1,6 @@
 #include "library/GamePatch.h"
 
+#include <filesystem>
 #include <format>
 
 #include "config/Resolver.h"
@@ -8,10 +9,20 @@
 namespace mira::library {
 using nlohmann::json;
 
+std::string StoredExePath(const std::string& install_path, const std::string& exe_path) {
+  if (install_path.empty() || exe_path.empty() || std::filesystem::path(exe_path).is_absolute()) return exe_path;
+  const std::filesystem::path full = (std::filesystem::path(install_path) / exe_path).lexically_normal();
+  const std::filesystem::path inside = full.lexically_relative(std::filesystem::path(install_path).lexically_normal());
+  if (inside.empty() || *inside.begin() == "..") return full.string();
+  return exe_path;
+}
+
 model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   model::Game game = base;
   if (patch.contains("name") && patch["name"].is_string()) game.name = patch["name"];
-  if (patch.contains("exe_path") && patch["exe_path"].is_string()) game.exe_path = patch["exe_path"];
+  if (patch.contains("exe_path") && patch["exe_path"].is_string()) {
+    game.exe_path = StoredExePath(game.install_path, patch["exe_path"]);
+  }
   if (patch.contains("args") && patch["args"].is_string()) game.args = patch["args"];
   if (patch.contains("working_dir") && patch["working_dir"].is_string()) {
     game.working_dir = patch["working_dir"];

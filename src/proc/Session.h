@@ -41,6 +41,9 @@ struct SessionRecord {
 std::filesystem::path SessionFilePath(const std::filesystem::path& sessions_dir, const std::string& game_id,
                                       std::int64_t started_at);
 
+// Where mira-run writes a game's output; `state_dir` is the game store's folder.
+std::filesystem::path GameLogPath(const std::filesystem::path& state_dir, const std::string& game_id);
+
 // Write-temp-then-rename, matching store::GameStore::Save's durability
 // shape, plus an explicit fsync before the rename. A session record is
 // exactly the kind of thing that must survive a crash a moment later, which

@@ -22,6 +22,13 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
     SendJson(res, *job);
   });
 
+  http.Post("/v1/jobs/([A-Za-z0-9_-]+)/cancel", [&s](const Request& req, Response& res) {
+    if (auto cancelled = s.jobs.Cancel(req.matches[1].str()); !cancelled) {
+      return SendError(res, cancelled.error().code == "job_not_found" ? 404 : 409, cancelled.error());
+    }
+    SendJson(res, {{"status", "cancelling"}});
+  });
+
   http.Get("/v1/health", [](const Request&, Response& res) {
     SendJson(res, {{"status", "ok"}, {"api", kApiVersion}});
   });

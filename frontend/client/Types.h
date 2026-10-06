@@ -616,7 +616,8 @@ struct RunnerDownloadEvent {
   std::string label;
   std::string source;
   std::string replaced;  // on "finished" after an update: the "kind:name" it replaced
-  std::string state;  // "started" | "finished" | "failed"
+  std::string state;  // "started" | "progress" | "finished" | "failed"
+  double progress = -1;  // 0..1, only on "progress"
   ApiError error;     // only on "failed"
 };
 
@@ -683,6 +684,8 @@ struct FrontendPrefs {
   std::optional<std::string> theme;
   // On (default): dragging across the grid rubber-band selects tiles.
   std::optional<bool> drag_select;
+  // On (default): double-clicking a game in a grid plays it, or stops it while it runs.
+  std::optional<bool> double_click_play;
   // Shape adjustments layered over whatever the theme sets, in pixels; see
   // theme::Overrides. Unset means "leave it to the theme".
   std::optional<int> tile_spacing;
@@ -917,6 +920,7 @@ struct StoreTitle {
   std::string title;
   bool installed = false;
   bool owned = true;  // false: listed from an itch collection, but paid and not bought
+  std::string source;  // the store it's from
 };
 
 // GET /v1/sources/{id}/removal.

@@ -305,10 +305,8 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   if (game.source == "steam") {
     source_note_label_->setText(
         "Steam launches this game from its own record of the executable, so changing it here has no effect.");
-  } else if (game.source == "lutris") {
-    source_note_label_->setText("This executable came from Lutris's config, so there are no others to pick from.");
   }
-  source_note_label_->setVisible(game.source == "steam" || game.source == "lutris");
+  source_note_label_->setVisible(game.source == "steam");
 
   check_tag_->setVisible(game.needs_check);
   looks_right_->setVisible(game.needs_check);
@@ -482,11 +480,12 @@ void GameEditForm::BrowseExecutable() {
   const QString selected = QFileDialog::getOpenFileName(this, "Select executable", start_dir);
   if (selected.isEmpty()) return;
 
+  // Relative only inside the game's folder; a "../" path would break when the folder moves.
   std::error_code ec;
   const std::filesystem::path relative =
       std::filesystem::relative(selected.toStdString(), install_path_, ec);
-  exe_combo_->setEditText(!ec && !relative.empty() ? QString::fromStdString(relative.string())
-                                                    : selected);
+  const bool inside = !ec && !relative.empty() && *relative.begin() != "..";
+  exe_combo_->setEditText(inside ? QString::fromStdString(relative.string()) : selected);
   exe_combo_->lineEdit()->setCursorPosition(0);
 }
 

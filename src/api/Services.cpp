@@ -248,15 +248,9 @@ Result<void> Services::DeleteGameData(const model::Game& game, bool files, bool 
   if (supervisor.IsRunning(game.id)) return std::unexpected(GameRunningError(game.id));
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
-  if (files && game.source == "epic" && !game.source_ref.empty()) {
-    // Uninstall through Legendary so its manifest stays in sync.
-    if (auto uninstalled = epic::RunLegendary(config, {"uninstall", game.source_ref, "-y"}); !uninstalled) {
-      return std::unexpected(uninstalled.error());
-    }
-  } else if (files) {
-    if (auto deleted = DeleteUnderRoot(game.install_path, config.GetPathArray("library_roots")); !deleted) {
-      return deleted;
-    }
+  // Through the store's own tool where it has one, so its records stay in sync.
+  if (files) {
+    if (auto deleted = library::DeleteGameFiles(config, game, games.All()); !deleted) return deleted;
   }
   if (prefix) {
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
@@ -281,7 +275,12 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
   events.Publish("runners.download.started", base);
   StartJob(req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
            [this, kind, asset, replacing, base](JobRegistry::Progress&) -> Result<json> {
-             if (auto installed = runner::DownloadAndInstall(config, kind, asset); !installed) {
+             const auto on_progress = [this, &base](double fraction) {
+               json event = base;
+               event["progress"] = fraction;
+               events.Publish("runners.download.progress", std::move(event));
+             };
+             if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress); !installed) {
                log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
                events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
                return std::unexpected(installed.error());
@@ -294,7 +293,7 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                const runner::RunnerRegistry registry(config);
                const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
                const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-                 return runner::IsInstalledAs(kind, build.name, runner::BuildDir(build).filename().string(), asset);
+                 return runner::IsInstalledAs(kind, build.release, runner::BuildDir(build).filename().string(), asset);
                });
                if (fresh != builds.end()) {
                  const std::string to = fresh->Reference();

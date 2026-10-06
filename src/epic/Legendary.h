@@ -34,6 +34,9 @@ std::filesystem::path ManagedLegendaryPath(const config::Config& config);
 // epic.legendary_bin, which only overrides where the binary lives.
 std::filesystem::path LegendaryMetadataFile(const std::string& app_name);
 
+// Legendary's own config folder: $LEGENDARY_CONFIG_PATH, else the one described above.
+std::filesystem::path LegendaryConfigDir();
+
 // Detects legendary in this order: epic.legendary_bin override, Mira's own
 // managed download, then $PATH. Never itself requires legendary to already
 // work, so it is safe to call before anything is set up, unlike everything below.
@@ -66,10 +69,9 @@ inline constexpr std::string_view kLoginUrl =
     "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId"
     "%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 
-// The layered "don't assume setup" status call: checks legendary is
-// installed first (no subprocess if not), only runs `legendary status
-// --json` if it is. Never itself errors: "not installed" and "not
-// authenticated" are both just fields on the result, not failures.
+// Whether legendary is installed and signed in, from its saved session
+// (user.json) without running it. Never itself errors: "not installed" and
+// "not authenticated" are both just fields on the result, not failures.
 runner::AuthStatus Status(const config::Config& config);
 
 // Ok when the tool is installed and the account signed in, else the error that says what to set up.

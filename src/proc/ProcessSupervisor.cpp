@@ -16,6 +16,7 @@
 #include <set>
 
 #include "core/Log.h"
+#include "proc/ExitReason.h"
 #include "proc/ProcessIndex.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
@@ -33,10 +34,23 @@ constexpr auto kPollInterval = std::chrono::milliseconds(1000);
 // instead of the whole session.
 constexpr std::int64_t kCheckpointSeconds = 60;
 
-// A crashed game.state's hint and fix: its log, and for a Windows game another runner.
-void AddCrashHelp(json& event, const std::string& game_id, bool windows) {
-  event["hint"] = windows ? "The game's log usually says why. Another runner in the game's settings often helps."
-                          : "The game's log usually says why.";
+// A game.state's exit fields, and for a crash its code, hint and a fix that opens the log.
+void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info, const std::string& game_id, bool windows) {
+  event["state"] = outcome.crashed ? "crashed" : "exited";
+  event["exit_code"] = info.exit_code;
+  event["signal"] = info.signal;
+  event["played_seconds"] = info.played_seconds;
+  event["error"] = outcome.error;
+  if (!outcome.crashed) return;
+  event["code"] = outcome.code;
+  if (outcome.code == "killed") {
+    event["hint"] = "Closing other programs before playing leaves the game more memory.";
+  } else if (outcome.code == "start_failed") {
+    event["hint"] = "The game's log says what couldn't be found.";
+  } else {
+    event["hint"] = windows ? "The game's log usually says why. Another runner in the game's settings often helps."
+                            : "The game's log usually says why.";
+  }
   event["fix"] = {{"kind", "game"}, {"target", game_id}, {"step", "log"}};
 }
 
@@ -383,64 +397,35 @@ void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t start
   const std::int64_t ended_at = model::NowSeconds();
   const std::int64_t played = ended_at > started_at ? ended_at - started_at : 0;
 
-  // A crash is a different outcome from a clean exit and has to be reported
-  // as one: killed by a signal, or exited non-zero. Playtime is recorded
-  // either way, since the session still happened.
-  const bool signalled = WIFSIGNALED(status);
-  const int signal_number = signalled ? WTERMSIG(status) : 0;
-  const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-  // SIGTERM/SIGINT is how Stop() asks a game to quit, so that's a stop, not
-  // a crash.
-  bool requested_stop;
-  {
-    std::lock_guard lock(mutex_);
-    requested_stop = stop_requested_.contains(game_id);
-  }
-  const bool crashed = !requested_stop && ((signalled && signal_number != SIGTERM) ||
-                                           (!signalled && exit_code != 0));
-
-  std::string error;
-  if (crashed) {
-    error = signalled ? std::format("Crashed on signal {} ({}) after {}s", signal_number,
-                                    ::strsignal(signal_number), played)
-                      : std::format("Exited with code {} after {}s", exit_code, played);
-  }
-
-  {
-    std::lock_guard lock(mutex_);
-    running_.erase(game_id);
-    prefixes_.erase(game_id);
-    kill_deadlines_.erase(game_id);
-    stop_requested_.erase(game_id);
-  }
+  // Playtime is recorded however it ended, since the session still happened.
+  const ExitInfo info{.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+                      .signal = WIFSIGNALED(status) ? WTERMSIG(status) : 0,
+                      .requested_stop = Forget(game_id),
+                      .launch_error = {},
+                      .played_seconds = played,
+                      .log_tail = {}};  // launched without mira-run, so no log
+  const ExitOutcome outcome = ClassifyExit(info);
 
   auto updated = games_.Update(game_id, [&](model::Game& game) {
     game.play_seconds += played - credited;  // the rest was checkpointed already
     // Surfaced by the frontend as "last run didn't go well"; cleared on a
     // clean run so a one-off crash doesn't stick around forever.
-    game.last_error = error;
+    game.last_error = outcome.error;
   });
   if (!updated) {
     log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
   }
 
-  if (crashed) {
-    log::Warn("{} {}", game_id, error);
+  if (outcome.crashed) {
+    log::Warn("{}: {}", game_id, outcome.error);
   } else {
-    log::Info("{} exited cleanly after {}s", game_id, played);
+    log::Info("{} exited (code {}, signal {}) after {}s", game_id, info.exit_code, info.signal, played);
   }
   // The full updated record rides along on top of the session-only fields
-  // below (exit_code, signal, played_seconds are this session's, not the
-  // row's running totals) so a listener can patch its one row directly;
-  // this used to carry only id/state, forcing a full GET /v1/games relist
-  // just to pick up the new play_seconds/last_played_at/last_error.
+  // (exit_code, signal, played_seconds are this session's, not the row's
+  // running totals) so a listener can patch its one row directly.
   json event = updated ? model::ToJson(*updated) : json{{"id", game_id}};
-  event["state"] = crashed ? "crashed" : "exited";
-  event["exit_code"] = exit_code;
-  event["signal"] = signal_number;
-  event["played_seconds"] = played;
-  event["error"] = error;
-  if (crashed) AddCrashHelp(event, game_id, updated && updated->platform == model::Platform::Windows);
+  AddExit(event, outcome, info, game_id, updated && updated->platform == model::Platform::Windows);
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 
@@ -476,13 +461,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
   auto record = ReadSessionRecord(session_path);
-  {
-    std::lock_guard lock(mutex_);
-    running_.erase(game_id);
-    prefixes_.erase(game_id);
-    kill_deadlines_.erase(game_id);
-    stop_requested_.erase(game_id);
-  }
+  const bool requested_stop = Forget(game_id);
   if (!record) {
     // mira-run vanished without writing a record (killed before it could
     // fork, or before its first write) -- writes are temp-file-then-rename,
@@ -491,29 +470,34 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
     return;
   }
   CloseOutUnfinished(*record);
-  FinalizeWrappedSession(game_id, *record, session_path);
+  FinalizeWrappedSession(game_id, *record, session_path, requested_stop);
+}
+
+bool ProcessSupervisor::Forget(const std::string& game_id) {
+  std::lock_guard lock(mutex_);
+  running_.erase(game_id);
+  prefixes_.erase(game_id);
+  external_.erase(game_id);
+  kill_deadlines_.erase(game_id);
+  return stop_requested_.erase(game_id) > 0;
 }
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
 // record, update the store, publish the event, delete the session file.
 void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
-                                               const std::filesystem::path& session_path) {
-  // Mirrors Watch()'s classification. A record with no exit info at all
-  // (mira-run itself SIGKILLed before finishing) is left un-crashed rather
-  // than guessed at; `incomplete` is what actually flags it as suspect.
-  const bool crashed = !record.incomplete &&
-      ((record.signal != 0 && record.signal != SIGTERM) || (record.signal == 0 && record.exit_code > 0));
-
-  std::string error = record.launch_error;
-  if (error.empty() && crashed) {
-    error = record.signal != 0
-                ? std::format("Crashed on signal {} ({}) after {}s", record.signal, ::strsignal(record.signal),
-                              record.duration_seconds)
-                : std::format("Exited with code {} after {}s", record.exit_code, record.duration_seconds);
-  }
-  if (record.incomplete) {
-    error = "Mira restarted mid-session; this session's true ending was never observed.";
-  }
+                                               const std::filesystem::path& session_path, bool requested_stop) {
+  const ExitInfo info{.exit_code = record.exit_code,
+                      .signal = record.signal,
+                      .requested_stop = requested_stop,
+                      .launch_error = record.launch_error,
+                      .played_seconds = record.duration_seconds,
+                      .log_tail = ReadLogTail(GameLogPath(games_.Dir(), game_id))};
+  // A record with no exit info at all (mira-run itself SIGKILLed before
+  // finishing) is left un-crashed rather than guessed at.
+  const ExitOutcome outcome =
+      record.incomplete
+          ? ExitOutcome{.crashed = false, .code = {}, .error = "Mira restarted during this session, so how it ended is unknown"}
+                        : ClassifyExit(info);
 
   auto updated = games_.Update(game_id, [&](model::Game& game) {
     // Counted once even if mirad dies before the session file is removed and finds it again.
@@ -521,25 +505,20 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
       game.play_seconds += record.duration_seconds;
       game.last_session_at = record.started_at;
     }
-    game.last_error = error;
+    game.last_error = outcome.error;
   });
   if (!updated) {
     log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
   }
 
-  if (crashed) {
-    log::Warn("{} {}", game_id, error);
+  if (outcome.crashed) {
+    log::Warn("{}: {}", game_id, outcome.error);
   } else {
-    log::Info("{} exited after {}s", game_id, record.duration_seconds);
+    log::Info("{} exited (code {}, signal {}) after {}s", game_id, info.exit_code, info.signal, info.played_seconds);
   }
 
   json event = updated ? model::ToJson(*updated) : json{{"id", game_id}};
-  event["state"] = crashed ? "crashed" : "exited";
-  event["exit_code"] = record.exit_code;
-  event["signal"] = record.signal;
-  event["played_seconds"] = record.duration_seconds;
-  event["error"] = error;
-  if (crashed) AddCrashHelp(event, game_id, updated && updated->platform == model::Platform::Windows);
+  AddExit(event, outcome, info, game_id, updated && updated->platform == model::Platform::Windows);
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
 
@@ -557,20 +536,14 @@ void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_p
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
   auto record = ReadSessionRecord(session_path);
-  {
-    std::lock_guard lock(mutex_);
-    running_.erase(game_id);
-    prefixes_.erase(game_id);
-    kill_deadlines_.erase(game_id);
-    stop_requested_.erase(game_id);
-  }
+  const bool requested_stop = Forget(game_id);
   if (!record) {
     log::Warn("re-adopted mira-run for {} exited with no readable session record ({})", game_id,
              record.error().message);
     return;
   }
   CloseOutUnfinished(*record);
-  FinalizeWrappedSession(game_id, *record, session_path);
+  FinalizeWrappedSession(game_id, *record, session_path, requested_stop);
 }
 
 void ProcessSupervisor::Reconcile(const std::filesystem::path& sessions_dir) {
@@ -599,7 +572,7 @@ void ProcessSupervisor::Reconcile(const std::filesystem::path& sessions_dir) {
       // the mirad that was supposed to notice and archive it died first.
       // Nothing to watch, so just finish the bookkeeping mira-run itself
       // already completed the hard part of.
-      FinalizeWrappedSession(record->game_id, *record, path);
+      FinalizeWrappedSession(record->game_id, *record, path, /*requested_stop=*/false);
       continue;
     }
 
@@ -617,7 +590,7 @@ void ProcessSupervisor::Reconcile(const std::filesystem::path& sessions_dir) {
                record->game_id, record->wrapper_pid);
       record->incomplete = true;
       CloseOutUnfinished(*record);
-      FinalizeWrappedSession(record->game_id, *record, path);
+      FinalizeWrappedSession(record->game_id, *record, path, /*requested_stop=*/false);
     }
   }
 }
@@ -677,10 +650,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
     if (!matched.empty()) break;
     if (model::NowSeconds() - requested_at >= match.detect_timeout_s) {
       log::Warn("never detected a process for {} after {}s -- giving up", game_id, match.detect_timeout_s);
-      std::lock_guard lock(mutex_);
-      running_.erase(game_id);
-      prefixes_.erase(game_id);
-      external_.erase(game_id);
+      Forget(game_id);
       return;
     }
     if (PollWaitStopping()) break;
@@ -735,14 +705,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
   const std::int64_t ended_at = model::NowSeconds();
   const std::int64_t played = ended_at > started_at ? ended_at - started_at : 0;
 
-  {
-    std::lock_guard lock(mutex_);
-    running_.erase(game_id);
-    prefixes_.erase(game_id);
-    external_.erase(game_id);
-    kill_deadlines_.erase(game_id);
-    stop_requested_.erase(game_id);
-  }
+  Forget(game_id);
 
   // No real exit code/signal available for a process Mira didn't spawn, so
   // no crash detection here -- Steam's own client already shows that;

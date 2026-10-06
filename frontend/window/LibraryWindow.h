@@ -32,6 +32,7 @@ class GameLibraryModel;
 class GameMenus;
 class HoverCard;
 class LibraryPage;
+class OwnedTitles;
 class RunnersPage;
 class SettingsPanel;
 class Sidebar;
@@ -99,6 +100,8 @@ private:
                         const QString& hint = QString());
   void HideHoverCard();
   void ToggleRunning(const std::string& id);
+  // A double-click that didn't play anything says why, on that game's tile, for a few seconds.
+  void ExplainDoubleClickOff(const std::string& id);
   // game.install_detected: offers to switch a game that was an installer to what it installed.
   void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
   void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
@@ -198,6 +201,7 @@ private:
   QElapsedTimer last_row_click_;
   bool source_page_tabs_ = true;
   bool drag_select_ = true;
+  bool double_click_play_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.
   std::map<std::string, int> source_tile_widths_;
   bool tile_size_synced_ = false;
@@ -228,6 +232,7 @@ private:
   mira_gui::GameLibraryModel* library_ = nullptr;
   mira_gui::GameMenus* menus_ = nullptr;
   mira_gui::DownloadTracker* downloads_ = nullptr;
+  mira_gui::OwnedTitles* owned_titles_ = nullptr;  // what a library search finds in the stores
   mira_gui::DaemonSupervisor* daemon_supervisor_ = nullptr;  // "Start mirad" from a failure
   bool mirad_reachable_ = true;  // as of the last request or event connection, for the footer
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list

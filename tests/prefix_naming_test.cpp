@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include "config/Config.h"
+#include "core/Paths.h"
 #include "library/PrefixNaming.h"
 #include "library/Relocate.h"
 #include "support/TestEnv.h"
@@ -144,4 +145,139 @@ TEST_CASE("NeedsProvisioning retries a broken store game") {
   game.status = model::GameStatus::Broken;
   CHECK(library::NeedsProvisioning(game));
   CHECK(library::NeedsProvisioning(std::nullopt));
+}
+
+namespace {
+
+struct RelocateEnv {
+  test::TestEnv env{"relocate-lutris"};
+  fs::path library = env.dir / "library";
+  fs::path prefixes = env.config.GetPath("prefix_root");
+  fs::path outside = env.dir / "lutris-games";
+
+  RelocateEnv() { REQUIRE(env.config.Set("library_roots", nlohmann::json::array({library.string()})).has_value()); }
+
+  model::Game LutrisGame(const std::string& id, const std::string& name, const fs::path& install, const fs::path& prefix) {
+    test::Touch(install / "Game.exe", "exe");
+    fs::create_directories(prefix / "drive_c");
+    model::Game game;
+    game.id = id;
+    game.name = name;
+    game.source = "lutris";
+    game.install_path = install.string();
+    game.exe_path = "Game.exe";
+    game.data_dir = prefix.string();
+    return game;
+  }
+};
+
+}  // namespace
+
+TEST_CASE("Relocate moves a Lutris game's files as well as its prefix") {
+  RelocateEnv setup;
+  const model::Game game = setup.LutrisGame("blue-prince", "Blue Prince", setup.outside / "blue-prince",
+                                            setup.outside / "prefixes" / "blue-prince");
+  const auto relocated = library::Relocate(setup.env.config, game, {}, std::vector{game});
+  REQUIRE(relocated.has_value());
+  CHECK(paths::IsWithin(relocated->install_path, {setup.library}));
+  CHECK(fs::exists(fs::path(relocated->install_path) / "Game.exe"));
+  CHECK(paths::IsWithin(relocated->data_dir, {setup.prefixes}));
+  CHECK(fs::is_directory(fs::path(relocated->data_dir) / "drive_c"));
+  CHECK_FALSE(fs::exists(game.install_path));
+}
+
+TEST_CASE("Relocate moves a prefix that holds the game as one folder") {
+  RelocateEnv setup;
+  const fs::path prefix = setup.outside / "nine-sols";
+  const model::Game game =
+      setup.LutrisGame("nine-sols", "Nine Sols", prefix / "drive_c" / "Games" / "Nine Sols", prefix);
+  const auto relocated = library::Relocate(setup.env.config, game, {}, std::vector{game});
+  REQUIRE(relocated.has_value());
+  REQUIRE(paths::IsWithin(relocated->data_dir, {setup.prefixes}));
+  CHECK(relocated->install_path == (fs::path(relocated->data_dir) / "drive_c" / "Games" / "Nine Sols").string());
+  CHECK(fs::exists(fs::path(relocated->install_path) / "Game.exe"));
+  CHECK_FALSE(fs::exists(prefix));
+
+  SUBCASE("and the same when the install folder is the prefix itself") {
+    const fs::path combined = setup.outside / "cuphead";
+    const model::Game cuphead = setup.LutrisGame("cuphead", "Cuphead", combined, combined);
+    const auto moved = library::Relocate(setup.env.config, cuphead, {}, std::vector{cuphead});
+    REQUIRE(moved.has_value());
+    CHECK(moved->install_path == moved->data_dir);
+    CHECK(fs::exists(fs::path(moved->install_path) / "Game.exe"));
+  }
+}
+
+TEST_CASE("Relocate refuses to move an install folder that holds other games") {
+  RelocateEnv setup;
+  const fs::path shared = setup.outside / "Installed-Games";
+  model::Game loose = setup.LutrisGame("osu", "osu!", shared, setup.outside / "unused");
+  loose.data_dir.clear();
+  const model::Game neighbour =
+      setup.LutrisGame("jump-king", "Jump King", shared / "jump-king", shared / "jump-king");
+  const auto relocated = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+  REQUIRE_FALSE(relocated.has_value());
+  CHECK(relocated.error().code == "shared_folder");
+  CHECK(fs::exists(shared / "Game.exe"));
+  CHECK(fs::exists(shared / "jump-king" / "Game.exe"));
+
+  SUBCASE("and a program the game only runs stays where it is, without an error") {
+    test::Touch(setup.outside / "Applications" / "Eden.AppImage", "appimage", /*executable=*/true);
+    test::Touch(shared / "Xenoblade.xci", "rom");
+    loose.exe_path = (setup.outside / "Applications" / "Eden.AppImage").string();
+    loose.args = "-f -g '" + (shared / "Xenoblade.xci").string() + "'";
+    const auto kept = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+    REQUIRE(kept.has_value());
+    CHECK(kept->install_path == loose.install_path);
+    CHECK(fs::exists(setup.outside / "Applications" / "Eden.AppImage"));
+  }
+
+  SUBCASE("but an AppImage leaves it on its own, into a folder of its own") {
+    test::Touch(shared / "osu.AppImage", "appimage", /*executable=*/true);
+    loose.exe_path = "osu.AppImage";
+    const auto moved = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+    REQUIRE(moved.has_value());
+    CHECK(paths::IsWithin(moved->install_path, {setup.library}));
+    CHECK(fs::exists(fs::path(moved->install_path) / "osu.AppImage"));
+    CHECK_FALSE(fs::exists(shared / "osu.AppImage"));
+    CHECK(fs::exists(shared / "jump-king" / "Game.exe"));
+  }
+}
+
+TEST_CASE("Relocate moves an AppImage game as the file alone, even from a folder of other files") {
+  RelocateEnv setup;
+  const fs::path folder = setup.outside / "Installed-Games";
+  test::Touch(folder / "osu.AppImage", "appimage", /*executable=*/true);
+  test::Touch(folder / "Switch-Games" / "game.xci", "rom");  // no game Mira knows, but not osu!'s
+  model::Game osu;
+  osu.id = "osu";
+  osu.name = "osu!";
+  osu.source = "lutris";
+  osu.install_path = folder.string();
+  osu.exe_path = "osu.AppImage";
+
+  const auto moved = library::Relocate(setup.env.config, osu, {}, std::vector{osu});
+  REQUIRE(moved.has_value());
+  CHECK(paths::IsWithin(moved->install_path, {setup.library}));
+  CHECK(fs::exists(fs::path(moved->install_path) / "osu.AppImage"));
+  CHECK_FALSE(fs::exists(folder / "osu.AppImage"));
+  CHECK(fs::exists(folder / "Switch-Games" / "game.xci"));
+}
+
+TEST_CASE("Relocate leaves a program outside the game's folder alone and keeps pointing at it") {
+  RelocateEnv setup;
+  test::Touch(setup.outside / "Applications" / "Eden.AppImage", "appimage", /*executable=*/true);
+  test::Touch(setup.outside / "Games" / "Xenoblade.xci", "rom");
+  model::Game xenoblade;
+  xenoblade.id = "xenoblade";
+  xenoblade.name = "Xenoblade";
+  xenoblade.install_path = (setup.outside / "Games").string();
+  xenoblade.exe_path = "../Applications/Eden.AppImage";  // picked relative to the game's folder
+  xenoblade.args = "-g '" + (setup.outside / "Games" / "Xenoblade.xci").string() + "'";
+
+  const auto kept = library::Relocate(setup.env.config, xenoblade, {}, std::vector{xenoblade});
+  REQUIRE(kept.has_value());
+  CHECK(kept->install_path == xenoblade.install_path);
+  CHECK(kept->exe_path == (setup.outside / "Applications" / "Eden.AppImage").string());
+  CHECK(fs::exists(setup.outside / "Applications" / "Eden.AppImage"));
 }

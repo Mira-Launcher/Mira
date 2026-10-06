@@ -58,7 +58,7 @@ void Deliver(const QPointer<QObject>& guard, Fn fn) {
 // Runs `work` off the UI thread and delivers its return value to `callback`
 // on the main thread, subject to Deliver's liveness rule above. `Result` is
 // deduced from the callback, so a caller writes only the request it
-// actually wants to make.
+// actually wants to make. An empty callback just runs the request.
 template <typename Result, typename Work>
 void Run(QObject* context, Work work, std::function<void(Result)> callback, Lane lane = Lane::Quick) {
   QPointer<QObject> guard(context);
@@ -73,6 +73,7 @@ void Run(QObject* context, Work work, std::function<void(Result)> callback, Lane
     } catch (const std::exception& e) {
       if constexpr (requires { result.error = std::string(); }) result.error = e.what();
     }
+    if (!callback) return;  // fire and forget: nobody waits on the answer
     Deliver(guard, [callback, result = std::move(result)]() mutable { callback(std::move(result)); });
   };
   if (lane == Lane::Slow) {

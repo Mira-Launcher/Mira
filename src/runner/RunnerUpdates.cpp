@@ -37,7 +37,7 @@ std::vector<model::RunnerBuild> BuildsOfKind(const RunnerRegistry& registry, con
 
 bool HasInstalled(const std::vector<model::RunnerBuild>& builds, const ReleaseAsset& release) {
   return std::ranges::any_of(builds, [&](const model::RunnerBuild& build) {
-    return IsInstalledAs(build.kind, build.name, BuildDir(build).filename().string(), release);
+    return IsInstalledAs(build.kind, build.release, BuildDir(build).filename().string(), release);
   });
 }
 
@@ -48,7 +48,7 @@ std::vector<RunnerUpdate> FindRunnerUpdates(const config::Config& config, const 
     for (const model::RunnerBuild& build : builds) {
       const std::filesystem::path dir = BuildDir(build);
       if (!paths::IsWithin(dir, RunnerRoots(config, kind))) continue;
-      auto family = FamilyOfBuild(config, kind, build.name, dir.filename().string());
+      auto family = FamilyOfBuild(config, kind, build.release, dir.filename().string());
       if (!family) continue;
       auto releases = ListFamilyReleases(*family);
       if (!releases || releases->empty() || HasInstalled(builds, releases->front())) continue;
