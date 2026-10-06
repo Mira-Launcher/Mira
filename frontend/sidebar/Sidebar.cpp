@@ -171,6 +171,9 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
     source_navs_.append(nav);
   }
   nav_layout->addLayout(source_nav_layout_);
+  sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", "muted");
+  sources_empty_->setContentsMargins(8, 2, 8, 2);
+  nav_layout->addWidget(sources_empty_);
 
   recent_heading_ = BuildGameHeading(nav_content, "RECENTLY PLAYED", recent_customize_);
   nav_layout->addWidget(recent_heading_);
@@ -507,6 +510,9 @@ void Sidebar::UpdateSources() {
     source_navs_[i]->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
                                            : QString());
   }
+  // isHidden, not isVisible: this also runs while the sidebar itself is off screen.
+  sources_empty_->setVisible(
+      std::ranges::all_of(source_navs_, [](const QPushButton* nav) { return nav->isHidden(); }));
   int row = 0;
   for (const QString& id : SourceOrder()) {
     for (int i = 0; i < static_cast<int>(sources.size()); ++i) {
@@ -600,17 +606,31 @@ int Sidebar::SourceDropRow(int y) const {
 }
 
 void Sidebar::MoveSource(const QString& id, int before) {
-  std::vector<QString> order = SourceOrder();
-  QString before_id;
-  if (before >= 0) {
-    if (auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(before)->widget())) {
-      before_id = AllSources()[source_navs_.indexOf(nav)].id;
-    }
+  // Placed right after the visible row that ends up above it (or right before
+  // the first one), not next to rows the sidebar hides, so Settings and
+  // Manage sources, which list every source, show it where it was put.
+  QString above;
+  QString first;
+  const int end = before >= 0 ? before : source_nav_layout_->count();
+  for (int row = 0; row < source_nav_layout_->count(); ++row) {
+    auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(row)->widget());
+    if (nav == nullptr || !nav->isVisible()) continue;
+    const QString nav_id = AllSources()[source_navs_.indexOf(nav)].id;
+    if (row == before && nav_id == id) return;  // dropped onto itself
+    if (nav_id == id) continue;
+    if (first.isEmpty()) first = nav_id;
+    if (row < end) above = nav_id;
   }
-  if (before_id == id) return;
+  std::vector<QString> order = SourceOrder();
   std::erase(order, id);
-  const auto at = before_id.isEmpty() ? order.end() : std::ranges::find(order, before_id);
+  auto at = order.begin();
+  if (!above.isEmpty()) {
+    at = std::ranges::find(order, above) + 1;
+  } else if (!first.isEmpty()) {
+    at = std::ranges::find(order, first);
+  }
   order.insert(at, id);
+  if (order == SourceOrder()) return;
   SetSourceOrder(std::move(order));
 }
 
@@ -728,28 +748,6 @@ std::vector<const GameSummary*> Sidebar::PinnedGames() const {
   return pinned;
 }
 
-std::vector<const GameSummary*> Sidebar::RecentGames(int count, bool running_counts) const {
-  // Every running game, then up to `count` others by last played, or with
-  // `running_counts` up to `count` in all. A hidden game shows only while it
-  // runs, so it can still be stopped.
-  std::vector<const GameSummary*> running;
-  std::vector<const GameSummary*> played;
-  for (const GameSummary& game : library_->Games()) {
-    if (game.running) {
-      running.push_back(&game);
-    } else if (game.last_played_at && !IsHidden(game)) {
-      played.push_back(&game);
-    }
-  }
-  std::ranges::sort(played, [](const GameSummary* a, const GameSummary* b) {
-    return *a->last_played_at > *b->last_played_at;
-  });
-  if (running_counts) count = std::max(0, count - static_cast<int>(running.size()));
-  if (played.size() > static_cast<size_t>(count)) played.resize(count);
-  played.insert(played.begin(), running.begin(), running.end());
-  return played;
-}
-
 SidebarStyleCard::Choices Sidebar::StyleChoices() const {
   return style_;
 }
@@ -772,17 +770,15 @@ bool Sidebar::ShowsArtOf(const QString& id) const {
 
 void Sidebar::RefreshGames() {
   FillSection(pinned_heading_, pinned_layout_, PinnedGames(), style_.pinned, /*recent=*/false,
-              pinned_signature_);
-  // A shelf keeps the size it was given: running games take places in it.
-  FillSection(recent_heading_, recent_layout_,
-              RecentGames(style_.recent_count, style_.recent == sidebar::Style::Shelf),
+              /*places=*/0, "Nothing currently pinned", pinned_signature_);
+  FillSection(recent_heading_, recent_layout_, library_->RecentlyPlayed(style_.recent_count),
               style_.recent,
-              /*recent=*/true, recent_signature_);
+              /*recent=*/true, style_.recent_count, QString(), recent_signature_);
 }
 
 void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
                           const std::vector<const GameSummary*>& games, sidebar::Style style,
-                          bool recent, QString& signature) {
+                          bool recent, int places, const QString& empty_text, QString& signature) {
   // Most refreshes (every game.updated) change nothing shown here; rebuilding
   // anyway makes the rows flicker.
   // A shelf cover is too narrow for "Yesterday": it gets "1d ago".
@@ -792,7 +788,9 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
     if (!recent || !style_.recent_when) return QString();
     return shelf ? FormatPlayedAgoShort(game.last_played_at) : FormatPlayedAgo(game.last_played_at);
   };
-  QString wanted = theme::Current().running.name() + sidebar::StyleKey(style);
+  const int placeholders = std::max(0, places - static_cast<int>(games.size()));
+  QString wanted =
+      theme::Current().running.name() + sidebar::StyleKey(style) + QString::number(placeholders);
   for (const GameSummary* game : games) {
     wanted += QString("\n%1\t%2\t%3\t%4\t%5\t%6")
                   .arg(QString::fromStdString(game->id), QString::fromStdString(game->name),
@@ -819,15 +817,24 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
     }
     delete item;
   }
-  heading->setVisible(!games.empty());
-  if (shelf) {
+  // Empty places up to `places` show as faded sketches, so the section keeps its size.
+  heading->setVisible(!games.empty() || placeholders > 0 || !empty_text.isEmpty());
+  if (games.empty() && placeholders == 0 && !empty_text.isEmpty()) {
+    QLabel* empty = MakeLabel(parent, empty_text, "muted");
+    empty->setContentsMargins(8, 2, 8, 2);
+    layout->addWidget(empty);
+  } else if (shelf) {
     auto* shelf_widget = new sidebar::Shelf(parent);
     for (const GameSummary* game : games) {
       auto* cover = new sidebar::ShelfCover(*game, artwork_, trailing(*game), shelf_widget);
       WireGame(cover, *game);
       shelf_widget->Add(cover);
     }
-    if (!games.empty()) {
+    for (int i = 0; i < placeholders; ++i) {
+      shelf_widget->Add(
+          new sidebar::PlaceholderRow(style, static_cast<int>(games.size()) + i, shelf_widget));
+    }
+    if (!games.empty() || placeholders > 0) {
       layout->addWidget(shelf_widget);
     } else {
       shelf_widget->deleteLater();
@@ -839,6 +846,10 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
                              : sidebar::MakeCoverRow(*game, artwork_, trailing(*game), parent);
       WireGame(row, *game);
       layout->addWidget(row);
+    }
+    for (int i = 0; i < placeholders; ++i) {
+      layout->addWidget(
+          new sidebar::PlaceholderRow(style, static_cast<int>(games.size()) + i, parent));
     }
   }
   parent->setUpdatesEnabled(true);

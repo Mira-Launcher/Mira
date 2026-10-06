@@ -66,10 +66,8 @@ class Sidebar : public QWidget {
   // A source was removed: drop its games and turn its row off.
   void ForgetSource(const QString& id);
 
-  // What PINNED lists, and what RECENTLY PLAYED would list showing `count`
-  // (with `running_counts`, running games are part of the count, as on a shelf).
+  // What PINNED lists.
   std::vector<const GameSummary*> PinnedGames() const;
-  std::vector<const GameSummary*> RecentGames(int count, bool running_counts = false) const;
   SidebarStyleCard::Choices StyleChoices() const;
   // Redraws both sections and stores the choices.
   void SetStyleChoices(const SidebarStyleCard::Choices& choices);
@@ -95,7 +93,6 @@ class Sidebar : public QWidget {
   void HoverEnded();
   // Something Manage sources shows changed.
   void SourcesChanged();
-
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -118,10 +115,11 @@ class Sidebar : public QWidget {
   // Both sections, if what they'd show changed.
   void RefreshGames();
   // Rebuilds one section's rows in `style`, only if what they'd show differs
-  // from `signature`. `recent` rows say when each was last played.
+  // from `signature`. `recent` rows say when each was last played. Placeholders
+  // fill the section up to `places`; with no games and none, `empty_text` shows.
   void FillSection(QWidget* heading, QVBoxLayout* layout,
                    const std::vector<const GameSummary*>& games, sidebar::Style style, bool recent,
-                   QString& signature);
+                   int places, const QString& empty_text, QString& signature);
   // A row or cover's click, menu and hover card.
   void WireGame(QPushButton* row, const GameSummary& game);
   // A game row is drawn from this game's art.
@@ -145,6 +143,7 @@ class Sidebar : public QWidget {
   QList<QPushButton*> source_navs_;
   QList<QLabel*> source_counts_;
   QVBoxLayout* source_nav_layout_ = nullptr;
+  QLabel* sources_empty_ = nullptr;    // shown while no source row is
   QSet<QString> hidden_sources_;       // unticked "In sidebar"
   QSet<QString> disabled_sources_;     // <id>.enabled = false
   std::vector<QString> source_order_;  // saved order; see SourceOrder()
