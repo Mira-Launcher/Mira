@@ -1,6 +1,8 @@
 #include "SourcePage.h"
 
 #include <QEvent>
+#include <QGridLayout>
+#include <QShortcut>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -32,6 +34,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/ModalOverlay.h"
 #include "../widgets/TabRow.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
@@ -112,7 +115,10 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
-bool SourcePage::HasOwned() const { return IsStore() || id_ == "steam"; }
+// Every page has both tabs; ones that can't list what the account owns say so.
+bool SourcePage::HasOwned() const { return true; }
+
+bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam"; }
 
 bool SourcePage::IsOwnGame(const GameSummary& game) const { return game.source == id_; }
 
@@ -185,9 +191,8 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_ = new QToolButton(tabs_);
   settings_button_->setIcon(icons::For(icons::Glyph::Settings));
   settings_button_->setToolTip(source_.name + " settings");
-  settings_button_->setCheckable(true);
   settings_button_->setAutoRaise(true);
-  connect(settings_button_, &QToolButton::toggled, this, &SourcePage::ToggleSettings);
+  connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
 
   more_button_ = new QToolButton(tabs_);
@@ -208,15 +213,64 @@ QWidget* SourcePage::BuildTopRow() {
   return tabs_;
 }
 
-void SourcePage::ToggleSettings(bool shown) {
-  if (shown && settings_card_ == nullptr) {
+// A dialog over the page: the games underneath stay where they are.
+void SourcePage::OpenSettingsModal() {
+  if (settings_card_ == nullptr) {
     settings_card_ = new SourceSettingsCard(source_, this);
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
-    content_layout_->insertWidget(1, settings_card_);  // right under the top row
-  } else if (shown) {
+    settings_card_->setMaximumWidth(560);
+    auto* close = new QToolButton(settings_card_);
+    close->setIcon(icons::For(icons::Glyph::Close));
+    close->setToolTip("Close");
+    close->setAutoRaise(true);
+    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
+    settings_card_->Header()->addWidget(close);
+  } else {
     settings_card_->Refresh();
   }
-  if (settings_card_ != nullptr) settings_card_->setVisible(shown);
+  if (settings_overlay_ == nullptr) {
+    settings_overlay_ = new ModalOverlay(this);
+    settings_overlay_->scrim = QColor(0, 0, 0, 150);
+    settings_overlay_->on_backdrop_clicked = [this] { CloseSettingsModal(); };
+    auto* escape = new QShortcut(Qt::Key_Escape, settings_overlay_);
+    escape->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(escape, &QShortcut::activated, this, &SourcePage::CloseSettingsModal);
+    auto* scroll = new QScrollArea(settings_overlay_);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setMaximumWidth(560);
+    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
+    scroll->setWidget(settings_card_);
+    auto* grid = new QGridLayout(settings_overlay_);
+    grid->setContentsMargins(32, 32, 32, 32);
+    grid->addWidget(scroll, 0, 0, Qt::AlignHCenter);
+  }
+  settings_overlay_->setGeometry(rect());
+  settings_overlay_->show();
+  settings_overlay_->raise();
+  settings_overlay_->setFocus();
+}
+
+void SourcePage::CloseSettingsModal() {
+  if (settings_overlay_ == nullptr || !settings_overlay_->isVisible()) return;
+  if (settings_card_ != nullptr && settings_card_->IsDirty()) {
+    const bool leave = notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
+      connect(settings_card_, &SourceSettingsCard::SaveFinished, this,
+              [this](bool ok) {
+                if (ok) settings_overlay_->hide();
+              },
+              Qt::SingleShotConnection);
+      settings_card_->Save();
+    });
+    if (!leave) return;
+    settings_card_->Discard();
+  }
+  settings_overlay_->hide();
+}
+
+void SourcePage::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  if (settings_overlay_ != nullptr) settings_overlay_->setGeometry(rect());
 }
 
 void SourcePage::FillMoreMenu(QMenu* menu) {
@@ -308,7 +362,7 @@ QWidget* SourcePage::BuildLibrarySection() {
 
 QWidget* SourcePage::BuildOwnedSection() {
   owned_section_ = new QWidget(this);
-  owned_available_ = id_ == "steam";
+  owned_available_ = id_ == "steam" || !ListsOwned();
   auto* layout = new QVBoxLayout(owned_section_);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
@@ -356,6 +410,14 @@ QWidget* SourcePage::BuildOwnedSection() {
     row->addWidget(art_key_);
     row->addStretch(1);
     layout->addLayout(row);
+  }
+
+  if (!ListsOwned()) {
+    owned_refresh_->setVisible(false);
+    if (art_key_ != nullptr) art_key_->setVisible(false);
+    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up under Installed."
+                                      : source_.name + " doesn't list games you own. What it installs shows up under Installed.";
+    ShowLine(owned_note_, what, "muted");
   }
 
   owned_grid_ = new TileGrid(tile_, artwork_, owned_section_);
@@ -469,6 +531,12 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   banner_primary_->setVisible(authenticated_ && id_ != "humble");
   if (import_button_ != nullptr) import_button_->setVisible(tool_installed_ && HasImport());
   owned_available_ = tool_installed_ && authenticated_;
+  if (owned_section_ != nullptr && !owned_available_) {
+    owned_refresh_->setEnabled(false);
+    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.", "muted");
+  } else if (owned_section_ != nullptr) {
+    owned_refresh_->setEnabled(true);
+  }
   if (owned_section_ != nullptr && authenticated_ && !was_authenticated) RefreshOwned();
   UpdateSections();
   UpdateStatusLine();
@@ -529,7 +597,7 @@ void SourcePage::UpdateStatusLine() {
 }
 
 void SourcePage::UpdateSections() {
-  const bool has_owned = owned_section_ != nullptr && owned_available_;
+  const bool has_owned = owned_section_ != nullptr;
   // Tabs only when there's a choice to make.
   const bool tabbed = use_tabs_ && has_owned && library_section_ != nullptr;
   tabs_->SetTabsVisible(tabbed);
