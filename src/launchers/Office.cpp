@@ -21,8 +21,7 @@ namespace fs = std::filesystem;
 constexpr std::array kApps = {
     App{"word", "Word", "WINWORD.EXE"},       App{"excel", "Excel", "EXCEL.EXE"},
     App{"powerpoint", "PowerPoint", "POWERPNT.EXE"}, App{"outlook", "Outlook", "OUTLOOK.EXE"},
-    App{"onenote", "OneNote", "ONENOTE.EXE"},  App{"access", "Access", "MSACCESS.EXE"},
-    App{"publisher", "Publisher", "MSPUB.EXE"},
+    App{"onenote", "OneNote", "ONENOTE.EXE"},
 };
 
 // Each shim replaces a Wine DLL and forwards to Wine's own copy, kept under a
@@ -82,13 +81,23 @@ std::string Registry(const config::Config& config) {
                            "HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft"}) {
     reg += std::format("[{}\\Office\\16.0\\Common\\Identity]\n{}\n", root, kIdentity);
   }
-  for (const char* app : {"word", "excel", "powerpoint", "outlook", "onenote", "access", "publisher"}) {
+  for (const char* app : {"word", "excel", "powerpoint", "outlook", "onenote"}) {
     reg += std::format("[HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Common\\ExperimentConfigs\\"
                        "ExternalFeatureOverrides\\{}]\n"
                        "\"Microsoft.Office.Identity.TestGate.DisableBrokerForOneAuth\"=\"true\"\n"
                        "\"Microsoft.Office.Identity.FG.IsWebView2ForOneAuthEnabled\"=\"true\"\n\n",
                        app);
   }
+
+  // Outlook's very first start, with no UI language recorded yet, fails to
+  // open its profile ("Cannot start Microsoft Outlook"). The install is en-us.
+  reg += "[HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Outlook]\n"
+         "\"LastUILanguage\"=dword:00000409\n\n";
+
+  // OneNote treats every Windows 10 version as a server, then wants Desktop
+  // Experience: this class key or a Win32_ServerFeature row Wine's WMI lacks.
+  reg += "[HKEY_LOCAL_MACHINE\\Software\\Classes\\CLSID\\{937C1A34-151D-4610-9CA6-A8CC9BDB5D83}]\n"
+         "@=\"Desktop Experience\"\n\n";
 
   // Display: the desktop's scale, smoothed text, and scroll bars that stay
   // shown (Office's fading ones leave black boxes under Wine).
@@ -182,6 +191,8 @@ std::string Configuration(const config::Config& config) {
       <ExcludeApp ID="Groove"/>
       <ExcludeApp ID="OneDrive"/>
       <ExcludeApp ID="Teams"/>
+      <ExcludeApp ID="Access"/>
+      <ExcludeApp ID="Publisher"/>
     </Product>
   </Add>
   <Display Level="None"/>
