@@ -336,7 +336,9 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
                              std::string_view action) {
   const Launcher* launcher = ForGame(game);
   if (!launcher) return Err("not_launcher_game", "not a store launcher game");
-  const auto host = game.source == "launcher" ? std::optional(game) : games.Find(GameId(*launcher));
+  // The open route passes a bare launcher target with no id; look the host up then.
+  const auto host =
+      game.source == "launcher" && !game.id.empty() ? std::optional(game) : games.Find(GameId(*launcher));
   if (!host || host->status != model::GameStatus::Ready) {
     return LauncherNotInstalled(launcher->id, launcher->name);
   }
