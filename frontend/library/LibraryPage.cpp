@@ -522,9 +522,10 @@ void LibraryPage::UpdateEmptyState() {
   const int shown = games_->rowCount();
   empty_hint_->setVisible(shown == 0);
   if (shown == 0) {
-    empty_hint_->setText(library_->Games().empty() ? "No games in the library yet."
-                         : !owned_matches_.empty() ? "Nothing installed matches."
-                                                   : "No games match this filter.");
+    const QString items = FilterKey() == "apps" ? "apps" : "games";
+    empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet.").arg(items)
+                         : !owned_matches_.empty() ? QString("Nothing installed matches.")
+                                                   : QString("No %1 match this filter.").arg(items));
   }
 }
 

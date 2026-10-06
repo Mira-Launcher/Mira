@@ -45,6 +45,8 @@ public:
     ProgressDetailRole,
     // mirad wants its pick of executable checked: "Not checked" on the status line.
     NeedsCheckRole,
+    // A program rather than a game: "Running", not "Playing".
+    AppRole,
   };
 
   // Where the ActionRole pill sits inside a tile's cell.

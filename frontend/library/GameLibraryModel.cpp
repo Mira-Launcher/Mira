@@ -138,6 +138,7 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     }
     case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
     case GameTileDelegate::NeedsCheckRole: return game.needs_check;
+    case GameTileDelegate::AppRole: return IsApp(game);
     default: return {};
   }
 }

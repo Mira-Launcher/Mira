@@ -92,7 +92,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
     }
     auto* status =
         new QLabel(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
-                       .arg(status_color.name(), running ? "Playing" : StatusLabel(game->status),
+                       .arg(status_color.name(), running ? RunningLabel(*game) : StatusLabel(game->status),
                             facts.join(" · ").toHtmlEscaped()),
                    this);
     status->setTextFormat(Qt::RichText);
@@ -277,7 +277,7 @@ void GameCard::UpdateBar() {
 
 void GameCard::UpdatePlay() {
   const GameSummary* game = library_->Find(id_);
-  play_->setText(game != nullptr && game->running ? "Stop" : "Play");
+  play_->setText(game == nullptr ? "Play" : game->running ? "Stop" : RunVerb(*game));
   play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
 }
 

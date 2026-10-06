@@ -74,6 +74,9 @@ inline bool HasTag(const GameSummary& game, std::string_view tag) {
 }
 inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
 inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+// An app is opened and runs; a game is played.
+inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
+inline const char* RunningLabel(const GameSummary& game) { return IsApp(game) ? "Running" : "Playing"; }
 inline bool IsPinned(const GameSummary& game) { return HasTag(game, tags::kPinned); }
 
 // Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a 409.
