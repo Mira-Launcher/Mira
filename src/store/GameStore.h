@@ -35,6 +35,8 @@ public:
   std::vector<model::Game> All() const;
   std::optional<model::Game> Find(const std::string& id) const;
   std::optional<model::Game> FindByInstallPath(const std::string& install_path) const;
+  // Whether a game's install_path is inside `dir` (a game whose program sits in a subfolder).
+  bool HasInstallUnder(const std::string& dir) const;
 
   // Derives an id from the game's name, disambiguating against existing ids
   // ("celeste", "celeste-2", ...) so games.toml stays readable.

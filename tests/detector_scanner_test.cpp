@@ -267,6 +267,16 @@ TEST_CASE("Scanner leaves alone the folder of an installer whose game now lives 
 
   CHECK(library::Scanner(env.config, env.games, env.events).ScanAll().added == 0);
   CHECK(env.games.All().size() == 1);
+
+  // Nor the folder of a game that runs from a subfolder of it.
+  Touch(lib / "Batman" / "Binaries" / "BmLauncher.exe");
+  model::Game nested;
+  nested.id = "batman";
+  nested.name = "Batman";
+  nested.install_path = (lib / "Batman" / "Binaries").string();
+  REQUIRE(env.games.Upsert(nested).has_value());
+  CHECK(library::Scanner(env.config, env.games, env.events).ScanAll().added == 0);
+  CHECK(env.games.All().size() == 2);
 }
 
 TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a missing runner") {

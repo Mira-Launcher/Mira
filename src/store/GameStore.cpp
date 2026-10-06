@@ -115,6 +115,14 @@ std::optional<model::Game> GameStore::FindByInstallPath(const std::string& insta
   return *it;
 }
 
+bool GameStore::HasInstallUnder(const std::string& dir) const {
+  std::lock_guard lock(mutex_);
+  return std::ranges::any_of(games_, [&dir](const model::Game& game) {
+    return game.install_path.size() > dir.size() && game.install_path.starts_with(dir) &&
+           game.install_path[dir.size()] == '/';
+  });
+}
+
 std::string GameStore::NextId(const std::string& name) const {
   const std::string base = strings::Slugify(name);
   std::lock_guard lock(mutex_);
