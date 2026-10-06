@@ -732,6 +732,11 @@ struct FrontendPrefs {
   // Source pages split installed and not installed games into tabs; off
   // stacks both sections.
   std::optional<bool> source_page_tabs;
+  // Set once the first-run wizard has been through (or skipped).
+  std::optional<bool> onboarded;
+  // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes
+  // what the sidebar and library lead with; nothing is hidden for good.
+  std::optional<std::string> primary_use;
   // Each source page's tile width, by source id; tile_width is the library's.
   // Synced: every page uses tile_width.
   std::optional<std::map<std::string, int>> source_tile_widths;
