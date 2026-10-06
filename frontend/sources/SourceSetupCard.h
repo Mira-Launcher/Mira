@@ -9,6 +9,7 @@
 #include "Sources.h"
 
 class QLabel;
+class QTimer;
 class QLineEdit;
 class QPushButton;
 
@@ -44,6 +45,9 @@ class SourceSetupCard : public SettingsCard {
   // Marks steps before `current` done and shows the body under it.
   void SetStep(int current);
   void OpenLogin();
+  // The running log under the step: the last few lines, refreshed while setup runs.
+  void WatchLog(bool on);
+  void PollLog();
   void SignIn();
 
   struct Step {
@@ -63,6 +67,10 @@ class SourceSetupCard : public SettingsCard {
   QLineEdit* credential_ = nullptr;
   QPushButton* sign_in_ = nullptr;
   QLabel* error_ = nullptr;
+  QWidget* log_box_ = nullptr;
+  QLabel* log_tail_ = nullptr;
+  QTimer* log_timer_ = nullptr;
+  bool log_busy_ = false;
 };
 
 }  // namespace mira_gui

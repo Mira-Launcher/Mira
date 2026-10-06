@@ -8,6 +8,11 @@
 namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
+
+// Whatever lands in the Applications root is an application, not a game.
+void TagApp(model::Game& game, const fs::path& root) {
+  if (strings::ToLower(root.filename().string()) == "applications") game.tags.push_back("app");
+}
 }
 
 AutoSetup::AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events)
@@ -33,6 +38,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
     const std::string root_name = install_path.parent_path().filename().string();
     if (!root_name.empty()) game.tags.push_back(root_name);
   }
+  TagApp(game, install_path.parent_path());
 
   if (detected.candidates.empty()) {
     game.status = model::GameStatus::Broken;
@@ -81,6 +87,7 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
   if (config_.GetBool("scan.tag_by_root") && !root.filename().empty()) game.tags.push_back(root.filename().string());
+  TagApp(game, root);
 
   if (auto result = games_.Upsert(game); !result) {
     log::Error("failed to save new game \"{}\": {}", game.id, result.error().message);

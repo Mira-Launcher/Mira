@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mira LANGUAGES CXX VERSION 0.12.3)
+project(mira LANGUAGES CXX VERSION 0.12.4)
 
 # Dependencies are header-only and vendored in third_party/, so a build needs
 # nothing fetched at configure time, and the only external dependency is the
@@ -17,7 +17,26 @@ option(MIRA_ASAN "Build with AddressSanitizer + UBSan" OFF)
 option(MIRA_TSAN "Build with ThreadSanitizer" OFF)
 option(MIRA_WERROR "Treat warnings as errors" OFF)
 
+# Run on older glibc and libstdc++ than the build machine has, so a binary built on a rolling
+# distro still starts on an LTS one. Both only change what the binaries ask of the system.
+option(MIRA_GLIBC_COMPAT "Bind strtol and friends to their pre-glibc-2.38 versions" ON)
+option(MIRA_STATIC_LIBSTDCXX "Link libstdc++ and libgcc statically into mirad, mira and mira-run" ON)
+
+# A compiler cache, when one is installed, makes every rebuild after the first cheap.
+find_program(MIRA_CCACHE NAMES ccache sccache)
+# The sloppiness lets it cache files that use the precompiled headers.
+if(MIRA_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_COMMAND}" -E env
+      "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" "${MIRA_CCACHE}")
+endif()
+
 find_package(Threads REQUIRED)
+
+add_library(mira_glibc_compat INTERFACE)
+if(MIRA_GLIBC_COMPAT AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_options(mira_glibc_compat INTERFACE
+    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/cmake/glibc_compat.h")
+endif()
 
 add_library(mira_flags INTERFACE)
 target_compile_options(mira_flags INTERFACE -Wall -Wextra -Wpedantic)
@@ -59,19 +78,47 @@ list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")
 add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
 target_link_libraries(mira_core PRIVATE mira_flags)
-target_link_libraries(mira_core PUBLIC mira_third_party Threads::Threads)
+target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
+
+option(MIRA_PCH "Precompile the common headers" ON)
+
+# Clang writes a timestamp into a precompiled header, which changes the file on every build and so
+# keeps ccache from ever matching a file that uses it.
+if(MIRA_PCH AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Xclang -fno-pch-timestamp)
+endif()
+
+# The headers nearly every file pulls in (json.hpp alone is ~900 KB), parsed once for the whole library.
+if(MIRA_PCH)
+  target_precompile_headers(mira_core PRIVATE
+    <json.hpp> <algorithm> <chrono> <filesystem> <format> <functional> <map> <memory> <optional>
+    <string> <string_view> <vector> <expected>)
+endif()
+
+# The GUI keeps the shared runtime: the Qt libraries it loads use it too, and the AppImage bundles that one.
+# Its glibc 2.36+ calls are answered by cmake/glibc_shims.cpp.
+set_source_files_properties(cmake/glibc_shims.cpp PROPERTIES COMPILE_DEFINITIONS MIRA_NO_GLIBC_SYMVER)
+function(mira_static_runtime target)
+  if(MIRA_STATIC_LIBSTDCXX AND NOT MIRA_ASAN AND NOT MIRA_TSAN)
+    target_link_options(${target} PRIVATE -static-libstdc++ -static-libgcc)
+    target_sources(${target} PRIVATE cmake/glibc_shims.cpp)
+  endif()
+endfunction()
 
 add_executable(mirad src/mirad_main.cpp)
+mira_static_runtime(mirad)
 target_link_libraries(mirad PRIVATE mira_core mira_flags)
 target_compile_definitions(mirad PRIVATE MIRA_VERSION="${PROJECT_VERSION}")
 
 add_executable(mira src/cli/main.cpp)
+mira_static_runtime(mira)
 target_link_libraries(mira PRIVATE mira_core mira_flags)
 
 # The process mirad actually spawns for a game launch (see proc/Session.h,
 # docs/architecture.md), a separate binary, not a mirad-internal thread, so
 # a launched game's session survives mirad restarting or crashing mid-game.
 add_executable(mira-run src/wrapper/main.cpp)
+mira_static_runtime(mira-run)
 target_link_libraries(mira-run PRIVATE mira_core mira_flags)
 
 # A target's own compile options are always ordered before flags inherited
@@ -104,6 +151,9 @@ foreach(icon_size IN ITEMS 16 32 48 64 128 256)
   install(FILES packaging/icons/hicolor/${icon_size}x${icon_size}/apps/mira.png
           DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps)
 endforeach()
+
+# Builds the AppImage in an Ubuntu 22.04 container (target appimage-container); needs docker or podman.
+include(cmake/AppImageContainer.cmake)
 
 option(MIRA_BUILD_FRONTEND "Build the Qt frontend skeleton if Qt6 is available" ON)
 if(MIRA_BUILD_FRONTEND)

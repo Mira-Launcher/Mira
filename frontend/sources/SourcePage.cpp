@@ -1,6 +1,9 @@
 #include "SourcePage.h"
 
+#include <algorithm>
+
 #include <QEvent>
+#include <QGridLayout>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -18,6 +21,7 @@
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/ItchCollectionsDialog.h"
+#include "../dialogs/LogWindow.h"
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -32,6 +36,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/ModalOverlay.h"
 #include "../widgets/TabRow.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
@@ -100,6 +105,9 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == settings_card_ && event->type() == QEvent::LayoutRequest && SettingsModalOpen()) {
+    QMetaObject::invokeMethod(this, &SourcePage::FitSettingsModal, Qt::QueuedConnection);
+  }
   if (watched == content_ && event->type() == QEvent::MouseButtonPress) {
     for (TileGrid* grid : {library_grid_, owned_grid_}) {
       if (grid == nullptr) continue;
@@ -112,7 +120,10 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
-bool SourcePage::HasOwned() const { return IsStore() || id_ == "steam"; }
+// Every page has both tabs; ones that can't list what the account owns say so.
+bool SourcePage::HasOwned() const { return true; }
+
+bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam"; }
 
 bool SourcePage::IsOwnGame(const GameSummary& game) const { return game.source == id_; }
 
@@ -185,9 +196,8 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_ = new QToolButton(tabs_);
   settings_button_->setIcon(icons::For(icons::Glyph::Settings));
   settings_button_->setToolTip(source_.name + " settings");
-  settings_button_->setCheckable(true);
   settings_button_->setAutoRaise(true);
-  connect(settings_button_, &QToolButton::toggled, this, &SourcePage::ToggleSettings);
+  connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
 
   more_button_ = new QToolButton(tabs_);
@@ -208,15 +218,88 @@ QWidget* SourcePage::BuildTopRow() {
   return tabs_;
 }
 
-void SourcePage::ToggleSettings(bool shown) {
-  if (shown && settings_card_ == nullptr) {
+// A dialog over the page: the games underneath stay where they are.
+void SourcePage::OpenSettingsModal() {
+  if (settings_card_ == nullptr) {
     settings_card_ = new SourceSettingsCard(source_, this);
+    // Its rows arrive from mirad after it opens: the dialog follows its height.
+    settings_card_->installEventFilter(this);
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
-    content_layout_->insertWidget(1, settings_card_);  // right under the top row
-  } else if (shown) {
+    settings_card_->setMaximumWidth(560);
+    auto* close = new QToolButton(settings_card_);
+    close->setIcon(icons::For(icons::Glyph::Close));
+    close->setToolTip("Close");
+    close->setAutoRaise(true);
+    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
+    settings_card_->Header()->addWidget(close);
+  } else {
     settings_card_->Refresh();
   }
-  if (settings_card_ != nullptr) settings_card_->setVisible(shown);
+  if (settings_overlay_ == nullptr) {
+    settings_overlay_ = new ModalOverlay(this);
+    settings_overlay_->scrim = QColor(0, 0, 0, 150);
+    settings_overlay_->setFocusPolicy(Qt::StrongFocus);
+    settings_overlay_->on_backdrop_clicked = [this] { CloseSettingsModal(); };
+    auto* scroll = new QScrollArea(settings_overlay_);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // Only the viewport: the card keeps its own background.
+    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.
+    settings_scroll_ = scroll;
+    scroll->setWidget(settings_card_);
+    auto* column = new QVBoxLayout(settings_overlay_);
+    column->setContentsMargins(32, 32, 32, 32);
+    column->addStretch(1);
+    column->addWidget(scroll, 0, Qt::AlignHCenter);
+    column->addStretch(1);
+  }
+  settings_overlay_->setGeometry(rect());
+  FitSettingsModal();
+  settings_overlay_->show();
+  settings_overlay_->raise();
+  settings_overlay_->setFocus();
+}
+
+bool SourcePage::SettingsModalOpen() const { return settings_overlay_ != nullptr && settings_overlay_->isVisible(); }
+
+void SourcePage::CloseSettingsModal() {
+  if (!SettingsModalOpen()) return;
+  if (settings_card_ != nullptr && settings_card_->IsDirty()) {
+    const bool leave = notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
+      connect(settings_card_, &SourceSettingsCard::SaveFinished, this,
+              [this](bool ok) {
+                if (!ok) return;
+                settings_overlay_->hide();
+                            },
+              Qt::SingleShotConnection);
+      settings_card_->Save();
+    });
+    if (!leave) return;
+    settings_card_->Discard();
+  }
+  settings_overlay_->hide();
+}
+
+// The card at its natural size, 560 wide at most, shrunk to fit a small window.
+void SourcePage::FitSettingsModal() {
+  if (settings_scroll_ == nullptr) return;
+  constexpr int kMargin = 32;
+  const int width = std::min(560, std::max(280, this->width() - 2 * kMargin));
+  settings_card_->setFixedWidth(width);
+  const int wanted = settings_card_->heightForWidth(width) > 0 ? settings_card_->heightForWidth(width)
+                                                               : settings_card_->sizeHint().height();
+  settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->style()->pixelMetric(QStyle::PM_ScrollBarExtent) : 0));
+  settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
+}
+
+void SourcePage::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  if (settings_overlay_ != nullptr) {
+    settings_overlay_->setGeometry(rect());
+    FitSettingsModal();
+  }
 }
 
 void SourcePage::FillMoreMenu(QMenu* menu) {
@@ -229,6 +312,9 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     update->setEnabled(!tool_updating_);
     update->setToolTip("Download the latest release of " + tool + " again.");
   }
+  if (IsLauncher() || IsStore()) {
+    menu->addAction("View setup log", this, [this] { LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup"); });
+  }
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
     menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this, [this] {
@@ -239,7 +325,7 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     menu->addAction("Run a program in its prefix…", this, [this, game_id] {
       actions::RunInPrefix(this, game_id, launcher_prefix_ + "/drive_c", source_.name);
     });
-    menu->addAction("View log", this, [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
+    menu->addAction("View launcher log", this, [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
   }
 
   // What removing does differs per kind; RemoveSource spells it out before anything happens.
@@ -308,7 +394,7 @@ QWidget* SourcePage::BuildLibrarySection() {
 
 QWidget* SourcePage::BuildOwnedSection() {
   owned_section_ = new QWidget(this);
-  owned_available_ = id_ == "steam";
+  owned_available_ = id_ == "steam" || !ListsOwned();
   auto* layout = new QVBoxLayout(owned_section_);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
@@ -356,6 +442,14 @@ QWidget* SourcePage::BuildOwnedSection() {
     row->addWidget(art_key_);
     row->addStretch(1);
     layout->addLayout(row);
+  }
+
+  if (!ListsOwned()) {
+    owned_refresh_->setVisible(false);
+    if (art_key_ != nullptr) art_key_->setVisible(false);
+    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up under Installed."
+                                      : source_.name + " doesn't list games you own. What it installs shows up under Installed.";
+    ShowLine(owned_note_, what, "muted");
   }
 
   owned_grid_ = new TileGrid(tile_, artwork_, owned_section_);
@@ -469,6 +563,12 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   banner_primary_->setVisible(authenticated_ && id_ != "humble");
   if (import_button_ != nullptr) import_button_->setVisible(tool_installed_ && HasImport());
   owned_available_ = tool_installed_ && authenticated_;
+  if (owned_section_ != nullptr && !owned_available_) {
+    owned_refresh_->setEnabled(false);
+    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.", "muted");
+  } else if (owned_section_ != nullptr) {
+    owned_refresh_->setEnabled(true);
+  }
   if (owned_section_ != nullptr && authenticated_ && !was_authenticated) RefreshOwned();
   UpdateSections();
   UpdateStatusLine();
@@ -529,7 +629,7 @@ void SourcePage::UpdateStatusLine() {
 }
 
 void SourcePage::UpdateSections() {
-  const bool has_owned = owned_section_ != nullptr && owned_available_;
+  const bool has_owned = owned_section_ != nullptr;
   // Tabs only when there's a choice to make.
   const bool tabbed = use_tabs_ && has_owned && library_section_ != nullptr;
   tabs_->SetTabsVisible(tabbed);

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <regex>
 
+#include "core/LogHub.h"
+
 namespace mira::library {
 
 bool ParseProgressLine(std::string_view line, DownloadProgress& progress) {
@@ -25,9 +27,14 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress) {
 }
 
 StoreProgress::StoreProgress(api::EventBus& events, std::string source, std::string ref)
-    : events_(events), source_(std::move(source)), ref_(std::move(ref)) {}
+    : events_(events), source_(std::move(source)), ref_(std::move(ref)) {
+  loghub::Begin(channel());
+}
+
+StoreProgress::~StoreProgress() { loghub::End(channel()); }
 
 void StoreProgress::Feed(std::string_view chunk) {
+  loghub::Append(channel(), chunk);
   bool changed = false;
   for (char c : chunk) {
     // Progress bars redraw with '\r'; both end a line here.

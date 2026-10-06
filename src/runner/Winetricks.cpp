@@ -80,7 +80,8 @@ Result<void> InstallWinetricks() {
   return {};
 }
 
-Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game, const std::string& verb) {
+Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game, const std::string& verb,
+                           const OutputFn& on_output) {
   if (game.data_dir.empty()) return NoPrefix(game);
   std::error_code ec;
   if (!fs::exists(fs::path(game.data_dir) / "drive_c", ec)) {
@@ -109,7 +110,7 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
   const fs::path wineserver = wine_binary->parent_path() / "wineserver";
   if (fs::exists(wineserver, ec)) command.env["WINESERVER"] = wineserver.string();
 
-  const Result<ExecResult> result = RunAndWait(command);
+  const Result<ExecResult> result = RunAndWait(command, on_output);
   if (!result) return std::unexpected(result.error());
   if (result->exit_code != 0) {
     return Err("tricks_failed", std::format("winetricks {} exited {}: {}", verb, result->exit_code, result->output));

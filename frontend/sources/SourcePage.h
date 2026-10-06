@@ -21,6 +21,7 @@ class QMenu;
 class QModelIndex;
 class QStandardItemModel;
 class QPushButton;
+class QScrollArea;
 class QToolButton;
 class QVBoxLayout;
 
@@ -31,6 +32,7 @@ class DownloadTracker;
 class GameFilterProxy;
 class GameLibraryModel;
 class HoverCard;
+class ModalOverlay;
 class SourceSettingsCard;
 class SourceSetupCard;
 class TabRow;
@@ -59,6 +61,9 @@ public:
   void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.
   SourceSettingsCard* SettingsCard() const { return settings_card_; }
+  bool SettingsModalOpen() const;
+  // Esc: closes the settings dialog, asking first when it has unsaved edits.
+  void CloseSettingsModal();
 
 signals:
   // An import added or changed games.
@@ -77,19 +82,23 @@ signals:
 
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 
 private:
   bool IsStore() const { return source_.kind == SourceInfo::Kind::Store; }
   bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
   bool HasImport() const;
   bool HasOwned() const;
+  // The source has a list of what the account owns, as opposed to a note saying it has none.
+  bool ListsOwned() const;
   bool IsOwnGame(const GameSummary& game) const;
 
   QWidget* BuildTopRow();
   QWidget* BuildLibrarySection();
   QWidget* BuildOwnedSection();
 
-  void ToggleSettings(bool shown);
+  void OpenSettingsModal();
+  void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
 
@@ -141,6 +150,8 @@ private:
   QWidget* content_ = nullptr;
   QVBoxLayout* content_layout_ = nullptr;
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
+  ModalOverlay* settings_overlay_ = nullptr;
+  QScrollArea* settings_scroll_ = nullptr;
 
   SourceSetupCard* setup_card_ = nullptr;
 

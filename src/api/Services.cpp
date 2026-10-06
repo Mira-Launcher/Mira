@@ -1,3 +1,4 @@
+#include "core/LogHub.h"
 #include "api/Services.h"
 
 #include <chrono>
@@ -274,18 +275,32 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                      {"label", runner::BuildLabel(kind, name)}, {"source", source}};
   events.Publish("runners.download.started", base);
   StartJob(req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
-           [this, kind, asset, replacing, base](JobRegistry::Progress&) -> Result<json> {
-             const auto on_progress = [this, &base](double fraction) {
+           [this, kind, asset, replacing, base, name](JobRegistry::Progress&) -> Result<json> {
+             // Its own live log, apart from any other download running at the same time.
+             const std::string channel = "runner:" + kind + ":" + name;
+             loghub::Begin(channel);
+             loghub::Append(channel, std::format("Downloading {} {}\n", kind, asset.tag));
+             int reported = -1;
+             const auto on_progress = [this, &base, &channel, &reported](double fraction) {
                json event = base;
                event["progress"] = fraction;
                events.Publish("runners.download.progress", std::move(event));
+               const int tenth = static_cast<int>(fraction * 10);
+               if (tenth > reported) {
+                 reported = tenth;
+                 loghub::Append(channel, std::format("{}%\n", tenth * 10));
+               }
              };
              if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress); !installed) {
+               loghub::Append(channel, "Failed: " + installed.error().message + "\n");
+               loghub::End(channel);
                log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
                events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
                return std::unexpected(installed.error());
              }
              log::Info("installed {} {}", kind, asset.tag);
+             loghub::Append(channel, "Installed.\n");
+             loghub::End(channel);
              library::RetryBrokenProvisioning(config, games, events);
              json finished = base;
              if (!replacing.empty()) {

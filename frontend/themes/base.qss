@@ -942,3 +942,10 @@ QWidget#segmented QPushButton:checked {
   font-weight: 600;
 }
 
+
+QPlainTextEdit#log_view {
+  background: @window;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+  padding: 6px 8px;
+}

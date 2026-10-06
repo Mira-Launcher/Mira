@@ -1,6 +1,8 @@
 #include "launchers/Launchers.h"
 
+#include <fcntl.h>
 #include <signal.h>
+#include <unistd.h>
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -13,6 +15,7 @@
 #include <thread>
 
 #include "core/Lane.h"
+#include "core/LogHub.h"
 #include "launchers/Office.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
@@ -36,6 +39,25 @@ std::map<std::string, std::string> states;  // launcher id -> running, finished,
 void SetState(const Launcher& launcher, std::string state) {
   const std::lock_guard lock(state_mutex);
   states[launcher.id] = std::move(state);
+}
+
+// What the install is doing, for the live log: "setup:<launcher id>".
+std::string LogChannel(const Launcher& launcher) { return "setup:" + launcher.id; }
+
+void Say(const Launcher& launcher, std::string_view line) {
+  loghub::Append(LogChannel(launcher), std::string(line) + "\n");
+  log::Info("{}: {}", launcher.name, line);
+}
+
+// Moves what a child wrote to `file` since `offset` into the live log.
+void CopyNewOutput(const Launcher& launcher, const fs::path& file, std::uintmax_t& offset) {
+  std::ifstream in(file, std::ios::binary);
+  if (!in) return;
+  in.seekg(static_cast<std::streamoff>(offset));
+  std::string chunk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  if (chunk.empty()) return;
+  offset += chunk.size();
+  loghub::Append(LogChannel(launcher), chunk);
 }
 
 std::vector<pid_t> orphans;  // installer processes left running, reaped by a later call
@@ -117,6 +139,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
+  Say(launcher, std::format("Downloading {}", step.file));
   if (auto fetched = runner::CurlDownload(step.url, setup); !fetched) {
     return Err("download_failed", std::format("couldn't download the {} installer: {}", launcher.name,
                                               fetched.error().message), kConnectionHint);
@@ -140,9 +163,18 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
     command->argv.push_back(std::move(arg));
   }
 
-  log::Info("running {} for {}", step.file, launcher.name);
-  const auto pid = runner::SpawnDetached(*command);
+  Say(launcher, std::format("Running {}", step.file));
+  // Its output goes to a file that the wait loop below copies into the live log.
+  const fs::path output_file = downloads / (step.file + ".log");
+  std::error_code remove_ec;
+  fs::remove(output_file, remove_ec);
+  const int output_fd = ::open(output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  const auto pid = runner::SpawnDetached(*command, output_fd);
+  if (output_fd >= 0) ::close(output_fd);
   if (!pid) return std::unexpected(pid.error());
+  std::uintmax_t copied = 0;
+  const auto started = std::chrono::steady_clock::now();
+  auto last_note = started;
   // umu-run only exits once everything in the prefix has, and a freshly
   // installed launcher (and the EA app's background service) keeps
   // running. So wait for the setup process itself instead. Exit codes
@@ -151,7 +183,10 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
   while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
+    CopyNewOutput(launcher, output_file, copied);
     if (!SetupRunning(game, setup_dir, step.file) && finished()) {
+      CopyNewOutput(launcher, output_file, copied);
+      Say(launcher, std::format("{} finished", step.file));
       ReapOrphans(*pid);
       return {};
     }
@@ -166,7 +201,15 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
                        : Err("shutting_down", "mirad stopped before the installer finished");
     }
     std::this_thread::sleep_for(std::chrono::seconds(2));
+    // Wine installers say little: a line now and then shows it hasn't stalled.
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_note >= std::chrono::seconds(15)) {
+      last_note = now;
+      const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - started).count();
+      Say(launcher, std::format("Still running {} ({}:{:02})", step.file, elapsed / 60, elapsed % 60));
+    }
   }
+  CopyNewOutput(launcher, output_file, copied);
   if (!finished()) {
     return Err("launcher_not_installed", std::format("{} finished but {} wasn't installed", step.file, launcher.name));
   }
@@ -197,6 +240,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   // Provisioning an existing prefix waits on anything running in it, such
   // as the launcher itself.
   if (game.runner_ref.empty() || !fs::exists(fs::path(game.data_dir) / "drive_c", ec)) {
+    Say(launcher, "Creating the Wine prefix (the first run downloads and sets up the runtime)");
     const model::Game provisioned = runners.ProvisionGame(game);
     if (provisioned.status == model::GameStatus::Broken) {
       return Err("provision_failed", "couldn't set up the launcher's Wine prefix: " + provisioned.last_error,
@@ -209,11 +253,14 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   WriteDefaults(config, launcher, game.data_dir);
   auto exe = FindExe(launcher, game.data_dir);  // already there: just register it
   if (!exe) {
+    int trick = 0;
     for (const std::string& verb : launcher.tricks) {
-      log::Info("winetricks {} for {}", verb, launcher.name);
-      if (auto tricked = runner::RunTricksVerb(runners, game, verb); !tricked) return std::unexpected(tricked.error());
+      Say(launcher, std::format("winetricks {} ({}/{})", verb, ++trick, launcher.tricks.size()));
+      const auto on_output = [&launcher](std::string_view chunk) { loghub::Append(LogChannel(launcher), chunk); };
+      if (auto tricked = runner::RunTricksVerb(runners, game, verb, on_output); !tricked) return std::unexpected(tricked.error());
     }
     if (launcher.id == "office") {
+      Say(launcher, "Writing Microsoft 365's settings and installing its compatibility shims");
       if (auto prepared = office::Prepare(config, runners, game, paths::UserDir() / "downloads"); !prepared) {
         return std::unexpected(prepared.error());
       }
@@ -313,7 +360,11 @@ std::string InstallState(const Launcher& launcher) {
 }
 
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher) {
+  loghub::Begin(LogChannel(launcher));
+  Say(launcher, std::format("Installing {}", launcher.name));
   const Result<model::Game> done = InstallInto(config, games, launcher);
+  Say(launcher, done ? "Done." : "Failed: " + done.error().message);
+  loghub::End(LogChannel(launcher));
   SetState(launcher, done ? "finished" : "failed");
   auto saved = games.Update(GameId(launcher), [&](model::Game& stored) {
     if (done) {

@@ -732,6 +732,11 @@ struct FrontendPrefs {
   // Source pages split installed and not installed games into tabs; off
   // stacks both sections.
   std::optional<bool> source_page_tabs;
+  // Set once the first-run wizard has been through (or skipped).
+  std::optional<bool> onboarded;
+  // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes
+  // what the sidebar and library lead with; nothing is hidden for good.
+  std::optional<std::string> primary_use;
   // Each source page's tile width, by source id; tile_width is the library's.
   // Synced: every page uses tile_width.
   std::optional<std::map<std::string, int>> source_tile_widths;
@@ -824,6 +829,16 @@ struct GameLogResult {
   bool ok = false;
   ApiError error;
   std::vector<std::string> lines;
+};
+
+// GET /v1/logs/<channel>. `next` is the cursor for the following read; `active` is whether the task is still going.
+struct LogResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> lines;
+  std::uint64_t next = 0;
+  bool active = false;
+  std::string live;  // a line still being redrawn (a progress bar); not in `lines` until it ends
 };
 
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.

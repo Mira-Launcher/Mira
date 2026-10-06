@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include "client/api/Config.h"
+#include "dialogs/FirstRunWizard.h"
 #include "app/DaemonSupervisor.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
@@ -92,7 +93,14 @@ int main(int argc, char** argv) {
     // Read once and applied before the window exists, so it opens at its saved
     // size and look instead of changing once shown.
     const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
-    const mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
+    mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
+    if (saved.ok && mira_gui::FirstRunWizard::Needed(prefs)) {
+      mira_gui::FirstRunWizard wizard(prefs);
+      wizard.exec();
+      // What it chose decides how the window opens.
+      const mira_gui::FrontendPrefsResult after = mira_gui::api::GetFrontendPrefsBlocking();
+      if (after.ok) prefs = after.prefs;
+    }
     ApplyAppearance(prefs);
     auto* window = new LibraryWindow(prefs);
     window->setAttribute(Qt::WA_DeleteOnClose);

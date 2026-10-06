@@ -248,6 +248,15 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   text->addStretch(1);
   layout->addLayout(text, /*stretch=*/1);
 
+  // Every row, whatever its state: what it did, or is doing.
+  auto* log = new QPushButton("Log", row);
+  log->setObjectName("text_button");
+  log->setToolTip("Open its live log in a window");
+  connect(log, &QPushButton::clicked, this, [this, channel = DownloadTracker::LogChannelFor(entry), name] {
+    emit LogRequested(channel, name);
+  });
+  layout->addWidget(log, 0, Qt::AlignVCenter);
+
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
   if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {

@@ -1,6 +1,6 @@
 # Maintainer: arigood99 <arigood99@gmail.com>
 pkgname=mira-launcher
-pkgver=0.12.3
+pkgver=0.12.4
 pkgrel=1
 pkgdesc="Linux game launcher for native games and Windows games via Wine/Proton"
 arch=('x86_64')

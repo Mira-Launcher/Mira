@@ -53,6 +53,8 @@ public:
   explicit DownloadTracker(QObject* parent = nullptr);
 
   static QString KeyFor(Kind kind, const QString& source, const QString& ref);
+  // The live log of the work an entry stands for (GET /v1/logs/<channel>); work with no log of its own reads the daemon's.
+  static QString LogChannelFor(const Entry& entry);
   // "42% · 12.5 MB/s · 3 min left", as much as the source reported; empty
   // when it reported nothing. `short_form` leaves out the speed.
   static QString ProgressText(const Entry& entry, bool short_form = false);

@@ -154,6 +154,8 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("tile_source_mark", result.prefs.tile_source_mark);
   read_bool("tile_pin_badge", result.prefs.tile_pin_badge);
   read_bool("source_page_tabs", result.prefs.source_page_tabs);
+  read_bool("onboarded", result.prefs.onboarded);
+  read_string("primary_use", result.prefs.primary_use);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
   if (table.contains("source_tile_widths") && table["source_tile_widths"].is_object()) {
     std::map<std::string, int> widths;
@@ -236,6 +238,8 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.tile_source_mark) table["tile_source_mark"] = *prefs.tile_source_mark;
   if (prefs.tile_pin_badge) table["tile_pin_badge"] = *prefs.tile_pin_badge;
   if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
+  if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
+  if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;
   if (prefs.source_tile_widths) table["source_tile_widths"] = *prefs.source_tile_widths;
   for (const std::string& key : prefs.clear) table[key] = nullptr;  // merge-patch: null deletes

@@ -32,6 +32,7 @@ Result<std::filesystem::path> ResolveWineBinary(const RunnerRegistry& runners, c
 // such as regedit.
 Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& game, const std::vector<std::string>& args);
 
-Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game, const std::string& verb);
+Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game, const std::string& verb,
+                           const OutputFn& on_output = {});
 
 }  // namespace mira::runner

@@ -23,6 +23,7 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s);
 void RegisterMetadataRoutes(httplib::Server& http, Services& s);
 void RegisterRunnerRoutes(httplib::Server& http, Services& s);
 void RegisterEventRoutes(httplib::Server& http, Services& s);
+void RegisterLogRoutes(httplib::Server& http, Services& s);
 
 // Serves one cached art slot for `id`, or 404s.
 void SendCachedArtwork(const config::Config& config, const std::string& id, const std::string& type,

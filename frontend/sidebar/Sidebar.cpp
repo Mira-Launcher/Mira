@@ -498,9 +498,8 @@ void Sidebar::UpdateSources() {
     const QString& id = sources[i].id;
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
-    const bool ready = games > 0 || source_ready_.value(id, false);
-    source_navs_[i]->setVisible(ready && !hidden_sources_.contains(id) &&
-                                !disabled_sources_.contains(id));
+    // Listed once enabled, set up or not: the page is where setup happens.
+    source_navs_[i]->setVisible(!hidden_sources_.contains(id) && !disabled_sources_.contains(id));
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);

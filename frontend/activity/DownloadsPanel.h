@@ -26,6 +26,8 @@ public:
 signals:
   // "Show" on a finished install: the game it became.
   void ShowGameRequested(const QString& id);
+  // "Log" on any row: its live log, by channel, with the row's name.
+  void LogRequested(const QString& channel, const QString& title);
 
 private:
   void Rebuild();

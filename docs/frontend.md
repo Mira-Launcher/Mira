@@ -205,7 +205,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `POST /v1/games/{id}/run` | `RunInPrefixDialog` |
 | `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install`, `DELETE .../installer` | `game/InstallerCards`, *Mark as installed*, `game/InstallPromptCard`, `DownloadTracker` |
 | `POST /v1/games/{id}/tricks` | `WinetricksDialog` |
-| `GET /v1/games/{id}/log` | `LogViewerDialog` |
+| `GET /v1/logs/{channel}` | `LogWindow` (a window per log), the setup card's running tail, the Activity popover's *Log* buttons |
 | `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…*, and the game card's *Move…* buttons for the install folder and the prefix |
 | Metadata and artwork endpoints | `ArtworkStore`, `HoverCard`, `GameDetailPageDialog`, `ArtPickerPanel` |
 | `POST /v1/library/scan` | Startup and *Refresh library* |

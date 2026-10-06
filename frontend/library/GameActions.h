@@ -53,7 +53,7 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
 // rather than an id: GameSummary already carries it, so no fetch is needed.
 void OpenInstallFolder(QWidget* parent, const std::string& install_path);
 
-// Opens a LogViewerDialog for the game. Unlike RunInPrefix/Delete, no detail
+// Opens the game's live log in a window of its own. Unlike RunInPrefix/Delete, no detail
 // fetch is needed first: id/name are already known from the tile/row.
 void ViewLog(QWidget* parent, const std::string& id, const QString& name);
 
