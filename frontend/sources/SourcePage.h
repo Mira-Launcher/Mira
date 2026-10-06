@@ -21,6 +21,7 @@ class QMenu;
 class QModelIndex;
 class QStandardItemModel;
 class QPushButton;
+class QScrollArea;
 class QToolButton;
 class QVBoxLayout;
 
@@ -97,6 +98,7 @@ private:
   QWidget* BuildOwnedSection();
 
   void OpenSettingsModal();
+  void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
 
@@ -149,6 +151,7 @@ private:
   QVBoxLayout* content_layout_ = nullptr;
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
   ModalOverlay* settings_overlay_ = nullptr;
+  QScrollArea* settings_scroll_ = nullptr;
 
   SourceSetupCard* setup_card_ = nullptr;
 

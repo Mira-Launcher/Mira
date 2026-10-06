@@ -22,6 +22,8 @@ endif()
 
 set(MIRA_CONTAINER_IMAGE "mira-appimage-builder")
 set(MIRA_CONTAINER_OUT "${CMAKE_BINARY_DIR}/appimage-container")
+# Kept between runs, so only what changed is compiled again.
+set(MIRA_CONTAINER_BUILD "${CMAKE_BINARY_DIR}/appimage-container-build")
 
 # The files the container writes belong to the user who ran the build, not root.
 execute_process(COMMAND id -u OUTPUT_VARIABLE MIRA_UID OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -33,7 +35,7 @@ else()
 endif()
 
 add_custom_target(appimage-container
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_CONTAINER_OUT}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_CONTAINER_OUT}" "${MIRA_CONTAINER_BUILD}"
   COMMAND "${MIRA_CONTAINER_ENGINE}" build
           ${MIRA_CONTAINER_NETWORK_ARGS}
           -t "${MIRA_CONTAINER_IMAGE}"
@@ -45,6 +47,7 @@ add_custom_target(appimage-container
           -e HOME=/tmp
           -v "${CMAKE_SOURCE_DIR}:/src:ro"
           -v "${MIRA_CONTAINER_OUT}:/out"
+          -v "${MIRA_CONTAINER_BUILD}:/tmp/mira-build"
           "${MIRA_CONTAINER_IMAGE}"
           /src/packaging/appimage/build-in-container.sh
   USES_TERMINAL

@@ -22,6 +22,12 @@ option(MIRA_WERROR "Treat warnings as errors" OFF)
 option(MIRA_GLIBC_COMPAT "Bind strtol and friends to their pre-glibc-2.38 versions" ON)
 option(MIRA_STATIC_LIBSTDCXX "Link libstdc++ and libgcc statically into mirad, mira and mira-run" ON)
 
+# A compiler cache, when one is installed, makes every rebuild after the first cheap.
+find_program(MIRA_CCACHE NAMES ccache sccache)
+if(MIRA_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${MIRA_CCACHE}")
+endif()
+
 find_package(Threads REQUIRED)
 
 add_library(mira_glibc_compat INTERFACE)

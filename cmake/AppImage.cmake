@@ -106,6 +106,22 @@ fi
   #
   # Written before linuxdeploy runs: it only generates its own AppRun when
   # none exists yet.
+  # The compiler's own C++ runtime, bundled so the GUI runs where the system's libstdc++ is older
+  # than the one the compiler built it against (GCC 13 on Ubuntu 22.04). Only worth it when that
+  # runtime was itself built against an old glibc, as in the container build, so it is opt-in.
+  option(MIRA_BUNDLE_CXX_RUNTIME "Bundle libstdc++ and libgcc_s into the AppImage" OFF)
+  set(MIRA_BUNDLED_RUNTIME_ARGS "")
+  if(MIRA_BUNDLE_CXX_RUNTIME)
+    foreach(runtime_lib libstdc++.so.6 libgcc_s.so.1)
+      execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-file-name=${runtime_lib}
+                      OUTPUT_VARIABLE runtime_path OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if(IS_ABSOLUTE "${runtime_path}" AND EXISTS "${runtime_path}")
+        get_filename_component(runtime_path "${runtime_path}" REALPATH)
+        list(APPEND MIRA_BUNDLED_RUNTIME_ARGS --library "${runtime_path}")
+      endif()
+    endforeach()
+  endif()
+
   set(MIRA_APPRUN "${MIRA_APPIMAGE_TOOLS_DIR}/AppRun")
   file(WRITE "${MIRA_APPRUN}" "\
 #!/bin/sh
@@ -166,6 +182,7 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
               --executable "${MIRA_APPDIR}/usr/bin/mira-gui"
               --desktop-file "${MIRA_APPDIR}/usr/share/applications/mira.desktop"
               --icon-file "${MIRA_APPDIR}/usr/share/icons/hicolor/256x256/apps/mira.png"
+              ${MIRA_BUNDLED_RUNTIME_ARGS}
               --plugin qt
               --output appimage
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"

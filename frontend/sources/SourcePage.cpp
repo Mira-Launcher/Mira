@@ -1,5 +1,7 @@
 #include "SourcePage.h"
 
+#include <algorithm>
+
 #include <QEvent>
 #include <QGridLayout>
 #include <QFrame>
@@ -103,6 +105,9 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == settings_card_ && event->type() == QEvent::LayoutRequest && SettingsModalOpen()) {
+    QMetaObject::invokeMethod(this, &SourcePage::FitSettingsModal, Qt::QueuedConnection);
+  }
   if (watched == content_ && event->type() == QEvent::MouseButtonPress) {
     for (TileGrid* grid : {library_grid_, owned_grid_}) {
       if (grid == nullptr) continue;
@@ -217,6 +222,8 @@ QWidget* SourcePage::BuildTopRow() {
 void SourcePage::OpenSettingsModal() {
   if (settings_card_ == nullptr) {
     settings_card_ = new SourceSettingsCard(source_, this);
+    // Its rows arrive from mirad after it opens: the dialog follows its height.
+    settings_card_->installEventFilter(this);
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
     auto* close = new QToolButton(settings_card_);
@@ -236,26 +243,20 @@ void SourcePage::OpenSettingsModal() {
     auto* scroll = new QScrollArea(settings_overlay_);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setMaximumWidth(560);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     // Only the viewport: the card keeps its own background.
     scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
-    // The card keeps its own height; the viewport's spare room stays empty.
-    auto* holder = new QWidget();
-    holder->setObjectName("settings_holder");
-    holder->setStyleSheet("QWidget#settings_holder { background: transparent; }");
-    auto* holder_layout = new QVBoxLayout(holder);
-    holder_layout->setContentsMargins(0, 0, 0, 0);
-    holder_layout->addWidget(settings_card_);
-    holder_layout->addStretch(1);
-    scroll->setWidget(holder);
-    auto* row = new QHBoxLayout(settings_overlay_);
-    row->setContentsMargins(32, 32, 32, 32);
-    row->addStretch(1);
-    row->addWidget(scroll, 100);
-    row->addStretch(1);
+    // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.
+    settings_scroll_ = scroll;
+    scroll->setWidget(settings_card_);
+    auto* column = new QVBoxLayout(settings_overlay_);
+    column->setContentsMargins(32, 32, 32, 32);
+    column->addStretch(1);
+    column->addWidget(scroll, 0, Qt::AlignHCenter);
+    column->addStretch(1);
   }
   settings_overlay_->setGeometry(rect());
+  FitSettingsModal();
   settings_overlay_->show();
   settings_overlay_->raise();
   settings_overlay_->setFocus();
@@ -281,9 +282,24 @@ void SourcePage::CloseSettingsModal() {
   settings_overlay_->hide();
 }
 
+// The card at its natural size, 560 wide at most, shrunk to fit a small window.
+void SourcePage::FitSettingsModal() {
+  if (settings_scroll_ == nullptr) return;
+  constexpr int kMargin = 32;
+  const int width = std::min(560, std::max(280, this->width() - 2 * kMargin));
+  settings_card_->setFixedWidth(width);
+  const int wanted = settings_card_->heightForWidth(width) > 0 ? settings_card_->heightForWidth(width)
+                                                               : settings_card_->sizeHint().height();
+  settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->style()->pixelMetric(QStyle::PM_ScrollBarExtent) : 0));
+  settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
+}
+
 void SourcePage::resizeEvent(QResizeEvent* event) {
   QWidget::resizeEvent(event);
-  if (settings_overlay_ != nullptr) settings_overlay_->setGeometry(rect());
+  if (settings_overlay_ != nullptr) {
+    settings_overlay_->setGeometry(rect());
+    FitSettingsModal();
+  }
 }
 
 void SourcePage::FillMoreMenu(QMenu* menu) {
