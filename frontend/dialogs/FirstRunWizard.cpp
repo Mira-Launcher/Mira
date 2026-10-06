@@ -131,7 +131,7 @@ QWidget* FirstRunWizard::BuildUse() {
                        "This only sets what you see first. Nothing is hidden for good.", body);
   use_ = new QButtonGroup(page);
   Choice(page, body, use_, "games", "Games",
-         "Recently played leaves out applications. Steam, Epic and GOG are suggested.");
+         "Steam, Epic and GOG are suggested.");
   Choice(page, body, use_, "apps", "Applications",
          "The library opens on Apps. Microsoft 365 and Lutris are suggested.");
   Choice(page, body, use_, "both", "Both", "Everything together, as it comes.");
