@@ -64,7 +64,7 @@ logs/           per-game output from the last launches
 
 TOML was picked over SQLite so the files stay readable, editable by hand and easy to back up. `Config` and `GameStore` keep their data in memory behind a mutex and rewrite the file on every change. A file that fails to parse is renamed to `.bad` and the daemon starts with defaults.
 
-The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock`. `mirad --socket` and `$MIRA_SOCKET` override it.
+The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
 
 ## Running the daemon
 

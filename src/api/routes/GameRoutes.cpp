@@ -100,8 +100,21 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     if (patch.is_discarded()) return SendError(res, 400, "invalid_json", "body is not valid JSON");
     if (const auto problem = library::GamePatchProblem(patch)) return SendError(res, 400, "invalid_body", *problem);
 
+    const auto before = s.games.Find(id);
     auto result = s.games.Update(id, [&](model::Game& game) { game = library::ParseGamePatch(game, patch); });
     if (!result) return SendStoreError(res, result.error());
+    // Turned into a Windows game: it gets its prefix now, as POST /v1/games/manual does.
+    if (before && before->platform != model::Platform::Windows && result->platform == model::Platform::Windows &&
+        result->status == model::GameStatus::Ready) {
+      const model::Game provisioned = runner::RunnerRegistry(s.config).ProvisionGame(*result);
+      if (auto saved = s.games.Update(id, [&](model::Game& g) {
+            g.runner_ref = provisioned.runner_ref;
+            g.status = provisioned.status;
+            g.last_error = provisioned.last_error;
+          })) {
+        result = saved;
+      }
+    }
     s.SyncDesktopEntry(id);
     s.events.Publish("game.updated", s.Record(*result));
     SendJson(res, s.Record(*result));
@@ -246,7 +259,10 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const bool is_installer = body.value("is_installer", false);
 
     model::Platform platform;
-    if (body.contains("platform") && body["platform"].is_string()) {
+    if (body.contains("platform") && !library::IsSettablePlatform(body["platform"])) {
+      return SendError(res, 400, "invalid_body", R"("platform" must be "windows" or "native")");
+    }
+    if (body.contains("platform")) {
       platform = model::PlatformFromString(body["platform"].get<std::string>());
     } else {
       const std::string ext = strings::ToLower(std::filesystem::path(exe_path).extension().string());

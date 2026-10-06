@@ -152,6 +152,28 @@ TEST_CASE("PATCH /v1/games/{id} keeps an executable outside the game's folder po
   CHECK(patch("/opt/game/run.sh") == "/opt/game/run.sh");
 }
 
+TEST_CASE("PATCH /v1/games/{id} sets a game's platform and refuses one Mira can't run") {
+  LiveServer server(TempDir("server-platform-patch"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.platform = model::Platform::Windows;
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto set = client.Patch("/v1/games/celeste", R"({"platform": "native"})", "application/json");
+  REQUIRE(set != nullptr);
+  CHECK(set->status == 200);
+  CHECK(server.games().Find("celeste")->platform == model::Platform::Native);
+
+  for (const char* bad : {R"({"platform": "macos"})", R"({"platform": "unknown"})", R"({"platform": 1})"}) {
+    auto res = client.Patch("/v1/games/celeste", bad, "application/json");
+    REQUIRE(res != nullptr);
+    CHECK(res->status == 400);
+  }
+  CHECK(server.games().Find("celeste")->platform == model::Platform::Native);
+}
+
 TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   LiveServer server(TempDir("server-env-patch-clear"));
 
@@ -1036,6 +1058,19 @@ TEST_CASE("POST /v1/games/manual adds a ready native game outside any configured
   const std::string id = parsed.value("id", "");
   REQUIRE_FALSE(id.empty());
   CHECK(server.games().Find(id).has_value());
+}
+
+TEST_CASE("POST /v1/games/manual refuses a platform Mira can't run instead of adding the game") {
+  LiveServer server(TempDir("server-manual-bad-platform"));
+  const fs::path folder = TempDir("server-manual-bad-platform-game");
+  std::ofstream(folder / "game") << "not really an exe";
+
+  httplib::Client client = server.Client();
+  const nlohmann::json body = {{"install_path", folder.string()}, {"exe_path", "game"}, {"platform", "macos"}};
+  auto res = client.Post("/v1/games/manual", body.dump(), "application/json");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 400);
+  CHECK(server.games().All().empty());
 }
 
 TEST_CASE("POST /v1/games/manual adds each AppImage in a shared folder as its own game, named after it") {

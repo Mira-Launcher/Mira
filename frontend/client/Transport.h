@@ -34,9 +34,9 @@ struct Options {
 // $MIRA_SOCKET if set, the same override `mirad --socket` accepts on the
 // daemon side, so `MIRA_SOCKET=/path/to.sock mirad --socket /path/to.sock`
 // and `MIRA_SOCKET=/path/to.sock mira-gui` unambiguously talk to each other
-// regardless of what else is running. Without it, mirrors core/Paths.h's
-// DefaultSocket(): $XDG_RUNTIME_DIR/mira/mirad.sock, falling back to
-// /tmp/mira if XDG_RUNTIME_DIR is unset.
+// regardless of what else is running. Without it, mirad's socket_path setting
+// from settings.toml, else $XDG_RUNTIME_DIR/mira/mirad.sock, falling back to
+// /tmp/mira if XDG_RUNTIME_DIR is unset. The CLI resolves it the same way.
 std::string SocketPath();
 
 Reply Get(const std::string& path, const Options& options = {});

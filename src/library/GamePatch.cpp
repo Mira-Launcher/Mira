@@ -17,6 +17,10 @@ std::string StoredExePath(const std::string& install_path, const std::string& ex
   return exe_path;
 }
 
+bool IsSettablePlatform(const json& value) {
+  return value.is_string() && model::PlatformFromString(value.get<std::string>()) != model::Platform::Unknown;
+}
+
 model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   model::Game game = base;
   if (patch.contains("name") && patch["name"].is_string()) game.name = patch["name"];
@@ -24,6 +28,9 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
     game.exe_path = StoredExePath(game.install_path, patch["exe_path"]);
   }
   if (patch.contains("args") && patch["args"].is_string()) game.args = patch["args"];
+  if (patch.contains("platform") && patch["platform"].is_string()) {
+    game.platform = model::PlatformFromString(patch["platform"].get<std::string>());
+  }
   if (patch.contains("working_dir") && patch["working_dir"].is_string()) {
     game.working_dir = patch["working_dir"];
   }
@@ -66,6 +73,9 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
   if (!patch.is_object()) return "expected a JSON object";
   for (const char* key : {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir"}) {
     if (patch.contains(key) && !patch[key].is_string()) return std::format("\"{}\" must be a string", key);
+  }
+  if (patch.contains("platform") && !IsSettablePlatform(patch["platform"])) {
+    return "\"platform\" must be \"windows\" or \"native\"";
   }
   if (patch.contains("tags") && !patch["tags"].is_array()) return "\"tags\" must be an array";
   if (patch.contains("runner_config") && !patch["runner_config"].is_object()) return "\"runner_config\" must be an object";
