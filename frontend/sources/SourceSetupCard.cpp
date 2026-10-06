@@ -26,7 +26,7 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   if (source_.kind == SourceInfo::Kind::Store)
     titles << "Get " + copy.tool << "Sign in to " + source_.name;
   if (IsLauncher()) titles << "Install " + source_.name;
-  if (!titles.isEmpty() && !copy.import_button.isEmpty()) titles << "Import your games";
+  if (!titles.isEmpty() && !copy.import_button.isEmpty()) titles << "Import your " + copy.item + "s";
   for (int i = 0; i < titles.size(); ++i) {
     Step step;
     step.row = new QWidget(this);

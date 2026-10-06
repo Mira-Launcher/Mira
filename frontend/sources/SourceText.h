@@ -16,6 +16,7 @@ struct SourceCopy {
   QString sign_in_steps;
   QString credential_placeholder;
   QString import_button;  // empty: no import
+  QString item = "game";   // what it imports, singular
 };
 
 SourceCopy CopyFor(const std::string& id);

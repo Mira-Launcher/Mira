@@ -490,8 +490,9 @@ void SourcePage::UpdateStatusLine() {
                                     : StatusDot(tokens.warning) + "Not installed");
   }
   if (id_ != "humble") {
-    parts << (library_count_ == 1 ? QString("1 game in your library")
-                                  : QString("%1 games in your library").arg(library_count_));
+    const QString item = CopyFor(id_).item;
+    parts << (library_count_ == 1 ? QString("1 %1 in your library").arg(item)
+                                  : QString("%1 %2s in your library").arg(library_count_).arg(item));
   }
   status_line_->setText(parts.join("  ·  "));
 
