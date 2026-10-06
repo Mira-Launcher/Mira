@@ -275,7 +275,8 @@ const std::vector<Launcher>& All() {
                       "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe"},
                      {"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
                       {"/configure", "{downloads}\\office-configuration.xml"}, ""}};
-    m365.env = {{"PROTON_USE_XALIA", "0"}};
+    // Office presents with sync interval 0; under DXVK that tears into flicker.
+    m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
   }();
   return kLaunchers;
