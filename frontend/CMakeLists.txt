@@ -71,6 +71,9 @@ qt_add_resources(mira-gui "themes"
 # uses, not a shortcut past the API.
 target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
+if(TARGET mira_glibc_compat)
+  target_link_libraries(mira-gui PRIVATE mira_glibc_compat)
+endif()
 
 # The version the About panel shows. CMAKE_PROJECT_VERSION is the root
 # project's, which a standalone frontend configure does not have.

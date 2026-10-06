@@ -17,7 +17,18 @@ option(MIRA_ASAN "Build with AddressSanitizer + UBSan" OFF)
 option(MIRA_TSAN "Build with ThreadSanitizer" OFF)
 option(MIRA_WERROR "Treat warnings as errors" OFF)
 
+# Run on older glibc and libstdc++ than the build machine has, so a binary built on a rolling
+# distro still starts on an LTS one. Both only change what the binaries ask of the system.
+option(MIRA_GLIBC_COMPAT "Bind strtol and friends to their pre-glibc-2.38 versions" ON)
+option(MIRA_STATIC_LIBSTDCXX "Link libstdc++ and libgcc statically into mirad, mira and mira-run" ON)
+
 find_package(Threads REQUIRED)
+
+add_library(mira_glibc_compat INTERFACE)
+if(MIRA_GLIBC_COMPAT AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_options(mira_glibc_compat INTERFACE
+    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/cmake/glibc_compat.h")
+endif()
 
 add_library(mira_flags INTERFACE)
 target_compile_options(mira_flags INTERFACE -Wall -Wextra -Wpedantic)
@@ -59,19 +70,32 @@ list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")
 add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
 target_link_libraries(mira_core PRIVATE mira_flags)
-target_link_libraries(mira_core PUBLIC mira_third_party Threads::Threads)
+target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
+
+# The GUI keeps the shared runtime: the Qt libraries it loads use it too, and the AppImage bundles that one.
+# Its glibc 2.36+ calls are answered by cmake/glibc_shims.cpp.
+set_source_files_properties(cmake/glibc_shims.cpp PROPERTIES COMPILE_DEFINITIONS MIRA_NO_GLIBC_SYMVER)
+function(mira_static_runtime target)
+  if(MIRA_STATIC_LIBSTDCXX AND NOT MIRA_ASAN AND NOT MIRA_TSAN)
+    target_link_options(${target} PRIVATE -static-libstdc++ -static-libgcc)
+    target_sources(${target} PRIVATE cmake/glibc_shims.cpp)
+  endif()
+endfunction()
 
 add_executable(mirad src/mirad_main.cpp)
+mira_static_runtime(mirad)
 target_link_libraries(mirad PRIVATE mira_core mira_flags)
 target_compile_definitions(mirad PRIVATE MIRA_VERSION="${PROJECT_VERSION}")
 
 add_executable(mira src/cli/main.cpp)
+mira_static_runtime(mira)
 target_link_libraries(mira PRIVATE mira_core mira_flags)
 
 # The process mirad actually spawns for a game launch (see proc/Session.h,
 # docs/architecture.md), a separate binary, not a mirad-internal thread, so
 # a launched game's session survives mirad restarting or crashing mid-game.
 add_executable(mira-run src/wrapper/main.cpp)
+mira_static_runtime(mira-run)
 target_link_libraries(mira-run PRIVATE mira_core mira_flags)
 
 # A target's own compile options are always ordered before flags inherited
