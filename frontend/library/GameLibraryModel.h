@@ -72,10 +72,12 @@ public:
   explicit GameFilterProxy(GameLibraryModel* library, QObject* parent = nullptr);
 
   // Whether `game` belongs under filter `key`. Shared with the filter counts.
-  static bool MatchesKey(const GameSummary& game, const QString& key);
+  // `apps_in_all`: whether All lists apps too, not only games.
+  static bool MatchesKey(const GameSummary& game, const QString& key, bool apps_in_all = true);
 
   void SetFilterKey(const QString& key);
   void SetSearch(const QString& text);
+  void SetAppsInAll(bool apps_in_all);
   // Only this source's games, hidden ones included; empty for every source.
   void SetSource(const std::string& source);
   // The sidebar's sort.
@@ -94,6 +96,7 @@ private:
   GameLibraryModel* library_;
   QString key_ = "all";
   QString search_;
+  bool apps_in_all_ = true;
   std::string source_;
   std::string sort_key_ = "name";
   bool descending_ = false;};

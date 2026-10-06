@@ -201,6 +201,8 @@ void LibraryPage::ApplyPrefs(const FrontendPrefs& prefs) {
   continue_row_enabled_ = prefs.library_continue_row.value_or(true);
   continue_count_ = prefs.library_continue_count.value_or(3);
   continue_apps_ = prefs.library_continue_apps.value_or(false);
+  apps_in_all_ = prefs.library_apps_in_all.value_or(true);
+  games_->SetAppsInAll(apps_in_all_);
   delegate_->SetShowStatus(prefs.tile_status.value_or(true));
   delegate_->SetShowSourceMark(prefs.tile_source_mark.value_or(true));
   delegate_->SetShowPinBadge(prefs.tile_pin_badge.value_or(true));
@@ -510,8 +512,8 @@ void LibraryPage::LibraryChanged() {
 
 void LibraryPage::UpdateCounts() {
   for (const QString& key : pill_->FilterKeys()) {
-    const auto count = std::ranges::count_if(library_->Games(), [&key](const GameSummary& game) {
-      return GameFilterProxy::MatchesKey(game, key);
+    const auto count = std::ranges::count_if(library_->Games(), [this, &key](const GameSummary& game) {
+      return GameFilterProxy::MatchesKey(game, key, apps_in_all_);
     });
     pill_->SetCount(key, static_cast<int>(count));
     tabs_->SetCount(key, static_cast<int>(count));
@@ -536,7 +538,7 @@ void LibraryPage::RefreshContinue() {
   if (continue_row_enabled_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
       search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
-      if (IsHidden(game) || game.source == "launcher" || !GameFilterProxy::MatchesKey(game, key)) continue;
+      if (IsHidden(game) || game.source == "launcher" || !GameFilterProxy::MatchesKey(game, key, apps_in_all_)) continue;
       if (IsApp(game) && !continue_apps_) continue;
       if (game.running || game.last_played_at) games.push_back(&game);
     }

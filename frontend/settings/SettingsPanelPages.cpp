@@ -180,6 +180,8 @@ void SettingsPanel::BuildInterfacePage() {
                 .revert = [this] { continue_count_->setValue(continue_count_saved_); },
                 .reset = [this] { continue_count_->setValue(3); },
                 .mark_saved = [this] { continue_count_saved_ = continue_count_->value(); }});
+  AddToggle(library, "Apps under All", "List apps under the All tab too, not only under Apps.",
+            "library apps all tab filter", &FrontendPrefs::library_apps_in_all, true);
   AddToggle(library, "Apps in Continue playing",
             "Show recently used apps in the Continue playing row, not only games.",
             "library cards recently played recent apps", &FrontendPrefs::library_continue_apps, false);
