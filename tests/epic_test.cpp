@@ -159,7 +159,6 @@ TEST_CASE("EpicImporter imports installed titles and tags them") {
   CHECK(game->source_ref == "abc");  // the handle install/update/metadata all key off
   CHECK(game->exe_path == "A.exe");
   CHECK(game->platform == model::Platform::Windows);
-  CHECK(std::ranges::find(game->tags, "epic") != game->tags.end());
   // Legendary makes no prefix of its own, so the importer has to name one
   // before provisioning -- the empty data_dir here is what broke a real
   // install with "game has no data_dir set".

@@ -9,6 +9,7 @@
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
+#include "library/FolderTags.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
@@ -54,6 +55,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     s.StartJob(req, res, "relocate", "", "Moving games into Mira's folders",
              [&s, games = std::move(games)](JobRegistry::Progress& progress) -> Result<json> {
                int moved = 0;
+               std::vector<std::string> moved_ids;
                int done = 0;
                json errors = json::array();
                for (const model::Game& listed : games) {
@@ -93,10 +95,15 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                    errors.push_back(BatchFailure(game.id, saved.error()));
                    continue;
                  }
+                 library::PruneEmptyContainers(s.config, library::SortingFolderOf(s.config, game),
+                                               s.games.All());
                  s.events.Publish("game.updated", s.Record(*saved));
+                 moved_ids.push_back(game.id);
                  ++moved;
                }
                s.SyncDesktopEntries();
+               // A game sorted by a link needs its link pointed at its new folder.
+               s.SortByTags(std::move(moved_ids));
                const int failed = static_cast<int>(errors.size());
                return json{{"moved", moved}, {"failed", failed}, {"errors", std::move(errors)}};
              });

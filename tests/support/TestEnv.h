@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -17,6 +19,10 @@ std::filesystem::path TempDir(std::string_view name);
 
 // Creates `path` (and its parents) with `content`.
 void Touch(const std::filesystem::path& path, std::string_view content = "", bool executable = false);
+
+// Polls `done` until it holds or `timeout` passes: what a test waits on instead of a fixed sleep.
+bool WaitUntil(const std::function<bool()>& done,
+               std::chrono::milliseconds timeout = std::chrono::seconds(10));
 
 // Keeps `config` off the network and out of the user's own folders: no
 // metadata, umu or Steam Web API lookups, every folder Mira uses (library,

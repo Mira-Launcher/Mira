@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <thread>
 #include <utility>
 
 #include <json.hpp>
@@ -14,6 +15,15 @@ fs::path TempDir(std::string_view name) {
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
+}
+
+bool WaitUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (!done()) {
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  return true;
 }
 
 void Touch(const fs::path& path, std::string_view content, bool executable) {

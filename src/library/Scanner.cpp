@@ -15,6 +15,7 @@
 #include "library/AutoSetup.h"
 #include "library/ArchiveExtractor.h"
 #include "library/Detector.h"
+#include "library/FolderTags.h"
 #include "library/WinePrefix.h"
 #include "launchers/Launchers.h"
 #include "runner/RunnerRegistry.h"
@@ -133,108 +134,153 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   std::vector<std::string> to_set_up;  // provisioned once the folders lock is released
   // An installer's folder whose game now lives elsewhere (usually in its prefix) isn't a new game.
   std::set<std::string> installer_dirs;
-  std::map<std::string, model::Game>
-      root_programs;  // games run from a file in the root itself, by file name
+  const SortRules rules(config_);
+  const auto IsLooseFile = [&](const model::Game& game) { return IsLooseAppImage(rules, game); };
+  // Games run from a file loose in a folder (the root, or a sorting folder in it), by folder and
+  // file name.
+  std::map<std::pair<fs::path, std::string>, model::Game> loose_programs;
+  // Games sorted by a link to their folder, by that folder: a link to one of them is Mira's.
+  std::map<fs::path, model::Game> linked_by_target;
   for (const model::Game& game : games_.All()) {
     if (!game.installer_dir.empty()) installer_dirs.insert(game.installer_dir);
-    if (fs::path(game.install_path) == root) root_programs.emplace(game.exe_path, game);
+    if (SortsByLink(rules, game)) linked_by_target.emplace(fs::path(game.install_path).lexically_normal(), game);
+    if (IsLooseFile(game))
+      loose_programs.emplace(std::pair{fs::path(game.install_path), game.exe_path}, game);
   }
 
-  // An AppImage is a whole game in one file, so one loose in the root is a game too.
-  std::set<std::string> seen_appimages;  // file names, for the games whose install_path is the root itself
+  // An AppImage is a whole game in one file, so one loose in a folder is a game too.
+  std::set<std::pair<fs::path, std::string>> seen_appimages;  // folder and file name
 
+  // The root and the sorting folders found in it (.hidden, a folder tag's folder): the missing pass
+  // checks only games in folders listed here.
+  std::set<fs::path> listed;
+  std::vector<fs::path> to_list = {root};
   // A listing that fails (unreadable root, stale network mount) must not look like an empty root,
   // or the missing pass below would mark or remove every game in it. So no skip_permission_denied,
   // which turns an unreadable root into an empty one.
   std::error_code list_ec;
-  for (fs::directory_iterator it(root, list_ec), end; !list_ec && it != end;
-       it.increment(list_ec)) {
-    const fs::directory_entry& entry = *it;
-    if (entry.is_regular_file(ec) && strings::ToLower(entry.path().extension().string()) == ".appimage") {
-      const std::string file = entry.path().filename().string();
-      seen_appimages.insert(file);
-      const auto known = root_programs.find(file);
-      if (known == root_programs.end()) {
-        const model::Game game = auto_setup.CreateAppImageGame(root, entry.path());
-        ++summary.added;
-        summary.added_games.push_back(game);
-        log::Info("detected new game: {}", entry.path().string());
-      } else if (known->second.status == model::GameStatus::Missing) {
-        if (auto restored = games_.Update(known->second.id, [](model::Game& game) {
-              game.status = model::GameStatus::Ready;
-            })) {
-          events_.Publish("game.updated", model::ToJson(*restored));
-          ++summary.restored;
-        }
+  while (!to_list.empty()) {
+    const fs::path folder = to_list.back();
+    to_list.pop_back();
+    std::error_code folder_ec;
+    std::vector<fs::directory_entry> entries;
+    for (fs::directory_iterator it(folder, folder_ec), end; !folder_ec && it != end;
+         it.increment(folder_ec)) {
+      entries.push_back(*it);
+    }
+    if (folder_ec) {
+      if (folder == root) {
+        list_ec = folder_ec;
+        break;
       }
+      log::Warn("could not list {}: {}; not checking it for missing games", folder.string(),
+                folder_ec.message());
       continue;
     }
-    if (!entry.is_directory(ec)) continue;
-    const fs::path& dir = entry.path();
-    if (dir.filename().string().starts_with(kExtractingPrefix)) continue;  // an archive mid-extraction
-
-    const bool excluded = std::ranges::any_of(excluded_roots, [&](const fs::path& excluded_root) {
-      std::error_code eq;
-      return fs::equivalent(dir, excluded_root, eq) || (!eq && dir == excluded_root);
-    });
-    if (excluded) continue;
-
-    const std::string install_path = dir.string();
-    auto existing = games_.FindByInstallPath(install_path);
-    if (!existing && installer_dirs.contains(install_path)) continue;
-    // A known game runs from a subfolder of it (Binaries/, bin/): not a new game.
-    if (!existing && games_.HasInstallUnder(install_path)) continue;
-
-    // A combined install+prefix layout (Lutris colocates a Wine prefix
-    // inside the game's own folder) legitimately looks like a Wine prefix
-    // too. Only exclude that shape from *new* detection, never from a
-    // folder that's already a known game, or every scan would flip it to
-    // Missing.
-    if (!existing && LooksLikeWinePrefix(dir)) continue;
-
-    const std::string basename = dir.filename().string();
-    const bool ignored = std::ranges::any_of(detector_settings.ignore_globs, [&](const std::string& glob) {
-      return strings::GlobMatch(strings::ToLower(glob), strings::ToLower(basename));
-    });
-    if (ignored) continue;
-
-    seen_install_paths.insert(install_path);
-
-    if (existing) {
-      if (existing->status == model::GameStatus::Missing) {
-        auto result = games_.Update(existing->id, [](model::Game& game) {
-          game.status = RestoredStatus(game);
-          if (game.status != model::GameStatus::NeedsInstall) game.last_error.clear();
-        });
-        if (!result) {
-          log::Error("failed to restore {}: {}", existing->id, result.error().message);
-        } else {
-          existing = *result;
-          // Same reasoning as game.removed below: a listener that already
-          // has this game (now Missing) needs to hear about it coming back,
-          // without waiting on a caller to relist the whole library.
-          events_.Publish("game.updated", model::ToJson(*existing));
-        }
-        ++summary.restored;
+    listed.insert(folder);
+    for (const fs::directory_entry& entry : entries) {
+      // Mira's own links (to a game sorted by link) are never a game or a folder to look in; any
+      // other link to a folder is scanned as one.
+      if (entry.is_symlink(ec) && entry.is_directory(ec)) {
+        std::error_code link_ec;
+        const fs::path target = fs::read_symlink(entry.path(), link_ec);
+        if (!link_ec && linked_by_target.contains(target.lexically_normal())) continue;
       }
-      // Retry provisioning for a game still stuck at SettingUp: auto_setup
-      // may have been off when it was first detected and turned on since, a
-      // previous attempt may have failed transiently, or the daemon may have
-      // restarted mid-provision last time. Without this, SettingUp is a dead
-      // end reachable only by the one provisioning attempt at detection time.
-      if (setup) to_set_up.push_back(existing->id);
-      continue;  // already known; never re-detect over a user's configuration
+      if (entry.is_regular_file(ec) &&
+          strings::ToLower(entry.path().extension().string()) == ".appimage") {
+        const std::string file = entry.path().filename().string();
+        seen_appimages.emplace(folder, file);
+        const auto known = loose_programs.find({folder, file});
+        if (known == loose_programs.end()) {
+          const model::Game game = auto_setup.CreateAppImageGame(folder, entry.path());
+          ++summary.added;
+          summary.added_games.push_back(game);
+          log::Info("detected new game: {}", entry.path().string());
+        } else if (known->second.status == model::GameStatus::Missing) {
+          if (auto restored = games_.Update(known->second.id, [](model::Game& game) {
+                game.status = model::GameStatus::Ready;
+              })) {
+            events_.Publish("game.updated", model::ToJson(*restored));
+            ++summary.restored;
+          }
+        }
+        continue;
+      }
+      if (!entry.is_directory(ec)) continue;
+      const fs::path& dir = entry.path();
+      if (dir.filename().string().starts_with(kExtractingPrefix))
+        continue;  // an archive mid-extraction
+
+      const bool excluded = std::ranges::any_of(excluded_roots, [&](const fs::path& excluded_root) {
+        std::error_code eq;
+        return fs::equivalent(dir, excluded_root, eq) || (!eq && dir == excluded_root);
+      });
+      if (excluded) continue;
+
+      const std::string install_path = dir.string();
+      auto existing = games_.FindByInstallPath(install_path);
+      // A sorting folder holds games rather than being one; a known game of the same name stays a
+      // game.
+      if (!existing && ContainerOf(rules, root, dir)) {
+        to_list.push_back(dir);
+        continue;
+      }
+      if (!existing && installer_dirs.contains(install_path)) continue;
+      // A known game runs from a subfolder of it (Binaries/, bin/): not a new game.
+      if (!existing && games_.HasInstallUnder(install_path)) continue;
+
+      // A combined install+prefix layout (Lutris colocates a Wine prefix
+      // inside the game's own folder) legitimately looks like a Wine prefix
+      // too. Only exclude that shape from *new* detection, never from a
+      // folder that's already a known game, or every scan would flip it to
+      // Missing.
+      if (!existing && LooksLikeWinePrefix(dir)) continue;
+
+      const std::string basename = dir.filename().string();
+      const bool ignored =
+          std::ranges::any_of(detector_settings.ignore_globs, [&](const std::string& glob) {
+            return strings::GlobMatch(strings::ToLower(glob), strings::ToLower(basename));
+          });
+      if (ignored) continue;
+
+      seen_install_paths.insert(install_path);
+
+      if (existing) {
+        if (existing->status == model::GameStatus::Missing) {
+          auto result = games_.Update(existing->id, [](model::Game& game) {
+            game.status = RestoredStatus(game);
+            if (game.status != model::GameStatus::NeedsInstall) game.last_error.clear();
+          });
+          if (!result) {
+            log::Error("failed to restore {}: {}", existing->id, result.error().message);
+          } else {
+            existing = *result;
+            // Same reasoning as game.removed below: a listener that already
+            // has this game (now Missing) needs to hear about it coming back,
+            // without waiting on a caller to relist the whole library.
+            events_.Publish("game.updated", model::ToJson(*existing));
+          }
+          ++summary.restored;
+        }
+        // Retry provisioning for a game still stuck at SettingUp: auto_setup
+        // may have been off when it was first detected and turned on since, a
+        // previous attempt may have failed transiently, or the daemon may have
+        // restarted mid-provision last time. Without this, SettingUp is a dead
+        // end reachable only by the one provisioning attempt at detection time.
+        if (setup) to_set_up.push_back(existing->id);
+        continue;  // already known; never re-detect over a user's configuration
+      }
+
+      const Detector::Result detected = detector.Detect(dir);
+      const model::Game game = auto_setup.CreateGame(dir, detected);
+      ++summary.added;
+      summary.added_games.push_back(game);
+      log::Info("detected new game: {}", install_path);
+
+      // With auto_setup off, a game is still detected and stored (so it shows
+      // up for the frontend to configure) but never auto-provisioned.
+      if (setup) to_set_up.push_back(game.id);
     }
-
-    const Detector::Result detected = detector.Detect(dir);
-    const model::Game game = auto_setup.CreateGame(dir, detected);
-    ++summary.added;
-    summary.added_games.push_back(game);
-    log::Info("detected new game: {}", install_path);
-
-    // With auto_setup off, a game is still detected and stored (so it shows
-    // up for the frontend to configure) but never auto-provisioned.
-    if (setup) to_set_up.push_back(game.id);
   }
 
   // Anything previously known under this root but not seen this pass has
@@ -247,13 +293,21 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   if (list_ec)
     log::Warn("could not list library root {}: {}; not checking for missing games", root.string(),
               list_ec.message());
+  // A folder this pass listed, or one in this root that's gone (a sorting folder deleted with its
+  // games in it). A folder that couldn't be read is neither, so its games are left alone.
+  const fs::path this_root = RootOf(rules, root);
+  const auto checked = [&](const fs::path& folder) {
+    if (listed.contains(folder)) return true;
+    if (this_root.empty() || RootOf(rules, folder) != this_root) return false;
+    std::error_code gone_ec;
+    return !fs::exists(folder, gone_ec) && !gone_ec;
+  };
   for (const model::Game& game : list_ec ? std::vector<model::Game>{} : games_.All()) {
-    const bool loose_appimage = fs::path(game.install_path) == root && fs::path(game.exe_path).parent_path().empty() &&
-                                strings::ToLower(game.exe_path).ends_with(".appimage");
-    if (loose_appimage) {
-      if (seen_appimages.contains(game.exe_path)) continue;
+    if (IsLooseFile(game)) {
+      if (!checked(fs::path(game.install_path))) continue;
+      if (seen_appimages.contains({fs::path(game.install_path), game.exe_path})) continue;
     } else {
-      if (fs::path(game.install_path).parent_path() != root) continue;
+      if (!checked(fs::path(game.install_path).parent_path())) continue;
       if (seen_install_paths.contains(game.install_path)) continue;
     }
 

@@ -5,6 +5,7 @@
 
 #include "config/Resolver.h"
 #include "config/Schema.h"
+#include "library/FolderTags.h"
 
 namespace mira::library {
 using nlohmann::json;
@@ -50,6 +51,10 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
       if (tag.is_string()) game.tags.push_back(tag.get<std::string>());
     }
   }
+  // "" goes back to tags.folders' order.
+  if (patch.contains("folder_tag") && patch["folder_tag"].is_string())
+    game.folder_tag = patch["folder_tag"];
+  DropStalePick(game);
   // "env": null clears every entry; {"K": null} removes just K.
   if (patch.contains("env") && patch["env"].is_null()) {
     game.env.clear();
@@ -71,7 +76,8 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
 // The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently ignored.
 std::optional<std::string> GamePatchProblem(const json& patch) {
   if (!patch.is_object()) return "expected a JSON object";
-  for (const char* key : {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir"}) {
+  for (const char* key :
+       {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir", "folder_tag"}) {
     if (patch.contains(key) && !patch[key].is_string()) return std::format("\"{}\" must be a string", key);
   }
   if (patch.contains("platform") && !IsSettablePlatform(patch["platform"])) {

@@ -18,6 +18,7 @@
 #include "config/Config.h"
 #include "core/Lane.h"
 #include "core/Result.h"
+#include "library/FolderTags.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
@@ -68,11 +69,18 @@ public:
   // Sets `stopping` and wakes whatever waits on it, so shutdown doesn't wait out a poll or a stream.
   void BeginStopping();
 
-  // A game as the API shows it: model::ToJson plus `running`, `art` and `needs_check`.
-  // `threshold` is detect.low_confidence_threshold, for a caller building many records at once.
-  nlohmann::json Record(const model::Game& game, std::optional<double> threshold = {});
+  // The settings a record is built from, read once by a caller building many records at once.
+  struct RecordSettings {
+    double threshold;  // detect.low_confidence_threshold
+    library::SortRules rules;
+  };
+  RecordSettings CurrentRecordSettings() const;
+  // A game as the API shows it: model::ToJson plus `running`, `art`, `needs_check` and its
+  // sorting (`sort_root`, `folder_tags`, `folder`).
+  nlohmann::json Record(const model::Game& game, const RecordSettings* settings = nullptr);
   // Adds those fields to a model::ToJson record.
-  void Decorate(nlohmann::json& record, std::optional<double> threshold = {});
+  void Decorate(nlohmann::json& record);
+  void AddRecordFields(nlohmann::json& record, const model::Game& game, const RecordSettings& settings);
 
   // Rewrites the application menu entries to match the library.
   void SyncDesktopEntries();
@@ -115,6 +123,22 @@ public:
   // With `replacing` ("kind:name"), games and the default using it move over.
   void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
                      const std::string& source, const runner::ReleaseAsset& asset, const std::string& replacing);
+
+  // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
+  // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
+  // config.changed with the keys (names only: values can be secrets) and the frontend table, so a
+  // client applies another client's change without asking again.
+  void SettingsChanged(const std::vector<std::string>& keys);
+  // After library_roots, tags.folders or tags.sorted_roots changed: watches the sorting folders,
+  // tells clients every record changed (sort_root, folder_tags) and moves what's out of place.
+  void SortingChanged();
+  // Moves each game's folder to where its tags put it (tags.folders), as one job when any
+  // has to move; nothing when none does. A game that can't be claimed (running, being deleted) is
+  // left for later: its exit sorts it again.
+  void SortByTags(std::vector<std::string> ids);
+  void SortAllByTags();
+  // One games.updated with every record, after a setting that changes what records say.
+  void PublishAllGames();
 
   // Picks up games started outside Mira (the Steam client, a running launcher) so they show as playing.
   void StartExternalWatch();

@@ -87,7 +87,6 @@ Result<library::ImportSummary> ItchImporter::Import() {
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    library::AddTag(game.tags, "itch");
 
     // butlerd's Cave doesn't say which file to run -- reuse Mira's own
     // executable detector against the real install folder, same as a

@@ -12,13 +12,6 @@ namespace {
 using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
-
-// The settings keys that changed (names only: values can be secrets) and the whole frontend
-// table, so a client applies another client's change without asking again.
-void PublishConfigChanged(Services& s, json keys) {
-  s.events.Publish("config.changed", {{"keys", std::move(keys)}, {"frontend", s.config.FrontendSettings()}});
-}
-
 }  // namespace
 
 void RegisterConfigRoutes(httplib::Server& http, Services& s) {
@@ -88,38 +81,27 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
     const auto body = BodyObject(req, res, "a JSON object");
     if (!body) return;
     Result<void> result = s.config.Patch(*body);
-    if (result) s.SyncDesktopEntries();
-    if (result && body->is_object() && body->contains("library_roots") && s.on_roots_changed) s.on_roots_changed();
     if (result) {
-      json keys = json::array();
+      std::vector<std::string> keys;
       for (const config::Entry& entry : config::Schema::Instance().Entries()) {
         if (body->contains(config::Schema::Pointer(entry.key))) keys.push_back(entry.key);
       }
-      PublishConfigChanged(s, std::move(keys));
+      s.SettingsChanged(keys);
     }
     SendResult(res, result);
   });
 
   http.Post("/v1/config/reset", [&s](const Request& req, Response& res) {
     Result<void> result;
-    bool roots_reset = true;
+    std::vector<std::string> keys;
     if (auto it = req.params.find("key"); it != req.params.end()) {
       result = s.config.Reset(it->second);
-      roots_reset = it->second == "library_roots";
+      keys.push_back(it->second);
     } else {
       result = s.config.ResetAll();
+      for (const config::Entry& entry : config::Schema::Instance().Entries()) keys.push_back(entry.key);
     }
-    if (result) s.SyncDesktopEntries();
-    if (result && roots_reset && s.on_roots_changed) s.on_roots_changed();
-    if (result) {
-      json keys = json::array();
-      if (auto it = req.params.find("key"); it != req.params.end()) {
-        keys.push_back(it->second);
-      } else {
-        for (const config::Entry& entry : config::Schema::Instance().Entries()) keys.push_back(entry.key);
-      }
-      PublishConfigChanged(s, std::move(keys));
-    }
+    if (result) s.SettingsChanged(keys);
     SendResult(res, result);
   });
 }

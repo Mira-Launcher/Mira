@@ -16,6 +16,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/ArchiveExtractor.h"
+#include "library/FolderTags.h"
 #include "library/Scanner.h"
 
 namespace mira::library {
@@ -115,8 +116,8 @@ void CreateMissingRoots(const config::Config& config) {
 }
 
 void Watcher::WatchRoots() {
-  for (const auto& [wd, root] : watch_to_root_) inotify_rm_watch(inotify_fd_, wd);
-  watch_to_root_.clear();
+  for (const auto& [wd, watched] : watches_) inotify_rm_watch(inotify_fd_, wd);
+  watches_.clear();
   pending_.clear();
   RearmTimer();
   CreateMissingRoots(config_);
@@ -127,14 +128,39 @@ void Watcher::WatchRoots() {
       log::Warn("Watcher: library root {} does not exist yet, so it is not watched until it does", root.string());
       continue;
     }
-    const int wd = inotify_add_watch(inotify_fd_, root.c_str(), kWatchMask);
-    if (wd < 0) {
-      log::Error("Watcher: could not watch {}: {}", root.string(), std::strerror(errno));
-      continue;
-    }
-    watch_to_root_[wd] = root;
-    log::Info("watching {}", root.string());
+    WatchFolder(root, root);
   }
+  ++roots_watched_;  // events queue in inotify from here, read once the loop runs
+}
+
+bool Watcher::IsSortingFolder(const fs::path& root, const fs::path& dir) const {
+  return dir != root && ContainerOf(config_, root, dir) && !games_.FindByInstallPath(dir.string());
+}
+
+void Watcher::WatchFolder(const fs::path& root, const fs::path& dir) {
+  // Adding a watch on a folder already watched returns the same descriptor.
+  const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
+  if (wd < 0) {
+    log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
+    return;
+  }
+  if (!watches_.contains(wd)) log::Info("watching {}", dir.string());
+  watches_[wd] = {.root = root, .dir = dir};
+  std::error_code ec;
+  for (const fs::path& entry : paths::ListDir(dir)) {
+    // Never through a link: Mira's own point into prefixes.
+    if (fs::is_directory(fs::symlink_status(entry, ec)) && IsSortingFolder(root, entry))
+      WatchFolder(root, entry);
+  }
+}
+
+void Watcher::Unwatch(const fs::path& dir) {
+  std::erase_if(watches_, [&](const auto& entry) {
+    const auto& [wd, watched] = entry;
+    if (watched.dir == watched.root || !IsAtOrUnder(watched.dir, dir)) return false;
+    inotify_rm_watch(inotify_fd_, wd);
+    return true;
+  });
 }
 
 void Watcher::RearmTimer() {
@@ -244,29 +270,42 @@ void Watcher::HandleInotify() {
         settings_saved = true;
       }
 
-      const auto root_it = watch_to_root_.find(event->wd);
-      if (root_it == watch_to_root_.end() || event->len == 0) continue;
-      const fs::path path = root_it->second / event->name;
+      const auto watched = watches_.find(event->wd);
+      if (watched == watches_.end()) continue;
+      if (event->mask & IN_IGNORED) {  // the folder itself went away
+        watches_.erase(watched);
+        continue;
+      }
+      if (event->len == 0) continue;
+      const fs::path root = watched->second.root;
+      const fs::path path = watched->second.dir / event->name;
 
       if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
         if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
         std::error_code ec;
         const bool extract = config_.GetBool("scan.auto_extract_archives");
-        if (fs::is_directory(path, ec)) {
+        // A link to a folder is Mira's own, for a game installed in its prefix; never a game.
+        if (fs::is_symlink(fs::symlink_status(path, ec)) && fs::is_directory(path, ec)) {
+          continue;
+        } else if (fs::is_directory(path, ec)) {
+          if (IsSortingFolder(root, path)) WatchFolder(root, path);
           if (!path.filename().string().starts_with(kExtractingPrefix)) {
-            ScheduleCheck(root_it->second, path, /*is_archive=*/false);
+            ScheduleCheck(root, path, /*is_archive=*/false);
           }
         } else if (strings::ToLower(path.extension().string()) == ".appimage") {
-          ScheduleCheck(root_it->second, path, /*is_archive=*/false);  // a game in one file
+          ScheduleCheck(root, path, /*is_archive=*/false);  // a game in one file
         } else if (extract && LooksLikeArchive(path)) {
-          ScheduleCheck(root_it->second, path, /*is_archive=*/true);
+          ScheduleCheck(root, path, /*is_archive=*/true);
         } else if (extract && IsLaterVolume(path)) {
           // Another part arriving restarts the wait on the first one.
-          if (auto first = FirstVolumeOf(path)) ScheduleCheck(root_it->second, *first, /*is_archive=*/true);
+          if (auto first = FirstVolumeOf(path)) ScheduleCheck(root, *first, /*is_archive=*/true);
         }
       } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
         pending_.erase(path.string());  // no point finishing a debounce for a path that's gone
-        deleted_from.insert(root_it->second);
+        // A watch follows its folder, not the path: one moved away is dropped, and watched again
+        // by its new path if it moved to another sorting folder's place (IN_MOVED_TO above).
+        if (event->mask & IN_MOVED_FROM) Unwatch(path);
+        deleted_from.insert(root);
       }
     }
   }

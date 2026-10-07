@@ -93,7 +93,6 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     game.env["AMAZON_GAMES_FUEL_ENTITLEMENT_ID"] = core::JsonString(owned, "id");
     game.env["AMAZON_GAMES_FUEL_PRODUCT_SKU"] = core::JsonString(product, "sku");
     game.runner_config["store"] = "amazon";
-    library::AddTag(game.tags, "amazon");
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;

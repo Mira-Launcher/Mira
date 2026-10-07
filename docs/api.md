@@ -75,7 +75,7 @@ Resets one key, or everything when `key` is left out.
 Stored in the library database, `mira.db`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
 
 ### `GET /v1/games[?status=][&tag=][&include_hidden=true]`
-Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. With `scan.tag_by_root` on, detected games are tagged with the name of their library root.
+Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. With `scan.tag_by_root` on, games a scan finds in a library root are tagged with its name; games added by hand, installed into a prefix or imported from a store aren't.
 
 ### `GET /v1/games/{id}`
 
@@ -102,10 +102,11 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
 - `data_dir` is the game's prefix.
 - `installer_dir` is the folder the game's installer was in, once the game was installed somewhere else (usually its prefix). A scan treats that folder as this game's and doesn't add it again.
+- `library_link` is the game's link in a library folder when it's [sorted by tag](#folders-by-tag) but installed inside its prefix; empty otherwise. `folder_tag`, `sort_root`, `folder_tags` and `folder` are described there too.
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `platform` (`windows` or `native`; anything else is `400 invalid_body`; a game turned `windows` without a `data_dir` gets one under `prefix_root`, and a ready one becomes `setting_up` while a `provision` [job](#jobs) sets up its prefix, then `ready` or `broken` with a `game.updated`; a game turned `native` keeps its `data_dir`, so turning it back reuses the prefix), `runner_config` (merged), `env` (merged, `null` removes a key) and `tags` (replaced). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `platform` (`windows` or `native`; anything else is `400 invalid_body`; a game turned `windows` without a `data_dir` gets one under `prefix_root`, and a ready one becomes `setting_up` while a `provision` [job](#jobs) sets up its prefix, then `ready` or `broken` with a `game.updated`; a game turned `native` keeps its `data_dir`, so turning it back reuses the prefix), `runner_config` (merged), `env` (merged, `null` removes a key), `tags` (replaced) and `folder_tag` (in a library folder sorted by tag, a change to either can move the game, see [Folders by tag](#folders-by-tag)). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -115,7 +116,7 @@ Changes many games in one request, for a multi-select:
   "config": { "desktop_entries.enabled": false } }
 ```
 
-`ids` is required; the rest are optional. `config` takes the same overrides as `PATCH /v1/games/{id}/config`, and a bad key rejects the whole batch. Unknown ids are skipped. Returns `{"games": [...]}` with only the games that changed, and publishes one `games.updated` event for them all. Unlike `PATCH /v1/games/{id}`, it doesn't mark games `reviewed`.
+`ids` is required; the rest are optional. `"folder_tag": "RPG"` picks that tag as each game's folder (adding it if missing; `""` goes back to `tags.folders`' order, see [Folders by tag](#folders-by-tag)). `config` takes the same overrides as `PATCH /v1/games/{id}/config`, and a bad key rejects the whole batch. Unknown ids are skipped. Returns `{"games": [...]}` with only the games that changed, and publishes one `games.updated` event for them all. Unlike `PATCH /v1/games/{id}`, it doesn't mark games `reviewed`.
 
 ### `POST /v1/games/manual`
 Adds a game from any path:
@@ -213,10 +214,21 @@ Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game'
 `library_roots` is an ordinary setting. Changing it through the API also updates the watcher.
 
 ### `POST /v1/library/scan`
-Scans every library root now: adds new games (each folder in a root, and each AppImage loose in one), marks vanished ones `missing` (or removes them with `library.remove_missing`; a root that can't be read marks nothing), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
+Scans every library root now: adds new games (each folder in a root or in one of its [sorting folders](#folders-by-tag), and each AppImage loose in one), marks vanished ones `missing` (or removes them with `library.remove_missing`; a root that can't be read marks nothing), restores ones that came back, and provisions games still waiting on a runner. Each change publishes its own event. A [job](#jobs) whose result is `{"added": 1, "missing": 0, "restored": 0}`. The watcher runs the same scan on its own when a root changes, but only for new arrivals.
 
 ### `POST /v1/library/relocate`
-Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout, one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
+Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout (inside the game's [sorting folder](#folders-by-tag) when the destination is sorted by tag), one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
+
+### Folders by tag
+`tags.sorted_roots` lists the library folders whose games are sorted, and `tags.folders` the tags that get a folder in each of them: `{"tags": {"sorted_roots": ["~/Mira/Games"], "folders": ["RPG", "Strategy"]}}`. A library folder not listed is never touched; with no folder tags, a listed one sorts only hidden games. A game's place is `<root>/[.hidden/][<folder tag>/]<its folder>`: the folder tag is the game's own pick (`folder_tag`, below) while it has that tag and it's a folder tag, else the first tag in `tags.folders` (in that order) the game has, matched ignoring case and spelled as listed; `.hidden` holds games tagged `hidden`. So reordering `tags.folders` moves the games with several folder tags and no pick. `favorite`, `hidden` and `app` can't be folder tags, and a tag can't contain `/` or start with `.`.
+
+- Only `scan` and `manual` games directly in that shape move; store installs, programs a game only runs, and folders put deeper by hand stay. A loose AppImage moves as its file.
+- A game installed inside its prefix (under `prefix_root` or its own `data_dir`) never moves: it gets a link at its place instead, named after the game, in the Applications root for an `app` and the first other root for a game. The link moves with its tags, goes away when sorting is turned off or the game is removed, and is stored as `library_link`. Scans and the watcher never follow a link or add one as a game.
+- A tag change (either PATCH), a change to `tags.folders`, `tags.sorted_roots` or `library_roots`, a game's exit and mirad's start each sort what's out of place, as a `relocate` [job](#jobs) whose result is `{"moved": [...], "failed": [{"id", "error"}]}`; for one game its failure is the job's. Nothing starts when nothing has to move. Moves are renames only: a target that exists (`target_exists`) or is on another drive (`cross_device`) leaves the game where it is. A running game is sorted once it exits.
+- A new game found in a sorting folder gets its tags from where it is: the folder's tag first, and `hidden` under `.hidden`.
+- A sorting folder a game leaves (moved or deleted with its files) is removed once no game is inside and it holds nothing but file-manager leftovers (`.directory`, `.DS_Store`, `Thumbs.db`, `desktop.ini`). A scan alone never removes one, so an empty folder made to drag games into stays.
+- A game's `folder_tag` is the folder tag picked for it over `tags.folders`' order, empty to follow that order. Set it with `PATCH /v1/games/{id}` or the batch `PATCH /v1/games` (`""` clears it). It's ignored while the game lacks that tag, and cleared when the tag comes off the game, so adding the tag back later follows the order again.
+- Each game record has `sort_root`, the library folder (as `library_roots` spells it) the game is sorted in, or `null` for one that never moves; `folder_tags`, that folder's folder tags in order, or `null` while it isn't sorted; and `folder`, the folder tag the game's folder is in, or `null`. A change to `tags.folders`, `tags.sorted_roots` or `library_roots` publishes one `games.updated` with every record, since any of them may now say something else.
 
 ### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office]`
 What each account owns, whether or not it's installed:
@@ -359,7 +371,7 @@ Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five s
   - Amazon: the amazon.com URL the login ends on, or its `openid.oa2.authorization_code`, after `login/begin`.
   - Humble: the `_simpleauth_sess` cookie from a logged-in browser.
 - `POST /v1/stores/{id}/logout`: forgets the sign-in. `400 logout_unsupported` for Humble, whose tool keeps its own session.
-- `POST /v1/stores/{id}/import`: a [job](#jobs) (kind `import`) that adds the games the store's tool reports as installed, tagged with the store, and provisions a prefix for each. Result `{added, updated}`. `400 import_unsupported` for Humble.
+- `POST /v1/stores/{id}/import`: a [job](#jobs) (kind `import`) that adds the games the store's tool reports as installed, with the store as their `source`, and provisions a prefix for each. Result `{added, updated}`. `400 import_unsupported` for Humble.
 
 ### Epic
 

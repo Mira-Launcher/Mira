@@ -82,13 +82,13 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   library::Detector::Result native_result;
   native_result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
   native_result.confidence = 0.9;
-  model::Game native_game = auto_setup.CreateGame("/games/Celeste", native_result);
+  const fs::path root = test::TempDir("autosetup-games");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
+  model::Game native_game = auto_setup.CreateGame(root / "Celeste", native_result);
   CHECK(native_game.status == model::GameStatus::Ready);
   CHECK(native_game.id == "celeste");
-  // scan.tag_by_root defaults on -- the parent folder's own name ("games")
-  // becomes a tag automatically, with no config needed.
-  REQUIRE(native_game.tags.size() == 1);
-  CHECK(native_game.tags[0] == "games");
+  // scan.tag_by_root defaults on: the library root's name becomes a tag, with no config needed.
+  CHECK(native_game.tags == std::vector<std::string>{root.filename().string()});
 
   library::Detector::Result windows_result;
   windows_result.candidates.push_back(
@@ -98,6 +98,8 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
       auto_setup.CreateGame("/games/Hollow Knight", windows_result);
   CHECK(windows_game.status == model::GameStatus::SettingUp);
   CHECK_FALSE(windows_game.data_dir.empty());
+  // Found outside every library root (an install inside a prefix): no folder to name it after.
+  CHECK(windows_game.tags.empty());
 
   auto stream = env.events.Since(0);
   REQUIRE(stream.size() == 2);

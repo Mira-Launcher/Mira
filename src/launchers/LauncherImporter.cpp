@@ -182,7 +182,6 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
       const auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
       if (exe != detected.candidates.end()) game.exe_path = exe->rel_path;
     }
-    if (std::ranges::find(game.tags, launcher.id) == game.tags.end()) game.tags.push_back(launcher.id);
     if (launcher.id == "office" && std::ranges::find(game.tags, "app") == game.tags.end()) game.tags.push_back("app");
     game.status = model::GameStatus::Ready;
     game.last_error.clear();

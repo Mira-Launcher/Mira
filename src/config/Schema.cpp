@@ -76,6 +76,30 @@ Validator NonEmptyString() {
   };
 }
 
+// tags.folders: each tag names a real folder, so it can't hold a path separator or start with a
+// dot, and the state tags never become folders.
+Validator FolderTags() {
+  return [](const json& value) -> std::optional<std::string> {
+    if (!value.is_array()) return "expected an array of tags";
+    std::vector<std::string> seen;
+    for (const json& tag : value) {
+      if (!tag.is_string() || tag.get<std::string>().empty()) return "expected non-empty tags";
+      const std::string name = tag.get<std::string>();
+      const std::string lower = strings::ToLower(name);
+      if (lower == "favorite" || lower == "hidden" || lower == "app") {
+        return std::format("\"{}\" can't be a folder tag", name);
+      }
+      if (name.starts_with('.') || name.find('/') != std::string::npos) {
+        return std::format("\"{}\" can't be a folder name: no \"/\", and it can't start with \".\"",
+                           name);
+      }
+      if (std::ranges::contains(seen, lower)) return std::format("\"{}\" is listed twice", name);
+      seen.push_back(lower);
+    }
+    return std::nullopt;
+  };
+}
+
 // The source a key belongs to: "steam.root" and "launchers.ubisoft.disable_overlay" do,
 // "runner_sources.gog.repo" (a download location) and "scan.max_depth" don't.
 std::string SourceOf(std::string_view key) {
@@ -209,6 +233,34 @@ Schema::Schema() {
          .default_value = true,
          .doc = "When a move goes to another drive, copy the files and then delete the originals. "
                 "When off, moves to another drive are refused."});
+
+  // --- Tags ------------------------------------------------------------------
+  s.Section("Tags", "Tags");
+
+  s.Add({.key = "tags.folders",
+         .label = "Folder tags",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .doc = "Tags that get a folder in each library folder sorted by tag. A game goes into the "
+                "folder of the first of its own tags listed here, and a hidden game into .hidden "
+                "inside the library folder. Moving a game's folder by hand changes its tags to "
+                "match.",
+         .constraint = FolderTags()});
+
+  s.Add({.key = "tags.sorted_roots",
+         .label = "Library folders sorted by tag",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .doc = "Library folders whose games are sorted into folders by tag. A folder not listed "
+                "is never touched.",
+         .path = PathKind::Folder});
+
+  s.Add({.key = "scan.tag_by_root",
+         .label = "Tag new games by library folder",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Tag each new game a scan finds with the name of the library folder it was found "
+                "in. Existing games are not retagged."});
 
   // --- Metadata --------------------------------------------------------------
   s.Section("Metadata", "Art and store info");
@@ -987,14 +1039,6 @@ Schema::Schema() {
   // --- Scanning --------------------------------------------------------------
   s.Section("Scanning", "Scanning");
   s.ResetTogether();
-
-  s.Add({.key = "scan.tag_by_root",
-         .label = "Tag games by library folder",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Tag each new game with the name of the library folder it was found in. This helps "
-                "you filter when you have several library folders. Existing games are not "
-                "retagged."});
 
   s.Add({.key = "scan.debounce_ms",
          .label = "Scan delay (ms)",

@@ -31,8 +31,10 @@ struct ScanSummary {
 
 // Walks every enabled library root one level deep: each immediate
 // subdirectory is treated as one game, matching "drop a game folder in and
-// it's picked up". Recursing further is Detector's job, scoped to inside a
-// single already-identified game folder.
+// it's picked up", except the folders tag sorting uses (.hidden, a folder
+// tag's folder; see FolderTags.h), whose subdirectories are games instead.
+// Recursing further is Detector's job, scoped to inside a single
+// already-identified game folder.
 //
 // A directory already known to GameStore (by install_path) is never
 // re-detected, so a scan never overwrites a user's changes. Scan only adds

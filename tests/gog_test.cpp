@@ -148,7 +148,6 @@ TEST_CASE("GogImporter::ImportPath tags and provisions a title") {
   CHECK(imported->name == "A GOG Game");
   CHECK(imported->source == "gog");
   CHECK(imported->source_ref == "123");
-  CHECK(std::ranges::find(imported->tags, "gog") != imported->tags.end());
   CHECK_FALSE(imported->data_dir.empty());
 
   const auto game = fixture.games.Find("gog-123");

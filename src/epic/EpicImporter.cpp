@@ -69,7 +69,6 @@ Result<library::ImportSummary> EpicImporter::Import() {
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    library::AddTag(game.tags, "epic");
 
     // Legendary makes no prefix of its own. Provisioned on first sight or
     // after a failed attempt, not on every re-import.

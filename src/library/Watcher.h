@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -19,7 +20,8 @@ void CreateMissingRoots(const config::Config& config);
 // Watches every enabled library root and rescans automatically: "drop a
 // folder in and it's picked up" without running `mira scan` by hand.
 //
-// One inotify watch per root, non-recursive. A new directory is debounced
+// One inotify watch per root and per sorting folder in it (.hidden, a folder
+// tag's folder), non-recursive. A new directory is debounced
 // (rescanned once its size is unchanged for `scan.debounce_ms`) rather than
 // scanned mid-copy. epoll_wait blocks with no timeout except while a
 // directory is being watched for size stability.
@@ -38,6 +40,9 @@ public:
   void Run();
   void Stop();
   void ReloadRoots();
+  // How many times Run() has put watches on library_roots: 1 once it first is, one more after each
+  // ReloadRoots(). A change made after it rises is seen.
+  int RootsWatched() const { return roots_watched_; }
 
   // Fetch through `queue` instead of a queue of its own, so one set of workers and one dedupe serve everything.
   // Before Run().
@@ -61,6 +66,12 @@ private:
   void RearmTimer();
   // Drops every root watch and adds library_roots afresh. Run()'s thread only.
   void WatchRoots();
+  // Watches `dir` for changes in `root`, and the sorting folders inside it (FolderTags.h).
+  void WatchFolder(const std::filesystem::path& root, const std::filesystem::path& dir);
+  // Drops the watches on `dir` and the sorting folders inside it, never a root's.
+  void Unwatch(const std::filesystem::path& dir);
+  // Whether `dir` is a sorting folder under `root` rather than a game of that name.
+  bool IsSortingFolder(const std::filesystem::path& root, const std::filesystem::path& dir) const;
 
   config::Config& config_;
   store::GameStore& games_;
@@ -77,7 +88,12 @@ private:
   int settings_wd_ = -1;  // settings.toml's folder
   std::function<void()> on_settings_saved_;
 
-  std::map<int, std::filesystem::path> watch_to_root_;  // inotify watch descriptor -> root
+  struct Watched {
+    std::filesystem::path root;
+    std::filesystem::path dir;  // the root, or a sorting folder in it
+  };
+  std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
+  std::atomic<int> roots_watched_{0};
   std::map<std::string, Pending> pending_;               // absolute dir path -> debounce state
 };
 

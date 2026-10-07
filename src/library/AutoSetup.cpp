@@ -3,15 +3,26 @@
 #include "core/Log.h"
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
+#include "library/FolderTags.h"
 #include "library/PrefixNaming.h"
 
 namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
 
-// Whatever lands in the Applications root is an application, not a game.
-void TagApp(model::Game& game, const fs::path& root) {
+// A new game's tags from where it was found in `folder`: the folder tag of a sorting folder
+// first, the library root's name (scan.tag_by_root), `app` in the Applications root (whatever
+// lands there is an application, not a game), and `hidden` under .hidden. Outside the library
+// folders (an install inside a prefix) none apply.
+void TagFromPlace(const config::Config& config, model::Game& game, const fs::path& folder) {
+  const fs::path root = RootOf(config, folder);
+  if (root.empty()) return;
+  const Container place = ContainerOf(config, root, folder).value_or(Container{});
+  if (!place.folder_tag.empty()) game.tags.push_back(place.folder_tag);
+  if (config.GetBool("scan.tag_by_root") && !root.filename().empty())
+    game.tags.push_back(root.filename().string());
   if (strings::ToLower(root.filename().string()) == "applications") game.tags.push_back("app");
+  if (place.hidden) game.tags.push_back("hidden");
 }
 }
 
@@ -29,16 +40,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
   game.updated_at = game.created_at;
   game.data_dir = PrefixDir(config_, games_, game).string();
 
-  // install_path's parent is which library root this came from (see the
-  // field's own comment in model/Types.h) -- the root's own leaf folder
-  // name doubles as a natural, human-readable tag for it, letting multiple
-  // library_roots stay filterable (GET /v1/games?tag=...) without the user
-  // tagging anything by hand.
-  if (config_.GetBool("scan.tag_by_root")) {
-    const std::string root_name = install_path.parent_path().filename().string();
-    if (!root_name.empty()) game.tags.push_back(root_name);
-  }
-  TagApp(game, install_path.parent_path());
+  TagFromPlace(config_, game, install_path.parent_path());
 
   if (detected.candidates.empty()) {
     game.status = model::GameStatus::Broken;
@@ -86,8 +88,7 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
                       .is_installer = false}};
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
-  if (config_.GetBool("scan.tag_by_root") && !root.filename().empty()) game.tags.push_back(root.filename().string());
-  TagApp(game, root);
+  TagFromPlace(config_, game, root);
 
   if (auto result = games_.Upsert(game); !result) {
     log::Error("failed to save new game \"{}\": {}", game.id, result.error().message);

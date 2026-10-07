@@ -26,6 +26,7 @@
 #include "launchers/Office.h"
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
+#include "library/FolderTags.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "proc/Session.h"
@@ -615,6 +616,8 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       library::AnnounceInstallerLeftover(s.events, *result);
     }
     SendJson(res, s.Record(*result));
+    // Installed in its prefix: its link goes where its tags say.
+    if (moved) s.SortByTags({result->id});
   });
 
   http.Delete(R"(/v1/games/([^/]+)/installer)", [&s](const Request& req, Response& res) {
@@ -668,6 +671,9 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
                    g.source_ref = relocated->source_ref;
                    g.updated_at = model::NowSeconds();
                  });
+                 if (saved)
+                   library::PruneEmptyContainers(
+                       s.config, library::SortingFolderOf(s.config, *game), s.games.All());
                  folders_lock.unlock();
                  if (!saved) return std::unexpected(saved.error());
                  s.SyncDesktopEntry(saved->id);

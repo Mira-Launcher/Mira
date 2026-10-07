@@ -48,7 +48,7 @@ TEST_CASE("Watcher picks up a new game folder in each of two watched roots") {
   library::Watcher watcher(env.config, games, env.events);
 
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // let the watches register
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   // Both native, so this is about two watched roots, not provisioning a prefix.
   Touch(games_root / "Celeste" / "Celeste", "", /*executable=*/true);
@@ -86,11 +86,11 @@ TEST_CASE("Watcher follows library_roots after ReloadRoots") {
 
   library::Watcher watcher(env.config, env.games, env.events);
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({new_root.string()})));
   watcher.ReloadRoots();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 1; }));
 
   test::Touch(new_root / "Celeste" / "Celeste", "", /*executable=*/true);
   CHECK(WaitForGameAdded(env.events, std::chrono::seconds(5)));
@@ -113,7 +113,7 @@ TEST_CASE("Watcher never rediscovers its own prefix directory as a game") {
   library::Watcher watcher(config, games, events);
 
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   fs::create_directories(root / "prefix" / "celeste" / "drive_c");
   Touch(root / "prefix" / "celeste" / "system.reg");
@@ -140,7 +140,7 @@ TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting fo
   library::Watcher watcher(config, games, events);
 
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   // Build a real tar.gz containing a native game folder's shape, and drop
   // it directly into the watched root, exactly like a user extracting a
@@ -152,12 +152,10 @@ TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting fo
   REQUIRE(std::system(("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) == 0);
 
   CHECK(WaitForGameAdded(events, std::chrono::seconds(5)));
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(test::WaitUntil([&] { return !fs::exists(archive); }));  // the archive itself is gone
 
   watcher.Stop();
   watcher_thread.join();
-
-  CHECK_FALSE(fs::exists(archive));  // the archive itself is gone
   CHECK(fs::exists(root / "Celeste" / "Celeste"));
 
   auto celeste = games.Find("celeste");
@@ -180,7 +178,7 @@ TEST_CASE("Watcher leaves a dropped archive alone when auto_extract_archives is 
   library::Watcher watcher(config, games, events);
 
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   const fs::path staging = TempDir("watch-archive-off-staging");
   fs::create_directories(staging / "Celeste");
@@ -218,7 +216,7 @@ TEST_CASE("Watcher never extracts or scans anything under a configured runner_se
   library::Watcher watcher(config, games, events);
 
   std::thread watcher_thread([&] { watcher.Run(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
   // A folder shaped like a Proton build, dropped exactly as
   // runner/Downloader.cpp would leave one after extracting it.

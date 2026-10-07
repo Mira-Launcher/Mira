@@ -47,6 +47,8 @@ TEST_CASE("games round-trip through the database, including nested fields") {
   game.candidates.push_back({"Celeste.exe", model::Platform::Windows, 4.5, true});
   game.env["FOO"] = "bar";
   game.overrides["scan.max_depth"] = 8;
+  game.library_link = "/games/RPG/Celeste";
+  game.folder_tag = "RPG";
   REQUIRE(store.Upsert(game).has_value());
 
   store::GameStore reloaded(file);
@@ -58,6 +60,8 @@ TEST_CASE("games round-trip through the database, including nested fields") {
   CHECK(found->candidates[0].chosen);
   CHECK(found->env.at("FOO") == "bar");
   CHECK(found->overrides.value("scan.max_depth", 0) == 8);
+  CHECK(found->library_link == "/games/RPG/Celeste");
+  CHECK(found->folder_tag == "RPG");
 }
 
 TEST_CASE("Update mutates under lock and reports the saved result") {

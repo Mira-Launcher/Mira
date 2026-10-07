@@ -138,6 +138,7 @@ int main(int argc, char** argv) {
     mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
                     summary.missing, summary.restored);
     services.QueueMetadata(summary.added_games);
+    services.SortAllByTags();  // in case the folder tags changed while mirad was off
   });
 
   mira::library::Watcher watcher(config, games, events);
