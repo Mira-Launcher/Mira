@@ -41,6 +41,8 @@ class GameCard : public HeroBackdrop {
   void CloseRequested();
   void Saved();
   void PlayClicked();
+  // A tag chip was clicked: show the library's games with that tag.
+  void TagFilterRequested(QString tag);
 
  private:
   // Swaps the form for the art picker, and back.
@@ -70,6 +72,9 @@ class GameCard : public HeroBackdrop {
   QPushButton* play_ = nullptr;
   // The form's unsaved changes, or the picker's pick while it's open.
   ChangeBar* bar_ = nullptr;
+  // Room kept under the last card for the bar. It only grows: shrinking it as the bar hides would
+  // pull a card scrolled to the bottom down.
+  int bottom_room_ = 0;
   // Set by "Save and exit", so the save that follows closes the card.
   bool close_after_save_ = false;
 };

@@ -520,6 +520,16 @@ void LibraryPage::ApplyFilter() {
   emit ShownChanged();
 }
 
+void LibraryPage::ShowTag(const QString& tag) {
+  search_->clear();
+  pill_->SetPickedTags({tag});
+}
+
+void LibraryPage::ClearFilters() {
+  search_->clear();
+  pill_->ClearFilters();
+}
+
 void LibraryPage::LibraryChanged() {
   UpdateCounts();
   UpdateEmptyState();

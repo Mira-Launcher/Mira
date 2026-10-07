@@ -61,6 +61,8 @@ struct GameSummary {
   // while it isn't sorted (docs/api.md, Folders by tag).
   std::string sort_root;
   std::optional<std::vector<std::string>> folder_tags;
+  // The folder tag picked for this game over the folder tags' order; empty to follow that order.
+  std::string folder_tag;
 
   bool operator==(const GameSummary&) const = default;
 };
@@ -89,6 +91,41 @@ inline bool SameTag(std::string_view a, std::string_view b) {
     const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
     return lower(x) == lower(y);
   });
+}
+
+// Which of `tags` is the game's folder tag, or -1, as mirad picks it: `pick` while the game has it
+// and it's one of `folder_tags`, else the first of `folder_tags` (in their order) the game has.
+// The tags Mira gives a meaning to never are.
+inline int FolderTagIndex(const std::vector<std::string>& tags,
+                          const std::optional<std::vector<std::string>>& folder_tags,
+                          std::string_view pick = {}) {
+  if (!folder_tags) return -1;
+  const auto index_of = [&](std::string_view tag) {
+    for (size_t i = 0; i < tags.size(); ++i) {
+      if (!IsMeaningTag(tags[i]) && SameTag(tags[i], tag)) return static_cast<int>(i);
+    }
+    return -1;
+  };
+  if (!pick.empty() &&
+      std::ranges::any_of(*folder_tags, [&](const std::string& f) { return SameTag(f, pick); })) {
+    if (const int at = index_of(pick); at >= 0) return at;
+  }
+  for (const std::string& folder : *folder_tags) {
+    if (const int at = index_of(folder); at >= 0) return at;
+  }
+  return -1;
+}
+
+// A game's `tags` as `order` (the library's TagOrder) lists them; tags it doesn't list keep their
+// own order after those, and the tags Mira gives a meaning to come last.
+inline std::vector<std::string> InTagOrder(std::vector<std::string> tags, const std::vector<std::string>& order) {
+  const auto rank = [&](const std::string& tag) {
+    if (IsMeaningTag(tag)) return order.size() + 1;
+    const auto at = std::ranges::find_if(order, [&](const std::string& o) { return SameTag(o, tag); });
+    return static_cast<std::size_t>(at - order.begin());
+  };
+  std::ranges::stable_sort(tags, {}, rank);
+  return tags;
 }
 // An app is opened and runs; a game is played.
 inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
@@ -371,6 +408,9 @@ struct GameDetail {
   std::string default_runner;
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
+  std::string sort_root;  // as GameSummary's
+  std::optional<std::vector<std::string>> folder_tags;
+  std::string folder_tag;
 };
 
 struct GameDetailResult {
@@ -535,6 +575,9 @@ struct GamesPatch {
   std::vector<std::string> ids;
   std::vector<std::string> add_tags;
   std::vector<std::string> remove_tags;
+  // Each game's folder from now on (added if missing), whatever the folder tags' order says; ""
+  // goes back to that order.
+  std::optional<std::string> folder_tag;
   std::vector<GameConfigEdit> config;
 };
 

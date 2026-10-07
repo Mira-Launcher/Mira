@@ -696,6 +696,10 @@ QFrame#tag_chip {
   border-radius: @radius_control;
 }
 
+QFrame#tag_chip[folder="true"] {
+  border: 1px solid @accent;
+}
+
 QToolButton#tag_remove {
   border: none;
   border-radius: @radius_control;

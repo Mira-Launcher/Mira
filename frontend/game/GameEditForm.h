@@ -4,6 +4,7 @@
 #include <QString>
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,8 @@ public:
 
   // Offered while a new tag is typed.
   void SetTagSuggestions(const QStringList& tags);
+  // The library's tags in the order the chips show (TagOrder).
+  void SetTagOrder(std::vector<std::string> order);
   // Extra space under the last card, so a change bar floating over it never covers a row.
   void SetBottomRoom(int height);
 
@@ -69,8 +72,12 @@ signals:
   void AdvancedChanged(bool open);
   // Any field edited, or put back.
   void Changed();
+  // A tag chip was clicked: show the library's games with this tag.
+  void TagFilterRequested(QString tag);
 
 private:
+  // The batch PATCH /v1/games that turns the saved tags into `now`.
+  mira_gui::GamesPatch TagsPatch(const std::optional<std::vector<std::string>>& now) const;
   void Load();
   void Populate(const mira_gui::GameDetail& game);
   void ShowPatch(const mira_gui::GamePatch& patch);
@@ -97,6 +104,7 @@ private:
   std::string id_;
   std::string install_path_;
   mira_gui::GamePatch original_patch_;
+  std::string original_pick_;  // the game's folder tag pick as saved
   bool populating_ = false;
 
   QLabel* last_error_label_ = nullptr;

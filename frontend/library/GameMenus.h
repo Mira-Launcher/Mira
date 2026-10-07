@@ -22,6 +22,8 @@ public:
   // What the menus need from the window that shows them.
   struct Host {
     std::function<const GameSummary*(const std::string& id)> find;
+    // Every game in the library, for the tags it already uses.
+    std::function<const std::vector<GameSummary>&()> library;
     // "Installing… 1.2 GB" while the game installs, else empty.
     std::function<QString(const std::string& id)> install_text;
     std::function<void(const std::string& id)> toggle_running;
@@ -47,6 +49,11 @@ public:
   void ToggleTag(const std::string& id, const std::string& tag);
 
 private:
+  // "Tags": the library's tags, folder tags of the games' library folders first and marked with a
+  // folder icon, each added to the games in `ids` that lack it (a folder tag in front, moving them
+  // into its folder) or taken off all of them when every one has it, and a field for a new one.
+  void AddTagsMenu(QMenu& menu, const std::vector<std::string>& ids);
+
   QWidget* parent_;
   Host host_;
 };

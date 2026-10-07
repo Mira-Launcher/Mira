@@ -143,6 +143,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   tags.removeDuplicates();
   tags.sort(Qt::CaseInsensitive);
   form_->SetTagSuggestions(tags);
+  form_->SetTagOrder(TagOrder(library_->Games()));
 
   bar_ = new ChangeBar(this);
   // While the art picker is open the bar is its Cancel and Use.
@@ -162,6 +163,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
     if (!ArtPickerOpen()) UpdateBar();
   });
   connect(form_, &GameEditForm::Loaded, title_, &QLabel::setText);
+  connect(form_, &GameEditForm::TagFilterRequested, this, &GameCard::TagFilterRequested);
   connect(form_, &GameEditForm::LoadFailed, this, [this](QString error) {
     notify::Failed(window(), "Could not load this game.", error);
     emit CloseRequested();
@@ -267,7 +269,10 @@ void GameCard::CloseArtPicker(bool applied) {
 
 void GameCard::UpdateBar() {
   bar_->SetCount(form_->ChangeCount());
-  form_->SetBottomRoom(bar_->isHidden() ? 0 : bar_->RoomNeeded());
+  if (!bar_->isHidden() && bar_->RoomNeeded() > bottom_room_) {
+    bottom_room_ = bar_->RoomNeeded();
+    form_->SetBottomRoom(bottom_room_);
+  }
 }
 
 void GameCard::UpdatePlay() {

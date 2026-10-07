@@ -105,6 +105,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(library_, &mira_gui::GameLibraryModel::Changed, this, &LibraryWindow::LibraryChanged);
   menus_ = new mira_gui::GameMenus(
       this, {.find = [this](const std::string& id) { return FindGame(id); },
+             .library = [this]() -> const std::vector<mira_gui::GameSummary>& { return library_->Games(); },
              .install_text = [this](const std::string& id) { return InstallText(id); },
              .toggle_running = [this](const std::string& id) { ToggleRunning(id); },
              .open_settings = [this](const std::string& id) { OpenGameDialog(id); },
@@ -982,6 +983,13 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
   SizeGameEditCard(game_card_);
   connect(game_card_, &mira_gui::GameCard::CloseRequested, this, &LibraryWindow::CloseGameEdit);
   connect(game_card_, &mira_gui::GameCard::PlayClicked, this, [this, id] { ToggleRunning(id); });
+  connect(game_card_, &mira_gui::GameCard::TagFilterRequested, this, [this](const QString& tag) {
+    if (!LeaveOverlays()) return;  // a dirty card was kept open
+    if (source_page_ != nullptr) CloseSource();
+    if (runners_page_ != nullptr) CloseRunners();
+    UpdateLibraryNavActive();
+    grid_page_->ShowTag(tag);
+  });
   game_edit_overlay_layout_->addWidget(game_card_, 0, 0, Qt::AlignCenter);
   root_stack_->setCurrentWidget(game_edit_overlay_);
   game_edit_overlay_->show();

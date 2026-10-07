@@ -28,6 +28,24 @@ GameSummary Game(const std::string& id, std::vector<std::string> tags,
 
 }  // namespace
 
+TEST_CASE("The folder mark follows the folder tags' order, or the game's own pick") {
+  const std::optional<std::vector<std::string>> folders = std::vector<std::string>{"RPG", "Roguelike"};
+  CHECK(FolderTagIndex({"Indie", "roguelike", "rpg"}, folders) == 2);  // ignoring case
+  CHECK(FolderTagIndex({"Indie", "roguelike", "RPG"}, folders, "Roguelike") == 1);
+  CHECK(FolderTagIndex({"Indie", "RPG"}, folders, "Roguelike") == 1);  // a pick it lacks is ignored
+  CHECK(FolderTagIndex({"Indie", "RPG"}, folders, "Indie") == 1);  // so is one that isn't a folder
+  CHECK(FolderTagIndex({"Indie", "favorite"}, folders) == -1);
+  CHECK(FolderTagIndex({"RPG"}, std::nullopt) == -1);  // the folder isn't sorted
+  // The tags Mira gives a meaning to are never a folder, even if one were listed.
+  CHECK(FolderTagIndex({"hidden", "RPG"}, std::vector<std::string>{"hidden", "RPG"}) == 1);
+}
+
+TEST_CASE("A game's tags show in the library's tag order") {
+  const std::vector<std::string> order = {"RPG", "Roguelike", "Indie", "Action"};
+  CHECK(InTagOrder({"action", "favorite", "Mine", "rpg", "Indie"}, order) ==
+        std::vector<std::string>{"rpg", "Indie", "action", "Mine", "favorite"});
+}
+
 TEST_CASE("The Tags list puts folder tags first, then the tags most games have") {
   const std::vector<std::string> folders = {"RPG", "Roguelike"};
   const std::vector<GameSummary> games = {
