@@ -622,6 +622,9 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
   if (launcher->id == "office" && game.source != "launcher" && !game.exe_path.empty()) {
     run_as.install_path = game.install_path;
     run_as.exe_path = game.exe_path;
+    // Proton's default verb waits for the prefix's running apps to exit first, so a second app wouldn't
+    // start until the first closed.
+    run_as.env["PROTON_VERB"] = "run";
   }
   // The game's own id, so its window is its own app rather than the launcher's.
   run_as.id = game.id;
