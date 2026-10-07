@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <set>
 
@@ -132,28 +133,36 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   std::vector<std::string> to_set_up;  // provisioned once the folders lock is released
   // An installer's folder whose game now lives elsewhere (usually in its prefix) isn't a new game.
   std::set<std::string> installer_dirs;
+  std::map<std::string, model::Game>
+      root_programs;  // games run from a file in the root itself, by file name
   for (const model::Game& game : games_.All()) {
     if (!game.installer_dir.empty()) installer_dirs.insert(game.installer_dir);
+    if (fs::path(game.install_path) == root) root_programs.emplace(game.exe_path, game);
   }
 
   // An AppImage is a whole game in one file, so one loose in the root is a game too.
   std::set<std::string> seen_appimages;  // file names, for the games whose install_path is the root itself
 
-  for (const auto& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
+  // A listing that fails (unreadable root, stale network mount) must not look like an empty root,
+  // or the missing pass below would mark or remove every game in it. So no skip_permission_denied,
+  // which turns an unreadable root into an empty one.
+  std::error_code list_ec;
+  for (fs::directory_iterator it(root, list_ec), end; !list_ec && it != end;
+       it.increment(list_ec)) {
+    const fs::directory_entry& entry = *it;
     if (entry.is_regular_file(ec) && strings::ToLower(entry.path().extension().string()) == ".appimage") {
       const std::string file = entry.path().filename().string();
       seen_appimages.insert(file);
-      const std::vector<model::Game> all = games_.All();
-      const auto known = std::ranges::find_if(all, [&](const model::Game& game) {
-        return fs::path(game.install_path) == root && game.exe_path == file;
-      });
-      if (known == all.end()) {
+      const auto known = root_programs.find(file);
+      if (known == root_programs.end()) {
         const model::Game game = auto_setup.CreateAppImageGame(root, entry.path());
         ++summary.added;
         summary.added_games.push_back(game);
         log::Info("detected new game: {}", entry.path().string());
-      } else if (known->status == model::GameStatus::Missing) {
-        if (auto restored = games_.Update(known->id, [](model::Game& game) { game.status = model::GameStatus::Ready; })) {
+      } else if (known->second.status == model::GameStatus::Missing) {
+        if (auto restored = games_.Update(known->second.id, [](model::Game& game) {
+              game.status = model::GameStatus::Ready;
+            })) {
           events_.Publish("game.updated", model::ToJson(*restored));
           ++summary.restored;
         }
@@ -235,7 +244,10 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   // always-current list. It still never touches the game's files themselves,
   // same as DELETE /v1/games/{id}.
   const bool remove_missing = config_.GetBool("library.remove_missing");
-  for (const model::Game& game : games_.All()) {
+  if (list_ec)
+    log::Warn("could not list library root {}: {}; not checking for missing games", root.string(),
+              list_ec.message());
+  for (const model::Game& game : list_ec ? std::vector<model::Game>{} : games_.All()) {
     const bool loose_appimage = fs::path(game.install_path) == root && fs::path(game.exe_path).parent_path().empty() &&
                                 strings::ToLower(game.exe_path).ends_with(".appimage");
     if (loose_appimage) {

@@ -559,11 +559,9 @@ int CmdRemove(int argc, char** argv) {
     if (purge) path += "purge=true&";
     path.pop_back();  // trailing '&' or '?'
   }
-  auto res = client.Delete(path);
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  // A job when it deletes files or a prefix; AwaitJob takes a plain reply as well.
+  json result;
+  if (!AwaitJob(client, client.Delete(path), result)) return 1;
   std::puts("removed");
   return 0;
 }

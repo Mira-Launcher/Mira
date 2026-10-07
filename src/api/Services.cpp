@@ -50,10 +50,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
   // Importers and the scanner publish bare records; this gives every game
   // event the same `running` and `art` as GET /v1/games.
   events.SetGameRecordHook([this](json& game) {
-    const std::string id = game.value("id", "");
-    game["running"] = supervisor.IsRunning(id);
-    game["art"] = art_index.For(id);
-    AddNeedsCheck(game, config.GetDouble("detect.low_confidence_threshold"));
+    if (!game.contains("art")) Decorate(game);  // a Record() already is
   });
   events.SetArtHook([this](const std::string& id) { return art_index.For(id); });
   supervisor.SetExitHook([this](const std::string& id) { CheckForInstall(id); });
@@ -119,13 +116,19 @@ void Services::CheckForInstall(const std::string& game_id) {
                   {{"id", game_id}, {"install_path", installed->dir.string()}, {"exe_path", installed->exe_path}});
 }
 
-json Services::Record(const model::Game& game) {
+json Services::Record(const model::Game& game, std::optional<double> threshold) {
   json body = model::ToJson(game);
-  // So a client can resync after a reconnect.
-  body["running"] = supervisor.IsRunning(game.id);
-  body["art"] = art_index.For(game.id);
-  AddNeedsCheck(body, config.GetDouble("detect.low_confidence_threshold"));
+  Decorate(body, threshold);
   return body;
+}
+
+void Services::Decorate(json& record, std::optional<double> threshold) {
+  const std::string id = record.value("id", "");
+  // So a client can resync after a reconnect.
+  record["running"] = supervisor.IsRunning(id);
+  record["art"] = art_index.For(id);
+  AddNeedsCheck(record,
+                threshold ? *threshold : config.GetDouble("detect.low_confidence_threshold"));
 }
 
 // Picks up games started outside Mira (the Steam client, a running launcher) so
@@ -135,6 +138,15 @@ void Services::WatchExternalGames() {
   constexpr auto kIdleScanEvery = std::chrono::seconds(15);  // no Steam or launcher games to look for
   proc::ProcessIndex index;
   auto wait = kScanEvery;
+  struct Candidate {
+    model::Game game;
+    std::string appid;    // Steam
+    std::string win_dir;  // launcher
+  };
+  std::vector<Candidate> candidates;
+  // Rebuilt only when the library or settings change: resolving every Steam game's settings
+  // each pass costs more than the /proc scan itself.
+  std::optional<std::pair<std::uint64_t, std::uint64_t>> built_for;
   for (;;) {
     {
       std::unique_lock lock(stop_mutex_);
@@ -142,20 +154,18 @@ void Services::WatchExternalGames() {
       if (stop_wake_.wait_for(lock, wait, stopped)) return;
     }
 
-    struct Candidate {
-      model::Game game;
-      std::string appid;    // Steam
-      std::string win_dir;  // launcher
-    };
-    std::vector<Candidate> candidates;
-    for (const model::Game& game : games.All()) {
-      if (supervisor.IsRunning(game.id)) continue;
-      if (game.runner_ref.starts_with("steam:")) {
-        if (config::Resolver(config, game.overrides).GetBool("steam.track_process")) {
-          candidates.push_back({game, game.runner_ref.substr(6), ""});
+    const std::pair revisions{games.Revision(), config.Revision()};
+    if (built_for != revisions) {
+      built_for = revisions;
+      candidates.clear();
+      for (const model::Game& game : games.All()) {
+        if (game.runner_ref.starts_with("steam:")) {
+          if (config::Resolver(config, game.overrides).GetBool("steam.track_process")) {
+            candidates.push_back({game, game.runner_ref.substr(6), ""});
+          }
+        } else if (launchers::Find(game.source) && !game.data_dir.empty()) {
+          candidates.push_back({game, "", launchers::TrackedPath(game)});
         }
-      } else if (launchers::Find(game.source) && !game.data_dir.empty()) {
-        candidates.push_back({game, "", launchers::TrackedPath(game)});
       }
     }
     wait = candidates.empty() ? kIdleScanEvery : kScanEvery;
@@ -166,12 +176,15 @@ void Services::WatchExternalGames() {
     for (const auto& [pid, info] : index.Processes()) {
       if (!info.steam_launch.empty()) steam_running.insert(info.steam_launch);
     }
+    const auto post_script = [&](const model::Game& game) {
+      return config::Resolver(config, game.overrides).GetString("launch.post_script");
+    };
     for (const Candidate& candidate : candidates) {
-      const std::string post_script =
-          config::Resolver(config, candidate.game.overrides).GetString("launch.post_script");
+      if (supervisor.IsRunning(candidate.game.id)) continue;
       if (!candidate.appid.empty()) {
         if (!steam_running.contains(candidate.appid)) continue;
-        if (supervisor.TrackSteamLaunch(candidate.game, candidate.appid, post_script)) {
+        if (supervisor.TrackSteamLaunch(candidate.game, candidate.appid,
+                                        post_script(candidate.game))) {
           events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "steam"}, {"tracked", true}});
         }
         continue;
@@ -180,7 +193,8 @@ void Services::WatchExternalGames() {
         return proc::InPrefix(item.second.prefix, candidate.game.data_dir) &&
                proc::UnderWindowsPath(item.second.argv0, candidate.win_dir);
       });
-      if (running && supervisor.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10, post_script)) {
+      if (running && supervisor.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10,
+                                                    post_script(candidate.game))) {
         events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});
       }
     }
@@ -193,14 +207,13 @@ void Services::QueueMetadata(const std::vector<model::Game>& games) {
 
 void Services::ReconcileSessions() {
   supervisor.Reconcile(games.Dir() / "sessions");
-  // A client that stayed open across a restart may still show games from
-  // the old daemon as running.
+  // A client that stayed open across a restart may still show games from the old daemon as
+  // running. One event, not one per game, so a large library doesn't push the whole buffer out.
+  json idle = json::array();
   for (const model::Game& game : games.All()) {
-    if (supervisor.IsRunning(game.id)) continue;
-    json event = Record(game);
-    event["state"] = "idle";
-    events.Publish("game.state", std::move(event));
+    if (!supervisor.IsRunning(game.id)) idle.push_back(Record(game));
   }
+  if (!idle.empty()) events.Publish("games.updated", {{"games", std::move(idle)}});
 }
 
 void Services::StartJob(const httplib::Request& req, httplib::Response& res, const std::string& kind, const std::string& target,
@@ -245,13 +258,43 @@ Result<json> Services::RefreshMetadata(std::vector<model::Game> games, JobRegist
   return json{{"refreshed", total - tally->failed}, {"failed", tally->failed}};
 }
 
-Result<void> Services::DeleteGameData(const model::Game& game, bool files, bool prefix, bool metadata) {
-  if (supervisor.IsRunning(game.id)) return std::unexpected(GameRunningError(game.id));
+void Services::ProvisionLater(const model::Game& game) {
+  jobs.Start(
+      "provision", game.id, "Setting up " + game.name,
+      [this, id = game.id](JobRegistry::Progress&) -> Result<json> {
+        const auto current = games.Find(id);
+        if (!current) return Err("game_not_found", "the game was removed");
+        const model::Game provisioned = runner::RunnerRegistry(config).ProvisionGame(*current);
+        auto saved = games.Update(id, [&](model::Game& g) {
+          g.runner_ref = provisioned.runner_ref;
+          g.status = provisioned.status;
+          g.last_error = provisioned.last_error;
+        });
+        if (!saved) return std::unexpected(saved.error());
+        SyncDesktopEntry(id);
+        json record = Record(*saved);
+        events.Publish("game.updated", record);
+        if (saved->status != model::GameStatus::Ready)
+          return Err("provision_failed", saved->last_error);
+        return record;
+      },
+      std::string(), &operations);
+}
+
+Result<proc::ProcessSupervisor::Reservation> Services::Claim(const std::string& game_id,
+                                                             const std::string& purpose) {
+  if (auto claim = supervisor.Reserve(game_id, purpose)) return std::move(*claim);
+  if (supervisor.IsRunning(game_id)) return std::unexpected(GameRunningError(game_id));
+  return std::unexpected(GameBusyError(game_id, supervisor.ReservedFor(game_id)));
+}
+
+Result<void> Services::DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
+                                      bool files, bool prefix, bool metadata) {
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
   // Through the store's own tool where it has one, so its records stay in sync.
   if (files) {
-    if (auto deleted = library::DeleteGameFiles(config, game, games.All()); !deleted) return deleted;
+    if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
   }
   if (prefix) {
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;

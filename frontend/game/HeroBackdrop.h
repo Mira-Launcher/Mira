@@ -7,6 +7,8 @@
 
 #include "../client/Types.h"
 
+class QTimer;
+
 namespace mira_gui {
 
 class ArtworkStore;
@@ -30,10 +32,14 @@ public:
 
 protected:
   void paintEvent(QPaintEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 
 private:
   void LoadHero();
   QPixmap Source() const;
+
+  QTimer* resize_settled_ = nullptr;
+  bool resizing_ = false;
 
   ArtworkStore* artwork_ = nullptr;
   GameSummary game_;

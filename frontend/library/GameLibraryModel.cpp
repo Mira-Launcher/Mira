@@ -60,9 +60,21 @@ void GameLibraryModel::Remove(const std::vector<std::string>& ids) {
   }
   if (rows.empty()) return;
   std::ranges::sort(rows, std::greater{});
-  if (rows.size() == games_.size()) {
+  // Each run of rows costs an index rebuild and a re-sort in every proxy, so rows scattered
+  // across the library (a store's games removed) go in one reset instead.
+  int runs = 0;
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    if (i == 0 || rows[i] != rows[i - 1] - 1) ++runs;
+  }
+  if (rows.size() == games_.size() || runs > kMaxRemovedRuns) {
     beginResetModel();
-    games_.clear();
+    std::vector<bool> dropped(games_.size(), false);
+    for (const int row : rows) dropped[row] = true;
+    std::size_t kept = 0;
+    for (std::size_t row = 0; row < games_.size(); ++row) {
+      if (!dropped[row]) games_[kept++] = std::move(games_[row]);
+    }
+    games_.resize(kept);
     RebuildIndex();
     endResetModel();
     NoteChanged();

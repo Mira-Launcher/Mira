@@ -30,8 +30,11 @@ namespace mira_gui {
 //  - **At most `kMaxInFlight` at a time.** Every request is a thread and a
 //    socket, and decodes its image there; a 500-game library would
 //    otherwise open 500 of both at once.
-//  - **Keep the original, scale on demand.** The zoom slider changes tile
-//    size constantly; re-decoding or re-fetching per step would be absurd.
+//  - **Keep what's shown often, never a placeholder for art already seen.**
+//    A small copy of every image stays, and so do the library covers as the
+//    grid draws them. Full images stay only for the games the sidebar shows
+//    (Keep); any other size is fetched again from mirad's own cache, with the
+//    small copy stretched in its place meanwhile.
 //
 // Everything here is main-thread only.
 class ArtworkStore : public QObject {
@@ -56,9 +59,9 @@ public:
   // until real artwork arrives), for tinting small things like sidebar rows.
   QColor CoverColor(const QString& id);
 
-  // A game's other art slot ("hero"), unscaled. Null until fetched,
-  // or when the game has none; the first call queues the fetch, and
-  // SlotArtChanged says when it landed.
+  // A game's other art slot ("hero"), unscaled for a kept game and the small
+  // copy for any other. Null until fetched, or when the game has none; the
+  // first call queues the fetch, and SlotArtChanged says when it landed.
   QPixmap SlotArt(const std::string& id, const std::string& slot);
 
   // True only if real artwork is held for this id. False covers both "asked
@@ -67,9 +70,14 @@ public:
   bool HasArtwork(const std::string& id) const;
 
   // The unscaled artwork for this id, for a caller that wants to fit it
-  // itself rather than Cover()'s tile-shaped crop. Null until fetched,
-  // call EnsureRequested() first.
+  // itself rather than Cover()'s tile-shaped crop: the full image for a kept
+  // game, the small copy for any other. Null until fetched, call
+  // EnsureRequested() first.
   QPixmap RawArtwork(const std::string& id) const;
+  // A copy at most 128 px on a side, kept for every cover held, for drawing it small.
+  QPixmap SmallArtwork(const std::string& id) const {
+    return thumbs_.value(QString::fromStdString(id));
+  }
 
   // Queues the fetch if this id hasn't been asked about yet, without also
   // scaling/caching a Cover() for some tile size nobody asked for.
@@ -93,11 +101,21 @@ public:
 
   // The same, for every game at once. For a theme change: a generated
   // placeholder is drawn in the theme's colors (see ui/CoverArt), so all of
-  // them are stale even though the fetched artwork is not. Also for a new
-  // tile size, so the old size's copies don't pile up.
+  // them are stale even though the fetched artwork is not.
   void InvalidateAllRenderings();
 
-signals:
+  // While on (the zoom slider moving), a cover not already scaled is scaled
+  // quickly and not kept, so each step costs little. Repaint when it's
+  // turned off to get the smooth copies.
+  void SetQuickScaling(bool quick) { quick_ = quick; }
+
+  // The games whose full images stay (the sidebar's pinned and recently
+  // played); any other's is dropped once its sizes are drawn.
+  void Keep(const QSet<QString>& ids);
+  // Drops the covers drawn at this tile width, once the grid no longer uses it.
+  void ForgetWidth(int width);
+
+ signals:
   // Real artwork arrived (or was dropped) for this id; whatever is drawing
   // it should ask for the cover again.
   void CoverChanged(const QString& id);
@@ -107,15 +125,30 @@ signals:
 private:
   void Request(const QString& id);
   void Pump();
+  // Forgets the image held for a key; true if there was one.
+  bool Drop(const QString& key);
+  // The full image for a kept key, else the small copy, else null.
+  QPixmap Held(const QString& key) const;
+  // Stores a drawn cover, dropping store titles' copies nothing else holds any more.
+  void KeepScaled(const QString& key, const QPixmap& cover);
+  // CoverById and TitleCover's shared body.
+  QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio);
 
   static constexpr int kMaxInFlight = 8;
 
-  QHash<QString, QPixmap> original_;  // by id, at whatever size mirad sent
-  QHash<QString, QHash<int, QPixmap>> scaled_;  // by id, then tile width
-  QHash<QString, QColor> colors_;     // CoverColor's, by id
-  // SlotArt's, by "id#slot", which also keys answered_/queued_/pending_.
-  QHash<QString, QPixmap> slot_original_;
+  // Keys are a cover's id or a slot's "id#slot" (which also key answered_/queued_/pending_).
+  QHash<QString, QPixmap> full_;    // at up to kMaxArt, for kept_ games only
+  QSet<QString> kept_;              // game ids
+  QSet<QString> library_;           // ids drawn as library games, whose copies always stay
+  QHash<QString, QPixmap> thumbs_;  // a small copy of every image held
+  // Covers as drawn, by "id@tile width"; a store title's only while something else holds it.
+  QHash<QString, QPixmap> scaled_;
+  // Sizes asked for while only the small copy was held, drawn when the full image is back.
+  QHash<QString, QList<std::pair<QSize, qreal>>> wanted_;
+  QSet<QString> refetching_;         // asked again for a size, not because the art changed
+  QHash<QString, QColor> colors_;    // CoverColor's, by id
   QHash<QString, QString> slot_versions_;  // from NoteArt; empty for none
+  bool quick_ = false;
   QSet<QString> answered_;            // asked and heard back, either way
   QSet<QString> queued_;              // in `pending_` or in flight
   QSet<QString> ask_again_;           // in flight when mirad said it has art now

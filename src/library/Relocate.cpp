@@ -4,6 +4,7 @@
 #include <format>
 #include <system_error>
 
+#include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "launchers/Launchers.h"
@@ -23,15 +24,23 @@ Result<void> Move(const fs::path& from, const fs::path& to, bool allow_copy) {
   if (!ec) return {};
   if (ec != std::errc::cross_device_link) return Err("move_failed", ec.message());
   if (!allow_copy) return Err("cross_device", "target is on another filesystem and relocate.allow_copy is off");
+  if (fs::exists(to, ec)) return Err("move_failed", std::format("{} already exists", to.string()));
 
   // rename() can't cross filesystems -- prefix_root and a game's own
   // install_path may be on different drives. Copy the whole tree, then
   // remove the source, same fallback any "move a directory" tool needs
   // once that's possible.
   fs::copy(from, to, fs::copy_options::recursive | fs::copy_options::copy_symlinks, ec);
-  if (ec) return Err("move_failed", ec.message());
+  if (ec) {
+    const std::string message = ec.message();
+    fs::remove_all(to, ec);  // a half copy would block a retry and leave two copies
+    return Err("move_failed", message);
+  }
+  // The copy is whole, so the move succeeded; what's left of the source is only clutter.
   fs::remove_all(from, ec);
-  if (ec) return Err("cleanup_failed", ec.message());
+  if (ec)
+    log::Warn("moved {} to {}, but couldn't remove all of the old copy: {}", from.string(),
+              to.string(), ec.message());
   return {};
 }
 
@@ -95,6 +104,21 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
       both && !install_in_prefix && !request.data_dir && paths::IsWithin(game.data_dir, {game.install_path});
   bool single_file = false;  // only the program moved, out of a shared folder
 
+  // The prefix's target is checked before anything moves, so a bad one never needs an undo.
+  const bool move_prefix = !game.data_dir.empty() && !prefix_in_install && !shared_prefix &&
+                           (request.data_dir || !request.only_given);
+  const fs::path prefix_root = config.GetPath("prefix_root");
+  const fs::path prefix_target = !move_prefix ? fs::path()
+                                 : request.data_dir
+                                     ? *request.data_dir
+                                     : NamedDir(config, game, prefix_root, game.data_dir);
+  if (move_prefix && !paths::IsWithin(prefix_target, {prefix_root})) {
+    return Err("path_outside_root",
+               std::format("\"{}\" is not inside prefix_root", prefix_target.string()),
+               "Pick a folder inside the prefix folder, or change that setting.",
+               Fix::Setting("prefix_root"));
+  }
+
   // A program the game only runs (an emulator in ~/Applications) stays where it is.
   if (!game.install_path.empty() && !install_in_prefix &&
       (request.install_path || (!request.only_given && !store_managed && !RunsExternalProgram(game)))) {
@@ -131,31 +155,24 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     }
   }
 
-  if (!game.data_dir.empty() && !prefix_in_install && !shared_prefix && (request.data_dir || !request.only_given)) {
-    const fs::path prefix_root = config.GetPath("prefix_root");
-    const fs::path target = request.data_dir ? *request.data_dir
-                                             : NamedDir(config, game, prefix_root, game.data_dir);
-    // Put the install back on failure, so the stored paths stay true.
-    const auto undo_install = [&] {
-      if (game.install_path == original_install) return;
-      if (single_file) {
-        (void)Move(fs::path(game.install_path) / game.exe_path, fs::path(original_install) / game.exe_path, true);
-      } else {
-        (void)Move(game.install_path, original_install, true);
-      }
-    };
-    if (!paths::IsWithin(target, {prefix_root})) {
-      undo_install();
-      return Err("path_outside_root", std::format("\"{}\" is not inside prefix_root", target.string()),
-                 "Pick a folder inside the prefix folder, or change that setting.", Fix::Setting("prefix_root"));
-    }
-    if (fs::path(game.data_dir) != target) {
-      if (auto moved = Move(game.data_dir, target, config.GetBool("relocate.allow_copy")); !moved) {
-        undo_install();
-        return std::unexpected(moved.error());
-      }
-      game.data_dir = target.string();
-      if (install_in_prefix) game.install_path = Rebase(original_install, original_data, target);
+  if (move_prefix && fs::path(game.data_dir) != prefix_target) {
+    if (auto moved = Move(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
+        !moved) {
+      if (game.install_path == original_install) return std::unexpected(moved.error());
+      // Put the install back, so the stored paths stay true.
+      const Result<void> undone = single_file
+                                      ? Move(fs::path(game.install_path) / game.exe_path,
+                                             fs::path(original_install) / game.exe_path, true)
+                                      : Move(game.install_path, original_install, true);
+      if (undone) return std::unexpected(moved.error());
+      // It stays moved, so the game is returned with the install where it now is.
+      log::Warn(
+          "couldn't move {}'s prefix ({}) or put its install back ({}); the install stays at {}",
+          game.id, moved.error().message, undone.error().message, game.install_path);
+    } else {
+      game.data_dir = prefix_target.string();
+      if (install_in_prefix)
+        game.install_path = Rebase(original_install, original_data, prefix_target);
     }
   }
 

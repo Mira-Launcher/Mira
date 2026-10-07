@@ -82,10 +82,9 @@ std::optional<model::Event> EventBus::WaitNext(std::int64_t after_id, const std:
            (!events_.empty() && events_.back().id > after_id);
   });
   if (!got || stop.load(std::memory_order_relaxed)) return std::nullopt;
-  for (const model::Event& event : events_) {
-    if (event.id > after_id) return event;
-  }
-  return std::nullopt;  // unreachable given the wait predicate, but keeps the type honest
+  // Ids are consecutive, so the next one's place is arithmetic, not a walk under the lock.
+  const std::int64_t first = events_.front().id;
+  return events_[after_id < first ? 0 : static_cast<size_t>(after_id + 1 - first)];
 }
 
 void EventBus::WakeWaiters() {

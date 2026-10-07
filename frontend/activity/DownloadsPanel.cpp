@@ -117,8 +117,10 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   connect(tracker_, &DownloadTracker::Changed, this, [this](const QString& key) {
     if (isVisible() && !UpdateRow(key)) Rebuild();
   });
-  connect(artwork_, &ArtworkStore::CoverChanged, this, [this] {
-    if (isVisible()) Rebuild();
+  // Only the rows showing that cover: a library-wide cover load would otherwise rebuild every row
+  // per cover.
+  connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
+    if (isVisible()) UpdateCover(id);
   });
 }
 
@@ -177,6 +179,32 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
   return false;
 }
 
+namespace {
+
+// A game's or store title's row cover.
+QPixmap EntryCover(const DownloadTracker& tracker, ArtworkStore* artwork,
+                   const DownloadTracker::Entry& entry, qreal dpr) {
+  const QString name = tracker.NameFor(entry);
+  if (entry.kind == Kind::Title)
+    return artwork->TitleCover(entry.source, entry.ref, name, kCover, dpr);
+  GameSummary game;
+  game.id = entry.ref.toStdString();
+  game.name = name.toStdString();
+  return artwork->Cover(game, kCover, dpr);
+}
+
+}  // namespace
+
+void DownloadsPanel::UpdateCover(const QString& id) {
+  for (QLabel* cover : findChildren<QLabel*>("download_cover")) {
+    if (cover->property("cover_id").toString() != id) continue;
+    const QString key = cover->parentWidget()->property("download_key").toString();
+    if (const DownloadTracker::Entry* entry = tracker_->Find(key)) {
+      cover->setPixmap(EntryCover(*tracker_, artwork_, *entry, devicePixelRatioF()));
+    }
+  }
+}
+
 QWidget* DownloadsPanel::BuildRow(int index) {
   const DownloadTracker::Entry& entry = tracker_->Entries()[static_cast<size_t>(index)];
   const theme::Tokens& tokens = theme::Current();
@@ -194,14 +222,11 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   auto* cover = new QLabel(row);
   cover->setFixedSize(kCover);
   cover->setAlignment(Qt::AlignCenter);
-  const qreal dpr = devicePixelRatioF();
-  if (entry.kind == Kind::Game) {
-    GameSummary game;
-    game.id = entry.ref.toStdString();
-    game.name = name.toStdString();
-    cover->setPixmap(artwork_->Cover(game, kCover, dpr));
-  } else if (entry.kind == Kind::Title) {
-    cover->setPixmap(artwork_->TitleCover(entry.source, entry.ref, name, kCover, dpr));
+  if (entry.kind == Kind::Game || entry.kind == Kind::Title) {
+    cover->setObjectName("download_cover");
+    cover->setProperty("cover_id",
+                       entry.kind == Kind::Game ? entry.ref : entry.source + "-" + entry.ref);
+    cover->setPixmap(EntryCover(*tracker_, artwork_, entry, devicePixelRatioF()));
   } else {
     icons::Glyph glyph = icons::Glyph::Download;
     if (entry.kind == Kind::Runner || entry.kind == Kind::Tool) glyph = icons::Glyph::Wrench;

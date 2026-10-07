@@ -19,8 +19,8 @@ namespace {
 
 using nlohmann::json;
 
-DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delete_prefix,
-                            bool delete_metadata) {
+std::string DeletePath(const std::string& id, bool delete_files, bool delete_prefix,
+                       bool delete_metadata) {
   // Every flag is opt-in server-side too: the bare DELETE never touches
   // disk, so an omitted param and "false" mean the same thing.
   std::string path = "/v1/games/" + PercentEncode(id);
@@ -34,8 +34,13 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
     separator = "&";
   }
   if (delete_metadata) path += separator + "delete_metadata=true";
+  return path;
+}
 
-  const transport::Reply reply = transport::Delete(path);
+DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delete_prefix,
+                            bool delete_metadata) {
+  const transport::Reply reply =
+      transport::Delete(DeletePath(id, delete_files, delete_prefix, delete_metadata));
   return {reply.ok, reply.error};
 }
 
@@ -258,12 +263,21 @@ void FillDeleteGames(DeleteGamesResult& result, const json& body) {
 
 void DeleteGameAsync(QObject* context, const std::string& id, bool delete_files, bool delete_prefix,
                      bool delete_metadata, std::function<void(DeleteResult)> callback) {
-  async::Run(
-      context,
-      [id, delete_files, delete_prefix, delete_metadata] {
-        return DeleteGameSync(id, delete_files, delete_prefix, delete_metadata);
+  if (!delete_files && !delete_prefix) {
+    async::Run(
+        context,
+        [id, delete_metadata] { return DeleteGameSync(id, false, false, delete_metadata); },
+        std::move(callback), async::Lane::Slow);
+    return;
+  }
+  // Deleting files or a prefix is a job.
+  RunJob<DeleteResult>(
+      context, "delete",
+      [id, delete_files, delete_prefix, delete_metadata](const std::string& query) {
+        return transport::Delete(DeletePath(id, delete_files, delete_prefix, delete_metadata) +
+                                 "&" + query.substr(1));
       },
-      std::move(callback), async::Lane::Slow);
+      [](DeleteResult&, const json&) {}, std::move(callback));
 }
 
 void LaunchGameAsync(QObject* context, const std::string& id,

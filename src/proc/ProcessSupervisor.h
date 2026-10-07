@@ -97,8 +97,9 @@ public:
 
   bool IsRunning(const std::string& game_id) const;
 
-  // Claims a game's launch slot before anything is spawned, so two quick
-  // launches can't both start it. Empty if it is running or already claimed.
+  // Claims a game before anything is spawned or any of its files change, so two quick
+  // launches can't both start it and a game can't launch mid-move. Empty if it is
+  // running or already claimed.
   class Reservation {
   public:
     Reservation(ProcessSupervisor& supervisor, std::string game_id)
@@ -114,7 +115,10 @@ public:
     ProcessSupervisor* supervisor_;
     std::string game_id_;
   };
-  std::optional<Reservation> Reserve(const std::string& game_id);
+  // `purpose` says what holds it ("launched", "moved", "deleted"), for ReservedFor.
+  std::optional<Reservation> Reserve(const std::string& game_id, std::string purpose = "launched");
+  // What holds a game's claim, or "" if nothing does.
+  std::string ReservedFor(const std::string& game_id) const;
 
   // Called with the game's id on its watcher thread after a Launch() or
   // LaunchWrapped() game exits. Set once, before any launch.
@@ -150,7 +154,7 @@ private:
   std::map<std::string, std::string> prefixes_;  // game id -> data_dir, for Stop()
   std::map<std::string, ExternalMatch> external_;  // game id -> match, for Stop()/WatchExternal()
   std::map<std::string, std::int64_t> kill_deadlines_;  // game id -> when to SIGKILL
-  std::set<std::string> reserved_;  // launches claimed by Reserve()
+  std::map<std::string, std::string> reserved_;  // games claimed by Reserve(), with the purpose
   std::set<std::string> stop_requested_;  // Stop() was called; the exit isn't a crash
   std::map<std::string, Watcher> watchers_;
   // Watchers replaced by a relaunch of the same game; each is joined once it has finished.

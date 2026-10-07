@@ -67,10 +67,11 @@ private:
   void ApplyChangedPrefs(const std::string& payload);
   // The layout this window owns (size, zoom, filter, sort, sidebar), saved
   // in the background a moment after it last changed, so a crash loses at
-  // most that moment. FlushPrefs writes a pending one now, for quitting.
+  // most that moment. FlushPrefs writes a pending one now: waiting for it
+  // when quitting, in the background when only hiding to the tray.
   mira_gui::FrontendPrefs LayoutPrefs() const;
   void ScheduleSavePrefs();
-  void FlushPrefs();
+  void FlushPrefs(bool quitting = true);
   void resizeEvent(QResizeEvent* event) override;
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();

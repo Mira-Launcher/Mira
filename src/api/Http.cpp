@@ -80,6 +80,13 @@ Error GameRunningError(const std::string& id) {
   return Error{"game_running", std::format("\"{}\" is running", id), "Stop the game first.", {}};
 }
 
+Error GameBusyError(const std::string& id, const std::string& purpose) {
+  return Error{"game_busy",
+               std::format("\"{}\" is being {}", id, purpose),
+               "Wait for it to finish, then try again.",
+               {}};
+}
+
 json BatchFailure(const std::string& id, const Error& error) {
   json body = ErrorBody(error);
   body["id"] = id;
