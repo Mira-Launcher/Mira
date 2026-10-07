@@ -33,12 +33,56 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   http.Post("/v1/library/scan", [&s](const Request& req, Response& res) {
     s.StartJob(req, res, "scan", "", "Scanning your library", [&s](JobRegistry::Progress&) -> Result<json> {
       library::Scanner scanner(s.config, s.games, s.events);
+      scanner.UseUnclearMoves(s.unclear_moves);
       scanner.UseMetadataQueue(s.fetches);
       scanner.UseInstallLane(s.installs);
       const library::ScanSummary summary = scanner.ScanAll();
       for (const model::Game& game : summary.added_games) s.fetches.Enqueue(s.config, s.events, game);
-      return json{{"added", summary.added}, {"missing", summary.missing}, {"restored", summary.restored}};
+      return json{{"added", summary.added},
+                  {"missing", summary.missing},
+                  {"restored", summary.restored},
+                  {"moved", summary.moved}};
     });
+  });
+
+  http.Get("/v1/library/unclear", [&s](const Request&, Response& res) {
+    json moves = json::array();
+    for (const library::UnclearMove& move : s.unclear_moves.All()) {
+      moves.push_back(library::UnclearMoves::ToJson(move, s.games));
+    }
+    SendJson(res, {{"moves", std::move(moves)}});
+  });
+
+  http.Post("/v1/library/unclear", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"folder": "...", "id"?: "..."})";
+    const auto parsed = BodyObject(req, res, kShape);
+    if (!parsed) return;
+    const json& body = *parsed;
+    if (!body.contains("folder") || !body["folder"].is_string() ||
+        (body.contains("id") && !body["id"].is_string() && !body["id"].is_null())) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    const auto move = s.unclear_moves.Find(body["folder"].get<std::string>());
+    if (!move) return SendError(res, 404, "move_not_found", "no unclear move for that folder");
+    std::optional<std::string> id;
+    if (body.contains("id") && body["id"].is_string()) {
+      id = body["id"].get<std::string>();
+      if (!std::ranges::contains(move->ids, *id)) {
+        return SendError(res, 400, "invalid_body", "that game isn't one this folder could be");
+      }
+    }
+    library::Scanner scanner(s.config, s.games, s.events);
+    scanner.UseUnclearMoves(s.unclear_moves);
+    auto settled = scanner.Settle(move->folder, id);
+    if (!settled) return SendError(res, 409, settled.error());
+    s.SyncDesktopEntry(settled->id);
+    if (!id) {
+      s.QueueMetadata({*settled});
+      // Set up like a game a scan adds.
+      if (settled->status == model::GameStatus::SettingUp && s.config.GetBool("auto_setup"))
+        s.ProvisionLater(*settled);
+    }
+    SendJson(res, s.Record(*settled));
   });
 
   // One game at a time, since a move can copy a whole game. Each moved game

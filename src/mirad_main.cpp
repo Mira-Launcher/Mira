@@ -132,11 +132,12 @@ int main(int argc, char** argv) {
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     mira::library::Scanner startup_scan(config, games, events);
+    startup_scan.UseUnclearMoves(services.unclear_moves);
     startup_scan.UseMetadataQueue(services.fetches);
     startup_scan.UseInstallLane(services.installs);
     const mira::library::ScanSummary summary = startup_scan.ScanAll();
-    mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
-                    summary.missing, summary.restored);
+    mira::log::Info("startup scan: added {}, missing {}, restored {}, moved {}", summary.added,
+                    summary.missing, summary.restored, summary.moved);
     services.QueueMetadata(summary.added_games);
     services.SortAllByTags();  // in case the folder tags changed while mirad was off
   });
@@ -145,6 +146,7 @@ int main(int argc, char** argv) {
   watcher.UseMetadataQueue(services.fetches);
   watcher.UseInstallLane(services.installs);
   watcher.OnSettingsSaved([&services] { services.ReloadSettings(); });
+  watcher.UseUnclearMoves(services.unclear_moves);
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 

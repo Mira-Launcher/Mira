@@ -19,6 +19,7 @@
 #include "core/Lane.h"
 #include "core/Result.h"
 #include "library/FolderTags.h"
+#include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
@@ -60,6 +61,8 @@ public:
   Lane artwork_thumbs{"artwork-thumbs", 4};
   Lane operations{"operations", 4};  // installs and downloads
   Lane installs{"installs", 1};      // installers a scan runs on its own
+  // Folders scans found that could be any of several games moved by hand.
+  library::UnclearMoves unclear_moves{events};
   // After everything a job's work touches, so it's joined first on the way down.
   JobRegistry jobs{events};
 

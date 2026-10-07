@@ -38,6 +38,7 @@ struct SortRules {
   std::vector<std::string> folders;           // tags.folders, in order
   std::vector<std::filesystem::path> sorted_roots;  // tags.sorted_roots, normalised
   std::filesystem::path prefix_root;
+  bool tag_by_root = true;
 };
 
 // A library folder as SortRules keeps it ("~" expanded, normalised), from how a setting spells it.
@@ -114,6 +115,14 @@ Result<model::Game> Place(const config::Config& config, model::Game game,
 
 // Removes `game`'s link, if it has one and it is still a link.
 void RemoveLink(const model::Game& game);
+
+// `game`'s tags changed to say it sits in `place` under `root`, having come from `old_root`: the
+// reverse of Place, for a folder or link moved by hand. The game gets the place's folder tag, and
+// it becomes the game's pick unless tags.folders' order already puts the game there; at the root
+// level the root's folder tags and the pick are dropped; `hidden` follows .hidden; a new root
+// swaps the scan.tag_by_root tag and `app`.
+void TagsForPlace(const SortRules& rules, model::Game& game, const std::filesystem::path& old_root,
+                  const std::filesystem::path& root, const Container& place);
 
 // After a game left `dir`: removes it, then a .hidden above it, while no game in `library` is
 // inside and nothing but file-manager leftovers (.directory, Thumbs.db, ...) remains. Only the

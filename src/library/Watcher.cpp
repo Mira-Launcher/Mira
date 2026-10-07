@@ -284,9 +284,9 @@ void Watcher::HandleInotify() {
         if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
         std::error_code ec;
         const bool extract = config_.GetBool("scan.auto_extract_archives");
-        // A link to a folder is Mira's own, for a game installed in its prefix; never a game.
+        // A link to a folder arrives whole (no copy to wait out, and its size is a whole game's).
         if (fs::is_symlink(fs::symlink_status(path, ec)) && fs::is_directory(path, ec)) {
-          continue;
+          deleted_from.insert(root);  // rescanned right away, like a deletion
         } else if (fs::is_directory(path, ec)) {
           if (IsSortingFolder(root, path)) WatchFolder(root, path);
           if (!path.filename().string().starts_with(kExtractingPrefix)) {
@@ -316,6 +316,7 @@ void Watcher::HandleInotify() {
     library::Scanner scanner(config_, games_, events_);
     scanner.UseMetadataQueue(*metadata_fetches_);
     if (installs_) scanner.UseInstallLane(*installs_);
+    if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
@@ -365,6 +366,7 @@ void Watcher::HandleDebounceTick() {
     library::Scanner scanner(config_, games_, events_);
     scanner.UseMetadataQueue(*metadata_fetches_);
     if (installs_) scanner.UseInstallLane(*installs_);
+    if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);

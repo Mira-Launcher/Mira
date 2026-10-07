@@ -477,11 +477,13 @@ TEST_CASE("a restored game keeps needs_install instead of becoming launchable") 
   REQUIRE(scanner.ScanAll().added == 1);
   REQUIRE(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
 
-  fs::rename(lib / "game-hollow", lib / "game-hollow-away");  // "drive unplugged"
+  // Out of the library, since a folder moved within it is followed.
+  const fs::path away = TempDir("restore-installer-away") / "game-hollow";
+  fs::rename(lib / "game-hollow", away);  // "drive unplugged"
   REQUIRE(scanner.ScanAll().missing == 1);
   REQUIRE(env.games.Find("game-hollow")->status == model::GameStatus::Missing);
 
-  fs::rename(lib / "game-hollow-away", lib / "game-hollow");  // and back
+  fs::rename(away, lib / "game-hollow");  // and back
   scanner.ScanAll();
   CHECK(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
   CHECK_FALSE(env.games.Find("game-hollow")->last_error.empty());
@@ -500,9 +502,10 @@ TEST_CASE("a restored windows game with no prefix is not claimed ready") {
   REQUIRE(scanner.ScanAll().added == 1);
   REQUIRE(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
 
-  fs::rename(lib / "Celeste", lib / "Celeste-away");
+  const fs::path away = TempDir("restore-unprovisioned-away") / "Celeste";
+  fs::rename(lib / "Celeste", away);
   REQUIRE(scanner.ScanAll().missing == 1);
-  fs::rename(lib / "Celeste-away", lib / "Celeste");
+  fs::rename(away, lib / "Celeste");
   scanner.ScanAll();
 
   // No runner_ref, no prefix on disk: "ready" would be a lie.

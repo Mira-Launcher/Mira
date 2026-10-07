@@ -224,6 +224,76 @@ TEST_CASE("A scan finds games in sorting folders, tags them by place, and leaves
   CHECK(fs::exists(root / "Strategy"));
 }
 
+TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
+  test::TestEnv env("folder-tags-moved-state");
+  const fs::path root = TempDir("folder-tags-moved-games");
+  REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
+  REQUIRE(env.config.Patch(Sorting(root, {"RPG"})).has_value());
+  const std::string root_tag = root.filename().string();
+  for (const fs::path& game :
+       {root / "RPG" / "Alpha", root / ".hidden" / "RPG" / "Beta", root / ".hidden" / "Gamma"}) {
+    Touch(game / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  }
+  library::Scanner scanner(env.config, env.games, env.events);
+  scanner.ScanAll();
+
+  // Moved by hand to the root level: the same game, without the folder tag; RPG is left empty.
+  fs::rename(root / "RPG" / "Alpha", root / "Alpha");
+  CHECK(scanner.ScanAll().moved == 1);
+  auto alpha = env.games.Find("alpha");
+  CHECK(alpha->install_path == (root / "Alpha").string());
+  CHECK(alpha->tags == std::vector<std::string>{root_tag});
+  CHECK_FALSE(fs::exists(root / "RPG"));
+
+  // Into .hidden/RPG: hidden, and RPG again; .hidden's own Gamma still keeps .hidden.
+  fs::rename(root / "Alpha", root / ".hidden" / "RPG" / "Alpha");
+  CHECK(scanner.ScanAll().moved == 1);
+  alpha = env.games.Find("alpha");
+  CHECK(alpha->install_path == (root / ".hidden" / "RPG" / "Alpha").string());
+  CHECK(alpha->tags == std::vector<std::string>{root_tag, "RPG", "hidden"});
+  CHECK(alpha->status == model::GameStatus::Ready);
+
+  // A folder whose program several missing games share is unclear: not added, and none of them is
+  // marked missing while it waits to be settled.
+  fs::remove_all(root / ".hidden" / "Gamma");
+  fs::rename(root / ".hidden" / "RPG" / "Beta", root / "Renamed");
+  fs::remove_all(root / ".hidden" / "RPG" / "Alpha");
+  const library::ScanSummary ambiguous = scanner.ScanAll();
+  CHECK(ambiguous.moved == 0);
+  CHECK(ambiguous.added == 0);
+  REQUIRE(ambiguous.unclear.size() == 1);
+  CHECK(ambiguous.unclear[0].folder == root / "Renamed");
+  CHECK(ambiguous.unclear[0].ids.size() == 3);
+  for (const char* id : {"alpha", "beta", "gamma"}) {
+    CAPTURE(id);
+    CHECK(env.games.Find(id)->status != model::GameStatus::Missing);
+  }
+
+  // More of a game's files inside settles it: only beta also had extra.bin.
+  const auto candidate = [](const std::string& path, bool chosen) {
+    return model::Candidate{.rel_path = path,
+                            .kind = model::Platform::Native,
+                            .score = chosen ? 1.0 : 0.0,
+                            .chosen = chosen,
+                            .is_installer = false};
+  };
+  for (const auto& [id, second] :
+       {std::pair{"beta", "extra.bin"}, {"alpha", "alpha.bin"}, {"gamma", "gamma.bin"}}) {
+    REQUIRE(env.games
+                .Update(id,
+                        [&](model::Game& game) {
+                          game.candidates = {candidate("run.sh", true), candidate(second, false)};
+                        })
+                .has_value());
+  }
+  Touch(root / "Renamed" / "extra.bin");
+  const library::ScanSummary narrowed = scanner.ScanAll();
+  CHECK(narrowed.moved == 1);
+  CHECK(narrowed.unclear.empty());
+  CHECK(env.games.Find("beta")->install_path == (root / "Renamed").string());
+  CHECK(env.games.Find("alpha")->status == model::GameStatus::Missing);
+}
+
 TEST_CASE("Pruning removes a sorting folder only when it holds no game and nothing but leftovers") {
   test::TestEnv env("folder-tags-prune-state");
   const fs::path root = TempDir("folder-tags-prune-games");
@@ -243,17 +313,38 @@ TEST_CASE("Pruning removes a sorting folder only when it holds no game and nothi
   CHECK(fs::exists(root));
 }
 
-TEST_CASE("The watcher finds games dropped into a sorting folder") {
+TEST_CASE("The watcher finds games dropped into a sorting folder and follows ones moved there") {
   test::TestEnv env("folder-tags-watch-state");
   const fs::path root = TempDir("folder-tags-watch-games");
   REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
-  REQUIRE(env.config.Patch(Sorting(root, {"RPG"})).has_value());
+  REQUIRE(env.config.Patch(Sorting(root, {"RPG", "Strategy"})).has_value());
   REQUIRE(env.config.Set("scan.debounce_ms", 100).has_value());
+  Touch(root / "Alpha" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
   Touch(root / "RPG" / ".directory");
+  library::Scanner(env.config, env.games, env.events).ScanAll();
+  REQUIRE(env.games.Find("alpha").has_value());
+
   library::Watcher watcher(env.config, env.games, env.events);
   std::thread watcher_thread([&] { watcher.Run(); });
   REQUIRE(WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
+  fs::rename(root / "Alpha", root / "RPG" / "Alpha");
+  CHECK(WaitUntil(
+      [&] { return env.games.Find("alpha")->install_path == (root / "RPG" / "Alpha").string(); }));
+  CHECK(std::ranges::contains(env.games.Find("alpha")->tags, "RPG"));
+  CHECK(env.games.Find("alpha")->folder_tag.empty());  // RPG comes first in tags.folders anyway
+
+  // Into a folder tag later in tags.folders: the game keeps both tags, and that one is its pick.
+  fs::create_directories(root / "Strategy");
+  fs::rename(root / "RPG" / "Alpha", root / "Strategy" / "Alpha");
+  CHECK(WaitUntil([&] {
+    return env.games.Find("alpha")->install_path == (root / "Strategy" / "Alpha").string();
+  }));
+  CHECK(std::ranges::contains(env.games.Find("alpha")->tags, "RPG"));
+  CHECK(std::ranges::contains(env.games.Find("alpha")->tags, "Strategy"));
+  CHECK(env.games.Find("alpha")->folder_tag == "Strategy");
+
+  // A new game dropped into the sorting folder is found too.
   Touch(root / "RPG" / "Beta" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
   CHECK(WaitUntil([&] { return env.games.Find("beta").has_value(); }));
 
@@ -279,6 +370,29 @@ TEST_CASE("A folder linked into a library folder by hand is a game, scan after s
   CHECK(env.games.Find("witcher").has_value());
 }
 
+TEST_CASE("A game moved by hand into another library folder keeps its history") {
+  test::TestEnv env("folder-tags-cross-root-state");
+  const fs::path games_root = TempDir("folder-tags-cross-root-games");
+  const fs::path apps_root = TempDir("folder-tags-cross-root-apps");
+  REQUIRE(env.config.Set("library_roots", json::array({games_root.string(), apps_root.string()}))
+              .has_value());
+  // Removing missing games must not take it before the other folder's scan finds it.
+  REQUIRE(env.config.Set("library.remove_missing", true).has_value());
+  Touch(games_root / "Foo" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  library::Scanner scanner(env.config, env.games, env.events);
+  scanner.ScanAll();
+  REQUIRE(env.games.Update("foo", [](model::Game& game) { game.play_seconds = 600; }).has_value());
+
+  fs::rename(games_root / "Foo", apps_root / "Foo");
+  scanner.ScanAll();
+  const auto foo = env.games.Find("foo");
+  REQUIRE(foo.has_value());
+  CHECK(foo->install_path == (apps_root / "Foo").string());
+  CHECK(foo->play_seconds == 600);
+  CHECK(foo->status == model::GameStatus::Ready);
+  CHECK(env.games.All().size() == 1);
+}
+
 TEST_CASE("A hand edit of the sorting settings sorts the library as a request would") {
   LiveServer server(TempDir("folder-tags-hand-edit-state"));
   const fs::path root = TempDir("folder-tags-hand-edit-games");
@@ -291,6 +405,112 @@ TEST_CASE("A hand edit of the sorting settings sorts the library as a request wo
   REQUIRE(editor.Patch(Sorting(root, {"RPG"})).has_value());
   server.services().ReloadSettings();
   CHECK(MovedTo(server.games(), "quest", root / "RPG" / "Quest"));
+}
+
+TEST_CASE("An unclear move is listed and settled through the API, as the game or as a new one") {
+  LiveServer server(TempDir("folder-tags-unclear-state"));
+  const fs::path root = TempDir("folder-tags-unclear-games");
+  REQUIRE(server.MutableConfig().Set("library_roots", json::array({root.string()})).has_value());
+  for (const char* id : {"first", "second"}) AddGame(server.games(), id, root / id);
+  httplib::Client client = server.Client();
+  fs::remove_all(root / "first");
+  fs::remove_all(root / "second");
+  Touch(root / "Copied" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  const auto appeared = test::WaitForEvent(server.events(), "library.move_unclear");
+  REQUIRE(appeared.has_value());
+  CHECK(appeared->payload["folder"] == (root / "Copied").string());
+  const auto listed = client.Get("/v1/library/unclear");
+  REQUIRE(listed != nullptr);
+  const json moves = json::parse(listed->body)["moves"];
+  REQUIRE(moves.size() == 1);
+  CHECK(moves[0]["games"].size() == 2);
+  CHECK(server.games().Find("first")->status == model::GameStatus::Ready);
+
+  const json body = {{"folder", (root / "Copied").string()}, {"id", "second"}};
+  const auto settled = client.Post("/v1/library/unclear", body.dump(), "application/json");
+  REQUIRE(settled != nullptr);
+  REQUIRE(settled->status == 200);
+  CHECK(server.games().Find("second")->install_path == (root / "Copied").string());
+  CHECK(json::parse(client.Get("/v1/library/unclear")->body)["moves"].empty());
+  CHECK(test::WaitForEvent(server.events(), "library.move_settled").has_value());
+
+  // The other one has no folder now: settling looks again, so it's marked missing at once.
+  CHECK(server.games().Find("first")->status == model::GameStatus::Missing);
+
+  // Settled as a new game instead. "first", already missing, no longer counts for a folder of
+  // another name.
+  for (const char* id : {"third", "fourth"}) {
+    AddGame(server.games(), id, root / id);
+    fs::remove_all(root / id);
+  }
+  Touch(root / "Copied2" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  const auto as_new =
+      client.Post("/v1/library/unclear", json{{"folder", (root / "Copied2").string()}}.dump(),
+                  "application/json");
+  REQUIRE(as_new != nullptr);
+  REQUIRE(as_new->status == 200);
+  CHECK(json::parse(as_new->body)["install_path"] == (root / "Copied2").string());
+  CHECK(json::parse(as_new->body)["id"] != "third");
+  CHECK(json::parse(as_new->body)["id"] != "fourth");
+}
+
+TEST_CASE("A folder settled as a new game is set up like one a scan adds") {
+  LiveServer server(TempDir("folder-tags-settle-new-state"));
+  const fs::path root = TempDir("folder-tags-settle-new-games");
+  // The games it could have been came from another library folder, so no scan of this one follows.
+  const fs::path other_root = TempDir("folder-tags-settle-new-other");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", json::array({root.string(), other_root.string()}))
+              .has_value());
+  for (const char* id : {"first", "second"}) {
+    AddGame(server.games(), id, other_root / id);
+    REQUIRE(server.games()
+                .Update(id,
+                        [](model::Game& game) {
+                          game.exe_path = "Game.exe";
+                          game.platform = model::Platform::Windows;
+                        })
+                .has_value());
+    fs::remove_all(other_root / id);
+  }
+  Touch(root / "Copied" / "Game.exe", "MZ");
+  httplib::Client client = server.Client();
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  REQUIRE(json::parse(client.Get("/v1/library/unclear")->body)["moves"].size() == 1);
+
+  const auto settled =
+      client.Post("/v1/library/unclear", json{{"folder", (root / "Copied").string()}}.dump(),
+                  "application/json");
+  REQUIRE(settled != nullptr);
+  REQUIRE(settled->status == 200);
+  const std::string id = json::parse(settled->body)["id"];
+  CHECK(WaitUntil([&] { return server.games().Find(id)->status != model::GameStatus::SettingUp; }));
+}
+
+TEST_CASE("A game already marked missing isn't taken for a new folder of another name") {
+  test::TestEnv env("folder-tags-missing-match-state");
+  const fs::path root = TempDir("folder-tags-missing-match-games");
+  REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
+  Touch(root / "Old" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  library::Scanner scanner(env.config, env.games, env.events);
+  scanner.ScanAll();
+  fs::remove_all(root / "Old");
+  scanner.ScanAll();
+  REQUIRE(env.games.Find("old")->status == model::GameStatus::Missing);
+
+  // Another game with a program of the same name: a new game, and the deleted one stays missing.
+  Touch(root / "Fresh" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  CHECK(scanner.ScanAll().added == 1);
+  CHECK(env.games.Find("old")->status == model::GameStatus::Missing);
+  CHECK(env.games.Find("fresh").has_value());
+
+  // Back under its own name, it's the same game again.
+  fs::rename(root / "Fresh", root / "Old");
+  scanner.ScanAll();
+  CHECK(env.games.Find("old")->status != model::GameStatus::Missing);
 }
 
 TEST_CASE("A game installed in its prefix is sorted by a link the scanner never follows") {
@@ -344,10 +564,30 @@ TEST_CASE("A game installed in its prefix is sorted by a link the scanner never 
   REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
   CHECK(server.games().All().size() == before);
 
+  // The link moved by hand changes the tags, like a folder.
+  fs::create_directories(root / ".hidden");
+  fs::rename(root / "RPG" / "Quest", root / ".hidden" / "Quest");
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  const model::Game moved = *server.games().Find("quest");
+  CHECK(moved.library_link == (root / ".hidden" / "Quest").string());
+  CHECK(moved.tags == std::vector<std::string>{"hidden"});
+  CHECK_FALSE(fs::exists(root / "RPG"));
+
+  // A copy of the link, its own still in place, changes nothing, scan after scan.
+  fs::create_directory_symlink(install, root / "Quest copy");
+  for (int scan = 0; scan < 2; ++scan) {
+    const json scanned = AwaitJob(client, client.Post("/v1/library/scan"));
+    REQUIRE(scanned["state"] == "finished");
+    CHECK(scanned["result"]["moved"] == 0);
+    CHECK(server.games().Find("quest")->library_link == (root / ".hidden" / "Quest").string());
+    CHECK(server.games().Find("quest")->tags == std::vector<std::string>{"hidden"});
+  }
+  fs::remove(root / "Quest copy");
+
   // Removing the game takes the link with it, and the files stay.
   const auto removed = client.Delete("/v1/games/quest");
   REQUIRE(removed != nullptr);
-  CHECK(WaitUntil([&] { return !fs::exists(fs::symlink_status(root / "RPG" / "Quest")); }));
+  CHECK(WaitUntil([&] { return !fs::exists(fs::symlink_status(root / ".hidden" / "Quest")); }));
   CHECK(fs::exists(install / "run.sh"));
 }
 

@@ -7,6 +7,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
+#include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
 #include "store/GameStore.h"
 
@@ -51,6 +52,8 @@ public:
   void OnSettingsSaved(std::function<void()> callback) { on_settings_saved_ = std::move(callback); }
   // Where a scan runs an installer it starts on its own. Before Run().
   void UseInstallLane(Lane& lane) { installs_ = &lane; }
+  // Where its scans keep the unclear moves they find. Before Run().
+  void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
 
 private:
   struct Pending {
@@ -79,6 +82,7 @@ private:
   metadata::FetchQueue own_fetches_{games_.Metadata()};
   metadata::FetchQueue* metadata_fetches_ = &own_fetches_;
   Lane* installs_ = nullptr;
+  UnclearMoves* unclear_moves_ = nullptr;
 
   int inotify_fd_ = -1;
   int epoll_fd_ = -1;

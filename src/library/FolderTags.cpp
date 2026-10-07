@@ -148,7 +148,8 @@ fs::path NormalRoot(const std::string& root) { return Normal(paths::Expand(root)
 
 SortRules::SortRules(const config::Config& config)
     : folders(config.GetStringArray("tags.folders")),
-      prefix_root(Normal(config.GetPath("prefix_root"))) {
+      prefix_root(Normal(config.GetPath("prefix_root"))),
+      tag_by_root(config.GetBool("scan.tag_by_root")) {
   for (const std::string& root : config.GetStringArray("library_roots")) {
     roots.push_back(NormalRoot(root));
     roots_as_written.push_back(root);
@@ -350,6 +351,41 @@ Result<model::Game> Place(const config::Config& config, model::Game game,
   }
   game.install_path = target->string();
   return game;
+}
+
+void TagsForPlace(const SortRules& rules, model::Game& game, const fs::path& old_root,
+                  const fs::path& root, const Container& place) {
+  std::vector<std::string>& tags = game.tags;
+  if (!old_root.empty() && Normal(old_root) != Normal(root)) {
+    if (rules.tag_by_root) {
+      std::erase(tags, old_root.filename().string());
+      if (!root.filename().empty() && !std::ranges::contains(tags, root.filename().string()))
+        tags.push_back(root.filename().string());
+    }
+    if (IsApplications(old_root) && !IsApplications(root)) std::erase(tags, std::string("app"));
+    if (IsApplications(root) && !std::ranges::contains(tags, std::string("app")))
+      tags.push_back("app");
+  }
+
+  if (place.folder_tag.empty()) {
+    // At the root level no folder tag stays, or the game would be moved straight back.
+    const std::vector<std::string> folder_tags = FolderTagsOf(rules, root);
+    std::erase_if(tags, [&](const std::string& tag) {
+      return std::ranges::any_of(folder_tags,
+                                 [&](const std::string& f) { return SameName(f, tag); });
+    });
+    game.folder_tag.clear();
+  } else {
+    if (!std::ranges::any_of(tags,
+                             [&](const std::string& t) { return SameName(t, place.folder_tag); }))
+      tags.push_back(place.folder_tag);
+    game.folder_tag.clear();
+    if (!SameName(FolderTagFor(rules, root, tags), place.folder_tag))
+      game.folder_tag = place.folder_tag;
+  }
+
+  std::erase(tags, std::string("hidden"));
+  if (place.hidden) tags.push_back("hidden");
 }
 
 void PruneEmptyContainers(const config::Config& config, const fs::path& dir,
