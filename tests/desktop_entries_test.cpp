@@ -79,7 +79,7 @@ TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, and a Mic
   CHECK(text.find("Icon=application-x-executable") != std::string::npos);
   CHECK(text.find("MimeType=") == std::string::npos);
   const std::string word_text = read("mira-office-word.desktop");
-  CHECK(word_text.find("Exec=mira launch office-word %F") != std::string::npos);
+  CHECK(word_text.find("mira launch office-word %F") != std::string::npos);
   CHECK(word_text.find("MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;") !=
         std::string::npos);
 }

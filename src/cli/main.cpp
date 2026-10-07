@@ -1458,6 +1458,10 @@ int CmdSetup(int argc, char** argv) {
   for (const auto& path : *written) std::printf("wrote %s\n", path.c_str());
   std::system("systemctl --user daemon-reload >/dev/null 2>&1");
   std::system("update-desktop-database -q ~/.local/share/applications >/dev/null 2>&1");
+  // A running mirad points the games' menu entries at the new wrapper.
+  if (auto synced = Connect().Post("/v1/desktop-entries/sync"); synced && synced->status == 200) {
+    std::puts("updated the games' menu entries");
+  }
 
   const char* path_env = std::getenv("PATH");
   if (!path_env || std::string(path_env).find(paths.bin_dir.string()) == std::string::npos) {

@@ -195,6 +195,12 @@ Result<std::vector<fs::path>> Remove(const SetupPaths& paths) {
   remove_if(DesktopPath(paths), fs::exists(DesktopPath(paths), ec) && IsOurs(DesktopPath(paths)));
   remove_if(UnitPath(paths), fs::exists(UnitPath(paths), ec) && IsOurs(UnitPath(paths)));
   if (!removed.empty()) remove_if(IconPath(paths), fs::exists(IconPath(paths), ec));
+  // Each game's menu entry runs the wrapper just removed. mirad writes them again if it runs.
+  for (const auto& entry : fs::directory_iterator(paths.applications_dir, ec)) {
+    const std::string name = entry.path().filename().string();
+    if (!name.starts_with("mira-") || !name.ends_with(".desktop")) continue;
+    remove_if(entry.path(), ReadFile(entry.path()).contains("\nX-Mira-Game-Id="));
+  }
   return removed;
 }
 

@@ -2,6 +2,7 @@
 #include "desktop/DesktopEntries.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <optional>
@@ -16,6 +17,7 @@
 #include "launchers/Office.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
+#include "setup/Setup.h"
 
 namespace mira::desktop {
 namespace {
@@ -48,6 +50,23 @@ std::optional<fs::path> CachedArtwork(const config::Config& config, const std::s
   if (name.empty()) return std::nullopt;  // otherwise the artwork directory itself
   const fs::path file = metadata::ArtworkDir(config, game_id) / name;
   return std::ifstream(file, std::ios::binary).good() ? std::make_optional(file) : std::nullopt;
+}
+
+// `mira` or `mira-gui` by full path, since a desktop session's PATH often lacks ~/.local/bin: from an
+// AppImage, the wrapper `mira setup` writes and the AppImage itself; from a package, the one on PATH
+// (/usr/bin's scripts set up its environment); otherwise the one next to mirad.
+std::string Binary(std::string_view name) {
+  std::error_code ec;
+  fs::path found;
+  if (const char* appimage = std::getenv("APPIMAGE"); appimage != nullptr && *appimage != '\0') {
+    found = name == "mira-gui" ? fs::path(appimage) : setup::DefaultPaths().bin_dir / name;
+  } else if (const auto on_path = runner::FindOnPath(name); on_path && on_path->starts_with('/')) {
+    found = *on_path;
+  } else {
+    found = fs::read_symlink("/proc/self/exe", ec).parent_path() / name;
+  }
+  if (ec || !fs::is_regular_file(found, ec)) return std::string(name);
+  return found.string().contains(' ') ? std::format("\"{}\"", found.string()) : found.string();
 }
 
 // The file types a Microsoft 365 app opens; empty for anything else.
@@ -102,10 +121,10 @@ std::string DesktopEntries::Render(const model::Game& game) const {
   const config::Resolver resolver(config_, game.overrides);
   const std::string_view mime = MimeTypes(game);
   // An app that opens files is handed them, which only the CLI passes on.
-  const std::string exec = !mime.empty() ? std::format("mira launch {} %F", game.id)
+  const std::string exec = !mime.empty() ? std::format("{} launch {} %F", Binary("mira"), game.id)
                            : resolver.GetString("desktop_entries.exec_mode") == "frontend"
-                               ? std::format("mira-gui --launch {}", game.id)
-                               : std::format("mira launch {}", game.id);
+                               ? std::format("{} --launch {}", Binary("mira-gui"), game.id)
+                               : std::format("{} launch {}", Binary("mira"), game.id);
   const std::optional<fs::path> artwork = CachedArtwork(config_, game.id);
   const bool app = std::ranges::contains(game.tags, "app");
   const std::string icon = artwork ? artwork->string() : app ? "application-x-executable" : "applications-games";
