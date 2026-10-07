@@ -38,8 +38,10 @@ void DaemonSupervisor::EnsureRunning() {
     const QString mirad_path = ResolveMiradPath(QCoreApplication::applicationDirPath());
     if (process_ != nullptr) process_->deleteLater();  // a previous mirad that has since died
     process_ = new QProcess(this);
-    connect(process_, &QProcess::readyReadStandardError, this, [this] {
-      qWarning("mirad: %s", process_->readAllStandardError().constData());
+    // The process that has output, not process_: a restarted mirad replaces it while an old one may
+    // still speak.
+    connect(process_, &QProcess::readyReadStandardError, process_, [process = process_] {
+      qWarning("mirad: %s", process->readAllStandardError().constData());
     });
     // The socket this frontend talks to: mirad ignores $MIRA_SOCKET, which can move it.
     process_->start(mirad_path, {"--socket", QString::fromStdString(api::ResolveSocketPath())});

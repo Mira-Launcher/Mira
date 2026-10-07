@@ -402,9 +402,13 @@ void LibraryWindow::ScheduleSavePrefs() {
   save_prefs_timer_->start();
 }
 
-void LibraryWindow::FlushPrefs() {
+void LibraryWindow::FlushPrefs(bool quitting) {
   if (save_prefs_timer_ == nullptr || !save_prefs_timer_->isActive()) return;
   save_prefs_timer_->stop();
+  if (!quitting) {
+    mira_gui::api::SaveFrontendPrefsAsync(this, LayoutPrefs(), [](mira_gui::PatchConfigResult) {});
+    return;
+  }
   // Blocking: an async save's thread might not reach the socket before the
   // process exits. Failure isn't reported: the cost is a layout, not data.
   mira_gui::api::SaveFrontendPrefsBlocking(LayoutPrefs());
@@ -455,7 +459,7 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
   // Only for the window Attach() made the tray's; a secondary window
   // closes for real either way, since nothing would bring it back.
   if (mira_gui::tray::IsManaged(this) && !mira_gui::tray::Quitting()) {
-    FlushPrefs();
+    FlushPrefs(/*quitting=*/false);  // the process stays, so the save needn't freeze the window
     event->ignore();
     hide();
     return;
@@ -825,9 +829,11 @@ const mira_gui::GameSummary* LibraryWindow::FindGame(const std::string& id) cons
 
 void LibraryWindow::UpsertGames(const std::vector<mira_gui::GameSummary>& games) {
   // A rename changes the placeholder's initials, so the rendered tile is
-  // stale even though the fetched artwork behind it isn't.
+  // stale even though the fetched artwork behind it isn't. Only then: drawn
+  // covers are fetched again to be redrawn.
   for (const mira_gui::GameSummary& game : games) {
-    artwork_->InvalidateRendering(game.id);
+    const mira_gui::GameSummary* known = library_->Find(game.id);
+    if (known == nullptr || known->name != game.name) artwork_->InvalidateRendering(game.id);
     artwork_->NoteArt(game.id, game.art);
   }
   library_->Upsert(games);

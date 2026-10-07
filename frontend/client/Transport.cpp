@@ -1,7 +1,9 @@
 #include "Transport.h"
 
 #include <httplib.h>
+#include <pwd.h>
 #include <toml.hpp>
+#include <unistd.h>
 
 #include <cctype>
 #include <cstdlib>
@@ -56,13 +58,20 @@ Reply Finish(const httplib::Result& res) {
   return reply;
 }
 
-// mirad's socket_path setting from settings.toml, with `~` and `$VAR` expanded as mirad does,
-// or "" when it isn't set there. Read once: mirad itself only reads it at startup.
+// paths::Home in src/core/Paths.cpp, which the frontend can't link.
+std::string Home() {
+  if (const char* home = std::getenv("HOME"); home && *home) return home;
+  if (const passwd* pw = ::getpwuid(::getuid())) return pw->pw_dir;
+  return "/tmp";
+}
+
+// mirad's socket_path setting from settings.toml, expanded as paths::Expand does (keep the two
+// in step), or "" when it isn't set there. Read once: mirad itself only reads it at startup.
 std::string ConfiguredSocket() {
   const char* config_home = std::getenv("XDG_CONFIG_HOME");
-  const char* home = std::getenv("HOME");
-  const std::filesystem::path base = config_home && *config_home ? std::filesystem::path(config_home)
-                                     : std::filesystem::path(home && *home ? home : ".") / ".config";
+  const std::filesystem::path base = config_home && *config_home
+                                         ? std::filesystem::path(config_home)
+                                         : std::filesystem::path(Home()) / ".config";
   toml::parse_result parsed = toml::parse_file((base / "mira" / "settings.toml").string());
   if (!parsed) return {};
   const std::optional<std::string> raw = parsed.table()["socket_path"].value<std::string>();
@@ -72,7 +81,7 @@ std::string ConfiguredSocket() {
   for (size_t i = 0; i < raw->size(); ++i) {
     const char c = (*raw)[i];
     if (c == '~' && i == 0 && (raw->size() == 1 || (*raw)[1] == '/')) {
-      out += home && *home ? home : "";
+      out += Home();
     } else if (c == '$' && i + 1 < raw->size()) {
       size_t end = i + 1;
       while (end < raw->size() && (std::isalnum(static_cast<unsigned char>((*raw)[end])) || (*raw)[end] == '_')) ++end;
@@ -82,6 +91,7 @@ std::string ConfiguredSocket() {
       out += c;
     }
   }
+  while (out.size() > 1 && out.back() == '/') out.pop_back();
   return out;
 }
 

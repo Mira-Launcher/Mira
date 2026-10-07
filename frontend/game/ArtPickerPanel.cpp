@@ -1,6 +1,7 @@
 #include "ArtPickerPanel.h"
 
 #include <QButtonGroup>
+#include <QCache>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QHash>
@@ -97,15 +98,18 @@ public:
     if (state == kReady && !pixmap.isNull()) {
       const qreal dpr = painter->device()->devicePixelRatioF();
       const QSize target = (box.size() * dpr).toSize();
-      QPixmap& scaled = scaled_[pixmap.cacheKey()];
-      if (scaled.size() != target) {
+      QPixmap* scaled = scaled_.object(pixmap.cacheKey());
+      if (scaled == nullptr || scaled->size() != target) {
         // Fills the box, cropping the overflow, like a library tile.
         const QPixmap filled = pixmap.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-        scaled = filled.copy((filled.width() - target.width()) / 2, (filled.height() - target.height()) / 2,
-                             target.width(), target.height());
+        scaled = new QPixmap(filled.copy((filled.width() - target.width()) / 2,
+                                         (filled.height() - target.height()) / 2, target.width(),
+                                         target.height()));
+        scaled_.insert(pixmap.cacheKey(), scaled,
+                       std::max(1, target.width() * target.height() * 4 / 1024));
       }
       painter->setClipPath(path);
-      painter->drawPixmap(box, scaled, QRectF(scaled.rect()));
+      painter->drawPixmap(box, *scaled, QRectF(scaled->rect()));
       painter->setClipping(false);
     } else {
       QColor fill = tokens.surface_alt;
@@ -153,8 +157,9 @@ public:
 
 private:
   QVariantAnimation* pulse_;
-  // Each preview scaled to the current cell, keyed by its source's cacheKey.
-  mutable QHash<qint64, QPixmap> scaled_;
+  // Each preview scaled to the current cell, keyed by its source's cacheKey; costs in KiB.
+  // Bounded, since every candidate list browsed brings new sources.
+  mutable QCache<qint64, QPixmap> scaled_{32 * 1024};
 };
 
 }  // namespace

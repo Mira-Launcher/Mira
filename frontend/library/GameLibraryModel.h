@@ -63,6 +63,9 @@ private:
   void RebuildIndex();
   void NoteChanged();
 
+  // Past this many separate runs of removed rows, Remove resets the model instead.
+  static constexpr int kMaxRemovedRuns = 16;
+
   std::vector<GameSummary> games_;
   std::unordered_map<std::string, int> rows_;  // id -> row
   bool change_pending_ = false;

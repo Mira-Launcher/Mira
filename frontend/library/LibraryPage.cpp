@@ -308,8 +308,22 @@ QSize LibraryPage::TileSize() const {
 void LibraryPage::SetTileWidth(int width) {
   if (width == tile_width_) return;
   tile_width_ = width;
-  // Every size the slider passes through would otherwise stay cached until quit.
-  artwork_->InvalidateAllRenderings();
+  // Each step scales every visible cover again, so they're scaled quickly until the zoom stops.
+  if (zoom_settled_ == nullptr) {
+    zoom_settled_ = new QTimer(this);
+    zoom_settled_->setSingleShot(true);
+    zoom_settled_->setInterval(150);
+    connect(zoom_settled_, &QTimer::timeout, this, [this] {
+      artwork_->SetQuickScaling(false);
+      // The covers kept at the old size are no longer drawn.
+      if (drawn_width_ != 0 && drawn_width_ != tile_width_) artwork_->ForgetWidth(drawn_width_);
+      drawn_width_ = tile_width_;
+      grid_->viewport()->update();
+      if (!owned_matches_.empty()) UpdateOwnedMatches();
+    });
+  }
+  artwork_->SetQuickScaling(true);
+  zoom_settled_->start();
   delegate_->SetTileSize(TileSize());
   grid_->setGridSize(TileSize());
   owned_grid_->SetTileSize(TileSize());

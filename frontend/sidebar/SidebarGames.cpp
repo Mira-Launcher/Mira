@@ -37,7 +37,7 @@ QPixmap RoundedCrop(const QPixmap& source, QSize size, qreal radius, qreal dpr) 
 }
 
 QPixmap CoverThumb(const GameSummary& game, ArtworkStore* artwork, qreal dpr) {
-  const QPixmap art = artwork->RawArtwork(game.id);
+  const QPixmap art = artwork->SmallArtwork(game.id);
   if (!art.isNull()) return RoundedCrop(art, kThumb, 3, dpr);
   // Not fetched yet, or none: the placeholder's color.
   artwork->EnsureRequested(game.id);

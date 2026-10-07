@@ -3,7 +3,8 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
-
+#include <QResizeEvent>
+#include <QTimer>
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
@@ -66,9 +67,27 @@ QPixmap HeroBackdrop::Source() const {
   if (!hero_preview_.isNull()) return hero_preview_;
   if (!hero_.isNull()) return hero_;
   if (!cover_preview_.isNull()) return cover_preview_;
-  if (artwork_ != nullptr && artwork_->HasArtwork(game_.id)) return artwork_->RawArtwork(game_.id);
+  // Blurred to a wash of its colors, so the small copy is all it needs.
+  if (artwork_ != nullptr && artwork_->HasArtwork(game_.id))
+    return artwork_->SmallArtwork(game_.id);
   // The same generated art as its tile, so the card still carries its colors.
   return PlaceholderCover(QString::fromStdString(game_.name), QString::fromStdString(game_.id), QSize(200, 300), 1);
+}
+
+void HeroBackdrop::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  if (resize_settled_ == nullptr) {
+    resize_settled_ = new QTimer(this);
+    resize_settled_->setSingleShot(true);
+    resize_settled_->setInterval(150);
+    connect(resize_settled_, &QTimer::timeout, this, [this] {
+      resizing_ = false;
+      rendered_ = QPixmap();
+      update();
+    });
+  }
+  resizing_ = true;
+  resize_settled_->start();
 }
 
 void HeroBackdrop::paintEvent(QPaintEvent*) {
@@ -85,12 +104,18 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
     const qreal dpr = devicePixelRatioF();
     const qint64 key = source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height();
     if (rendered_.isNull() || rendered_key_ != key) {
-      QPixmap scaled = source.scaled(band.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+      // While the card is being resized, a quick scale per step; the smooth one once it stops.
+      const Qt::TransformationMode mode =
+          resizing_ ? Qt::FastTransformation : Qt::SmoothTransformation;
+      QPixmap scaled;
       // A cover is portrait: a slice of it reads as noise, so blur it into
       // a wash of its colors (down to a few pixels and back up).
       if (hero_.isNull() && hero_preview_.isNull()) {
-        scaled = scaled.scaled(scaled.size() / 64, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-                     .scaled(scaled.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        const QSize full = band.size() * dpr;
+        scaled = source.scaled(full / 64, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation)
+                     .scaled(full, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+      } else {
+        scaled = source.scaled(band.size() * dpr, Qt::KeepAspectRatioByExpanding, mode);
       }
       scaled.setDevicePixelRatio(dpr);
       rendered_ = scaled;

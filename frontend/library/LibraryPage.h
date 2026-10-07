@@ -18,6 +18,7 @@ class QLineEdit;
 class QModelIndex;
 class QScrollArea;
 class QStandardItemModel;
+class QTimer;
 class QVBoxLayout;
 
 namespace mira_gui {
@@ -149,6 +150,8 @@ class LibraryPage : public QWidget {
   std::vector<OwnedMatch> owned_matches_;
   std::set<QString> covers_asked_;  // "<source>-<ref>" whose cover fetch was queued
   int tile_width_ = 0;
+  QTimer* zoom_settled_ = nullptr;  // smooth covers once the zoom stops changing
+  int drawn_width_ = 0;             // the tile width covers were last kept at
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;
   bool continue_apps_ = false;

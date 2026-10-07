@@ -1,5 +1,6 @@
 #include "GameEditForm.h"
 
+#include "../client/Async.h"
 #include "../client/EventHub.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
@@ -24,6 +25,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStackedWidget>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -246,8 +248,23 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   revert(runner_row_, &mira_gui::GamePatch::runner_ref);
   revert(data_dir_row_, &mira_gui::GamePatch::data_dir);
   revert(env_row_, &mira_gui::GamePatch::env_json);
+  // Checked once typing pauses and off the UI thread: a stale network mount can stall a stat.
+  auto* check_data_dir = new QTimer(this);
+  check_data_dir->setSingleShot(true);
+  check_data_dir->setInterval(300);
+  connect(check_data_dir, &QTimer::timeout, this, [this] {
+    const QString path = data_dir_edit_->text();
+    async::Run<bool>(
+        this, [path] { return QDir(path).exists(); },
+        [this, path](bool exists) {
+          if (data_dir_edit_->text() == path) open_data_dir_->setEnabled(exists);
+        });
+  });
   connect(data_dir_edit_, &QLineEdit::textChanged, this,
-          [this](const QString& path) { open_data_dir_->setEnabled(!path.isEmpty() && QDir(path).exists()); });
+          [this, check_data_dir](const QString& path) {
+            open_data_dir_->setEnabled(false);
+            if (!path.isEmpty()) check_data_dir->start();
+          });
 
   setEnabled(false);
   Load();

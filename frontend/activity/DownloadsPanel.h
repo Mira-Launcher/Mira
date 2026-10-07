@@ -32,6 +32,8 @@ signals:
 private:
   void Rebuild();
   QWidget* BuildRow(int index);
+  // Redraws the covers showing `id`.
+  void UpdateCover(const QString& id);
   // Refreshes a still-running row in place; false when it needs a Rebuild.
   bool UpdateRow(const QString& key);
 
