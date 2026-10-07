@@ -7,6 +7,7 @@
 
 class QHBoxLayout;
 class QPushButton;
+class QScrollArea;
 class QTimer;
 class QToolButton;
 class QVBoxLayout;
@@ -51,6 +52,8 @@ public:
   QLabel* Label() const { return label_; }
   // A handle before the label for dragging the row to a new place in its card.
   void ShowGrip();
+  // Shows or hides that handle, keeping its space so the labels stay lined up.
+  void SetGripShown(bool shown);
   QWidget* Grip() const { return grip_; }
   // Shows the dot and the undo button. The owner connects RevertClicked.
   void SetModified(bool modified);
@@ -83,6 +86,8 @@ public:
   void AddRow(QWidget* row);
   // Removes and deletes every row, for a list that is rebuilt.
   void ClearRows();
+  // Removes and deletes one row.
+  void RemoveRow(QWidget* row);
   // The header, for trailing widgets such as a switch or a button.
   QHBoxLayout* Header() const { return header_layout_; }
   // A widget before the title, e.g. a source's colored initial.
@@ -101,16 +106,22 @@ public:
   QString Title() const;
   // Moves `row` to position `to` among the card's rows.
   void MoveRow(QWidget* row, int to);
+  // The rows scroll inside the card, which then takes the height its layout gives it.
+  void SetScrollable();
+  // A row between the header and the rows that stays put while they scroll, e.g. column headings.
+  void SetPinnedRow(QWidget* row);
+  // The scroll the rows are in, once SetScrollable made one.
+  QScrollArea* Scroll() const { return scroll_; }
   // A "Reset to defaults" button in the header, shown while `resettable`.
   void SetResettable(bool resettable);
 
 signals:
-  // A row with a grip (SettingRow::ShowGrip) was dragged, or moved with Alt+Up/Down.
-  void RowsReordered();
-  void ResetClicked();
+ // A row with a grip (SettingRow::ShowGrip) was dragged, or moved with Alt+Up/Down. It only trades
+ // places with other rows that have one.
+ void RowsReordered();
+ void ResetClicked();
 
 protected:
-  void paintEvent(QPaintEvent* event) override;
   bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
@@ -125,6 +136,8 @@ private:
   QToolButton* reset_ = nullptr;
   QWidget* body_ = nullptr;
   QVBoxLayout* body_layout_ = nullptr;
+  QScrollArea* scroll_ = nullptr;
+  QWidget* pinned_ = nullptr;
   QList<QWidget*> rows_;
 };
 

@@ -259,6 +259,11 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawPolygon(QPolygonF({QPointF(2.0, 4.0), QPointF(6.0, 4.0), QPointF(7.5, 5.5), QPointF(14.0, 5.5),
                                      QPointF(14.0, 12.5), QPointF(2.0, 12.5)}));
       return;
+    case Glyph::Tag:
+      painter.drawPolygon(QPolygonF({QPointF(2.5, 2.5), QPointF(8.0, 2.5), QPointF(13.5, 8.0), QPointF(8.0, 13.5),
+                                     QPointF(2.5, 8.0)}));
+      painter.drawEllipse(QPointF(5.5, 5.5), 1.0, 1.0);
+      return;
     case Glyph::Layers:
       painter.drawPolygon(QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
       painter.drawPolyline(QPolygonF({QPointF(2.0, 9.0), QPointF(8.0, 12.3), QPointF(14.0, 9.0)}));

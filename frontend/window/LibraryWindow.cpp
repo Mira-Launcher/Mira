@@ -53,6 +53,7 @@
 #include "../library/OwnedTitles.h"
 #include "../library/LibraryPage.h"
 #include "../runners/RunnersPage.h"
+#include "../tags/TagsPage.h"
 #include "../settings/SettingsPanel.h"
 #include "../sidebar/Sidebar.h"
 #include "../sidebar/SidebarStyleCard.h"
@@ -327,7 +328,10 @@ void LibraryWindow::BuildShortcuts() {
   // A dedicated toggle for Hidden, on top of whatever Ctrl+9 already gives
   // it. Toggles back to All on a second press so it never strands the grid.
   window_action("toggle_hidden", "Toggle the Hidden filter", QKeySequence(Qt::CTRL | Qt::Key_H), {},
-               [this] { grid_page_->ToggleHidden(); });
+                [this] {
+                  if (TagPickerShown()) return tags_page_->ToggleHidden();
+                  grid_page_->ToggleHidden();
+                });
 
   // Neither is a menu entry anymore (both are sidebar rows now), kept here
   // so their shortcuts and Settings-screen Shortcuts-category listing
@@ -509,6 +513,7 @@ void LibraryWindow::OpenRunners() {
     return;
   }
   if (source_page_ != nullptr && !CloseSource([this] { OpenRunners(); })) return;
+  CloseTags();
   runners_page_ = new mira_gui::RunnersPage(downloads_, this);
   runners_page_->SetGames(library_->Games());
   main_stack_->addWidget(runners_page_);
@@ -524,6 +529,48 @@ void LibraryWindow::CloseRunners() {
   main_stack_->removeWidget(runners_page_);
   runners_page_->deleteLater();
   runners_page_ = nullptr;
+  SetSourceControlsEnabled(true);
+  UpdateLibraryNavActive();
+}
+
+bool LibraryWindow::TagsShown() const {
+  return tags_page_ != nullptr && main_stack_->currentWidget() == tags_page_;
+}
+
+void LibraryWindow::BuildTagsPage() {
+  if (tags_page_ != nullptr) return;
+  tags_page_ = new mira_gui::TagsPage(artwork_, this);
+  tags_page_->SetGames(library_->Games());
+  tags_page_->SetTileWidth(grid_page_->TileWidth());
+  connect(tags_page_, &mira_gui::TagsPage::GamesChanged, this, &LibraryWindow::UpsertGames);
+  // The picker's covers zoom with the library's tiles.
+  connect(tags_page_, &mira_gui::TagsPage::ZoomRequested, this,
+          [this](int steps) { zoom_->setValue(zoom_->value() + steps * zoom_->pageStep()); });
+  connect(tags_page_, &mira_gui::TagsPage::PickerToggled, this,
+          &LibraryWindow::UpdateLibraryNavActive);
+  main_stack_->addWidget(tags_page_);
+}
+
+void LibraryWindow::OpenTags() {
+  if (!LeaveOverlays()) return;
+  if (TagsShown()) {
+    UpdateLibraryNavActive();
+    return;
+  }
+  if (source_page_ != nullptr && !CloseSource([this] { OpenTags(); })) return;
+  CloseRunners();
+  BuildTagsPage();
+  main_stack_->setCurrentWidget(tags_page_);
+  mira_gui::FocusPage(tags_page_);
+  SetSourceControlsEnabled(false);
+  UpdateLibraryNavActive();
+}
+
+void LibraryWindow::CloseTags() {
+  if (!TagsShown()) return;
+  // Kept for next time, back on its tags with nothing half asked.
+  tags_page_->Leave();
+  main_stack_->setCurrentWidget(grid_page_);
   SetSourceControlsEnabled(true);
   UpdateLibraryNavActive();
 }
@@ -555,6 +602,7 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   auto* sidebar = new Sidebar(library_, artwork_, prefs, this);
   connect(sidebar, &Sidebar::LibraryClicked, this, &LibraryWindow::ShowLibrary);
   connect(sidebar, &Sidebar::RunnersClicked, this, &LibraryWindow::OpenRunners);
+  connect(sidebar, &Sidebar::TagsClicked, this, &LibraryWindow::OpenTags);
   connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
   connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
   connect(sidebar, &Sidebar::ManageSourcesRequested, this, &LibraryWindow::OpenManageSources);
@@ -650,6 +698,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
 void LibraryWindow::Zoom(int width) {
   ScheduleSavePrefs();
   if (!SourcePageShown() || tile_size_synced_) grid_page_->SetTileWidth(width);
+  if (tags_page_ != nullptr && !SourcePageShown()) tags_page_->SetTileWidth(width);
   if (!SourcePageShown()) return;
   if (!tile_size_synced_) source_tile_widths_[source_page_->property("source_id").toString().toStdString()] = width;
   source_page_->SetTileWidth(width);
@@ -672,7 +721,12 @@ void LibraryWindow::SyncZoom() {
   const QSignalBlocker block(zoom_);  // showing a page's size isn't changing it
   zoom_->setValue(source ? SourceTileWidth(source_page_->property("source_id").toString())
                          : grid_page_->TileWidth());
-  zoom_->setEnabled(!GameEditOpen() && (source || GridShown()));
+  zoom_->setEnabled(!GameEditOpen() && (source || GridShown() || TagPickerShown()));
+}
+
+bool LibraryWindow::TagPickerShown() const {
+  return tags_page_ != nullptr && content_stack_->currentWidget() == splitter_ &&
+         main_stack_->currentWidget() == tags_page_ && tags_page_->PickerOpen();
 }
 
 void LibraryWindow::UpdateTileCover(const QString& id) {
@@ -806,6 +860,8 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   UpdateFooter();
   // Ready before the first search; after startup's own requests, since it asks every store.
   QTimer::singleShot(5000, owned_titles_, &mira_gui::OwnedTitles::RefreshIfStale);
+  // Built and listed ahead, so the Tags page opens at once; it follows the library from then on.
+  QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
@@ -819,6 +875,7 @@ void LibraryWindow::LibraryChanged() {
   if (game_card_ != nullptr && library_->Find(game_card_->id()) == nullptr) CloseGameEdit();
   UpdateFooter();
   if (runners_page_ != nullptr) runners_page_->SetGames(library_->Games());
+  if (tags_page_ != nullptr) tags_page_->SetGames(library_->Games());
 }
 
 void LibraryWindow::UpdateFooter() {
@@ -986,7 +1043,8 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
   connect(game_card_, &mira_gui::GameCard::TagFilterRequested, this, [this](const QString& tag) {
     if (!LeaveOverlays()) return;  // a dirty card was kept open
     if (source_page_ != nullptr) CloseSource();
-    if (runners_page_ != nullptr) CloseRunners();
+    CloseRunners();
+    CloseTags();
     UpdateLibraryNavActive();
     grid_page_->ShowTag(tag);
   });
@@ -1097,7 +1155,9 @@ void LibraryWindow::SetGridControlsEnabled(bool enabled) {
   grid_page_->SetControlsEnabled(enabled);
   sidebar_->SetActionsEnabled(enabled);
   // Back from Settings onto a source page: the grid is still covered.
-  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr)) SetSourceControlsEnabled(false);
+  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr || TagsShown())) {
+    SetSourceControlsEnabled(false);
+  }
 }
 
 void LibraryWindow::UpdateLibraryNavActive() {
@@ -1105,7 +1165,7 @@ void LibraryWindow::UpdateLibraryNavActive() {
   if (zoom_ != nullptr) {
     const bool source_shown = content_stack_->currentWidget() == splitter_ && source_page_ != nullptr &&
                               main_stack_->currentWidget() == source_page_;
-    zoom_->setVisible(GridShown() || source_shown);
+    zoom_->setVisible(GridShown() || source_shown || TagPickerShown());
   }
   const QString open_source = content_stack_->currentWidget() == splitter_ && source_page_ != nullptr
                                   ? source_page_->property("source_id").toString()
@@ -1113,7 +1173,7 @@ void LibraryWindow::UpdateLibraryNavActive() {
   if (sidebar_ != nullptr) {
     sidebar_->SetActive(GridShown() && !GameEditOpen(),
                         runners_page_ != nullptr && content_stack_->currentWidget() == splitter_,
-                        open_source);
+                        TagsShown() && content_stack_->currentWidget() == splitter_, open_source);
   }
   // Every page switch ends here, so the slider follows the page too.
   SyncZoom();
@@ -1294,6 +1354,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   if (!LeaveOverlays()) return;
   if (!ConfirmLeaveSource([this, source] { OpenSource(source); })) return;
   CloseRunners();
+  CloseTags();
   if (source_page_ != nullptr) {
     main_stack_->removeWidget(source_page_);
     source_page_->deleteLater();
@@ -1414,6 +1475,7 @@ void LibraryWindow::ShowGame(const std::string& id) {
   if (!LeaveOverlays()) return;
   if (source_page_ != nullptr && !CloseSource([this, id] { ShowGame(id); })) return;
   CloseRunners();
+  CloseTags();
   if (!grid_page_->ShowGame(id)) OpenGameDialog(id);  // filtered out: its settings instead
 }
 
@@ -1455,6 +1517,11 @@ void LibraryWindow::ShowLibrary() {
     CloseSource();
   } else if (runners_page_ != nullptr) {
     CloseRunners();
+  } else if (TagsShown()) {
+    CloseTags();
+  } else {
+    // Already on the library: a second click shows all of it again.
+    grid_page_->ClearFilters();
   }
   UpdateLibraryNavActive();
 }

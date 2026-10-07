@@ -581,6 +581,48 @@ struct GamesPatch {
   std::vector<GameConfigEdit> config;
 };
 
+// One of the library's tags (GET /v1/tags): the games that have it, whether it's a folder tag, and
+// the games Steam gives it.
+struct TagSummary {
+  std::string name;
+  std::vector<std::string> ids;
+  bool folder = false;
+  std::vector<std::string> steam_ids;
+};
+
+// A Steam tag on the library's games that isn't one of its tags yet.
+struct SteamTagSuggestion {
+  std::string name;
+  std::vector<std::string> ids;
+};
+
+struct TagsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<TagSummary> tags;
+  std::vector<SteamTagSuggestion> steam;
+  int steam_missing = 0;  // games whose Steam tags were never fetched
+};
+
+struct SteamTagsFetchResult {
+  bool ok = false;
+  ApiError error;
+  int fetched = 0;
+};
+
+// A game that would move if the folder tags or sorted folders changed (POST /v1/tags/preview).
+struct FolderTagsMove {
+  std::string id;
+  std::string name;
+  std::string to;
+};
+
+struct FolderTagsPreviewResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<FolderTagsMove> moving;
+};
+
 struct PatchGamesResult {
   bool ok = false;
   ApiError error;

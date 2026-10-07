@@ -166,8 +166,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
       "Tags",
       "Labels of your choice. The \"hidden\" tag keeps this game out of the library until you ask for it "
       "(Ctrl+H, or the Hidden filter). In a library folder sorted by tag, the outlined tag is the folder "
-      "the game is in; drag another folder tag ahead of it to move the game. Folder tags are chosen in "
-      "Settings, under Tags.",
+      "the game is in; drag another folder tag ahead of it to move the game. Folder tags are chosen on the "
+      "Tags page.",
       details);
   tags_row_->SetBelow(tags_edit_);
   details->AddRow(tags_row_);

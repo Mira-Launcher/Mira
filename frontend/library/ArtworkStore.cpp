@@ -108,6 +108,12 @@ QString SlotKey(const QString& id, const std::string& slot) { return id + "#" + 
 
 ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {}
 
+void ArtworkStore::SetQuickScaling(bool quick) {
+  const bool ended = quick_ && !quick;
+  quick_ = quick;
+  if (ended) emit QuickScalingEnded();
+}
+
 bool ArtworkStore::Drop(const QString& key) {
   full_.remove(key);
   wanted_.remove(key);

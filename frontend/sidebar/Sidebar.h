@@ -46,7 +46,7 @@ class Sidebar : public QWidget {
   // rows' counts and icons, and how PINNED and RECENTLY PLAYED look.
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
-  void SetActive(bool library, bool runners, const QString& source_id);
+  void SetActive(bool library, bool runners, bool tags, const QString& source_id);
   // Hidden pins show only while the grid shows the Hidden filter.
   void SetShowingHidden(bool showing_hidden);
   void SetFooter(int shown, int total, bool mirad_reachable);
@@ -79,6 +79,7 @@ class Sidebar : public QWidget {
  signals:
   void LibraryClicked();
   void RunnersClicked();
+  void TagsClicked();
   // Empty `focus_key` opens Settings at its start.
   void SettingsRequested(const QString& focus_key);
   void SourceClicked(const SourceInfo& source);
@@ -132,6 +133,7 @@ class Sidebar : public QWidget {
 
   QPushButton* library_nav_ = nullptr;
   QPushButton* runners_nav_ = nullptr;
+  QPushButton* tags_nav_ = nullptr;
   QPushButton* settings_button_ = nullptr;
   QToolButton* manage_sources_button_ = nullptr;
   QToolButton* add_games_ = nullptr;
@@ -139,6 +141,7 @@ class Sidebar : public QWidget {
   QLabel* footer_ = nullptr;
   bool library_active_ = true;
   bool runners_active_ = false;
+  bool tags_active_ = false;
   QString active_source_;
 
   // One row per AllSources() entry, same order.

@@ -105,9 +105,9 @@ public:
   void InvalidateAllRenderings();
 
   // While on (the zoom slider moving), a cover not already scaled is scaled
-  // quickly and not kept, so each step costs little. Repaint when it's
-  // turned off to get the smooth copies.
-  void SetQuickScaling(bool quick) { quick_ = quick; }
+  // quickly and not kept, so each step costs little. Turning it off emits
+  // QuickScalingEnded, for every view to draw its smooth copies.
+  void SetQuickScaling(bool quick);
 
   // The games whose full images stay (the sidebar's pinned and recently
   // played); any other's is dropped once its sizes are drawn.
@@ -121,6 +121,8 @@ public:
   void CoverChanged(const QString& id);
   // The same for a SlotArt slot.
   void SlotArtChanged(const QString& id);
+  // The zoom stopped: covers drawn quickly meanwhile should be asked for again.
+  void QuickScalingEnded();
 
 private:
   void Request(const QString& id);
