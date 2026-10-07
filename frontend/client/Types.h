@@ -623,6 +623,24 @@ struct FolderTagsPreviewResult {
   std::vector<FolderTagsMove> moving;
 };
 
+// A folder that could be any of several games moved by hand (GET /v1/library/unclear).
+struct UnclearMove {
+  std::string folder;
+  std::vector<std::pair<std::string, std::string>> games;  // id, name
+};
+
+struct UnclearMovesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<UnclearMove> moves;
+};
+
+struct SettleMoveResult {
+  bool ok = false;
+  ApiError error;
+  GameSummary game;
+};
+
 struct PatchGamesResult {
   bool ok = false;
   ApiError error;

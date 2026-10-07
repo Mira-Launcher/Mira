@@ -69,6 +69,15 @@ GameSummary ToGameSummary(const json& entry) {
   return game;
 }
 
+UnclearMove ToUnclearMove(const json& entry) {
+  UnclearMove move;
+  move.folder = entry.value("folder", std::string());
+  for (const json& game : entry.value("games", json::array())) {
+    move.games.emplace_back(game.value("id", std::string()), game.value("name", std::string()));
+  }
+  return move;
+}
+
 std::optional<ArtVersions> ToArtVersions(const json& entry) {
   if (!entry.is_object() || !entry.contains("art") || !entry["art"].is_object()) return std::nullopt;
   ArtVersions art;

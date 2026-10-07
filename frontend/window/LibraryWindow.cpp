@@ -43,6 +43,7 @@
 #include "../dialogs/GameDetailPageDialog.h"
 #include "../game/GameCard.h"
 #include "../game/InstallPromptCard.h"
+#include "../game/UnclearMoveCard.h"
 #include "../game/InstallerCards.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
@@ -858,6 +859,10 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   }
   mirad_reachable_ = true;
   UpdateFooter();
+  // Folders a scan couldn't place wait in mirad until someone says which game each is.
+  mira_gui::api::ListUnclearMovesAsync(this, [this](mira_gui::UnclearMovesResult result) {
+    for (const mira_gui::UnclearMove& move : result.moves) AskUnclearMove(move);
+  });
   // Ready before the first search; after startup's own requests, since it asks every store.
   QTimer::singleShot(5000, owned_titles_, &mira_gui::OwnedTitles::RefreshIfStale);
   // Built and listed ahead, so the Tags page opens at once; it follows the library from then on.
@@ -968,6 +973,20 @@ void LibraryWindow::OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent&
     }
     auto* card = new mira_gui::InstallerLeftoverCard(*game, event.installer_dir, event.bytes, artwork_);
     connect(card, &mira_gui::InstallerLeftoverCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+    ShowSidebarCard(card);
+  });
+}
+
+void LibraryWindow::AskUnclearMove(const mira_gui::UnclearMove& move) {
+  QueueCard("unclear:" + move.folder, [this, move] {
+    auto* card = new mira_gui::UnclearMoveCard(move, library_, artwork_);
+    connect(card, &mira_gui::UnclearMoveCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+    connect(card, &mira_gui::UnclearMoveCard::Chosen, this, [this](const std::string& folder, const std::string& id) {
+      CloseSidebarCard();
+      mira_gui::api::SettleUnclearMoveAsync(this, folder, id, [this](mira_gui::SettleMoveResult result) {
+        if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not settle that folder.", result.error);
+      });
+    });
     ShowSidebarCard(card);
   });
 }
@@ -1656,6 +1675,25 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     // Asked once, as it happens; history would ask again after every reconnect.
     mira_gui::InstallerLeftoverEvent event;
     if (live && mira_gui::events::ParseInstallerLeftover(data, &event)) OfferInstallerDelete(event);
+    return;
+  }
+
+  if (type == "library.move_unclear") {
+    // History's are listed on connect instead.
+    mira_gui::UnclearMove move;
+    if (live && mira_gui::events::ParseUnclearMove(data, &move)) AskUnclearMove(move);
+    return;
+  }
+  if (type == "library.move_settled") {
+    // Settled elsewhere (another client, the CLI) or gone from disk: nothing left to ask.
+    const std::string folder = mira_gui::events::ParseSettledFolder(data);
+    if (folder.empty()) return;
+    std::erase_if(pending_cards_,
+                  [&](const auto& queued) { return queued.first == "unclear:" + folder; });
+    if (auto* card = qobject_cast<mira_gui::UnclearMoveCard*>(sidebar_card_);
+        card != nullptr && card->Folder() == folder) {
+      CloseSidebarCard();
+    }
     return;
   }
 

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "client/Events.h"
 #include "client/JsonMapping.h"
 #include "library/GameLibraryModel.h"
 
@@ -85,4 +86,15 @@ TEST_CASE("Records carry how their game is sorted") {
       mapping::ToGameSummary(json::parse(R"({"id": "s", "sort_root": null, "folder_tags": null})"));
   CHECK(store.sort_root.empty());
   CHECK_FALSE(store.folder_tags.has_value());
+}
+
+TEST_CASE("An unclear move's event names the folder and the games it could be") {
+  UnclearMove move;
+  REQUIRE(events::ParseUnclearMove(
+      R"({"folder": "/g/Copied", "games": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]})", &move));
+  CHECK(move.folder == "/g/Copied");
+  REQUIRE(move.games.size() == 2);
+  CHECK(move.games[1] == std::pair<std::string, std::string>{"b", "Beta"});
+  CHECK_FALSE(events::ParseUnclearMove(R"({"folder": "/g/Copied", "games": [{"id": "a"}]})", &move));
+  CHECK_FALSE(events::ParseUnclearMove("not json", &move));
 }

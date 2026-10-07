@@ -116,6 +116,8 @@ private:
   void OfferInstall(const std::string& id);
   // The card that offers to delete an installer folder an install left behind.
   void OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent& event);
+  // The card that asks which game a folder moved by hand is, when several could be.
+  void AskUnclearMove(const mira_gui::UnclearMove& move);
   // Shows a prompt card now, or once Settings, a game's card and other cards have closed.
   // One per `key`; a second ask while it waits is dropped.
   void QueueCard(const std::string& key, std::function<void()> show);

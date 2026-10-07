@@ -56,4 +56,11 @@ void RelocateLibraryAsync(QObject* context, std::function<void(RelocateLibraryRe
 void RelocateGamesAsync(QObject* context, const std::vector<std::string>& ids,
                         std::function<void(RelocateLibraryResult)> callback);
 
+// GET /v1/library/unclear: folders that could be any of several games moved by hand.
+void ListUnclearMovesAsync(QObject* context, std::function<void(UnclearMovesResult)> callback);
+
+// POST /v1/library/unclear: `folder` is game `id`'s, or a new game when `id` is empty.
+void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const std::string& id,
+                            std::function<void(SettleMoveResult)> callback);
+
 }  // namespace mira_gui::api
