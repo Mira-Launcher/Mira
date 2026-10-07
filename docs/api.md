@@ -215,7 +215,7 @@ Scans every library root now: adds new games (each folder in a root, and each Ap
 ### `POST /v1/library/relocate`
 Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout, one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
 
-### `GET /v1/library[?source=epic|steam|gog|itch|amazon]`
+### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office]`
 What each account owns, whether or not it's installed:
 
 ```json
@@ -236,6 +236,7 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `
 - `itch`: butler's install sequence.
 - `amazon`: `nile install` into `amazon.install_root`.
 - `steam`: opens `steam://install/<appid>`. The game appears on the next Steam scan.
+- `office`: the Office Deployment Tool adds the app to Microsoft 365's prefix.
 
 A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
 
@@ -386,7 +387,7 @@ Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs
 
 ## Store launchers
 
-Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. Microsoft 365 (`office`) works the same way: its install sets up the prefix with the [mira-winapp-shims](https://github.com/Mira-Launcher/mira-winapp-shims) DLLs, then runs Microsoft's Edge WebView2 and Office Deployment Tool installers for the edition in `launchers.office.plan`; Word, Excel, PowerPoint, Outlook and OneNote are imported as `office-<app>`, tagged `app`. Office signs in and checks the subscription itself; Mira never sees the account. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
+Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. Microsoft 365 (`office`) works the same way: its install sets up the prefix with the [mira-winapp-shims](https://github.com/Mira-Launcher/mira-winapp-shims) DLLs and Microsoft's Edge WebView2 runtime. Its apps (Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher) are then a library source like a store: `GET /v1/library?source=office` lists them and `POST /v1/library/install` installs one through the Office Deployment Tool, for the edition in `launchers.office.plan`, as `office-<app>`, tagged `app`. Deleting an app's files runs the Office Deployment Tool without it. Office signs in and checks the subscription itself; Mira never sees the account. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
 
 ### `GET /v1/launchers`
 `[{id, name, game_id, installed, install_state, interactive_install, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`.

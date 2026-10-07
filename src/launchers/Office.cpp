@@ -26,7 +26,8 @@ namespace fs = std::filesystem;
 constexpr std::array kApps = {
     App{"word", "Word", "WINWORD.EXE"},       App{"excel", "Excel", "EXCEL.EXE"},
     App{"powerpoint", "PowerPoint", "POWERPNT.EXE"}, App{"outlook", "Outlook", "OUTLOOK.EXE"},
-    App{"onenote", "OneNote", "ONENOTE.EXE"},
+    App{"onenote", "OneNote", "ONENOTE.EXE"},       App{"access", "Access", "MSACCESS.EXE"},
+    App{"publisher", "Publisher", "MSPUB.EXE"},
 };
 
 // Each shim replaces a Wine DLL and forwards to Wine's own copy, kept under a
@@ -91,12 +92,12 @@ std::string Registry(const config::Config& config) {
                            "HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft"}) {
     reg += std::format("[{}\\Office\\16.0\\Common\\Identity]\n{}\n", root, kIdentity);
   }
-  for (const char* app : {"word", "excel", "powerpoint", "outlook", "onenote"}) {
+  for (const App& app : kApps) {
     reg += std::format("[HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Common\\ExperimentConfigs\\"
                        "ExternalFeatureOverrides\\{}]\n"
                        "\"Microsoft.Office.Identity.TestGate.DisableBrokerForOneAuth\"=\"true\"\n"
                        "\"Microsoft.Office.Identity.FG.IsWebView2ForOneAuthEnabled\"=\"true\"\n\n",
-                       app);
+                       app.ref);
   }
 
   // Outlook's very first start, with no UI language recorded yet, fails to
@@ -221,12 +222,11 @@ Result<void> InstallShims(const config::Config& config, const runner::RunnerRegi
 
 std::span<const App> Apps() { return kApps; }
 
-std::string Configuration(const config::Config& config) {
-  // The apps left out of `launchers.office.apps` are excluded from the install.
-  const std::vector<std::string> wanted = config.GetStringArray("launchers.office.apps");
+std::string Configuration(const config::Config& config, std::span<const std::string> apps) {
+  if (apps.empty()) return "<Configuration>\n  <Remove All=\"TRUE\"/>\n  <Display Level=\"None\"/>\n</Configuration>\n";
   std::string excluded;
   for (const App& app : kApps) {
-    if (std::ranges::find(wanted, std::string(app.ref)) == wanted.end()) excluded += std::format("      <ExcludeApp ID=\"{}\"/>\n", app.name);
+    if (!std::ranges::contains(apps, app.ref)) excluded += std::format("      <ExcludeApp ID=\"{}\"/>\n", app.name);
   }
   // No AcceptEULA: Office shows Microsoft's license terms on first start.
   return std::format(R"(<Configuration>
@@ -237,8 +237,6 @@ std::string Configuration(const config::Config& config) {
       <ExcludeApp ID="Groove"/>
       <ExcludeApp ID="OneDrive"/>
       <ExcludeApp ID="Teams"/>
-      <ExcludeApp ID="Access"/>
-      <ExcludeApp ID="Publisher"/>
 {}    </Product>
   </Add>
   <Display Level="None"/>
@@ -344,7 +342,6 @@ Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry&
   if (auto shims = InstallShims(config, runners, host, downloads, &version); !shims) return shims;
   std::ofstream(fs::path(host.data_dir) / kShimsMarker) << version << "\n";
 
-  std::ofstream(downloads / "office-configuration.xml") << Configuration(config);
   return {};
 }
 

@@ -64,6 +64,12 @@ const Launcher* ForGame(const model::Game& game);
 
 bool Installed(const store::GameStore& games, const Launcher& launcher);
 
+// Microsoft 365's apps (office::App refs) installed in its prefix.
+std::vector<std::string> InstalledOfficeApps(const model::Game& host);
+// Runs Office's installer in Microsoft 365's prefix so exactly `apps` are installed, then imports them.
+Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
+                           std::vector<std::string> apps);
+
 // False if this launcher is already installing.
 bool BeginInstall(const Launcher& launcher);
 std::string InstallState(const Launcher& launcher);  // idle, running, finished, failed

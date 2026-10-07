@@ -50,6 +50,7 @@ std::string WhatGetsDeleted(const model::Game& game, std::string_view source) {
   if (source == "epic") return "legendary uninstall " + game.source_ref;
   if (source == "amazon") return "nile uninstall " + game.source_ref;
   if (source == "itch") return "butler uninstall (" + game.install_path + ")";
+  if (source == "office") return "Office's installer removes " + game.name;
   return game.install_path;
 }
 

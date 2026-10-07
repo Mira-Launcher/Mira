@@ -194,13 +194,14 @@ void EndSession(const Launcher& launcher, const std::string& prefix) {
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGKILL);
 }
 
+// `is_done` replaces the check for `step.done`'s file.
 Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game,
-                          const std::function<void(double)>& on_progress) {
+                          const std::function<void(double)>& on_progress, const std::function<bool()>& is_done = {}) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
   const fs::path setup = downloads / step.file;
   const fs::path done = step.done.empty() ? fs::path(launcher.exe) : fs::path(step.done);
-  const auto finished = [&] { return FindFile(game.data_dir, done).has_value(); };
+  const auto finished = [&] { return is_done ? is_done() : FindFile(game.data_dir, done).has_value(); };
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
@@ -485,14 +486,12 @@ const std::vector<Launcher>& All() {
     Launcher m365;
     m365.id = "office";
     m365.name = "Microsoft 365";
-    m365.exe = std::format("{}/EXCEL.EXE", office::kProgramDir);
+    // Set up is the prefix and the Edge WebView2 runtime Office signs in with; each app is then installed
+    // on its own through SetOfficeApps.
+    m365.exe = "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe";
     m365.tricks = {"corefonts", "msxml6", "riched20", "gdiplus"};
-    // Both from Microsoft: the Edge WebView2 runtime Office signs in with, then
-    // the Office Deployment Tool, which downloads and installs Office.
     m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
-                      "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe", nullptr},
-                     {"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
-                      {"/configure", "{downloads}\\office-configuration.xml"}, "", office::InstallPercent, office::InstallBytes, office::DownloadProgress, true}};
+                    "", nullptr, {}, {}, true}};
     // Office presents with sync interval 0; under DXVK that tears into flicker.
     m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
@@ -515,6 +514,46 @@ const Launcher* ForGame(const model::Game& game) {
 bool Installed(const store::GameStore& games, const Launcher& launcher) {
   const auto game = games.Find(GameId(launcher));
   return game && game->status == model::GameStatus::Ready;
+}
+
+std::vector<std::string> InstalledOfficeApps(const model::Game& host) {
+  std::vector<std::string> apps;
+  std::error_code ec;
+  for (const office::App& app : office::Apps()) {
+    if (fs::is_regular_file(fs::path(host.data_dir) / "drive_c" / office::kProgramDir / app.exe, ec)) apps.emplace_back(app.ref);
+  }
+  return apps;
+}
+
+Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
+                           std::vector<std::string> apps) {
+  const Launcher& launcher = *Find("office");
+  const auto host = games.Find(GameId(launcher));
+  if (!host || host->status != model::GameStatus::Ready) return LauncherNotInstalled(launcher.id, launcher.name);
+  if (!BeginInstall(launcher)) return Err("install_running", "Microsoft 365's installer is already running");
+  loghub::Begin(LogChannel(launcher));
+  const fs::path downloads = paths::UserDir() / "downloads";
+  std::error_code ec;
+  fs::create_directories(downloads, ec);
+  std::ofstream(downloads / "office-configuration.xml") << office::Configuration(config, apps);
+  const Setup step{"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
+                   {"/configure", "{downloads}\\office-configuration.xml"}, "", office::InstallPercent,
+                   office::InstallBytes, office::DownloadProgress, true};
+  // Done once exactly the wanted apps are there.
+  const auto is_done = [&] {
+    std::vector<std::string> now = InstalledOfficeApps(*host);
+    std::ranges::sort(now);
+    std::ranges::sort(apps);
+    return now == apps;
+  };
+  Result<void> done = RunInstaller(config, launcher, step, *host, {}, is_done);
+  if (done) {
+    if (auto imported = Import(config, games, events, launcher); !imported) done = std::unexpected(imported.error());
+  }
+  Say(launcher, done ? "Done." : "Failed: " + done.error().message);
+  loghub::End(LogChannel(launcher));
+  SetState(launcher, done ? "finished" : "failed");
+  return done;
 }
 
 bool BeginInstall(const Launcher& launcher) {

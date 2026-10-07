@@ -47,24 +47,6 @@ Constraint OneOf(std::vector<std::string> allowed) {
   return constraint;
 }
 
-// A non-empty list whose every entry is one of `allowed` (the entries to pick from, as the UI's choices).
-Constraint SomeOf(std::vector<std::string> allowed) {
-  Constraint constraint;
-  constraint.one_of = allowed;
-  constraint.validate = [allowed = std::move(allowed)](const json& value) -> std::optional<std::string> {
-    if (!value.is_array() || value.empty()) return "pick at least one";
-    for (const json& entry : value) {
-      if (!entry.is_string() || std::ranges::find(allowed, entry.get<std::string>()) == allowed.end()) {
-        std::string list;
-        for (const std::string& option : allowed) list += (list.empty() ? "" : ", ") + option;
-        return std::format("each must be one of: {}", list);
-      }
-    }
-    return std::nullopt;
-  };
-  return constraint;
-}
-
 // A runner reference is "kind:name", where name may be "latest".
 Validator RunnerRef() {
   return [](const json& value) -> std::optional<std::string> {
@@ -926,14 +908,6 @@ Schema::Schema() {
                 "Microsoft 365 Personal or Family, O365BusinessRetail for Business plans, O365ProPlusRetail "
                 "for Apps for enterprise.",
          .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
-
-  s.Add({.key = "launchers.office.apps",
-         .label = "Office apps to install",
-         .type = Type::StringArray,
-         .default_value = json::array({"word", "excel", "powerpoint", "outlook", "onenote"}),
-         .doc = "Which Microsoft 365 apps to install: any of word, excel, powerpoint, outlook, onenote. Fewer "
-                "apps download and install faster. Takes effect the next time Microsoft 365 is installed.",
-         .constraint = SomeOf({"word", "excel", "powerpoint", "outlook", "onenote"})});
 
   s.Add({.key = "launchers.office.shims_url",
          .label = "Office shims download",

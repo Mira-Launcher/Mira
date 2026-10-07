@@ -125,7 +125,7 @@ bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(
 // Every page has both tabs; ones that can't list what the account owns say so.
 bool SourcePage::HasOwned() const { return true; }
 
-bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam"; }
+bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
 bool SourcePage::IsOwnGame(const GameSummary& game) const { return game.source == id_; }
 
@@ -588,8 +588,11 @@ void SourcePage::ApplyLauncher(const LauncherInfo& launcher) {
   if (launcher_installed_ != was_installed && settings_card_ != nullptr) settings_card_->Refresh();
   setup_card_->ShowLauncher(launcher, launcher_installing_);
   banner_primary_->setText("Open " + source_.name);
-  banner_primary_->setVisible(launcher_installed_);
+  // Microsoft 365 has no app of its own to open, only Word, Excel and the rest.
+  banner_primary_->setVisible(launcher_installed_ && id_ != "office");
   import_button_->setVisible(launcher_installed_);
+  // Microsoft 365's apps are listed once it is set up.
+  if (id_ == "office" && launcher_installed_ && !was_installed) RefreshOwned();
   UpdateStatusLine();
 }
 

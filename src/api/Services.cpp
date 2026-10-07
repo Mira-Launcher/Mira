@@ -293,7 +293,14 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
   // Through the store's own tool where it has one, so its records stay in sync.
-  if (files) {
+  if (files && game.source == "office") {
+    // The apps share one folder, so Office's own installer takes just this one out.
+    if (const auto host = games.Find(launchers::GameId(*launchers::Find("office")))) {
+      std::vector<std::string> apps = launchers::InstalledOfficeApps(*host);
+      std::erase(apps, game.source_ref);
+      if (auto removed = launchers::SetOfficeApps(config, games, events, std::move(apps)); !removed) return removed;
+    }
+  } else if (files) {
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
   }
   if (prefix) {
