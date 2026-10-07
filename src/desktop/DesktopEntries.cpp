@@ -2,6 +2,7 @@
 #include "desktop/DesktopEntries.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <format>
 #include <fstream>
@@ -78,6 +79,16 @@ std::string_view MimeTypes(const model::Game& game) {
   return {};
 }
 
+// The file types a Microsoft 365 app opens, and the desktop's launch feedback while it starts: its window's
+// class is Proton's for the GAMEID ProtonRunner gives it ("steam_app_mira_officeword").
+std::string OfficeAppKeys(const model::Game& game, std::string_view mime) {
+  std::string window_class = "steam_app_mira_";
+  for (const char ch : game.id) {
+    if (std::isalnum(static_cast<unsigned char>(ch))) window_class.push_back(ch);
+  }
+  return std::format("MimeType={}\nStartupNotify=true\nStartupWMClass={}\n", mime, window_class);
+}
+
 // So file managers offer the apps for their file types.
 void UpdateMimeCache(const fs::path& dir) {
   Command command;
@@ -142,7 +153,7 @@ std::string DesktopEntries::Render(const model::Game& game) const {
       "X-Mira-Game-Id={}\n"
       "{}",
       Sanitize(game.name), Sanitize(game.name), exec, icon,
-      Sanitize(categories), game.id, mime.empty() ? "" : std::format("MimeType={}\n", mime));
+      Sanitize(categories), game.id, mime.empty() ? "" : OfficeAppKeys(game, mime));
 }
 
 Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::optional<model::Game>& game) {
