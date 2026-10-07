@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -31,6 +33,8 @@ public:
   // to start.
   void Load();
   Result<void> Save();
+  // Changes whenever the library does, so a caller can keep what it derived from it until then.
+  std::uint64_t Revision() const { return revision_.load(); }
 
   std::vector<model::Game> All() const;
   std::optional<model::Game> Find(const std::string& id) const;
@@ -95,6 +99,10 @@ private:
   std::vector<model::Game> games_;
   int batch_depth_ = 0;       // guarded by mutex_
   bool batch_dirty_ = false;  // a save was held back; guarded by mutex_
+  // An unparseable file couldn't be set aside: saving would overwrite the only copy. Guarded by
+  // mutex_.
+  bool keep_file_ = false;
+  std::atomic<std::uint64_t> revision_{0};
 };
 
 }  // namespace mira::store

@@ -154,6 +154,25 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
 }
 
+TEST_CASE(
+    "Scanner keeps the games of a library folder it can't read, even with remove_missing on") {
+  const fs::path lib = TempDir("scan-unreadable");
+  Touch(lib / "Celeste" / "Celeste", "", /*executable=*/true);
+
+  test::TestEnv env("scan-unreadable-state");
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
+  REQUIRE(env.config.Set("library.remove_missing", true).has_value());
+  library::Scanner scanner(env.config, env.games, env.events);
+  REQUIRE(scanner.ScanAll().added == 1);
+
+  fs::permissions(lib, fs::perms::owner_all, fs::perm_options::remove);
+  const library::ScanSummary unreadable = scanner.ScanAll();
+  fs::permissions(lib, fs::perms::owner_all, fs::perm_options::add);
+  CHECK(unreadable.missing == 0);
+  REQUIRE(env.games.Find("celeste").has_value());
+  CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
+}
+
 TEST_CASE("Scanner finds an AppImage loose in a library folder as a game of its own") {
   const fs::path lib = TempDir("scan-appimage-library");
   Touch(lib / "osu.AppImage", "appimage", /*executable=*/true);

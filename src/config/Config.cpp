@@ -25,6 +25,9 @@ void Config::Load() {
   std::lock_guard lock(mutex_);
   document_ = schema.Defaults();
   frontend_ = json::object();
+  ++revision_;
+  keep_file_ = false;
+  keep_frontend_file_ = false;
 
   std::error_code ec;
   const auto write_defaults = [&] {
@@ -39,12 +42,17 @@ void Config::Load() {
   } else {
     toml::parse_result parsed = toml::parse_file(file_.string());
     if (!parsed) {
-      const auto broken = file_.string() + ".bad";
-      std::filesystem::rename(file_, broken, ec);
-      log::Error("settings at {} could not be parsed ({}); kept it as {} and continuing with "
-                "defaults",
-                file_.string(), parsed.error().description(), broken);
-      write_defaults();
+      if (const auto broken = SetAside(file_)) {
+        log::Error(
+            "settings at {} could not be parsed ({}); kept it as {} and continuing with defaults",
+            file_.string(), parsed.error().description(), broken->string());
+        write_defaults();
+      } else {
+        keep_file_ = true;
+        log::Error(
+            "settings at {} could not be parsed ({}) or set aside ({}); continuing with defaults",
+            file_.string(), parsed.error().description(), broken.error().message);
+      }
     } else {
       json whole = tomljson::ToJson(parsed.table());
 
@@ -69,11 +77,18 @@ void Config::Load() {
   if (std::filesystem::exists(frontend_file_, ec)) {
     toml::parse_result parsed = toml::parse_file(frontend_file_.string());
     if (!parsed) {
-      const auto broken = frontend_file_.string() + ".bad";
-      std::filesystem::rename(frontend_file_, broken, ec);
-      log::Error("frontend settings at {} could not be parsed ({}); kept it as {} and "
-                "continuing with none",
-                frontend_file_.string(), parsed.error().description(), broken);
+      if (const auto broken = SetAside(frontend_file_)) {
+        log::Error(
+            "frontend settings at {} could not be parsed ({}); kept it as {} and continuing with "
+            "none",
+            frontend_file_.string(), parsed.error().description(), broken->string());
+      } else {
+        keep_frontend_file_ = true;
+        log::Error(
+            "frontend settings at {} could not be parsed ({}) or set aside ({}); continuing with "
+            "none",
+            frontend_file_.string(), parsed.error().description(), broken.error().message);
+      }
     } else {
       frontend_ = tomljson::ToJson(parsed.table());
     }
@@ -82,11 +97,14 @@ void Config::Load() {
 
 Result<void> Config::Save() {
   std::lock_guard lock(mutex_);
+  ++revision_;  // every change to the settings saves
+  if (keep_file_) return KeptFileError(file_);
   return WriteFileAtomic(file_, tomljson::ToTomlText(document_), "config_write_failed");
 }
 
 Result<void> Config::SaveFrontendFile() {
   std::lock_guard lock(mutex_);  // frontend_ is also written by Patch and SetFrontendSettings
+  if (keep_frontend_file_) return KeptFileError(frontend_file_);
   return WriteFileAtomic(frontend_file_, tomljson::ToTomlText(frontend_), "config_write_failed");
 }
 

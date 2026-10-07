@@ -17,6 +17,7 @@
 #include "config/RunnerSources.h"
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "core/Strings.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
@@ -190,10 +191,36 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
 // (e.g. butler-linux-amd64.zip nests everything under "linux-amd64/").
 std::optional<fs::path> FindFileNamed(const fs::path& dir, const std::string& name) {
   std::error_code ec;
-  for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
-    if (entry.is_regular_file(ec) && entry.path().filename() == name) return entry.path();
+  std::error_code entry_ec;
+  for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    if (it->is_regular_file(entry_ec) && it->path().filename() == name) return it->path();
   }
   return std::nullopt;
+}
+
+// Moves everything in `from` into `to`, all or nothing: an entry already in `to` fails it before
+// anything moves, and a move that fails takes the ones already moved back out.
+Result<void> MoveAllInto(const fs::path& from, const fs::path& to) {
+  const std::vector<fs::path> entries = paths::ListDir(from);
+  std::error_code ec;
+  for (const fs::path& entry : entries) {
+    if (fs::exists(to / entry.filename(), ec)) {
+      return Err("install_failed",
+                 std::format("{} is already there", (to / entry.filename()).string()));
+    }
+  }
+  std::vector<fs::path> moved;
+  for (const fs::path& entry : entries) {
+    fs::rename(entry, to / entry.filename(), ec);
+    if (ec) {
+      const std::string message = ec.message();
+      for (const fs::path& done : moved) fs::remove_all(done, ec);
+      return Err("install_failed", std::format("couldn't move {} into place: {}",
+                                               entry.filename().string(), message));
+    }
+    moved.push_back(to / entry.filename());
+  }
+  return {};
 }
 
 bool IsZip(const std::string& asset_name) { return asset_name.ends_with(".zip"); }
@@ -391,15 +418,7 @@ Result<void> DownloadAndInstall(const config::Config& config, const std::string&
   fs::create_directories(staging, ec);
   Result<void> extracted = Extract(archive, staging);
   fs::remove(archive, ec);
-  if (extracted) {
-    for (const auto& entry : fs::directory_iterator(staging, ec)) {
-      fs::rename(entry.path(), install_dir / entry.path().filename(), ec);
-      if (ec) {
-        extracted = Err("install_failed", std::format("couldn't move {} into place: {}", entry.path().filename().string(), ec.message()));
-        break;
-      }
-    }
-  }
+  if (extracted) extracted = MoveAllInto(staging, install_dir);
   fs::remove_all(staging, ec);
   return extracted;
 }
@@ -416,16 +435,29 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
 
   const fs::path target = tool_dir / binary_name;
   if (IsZip(asset.asset_name) || IsTarball(asset.asset_name)) {
-    const Result<void> extracted = Extract(downloaded, tool_dir);
+    // Searched in its own extraction, so a binary left from an older release's layout is never
+    // found instead. Only the archive's own entries are replaced: the folder also holds tool data
+    // (itch's butler.db).
+    const fs::path staging = tool_dir / (".extracting-" + asset.asset_name);
+    fs::remove_all(staging, ec);
+    fs::create_directories(staging, ec);
+    const Result<void> extracted = Extract(downloaded, staging);
     fs::remove(downloaded, ec);
-    if (!extracted) return std::unexpected(extracted.error());
-    const auto found = FindFileNamed(tool_dir, binary_name);
+    const auto found = extracted ? FindFileNamed(staging, binary_name) : std::nullopt;
     if (!found) {
+      fs::remove_all(staging, ec);
+      if (!extracted) return std::unexpected(extracted.error());
       return Err("binary_not_found",
                 std::format("{} didn't contain a file named \"{}\"", asset.asset_name, binary_name));
     }
-    if (auto chmodded = Chmod(*found); !chmodded) return std::unexpected(chmodded.error());
-    return *found;
+    for (const fs::path& entry : paths::ListDir(staging))
+      fs::remove_all(tool_dir / entry.filename(), ec);
+    const Result<void> moved = MoveAllInto(staging, tool_dir);
+    fs::remove_all(staging, ec);
+    if (!moved) return std::unexpected(moved.error());
+    const fs::path binary = tool_dir / found->lexically_relative(staging);
+    if (auto chmodded = Chmod(binary); !chmodded) return std::unexpected(chmodded.error());
+    return binary;
   }
 
   fs::rename(downloaded, target, ec);

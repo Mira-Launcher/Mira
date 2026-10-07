@@ -56,14 +56,21 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                int moved = 0;
                int done = 0;
                json errors = json::array();
-               for (const model::Game& game : games) {
-                 progress.Report(done++, static_cast<int>(games.size()), game.name);
-                 if (s.supervisor.IsRunning(game.id)) {
-                   errors.push_back(BatchFailure(game.id, GameRunningError(game.id)));
-                   continue;
-                 }
+               for (const model::Game& listed : games) {
+                 progress.Report(done++, static_cast<int>(games.size()), listed.name);
                  // Per game, so scans can run between moves.
                  auto folders_lock = s.games.LockFolders();
+                 // Read again now: earlier moves take time, and the game may have changed
+                 // meanwhile.
+                 const auto current = s.games.Find(listed.id);
+                 if (!current) continue;  // removed meanwhile
+                 const model::Game& game = *current;
+                 // Held for the whole move, so the game can't launch from half-moved files.
+                 const auto claim = s.Claim(game.id, "moved");
+                 if (!claim) {
+                   errors.push_back(BatchFailure(game.id, claim.error()));
+                   continue;
+                 }
                  auto relocated = library::Relocate(s.config, game, {}, s.games.All());
                  if (!relocated) {
                    log::Warn("relocate failed for {}: {}", game.id, relocated.error().message);

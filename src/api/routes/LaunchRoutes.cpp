@@ -213,6 +213,10 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     const auto reservation = s.supervisor.Reserve(game->id);
     if (!reservation) {
+      // Being moved or deleted, or a launch already under way.
+      const std::string busy = s.supervisor.ReservedFor(game->id);
+      if (!busy.empty() && busy != "launched")
+        return SendError(res, 409, GameBusyError(game->id, busy));
       return SendError(res, 409, "already_running", std::format("\"{}\" is already running", game->id));
     }
 
@@ -575,8 +579,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     }
     auto result = s.games.Update(game->id, [](model::Game& g) { g.installer_dir.clear(); });
     if (!result) return SendStoreError(res, result.error());
-    s.events.Publish("game.updated", s.Record(*result));
-    SendJson(res, s.Record(*result));
+    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
   });
 
   http.Post(R"(/v1/games/([^/]+)/relocate)", [&s](const Request& req, Response& res) {
@@ -601,25 +604,32 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     if (s.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
 
     s.StartJob(req, res, "relocate", game->id, "Moving " + game->name,
-             [&s, game = *game, request](JobRegistry::Progress&) -> Result<json> {
-               auto folders_lock = s.games.LockFolders();
-               auto relocated = library::Relocate(s.config, game, request, s.games.All());
-               if (!relocated) return std::unexpected(relocated.error());
-               auto saved = s.games.Update(game.id, [&](model::Game& g) {
-                 g.install_path = relocated->install_path;
-                 g.exe_path = relocated->exe_path;
-                 g.data_dir = relocated->data_dir;
-                 g.source = relocated->source;
-                 g.source_ref = relocated->source_ref;
-                 g.updated_at = model::NowSeconds();
+               [&s, id = game->id, request](JobRegistry::Progress&) -> Result<json> {
+                 auto folders_lock = s.games.LockFolders();
+                 // Read again now: the job may have waited behind others while the game was edited
+                 // or launched.
+                 const auto game = s.games.Find(id);
+                 if (!game) return Err("game_not_found", "the game was removed");
+                 // Held for the whole move, so the game can't launch from half-moved files.
+                 const auto claim = s.Claim(id, "moved");
+                 if (!claim) return std::unexpected(claim.error());
+                 auto relocated = library::Relocate(s.config, *game, request, s.games.All());
+                 if (!relocated) return std::unexpected(relocated.error());
+                 auto saved = s.games.Update(id, [&](model::Game& g) {
+                   g.install_path = relocated->install_path;
+                   g.exe_path = relocated->exe_path;
+                   g.data_dir = relocated->data_dir;
+                   g.source = relocated->source;
+                   g.source_ref = relocated->source_ref;
+                   g.updated_at = model::NowSeconds();
+                 });
+                 folders_lock.unlock();
+                 if (!saved) return std::unexpected(saved.error());
+                 s.SyncDesktopEntry(saved->id);
+                 json record = s.Record(*saved);
+                 s.events.Publish("game.updated", record);
+                 return record;
                });
-               folders_lock.unlock();
-               if (!saved) return std::unexpected(saved.error());
-               s.SyncDesktopEntry(saved->id);
-               json record = s.Record(*saved);
-               s.events.Publish("game.updated", record);
-               return record;
-             });
   });
 
   http.Post(R"(/v1/games/([^/]+)/tricks)", [&s](const Request& req, Response& res) {

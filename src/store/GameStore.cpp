@@ -22,17 +22,24 @@ GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)) {}
 void GameStore::Load() {
   std::lock_guard lock(mutex_);
   games_.clear();
+  keep_file_ = false;
+  ++revision_;
 
   std::error_code ec;
   if (!std::filesystem::exists(file_, ec)) return;  // no games yet; not an error
 
   toml::parse_result parsed = toml::parse_file(file_.string());
   if (!parsed) {
-    const auto broken = file_.string() + ".bad";
-    std::filesystem::rename(file_, broken, ec);
-    log::Error("games at {} could not be parsed ({}); kept it as {} and starting with an "
-              "empty library",
-              file_.string(), parsed.error().description(), broken);
+    if (const auto broken = SetAside(file_)) {
+      log::Error(
+          "games at {} could not be parsed ({}); kept it as {} and starting with an empty library",
+          file_.string(), parsed.error().description(), broken->string());
+    } else {
+      keep_file_ = true;
+      log::Error(
+          "games at {} could not be parsed ({}) or set aside ({}); not saving any changes to it",
+          file_.string(), parsed.error().description(), broken.error().message);
+    }
     return;
   }
 
@@ -61,6 +68,8 @@ Result<void> GameStore::Save() {
   // holds mutex_ and blocks an unrelated Find()/Update() the whole time.
   {
     std::lock_guard lock(mutex_);
+    ++revision_;  // every change to the library saves
+    if (keep_file_) return KeptFileError(file_);
     if (batch_depth_ > 0) {
       batch_dirty_ = true;
       return {};

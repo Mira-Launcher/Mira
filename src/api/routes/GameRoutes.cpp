@@ -5,6 +5,7 @@
 #include <charconv>
 #include <format>
 #include <fstream>
+#include <map>
 #include <optional>
 
 #include <httplib.h>
@@ -36,6 +37,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
     const bool include_hidden = BoolParam(req, "include_hidden");
+    const double threshold = s.config.GetDouble("detect.low_confidence_threshold");
     for (const model::Game& game : all) {
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {
@@ -46,7 +48,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       } else if (!include_hidden && std::ranges::contains(game.tags, std::string("hidden"))) {
         continue;
       }
-      out.push_back(s.Record(game));
+      out.push_back(s.Record(game, threshold));
     }
     SendJson(res, std::move(out));
   });
@@ -101,23 +103,31 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     if (const auto problem = library::GamePatchProblem(patch)) return SendError(res, 400, "invalid_body", *problem);
 
     const auto before = s.games.Find(id);
-    auto result = s.games.Update(id, [&](model::Game& game) { game = library::ParseGamePatch(game, patch); });
-    if (!result) return SendStoreError(res, result.error());
-    // Turned into a Windows game: it gets its prefix now, as POST /v1/games/manual does.
-    if (before && before->platform != model::Platform::Windows && result->platform == model::Platform::Windows &&
-        result->status == model::GameStatus::Ready) {
-      const model::Game provisioned = runner::RunnerRegistry(s.config).ProvisionGame(*result);
-      if (auto saved = s.games.Update(id, [&](model::Game& g) {
-            g.runner_ref = provisioned.runner_ref;
-            g.status = provisioned.status;
-            g.last_error = provisioned.last_error;
-          })) {
-        result = saved;
+    // Turned into a Windows game without a prefix folder: it gets one, as POST /v1/games/manual
+    // does. A game turned native keeps its data_dir, so switching back reuses the same prefix.
+    std::string prefix_dir;
+    if (before && before->platform != model::Platform::Windows && before->data_dir.empty()) {
+      const model::Game patched = library::ParseGamePatch(*before, patch);
+      if (patched.platform == model::Platform::Windows && patched.data_dir.empty()) {
+        prefix_dir = library::PrefixDir(s.config, s.games, patched).string();
       }
     }
+    // Turned into a ready Windows game: its prefix is set up in the background, as POST
+    // /v1/games/manual does, and it is setting_up until then.
+    const bool turned_windows = before && before->platform != model::Platform::Windows;
+    bool provision = false;
+    auto result = s.games.Update(id, [&](model::Game& game) {
+      game = library::ParseGamePatch(game, patch);
+      if (game.platform == model::Platform::Windows && game.data_dir.empty())
+        game.data_dir = prefix_dir;
+      provision = turned_windows && game.platform == model::Platform::Windows &&
+                  game.status == model::GameStatus::Ready;
+      if (provision) game.status = model::GameStatus::SettingUp;
+    });
+    if (!result) return SendStoreError(res, result.error());
     s.SyncDesktopEntry(id);
-    s.events.Publish("game.updated", s.Record(*result));
-    SendJson(res, s.Record(*result));
+    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
+    if (provision) s.ProvisionLater(*result);
   });
 
   // One save, one menu sync and one event for any number of games, so a
@@ -179,8 +189,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntry(id);
-    s.events.Publish("game.updated", s.Record(*result));
-    SendJson(res, s.Record(*result));
+    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
   });
 
   http.Delete(R"(/v1/games/([^/]+))", [&s](const Request& req, Response& res) {
@@ -191,10 +200,39 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const auto flag = [&](const char* name) {
       return purge || BoolParam(req, name);
     };
+    // Deleting files or a prefix can take minutes (a store's uninstaller, a big folder), so it's
+    // a job rather than a request holding one of the server's threads.
+    if (flag("delete_files") || flag("delete_prefix")) {
+      const std::string id = game->id;
+      const bool metadata = flag("delete_metadata");
+      return s.StartJob(
+          req, res, "delete", id, "Removing " + game->name,
+          [&s, id, files = flag("delete_files"), prefix = flag("delete_prefix"),
+           metadata](JobRegistry::Progress&) -> Result<json> {
+            auto folders_lock = s.games.LockFolders();
+            const auto current = s.games.Find(id);
+            if (!current) return Err("game_not_found", "the game was removed");
+            const auto claim = s.Claim(id, "deleted");  // no launch from files being deleted
+            if (!claim) return std::unexpected(claim.error());
+            if (auto deleted = s.DeleteGameData(*current, s.games.All(), files, prefix, metadata);
+                !deleted) {
+              return std::unexpected(deleted.error());
+            }
+            if (auto removed = s.games.Remove(id); !removed)
+              return std::unexpected(removed.error());
+            folders_lock.unlock();
+            s.SyncDesktopEntry(id);
+            s.events.Publish("game.removed", {{"id", id}});
+            return json::object();
+          });
+    }
     const auto folders_lock = s.games.LockFolders();
-    if (auto deleted = s.DeleteGameData(*game, flag("delete_files"), flag("delete_prefix"), flag("delete_metadata"));
+    const auto claim = s.Claim(game->id, "deleted");
+    if (!claim) return SendError(res, 409, claim.error());
+    if (auto deleted = s.DeleteGameData(*game, s.games.All(), flag("delete_files"),
+                                        flag("delete_prefix"), flag("delete_metadata"));
         !deleted) {
-      return SendError(res, deleted.error().code == "game_running" ? 409 : 400, deleted.error());
+      return SendError(res, 400, deleted.error());
     }
 
     auto result = s.games.Remove(req.matches[1]);
@@ -223,12 +261,27 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       std::vector<std::string> deletable;
       json failed = json::array();
       auto folders_lock = s.games.LockFolders();
+      // Every game claimed first, so none can launch mid-delete. Games that share a folder and are
+      // removed together don't keep it from each other; one that couldn't be claimed (running,
+      // being moved) stays, and keeps its folder.
+      std::map<std::string, proc::ProcessSupervisor::Reservation> claims;
+      for (const std::string& id : ids) {
+        if (!s.games.Find(id) || claims.contains(id)) continue;
+        if (auto claim = s.Claim(id, "deleted")) {
+          claims.emplace(id, std::move(*claim));
+        } else {
+          failed.push_back(BatchFailure(id, claim.error()));
+        }
+      }
+      std::vector<model::Game> staying = s.games.All();
+      std::erase_if(staying, [&](const model::Game& game) { return claims.contains(game.id); });
       int done = 0;
       for (const std::string& id : ids) {
         progress.Report(done++, static_cast<int>(ids.size()));
+        if (!claims.contains(id)) continue;
         const auto game = s.games.Find(id);
         if (!game) continue;
-        if (auto deleted = s.DeleteGameData(*game, files, prefix, metadata); !deleted) {
+        if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata); !deleted) {
           failed.push_back(BatchFailure(id, deleted.error()));
           continue;
         }
@@ -313,28 +366,20 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       game.status = model::GameStatus::NeedsInstall;
       game.last_error = "This is an installer, not the game itself. Install it to play.";
     } else {
-      game.status = model::GameStatus::Ready;
+      // A Windows game's prefix is set up in the background; it's setting_up until then.
+      game.status = platform == model::Platform::Windows ? model::GameStatus::SettingUp
+                                                         : model::GameStatus::Ready;
       game.last_error.clear();
     }
 
     auto result = s.games.Upsert(game);
     if (!result) return SendError(res, 500, result.error());
 
-    if (game.status == model::GameStatus::Ready && game.platform == model::Platform::Windows) {
-      const runner::RunnerRegistry provisioner(s.config);
-      const model::Game provisioned = provisioner.ProvisionGame(game);
-      auto saved = s.games.Update(game.id, [&](model::Game& g) {
-        g.runner_ref = provisioned.runner_ref;
-        g.status = provisioned.status;
-        g.last_error = provisioned.last_error;
-      });
-      if (saved) game = *saved;
-    }
-
     s.SyncDesktopEntry(game.id);
     if (!existing) s.fetches.Enqueue(s.config, s.events, game);
-    s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game));
-    SendJson(res, s.Record(game));
+    SendJson(res,
+             s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game)).payload);
+    if (game.status == model::GameStatus::SettingUp) s.ProvisionLater(game);
   });
 }
 

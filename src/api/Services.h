@@ -71,7 +71,10 @@ public:
   void BeginStopping();
 
   // A game as the API shows it: model::ToJson plus `running`, `art` and `needs_check`.
-  nlohmann::json Record(const model::Game& game);
+  // `threshold` is detect.low_confidence_threshold, for a caller building many records at once.
+  nlohmann::json Record(const model::Game& game, std::optional<double> threshold = {});
+  // Adds those fields to a model::ToJson record.
+  void Decorate(nlohmann::json& record, std::optional<double> threshold = {});
 
   // Rewrites the application menu entries to match the library.
   void SyncDesktopEntries();
@@ -96,8 +99,18 @@ public:
   // Queues a full metadata fetch for each game and reports as each finishes,
   // for a job: {refreshed, failed} once all have.
   Result<nlohmann::json> RefreshMetadata(std::vector<model::Game> games, JobRegistry::Progress& progress);
-  // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed.
-  Result<void> DeleteGameData(const model::Game& game, bool files, bool prefix, bool metadata);
+  // Sets up a Windows game's prefix as a job: it can take minutes (umu fetches its runtime the
+  // first time). The caller stores the game `setting_up` first; game.updated says how it went.
+  void ProvisionLater(const model::Game& game);
+  // Claims a game for `purpose` ("launched", "moved", "deleted") until the result is dropped,
+  // so it can't launch while its files change, or change while it launches or runs.
+  Result<proc::ProcessSupervisor::Reservation> Claim(const std::string& game_id,
+                                                     const std::string& purpose);
+  // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed. `staying`
+  // are the games that remain afterwards: a folder one of them also uses isn't deleted. The
+  // caller holds the game's Claim.
+  Result<void> DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
+                              bool files, bool prefix, bool metadata);
   // Installs a runner build as a job, publishing runners.download.* as well.
   // With `replacing` ("kind:name"), games and the default using it move over.
   void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,

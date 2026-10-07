@@ -139,6 +139,27 @@ TEST_CASE("a corrupt games.toml is quarantined and the library starts empty") {
   fs::remove(file.string() + ".bad");
 }
 
+TEST_CASE("a second corrupt games.toml is kept beside the first, not over it") {
+  const fs::path file = TempFile("games-corrupt-twice.toml");
+  const auto write = [&](const std::string& text) {
+    std::ofstream out(file);
+    out << text;
+  };
+  const auto read = [](const std::string& path) {
+    std::ifstream in(path);
+    return std::string(std::istreambuf_iterator<char>(in), {});
+  };
+  write("first [ broken");
+  store::GameStore(file).Load();
+  write("second [ broken");
+  store::GameStore(file).Load();
+
+  CHECK(read(file.string() + ".bad") == "first [ broken");
+  CHECK(read(file.string() + ".bad.2") == "second [ broken");
+  fs::remove(file.string() + ".bad");
+  fs::remove(file.string() + ".bad.2");
+}
+
 TEST_CASE("concurrent updates all save, and the file ends with every change") {
   // The API serves requests on several threads, and batch actions send one per game.
   const fs::path file = TempFile("games-concurrent.toml");

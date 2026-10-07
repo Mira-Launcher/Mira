@@ -46,6 +46,8 @@ std::optional<std::vector<std::string>> StringList(const nlohmann::json& body, c
 bool IsSafeRef(const std::string& ref);
 
 Error GameRunningError(const std::string& id);
+// A game claimed by another launch, move or delete (`purpose`: "launched", "moved", "deleted").
+Error GameBusyError(const std::string& id, const std::string& purpose);
 // One game's failure inside a batch reply: {id, error: {code, message, hint?, fix?}}.
 nlohmann::json BatchFailure(const std::string& id, const Error& error);
 

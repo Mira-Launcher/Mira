@@ -122,9 +122,10 @@ std::string ContentTypeFor(const fs::path& file) {
 // `candidate_id`, when the image came from one of art_candidates[slot],
 // records which one -- the one piece of state a caller needs to show which
 // candidate is the one currently active for a slot.
-bool FetchArtworkInto(const config::Config& config, const std::string& url, const std::string& game_id,
-                      std::string_view source, std::string_view slot, json& info,
-                      std::optional<std::int64_t> candidate_id = std::nullopt) {
+bool FetchArtworkInto(const config::Config& config, const std::string& url,
+                      const std::string& game_id, std::string_view source, std::string_view slot,
+                      json& info, std::optional<std::int64_t> candidate_id = std::nullopt,
+                      bool picked = false) {
   const std::string key = slot == "cover" ? "artwork" : std::string(slot);
   // A slot the user picked by hand (SelectArtwork) stays until they pick again.
   if (info.contains(key) && Value(info[key], "chosen", false)) return true;
@@ -138,7 +139,10 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url, cons
     log::Warn("couldn't create artwork dir for {}: {}", game_id, ec.message());
     return false;
   }
-  const fs::path dest = dir / (std::string(slot) + ext);
+  // A pick has a file of its own, so a refresh already downloading the automatic choice can't
+  // overwrite it.
+  const std::string stem = picked ? std::format("{}.chosen", slot) : std::string(slot);
+  const fs::path dest = dir / (stem + ext);
   // Beside it until complete: a failed download must not take the slot's
   // current image with it.
   static std::atomic<unsigned> next_part{0};
@@ -157,7 +161,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url, cons
       // A slot that changed type (.png to .jpg) must not leave the old file behind.
       for (const auto& entry : fs::directory_iterator(dir, ec)) {
         const std::string name = entry.path().filename().string();
-        if (entry.path() != dest && entry.path().stem() == std::string(slot) && !name.ends_with(".part")) {
+        if (entry.path() != dest && entry.path().stem() == stem && !name.ends_with(".part")) {
           std::error_code remove_ec;
           fs::remove(entry.path(), remove_ec);
         }
@@ -895,15 +899,23 @@ Result<void> FetchCover(const config::Config& config, const model::Game& game) {
 
 Result<void> SelectArtwork(const config::Config& config, const std::string& game_id, const std::string& slot,
                            std::int64_t candidate_id) {
-  // Read, download, write back: two at once for one game (a new hero, then a
-  // new cover) would each write over the other's change.
-  const std::lock_guard lock(MetadataFileMutex());
+  // One pick at a time, so two picks for one slot can't land their files and records in a
+  // different order. The download itself runs without MetadataFileMutex, which every other
+  // game's fetch also needs.
+  static std::mutex picking;
+  const std::lock_guard pick_lock(picking);
   const fs::path metadata_file = MetadataFile(config, game_id);
-  std::ifstream in(metadata_file);
-  if (!in) return Err("metadata_not_found", "no metadata cached for this game yet");
-  json info = json::parse(in, nullptr, false);
-  in.close();
-  if (info.is_discarded()) return Err("metadata_not_found", "cached metadata is corrupt");
+  const auto read_info = [&]() -> Result<json> {
+    std::ifstream in(metadata_file);
+    if (!in) return Err("metadata_not_found", "no metadata cached for this game yet");
+    json read = json::parse(in, nullptr, false);
+    if (read.is_discarded()) return Err("metadata_not_found", "cached metadata is corrupt");
+    return read;
+  };
+  std::unique_lock lock(MetadataFileMutex());
+  Result<json> read = read_info();
+  if (!read) return std::unexpected(read.error());
+  const json info = std::move(*read);
 
   if (!info.contains("art_candidates") || !info["art_candidates"].contains(slot)) {
     return Err("no_candidates", "no candidate list cached for this slot");
@@ -926,14 +938,21 @@ Result<void> SelectArtwork(const config::Config& config, const std::string& game
   // cached, rather than accepting a caller-supplied URL directly -- so the
   // daemon never ends up fetching an arbitrary URL on the API's behalf. No
   // credentials on the download itself -- see FetchArtworkInto.
+  lock.unlock();
   const std::string key = slot == "cover" ? "artwork" : slot;
-  if (info.contains(key) && info[key].is_object()) info[key].erase("chosen");  // or the download skips it
-  if (!FetchArtworkInto(config, url, game_id, source, slot, info, candidate_id)) {
+  json downloaded = json::object();  // without the slot's "chosen", which would skip the download
+  if (!FetchArtworkInto(config, url, game_id, source, slot, downloaded, candidate_id,
+                        /*picked=*/true)) {
     return Err("download_failed", "couldn't download the selected image", kConnectionHint);
   }
-  info[key]["chosen"] = true;  // a refresh (Fetch) keeps it
 
-  return WriteMetadataFile(metadata_file, info);
+  // Read again: a fetch may have rewritten the file during the download.
+  lock.lock();
+  Result<json> current = read_info();
+  if (!current) return std::unexpected(current.error());
+  (*current)[key] = std::move(downloaded[key]);
+  (*current)[key]["chosen"] = true;  // a refresh (Fetch) keeps it
+  return WriteMetadataFile(metadata_file, *current);
 }
 
 Result<json> FetchCandidatePage(const config::Config& config, const std::string& game_id, const std::string& slot,

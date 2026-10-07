@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -53,6 +55,8 @@ public:
   std::vector<std::filesystem::path> GetPathArray(std::string_view key) const;
 
   const std::filesystem::path& File() const { return file_; }
+  // Changes whenever a setting does, so a caller can keep what it derived from them until then.
+  std::uint64_t Revision() const { return revision_.load(); }
 
 private:
   nlohmann::json GetLocked(std::string_view key) const;
@@ -63,6 +67,10 @@ private:
   std::filesystem::path frontend_file_;  // frontend.toml: opaque, the frontend's own
   nlohmann::json document_;
   nlohmann::json frontend_ = nlohmann::json::object();
+  // An unparseable file couldn't be set aside: saving would overwrite the only copy.
+  bool keep_file_ = false;
+  bool keep_frontend_file_ = false;
+  std::atomic<std::uint64_t> revision_{0};
 };
 
 }  // namespace mira::config

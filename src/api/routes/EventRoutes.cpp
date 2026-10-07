@@ -1,5 +1,6 @@
 #include "api/Routes.h"
 
+#include <atomic>
 #include <chrono>
 #include <format>
 
@@ -20,6 +21,18 @@ void RegisterEventRoutes(httplib::Server& http, Services& s) {
   // --- events (SSE) -----------------------------------------------------
 
   http.Get("/v1/events", [&s](const Request& req, Response& res) {
+    // Each stream holds a server thread for its whole life, so leaked or duplicate clients
+    // could otherwise take every thread and leave no request answered, /stop included.
+    static constexpr int kMaxStreams = 16;
+    static std::atomic<int> streams{0};
+    if (streams.fetch_add(1) >= kMaxStreams) {
+      streams.fetch_sub(1);
+      return SendError(res, 503,
+                       Error{"too_many_streams",
+                             "too many event streams are open",
+                             "Close other Mira windows or `mira events` commands.",
+                             {}});
+    }
     std::int64_t after_id = 0;
     bool resuming = false;
     if (auto it = req.headers.find("Last-Event-ID"); it != req.headers.end()) {
@@ -37,7 +50,8 @@ void RegisterEventRoutes(httplib::Server& http, Services& s) {
     // The 20s wait only checks whether this client went away.
     res.set_chunked_content_provider(
         "text/event-stream",
-        [&s, after_id, replay_end, live_sent, synced](size_t, httplib::DataSink& sink) mutable -> bool {
+        [&s, after_id, replay_end, live_sent, synced](size_t,
+                                                      httplib::DataSink& sink) mutable -> bool {
           if (s.stopping.load(std::memory_order_relaxed)) return false;
           if (!live_sent && after_id >= replay_end) {
             live_sent = true;
@@ -55,7 +69,8 @@ void RegisterEventRoutes(httplib::Server& http, Services& s) {
           synced = true;
           after_id = event->id;
           return sink.write(frame.data(), frame.size());
-        });
+        },
+        [](bool) { streams.fetch_sub(1); });
   });
 }
 

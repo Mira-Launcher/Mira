@@ -174,6 +174,32 @@ TEST_CASE("PATCH /v1/games/{id} sets a game's platform and refuses one Mira can'
   CHECK(server.games().Find("celeste")->platform == model::Platform::Native);
 }
 
+TEST_CASE(
+    "PATCH /v1/games/{id} gives a game turned Windows a prefix folder, and keeps it when turned "
+    "back") {
+  LiveServer server(TempDir("server-platform-prefix"));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::NeedsInstall;  // not provisioned, so no real prefix is built
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto windows =
+      client.Patch("/v1/games/celeste", R"({"platform": "windows"})", "application/json");
+  REQUIRE(windows != nullptr);
+  CHECK(windows->status == 200);
+  const std::string prefix = server.games().Find("celeste")->data_dir;
+  CHECK(fs::path(prefix).parent_path() == server.MutableConfig().GetPath("prefix_root"));
+
+  auto native = client.Patch("/v1/games/celeste", R"({"platform": "native"})", "application/json");
+  REQUIRE(native != nullptr);
+  auto again = client.Patch("/v1/games/celeste", R"({"platform": "windows"})", "application/json");
+  REQUIRE(again != nullptr);
+  CHECK(server.games().Find("celeste")->data_dir == prefix);
+}
+
 TEST_CASE("PATCH /v1/games/{id} env: a top-level null clears every entry") {
   LiveServer server(TempDir("server-env-patch-clear"));
 
@@ -859,9 +885,7 @@ TEST_CASE("DELETE /v1/games/{id}?purge=true removes files, prefix, and metadata 
   std::ofstream(metadata_file) << "{}";
 
   httplib::Client client = server.Client();
-  auto res = client.Delete("/v1/games/celeste?purge=true");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 200);
+  CHECK(AwaitJob(client, client.Delete("/v1/games/celeste?purge=true"))["state"] == "finished");
 
   CHECK_FALSE(fs::exists(install_path));
   CHECK_FALSE(fs::exists(data_dir));
@@ -900,14 +924,13 @@ TEST_CASE("DELETE /v1/games/{id}?delete_files=true removes a store game from Mir
   REQUIRE(server.games().Upsert(celeste).has_value());
 
   httplib::Client client = server.Client();
-  auto res = client.Delete("/v1/games/gog-1804860967?delete_files=true");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 200);
+  const auto remove = [&](const std::string& id) {
+    return AwaitJob(client, client.Delete("/v1/games/" + id + "?delete_files=true"));
+  };
+  CHECK(remove("gog-1804860967")["state"] == "finished");
   CHECK_FALSE(fs::exists(gog_root / "Sapphire Safari"));
 
-  res = client.Delete("/v1/games/osu?delete_files=true");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 200);
+  CHECK(remove("osu")["state"] == "finished");
   CHECK_FALSE(fs::exists(library_root / "osu.AppImage"));
   CHECK(fs::exists(library_root / "Celeste" / "Celeste.exe"));
 
@@ -918,10 +941,9 @@ TEST_CASE("DELETE /v1/games/{id}?delete_files=true removes a store game from Mir
   launcher.install_path = celeste.install_path;
   launcher.exe_path = "Launcher.exe";
   REQUIRE(server.games().Upsert(launcher).has_value());
-  res = client.Delete("/v1/games/celeste?delete_files=true");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 400);
-  CHECK(nlohmann::json::parse(res->body)["error"]["code"] == "shared_folder");
+  const auto refused = remove("celeste");
+  CHECK(refused["state"] == "failed");
+  CHECK(refused["error"]["code"] == "shared_folder");
   CHECK(fs::exists(library_root / "Celeste" / "Celeste.exe"));
   CHECK(server.games().Find("celeste").has_value());
 }
@@ -970,6 +992,42 @@ TEST_CASE("POST /v1/games/delete removes many games, deletes files only where al
   CHECK(bad->status == 400);
 }
 
+TEST_CASE("POST /v1/games/delete deletes a folder shared only by games removed together") {
+  LiveServer server(TempDir("server-batch-delete-shared-state"));
+  const fs::path library_root = TempDir("server-batch-delete-shared-library");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", nlohmann::json::array({library_root.string()}))
+              .has_value());
+
+  const auto add = [&](const std::string& id, const fs::path& install_path,
+                       const std::string& exe) {
+    test::Touch(install_path / exe, "", /*executable=*/true);
+    model::Game game;
+    game.id = id;
+    game.name = id;
+    game.source = "manual";
+    game.install_path = install_path.string();
+    game.exe_path = exe;
+    REQUIRE(server.games().Upsert(game).has_value());
+  };
+  add("pair-a", library_root / "Pair", "a.sh");
+  add("pair-b", library_root / "Pair", "b.sh");
+  add("trio-a", library_root / "Trio", "a.sh");
+  add("trio-b", library_root / "Trio", "b.sh");  // stays, so Trio does too
+
+  httplib::Client client = server.Client();
+  const auto job = AwaitJob(
+      client, client.Post("/v1/games/delete",
+                          R"({"ids": ["pair-a", "pair-b", "trio-a"], "delete_files": true})",
+                          "application/json"));
+  REQUIRE(job["state"] == "finished");
+  CHECK(job["result"]["removed"] == nlohmann::json::array({"pair-a", "pair-b"}));
+  REQUIRE(job["result"]["failed"].size() == 1);
+  CHECK(job["result"]["failed"][0]["error"]["code"] == "shared_folder");
+  CHECK_FALSE(fs::exists(library_root / "Pair"));
+  CHECK(fs::exists(library_root / "Trio" / "b.sh"));
+}
+
 TEST_CASE("POST /v1/library/relocate with ids moves only those games") {
   LiveServer server(TempDir("server-relocate-ids-state"));
   const fs::path library_root = TempDir("server-relocate-ids-library");
@@ -1001,6 +1059,43 @@ TEST_CASE("POST /v1/library/relocate with ids moves only those games") {
   CHECK(fs::path(server.games().Find("picked")->install_path).parent_path() == library_root);
   CHECK(server.games().Find("left")->install_path == (elsewhere / "left").string());
   CHECK(fs::exists(elsewhere / "left" / "run.sh"));
+}
+
+TEST_CASE("A game can't launch while it's being moved, and can't be moved while it's launching") {
+  LiveServer server(TempDir("server-claim-state"));
+  const fs::path library_root = TempDir("server-claim-library");
+  const fs::path elsewhere = TempDir("server-claim-elsewhere");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", nlohmann::json::array({library_root.string()}))
+              .has_value());
+  test::Touch(elsewhere / "Game" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  model::Game game;
+  game.id = "game";
+  game.name = "Game";
+  game.source = "manual";
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;
+  game.install_path = (elsewhere / "Game").string();
+  game.exe_path = "run.sh";
+  REQUIRE(server.games().Upsert(game).has_value());
+  httplib::Client client = server.Client();
+
+  {
+    const auto moving = server.services().Claim("game", "moved");
+    REQUIRE(moving.has_value());
+    auto launch = client.Post("/v1/games/game/launch");
+    REQUIRE(launch != nullptr);
+    CHECK(launch->status == 409);
+    CHECK(nlohmann::json::parse(launch->body)["error"]["code"] == "game_busy");
+  }
+  {
+    const auto launching = server.services().Claim("game", "launched");
+    REQUIRE(launching.has_value());
+    const auto job = AwaitJob(client, client.Post("/v1/games/game/relocate"));
+    CHECK(job["state"] == "failed");
+    CHECK(job["error"]["code"] == "game_busy");
+    CHECK(fs::exists(elsewhere / "Game" / "run.sh"));
+  }
 }
 
 TEST_CASE("DELETE /v1/runners/{reference} refuses the system Wine, outside every search root") {
@@ -1058,6 +1153,31 @@ TEST_CASE("POST /v1/games/manual adds a ready native game outside any configured
   const std::string id = parsed.value("id", "");
   REQUIRE_FALSE(id.empty());
   CHECK(server.games().Find(id).has_value());
+}
+
+TEST_CASE(
+    "POST /v1/games/manual answers a Windows game at once and sets up its prefix in the "
+    "background") {
+  LiveServer server(TempDir("server-manual-windows"));
+  const fs::path folder = TempDir("server-manual-windows-game");
+  std::ofstream(folder / "Game.exe") << "not really an exe";
+
+  httplib::Client client = server.Client();
+  const nlohmann::json body = {{"install_path", folder.string()}, {"exe_path", "Game.exe"}};
+  auto res = client.Post("/v1/games/manual", body.dump(), "application/json");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  const auto added = nlohmann::json::parse(res->body);
+  CHECK(added["status"] == "setting_up");
+
+  // No runner in the test environment, so the setup ends broken, but it ends.
+  const std::string id = added["id"];
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (server.games().Find(id)->status == model::GameStatus::SettingUp &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  CHECK(server.games().Find(id)->status != model::GameStatus::SettingUp);
 }
 
 TEST_CASE("POST /v1/games/manual refuses a platform Mira can't run instead of adding the game") {

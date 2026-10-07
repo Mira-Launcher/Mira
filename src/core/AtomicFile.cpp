@@ -44,4 +44,33 @@ Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view
   return {};
 }
 
+Result<std::filesystem::path> SetAside(const std::filesystem::path& path) {
+  std::error_code ec;
+  for (int n = 1; n < 1000; ++n) {
+    const std::filesystem::path target =
+        n == 1 ? path.string() + ".bad" : std::format("{}.bad.{}", path.string(), n);
+    // link() fails on an existing target, unlike rename(), so a backup that appears meanwhile
+    // survives.
+    if (::link(path.c_str(), target.c_str()) == 0) {
+      std::filesystem::remove(path, ec);
+    } else if (errno == EEXIST || std::filesystem::exists(target, ec)) {
+      continue;
+    } else {
+      std::filesystem::rename(path, target, ec);  // a filesystem without hard links
+    }
+    if (ec)
+      return Err("set_aside_failed",
+                 std::format("couldn't keep {}: {}", path.string(), ec.message()), kDiskHint);
+    return target;
+  }
+  return Err("set_aside_failed",
+             std::format("couldn't keep {}: too many earlier copies", path.string()), kDiskHint);
+}
+
+std::unexpected<Error> KeptFileError(const std::filesystem::path& path) {
+  return Err("file_kept",
+             std::format("{} couldn't be read, so it isn't overwritten", path.string()),
+             "Fix or move the file, then restart mirad.");
+}
+
 }  // namespace mira
