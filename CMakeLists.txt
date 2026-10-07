@@ -193,4 +193,7 @@ if(TARGET mira-gui)
   # Needs mira-gui built (it's the whole point of bundling), so this lives
   # inside the same guard as run-gui above rather than being unconditional.
   include(cmake/AppImage.cmake)
+  if(TARGET appimage)
+    include(cmake/Packages.cmake)
+  endif()
 endif()
