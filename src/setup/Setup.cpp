@@ -108,6 +108,8 @@ Type=simple
 ExecStart={}
 Restart=on-failure
 RestartSec=2
+# Games run as mirad's children; stopping or updating mirad leaves them running.
+KillMode=process
 
 [Install]
 WantedBy=default.target
