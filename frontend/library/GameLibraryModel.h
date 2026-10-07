@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QSortFilterProxyModel>
 #include <QString>
+#include <QTimer>
 
 #include <functional>
 #include <optional>
@@ -37,6 +38,8 @@ public:
   void RemoveSource(const std::string& source);
   // Ahead of mirad's own game.state, e.g. right after a launch it accepted.
   void SetRunning(const std::string& id, bool running);
+  // "Launching" on its tile from the click until its window has had time to show, or until it stops.
+  void SetLaunching(const std::string& id, bool launching);
   // Repaints one game's row: its cover arrived, or its install moved along.
   void Touch(const std::string& id);
 
@@ -63,12 +66,18 @@ private:
   void RebuildIndex();
   void NoteChanged();
 
+  void TickLaunching();
+
+  // How long a launch shows as launching: about as long as a Windows app takes to open its window.
+  static constexpr qint64 kLaunchingMs = 8000;
   // Past this many separate runs of removed rows, Remove resets the model instead.
   static constexpr int kMaxRemovedRuns = 16;
 
   std::vector<GameSummary> games_;
   std::unordered_map<std::string, int> rows_;  // id -> row
   bool change_pending_ = false;
+  std::unordered_map<std::string, qint64> launching_;  // id -> when it was launched, in ms
+  QTimer* launch_tick_ = nullptr;  // animates the launching tiles' dots
 };
 
 // One view's slice of the library: a filter key ("all", "hidden", a status,

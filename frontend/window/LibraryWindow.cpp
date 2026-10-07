@@ -962,11 +962,15 @@ void LibraryWindow::ToggleRunning(const std::string& id) {
 }
 
 void LibraryWindow::LaunchGame(const std::string& id) {
-  mira_gui::actions::Launch(this, id, [this, id](bool tracked) {
-    // Ahead of mirad's own game.state, which says the same. An untracked
-    // (Steam) launch never gets one, so it isn't marked at all.
-    if (tracked) library_->SetRunning(id, true);
-  });
+  library_->SetLaunching(id, true);
+  mira_gui::actions::Launch(
+      this, id,
+      [this, id](bool tracked) {
+        // Ahead of mirad's own game.state, which says the same. An untracked
+        // (Steam) launch never gets one, so it isn't marked at all.
+        if (tracked) library_->SetRunning(id, true);
+      },
+      [this, id] { library_->SetLaunching(id, false); });
 }
 
 void LibraryWindow::OpenGameDialog(const std::string& id) {

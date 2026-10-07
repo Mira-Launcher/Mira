@@ -22,7 +22,8 @@ namespace mira_gui::actions {
 // `tracked` is false when mirad handed the game to Steam rather than
 // spawning it: no game.state event is coming, so a caller must not record
 // it as running.
-void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched);
+void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched,
+            std::function<void()> on_failed = {});
 
 // POST /v1/games/{id}/stop. Nothing to do on success: the `game.state` event
 // that follows is what actually updates the view.

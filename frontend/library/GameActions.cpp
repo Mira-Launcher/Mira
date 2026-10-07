@@ -44,9 +44,11 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
 
 }  // namespace
 
-void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched) {
-  api::LaunchGameAsync(parent, id, [parent, id, on_launched](LaunchResult result) {
+void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched,
+            std::function<void()> on_failed) {
+  api::LaunchGameAsync(parent, id, [parent, id, on_launched, on_failed](LaunchResult result) {
     if (!result.ok) {
+      if (on_failed) on_failed();
       notify::FailedRequest(parent, "Could not launch the game.", result.error);
       return;
     }
