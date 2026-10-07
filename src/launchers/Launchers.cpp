@@ -219,6 +219,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   run_as.args.clear();
   auto command = resolved->runner->BuildCommand(run_as, resolved->build);
   if (!command) return std::unexpected(command.error());
+  // Proton silences Wine; its errors are often the only clue why a setup quit.
+  command->env.try_emplace("WINEDEBUG", "fixme-all,err+all");
   std::string windows_downloads = "Z:" + downloads.string();
   std::ranges::replace(windows_downloads, '/', '\\');
   for (std::string arg : step.args) {
@@ -258,7 +260,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // launcher exe exists afterwards decides.
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
-  while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
+  int status = 0;
+  while (::waitpid(*pid, &status, WNOHANG) != *pid) {
     CopyNewOutput(launcher, output_file, copied);
     if (step.progress) {
       // One line in the log that keeps updating (LogHub treats a leading "NN%" as a progress reading).
@@ -344,7 +347,11 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   }
   CopyNewOutput(launcher, output_file, copied);
   if (!finished()) {
-    return Err("launcher_not_installed", std::format("{} finished but {} wasn't installed", step.file, launcher.name));
+    const std::string how = WIFEXITED(status) ? std::format("exited with code {}", WEXITSTATUS(status))
+                            : WIFSIGNALED(status) ? std::format("was killed by signal {}", WTERMSIG(status))
+                                                  : "finished";
+    return Err("launcher_not_installed", std::format("{} {} but {} wasn't installed", step.file, how, launcher.name),
+               std::format("Its output, with Wine's errors, is in {}", output_file.string()));
   }
   return {};
 }
@@ -421,7 +428,10 @@ std::string WithoutNoise(std::string_view text) {
   constexpr std::array kNoise = {std::string_view("unable to use parent for game drive"),
                                  std::string_view("'Windows, Version=255.255.255.255"),
                                  std::string_view("InspectorOfficeGadget"),
-                                 std::string_view("xpdAgent.Log:telemetryService")};
+                                 std::string_view("xpdAgent.Log:telemetryService"),
+                                 // Wine's own at every start: no Bluetooth driver, and the touch keyboard's UI hook.
+                                 std::string_view("Services\\winebth"), std::string_view("err:tabtip:"),
+                                 std::string_view("57865755-6c05-4522-98df-4ca658b768ef")};
   const auto noise = [&](std::string_view line) {
     return std::ranges::any_of(kNoise, [&](std::string_view part) { return line.contains(part); });
   };
