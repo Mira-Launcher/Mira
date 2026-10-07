@@ -29,6 +29,14 @@ public:
   // The id's info, an empty object when none is cached.
   nlohmann::json Read(const std::string& id) const;
   bool Has(const std::string& id) const;
+  // Every cached id's top-level `key` from its info, null where it has none, in one query: for a
+  // listing over the whole library without parsing each info whole.
+  std::unordered_map<std::string, nlohmann::json> Field(std::string_view key) const;
+
+  // Something fetched for the whole library rather than one id (Steam's tag names), by name; null
+  // when none is cached.
+  nlohmann::json ReadList(const std::string& name) const;
+  Result<void> WriteList(const std::string& name, const nlohmann::json& value);
   // Replaces the id's info and its art rows together.
   Result<void> Write(const std::string& id, const nlohmann::json& info);
   // Drops the id's info, art rows and art files.

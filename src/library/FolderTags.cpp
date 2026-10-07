@@ -144,6 +144,8 @@ Result<model::Game> PlaceLink(const config::Config& config, model::Game game,
 
 }  // namespace
 
+bool SameTag(std::string_view a, std::string_view b) { return SameName(a, b); }
+
 fs::path NormalRoot(const std::string& root) { return Normal(paths::Expand(root)); }
 
 SortRules::SortRules(const config::Config& config)

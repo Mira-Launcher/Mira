@@ -41,6 +41,9 @@ struct SortRules {
   bool tag_by_root = true;
 };
 
+// Whether two tags are the same tag: folder names follow tags, so they match ignoring case.
+bool SameTag(std::string_view a, std::string_view b);
+
 // A library folder as SortRules keeps it ("~" expanded, normalised), from how a setting spells it.
 std::filesystem::path NormalRoot(const std::string& root);
 

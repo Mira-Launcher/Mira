@@ -2,7 +2,10 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
+#include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "config/Config.h"
@@ -64,6 +67,19 @@ std::filesystem::path CandidateThumbFile(const config::Config& config, const std
 // Previews are only for a picker that's open, so they're thrown away when
 // the GUI quits and when mirad starts or stops, rather than kept like art.
 void ClearCandidateThumbs(const config::Config& config);
+
+// Each cached game's Steam tags as last fetched with its metadata (most voted first), by id: empty
+// when no Steam game matched, nullopt when fetched before Steam tags were. A game with no metadata
+// record isn't listed. One query, so listing the whole library stays quick.
+std::unordered_map<std::string, std::optional<std::vector<std::string>>> StoredSteamTags(
+    const store::MetadataStore& cache);
+// Whether `game` should have Steam tags: tags.steam, not a store's launcher, and a Steam game or
+// tags.steam_by_name.
+bool WantsSteamTags(const config::Config& config, const model::Game& game);
+// Fetches the Steam tags of those of `games` that want them and have a metadata record (a game
+// without one gets them with its own fetch), batched, into those records.
+// Returns how many records got an answer (a game with no Steam match counts, with no tags).
+int FetchSteamTags(const config::Config& config, store::MetadataStore& cache, std::span<const model::Game> games);
 
 // Where a game's art is downloaded: beside settings.toml, the same folder
 // store::MetadataStore::ArtworkDir names.

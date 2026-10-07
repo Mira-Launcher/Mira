@@ -27,6 +27,7 @@
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/RefMigration.h"
+#include "migrate/EarlySchema.h"
 #include "migrate/Legacy.h"
 #include "store/GameStore.h"
 
@@ -78,6 +79,9 @@ int main(int argc, char** argv) {
   }
 
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
+  const auto cache_db = mira::paths::DatabaseFile().parent_path() / "cache.db";
+  // Temporary; see migrate/EarlySchema.h.
+  mira::migrate::RepairEarlySchemas(mira::paths::DatabaseFile(), cache_db);
   mira::store::GameStore games(mira::paths::DatabaseFile());
   games.Load();
   mira::migrate::ImportLegacyFiles(games);  // temporary; see migrate/Legacy.h

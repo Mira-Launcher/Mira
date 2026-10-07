@@ -255,6 +255,23 @@ Schema::Schema() {
                 "is never touched.",
          .path = PathKind::Folder});
 
+  s.Add({.key = "tags.steam",
+         .label = "Get tags from Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc =
+             "Fetch each game's Steam tags with its other store info, to suggest tags on the Tags "
+             "page. They're never added to a game on their own. Needs no key."});
+
+  s.Add({.key = "tags.steam_by_name",
+         .label = "Match other games to Steam by name",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc =
+             "Also fetch Steam tags for a game from another source when a Steam game has exactly "
+             "its name (case and punctuation are ignored). This sends the game's name to "
+             "Steam's public search."});
+
   s.Add({.key = "scan.tag_by_root",
          .label = "Tag new games by library folder",
          .type = Type::Bool,

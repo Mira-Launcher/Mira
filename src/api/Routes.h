@@ -19,6 +19,7 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s);
 void RegisterGameRoutes(httplib::Server& http, Services& s);
 void RegisterLaunchRoutes(httplib::Server& http, Services& s);
 void RegisterLibraryRoutes(httplib::Server& http, Services& s);
+void RegisterTagsRoutes(httplib::Server& http, Services& s);
 void RegisterStoreRoutes(httplib::Server& http, Services& s);
 void RegisterLauncherRoutes(httplib::Server& http, Services& s);
 void RegisterMetadataRoutes(httplib::Server& http, Services& s);
