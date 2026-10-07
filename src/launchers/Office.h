@@ -23,6 +23,7 @@ struct App {
   std::string_view ref;   // also the game id's suffix: office-<ref>
   std::string_view name;
   std::string_view exe;   // in kProgramDir
+  std::string_view mime;  // the file types it opens, as a desktop entry's MimeType=
 };
 
 inline constexpr std::string_view kProgramDir = "Program Files/Microsoft Office/root/Office16";

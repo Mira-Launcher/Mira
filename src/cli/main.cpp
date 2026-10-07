@@ -11,6 +11,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -345,11 +346,14 @@ int CmdRunners(int argc, char** argv) {
 
 int CmdLaunch(int argc, char** argv) {
   if (argc < 1) {
-    std::fprintf(stderr, "usage: mira launch <id>\n");
+    std::fprintf(stderr, "usage: mira launch <id> [file...]\n");
     return 2;
   }
+  json files = json::array();
+  for (int i = 1; i < argc; ++i) files.push_back(std::filesystem::absolute(argv[i]).string());
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/launch", argv[0]));
+  auto res = client.Post(std::format("/v1/games/{}/launch", argv[0]),
+                         files.empty() ? std::string() : json{{"files", files}}.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
     return 1;

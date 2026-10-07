@@ -24,10 +24,22 @@ namespace {
 namespace fs = std::filesystem;
 
 constexpr std::array kApps = {
-    App{"word", "Word", "WINWORD.EXE"},       App{"excel", "Excel", "EXCEL.EXE"},
-    App{"powerpoint", "PowerPoint", "POWERPNT.EXE"}, App{"outlook", "Outlook", "OUTLOOK.EXE"},
-    App{"onenote", "OneNote", "ONENOTE.EXE"},       App{"access", "Access", "MSACCESS.EXE"},
-    App{"publisher", "Publisher", "MSPUB.EXE"},
+    App{"word", "Word", "WINWORD.EXE",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/msword;"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template;"
+        "application/vnd.ms-word.document.macroEnabled.12;application/rtf;"},
+    App{"excel", "Excel", "EXCEL.EXE",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel;"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.template;"
+        "application/vnd.ms-excel.sheet.macroEnabled.12;text/csv;"},
+    App{"powerpoint", "PowerPoint", "POWERPNT.EXE",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.ms-powerpoint;"
+        "application/vnd.openxmlformats-officedocument.presentationml.slideshow;"
+        "application/vnd.ms-powerpoint.presentation.macroEnabled.12;"},
+    App{"outlook", "Outlook", "OUTLOOK.EXE", "application/vnd.ms-outlook;"},
+    App{"onenote", "OneNote", "ONENOTE.EXE", "application/onenote;"},
+    App{"access", "Access", "MSACCESS.EXE", "application/vnd.ms-access;application/x-msaccess;"},
+    App{"publisher", "Publisher", "MSPUB.EXE", "application/vnd.ms-publisher;application/x-mspublisher;"},
 };
 
 // Each shim replaces a Wine DLL and forwards to Wine's own copy, kept under a

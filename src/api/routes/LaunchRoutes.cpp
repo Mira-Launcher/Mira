@@ -211,12 +211,25 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
                                   model::ToString(game->status)));
     }
 
+    // Documents to open, as absolute paths: a Microsoft 365 app opened from a file manager.
+    const json body = req.body.empty() ? json::object() : json::parse(req.body, nullptr, false);
+    const auto files = body.is_object() ? StringList(body, "files") : std::nullopt;
+    if (!files || !std::ranges::all_of(*files, [](const std::string& file) { return file.starts_with('/'); })) {
+      return SendError(res, 400, "invalid_body", R"(expected no body, or {"files": ["/absolute/path", ...]})");
+    }
+    if (!files->empty() && !(launchers::ForGame(*game) && game->source == "office")) {
+      return SendError(res, 400, "files_unsupported", "only a Microsoft 365 app opens files");
+    }
+
+    // An app that's already open is handed the documents anyway; the running one stays tracked.
     const auto reservation = s.supervisor.Reserve(game->id);
     if (!reservation) {
       // Being moved or deleted, or a launch already under way.
       const std::string busy = s.supervisor.ReservedFor(game->id);
       if (!busy.empty() && busy != "launched")
         return SendError(res, 409, GameBusyError(game->id, busy));
+    }
+    if (!reservation && files->empty()) {
       return SendError(res, 409, "already_running", std::format("\"{}\" is already running", game->id));
     }
 
@@ -243,6 +256,10 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       }
       auto command = launchers::BuildCommand(s.config, s.games, *game);
       if (!command) return SendError(res, 409, command.error());
+      for (std::string file : *files) {
+        std::ranges::replace(file, '/', '\\');
+        command->argv.push_back("Z:" + file);
+      }
       if (auto ran = RunPreScriptInline(pre_script); !ran) {
         return SendError(res, 409, ran.error());
       }
@@ -257,6 +274,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       if (!spawned) return SendError(res, 500, spawned.error());
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
+      if (!reservation) return SendJson(res, {{"status", "opened_in_running_app"}, {"tracked", false}});
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
       if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::TrackedPath(*game),
                                                          s.config.GetInt("launchers.detect_timeout_s"), post_script);

@@ -154,7 +154,7 @@ Every setting as it resolves for this game, with the layer it came from:
 Sets or removes (`null`) this game's overrides as a flat `{"dotted.key": value}` body. Only `per_game` keys are accepted, and nothing is applied if any key fails.
 
 ### `POST /v1/games/{id}/launch`
-Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game. `409 needs_install` or `409 not_ready` when it can't run, `409 game_busy` while it's being moved or its files deleted (a move or delete likewise waits for no launch and fails with `game_busy` or `game_running`). A Windows game left `broken` by a missing runner is provisioned again first.
+Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game. A Microsoft 365 app takes an optional body `{"files": ["/absolute/path", ...]}` and opens those documents, also while it's already running (`400 files_unsupported` for anything else); its desktop entry declares the file types it opens and passes them on. `409 needs_install` or `409 not_ready` when it can't run, `409 game_busy` while it's being moved or its files deleted (a move or delete likewise waits for no launch and fails with `game_busy` or `game_running`). A Windows game left `broken` by a missing runner is provisioned again first.
 
 - `command_wrappers` are prepended in order, first outermost. Each entry is split on spaces, so `"gamescope -W 1920 -H 1080"` is one entry. A wrapper missing from `PATH` fails with `400 wrapper_not_found`.
 - `launch.env` applies under the runner's environment; the game's own `env` wins over both.

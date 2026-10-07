@@ -47,7 +47,7 @@ TEST_CASE("DesktopEntries never writes an entry for a Steam-sourced game -- Stea
   CHECK(fs::exists(applications / "mira-native-game.desktop"));
 }
 
-TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, not Game") {
+TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, and a Microsoft 365 app opens its files") {
   const fs::path state = TempDir("desktop-entries-app-state");
   const fs::path applications = TempDir("desktop-entries-app-apps");
   config::Config config(state / "settings.toml");
@@ -62,13 +62,26 @@ TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, not Game"
   app.exe_path = "writer.exe";
   app.tags = {"app"};
 
-  desktop::DesktopEntries entries(config);
-  REQUIRE(entries.Sync({app}).has_value());
+  model::Game word = app;
+  word.id = "office-word";
+  word.source = "office";
+  word.source_ref = "word";
 
-  std::ifstream in(applications / "mira-writer.desktop");
-  const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  desktop::DesktopEntries entries(config);
+  REQUIRE(entries.Sync({app, word}).has_value());
+
+  const auto read = [&](const char* file) {
+    std::ifstream in(applications / file);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  };
+  const std::string text = read("mira-writer.desktop");
   CHECK(text.find("Categories=Utility;") != std::string::npos);
   CHECK(text.find("Icon=application-x-executable") != std::string::npos);
+  CHECK(text.find("MimeType=") == std::string::npos);
+  const std::string word_text = read("mira-office-word.desktop");
+  CHECK(word_text.find("Exec=mira launch office-word %F") != std::string::npos);
+  CHECK(word_text.find("MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;") !=
+        std::string::npos);
 }
 
 TEST_CASE("DesktopEntries: a per-game desktop_entries.enabled=false override excludes just that game") {

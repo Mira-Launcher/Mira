@@ -77,8 +77,8 @@ mira set celeste --tag hidden
 
 ## Playing
 
-### `mira launch <id>` / `mira stop <id>`
-`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam://rungameid/<appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first.
+### `mira launch <id> [file...]` / `mira stop <id>`
+`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam://rungameid/<appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first. Files are passed to a Microsoft 365 app to open.
 
 ### `mira run <id> --exe PATH [--args ARGS]`
 `POST /v1/games/{id}/run`. Runs any executable in the game's prefix, creating the prefix first if needed. This is the manual way to run an installer:

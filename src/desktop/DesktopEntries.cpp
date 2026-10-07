@@ -13,7 +13,9 @@
 #include "core/AtomicFile.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "launchers/Office.h"
 #include "metadata/MetadataFetcher.h"
+#include "runner/Exec.h"
 
 namespace mira::desktop {
 namespace {
@@ -48,6 +50,22 @@ std::optional<fs::path> CachedArtwork(const config::Config& config, const std::s
   return std::ifstream(file, std::ios::binary).good() ? std::make_optional(file) : std::nullopt;
 }
 
+// The file types a Microsoft 365 app opens; empty for anything else.
+std::string_view MimeTypes(const model::Game& game) {
+  if (game.source != "office") return {};
+  for (const auto& app : launchers::office::Apps()) {
+    if (app.ref == game.source_ref) return app.mime;
+  }
+  return {};
+}
+
+// So file managers offer the apps for their file types.
+void UpdateMimeCache(const fs::path& dir) {
+  Command command;
+  command.argv = {"update-desktop-database", dir.string()};
+  if (auto ran = runner::RunAndWait(command); !ran || ran->exit_code != 0) log::Info("update-desktop-database didn't run");
+}
+
 std::optional<std::string> ReadFile(const fs::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) return std::nullopt;
@@ -73,6 +91,8 @@ bool DesktopEntries::IsWanted(const model::Game& game) const {
   // Steam game already had from before this exclusion existed.
   if (game.runner_ref.starts_with("steam:")) return false;
   if (game.exe_path.empty()) return false;
+  // Microsoft 365 itself has nothing to open; its apps have entries of their own.
+  if (game.source == "launcher" && game.source_ref == "office") return false;
 
   const config::Resolver resolver(config_, game.overrides);
   return resolver.GetBool("desktop_entries.enabled");
@@ -80,7 +100,10 @@ bool DesktopEntries::IsWanted(const model::Game& game) const {
 
 std::string DesktopEntries::Render(const model::Game& game) const {
   const config::Resolver resolver(config_, game.overrides);
-  const std::string exec = resolver.GetString("desktop_entries.exec_mode") == "frontend"
+  const std::string_view mime = MimeTypes(game);
+  // An app that opens files is handed them, which only the CLI passes on.
+  const std::string exec = !mime.empty() ? std::format("mira launch {} %F", game.id)
+                           : resolver.GetString("desktop_entries.exec_mode") == "frontend"
                                ? std::format("mira-gui --launch {}", game.id)
                                : std::format("mira launch {}", game.id);
   const std::optional<fs::path> artwork = CachedArtwork(config_, game.id);
@@ -97,9 +120,10 @@ std::string DesktopEntries::Render(const model::Game& game) const {
       "Icon={}\n"
       "Categories={}\n"
       "Terminal=false\n"
-      "X-Mira-Game-Id={}\n",
+      "X-Mira-Game-Id={}\n"
+      "{}",
       Sanitize(game.name), Sanitize(game.name), exec, icon,
-      Sanitize(categories), game.id);
+      Sanitize(categories), game.id, mime.empty() ? "" : std::format("MimeType={}\n", mime));
 }
 
 Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::optional<model::Game>& game) {
@@ -111,7 +135,9 @@ Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::opti
   }
   const std::string content = Render(*game);
   if (ReadFile(path) == content) return {};  // every write makes the desktop re-index its menu
-  return WriteFileAtomic(path, content, "desktop_write_failed");
+  if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) return written;
+  if (!MimeTypes(*game).empty()) UpdateMimeCache(path.parent_path());
+  return {};
 }
 
 Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
@@ -138,6 +164,7 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
     }
   }
 
+  bool mime_changed = false;
   for (const model::Game& game : games) {
     if (!wanted.contains(game.id)) continue;
     const fs::path path = EntryPath(game.id);
@@ -146,8 +173,11 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
     if (ReadFile(path) == content) continue;
     if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) {
       log::Warn("could not write desktop entry {}: {}", path.string(), written.error().message);
+    } else if (!MimeTypes(game).empty()) {
+      mime_changed = true;
     }
   }
+  if (mime_changed) UpdateMimeCache(dir);
 
   // Remove ours that are no longer wanted: a game deleted, gone missing, or
   // now needing an install. Anything not named mira-<id>.desktop is left
