@@ -303,7 +303,14 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   } else if (files) {
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
   }
-  if (prefix) {
+  if (prefix && !game.data_dir.empty()) {
+    const auto sharer = std::ranges::find_if(staying, [&](const model::Game& other) {
+      return other.id != game.id && other.data_dir == game.data_dir;
+    });
+    if (sharer != staying.end()) {
+      return Err("shared_prefix", std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
+                 "Remove the launcher it came with to delete its prefix.");
+    }
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
   }
   if (metadata) {

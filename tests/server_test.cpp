@@ -946,6 +946,20 @@ TEST_CASE("DELETE /v1/games/{id}?delete_files=true removes a store game from Mir
   CHECK(refused["error"]["code"] == "shared_folder");
   CHECK(fs::exists(library_root / "Celeste" / "Celeste.exe"));
   CHECK(server.games().Find("celeste").has_value());
+
+  // Nor is a prefix two games run in, as a launcher's games share its.
+  const fs::path prefix = server.config().GetPath("prefix_root") / "battle-net";
+  test::Touch(prefix / "system.reg", "reg");
+  for (const char* id : {"battlenet-wtcg", "battlenet-pro"}) {
+    model::Game shared;
+    shared.id = id;
+    shared.name = id;
+    shared.data_dir = prefix.string();
+    REQUIRE(server.games().Upsert(shared).has_value());
+  }
+  const auto kept = AwaitJob(client, client.Delete("/v1/games/battlenet-wtcg?delete_prefix=true"));
+  CHECK(kept["error"]["code"] == "shared_prefix");
+  CHECK(fs::exists(prefix / "system.reg"));
 }
 
 TEST_CASE("POST /v1/games/delete removes many games, deletes files only where allowed, and keeps a failed one") {
