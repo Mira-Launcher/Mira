@@ -3,7 +3,9 @@
 // The static libstdc++ was built against a newer glibc than an LTS distro has: it calls the
 // glibc 2.38 __isoc23_strto* functions and glibc 2.36's arc4random. Defining them here makes the
 // linker use these instead, so the binaries ask only for glibc 2.35. The strto* ones forward to
-// the original functions; arc4random reads the kernel's random pool.
+// the original functions; arc4random reads the kernel's random pool. glibc 2.35's _dl_find_object is
+// what the static libgcc's unwinder tries first; answering -1 sends it to dl_iterate_phdr, which is all
+// glibc before 2.35 has, so the binaries then run on glibc 2.34 too.
 #include <sys/random.h>
 
 #include <cstdint>
@@ -26,5 +28,7 @@ std::uint32_t arc4random(void) {
   }
   return value;
 }
+
+int _dl_find_object(void*, void*) { return -1; }
 
 }  // extern "C"
