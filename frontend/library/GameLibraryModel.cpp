@@ -246,6 +246,95 @@ bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, bo
   return key == QLatin1StringView(game.status.data(), static_cast<qsizetype>(game.status.size()));
 }
 
+namespace {
+
+
+bool AnyTagStartsWith(const GameSummary& game, const QString& prefix) {
+  return std::ranges::any_of(game.tags, [&](const std::string& tag) {
+    return !IsMeaningTag(tag) &&
+           QString::fromStdString(tag).startsWith(prefix, Qt::CaseInsensitive);
+  });
+}
+
+}  // namespace
+
+std::vector<std::string> TagOrder(const std::vector<GameSummary>& games) {
+  struct Tally {
+    std::string name;
+    int count = 0;
+  };
+  std::vector<std::string> folders;
+  std::vector<Tally> others;
+  const auto known = [](const std::vector<std::string>& list, const std::string& tag) {
+    return std::ranges::any_of(list, [&](const std::string& t) { return SameTag(t, tag); });
+  };
+  for (const GameSummary& game : games) {
+    for (const std::string& folder : game.folder_tags.value_or(std::vector<std::string>())) {
+      if (!known(folders, folder)) folders.push_back(folder);
+    }
+  }
+  for (const GameSummary& game : games) {
+    for (const std::string& tag : game.tags) {
+      if (IsMeaningTag(tag) || known(folders, tag)) continue;
+      auto found = std::ranges::find_if(others, [&](const Tally& t) { return SameTag(t.name, tag); });
+      if (found == others.end()) {
+        others.push_back({tag, 0});
+        found = others.end() - 1;
+      }
+      ++found->count;
+    }
+  }
+  // As GET /v1/tags ranks them, so the Tags page agrees.
+  std::ranges::stable_sort(others, [](const Tally& a, const Tally& b) {
+    return a.count != b.count ? a.count > b.count : a.name < b.name;
+  });
+  for (const Tally& tag : others) folders.push_back(tag.name);
+  return folders;
+}
+
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, bool apps_in_all) {
+  const auto is_folder = [&](const std::string& tag) {
+    return std::ranges::any_of(games, [&](const GameSummary& game) {
+      return std::ranges::any_of(game.folder_tags.value_or(std::vector<std::string>()),
+                                 [&](const std::string& f) { return SameTag(f, tag); });
+    });
+  };
+  std::vector<LibraryTag> tags;
+  for (const std::string& tag : TagOrder(games)) tags.push_back({QString::fromStdString(tag), 0, is_folder(tag)});
+  for (const GameSummary& game : games) {
+    if (!GameFilterProxy::MatchesKey(game, key, apps_in_all)) continue;
+    for (LibraryTag& tag : tags) {
+      if (std::ranges::any_of(game.tags, [&](const std::string& t) { return SameTag(t, tag.tag.toStdString()); }))
+        ++tag.count;
+    }
+  }
+  // A tag no game under the filter has is left out, unless it's a folder tag.
+  std::erase_if(tags, [](const LibraryTag& t) { return t.count == 0 && !t.folder; });
+  return tags;
+}
+
+bool GameFilterProxy::MatchesSearch(const GameSummary& game, const QString& search) {
+  const QString name = QString::fromStdString(game.name);
+  const QStringList words = search.split(QChar(' '), Qt::SkipEmptyParts);
+  return std::ranges::all_of(words, [&](const QString& word) {
+    if (word.startsWith(QChar('#'))) return AnyTagStartsWith(game, word.mid(1));
+    return name.contains(word, Qt::CaseInsensitive) || AnyTagStartsWith(game, word);
+  });
+}
+
+bool GameFilterProxy::HasTags(const GameSummary& game, const QStringList& tags) {
+  return std::ranges::all_of(tags, [&](const QString& wanted) {
+    return std::ranges::any_of(game.tags, [&](const std::string& tag) {
+      return QString::fromStdString(tag).compare(wanted, Qt::CaseInsensitive) == 0;
+    });
+  });
+}
+
+void GameFilterProxy::SetTags(const QStringList& tags) {
+  if (tags == tags_) return;
+  ChangeFilter([&] { tags_ = tags; });
+}
+
 void GameFilterProxy::ChangeFilter(const std::function<void()>& change) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
   beginFilterChange();
@@ -294,7 +383,8 @@ const GameSummary* GameFilterProxy::GameAt(const QModelIndex& index) const {
 
 bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const {
   const GameSummary& game = library_->Games()[source_row];
-  if (!search_.isEmpty() && !QString::fromStdString(game.name).contains(search_, Qt::CaseInsensitive)) return false;
+  if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
+  if (!HasTags(game, tags_)) return false;
   if (!source_.empty()) return game.source == source_;
   return MatchesKey(game, key_, apps_in_all_);
 }

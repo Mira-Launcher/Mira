@@ -175,6 +175,7 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
     grid_->scrollToTop();
     emit SortChanged();
   });
+  connect(pill_, &FilterSortPill::TagsChanged, this, &LibraryPage::ApplyFilter);
   tabs_->SetTrailing(pill_);
   search_ = new QLineEdit(top);
   search_->setObjectName("library_search");
@@ -510,10 +511,12 @@ void LibraryPage::ApplyFilter() {
   // Rows the proxy drops leave the selection; nothing else moves.
   games_->SetFilterKey(FilterKey());
   games_->SetSearch(search_->text());
+  games_->SetTags(pill_->PickedTags());
   grid_->scrollToTop();  // a new filter or search starts at the top
   scroll_->verticalScrollBar()->setValue(0);
   UpdateOwnedMatches();
   RefreshContinue();  // only shown under All, Games or Apps with no search
+  UpdateCounts();     // they follow the picked tags, and the tags' counts the filter
   emit ShownChanged();
 }
 
@@ -526,13 +529,19 @@ void LibraryPage::LibraryChanged() {
 }
 
 void LibraryPage::UpdateCounts() {
+  const QStringList picked = pill_->PickedTags();
   for (const QString& key : pill_->FilterKeys()) {
-    const auto count = std::ranges::count_if(library_->Games(), [this, &key](const GameSummary& game) {
-      return GameFilterProxy::MatchesKey(game, key, apps_in_all_);
+    const auto count = std::ranges::count_if(library_->Games(), [this, &key, &picked](const GameSummary& game) {
+      return GameFilterProxy::MatchesKey(game, key, apps_in_all_) && GameFilterProxy::HasTags(game, picked);
     });
     pill_->SetCount(key, static_cast<int>(count));
     tabs_->SetCount(key, static_cast<int>(count));
   }
+  QList<FilterSortPill::TagCount> tags;
+  for (const LibraryTag& tag : TagsUnder(library_->Games(), FilterKey(), apps_in_all_)) {
+    tags.append({tag.tag, tag.count});
+  }
+  pill_->SetTags(tags);
 }
 
 void LibraryPage::UpdateEmptyState() {

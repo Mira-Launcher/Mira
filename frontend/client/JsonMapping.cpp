@@ -20,6 +20,16 @@ std::vector<std::string> ReadTags(const json& entry) {
   }
   return tags;
 }
+
+// `sort_root` and `folder_tags`, each null when it doesn't apply.
+void ReadSorting(const json& entry, std::string& sort_root, std::optional<std::vector<std::string>>& folder_tags) {
+  sort_root = entry.contains("sort_root") && entry["sort_root"].is_string() ? entry["sort_root"].get<std::string>()
+                                                                             : std::string();
+  folder_tags.reset();
+  if (entry.contains("folder_tags") && entry["folder_tags"].is_array()) {
+    folder_tags = ReadTags({{"tags", entry["folder_tags"]}});
+  }
+}
 }  // namespace
 
 ApiError ToApiError(const json& error) {
@@ -52,6 +62,7 @@ GameSummary ToGameSummary(const json& entry) {
   game.source = entry.value("source", std::string("scan"));
   game.running = entry.value("running", false);
   game.art = ToArtVersions(entry);
+  ReadSorting(entry, game.sort_root, game.folder_tags);
   return game;
 }
 

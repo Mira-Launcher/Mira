@@ -80,6 +80,23 @@ private:
   QTimer* launch_tick_ = nullptr;  // animates the launching tiles' dots
 };
 
+// A user tag across the library: its first spelling, how many games under a filter have it
+// (ignoring case), and whether it's a folder tag.
+struct LibraryTag {
+  QString tag;
+  int count = 0;
+  bool folder = false;
+};
+
+// The library's tags in the Tags page's order, which every list of tags follows: folder tags first,
+// in their order (even with no games yet), then the rest by how many games have each, then by
+// name. Spelled as first seen; the tags Mira gives a meaning to aren't listed.
+std::vector<std::string> TagOrder(const std::vector<GameSummary>& games);
+
+// The tags of the games under filter `key`, for picking from, in TagOrder. The tags Mira gives a
+// meaning to aren't listed.
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, bool apps_in_all);
+
 // One view's slice of the library: a filter key ("all", "hidden", a status,
 // ...), a search, optionally one source, and the sidebar's sort.
 class GameFilterProxy : public QSortFilterProxyModel {
@@ -91,9 +108,17 @@ public:
   // Whether `game` belongs under filter `key`. Shared with the filter counts.
   // `apps_in_all`: whether All lists apps too, not only games.
   static bool MatchesKey(const GameSummary& game, const QString& key, bool apps_in_all = true);
+  // Whether `game` matches every word of `search`: a plain word is in its name or starts one of its
+  // tags, a "#word" starts one of its tags. The tags Mira gives a meaning to (pinned, hidden, app)
+  // never match, since they have filters of their own.
+  static bool MatchesSearch(const GameSummary& game, const QString& search);
+  // Whether `game` has every one of `tags`, ignoring case.
+  static bool HasTags(const GameSummary& game, const QStringList& tags);
 
   void SetFilterKey(const QString& key);
   void SetSearch(const QString& text);
+  // Only games with all of these tags; empty for any.
+  void SetTags(const QStringList& tags);
   void SetAppsInAll(bool apps_in_all);
   // Only this source's games, hidden ones included; empty for every source.
   void SetSource(const std::string& source);
@@ -113,6 +138,7 @@ private:
   GameLibraryModel* library_;
   QString key_ = "all";
   QString search_;
+  QStringList tags_;
   bool apps_in_all_ = true;
   std::string source_;
   std::string sort_key_ = "name";

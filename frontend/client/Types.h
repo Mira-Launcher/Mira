@@ -56,6 +56,11 @@ struct GameSummary {
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
   std::optional<ArtVersions> art;
+  // The library folder (as library_roots spells it) whose folders this game is sorted into by
+  // tag; empty when its folder never moves. `folder_tags` are that folder's folder tags, unset
+  // while it isn't sorted (docs/api.md, Folders by tag).
+  std::string sort_root;
+  std::optional<std::vector<std::string>> folder_tags;
 
   bool operator==(const GameSummary&) const = default;
 };
@@ -74,6 +79,17 @@ inline bool HasTag(const GameSummary& game, std::string_view tag) {
 }
 inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
 inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+inline bool IsMeaningTag(std::string_view tag) {
+  return tag == tags::kPinned || tag == tags::kHidden || tag == tags::kApp;
+}
+
+// Tags compared as mirad compares folder tags with them: ignoring ASCII case.
+inline bool SameTag(std::string_view a, std::string_view b) {
+  return std::ranges::equal(a, b, [](char x, char y) {
+    const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    return lower(x) == lower(y);
+  });
+}
 // An app is opened and runs; a game is played.
 inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
 inline const char* RunningLabel(const GameSummary& game) { return IsApp(game) ? "Running" : "Playing"; }
