@@ -203,8 +203,10 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
                                              : StatusLabel(status));
   }
 
+  bool marked = false;
   if (show_source_mark_) {
     if (const SourceInfo* source = FindSourceInfo(index.data(SourceRole).toString())) {
+      marked = true;
       const QRect mark(rect.left() + 6, rect.top() + 6, 20, 20);
       painter->setPen(Qt::NoPen);
       painter->setBrush(source->color);
@@ -218,7 +220,7 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     }
   }
 
-  if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty() && !show_source_mark_) {
+  if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty() && !marked) {
     QFont tier_font = option.font;
     tier_font.setWeight(QFont::Bold);
     tier_font.setPixelSize(10);
