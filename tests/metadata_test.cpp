@@ -72,7 +72,9 @@ TEST_CASE("metadata/*.json files are imported into the cache once, with their ar
   fs::create_directories(dir / "metadata");
   fs::create_directories(dir / "artwork" / "celeste");
   std::ofstream(dir / "artwork" / "celeste" / "cover.png") << "png";
-  std::ofstream(dir / "metadata" / "celeste.json") << R"({"artwork": {"file": "cover.png", "content_type": "image/png"}})";
+  std::ofstream(dir / "artwork" / "celeste" / "header.jpg") << "jpg";
+  std::ofstream(dir / "metadata" / "celeste.json")
+      << R"({"artwork": {"file": "cover.png", "content_type": "image/png"}, "header": {"file": "header.jpg"}})";
   std::ofstream(dir / "metadata" / "broken.json") << "{ not json";
 
   store::MetadataStore cache(dir);
@@ -82,6 +84,7 @@ TEST_CASE("metadata/*.json files are imported into the cache once, with their ar
   REQUIRE(cache.ArtFor("celeste", "cover").has_value());
   CHECK(cache.ArtFor("celeste", "cover")->content_type == "image/png");
   CHECK(cache.ArtVersions("celeste").contains("cover"));
+  CHECK(cache.ArtFor("celeste", "header").has_value());
   CHECK_FALSE(fs::exists(dir / "metadata"));
 
   cache.Remove("celeste");

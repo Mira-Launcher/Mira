@@ -22,7 +22,7 @@ CREATE TABLE metadata(
 ) STRICT;
 CREATE TABLE artwork(
   id TEXT NOT NULL REFERENCES metadata ON DELETE CASCADE,
-  slot TEXT NOT NULL CHECK(slot IN ('cover', 'hero', 'logo', 'icon')),
+  slot TEXT NOT NULL CHECK(slot IN ('cover', 'hero', 'logo', 'icon', 'capsule', 'header')),
   file TEXT NOT NULL,
   content_type TEXT NOT NULL,
   version TEXT NOT NULL,
@@ -31,13 +31,18 @@ CREATE TABLE artwork(
 )sql",
 };
 
-// API slot name, and the key the fetcher keeps it under in the info.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kSlots = {{
+// API slot name, and the key the fetcher keeps it under in the info. Steam's
+// capsule and header are served too, but left out of ArtVersions' tiles.
+constexpr std::array<std::pair<std::string_view, std::string_view>, 6> kSlots = {{
     {"cover", "artwork"},
     {"hero", "hero"},
     {"logo", "logo"},
     {"icon", "icon"},
+    {"capsule", "capsule"},
+    {"header", "header"},
 }};
+
+bool InArtVersions(std::string_view slot) { return slot != "capsule" && slot != "header"; }
 
 std::string_view InfoKey(std::string_view slot) {
   for (const auto& [name, key] : kSlots) {
@@ -96,7 +101,7 @@ void MetadataStore::Load() {
   auto rows = db_.Prepare("SELECT id, slot, version FROM artwork");
   if (!rows) return;
   for (auto row = rows->Step(); row && *row; row = rows->Step()) {
-    versions_[rows->Text(0)][rows->Text(1)] = rows->Text(2);
+    if (InArtVersions(rows->Text(1))) versions_[rows->Text(0)][rows->Text(1)] = rows->Text(2);
   }
 }
 
@@ -173,7 +178,7 @@ Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info)
     if (auto done = add->Bind(1, id).Bind(2, slot).Bind(3, name).Bind(4, content_type).Bind(5, version).Run(); !done) {
       return done;
     }
-    versions[slot] = version;
+    if (InArtVersions(slot)) versions[slot] = version;
   }
   versions_[id] = std::move(versions);
   return {};
