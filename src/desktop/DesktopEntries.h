@@ -8,6 +8,7 @@
 #include "config/Config.h"
 #include "core/Result.h"
 #include "model/Types.h"
+#include "store/MetadataStore.h"
 
 namespace mira::desktop {
 
@@ -23,7 +24,7 @@ namespace mira::desktop {
 // else in the directory.
 class DesktopEntries {
 public:
-  explicit DesktopEntries(config::Config& config);
+  DesktopEntries(config::Config& config, const store::MetadataStore& cache);
 
   // Writes an entry per launchable game and removes the ones that no longer
   // apply (deleted, missing, broken, or still needing an install). A no-op
@@ -41,6 +42,7 @@ private:
   bool IsWanted(const model::Game& game) const;
 
   config::Config& config_;
+  const store::MetadataStore& cache_;
 };
 
 }  // namespace mira::desktop

@@ -20,7 +20,7 @@ src/
   config/     Schema (every setting declared once), Config (settings.toml and frontend.toml),
               Resolver (default -> file -> per-game lookup), KnownExePatterns and RunnerSources (plain data)
   model/      Game, RunnerBuild, Event, Candidate: plain structs with ToJson/FromJson
-  store/      GameStore and Database, backed by mira.db (SQLite)
+  store/      GameStore and MetadataStore, over SQLite (mira.db, cache.db)
   library/    Detector, Scanner, AutoSetup, AutoInstall, Watcher, ArchiveExtractor, WinePrefix,
               PrefixNaming, Relocate, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
   runner/     IRunner with Native, Proton, Wine and Steam runners, RunnerRegistry, Downloader,
@@ -57,6 +57,8 @@ All user state lives in `$XDG_CONFIG_HOME/mira` (normally `~/.config/mira`):
 ```
 settings.toml   backend settings, validated against config/Schema.cpp
 mira.db         the library (SQLite; mira.db.bak is a copy from the last start)
+cache.db        fetched store info and which artwork/ file is each art slot's (SQLite)
+artwork/        downloaded art, artwork/<id>/<slot>.*
 frontend.toml   GUI settings, stored and returned verbatim by the backend
 sessions/       records for sessions still running, or finished but not yet counted
 logs/           per-game output from the last launches

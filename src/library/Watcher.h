@@ -62,7 +62,7 @@ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;
-  metadata::FetchQueue own_fetches_;
+  metadata::FetchQueue own_fetches_{games_.Metadata()};
   metadata::FetchQueue* metadata_fetches_ = &own_fetches_;
   Lane* installs_ = nullptr;
 

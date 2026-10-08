@@ -333,9 +333,13 @@ TEST_CASE("A game record lists its cached art slots, with a version that changes
   const fs::path art_dir = metadata::ArtworkDir(server.config(), "celeste");
   fs::create_directories(art_dir);
   std::ofstream(art_dir / "cover.jpg") << "first";
-  fs::create_directories(metadata::MetadataFile(server.config(), "celeste").parent_path());
-  std::ofstream(metadata::MetadataFile(server.config(), "celeste"))
-      << R"({"artwork": {"file": "cover.jpg"}, "hero": {"file": "hero.jpg"}})";
+  const auto write_info = [&server] {
+    REQUIRE(server.games()
+                .Metadata()
+                .Write("celeste", nlohmann::json::parse(R"({"artwork": {"file": "cover.jpg"}, "hero": {"file": "hero.jpg"}})"))
+                .has_value());
+  };
+  write_info();
 
   httplib::Client client = server.Client();
   const auto art_of = [&client](const std::string& id) {
@@ -351,8 +355,7 @@ TEST_CASE("A game record lists its cached art slots, with a version that changes
   // A new image in the slot, as a refresh or a pick writes it: the file, then the metadata.
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   std::ofstream(art_dir / "cover.jpg") << "second, larger";
-  std::ofstream(metadata::MetadataFile(server.config(), "celeste"))
-      << R"({"artwork": {"file": "cover.jpg"}, "hero": {"file": "hero.jpg"}})";
+  write_info();
   const nlohmann::json second = art_of("celeste");
   REQUIRE(second.contains("cover"));
   CHECK(second["cover"] != first["cover"]);
@@ -621,13 +624,14 @@ TEST_CASE("GET /v1/games/{id}/artwork?type= serves the requested slot, 404s for 
     hero << "hero-bytes";
   }
   {
-    const fs::path metadata_file = metadata::MetadataFile(server.config(), "celeste");
-    fs::create_directories(metadata_file.parent_path());
-    std::ofstream meta(metadata_file);
-    meta << nlohmann::json{
-        {"artwork", {{"file", "cover.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
-        {"hero", {{"file", "hero.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
-    }.dump();
+    REQUIRE(server.games()
+                .Metadata()
+                .Write("celeste",
+                       nlohmann::json{
+                           {"artwork", {{"file", "cover.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
+                           {"hero", {{"file", "hero.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
+                       })
+                .has_value());
   }
 
   httplib::Client client = server.Client();
@@ -739,9 +743,10 @@ TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it 
   const fs::path artwork_dir = metadata::ArtworkDir(server.config(), "epic-Fortnite");
   fs::create_directories(artwork_dir);
   std::ofstream(artwork_dir / "cover.jpg") << "cover-bytes";
-  const fs::path metadata_file = metadata::MetadataFile(server.config(), "epic-Fortnite");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << R"({"artwork": {"file": "cover.jpg", "content_type": "image/jpeg"}})";
+  REQUIRE(server.games()
+              .Metadata()
+              .Write("epic-Fortnite", nlohmann::json::parse(R"({"artwork": {"file": "cover.jpg", "content_type": "image/jpeg"}})"))
+              .has_value());
 
   httplib::Client client = server.Client();
 
@@ -839,25 +844,23 @@ TEST_CASE("DELETE /v1/games/{id}?delete_metadata=true removes cached metadata/ar
   game.name = "Celeste";
   REQUIRE(server.games().Upsert(game).has_value());
 
-  const fs::path metadata_file = metadata::MetadataFile(server.config(), "celeste");
   const fs::path artwork_dir = metadata::ArtworkDir(server.config(), "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << R"({"artwork": {"file": "cover.png"}})";
   fs::create_directories(artwork_dir);
   std::ofstream(artwork_dir / "cover.png") << "not really a png";
+  store::MetadataStore& cache = server.games().Metadata();
+  REQUIRE(cache.Write("celeste", nlohmann::json::parse(R"({"artwork": {"file": "cover.png"}})")).has_value());
 
   // A sibling game's own metadata must survive untouched.
-  const fs::path sibling_metadata = metadata::MetadataFile(server.config(), "peak");
-  std::ofstream(sibling_metadata) << R"({})";
+  REQUIRE(cache.Write("peak", nlohmann::json::object()).has_value());
 
   httplib::Client client = server.Client();
   auto res = client.Delete("/v1/games/celeste?delete_metadata=true");
   REQUIRE(res != nullptr);
   CHECK(res->status == 200);
 
-  CHECK_FALSE(fs::exists(metadata_file));
+  CHECK_FALSE(cache.Has("celeste"));
   CHECK_FALSE(fs::exists(artwork_dir));
-  CHECK(fs::exists(sibling_metadata));
+  CHECK(cache.Has("peak"));
 }
 
 TEST_CASE("DELETE /v1/games/{id}?purge=true removes files, prefix, and metadata together") {
@@ -880,16 +883,14 @@ TEST_CASE("DELETE /v1/games/{id}?purge=true removes files, prefix, and metadata 
   game.data_dir = data_dir.string();
   REQUIRE(server.games().Upsert(game).has_value());
 
-  const fs::path metadata_file = metadata::MetadataFile(server.config(), "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << "{}";
+  REQUIRE(server.games().Metadata().Write("celeste", nlohmann::json::object()).has_value());
 
   httplib::Client client = server.Client();
   CHECK(AwaitJob(client, client.Delete("/v1/games/celeste?purge=true"))["state"] == "finished");
 
   CHECK_FALSE(fs::exists(install_path));
   CHECK_FALSE(fs::exists(data_dir));
-  CHECK_FALSE(fs::exists(metadata_file));
+  CHECK_FALSE(server.games().Metadata().Has("celeste"));
   CHECK_FALSE(server.games().Find("celeste").has_value());
 }
 

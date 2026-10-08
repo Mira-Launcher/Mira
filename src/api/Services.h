@@ -18,7 +18,6 @@
 #include "config/Config.h"
 #include "core/Lane.h"
 #include "core/Result.h"
-#include "metadata/ArtIndex.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
@@ -54,8 +53,7 @@ private:
 
 public:
   proc::ProcessSupervisor supervisor;
-  metadata::ArtIndex art_index{config};
-  metadata::FetchQueue fetches;
+  metadata::FetchQueue fetches{games.Metadata()};
   Lane tricks{"tricks", 1};  // one at a time: winetricks runs overlap badly in one prefix
   Lane artwork_selects{"artwork-select", 2};
   Lane artwork_thumbs{"artwork-thumbs", 4};

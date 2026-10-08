@@ -119,7 +119,7 @@ void SetDatabaseAside(const fs::path& file) {
 }
 }  // namespace
 
-GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)) {}
+GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)), metadata_(file_.parent_path()) {}
 
 Result<void> GameStore::Open() {
   fs::path backup = file_;
@@ -231,6 +231,7 @@ void GameStore::ReadAll() {
 }
 
 void GameStore::Load() {
+  metadata_.Load();
   std::lock_guard lock(mutex_);
   games_.clear();
   read_only_ = false;

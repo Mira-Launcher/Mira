@@ -454,7 +454,7 @@ Rewrites Mira's own desktop entries now.
 
 ## Metadata
 
-Store info and art are cached in the config directory (`metadata/<id>.json`, `artwork/<id>/<slot>.*`), never in the library database. Sources:
+Store info is cached in `cache.db` in the config directory, and art as files under `artwork/<id>/`, with `cache.db` pointing at each slot's file. All of it can be fetched again, so a damaged `cache.db` is started over. Sources:
 
 - **Steam games**: Steam's store API, review summary and CDN art (`cover`, `hero`, `capsule`, `header`), plus the ProtonDB tier. No key needed.
 - **GOG, itch and Amazon**: cover and hero from GOG Galaxy's games database, with nile's cached art as a fallback for Amazon.

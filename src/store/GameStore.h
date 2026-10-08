@@ -11,6 +11,7 @@
 
 #include "core/Result.h"
 #include "store/Database.h"
+#include "store/MetadataStore.h"
 #include "model/Types.h"
 
 namespace mira::store {
@@ -46,6 +47,9 @@ public:
 
   // The text of the last settings.toml that loaded cleanly, empty if none:
   // what Config::Load falls back to when the file is broken.
+  // Fetched info and art pointers, in cache.db beside the library; Load opens it too.
+  MetadataStore& Metadata() { return metadata_; }
+
   std::string SettingsSnapshot();
   void KeepSettingsSnapshot(const std::string& toml);
 
@@ -124,6 +128,7 @@ private:
   std::mutex folders_mutex_;
   std::filesystem::path file_;
   mutable Database db_;  // mutable for reads; guarded by mutex_
+  MetadataStore metadata_;
   std::vector<model::Game> games_;
   int batch_depth_ = 0;          // guarded by mutex_
   bool batch_failed_ = false;    // a write in the open batch failed; guarded by mutex_

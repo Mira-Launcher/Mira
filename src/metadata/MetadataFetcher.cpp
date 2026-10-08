@@ -41,12 +41,6 @@ std::unexpected<Error> NoGriddbKey(std::string message) {
              "Add a free SteamGridDB API key. Steam games don't need one.", Fix::Setting("steamgriddb.api_key"));
 }
 
-std::unexpected<Error> MetadataDirFailed(const fs::path& file, const std::error_code& ec) {
-  return Err("metadata_dir_failed",
-             std::format("couldn't create the folder for {}: {}", file.parent_path().string(), ec.message()),
-             kDiskHint);
-}
-
 // Every network call gets a hard ceiling: this runs unattended off a scan,
 // not a user-triggered download, so an unreachable or hanging endpoint must
 // never pile up a stuck background thread.
@@ -225,12 +219,6 @@ json GriddbCandidate(const json& item) {
 std::mutex& MetadataFileMutex() {
   static std::mutex mutex;
   return mutex;
-}
-
-// Written beside it and renamed over it: a reader (GET .../metadata) must
-// never see the file half-written.
-Result<void> WriteMetadataFile(const fs::path& file, const json& info) {
-  return WriteFileAtomic(file, info.dump(2, ' ', false, json::error_handler_t::replace), "metadata_write_failed");
 }
 
 void FetchGriddbSlot(const config::Config& config, const std::string& auth_header, std::int64_t griddb_id,
@@ -788,18 +776,8 @@ Result<json> SearchSteamGridDb(const config::Config& config, const std::string& 
   return matches;
 }
 
-std::filesystem::path MetadataFile(const config::Config& config, const std::string& game_id) {
-  return config.File().parent_path() / "metadata" / (game_id + ".json");
-}
-
 std::filesystem::path ArtworkDir(const config::Config& config, const std::string& game_id) {
   return config.File().parent_path() / "artwork" / game_id;
-}
-
-json ReadMetadataFile(const fs::path& file) {
-  std::ifstream in(file);
-  json old = in ? json::parse(in, nullptr, false) : json();
-  return old.is_object() ? old : json::object();
 }
 
 // Slots the user picked by hand carry over; FetchArtworkInto then leaves them be.
@@ -809,9 +787,9 @@ void CarryChosenSlots(const json& old, json& info) {
   }
 }
 
-Result<void> Fetch(const config::Config& config, const model::Game& game) {
+Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
   json info = {{"fetched_at", model::NowSeconds()}};
-  CarryChosenSlots(ReadMetadataFile(MetadataFile(config, game.id)), info);
+  CarryChosenSlots(cache.Read(game.id), info);
   const std::int64_t griddb_id = config::Resolver(config, game.overrides).GetInt("metadata.steamgriddb_id");
 
   // Checked before the steam: prefix below: an Epic game's runner_ref is
@@ -852,18 +830,13 @@ Result<void> Fetch(const config::Config& config, const model::Game& game) {
     }
   }
 
-  const fs::path metadata_file = MetadataFile(config, game.id);
-  std::error_code ec;
-  fs::create_directories(metadata_file.parent_path(), ec);
-  if (ec) return MetadataDirFailed(metadata_file, ec);
-
   // A pick made while this fetch ran stays.
   const std::lock_guard lock(MetadataFileMutex());
-  CarryChosenSlots(ReadMetadataFile(metadata_file), info);
-  return WriteMetadataFile(metadata_file, info);
+  CarryChosenSlots(cache.Read(game.id), info);
+  return cache.Write(game.id, info);
 }
 
-Result<void> FetchCover(const config::Config& config, const model::Game& game) {
+Result<void> FetchCover(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
   json info = {{"fetched_at", model::NowSeconds()}, {"source", game.source}};
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (!FetchStoreCover(config, game, info) && !api_key.empty()) {
@@ -883,34 +856,25 @@ Result<void> FetchCover(const config::Config& config, const model::Game& game) {
     return Err("no_artwork", "no cover found for \"" + game.name + "\"");
   }
 
-  const fs::path metadata_file = MetadataFile(config, game.id);
-  std::error_code ec;
-  fs::create_directories(metadata_file.parent_path(), ec);
-  if (ec) return MetadataDirFailed(metadata_file, ec);
-
   // Merged into any fuller record rather than replacing it.
   const std::lock_guard lock(MetadataFileMutex());
-  json merged = ReadMetadataFile(metadata_file);
+  json merged = cache.Read(game.id);
   for (const auto& [key, value] : info.items()) {
     if (!(merged.contains(key) && merged[key].is_object() && Value(merged[key], "chosen", false))) merged[key] = value;
   }
-  return WriteMetadataFile(metadata_file, merged);
+  return cache.Write(game.id, merged);
 }
 
-Result<void> SelectArtwork(const config::Config& config, const std::string& game_id, const std::string& slot,
-                           std::int64_t candidate_id) {
+Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
+                           const std::string& slot, std::int64_t candidate_id) {
   // One pick at a time, so two picks for one slot can't land their files and records in a
   // different order. The download itself runs without MetadataFileMutex, which every other
   // game's fetch also needs.
   static std::mutex picking;
   const std::lock_guard pick_lock(picking);
-  const fs::path metadata_file = MetadataFile(config, game_id);
   const auto read_info = [&]() -> Result<json> {
-    std::ifstream in(metadata_file);
-    if (!in) return Err("metadata_not_found", "no metadata cached for this game yet");
-    json read = json::parse(in, nullptr, false);
-    if (read.is_discarded()) return Err("metadata_not_found", "cached metadata is corrupt");
-    return read;
+    if (!cache.Has(game_id)) return Err("metadata_not_found", "no metadata cached for this game yet");
+    return cache.Read(game_id);
   };
   std::unique_lock lock(MetadataFileMutex());
   Result<json> read = read_info();
@@ -952,11 +916,11 @@ Result<void> SelectArtwork(const config::Config& config, const std::string& game
   if (!current) return std::unexpected(current.error());
   (*current)[key] = std::move(downloaded[key]);
   (*current)[key]["chosen"] = true;  // a refresh (Fetch) keeps it
-  return WriteMetadataFile(metadata_file, *current);
+  return cache.Write(game_id, *current);
 }
 
-Result<json> FetchCandidatePage(const config::Config& config, const std::string& game_id, const std::string& slot,
-                                int page) {
+Result<json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
+                                const std::string& slot, int page) {
   const std::string_view endpoint = slot == "cover"  ? "grids"
                                     : slot == "hero" ? "heroes"
                                     : slot == "logo" ? "logos"
@@ -966,13 +930,7 @@ Result<json> FetchCandidatePage(const config::Config& config, const std::string&
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (api_key.empty()) return NoGriddbKey("browsing SteamGridDB's art needs an API key");
 
-  const fs::path metadata_file = MetadataFile(config, game_id);
-  std::int64_t griddb_id = 0;
-  {
-    std::ifstream in(metadata_file);
-    const json info = in ? json::parse(in, nullptr, false) : json();
-    if (info.is_object()) griddb_id = Value(info, "steamgriddb_id", std::int64_t{0});
-  }
+  const std::int64_t griddb_id = Value(cache.Read(game_id), "steamgriddb_id", std::int64_t{0});
   if (griddb_id == 0) return Err("no_steamgriddb_match", "this game has no SteamGridDB match yet");
 
   const json response =
@@ -991,10 +949,8 @@ Result<json> FetchCandidatePage(const config::Config& config, const std::string&
   // look it up by id like any other.
   {
     const std::lock_guard lock(MetadataFileMutex());
-    std::ifstream in(metadata_file);
-    json info = in ? json::parse(in, nullptr, false) : json();
-    in.close();
-    if (info.is_object()) {
+    if (cache.Has(game_id)) {
+      json info = cache.Read(game_id);
       json& cached = info["art_candidates"][slot];
       if (!cached.is_array()) cached = json::array();
       for (const json& candidate : candidates) {
@@ -1003,7 +959,7 @@ Result<json> FetchCandidatePage(const config::Config& config, const std::string&
             cached, [id](const json& entry) { return Value(entry, "id", std::int64_t{0}) == id; });
         if (!known) cached.push_back(candidate);
       }
-      [[maybe_unused]] auto written = WriteMetadataFile(metadata_file, info);
+      [[maybe_unused]] auto written = cache.Write(game_id, info);
     }
   }
   return json{{"page", page}, {"total", Value(response, "total", 0)}, {"candidates", candidates}};
@@ -1038,13 +994,12 @@ std::filesystem::path CandidateThumbFile(const config::Config& config, const std
   return fs::file_size(file, ec) > 0 && !ec ? file : fs::path();
 }
 
-Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config, const std::string& game_id,
-                                        const std::string& slot, const std::vector<std::int64_t>& candidate_ids) {
+Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config, const store::MetadataStore& cache,
+                                        const std::string& game_id, const std::string& slot,
+                                        const std::vector<std::int64_t>& candidate_ids) {
   if (!IsSlotName(slot)) return Err("invalid_type", "unknown art slot");
-  std::ifstream in(MetadataFile(config, game_id));
-  if (!in) return Err("metadata_not_found", "no metadata cached for this game yet");
-  const json info = json::parse(in, nullptr, false);
-  if (info.is_discarded()) return Err("metadata_not_found", "cached metadata is corrupt");
+  if (!cache.Has(game_id)) return Err("metadata_not_found", "no metadata cached for this game yet");
+  const json info = cache.Read(game_id);
   const json candidates = info.contains("art_candidates") && info["art_candidates"].contains(slot)
                               ? info["art_candidates"][slot]
                               : json::array();

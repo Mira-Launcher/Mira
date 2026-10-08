@@ -301,7 +301,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
   // The application menu follows the library: a game that just became
   // launchable gains an entry, one that vanished loses it.
-  if (auto synced = desktop::DesktopEntries(config_).Sync(games_.All()); !synced) {
+  if (auto synced = desktop::DesktopEntries(config_, games_.Metadata()).Sync(games_.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
   }
 
@@ -338,7 +338,7 @@ int RetryBrokenProvisioning(config::Config& config, store::GameStore& games, api
   for (const model::Game& game : games.All()) {
     if (Reprovision(runners, games, events, game)) ++fixed;
   }
-  if (fixed > 0) (void)desktop::DesktopEntries(config).Sync(games.All());
+  if (fixed > 0) (void)desktop::DesktopEntries(config, games.Metadata()).Sync(games.All());
   return fixed;
 }
 
@@ -346,7 +346,7 @@ bool RetryBrokenProvisioning(config::Config& config, store::GameStore& games, ap
                              const std::string& id) {
   const std::optional<model::Game> game = games.Find(id);
   if (!game || !Reprovision(runner::RunnerRegistry(config), games, events, *game)) return false;
-  (void)desktop::DesktopEntries(config).Sync(games.All());
+  (void)desktop::DesktopEntries(config, games.Metadata()).Sync(games.All());
   return true;
 }
 

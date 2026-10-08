@@ -405,7 +405,7 @@ Result<void> RunInstall(config::Config& config, store::GameStore& games, api::Ev
     events.Publish("game.install.failed", api::FailedEvent({{"id", id}}, done.error()));
     return std::unexpected(done.error());
   }
-  if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
+  if (auto synced = desktop::DesktopEntries(config, games.Metadata()).Sync(games.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
   }
   events.Publish("game.updated", model::ToJson(*done));
