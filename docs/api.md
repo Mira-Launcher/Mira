@@ -168,6 +168,9 @@ The reply's `tracked` says whether `game.state` events will follow. It is false 
 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
 
+### `GET /v1/games/{id}/sessions?limit=`
+`{"sessions": [{"started_at", "ended_at", "duration_seconds", "exit_code", "signal", "incomplete"}, ...]}`: the game's finished play sessions, newest first, at most `limit` (default 50; `400 invalid_param` unless a whole number, 1 or more). `incomplete` is a session mirad restarted during, so how it ended is unknown. Removing the game removes its sessions.
+
 ### `GET /v1/games/{id}/log?lines=`
 `{"lines": [...]}`: the last `lines` (default 200; `400 invalid_param` unless a whole number, 1 or more) lines of the game's log, which holds its output plus `mira-run`'s own notes. Only the last 4 MB of the file is read. A game with no log returns an empty list. Each launch rotates the log to `.log.1`, unless it is over `launch.log_max_mb`.
 

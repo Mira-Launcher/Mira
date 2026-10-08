@@ -18,6 +18,17 @@ namespace mira::store {
 // The library, in an SQLite database (mira.db). One in-memory copy of every
 // game, guarded by one mutex, answers reads; every mutation is written to the
 // database in a transaction first and reaches the copy only once it has.
+// One finished play session, kept as the game's history.
+struct PlaySession {
+  std::string game_id;
+  std::int64_t started_at = 0;
+  std::int64_t ended_at = 0;
+  std::int64_t duration_seconds = 0;
+  int exit_code = -1;
+  int signal = 0;
+  bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
+};
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
@@ -75,6 +86,12 @@ public:
   // folders, so a scan never sees a folder mid-move and adds it as a new game.
   [[nodiscard]] std::unique_lock<std::mutex> LockFolders() { return std::unique_lock(folders_mutex_); }
 
+  // Update that also adds `session` to the game's history, in one transaction. A
+  // session already recorded (same game and start) is not added again.
+  Result<model::Game> FinishSession(const PlaySession& session, std::function<void(model::Game&)> mutator);
+  // A game's sessions, newest first, at most `limit`.
+  std::vector<PlaySession> Sessions(const std::string& id, int limit) const;
+
   Result<void> Remove(const std::string& id);
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
@@ -106,7 +123,7 @@ private:
   mutable std::mutex mutex_;
   std::mutex folders_mutex_;
   std::filesystem::path file_;
-  Database db_;
+  mutable Database db_;  // mutable for reads; guarded by mutex_
   std::vector<model::Game> games_;
   int batch_depth_ = 0;          // guarded by mutex_
   bool batch_failed_ = false;    // a write in the open batch failed; guarded by mutex_

@@ -110,6 +110,20 @@ TEST_CASE("Remove deletes a game and reports an error for an unknown id") {
   CHECK_FALSE(store.Remove("celeste").has_value());
 }
 
+TEST_CASE("a finished session is counted once and goes with its game") {
+  store::GameStore store(TempFile("games-sessions.db"));
+  store.Load();
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  const store::PlaySession session{.game_id = "celeste", .started_at = 100, .ended_at = 160, .duration_seconds = 60};
+  for (int i = 0; i < 2; ++i) {
+    REQUIRE(store.FinishSession(session, [](model::Game& game) { game.play_seconds += 60; }).has_value());
+  }
+  CHECK(store.Sessions("celeste", 10).size() == 1);
+  REQUIRE(store.Remove("celeste").has_value());
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  CHECK(store.Sessions("celeste", 10).empty());
+}
+
 TEST_CASE("a SaveBatch's changes reach the database together when it ends") {
   const fs::path file = TempFile("games-batch.db");
   store::GameStore store(file);

@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 1> kMigrations = {
+constexpr std::array<std::string_view, 2> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -60,6 +60,18 @@ CREATE TABLE settings_snapshot(
   id INTEGER PRIMARY KEY CHECK(id = 1),
   saved_at INTEGER NOT NULL,
   toml TEXT NOT NULL
+) STRICT;
+)sql",
+    R"sql(
+CREATE TABLE sessions(
+  game_id TEXT NOT NULL REFERENCES games ON DELETE CASCADE,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  exit_code INTEGER NOT NULL,
+  signal INTEGER NOT NULL,
+  incomplete INTEGER NOT NULL,
+  PRIMARY KEY(game_id, started_at)
 ) STRICT;
 )sql",
 };
@@ -434,6 +446,55 @@ Result<model::Game> GameStore::Update(const std::string& id,
   if (auto written = Transact([&] { return Write(updated); }); !written) return std::unexpected(written.error());
   *it = updated;
   return updated;
+}
+
+Result<model::Game> GameStore::FinishSession(const PlaySession& session,
+                                              std::function<void(model::Game&)> mutator) {
+  std::lock_guard lock(mutex_);
+  auto it = std::ranges::find(games_, session.game_id, &model::Game::id);
+  if (it == games_.end()) return Err("game_not_found", std::format("no game with id \"{}\"", session.game_id));
+  model::Game updated = *it;
+  mutator(updated);
+  updated.updated_at = model::NowSeconds();
+  const auto written = Transact([&]() -> Result<void> {
+    if (auto done = Write(updated); !done) return done;
+    auto insert = db_.Prepare(
+        "INSERT OR IGNORE INTO sessions(game_id, started_at, ended_at, duration_seconds, exit_code, signal, incomplete) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?)");
+    if (!insert) return std::unexpected(insert.error());
+    return insert->Bind(1, session.game_id)
+        .Bind(2, session.started_at)
+        .Bind(3, session.ended_at)
+        .Bind(4, session.duration_seconds)
+        .Bind(5, std::int64_t{session.exit_code})
+        .Bind(6, std::int64_t{session.signal})
+        .Bind(7, std::int64_t{session.incomplete})
+        .Run();
+  });
+  if (!written) return std::unexpected(written.error());
+  *it = updated;
+  return updated;
+}
+
+std::vector<PlaySession> GameStore::Sessions(const std::string& id, int limit) const {
+  std::lock_guard lock(mutex_);
+  std::vector<PlaySession> sessions;
+  if (!db_.IsOpen()) return sessions;
+  auto select = db_.Prepare(
+      "SELECT started_at, ended_at, duration_seconds, exit_code, signal, incomplete FROM sessions "
+      "WHERE game_id = ? ORDER BY started_at DESC LIMIT ?");
+  if (!select) return sessions;
+  select->Bind(1, id).Bind(2, std::int64_t{limit});
+  for (auto row = select->Step(); row && *row; row = select->Step()) {
+    sessions.push_back({.game_id = id,
+                        .started_at = select->Int(0),
+                        .ended_at = select->Int(1),
+                        .duration_seconds = select->Int(2),
+                        .exit_code = static_cast<int>(select->Int(3)),
+                        .signal = static_cast<int>(select->Int(4)),
+                        .incomplete = select->Int(5) != 0});
+  }
+  return sessions;
 }
 
 Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::string>& ids,

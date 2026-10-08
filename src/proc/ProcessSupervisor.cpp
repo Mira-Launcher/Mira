@@ -415,7 +415,13 @@ void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t start
                       .log_tail = {}};  // launched without mira-run, so no log
   const ExitOutcome outcome = ClassifyExit(info);
 
-  auto updated = games_.Update(game_id, [&](model::Game& game) {
+  const store::PlaySession session{.game_id = game_id,
+                                   .started_at = started_at,
+                                   .ended_at = ended_at,
+                                   .duration_seconds = played,
+                                   .exit_code = info.exit_code,
+                                   .signal = info.signal};
+  auto updated = games_.FinishSession(session, [&](model::Game& game) {
     game.play_seconds += played - credited;  // the rest was checkpointed already
     // Surfaced by the frontend as "last run didn't go well"; cleared on a
     // clean run so a one-off crash doesn't stick around forever.
@@ -508,7 +514,14 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
           ? ExitOutcome{.crashed = false, .code = {}, .error = "Mira restarted during this session, so how it ended is unknown"}
                         : ClassifyExit(info);
 
-  auto updated = games_.Update(game_id, [&](model::Game& game) {
+  const store::PlaySession session{.game_id = game_id,
+                                   .started_at = record.started_at,
+                                   .ended_at = record.ended_at,
+                                   .duration_seconds = record.duration_seconds,
+                                   .exit_code = record.exit_code,
+                                   .signal = record.signal,
+                                   .incomplete = record.incomplete};
+  auto updated = games_.FinishSession(session, [&](model::Game& game) {
     // Counted once even if mirad dies before the session file is removed and finds it again.
     if (record.started_at > game.last_session_at) {
       game.play_seconds += record.duration_seconds;
