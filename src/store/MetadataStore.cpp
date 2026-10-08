@@ -100,6 +100,7 @@ void MetadataStore::Load() {
   }
 }
 
+// One-time move from metadata/*.json (Mira 0.13 and earlier). Temporary: delete once users have upgraded.
 void MetadataStore::ImportFiles() {
   const fs::path old_dir = dir_ / "metadata";
   std::error_code ec;

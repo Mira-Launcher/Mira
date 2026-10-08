@@ -146,6 +146,7 @@ Result<void> GameStore::Open() {
   return {};
 }
 
+// One-time move from games.toml (Mira 0.13 and earlier). Temporary: delete once users have upgraded.
 void GameStore::ImportToml() {
   const fs::path toml_file = Dir() / "games.toml";
   std::error_code ec;
