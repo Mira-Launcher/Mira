@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 3> kMigrations = {
+constexpr std::array<std::string_view, 1> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -56,25 +56,30 @@ CREATE TABLE game_tags(
   tag TEXT NOT NULL,
   PRIMARY KEY(game_id, tag)
 ) STRICT;
+-- mira-run writes a record as a session starts and ends; mirad counts it.
+CREATE TABLE sessions(
+  game_id TEXT NOT NULL REFERENCES games ON DELETE CASCADE,
+  started_at INTEGER NOT NULL,
+  wrapper_pid INTEGER NOT NULL DEFAULT 0,
+  game_pid INTEGER NOT NULL DEFAULT 0,
+  finished INTEGER NOT NULL DEFAULT 0,
+  ended_at INTEGER NOT NULL DEFAULT 0,
+  duration_seconds INTEGER NOT NULL DEFAULT 0,
+  exit_code INTEGER NOT NULL DEFAULT -1,
+  signal INTEGER NOT NULL DEFAULT 0,
+  launch_error TEXT NOT NULL DEFAULT '',
+  post_exit_code INTEGER,
+  post_timed_out INTEGER NOT NULL DEFAULT 0,
+  incomplete INTEGER NOT NULL DEFAULT 0,
+  counted INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(game_id, started_at)
+) STRICT;
+CREATE INDEX sessions_uncounted ON sessions(counted) WHERE counted = 0;
 CREATE TABLE settings_snapshot(
   id INTEGER PRIMARY KEY CHECK(id = 1),
   saved_at INTEGER NOT NULL,
   toml TEXT NOT NULL
 ) STRICT;
-)sql",
-    R"sql(
-CREATE TABLE sessions(
-  game_id TEXT NOT NULL REFERENCES games ON DELETE CASCADE,
-  started_at INTEGER NOT NULL,
-  ended_at INTEGER NOT NULL,
-  duration_seconds INTEGER NOT NULL,
-  exit_code INTEGER NOT NULL,
-  signal INTEGER NOT NULL,
-  incomplete INTEGER NOT NULL,
-  PRIMARY KEY(game_id, started_at)
-) STRICT;
-)sql",
-    R"sql(
 CREATE TABLE ui_state(
   id INTEGER PRIMARY KEY CHECK(id = 1),
   state TEXT NOT NULL CHECK(json_valid(state))
@@ -242,7 +247,6 @@ void GameStore::Load() {
   std::lock_guard lock(mutex_);
   games_.clear();
   read_only_ = false;
-  batch_failed_ = false;
   ++revision_;
 
   if (auto opened = Open(); !opened) {
@@ -303,12 +307,6 @@ Result<void> GameStore::Transact(const std::function<Result<void>()>& write) {
     return Err("games_read_only", std::format("the library at {} couldn't be opened or imported", file_.string()),
                "See mirad's log for why, then restart mirad.");
   }
-  if (batch_depth_ > 0) {
-    if (batch_failed_) return Err("games_write_failed", "an earlier change in this batch failed");
-    auto written = write();
-    if (!written) batch_failed_ = true;
-    return written;
-  }
   Transaction transaction(db_);
   if (auto begun = transaction.Begin(); !begun) return begun;
   if (auto written = write(); !written) return written;
@@ -353,31 +351,6 @@ void GameStore::KeepUiState(const json& state) {
   if (auto done = keep->Bind(1, state.dump()).Run(); !done) {
     log::Warn("could not save the window state: {}", done.error().message);
   }
-}
-
-GameStore::SaveBatch::SaveBatch(GameStore& store) : store_(store) {
-  std::lock_guard lock(store_.mutex_);
-  if (store_.batch_depth_++ > 0 || store_.read_only_) return;
-  if (auto begun = store_.db_.Exec("BEGIN IMMEDIATE"); !begun) {
-    store_.batch_failed_ = true;
-    log::Error("could not start saving games: {}", begun.error().message);
-  }
-}
-
-GameStore::SaveBatch::~SaveBatch() {
-  std::lock_guard lock(store_.mutex_);
-  if (--store_.batch_depth_ > 0 || store_.read_only_) return;
-  ++store_.revision_;
-  if (!store_.batch_failed_) {
-    const auto committed = store_.db_.Exec("COMMIT");
-    if (committed) return;
-    log::Error("could not save games: {}", committed.error().message);
-  } else {
-    log::Error("could not save games: a change in the batch failed; dropping the batch");
-  }
-  store_.batch_failed_ = false;
-  (void)store_.db_.Exec("ROLLBACK");
-  store_.ReadAll();
 }
 
 std::vector<model::Game> GameStore::All() const {
@@ -488,8 +461,11 @@ Result<model::Game> GameStore::FinishSession(const PlaySession& session,
   const auto written = Transact([&]() -> Result<void> {
     if (auto done = Write(updated); !done) return done;
     auto insert = db_.Prepare(
-        "INSERT OR IGNORE INTO sessions(game_id, started_at, ended_at, duration_seconds, exit_code, signal, incomplete) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?)");
+        "INSERT INTO sessions(game_id, started_at, ended_at, duration_seconds, exit_code, signal, incomplete, "
+        "finished, counted) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 1) "
+        "ON CONFLICT(game_id, started_at) DO UPDATE SET ended_at = excluded.ended_at, "
+        "duration_seconds = excluded.duration_seconds, exit_code = excluded.exit_code, signal = excluded.signal, "
+        "incomplete = excluded.incomplete, finished = 1, counted = 1");
     if (!insert) return std::unexpected(insert.error());
     return insert->Bind(1, session.game_id)
         .Bind(2, session.started_at)
@@ -511,7 +487,7 @@ std::vector<PlaySession> GameStore::Sessions(const std::string& id, int limit) c
   if (!db_.IsOpen()) return sessions;
   auto select = db_.Prepare(
       "SELECT started_at, ended_at, duration_seconds, exit_code, signal, incomplete FROM sessions "
-      "WHERE game_id = ? ORDER BY started_at DESC LIMIT ?");
+      "WHERE game_id = ? AND finished = 1 ORDER BY started_at DESC LIMIT ?");
   if (!select) return sessions;
   select->Bind(1, id).Bind(2, std::int64_t{limit});
   for (auto row = select->Step(); row && *row; row = select->Step()) {

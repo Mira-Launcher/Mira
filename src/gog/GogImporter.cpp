@@ -131,7 +131,6 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
 }
 
 Result<library::ImportSummary> GogImporter::Import() {
-  const auto batch = games_.BatchSaves();
   library::ImportSummary summary;
   if (!config_.GetBool("gog.enabled")) return summary;
 

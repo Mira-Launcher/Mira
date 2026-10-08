@@ -150,7 +150,6 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
   if (launcher.id == "office") found = FindOffice(prefix);
 
   ImportSummary summary;
-  const auto batch = games.BatchSaves();
   const library::Detector detector(library::SettingsFromConfig(config));
   for (const Found& item : found) {
     const std::string slug = strings::Slugify(launcher.id == "ea" ? item.dir.filename().string() : item.ref);

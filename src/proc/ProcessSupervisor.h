@@ -64,17 +64,17 @@ public:
 
   // The normal path: `wrapper_pid` is an already-running mira-run, spawned
   // by the caller after a successful "ok" on its status pipe (see
-  // api::Server); `session_path` is where it writes the session record
+  // api::Server); `started_at` keys the session record it writes to mira.db
   // (proc::Session.h). pre/post_script aren't passed here -- mira-run owns
   // them, which is what makes them survive mirad dying mid-session.
-  Result<void> LaunchWrapped(const model::Game& game, pid_t wrapper_pid, std::filesystem::path session_path);
+  Result<void> LaunchWrapped(const model::Game& game, pid_t wrapper_pid, std::int64_t started_at);
 
   // Called once at mirad startup, before serving: closes out whatever a
   // previous mirad didn't get to see finish. A finished record is archived
   // immediately; a still-running mira-run is re-adopted (WatchReconciledLive)
   // so a relaunch can't duplicate it; anything else is closed out
-  // `incomplete`. Never fails outright -- a bad file is logged and skipped.
-  void Reconcile(const std::filesystem::path& sessions_dir);
+  // `incomplete`. Works from the records not counted yet. Never fails outright.
+  void Reconcile();
 
   // For a game Steam's own client launched (steam.launch_mode "steam"), which
   // Mira can't waitpid() on. Polls /proc for SteamAppId=<appid> or
@@ -134,10 +134,9 @@ private:
   // Starts `body` on a thread watching `game_id`; mutex_ must be held.
   void AdoptWatcher(const std::string& game_id, std::function<void()> body);
   void Watch(std::string game_id, pid_t pid, std::int64_t started_at, std::string post_script);
-  void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
-  void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::filesystem::path session_path);
-  void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
-                              const std::filesystem::path& session_path, bool requested_stop);
+  void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
+  void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
+  void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record, bool requested_stop);
   // Takes a finished game off every running list; true if Stop() had asked it to quit.
   bool Forget(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);

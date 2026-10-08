@@ -124,24 +124,6 @@ TEST_CASE("a finished session is counted once and goes with its game") {
   CHECK(store.Sessions("celeste", 10).empty());
 }
 
-TEST_CASE("a SaveBatch's changes reach the database together when it ends") {
-  const fs::path file = TempFile("games-batch.db");
-  store::GameStore store(file);
-  store.Load();
-  {
-    const auto batch = store.BatchSaves();
-    REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
-    REQUIRE(store.Upsert(MakeGame("hades", "Hades")).has_value());
-    CHECK(store.All().size() == 2);
-    store::GameStore meanwhile(file);
-    meanwhile.Load();
-    CHECK(meanwhile.All().empty());
-  }
-  store::GameStore reloaded(file);
-  reloaded.Load();
-  CHECK(reloaded.All().size() == 2);
-}
-
 TEST_CASE("games.toml is imported once, keeping its games' tags") {
   const fs::path file = TempFile("games-import.db");
   const fs::path toml = file.parent_path() / "games.toml";

@@ -46,7 +46,6 @@ EpicImporter::EpicImporter(config::Config& config, store::GameStore& games, api:
     : config_(config), games_(games), events_(events) {}
 
 Result<library::ImportSummary> EpicImporter::Import() {
-  const auto batch = games_.BatchSaves();
   library::ImportSummary summary;
   if (!config_.GetBool("epic.enabled")) return summary;
 

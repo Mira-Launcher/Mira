@@ -264,7 +264,7 @@ Result<void> ProcessSupervisor::Launch(const model::Game& game, const Command& c
 }
 
 Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wrapper_pid,
-                                              std::filesystem::path session_path) {
+                                              std::int64_t session_started_at) {
   {
     std::lock_guard lock(mutex_);
     if (running_.contains(game.id)) {
@@ -274,8 +274,8 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
     // so Stop()'s kill(-pid) reaches mira-run and the game together.
     running_[game.id] = wrapper_pid;
     prefixes_[game.id] = game.data_dir;
-    AdoptWatcher(game.id, [this, id = game.id, wrapper_pid, session_path = std::move(session_path)] {
-      WatchWrapped(id, wrapper_pid, session_path);
+    AdoptWatcher(game.id, [this, id = game.id, wrapper_pid, session_started_at] {
+      WatchWrapped(id, wrapper_pid, session_started_at);
     });
   }
 
@@ -447,8 +447,7 @@ void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t start
   RunScript(post_script, game_id, "post");
 }
 
-void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
-                                     std::filesystem::path session_path) {
+void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
   // WNOHANG, not a blocking wait: no playtime checkpointing needed (the
   // session record already survives mirad dying), but Stop()'s SIGKILL
   // escalation via kill_deadlines_ still needs servicing, which a blocking
@@ -475,7 +474,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
-  auto record = ReadSessionRecord(session_path);
+  auto record = ReadSessionRecord(games_.File(), game_id, started_at);
   const bool requested_stop = Forget(game_id);
   if (!record) {
     // mira-run vanished without writing a record (killed before it could
@@ -485,7 +484,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
     return;
   }
   CloseOutUnfinished(*record);
-  FinalizeWrappedSession(game_id, *record, session_path, requested_stop);
+  FinalizeWrappedSession(game_id, *record, requested_stop);
 }
 
 bool ProcessSupervisor::Forget(const std::string& game_id) {
@@ -498,9 +497,9 @@ bool ProcessSupervisor::Forget(const std::string& game_id) {
 }
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
-// record, update the store, publish the event, delete the session file.
+// record, update the store (which marks it counted), publish the event.
 void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
-                                               const std::filesystem::path& session_path, bool requested_stop) {
+                                               bool requested_stop) {
   const ExitInfo info{.exit_code = record.exit_code,
                       .signal = record.signal,
                       .requested_stop = requested_stop,
@@ -522,7 +521,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
                                    .signal = record.signal,
                                    .incomplete = record.incomplete};
   auto updated = games_.FinishSession(session, [&](model::Game& game) {
-    // Counted once even if mirad dies before the session file is removed and finds it again.
+    // Counted once, even for a record that comes back uncounted after a crash.
     if (record.started_at > game.last_session_at) {
       game.play_seconds += record.duration_seconds;
       game.last_session_at = record.started_at;
@@ -543,21 +542,16 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   AddExit(event, outcome, info, game_id, updated && updated->platform == model::Platform::Windows);
   events_.Publish("game.state", std::move(event));
   if (exit_hook_) exit_hook_(game_id);
-
-  // The session file only ever covered the gap until mirad got a chance to see it finished.
-  std::error_code ec;
-  std::filesystem::remove(session_path, ec);
 }
 
-void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid,
-                                            std::filesystem::path session_path) {
+void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
   // Not this mirad's child, so waitpid() can't work -- poll liveness instead.
   while (!stopping_.load(std::memory_order_relaxed) && ::kill(wrapper_pid, 0) == 0) {
     if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
 
-  auto record = ReadSessionRecord(session_path);
+  auto record = ReadSessionRecord(games_.File(), game_id, started_at);
   const bool requested_stop = Forget(game_id);
   if (!record) {
     log::Warn("re-adopted mira-run for {} exited with no readable session record ({})", game_id,
@@ -565,54 +559,35 @@ void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_p
     return;
   }
   CloseOutUnfinished(*record);
-  FinalizeWrappedSession(game_id, *record, session_path, requested_stop);
+  FinalizeWrappedSession(game_id, *record, requested_stop);
 }
 
-void ProcessSupervisor::Reconcile(const std::filesystem::path& sessions_dir) {
-  std::error_code ec;
-  if (!std::filesystem::exists(sessions_dir, ec)) return;
-
-  for (const auto& entry :
-       std::filesystem::directory_iterator(sessions_dir, std::filesystem::directory_options::skip_permission_denied,
-                                           ec)) {
-    if (ec) break;
-    if (!entry.is_regular_file(ec)) continue;
-    const std::filesystem::path path = entry.path();
-
-    auto record = ReadSessionRecord(path);
-    if (!record) {
-      // A truncated/corrupt leftover from a mirad that died mid-write of
-      // its own -- never block startup over it, just drop it and move on.
-      log::Warn("skipping unreadable session file {}: {}", path.string(), record.error().message);
-      std::error_code rm_ec;
-      std::filesystem::remove(path, rm_ec);
-      continue;
-    }
-
-    if (record->finished) {
+void ProcessSupervisor::Reconcile() {
+  ImportSessionFiles(games_.Dir() / "sessions", games_.File());
+  for (proc::SessionRecord& record : UncountedSessions(games_.File())) {
+    if (record.finished) {
       // mira-run had already finished and written the final record, but
-      // the mirad that was supposed to notice and archive it died first.
-      // Nothing to watch, so just finish the bookkeeping mira-run itself
-      // already completed the hard part of.
-      FinalizeWrappedSession(record->game_id, *record, path, /*requested_stop=*/false);
+      // the mirad that was supposed to notice and count it died first.
+      FinalizeWrappedSession(record.game_id, record, /*requested_stop=*/false);
       continue;
     }
 
-    const bool wrapper_alive = record->wrapper_pid > 0 && ::kill(record->wrapper_pid, 0) == 0;
+    const bool wrapper_alive = record.wrapper_pid > 0 && ::kill(record.wrapper_pid, 0) == 0;
     if (wrapper_alive) {
-      log::Info("re-adopting live session for {} (mira-run pid {})", record->game_id, record->wrapper_pid);
+      log::Info("re-adopting live session for {} (mira-run pid {})", record.game_id, record.wrapper_pid);
       std::lock_guard lock(mutex_);
-      running_[record->game_id] = record->wrapper_pid;
-      AdoptWatcher(record->game_id, [this, id = record->game_id, wrapper_pid = record->wrapper_pid, path] {
-        WatchReconciledLive(id, wrapper_pid, path);
+      running_[record.game_id] = record.wrapper_pid;
+      AdoptWatcher(record.game_id, [this, id = record.game_id, wrapper_pid = record.wrapper_pid,
+                                    started_at = record.started_at] {
+        WatchReconciledLive(id, wrapper_pid, started_at);
       });
     } else {
       log::Warn("session for {} was left behind by a mira-run (pid {}) that's no longer running; closing it out "
                "as incomplete",
-               record->game_id, record->wrapper_pid);
-      record->incomplete = true;
-      CloseOutUnfinished(*record);
-      FinalizeWrappedSession(record->game_id, *record, path, /*requested_stop=*/false);
+               record.game_id, record.wrapper_pid);
+      record.incomplete = true;
+      CloseOutUnfinished(record);
+      FinalizeWrappedSession(record.game_id, record, /*requested_stop=*/false);
     }
   }
 }

@@ -221,7 +221,7 @@ void Services::QueueMetadata(const std::vector<model::Game>& games) {
 }
 
 void Services::ReconcileSessions() {
-  supervisor.Reconcile(games.Dir() / "sessions");
+  supervisor.Reconcile();
   // A client that stayed open across a restart may still show games from the old daemon as
   // running. One event, not one per game, so a large library doesn't push the whole buffer out.
   json idle = json::array();
@@ -381,7 +381,6 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                if (fresh != builds.end()) {
                  const std::string to = fresh->Reference();
                  json moved = json::array();
-                 const auto batch = games.BatchSaves();
                  for (const model::Game& game : games.All()) {
                    if (game.runner_ref != replacing) continue;
                    if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {

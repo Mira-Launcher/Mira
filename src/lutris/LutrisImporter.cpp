@@ -201,7 +201,6 @@ LutrisImporter::LutrisImporter(config::Config& config, store::GameStore& games, 
     : config_(config), games_(games), events_(events) {}
 
 Result<LutrisImportSummary> LutrisImporter::Import() {
-  const auto batch = games_.BatchSaves();
   LutrisImportSummary summary;
   if (!config_.GetBool("lutris.enabled")) return summary;
 

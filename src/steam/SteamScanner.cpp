@@ -45,7 +45,6 @@ Result<SteamScanSummary> SteamScanner::Scan() {
   const std::map<std::string, AppActivity> activity = config_.GetBool("steam.import_playtime")
                                                           ? ReadAppActivity(*root, config_.GetString("steam.steamid64"))
                                                           : std::map<std::string, AppActivity>{};
-  const auto batch = games_.BatchSaves();
 
   for (const SteamApp& app : ListApps(*root)) {
     const std::string id = "steam-" + app.appid;

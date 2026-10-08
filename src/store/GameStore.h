@@ -35,9 +35,10 @@ public:
   explicit GameStore(std::filesystem::path file);
 
   // The directory the database lives in, the natural base for sibling
-  // state (sessions/, logs/) so it follows wherever a caller
+  // state (logs/) so it follows wherever a caller
   // (including a test) points the store, rather than hardcoding paths::UserDir().
   std::filesystem::path Dir() const { return file_.parent_path(); }
+  const std::filesystem::path& File() const { return file_; }
 
   // Never fails, like Config::Load. Opens (or creates) the database, checks it
   // and backs it up to <file>.bak; a damaged file is set aside and the backup
@@ -104,27 +105,13 @@ public:
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
 
-  // While one of these lives, every change joins one transaction, committed
-  // when the last one is destroyed (a failure is logged and the changes
-  // dropped). For an import that upserts many games.
-  class SaveBatch {
-  public:
-    explicit SaveBatch(GameStore& store);
-    ~SaveBatch();
-    SaveBatch(const SaveBatch&) = delete;
-    SaveBatch& operator=(const SaveBatch&) = delete;
-
-  private:
-    GameStore& store_;
-  };
-  [[nodiscard]] SaveBatch BatchSaves() { return SaveBatch(*this); }
 
 private:
   Result<void> Open();
   void ImportToml();
   Result<void> Write(const model::Game& game);
   Result<void> Delete(const std::string& id);
-  // Runs `write` in a transaction of its own, or in the open batch's.
+  // Runs `write` in a transaction of its own.
   Result<void> Transact(const std::function<Result<void>()>& write);
   void ReadAll();
 
@@ -134,8 +121,6 @@ private:
   mutable Database db_;  // mutable for reads; guarded by mutex_
   MetadataStore metadata_;
   std::vector<model::Game> games_;
-  int batch_depth_ = 0;          // guarded by mutex_
-  bool batch_failed_ = false;    // a write in the open batch failed; guarded by mutex_
   // The database couldn't be opened, or games.toml couldn't be imported: refuse
   // changes rather than lose the library. Guarded by mutex_.
   bool read_only_ = false;
