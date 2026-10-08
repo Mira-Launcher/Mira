@@ -430,8 +430,16 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
   fs::create_directories(tool_dir, ec);
   if (ec) return Err("install_dir_failed", ec.message());
 
-  const fs::path downloaded = tool_dir / asset.asset_name;
-  if (auto result = DownloadVerified(asset, downloaded); !result) return std::unexpected(result.error());
+  // Downloaded beside the installed tool, never over it, so a failed or cut-short download leaves it working.
+  const fs::path download_dir = tool_dir / ".downloading";
+  fs::remove_all(download_dir, ec);
+  fs::create_directories(download_dir, ec);
+  if (ec) return Err("install_dir_failed", ec.message());
+  const fs::path downloaded = download_dir / asset.asset_name;
+  if (auto result = DownloadVerified(asset, downloaded); !result) {
+    fs::remove_all(download_dir, ec);
+    return std::unexpected(result.error());
+  }
 
   const fs::path target = tool_dir / binary_name;
   if (IsZip(asset.asset_name) || IsTarball(asset.asset_name)) {
@@ -442,7 +450,7 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
     fs::remove_all(staging, ec);
     fs::create_directories(staging, ec);
     const Result<void> extracted = Extract(downloaded, staging);
-    fs::remove(downloaded, ec);
+    fs::remove_all(download_dir, ec);
     const auto found = extracted ? FindFileNamed(staging, binary_name) : std::nullopt;
     if (!found) {
       fs::remove_all(staging, ec);
@@ -461,10 +469,9 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
   }
 
   fs::rename(downloaded, target, ec);
-  if (ec) {
-    fs::remove(downloaded, ec);
-    return Err("install_failed", ec.message());
-  }
+  const std::error_code renamed = ec;
+  fs::remove_all(download_dir, ec);
+  if (renamed) return Err("install_failed", renamed.message());
   if (auto chmodded = Chmod(target); !chmodded) return std::unexpected(chmodded.error());
   return target;
 }

@@ -14,19 +14,6 @@ class QVariantAnimation;
 
 namespace mira_gui {
 
-// One line of text that shrinks with an ellipsis instead of pushing what's
-// beside it out of view; the full text is its tooltip while cut.
-class ElidedLabel : public QLabel {
-  Q_OBJECT
-
-public:
-  explicit ElidedLabel(const QString& text = {}, QWidget* parent = nullptr);
-  QSize minimumSizeHint() const override;
-
-protected:
-  void paintEvent(QPaintEvent* event) override;
-};
-
 // An on/off control drawn as a sliding switch, the settings rows' toggle.
 class Switch : public QAbstractButton {
   Q_OBJECT

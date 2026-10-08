@@ -7,6 +7,7 @@
 
 #include "config/Schema.h"
 #include "core/AtomicFile.h"
+#include "core/Files.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/TomlJson.h"
@@ -61,8 +62,7 @@ void Config::Load(const std::string& fallback) {
     log::Info("no settings at {}, writing defaults", file_.string());
     write_text(tomljson::ToToml(document_));
   } else {
-    std::ifstream in(file_);
-    const std::string text{std::istreambuf_iterator<char>(in), {}};
+    const std::string text = files::ReadFile(file_).value_or("");
     toml::parse_result parsed = toml::parse(text, file_.string());
     if (parsed) {
       apply(parsed.table(), text);
@@ -146,9 +146,9 @@ void Config::OnValidText(std::function<void(const std::string&)> callback) {
 
 Result<std::vector<std::string>> Config::SyncLocked() {
   const Schema& schema = Schema::Instance();
-  std::ifstream in(file_);
-  if (!in) return std::vector<std::string>{};
-  const std::string text{std::istreambuf_iterator<char>(in), {}};
+  const auto read = files::ReadFile(file_);
+  if (!read) return std::vector<std::string>{};
+  const std::string& text = *read;
   if (text == loaded_text_) return std::vector<std::string>{};
 
   toml::parse_result parsed = toml::parse(text, file_.string());
@@ -246,7 +246,6 @@ Result<void> Config::Set(std::string_view key, const json& value) {
 
 Result<void> Config::Patch(const json& patch) {
   const Schema& schema = Schema::Instance();
-  if (!patch.is_object()) return Err("invalid_patch", "expected a JSON object");
 
   // Validate the whole patch first: a rejected patch must change nothing.
   std::vector<std::string> problems;

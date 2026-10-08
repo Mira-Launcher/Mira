@@ -116,12 +116,9 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
     QColor panel_color = current.window;
     panel_color.setAlphaF(0.82);
     panel->setStyleSheet(
-        QString("QWidget#game_edit_panel { background: rgba(%1, %2, %3, %4); border: 1px solid "
-                "%5; border-radius: %6px; }")
-            .arg(panel_color.red())
-            .arg(panel_color.green())
-            .arg(panel_color.blue())
-            .arg(panel_color.alpha())
+        QString("QWidget#game_edit_panel { background: %1; border: 1px solid "
+                "%2; border-radius: %3px; }")
+            .arg(theme::ColorToQss(panel_color))
             .arg(current.border.name())
             .arg(current.radius_panel));
   };

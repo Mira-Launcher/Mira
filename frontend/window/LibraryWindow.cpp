@@ -1195,15 +1195,10 @@ QWidget* LibraryWindow::BuildGameEditOverlay() {
   // to central, same as any other widget added to a layout.
   auto* overlay = new mira_gui::ModalOverlay(nullptr);
   overlay->setObjectName("game_edit_overlay");
-  // Plain black, not theme::window -- the theme's dark surfaces already
+  // Plain black, not mira_gui::theme::window -- the theme's dark surfaces already
   // sit close to black, so tinting toward window barely dims anything.
-  QColor scrim(0, 0, 0, 150);
-  overlay->setStyleSheet(
-      QString("QWidget#game_edit_overlay { background: rgba(%1, %2, %3, %4); }")
-          .arg(scrim.red())
-          .arg(scrim.green())
-          .arg(scrim.blue())
-          .arg(scrim.alpha()));
+  QColor scrim(0, 0, 0, mira_gui::theme::Current().modal_scrim_alpha);
+  overlay->setStyleSheet(QString("QWidget#game_edit_overlay { background: %1; }").arg(mira_gui::theme::ColorToQss(scrim)));
   overlay->hide();
   overlay->on_backdrop_clicked = [this] { RequestCloseGameEdit(); };
 
@@ -1214,7 +1209,7 @@ QWidget* LibraryWindow::BuildGameEditOverlay() {
 
 QWidget* LibraryWindow::BuildSidebarCardOverlay() {
   auto* overlay = new mira_gui::ModalOverlay(nullptr);
-  overlay->scrim = QColor(0, 0, 0, 150);
+  overlay->scrim = QColor(0, 0, 0, mira_gui::theme::Current().modal_scrim_alpha);
   // The sidebar stays bright: it is the preview.
   overlay->clear = [this, overlay] {
     QWidget* sidebar = splitter_->widget(0);

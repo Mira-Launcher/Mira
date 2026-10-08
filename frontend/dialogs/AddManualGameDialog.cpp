@@ -2,20 +2,19 @@
 
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <filesystem>
 
 #include "../client/api/Games.h"
 #include "../app/Notify.h"
+#include "../widgets/PathField.h"
+#include "../widgets/PopupDialog.h"
 
 namespace mira_gui {
 
@@ -37,18 +36,9 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
 
   install_path_ = new QLineEdit(this);
   install_path_->setPlaceholderText("The game's own folder");
-  auto* browse_install = new QPushButton("Browse…", this);
-  connect(browse_install, &QPushButton::clicked, this, [this] {
-    const QString selected = QFileDialog::getExistingDirectory(this, "Select the game's folder");
-    if (!selected.isEmpty()) install_path_->setText(selected);
-  });
-  auto* install_row_widget = new QWidget(this);
-  auto* install_row = new QHBoxLayout(install_row_widget);
-  install_row->setContentsMargins(0, 0, 0, 0);
-  install_row->setSpacing(8);
-  install_row->addWidget(install_path_, /*stretch=*/1);
-  install_row->addWidget(browse_install);
-  form->addRow("Install path", install_row_widget);
+  form->addRow("Install path", PathRow(install_path_, [this] {
+    return QFileDialog::getExistingDirectory(this, "Select the game's folder");
+  }));
 
   exe_path_ = new QLineEdit(this);
   exe_path_->setPlaceholderText("Relative to the install path");
@@ -59,15 +49,20 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
     add_->setEnabled(!exe_path_->text().trimmed().isEmpty() &&
                      !install_path_->text().trimmed().isEmpty());
   });
-  auto* browse_exe = new QPushButton("Browse…", this);
-  connect(browse_exe, &QPushButton::clicked, this, &AddManualGameDialog::BrowseExe);
-  auto* exe_row_widget = new QWidget(this);
-  auto* exe_row = new QHBoxLayout(exe_row_widget);
-  exe_row->setContentsMargins(0, 0, 0, 0);
-  exe_row->setSpacing(8);
-  exe_row->addWidget(exe_path_, /*stretch=*/1);
-  exe_row->addWidget(browse_exe);
-  form->addRow("Executable", exe_row_widget);
+  form->addRow("Executable", PathRow(exe_path_, [this] {
+    const QString start =
+        install_path_->text().trimmed().isEmpty() ? QString() : install_path_->text();
+    const QString selected = QFileDialog::getOpenFileName(this, "Select the executable", start);
+    if (selected.isEmpty()) return selected;
+
+    // Picking the exe before the install path fills the install path from it.
+    if (install_path_->text().trimmed().isEmpty()) {
+      const QFileInfo info(selected);
+      install_path_->setText(info.absolutePath());
+      return info.fileName();
+    }
+    return RelativeIfInside(selected, install_path_->text().toStdString());
+  }));
 
   name_ = new QLineEdit(this);
   name_->setPlaceholderText("Defaults to the install folder's name");
@@ -87,41 +82,15 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
 
   layout->addLayout(form);
 
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
-  add_ = buttons->addButton("Add", QDialogButtonBox::AcceptRole);
+  add_ = AddDialogButtons(this, layout, "Add");
   add_->setEnabled(false);
   connect(add_, &QPushButton::clicked, this, &AddManualGameDialog::Submit);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-  layout->addWidget(buttons);
 }
 
 void AddManualGameDialog::Prefill(const QString& install_path, const QString& name) {
   install_path_->setText(install_path);
   name_->setText(name);
   exe_path_->setFocus();
-}
-
-void AddManualGameDialog::BrowseExe() {
-  const QString start =
-      install_path_->text().trimmed().isEmpty() ? QString() : install_path_->text();
-  const QString selected = QFileDialog::getOpenFileName(this, "Select the executable", start);
-  if (selected.isEmpty()) return;
-
-  // Picking the exe before the install path says which folder is the game's
-  // own, so filling install_path_ from it beats making the user go browse a
-  // second time for what BrowseExe just showed them.
-  if (install_path_->text().trimmed().isEmpty()) {
-    const QFileInfo info(selected);
-    install_path_->setText(info.absolutePath());
-    exe_path_->setText(info.fileName());
-    return;
-  }
-
-  std::error_code ec;
-  const std::filesystem::path relative =
-      std::filesystem::relative(selected.toStdString(), install_path_->text().toStdString(), ec);
-  exe_path_->setText(!ec && !relative.empty() ? QString::fromStdString(relative.string())
-                                              : selected);
 }
 
 void AddManualGameDialog::Submit() {

@@ -147,22 +147,16 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
   if (game.exe_path.empty()) return NoExecutable(game);
   if (game.data_dir.empty()) return NoPrefix(game);
 
-  const fs::path install_path = game.install_path;
-  const fs::path exe = install_path / game.exe_path;
+  const fs::path exe = fs::path(game.install_path) / game.exe_path;
 
   Command command;
   command.argv = {UmuRunPath()};
   std::ranges::move(WindowsProgram(exe), std::back_inserter(command.argv));
-  for (const std::string& arg : strings::SplitArgs(game.args)) {
-    if (!arg.empty()) command.argv.push_back(arg);
-  }
 
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
   ApplyGameId(command, game);
-  for (const auto& [key, value] : game.env) command.env[key] = value;  // game-specific wins
-
-  command.cwd = game.working_dir.empty() ? exe.parent_path() : install_path / game.working_dir;
+  ApplyGameLaunch(command, game, exe);
   return command;
 }
 

@@ -69,8 +69,11 @@ std::vector<std::string> MergedEnv(const Command& command) {
   return merged;
 }
 
-// argv/envp built before fork() and only indexed into afterwards; see the
-// deadlock note in RunAndWait.
+// Everything the child needs is built *before* fork(). mirad forks from
+// threads (the scan thread, httplib workers) while others run, and only
+// async-signal-safe calls are legal in the child: a malloc there deadlocks
+// forever if another thread happened to hold the arena lock at fork time, and
+// the parent then blocks too, waiting for an EOF the wedged child never sends.
 struct PreparedCommand {
   std::vector<std::string> env_strings;
   std::vector<char*> argv;
@@ -95,6 +98,20 @@ PreparedCommand Prepare(const Command& command) {
   return prepared;
 }
 
+// O_CLOEXEC pipe, then fork. Overlapping spawns would otherwise leak each
+// other's write ends and hold readers open until the other child exits.
+Result<pid_t> ForkWithPipe(int pipe_fds[2]) {
+  if (pipe2(pipe_fds, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
+  const pid_t pid = fork();
+  if (pid < 0) {
+    const std::string message = std::strerror(errno);
+    close(pipe_fds[0]);
+    close(pipe_fds[1]);
+    return Err("exec_fork_failed", message);
+  }
+  return pid;
+}
+
 }  // namespace
 
 Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
@@ -103,15 +120,9 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
 
   // The child reports a failed chdir or exec here; a successful exec closes it (O_CLOEXEC) unwritten.
   int report[2];
-  if (pipe2(report, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    const std::string message = std::strerror(errno);
-    close(report[0]);
-    close(report[1]);
-    return Err("exec_fork_failed", message);
-  }
+  const Result<pid_t> forked = ForkWithPipe(report);
+  if (!forked) return forked;
+  const pid_t pid = *forked;
   if (pid == 0) {
     // Child: async-signal-safe calls only.
     // Its own process group, so stopping the game can signal the whole tree:
@@ -168,15 +179,9 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
   PreparedCommand prepared = Prepare(command);
 
   int pipe_fds[2];
-  if (pipe2(pipe_fds, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    const std::string message = std::strerror(errno);
-    close(pipe_fds[0]);
-    close(pipe_fds[1]);
-    return Err("exec_fork_failed", message);
-  }
+  const Result<pid_t> forked = ForkWithPipe(pipe_fds);
+  if (!forked) return forked;
+  const pid_t pid = *forked;
   if (pid == 0) {
     // Child: async-signal-safe calls only. The write end is moved onto a
     // fixed, known fd (3) so the spawned process can be told about it as a
@@ -199,36 +204,11 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
 Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
 
-  // Everything the child needs is built *before* fork(). mirad forks from
-  // threads (the scan thread, httplib workers) while others run, and only
-  // async-signal-safe calls are legal in the child: a malloc there deadlocks
-  // forever if another thread happened to hold the arena lock at fork time,
-  // and the parent then blocks forever too, since its read() waits for an
-  // EOF the wedged child will never deliver.
-  const std::vector<std::string> env_strings = MergedEnv(command);
-  std::vector<char*> argv;
-  argv.reserve(command.argv.size() + 1);
-  for (const std::string& arg : command.argv) argv.push_back(const_cast<char*>(arg.c_str()));
-  argv.push_back(nullptr);
-  std::vector<char*> envp;
-  envp.reserve(env_strings.size() + 1);
-  for (const std::string& entry : env_strings) envp.push_back(const_cast<char*>(entry.c_str()));
-  envp.push_back(nullptr);
-  const std::string cwd = command.cwd.string();
-
-  // O_CLOEXEC: two RunAndWait calls can overlap (a scan thread provisioning
-  // while an HTTP request probes `wine --version`). Without it, one child
-  // inherits the other's write end and holds the reader open until it exits.
+  const PreparedCommand prepared = Prepare(command);
   int pipe_fds[2];
-  if (pipe2(pipe_fds, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    const std::string message = std::strerror(errno);
-    close(pipe_fds[0]);
-    close(pipe_fds[1]);
-    return Err("exec_fork_failed", message);
-  }
+  const Result<pid_t> forked = ForkWithPipe(pipe_fds);
+  if (!forked) return std::unexpected(forked.error());
+  const pid_t pid = *forked;
 
   if (pid == 0) {
     // Child: async-signal-safe calls only from here down. dup2 clears
@@ -239,8 +219,8 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     setpgid(0, 0);
     dup2(pipe_fds[1], STDOUT_FILENO);
     dup2(pipe_fds[1], STDERR_FILENO);
-    if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(127);
-    execvpe(argv[0], argv.data(), envp.data());
+    if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
+    execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);  // only reached if exec failed
   }
 
@@ -350,8 +330,7 @@ Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std:
 }
 
 Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir) {
-  std::string name = archive.filename().string();
-  std::ranges::transform(name, name.begin(), [](unsigned char c) { return std::tolower(c); });
+  const std::string name = strings::ToLower(archive.filename().string());
   const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") || name.find(".tar.") != std::string::npos;
 
   Command command;

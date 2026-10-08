@@ -7,16 +7,13 @@
 
 #include "core/Log.h"
 #include "epic/Legendary.h"
+#include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::epic {
 namespace {
 using nlohmann::json;
-
-void AddTag(std::vector<std::string>& tags, const std::string& tag) {
-  if (std::ranges::find(tags, tag) == tags.end()) tags.push_back(tag);
-}
 
 struct InstalledTitle {
   std::string app_name;
@@ -72,34 +69,18 @@ Result<library::ImportSummary> EpicImporter::Import() {
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    AddTag(game.tags, "epic");
+    library::AddTag(game.tags, "epic");
 
     // Legendary makes no prefix of its own. Provisioned on first sight or
     // after a failed attempt, not on every re-import.
-    if (library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
-      const model::Game provisioned = provisioner.ProvisionGame(game);
-      game.runner_ref = provisioned.runner_ref;
-      game.data_dir = provisioned.data_dir;
-      game.status = provisioned.status;
-      game.last_error = provisioned.last_error;
-    } else {
-      game.status = model::GameStatus::Ready;
-    }
+    library::ProvisionOnImport(game, existing, config_, games_, provisioner);
 
     auto result = games_.Merge(existing, game);
     if (!result) {
       log::Error("failed to save epic game {}: {}", id, result.error().message);
       continue;
     }
-    if (existing) {
-      ++summary.updated;
-      events_.Publish("game.updated", model::ToJson(game));
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-      events_.Publish("game.added", model::ToJson(game));
-    }
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
 
   // Titles the account owns but hasn't installed are deliberately NOT

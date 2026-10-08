@@ -2,6 +2,7 @@
 
 #include <QLabel>
 #include <QLocale>
+#include <QPainter>
 
 namespace mira_gui {
 
@@ -33,6 +34,23 @@ QWidget* MakeDivider(QWidget* parent, Qt::Orientation orientation, int length) {
     if (length > 0) divider->setFixedHeight(length);
   }
   return divider;
+}
+
+ElidedLabel::ElidedLabel(const QString& text, QWidget* parent) : QLabel(text, parent) {}
+
+QSize ElidedLabel::minimumSizeHint() const { return QSize(20, QLabel::minimumSizeHint().height()); }
+
+void ElidedLabel::paintEvent(QPaintEvent*) {
+  const QString shown = fontMetrics().elidedText(text(), Qt::ElideRight, width());
+  // Here rather than on resize, since setText isn't virtual.
+  setToolTip(shown == text() ? QString() : text());
+  QPainter painter(this);
+  painter.setPen(palette().color(QPalette::WindowText));
+  painter.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter, shown);
+}
+
+QString StatusDot(const QColor& color) {
+  return QString("<span style='color:%1'>●</span> ").arg(color.name());
 }
 
 }  // namespace mira_gui

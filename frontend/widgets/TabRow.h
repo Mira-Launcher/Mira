@@ -82,7 +82,4 @@ private:
   bool fitting_ = false;
 };
 
-// "● " in `color`, for a status line.
-QString StatusDot(const QColor& color);
-
 }  // namespace mira_gui

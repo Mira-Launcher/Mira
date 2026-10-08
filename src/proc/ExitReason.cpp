@@ -11,6 +11,8 @@
 #include <optional>
 #include <utility>
 
+#include "core/Strings.h"
+
 namespace mira::proc {
 namespace {
 
@@ -54,8 +56,7 @@ std::optional<std::string> WineUnhandled(std::string_view log) {
   // "page fault on read access to 0000000000000000": the address says nothing to a player.
   if (const std::size_t at = what.find(" to 0"); at != std::string_view::npos) what = what.substr(0, at);
 
-  std::string code(what.starts_with("exception 0x") ? what.substr(12) : what);
-  for (char& c : code) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  const std::string code = strings::ToLower(what.starts_with("exception 0x") ? what.substr(12) : what);
   static constexpr std::pair<std::string_view, std::string_view> kKnown[] = {
       {"c0000005", "access violation"},   {"c0000409", "stack buffer overrun"},
       {"c00000fd", "stack overflow"},     {"c0000374", "heap corruption"},

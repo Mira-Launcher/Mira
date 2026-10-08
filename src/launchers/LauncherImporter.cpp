@@ -136,7 +136,7 @@ std::string LookupUmuId(const std::string& store, const std::string& ref) {
 
 }  // namespace
 
-Result<ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
+Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
                              const Launcher& launcher) {
   const auto host = games.Find(GameId(launcher));
   if (!host || host->status != model::GameStatus::Ready) {
@@ -149,7 +149,7 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
   if (launcher.id == "ea") found = FindEa(prefix);
   if (launcher.id == "office") found = FindOffice(prefix);
 
-  ImportSummary summary;
+  library::ImportSummary summary;
   const library::Detector detector(library::SettingsFromConfig(config));
   for (const Found& item : found) {
     const std::string slug = strings::Slugify(launcher.id == "ea" ? item.dir.filename().string() : item.ref);
@@ -194,13 +194,7 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
       log::Error("failed to import {} game {}: {}", launcher.name, id, saved.error().message);
       continue;
     }
-    events.Publish(existing ? "game.updated" : "game.added", model::ToJson(game));
-    if (existing) {
-      ++summary.updated;
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-    }
+    library::RecordImported(summary, events, game, existing.has_value());
   }
 
   // Uninstalled through the launcher: handled like a scanned game whose
@@ -220,8 +214,8 @@ Result<ImportSummary> Import(config::Config& config, store::GameStore& games, ap
   return summary;
 }
 
-ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events) {
-  ImportSummary total;
+library::ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events) {
+  library::ImportSummary total;
   for (const Launcher& launcher : All()) {
     if (!Installed(games, launcher) || !config.GetBool(launcher.id + ".enabled")) continue;
     const auto summary = Import(config, games, events, launcher);

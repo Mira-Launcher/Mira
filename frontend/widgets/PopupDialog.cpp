@@ -3,7 +3,9 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
+#include <QBoxLayout>
 #include <QDesktopServices>
+#include <QDialogButtonBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -145,6 +147,14 @@ void PopupDialog::paintEvent(QPaintEvent*) {
                         tokens.radius_panel);
   painter.setClipPath(card);
   painter.fillPath(stripe, notify::AccentFor(level_));
+}
+
+QPushButton* AddDialogButtons(QDialog* dialog, QBoxLayout* layout, const QString& action_text) {
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, dialog);
+  QPushButton* action = buttons->addButton(action_text, QDialogButtonBox::AcceptRole);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+  layout->addWidget(buttons);
+  return action;
 }
 
 }  // namespace mira_gui

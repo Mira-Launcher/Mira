@@ -14,6 +14,7 @@
 #include "config/Config.h"
 #include "core/Command.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
@@ -97,16 +98,10 @@ std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_
 using RegValues = std::map<std::string, std::string>;
 std::map<std::string, RegValues> ReadRegSubkeys(const std::filesystem::path& reg_file, std::string_view parent);
 
-struct ImportSummary {
-  int added = 0;
-  int updated = 0;
-  std::vector<model::Game> added_games;
-};
-
-Result<ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
+Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
                              const Launcher& launcher);
 
 // Imports from every installed launcher; used by scans.
-ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events);
+library::ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events);
 
 }  // namespace mira::launchers

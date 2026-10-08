@@ -21,7 +21,6 @@ public:
   void Prefill(const QString& install_path, const QString& name);
 
 private:
-  void BrowseExe();
   void Submit();
 
   QLineEdit* install_path_ = nullptr;

@@ -31,8 +31,8 @@ std::map<std::string, std::int64_t> PlaytimeByAppid(const config::Config& config
 SteamScanner::SteamScanner(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<SteamScanSummary> SteamScanner::Scan() {
-  SteamScanSummary summary;
+Result<library::ImportSummary> SteamScanner::Scan() {
+  library::ImportSummary summary;
   if (!config_.GetBool("steam.enabled")) return summary;
 
   const auto root = FindSteamRoot(config_);
@@ -85,14 +85,7 @@ Result<SteamScanSummary> SteamScanner::Scan() {
       log::Error("failed to save steam game {}: {}", id, result.error().message);
       continue;
     }
-    if (existing) {
-      ++summary.updated;
-      events_.Publish("game.updated", model::ToJson(game));
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-      events_.Publish("game.added", model::ToJson(game));
-    }
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
   return summary;
 }

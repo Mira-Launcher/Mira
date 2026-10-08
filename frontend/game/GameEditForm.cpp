@@ -10,6 +10,7 @@
 #include "../settings/SettingEditor.h"
 #include "../settings/SettingsCard.h"
 #include "../widgets/KeyValueEdit.h"
+#include "../widgets/PathField.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TagEdit.h"
 #include "OverridesEditor.h"
@@ -503,12 +504,7 @@ void GameEditForm::BrowseExecutable() {
   const QString selected = QFileDialog::getOpenFileName(this, "Select executable", start_dir);
   if (selected.isEmpty()) return;
 
-  // Relative only inside the game's folder; a "../" path would break when the folder moves.
-  std::error_code ec;
-  const std::filesystem::path relative =
-      std::filesystem::relative(selected.toStdString(), install_path_, ec);
-  const bool inside = !ec && !relative.empty() && *relative.begin() != "..";
-  exe_combo_->setEditText(inside ? QString::fromStdString(relative.string()) : selected);
+  exe_combo_->setEditText(RelativeIfInside(selected, install_path_));
   exe_combo_->lineEdit()->setCursorPosition(0);
 }
 

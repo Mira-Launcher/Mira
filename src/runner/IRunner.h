@@ -27,6 +27,10 @@ std::unexpected<Error> NoExecutable(const model::Game& game);
 std::unexpected<Error> NoPrefix(const model::Game& game);
 std::unexpected<Error> PrefixCreateFailed(const model::Game& game, const std::error_code& ec);
 
+// The part of a launch every runner shares: the game's own args after the
+// program, its env on top of the runner's, and its working directory.
+void ApplyGameLaunch(Command& command, const model::Game& game, const std::filesystem::path& exe);
+
 // One way to run a game: native, Proton, Wine or Steam. Every umu/Proton
 // detail lives inside ProtonRunner; this interface knows none of it.
 class IRunner {

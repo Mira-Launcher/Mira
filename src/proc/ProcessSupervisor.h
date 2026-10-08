@@ -55,13 +55,6 @@ public:
   ProcessSupervisor(const ProcessSupervisor&) = delete;
   ProcessSupervisor& operator=(const ProcessSupervisor&) = delete;
 
-  // Starts the game and returns as soon as it's running. Publishes
-  // game.state running now, and exited later, with playtime recorded.
-  // post_script runs after the store/event are finalized. Fallback path
-  // used only when mira-run couldn't be found or spawned (see api::Server);
-  // the normal path is LaunchWrapped below.
-  Result<void> Launch(const model::Game& game, const Command& command, std::string post_script = "");
-
   // The normal path: `wrapper_pid` is an already-running mira-run, spawned
   // by the caller after a successful "ok" on its status pipe (see
   // api::Server); `started_at` keys the session record it writes to mira.db
@@ -80,7 +73,7 @@ public:
   // Mira can't waitpid() on. Polls /proc for SteamAppId=<appid> or
   // SteamGameId=<appid> in a process's environment, since the actual game
   // sits under a steam -> reaper -> pressure-vessel -> proton chain with no
-  // fixed pid. Reports running/exited like Launch(), minus a real exit
+  // fixed pid. Reports running/exited like LaunchWrapped(), minus a real exit
   // code/signal. Gives up quietly if nothing matches within a startup
   // window: Steam may still be launching, or the player cancelled.
   Result<void> TrackSteamLaunch(const model::Game& game, const std::string& appid,
@@ -120,8 +113,8 @@ public:
   // What holds a game's claim, or "" if nothing does.
   std::string ReservedFor(const std::string& game_id) const;
 
-  // Called with the game's id on its watcher thread after a Launch() or
-  // LaunchWrapped() game exits. Set once, before any launch.
+  // Called with the game's id on its watcher thread after a LaunchWrapped()
+  // game exits. Set once, before any launch.
   void SetExitHook(std::function<void(const std::string& game_id)> hook) { exit_hook_ = std::move(hook); }
 
 private:
@@ -133,7 +126,8 @@ private:
   };
   // Starts `body` on a thread watching `game_id`; mutex_ must be held.
   void AdoptWatcher(const std::string& game_id, std::function<void()> body);
-  void Watch(std::string game_id, pid_t pid, std::int64_t started_at, std::string post_script);
+  // SIGKILLs the game's cgroup once a Stop() deadline has passed.
+  void KillIfOverdue(const std::string& game_id, pid_t wrapper_pid);
   void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
   void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
   void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record, bool requested_stop);
@@ -150,7 +144,6 @@ private:
 
   mutable std::mutex mutex_;
   std::map<std::string, pid_t> running_;
-  std::map<std::string, std::string> prefixes_;  // game id -> data_dir, for Stop()
   std::map<std::string, ExternalMatch> external_;  // game id -> match, for Stop()/WatchExternal()
   std::map<std::string, std::int64_t> kill_deadlines_;  // game id -> when to SIGKILL
   std::map<std::string, std::string> reserved_;  // games claimed by Reserve(), with the purpose

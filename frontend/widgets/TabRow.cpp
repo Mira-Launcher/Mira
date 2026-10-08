@@ -233,8 +233,4 @@ void TabRow::Fit() {
   fitting_ = false;
 }
 
-QString StatusDot(const QColor& color) {
-  return QString("<span style='color:%1'>●</span> ").arg(color.name());
-}
-
 }  // namespace mira_gui

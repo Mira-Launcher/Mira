@@ -43,11 +43,8 @@ std::filesystem::path LegendaryConfigDir();
 runner::ToolStatus DetectLegendary(const config::Config& config);
 
 // Downloads legendary's latest matching GitHub release asset (a standalone
-// binary, not an archive) into ManagedLegendaryPath and marks it executable.
-// Reuses runner::ListReleases (config kind "legendary") rather than
-// runner::DownloadAndInstall, which assumes a tarball extracted into a
-// runner search path, and neither fits a single raw binary with nowhere else to
-// live.
+// binary, not an archive) into ManagedLegendaryPath via runner::InstallToolBinary.
+// Reuses runner::ListReleases (config kind "legendary").
 Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset);
 
 // Runs `legendary <args...>` using whatever DetectLegendary resolved.

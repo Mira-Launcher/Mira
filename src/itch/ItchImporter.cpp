@@ -9,16 +9,13 @@
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "library/Detector.h"
+#include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::itch {
 namespace {
 using nlohmann::json;
-
-void AddTag(std::vector<std::string>& tags, const std::string& tag) {
-  if (std::ranges::find(tags, tag) == tags.end()) tags.push_back(tag);
-}
 
 struct Cave {
   std::string cave_id;
@@ -90,7 +87,7 @@ Result<library::ImportSummary> ItchImporter::Import() {
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    AddTag(game.tags, "itch");
+    library::AddTag(game.tags, "itch");
 
     // butlerd's Cave doesn't say which file to run -- reuse Mira's own
     // executable detector against the real install folder, same as a
@@ -122,13 +119,7 @@ Result<library::ImportSummary> ItchImporter::Import() {
       log::Error("failed to save itch game {}: {}", id, result.error().message);
       continue;
     }
-    if (existing) {
-      ++summary.updated;
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-    }
-    events_.Publish(existing ? "game.updated" : "game.added", model::ToJson(game));
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
   return summary;
 }

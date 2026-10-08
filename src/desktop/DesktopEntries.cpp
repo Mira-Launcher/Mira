@@ -13,6 +13,7 @@
 
 #include "config/Resolver.h"
 #include "core/AtomicFile.h"
+#include "core/Files.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "launchers/Office.h"
@@ -90,12 +91,6 @@ void UpdateMimeCache(const fs::path& dir) {
   if (auto ran = runner::RunAndWait(command); !ran || ran->exit_code != 0) log::Info("update-desktop-database didn't run");
 }
 
-std::optional<std::string> ReadFile(const fs::path& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) return std::nullopt;
-  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-}
-
 }  // namespace
 
 DesktopEntries::DesktopEntries(config::Config& config, const store::MetadataStore& cache)
@@ -159,7 +154,7 @@ Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::opti
     return {};
   }
   const std::string content = Render(*game);
-  if (ReadFile(path) == content) return {};  // every write makes the desktop re-index its menu
+  if (files::ReadFile(path) == content) return {};  // every write makes the desktop re-index its menu
   if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) return written;
   if (!MimeTypes(*game).empty()) UpdateMimeCache(path.parent_path());
   return {};
@@ -195,7 +190,7 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
     const fs::path path = EntryPath(game.id);
     // Unchanged entries are left alone: every write makes the desktop re-index its menu.
     const std::string content = Render(game);
-    if (ReadFile(path) == content) continue;
+    if (files::ReadFile(path) == content) continue;
     if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) {
       log::Warn("could not write desktop entry {}: {}", path.string(), written.error().message);
     } else if (!MimeTypes(game).empty()) {

@@ -7,6 +7,7 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
@@ -18,17 +19,11 @@ namespace mira::lutris {
 // this same directory.
 std::optional<std::filesystem::path> FindLutrisDataDir(const config::Config& config);
 
-struct LutrisImportSummary {
-  int added = 0;
-  int updated = 0;
+struct LutrisImportSummary : library::ImportSummary {
   // Rows on a runner Mira leaves to something else (steam, flatpak, dosbox, ...).
   int other_runner = 0;
   // Wine/linux rows whose config can't be imported as-is (no prefix, relative exe, ...).
   int incomplete = 0;
-
-  // See ScanSummary::added_games (library/Scanner.h) for why a metadata
-  // fetch isn't triggered from in here.
-  std::vector<model::Game> added_games;
 };
 
 // Reads Lutris's own game database (pga.db, sqlite) and per-game YAML

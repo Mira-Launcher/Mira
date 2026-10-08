@@ -5,19 +5,11 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Result.h"
+#include "library/ImportSummary.h"
 #include "model/Types.h"
 #include "store/GameStore.h"
 
 namespace mira::steam {
-
-struct SteamScanSummary {
-  int added = 0;
-  int updated = 0;
-
-  // The newly-added games; see ScanSummary::added_games in
-  // library/Scanner.h for why a metadata fetch isn't triggered in here.
-  std::vector<model::Game> added_games;
-};
 
 // Detects installed Steam games and upserts them into the same GameStore
 // as everything else: a Steam game is a normal model::Game with
@@ -30,7 +22,7 @@ class SteamScanner {
 public:
   SteamScanner(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  Result<SteamScanSummary> Scan();
+  Result<library::ImportSummary> Scan();
 
 private:
   config::Config& config_;

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <unordered_set>
 
+#include "core/Strings.h"
 #include "model/Types.h"
 
 namespace mira::proc {
@@ -46,7 +47,7 @@ ProcessInfo Read(const std::string& pid) {
     info.argv0.shrink_to_fit();
   }
   std::ranges::replace(info.argv0, '\\', '/');
-  for (char& ch : info.argv0) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  info.argv0 = strings::ToLower(info.argv0);
   return info;
 }
 

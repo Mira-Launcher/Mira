@@ -1,6 +1,7 @@
 #include "api/Routes.h"
 
 #include <poll.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -72,7 +73,7 @@ void ApplyLaunchEnv(Command& command, const std::vector<std::string>& entries) {
   }
 }
 
-// Used by the Steam handoff and the no-mira-run fallback; otherwise mira-run runs the script.
+// Used by the Steam handoff; otherwise mira-run runs the script.
 Result<void> RunPreScriptInline(const std::string& pre_script) {
   if (pre_script.empty()) return {};
   Command script;
@@ -97,8 +98,8 @@ std::filesystem::path OwnBinaryDir() {
 struct WrapperStatus {
   bool ok = false;
   bool read_timed_out = false;  // mirad's own read deadline, distinct from mira-run's launch.pre_timeout_s
-  std::string code;             // "ok" / "pre_failed" / "pre_timeout"
-  std::string detail;           // session path (ok) or the pre script's captured output (pre_failed)
+  std::string code;             // "ok" / "pre_failed" / "pre_timeout" / "no_cgroup" / "exec_failed" / "no_status"
+  std::string detail;           // session path (ok), the pre script's output (pre_failed) or mira-run's message (no_cgroup)
 };
 
 // Blocks until mira-run writes its status and closes the pipe, or `timeout_s` passes.
@@ -107,6 +108,7 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
   std::string buffer;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_s);
   char chunk[4096];
+  bool closed = false;
   while (std::chrono::steady_clock::now() < deadline && buffer.size() < 65536) {
     const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
         deadline - std::chrono::steady_clock::now());
@@ -114,12 +116,17 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
     const int rc = ::poll(&pfd, 1, static_cast<int>(std::max<std::chrono::milliseconds::rep>(0, remaining.count())));
     if (rc <= 0) break;  // timed out, or poll itself failed
     const ssize_t n = ::read(fd, chunk, sizeof(chunk));
-    if (n <= 0) break;  // EOF: mira-run closed its end after writing everything
+    if (n <= 0) {  // EOF: mira-run closed its end after writing everything
+      closed = true;
+      break;
+    }
     buffer.append(chunk, static_cast<std::size_t>(n));
   }
   const auto newline = buffer.find('\n');
   if (newline == std::string::npos) {
-    result.read_timed_out = true;
+    // Closed with nothing said: mira-run never ran, e.g. systemd-run couldn't create its scope.
+    if (closed && buffer.empty()) result.code = "no_status";
+    else result.read_timed_out = true;
     return result;
   }
   result.code = buffer.substr(0, newline);
@@ -185,6 +192,104 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
   ApplyCommandWrappers(*command, wrappers);
   return command;
+}
+
+// Starts `command` under mira-run in its own systemd scope and tracks its session.
+// Sends the response: an error, or "running".
+void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& game, const Command& command,
+                        const std::string& pre_script, const std::string& post_script) {
+  const config::Resolver resolver(s.config, game.overrides);
+  // mira-run owns the session so it survives mirad dying.
+  const auto mira_run = runner::ResolveSiblingBinary(OwnBinaryDir(), "mira-run");
+  if (!mira_run) {
+    return SendError(res, 500, "mira_run_missing", "mira-run wasn't found next to mirad or on PATH");
+  }
+
+  const auto systemd_run = runner::FindOnPath("systemd-run");
+  if (!systemd_run) {
+    return SendError(res, 500, "systemd_missing", "launching games needs systemd (systemd-run wasn't found)");
+  }
+
+  const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
+  const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game.id);
+  Command wrapped;
+  wrapped.env = command.env;
+  wrapped.cwd = command.cwd;
+  wrapped.argv = {*mira_run,         "--game-id",       game.id,
+                  "--database",     s.games.File().string(), "--log-file", log_file.string(),
+                  "--log-max-mb",   std::to_string(resolver.GetInt("launch.log_max_mb")),
+                  "--status-fd",    "3",
+                  "--pre-timeout",  std::to_string(pre_timeout_s),
+                  "--post-timeout", std::to_string(resolver.GetInt("launch.post_timeout_s"))};
+  if (!pre_script.empty()) {
+    wrapped.argv.push_back("--pre");
+    wrapped.argv.push_back(pre_script);
+  }
+  if (!post_script.empty()) {
+    wrapped.argv.push_back("--post");
+    wrapped.argv.push_back(post_script);
+  }
+  if (resolver.GetBool("launch.gamemode")) wrapped.argv.push_back("--gamemode");
+  wrapped.argv.push_back("--");
+  wrapped.argv.insert(wrapped.argv.end(), command.argv.begin(), command.argv.end());
+  wrapped.argv.insert(wrapped.argv.begin(), {*systemd_run, "--user", "--scope", "--quiet", "--collect", "-p",
+                                             "Delegate=yes", "--description", "Mira: " + game.name, "--"});
+
+  int status_fd = -1;
+  auto wrapper_pid = runner::SpawnDetachedWithStatus(wrapped, status_fd);
+  if (!wrapper_pid) return SendError(res, 500, wrapper_pid.error());
+
+  const WrapperStatus status = ReadWrapperStatus(status_fd, pre_timeout_s + 10);
+  ::close(status_fd);
+  // Any status but "ok" means mira-run is exiting (or hung, on a read timeout): reap it here,
+  // since no watcher will.
+  if (!status.ok) {
+    if (status.read_timed_out) ::kill(*wrapper_pid, SIGKILL);
+    ::waitpid(*wrapper_pid, nullptr, 0);
+  }
+
+  if (status.read_timed_out) {
+    return SendError(res, 500, "wrapper_unresponsive", "mira-run did not respond in time");
+  }
+  if (status.code == "pre_failed") {
+    return SendError(res, 409,
+                     Error{"pre_launch_failed", "the pre-launch script failed: " + status.detail,
+                           "Its output is in the game's log.", Fix::Game(game.id, "log")});
+  }
+  if (status.code == "exec_failed") {
+    return SendError(res, 409, Error{"exec_failed", status.detail, "Check the executable and its permissions.",
+                                     Fix::Game(game.id, "exe")});
+  }
+  if (status.code == "no_status") {
+    return SendError(res, 500,
+                     Error{"cgroup_unavailable", "systemd-run couldn't start the game in its own scope",
+                           "Mira needs a systemd user session to track games.", {}});
+  }
+  if (status.code == "no_cgroup") {
+    return SendError(res, 500,
+                     Error{"cgroup_unavailable", status.detail,
+                           "Mira needs a systemd user session to track games.", {}});
+  }
+  if (status.code == "pre_timeout") {
+    return SendError(res, 409,
+                     Error{"pre_launch_timeout",
+                           std::format("the pre-launch script didn't finish within {}s", pre_timeout_s),
+                           "Make the script finish sooner, or allow it more time.",
+                           Fix::Setting("launch.pre_timeout_s")});
+  }
+  if (!status.ok) {
+    return SendError(res, 500, "wrapper_failed", std::format("unexpected mira-run status: {}", status.code));
+  }
+
+  std::int64_t session_started_at = 0;
+  if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at).ec !=
+      std::errc()) {
+    return SendError(res, 500, "wrapper_failed", std::format("mira-run sent no session start: {}", status.detail));
+  }
+  if (auto launched = s.supervisor.LaunchWrapped(game, *wrapper_pid, session_started_at); !launched) {
+    return SendError(res, 409, launched.error());
+  }
+  SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
 }
 
 }  // namespace
@@ -321,82 +426,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       s.WatchForInstall(game->id, library::InstallFolders(s.config, game->data_dir));
     }
 
-    // mira-run owns the session so it survives mirad dying. Without it the game is
-    // launched directly, with no session record.
-    const auto mira_run = runner::ResolveSiblingBinary(OwnBinaryDir(), "mira-run");
-    if (!mira_run) {
-      log::Warn("mira-run not found; launching {} directly with no session recording", game->id);
-      if (auto ran = RunPreScriptInline(pre_script); !ran) {
-        return SendError(res, 409, ran.error());
-      }
-      if (auto launched = s.supervisor.Launch(*game, *command, post_script); !launched) {
-        return SendError(res, 409, launched.error());
-      }
-      return SendJson(res, {{"status", "running"}, {"tracked", true}});
-    }
-
-    const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
-    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
-    Command wrapped;
-    wrapped.env = command->env;
-    wrapped.cwd = command->cwd;
-    wrapped.argv = {*mira_run,         "--game-id",       game->id,
-                    "--database",     s.games.File().string(), "--log-file", log_file.string(),
-                    "--log-max-mb",   std::to_string(resolver.GetInt("launch.log_max_mb")),
-                    "--status-fd",    "3",
-                    "--pre-timeout",  std::to_string(pre_timeout_s),
-                    "--post-timeout", std::to_string(resolver.GetInt("launch.post_timeout_s"))};
-    if (!pre_script.empty()) {
-      wrapped.argv.push_back("--pre");
-      wrapped.argv.push_back(pre_script);
-    }
-    if (!post_script.empty()) {
-      wrapped.argv.push_back("--post");
-      wrapped.argv.push_back(post_script);
-    }
-    if (resolver.GetBool("launch.gamemode")) wrapped.argv.push_back("--gamemode");
-    wrapped.argv.push_back("--");
-    wrapped.argv.insert(wrapped.argv.end(), command->argv.begin(), command->argv.end());
-
-    int status_fd = -1;
-    auto wrapper_pid = runner::SpawnDetachedWithStatus(wrapped, status_fd);
-    if (!wrapper_pid) return SendError(res, 500, wrapper_pid.error());
-
-    const WrapperStatus status = ReadWrapperStatus(status_fd, pre_timeout_s + 10);
-    ::close(status_fd);
-    // WNOHANG: on a read timeout mira-run may still be hung, and this thread must not
-    // block on it.
-    int wait_status = 0;
-    ::waitpid(*wrapper_pid, &wait_status, WNOHANG);
-
-    if (status.read_timed_out) {
-      return SendError(res, 500, "wrapper_unresponsive", "mira-run did not respond in time");
-    }
-    if (status.code == "pre_failed") {
-      return SendError(res, 409,
-                       Error{"pre_launch_failed", "the pre-launch script failed: " + status.detail,
-                             "Its output is in the game's log.", Fix::Game(game->id, "log")});
-    }
-    if (status.code == "pre_timeout") {
-      return SendError(res, 409,
-                       Error{"pre_launch_timeout",
-                             std::format("the pre-launch script didn't finish within {}s", pre_timeout_s),
-                             "Make the script finish sooner, or allow it more time.",
-                             Fix::Setting("launch.pre_timeout_s")});
-    }
-    if (!status.ok) {
-      return SendError(res, 500, "wrapper_failed", std::format("unexpected mira-run status: {}", status.code));
-    }
-
-    std::int64_t session_started_at = 0;
-    if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at).ec !=
-        std::errc()) {
-      return SendError(res, 500, "wrapper_failed", std::format("mira-run sent no session start: {}", status.detail));
-    }
-    if (auto launched = s.supervisor.LaunchWrapped(*game, *wrapper_pid, session_started_at); !launched) {
-      return SendError(res, 409, launched.error());
-    }
-    SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
+    LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script);
   });
 
   http.Post(R"(/v1/games/([^/]+)/stop)", [&s](const Request& req, Response& res) {
@@ -419,12 +449,13 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("exe_path") || !body["exe_path"].is_string()) {
+    const auto body = BodyObject(req, res, R"({"exe_path": "...", "args": "..."})");
+    if (!body) return;
+    if (!body->contains("exe_path") || !(*body)["exe_path"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"exe_path": "...", "args": "..."})");
     }
-    const std::string exe_path = body["exe_path"];
-    const std::string args = body.value("args", std::string());
+    const std::string exe_path = (*body)["exe_path"];
+    const std::string args = body->value("args", std::string());
 
     // A game with no usable prefix yet gets one now.
     std::error_code ec;
@@ -454,10 +485,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     auto command = PrepareCommand(s, *game, RunProgram{exe_path, args});
     if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
 
-    if (auto launched = s.supervisor.Launch(*game, *command); !launched) {
-      return SendError(res, 409, launched.error());
-    }
-    SendJson(res, {{"status", "running"}});
+    LaunchUnderWrapper(s, res, *game, *command, "", "");
   });
 
   // Describes a game's installer, or the file at ?path=.
@@ -538,11 +566,9 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     };
     // Optionally adopting what the game's installer put in its prefix (game.install_detected).
     if (!req.body.empty()) {
-      const json body = json::parse(req.body, nullptr, false);
-      if (!body.is_object()) {
-        return SendError(res, 400, "invalid_body", R"(expected {"install_path"?: "...", "exe_path"?: "..."})");
-      }
-      if (const std::string install_path = core::JsonString(body, "install_path"); !install_path.empty()) {
+      const auto body = BodyObject(req, res, R"({"install_path"?: "...", "exe_path"?: "..."})");
+      if (!body) return;
+      if (const std::string install_path = core::JsonString(*body, "install_path"); !install_path.empty()) {
         if (!paths::IsWithin(install_path, {game->data_dir})) {
           return SendError(res, 400, "invalid_install_path", "the install folder must be inside the game's prefix");
         }
@@ -554,7 +580,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         game->candidates = detected.candidates;
         game->confidence = detected.confidence;
       }
-      if (const std::string exe_path = core::JsonString(body, "exe_path"); !exe_path.empty()) {
+      if (const std::string exe_path = core::JsonString(*body, "exe_path"); !exe_path.empty()) {
         game->exe_path = exe_path;
       }
       for (model::Candidate& candidate : game->candidates) candidate.chosen = candidate.rel_path == game->exe_path;
@@ -609,16 +635,14 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     library::RelocateRequest request;
     if (!req.body.empty()) {
-      const json body = json::parse(req.body, nullptr, false);
-      if (body.is_discarded() || !body.is_object()) {
-        return SendError(res, 400, "invalid_body", R"(expected {"install_path"?: "...", "data_dir"?: "..."})");
-      }
+      const auto body = BodyObject(req, res, R"({"install_path"?: "...", "data_dir"?: "..."})");
+      if (!body) return;
       request.only_given = true;
-      if (body.contains("install_path") && body["install_path"].is_string()) {
-        request.install_path = std::filesystem::path(body["install_path"].get<std::string>());
+      if (body->contains("install_path") && (*body)["install_path"].is_string()) {
+        request.install_path = std::filesystem::path((*body)["install_path"].get<std::string>());
       }
-      if (body.contains("data_dir") && body["data_dir"].is_string()) {
-        request.data_dir = std::filesystem::path(body["data_dir"].get<std::string>());
+      if (body->contains("data_dir") && (*body)["data_dir"].is_string()) {
+        request.data_dir = std::filesystem::path((*body)["data_dir"].get<std::string>());
       }
     }
 
@@ -657,11 +681,12 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("verb") || !body["verb"].is_string()) {
+    const auto body = BodyObject(req, res, R"({"verb": "..."})");
+    if (!body) return;
+    if (!body->contains("verb") || !(*body)["verb"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"verb": "..."})");
     }
-    const std::string verb = body["verb"];
+    const std::string verb = (*body)["verb"];
     const std::string id = game->id;
 
     s.events.Publish("tricks.started", {{"id", id}, {"verb", verb}});

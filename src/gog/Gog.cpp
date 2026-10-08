@@ -12,19 +12,13 @@
 
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::gog {
 namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
-
-std::string Trim(std::string text) {
-  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  text.erase(text.begin(), std::ranges::find_if(text, not_space));
-  text.erase(std::ranges::find_if(text | std::views::reverse, not_space).base(), text.end());
-  return text;
-}
 
 std::optional<json> ReadAuthConfig(const config::Config& config) {
   std::ifstream file(AuthConfigPath(config));
@@ -91,7 +85,7 @@ Result<void> CheckReady(const config::Config& config) {
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
-  std::string code = Trim(pasted);
+  std::string code = strings::Trim(pasted);
   if (const size_t marker = code.find("code="); marker != std::string::npos) {
     code = code.substr(marker + 5);
     code = code.substr(0, code.find('&'));

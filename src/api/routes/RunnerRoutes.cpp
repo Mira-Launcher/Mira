@@ -79,14 +79,17 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post("/v1/runners/download", [&s](const Request& req, Response& res) {
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("kind") || !body.contains("tag")) {
+    constexpr std::string_view kShape = R"({"kind": "proton"|"wine", "tag": "...", "source": "<optional source id>"})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("kind") || !b.contains("tag")) {
       return SendError(res, 400, "invalid_body",
-                       R"(expected {"kind": "proton"|"wine", "tag": "...", "source": "<optional source id>"})");
+                       std::format("expected {}", kShape));
     }
-    const std::string kind = body["kind"];
-    const std::string tag = body["tag"];
-    auto family = runner::FamilyFor(s.config, kind, body.value("source", std::string()));
+    const std::string kind = b["kind"];
+    const std::string tag = b["tag"];
+    auto family = runner::FamilyFor(s.config, kind, b.value("source", std::string()));
     if (!family) return SendError(res, 404, family.error());
 
     auto releases = runner::ListFamilyReleases(*family);
@@ -112,11 +115,14 @@ void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post("/v1/runners/update", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("reference") || !body["reference"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"reference": "kind:name"})");
+    constexpr std::string_view kShape = R"({"reference": "kind:name"})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("reference") || !b["reference"].is_string()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    const std::string reference = body["reference"];
+    const std::string reference = b["reference"];
     const runner::RunnerRegistry registry(s.config);
     for (const auto& update : runner::FindRunnerUpdates(s.config, registry)) {
       if (update.build.Reference() != reference) continue;

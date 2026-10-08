@@ -22,11 +22,6 @@ bool MissingExecuteBit(const fs::path& path) {
   return (status.permissions() & fs::perms::owner_exec) == fs::perms::none;
 }
 
-std::string ToLower(std::string text) {
-  for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return text;
-}
-
 // A FUSE-less system needs "--appimage-extract-and-run" as the AppImage's
 // own first argument (see AppImage's own docs): /dev/fuse absent, or
 // neither fusermount nor fusermount3 on PATH, both mean no FUSE.
@@ -53,9 +48,8 @@ Result<Command> NativeRunner::BuildCommand(const model::Game& game,
                                             const std::optional<model::RunnerBuild>&) const {
   if (game.exe_path.empty()) return NoExecutable(game);
 
-  const std::filesystem::path install_path = game.install_path;
-  const std::filesystem::path exe = install_path / game.exe_path;
-  const std::string ext = ToLower(exe.extension().string());
+  const std::filesystem::path exe = std::filesystem::path(game.install_path) / game.exe_path;
+  const std::string ext = strings::ToLower(exe.extension().string());
 
   Command command;
   if (ext == ".sh" || ext == ".bash") {
@@ -86,11 +80,7 @@ Result<Command> NativeRunner::BuildCommand(const model::Game& game,
     command.argv.push_back(exe.string());
   }
 
-  for (const std::string& arg : strings::SplitArgs(game.args)) {
-    if (!arg.empty()) command.argv.push_back(arg);
-  }
-  command.env = game.env;
-  command.cwd = game.working_dir.empty() ? exe.parent_path() : install_path / game.working_dir;
+  ApplyGameLaunch(command, game, exe);
   return command;
 }
 

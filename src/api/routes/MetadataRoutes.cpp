@@ -65,11 +65,13 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
-    const json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.value("candidate_id", json()).is_number_integer()) {
+    const auto body = BodyObject(req, res, R"({"candidate_id": <id>})");
+    if (!body) return;
+    const json& b = *body;
+    if (!b.value("candidate_id", json()).is_number_integer()) {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_id\": <id>}");
     }
-    const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
+    const std::int64_t candidate_id = b["candidate_id"].get<std::int64_t>();
     s.StartJob(req, res, "artwork", id, "Choosing artwork",
                [&s, id, slot, candidate_id](JobRegistry::Progress&) -> Result<json> {
                  if (auto selected = metadata::SelectArtwork(s.config, s.games.Metadata(), id, slot, candidate_id); !selected) {
@@ -113,8 +115,9 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
-    const json body = json::parse(req.body, nullptr, false);
-    const json ids = body.is_object() ? body.value("candidate_ids", json()) : json();
+    const auto body = BodyObject(req, res, R"({"candidate_ids": [<id>, ...]})");
+    if (!body) return;
+    const json ids = body->value("candidate_ids", json());
     if (!ids.is_array() || ids.empty() || ids.size() > 64 ||
         !std::ranges::all_of(ids, [](const json& value) { return value.is_number_integer(); })) {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_ids\": [<id>, ...]}, 1 to 64 ids");
@@ -200,12 +203,15 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post(R"(/v1/games/([^/]+)/metadata/match)", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("steamgriddb_id") || !body["steamgriddb_id"].is_number_integer() ||
-        body["steamgriddb_id"].get<std::int64_t>() < 0) {
-      return SendError(res, 400, "invalid_body", R"(expected {"steamgriddb_id": <id, or 0 for the top match>})");
+    constexpr std::string_view kShape = R"({"steamgriddb_id": <id, or 0 for the top match>})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("steamgriddb_id") || !b["steamgriddb_id"].is_number_integer() ||
+        b["steamgriddb_id"].get<std::int64_t>() < 0) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    const std::int64_t id = body["steamgriddb_id"];
+    const std::int64_t id = b["steamgriddb_id"];
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
     auto game = s.games.Update(req.matches[1], [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
     if (!game) return SendError(res, 404, game.error());
@@ -215,8 +221,9 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
 
   // POST /v1/games/{id}/metadata/refresh for many games in one request, unannounced, as a job.
   http.Post("/v1/games/metadata/refresh", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    const auto ids = body.is_object() ? StringList(body, "ids") : std::nullopt;
+    const auto body = BodyObject(req, res, R"({"ids": [...]})");
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
     if (!ids) return SendError(res, 400, "invalid_body", R"(expected {"ids": [...]})");
     std::vector<model::Game> games;
     for (const std::string& id : *ids) {

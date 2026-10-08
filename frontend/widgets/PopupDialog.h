@@ -9,6 +9,8 @@ class QLabel;
 class QToolButton;
 class QVBoxLayout;
 class QHBoxLayout;
+class QBoxLayout;
+class QPushButton;
 
 namespace mira_gui {
 
@@ -59,5 +61,8 @@ private:
   QToolButton* close_button_ = nullptr;
   notify::Level level_;
 };
+
+// Cancel plus an accept-role `action_text` button, added to `layout`; returns the action button.
+QPushButton* AddDialogButtons(QDialog* dialog, QBoxLayout* layout, const QString& action_text);
 
 }  // namespace mira_gui

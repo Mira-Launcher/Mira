@@ -19,6 +19,9 @@ std::filesystem::path RuntimeDir();
 
 std::filesystem::path Home();
 
+// $name when set and non-empty, otherwise fallback.
+std::filesystem::path EnvOr(const char* name, const std::filesystem::path& fallback);
+
 std::filesystem::path SettingsFile();  // <UserDir>/settings.toml
 std::filesystem::path DatabaseFile();  // <UserDir>/mira.db
 

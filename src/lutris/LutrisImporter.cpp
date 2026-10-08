@@ -28,11 +28,6 @@ namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
 
-fs::path EnvOr(const char* name, const fs::path& fallback) {
-  const char* value = std::getenv(name);
-  return (value && *value) ? fs::path(value) : fallback;
-}
-
 // Lutris's own settings.py: CONFIG_DIR = get_user_config_dir()/lutris, but
 // falls back to DATA_DIR when that doesn't exist, which is where the
 // per-game YAML actually lives on a system that never had ~/.config/lutris.
@@ -188,7 +183,7 @@ std::optional<fs::path> FindLutrisDataDir(const config::Config& config) {
   if (const fs::path configured = config.GetPath("lutris.data_dir"); !configured.empty()) {
     candidates.push_back(configured);
   }
-  candidates.push_back(EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "lutris");
+  candidates.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "lutris");
 
   std::error_code ec;
   for (const fs::path& candidate : candidates) {
@@ -365,14 +360,7 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       log::Error("failed to save lutris game {}: {}", game.id, result.error().message);
       continue;
     }
-    if (existing) {
-      ++summary.updated;
-      events_.Publish("game.updated", model::ToJson(game));
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-      events_.Publish("game.added", model::ToJson(game));
-    }
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
 
   return summary;

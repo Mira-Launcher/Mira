@@ -39,21 +39,6 @@ void KeepSpaceWhenHidden(QWidget* widget) {
 
 }  // namespace
 
-// --- ElidedLabel ----------------------------------------------------------
-
-ElidedLabel::ElidedLabel(const QString& text, QWidget* parent) : QLabel(text, parent) {}
-
-QSize ElidedLabel::minimumSizeHint() const { return QSize(20, QLabel::minimumSizeHint().height()); }
-
-void ElidedLabel::paintEvent(QPaintEvent*) {
-  const QString shown = fontMetrics().elidedText(text(), Qt::ElideRight, width());
-  // Here rather than on resize, since setText isn't virtual.
-  setToolTip(shown == text() ? QString() : text());
-  QPainter painter(this);
-  painter.setPen(palette().color(QPalette::WindowText));
-  painter.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter, shown);
-}
-
 // --- Switch ---------------------------------------------------------------
 
 Switch::Switch(QWidget* parent) : QAbstractButton(parent) {
