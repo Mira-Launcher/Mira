@@ -64,30 +64,13 @@ sessions/       records for sessions still running, or finished but not yet coun
 logs/           per-game output from the last launches
 ```
 
-Settings are TOML so people can read and edit them. `Config` keeps them in memory behind a mutex and rewrites the file on every change. A `settings.toml` that fails to parse is renamed to `.bad` (`.bad.2` and on when one is already there), and the daemon goes back to the last settings that loaded, kept in `mira.db`, or to defaults when there are none. If the file can't be renamed, it is never saved over.
+`settings.toml` is TOML so people can edit it. A copy that fails to parse is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
 
-### mira.db
+**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game), and `settings_snapshot`. Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
-The library, owned by `store::GameStore` (`src/store/GameStore.cpp`). Only mirad opens it; the GUI and CLI go through the API. It runs in WAL mode with foreign keys on. Every change is written in a transaction before it reaches `GameStore`'s in-memory copy, which answers reads. A `SaveBatch` puts a bulk import's changes in one transaction.
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`. Everything in it can be fetched again, so a damaged one is started over.
 
-| Table | Holds |
-|---|---|
-| `games` | One row per `model::Game`. Scalar fields are columns; `runner_config`, `overrides`, `env` and `candidates` are JSON text. `status` is checked against the known statuses. |
-| `game_tags` | A game's tags in order. Removed with the game. |
-| `sessions` | Finished play sessions, keyed by game and start time so one is never counted twice. Removed with the game. |
-| `settings_snapshot` | The text of the last `settings.toml` that loaded. |
-
-At each start mirad runs `PRAGMA quick_check`, then writes a copy to `mira.db.bak` with `VACUUM INTO`. A database that fails the check, or won't open, is renamed to `.bad` and the backup is used.
-
-### cache.db
-
-Fetched store info and art pointers, owned by `store::MetadataStore`, for any id: a tracked game or a store title not installed yet. `metadata` holds each id's info as JSON. `artwork` says which file under `artwork/<id>/` is each slot's (`cover`, `hero`, `logo`, `icon`, and Steam's `capsule` and `header`), with a version made from the file's time and size that the API sends so clients refetch only changed art. Images stay files: desktop entries point at them, and the database stays small. Everything in it can be fetched again, so it has no backup, and a damaged `cache.db` is started over.
-
-### Changing the schema
-
-Each database has a list of SQL steps (`kMigrations` in its store), applied in order and counted by `PRAGMA user_version`. Add a step at the end; never edit one that has shipped. A database from a newer Mira is refused with `database_too_new` rather than opened.
-
-`games.toml` and `metadata/*.json`, from before the databases, are imported once on the first start and then renamed or removed. That code is temporary.
+Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. The `games.toml` and `metadata/*.json` imports are temporary.
 
 The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
 
