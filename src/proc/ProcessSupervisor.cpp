@@ -17,6 +17,7 @@
 
 #include "core/Log.h"
 #include "proc/ExitReason.h"
+#include "proc/Cgroup.h"
 #include "proc/ProcessIndex.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
@@ -96,13 +97,15 @@ std::set<pid_t> FindSteamProcesses(const std::string& appid) {
   return found;
 }
 
-// Signals a game's process group plus every process sharing its prefix.
-void SignalGame(pid_t pid, const std::string& data_dir, int signal_number) {
-  if (pid > 0) {
-    ::kill(-pid, signal_number);
-    ::kill(pid, signal_number);
-  }
-  for (pid_t found : FindPrefixProcesses(data_dir)) ::kill(found, signal_number);
+
+// The cgroup mira-run put the game in (its scope's "game" child); nullopt once mira-run is gone.
+std::optional<std::filesystem::path> WrappedGroup(pid_t wrapper_pid) {
+  const auto scope = cgroup::Of(wrapper_pid);
+  if (!scope) return std::nullopt;
+  std::filesystem::path group = cgroup::GameGroup(*scope);
+  std::error_code ec;
+  if (!std::filesystem::is_directory(group, ec)) return std::nullopt;  // not a mira-run scope (gone, or a reused pid)
+  return group;
 }
 
 bool AnyAlive(const std::set<pid_t>& pids) {
@@ -134,8 +137,8 @@ std::set<pid_t> MatchExternal(const ProcessIndex& index, const ExternalMatch& ma
 
 // Every pid whose WINEPREFIX/STEAM_COMPAT_DATA_PATH points at data_dir.
 //
-// The process group alone isn't enough, on Proton/Wine, setsid()/setpgid()
-// during startup leaves the group with just umu-run by the time a game is on screen
+// Finds a launcher's processes in a prefix Mira didn't start them in, where no cgroup
+// of Mira's holds them.
 
 std::set<pid_t> FindPrefixProcesses(const std::string& data_dir) {
   std::set<pid_t> found;
@@ -222,47 +225,6 @@ void ProcessSupervisor::AdoptWatcher(const std::string& game_id, std::function<v
   watchers_[game_id] = Watcher{std::move(thread), std::move(done)};
 }
 
-Result<void> ProcessSupervisor::Launch(const model::Game& game, const Command& command,
-                                       std::string post_script) {
-  {
-    std::lock_guard lock(mutex_);
-    if (running_.contains(game.id)) {
-      return Err("already_running", std::format("\"{}\" is already running", game.id));
-    }
-  }
-
-  auto pid = runner::SpawnDetached(command);
-  if (!pid) return std::unexpected(pid.error());
-
-  const std::int64_t started_at = model::NowSeconds();
-  {
-    std::lock_guard lock(mutex_);
-    running_[game.id] = *pid;
-    prefixes_[game.id] = game.data_dir;  // for Stop(), see FindPrefixProcesses
-    AdoptWatcher(game.id, [this, id = game.id, pid = *pid, started_at, post_script = std::move(post_script)] {
-      Watch(id, pid, started_at, post_script);
-    });
-  }
-
-  // Written now, not at exit: this is "when you last started playing", and
-  // recording it immediately means it survives the daemon dying mid-session.
-  auto stamped = games_.Update(game.id, [&](model::Game& stored) {
-    stored.last_played_at = started_at;
-  });
-  if (!stamped) {
-    log::Error("failed to record launch time for {}: {}", game.id, stamped.error().message);
-  }
-
-  log::Info("launched {} (pid {})", game.id, *pid);
-  // Full record (see the exit events below for why) so a listener never
-  // has to relist just to pick up last_played_at.
-  json event = stamped ? model::ToJson(*stamped) : json{{"id", game.id}};
-  event["state"] = "running";
-  event["pid"] = *pid;
-  events_.Publish("game.state", std::move(event));
-  return {};
-}
-
 Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wrapper_pid,
                                               std::int64_t session_started_at) {
   {
@@ -270,10 +232,7 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
     if (running_.contains(game.id)) {
       return Err("already_running", std::format("\"{}\" is already running", game.id));
     }
-    // wrapper_pid, not the game's own pid: it's the process group leader,
-    // so Stop()'s kill(-pid) reaches mira-run and the game together.
     running_[game.id] = wrapper_pid;
-    prefixes_[game.id] = game.data_dir;
     AdoptWatcher(game.id, [this, id = game.id, wrapper_pid, session_started_at] {
       WatchWrapped(id, wrapper_pid, session_started_at);
     });
@@ -295,7 +254,6 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
 
 Result<void> ProcessSupervisor::Stop(const std::string& game_id) {
   pid_t pid = 0;
-  std::string data_dir;
   std::optional<ExternalMatch> match;
   {
     std::lock_guard lock(mutex_);
@@ -304,9 +262,6 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id) {
       return Err("not_running", std::format("\"{}\" is not running", game_id));
     }
     pid = it->second;
-    if (const auto prefix = prefixes_.find(game_id); prefix != prefixes_.end()) {
-      data_dir = prefix->second;
-    }
     if (const auto external = external_.find(game_id); external != external_.end()) {
       match = external->second;
     }
@@ -319,18 +274,23 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id) {
               std::format("\"{}\" was launched but its process isn't confirmed yet. Try again shortly",
                           game_id));
   }
-  // Group (see runner::SpawnDetached's setpgid note) plus the prefix, plus
-  // (for a Steam-launched game) every pid FindSteamProcesses finds under its
-  // appid: that tree is Steam's own (reaper/pressure-vessel/proton/the game),
-  // not a child of mirad and not one shared process group, so the group
-  // signal above only ever reaches whichever single pid WatchExternal recorded.
-  const std::set<pid_t> in_prefix = FindPrefixProcesses(data_dir);
-  const std::set<pid_t> in_steam_tree = match ? FindExternal(*match) : std::set<pid_t>();
-  bool signalled = ::kill(-pid, SIGTERM) == 0 || ::kill(pid, SIGTERM) == 0;
-  for (pid_t found : in_prefix) { ::kill(found, SIGTERM); signalled = true; }
-  for (pid_t found : in_steam_tree) { ::kill(found, SIGTERM); signalled = true; }
-  if (!signalled) {
-    return Err("stop_failed", std::format("could not signal pid {}", pid));
+  if (match) {
+    // Group (see runner::SpawnDetached's setpgid note) plus every pid FindSteamProcesses
+    // finds under a Steam-launched game's appid: that tree is Steam's own
+    // (reaper/pressure-vessel/proton/the game), not a child of mirad and not one shared
+    // process group, so the group signal above only ever reaches whichever single pid
+    // WatchExternal recorded.
+    const std::set<pid_t> in_steam_tree = FindExternal(*match);
+    bool signalled = ::kill(-pid, SIGTERM) == 0 || ::kill(pid, SIGTERM) == 0;
+    for (pid_t found : in_steam_tree) { ::kill(found, SIGTERM); signalled = true; }
+    if (!signalled) {
+      return Err("stop_failed", std::format("could not signal pid {}", pid));
+    }
+  } else {
+    // A mira-run game: everything it started is in its cgroup. No cgroup means mira-run is gone.
+    const auto group = WrappedGroup(pid);
+    if (!group) return Err("not_running", std::format("\"{}\" is not running", game_id));
+    cgroup::Signal(*group, SIGTERM);
   }
   {
     std::lock_guard lock(mutex_);
@@ -370,81 +330,15 @@ bool ProcessSupervisor::IsRunning(const std::string& game_id) const {
   return running_.contains(game_id);
 }
 
-void ProcessSupervisor::Watch(std::string game_id, pid_t pid, std::int64_t started_at,
-                              std::string post_script) {
-  int status = 0;
-  std::int64_t credited = 0;  // seconds already written to the store
-  while (!stopping_.load(std::memory_order_relaxed)) {
-    const pid_t result = ::waitpid(pid, &status, WNOHANG);
-    if (result == pid) break;                    // exited
-    if (result < 0) { status = -1; break; }      // vanished; treat as exited
-
-    // A game that ignores SIGTERM gets SIGKILL once its deadline passes.
-    {
-      std::lock_guard lock(mutex_);
-      const auto deadline = kill_deadlines_.find(game_id);
-      if (deadline != kill_deadlines_.end() && model::NowSeconds() >= deadline->second) {
-        log::Warn("{} ignored SIGTERM; sending SIGKILL", game_id);
-        const auto prefix = prefixes_.find(game_id);
-        SignalGame(pid, prefix == prefixes_.end() ? std::string() : prefix->second, SIGKILL);
-        kill_deadlines_.erase(deadline);
-      }
-    }
-
-    const std::int64_t elapsed = model::NowSeconds() - started_at;
-    if (elapsed - credited >= kCheckpointSeconds) {
-      const std::int64_t delta = elapsed - credited;
-      auto checkpoint = games_.Update(game_id, [&](model::Game& game) {
-        game.play_seconds += delta;
-      });
-      if (checkpoint) credited = elapsed;
-    }
-    if (PollWaitStopping()) break;
-  }
-  if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
-
-  const std::int64_t ended_at = model::NowSeconds();
-  const std::int64_t played = ended_at > started_at ? ended_at - started_at : 0;
-
-  // Playtime is recorded however it ended, since the session still happened.
-  const ExitInfo info{.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1,
-                      .signal = WIFSIGNALED(status) ? WTERMSIG(status) : 0,
-                      .requested_stop = Forget(game_id),
-                      .launch_error = {},
-                      .played_seconds = played,
-                      .log_tail = {}};  // launched without mira-run, so no log
-  const ExitOutcome outcome = ClassifyExit(info);
-
-  const store::PlaySession session{.game_id = game_id,
-                                   .started_at = started_at,
-                                   .ended_at = ended_at,
-                                   .duration_seconds = played,
-                                   .exit_code = info.exit_code,
-                                   .signal = info.signal};
-  auto updated = games_.FinishSession(session, [&](model::Game& game) {
-    game.play_seconds += played - credited;  // the rest was checkpointed already
-    // Surfaced by the frontend as "last run didn't go well"; cleared on a
-    // clean run so a one-off crash doesn't stick around forever.
-    game.last_error = outcome.error;
-  });
-  if (!updated) {
-    log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
-  }
-
-  if (outcome.crashed) {
-    log::Warn("{}: {}", game_id, outcome.error);
-  } else {
-    log::Info("{} exited (code {}, signal {}) after {}s", game_id, info.exit_code, info.signal, played);
-  }
-  // The full updated record rides along on top of the session-only fields
-  // (exit_code, signal, played_seconds are this session's, not the row's
-  // running totals) so a listener can patch its one row directly.
-  json event = updated ? model::ToJson(*updated) : json{{"id", game_id}};
-  AddExit(event, outcome, info, game_id, updated && updated->platform == model::Platform::Windows);
-  events_.Publish("game.state", std::move(event));
-  if (exit_hook_) exit_hook_(game_id);
-
-  RunScript(post_script, game_id, "post");
+// Stop()'s SIGKILL escalation, for WatchWrapped and WatchReconciledLive: a game that
+// ignored SIGTERM past its deadline gets SIGKILL to its whole cgroup.
+void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_pid) {
+  std::lock_guard lock(mutex_);
+  const auto deadline = kill_deadlines_.find(game_id);
+  if (deadline == kill_deadlines_.end() || model::NowSeconds() < deadline->second) return;
+  log::Warn("{} ignored SIGTERM; sending SIGKILL", game_id);
+  if (const auto group = WrappedGroup(wrapper_pid)) cgroup::Kill(*group);
+  kill_deadlines_.erase(deadline);
 }
 
 void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
@@ -460,16 +354,7 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std
     if (waited == wrapper_pid) break;
     if (waited < 0 && errno != EINTR) break;  // wrapper_pid vanished; treat as exited
 
-    {
-      std::lock_guard lock(mutex_);
-      const auto deadline = kill_deadlines_.find(game_id);
-      if (deadline != kill_deadlines_.end() && model::NowSeconds() >= deadline->second) {
-        log::Warn("{} ignored SIGTERM; sending SIGKILL", game_id);
-        const auto prefix = prefixes_.find(game_id);
-        SignalGame(wrapper_pid, prefix == prefixes_.end() ? std::string() : prefix->second, SIGKILL);
-        kill_deadlines_.erase(deadline);
-      }
-    }
+    KillIfOverdue(game_id, wrapper_pid);
     if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
@@ -490,7 +375,6 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std
 bool ProcessSupervisor::Forget(const std::string& game_id) {
   std::lock_guard lock(mutex_);
   running_.erase(game_id);
-  prefixes_.erase(game_id);
   external_.erase(game_id);
   kill_deadlines_.erase(game_id);
   return stop_requested_.erase(game_id) > 0;
@@ -547,6 +431,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
 void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
   // Not this mirad's child, so waitpid() can't work -- poll liveness instead.
   while (!stopping_.load(std::memory_order_relaxed) && ::kill(wrapper_pid, 0) == 0) {
+    KillIfOverdue(game_id, wrapper_pid);
     if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;  // daemon going away
@@ -618,7 +503,7 @@ Result<void> ProcessSupervisor::TrackExternal(const model::Game& game, ExternalM
       return Err("already_running", std::format("\"{}\" is already running", game.id));
     }
     // Reserved immediately, before detection even starts, for the same
-    // reason Launch() reserves it before its process even exists yet:
+    // reason LaunchWrapped() reserves it before its process even exists yet:
     // without this, firing /launch twice in quick succession for the same
     // game starts two independent detection watchers that could both
     // eventually find the same real process. 0 is never a real pid (see
@@ -674,10 +559,8 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
     if (current.empty() && !AnyAlive(matched)) break;
     if (!current.empty()) matched = current;
 
-    // Same SIGKILL escalation Watch() does for a directly-launched game;
-    // missing here before meant Stop() on a Steam-launched game only ever
-    // sent one SIGTERM and never followed up, so a game that ignored it kept
-    // running forever with mirad unable to tell.
+    // SIGKILL escalation, as KillIfOverdue does for a mira-run game: without it a Steam
+    // game that ignored Stop's SIGTERM kept running with mirad unable to tell.
     {
       std::lock_guard lock(mutex_);
       const auto deadline = kill_deadlines_.find(game_id);
@@ -711,8 +594,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
   if (!updated) log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
 
   log::Info("{} (launched externally) exited after {}s", game_id, played);
-  // Same reasoning as Watch()'s exit event: the full updated record rides
-  // along so a listener can patch its one row instead of relisting.
+  // The full updated record rides along so a listener can patch its one row instead of relisting.
   json event = updated ? model::ToJson(*updated) : json{{"id", game_id}};
   event["state"] = "exited";
   event["played_seconds"] = played;

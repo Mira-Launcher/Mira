@@ -13,6 +13,7 @@
 
 #include "api/EventBus.h"
 #include "core/Command.h"
+#include "proc/Cgroup.h"
 #include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
 #include "proc/Session.h"
@@ -36,9 +37,50 @@ bool WaitFor(std::function<bool()> predicate, std::chrono::milliseconds timeout)
   }
   return predicate();
 }
+bool SystemdUserAvailable() {
+  Command probe;
+  probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
+  auto ran = runner::RunAndWait(probe);
+  return ran.has_value() && ran->exit_code == 0;
+}
+
+// Starts `program` the way the launch routes do: under mira-run in a systemd scope,
+// handed to LaunchWrapped. Returns the wrapper pid, or -1.
+pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game& game, const fs::path& db,
+                         const std::vector<std::string>& mira_run_args, const std::vector<std::string>& program) {
+  const fs::path mira_run = fs::read_symlink("/proc/self/exe").parent_path() / "mira-run";
+  Command cmd;
+  cmd.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "Delegate=yes", "--", mira_run.string(),
+              "--game-id", game.id, "--database", db.string(), "--log-file", (db.parent_path() / "game.log").string()};
+  cmd.argv.insert(cmd.argv.end(), mira_run_args.begin(), mira_run_args.end());
+  cmd.argv.push_back("--");
+  cmd.argv.insert(cmd.argv.end(), program.begin(), program.end());
+  auto pid = runner::SpawnDetached(cmd);
+  if (!pid) return -1;
+  if (auto launched = supervisor.LaunchWrapped(game, *pid, model::NowSeconds()); !launched) return -1;
+  return *pid;
+}
+
+// The game's cgroup once it has a process in it. systemd-run joins the scope before exec'ing mira-run,
+// so reading the cgroup any earlier finds the test's own.
+std::optional<fs::path> WaitForGameGroup(pid_t wrapper) {
+  std::optional<fs::path> group;
+  WaitFor(
+      [&] {
+        const auto scope = proc::cgroup::Of(wrapper);
+        if (scope && !proc::cgroup::Pids(proc::cgroup::GameGroup(*scope)).empty()) group = proc::cgroup::GameGroup(*scope);
+        return group.has_value();
+      },
+      std::chrono::seconds(5));
+  return group;
+}
 }  // namespace
 
-TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanly") {
+TEST_CASE("LaunchWrapped runs post_script once the game exits cleanly") {
+  if (!SystemdUserAvailable()) {
+    MESSAGE("no systemd user session; skipped");
+    return;
+  }
   const fs::path state = TempDir("proc-post-script-state");
   const fs::path marker = state / "post-ran";
 
@@ -51,10 +93,8 @@ TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanl
   game.id = "quick-exit";
   REQUIRE(games.Upsert(game).has_value());
 
-  Command command;
-  command.argv = {"sh", "-c", "exit 0"};
-  const std::string post_script = "touch " + marker.string();
-  REQUIRE(supervisor.Launch(game, command, post_script).has_value());
+  REQUIRE(LaunchUnderMiraRun(supervisor, game, state / "mira.db", {"--post", "touch " + marker.string()},
+                             {"sh", "-c", "exit 0"}) > 0);
 
   CHECK(WaitFor([&] { return fs::exists(marker); }, std::chrono::seconds(5)));
   CHECK(WaitFor([&] { return !supervisor.IsRunning("quick-exit"); }, std::chrono::seconds(5)));
@@ -64,68 +104,11 @@ TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanl
   CHECK(stored->last_error.empty());  // clean exit, not a crash
 }
 
-TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens the game's log") {
-  const fs::path state = TempDir("proc-crash-state");
-  store::GameStore games(state / "mira.db");
-  games.Load();
-  api::EventBus events;
-  proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
-
-  model::Game game;
-  game.id = "crasher";
-  game.platform = model::Platform::Windows;
-  REQUIRE(games.Upsert(game).has_value());
-
-  Command command;
-  command.argv = {"sh", "-c", "kill -SEGV $$"};
-  REQUIRE(supervisor.Launch(game, command, "").has_value());
-
-  nlohmann::json crashed;
-  CHECK(WaitFor(
-      [&] {
-        for (const model::Event& e : events.Since(0)) {
-          if (e.type == "game.state" && e.payload.value("state", "") == "crashed") crashed = e.payload;
-        }
-        return !crashed.is_null();
-      },
-      std::chrono::seconds(5)));
-  CHECK(crashed.value("signal", 0) == SIGSEGV);
-  CHECK(crashed.value("error", "").find("segmentation fault") != std::string::npos);
-  CHECK_FALSE(crashed.value("hint", "").empty());
-  CHECK(crashed["fix"] == nlohmann::json{{"kind", "game"}, {"target", "crasher"}, {"step", "log"}});
-  CHECK(games.Find("crasher")->last_error == crashed.value("error", ""));
-}
-
-TEST_CASE("ProcessSupervisor treats a non-zero exit as an ordinary quit") {
-  const fs::path state = TempDir("proc-nonzero-state");
-  store::GameStore games(state / "mira.db");
-  games.Load();
-  api::EventBus events;
-  proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
-
-  model::Game game;
-  game.id = "quitter";
-  game.last_error = "Crashed after 4 minutes: invalid memory access (segmentation fault)";
-  REQUIRE(games.Upsert(game).has_value());
-
-  Command command;
-  command.argv = {"sh", "-c", "exit 241"};
-  REQUIRE(supervisor.Launch(game, command, "").has_value());
-
-  nlohmann::json exited;
-  CHECK(WaitFor(
-      [&] {
-        for (const model::Event& e : events.Since(0)) {
-          if (e.type == "game.state" && e.payload.value("state", "") == "exited") exited = e.payload;
-        }
-        return !exited.is_null();
-      },
-      std::chrono::seconds(5)));
-  CHECK(exited.value("exit_code", 0) == 241);
-  CHECK(games.Find("quitter")->last_error.empty());  // an earlier crash doesn't stick
-}
-
 TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") {
+  if (!SystemdUserAvailable()) {
+    MESSAGE("no systemd user session; skipped");
+    return;
+  }
   const fs::path state = TempDir("proc-quit-state");
   store::GameStore games(state / "mira.db");
   games.Load();
@@ -135,26 +118,26 @@ TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") 
   model::Game game;
   game.id = "still-playing";
   REQUIRE(games.Upsert(game).has_value());
-  Command command;
-  command.argv = {"sleep", "30"};
-  command.env["WINEPREFIX"] = (state / "pfx").string();  // to find the game again below
-  REQUIRE(supervisor->Launch(game, command).has_value());
-  REQUIRE(WaitFor([&] { return !proc::FindPrefixProcesses((state / "pfx").string()).empty(); },
-                  std::chrono::seconds(5)));
+  const pid_t wrapper = LaunchUnderMiraRun(*supervisor, game, state / "mira.db", {}, {"sleep", "30"});
+  REQUIRE(wrapper > 0);
+  const auto game_group = WaitForGameGroup(wrapper);
+  REQUIRE(game_group.has_value());
+  const fs::path group = *game_group;
 
   const auto started = std::chrono::steady_clock::now();
   supervisor.reset();
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(500));
-  const auto left = proc::FindPrefixProcesses((state / "pfx").string());
-  CHECK_FALSE(left.empty());
+  CHECK_FALSE(proc::cgroup::Pids(group).empty());
 
-  for (pid_t pid : left) {
-    ::kill(pid, SIGKILL);
-    ::waitpid(pid, nullptr, 0);
-  }
+  proc::cgroup::Kill(group);
+  ::waitpid(wrapper, nullptr, 0);
 }
 
-TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is already running") {
+TEST_CASE("ProcessSupervisor::LaunchWrapped rejects a duplicate launch while one is already running") {
+  if (!SystemdUserAvailable()) {
+    MESSAGE("no systemd user session; skipped");
+    return;
+  }
   const fs::path state = TempDir("proc-duplicate-state");
   store::GameStore games(state / "mira.db");
   games.Load();
@@ -165,11 +148,11 @@ TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is alr
   game.id = "long-running";
   REQUIRE(games.Upsert(game).has_value());
 
-  Command command;
-  command.argv = {"sleep", "5"};
-  REQUIRE(supervisor.Launch(game, command).has_value());
+  const pid_t wrapper = LaunchUnderMiraRun(supervisor, game, state / "mira.db", {}, {"sleep", "5"});
+  REQUIRE(wrapper > 0);
+  REQUIRE(WaitForGameGroup(wrapper).has_value());
 
-  const auto second = supervisor.Launch(game, command);
+  const auto second = supervisor.LaunchWrapped(game, /*wrapper_pid=*/1, model::NowSeconds());
   REQUIRE_FALSE(second.has_value());
   CHECK(second.error().code == "already_running");
 
@@ -489,4 +472,32 @@ TEST_CASE("SteamLaunchAppId reads Steam's reaper wrapper and nothing else") {
   CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", args) == "2225070");
   CHECK(parse("/usr/bin/python3", args).empty());
   CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", std::string("--\0AppId=5\0", 11)).empty());
+}
+
+TEST_CASE("Stop ends a mira-run game's cgroup, including children that left its session and ignore SIGTERM") {
+  if (!SystemdUserAvailable()) {
+    MESSAGE("no systemd user session; skipped");
+    return;
+  }
+  const fs::path state = TempDir("proc-cgroup-stop-state");
+  store::GameStore games(state / "mira.db");
+  games.Load();
+  api::EventBus events;
+  // Long enough that only killing the leftovers once the game itself dies can end it in time.
+  proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/30);
+
+  model::Game game;
+  game.id = "cgroup-stop";
+  REQUIRE(games.Upsert(game).has_value());
+
+  const pid_t wrapper = LaunchUnderMiraRun(supervisor, game, state / "mira.db", {},
+                                           {"sh", "-c", "(trap '' TERM; exec setsid sleep 300) & exec sleep 300"});
+  REQUIRE(wrapper > 0);
+  const auto game_group = WaitForGameGroup(wrapper);
+  REQUIRE(game_group.has_value());
+  const fs::path group = *game_group;
+
+  REQUIRE(supervisor.Stop("cgroup-stop").has_value());
+  CHECK(WaitFor([&] { return !supervisor.IsRunning("cgroup-stop"); }, std::chrono::seconds(6)));
+  CHECK(WaitFor([&] { return proc::cgroup::Pids(group).empty(); }, std::chrono::seconds(5)));
 }
