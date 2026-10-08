@@ -378,39 +378,6 @@ Schema::Schema() {
          .default_value = true,
          .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
 
-  s.Group("Steam account");
-
-  s.Add({.key = "steam.import_playtime",
-         .label = "Import Steam playtime and last played",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
-                "they are higher or later than what Mira recorded, so games started from Steam "
-                "itself count too. Read from Steam's files for the account signed in last, or the "
-                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
-         .keywords = "recently played last played date"});
-
-  s.Add({.key = "steam.web_api_key",
-         .label = "Steam Web API key",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "A free key from steamcommunity.com/dev/apikey. Steam's local files only list "
-                "installed games. With this key and your Steam ID, Mira can also list every game "
-                "you own and import your Steam playtime.",
-         .is_secret = true,
-         .link = "https://steamcommunity.com/dev/apikey",
-         .keywords = "token owned games"});
-
-  s.Add({.key = "steam.steamid64",
-         .label = "Steam ID (64-bit)",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "Your 64-bit Steam ID, a 17-digit number. It appears in your Steam profile URL or "
-                "on a Steam ID lookup site. Needed together with the Steam Web API key. It also "
-                "picks whose playtime to read when several Steam accounts use this computer.",
-         .link = "https://store.steampowered.com/account/",
-         .keywords = "steamid account user number"});
-
   // --- Sources ---------------------------------------------------------------
   s.Section("Sources", "Sources");
 
@@ -500,6 +467,39 @@ Schema::Schema() {
                 "Mira shows it as running and records playtime. Crashes and exit codes are not "
                 "detected. When off, the game still launches, but Mira does not show it as "
                 "running."});
+
+  s.Group("Steam account");
+
+  s.Add({.key = "steam.import_playtime",
+         .label = "Import Steam playtime and last played",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
+                "they are higher or later than what Mira recorded, so games started from Steam "
+                "itself count too. Read from Steam's files for the account signed in last, or the "
+                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
+         .keywords = "recently played last played date"});
+
+  s.Add({.key = "steam.web_api_key",
+         .label = "Steam Web API key",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
+                "localhost. Steam's local files only list installed games. With this key and your Steam ID, Mira can also list every game "
+                "you own and import your Steam playtime.",
+         .is_secret = true,
+         .link = "https://steamcommunity.com/dev/apikey",
+         .keywords = "token owned games"});
+
+  s.Add({.key = "steam.steamid64",
+         .label = "Steam ID (64-bit)",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Your 64-bit Steam ID, a 17-digit number. It appears in your Steam profile URL or "
+                "on a Steam ID lookup site. Needed together with the Steam Web API key. It also "
+                "picks whose playtime to read when several Steam accounts use this computer.",
+         .link = "https://store.steampowered.com/account/",
+         .keywords = "steamid account user number"});
 
   s.Group("Store tools");
 

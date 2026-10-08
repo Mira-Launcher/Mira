@@ -350,7 +350,7 @@ void SettingsPanel::BuildSidebarPage() {
   choice_field(rows[2], &Choices::recent_when);
   choice_field(rows[3], &Choices::recent_count);
 
-  sources_card_ = page->AddCard("Sources");
+  sources_card_ = page->AddCard("Sources in the sidebar");
   AddToggle(sources_card_, "Show game counts", "Show how many games each source has next to its name.",
             "sidebar source numbers", &FrontendPrefs::sidebar_source_counts, true);
   AddToggle(sources_card_, "Colored source icons", "Show each source's colored initial instead of a dot.",
