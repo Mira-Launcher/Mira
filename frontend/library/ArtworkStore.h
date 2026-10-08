@@ -145,6 +145,9 @@ private:
   QHash<QString, QPixmap> thumbs_;  // a small copy of every image held
   // Covers as drawn, by "id@tile width"; a store title's only while something else holds it.
   QHash<QString, QPixmap> scaled_;
+  // Each library game's newest smooth copy, kept past ForgetWidth: stretched in place of the small copy while
+  // the full image is fetched again for a new size.
+  QHash<QString, QPixmap> last_drawn_;
   // Sizes asked for while only the small copy was held, drawn when the full image is back.
   QHash<QString, QList<std::pair<QSize, qreal>>> wanted_;
   QSet<QString> refetching_;         // asked again for a size, not because the art changed

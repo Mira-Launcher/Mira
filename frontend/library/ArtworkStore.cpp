@@ -196,7 +196,8 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
       if (!queued_.contains(id)) refetching_.insert(id);
       Request(id);
     }
-    return FitToTile(*thumb, tile, device_pixel_ratio);
+    const auto last = last_drawn_.constFind(id);
+    return FitToTile(last != last_drawn_.constEnd() ? *last : *thumb, tile, device_pixel_ratio);
   }
   // Keyed on the id, not the name, so it survives a rename.
   const QPixmap cover =
@@ -218,6 +219,7 @@ void ArtworkStore::KeepScaled(const QString& key, const QPixmap& cover) {
     }
   }
   scaled_.insert(key, cover);
+  if (library_.contains(id)) last_drawn_.insert(id, cover);
 }
 
 QColor ArtworkStore::CoverColor(const QString& id) {
@@ -338,11 +340,13 @@ void ArtworkStore::InvalidateRendering(const std::string& id) {
       ++it;
     }
   }
+  last_drawn_.remove(QString::fromStdString(id));
   colors_.remove(QString::fromStdString(id));
 }
 
 void ArtworkStore::InvalidateAllRenderings() {
   scaled_.clear();
+  last_drawn_.clear();
   colors_.clear();  // placeholders' colors follow the theme
 }
 
