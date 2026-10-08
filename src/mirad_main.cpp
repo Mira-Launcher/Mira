@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
   games.Load();
 
   mira::config::Config config(mira::paths::SettingsFile());
+  config.UseUiStateStore([&games] { return games.UiState(); },
+                         [&games](const nlohmann::json& state) { games.KeepUiState(state); });
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });

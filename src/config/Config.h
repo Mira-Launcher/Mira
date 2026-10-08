@@ -49,7 +49,12 @@ public:
   Result<void> Reset(std::string_view key);
   Result<void> ResetAll();
 
-  // The opaque [frontend] table, read and written without validation.
+  // Where the GUI's window state (kUiStateKeys) is kept instead of frontend.toml,
+  // which holds only what a person would set. Before Load().
+  void UseUiStateStore(std::function<nlohmann::json()> read, std::function<void(const nlohmann::json&)> write);
+
+  // The opaque [frontend] table, read and written without validation: frontend.toml
+  // with the window state merged in.
   nlohmann::json FrontendSettings() const;
   void SetFrontendSettings(nlohmann::json settings);
 
@@ -73,12 +78,17 @@ private:
   // Every app change: picks up hand edits first, so only the keys the app set change.
   Result<void> ChangeAndSave(const std::function<void()>& change);
   Result<void> SaveFrontendFile();
+  // Moves the window-state keys of `table` into ui_state_; whether any were there.
+  bool TakeUiState(nlohmann::json& table);
 
   mutable std::mutex mutex_;
   std::filesystem::path file_;           // settings.toml: backend keys only
   std::filesystem::path frontend_file_;  // frontend.toml: opaque, the frontend's own
   nlohmann::json document_;
   nlohmann::json frontend_ = nlohmann::json::object();
+  nlohmann::json ui_state_ = nlohmann::json::object();
+  std::function<nlohmann::json()> read_ui_state_;
+  std::function<void(const nlohmann::json&)> write_ui_state_;
   // An unparseable file couldn't be set aside: saving would overwrite the only copy.
   std::string loaded_text_;  // as last read or written, to tell a hand edit apart
   std::function<void(const std::string&)> on_valid_text_;

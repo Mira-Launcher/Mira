@@ -66,7 +66,7 @@ logs/           per-game output from the last launches
 
 `settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once, and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
 
-**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game), and `settings_snapshot`. Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
+**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game), `settings_snapshot`, and `ui_state` (the GUI's window state, kept out of `frontend.toml`). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
 **cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`. Everything in it can be fetched again, so a damaged one is started over.
 

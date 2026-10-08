@@ -1,5 +1,6 @@
 #include "config/Config.h"
 
+#include <array>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -13,6 +14,11 @@
 namespace mira::config {
 namespace {
 using nlohmann::json;
+
+// Frontend keys the GUI sets as it's used, rather than a person choosing them.
+constexpr std::array<std::string_view, 12> kUiStateKeys = {
+    "window_width", "window_height",  "window_maximized", "sidebar_width", "details_width", "tile_width",
+    "source_tile_widths", "library_filter", "sort_by", "sort_descending", "onboarded", "source_imported_at"};
 }
 
 Config::Config(std::filesystem::path file)
@@ -107,6 +113,43 @@ void Config::Load(const std::string& fallback) {
       frontend_ = tomljson::ToJson(parsed.table());
     }
   }
+
+  if (read_ui_state_) {
+    ui_state_ = read_ui_state_();
+    if (!ui_state_.is_object()) ui_state_ = json::object();
+    // One-time move of window state out of frontend.toml (Mira 0.13 and earlier). Temporary.
+    if (TakeUiState(frontend_)) {
+      write_ui_state_(ui_state_);
+      if (!keep_frontend_file_) {
+        if (auto saved = WriteFileAtomic(frontend_file_, tomljson::ToTomlText(frontend_), "config_write_failed"); !saved) {
+          log::Warn("could not save {}: {}", frontend_file_.string(), saved.error().message);
+        }
+      }
+    }
+  }
+}
+
+void Config::UseUiStateStore(std::function<json()> read, std::function<void(const json&)> write) {
+  std::lock_guard lock(mutex_);
+  read_ui_state_ = std::move(read);
+  write_ui_state_ = std::move(write);
+}
+
+bool Config::TakeUiState(json& table) {
+  if (!read_ui_state_ || !table.is_object()) return false;
+  bool taken = false;
+  for (const std::string_view key : kUiStateKeys) {
+    const auto found = table.find(key);
+    if (found == table.end()) continue;
+    if (found->is_null()) {
+      ui_state_.erase(std::string(key));
+    } else {
+      ui_state_[std::string(key)] = *found;
+    }
+    table.erase(found);
+    taken = true;
+  }
+  return taken;
 }
 
 void Config::OnValidText(std::function<void(const std::string&)> callback) {
@@ -239,11 +282,17 @@ Result<void> Config::Patch(const json& patch) {
   json backend_patch = patch;
   if (backend_patch.contains("frontend")) {
     if (backend_patch["frontend"].is_object()) {
+      json frontend_patch = backend_patch["frontend"];
+      bool settings_changed = false;
       {
         std::lock_guard lock(mutex_);
-        frontend_.merge_patch(backend_patch["frontend"]);
+        if (TakeUiState(frontend_patch)) write_ui_state_(ui_state_);
+        settings_changed = !frontend_patch.empty();
+        frontend_.merge_patch(frontend_patch);
       }
-      if (auto result = SaveFrontendFile(); !result) return result;
+      if (settings_changed) {
+        if (auto result = SaveFrontendFile(); !result) return result;
+      }
     }
     backend_patch.erase("frontend");
   }
@@ -262,12 +311,17 @@ Result<void> Config::ResetAll() {
 
 json Config::FrontendSettings() const {
   std::lock_guard lock(mutex_);
-  return frontend_;
+  json merged = frontend_;
+  merged.update(ui_state_);
+  return merged;
 }
 
 void Config::SetFrontendSettings(json settings) {
   {
     std::lock_guard lock(mutex_);
+    ui_state_ = json::object();
+    TakeUiState(settings);
+    if (write_ui_state_) write_ui_state_(ui_state_);
     frontend_ = std::move(settings);
   }
   if (auto result = SaveFrontendFile(); !result) {

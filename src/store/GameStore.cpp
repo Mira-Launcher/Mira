@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 2> kMigrations = {
+constexpr std::array<std::string_view, 3> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -72,6 +72,12 @@ CREATE TABLE sessions(
   signal INTEGER NOT NULL,
   incomplete INTEGER NOT NULL,
   PRIMARY KEY(game_id, started_at)
+) STRICT;
+)sql",
+    R"sql(
+CREATE TABLE ui_state(
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  state TEXT NOT NULL CHECK(json_valid(state))
 ) STRICT;
 )sql",
 };
@@ -325,6 +331,27 @@ void GameStore::KeepSettingsSnapshot(const std::string& toml) {
   if (!keep) return;
   if (auto done = keep->Bind(1, model::NowSeconds()).Bind(2, toml).Run(); !done) {
     log::Warn("could not keep a copy of the settings: {}", done.error().message);
+  }
+}
+
+json GameStore::UiState() {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return json::object();
+  auto select = db_.Prepare("SELECT state FROM ui_state WHERE id = 1");
+  if (!select) return json::object();
+  auto row = select->Step();
+  if (!row || !*row) return json::object();
+  json state = json::parse(select->Text(0), nullptr, false);
+  return state.is_object() ? state : json::object();
+}
+
+void GameStore::KeepUiState(const json& state) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  auto keep = db_.Prepare("INSERT OR REPLACE INTO ui_state(id, state) VALUES(1, ?)");
+  if (!keep) return;
+  if (auto done = keep->Bind(1, state.dump()).Run(); !done) {
+    log::Warn("could not save the window state: {}", done.error().message);
   }
 }
 

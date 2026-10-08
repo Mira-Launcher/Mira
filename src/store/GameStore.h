@@ -50,6 +50,10 @@ public:
   // Fetched info and art pointers, in cache.db beside the library; Load opens it too.
   MetadataStore& Metadata() { return metadata_; }
 
+  // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
+  nlohmann::json UiState();
+  void KeepUiState(const nlohmann::json& state);
+
   std::string SettingsSnapshot();
   void KeepSettingsSnapshot(const std::string& toml);
 

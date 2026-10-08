@@ -49,7 +49,7 @@ Stops a running job: the programs it runs (a store tool, an installer and the Wi
 Stored in `settings.toml`. Every key is declared once in `src/config/Schema.cpp`.
 
 ### `GET /v1/config`
-Every setting at its current value, plus the `frontend` table from `frontend.toml`, which the backend stores without interpreting.
+Every setting at its current value, plus the `frontend` table, which the backend stores without interpreting: `frontend.toml`, with the window state the GUI sets as it's used (sizes, sort, last filter, `onboarded`, `source_imported_at`) merged in from `mira.db`.
 
 ### `GET /v1/config/schema`
 Every setting in display order:

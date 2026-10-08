@@ -3,6 +3,8 @@
 #include <fstream>
 #include <filesystem>
 
+#include <json.hpp>
+
 #include "config/Config.h"
 #include "config/Resolver.h"
 #include "config/Schema.h"
@@ -192,4 +194,26 @@ TEST_CASE("a hand edit is picked up, survives an app change, and a broken one ch
   REQUIRE_FALSE(broken.has_value());
   CHECK(broken.error().message.find("line 1") != std::string::npos);
   CHECK(config.GetInt("scan.debounce_ms") == 4321);
+}
+
+TEST_CASE("window state lives in its store, and frontend.toml keeps only what a person sets") {
+  const fs::path file = TempFile("settings-ui-state.toml");
+  const fs::path frontend = file.parent_path() / "frontend.toml";
+  std::ofstream(frontend, std::ios::trunc) << "theme = 'dark'\nwindow_width = 900\n";
+  nlohmann::json stored = nlohmann::json::object();
+  Config config(file);
+  config.UseUiStateStore([&stored] { return stored; }, [&stored](const nlohmann::json& state) { stored = state; });
+  config.Load();
+
+  CHECK(stored.value("window_width", 0) == 900);
+  CHECK(config.FrontendSettings().value("theme", "") == "dark");
+  CHECK(config.FrontendSettings().value("window_width", 0) == 900);
+
+  REQUIRE(config.Patch(nlohmann::json{{"frontend", {{"window_width", 1200}, {"tile_radius", 8}}}}).has_value());
+  CHECK(stored.value("window_width", 0) == 1200);
+  std::ifstream in(frontend);
+  const std::string text{std::istreambuf_iterator<char>(in), {}};
+  CHECK(text.find("window_width") == std::string::npos);
+  CHECK(text.find("tile_radius") != std::string::npos);
+  fs::remove(frontend);
 }
