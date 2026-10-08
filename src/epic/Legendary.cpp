@@ -25,7 +25,7 @@ using nlohmann::json;
 }  // namespace
 
 std::filesystem::path ManagedLegendaryPath(const config::Config& config) {
-  return config.File().parent_path() / "tools" / "legendary";
+  return config.File().parent_path() / "tools" / "legendary" / "legendary";
 }
 
 const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin", ManagedLegendaryPath};
@@ -47,32 +47,30 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
   return LegendaryConfigDir() / "metadata" / (app_name + ".json");
 }
 
-runner::ToolStatus DetectLegendary(const config::Config& config) { return runner::DetectTool(config, kTool); }
+namespace {
+// The pre-folder layout kept the binary as a plain file at tools/legendary: moves it into the folder.
+Result<void> MoveOldLayout(const config::Config& config) {
+  const fs::path old_file = config.File().parent_path() / "tools" / "legendary";
+  std::error_code ec;
+  if (!fs::is_regular_file(old_file, ec)) return {};
+  const fs::path moving = old_file.string() + ".moving";
+  fs::rename(old_file, moving, ec);
+  if (!ec) fs::create_directories(old_file, ec);
+  if (!ec) fs::rename(moving, ManagedLegendaryPath(config), ec);
+  if (ec) return Err("install_dir_failed", std::format("couldn't move the old Legendary into {}: {}", old_file.string(), ec.message()));
+  return {};
+}
+}  // namespace
+
+runner::ToolStatus DetectLegendary(const config::Config& config) {
+  [[maybe_unused]] auto moved = MoveOldLayout(config);
+  return runner::DetectTool(config, kTool);
+}
 
 Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
-  const fs::path target = ManagedLegendaryPath(config);
-  std::error_code ec;
-  fs::create_directories(target.parent_path(), ec);
-  if (ec) return Err("install_dir_failed", ec.message());
-
-  // Downloaded beside the target, so a failed or stalled download never leaves a broken binary there.
-  const fs::path part = target.string() + ".part";
-  if (auto downloaded = runner::CurlDownload(asset.download_url, part); !downloaded) return downloaded;
-
-  fs::rename(part, target, ec);
-  if (ec) {
-    fs::remove(part, ec);
-    return Err("install_failed", ec.message());
-  }
-
-  // Legendary's releases ship no checksum, so it's installed unverified.
-  log::Warn("no checksum available for legendary {}, installing unverified", asset.tag);
-
-  fs::permissions(target,
-                  fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
-                      fs::perms::others_exec,
-                  ec);
-  if (ec) return Err("chmod_failed", ec.message());
+  if (auto moved = MoveOldLayout(config); !moved) return moved;
+  auto installed = runner::InstallToolBinary(config, "legendary", asset, "legendary");
+  if (!installed) return std::unexpected(installed.error());
   return {};
 }
 
