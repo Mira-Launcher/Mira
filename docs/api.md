@@ -245,7 +245,7 @@ What each account owns, whether or not it's installed:
    "play_seconds": 0, "owned": true }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier` is there when one is cached.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier` and `steam_tags` (most voted first) are there when cached.
 
 Owned titles aren't stored; they are read live from each source and become games once installed. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
 
@@ -275,7 +275,7 @@ Body `{"source": "epic", "titles": [{"ref": "...", "title": "..."}]}`. Queues a 
 
 ## Tags
 
-Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. With `tags.steam` on, a game's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record: a Steam game's by its appid, any other game's (with `tags.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. They're never added to a game; clients offer them.
+Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. With `tags.steam` on, a game's or store title's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record as `steam_tags`, from the same Steam store request as its details: a Steam game's by its appid, any other game's (with `metadata.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. They're never added to a game; clients offer them.
 
 ### `GET /v1/tags`
 `{"tags": [{"name", "count", "ids", "folder", "steam_ids"}], "steam": [{"name", "count", "ids"}], "steam_missing": N}`. `tags` are the library's, most games first, spelled as first seen, with the games that have each, whether it's in `tags.folders` (a folder tag no game has yet is listed with none), and the games Steam gives it. `steam` is every Steam tag on the library's games that isn't one of `tags`, most games first. `steam_missing` counts the games with a metadata record but no Steam tags in it yet (fetched before `tags.steam`, or Steam didn't answer).
@@ -503,7 +503,7 @@ Store info is cached in `cache.db` in the config directory, and art as files und
 - **GOG, itch and Amazon**: cover and hero from GOG Galaxy's games database, with nile's cached art as a fallback for Amazon.
 - **Everything else**: [SteamGridDB](https://www.steamgriddb.com) by name (`cover`, `hero`, `logo`, `icon`) when `steamgriddb.api_key` is set. Without a key, `metadata.steam_art_by_name` borrows art from a Steam game of the same name. If nothing is found, the fetch fails with `no_steamgriddb_key`.
 
-With a key, SteamGridDB also adds alternates for every game in `art_candidates`, without replacing store art. `metadata.protondb_for_non_steam` (on by default) looks up a ProtonDB tier by name for non-Steam games, and Steam's reviews for a Steam game of exactly the same name. A game's `metadata.steam_appid` replaces the name match.
+With a key, SteamGridDB also adds alternates for every game in `art_candidates`, without replacing store art. `metadata.steam_by_name` (on by default) looks up a ProtonDB tier by name for non-Steam games, and Steam's reviews and tags for a Steam game of exactly the same name. A game's `metadata.steam_appid` replaces the name match.
 
 Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover within 900x1350, a hero within 1920 wide, a logo within 800 and an icon within 256, or about two thirds of that when compact. It's saved as JPEG, or PNG when it has transparency. A JPEG that already fits is kept as downloaded.
 

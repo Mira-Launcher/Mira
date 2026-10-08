@@ -263,15 +263,6 @@ Schema::Schema() {
              "Fetch each game's Steam tags with its other store info, to suggest tags on the Tags "
              "page. They're never added to a game on their own. Needs no key."});
 
-  s.Add({.key = "tags.steam_by_name",
-         .label = "Match other games to Steam by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc =
-             "Also fetch Steam tags for a game from another source when a Steam game has exactly "
-             "its name (case and punctuation are ignored). This sends the game's name to "
-             "Steam's public search."});
-
   s.Add({.key = "scan.tag_by_root",
          .label = "Tag new games by library folder",
          .type = Type::Bool,
@@ -362,15 +353,15 @@ Schema::Schema() {
                 "(case and punctuation are ignored). Needs no key. This sends the game's name to "
                 "Steam's public search."});
 
-  s.Add({.key = "metadata.protondb_for_non_steam",
-         .label = "ProtonDB and Steam reviews for non-Steam games",
+  s.Add({.key = "metadata.steam_by_name",
+         .label = "Match other games to Steam by name",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Show a ProtonDB rating and Steam's user reviews for games that are not from Steam, "
-                "found by matching the game's name to a Steam game. Reviews need the exact name. "
-                "The match can be wrong, and each lookup sends the "
-                "game's name to Steam's public search. It does not change how the game launches or "
-                "its cover art."});
+         .doc = "Show a ProtonDB rating, Steam's user reviews and Steam tags for games that are not "
+                "from Steam, from the Steam game of their name. Reviews and tags need the exact name "
+                "(case and punctuation are ignored); a game's Steam app ID setting replaces the "
+                "match. The match can be wrong, and each lookup sends the game's name to Steam's "
+                "public search. It does not change how the game launches or its cover art."});
 
   s.Add({.key = "lutris.import_art",
          .label = "Use Lutris artwork",

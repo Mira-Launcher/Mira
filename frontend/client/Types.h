@@ -271,6 +271,7 @@ struct GameMetadata {
   std::string review_summary;  // "Very Positive", from Steam's own wording
   int review_total = 0;
   std::string protondb_tier;
+  std::vector<std::string> steam_tags;  // most voted first
   std::string website;
   // Which art slots are actually cached, so a panel knows whether asking for
   // one is worth a round trip. See GET /v1/games/{id}/artwork?type=.
@@ -1061,6 +1062,7 @@ struct StoreTitle {
   bool owned = true;  // false: listed from an itch collection, but paid and not bought
   std::string source;  // the store it's from
   std::string protondb_tier;  // empty when none is cached
+  std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
 };
 
 // GET /v1/sources/{id}/removal.

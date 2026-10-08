@@ -9,13 +9,14 @@
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
-#include "metadata/MetadataFetcher.h"
+#include "library/FolderTags.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
 #include "library/SourceRemoval.h"
 #include "library/SourceRunner.h"
 #include "lutris/LutrisImporter.h"
+#include "metadata/MetadataFetcher.h"
 #include "steam/FriendsStatus.h"
 #include "steam/SteamScanner.h"
 
@@ -255,6 +256,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     const std::string source = Param(req, "source");
     auto entries = library::ListCatalog(s.config, s.games, source);
     if (!entries) return SendError(res, 400, entries.error());
+    const auto steam_tags = metadata::StoredSteamTags(s.games.Metadata());
     json out = json::array();
     for (const library::CatalogEntry& entry : *entries) {
       out.push_back({{"source", entry.source},
@@ -266,6 +268,10 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                      {"owned", entry.owned}});
       if (std::string tier = s.games.Metadata().ProtonDbTier(entry.source + "-" + entry.ref); !tier.empty()) {
         out.back()["protondb_tier"] = std::move(tier);
+      }
+      if (const auto tags = steam_tags.find(entry.source + "-" + entry.ref);
+          tags != steam_tags.end() && tags->second && !tags->second->empty()) {
+        out.back()["steam_tags"] = *tags->second;
       }
     }
     SendJson(res, std::move(out));

@@ -47,6 +47,14 @@
 
 namespace mira_gui {
 
+namespace {
+QStringList ToQStringList(const std::vector<std::string>& values) {
+  QStringList out;
+  for (const std::string& value : values) out << QString::fromStdString(value);
+  return out;
+}
+}  // namespace
+
 SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork,
                        DownloadTracker* downloads, bool tabs, int tile_width, QWidget* parent)
     : QWidget(parent),
@@ -537,10 +545,12 @@ void SourcePage::UpdateCover(const QString& id) {
                                        devicePixelRatioF()),
                   Qt::DecorationRole);
   }
-  // Its details came with the cover, so its tier may be new.
-  if (tiers_.contains(ref)) return;
+  // Its details came with the cover, so its tier and tags may be new.
+  if (tiers_.contains(ref) && tags_.contains(ref)) return;
   api::GetTitleMetadataAsync(this, id_, ref.toStdString(), [this, ref](GameMetadataResult result) {
-    if (!result.ok || result.metadata.protondb_tier.empty()) return;
+    if (!result.ok) return;
+    if (!result.metadata.steam_tags.empty()) tags_.insert(ref, ToQStringList(result.metadata.steam_tags));
+    if (result.metadata.protondb_tier.empty()) return;
     tiers_.insert(ref, QString::fromStdString(result.metadata.protondb_tier));
     for (int row = 0; row < owned_model_->rowCount(); ++row) {
       QStandardItem* item = owned_model_->item(row);
@@ -705,6 +715,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   owned_.clear();
   not_owned_.clear();
   tiers_.clear();
+  tags_.clear();
   if (steam_settings_ != nullptr) steam_settings_->setVisible(false);
   if (!result.ok) {
     ShowError(owned_note_, "Could not list your games.", result.error);
@@ -720,6 +731,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
       if (!title.protondb_tier.empty()) {
         tiers_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.protondb_tier));
       }
+      if (!title.steam_tags.empty()) tags_.insert(QString::fromStdString(title.ref), ToQStringList(title.steam_tags));
       uninstalled.push_back(title);
     }
   }
@@ -841,8 +853,12 @@ void SourcePage::ApplyFilter() {
   }
   if (owned_grid_ != nullptr) {
     for (int row = 0; row < owned_model_->rowCount(); ++row) {
-      const QString name = owned_model_->item(row)->data(GameTileDelegate::NameRole).toString();
-      owned_grid_->setRowHidden(row, !needle.isEmpty() && !name.contains(needle, Qt::CaseInsensitive));
+      const QStandardItem* item = owned_model_->item(row);
+      // A title's Steam tags match whole, so "rpg" finds RPGs without matching every word containing it.
+      const bool shown = needle.isEmpty() ||
+                         item->data(GameTileDelegate::NameRole).toString().contains(needle, Qt::CaseInsensitive) ||
+                         tags_.value(item->data(GameTileDelegate::IdRole).toString()).contains(needle, Qt::CaseInsensitive);
+      owned_grid_->setRowHidden(row, !shown);
     }
     owned_grid_->FitHeight();
   }

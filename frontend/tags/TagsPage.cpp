@@ -545,7 +545,7 @@ void TagsPage::Refresh() {
     settings_.sorted_roots = mapping::ParseListText(value("tags.sorted_roots"));
     settings_.folders = mapping::ParseListText(value("tags.folders"));
     settings_.steam = value("tags.steam") != "false";
-    settings_.steam_by_name = value("tags.steam_by_name") != "false";
+    settings_.steam_by_name = value("metadata.steam_by_name") != "false";
     settings_.tag_by_root = value("scan.tag_by_root") != "false";
     settings_loaded_ = true;
     Sync();
@@ -755,12 +755,11 @@ void TagsPage::SyncSettings() {
         "never added to "
         "a game on their own.",
         [this](bool on) { PatchSetting("tags.steam", "a boolean", on ? "true" : "false"); });
-    add("tags.steam_by_name", "Match other games to Steam by name",
-        "Also get Steam tags for a game from another source when a Steam game has exactly its "
-        "name. This "
-        "sends the game's name to Steam's public search.",
+    add("metadata.steam_by_name", "Match other games to Steam by name",
+        "Also get Steam tags, reviews and a ProtonDB rating for a game from another source from "
+        "the Steam game of its name. This sends the game's name to Steam's public search.",
         [this](bool on) {
-          PatchSetting("tags.steam_by_name", "a boolean", on ? "true" : "false");
+          PatchSetting("metadata.steam_by_name", "a boolean", on ? "true" : "false");
         });
     add("scan.tag_by_root", "Tag new games by library folder",
         "Tag each new game a scan finds with the name of the library folder it was found in.",
@@ -777,7 +776,7 @@ void TagsPage::SyncSettings() {
         }));
   }
   set("tags.steam", settings_.steam);
-  set("tags.steam_by_name", settings_.steam_by_name);
+  set("metadata.steam_by_name", settings_.steam_by_name);
   set("scan.tag_by_root", settings_.tag_by_root);
   QTimer::singleShot(0, this, &TagsPage::FitLeft);
 }

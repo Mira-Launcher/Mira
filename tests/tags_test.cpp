@@ -77,6 +77,7 @@ TEST_CASE("The tag list counts your tags and suggests the Steam tags you don't h
   LiveServer server(TempDir("tags-list-state"));
   config::Config& config = server.MutableConfig();
   REQUIRE(config.Set("tags.steam", true).has_value());
+  REQUIRE(config.Set("metadata.steam_by_name", true).has_value());
   REQUIRE(config.Set("tags.folders", json::array({"RPG", "Puzzle"})).has_value());
   const fs::path games = TempDir("tags-list-games");
   AddGame(server.games(), "a", games / "A", {"rpg", "favorite"});
@@ -171,6 +172,7 @@ TEST_CASE("Fetching Steam tags fills in the games whose metadata has none") {
   LiveServer server(TempDir("tags-fetch-state"));
   config::Config& config = server.MutableConfig();
   REQUIRE(config.Set("tags.steam", true).has_value());
+  REQUIRE(config.Set("metadata.steam_by_name", true).has_value());
   // Steam's three public endpoints, as a stand-in curl: the last argument is the URL.
   const fs::path bin = TempDir("tags-fetch-bin");
   Touch(bin / "curl",

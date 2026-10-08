@@ -465,14 +465,17 @@ std::string FindKeyImage(const json& key_images, std::span<const std::string_vie
   return {};
 }
 
-// One GetItems call for many Steam apps: assets, and with `details` the store info and review
-// summary too. store_items in the order asked, or an empty array. No key needed.
+// One GetItems call for many Steam apps: assets, and with `details` the store info, review summary
+// and the 20 tags Steam shows too. store_items in the order asked, or an empty array. No key needed.
 json SteamStoreItems(const std::vector<std::string>& appids, bool details) {
   json ids = json::array();
   for (const std::string& appid : appids) ids.push_back({{"appid", std::stoll(appid)}});
   json request = {{"include_assets", true}};
   if (details) {
-    request.update({{"include_basic_info", true}, {"include_reviews", true}, {"include_release", true}});
+    request.update({{"include_basic_info", true},
+                    {"include_reviews", true},
+                    {"include_release", true},
+                    {"include_tag_count", 20}});
   }
   const json input = {{"ids", ids}, {"context", {{"language", "english"}, {"country_code", "US"}}},
                       {"data_request", request}};
@@ -504,6 +507,8 @@ std::string SteamCoverUrl(const std::string& appid) {
   return SteamCoverUrl(appid, items.empty() ? json::object() : items[0]);
 }
 
+void AddStoreItemReviews(const json& item, json& info);
+
 // A GetItems store item's info and review summary, shaped like FetchSteamDetails' so a reader
 // can't tell them apart.
 void AddStoreItemDetails(const std::string& appid, const json& item, json& info) {
@@ -529,6 +534,11 @@ void AddStoreItemDetails(const std::string& appid, const json& item, json& info)
     }
   }
   info["steam"] = steam;
+  AddStoreItemReviews(item, info);
+}
+
+// A GetItems store item's review summary, when it has one.
+void AddStoreItemReviews(const json& item, json& info) {
   const json summary = Value(Value(item, "reviews", json::object()), "summary_filtered", json::object());
   if (const int total = Value(summary, "review_count", 0); total > 0) {
     const int positive = static_cast<int>(std::int64_t{total} * Value(summary, "percent_positive", 0) / 100);
@@ -537,6 +547,57 @@ void AddStoreItemDetails(const std::string& appid, const json& item, json& info)
                              {"total_negative", total - positive},
                              {"total_reviews", total}};
   }
+}
+
+// One app's GetItems item with details, an empty object when Steam didn't answer for it.
+json SteamStoreItem(const std::string& appid) {
+  const json items = SteamStoreItems({appid}, true);
+  return !items.empty() && Value(items[0], "success", 0) == 1 ? items[0] : json::object();
+}
+
+// Steam's tag ids to their English names. Kept beside the metadata, since the list barely changes,
+// and asked for again when Steam names a tag id it doesn't hold.
+std::map<std::int64_t, std::string> SteamTagNames(store::MetadataStore& cache,
+                                                  const std::set<std::int64_t>& needed) {
+  static std::mutex mutex;
+  const std::lock_guard lock(mutex);
+  constexpr const char* kList = "steam_tag_names";
+  std::map<std::int64_t, std::string> names;
+  const auto read = [&](const json& list) {
+    for (const auto& tag : Value(Value(list, "response", json::object()), "tags", json::array())) {
+      const std::int64_t id = Value(tag, "tagid", std::int64_t{0});
+      const std::string name = Value(tag, "name", std::string());
+      if (id != 0 && !name.empty()) names[id] = name;
+    }
+  };
+  read(cache.ReadList(kList));
+  if (std::ranges::all_of(needed, [&](std::int64_t id) { return names.contains(id); })) return names;
+  const json list =
+      CurlJson({"curl", "-sSL", "https://api.steampowered.com/IStoreService/GetTagList/v1/?language=english"});
+  if (list.is_discarded()) return names;
+  names.clear();
+  read(list);
+  if (auto written = cache.WriteList(kList, list); !written) {
+    log::Warn("could not keep Steam's tag names: {}", written.error().message);
+  }
+  return names;
+}
+
+// info["steam_tags"] from `appid`'s GetItems item, most voted first: the app they came from (null
+// when no Steam game matched) and its tags. Left out when Steam didn't answer, so it's asked again.
+void AddStoreItemTags(store::MetadataStore& cache, const std::string& appid, const json& item, json& info) {
+  if (!appid.empty() && Value(item, "success", 0) != 1) return;
+  std::vector<std::int64_t> ids;
+  for (const json& tag : Value(item, "tags", json::array())) ids.push_back(Value(tag, "tagid", std::int64_t{0}));
+  const std::map<std::int64_t, std::string> names =
+      ids.empty() ? std::map<std::int64_t, std::string>{} : SteamTagNames(cache, {ids.begin(), ids.end()});
+  std::vector<std::string> tags;
+  for (const std::int64_t id : ids) {
+    if (const auto name = names.find(id); name != names.end()) tags.push_back(name->second);
+  }
+  info["steam_tags"] = {{"appid", appid.empty() ? json(nullptr) : json(appid)},
+                        {"tags", tags},
+                        {"fetched_at", model::NowSeconds()}};
 }
 
 // GOG Galaxy's games database: art for a release on any store it
@@ -628,14 +689,11 @@ bool FetchStoreCover(const config::Config& config, const model::Game& game, json
   return false;
 }
 
-void FetchSteamReviews(const std::string& appid, json& info);
-
-// Steam's store page, review summary and ProtonDB tier for `appid`. Returns whether the store
-// answered, so a rate-limited try can be made again.
-bool FetchSteamDetails(const std::string& appid, json& info) {
-  // Three independent requests at once, each into its own record.
-  json reviews_info, proton_info;
-  std::jthread reviews = Spawn([&] { FetchSteamReviews(appid, reviews_info); });
+// Steam's store page, review summary, tags and ProtonDB tier for `appid`, whose GetItems item is
+// `item`. Returns whether the store answered, so a rate-limited try can be made again.
+bool FetchSteamDetails(const config::Config& config, store::MetadataStore& cache, const std::string& appid,
+                       const json& item, json& info) {
+  json proton_info;
   std::jthread proton = Spawn([&] { FetchProtonDb(appid, proton_info); });
   const json store = CurlJson(
       {"curl", "-sSL", std::format("https://store.steampowered.com/api/appdetails?appids={}&l=english", appid)});
@@ -699,44 +757,27 @@ bool FetchSteamDetails(const std::string& appid, json& info) {
 
     info["steam"] = steam_info;
   }
-  FetchSteamTagsInto(config, cache, appid, info);
-
-  reviews.join();
+  AddStoreItemReviews(item, info);
+  if (config.GetBool("tags.steam")) AddStoreItemTags(cache, appid, item, info);
   proton.join();
-  info.update(reviews_info);
   info.update(proton_info);
   return !store.is_discarded();
 }
 
-// Steam's user review summary, a separate public endpoint from appdetails.
-void FetchSteamReviews(const std::string& appid, json& info) {
-  const json reviews = CurlJson({"curl", "-sSL",
-                                 std::format("https://store.steampowered.com/appreviews/{}?json=1&language=all"
-                                            "&purchase_type=all&num_per_page=0",
-                                            appid)});
-  if (!reviews.is_discarded() && Value(reviews, "success", 0) == 1 && reviews.contains("query_summary")) {
-    const json summary = Value(reviews, "query_summary", json::object());
-    info["steam_reviews"] = {
-        {"score_description", Value(summary, "review_score_desc", std::string())},
-        {"total_positive", Value(summary, "total_positive", 0)},
-        {"total_negative", Value(summary, "total_negative", 0)},
-        {"total_reviews", Value(summary, "total_reviews", 0)},
-    };
-  }
-}
-
-void FetchSteamOwned(const config::Config& config, const std::string& appid, const std::string& name,
-                     const std::string& game_id, std::int64_t griddb_id, json& info) {
-  // The details don't touch the art's keys, so they're fetched alongside it.
+void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache, const std::string& appid,
+                     const std::string& name, const std::string& game_id, std::int64_t griddb_id, json& info) {
+  // One store request names the cover and carries the reviews and tags. The details don't touch
+  // the art's keys, so they're fetched alongside it.
+  const json item = SteamStoreItem(appid);
   json details;
-  std::jthread details_thread = Spawn([&] { FetchSteamDetails(appid, details); });
+  std::jthread details_thread = Spawn([&] { FetchSteamDetails(config, cache, appid, item, details); });
 
   // Steam's own cover/hero go into art_candidates too, as the first entry --
   // otherwise there was no way back to it once you picked a SteamGridDB
   // alternate. Negative id: a real SteamGridDB id is always positive.
   constexpr std::int64_t kSteamCdnCandidateId = -1;
 
-  const std::string cover_url = SteamCoverUrl(appid);
+  const std::string cover_url = SteamCoverUrl(appid, item);
   if (FetchArtworkInto(config, cover_url, game_id, "steam_cdn", "cover", info, kSteamCdnCandidateId)) {
     info["art_candidates"]["cover"] = json::array({{{"id", kSteamCdnCandidateId},
                                                      {"url", cover_url},
@@ -847,48 +888,50 @@ bool FetchLutrisOwned(const config::Config& config, const std::string& slug, con
   return found;
 }
 
-// The store info, reviews and ProtonDB tier, without art. Sets details_fetched unless Steam's
-// store didn't answer, so a rate-limited try is made again.
-void FetchDetails(const config::Config& config, const model::Game& game, SteamMatcher& steam_match, json& info) {
+// With metadata.steam_by_name, a non-Steam game's ProtonDB tier from its closest Steam match, and
+// the reviews and tags of a Steam game of exactly its name, since a wrong game's would mislead. A
+// store's launcher isn't a game, so it gets none. Returns whether a match was found for the tier.
+bool AddSteamByName(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
+                    SteamMatcher& steam_match, json& info) {
+  if (!config.GetBool("metadata.steam_by_name") || game.source == "launcher") return false;
+  const std::string& exact = steam_match().exact;
+  json item;
+  std::jthread lookup;
+  if (!exact.empty()) lookup = Spawn([&] { item = SteamStoreItem(exact); });
+  const std::string& best = steam_match().best;
+  if (!best.empty()) FetchProtonDb(best, info);
+  if (lookup.joinable()) lookup.join();
+  AddStoreItemReviews(item, info);
+  if (config.GetBool("tags.steam")) AddStoreItemTags(cache, exact, item, info);
+  return !best.empty();
+}
+
+// The store info, reviews, tags and ProtonDB tier, without art. Sets details_fetched unless
+// Steam's store didn't answer, so a rate-limited try is made again.
+void FetchDetails(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
+                  SteamMatcher& steam_match, json& info) {
   bool answered = true;
   if (game.runner_ref.starts_with("steam:")) {
-    answered = FetchSteamDetails(game.runner_ref.substr(std::string_view("steam:").size()), info);
+    const std::string appid = game.runner_ref.substr(std::string_view("steam:").size());
+    answered = FetchSteamDetails(config, cache, appid, SteamStoreItem(appid), info);
   } else {
     if (game.source == "epic") {
       if (const json meta = LegendaryMeta(game.source_ref); !meta.is_null()) AddEpicDetails(game.source_ref, meta, info);
     }
-    if (config.GetBool("metadata.protondb_for_non_steam")) {
-      if (const std::string& appid = steam_match().best; !appid.empty()) FetchProtonDb(appid, info);
-      // Only the same name's, since a wrong game's reviews mislead.
-      if (const std::string& appid = steam_match().exact; !appid.empty()) FetchSteamReviews(appid, info);
-    }
+    AddSteamByName(config, cache, game, steam_match, info);
   }
   if (answered) info["details_fetched"] = model::NowSeconds();
 }
 
-Result<void> FetchNonSteam(const config::Config& config, const model::Game& game, std::int64_t griddb_id,
-                           json& info) {
+Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
+                           std::int64_t griddb_id, json& info) {
   const std::string& name = game.name;
   const std::string& game_id = game.id;
   // Independent of the SteamGridDB key below -- ProtonDB's own by-AppID
   // lookup needs no key, only a best-matched AppID, so this runs first and
   // can still leave something cached even when there's no key for cover art.
-  bool found_protondb = false;
   SteamMatcher steam_match(config, game);
-  if (config.GetBool("metadata.protondb_for_non_steam")) {
-    if (const std::string& appid = steam_match().best; !appid.empty()) {
-      FetchProtonDb(appid, info);
-      found_protondb = true;
-    }
-  }
-  if (config.GetBool("tags.steam") && config.GetBool("tags.steam_by_name")) {
-    FetchSteamTagsInto(config, cache, steam_match().exact, info);
-  }
-
-  // Only the same name's, since a wrong game's reviews mislead.
-  if (config.GetBool("metadata.protondb_for_non_steam")) {
-    if (const std::string& appid = steam_match().exact; !appid.empty()) FetchSteamReviews(appid, info);
-  }
+  const bool found_protondb = AddSteamByName(config, cache, game, steam_match, info);
 
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (!api_key.empty()) FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
@@ -964,7 +1007,7 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, co
     // SteamGridDB alternates, and covers games with no Lutris art.
     info["source"] = "lutris";
     const bool found = config.GetBool("lutris.import_art") && FetchLutrisOwned(config, game.source_ref, game.id, info);
-    if (Result<void> fetched = FetchNonSteam(config, game, griddb_id, info); !fetched && !found) {
+    if (Result<void> fetched = FetchNonSteam(config, cache, game, griddb_id, info); !fetched && !found) {
       return std::unexpected(fetched.error());
     }
   } else if (game.runner_ref.starts_with("steam:")) {
@@ -985,13 +1028,10 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, co
     }
     // Returned before anything is written: a failure here means nothing was
     // fetched, and a cache file would make the next attempt look answered.
-    if (Result<void> fetched = FetchNonSteam(config, game, griddb_id, info); !fetched && !found) {
+    if (Result<void> fetched = FetchNonSteam(config, cache, game, griddb_id, info); !fetched && !found) {
       return std::unexpected(fetched.error());
     }
   }
-
-  // A store's launcher isn't a game, so a Steam game of its name tags something else.
-  if (game.source == "launcher") info.erase("steam_tags");
 
   // A pick made while this fetch ran stays.
   const std::lock_guard lock(MetadataFileMutex());
@@ -1011,10 +1051,11 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
     if (steam_item && Value(*steam_item, "success", 0) == 1) {
       const std::string appid = game.runner_ref.substr(std::string_view("steam:").size());
       AddStoreItemDetails(appid, *steam_item, info);
+      if (config.GetBool("tags.steam")) AddStoreItemTags(cache, appid, *steam_item, info);
       FetchProtonDb(appid, info);
       info["details_fetched"] = model::NowSeconds();
     } else {
-      FetchDetails(config, game, steam_match, info);
+      FetchDetails(config, cache, game, steam_match, info);
     }
   }
 
@@ -1085,7 +1126,7 @@ std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::
 Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
   json info = json::object();
   SteamMatcher steam_match(config, game);
-  FetchDetails(config, game, steam_match, info);
+  FetchDetails(config, cache, game, steam_match, info);
   if (!info.contains("details_fetched")) return Err("details_unavailable", "the store didn't answer");
   const std::lock_guard lock(MetadataFileMutex());
   json merged = cache.Read(game.id);
@@ -1418,30 +1459,41 @@ std::unordered_map<std::string, std::optional<std::vector<std::string>>> StoredS
 
 bool WantsSteamTags(const config::Config& config, const model::Game& game) {
   if (!config.GetBool("tags.steam") || game.source == "launcher") return false;
-  return game.runner_ref.starts_with("steam:") || config.GetBool("tags.steam_by_name");
+  return game.runner_ref.starts_with("steam:") || config.GetBool("metadata.steam_by_name");
 }
 
 int FetchSteamTags(const config::Config& config, store::MetadataStore& cache, std::span<const model::Game> games) {
-  // Each game's appid: Steam's own, else a Steam game of exactly its name (empty when none).
+  // Each game's appid: Steam's own, else its Steam match by exact name (empty when none).
   std::map<std::string, std::string> appid_of;
   for (const model::Game& game : games) {
     if (!WantsSteamTags(config, game) || !cache.Has(game.id)) continue;  // its own fetch brings them
     appid_of[game.id] = game.runner_ref.starts_with("steam:")
                             ? game.runner_ref.substr(std::string_view("steam:").size())
-                            : FindSteamAppIds(game.name).exact;
+                            : SteamMatcher(config, game)().exact;
   }
   std::vector<std::string> appids;
   for (const auto& [id, appid] : appid_of) {
     if (!appid.empty() && !std::ranges::contains(appids, appid)) appids.push_back(appid);
   }
-  const std::map<std::string, std::vector<std::string>> found = SteamTagsOf(cache, appids);
+  std::map<std::string, json> items;
+  constexpr std::size_t kBatch = 50;
+  for (std::size_t start = 0; start < appids.size(); start += kBatch) {
+    const std::vector<std::string> batch(appids.begin() + start, appids.begin() + std::min(appids.size(), start + kBatch));
+    for (const json& item : SteamStoreItems(batch, true)) {
+      items[std::to_string(Value(item, "appid", std::int64_t{0}))] = item;
+    }
+  }
+  std::map<std::string, json> found;
+  for (const auto& [id, appid] : appid_of) {
+    json info;
+    AddStoreItemTags(cache, appid, items[appid], info);
+    if (info.contains("steam_tags")) found[id] = std::move(info["steam_tags"]);
+  }
   int fetched = 0;
   const std::lock_guard lock(MetadataFileMutex());
-  for (const auto& [id, appid] : appid_of) {
-    const auto tags = found.find(appid);
-    if (!appid.empty() && tags == found.end()) continue;  // Steam didn't answer: asked again next time
+  for (auto& [id, tags] : found) {
     json info = cache.Read(id);
-    info["steam_tags"] = SteamTagsRecord(appid, appid.empty() ? std::vector<std::string>{} : tags->second);
+    info["steam_tags"] = std::move(tags);
     if (cache.Write(id, info)) ++fetched;
   }
   return fetched;

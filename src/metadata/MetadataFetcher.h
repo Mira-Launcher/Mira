@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -100,7 +102,7 @@ void ClearCandidateThumbs(const config::Config& config, const std::string& game_
 std::unordered_map<std::string, std::optional<std::vector<std::string>>> StoredSteamTags(
     const store::MetadataStore& cache);
 // Whether `game` should have Steam tags: tags.steam, not a store's launcher, and a Steam game or
-// tags.steam_by_name.
+// metadata.steam_by_name.
 bool WantsSteamTags(const config::Config& config, const model::Game& game);
 // Fetches the Steam tags of those of `games` that want them and have a metadata record (a game
 // without one gets them with its own fetch), batched, into those records.
