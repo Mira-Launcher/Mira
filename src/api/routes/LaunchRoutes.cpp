@@ -419,12 +419,13 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("exe_path") || !body["exe_path"].is_string()) {
+    const auto body = BodyObject(req, res, R"({"exe_path": "...", "args": "..."})");
+    if (!body) return;
+    if (!body->contains("exe_path") || !(*body)["exe_path"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"exe_path": "...", "args": "..."})");
     }
-    const std::string exe_path = body["exe_path"];
-    const std::string args = body.value("args", std::string());
+    const std::string exe_path = (*body)["exe_path"];
+    const std::string args = body->value("args", std::string());
 
     // A game with no usable prefix yet gets one now.
     std::error_code ec;
@@ -538,11 +539,9 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     };
     // Optionally adopting what the game's installer put in its prefix (game.install_detected).
     if (!req.body.empty()) {
-      const json body = json::parse(req.body, nullptr, false);
-      if (!body.is_object()) {
-        return SendError(res, 400, "invalid_body", R"(expected {"install_path"?: "...", "exe_path"?: "..."})");
-      }
-      if (const std::string install_path = core::JsonString(body, "install_path"); !install_path.empty()) {
+      const auto body = BodyObject(req, res, R"({"install_path"?: "...", "exe_path"?: "..."})");
+      if (!body) return;
+      if (const std::string install_path = core::JsonString(*body, "install_path"); !install_path.empty()) {
         if (!paths::IsWithin(install_path, {game->data_dir})) {
           return SendError(res, 400, "invalid_install_path", "the install folder must be inside the game's prefix");
         }
@@ -554,7 +553,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         game->candidates = detected.candidates;
         game->confidence = detected.confidence;
       }
-      if (const std::string exe_path = core::JsonString(body, "exe_path"); !exe_path.empty()) {
+      if (const std::string exe_path = core::JsonString(*body, "exe_path"); !exe_path.empty()) {
         game->exe_path = exe_path;
       }
       for (model::Candidate& candidate : game->candidates) candidate.chosen = candidate.rel_path == game->exe_path;
@@ -609,16 +608,14 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
     library::RelocateRequest request;
     if (!req.body.empty()) {
-      const json body = json::parse(req.body, nullptr, false);
-      if (body.is_discarded() || !body.is_object()) {
-        return SendError(res, 400, "invalid_body", R"(expected {"install_path"?: "...", "data_dir"?: "..."})");
-      }
+      const auto body = BodyObject(req, res, R"({"install_path"?: "...", "data_dir"?: "..."})");
+      if (!body) return;
       request.only_given = true;
-      if (body.contains("install_path") && body["install_path"].is_string()) {
-        request.install_path = std::filesystem::path(body["install_path"].get<std::string>());
+      if (body->contains("install_path") && (*body)["install_path"].is_string()) {
+        request.install_path = std::filesystem::path((*body)["install_path"].get<std::string>());
       }
-      if (body.contains("data_dir") && body["data_dir"].is_string()) {
-        request.data_dir = std::filesystem::path(body["data_dir"].get<std::string>());
+      if (body->contains("data_dir") && (*body)["data_dir"].is_string()) {
+        request.data_dir = std::filesystem::path((*body)["data_dir"].get<std::string>());
       }
     }
 
@@ -657,11 +654,12 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("verb") || !body["verb"].is_string()) {
+    const auto body = BodyObject(req, res, R"({"verb": "..."})");
+    if (!body) return;
+    if (!body->contains("verb") || !(*body)["verb"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"verb": "..."})");
     }
-    const std::string verb = body["verb"];
+    const std::string verb = (*body)["verb"];
     const std::string id = game->id;
 
     s.events.Publish("tricks.started", {{"id", id}, {"verb", verb}});

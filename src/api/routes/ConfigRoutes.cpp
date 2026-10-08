@@ -85,15 +85,15 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Patch("/v1/config", [&s](const Request& req, Response& res) {
-    json patch = json::parse(req.body, nullptr, false);
-    if (patch.is_discarded()) return SendError(res, 400, "invalid_json", "body is not valid JSON");
-    Result<void> result = s.config.Patch(patch);
+    const auto body = BodyObject(req, res, "a JSON object");
+    if (!body) return;
+    Result<void> result = s.config.Patch(*body);
     if (result) s.SyncDesktopEntries();
-    if (result && patch.is_object() && patch.contains("library_roots") && s.on_roots_changed) s.on_roots_changed();
+    if (result && body->is_object() && body->contains("library_roots") && s.on_roots_changed) s.on_roots_changed();
     if (result) {
       json keys = json::array();
       for (const config::Entry& entry : config::Schema::Instance().Entries()) {
-        if (patch.contains(config::Schema::Pointer(entry.key))) keys.push_back(entry.key);
+        if (body->contains(config::Schema::Pointer(entry.key))) keys.push_back(entry.key);
       }
       PublishConfigChanged(s, std::move(keys));
     }

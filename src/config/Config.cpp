@@ -246,7 +246,6 @@ Result<void> Config::Set(std::string_view key, const json& value) {
 
 Result<void> Config::Patch(const json& patch) {
   const Schema& schema = Schema::Instance();
-  if (!patch.is_object()) return Err("invalid_patch", "expected a JSON object");
 
   // Validate the whole patch first: a rejected patch must change nothing.
   std::vector<std::string> problems;

@@ -180,13 +180,16 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post(R"(/v1/sources/([a-z0-9-]+)/runner)", [&s, send_source_runner](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    if (!body.is_object() || !body.contains("runner_ref") || !body["runner_ref"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"runner_ref": "kind:name", "apply_to_games"?: bool})");
+    constexpr std::string_view kShape = R"({"runner_ref": "kind:name", "apply_to_games"?: bool})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("runner_ref") || !b["runner_ref"].is_string()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const auto runner = library::SetSourceRunner(s.config, s.games, req.matches[1].str(),
-                                                 body["runner_ref"].get<std::string>(),
-                                                 body.value("apply_to_games", false));
+                                                 b["runner_ref"].get<std::string>(),
+                                                 b.value("apply_to_games", false));
     if (runner) {
       for (const std::string& id : runner->changed) {
         if (const auto game = s.games.Find(id)) s.events.Publish("game.updated", s.Record(*game));
@@ -217,13 +220,16 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   // Keyed by {source, ref}, since the title isn't tracked yet. "update" in the
   // event payload tells an update from an install.
   auto library_install_or_update = [&s](const Request& req, Response& res, bool is_update) {
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("source") || !body["source"].is_string() ||
-        !body.contains("ref") || !body["ref"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"source": "epic"|"steam"|"gog"|"itch"|"amazon", "ref": "..."})");
+    constexpr std::string_view kShape = R"({"source": "epic"|"steam"|"gog"|"itch"|"amazon", "ref": "..."})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("source") || !b["source"].is_string() ||
+        !b.contains("ref") || !b["ref"].is_string()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    const std::string source = body["source"];
-    const std::string ref = body["ref"];
+    const std::string source = b["source"];
+    const std::string ref = b["ref"];
 
     library::ILibrarySource* src = library::FindSource(source);
     if (src == nullptr) {
@@ -261,20 +267,23 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post("/v1/library/artwork", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
+    constexpr std::string_view kShape = R"({"source": "...", "titles": [{"ref": "...", "title": "..."}]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
     const auto text = [](const json& object, const char* key) {
       const auto found = object.find(key);
       return found != object.end() && found->is_string() ? found->get<std::string>() : std::string();
     };
-    const std::string source = body.is_object() ? text(body, "source") : "";
-    if (library::FindSource(source) == nullptr || !body.contains("titles") || !body["titles"].is_array()) {
+    const std::string source = text(b, "source");
+    if (library::FindSource(source) == nullptr || !b.contains("titles") || !b["titles"].is_array()) {
       return SendError(res, 400, "invalid_body",
-                       R"(expected {"source": "...", "titles": [{"ref": "...", "title": "..."}]})");
+                       std::format("expected {}", kShape));
     }
     if (!s.config.GetBool("metadata.enabled")) return SendJson(res, {{"queued", 0}});
 
     std::vector<model::Game> titles;
-    for (const json& entry : body["titles"]) {
+    for (const json& entry : b["titles"]) {
       if (!entry.is_object()) continue;
       model::Game title;
       title.source = source;
@@ -308,9 +317,11 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post("/v1/desktop-entries/import", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    const auto listed = body.is_object() && body.contains("ids") ? StringList(body, "ids") : std::nullopt;
-    if (!listed) return SendError(res, 400, "invalid_body", R"(expected {"ids": ["..."]})");
+    constexpr std::string_view kShape = R"({"ids": ["..."]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto listed = body->contains("ids") ? StringList(*body, "ids") : std::nullopt;
+    if (!listed) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     const std::vector<std::string>& ids = *listed;
 
     desktop::DesktopEntryScanner scanner(s.config, s.games, s.events);

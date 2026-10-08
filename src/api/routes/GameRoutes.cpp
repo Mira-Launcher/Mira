@@ -121,16 +121,17 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
 
   http.Patch(R"(/v1/games/([^/]+))", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    json patch = json::parse(req.body, nullptr, false);
-    if (patch.is_discarded()) return SendError(res, 400, "invalid_json", "body is not valid JSON");
-    if (const auto problem = library::GamePatchProblem(patch)) return SendError(res, 400, "invalid_body", *problem);
+    const auto body = BodyObject(req, res, "a JSON object");
+    if (!body) return;
+    const json& b = *body;
+    if (const auto problem = library::GamePatchProblem(b)) return SendError(res, 400, "invalid_body", *problem);
 
     const auto before = s.games.Find(id);
     // Turned into a Windows game without a prefix folder: it gets one, as POST /v1/games/manual
     // does. A game turned native keeps its data_dir, so switching back reuses the same prefix.
     std::string prefix_dir;
     if (before && before->platform != model::Platform::Windows && before->data_dir.empty()) {
-      const model::Game patched = library::ParseGamePatch(*before, patch);
+      const model::Game patched = library::ParseGamePatch(*before, b);
       if (patched.platform == model::Platform::Windows && patched.data_dir.empty()) {
         prefix_dir = library::PrefixDir(s.config, s.games, patched).string();
       }
@@ -140,7 +141,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const bool turned_windows = before && before->platform != model::Platform::Windows;
     bool provision = false;
     auto result = s.games.Update(id, [&](model::Game& game) {
-      game = library::ParseGamePatch(game, patch);
+      game = library::ParseGamePatch(game, b);
       if (game.platform == model::Platform::Windows && game.data_dir.empty())
         game.data_dir = prefix_dir;
       provision = turned_windows && game.platform == model::Platform::Windows &&
@@ -156,14 +157,17 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
   // One save, one menu sync and one event for any number of games, so a
   // multi-select doesn't cost a request (and a full rewrite) per game.
   http.Patch("/v1/games", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    const auto ids = body.is_object() ? StringList(body, "ids") : std::nullopt;
-    const auto add_tags = body.is_object() ? StringList(body, "add_tags") : std::nullopt;
-    const auto remove_tags = body.is_object() ? StringList(body, "remove_tags") : std::nullopt;
-    const json config = body.is_object() ? body.value("config", json::object()) : json();
+    constexpr std::string_view kShape = R"({"ids": [...], "add_tags"?: [...], "remove_tags"?: [...], "config"?: {...}})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    const auto ids = StringList(b, "ids");
+    const auto add_tags = StringList(b, "add_tags");
+    const auto remove_tags = StringList(b, "remove_tags");
+    const json config = b.value("config", json::object());
     if (!ids || !add_tags || !remove_tags || !config.is_object()) {
       return SendError(res, 400, "invalid_body",
-                       R"(expected {"ids": [...], "add_tags"?: [...], "remove_tags"?: [...], "config"?: {...}})");
+                       std::format("expected {}", kShape));
     }
     if (auto problem = library::ValidateOverridesPatch(config)) return SendError(res, 400, "invalid_setting", *problem);
 
@@ -200,15 +204,13 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
 
   http.Patch(R"(/v1/games/([^/]+)/config)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    json patch = json::parse(req.body, nullptr, false);
-    if (patch.is_discarded() || !patch.is_object()) {
-      return SendError(res, 400, "invalid_json", "expected a flat {\"dotted.key\": value} object");
-    }
-    if (auto problem = library::ValidateOverridesPatch(patch)) {
+    const auto body = BodyObject(req, res, "a flat {\"dotted.key\": value} object");
+    if (!body) return;
+    if (auto problem = library::ValidateOverridesPatch(*body)) {
       return SendError(res, 400, "invalid_setting", *problem);
     }
     auto result =
-        s.games.Update(id, [&](model::Game& game) { library::ApplyOverridesPatch(game, patch); });
+        s.games.Update(id, [&](model::Game& game) { library::ApplyOverridesPatch(game, *body); });
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntry(id);
@@ -268,16 +270,18 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
   http.Post("/v1/games/delete", [&s](const Request& req, Response& res) {
-    const json body = json::parse(req.body, nullptr, false);
-    const auto ids = body.is_object() ? StringList(body, "ids") : std::nullopt;
+    constexpr std::string_view kShape = R"({"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
     if (!ids) {
       return SendError(res, 400, "invalid_body",
-                       R"(expected {"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})");
+                       std::format("expected {}", kShape));
     }
-    const bool purge = body.value("purge", false);
-    const bool files = purge || body.value("delete_files", false);
-    const bool prefix = purge || body.value("delete_prefix", false);
-    const bool metadata = purge || body.value("delete_metadata", false);
+    const bool purge = body->value("purge", false);
+    const bool files = purge || body->value("delete_files", false);
+    const bool prefix = purge || body->value("delete_prefix", false);
+    const bool metadata = purge || body->value("delete_metadata", false);
 
     s.StartJob(req, res, "delete", "", "Removing games", [&s, ids = *ids, files, prefix, metadata](
                                                             JobRegistry::Progress& progress) -> Result<json> {
@@ -324,22 +328,25 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
   // --- manual add -----------------------------------------------------------
 
   http.Post("/v1/games/manual", [&s](const Request& req, Response& res) {
-    json body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded() || !body.contains("install_path") || !body["install_path"].is_string() ||
-        !body.contains("exe_path") || !body["exe_path"].is_string()) {
+    constexpr std::string_view kShape = R"({"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("install_path") || !b["install_path"].is_string() ||
+        !b.contains("exe_path") || !b["exe_path"].is_string()) {
       return SendError(res, 400, "invalid_body",
-                       R"(expected {"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})");
+                       std::format("expected {}", kShape));
     }
-    const std::filesystem::path install_path = body["install_path"].get<std::string>();
-    const std::string exe_path = library::StoredExePath(install_path.string(), body["exe_path"]);
-    const bool is_installer = body.value("is_installer", false);
+    const std::filesystem::path install_path = b["install_path"].get<std::string>();
+    const std::string exe_path = library::StoredExePath(install_path.string(), b["exe_path"]);
+    const bool is_installer = b.value("is_installer", false);
 
     model::Platform platform;
-    if (body.contains("platform") && !library::IsSettablePlatform(body["platform"])) {
+    if (b.contains("platform") && !library::IsSettablePlatform(b["platform"])) {
       return SendError(res, 400, "invalid_body", R"("platform" must be "windows" or "native")");
     }
-    if (body.contains("platform")) {
-      platform = model::PlatformFromString(body["platform"].get<std::string>());
+    if (b.contains("platform")) {
+      platform = model::PlatformFromString(b["platform"].get<std::string>());
     } else {
       const std::string ext = strings::ToLower(std::filesystem::path(exe_path).extension().string());
       const bool windows = ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd";
@@ -368,12 +375,12 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     // An AppImage is the program itself, so it names the game rather than the folder it sits in.
     const std::string default_name = appimage ? std::filesystem::path(exe_path).stem().string()
                                               : install_path.filename().string();
-    game.name = body.value("name", strings::CleanGameName(default_name));
+    game.name = b.value("name", strings::CleanGameName(default_name));
     game.id = existing ? game.id : s.games.NextId(game.name);
     game.source = "manual";
     game.install_path = install_path.string();
     game.exe_path = exe_path;
-    game.args = body.value("args", std::string());
+    game.args = b.value("args", std::string());
     game.platform = platform;
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
