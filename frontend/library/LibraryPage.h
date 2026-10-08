@@ -56,6 +56,10 @@ class LibraryPage : public QWidget {
   int FilterCount() const;
   // Ctrl+H: Hidden, or back to All from it.
   void ToggleHidden();
+  // Only the games with `tag`, as picking it alone in the pill's Tags section would; clears the search.
+  void ShowTag(const QString& tag);
+  // All games, no tags picked, no search.
+  void ClearFilters();
   const std::string& SortKey() const;
   bool SortDescending() const;
 

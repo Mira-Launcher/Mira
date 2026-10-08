@@ -34,6 +34,7 @@ class HoverCard;
 class LibraryPage;
 class OwnedTitles;
 class RunnersPage;
+class TagsPage;
 class SettingsPanel;
 class Sidebar;
 class SourcePage;
@@ -96,6 +97,9 @@ private:
   // Points the slider at the page on screen, and off where there's no grid.
   void SyncZoom();
   bool SourcePageShown() const;
+  // The Tags page's game picker, whose covers follow the tile size.
+  bool TagPickerShown() const;
+  bool TagsShown() const;
 
   // One persistent HoverCard for every tile and sidebar row. `anchor` is
   // global; the card goes beside it.
@@ -112,6 +116,8 @@ private:
   void OfferInstall(const std::string& id);
   // The card that offers to delete an installer folder an install left behind.
   void OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent& event);
+  // The card that asks which game a folder moved by hand is, when several could be.
+  void AskUnclearMove(const mira_gui::UnclearMove& move);
   // Shows a prompt card now, or once Settings, a game's card and other cards have closed.
   // One per `key`; a second ask while it waits is dropped.
   void QueueCard(const std::string& key, std::function<void()> show);
@@ -161,6 +167,10 @@ private:
   // The Runners page, in the grid's place like a source page.
   void OpenRunners();
   void CloseRunners();
+  // The Tags page is made once, ahead of its first open, and kept.
+  void BuildTagsPage();
+  void OpenTags();
+  void CloseTags();
   void OpenAbout();
   void OpenGameDetailPage(const std::string& id);
   // A store or launcher's page, rebuilt fresh on each open.
@@ -210,6 +220,7 @@ private:
   bool tile_size_synced_ = false;
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
+  mira_gui::TagsPage* tags_page_ = nullptr;
 
   QSplitter* splitter_ = nullptr;
   // The splitter's right side: grid_page_, source_page_, or runners_page_.

@@ -3,82 +3,26 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCompleter>
+#include <QContextMenuEvent>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QToolButton>
 
 #include <algorithm>
 
+#include "../client/Types.h"
 #include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "FlowLayout.h"
 
 namespace mira_gui {
-namespace {
-
-// Lays its items out left to right, wrapping onto a new line when one won't fit.
-class FlowLayout : public QLayout {
-public:
-  explicit FlowLayout(QWidget* parent) : QLayout(parent) { setContentsMargins(0, 0, 0, 0); }
-  ~FlowLayout() override {
-    while (QLayoutItem* item = takeAt(0)) delete item;
-  }
-
-  void addItem(QLayoutItem* item) override { items_.append(item); }
-  int count() const override { return static_cast<int>(items_.size()); }
-  QLayoutItem* itemAt(int index) const override { return items_.value(index); }
-  QLayoutItem* takeAt(int index) override {
-    return index >= 0 && index < items_.size() ? items_.takeAt(index) : nullptr;
-  }
-  // Moves the item for `widget` to `index`, e.g. to keep a trailing button last.
-  void Move(QWidget* widget, int index) {
-    const int from = indexOf(widget);
-    if (from >= 0) items_.move(from, std::clamp(index, 0, count() - 1));
-    invalidate();
-  }
-
-  Qt::Orientations expandingDirections() const override { return {}; }
-  bool hasHeightForWidth() const override { return true; }
-  int heightForWidth(int width) const override { return Arrange(QRect(0, 0, width, 0), false); }
-  void setGeometry(const QRect& rect) override {
-    QLayout::setGeometry(rect);
-    Arrange(rect, true);
-  }
-  QSize sizeHint() const override { return minimumSize(); }
-  QSize minimumSize() const override {
-    QSize size;
-    for (const QLayoutItem* item : items_) size = size.expandedTo(item->minimumSize());
-    return size;
-  }
-
-private:
-  static constexpr int kGap = 6;
-
-  int Arrange(const QRect& rect, bool apply) const {
-    int x = rect.x();
-    int y = rect.y();
-    int line_height = 0;
-    for (QLayoutItem* item : items_) {
-      if (item->widget() != nullptr && item->widget()->isHidden()) continue;
-      const QSize hint = item->sizeHint();
-      if (x > rect.x() && x + hint.width() > rect.right() + 1) {
-        x = rect.x();
-        y += line_height + kGap;
-        line_height = 0;
-      }
-      line_height = std::max(line_height, hint.height());
-      if (apply) item->setGeometry(QRect(QPoint(x, y), hint));
-      x += hint.width() + kGap;
-    }
-    return y + line_height - rect.y();
-  }
-
-  QList<QLayoutItem*> items_;
-};
-
-}  // namespace
 
 TagEdit::TagEdit(QWidget* parent) : QWidget(parent) {
   auto* layout = new FlowLayout(this);
@@ -108,11 +52,48 @@ void TagEdit::SetTags(const std::vector<std::string>& tags) {
   Rebuild();
 }
 
+void TagEdit::SetOrder(std::vector<std::string> order) {
+  order_ = std::move(order);
+  Rebuild();
+}
+
+void TagEdit::SetFolderPick(const std::string& pick) {
+  pick_ = pick;
+  Rebuild();
+}
+
+std::string TagEdit::FolderTag() const {
+  const int index = FolderTagIndex(tags_, folder_tags_, pick_);
+  return index >= 0 ? tags_[index] : std::string();
+}
+
+void TagEdit::PickFolder(const std::string& tag) {
+  pick_.clear();
+  const int usual = FolderTagIndex(tags_, folder_tags_);
+  if (usual < 0 || !SameTag(tags_[usual], tag)) pick_ = tag;
+}
+
+void TagEdit::Remove(const std::string& tag) {
+  std::erase(tags_, tag);
+  if (SameTag(pick_, tag)) pick_.clear();
+  Rebuild();
+  emit Changed();
+}
+
 void TagEdit::SetSuggestions(const QStringList& tags) {
   auto* completer = new QCompleter(tags, input_);
   completer->setCaseSensitivity(Qt::CaseInsensitive);
   delete input_->completer();
   input_->setCompleter(completer);
+}
+
+void TagEdit::SetFolderTags(std::optional<std::vector<std::string>> folder_tags) {
+  folder_tags_ = std::move(folder_tags);
+  Rebuild();
+}
+
+bool TagEdit::IsFolderTag(const std::string& tag) const {
+  return folder_tags_ && std::ranges::any_of(*folder_tags_, [&](const std::string& f) { return SameTag(f, tag); });
 }
 
 void TagEdit::Rebuild() {
@@ -122,30 +103,69 @@ void TagEdit::Rebuild() {
     chip->deleteLater();
   }
   chips_.clear();
+  pressed_ = nullptr;
   auto* flow = static_cast<FlowLayout*>(layout());
-  for (const std::string& tag : tags_) {
+  const std::string folder_tag = FolderTag();
+  for (const std::string& tag : InTagOrder(tags_, order_)) {
+    const bool is_folder = !folder_tag.empty() && tag == folder_tag;
+    // Another folder tag: a click makes it the game's folder.
+    const bool other_folder = !is_folder && IsFolderTag(tag);
     auto* chip = new QFrame(this);
     chip->setObjectName("tag_chip");
+    chip->setProperty("tag", QString::fromStdString(tag));
+    theme::SetStyleProperty(chip, "folder", is_folder ? "true" : "false");
+    if (other_folder) chip->setCursor(Qt::PointingHandCursor);
+    if (is_folder) {
+      chip->setToolTip(pick_.empty() ? QString("The game's folder, first in the folder tags' order")
+                                     : QString("The game's folder, picked for this game"));
+    } else if (other_folder) {
+      chip->setToolTip("Click to make this the game's folder");
+    }
+    chip->installEventFilter(this);
     auto* chip_layout = new QHBoxLayout(chip);
-    chip_layout->setContentsMargins(10, 2, 4, 2);
+    chip_layout->setContentsMargins(is_folder || other_folder ? 6 : 10, 2, 4, 2);
     chip_layout->setSpacing(4);
+    if (is_folder || other_folder) {
+      auto* icon = new QLabel(chip);
+      icons::Follow(icon, icons::Glyph::Folder, 12, is_folder ? &theme::Tokens::accent : &theme::Tokens::text_muted);
+      chip_layout->addWidget(icon);
+    }
     chip_layout->addWidget(new QLabel(QString::fromStdString(tag), chip));
     auto* remove = new QToolButton(chip);
     remove->setObjectName("tag_remove");
     icons::Follow(remove, icons::Glyph::Close);
     remove->setIconSize(QSize(12, 12));
     remove->setToolTip(QString("Remove %1").arg(QString::fromStdString(tag)));
-    connect(remove, &QToolButton::clicked, this, [this, tag] {
-      std::erase(tags_, tag);
-      Rebuild();
-      emit Changed();
-    });
+    connect(remove, &QToolButton::clicked, this, [this, tag] { Remove(tag); });
     chip_layout->addWidget(remove);
     flow->addWidget(chip);
     flow->Move(chip, static_cast<int>(chips_.size()));
     chips_.append(chip);
   }
   updateGeometry();
+}
+
+void TagEdit::ShowMenu(const std::string& tag, const QPoint& global) {
+  QMenu menu(this);
+  const QString name = QString::fromStdString(tag);
+  menu.addAction(QString("Show games tagged %1").arg(name), this, [this, name] { emit TagClicked(name); });
+  const bool is_folder = tag == FolderTag();
+  if (IsFolderTag(tag) && !is_folder) {
+    menu.addAction(icons::For(icons::Glyph::Folder), "Use as this game's folder", this, [this, tag] {
+      PickFolder(tag);
+      Rebuild();
+      emit Changed();
+    });
+  } else if (is_folder && !pick_.empty()) {
+    menu.addAction("Follow the folder tags' order", this, [this] {
+      pick_.clear();
+      Rebuild();
+      emit Changed();
+    });
+  }
+  menu.addSeparator();
+  menu.addAction(QString("Remove %1").arg(name), this, [this, tag] { Remove(tag); });
+  menu.exec(global);
 }
 
 void TagEdit::StartAdding() {
@@ -158,6 +178,33 @@ void TagEdit::StartAdding() {
 }
 
 bool TagEdit::eventFilter(QObject* watched, QEvent* event) {
+  auto* chip = qobject_cast<QFrame*>(watched);
+  if (chip != nullptr && chips_.contains(chip)) {
+    const std::string tag = chip->property("tag").toString().toStdString();
+    switch (event->type()) {
+      case QEvent::ContextMenu:
+        ShowMenu(tag, static_cast<QContextMenuEvent*>(event)->globalPos());
+        return true;
+      case QEvent::MouseButtonPress:
+        if (static_cast<QMouseEvent*>(event)->button() != Qt::LeftButton) break;
+        pressed_ = chip;
+        return true;
+      case QEvent::MouseButtonRelease:
+        if (pressed_ != chip) break;
+        pressed_ = nullptr;
+        if (!chip->rect().contains(static_cast<QMouseEvent*>(event)->position().toPoint())) return true;
+        // Only a folder pick: a click that filtered the library would read as the same kind of switch.
+        if (IsFolderTag(tag) && tag != FolderTag()) {
+          PickFolder(tag);
+          Rebuild();
+          emit Changed();
+        }
+        return true;
+      default:
+        break;
+    }
+    return QWidget::eventFilter(watched, event);
+  }
   if (event->type() == QEvent::MouseButtonPress && input_->isVisible()) {
     auto* target = qobject_cast<QWidget*>(watched);
     const QWidget* popup = input_->completer() != nullptr ? input_->completer()->popup() : nullptr;

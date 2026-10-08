@@ -15,6 +15,7 @@
 #include "library/GamePatch.h"
 #include "config/Resolver.h"
 #include "core/Strings.h"
+#include "library/FolderTags.h"
 #include "library/PrefixNaming.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
@@ -37,7 +38,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
     const bool include_hidden = BoolParam(req, "include_hidden");
-    const double threshold = s.config.GetDouble("detect.low_confidence_threshold");
+    const Services::RecordSettings settings = s.CurrentRecordSettings();
     for (const model::Game& game : all) {
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {
@@ -48,7 +49,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       } else if (!include_hidden && std::ranges::contains(game.tags, std::string("hidden"))) {
         continue;
       }
-      out.push_back(s.Record(game, threshold));
+      out.push_back(s.Record(game, &settings));
     }
     SendJson(res, std::move(out));
   });
@@ -152,12 +153,18 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     s.SyncDesktopEntry(id);
     SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
     if (provision) s.ProvisionLater(*result);
+    // A new folder too: a game sorted by a link needs its link pointed at it.
+    if (before &&
+        (before->tags != result->tags || before->folder_tag != result->folder_tag ||
+         before->install_path != result->install_path || before->data_dir != result->data_dir))
+      s.SortByTags({id});
   });
 
   // One save, one menu sync and one event for any number of games, so a
   // multi-select doesn't cost a request (and a full rewrite) per game.
   http.Patch("/v1/games", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"ids": [...], "add_tags"?: [...], "remove_tags"?: [...], "config"?: {...}})";
+    constexpr std::string_view kShape =
+        R"({"ids": [...], "add_tags"?: [...], "remove_tags"?: [...], "folder_tag"?: "...", "config"?: {...}})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
@@ -165,26 +172,37 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     const auto add_tags = StringList(b, "add_tags");
     const auto remove_tags = StringList(b, "remove_tags");
     const json config = b.value("config", json::object());
-    if (!ids || !add_tags || !remove_tags || !config.is_object()) {
-      return SendError(res, 400, "invalid_body",
-                       std::format("expected {}", kShape));
+    const json folder_tag = b.value("folder_tag", json());
+    if (!ids || !add_tags || !remove_tags || !config.is_object() ||
+        !(folder_tag.is_null() || folder_tag.is_string())) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     if (auto problem = library::ValidateOverridesPatch(config)) return SendError(res, 400, "invalid_setting", *problem);
 
     auto updated = s.games.UpdateMany(*ids, [&](model::Game& game) {
       const std::vector<std::string> old_tags = game.tags;
+      const std::string old_pick = game.folder_tag;
       const json old_overrides = game.overrides;
       std::erase_if(game.tags, [&](const std::string& tag) { return std::ranges::contains(*remove_tags, tag); });
       for (const std::string& tag : *add_tags) {
         if (!std::ranges::contains(game.tags, tag)) game.tags.push_back(tag);
       }
+      // The game's folder from now on, whatever tags.folders' order says; "" goes back to it.
+      if (folder_tag.is_string()) {
+        const std::string pick = folder_tag.get<std::string>();
+        if (!pick.empty() && !std::ranges::contains(game.tags, pick)) game.tags.push_back(pick);
+        game.folder_tag = pick;
+      }
+      library::DropStalePick(game);
       library::ApplyOverridesPatch(game, config);
-      return game.tags != old_tags || game.overrides != old_overrides;
+      return game.tags != old_tags || game.folder_tag != old_pick ||
+             game.overrides != old_overrides;
     });
     if (!updated) return SendStoreError(res, updated.error());
 
     json games = json::array();
-    for (const model::Game& game : *updated) games.push_back(s.Record(game));
+    const Services::RecordSettings settings = s.CurrentRecordSettings();
+    for (const model::Game& game : *updated) games.push_back(s.Record(game, &settings));
     if (!updated->empty()) {
       // Tags never change a menu entry; only an override can.
       if (!config.empty()) {
@@ -193,6 +211,9 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       s.events.Publish("games.updated", {{"games", games}});
     }
     SendJson(res, {{"games", std::move(games)}});
+    std::vector<std::string> changed;
+    for (const model::Game& game : *updated) changed.push_back(game.id);
+    s.SortByTags(std::move(changed));
   });
 
   http.Get(R"(/v1/games/([^/]+)/config)", [&s](const Request& req, Response& res) {

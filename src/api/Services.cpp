@@ -17,6 +17,7 @@
 #include "epic/Legendary.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
+#include "library/FolderTags.h"
 #include "library/Scanner.h"
 #include "library/SourceRemoval.h"
 #include "metadata/MetadataFetcher.h"
@@ -33,6 +34,25 @@ void AddNeedsCheck(json& game, double threshold) {
   const json candidates = game.value("candidates", json::array());
   game["needs_check"] = candidates.is_array() && !candidates.empty() && !game.value("reviewed", false) &&
                         game.value("confidence", 1.0) < threshold;
+}
+
+// `sort_root`: the library folder (as library_roots spells it) the game is sorted in, or null when
+// its folder never moves. `folder_tags`: that folder's folder tags, or null while it isn't sorted.
+// `folder`: the folder tag the game's folder is in, or null when none.
+void AddSorting(json& record, const library::SortRules& rules, const model::Game& game) {
+  record["sort_root"] = nullptr;
+  record["folder_tags"] = nullptr;
+  record["folder"] = nullptr;
+  const std::filesystem::path root = library::SortRootOf(rules, game);
+  if (root.empty()) return;
+  for (std::size_t i = 0; i < rules.roots.size(); ++i) {
+    if (rules.roots[i] == root) record["sort_root"] = rules.roots_as_written[i];
+  }
+  if (!library::SortsByTags(rules, root)) return;
+  record["folder_tags"] = library::FolderTagsOf(rules, root);
+  if (const std::string folder = library::FolderTagFor(rules, root, game.tags, game.folder_tag);
+      !folder.empty())
+    record["folder"] = folder;
 }
 
 // Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
@@ -53,7 +73,10 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     if (!game.contains("art")) Decorate(game);  // a Record() already is
   });
   events.SetArtHook([this](const std::string& id) { return games.Metadata().ArtVersions(id); });
-  supervisor.SetExitHook([this](const std::string& id) { CheckForInstall(id); });
+  supervisor.SetExitHook([this](const std::string& id) {
+    CheckForInstall(id);
+    SortByTags({id});  // its tags may have changed while it ran
+  });
 }
 
 Services::~Services() {
@@ -87,9 +110,18 @@ void Services::ReloadSettings() {
   }
   if (changed->empty()) return;  // Mira's own save, or an edit that changed no setting
   log::Info("settings.toml was edited: {} setting(s) changed", changed->size());
+  SettingsChanged(*changed);
+}
+
+void Services::SettingsChanged(const std::vector<std::string>& keys) {
   SyncDesktopEntries();
-  if (std::ranges::contains(*changed, std::string("library_roots")) && on_roots_changed) on_roots_changed();
-  events.Publish("config.changed", {{"keys", *changed}, {"frontend", config.FrontendSettings()}});
+  // Sorting folders are watched like the roots, and games move to match the new folders.
+  if (std::ranges::any_of(keys, [](const std::string& key) {
+        return key == "library_roots" || key == "tags.folders" || key == "tags.sorted_roots";
+      })) {
+    SortingChanged();
+  }
+  events.Publish("config.changed", {{"keys", keys}, {"frontend", config.FrontendSettings()}});
 }
 
 void Services::SyncDesktopEntries() {
@@ -131,19 +163,26 @@ void Services::CheckForInstall(const std::string& game_id) {
                   {{"id", game_id}, {"install_path", installed->dir.string()}, {"exe_path", installed->exe_path}});
 }
 
-json Services::Record(const model::Game& game, std::optional<double> threshold) {
-  json body = model::ToJson(game);
-  Decorate(body, threshold);
-  return body;
+Services::RecordSettings Services::CurrentRecordSettings() const {
+  return {.threshold = config.GetDouble("detect.low_confidence_threshold"), .rules = library::SortRules(config)};
 }
 
-void Services::Decorate(json& record, std::optional<double> threshold) {
-  const std::string id = record.value("id", "");
+json Services::Record(const model::Game& game, const RecordSettings* settings) {
+  json record = model::ToJson(game);
+  AddRecordFields(record, game, settings != nullptr ? *settings : CurrentRecordSettings());
+  return record;
+}
+
+void Services::Decorate(json& record) {
+  AddRecordFields(record, model::GameFromJson(record), CurrentRecordSettings());
+}
+
+void Services::AddRecordFields(json& record, const model::Game& game, const RecordSettings& settings) {
   // So a client can resync after a reconnect.
-  record["running"] = supervisor.IsRunning(id);
-  record["art"] = games.Metadata().ArtVersions(id);
-  AddNeedsCheck(record,
-                threshold ? *threshold : config.GetDouble("detect.low_confidence_threshold"));
+  record["running"] = supervisor.IsRunning(game.id);
+  record["art"] = games.Metadata().ArtVersions(game.id);
+  AddNeedsCheck(record, settings.threshold);
+  AddSorting(record, settings.rules, game);
 }
 
 // Picks up games started outside Mira (the Steam client, a running launcher) so
@@ -225,8 +264,9 @@ void Services::ReconcileSessions() {
   // A client that stayed open across a restart may still show games from the old daemon as
   // running. One event, not one per game, so a large library doesn't push the whole buffer out.
   json idle = json::array();
+  const RecordSettings settings = CurrentRecordSettings();
   for (const model::Game& game : games.All()) {
-    if (!supervisor.IsRunning(game.id)) idle.push_back(Record(game));
+    if (!supervisor.IsRunning(game.id)) idle.push_back(Record(game, &settings));
   }
   if (!idle.empty()) events.Publish("games.updated", {{"games", std::move(idle)}});
 }
@@ -303,10 +343,90 @@ Result<proc::ProcessSupervisor::Reservation> Services::Claim(const std::string& 
   return std::unexpected(GameBusyError(game_id, supervisor.ReservedFor(game_id)));
 }
 
+void Services::SortByTags(std::vector<std::string> ids) {
+  std::erase_if(ids, [&](const std::string& id) {
+    const auto game = games.Find(id);
+    return !game || !library::NeedsPlacing(config, *game);
+  });
+  if (ids.empty()) return;
+  const std::string target = ids.size() == 1 ? ids.front() : std::string();
+  jobs.Start("relocate", target, "Sorting game folders by tag",
+             [this, ids](JobRegistry::Progress& progress) -> Result<json> {
+               json moved = json::array();
+               json failed = json::array();
+               std::optional<Error> last_error;
+               int done = 0;
+               for (const std::string& id : ids) {
+                 progress.Report(done++, static_cast<int>(ids.size()));
+                 // Per game, so scans can run between moves.
+                 auto folders_lock = games.LockFolders();
+                 const auto game = games.Find(id);
+                 if (!game || !library::NeedsPlacing(config, *game)) continue;  // changed meanwhile
+                 const auto claim = Claim(id, "moved");
+                 if (!claim) continue;
+                 const std::vector<model::Game> library = games.All();
+                 auto placed = library::Place(config, *game, library);
+                 if (!placed) {
+                   log::Warn("couldn't sort {} by its tags: {}", id, placed.error().message);
+                   failed.push_back(BatchFailure(id, placed.error()));
+                   last_error = placed.error();
+                   continue;
+                 }
+                 auto saved = games.Update(id, [&](model::Game& stored) {
+                   stored.install_path = placed->install_path;
+                   stored.data_dir = placed->data_dir;
+                   stored.library_link = placed->library_link;
+                   stored.updated_at = model::NowSeconds();
+                 });
+                 if (!saved) {
+                   log::Error("moved {} to {} but couldn't save it: {}", id, placed->install_path,
+                              saved.error().message);
+                   failed.push_back(BatchFailure(id, saved.error()));
+                   last_error = saved.error();
+                   continue;
+                 }
+                 library::PruneEmptyContainers(config, library::SortingFolderOf(config, *game),
+                                               games.All());
+                 folders_lock.unlock();
+                 events.Publish("game.updated", Record(*saved));
+                 moved.push_back(id);
+               }
+               // A single game's failure is the job's, so a client shows it.
+               if (ids.size() == 1 && last_error) return std::unexpected(*last_error);
+               return json{{"moved", std::move(moved)}, {"failed", std::move(failed)}};
+             });
+}
+
+void Services::PublishAllGames() {
+  json records = json::array();
+  const RecordSettings settings = CurrentRecordSettings();
+  for (const model::Game& game : games.All()) records.push_back(Record(game, &settings));
+  if (!records.empty()) events.Publish("games.updated", {{"games", std::move(records)}});
+}
+
+void Services::SortingChanged() {
+  if (on_roots_changed) on_roots_changed();
+  PublishAllGames();
+  SortAllByTags();
+}
+
+void Services::SortAllByTags() {
+  std::vector<std::string> ids;
+  for (const model::Game& game : games.All()) ids.push_back(game.id);
+  SortByTags(std::move(ids));
+}
+
 Result<void> Services::DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
                                       bool files, bool prefix, bool metadata) {
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
+  std::vector<model::Game> others(staying.begin(), staying.end());
+  std::erase_if(others, [&](const model::Game& other) { return other.id == game.id; });
+  // Its link in a library folder goes with it, whatever else is kept.
+  if (!game.library_link.empty()) {
+    library::RemoveLink(game);
+    library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
+  }
   // Through the store's own tool where it has one, so its records stay in sync.
   if (files && game.source == "office") {
     // The apps share one folder, so Office's own installer takes just this one out.
@@ -317,6 +437,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     }
   } else if (files) {
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
+    library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
   if (prefix && !game.data_dir.empty()) {
     const auto sharer = std::ranges::find_if(staying, [&](const model::Game& other) {
@@ -381,10 +502,11 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                if (fresh != builds.end()) {
                  const std::string to = fresh->Reference();
                  json moved = json::array();
+                 const RecordSettings settings = CurrentRecordSettings();
                  for (const model::Game& game : games.All()) {
                    if (game.runner_ref != replacing) continue;
                    if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-                     moved.push_back(Record(*updated));
+                     moved.push_back(Record(*updated, &settings));
                    }
                  }
                  if (config.GetString("default_runner.windows") == replacing) {

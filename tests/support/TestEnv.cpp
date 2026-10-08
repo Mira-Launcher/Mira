@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <thread>
 #include <utility>
 
 #include <json.hpp>
@@ -14,6 +15,15 @@ fs::path TempDir(std::string_view name) {
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
+}
+
+bool WaitUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (!done()) {
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  return true;
 }
 
 void Touch(const fs::path& path, std::string_view content, bool executable) {
@@ -31,7 +41,7 @@ PathPrepend::~PathPrepend() { setenv("PATH", old_.c_str(), 1); }
 
 void Isolate(config::Config& config) {
   for (const char* key : {"metadata.enabled", "metadata.steam_art_by_name", "launchers.umu_lookup",
-                          "steam.import_playtime", "runner_scan_common_dirs"}) {
+                          "steam.import_playtime", "runner_scan_common_dirs", "tags.steam"}) {
     [[maybe_unused]] auto off = config.Set(key, false);
   }
   // Every folder Mira reads or writes, moved next to the settings file.

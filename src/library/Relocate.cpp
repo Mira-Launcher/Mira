@@ -8,6 +8,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "launchers/Launchers.h"
+#include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
 
@@ -127,9 +128,12 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
     if (request.install_path) {
       target = *request.install_path;
     } else if (!config.GetString("relocate.install_root").empty()) {
-      target = NamedDir(config, game, config.GetPath("relocate.install_root"), game.install_path);
+      target = NamedDir(config, game,
+                        PlacedParent(config, config.GetPath("relocate.install_root"), game),
+                        game.install_path);
     } else if (!library_roots.empty()) {
-      target = NamedDir(config, game, library_roots.front(), game.install_path);
+      target = NamedDir(config, game, PlacedParent(config, library_roots.front(), game),
+                        game.install_path);
     }
     if (target.empty()) return Err("no_library_roots", "no library_roots configured to relocate into");
     if (!paths::IsWithin(target, library_roots)) {

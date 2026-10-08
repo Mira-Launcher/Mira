@@ -22,7 +22,7 @@ src/
   model/      Game, RunnerBuild, Event, Candidate: plain structs with ToJson/FromJson
   store/      GameStore and MetadataStore, over SQLite (mira.db, cache.db)
   library/    Detector, Scanner, AutoSetup, AutoInstall, Watcher, ArchiveExtractor, WinePrefix,
-              PrefixNaming, Relocate, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
+              PrefixNaming, Relocate, FolderTags, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
   runner/     IRunner with Native, Proton, Wine and Steam runners, RunnerRegistry, Downloader,
               Exec, GameMode, Winetricks
   proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
@@ -63,11 +63,11 @@ frontend.toml   GUI settings, stored and returned verbatim by the backend
 logs/           per-game output from the last launches
 ```
 
-`settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once, and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
+`settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once (`Services::SettingsChanged`, which a request's change goes through too), and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
 
 **mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `settings_snapshot`, and `ui_state` (the GUI's window state, kept out of `frontend.toml`). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
-**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`. Everything in it can be fetched again, so a damaged one is started over.
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, and `lists` of what's fetched for the whole library (Steam's tag names). Everything in it can be fetched again, so a damaged one is started over.
 
 Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
@@ -90,13 +90,15 @@ The daemon should cost nothing when idle:
 - `EventBus::WaitNext` waits on a condition variable. The 20-second timeout only runs while an SSE client is connected, to notice when it goes away.
 - Shutdown uses `sigwait`, not a polled flag. Stopping wakes every background wait at once (open event streams, the external-game watcher, the per-game exit watchers), so quitting never waits out a poll interval.
 - The external-game watcher scans `/proc` every 3 seconds only while there are Steam or store-launcher games to look for, and rebuilds that list only when `GameStore::Revision()` or `Config::Revision()` changes.
-- `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes. There is one non-recursive watch per library root.
+- `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes. There is one non-recursive watch per library root and per sorting folder in it.
 
 ## Detection and scanning
 
 `library::Detector` scores the executables in one game folder using the `detect.*` settings. Each rule in `detect.rules` is a plain function run in the listed order, and removing a rule from the list disables it. Windows candidates are `.exe` and `.msi` files; Wine runs an `.msi` through `msiexec` and a `.bat` or `.cmd` through `cmd`. A candidate is flagged `is_installer` when the first or last 2 MB carry an installer builder's mark (Inno Setup, NSIS, WiX Burn, InstallShield, MojoSetup; `library::IsBuiltInstaller`, which shares its sniff with the silent-install check) and its name isn't in `detect.deny_name_patterns` (which covers their uninstallers and redistributables); only files named like installers or at most one folder deep are opened for this. Otherwise an installer name (`detect.installer_name_patterns`) plus size (`detect.installer_min_size_mb`) flags it. An `.msi` always is. A game whose best candidate is an installer is stored `needs_install`. The default deny and installer patterns live in `src/config/KnownExePatterns.h`.
 
 `library::Scanner` treats each folder directly under a library root as one game. A folder already known by `install_path` is never detected again, so a scan never overwrites a user's changes. `prefix_root` and anything that looks like a Wine prefix are skipped. Folders that disappear are marked `missing`, or removed when `library.remove_missing` is on. A root that can't be listed (permissions, a stale network mount) skips that step, so it never looks empty.
+
+In a root listed in `tags.sorted_roots`, games are sorted into `.hidden` and a folder per tag in `tags.folders` (`library/FolderTags`): a game goes in its first tag in that list's order, or the one picked for it (`Game::folder_tag`). The scan lists those folders' games as well, and tags a new game by where it was found. Before adding a new folder it tries to match it to a known game whose folder is gone (its executable is inside), and follows that game instead, rewriting its tags to the new place; when several games fit, `library::UnclearMoves` (owned by `Services`, filled by every scanner) holds the folder until a client settles it. A game installed inside its prefix is sorted by a link (`Game::library_link`), which scans and the watcher never follow; any other link to a folder is scanned as before. `library::SortRules` is the settings sorting reads, so the preview endpoint can try folder tags that aren't saved. Going the other way, `Services::SortByTags` renames a game's folder to where its tags put it after a tag change, a settings change, the game's exit or mirad's start. Both ways prune the sorting folders left without games. Folders and tags stay one state: there's no sync step, since a rename within a drive is instant. A game's Steam tags are fetched with its metadata (`metadata::FetchSteamTags` for the library at once) and kept in its metadata record, never on the game; `GET /v1/tags` (`api/routes/TagsRoutes`) offers them beside the library's own tags.
 
 `library::AutoSetup` stores a new game and publishes `game.added` before any provisioning. Native games are stored `ready`, Windows games `setting_up`.
 

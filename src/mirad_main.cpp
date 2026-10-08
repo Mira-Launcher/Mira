@@ -27,6 +27,7 @@
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/RefMigration.h"
+#include "migrate/EarlySchema.h"
 #include "migrate/Legacy.h"
 #include "store/GameStore.h"
 
@@ -78,6 +79,9 @@ int main(int argc, char** argv) {
   }
 
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
+  const auto cache_db = mira::paths::DatabaseFile().parent_path() / "cache.db";
+  // Temporary; see migrate/EarlySchema.h.
+  mira::migrate::RepairEarlySchemas(mira::paths::DatabaseFile(), cache_db);
   mira::store::GameStore games(mira::paths::DatabaseFile());
   games.Load();
   mira::migrate::ImportLegacyFiles(games);  // temporary; see migrate/Legacy.h
@@ -132,18 +136,21 @@ int main(int argc, char** argv) {
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     mira::library::Scanner startup_scan(config, games, events);
+    startup_scan.UseUnclearMoves(services.unclear_moves);
     startup_scan.UseMetadataQueue(services.fetches);
     startup_scan.UseInstallLane(services.installs);
     const mira::library::ScanSummary summary = startup_scan.ScanAll();
-    mira::log::Info("startup scan: added {}, missing {}, restored {}", summary.added,
-                    summary.missing, summary.restored);
+    mira::log::Info("startup scan: added {}, missing {}, restored {}, moved {}", summary.added,
+                    summary.missing, summary.restored, summary.moved);
     services.QueueMetadata(summary.added_games);
+    services.SortAllByTags();  // in case the folder tags changed while mirad was off
   });
 
   mira::library::Watcher watcher(config, games, events);
   watcher.UseMetadataQueue(services.fetches);
   watcher.UseInstallLane(services.installs);
   watcher.OnSettingsSaved([&services] { services.ReloadSettings(); });
+  watcher.UseUnclearMoves(services.unclear_moves);
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 

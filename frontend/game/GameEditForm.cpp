@@ -2,7 +2,9 @@
 
 #include "../client/Async.h"
 #include "../client/EventHub.h"
+#include "../client/api/Config.h"
 #include "../client/api/Games.h"
+#include "../client/api/Library.h"
 #include "../client/api/Runners.h"
 #include "../client/JsonMapping.h"
 #include "../app/ErrorHelp.h"
@@ -19,6 +21,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -158,10 +161,13 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   details->AddRow(name_row_);
 
   tags_edit_ = new TagEdit(details);
+  connect(tags_edit_, &TagEdit::TagClicked, this, &GameEditForm::TagFilterRequested);
   tags_row_ = new SettingRow(
       "Tags",
       "Labels of your choice. The \"hidden\" tag keeps this game out of the library until you ask for it "
-      "(Ctrl+H, or the Hidden filter).",
+      "(Ctrl+H, or the Hidden filter). In a library folder sorted by tag, the outlined tag is the folder "
+      "the game is in; drag another folder tag ahead of it to move the game. Folder tags are chosen on the "
+      "Tags page.",
       details);
   tags_row_->SetBelow(tags_edit_);
   details->AddRow(tags_row_);
@@ -276,6 +282,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
 void GameEditForm::SetTagSuggestions(const QStringList& tags) { tags_edit_->SetSuggestions(tags); }
 
+void GameEditForm::SetTagOrder(std::vector<std::string> order) { tags_edit_->SetOrder(std::move(order)); }
+
 void GameEditForm::SetBottomRoom(int height) {
   const QMargins margins = cards_layout_->contentsMargins();
   cards_layout_->setContentsMargins(margins.left(), margins.top(), margins.right(), 18 + height);
@@ -351,7 +359,10 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.runner_config_json = game.runner_config_json;
   patch.env_json = game.env_json;
   default_runner_ = game.default_runner;
+  tags_edit_->SetFolderTags(game.folder_tags);
+  original_pick_ = game.folder_tag;
   ShowPatch(patch);
+  tags_edit_->SetFolderPick(original_pick_);
   populating_ = false;
 
   original_patch_ = CurrentPatch();
@@ -587,7 +598,8 @@ void GameEditForm::UpdateModified() {
   exe_row_->SetModified(now.exe_path != original_patch_.exe_path);
   args_row_->SetModified(now.args != original_patch_.args);
   working_dir_row_->SetModified(now.working_dir != original_patch_.working_dir);
-  tags_row_->SetModified(now.tags != original_patch_.tags);
+  tags_row_->SetModified(now.tags != original_patch_.tags ||
+                         tags_edit_->FolderPick() != original_pick_);
   runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
   data_dir_row_->SetModified(now.data_dir != original_patch_.data_dir);
   move_prefix_->setEnabled(now.data_dir == original_patch_.data_dir);  // moves the saved prefix
@@ -603,10 +615,12 @@ void GameEditForm::UpdateModified() {
 
 int GameEditForm::ChangeCount() const {
   const mira_gui::GamePatch now = CurrentPatch();
-  const int fields = (now.name != original_patch_.name) + (now.exe_path != original_patch_.exe_path) +
-                     (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
-                     (now.tags != original_patch_.tags) + (now.runner_ref != original_patch_.runner_ref) +
-                     (now.data_dir != original_patch_.data_dir) + (now.env_json != original_patch_.env_json);
+  const int fields =
+      (now.name != original_patch_.name) + (now.exe_path != original_patch_.exe_path) +
+      (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
+      (now.tags != original_patch_.tags || tags_edit_->FolderPick() != original_pick_) +
+      (now.runner_ref != original_patch_.runner_ref) + (now.data_dir != original_patch_.data_dir) +
+      (now.env_json != original_patch_.env_json);
   // One per runner option, since each is its own row.
   const int runner_options = static_cast<int>(
       mapping::MergePatchBetween(nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false),
@@ -620,9 +634,26 @@ bool GameEditForm::IsDirty() const { return ChangeCount() > 0; }
 void GameEditForm::DiscardChanges() {
   populating_ = true;
   ShowPatch(original_patch_);
+  tags_edit_->SetFolderPick(original_pick_);
   populating_ = false;
   overrides_->DiscardChanges();
   UpdateModified();
+}
+
+mira_gui::GamesPatch GameEditForm::TagsPatch(const std::optional<std::vector<std::string>>& now) const {
+  mira_gui::GamesPatch tags;
+  tags.ids = {id_};
+  const std::vector<std::string> now_tags = now.value_or(std::vector<std::string>());
+  const std::vector<std::string> was_tags = original_patch_.tags.value_or(std::vector<std::string>());
+  for (const std::string& tag : now_tags) {
+    if (std::ranges::find(was_tags, tag) == was_tags.end()) tags.add_tags.push_back(tag);
+  }
+  for (const std::string& tag : was_tags) {
+    if (std::ranges::find(now_tags, tag) == now_tags.end()) tags.remove_tags.push_back(tag);
+  }
+  // With the tags, so a pick of a tag added in this save isn't dropped for the game lacking it.
+  if (tags_edit_->FolderPick() != original_pick_) tags.folder_tag = tags_edit_->FolderPick();
+  return tags;
 }
 
 void GameEditForm::Save() {
@@ -655,17 +686,8 @@ void GameEditForm::Save() {
   const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir || patch.runner_ref ||
                               patch.data_dir || patch.runner_config_json || patch.env_json;
 
-  mira_gui::GamesPatch tags;
-  tags.ids = {id_};
-  const std::vector<std::string> now_tags = current.tags.value_or(std::vector<std::string>());
-  const std::vector<std::string> was_tags = original_patch_.tags.value_or(std::vector<std::string>());
-  for (const std::string& tag : now_tags) {
-    if (std::ranges::find(was_tags, tag) == was_tags.end()) tags.add_tags.push_back(tag);
-  }
-  for (const std::string& tag : was_tags) {
-    if (std::ranges::find(now_tags, tag) == now_tags.end()) tags.remove_tags.push_back(tag);
-  }
-  const bool tags_changed = !tags.add_tags.empty() || !tags.remove_tags.empty();
+  const mira_gui::GamesPatch tags = TagsPatch(current.tags);
+  const bool tags_changed = !tags.add_tags.empty() || !tags.remove_tags.empty() || tags.folder_tag.has_value();
 
   const auto fail = [this](const std::string& error) {
     setEnabled(true);
@@ -697,12 +719,13 @@ void GameEditForm::Save() {
       return;
     }
     mira_gui::api::PatchGamesAsync(
-        this, tags, [this, current, fail, save_overrides](mira_gui::PatchGamesResult result) {
+        this, tags, [this, tags, current, fail, save_overrides](mira_gui::PatchGamesResult result) {
           if (!result.ok) {
             fail(result.error);
             return;
           }
           original_patch_.tags = current.tags;
+          if (tags.folder_tag) original_pick_ = *tags.folder_tag;
           save_overrides();
         });
   };

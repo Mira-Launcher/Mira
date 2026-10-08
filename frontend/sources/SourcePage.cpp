@@ -59,6 +59,11 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   games_ = new GameFilterProxy(library_, this);
   games_->SetSource(id_);
   owned_model_ = new QStandardItemModel(this);
+  // Covers drawn quickly while the zoom moved, drawn again now it has stopped.
+  connect(artwork_, &ArtworkStore::QuickScalingEnded, this, [this] {
+    if (library_grid_ != nullptr) library_grid_->viewport()->update();
+    if (owned_grid_ != nullptr) RebuildOwnedTiles();
+  });
   auto* outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
 

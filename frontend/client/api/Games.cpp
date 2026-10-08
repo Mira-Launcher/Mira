@@ -173,10 +173,11 @@ PatchGamesResult PatchGamesSync(const GamesPatch& patch) {
     config[edit.key] =
         edit.clear ? json(nullptr) : mapping::TypedValueFromText(edit.type, edit.value);
   }
-  const json body = {{"ids", patch.ids},
-                     {"add_tags", patch.add_tags},
-                     {"remove_tags", patch.remove_tags},
-                     {"config", config}};
+  json body = {{"ids", patch.ids},
+               {"add_tags", patch.add_tags},
+               {"remove_tags", patch.remove_tags},
+               {"config", config}};
+  if (patch.folder_tag) body["folder_tag"] = *patch.folder_tag;
   const transport::Reply reply = transport::Patch("/v1/games", body);
   if (!reply.ok) {
     result.error = reply.error;

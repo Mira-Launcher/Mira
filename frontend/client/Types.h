@@ -56,6 +56,13 @@ struct GameSummary {
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
   std::optional<ArtVersions> art;
+  // The library folder (as library_roots spells it) whose folders this game is sorted into by
+  // tag; empty when its folder never moves. `folder_tags` are that folder's folder tags, unset
+  // while it isn't sorted (docs/api.md, Folders by tag).
+  std::string sort_root;
+  std::optional<std::vector<std::string>> folder_tags;
+  // The folder tag picked for this game over the folder tags' order; empty to follow that order.
+  std::string folder_tag;
 
   bool operator==(const GameSummary&) const = default;
 };
@@ -74,6 +81,52 @@ inline bool HasTag(const GameSummary& game, std::string_view tag) {
 }
 inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
 inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+inline bool IsMeaningTag(std::string_view tag) {
+  return tag == tags::kPinned || tag == tags::kHidden || tag == tags::kApp;
+}
+
+// Tags compared as mirad compares folder tags with them: ignoring ASCII case.
+inline bool SameTag(std::string_view a, std::string_view b) {
+  return std::ranges::equal(a, b, [](char x, char y) {
+    const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    return lower(x) == lower(y);
+  });
+}
+
+// Which of `tags` is the game's folder tag, or -1, as mirad picks it: `pick` while the game has it
+// and it's one of `folder_tags`, else the first of `folder_tags` (in their order) the game has.
+// The tags Mira gives a meaning to never are.
+inline int FolderTagIndex(const std::vector<std::string>& tags,
+                          const std::optional<std::vector<std::string>>& folder_tags,
+                          std::string_view pick = {}) {
+  if (!folder_tags) return -1;
+  const auto index_of = [&](std::string_view tag) {
+    for (size_t i = 0; i < tags.size(); ++i) {
+      if (!IsMeaningTag(tags[i]) && SameTag(tags[i], tag)) return static_cast<int>(i);
+    }
+    return -1;
+  };
+  if (!pick.empty() &&
+      std::ranges::any_of(*folder_tags, [&](const std::string& f) { return SameTag(f, pick); })) {
+    if (const int at = index_of(pick); at >= 0) return at;
+  }
+  for (const std::string& folder : *folder_tags) {
+    if (const int at = index_of(folder); at >= 0) return at;
+  }
+  return -1;
+}
+
+// A game's `tags` as `order` (the library's TagOrder) lists them; tags it doesn't list keep their
+// own order after those, and the tags Mira gives a meaning to come last.
+inline std::vector<std::string> InTagOrder(std::vector<std::string> tags, const std::vector<std::string>& order) {
+  const auto rank = [&](const std::string& tag) {
+    if (IsMeaningTag(tag)) return order.size() + 1;
+    const auto at = std::ranges::find_if(order, [&](const std::string& o) { return SameTag(o, tag); });
+    return static_cast<std::size_t>(at - order.begin());
+  };
+  std::ranges::stable_sort(tags, {}, rank);
+  return tags;
+}
 // An app is opened and runs; a game is played.
 inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
 inline const char* RunningLabel(const GameSummary& game) { return IsApp(game) ? "Running" : "Playing"; }
@@ -355,6 +408,9 @@ struct GameDetail {
   std::string default_runner;
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
+  std::string sort_root;  // as GameSummary's
+  std::optional<std::vector<std::string>> folder_tags;
+  std::string folder_tag;
 };
 
 struct GameDetailResult {
@@ -519,7 +575,70 @@ struct GamesPatch {
   std::vector<std::string> ids;
   std::vector<std::string> add_tags;
   std::vector<std::string> remove_tags;
+  // Each game's folder from now on (added if missing), whatever the folder tags' order says; ""
+  // goes back to that order.
+  std::optional<std::string> folder_tag;
   std::vector<GameConfigEdit> config;
+};
+
+// One of the library's tags (GET /v1/tags): the games that have it, whether it's a folder tag, and
+// the games Steam gives it.
+struct TagSummary {
+  std::string name;
+  std::vector<std::string> ids;
+  bool folder = false;
+  std::vector<std::string> steam_ids;
+};
+
+// A Steam tag on the library's games that isn't one of its tags yet.
+struct SteamTagSuggestion {
+  std::string name;
+  std::vector<std::string> ids;
+};
+
+struct TagsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<TagSummary> tags;
+  std::vector<SteamTagSuggestion> steam;
+  int steam_missing = 0;  // games whose Steam tags were never fetched
+};
+
+struct SteamTagsFetchResult {
+  bool ok = false;
+  ApiError error;
+  int fetched = 0;
+};
+
+// A game that would move if the folder tags or sorted folders changed (POST /v1/tags/preview).
+struct FolderTagsMove {
+  std::string id;
+  std::string name;
+  std::string to;
+};
+
+struct FolderTagsPreviewResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<FolderTagsMove> moving;
+};
+
+// A folder that could be any of several games moved by hand (GET /v1/library/unclear).
+struct UnclearMove {
+  std::string folder;
+  std::vector<std::pair<std::string, std::string>> games;  // id, name
+};
+
+struct UnclearMovesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<UnclearMove> moves;
+};
+
+struct SettleMoveResult {
+  bool ok = false;
+  ApiError error;
+  GameSummary game;
 };
 
 struct PatchGamesResult {

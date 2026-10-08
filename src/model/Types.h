@@ -47,7 +47,8 @@ struct Candidate {
 // CLI and log lines.
 struct Game {
   std::string id;
-  std::string install_path;   // parent_path() is which library root this came from
+  // Inside a library root, possibly in a folder sorting made (library::RootOf finds the root).
+  std::string install_path;
   std::string name;
   GameStatus status = GameStatus::SettingUp;
   double confidence = 0.0;
@@ -75,6 +76,14 @@ struct Game {
   // Where the game's installer was, once it installed the game somewhere else; a scan
   // treats that folder as this game's, not a new one. Empty otherwise.
   std::string installer_dir;
+
+  // A link in a library folder to install_path, for a game installed inside its prefix, so tag
+  // sorting shows it beside the others (library/FolderTags). Empty when it has none.
+  std::string library_link;
+
+  // The folder tag picked for this game's folder over tags.folders' order (library/FolderTags).
+  // Empty to follow that order; ignored while the game doesn't have the tag.
+  std::string folder_tag;
 
   nlohmann::json runner_config = nlohmann::json::object();  // opaque, owned by the runner
   nlohmann::json overrides = nlohmann::json::object();      // dotted config keys

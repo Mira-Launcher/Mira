@@ -106,6 +106,12 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   connect(runners_nav_, &QPushButton::clicked, this, &Sidebar::RunnersClicked);
   layout->addWidget(runners_nav_);
 
+  tags_nav_ = new QPushButton("Tags", this);
+  tags_nav_->setFlat(true);
+  tags_nav_->setCheckable(true);
+  connect(tags_nav_, &QPushButton::clicked, this, &Sidebar::TagsClicked);
+  layout->addWidget(tags_nav_);
+
   settings_button_ = new QPushButton("Settings", this);
   settings_button_->setObjectName("sidebar_settings");
   settings_button_->setFlat(true);
@@ -297,9 +303,10 @@ void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {
   RefreshGames();
 }
 
-void Sidebar::SetActive(bool library, bool runners, const QString& source_id) {
+void Sidebar::SetActive(bool library, bool runners, bool tags, const QString& source_id) {
   library_active_ = library;
   runners_active_ = runners;
+  tags_active_ = tags;
   active_source_ = source_id;
   ShowActive();
 }
@@ -312,6 +319,8 @@ void Sidebar::ShowActive() {
   runners_nav_->setChecked(runners_active_);
   runners_nav_->setIcon(
       icons::For(Glyph::Wrench, runners_active_ ? tokens.on_accent : tokens.text));
+  tags_nav_->setChecked(tags_active_);
+  tags_nav_->setIcon(icons::For(Glyph::Tag, tags_active_ ? tokens.on_accent : tokens.text));
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
     const bool active = sources[i].id == active_source_;

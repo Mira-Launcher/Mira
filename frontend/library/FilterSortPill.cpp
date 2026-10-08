@@ -1,7 +1,10 @@
 #include "FilterSortPill.h"
 
+#include <QAbstractButton>
 #include <QButtonGroup>
+#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QPainter>
 #include <QLabel>
 #include <QListWidget>
 #include <QMouseEvent>
@@ -61,6 +64,63 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   layout->addWidget(count);
   return row;
 }
+
+// One tag in the Tags section: its name and how many games have it, picked or not.
+// The grid gives every toggle the same width; a long name is cut short with an ellipsis.
+class TagToggle : public QAbstractButton {
+public:
+  TagToggle(const FilterSortPill::TagCount& tag, QWidget* parent) : QAbstractButton(parent), tag_(tag) {
+    setCheckable(true);
+    setCursor(Qt::PointingHandCursor);
+    setAttribute(Qt::WA_Hover, true);
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    setText(tag.tag);
+    setToolTip(tag.tag);
+  }
+
+  QSize sizeHint() const override {
+    const QFontMetrics metrics(font());
+    return {kPad + metrics.horizontalAdvance(tag_.tag) + kGap + Small().horizontalAdvance(Count()) + kPad,
+            metrics.height() + 8};
+  }
+
+protected:
+  void paintEvent(QPaintEvent*) override {
+    const theme::Tokens& t = theme::Current();
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF box = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+    const bool on = isChecked();
+    painter.setPen(on ? t.accent : (underMouse() ? t.text_muted : t.border));
+    painter.setBrush(on ? t.accent : t.surface_alt);
+    painter.drawRoundedRect(box, box.height() / 2, box.height() / 2);
+    // The count sits at the right edge, so counts line up down each column.
+    const int count_width = Small().horizontalAdvance(Count());
+    const QRect count_box(width() - kPad - count_width, 0, count_width, height());
+    painter.setFont(SmallFont());
+    painter.setPen(on ? t.on_accent : t.text_muted);
+    painter.drawText(count_box, Qt::AlignVCenter | Qt::AlignRight, Count());
+    painter.setFont(font());
+    painter.setPen(on ? t.on_accent : t.text);
+    const QRect name_box(kPad, 0, count_box.left() - kGap - kPad, height());
+    painter.drawText(name_box, Qt::AlignVCenter,
+                     fontMetrics().elidedText(tag_.tag, Qt::ElideRight, name_box.width()));
+  }
+
+private:
+  static constexpr int kPad = 10;
+  static constexpr int kGap = 6;
+
+  QString Count() const { return QString::number(tag_.count); }
+  QFont SmallFont() const {
+    QFont small = font();
+    small.setPointSizeF(small.pointSizeF() * 0.88);
+    return small;
+  }
+  QFontMetrics Small() const { return QFontMetrics(SmallFont()); }
+
+  FilterSortPill::TagCount tag_;
+};
 
 }  // namespace
 
@@ -133,6 +193,33 @@ QWidget* FilterSortPill::BuildPopover() {
 
   layout->addWidget(MakeDivider(popover, Qt::Horizontal));
 
+  // Tags: pick any number; a game has to have all of them.
+  tags_heading_ = new QWidget(popover);
+  auto* tags_heading = new QHBoxLayout(tags_heading_);
+  tags_heading->setContentsMargins(0, 0, 0, 0);
+  tags_heading->addWidget(MakeGroupHeading(tags_heading_, "TAGS"), /*stretch=*/1);
+  clear_tags_ = new QToolButton(tags_heading_);
+  clear_tags_->setText("Clear");
+  clear_tags_->setAutoRaise(true);
+  // Its space stays, so the pills don't shift down under the pointer as the first is picked.
+  QSizePolicy clear_policy = clear_tags_->sizePolicy();
+  clear_policy.setRetainSizeWhenHidden(true);
+  clear_tags_->setSizePolicy(clear_policy);
+  clear_tags_->hide();
+  connect(clear_tags_, &QToolButton::clicked, this, [this] { SetPickedTags({}); });
+  tags_heading->addWidget(clear_tags_);
+  layout->addWidget(tags_heading_);
+  tags_box_ = new QWidget(popover);
+  auto* tags_grid = new QGridLayout(tags_box_);
+  tags_grid->setContentsMargins(0, 2, 0, 6);
+  tags_grid->setSpacing(6);
+  tags_grid->setColumnStretch(0, 1);
+  tags_grid->setColumnStretch(1, 1);
+  layout->addWidget(tags_box_);
+  tags_divider_ = MakeDivider(popover, Qt::Horizontal);
+  layout->addWidget(tags_divider_);
+  RebuildTags();
+
   auto* sort_heading_row = new QHBoxLayout();
   sort_heading_row->addWidget(MakeGroupHeading(popover, "SORT"), /*stretch=*/1);
   sort_direction_ = new QToolButton(popover);
@@ -197,18 +284,81 @@ void FilterSortPill::SetCount(const QString& key, int count) {
   }
 }
 
+void FilterSortPill::SetTags(const QList<TagCount>& tags) {
+  tags_ = tags;
+  RebuildTags();
+}
+
+void FilterSortPill::SetPickedTags(const QStringList& tags) {
+  if (tags == picked_) return;
+  picked_ = tags;
+  RebuildTags();
+  UpdateSummary();
+  emit TagsChanged();
+}
+
+void FilterSortPill::RebuildTags() {
+  auto* grid = static_cast<QGridLayout*>(tags_box_->layout());
+  for (QWidget* old : tags_box_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
+    grid->removeWidget(old);
+    old->deleteLater();
+  }
+  QList<TagCount> shown = tags_;
+  for (const QString& tag : picked_) {
+    if (std::ranges::none_of(shown, [&](const TagCount& t) { return t.tag == tag; })) shown.append({tag, 0});
+  }
+  for (int i = 0; i < shown.size(); ++i) {
+    const TagCount& tag = shown[i];
+    auto* toggle = new TagToggle(tag, tags_box_);
+    toggle->setChecked(picked_.contains(tag.tag));
+    connect(toggle, &QAbstractButton::clicked, this, [this, name = tag.tag](bool on) {
+      QStringList picked = picked_;
+      if (on && !picked.contains(name)) picked.append(name);
+      if (!on) picked.removeAll(name);
+      SetPickedTags(picked);
+    });
+    grid->addWidget(toggle, i / 2, i % 2);
+  }
+  const bool any = !shown.isEmpty();
+  tags_heading_->setVisible(any);
+  tags_box_->setVisible(any);
+  tags_divider_->setVisible(any);
+  clear_tags_->setVisible(!picked_.isEmpty());
+  if (popover_ != nullptr) popover_->adjustSize();
+}
+
+void FilterSortPill::ClearFilters() {
+  SetFilterRow(0);
+  SetPickedTags({});
+}
+
 void FilterSortPill::mousePressEvent(QMouseEvent* event) {
+  if (event->button() == Qt::MiddleButton) return ClearFilters();
   if (event->button() != Qt::LeftButton) return QWidget::mousePressEvent(event);
-  popover_->setFixedWidth(qMax(240, width()));
+  // Wide enough for two columns of whole tag names, up to a point; longer ones are cut short.
+  constexpr int kMaxWidth = 360;
+  int widest = 0;
+  for (const QAbstractButton* toggle : tags_box_->findChildren<QAbstractButton*>()) {
+    widest = qMax(widest, toggle->sizeHint().width());
+  }
+  const QMargins margins = popover_->layout()->contentsMargins();
+  const int fits_tags = 2 * widest + static_cast<QGridLayout*>(tags_box_->layout())->horizontalSpacing() +
+                        margins.left() + margins.right();
+  popover_->setFixedWidth(qMax(qMax(240, width()), qMin(fits_tags, kMaxWidth)));
   popover_->move(mapToGlobal(QPoint(0, height() + 4)));
   popover_->show();
 }
 
 void FilterSortPill::UpdateSummary() {
   const int row = filters_->currentRow();
-  filter_label_->setText(row >= 0 && row < static_cast<int>(std::size(kFilters))
-                             ? QString(kFilters[row].label)
-                             : QString("All games"));
+  QString filter = row >= 0 && row < static_cast<int>(std::size(kFilters)) ? QString(kFilters[row].label)
+                                                                           : QString("All games");
+  // Picked tags show after the filter, so a narrowed library never reads as all of it.
+  if (!picked_.isEmpty()) {
+    filter += QString::fromUtf8(" \xc2\xb7 ") + picked_.mid(0, 2).join(", ");
+    if (picked_.size() > 2) filter += QString(" +%1").arg(picked_.size() - 2);
+  }
+  filter_label_->setText(filter);
 
   QString sort_label = "Name";
   for (const SortOption& option : SortOptions()) {

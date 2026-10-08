@@ -46,7 +46,9 @@ CREATE TABLE games(
   runner_config TEXT NOT NULL CHECK(json_valid(runner_config)),
   overrides TEXT NOT NULL CHECK(json_valid(overrides)),
   env TEXT NOT NULL CHECK(json_valid(env)),
-  candidates TEXT NOT NULL CHECK(json_valid(candidates))
+  candidates TEXT NOT NULL CHECK(json_valid(candidates)),
+  library_link TEXT NOT NULL DEFAULT '',
+  folder_tag TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX games_install_path ON games(install_path);
 CREATE INDEX games_data_dir ON games(data_dir);
@@ -87,9 +89,10 @@ CREATE TABLE ui_state(
 )sql",
 };
 
-constexpr std::array<std::string_view, 14> kTextColumns = {
+constexpr std::array<std::string_view, 16> kTextColumns = {
     "id",       "install_path", "name",      "status",   "platform",   "source",        "exe_path",
-    "args",     "working_dir",  "runner_ref", "source_ref", "data_dir", "installer_dir", "last_error"};
+    "args",     "working_dir",  "runner_ref", "source_ref", "data_dir", "installer_dir", "last_error",
+    "library_link", "folder_tag"};
 constexpr std::array<std::string_view, 4> kIntColumns = {"created_at", "updated_at", "play_seconds",
                                                          "last_session_at"};
 constexpr std::array<std::string_view, 4> kJsonColumns = {"runner_config", "overrides", "env", "candidates"};

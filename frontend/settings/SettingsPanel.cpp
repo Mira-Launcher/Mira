@@ -116,7 +116,8 @@ void SettingsPanel::Load() {
       return;
     }
     for (ConfigSchemaEntry& entry : schema.entries) {
-      if (entry.game_only) continue;
+      // The Tags page shows its own settings (TagsPage).
+      if (entry.game_only || entry.category == "Tags") continue;
       SettingEditor field;
       field.entry = std::move(entry);
       fields_.push_back(std::move(field));

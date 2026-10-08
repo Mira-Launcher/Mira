@@ -161,4 +161,34 @@ void RelocateGamesAsync(QObject* context, const std::vector<std::string>& ids,
   RelocateLibraryJob(context, ids, std::move(callback));
 }
 
+void ListUnclearMovesAsync(QObject* context, std::function<void(UnclearMovesResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<UnclearMovesResult>(
+            transport::Get("/v1/library/unclear"), "GET /v1/library/unclear", Shape::Object,
+            [](UnclearMovesResult& result, const json& reply) {
+              for (const json& entry : reply.value("moves", json::array())) {
+                result.moves.push_back(mapping::ToUnclearMove(entry));
+              }
+            });
+      },
+      std::move(callback));
+}
+
+void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const std::string& id,
+                            std::function<void(SettleMoveResult)> callback) {
+  async::Run(
+      context,
+      [folder, id] {
+        json body = {{"folder", folder}};
+        if (!id.empty()) body["id"] = id;
+        return ReadReply<SettleMoveResult>(transport::PostJson("/v1/library/unclear", body), "POST /v1/library/unclear",
+                                           Shape::Object, [](SettleMoveResult& result, const json& reply) {
+                                             result.game = mapping::ToGameSummary(reply);
+                                           });
+      },
+      std::move(callback));
+}
+
 }  // namespace mira_gui::api

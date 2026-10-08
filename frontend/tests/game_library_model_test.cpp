@@ -133,6 +133,46 @@ TEST_CASE("A source's view lists only that source's games, hidden ones included"
   CHECK(Shown(proxy) == std::vector<std::string>{"e1", "e2"});
 }
 
+TEST_CASE("Search matches names and the user's tags, and #word only tags") {
+  GameLibraryModel library;
+  library.Replace({Game("q", "Quest of Ages", {"RPG", "Indie"}), Game("r", "Rapid", {"Strategy"}),
+                   Game("p", "Pinned Thing", {"favorite", "app"}), Game("i", "Indigo")});
+  GameFilterProxy proxy(&library);
+
+  proxy.SetSearch("rpg");
+  CHECK(Shown(proxy) == std::vector<std::string>{"q"});
+  proxy.SetSearch("ind");  // Indigo by name, Quest by its Indie tag
+  CHECK(Shown(proxy) == std::vector<std::string>{"i", "q"});
+  proxy.SetSearch("#ind");
+  CHECK(Shown(proxy) == std::vector<std::string>{"q"});
+  proxy.SetSearch("quest #indie");
+  CHECK(Shown(proxy) == std::vector<std::string>{"q"});
+  proxy.SetSearch("rapid #indie");
+  CHECK(Shown(proxy).empty());
+  // Tags Mira gives a meaning to have their own filters, so search ignores them.
+  proxy.SetSearch("#fav");
+  CHECK(Shown(proxy).empty());
+  proxy.SetSearch("app");
+  CHECK(Shown(proxy).empty());
+}
+
+TEST_CASE("Picked tags all have to match, and never bring hidden games outside Hidden") {
+  GameLibraryModel library;
+  library.Replace({Game("a", "Alpha", {"RPG", "Indie"}), Game("b", "Beta", {"rpg"}),
+                   Game("h", "Hushed", {"RPG", "Indie", "hidden"})});
+  GameFilterProxy proxy(&library);
+
+  proxy.SetTags({"RPG"});
+  CHECK(Shown(proxy) == std::vector<std::string>{"a", "b"});
+  proxy.SetTags({"RPG", "indie"});
+  CHECK(Shown(proxy) == std::vector<std::string>{"a"});
+  proxy.SetFilterKey("hidden");
+  CHECK(Shown(proxy) == std::vector<std::string>{"h"});
+  proxy.SetTags({});
+  proxy.SetFilterKey("all");
+  CHECK(Shown(proxy) == std::vector<std::string>{"a", "b"});
+}
+
 TEST_CASE("Search, the sidebar sort, and running all follow the model's changes") {
   GameLibraryModel library;
   library.Replace({Game("b", "Beta"), Game("a", "Alpha"), Game("c", "Gamma")});

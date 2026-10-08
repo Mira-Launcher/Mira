@@ -71,6 +71,7 @@ void Server::RegisterRoutes() {
   RegisterGameRoutes(*http_, s_);
   RegisterLaunchRoutes(*http_, s_);
   RegisterLibraryRoutes(*http_, s_);
+  RegisterTagsRoutes(*http_, s_);
   RegisterStoreRoutes(*http_, s_);
   RegisterLauncherRoutes(*http_, s_);
   RegisterMetadataRoutes(*http_, s_);

@@ -13,6 +13,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTimer>
 #include <QToolButton>
 #include <QTransform>
@@ -21,6 +23,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/ToolTip.h"
 #include "SettingsColumns.h"
 #include "SettingsNav.h"
@@ -35,6 +38,38 @@ void KeepSpaceWhenHidden(QWidget* widget) {
   QSizePolicy policy = widget->sizePolicy();
   policy.setRetainSizeWhenHidden(true);
   widget->setSizePolicy(policy);
+}
+
+// A card's rows, with a line between each two shown. Drawn here rather than by the card so the
+// lines scroll with the rows.
+class CardBody : public QWidget {
+public:
+  CardBody(const QList<QWidget*>* rows, QWidget* parent) : QWidget(parent), rows_(rows) {}
+
+protected:
+  void paintEvent(QPaintEvent*) override {
+    QPainter painter(this);
+    QColor line = theme::Current().border;
+    line.setAlpha(150);
+    painter.setPen(line);
+    bool first = true;
+    for (QWidget* row : *rows_) {
+      if (!row->isVisible()) continue;
+      if (first) {
+        first = false;
+        continue;
+      }
+      painter.drawLine(QPoint(1, row->y()), QPoint(width() - 2, row->y()));
+    }
+  }
+
+private:
+  const QList<QWidget*>* rows_;
+};
+
+bool HasGrip(const QWidget* row) {
+  const auto* setting = qobject_cast<const SettingRow*>(row);
+  return setting != nullptr && setting->Grip() != nullptr && !setting->Grip()->isHidden();
 }
 
 }  // namespace
@@ -175,6 +210,12 @@ void SettingRow::ShowGrip() {
   grip_ = grip;
 }
 
+void SettingRow::SetGripShown(bool shown) {
+  ShowGrip();
+  KeepSpaceWhenHidden(grip_);
+  grip_->setVisible(shown);
+}
+
 void SettingRow::AddControl(QWidget* control, int stretch) { line_->addWidget(control, stretch, Qt::AlignVCenter); }
 
 void SettingRow::SetLeading(QWidget* widget) {
@@ -214,7 +255,7 @@ SettingsCard::SettingsCard(const QString& title, QWidget* parent) : QFrame(paren
   header_->setVisible(!title.isEmpty());
   layout->addWidget(header_);
 
-  body_ = new QWidget(this);
+  body_ = new CardBody(&rows_, this);
   body_layout_ = new QVBoxLayout(body_);
   body_layout_->setContentsMargins(0, 0, 0, 0);
   body_layout_->setSpacing(0);
@@ -223,7 +264,8 @@ SettingsCard::SettingsCard(const QString& title, QWidget* parent) : QFrame(paren
 }
 
 void SettingsCard::AddRow(QWidget* row) {
-  body_layout_->addWidget(row);
+  // Before the stretch a scrolling card keeps under its rows.
+  body_layout_->insertWidget(static_cast<int>(rows_.size()), row);
   rows_.append(row);
   if (auto* setting = qobject_cast<SettingRow*>(row)) {
     tooltip::AlignLeftWith(setting->Label(), this);
@@ -239,7 +281,48 @@ void SettingsCard::ClearRows() {
   }
   rows_.clear();
   dragging_ = nullptr;
-  update();
+  body_->update();
+}
+
+void SettingsCard::RemoveRow(QWidget* row) {
+  if (!rows_.removeOne(row)) return;
+  body_layout_->removeWidget(row);
+  row->hide();
+  row->deleteLater();
+  if (dragging_ == row) dragging_ = nullptr;
+  body_->update();
+}
+
+void SettingsCard::SetScrollable() {
+  if (scroll_ != nullptr) return;
+  auto* layout = static_cast<QVBoxLayout*>(this->layout());
+  scroll_ = new QScrollArea(this);
+  scroll_->setObjectName("card_scroll");
+  scroll_->setFrameShape(QFrame::NoFrame);
+  scroll_->setWidgetResizable(true);
+  scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  layout->replaceWidget(body_, scroll_);
+  scroll_->setWidget(body_);
+  // The scroll takes the card's spare height in place of the stretch under the rows, which moves
+  // inside it so a few rows stay their own height at the top.
+  delete layout->takeAt(layout->count() - 1);
+  layout->setStretchFactor(scroll_, 1);
+  body_layout_->addStretch(1);
+  SetUpScrolling(scroll_);
+  // A pinned row's columns stay over the rows' while the scroll bar takes room beside them.
+  connect(scroll_->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int max) {
+    if (pinned_ != nullptr)
+      pinned_->setContentsMargins(0, 0, max > 0 ? scroll_->verticalScrollBar()->width() : 0, 0);
+  });
+}
+
+void SettingsCard::SetPinnedRow(QWidget* row) {
+  auto* layout = static_cast<QVBoxLayout*>(this->layout());
+  pinned_ = new QWidget(this);
+  auto* pinned_layout = new QVBoxLayout(pinned_);
+  pinned_layout->setContentsMargins(0, 0, 0, 0);
+  pinned_layout->addWidget(row);
+  layout->insertWidget(layout->indexOf(header_) + 1, pinned_);
 }
 
 QString SettingsCard::Title() const { return title_->text(); }
@@ -252,7 +335,7 @@ void SettingsCard::MoveRow(QWidget* row, int to) {
   body_layout_->removeWidget(row);
   body_layout_->insertWidget(to, row);
   dragged_ = true;
-  update();
+  body_->update();
 }
 
 bool SettingsCard::HandleGrip(QWidget* grip, QEvent* event) {
@@ -272,7 +355,8 @@ bool SettingsCard::HandleGrip(QWidget* grip, QEvent* event) {
       const int y = body_->mapFromGlobal(static_cast<QMouseEvent*>(event)->globalPosition().toPoint()).y();
       for (int i = 0; i < rows_.size(); ++i) {
         const QWidget* other = rows_[i];
-        if (other->isVisible() && other != row && y >= other->y() && y < other->y() + other->height()) {
+        if (other->isVisible() && other != row && HasGrip(other) && y >= other->y() &&
+            y < other->y() + other->height()) {
           MoveRow(row, i);
           break;
         }
@@ -292,7 +376,9 @@ bool SettingsCard::HandleGrip(QWidget* grip, QEvent* event) {
         return false;
       }
       dragged_ = false;
-      MoveRow(row, static_cast<int>(rows_.indexOf(row)) + (key->key() == Qt::Key_Up ? -1 : 1));
+      const int step = key->key() == Qt::Key_Up ? -1 : 1;
+      const int to = static_cast<int>(rows_.indexOf(row)) + step;
+      if (to >= 0 && to < rows_.size() && HasGrip(rows_[to])) MoveRow(row, to);
       if (dragged_) emit RowsReordered();
       grip->setFocus();
       return true;
@@ -391,25 +477,6 @@ bool SettingsCard::eventFilter(QObject* watched, QEvent* event) {
     return true;
   }
   return QFrame::eventFilter(watched, event);
-}
-
-void SettingsCard::paintEvent(QPaintEvent* event) {
-  QFrame::paintEvent(event);
-  if (!body_->isVisible()) return;
-  QPainter painter(this);
-  QColor line = theme::Current().border;
-  line.setAlpha(150);
-  painter.setPen(line);
-  bool first = true;
-  for (QWidget* row : rows_) {
-    if (!row->isVisible()) continue;
-    if (first) {
-      first = false;
-      continue;
-    }
-    const int y = body_->y() + row->y();
-    painter.drawLine(QPoint(1, y), QPoint(width() - 2, y));
-  }
 }
 
 // --- SettingsPage ---------------------------------------------------------

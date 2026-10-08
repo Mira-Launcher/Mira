@@ -182,7 +182,7 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
   CHECK(trackmania["install_path"] == (program / "games" / "Trackmania").string());
   CHECK(trackmania["data_dir"] == prefix.string());
   CHECK(trackmania["exe_path"] == "Trackmania.exe");
-  CHECK(trackmania["tags"] == json::array({"ubisoft"}));
+  CHECK(trackmania["source"] == "ubisoft");
 
   const json plan = Get(client, "/v1/sources/ubisoft/removal");
   REQUIRE(plan["games"].size() == 1);

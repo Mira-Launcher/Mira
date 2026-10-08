@@ -148,9 +148,9 @@ int CmdScan() {
   auto client = Connect();
   json summary;
   if (!AwaitJob(client, client.Post("/v1/library/scan"), summary)) return 1;
-  std::printf("added: %lld  missing: %lld  restored: %lld\n",
-             summary.value("added", 0LL), summary.value("missing", 0LL),
-             summary.value("restored", 0LL));
+  std::printf("added: %lld  missing: %lld  restored: %lld  moved: %lld\n",
+              summary.value("added", 0LL), summary.value("missing", 0LL),
+              summary.value("restored", 0LL), summary.value("moved", 0LL));
   return 0;
 }
 

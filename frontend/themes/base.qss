@@ -615,6 +615,12 @@ QFrame#settings_card {
   border-radius: @radius_panel;
 }
 
+/* A card whose rows scroll inside it shows the card's surface behind them. */
+QScrollArea#card_scroll,
+QScrollArea#card_scroll > QWidget > QWidget {
+  background: transparent;
+}
+
 /* Fields sit a step darker than the card they are on, as in the grid. */
 QFrame#settings_card QLineEdit,
 QFrame#settings_card QSpinBox,
@@ -694,6 +700,10 @@ QFrame#tag_chip {
   background: @surface_alt;
   border: 1px solid @border;
   border-radius: @radius_control;
+}
+
+QFrame#tag_chip[folder="true"] {
+  border: 1px solid @accent;
 }
 
 QToolButton#tag_remove {

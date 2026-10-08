@@ -32,6 +32,12 @@ bool ParseGameLaunched(const std::string& data, GameLaunchedEvent* out);
 
 bool ParseInstallDetected(const std::string& data, InstallDetectedEvent* out);
 
+// Parses `library.move_unclear`'s payload ({folder, games: [{id, name}]}); false without a folder
+// or with fewer than two games.
+bool ParseUnclearMove(const std::string& data, UnclearMove* out);
+// The folder of `library.move_settled` ({folder}), or empty.
+std::string ParseSettledFolder(const std::string& data);
+
 // Parses `game.removed`'s payload (`{"id": "..."}`, Server.cpp).
 std::string ParseRemovedId(const std::string& data);
 

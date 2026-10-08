@@ -106,7 +106,6 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   game.last_error.clear();
   game.updated_at = model::NowSeconds();
   if (!existing) game.created_at = game.updated_at;
-  library::AddTag(game.tags, "gog");
 
   const runner::RunnerRegistry provisioner(config_);
   library::ProvisionOnImport(game, existing, config_, games_, provisioner);

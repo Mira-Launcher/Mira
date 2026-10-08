@@ -30,6 +30,8 @@ inline int Int(const nlohmann::json& object, const char* key, int fallback = 0) 
 ApiError ToApiError(const nlohmann::json& error);
 
 GameSummary ToGameSummary(const nlohmann::json& entry);
+// One of GET /v1/library/unclear's moves, or a library.move_unclear event's payload.
+UnclearMove ToUnclearMove(const nlohmann::json& entry);
 // A record's or art event's `art`; unset when it has none.
 std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);

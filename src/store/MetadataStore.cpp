@@ -28,6 +28,12 @@ CREATE TABLE artwork(
   version TEXT NOT NULL,
   PRIMARY KEY(id, slot)
 ) STRICT;
+-- What's fetched for the whole library rather than one id, such as Steam's tag names.
+CREATE TABLE lists(
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL CHECK(json_valid(value)),
+  updated_at INTEGER NOT NULL
+) STRICT;
 )sql",
 };
 
@@ -127,6 +133,46 @@ bool MetadataStore::Has(const std::string& id) const {
   select->Bind(1, id);
   auto row = select->Step();
   return row && *row;
+}
+
+std::unordered_map<std::string, json> MetadataStore::Field(std::string_view key) const {
+  std::unordered_map<std::string, json> out;
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return out;
+  // `->` gives JSON text for any value (json_extract would give a string unquoted); json_quote
+  // matches the key as written whatever it contains.
+  auto select = db_.Prepare("SELECT id, info -> ('$.' || json_quote(?)) FROM metadata");
+  if (!select) return out;
+  select->Bind(1, std::string(key));
+  for (auto row = select->Step(); row && *row; row = select->Step()) {
+    out[select->Text(0)] = select->IsNull(1) ? json() : json::parse(select->Text(1), nullptr, false);
+  }
+  return out;
+}
+
+json MetadataStore::ReadList(const std::string& name) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return json();
+  auto select = db_.Prepare("SELECT value FROM lists WHERE name = ?");
+  if (!select) return json();
+  select->Bind(1, name);
+  auto row = select->Step();
+  if (!row || !*row) return json();
+  json value = json::parse(select->Text(0), nullptr, false);
+  return value.is_discarded() ? json() : value;
+}
+
+Result<void> MetadataStore::WriteList(const std::string& name, const json& value) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
+  auto upsert = db_.Prepare(
+      "INSERT INTO lists(name, value, updated_at) VALUES(?, ?, ?) "
+      "ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, name)
+      .Bind(2, value.dump(-1, ' ', false, json::error_handler_t::replace))
+      .Bind(3, model::NowSeconds())
+      .Run();
 }
 
 Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info) {

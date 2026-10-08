@@ -20,6 +20,19 @@ std::vector<std::string> ReadTags(const json& entry) {
   }
   return tags;
 }
+
+// `sort_root` and `folder_tags`, each null when it doesn't apply, and the game's `folder_tag` pick.
+void ReadSorting(const json& entry, std::string& sort_root,
+                 std::optional<std::vector<std::string>>& folder_tags, std::string& folder_tag) {
+  sort_root = entry.contains("sort_root") && entry["sort_root"].is_string() ? entry["sort_root"].get<std::string>()
+                                                                             : std::string();
+  const json pick = entry.value("folder_tag", json());
+  folder_tag = pick.is_string() ? pick.get<std::string>() : std::string();
+  folder_tags.reset();
+  if (entry.contains("folder_tags") && entry["folder_tags"].is_array()) {
+    folder_tags = ReadTags({{"tags", entry["folder_tags"]}});
+  }
+}
 }  // namespace
 
 ApiError ToApiError(const json& error) {
@@ -52,7 +65,17 @@ GameSummary ToGameSummary(const json& entry) {
   game.source = entry.value("source", std::string("scan"));
   game.running = entry.value("running", false);
   game.art = ToArtVersions(entry);
+  ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);
   return game;
+}
+
+UnclearMove ToUnclearMove(const json& entry) {
+  UnclearMove move;
+  move.folder = entry.value("folder", std::string());
+  for (const json& game : entry.value("games", json::array())) {
+    move.games.emplace_back(game.value("id", std::string()), game.value("name", std::string()));
+  }
+  return move;
 }
 
 std::optional<ArtVersions> ToArtVersions(const json& entry) {
@@ -87,6 +110,7 @@ GameDetail ToGameDetail(const json& entry) {
   game.env_json = entry.value("env", json::object()).dump(2);
   game.default_runner = entry.value("default_runner", std::string());
   game.tags = ReadTags(entry);
+  ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);
 
   for (const json& candidate : entry.value("candidates", json::array())) {
     GameDetail::Candidate c;
