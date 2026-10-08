@@ -245,7 +245,7 @@ What each account owns, whether or not it's installed:
    "play_seconds": 0, "owned": true }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier` is there when one is cached.
 
 Owned titles aren't stored; they are read live from each source and become games once installed. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
 
@@ -267,8 +267,11 @@ Same body and events as install. Steam returns `400 unsupported`.
 ### `GET /v1/library/artwork?source=&ref=`
 A not-installed title's cached cover, or `404 artwork_not_found`. It is cached under `<source>-<ref>`, so the game keeps its cover once installed.
 
+### `GET /v1/library/metadata?source=&ref=`
+A not-installed title's cached details, shaped like `GET /v1/games/{id}/metadata`, or `404 metadata_not_found`.
+
 ### `POST /v1/library/artwork`
-Body `{"source": "epic", "titles": [{"ref": "...", "title": "..."}]}`. Queues a cover fetch for each title not already cached or queued. Returns `202 {"queued": n}`, which is 0 when `metadata.enabled` is off. Covers come from the store where possible (Steam's store API, Legendary's and nile's cached art, GOG Galaxy's games database for GOG, itch and Amazon), otherwise from SteamGridDB. Events: `library.artwork_ready`/`artwork_failed`.
+Body `{"source": "epic", "titles": [{"ref": "...", "title": "..."}]}`. Queues a fetch for each title missing its cover, or its details (with `metadata.title_details` on) or whose details are older than `metadata.refresh_days`, and not already queued. A title gets a cover within 450x675 and its store info, reviews and ProtonDB tier. Steam titles are fetched 50 to a store request. Returns `202 {"queued": n}`, which is 0 when `metadata.enabled` is off. Covers come from the store where possible (Steam's store API, Legendary's and nile's cached art, GOG Galaxy's games database for GOG, itch and Amazon), otherwise from SteamGridDB. Events: `library.artwork_ready`/`artwork_failed`.
 
 ## Tags
 
@@ -496,16 +499,18 @@ Rewrites Mira's own desktop entries now.
 
 Store info is cached in `cache.db` in the config directory, and art as files under `artwork/<id>/`, with `cache.db` pointing at each slot's file. All of it can be fetched again, so a damaged `cache.db` is started over. Sources:
 
-- **Steam games**: Steam's store API, review summary and CDN art (`cover`, `hero`, `capsule`, `header`), plus the ProtonDB tier. No key needed.
+- **Steam games**: Steam's store API, review summary and CDN art (`cover`, `hero`), plus the ProtonDB tier. No key needed.
 - **GOG, itch and Amazon**: cover and hero from GOG Galaxy's games database, with nile's cached art as a fallback for Amazon.
 - **Everything else**: [SteamGridDB](https://www.steamgriddb.com) by name (`cover`, `hero`, `logo`, `icon`) when `steamgriddb.api_key` is set. Without a key, `metadata.steam_art_by_name` borrows art from a Steam game of the same name. If nothing is found, the fetch fails with `no_steamgriddb_key`.
 
-With a key, SteamGridDB also adds alternates for every game in `art_candidates`, without replacing store art. `metadata.protondb_for_non_steam` looks up a ProtonDB tier by name for non-Steam games.
+With a key, SteamGridDB also adds alternates for every game in `art_candidates`, without replacing store art. `metadata.protondb_for_non_steam` (on by default) looks up a ProtonDB tier by name for non-Steam games, and Steam's reviews for a Steam game of exactly the same name. A game's `metadata.steam_appid` replaces the name match.
 
-New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off.
+Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover within 900x1350, a hero within 1920 wide, a logo within 800 and an icon within 256, or about two thirds of that when compact. It's saved as JPEG, or PNG when it has transparency. A JPEG that already fits is kept as downloaded.
+
+New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 
 ### `GET /v1/games/{id}/metadata`
-The cached JSON: `source`, `fetched_at`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `capsule`, `header`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `404` when nothing is cached.
+The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `404` when nothing is cached.
 
 ### `GET /v1/games/{id}/artwork?type=`
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.
@@ -524,6 +529,9 @@ One cached preview. `404 thumb_not_cached` until fetched.
 
 ### `DELETE /v1/artwork/thumbs`
 Deletes all cached previews (`204`). The GUI calls it on quit, and `mirad` clears them on start and stop.
+
+### `DELETE /v1/games/{id}/artwork/thumbs`
+Deletes one game's cached previews (`204`). The GUI calls it as the game's settings close.
 
 ### `POST /v1/games/{id}/metadata/refresh?announce=`
 Fetches one game again, even with `metadata.enabled` off. Events: `game.metadata_ready`/`metadata_failed` with `code`, `error`, and the error's `hint` and `fix` when it has them. With `announce=1`, a failure also publishes a `notification`, except for `no_steamgriddb_key`.

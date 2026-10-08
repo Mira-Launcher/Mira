@@ -174,6 +174,7 @@ private:
   // What the account owns and isn't installed, by ref, with its title.
   std::vector<std::pair<QString, QString>> owned_;
   QSet<QString> not_owned_;  // refs listed from a collection but not bought
+  QHash<QString, QString> tiers_;  // ref -> ProtonDB tier
   // Refs asked to install/update/download and not yet started by mirad, and
   // the ones done this session. What's running comes from downloads_.
   QHash<QString, QString> owned_state_;  // ref -> "Installing…", "Downloaded", ...

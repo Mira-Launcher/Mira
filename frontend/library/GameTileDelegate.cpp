@@ -218,6 +218,21 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     }
   }
 
+  if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty() && !show_source_mark_) {
+    QFont tier_font = option.font;
+    tier_font.setWeight(QFont::Bold);
+    tier_font.setPixelSize(10);
+    painter->setFont(tier_font);
+    const QString label = tier.left(1).toUpper() + tier.mid(1);
+    const QRect badge(rect.left() + 6, rect.top() + 6, QFontMetrics(tier_font).horizontalAdvance(label) + 12, 18);
+    const QColor color = ProtonDbTierColor(tier.toStdString());
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(color);
+    painter->drawRoundedRect(badge, 9, 9);
+    painter->setPen(ContrastingTextColor(color));
+    painter->drawText(badge, Qt::AlignCenter, label);
+  }
+
   const QString action = index.data(ActionRole).toString();
   QRect pill;
   if (!action.isEmpty()) {

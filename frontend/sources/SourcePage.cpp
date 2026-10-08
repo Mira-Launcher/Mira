@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 
 #include "../client/Events.h"
+#include "../client/api/Artwork.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
@@ -536,6 +537,16 @@ void SourcePage::UpdateCover(const QString& id) {
                                        devicePixelRatioF()),
                   Qt::DecorationRole);
   }
+  // Its details came with the cover, so its tier may be new.
+  if (tiers_.contains(ref)) return;
+  api::GetTitleMetadataAsync(this, id_, ref.toStdString(), [this, ref](GameMetadataResult result) {
+    if (!result.ok || result.metadata.protondb_tier.empty()) return;
+    tiers_.insert(ref, QString::fromStdString(result.metadata.protondb_tier));
+    for (int row = 0; row < owned_model_->rowCount(); ++row) {
+      QStandardItem* item = owned_model_->item(row);
+      if (item->data(GameTileDelegate::IdRole).toString() == ref) item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
+    }
+  });
 }
 
 void SourcePage::RefreshStatus() {
@@ -693,6 +704,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   owned_refresh_->setEnabled(true);
   owned_.clear();
   not_owned_.clear();
+  tiers_.clear();
   if (steam_settings_ != nullptr) steam_settings_->setVisible(false);
   if (!result.ok) {
     ShowError(owned_note_, "Could not list your games.", result.error);
@@ -705,6 +717,9 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
     if (!title.installed) {
       owned_.emplace_back(QString::fromStdString(title.ref), QString::fromStdString(title.title));
       if (!title.owned) not_owned_.insert(QString::fromStdString(title.ref));
+      if (!title.protondb_tier.empty()) {
+        tiers_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.protondb_tier));
+      }
       uninstalled.push_back(title);
     }
   }
@@ -776,6 +791,7 @@ void SourcePage::RebuildOwnedTiles() {
     item->setData(id_ == "humble" ? PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF())
                                   : artwork_->TitleCover(source_.id, ref, title, tile_, devicePixelRatioF()),
                   Qt::DecorationRole);
+    item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
     // Cleared once the install stops: the item is reused.
     const QString state = owned_state_.value(ref);
     std::optional<DownloadTracker::TileProgress> installing;
@@ -852,7 +868,8 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
       status = id_ == "humble" ? "Not downloaded" : "Not installed";
     }
-    hover_card_->ShowTitle(index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
+    hover_card_->ShowTitle(QString::fromStdString(id_), ref, index.data(GameTileDelegate::NameRole).toString(), status,
+                           source_.name);
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));

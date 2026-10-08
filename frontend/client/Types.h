@@ -1060,6 +1060,7 @@ struct StoreTitle {
   bool installed = false;
   bool owned = true;  // false: listed from an itch collection, but paid and not bought
   std::string source;  // the store it's from
+  std::string protondb_tier;  // empty when none is cached
 };
 
 // GET /v1/sources/{id}/removal.

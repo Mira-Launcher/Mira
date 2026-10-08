@@ -100,7 +100,7 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     out.protondb_tier = body["protondb"].value("tier", std::string());
   }
   // "artwork" is the cover slot under its pre-`hero` name; see docs/api.md.
-  for (const char* key : {"artwork", "hero", "capsule", "header", "logo", "icon"}) {
+  for (const char* key : {"artwork", "hero", "logo", "icon"}) {
     if (!body.contains(key) || !body[key].is_object()) continue;
     out.art_slots.push_back(std::string(key) == "artwork" ? "cover" : key);
   }
@@ -254,6 +254,29 @@ void GetArtworkImageAsync(QObject* context, const std::string& id, const std::st
 void GetMetadataAsync(QObject* context, const std::string& id,
                       std::function<void(GameMetadataResult)> callback) {
   async::Run(context, [id] { return GetMetadataSync(id); }, std::move(callback));
+}
+
+void GetTitleMetadataAsync(QObject* context, const std::string& source, const std::string& ref,
+                           std::function<void(GameMetadataResult)> callback) {
+  async::Run(
+      context,
+      [source, ref] {
+        const transport::Reply reply =
+            transport::Get("/v1/library/metadata?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
+        if (reply.status == 404) {
+          GameMetadataResult result;
+          result.missing = true;
+          return result;
+        }
+        return ReadReply<GameMetadataResult>(reply, "GET /v1/library/metadata", Shape::Object, FillMetadata);
+      },
+      std::move(callback));
+}
+
+void ClearGameArtThumbsAsync(QObject* context, const std::string& id) {
+  async::Run<bool>(
+      context, [id] { return transport::Delete("/v1/games/" + PercentEncode(id) + "/artwork/thumbs").ok; },
+      [](bool) {});
 }
 
 void RefreshMetadataAsync(QObject* context, const std::string& id, bool announce,

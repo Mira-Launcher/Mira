@@ -2,6 +2,7 @@
 
 #include <QGuiApplication>
 #include <QLabel>
+#include <QLocale>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScreen>
@@ -126,13 +127,14 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   platform_line_ = AddLine(layout, this, "muted");
   played_line_ = AddLine(layout, this, "muted");
   developer_line_ = AddLine(layout, this, "muted");
+  review_line_ = AddLine(layout, this, "muted");
   error_line_ = AddLine(layout, this, "error");
   hint_line_ = AddLine(layout, this, "muted");
 }
 
 void HoverCard::Reset() {
   protondb_->hide();
-  for (QLabel* line : {platform_line_, played_line_, developer_line_, error_line_, hint_line_}) {
+  for (QLabel* line : {platform_line_, played_line_, developer_line_, review_line_, error_line_, hint_line_}) {
     SetLine(line, QString());
   }
 }
@@ -165,14 +167,28 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
   });
 }
 
-void HoverCard::ShowTitle(const QString& title, const QString& status, const QString& detail) {
-  game_id_.clear();
+void HoverCard::ShowTitle(const QString& source, const QString& ref, const QString& title, const QString& status,
+                          const QString& detail) {
+  // Keyed like the id it gets once installed, so a late answer for another title is dropped.
+  game_id_ = (source + "-" + ref).toStdString();
   Reset();
   name_->setText(title);
   status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>")
                        .arg(theme::Current().text_muted.name(), status.toHtmlEscaped()));
   SetLine(platform_line_, detail);
   Reposition();
+
+  api::GetTitleMetadataAsync(this, source.toStdString(), ref.toStdString(),
+                             [this, id = game_id_](GameMetadataResult result) {
+                               if (game_id_ != id || !result.ok || result.missing) return;
+                               ShowMetadata(result.metadata);
+                               if (!result.metadata.review_summary.empty()) {
+                                 SetLine(review_line_, QString("Steam reviews: %1 (%2)")
+                                                           .arg(QString::fromStdString(result.metadata.review_summary))
+                                                           .arg(QLocale().toString(result.metadata.review_total)));
+                                 Reposition();
+                               }
+                             });
 }
 
 void HoverCard::ShowMetadata(const GameMetadata& metadata) {

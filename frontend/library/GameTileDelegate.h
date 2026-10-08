@@ -47,6 +47,8 @@ public:
     NeedsCheckRole,
     // A program rather than a game: "Running", not "Playing".
     AppRole,
+    // Optional: a ProtonDB tier ("gold"), drawn as a small pill in the top-left corner.
+    ProtonDbRole,
   };
 
   // Where the ActionRole pill sits inside a tile's cell.

@@ -18,8 +18,7 @@ namespace mira_gui::api {
 // aren't worth keeping on disk. Blocking for the same reason as above.
 void ClearArtThumbsBlocking();
 
-// One named art slot: "cover", "hero", "capsule", "header", "logo",
-// "icon". Which ones exist depends on the source; GetMetadataAsync's
+// One named art slot: "cover", "hero", "logo", "icon". Which ones exist depends on the source; GetMetadataAsync's
 // art_slots says which were cached. Decoded off the UI thread; a null
 // image when missing or undecodable.
 void GetArtworkImageAsync(QObject* context, const std::string& id, const std::string& slot,
@@ -29,6 +28,13 @@ void GetArtworkImageAsync(QObject* context, const std::string& id, const std::st
 // fetched and nothing found) and comes back as missing, not as an error.
 void GetMetadataAsync(QObject* context, const std::string& id,
                       std::function<void(GameMetadataResult)> callback);
+
+// GET /v1/library/metadata?source=&ref=: a store title's cached details, shaped like a game's.
+void GetTitleMetadataAsync(QObject* context, const std::string& source, const std::string& ref,
+                           std::function<void(GameMetadataResult)> callback);
+
+// DELETE /v1/games/{id}/artwork/thumbs, as a game's settings close.
+void ClearGameArtThumbsAsync(QObject* context, const std::string& id);
 
 // POST /v1/games/{id}/metadata/refresh. Returns 202 immediately; watch for
 // game.metadata_ready/.metadata_failed. `announce` marks this as

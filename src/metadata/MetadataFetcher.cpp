@@ -472,9 +472,11 @@ json SteamStoreItems(const std::vector<std::string>& appids, bool details) {
 std::string SteamCoverUrl(const std::string& appid, const json& item) {
   const json assets = Value(item, "assets", json::object());
   const std::string format = Value(assets, "asset_url_format", std::string());
-  const std::string file = Value(assets, "library_capsule", std::string());
+  // library_capsule is 300x450 despite its 600x900 name; the 2x one is 600x900.
+  std::string file = Value(assets, "library_capsule_2x", std::string());
+  if (file.empty()) file = Value(assets, "library_capsule", std::string());
   if (format.empty() || file.empty()) {
-    return std::format("https://cdn.akamai.steamstatic.com/steam/apps/{}/library_600x900.jpg", appid);
+    return std::format("https://cdn.akamai.steamstatic.com/steam/apps/{}/library_600x900_2x.jpg", appid);
   }
   std::string path = format;
   if (const std::size_t at = path.find("${FILENAME}"); at != std::string::npos) {

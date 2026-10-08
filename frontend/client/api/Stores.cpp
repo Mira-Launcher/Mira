@@ -63,7 +63,8 @@ StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
                                    .title = entry.value("title", std::string()),
                                    .installed = entry.value("installed", false),
                                    .owned = entry.value("owned", true),
-                                   .source = entry.value("source", source)});
+                                   .source = entry.value("source", source),
+                                   .protondb_tier = entry.value("protondb_tier", std::string())});
         }
       });
 }

@@ -1,6 +1,8 @@
 #include "ArtworkStore.h"
 
+#include <QBuffer>
 #include <QImage>
+#include <QImageReader>
 #include <QPainter>
 #include <QPainterPath>
 
@@ -16,7 +18,8 @@
 namespace mira_gui {
 namespace {
 
-const QSize kMaxArt(800, 1200);
+// mirad's own cap for a cover, so one is drawn as saved.
+const QSize kMaxArt(900, 1350);
 // Big enough for the sidebar's small covers and a dominant color, small enough to keep for every
 // game.
 const QSize kThumbArt(128, 128);
@@ -375,16 +378,17 @@ void ArtworkStore::Pump() {
       const ArtworkResult result = title ? api::GetTitleArtworkBlocking(title->first, title->second)
                                          : api::GetArtworkBlocking(game, slot);
       Decoded decoded;
-      if (!result.ok ||
-          !decoded.image.loadFromData(reinterpret_cast<const uchar*>(result.bytes.data()),
-                                      static_cast<int>(result.bytes.size()))) {
-        return Decoded();
+      if (!result.ok) return decoded;
+      QByteArray bytes = QByteArray::fromRawData(result.bytes.data(), static_cast<qsizetype>(result.bytes.size()));
+      QBuffer buffer(&bytes);
+      QImageReader reader(&buffer);
+      // Never drawn bigger than the largest tile on a HiDPI screen; a bigger image is decoded
+      // straight at that size, which for a JPEG skips most of the work.
+      if (const QSize size = reader.size();
+          size.width() > kMaxArt.width() || size.height() > kMaxArt.height()) {
+        reader.setScaledSize(size.scaled(kMaxArt, Qt::KeepAspectRatio));
       }
-      // Never drawn bigger than the largest tile on a HiDPI screen; the rest is memory.
-      if (decoded.image.width() > kMaxArt.width() || decoded.image.height() > kMaxArt.height()) {
-        decoded.image =
-            decoded.image.scaled(kMaxArt, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-      }
+      if (!reader.read(&decoded.image)) return Decoded();
       decoded.thumb =
           decoded.image.scaled(kThumbArt, Qt::KeepAspectRatio, Qt::SmoothTransformation);
       return decoded;
