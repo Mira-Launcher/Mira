@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -14,6 +15,11 @@
 #include "core/Result.h"
 
 namespace mira::config {
+
+// Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not frontend.toml.
+inline constexpr std::array<std::string_view, 12> kUiStateKeys = {
+    "window_width", "window_height",  "window_maximized", "sidebar_width", "details_width", "tile_width",
+    "source_tile_widths", "library_filter", "sort_by", "sort_descending", "onboarded", "source_imported_at"};
 
 // The on-disk settings.toml, merged with schema defaults so every declared
 // key always resolves. In memory everything is JSON; only Load()/Save()

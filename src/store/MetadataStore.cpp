@@ -96,40 +96,12 @@ void MetadataStore::Load() {
     db_.Close();
     return;
   }
-  ImportFiles();
 
   auto rows = db_.Prepare("SELECT id, slot, version FROM artwork");
   if (!rows) return;
   for (auto row = rows->Step(); row && *row; row = rows->Step()) {
     if (InArtVersions(rows->Text(1))) versions_[rows->Text(0)][rows->Text(1)] = rows->Text(2);
   }
-}
-
-// One-time move from metadata/*.json (Mira 0.13 and earlier). Temporary: delete once users have upgraded.
-void MetadataStore::ImportFiles() {
-  const fs::path old_dir = dir_ / "metadata";
-  std::error_code ec;
-  if (!fs::is_directory(old_dir, ec)) return;
-  Transaction transaction(db_);
-  if (!transaction.Begin()) return;
-  int imported = 0;
-  for (const auto& entry : fs::directory_iterator(old_dir, ec)) {
-    if (entry.path().extension() != ".json") continue;
-    std::ifstream in(entry.path());
-    const json info = json::parse(in, nullptr, false);
-    if (!info.is_object()) continue;  // a broken cache entry is fetched again
-    if (auto written = WriteLocked(entry.path().stem().string(), info); !written) {
-      log::Error("could not import {}: {}", entry.path().string(), written.error().message);
-      return;
-    }
-    ++imported;
-  }
-  if (auto committed = transaction.Commit(); !committed) {
-    log::Error("could not import the metadata cache: {}", committed.error().message);
-    return;
-  }
-  fs::remove_all(old_dir, ec);
-  log::Info("imported metadata for {} title(s) into the cache", imported);
 }
 
 json MetadataStore::Read(const std::string& id) const {

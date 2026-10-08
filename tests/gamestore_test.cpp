@@ -124,23 +124,6 @@ TEST_CASE("a finished session is counted once and goes with its game") {
   CHECK(store.Sessions("celeste", 10).empty());
 }
 
-TEST_CASE("games.toml is imported once, keeping its games' tags") {
-  const fs::path file = TempFile("games-import.db");
-  const fs::path toml = file.parent_path() / "games.toml";
-  {
-    std::ofstream out(toml);
-    out << "[[game]]\nid = 'celeste'\nname = 'Celeste'\nstatus = 'ready'\ntags = ['hidden', 'favorite']\n"
-           "[[game]]\nid = 'hades'\nname = 'Hades'\nstatus = 'ready'\n";
-  }
-  store::GameStore store(file);
-  store.Load();
-  CHECK(store.All().size() == 2);
-  CHECK(store.Find("celeste")->tags == std::vector<std::string>{"hidden", "favorite"});
-  CHECK_FALSE(fs::exists(toml));
-  CHECK(fs::exists(toml.string() + ".migrated"));
-  fs::remove(toml.string() + ".migrated");
-}
-
 TEST_CASE("a damaged database is set aside and the library comes back from its backup") {
   const fs::path file = TempFile("games-damaged.db");
   {

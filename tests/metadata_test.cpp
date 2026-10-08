@@ -67,25 +67,20 @@ TEST_CASE("Metadata/artwork cache paths sit next to settings.toml, not a global 
   CHECK(cache.ArtworkDir("foo") == metadata::ArtworkDir(config, "foo"));
 }
 
-TEST_CASE("metadata/*.json files are imported into the cache once, with their art") {
-  const fs::path dir = TempDir("metadata-import");
-  fs::create_directories(dir / "metadata");
+TEST_CASE("art rows point at files, and Remove drops the info, rows and files") {
+  const fs::path dir = TempDir("metadata-art-rows");
   fs::create_directories(dir / "artwork" / "celeste");
   std::ofstream(dir / "artwork" / "celeste" / "cover.png") << "png";
   std::ofstream(dir / "artwork" / "celeste" / "header.jpg") << "jpg";
-  std::ofstream(dir / "metadata" / "celeste.json")
-      << R"({"artwork": {"file": "cover.png", "content_type": "image/png"}, "header": {"file": "header.jpg"}})";
-  std::ofstream(dir / "metadata" / "broken.json") << "{ not json";
-
   store::MetadataStore cache(dir);
   cache.Load();
-  CHECK(cache.Has("celeste"));
-  CHECK_FALSE(cache.Has("broken"));
+  REQUIRE(cache.Write("celeste", nlohmann::json::parse(R"({"artwork": {"file": "cover.png", "content_type": "image/png"},
+      "header": {"file": "header.jpg"}, "hero": {"file": "missing.jpg"}})")).has_value());
   REQUIRE(cache.ArtFor("celeste", "cover").has_value());
   CHECK(cache.ArtFor("celeste", "cover")->content_type == "image/png");
-  CHECK(cache.ArtVersions("celeste").contains("cover"));
   CHECK(cache.ArtFor("celeste", "header").has_value());
-  CHECK_FALSE(fs::exists(dir / "metadata"));
+  CHECK_FALSE(cache.ArtFor("celeste", "hero").has_value());
+  CHECK(cache.ArtVersions("celeste").contains("cover"));
 
   cache.Remove("celeste");
   CHECK_FALSE(cache.Has("celeste"));

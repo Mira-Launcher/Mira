@@ -27,6 +27,7 @@
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/RefMigration.h"
+#include "migrate/Legacy.h"
 #include "store/GameStore.h"
 
 namespace {
@@ -79,6 +80,7 @@ int main(int argc, char** argv) {
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
   mira::store::GameStore games(mira::paths::DatabaseFile());
   games.Load();
+  mira::migrate::ImportLegacyFiles(games);  // temporary; see migrate/Legacy.h
 
   mira::config::Config config(mira::paths::SettingsFile());
   config.UseUiStateStore([&games] { return games.UiState(); },

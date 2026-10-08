@@ -15,10 +15,6 @@ namespace mira::config {
 namespace {
 using nlohmann::json;
 
-// Frontend keys the GUI sets as it's used, rather than a person choosing them.
-constexpr std::array<std::string_view, 12> kUiStateKeys = {
-    "window_width", "window_height",  "window_maximized", "sidebar_width", "details_width", "tile_width",
-    "source_tile_widths", "library_filter", "sort_by", "sort_descending", "onboarded", "source_imported_at"};
 }
 
 Config::Config(std::filesystem::path file)
@@ -117,15 +113,6 @@ void Config::Load(const std::string& fallback) {
   if (read_ui_state_) {
     ui_state_ = read_ui_state_();
     if (!ui_state_.is_object()) ui_state_ = json::object();
-    // One-time move of window state out of frontend.toml (Mira 0.13 and earlier). Temporary.
-    if (TakeUiState(frontend_)) {
-      write_ui_state_(ui_state_);
-      if (!keep_frontend_file_) {
-        if (auto saved = WriteFileAtomic(frontend_file_, tomljson::ToTomlText(frontend_), "config_write_failed"); !saved) {
-          log::Warn("could not save {}: {}", frontend_file_.string(), saved.error().message);
-        }
-      }
-    }
   }
 }
 

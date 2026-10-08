@@ -42,8 +42,7 @@ public:
 
   // Never fails, like Config::Load. Opens (or creates) the database, checks it
   // and backs it up to <file>.bak; a damaged file is set aside and the backup
-  // used. A games.toml beside it is imported once, then renamed
-  // games.toml.migrated.
+  // used.
   void Load();
 
   // The text of the last settings.toml that loaded cleanly, empty if none:
@@ -108,7 +107,6 @@ public:
 
 private:
   Result<void> Open();
-  void ImportToml();
   Result<void> Write(const model::Game& game);
   Result<void> Delete(const std::string& id);
   // Runs `write` in a transaction of its own.
@@ -121,8 +119,7 @@ private:
   mutable Database db_;  // mutable for reads; guarded by mutex_
   MetadataStore metadata_;
   std::vector<model::Game> games_;
-  // The database couldn't be opened, or games.toml couldn't be imported: refuse
-  // changes rather than lose the library. Guarded by mutex_.
+  // The database couldn't be opened: refuse changes rather than lose the library. Guarded by mutex_.
   bool read_only_ = false;
   std::atomic<std::uint64_t> revision_{0};
 };

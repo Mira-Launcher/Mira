@@ -23,7 +23,7 @@ class MetadataStore {
 public:
   explicit MetadataStore(std::filesystem::path dir);
 
-  // Opens cache.db; imports metadata/*.json once, then removes that folder.
+  // Opens cache.db.
   void Load();
 
   // The id's info, an empty object when none is cached.
@@ -49,7 +49,6 @@ public:
 private:
   Result<void> Open();
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
-  void ImportFiles();
 
   std::filesystem::path dir_;
   mutable std::mutex mutex_;

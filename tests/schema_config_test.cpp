@@ -199,13 +199,12 @@ TEST_CASE("a hand edit is picked up, survives an app change, and a broken one ch
 TEST_CASE("window state lives in its store, and frontend.toml keeps only what a person sets") {
   const fs::path file = TempFile("settings-ui-state.toml");
   const fs::path frontend = file.parent_path() / "frontend.toml";
-  std::ofstream(frontend, std::ios::trunc) << "theme = 'dark'\nwindow_width = 900\n";
-  nlohmann::json stored = nlohmann::json::object();
+  std::ofstream(frontend, std::ios::trunc) << "theme = 'dark'\n";
+  nlohmann::json stored = {{"window_width", 900}};
   Config config(file);
   config.UseUiStateStore([&stored] { return stored; }, [&stored](const nlohmann::json& state) { stored = state; });
   config.Load();
 
-  CHECK(stored.value("window_width", 0) == 900);
   CHECK(config.FrontendSettings().value("theme", "") == "dark");
   CHECK(config.FrontendSettings().value("window_width", 0) == 900);
 

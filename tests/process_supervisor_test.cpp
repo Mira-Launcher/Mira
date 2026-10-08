@@ -456,27 +456,6 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   CHECK(WaitFor([&] { return !supervisor.IsRunning("celeste"); }, std::chrono::seconds(5)));
 }
 
-TEST_CASE("Reconcile imports sessions/*.toml from an older Mira and drops a corrupt one") {
-  const fs::path state = TempDir("proc-reconcile-import-state");
-  const fs::path sessions_dir = state / "sessions";
-  fs::create_directories(sessions_dir);
-  std::ofstream(sessions_dir / "broken.toml") << "not valid toml {{{";
-  std::ofstream(sessions_dir / "celeste-1700000000.toml")
-      << "game_id = 'celeste'\nwrapper_pid = 1\nstarted_at = 1700000000\nfinished = true\nduration_seconds = 30\n";
-
-  store::GameStore games(state / "mira.db");
-  games.Load();
-  model::Game game;
-  game.id = "celeste";
-  REQUIRE(games.Upsert(game).has_value());
-  api::EventBus events;
-  proc::ProcessSupervisor supervisor(games, events);
-  supervisor.Reconcile();  // must not throw or hang
-
-  CHECK(games.Find("celeste")->play_seconds == 30);
-  CHECK_FALSE(fs::exists(sessions_dir));
-}
-
 TEST_CASE("FindPrefixProcesses matches umu's rewritten WINEPREFIX and an empty one matches nothing") {
   // umu rewrites WINEPREFIX to "<data_dir>/pfx/" before the game runs, so
   // the separator case is the normal case, not an edge one.

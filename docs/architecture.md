@@ -69,7 +69,7 @@ logs/           per-game output from the last launches
 
 **cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`. Everything in it can be fetched again, so a damaged one is started over.
 
-Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. The `games.toml` and `metadata/*.json` imports are temporary.
+Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
 The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
 

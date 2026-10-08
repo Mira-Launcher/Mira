@@ -157,58 +157,6 @@ Result<void> GameStore::Open() {
   return {};
 }
 
-// One-time move from games.toml (Mira 0.13 and earlier). Temporary: delete once users have upgraded.
-void GameStore::ImportToml() {
-  const fs::path toml_file = Dir() / "games.toml";
-  std::error_code ec;
-  if (!fs::exists(toml_file, ec)) return;
-  if (!games_.empty()) {
-    log::Warn("{} is left over beside a library that already has games; ignoring it", toml_file.string());
-    return;
-  }
-
-  toml::parse_result parsed = toml::parse_file(toml_file.string());
-  if (!parsed) {
-    if (const auto broken = SetAside(toml_file)) {
-      log::Error("games at {} could not be parsed ({}); kept it as {} and starting with an empty library",
-                 toml_file.string(), parsed.error().description(), broken->string());
-    } else {
-      read_only_ = true;
-      log::Error("games at {} could not be parsed ({}) or set aside ({}); not saving any changes",
-                 toml_file.string(), parsed.error().description(), broken.error().message);
-    }
-    return;
-  }
-
-  const json whole = tomljson::ToJson(parsed.table());
-  std::vector<model::Game> games;
-  if (whole.contains("game") && whole["game"].is_array()) {
-    for (const json& entry : whole["game"]) {
-      model::Game game = model::GameFromJson(entry);
-      if (game.id.empty()) {
-        log::Warn("skipping a game entry in {} with no id", toml_file.string());
-        continue;
-      }
-      games.push_back(std::move(game));
-    }
-  }
-  const auto imported = Transact([&]() -> Result<void> {
-    for (const model::Game& game : games) {
-      if (auto written = Write(game); !written) return written;
-    }
-    return {};
-  });
-  if (!imported) {
-    read_only_ = true;
-    log::Error("could not import {}: {}; not saving any changes", toml_file.string(), imported.error().message);
-    return;
-  }
-  fs::path done = toml_file;
-  done += ".migrated";
-  fs::rename(toml_file, done, ec);
-  log::Info("imported {} game(s) from {}, kept as {}", games.size(), toml_file.string(), done.string());
-}
-
 void GameStore::ReadAll() {
   games_.clear();
   const std::vector<std::string_view> columns = Columns();
@@ -256,8 +204,6 @@ void GameStore::Load() {
     return;
   }
   ReadAll();
-  ImportToml();
-  if (!read_only_) ReadAll();
   log::Info("loaded {} game(s) from {}", games_.size(), file_.string());
 }
 

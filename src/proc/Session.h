@@ -51,7 +51,4 @@ Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database, c
 // Records mirad hasn't counted yet: sessions still running, or finished while it was down.
 std::vector<SessionRecord> UncountedSessions(const std::filesystem::path& database);
 
-// One-time move of sessions/*.toml (Mira 0.13 and earlier) into the database. Temporary.
-void ImportSessionFiles(const std::filesystem::path& sessions_dir, const std::filesystem::path& database);
-
 }  // namespace mira::proc

@@ -563,7 +563,6 @@ void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_p
 }
 
 void ProcessSupervisor::Reconcile() {
-  ImportSessionFiles(games_.Dir() / "sessions", games_.File());
   for (proc::SessionRecord& record : UncountedSessions(games_.File())) {
     if (record.finished) {
       // mira-run had already finished and written the final record, but

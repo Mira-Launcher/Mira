@@ -1,40 +1,13 @@
 #include "proc/Session.h"
 
 #include <format>
-#include <fstream>
-#include <sstream>
 
-#include <toml.hpp>
-
-#include "core/TomlJson.h"
 #include "store/Database.h"
 
 namespace mira::proc {
 namespace {
 using nlohmann::json;
 
-Result<SessionRecord> FromJson(const json& j) {
-  if (!j.is_object() || !j.contains("game_id") || !j.contains("wrapper_pid") || !j.contains("started_at")) {
-    return Err("session_record_invalid", "missing required fields");
-  }
-  SessionRecord record;
-  record.game_id = j.value("game_id", "");
-  record.wrapper_pid = static_cast<pid_t>(j.value("wrapper_pid", static_cast<std::int64_t>(0)));
-  record.game_pid = static_cast<pid_t>(j.value("game_pid", static_cast<std::int64_t>(0)));
-  record.started_at = j.value("started_at", static_cast<std::int64_t>(0));
-  record.finished = j.value("finished", false);
-  record.ended_at = j.value("ended_at", static_cast<std::int64_t>(0));
-  record.duration_seconds = j.value("duration_seconds", static_cast<std::int64_t>(0));
-  record.exit_code = j.value("exit_code", -1);
-  record.signal = j.value("signal", 0);
-  record.launch_error = j.value("launch_error", "");
-  if (j.contains("post_exit_code") && j["post_exit_code"].is_number_integer()) {
-    record.post_exit_code = j["post_exit_code"].get<int>();
-  }
-  record.post_timed_out = j.value("post_timed_out", false);
-  record.incomplete = j.value("incomplete", false);
-  return record;
-}
 
 }  // namespace
 
@@ -121,17 +94,5 @@ std::vector<SessionRecord> UncountedSessions(const std::filesystem::path& databa
   return records;
 }
 
-void ImportSessionFiles(const std::filesystem::path& sessions_dir, const std::filesystem::path& database) {
-  std::error_code ec;
-  if (!std::filesystem::is_directory(sessions_dir, ec)) return;
-  for (const auto& entry : std::filesystem::directory_iterator(sessions_dir, ec)) {
-    toml::parse_result parsed = toml::parse_file(entry.path().string());
-    auto record = parsed ? FromJson(tomljson::ToJson(parsed.table())) : Err("session_read_failed", "unreadable");
-    if (record && !WriteSessionRecord(database, *record)) continue;  // kept for the next start
-    std::error_code rm_ec;
-    std::filesystem::remove(entry.path(), rm_ec);
-  }
-  std::filesystem::remove(sessions_dir, ec);  // only once empty
-}
 
 }  // namespace mira::proc
