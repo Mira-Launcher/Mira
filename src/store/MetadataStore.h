@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <json.hpp>
 
@@ -53,6 +54,12 @@ public:
   // {"cover": "<version>", ...} for the slots with art, from memory: what a
   // library listing sends so a client refetches only changed images.
   nlohmann::json ArtVersions(const std::string& id) const;
+  // The id's ProtonDB tier, from memory, for a listing; empty when none is cached.
+  std::string ProtonDbTier(const std::string& id) const;
+
+  // Ids whose art was saved before downloads were shrunk, and marking one fitted.
+  std::vector<std::string> PendingFits() const;
+  void FitDone(const std::string& id);
 
 private:
   Result<void> Open();
@@ -62,6 +69,7 @@ private:
   mutable std::mutex mutex_;
   mutable Database db_;
   std::unordered_map<std::string, nlohmann::json> versions_;  // guarded by mutex_
+  std::unordered_map<std::string, std::string> tiers_;        // guarded by mutex_
 };
 
 }  // namespace mira::store

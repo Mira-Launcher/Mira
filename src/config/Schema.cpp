@@ -328,11 +328,12 @@ Schema::Schema() {
                 "Steam's public search."});
 
   s.Add({.key = "metadata.protondb_for_non_steam",
-         .label = "ProtonDB for non-Steam games",
+         .label = "ProtonDB and Steam reviews for non-Steam games",
          .type = Type::Bool,
          .default_value = false,
-         .doc = "Show a ProtonDB rating for games that are not from Steam, found by matching the "
-                "game's name to a Steam game. The match can be wrong, and each lookup sends the "
+         .doc = "Show a ProtonDB rating and Steam's user reviews for games that are not from Steam, "
+                "found by matching the game's name to a Steam game. Reviews need the exact name. "
+                "The match can be wrong, and each lookup sends the "
                 "game's name to Steam's public search. It does not change how the game launches or "
                 "its cover art."});
 

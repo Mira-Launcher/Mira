@@ -114,6 +114,9 @@ int main(int argc, char** argv) {
   mira::runner::MigrateInPlaceRefs(config, games);
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
+  services.artwork_selects.Post([&config, &games] {
+    mira::metadata::FitCachedArt(config, games.Metadata(), [&games](const std::string& id) { return !games.Find(id); });
+  });
 
   const std::filesystem::path socket_path =
       socket_override.empty() ? mira::paths::Expand(config.GetString("socket_path")) : socket_override;

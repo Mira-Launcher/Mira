@@ -39,7 +39,7 @@ public:
   void Enqueue(const config::Config& config, api::EventBus& events, model::Game game, bool force = false,
                bool announce = false, Done done = nullptr);
 
-  // Store titles not installed yet, cover only (FetchCover). Each game is
+  // Store titles not installed yet: details and a small cover (FetchTitle). Each game is
   // synthetic: id "<source>-<ref>", the id it gets once installed. Publishes
   // library.artwork_ready/_failed ({source, ref}). Returns how many were
   // queued.

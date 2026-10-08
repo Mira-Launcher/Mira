@@ -7,10 +7,13 @@
 #include <vector>
 
 #include <json.hpp>
+#include <stb_image.h>
+#include <stb_image_write.h>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "metadata/FetchQueue.h"
+#include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
 #include "model/Types.h"
 #include "store/MetadataStore.h"
@@ -145,6 +148,40 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   const nlohmann::json info = cache.Read("celeste");
   CHECK(info["artwork"].value("candidate_id", 0) == 5);
   CHECK(cache.ArtFor("celeste", "cover").has_value());
+}
+
+TEST_CASE("Downloaded art is fitted to its slot: an opaque PNG cover shrinks to JPEG, a small transparent logo stays") {
+  const fs::path dir = TempDir("metadata-fit");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+
+  const auto write_png = [](const fs::path& file, int width, int height, unsigned char alpha) {
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 4, 128);
+    for (std::size_t i = 3; i < pixels.size(); i += 4) pixels[i] = alpha;
+    REQUIRE(stbi_write_png(file.c_str(), width, height, 4, pixels.data(), 0) != 0);
+  };
+  write_png(dir / "big.png", 1200, 1800, 255);
+  write_png(dir / "logo.png", 400, 100, 0);
+  REQUIRE(cache.Write("celeste", nlohmann::json{
+      {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 1}, {"url", "file://" + (dir / "big.png").string()}}})},
+                          {"logo", nlohmann::json::array({{{"id", 2}, {"url", "file://" + (dir / "logo.png").string()}}})}}},
+  }).has_value());
+
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 1).has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "logo", 2).has_value());
+  const auto cover = cache.ArtFor("celeste", "cover");
+  REQUIRE(cover.has_value());
+  CHECK(cover->content_type == "image/jpeg");
+  int width = 0, height = 0, channels = 0;
+  REQUIRE(stbi_info(cover->file.c_str(), &width, &height, &channels) != 0);
+  CHECK(width == metadata::SlotBox("cover").width);
+  CHECK(height == metadata::SlotBox("cover").height);
+  const auto logo = cache.ArtFor("celeste", "logo");
+  REQUIRE(logo.has_value());
+  CHECK(logo->content_type == "image/png");
+  CHECK(fs::file_size(logo->file) == fs::file_size(dir / "logo.png"));
 }
 
 TEST_CASE("A refresh keeps art the user picked by hand") {

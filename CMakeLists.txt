@@ -72,6 +72,12 @@ target_compile_definitions(mira_sqlite PRIVATE SQLITE_THREADSAFE=1 SQLITE_DEFAUL
 target_link_libraries(mira_sqlite PRIVATE mira_glibc_compat)
 set_target_properties(mira_sqlite PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# stb's image loader, resizer and writer, for shrinking downloaded art.
+add_library(mira_stb STATIC third_party/stb.c)
+target_include_directories(mira_stb SYSTEM PUBLIC third_party)
+target_link_libraries(mira_stb PRIVATE mira_glibc_compat)
+set_target_properties(mira_stb PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 file(GLOB_RECURSE MIRA_CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/mirad_main\\.cpp$")
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/cli/.*\\.cpp$")
@@ -86,7 +92,7 @@ list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")
 # mira_core is not itself broadcasting -Werror to it).
 add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
-target_link_libraries(mira_core PRIVATE mira_flags mira_sqlite)
+target_link_libraries(mira_core PRIVATE mira_flags mira_sqlite mira_stb)
 target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
 
 option(MIRA_PCH "Precompile the common headers" ON)

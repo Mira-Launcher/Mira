@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -23,12 +24,14 @@
 #include "amazon/Nile.h"
 #include "core/AtomicFile.h"
 #include "core/Command.h"
+#include "core/Lane.h"
 #include "config/Resolver.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "epic/Legendary.h"
 #include "lutris/LutrisImporter.h"
+#include "metadata/ImageFit.h"
 #include "runner/Exec.h"
 
 namespace mira::metadata {
@@ -136,7 +139,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
   // A pick has a file of its own, so a refresh already downloading the automatic choice can't
   // overwrite it.
   const std::string stem = picked ? std::format("{}.chosen", slot) : std::string(slot);
-  const fs::path dest = dir / (stem + ext);
+  fs::path dest = dir / (stem + ext);
   // Beside it until complete: a failed download must not take the slot's
   // current image with it.
   static std::atomic<unsigned> next_part{0};
@@ -150,6 +153,11 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
                   std::string(kMaxTime), "-o", part.string(), "--url", url};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (result && result->exit_code == 0) {
+    if (const auto fitted = FitImage(part, SlotBox(slot))) {
+      dest.replace_extension(fitted->ext);
+      std::ofstream(part, std::ios::binary | std::ios::trunc).write(fitted->bytes.data(),
+                                                                    static_cast<std::streamsize>(fitted->bytes.size()));
+    }
     fs::rename(part, dest, ec);
     if (!ec) {
       // A slot that changed type (.png to .jpg) must not leave the old file behind.
@@ -177,6 +185,22 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
               {"source", source}};
   if (candidate_id) info[key]["candidate_id"] = *candidate_id;
   return true;
+}
+
+// Fits a slot's saved file into `box`, renaming it when its type changes.
+void RefitSlot(const fs::path& dir, json& slot, Box box) {
+  const std::string name = Value(slot, "file", std::string());
+  if (name.empty() || name.find('/') != std::string::npos) return;
+  const fs::path file = dir / name;
+  const auto fitted = FitImage(file, box);
+  if (!fitted) return;
+  fs::path dest = file;
+  dest.replace_extension(fitted->ext);
+  if (!WriteFileAtomic(dest, fitted->bytes, "artwork_write_failed")) return;
+  std::error_code ec;
+  if (dest != file) fs::remove(file, ec);
+  slot["file"] = dest.filename().string();
+  slot["content_type"] = ContentTypeFor(dest);
 }
 
 // Fetches every SteamGridDB candidate for one art slot (grids/heroes/logos/
@@ -542,6 +566,22 @@ std::string AmazonImageUrl(const std::string& product_id) {
   return {};
 }
 
+// Legendary's cached catalog entry for a title, or null.
+json LegendaryMeta(const std::string& app_name) {
+  std::ifstream in(epic::LegendaryMetadataFile(app_name));
+  const json parsed = in ? json::parse(in, nullptr, false) : json();
+  if (parsed.is_discarded() || !parsed.is_object()) return nullptr;
+  return Value(parsed, "metadata", json::object());
+}
+
+void AddEpicDetails(const std::string& app_name, const json& meta, json& info) {
+  info["epic"] = {
+      {"app_name", app_name},
+      {"description", Value(meta, "description", std::string())},
+      {"developer", Value(meta, "developer", std::string())},
+  };
+}
+
 // A store's own cover for one of its games, from wherever it has one, into
 // info's cover slot. Returns whether one landed.
 bool FetchStoreCover(const config::Config& config, const model::Game& game, json& info) {
@@ -550,9 +590,7 @@ bool FetchStoreCover(const config::Config& config, const model::Game& game, json
     if (FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info)) return true;
   }
   if (game.source == "epic") {
-    std::ifstream in(epic::LegendaryMetadataFile(game.source_ref));
-    const json parsed = in ? json::parse(in, nullptr, false) : json();
-    const json key_images = Value(Value(parsed, "metadata", json::object()), "keyImages", json::array());
+    const json key_images = Value(LegendaryMeta(game.source_ref), "keyImages", json::array());
     if (const std::string url = FindKeyImage(key_images, kEpicCoverTypes);
         !url.empty() && FetchArtworkInto(config, url, game.id, "epic", "cover", info)) {
       return true;
@@ -573,9 +611,11 @@ bool FetchStoreCover(const config::Config& config, const model::Game& game, json
   return false;
 }
 
-void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
-                     const std::string& appid, const std::string& name, const std::string& game_id,
-                     std::int64_t griddb_id, json& info) {
+void FetchSteamReviews(const std::string& appid, json& info);
+
+// Steam's store page, review summary and ProtonDB tier for `appid`. Returns whether the store
+// answered, so a rate-limited try can be made again.
+bool FetchSteamDetails(const std::string& appid, json& info) {
   const json store = CurlJson(
       {"curl", "-sSL", std::format("https://store.steampowered.com/api/appdetails?appids={}&l=english", appid)});
   if (!store.is_discarded() && store.contains(appid) && Value(store[appid], "success", false)) {
@@ -654,9 +694,13 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
   }
   FetchSteamTagsInto(config, cache, appid, info);
 
-  // Not part of appdetails: Steam's user review summary is a separate
-  // public endpoint (still no key needed), so it's a second call rather than
-  // a field pulled off `store` above.
+  FetchSteamReviews(appid, info);
+  FetchProtonDb(appid, info);
+  return !store.is_discarded();
+}
+
+// Steam's user review summary, a separate public endpoint from appdetails.
+void FetchSteamReviews(const std::string& appid, json& info) {
   const json reviews = CurlJson({"curl", "-sSL",
                                  std::format("https://store.steampowered.com/appreviews/{}?json=1&language=all"
                                             "&purchase_type=all&num_per_page=0",
@@ -670,8 +714,11 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
         {"total_reviews", Value(summary, "total_reviews", 0)},
     };
   }
+}
 
-  FetchProtonDb(appid, info);
+void FetchSteamOwned(const config::Config& config, const std::string& appid, const std::string& name,
+                     const std::string& game_id, std::int64_t griddb_id, json& info) {
+  FetchSteamDetails(appid, info);
 
   // Steam's own cover/hero go into art_candidates too, as the first entry --
   // otherwise there was no way back to it once you picked a SteamGridDB
@@ -700,13 +747,6 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
                                                     {"style", "steam"},
                                                     {"source", "steam_cdn"}}});
   }
-  // Small store-listing thumbnail and the classic top-of-page banner --
-  // same CDN, same no-key pattern, just two more fixed filenames per appid.
-  FetchArtworkInto(config, std::format("https://cdn.akamai.steamstatic.com/steam/apps/{}/capsule_231x87.jpg", appid),
-                   game_id, "steam_cdn", "capsule", info);
-  FetchArtworkInto(config, std::format("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", appid), game_id,
-                   "steam_cdn", "header", info);
-
   // Steam's own art above is already the default; this only adds
   // SteamGridDB's candidates as alternates, appended after the Steam entry
   // already seeded above, so Steam's own image stays first. Never fails the
@@ -724,16 +764,8 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
 // any other non-Steam game.
 void FetchEpicOwned(const config::Config& config, const std::string& app_name, const std::string& name,
                     const std::string& game_id, std::int64_t griddb_id, json& info) {
-  std::ifstream in(epic::LegendaryMetadataFile(app_name));
-  const json parsed = in ? json::parse(in, nullptr, false) : json();
-
-  if (in && !parsed.is_discarded() && parsed.is_object()) {
-    const json meta = Value(parsed, "metadata", json::object());
-    info["epic"] = {
-        {"app_name", app_name},
-        {"description", Value(meta, "description", std::string())},
-        {"developer", Value(meta, "developer", std::string())},
-    };
+  if (const json meta = LegendaryMeta(app_name); !meta.is_null()) {
+    AddEpicDetails(app_name, meta, info);
 
     // A tall cover and a wide hero, the same two slots Steam's CDN fills in
     // FetchSteamOwned above.
@@ -824,6 +856,11 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
     FetchSteamTagsInto(config, cache, steam_match().exact, info);
   }
 
+  // Only the same name's, since a wrong game's reviews mislead.
+  if (config.GetBool("metadata.protondb_for_non_steam")) {
+    if (const std::string& appid = steam_match().exact; !appid.empty()) FetchSteamReviews(appid, info);
+  }
+
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (!api_key.empty()) FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
 
@@ -882,7 +919,7 @@ void CarryChosenSlots(const json& old, json& info) {
 }
 
 Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
-  json info = {{"fetched_at", model::NowSeconds()}};
+  json info = {{"fetched_at", model::NowSeconds()}, {"details_fetched", true}};
   CarryChosenSlots(cache.Read(game.id), info);
   const std::int64_t griddb_id = config::Resolver(config, game.overrides).GetInt("metadata.steamgriddb_id");
 
@@ -935,33 +972,94 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, co
   return cache.Write(game.id, info);
 }
 
-Result<void> FetchCover(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
+Result<void> FetchTitle(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
+  const json cached = cache.Read(game.id);
   json info = {{"fetched_at", model::NowSeconds()}, {"source", game.source}};
+  std::optional<SteamMatch> steam;  // searched once, for ProtonDB and for art
+  const auto steam_match = [&]() -> const SteamMatch& {
+    if (!steam) steam = FindSteamAppIds(game.name);
+    return *steam;
+  };
+
+  if (!Value(cached, "details_fetched", false)) {
+    bool answered = true;
+    if (game.runner_ref.starts_with("steam:")) {
+      answered = FetchSteamDetails(game.runner_ref.substr(std::string_view("steam:").size()), info);
+    } else {
+      if (game.source == "epic") {
+        if (const json meta = LegendaryMeta(game.source_ref); !meta.is_null()) AddEpicDetails(game.source_ref, meta, info);
+      }
+      if (config.GetBool("metadata.protondb_for_non_steam")) {
+        if (const std::string& appid = steam_match().best; !appid.empty()) FetchProtonDb(appid, info);
+        if (const std::string& appid = steam_match().exact; !appid.empty()) FetchSteamReviews(appid, info);
+      }
+    }
+    if (answered) info["details_fetched"] = true;
+  }
+
   const std::string api_key = config.GetString("steamgriddb.api_key");
-  if (!FetchStoreCover(config, game, info) && !api_key.empty()) {
-    const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
-    if (const std::int64_t griddb_id = FindGriddbId(auth_header, game.name); griddb_id != 0) {
-      FetchGriddbSlot(config, auth_header, griddb_id, game.id, "grids", "cover", info);
+  if (!cache.ArtFor(game.id, "cover")) {
+    if (!FetchStoreCover(config, game, info) && !api_key.empty()) {
+      const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
+      if (const std::int64_t griddb_id = FindGriddbId(auth_header, game.name); griddb_id != 0) {
+        FetchGriddbSlot(config, auth_header, griddb_id, game.id, "grids", "cover", info);
+      }
     }
-  }
-  // Same last resort as a tracked game's: Steam's art for the same name.
-  if (!info.contains("artwork") && game.source != "steam" && config.GetBool("metadata.steam_art_by_name")) {
-    if (const std::string appid = FindSteamAppIds(game.name).exact; !appid.empty()) {
-      FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info);
+    // Same last resort as a tracked game's: Steam's art for the same name.
+    if (!info.contains("artwork") && game.source != "steam" && config.GetBool("metadata.steam_art_by_name")) {
+      if (const std::string& appid = steam_match().exact; !appid.empty()) {
+        FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info);
+      }
     }
-  }
-  if (!info.contains("artwork")) {
-    if (api_key.empty()) return NoGriddbKey("no cover found for this game without a SteamGridDB API key");
-    return Err("no_artwork", "no cover found for \"" + game.name + "\"");
+    if (info.contains("artwork")) RefitSlot(ArtworkDir(config, game.id), info["artwork"], SlotBox("cover", true));
   }
 
   // Merged into any fuller record rather than replacing it.
-  const std::lock_guard lock(MetadataFileMutex());
-  json merged = cache.Read(game.id);
-  for (const auto& [key, value] : info.items()) {
-    if (!(merged.contains(key) && merged[key].is_object() && Value(merged[key], "chosen", false))) merged[key] = value;
+  {
+    const std::lock_guard lock(MetadataFileMutex());
+    json merged = cache.Read(game.id);
+    for (const auto& [key, value] : info.items()) {
+      if (!(merged.contains(key) && merged[key].is_object() && Value(merged[key], "chosen", false))) merged[key] = value;
+    }
+    if (auto written = cache.Write(game.id, merged); !written) return written;
   }
-  return cache.Write(game.id, merged);
+  if (!cache.ArtFor(game.id, "cover")) {
+    if (api_key.empty()) return NoGriddbKey("no cover found for this game without a SteamGridDB API key");
+    return Err("no_artwork", "no cover found for \"" + game.name + "\"");
+  }
+  return {};
+}
+
+bool TitleNeedsFetch(const store::MetadataStore& cache, const std::string& id) {
+  return !cache.ArtVersions(id).contains("cover") || !Value(cache.Read(id), "details_fetched", false);
+}
+
+void FitCachedArt(const config::Config& config, store::MetadataStore& cache,
+                  const std::function<bool(const std::string&)>& is_title) {
+  const std::vector<std::string> ids = cache.PendingFits();
+  if (ids.empty()) return;
+  log::Info("shrinking the art of {} cached games", ids.size());
+  for (const std::string& id : ids) {
+    if (ThisTaskStop().stop_requested()) return;  // the rest resume next start
+    const fs::path dir = ArtworkDir(config, id);
+    const std::lock_guard lock(MetadataFileMutex());
+    json info = cache.Read(id);
+    for (const char* key : {"capsule", "header"}) {
+      std::error_code ec;
+      if (const std::string name = Value(Value(info, key, json::object()), "file", std::string());
+          !name.empty() && name.find('/') == std::string::npos) {
+        fs::remove(dir / name, ec);
+      }
+      info.erase(key);
+    }
+    for (const auto& [slot, key] : {std::pair{"cover", "artwork"}, {"hero", "hero"}, {"logo", "logo"}, {"icon", "icon"}}) {
+      if (info.contains(key)) RefitSlot(dir, info[key], SlotBox(slot, is_title(id)));
+    }
+    if (!info.empty()) {
+      if (auto written = cache.Write(id, info); !written) log::Warn("couldn't save {}'s fitted art: {}", id, written.error().message);
+    }
+    cache.FitDone(id);
+  }
 }
 
 Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
@@ -1083,6 +1181,11 @@ fs::path ThumbPath(const config::Config& config, const std::string& game_id, con
 void ClearCandidateThumbs(const config::Config& config) {
   std::error_code ec;
   fs::remove_all(ThumbCacheDir(config), ec);
+}
+
+void ClearCandidateThumbs(const config::Config& config, const std::string& game_id) {
+  std::error_code ec;
+  fs::remove_all(ThumbCacheDir(config) / game_id, ec);
 }
 
 std::filesystem::path CandidateThumbFile(const config::Config& config, const std::string& game_id,

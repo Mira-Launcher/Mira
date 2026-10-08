@@ -9,7 +9,7 @@
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
-#include "library/FolderTags.h"
+#include "metadata/MetadataFetcher.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
@@ -264,6 +264,9 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                      {"game_id", entry.game_id},
                      {"play_seconds", entry.play_seconds},
                      {"owned", entry.owned}});
+      if (std::string tier = s.games.Metadata().ProtonDbTier(entry.source + "-" + entry.ref); !tier.empty()) {
+        out.back()["protondb_tier"] = std::move(tier);
+      }
     }
     SendJson(res, std::move(out));
   });
@@ -317,6 +320,18 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     SendCachedArtwork(s.games.Metadata(), source + "-" + ref, "cover", res);
   });
 
+  http.Get("/v1/library/metadata", [&s](const Request& req, Response& res) {
+    const std::string source = Param(req, "source");
+    const std::string ref = Param(req, "ref");
+    if (library::FindSource(source) == nullptr || !IsSafeRef(ref)) {
+      return SendError(res, 400, "invalid_request", "expected ?source=<store>&ref=<ref>");
+    }
+    if (!s.games.Metadata().Has(source + "-" + ref)) {
+      return SendError(res, 404, "metadata_not_found", "no metadata cached for this title yet");
+    }
+    SendJson(res, s.games.Metadata().Read(source + "-" + ref));
+  });
+
   http.Post("/v1/library/artwork", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape = R"({"source": "...", "titles": [{"ref": "...", "title": "..."}]})";
     const auto body = BodyObject(req, res, kShape);
@@ -341,7 +356,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       title.source_ref = text(entry, "ref");
       title.name = text(entry, "title");
       title.id = source + "-" + title.source_ref;
-      if (!IsSafeRef(title.source_ref) || title.name.empty() || s.games.Metadata().ArtVersions(title.id).contains("cover")) continue;
+      if (!IsSafeRef(title.source_ref) || title.name.empty() || !metadata::TitleNeedsFetch(s.games.Metadata(), title.id)) continue;
       // How Fetch tells a Steam game apart.
       if (source == "steam") title.runner_ref = "steam:" + title.source_ref;
       titles.push_back(std::move(title));

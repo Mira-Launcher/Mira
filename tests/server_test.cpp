@@ -736,7 +736,7 @@ TEST_CASE("Artwork thumb routes validate the batch and serve only a cached previ
   CHECK(gone->status == 404);
 }
 
-TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it when queuing") {
+TEST_CASE("/v1/library/artwork and /metadata serve a store title's cache and skip it when queuing") {
   LiveServer server(TempDir("server-library-artwork"));
   REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
 
@@ -745,7 +745,8 @@ TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it 
   std::ofstream(artwork_dir / "cover.jpg") << "cover-bytes";
   REQUIRE(server.games()
               .Metadata()
-              .Write("epic-Fortnite", nlohmann::json::parse(R"({"artwork": {"file": "cover.jpg", "content_type": "image/jpeg"}})"))
+              .Write("epic-Fortnite", nlohmann::json::parse(R"({"artwork": {"file": "cover.jpg", "content_type": "image/jpeg"},
+                                                                  "details_fetched": true, "protondb": {"tier": "gold"}})"))
               .has_value());
 
   httplib::Client client = server.Client();
@@ -758,6 +759,15 @@ TEST_CASE("/v1/library/artwork serves a store title's cached cover and skips it 
   auto missing = client.Get("/v1/library/artwork?source=epic&ref=Other");
   REQUIRE(missing != nullptr);
   CHECK(missing->status == 404);
+
+  auto details = client.Get("/v1/library/metadata?source=epic&ref=Fortnite");
+  REQUIRE(details != nullptr);
+  CHECK(details->status == 200);
+  CHECK(nlohmann::json::parse(details->body)["protondb"]["tier"] == "gold");
+  CHECK(server.games().Metadata().ProtonDbTier("epic-Fortnite") == "gold");
+  auto no_details = client.Get("/v1/library/metadata?source=epic&ref=Other");
+  REQUIRE(no_details != nullptr);
+  CHECK(no_details->status == 404);
 
   auto bad_ref = client.Get("/v1/library/artwork?source=epic&ref=..%2F..%2Fetc");
   REQUIRE(bad_ref != nullptr);

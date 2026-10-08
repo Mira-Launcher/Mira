@@ -2,8 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <optional>
-#include <span>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -24,11 +23,19 @@ namespace mira::metadata {
 // metadata/FetchQueue.h for the background-safe wrapper.
 Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
 
-// Only a cover, for a store title not installed yet: the store's own where
-// there is one (Steam's CDN, Epic via Legendary, GOG's gamesdb for GOG, itch
-// and Amazon), else SteamGridDB's. Much cheaper than Fetch across a whole
-// store library; installing runs Fetch.
-Result<void> FetchCover(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
+// A store title not installed yet: its details (store info, ProtonDB tier) and a small cover, each
+// only while missing. The store's own cover where there is one, else SteamGridDB's. Installing
+// runs Fetch.
+Result<void> FetchTitle(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
+
+// Whether a store title is still missing its cover or details.
+bool TitleNeedsFetch(const store::MetadataStore& cache, const std::string& id);
+
+// Shrinks art saved before downloads were fitted, and drops the unused capsule and header
+// images, once per game. Stops between games when its Lane task is stopped. Temporary: drop
+// it with cache.db's fit_pending table a release or two later.
+void FitCachedArt(const config::Config& config, store::MetadataStore& cache,
+                  const std::function<bool(const std::string&)>& is_title);
 
 // SteamGridDB's matches for `name`, best first: [{id, name, release_date?}].
 // Fetch uses the first unless the game sets metadata.steamgriddb_id.
@@ -67,6 +74,8 @@ std::filesystem::path CandidateThumbFile(const config::Config& config, const std
 // Previews are only for a picker that's open, so they're thrown away when
 // the GUI quits and when mirad starts or stops, rather than kept like art.
 void ClearCandidateThumbs(const config::Config& config);
+// One game's, as its settings close.
+void ClearCandidateThumbs(const config::Config& config, const std::string& game_id);
 
 // Each cached game's Steam tags as last fetched with its metadata (most voted first), by id: empty
 // when no Steam game matched, nullopt when fetched before Steam tags were. A game with no metadata
