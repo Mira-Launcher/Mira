@@ -65,6 +65,8 @@ public:
   // Clears the search, unfolds row_widget's card and scrolls it into view.
   // Leaves focus to the caller.
   void RevealRow(QWidget* row_widget);
+  // Scrolls `page` to the top and highlights it in the nav.
+  void RevealPage(SettingsPage* page);
 
   // Above the search box, e.g. the screen's back button and title.
   void SetHeaderWidget(QWidget* widget);

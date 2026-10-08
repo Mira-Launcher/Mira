@@ -159,6 +159,8 @@ void SettingsPanel::BuildSchemaPages() {
     pages_[category] = page;
     const bool by_source = std::ranges::all_of(rows, [this](size_t i) { return !fields_[i].entry.source.empty(); });
     if (by_source) {
+      // Which sources the sidebar shows, and in what order, sits with the sources themselves.
+      if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
       BuildSourceCards(page, rows);
       continue;
     }
@@ -242,6 +244,14 @@ SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
 void SettingsPanel::FocusKey(const QString& key) {
   if (key == kSidebarKey) {
     nav_->RevealRow(sidebar_style_->Rows().front());
+    return;
+  }
+  if (key == kSidebarSourcesKey) {
+    if (!rows_built_) {
+      pending_focus_key_ = key;  // the card moves to the Sources page once the schema loads
+    } else if (SettingsPage* page = pages_.value("Sources")) {
+      nav_->RevealPage(page);  // the card is the page's first
+    }
     return;
   }
   const std::string wanted = key.toStdString();

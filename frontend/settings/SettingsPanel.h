@@ -55,6 +55,8 @@ public:
 
   // FocusKey target for the frontend-only Sidebar page.
   static constexpr const char* kSidebarKey = "frontend.sidebar";
+  // The Sources page's card of which sources the sidebar shows.
+  static constexpr const char* kSidebarSourcesKey = "frontend.sidebar_sources";
 
   // Saves every change. Emits SaveFinished either way.
   void Save();

@@ -725,7 +725,7 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   } else if (chosen == manage) {
     emit ManageSourcesRequested();
   } else if (chosen == settings) {
-    emit SettingsRequested(SettingsPanel::kSidebarKey);
+    emit SettingsRequested(SettingsPanel::kSidebarSourcesKey);
   }
 }
 
