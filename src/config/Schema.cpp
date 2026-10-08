@@ -319,6 +319,41 @@ Schema::Schema() {
          .constraint = Range(0, 1e12),
          .keywords = "sgdb"});
 
+  s.Add({.key = "metadata.art_size",
+         .label = "Art size",
+         .type = Type::String,
+         .default_value = "high",
+         .doc = "How large downloaded art is kept. High keeps covers sharp on large tiles and "
+                "high-DPI screens. Compact uses about half the disk space.",
+         .constraint = OneOf({"high", "compact"}),
+         .keywords = "quality resolution disk space cover hero"});
+
+  s.Add({.key = "metadata.title_details",
+         .label = "Details for games not installed",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "For games in a store library that are not installed, also fetch the description, "
+                "reviews and ProtonDB rating, not only the cover."});
+
+  s.Add({.key = "metadata.refresh_days",
+         .label = "Refresh details after (days)",
+         .type = Type::Int,
+         .default_value = 30,
+         .doc = "Fetch a game's details again once they are this many days old, so ProtonDB "
+                "ratings and reviews stay current. Art is kept. 0 never refreshes them.",
+         .constraint = Range(0, 365)});
+
+  s.Add({.key = "metadata.steam_appid",
+         .label = "Steam app ID for ratings",
+         .type = Type::Int,
+         .default_value = 0,
+         .scope = Scope::GameOnly,
+         .doc = "The Steam game this game's ProtonDB rating and reviews come from, for a game not "
+                "from Steam. 0 matches it by name. Enter the number from the game's "
+                "store.steampowered.com/app/ address when the match is wrong.",
+         .constraint = Range(0, 1e12),
+         .keywords = "protondb reviews match wrong"});
+
   s.Add({.key = "metadata.steam_art_by_name",
          .label = "Match Steam art by name",
          .type = Type::Bool,
@@ -330,7 +365,7 @@ Schema::Schema() {
   s.Add({.key = "metadata.protondb_for_non_steam",
          .label = "ProtonDB and Steam reviews for non-Steam games",
          .type = Type::Bool,
-         .default_value = false,
+         .default_value = true,
          .doc = "Show a ProtonDB rating and Steam's user reviews for games that are not from Steam, "
                 "found by matching the game's name to a Steam game. Reviews need the exact name. "
                 "The match can be wrong, and each lookup sends the "

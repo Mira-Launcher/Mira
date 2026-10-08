@@ -23,13 +23,8 @@ using namespace mira;
 using test::TempDir;
 namespace fs = std::filesystem;
 
-// Everything here deliberately exercises only the non-Steam path with no
-// steamgriddb.api_key set: that's the one branch that's fully offline (see
-// MetadataFetcher.cpp's FetchNonSteam: metadata.protondb_for_non_steam
-// defaults to false for the same reason, so it adds no network call here
-// either), so these stay hermetic without mocking curl. The
-// Steam/ProtonDB/SteamGridDB paths themselves were verified live against
-// real APIs during development, not here.
+// Only the non-Steam path with no SteamGridDB key, under test::Isolate's
+// settings (no lookups by name), so these stay offline without mocking curl.
 
 TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches nothing") {
   // SteamGridDB is the only free cover source for a non-Steam game, so with
@@ -190,7 +185,7 @@ TEST_CASE("A refresh keeps art the user picked by hand") {
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
-  REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());  // keeps Fetch offline
+  test::Isolate(config);  // keeps Fetch offline
 
   const fs::path image = dir / "picked.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG picked";
@@ -325,7 +320,7 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
   store::MetadataStore cache(dir);
   cache.Load();
   // No key and no Steam lookup: each fetch fails fast, offline.
-  REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());
+  test::Isolate(config);
 
   api::EventBus events;
   {
@@ -344,4 +339,56 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
     if (event.type == "game.metadata_failed") fetched.insert(event.payload.value("id", std::string()));
   }
   CHECK(fetched.size() == 40);
+}
+
+TEST_CASE("A store title needs fetching until it has a cover and details newer than metadata.refresh_days") {
+  const fs::path dir = TempDir("metadata-title-fresh");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+  test::Isolate(config);
+
+  const fs::path art = metadata::ArtworkDir(config, "gog-1");
+  fs::create_directories(art);
+  std::ofstream(art / "cover.jpg") << "cover";
+  const auto write = [&](std::int64_t fetched) {
+    REQUIRE(cache.Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}}, {"details_fetched", fetched}}).has_value());
+  };
+  CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached
+
+  write(model::NowSeconds());
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  write(model::NowSeconds() - 31 * 86400);
+  CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  REQUIRE(config.Set("metadata.refresh_days", 0).has_value());
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  REQUIRE(config.Set("metadata.title_details", false).has_value());
+  write(0);
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+}
+
+TEST_CASE("PruneOrphanArt removes old art folders with no cached record and keeps the rest") {
+  const fs::path dir = TempDir("metadata-prune");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+
+  const auto folder = [&](const std::string& id, bool old) {
+    const fs::path path = metadata::ArtworkDir(config, id);
+    fs::create_directories(path);
+    std::ofstream(path / "cover.jpg") << "cover";
+    if (old) fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::days(2));
+    return path;
+  };
+  const fs::path orphan = folder("gone", true);
+  const fs::path fresh = folder("fetching", false);
+  const fs::path kept = folder("celeste", true);
+  REQUIRE(cache.Write("celeste", {{"artwork", {{"file", "cover.jpg"}}}}).has_value());
+
+  metadata::PruneOrphanArt(config, cache);
+  CHECK_FALSE(fs::exists(orphan));
+  CHECK(fs::exists(fresh));
+  CHECK(fs::exists(kept));
 }

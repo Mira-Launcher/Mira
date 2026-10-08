@@ -746,7 +746,7 @@ TEST_CASE("/v1/library/artwork and /metadata serve a store title's cache and ski
   REQUIRE(server.games()
               .Metadata()
               .Write("epic-Fortnite", nlohmann::json::parse(R"({"artwork": {"file": "cover.jpg", "content_type": "image/jpeg"},
-                                                                  "details_fetched": true, "protondb": {"tier": "gold"}})"))
+                                                                  "details_fetched": 9999999999, "protondb": {"tier": "gold"}})"))
               .has_value());
 
   httplib::Client client = server.Client();

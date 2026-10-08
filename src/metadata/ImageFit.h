@@ -10,10 +10,12 @@ namespace mira::metadata {
 struct Box {
   int width = 0;
   int height = 0;
+  int quality = 90;  // JPEG
 };
 
-// The box a slot's art is kept within. A store title not installed gets a smaller cover.
-Box SlotBox(std::string_view slot, bool title = false);
+// The box a slot's art is kept within. A store title not installed gets a smaller cover, and
+// `compact` (metadata.art_size) about half the size.
+Box SlotBox(std::string_view slot, bool title = false, bool compact = false);
 
 struct Fitted {
   std::string bytes;

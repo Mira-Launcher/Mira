@@ -13,8 +13,6 @@
 namespace mira::metadata {
 namespace {
 
-constexpr int kJpegQuality = 90;
-
 void Append(void* context, void* data, int size) {
   static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<std::size_t>(size));
 }
@@ -27,12 +25,13 @@ bool IsJpeg(const std::filesystem::path& file) {
 
 }  // namespace
 
-Box SlotBox(std::string_view slot, bool title) {
-  if (slot == "cover") return title ? Box{450, 675} : Box{900, 1350};
-  if (slot == "hero") return {1920, 1920};
-  if (slot == "logo") return {800, 800};
-  if (slot == "icon") return {256, 256};
-  return {1920, 1920};
+Box SlotBox(std::string_view slot, bool title, bool compact) {
+  Box box = slot == "cover"  ? (title ? Box{450, 675} : Box{900, 1350})
+            : slot == "logo" ? Box{800, 800}
+            : slot == "icon" ? Box{256, 256}
+                             : Box{1920, 1920};
+  if (compact && slot != "icon") box = {box.width * 2 / 3, box.height * 2 / 3, 82};
+  return box;
 }
 
 std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box) {
@@ -67,7 +66,7 @@ std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box) {
   fitted.ext = transparent ? ".png" : ".jpg";
   const int written = transparent
                           ? stbi_write_png_to_func(Append, &fitted.bytes, out_width, out_height, 4, out, 0)
-                          : stbi_write_jpg_to_func(Append, &fitted.bytes, out_width, out_height, 4, out, kJpegQuality);
+                          : stbi_write_jpg_to_func(Append, &fitted.bytes, out_width, out_height, 4, out, box.quality);
   if (written == 0 || fitted.bytes.empty()) return std::nullopt;
   return fitted;
 }

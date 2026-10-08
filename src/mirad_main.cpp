@@ -114,8 +114,17 @@ int main(int argc, char** argv) {
   mira::runner::MigrateInPlaceRefs(config, games);
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
-  services.artwork_selects.Post([&config, &games] {
+  services.artwork_selects.Post([&config, &games, &services, &events] {
     mira::metadata::FitCachedArt(config, games.Metadata(), [&games](const std::string& id) { return !games.Find(id); });
+    mira::metadata::PruneOrphanArt(config, games.Metadata());
+    if (!config.GetBool("metadata.enabled")) return;
+    std::vector<mira::model::Game> stale;
+    for (mira::model::Game& game : games.All()) {
+      if (games.Metadata().Has(game.id) && !mira::metadata::DetailsFresh(config, games.Metadata().Read(game.id))) {
+        stale.push_back(std::move(game));
+      }
+    }
+    services.fetches.EnqueueStale(config, events, std::move(stale));
   });
 
   const std::filesystem::path socket_path =

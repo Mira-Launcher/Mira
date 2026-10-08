@@ -356,7 +356,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       title.source_ref = text(entry, "ref");
       title.name = text(entry, "title");
       title.id = source + "-" + title.source_ref;
-      if (!IsSafeRef(title.source_ref) || title.name.empty() || !metadata::TitleNeedsFetch(s.games.Metadata(), title.id)) continue;
+      if (!IsSafeRef(title.source_ref) || title.name.empty() || !metadata::TitleNeedsFetch(s.config, s.games.Metadata(), title.id)) continue;
       // How Fetch tells a Steam game apart.
       if (source == "steam") title.runner_ref = "steam:" + title.source_ref;
       titles.push_back(std::move(title));
