@@ -161,12 +161,14 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
                   trusted ? "=file,https,http" : "=https,http", "--max-time",
                   std::string(kMaxTime), "-o", part.string(), "--url", url};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  if (result && result->exit_code == 0) {
+  bool ok = result && result->exit_code == 0;
+  if (ok) {
     if (const auto fitted = FitImage(part, ArtBox(config, slot))) {
-      dest.replace_extension(fitted->ext);
-      std::ofstream(part, std::ios::binary | std::ios::trunc).write(fitted->bytes.data(),
-                                                                    static_cast<std::streamsize>(fitted->bytes.size()));
+      ok = WriteFileAtomic(part, fitted->bytes, "artwork_write_failed").has_value();
+      if (ok) dest.replace_extension(fitted->ext);
     }
+  }
+  if (ok) {
     fs::rename(part, dest, ec);
     if (!ec) {
       // A slot that changed type (.png to .jpg) must not leave the old file behind.
@@ -180,7 +182,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
       ec.clear();
     }
   }
-  if (!result || result->exit_code != 0 || ec) {
+  if (!ok || ec) {
     log::Warn("couldn't download artwork for {} from {}", game_id, url);
     fs::remove(part, ec);
     return false;
@@ -241,6 +243,18 @@ json GriddbCandidate(const json& item) {
       {"nsfw", Value(item, "nsfw", false)},
       {"source", "steamgriddb"},
   };
+}
+
+// A thread for one of a fetch's requests. An exception is logged: thrown out of a thread, it
+// would end mirad.
+std::jthread Spawn(std::function<void()> body) {
+  return std::jthread([body = std::move(body)] {
+    try {
+      body();
+    } catch (const std::exception& error) {
+      log::Warn("a metadata request threw: {}", error.what());
+    }
+  });
 }
 
 // Every read-modify-write of a game's metadata file after its fetch.
@@ -329,9 +343,9 @@ void FetchGriddbCandidates(const config::Config& config, const std::string& api_
       if (info.contains("art_candidates") && info["art_candidates"].contains(std::string(slot))) {
         parts[i]["art_candidates"][std::string(slot)] = info["art_candidates"][std::string(slot)];
       }
-      threads.emplace_back([&, i, endpoint, slot] {
+      threads.push_back(Spawn([&, i, endpoint, slot] {
         FetchGriddbSlot(config, auth_header, griddb_id, game_id, endpoint, slot, parts[i]);
-      });
+      }));
     }
   }
   for (const json& part : parts) {
@@ -621,8 +635,8 @@ void FetchSteamReviews(const std::string& appid, json& info);
 bool FetchSteamDetails(const std::string& appid, json& info) {
   // Three independent requests at once, each into its own record.
   json reviews_info, proton_info;
-  std::jthread reviews([&] { FetchSteamReviews(appid, reviews_info); });
-  std::jthread proton([&] { FetchProtonDb(appid, proton_info); });
+  std::jthread reviews = Spawn([&] { FetchSteamReviews(appid, reviews_info); });
+  std::jthread proton = Spawn([&] { FetchProtonDb(appid, proton_info); });
   const json store = CurlJson(
       {"curl", "-sSL", std::format("https://store.steampowered.com/api/appdetails?appids={}&l=english", appid)});
   if (!store.is_discarded() && store.contains(appid) && Value(store[appid], "success", false)) {
@@ -715,7 +729,7 @@ void FetchSteamOwned(const config::Config& config, const std::string& appid, con
                      const std::string& game_id, std::int64_t griddb_id, json& info) {
   // The details don't touch the art's keys, so they're fetched alongside it.
   json details;
-  std::jthread details_thread([&] { FetchSteamDetails(appid, details); });
+  std::jthread details_thread = Spawn([&] { FetchSteamDetails(appid, details); });
 
   // Steam's own cover/hero go into art_candidates too, as the first entry --
   // otherwise there was no way back to it once you picked a SteamGridDB
@@ -1052,7 +1066,7 @@ std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::
     items[std::to_string(Value(item, "appid", std::int64_t{0}))] = item;
   }
 
-  std::vector<Result<void>> results(titles.size());
+  std::vector<Result<void>> results(titles.size(), Err("fetch_failed", "the fetch stopped unexpectedly"));
   std::atomic<std::size_t> next{0};
   const auto work = [&] {
     for (std::size_t i; (i = next++) < titles.size();) {
@@ -1063,7 +1077,7 @@ std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::
   {
     // A few at a time: each is a ProtonDB lookup and a cover download.
     std::vector<std::jthread> workers;
-    for (int i = 0; i < 4; ++i) workers.emplace_back(work);
+    for (int i = 0; i < 4; ++i) workers.push_back(Spawn(work));
   }
   return results;
 }
@@ -1097,25 +1111,70 @@ void FitCachedArt(const config::Config& config, store::MetadataStore& cache,
   const std::vector<std::string> ids = cache.PendingFits();
   if (ids.empty()) return;
   log::Info("shrinking the art of {} cached games", ids.size());
+  constexpr std::array<std::pair<const char*, const char*>, 4> kFitted = {
+      {{"cover", "artwork"}, {"hero", "hero"}, {"logo", "logo"}, {"icon", "icon"}}};
   for (const std::string& id : ids) {
     if (ThisTaskStop().stop_requested()) return;  // the rest resume next start
     const fs::path dir = ArtworkDir(config, id);
-    const std::lock_guard lock(MetadataFileMutex());
-    json info = cache.Read(id);
-    for (const char* key : {"capsule", "header"}) {
+    const json before = cache.Read(id);
+    const bool title = is_title(id);
+
+    // Fitted beside the originals without the lock: decoding takes a while.
+    struct Fit {
+      const char* key;
+      std::string old_name;
+      fs::path temp, dest;
+    };
+    std::vector<Fit> fits;
+    for (const auto& [slot, key] : kFitted) {
+      const std::string name = Value(Value(before, key, json::object()), "file", std::string());
+      if (name.empty() || name.find('/') != std::string::npos) continue;
+      const auto fitted = FitImage(dir / name, ArtBox(config, slot, title));
+      if (!fitted) continue;
+      fs::path dest = dir / name;
+      dest.replace_extension(fitted->ext);
+      const fs::path temp = dest.string() + ".fitting";
+      if (WriteFileAtomic(temp, fitted->bytes, "artwork_write_failed")) fits.push_back({key, name, temp, dest});
+    }
+
+    std::vector<fs::path> stale;  // removed once the record no longer names them
+    bool saved = true;
+    {
+      const std::lock_guard lock(MetadataFileMutex());
+      json info = cache.Read(id);
       std::error_code ec;
-      if (const std::string name = Value(Value(info, key, json::object()), "file", std::string());
-          !name.empty() && name.find('/') == std::string::npos) {
-        fs::remove(dir / name, ec);
+      for (const Fit& fit : fits) {
+        // A fetch that replaced the slot meanwhile wins.
+        if (Value(Value(info, fit.key, json::object()), "file", std::string()) != fit.old_name) {
+          fs::remove(fit.temp, ec);
+          continue;
+        }
+        fs::rename(fit.temp, fit.dest, ec);
+        if (ec) {
+          fs::remove(fit.temp, ec);
+          continue;
+        }
+        info[fit.key]["file"] = fit.dest.filename().string();
+        info[fit.key]["content_type"] = ContentTypeFor(fit.dest);
+        if (fit.dest != dir / fit.old_name) stale.push_back(dir / fit.old_name);
       }
-      info.erase(key);
+      for (const char* key : {"capsule", "header"}) {
+        if (const std::string name = Value(Value(info, key, json::object()), "file", std::string());
+            !name.empty() && name.find('/') == std::string::npos) {
+          stale.push_back(dir / name);
+        }
+        info.erase(key);
+      }
+      if (!info.empty()) {
+        if (auto written = cache.Write(id, info); !written) {
+          log::Warn("couldn't save {}'s fitted art: {}", id, written.error().message);
+          saved = false;
+        }
+      }
     }
-    for (const auto& [slot, key] : {std::pair{"cover", "artwork"}, {"hero", "hero"}, {"logo", "logo"}, {"icon", "icon"}}) {
-      if (info.contains(key)) RefitSlot(dir, info[key], ArtBox(config, slot, is_title(id)));
-    }
-    if (!info.empty()) {
-      if (auto written = cache.Write(id, info); !written) log::Warn("couldn't save {}'s fitted art: {}", id, written.error().message);
-    }
+    if (!saved) continue;  // tried again next start; the originals are still there
+    std::error_code ec;
+    for (const fs::path& file : stale) fs::remove(file, ec);
     cache.FitDone(id);
   }
 }

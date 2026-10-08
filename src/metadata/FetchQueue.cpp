@@ -55,6 +55,13 @@ int FetchQueue::EnqueueTitles(const config::Config& config, api::EventBus& event
   return static_cast<int>(steam.size()) + EnqueueLow(config, events, std::move(others), Kind::Title);
 }
 
+std::vector<std::string> FetchQueue::Ids(const Job& job) {
+  if (job.batch.empty()) return {job.game.id};
+  std::vector<std::string> ids;
+  for (const model::Game& game : job.batch) ids.push_back(game.id);
+  return ids;
+}
+
 bool FetchQueue::Queued(const std::string& id) const {
   return std::any_of(titles_.begin(), titles_.end(), [&id](const Job& job) {
     return job.game.id == id ||
@@ -101,8 +108,10 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       std::deque<Job>::iterator next;
       if (!stopping_) {
         for (std::deque<Job>* queue : {&games_, &titles_}) {
-          next = std::find_if(queue->begin(), queue->end(),
-                              [this](const Job& waiting) { return !running_ids_.contains(waiting.game.id); });
+          next = std::find_if(queue->begin(), queue->end(), [this](const Job& waiting) {
+            return std::ranges::none_of(Ids(waiting),
+                                        [this](const std::string& id) { return running_ids_.contains(id); });
+          });
           if (next != queue->end()) {
             from = queue;
             break;
@@ -116,7 +125,7 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       }
       job = std::move(*next);
       from->erase(next);
-      running_ids_.insert(job.game.id);
+      for (const std::string& id : Ids(job)) running_ids_.insert(id);
       ++running_;
     }
     bool ok = false;
@@ -133,7 +142,7 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       }
     }
     std::lock_guard lock(mutex_);
-    running_ids_.erase(job.game.id);
+    for (const std::string& id : Ids(job)) running_ids_.erase(id);
     --running_;
     idle_.notify_all();
   }

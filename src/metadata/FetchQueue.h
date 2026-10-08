@@ -66,6 +66,8 @@ private:
   static constexpr int kWorkers = 3;
   static constexpr std::size_t kSteamBatch = 50;
 
+  // The games a job writes: its batch's, else its own.
+  static std::vector<std::string> Ids(const Job& job);
   // Whether a low-priority job has `id`. Needs mutex_.
   bool Queued(const std::string& id) const;
   int EnqueueLow(const config::Config& config, api::EventBus& events, std::vector<model::Game> games, Kind kind);
