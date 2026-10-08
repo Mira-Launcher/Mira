@@ -113,6 +113,7 @@ Tokens ParseTokens(const std::string& text) {
   color("tile_placeholder", tokens.tile_placeholder);
 
   number("scrim_alpha", tokens.scrim_alpha);
+  number("modal_scrim_alpha", tokens.modal_scrim_alpha);
   number("radius_panel", tokens.radius_panel);
   number("radius_control", tokens.radius_control);
   number("radius_tile", tokens.radius_tile);
@@ -165,15 +166,6 @@ QString GlyphPath(const QString& kind, const QColor& color) {
   painter.drawPath(stroke);
   painter.end();
   return image.save(path, "PNG") ? path : QString();
-}
-
-QString ColorToQss(const QColor& color) {
-  if (color.alpha() == 255) return color.name(QColor::HexRgb);
-  return QString("rgba(%1, %2, %3, %4)")
-      .arg(color.red())
-      .arg(color.green())
-      .arg(color.blue())
-      .arg(color.alphaF(), 0, 'f', 3);
 }
 
 QHash<QString, QString> QssValues(const Tokens& tokens) {
@@ -284,6 +276,15 @@ void ApplyResolved(const QString& resolved) {
 }
 
 }  // namespace
+
+QString ColorToQss(const QColor& color) {
+  if (color.alpha() == 255) return color.name(QColor::HexRgb);
+  return QString("rgba(%1, %2, %3, %4)")
+      .arg(color.red())
+      .arg(color.green())
+      .arg(color.blue())
+      .arg(color.alphaF(), 0, 'f', 3);
+}
 
 const Tokens& Current() { return g_tokens; }
 

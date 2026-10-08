@@ -10,7 +10,6 @@
 #include <QFileDialog>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QToolButton>
 #include <QUrl>
 
@@ -18,6 +17,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ListEdit.h"
+#include "../widgets/PathField.h"
 #include "SettingsCard.h"
 
 namespace mira_gui {
@@ -62,7 +62,6 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     line->setFixedWidth(entry.path.empty() ? 280 : 240);
     // An empty path means Mira finds it (the doc says where), not "nothing".
     if (!entry.path.empty() && entry.default_display.empty()) line->setPlaceholderText("Automatic");
-    row->AddControl(line);
     if (entry.is_secret) {
       line->setEchoMode(QLineEdit::Password);
       line->setPlaceholderText("Not set");
@@ -76,19 +75,18 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
         show->setToolTip(shown ? "Hide" : "Show");
       });
     }
-    if (!entry.path.empty()) {
-      auto* browse = new QPushButton("Browse…", row);
+    if (entry.path.empty()) {
+      row->AddControl(line);
+    } else {
       const bool folder = entry.path == "folder";
-      QObject::connect(browse, &QPushButton::clicked, line, [line = line, folder] {
+      row->AddControl(PathRow(line, [line = line, folder] {
         const QString home = QDir::homePath();
         QString start = line->text().isEmpty() ? home : line->text();
         if (start.startsWith("~")) start = home + start.mid(1);
         const QString chosen = folder ? QFileDialog::getExistingDirectory(line, "Choose a folder", start)
                                       : QFileDialog::getOpenFileName(line, "Choose a file", start);
-        if (chosen.isEmpty()) return;
-        line->setText(chosen.startsWith(home + "/") ? "~" + chosen.mid(home.size()) : chosen);
-      });
-      row->AddControl(browse);
+        return chosen.startsWith(home + "/") ? "~" + chosen.mid(home.size()) : chosen;
+      }));
     }
   }
   if (!entry.link.empty()) {

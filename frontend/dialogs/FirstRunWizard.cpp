@@ -21,7 +21,9 @@
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
 #include "../sources/Sources.h"
+#include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/PathField.h"
 
 namespace mira_gui {
 namespace {
@@ -154,18 +156,15 @@ QWidget* FirstRunWizard::BuildFolder() {
   auto* row = new QHBoxLayout();
   folder_path_ = new QLineEdit(page);
   folder_path_->setPlaceholderText("Folder");
-  auto* browse = new QPushButton("Browse…", page);
-  connect(browse, &QPushButton::clicked, this, [this] {
+  row->addSpacing(24);
+  row->addWidget(PathRow(folder_path_, [this] {
     const QString dir = QFileDialog::getExistingDirectory(this, "Mira folder", QDir::homePath());
-    if (dir.isEmpty()) return;
-    folder_path_->setText(dir);
+    if (dir.isEmpty()) return dir;
     for (QAbstractButton* button : folder_->buttons()) {
       if (button->property("key") == "custom") button->setChecked(true);
     }
-  });
-  row->addSpacing(24);
-  row->addWidget(folder_path_, 1);
-  row->addWidget(browse);
+    return dir;
+  }), 1);
   body->addLayout(row);
   body->addSpacing(8);
   Choice(page, body, folder_, "none", "Don't manage a folder",
@@ -331,7 +330,8 @@ void FirstRunWizard::Go(int delta) {
 void FirstRunWizard::FillCheck() {
   check_->setText("Checking…");
   const auto line = [](bool ok, const QString& text) {
-    return QString("<span style=\"color:%1\">●</span> %2<br>").arg(ok ? "#4caf50" : "#f0883e", text);
+    const theme::Tokens& tokens = theme::Current();
+    return StatusDot(ok ? tokens.success : tokens.warning) + text + "<br>";
   };
   const bool vulkan = QLibrary("vulkan", 1).load();
   const QString base = line(vulkan, vulkan ? "Vulkan is installed." : "Vulkan is missing. Install your distribution's vulkan loader and driver packages; most games need it.") +

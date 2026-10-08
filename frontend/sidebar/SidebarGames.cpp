@@ -12,6 +12,7 @@
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui::sidebar {
 namespace {
@@ -52,23 +53,6 @@ QPixmap CoverThumb(const GameSummary& game, ArtworkStore* artwork, qreal dpr) {
   return out;
 }
 
-// A name that shrinks with an ellipsis instead of running under the trailing text.
-class ElidedLabel : public QLabel {
-public:
-  ElidedLabel(const QString& text, QWidget* parent) : QLabel(text, parent) {
-    setMinimumWidth(20);
-    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  }
-
-protected:
-  void paintEvent(QPaintEvent*) override {
-    QPainter painter(this);
-    painter.setPen(palette().color(QPalette::WindowText));
-    painter.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter,
-                     fontMetrics().elidedText(text(), Qt::ElideRight, width()));
-  }
-};
-
 // A shelf cover's "Yesterday" or "Playing", over a dark fade at its foot.
 void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text, int pixel_size) {
   if (text.isEmpty()) return;
@@ -90,8 +74,9 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
   painter->restore();
 }
 
-QString Rgba(const QColor& color, double alpha) {
-  return QString("rgba(%1, %2, %3, %4)").arg(color.red()).arg(color.green()).arg(color.blue()).arg(alpha);
+QString Rgba(QColor color, double alpha) {
+  color.setAlphaF(alpha);
+  return theme::ColorToQss(color);
 }
 
 }  // namespace
@@ -311,7 +296,10 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   thumb->setFixedSize(kThumb);
   thumb->setPixmap(CoverThumb(game, artwork, row->devicePixelRatioF()));
   layout->addWidget(thumb);
-  layout->addWidget(new ElidedLabel(name, row), /*stretch=*/1);
+  auto* name_label = new ElidedLabel(name, row);
+  name_label->setMinimumWidth(20);
+  name_label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  layout->addWidget(name_label, /*stretch=*/1);
   if (!trailing.isEmpty()) {
     auto* label = new QLabel(trailing, row);
     label->setProperty("role", "muted");

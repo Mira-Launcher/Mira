@@ -62,8 +62,7 @@ QLabel[status="ready"],
 QLabel[status="setting_up"],
 QLabel[status="broken"],
 QLabel[status="missing"],
-QLabel[status="needs_install"],
-QLabel[status="running"] {
+QLabel[status="needs_install"] {
   font-size: @font_size_small;
   font-weight: 600;
 }
@@ -73,7 +72,11 @@ QLabel[status="setting_up"] { color: @status_setting_up; }
 QLabel[status="broken"] { color: @status_broken; }
 QLabel[status="missing"] { color: @status_missing; }
 QLabel[status="needs_install"] { color: @status_needs_install; }
-QLabel[status="running"] { color: @running; }
+QLabel[status="running"] {
+  font-size: @font_size_small;
+  font-weight: 600;
+  color: @running;
+}
 
 /* --- The custom top bar -------------------------------------------------- */
 

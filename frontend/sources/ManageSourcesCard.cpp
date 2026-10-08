@@ -12,6 +12,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../theme/Icons.h"
+#include "../widgets/Labels.h"
 #include "SourceRemoval.h"
 
 namespace mira_gui {

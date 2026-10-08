@@ -238,15 +238,14 @@ void LogWindow::Render() {
 
 void LogWindow::UpdateStatus() {
   const theme::Tokens& tokens = theme::Current();
-  const auto dot = [](const QColor& color) { return QString("<span style=\"color:%1\">●</span> ").arg(color.name()); };
   if (failed_) {
-    state_->setText(dot(tokens.error) + "Can't reach Mira's service");
+    state_->setText(StatusDot(tokens.error) + "Can't reach Mira's service");
   } else if (paused_) {
-    state_->setText(dot(tokens.warning) + "Paused");
+    state_->setText(StatusDot(tokens.warning) + "Paused");
   } else if (active_) {
-    state_->setText(dot(tokens.success) + "Live");
+    state_->setText(StatusDot(tokens.success) + "Live");
   } else {
-    state_->setText(dot(tokens.text_muted) + "Not running");
+    state_->setText(StatusDot(tokens.text_muted) + "Not running");
   }
 }
 

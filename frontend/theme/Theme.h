@@ -43,6 +43,9 @@ struct Tokens {
   // How dark the gradient behind a tile's title gets at the very bottom.
   int scrim_alpha = 225;
 
+  // How dark the dim behind a modal card is.
+  int modal_scrim_alpha = 150;
+
   int radius_panel = 8;
   int radius_control = 6;
   int radius_tile = 6;
@@ -134,5 +137,8 @@ public:
 signals:
   void Changed();
 };
+
+// A QColor as CSS: hex when opaque, rgba() otherwise.
+QString ColorToQss(const QColor& color);
 
 }  // namespace mira_gui::theme
