@@ -7,18 +7,12 @@
 
 #include "config/RunnerSources.h"
 #include "core/StoreErrors.h"
+#include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::humble {
 namespace {
 namespace fs = std::filesystem;
-
-std::string Trim(std::string text) {
-  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  text.erase(text.begin(), std::ranges::find_if(text, not_space));
-  text.erase(std::ranges::find_if(text | std::views::reverse, not_space).base(), text.end());
-  return text;
-}
 
 // humble-cli's --field output is plain CSV, not a padded
 // table (no header row either) -- "pS5kGAW5APbRTHH7,Surviving Mars -
@@ -111,7 +105,7 @@ Result<std::vector<BundleSummary>> ListBundles(const config::Config& config) {
     if (newline == std::string::npos) pos = output->size() + 1;
     else pos = newline + 1;
 
-    const std::string trimmed = Trim(line);
+    const std::string trimmed = strings::Trim(line);
     if (trimmed.empty()) continue;
     const std::vector<std::string> columns = ParseCsvLine(trimmed);
     if (columns.size() < 2) continue;
@@ -120,8 +114,7 @@ Result<std::vector<BundleSummary>> ListBundles(const config::Config& config) {
     // humble-cli version adds one -- same "first column reads exactly
     // 'key'" check either way.
     if (!skipped_header) {
-      std::string lowered = columns[0];
-      std::ranges::transform(lowered, lowered.begin(), [](unsigned char c) { return std::tolower(c); });
+      const std::string lowered = strings::ToLower(columns[0]);
       if (lowered == "key") {
         skipped_header = true;
         continue;
@@ -131,8 +124,7 @@ Result<std::vector<BundleSummary>> ListBundles(const config::Config& config) {
     BundleSummary bundle;
     bundle.key = columns[0];
     bundle.name = columns[1];
-    std::string claimed = columns.size() > 2 ? columns[2] : std::string();
-    std::ranges::transform(claimed, claimed.begin(), [](unsigned char c) { return std::tolower(c); });
+    const std::string claimed = strings::ToLower(columns.size() > 2 ? columns[2] : std::string());
     bundle.claimed = claimed == "yes" || claimed == "true";
     bundles.push_back(std::move(bundle));
   }

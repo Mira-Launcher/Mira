@@ -13,6 +13,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "core/Strings.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 
@@ -20,13 +21,6 @@ namespace mira::epic {
 namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
-
-std::string Trim(std::string text) {
-  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  text.erase(text.begin(), std::ranges::find_if(text, not_space));
-  text.erase(std::ranges::find_if(text | std::views::reverse, not_space).base(), text.end());
-  return text;
-}
 
 }  // namespace
 
@@ -122,7 +116,7 @@ Result<void> CheckReady(const config::Config& config) {
 }
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
-  std::string code = Trim(pasted);
+  std::string code = strings::Trim(pasted);
   if (code.starts_with('{')) {
     const json page = json::parse(code, nullptr, false);
     if (page.is_discarded() || !page.contains("authorizationCode") || !page["authorizationCode"].is_string()) {

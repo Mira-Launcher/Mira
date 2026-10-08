@@ -11,6 +11,7 @@
 
 #include "amazon/Nile.h"
 #include "core/Log.h"
+#include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
 
@@ -92,7 +93,7 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     game.env["AMAZON_GAMES_FUEL_ENTITLEMENT_ID"] = core::JsonString(owned, "id");
     game.env["AMAZON_GAMES_FUEL_PRODUCT_SKU"] = core::JsonString(product, "sku");
     game.runner_config["store"] = "amazon";
-    if (std::ranges::find(game.tags, "amazon") == game.tags.end()) game.tags.push_back("amazon");
+    library::AddTag(game.tags, "amazon");
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
@@ -100,28 +101,16 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     if (game.exe_path.empty()) {
       game.status = model::GameStatus::Broken;
       game.last_error = "no fuel.json launch command in this install";
-    } else if (library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
-      const model::Game provisioned = runner::RunnerRegistry(config_).ProvisionGame(game);
-      game.runner_ref = provisioned.runner_ref;
-      game.data_dir = provisioned.data_dir;
-      game.status = provisioned.status;
-      game.last_error = provisioned.last_error;
     } else {
-      game.status = model::GameStatus::Ready;
+      const runner::RunnerRegistry provisioner(config_);
+      library::ProvisionOnImport(game, existing, config_, games_, provisioner);
     }
 
     if (auto saved = games_.Merge(existing, game); !saved) {
       log::Error("failed to import amazon game {}: {}", product_id, saved.error().message);
       continue;
     }
-    events_.Publish(existing ? "game.updated" : "game.added", model::ToJson(game));
-    if (existing) {
-      ++summary.updated;
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-    }
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
   return summary;
 }

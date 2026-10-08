@@ -38,8 +38,7 @@ Result<Command> SteamRunner::BuildCommand(const model::Game& game,
                Fix::Game(game.id, "exe"));
   }
 
-  const fs::path install_path = game.install_path;
-  const fs::path exe = install_path / game.exe_path;
+  const fs::path exe = fs::path(game.install_path) / game.exe_path;
 
   Command command;
 
@@ -59,12 +58,7 @@ Result<Command> SteamRunner::BuildCommand(const model::Game& game,
     command.env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = info->client_install_path.string();
   }
 
-  for (const std::string& arg : strings::SplitArgs(game.args)) {
-    if (!arg.empty()) command.argv.push_back(arg);
-  }
-  for (const auto& [key, value] : game.env) command.env[key] = value;  // game-specific wins
-
-  command.cwd = game.working_dir.empty() ? exe.parent_path() : install_path / game.working_dir;
+  ApplyGameLaunch(command, game, exe);
   return command;
 }
 

@@ -15,11 +15,6 @@ namespace mira::desktop {
 namespace {
 namespace fs = std::filesystem;
 
-fs::path EnvOr(const char* name, const fs::path& fallback) {
-  const char* value = std::getenv(name);
-  return (value && *value) ? fs::path(value) : fallback;
-}
-
 std::vector<fs::path> SplitPathList(const std::string& value) {
   std::vector<fs::path> out;
   std::stringstream ss(value);
@@ -36,7 +31,7 @@ std::vector<fs::path> SplitPathList(const std::string& value) {
 // was started.
 std::vector<fs::path> SearchDirs(const config::Config& config) {
   std::vector<fs::path> dirs;
-  dirs.push_back(EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "applications");
+  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "applications");
 
   const char* data_dirs = std::getenv("XDG_DATA_DIRS");
   const std::vector<fs::path> base_dirs =
@@ -45,7 +40,7 @@ std::vector<fs::path> SearchDirs(const config::Config& config) {
   for (const fs::path& base : base_dirs) dirs.push_back(base / "applications");
 
   dirs.push_back("/var/lib/flatpak/exports/share/applications");
-  dirs.push_back(EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") /
+  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") /
                   "flatpak" / "exports" / "share" / "applications");
 
   for (const std::string& extra : config.GetStringArray("desktop_import.extra_dirs")) {
@@ -297,13 +292,13 @@ Result<std::vector<DesktopEntryCandidate>> DesktopEntryScanner::ListCandidates()
   return candidates;
 }
 
-Result<DesktopEntryImportSummary> DesktopEntryScanner::Import(const std::vector<std::string>& ids) {
+Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std::string>& ids) {
   if (!config_.GetBool("desktop_import.enabled")) {
     return Err("desktop_import_disabled", "desktop_import.enabled is off");
   }
 
   const std::set<std::string> wanted(ids.begin(), ids.end());
-  DesktopEntryImportSummary summary;
+  library::ImportSummary summary;
 
   for (const ScannedEntry& entry : ScanAll(config_)) {
     if (!wanted.contains(entry.id)) continue;
@@ -331,14 +326,7 @@ Result<DesktopEntryImportSummary> DesktopEntryScanner::Import(const std::vector<
       log::Error("failed to save desktop-entry game {}: {}", game.id, result.error().message);
       continue;
     }
-    if (existing) {
-      ++summary.updated;
-      events_.Publish("game.updated", model::ToJson(game));
-    } else {
-      ++summary.added;
-      summary.added_games.push_back(game);
-      events_.Publish("game.added", model::ToJson(game));
-    }
+    library::RecordImported(summary, events_, game, existing.has_value());
   }
   return summary;
 }

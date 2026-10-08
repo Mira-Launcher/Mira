@@ -99,7 +99,7 @@ ScanSummary Scanner::ScanAll() {
     std::ranges::move(partial.added_games, std::back_inserter(total.added_games));
   }
   if (config_.GetBool("launchers.auto_import")) {
-    launchers::ImportSummary imported = launchers::ImportAll(config_, games_, events_);
+    library::ImportSummary imported = launchers::ImportAll(config_, games_, events_);
     total.added += imported.added;
     std::ranges::move(imported.added_games, std::back_inserter(total.added_games));
   }

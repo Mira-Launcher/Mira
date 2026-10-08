@@ -8,14 +8,11 @@
 #include <cstdlib>
 
 namespace mira::paths {
-namespace {
 
 std::filesystem::path EnvOr(const char* name, const std::filesystem::path& fallback) {
   const char* value = std::getenv(name);
   return (value && *value) ? std::filesystem::path(value) : fallback;
 }
-
-}  // namespace
 
 std::filesystem::path Home() {
   if (const char* home = std::getenv("HOME"); home && *home) return home;

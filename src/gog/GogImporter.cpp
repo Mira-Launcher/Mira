@@ -10,6 +10,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "gog/Gog.h"
+#include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
 
@@ -17,10 +18,6 @@ namespace mira::gog {
 namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
-
-void AddTag(std::vector<std::string>& tags, const std::string& tag) {
-  if (std::ranges::find(tags, tag) == tags.end()) tags.push_back(tag);
-}
 
 std::filesystem::path InstallRoot(const config::Config& config) { return config.GetPath("gog.install_root"); }
 
@@ -109,19 +106,10 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   game.last_error.clear();
   game.updated_at = model::NowSeconds();
   if (!existing) game.created_at = game.updated_at;
-  AddTag(game.tags, "gog");
+  library::AddTag(game.tags, "gog");
 
-  if (library::NeedsProvisioning(existing)) {
-    const runner::RunnerRegistry provisioner(config_);
-    if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
-    const model::Game provisioned = provisioner.ProvisionGame(game);
-    game.runner_ref = provisioned.runner_ref;
-    game.data_dir = provisioned.data_dir;
-    game.status = provisioned.status;
-    game.last_error = provisioned.last_error;
-  } else {
-    game.status = model::GameStatus::Ready;
-  }
+  const runner::RunnerRegistry provisioner(config_);
+  library::ProvisionOnImport(game, existing, config_, games_, provisioner);
 
   auto result = games_.Merge(existing, game);
   if (!result) return std::unexpected(result.error());

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/AtomicFile.h"
+#include "core/Files.h"
 #include "core/Paths.h"
 
 namespace mira::setup {
@@ -18,20 +19,8 @@ constexpr std::string_view kMarker = "# Written by `mira setup`";
 constexpr std::string_view kLegacyMarker = "Wrapper: always run whichever binary";
 constexpr const char* kLinks[] = {"mirad", "mira-run"};
 
-fs::path EnvOr(const char* name, const fs::path& fallback) {
-  const char* value = std::getenv(name);
-  return value && *value ? fs::path(value) : fallback;
-}
-
-std::string ReadFile(const fs::path& path) {
-  std::ifstream in(path);
-  std::stringstream buffer;
-  buffer << in.rdbuf();
-  return buffer.str();
-}
-
 bool IsOurs(const fs::path& path) {
-  const std::string content = ReadFile(path);
+  const std::string content = files::ReadFile(path).value_or("");
   return content.find(kMarker) != std::string::npos || content.find(kLegacyMarker) != std::string::npos;
 }
 
@@ -125,12 +114,12 @@ fs::path UnitPath(const SetupPaths& paths) { return paths.systemd_dir / "mirad.s
 
 SetupPaths DefaultPaths() {
   const fs::path home = paths::Home();
-  const fs::path data = EnvOr("XDG_DATA_HOME", home / ".local/share");
+  const fs::path data = paths::EnvOr("XDG_DATA_HOME", home / ".local/share");
   return {
       .bin_dir = home / ".local/bin",
       .applications_dir = data / "applications",
       .icons_dir = data / "icons",
-      .systemd_dir = EnvOr("XDG_CONFIG_HOME", home / ".config") / "systemd/user",
+      .systemd_dir = paths::EnvOr("XDG_CONFIG_HOME", home / ".config") / "systemd/user",
   };
 }
 
@@ -199,7 +188,7 @@ Result<std::vector<fs::path>> Remove(const SetupPaths& paths) {
   for (const auto& entry : fs::directory_iterator(paths.applications_dir, ec)) {
     const std::string name = entry.path().filename().string();
     if (!name.starts_with("mira-") || !name.ends_with(".desktop")) continue;
-    remove_if(entry.path(), ReadFile(entry.path()).contains("\nX-Mira-Game-Id="));
+    remove_if(entry.path(), files::ReadFile(entry.path()).value_or("").contains("\nX-Mira-Game-Id="));
   }
   return removed;
 }

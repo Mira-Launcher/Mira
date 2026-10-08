@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "core/Files.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "steam/Vdf.h"
@@ -17,14 +18,6 @@ namespace fs = std::filesystem;
 // Fixed across every Steam installation: Valve's own redistributable
 // bundler, not a game.
 constexpr std::string_view kRedistAppId = "228980";
-
-std::optional<std::string> ReadFile(const fs::path& path) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file) return std::nullopt;
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  return buffer.str();
-}
 
 // A VDF leaf as a number; 0 when missing or not one.
 std::int64_t ParseInt64(const VdfValue* value) {
@@ -38,7 +31,7 @@ std::int64_t ParseInt64(const VdfValue* value) {
 // The SteamID64 of the account flagged MostRecent in loginusers.vdf, else
 // of the newest sign-in; empty when there is none.
 std::string LastSignedIn(const fs::path& steam_root) {
-  const auto text = ReadFile(steam_root / "config" / "loginusers.vdf");
+  const auto text = files::ReadFile(steam_root / "config" / "loginusers.vdf");
   if (!text) return {};
   const auto parsed = ParseVdf(*text);
   const VdfValue* users = parsed ? parsed->Get({"users"}) : nullptr;
@@ -95,7 +88,7 @@ std::vector<fs::path> LibraryFolders(const fs::path& steam_root) {
   std::vector<fs::path> folders = {steam_root};
   std::vector<fs::path> resolved = {fs::weakly_canonical(steam_root, ec)};
 
-  const auto text = ReadFile(steam_root / "steamapps" / "libraryfolders.vdf");
+  const auto text = files::ReadFile(steam_root / "steamapps" / "libraryfolders.vdf");
   if (!text) return folders;
   const auto parsed = ParseVdf(*text);
   if (!parsed) return folders;
@@ -116,7 +109,7 @@ std::vector<fs::path> LibraryFolders(const fs::path& steam_root) {
 }
 
 std::optional<ProtonCompatInfo> ResolveProtonCompatInfo(const fs::path& compat_data_dir) {
-  const auto text = ReadFile(compat_data_dir / "config_info");
+  const auto text = files::ReadFile(compat_data_dir / "config_info");
   if (!text) return std::nullopt;
 
   // config_info is line-oriented, not VDF. Line 2 (0-indexed 1) is the
@@ -163,7 +156,7 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       const std::string filename = entry.path().filename().string();
       if (!filename.starts_with("appmanifest_") || !filename.ends_with(".acf")) continue;
 
-      const auto text = ReadFile(entry.path());
+      const auto text = files::ReadFile(entry.path());
       if (!text) continue;
       const auto parsed = ParseVdf(*text);
       if (!parsed) continue;
@@ -214,7 +207,7 @@ std::map<std::string, AppActivity> ReadAppActivity(const fs::path& steam_root, s
   }
   const fs::path local_config =
       steam_root / "userdata" / std::to_string(id64 - kSteamId64Base) / "config" / "localconfig.vdf";
-  const auto text = ReadFile(local_config);
+  const auto text = files::ReadFile(local_config);
   if (!text) return activity;
   const auto parsed = ParseVdf(*text);
   if (!parsed) return activity;
