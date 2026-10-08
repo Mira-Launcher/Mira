@@ -325,6 +325,9 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
       Say(launcher, std::format("{} finished", step.file));
       if (step.end_session) EndSession(launcher, game.data_dir);
       ReapOrphans(*pid);
+      // Downloaded again on every run, so keeping it only takes space (WebView2's is 200 MB).
+      std::error_code remove_setup_ec;
+      fs::remove(setup, remove_setup_ec);
       return {};
     }
     if (ThisTaskStop().stop_requested()) {

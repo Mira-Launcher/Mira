@@ -1,6 +1,6 @@
 # `mira` command-line client
 
-`mira` is a REST client over the same Unix socket and API the GUI uses (see [`api.md`](api.md)). It never reads `settings.toml` or `games.toml` itself. Every command except `daemon` and `setup` needs a running `mirad`.
+`mira` is a REST client over the same Unix socket and API the GUI uses (see [`api.md`](api.md)). It never reads `settings.toml` or the library database itself. Every command except `daemon` and `setup` needs a running `mirad`.
 
 ```sh
 mirad &

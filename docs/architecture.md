@@ -8,7 +8,7 @@ Mira is a Linux game launcher for native games and Windows games run through Win
 | `mira`     | Command-line client. |
 | `mira-gui` | Qt frontend. |
 
-The only link between them is the REST API in [`api.md`](api.md), served over a Unix socket. `mira-gui` does not link against `mira_core` and never reads `settings.toml` or `games.toml` itself. If the frontend needs something the API doesn't offer, add an endpoint.
+The only link between them is the REST API in [`api.md`](api.md), served over a Unix socket. `mira-gui` does not link against `mira_core` and never reads `settings.toml` or the library database itself. If the frontend needs something the API doesn't offer, add an endpoint.
 
 Every endpoint gets a matching `mira` command, so anything the GUI can do can also be done from a terminal.
 
@@ -20,7 +20,7 @@ src/
   config/     Schema (every setting declared once), Config (settings.toml and frontend.toml),
               Resolver (default -> file -> per-game lookup), KnownExePatterns and RunnerSources (plain data)
   model/      Game, RunnerBuild, Event, Candidate: plain structs with ToJson/FromJson
-  store/      GameStore, backed by games.toml
+  store/      GameStore and MetadataStore, over SQLite (mira.db, cache.db)
   library/    Detector, Scanner, AutoSetup, AutoInstall, Watcher, ArchiveExtractor, WinePrefix,
               PrefixNaming, Relocate, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
   runner/     IRunner with Native, Proton, Wine and Steam runners, RunnerRegistry, Downloader,
@@ -56,13 +56,20 @@ All user state lives in `$XDG_CONFIG_HOME/mira` (normally `~/.config/mira`):
 
 ```
 settings.toml   backend settings, validated against config/Schema.cpp
-games.toml      the library, one [[game]] per entry
+mira.db         the library (SQLite; mira.db.bak is a copy from the last start)
+cache.db        fetched store info and which artwork/ file is each art slot's (SQLite)
+artwork/        downloaded art, artwork/<id>/<slot>.*
 frontend.toml   GUI settings, stored and returned verbatim by the backend
-sessions/       records for sessions still running, or finished but not yet counted
 logs/           per-game output from the last launches
 ```
 
-TOML was picked over SQLite so the files stay readable, editable by hand and easy to back up. `Config` and `GameStore` keep their data in memory behind a mutex and rewrite the file on every change. A file that fails to parse is renamed to `.bad` (`.bad.2` and on when one is already there) and the daemon starts with defaults. If it can't be renamed, it is never saved over.
+`settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once, and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
+
+**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `settings_snapshot`, and `ui_state` (the GUI's window state, kept out of `frontend.toml`). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
+
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`. Everything in it can be fetched again, so a damaged one is started over.
+
+Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
 The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
 
@@ -116,7 +123,7 @@ Windows games are provisioned when they are detected and again on later scans wh
 
 A direct launch goes through `mira-run` (`src/wrapper/main.cpp`). `mirad` resolves the runner, applies `command_wrappers` and `launch.env`, and passes the command to `mira-run`. It waits only for a short status handshake over a pipe.
 
-`mira-run` owns the session: `launch.pre_script`, the game process, `launch.post_script`, the game's output in `logs/<id>.log`, and a session record in `sessions/` written before and after. The session completes even if `mirad` dies in the meantime. `launch.gamemode` registers the game with GameMode over D-Bus through `gdbus`.
+`mira-run` owns the session: `launch.pre_script`, the game process, `launch.post_script`, the game's output in `logs/<id>.log`, and a session record in `mira.db` written before and after. The session completes even if `mirad` dies in the meantime. `launch.gamemode` registers the game with GameMode over D-Bus through `gdbus`.
 
 `mira-run` shares its process group with the game, so `kill(-pid)` stops the whole tree. It ignores SIGTERM and SIGINT so it can still run the post script and write the final record.
 

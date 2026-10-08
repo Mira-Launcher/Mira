@@ -50,7 +50,7 @@ The result is `build/release/appimage-container/Mira-x86_64.AppImage`. The first
 
 ## Data
 
-Everything lives in `~/.config/mira/` (`$XDG_CONFIG_HOME/mira`): `settings.toml` (backend settings), `games.toml` (the library) and `frontend.toml` (GUI settings). Back that directory up to keep all state; delete it to start fresh.
+Everything lives in `~/.config/mira/` (`$XDG_CONFIG_HOME/mira`): `settings.toml` (backend settings), `mira.db` (the library, an SQLite database, with `mira.db.bak` as a copy from the last start) and `frontend.toml` (GUI settings). Back that directory up to keep all state; delete it to start fresh.
 
 ## Tests
 

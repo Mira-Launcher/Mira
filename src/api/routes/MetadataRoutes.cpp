@@ -31,21 +31,15 @@ std::string SniffImageType(std::string_view bytes) {
 }  // namespace
 
 // Serves one cached art slot for `id`, or 404s.
-void SendCachedArtwork(const config::Config& config, const std::string& id, const std::string& type,
+void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id, const std::string& type,
                        Response& res) {
-  const std::string key = type == "cover" ? "artwork" : type;
-  std::ifstream meta_in(metadata::MetadataFile(config, id));
-  if (!meta_in) return SendError(res, 404, "artwork_not_found", "no artwork cached for this game yet");
-  const json info = json::parse(meta_in, nullptr, false);
-  if (info.is_discarded() || !info.contains(key)) {
-    return SendError(res, 404, "artwork_not_found", "no artwork cached for this game yet");
-  }
-  const std::filesystem::path file = metadata::ArtworkDir(config, id) / info[key].value("file", std::string());
-  std::ifstream in(file, std::ios::binary);
+  const auto art = cache.ArtFor(id, type);
+  if (!art) return SendError(res, 404, "artwork_not_found", "no artwork cached for this game yet");
+  std::ifstream in(art->file, std::ios::binary);
   if (!in) return SendError(res, 404, "artwork_not_found", "cached artwork file is missing");
   std::ostringstream buffer;
   buffer << in.rdbuf();
-  res.set_content(buffer.str(), info[key].value("content_type", "image/jpeg"));
+  res.set_content(buffer.str(), art->content_type);
 }
 
 void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
@@ -53,18 +47,15 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
 
   http.Get(R"(/v1/games/([^/]+)/metadata)", [&s](const Request& req, Response& res) {
     if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
-    const std::filesystem::path file = metadata::MetadataFile(s.config, req.matches[1]);
-    std::ifstream in(file);
-    if (!in) return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    res.set_content(buffer.str(), "application/json");
+    if (!s.games.Metadata().Has(req.matches[1])) {
+      return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
+    }
+    SendJson(res, s.games.Metadata().Read(req.matches[1]));
   });
 
   http.Get(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
     if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
-    // The "cover" slot is stored as "artwork".
-    SendCachedArtwork(s.config, req.matches[1], Param(req, "type", "cover"), res);
+    SendCachedArtwork(s.games.Metadata(), req.matches[1], Param(req, "type", "cover"), res);
   });
 
   // Takes a candidate id, never a URL, so the daemon can't be made to fetch an
@@ -81,7 +72,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     const std::int64_t candidate_id = body["candidate_id"].get<std::int64_t>();
     s.StartJob(req, res, "artwork", id, "Choosing artwork",
                [&s, id, slot, candidate_id](JobRegistry::Progress&) -> Result<json> {
-                 if (auto selected = metadata::SelectArtwork(s.config, id, slot, candidate_id); !selected) {
+                 if (auto selected = metadata::SelectArtwork(s.config, s.games.Metadata(), id, slot, candidate_id); !selected) {
                    s.events.Publish("game.artwork_select_failed",
                                     FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
                    return std::unexpected(selected.error());
@@ -106,7 +97,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     const std::string request = Param(req, "request");
     s.artwork_thumbs.Post([&s, id, slot, page, request] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
-      if (auto fetched = metadata::FetchCandidatePage(s.config, id, slot, page); fetched) {
+      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page); fetched) {
         event.update(*fetched);
       } else {
         event = FailedEvent(std::move(event), fetched.error());
@@ -131,7 +122,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     const std::vector<std::int64_t> candidate_ids = ids.get<std::vector<std::int64_t>>();
     s.artwork_thumbs.Post([&s, id, slot, candidate_ids] {
       json event = {{"id", id}, {"type", slot}};
-      if (auto batch = metadata::FetchCandidateThumbs(s.config, id, slot, candidate_ids); batch) {
+      if (auto batch = metadata::FetchCandidateThumbs(s.config, s.games.Metadata(), id, slot, candidate_ids); batch) {
         event["ready"] = batch->ready;
         event["failed"] = batch->failed;
       } else {
@@ -238,7 +229,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   http.Post("/v1/games/metadata/refresh-missing", [&s](const Request& req, Response& res) {
     std::vector<model::Game> games;
     for (const model::Game& game : s.games.All()) {
-      if (!s.art_index.For(game.id).contains("cover")) games.push_back(game);
+      if (!s.games.Metadata().ArtVersions(game.id).contains("cover")) games.push_back(game);
     }
     s.StartJob(req, res, "metadata", "", "Fetching missing cover art",
              [&s, games = std::move(games)](JobRegistry::Progress& progress) { return s.RefreshMetadata(games, progress); });

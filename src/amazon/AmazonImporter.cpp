@@ -30,7 +30,6 @@ AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games, 
     : config_(config), games_(games), events_(events) {}
 
 Result<library::ImportSummary> AmazonImporter::Import() {
-  const auto batch = games_.BatchSaves();
   library::ImportSummary summary;
   if (!config_.GetBool("amazon.enabled")) return summary;
   const json installed = ReadNileFile("installed.json");

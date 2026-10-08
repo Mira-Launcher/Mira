@@ -32,7 +32,7 @@ namespace {
 
 struct Args {
   std::string game_id;
-  std::filesystem::path session_dir;
+  std::filesystem::path database;  // mira.db, where the session record goes
   std::filesystem::path log_file;  // empty disables per-game logging entirely
   int log_max_mb = 64;
   int status_fd = -1;
@@ -57,10 +57,10 @@ std::optional<Args> ParseArgs(int argc, char** argv) {
       auto v = next();
       if (!v) return std::nullopt;
       args.game_id = *v;
-    } else if (a == "--session-dir") {
+    } else if (a == "--database") {
       auto v = next();
       if (!v) return std::nullopt;
-      args.session_dir = *v;
+      args.database = *v;
     } else if (a == "--log-file") {
       auto v = next();
       if (!v) return std::nullopt;
@@ -99,7 +99,7 @@ std::optional<Args> ParseArgs(int argc, char** argv) {
     }
   }
   for (; i < argc; ++i) args.game_argv.emplace_back(argv[i]);
-  if (args.game_id.empty() || args.session_dir.empty() || args.game_argv.empty()) return std::nullopt;
+  if (args.game_id.empty() || args.database.empty() || args.game_argv.empty()) return std::nullopt;
   return args;
 }
 
@@ -221,7 +221,7 @@ void SetProcessTitle(int argc, char** argv, const std::string& title) {
 int main(int argc, char** argv) {
   const auto parsed = ParseArgs(argc, argv);
   if (!parsed) {
-    std::cerr << "mira-run: usage: mira-run --game-id ID --session-dir DIR --status-fd N "
+    std::cerr << "mira-run: usage: mira-run --game-id ID --database FILE --status-fd N "
                  "[--pre CMD] [--post CMD] [--pre-timeout S] [--post-timeout S] -- <argv...>\n";
     return 2;
   }
@@ -230,12 +230,10 @@ int main(int argc, char** argv) {
   // Otherwise a pre-script that backgrounds something inherits the pipe and holds mirad waiting for EOF.
   if (args.status_fd >= 0) ::fcntl(args.status_fd, F_SETFD, FD_CLOEXEC);
 
-  // Computed before --pre runs so the session path can ride along on the
-  // "ok" status message -- otherwise mirad has no way to know which file in
-  // --session-dir belongs to this launch.
+  // Computed before --pre runs so it can ride along on the "ok" status
+  // message: with the game id, it keys this launch's session record.
   const auto monotonic_start = std::chrono::steady_clock::now();
   const std::int64_t started_at = model::NowSeconds();
-  const auto session_path = proc::SessionFilePath(args.session_dir, args.game_id, started_at);
 
   // Opened before --pre runs so its output lands in the same file. A log
   // that can't be opened just means no logging this session, not a failed
@@ -267,7 +265,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  WriteStatus(args.status_fd, std::format("ok\n{}\n", session_path.string()));
+  WriteStatus(args.status_fd, std::format("ok\n{}\n", started_at));
   if (args.status_fd >= 0) ::close(args.status_fd);
 
   proc::SessionRecord record;
@@ -294,7 +292,7 @@ int main(int argc, char** argv) {
     record.launch_error = std::strerror(errno);
     record.exit_code = 127;
     record.ended_at = model::NowSeconds();
-    [[maybe_unused]] auto _ = proc::WriteSessionRecord(session_path, record);
+    [[maybe_unused]] auto _ = proc::WriteSessionRecord(args.database, record);
     std::cerr << "mira-run: fork failed: " << std::strerror(errno) << "\n";
     return 1;
   }
@@ -315,7 +313,7 @@ int main(int argc, char** argv) {
   record.game_pid = game_pid;
   // Best-effort: the game is already running regardless of whether this
   // write succeeds.
-  [[maybe_unused]] auto write_start = proc::WriteSessionRecord(session_path, record);
+  [[maybe_unused]] auto write_start = proc::WriteSessionRecord(args.database, record);
 
   if (args.gamemode) gamemode::RegisterGame(game_pid);
 
@@ -364,7 +362,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  [[maybe_unused]] auto write_end = proc::WriteSessionRecord(session_path, record);
+  [[maybe_unused]] auto write_end = proc::WriteSessionRecord(args.database, record);
   if (log_fd >= 0) ::close(log_fd);
   return 0;
 }

@@ -113,7 +113,7 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
 bool FetchQueue::Run(const config::Config& config, api::EventBus& events, const Job& job) {
   const model::Game& game = job.game;
   if (job.title) {
-    if (const Result<void> fetched = FetchCover(config, game); !fetched) {
+    if (const Result<void> fetched = FetchCover(config, cache_, game); !fetched) {
       log::Debug("no cover for {} {}: {}", game.source, game.source_ref, fetched.error().message);
       events.Publish("library.artwork_failed",
                      api::FailedEvent({{"source", game.source}, {"ref", game.source_ref}}, fetched.error()));
@@ -123,7 +123,7 @@ bool FetchQueue::Run(const config::Config& config, api::EventBus& events, const 
     return true;
   }
 
-  if (auto fetched = Fetch(config, game); !fetched) {
+  if (auto fetched = Fetch(config, cache_, game); !fetched) {
     const Error& error = fetched.error();
     log::Warn("metadata fetch failed for {}: {}", game.id, error.message);
     events.Publish("game.metadata_failed", api::FailedEvent({{"id", game.id}}, error));

@@ -10,29 +10,53 @@
 #include <vector>
 
 #include "core/Result.h"
+#include "store/Database.h"
+#include "store/MetadataStore.h"
 #include "model/Types.h"
 
 namespace mira::store {
 
-// The games.toml-backed source of truth for the library. One in-memory
-// vector guarded by one mutex, matching Config's approach: at the scale this
-// targets (hundreds of games, a single user) that is simpler than anything
-// else and no slower in practice. Every mutation is saved to disk before it
-// returns, so games.toml is never more than one write behind memory.
+// The library, in an SQLite database (mira.db). One in-memory copy of every
+// game, guarded by one mutex, answers reads; every mutation is written to the
+// database in a transaction first and reaches the copy only once it has.
+// One finished play session, kept as the game's history.
+struct PlaySession {
+  std::string game_id;
+  std::int64_t started_at = 0;
+  std::int64_t ended_at = 0;
+  std::int64_t duration_seconds = 0;
+  int exit_code = -1;
+  int signal = 0;
+  bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
+};
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
 
-  // The directory games.toml itself lives in, the natural base for sibling
-  // state (sessions/, logs/) so it follows wherever a caller
+  // The directory the database lives in, the natural base for sibling
+  // state (logs/) so it follows wherever a caller
   // (including a test) points the store, rather than hardcoding paths::UserDir().
   std::filesystem::path Dir() const { return file_.parent_path(); }
+  const std::filesystem::path& File() const { return file_; }
 
-  // Same never-fails contract as Config::Load: an unparseable file is kept as
-  // <file>.bad and the library starts empty rather than the daemon refusing
-  // to start.
+  // Never fails, like Config::Load. Opens (or creates) the database, checks it
+  // and backs it up to <file>.bak; a damaged file is set aside and the backup
+  // used.
   void Load();
-  Result<void> Save();
+
+  // The text of the last settings.toml that loaded cleanly, empty if none:
+  // what Config::Load falls back to when the file is broken.
+  // Fetched info and art pointers, in cache.db beside the library; Load opens it too.
+  MetadataStore& Metadata() { return metadata_; }
+
+  // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
+  nlohmann::json UiState();
+  void KeepUiState(const nlohmann::json& state);
+
+  std::string SettingsSnapshot();
+  void KeepSettingsSnapshot(const std::string& toml);
+
   // Changes whenever the library does, so a caller can keep what it derived from it until then.
   std::uint64_t Revision() const { return revision_.load(); }
 
@@ -43,7 +67,7 @@ public:
   bool HasInstallUnder(const std::string& dir) const;
 
   // Derives an id from the game's name, disambiguating against existing ids
-  // ("celeste", "celeste-2", ...) so games.toml stays readable.
+  // ("celeste", "celeste-2", ...) so ids stay readable.
   std::string NextId(const std::string& name) const;
 
   // Inserts or replaces a game wholesale, then saves.
@@ -70,38 +94,33 @@ public:
   // folders, so a scan never sees a folder mid-move and adds it as a new game.
   [[nodiscard]] std::unique_lock<std::mutex> LockFolders() { return std::unique_lock(folders_mutex_); }
 
+  // Update that also adds `session` to the game's history, in one transaction. A
+  // session already recorded (same game and start) is not added again.
+  Result<model::Game> FinishSession(const PlaySession& session, std::function<void(model::Game&)> mutator);
+  // A game's sessions, newest first, at most `limit`.
+  std::vector<PlaySession> Sessions(const std::string& id, int limit) const;
+
   Result<void> Remove(const std::string& id);
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
 
-  // While one of these lives, saves are held back and written once when the
-  // last one is destroyed (a failure is logged). For an import that upserts
-  // many games, which would otherwise rewrite games.toml once per game.
-  class SaveBatch {
-  public:
-    explicit SaveBatch(GameStore& store);
-    ~SaveBatch();
-    SaveBatch(const SaveBatch&) = delete;
-    SaveBatch& operator=(const SaveBatch&) = delete;
-
-  private:
-    GameStore& store_;
-  };
-  [[nodiscard]] SaveBatch BatchSaves() { return SaveBatch(*this); }
 
 private:
+  Result<void> Open();
+  Result<void> Write(const model::Game& game);
+  Result<void> Delete(const std::string& id);
+  // Runs `write` in a transaction of its own.
+  Result<void> Transact(const std::function<Result<void>()>& write);
+  void ReadAll();
+
   mutable std::mutex mutex_;
-  // Held for a whole Save: concurrent saves share one temp file, and the last
-  // one to finish must also be the one holding the newest games_.
-  std::mutex save_mutex_;
   std::mutex folders_mutex_;
   std::filesystem::path file_;
+  mutable Database db_;  // mutable for reads; guarded by mutex_
+  MetadataStore metadata_;
   std::vector<model::Game> games_;
-  int batch_depth_ = 0;       // guarded by mutex_
-  bool batch_dirty_ = false;  // a save was held back; guarded by mutex_
-  // An unparseable file couldn't be set aside: saving would overwrite the only copy. Guarded by
-  // mutex_.
-  bool keep_file_ = false;
+  // The database couldn't be opened: refuse changes rather than lose the library. Guarded by mutex_.
+  bool read_only_ = false;
   std::atomic<std::uint64_t> revision_{0};
 };
 

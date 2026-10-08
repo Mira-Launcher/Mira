@@ -3,6 +3,8 @@
 #include <fstream>
 #include <filesystem>
 
+#include <json.hpp>
+
 #include "config/Config.h"
 #include "config/Resolver.h"
 #include "config/Schema.h"
@@ -130,6 +132,17 @@ TEST_CASE("an unparseable settings file is quarantined, not fatal") {
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());  // falls back to defaults
   CHECK(fs::exists(file.string() + ".bad"));
   fs::remove(file.string() + ".bad");
+
+  // With the last settings that loaded, those come back instead of defaults.
+  {
+    std::ofstream out(file);
+    out << "this is not [ valid toml";
+  }
+  const std::string last_good = "[scan]\ndebounce_ms = 1234\n";
+  config.Load(last_good);
+  CHECK(config.GetInt("scan.debounce_ms") == 1234);
+  CHECK(config.LoadedText() == last_good);
+  fs::remove(file.string() + ".bad");
 }
 
 TEST_CASE("Resolver layers game overrides above the config file above defaults") {
@@ -153,4 +166,53 @@ TEST_CASE("Resolver layers game overrides above the config file above defaults")
   CHECK_FALSE(Resolver::IsOverridable("library_roots"));
   CHECK_FALSE(Resolver::IsOverridable("scan.max_depth"));
   CHECK(bogus.Resolve("library_roots").layer != Layer::Game);
+}
+
+TEST_CASE("a hand edit is picked up, survives an app change, and a broken one changes nothing") {
+  const fs::path file = TempFile("settings-hand-edit.toml");
+  Config config(file);
+  config.Load();
+  const auto write = [&file](const std::string& text) { std::ofstream(file, std::ios::trunc) << text; };
+
+  write("[scan]\ndebounce_ms = 1234\n");
+  auto changed = config.Reload();
+  REQUIRE(changed.has_value());
+  CHECK(*changed == std::vector<std::string>{"scan.debounce_ms"});
+  CHECK(config.GetInt("scan.debounce_ms") == 1234);
+
+  // An edit the watcher hasn't reported yet is merged, not saved over.
+  write("[scan]\ndebounce_ms = 4321\n");
+  REQUIRE(config.Set("log.level", std::string("debug")).has_value());
+  CHECK(config.GetInt("scan.debounce_ms") == 4321);
+  Config reread(file);
+  reread.Load();
+  CHECK(reread.GetInt("scan.debounce_ms") == 4321);
+  CHECK(reread.GetString("log.level") == "debug");
+
+  write("[scan\ndebounce_ms = 1\n");
+  auto broken = config.Reload();
+  REQUIRE_FALSE(broken.has_value());
+  CHECK(broken.error().message.find("line 1") != std::string::npos);
+  CHECK(config.GetInt("scan.debounce_ms") == 4321);
+}
+
+TEST_CASE("window state lives in its store, and frontend.toml keeps only what a person sets") {
+  const fs::path file = TempFile("settings-ui-state.toml");
+  const fs::path frontend = file.parent_path() / "frontend.toml";
+  std::ofstream(frontend, std::ios::trunc) << "theme = 'dark'\n";
+  nlohmann::json stored = {{"window_width", 900}};
+  Config config(file);
+  config.UseUiStateStore([&stored] { return stored; }, [&stored](const nlohmann::json& state) { stored = state; });
+  config.Load();
+
+  CHECK(config.FrontendSettings().value("theme", "") == "dark");
+  CHECK(config.FrontendSettings().value("window_width", 0) == 900);
+
+  REQUIRE(config.Patch(nlohmann::json{{"frontend", {{"window_width", 1200}, {"tile_radius", 8}}}}).has_value());
+  CHECK(stored.value("window_width", 0) == 1200);
+  std::ifstream in(frontend);
+  const std::string text{std::istreambuf_iterator<char>(in), {}};
+  CHECK(text.find("window_width") == std::string::npos);
+  CHECK(text.find("tile_radius") != std::string::npos);
+  fs::remove(frontend);
 }

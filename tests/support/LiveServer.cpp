@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 LiveServer::LiveServer(const fs::path& state_dir)
     : config_(state_dir / "settings.toml"),
-      games_(state_dir / "games.toml"),
+      games_(state_dir / "mira.db"),
       socket_path_(state_dir / "mirad.sock"),
       services_(config_, games_, events_),
       server_(services_) {

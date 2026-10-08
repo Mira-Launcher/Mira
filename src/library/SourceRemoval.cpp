@@ -188,9 +188,7 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
 
   RemovalResult result;
   const auto forget = [&](const std::string& id) {
-    std::error_code ec;
-    fs::remove(metadata::MetadataFile(config, id), ec);
-    fs::remove_all(metadata::ArtworkDir(config, id), ec);
+    games.Metadata().Remove(id);
     if (games.Remove(id)) {
       events.Publish("game.removed", {{"id", id}});
       ++result.removed;

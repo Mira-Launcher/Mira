@@ -87,7 +87,7 @@ struct Fixture {
       : lutris_dir(TempDir((std::string(name) + "-lutris").c_str())),
         state_dir(TempDir((std::string(name) + "-state").c_str())),
         config(state_dir / "settings.toml"),
-        games(state_dir / "games.toml") {
+        games(state_dir / "mira.db") {
     config.Load();
     test::Isolate(config);
     REQUIRE(config.Set("lutris.data_dir", lutris_dir.string()).has_value());

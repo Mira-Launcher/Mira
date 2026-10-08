@@ -107,8 +107,7 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
       result = s.config.Reset(it->second);
       roots_reset = it->second == "library_roots";
     } else {
-      s.config.ResetAll();
-      result = s.config.Save();
+      result = s.config.ResetAll();
     }
     if (result) s.SyncDesktopEntries();
     if (result && roots_reset && s.on_roots_changed) s.on_roots_changed();

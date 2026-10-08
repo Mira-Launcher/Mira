@@ -64,6 +64,29 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     SendJson(res, body);
   });
 
+  // The game's finished sessions, newest first.
+  http.Get(R"(/v1/games/([^/]+)/sessions)", [&s](const Request& req, Response& res) {
+    auto game = s.games.Find(req.matches[1]);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    int limit = 50;
+    if (auto it = req.params.find("limit"); it != req.params.end()) {
+      const std::string& raw = it->second;
+      if (std::from_chars(raw.data(), raw.data() + raw.size(), limit).ec != std::errc() || limit < 1) {
+        return SendError(res, 400, "invalid_param", "?limit= must be a whole number, 1 or more");
+      }
+    }
+    json sessions = json::array();
+    for (const store::PlaySession& session : s.games.Sessions(game->id, limit)) {
+      sessions.push_back({{"started_at", session.started_at},
+                          {"ended_at", session.ended_at},
+                          {"duration_seconds", session.duration_seconds},
+                          {"exit_code", session.exit_code},
+                          {"signal", session.signal},
+                          {"incomplete", session.incomplete}});
+    }
+    SendJson(res, {{"sessions", sessions}});
+  });
+
   // The tail of mira-run's log for this game. No log yet is an empty list.
   http.Get(R"(/v1/games/([^/]+)/log)", [&s](const Request& req, Response& res) {
     auto game = s.games.Find(req.matches[1]);

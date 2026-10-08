@@ -49,7 +49,7 @@ Stops a running job: the programs it runs (a store tool, an installer and the Wi
 Stored in `settings.toml`. Every key is declared once in `src/config/Schema.cpp`.
 
 ### `GET /v1/config`
-Every setting at its current value, plus the `frontend` table from `frontend.toml`, which the backend stores without interpreting.
+Every setting at its current value, plus the `frontend` table, which the backend stores without interpreting: `frontend.toml`, with the window state the GUI sets as it's used (sizes, sort, last filter, `onboarded`, `source_imported_at`) merged in from `mira.db`.
 
 ### `GET /v1/config/schema`
 Every setting in display order:
@@ -72,7 +72,7 @@ Resets one key, or everything when `key` is left out.
 
 ## Games
 
-Stored in `games.toml`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
+Stored in the library database, `mira.db`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
 
 ### `GET /v1/games[?status=][&tag=][&include_hidden=true]`
 Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. With `scan.tag_by_root` on, detected games are tagged with the name of their library root.
@@ -167,6 +167,9 @@ The game runs under `mira-run`, which owns the scripts, the game's output log an
 The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam steam://rungameid/<appid>`. With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand.
 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
+
+### `GET /v1/games/{id}/sessions?limit=`
+`{"sessions": [{"started_at", "ended_at", "duration_seconds", "exit_code", "signal", "incomplete"}, ...]}`: the game's finished play sessions, newest first, at most `limit` (default 50; `400 invalid_param` unless a whole number, 1 or more). `incomplete` is a session mirad restarted during, so how it ended is unknown. Removing the game removes its sessions.
 
 ### `GET /v1/games/{id}/log?lines=`
 `{"lines": [...]}`: the last `lines` (default 200; `400 invalid_param` unless a whole number, 1 or more) lines of the game's log, which holds its output plus `mira-run`'s own notes. Only the last 4 MB of the file is read. A game with no log returns an empty list. Each launch rotates the log to `.log.1`, unless it is over `launch.log_max_mb`.
@@ -451,7 +454,7 @@ Rewrites Mira's own desktop entries now.
 
 ## Metadata
 
-Store info and art are cached in the config directory (`metadata/<id>.json`, `artwork/<id>/<slot>.*`), never in `games.toml`. Sources:
+Store info is cached in `cache.db` in the config directory, and art as files under `artwork/<id>/`, with `cache.db` pointing at each slot's file. All of it can be fetched again, so a damaged `cache.db` is started over. Sources:
 
 - **Steam games**: Steam's store API, review summary and CDN art (`cover`, `hero`, `capsule`, `header`), plus the ProtonDB tier. No key needed.
 - **GOG, itch and Amazon**: cover and hero from GOG Galaxy's games database, with nile's cached art as a fallback for Amazon.
@@ -520,7 +523,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed, or, at startup, every game that isn't running (a client open across a restart may still show some as running). |
 | `game.removed` | `{id}`. |
 | `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
-| `config.changed` | `{keys, frontend}` after `PATCH /v1/config` or a reset: the dotted settings keys that changed (names only, never values) and the whole `frontend` table, so a client applies a change made elsewhere. |
+| `config.changed` | `{keys, frontend}` after `PATCH /v1/config`, a reset, or a hand edit of `settings.toml`: the dotted settings keys that changed (names only, never values) and the whole `frontend` table, so a client applies a change made elsewhere. |
 | `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. `crashed` means a crash signal (or a shell's 128 + one), exit code 126/127 or a program Wine couldn't load, or Wine's "Unhandled ..." report in the log followed by a non-zero exit; a plain non-zero exit is `exited`, and so is anything after a stop. A crash adds `code` (`crashed`, `killed` or `start_failed`), a plain-language `error` that is also the game's `last_error`, a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
 | `game.installer_leftover` | `{id, installer_dir, bytes}`, after an install or `finish-install` left the game somewhere other than its installer's folder, which is still on disk. Delete it with `DELETE /v1/games/{id}/installer`. |

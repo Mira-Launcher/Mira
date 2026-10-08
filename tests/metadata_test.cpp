@@ -13,6 +13,7 @@
 #include "metadata/FetchQueue.h"
 #include "metadata/MetadataFetcher.h"
 #include "model/Types.h"
+#include "store/MetadataStore.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -35,6 +36,8 @@ TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches n
   const fs::path dir = TempDir("metadata-nonsteam");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
   test::Isolate(config);
 
   model::Game game;
@@ -42,14 +45,14 @@ TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches n
   game.name = "Some Game";
   // runner_ref left empty -> not Steam-owned.
 
-  const Result<void> fetched = metadata::Fetch(config, game);
+  const Result<void> fetched = metadata::Fetch(config, cache, game);
   REQUIRE_FALSE(fetched.has_value());
   CHECK(fetched.error().code == "no_steamgriddb_key");
   // Points clients at the setting, because it is the whole remedy.
   CHECK(fetched.error().fix.kind == "setting");
   CHECK(fetched.error().fix.target == "steamgriddb.api_key");
 
-  CHECK_FALSE(fs::exists(metadata::MetadataFile(config, game.id)));
+  CHECK_FALSE(cache.Has(game.id));
   CHECK_FALSE(fs::exists(metadata::ArtworkDir(config, game.id)));
 }
 
@@ -57,94 +60,114 @@ TEST_CASE("Metadata/artwork cache paths sit next to settings.toml, not a global 
   const fs::path dir = TempDir("metadata-paths");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
-  CHECK(metadata::MetadataFile(config, "foo") == dir / "metadata" / "foo.json");
   CHECK(metadata::ArtworkDir(config, "foo") == dir / "artwork" / "foo");
+  CHECK(cache.ArtworkDir("foo") == metadata::ArtworkDir(config, "foo"));
+}
+
+TEST_CASE("art rows point at files, and Remove drops the info, rows and files") {
+  const fs::path dir = TempDir("metadata-art-rows");
+  fs::create_directories(dir / "artwork" / "celeste");
+  std::ofstream(dir / "artwork" / "celeste" / "cover.png") << "png";
+  std::ofstream(dir / "artwork" / "celeste" / "header.jpg") << "jpg";
+  store::MetadataStore cache(dir);
+  cache.Load();
+  REQUIRE(cache.Write("celeste", nlohmann::json::parse(R"({"artwork": {"file": "cover.png", "content_type": "image/png"},
+      "header": {"file": "header.jpg"}, "hero": {"file": "missing.jpg"}})")).has_value());
+  REQUIRE(cache.ArtFor("celeste", "cover").has_value());
+  CHECK(cache.ArtFor("celeste", "cover")->content_type == "image/png");
+  CHECK(cache.ArtFor("celeste", "header").has_value());
+  CHECK_FALSE(cache.ArtFor("celeste", "hero").has_value());
+  CHECK(cache.ArtVersions("celeste").contains("cover"));
+
+  cache.Remove("celeste");
+  CHECK_FALSE(cache.Has("celeste"));
+  CHECK_FALSE(fs::exists(dir / "artwork" / "celeste"));
 }
 
 TEST_CASE("SelectArtwork fails closed: no metadata, no candidate list, unknown id") {
   const fs::path dir = TempDir("metadata-select-artwork");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
   // Nothing fetched yet for this game at all.
-  CHECK_FALSE(metadata::SelectArtwork(config, "no-such-game", "hero", 1).has_value());
+  CHECK_FALSE(metadata::SelectArtwork(config, cache, "no-such-game", "hero", 1).has_value());
 
-  const fs::path metadata_file = metadata::MetadataFile(config, "celeste");
-  fs::create_directories(metadata_file.parent_path());
   {
     // Has a metadata file, but no art_candidates for "hero" -- e.g. a
     // Steam-owned game, which never populates that key at all.
-    std::ofstream(metadata_file) << nlohmann::json{{"source", "steam"}}.dump();
+    REQUIRE(cache.Write("celeste", nlohmann::json{{"source", "steam"}}).has_value());
   }
-  CHECK_FALSE(metadata::SelectArtwork(config, "celeste", "hero", 1).has_value());
+  CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "hero", 1).has_value());
 
   {
-    std::ofstream(metadata_file) << nlohmann::json{
+    REQUIRE(cache.Write("celeste", nlohmann::json{
         {"art_candidates", {{"hero", nlohmann::json::array({{{"id", 42}, {"url", "https://example.invalid/a.jpg"}}})}}},
-    }.dump();
+    }).has_value());
   }
   // Right slot, wrong id.
-  CHECK_FALSE(metadata::SelectArtwork(config, "celeste", "hero", 999).has_value());
+  CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "hero", 999).has_value());
 }
 
 TEST_CASE("FetchCandidatePage fails before asking SteamGridDB when it can't") {
   const fs::path dir = TempDir("metadata-candidate-page");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
-  CHECK(metadata::FetchCandidatePage(config, "celeste", "banner", 0).error().code == "invalid_type");
-  CHECK(metadata::FetchCandidatePage(config, "celeste", "cover", 0).error().code == "no_steamgriddb_key");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "banner", 0).error().code == "invalid_type");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code == "no_steamgriddb_key");
 
   // A key, but no SteamGridDB match recorded for the game.
   REQUIRE(config.Set("steamgriddb.api_key", std::string("test-key")).has_value());
-  CHECK(metadata::FetchCandidatePage(config, "celeste", "cover", 0).error().code == "no_steamgriddb_match");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code == "no_steamgriddb_match");
 }
 
-TEST_CASE("SelectArtwork replaces the metadata file whole, leaving nothing beside it") {
+TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   const fs::path dir = TempDir("metadata-select-atomic");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
   const fs::path image = dir / "new.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG new";
-  const fs::path metadata_file = metadata::MetadataFile(config, "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << nlohmann::json{
+  REQUIRE(cache.Write("celeste", nlohmann::json{
       {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + image.string()}}})}}},
-  }.dump();
+  }).has_value());
 
-  REQUIRE(metadata::SelectArtwork(config, "celeste", "cover", 5).has_value());
-  std::ifstream in(metadata_file);
-  const nlohmann::json info = nlohmann::json::parse(in, nullptr, false);
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
+  const nlohmann::json info = cache.Read("celeste");
   CHECK(info["artwork"].value("candidate_id", 0) == 5);
-  std::size_t files = 0;
-  for ([[maybe_unused]] const auto& entry : fs::directory_iterator(metadata_file.parent_path())) ++files;
-  CHECK(files == 1);
+  CHECK(cache.ArtFor("celeste", "cover").has_value());
 }
 
 TEST_CASE("A refresh keeps art the user picked by hand") {
   const fs::path dir = TempDir("metadata-refresh-keeps-chosen");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
   REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());  // keeps Fetch offline
 
   const fs::path image = dir / "picked.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG picked";
-  const fs::path metadata_file = metadata::MetadataFile(config, "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << nlohmann::json{
+  REQUIRE(cache.Write("celeste", nlohmann::json{
       {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + image.string()}}})}}},
-  }.dump();
-  REQUIRE(metadata::SelectArtwork(config, "celeste", "cover", 5).has_value());
+  }).has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
 
   model::Game game;
   game.id = "celeste";
   game.name = "Celeste";
-  REQUIRE(metadata::Fetch(config, game).has_value());
+  REQUIRE(metadata::Fetch(config, cache, game).has_value());
 
-  std::ifstream in(metadata_file);
-  const nlohmann::json info = nlohmann::json::parse(in, nullptr, false);
+  const nlohmann::json info = cache.Read("celeste");
   CHECK(info["artwork"].value("candidate_id", 0) == 5);
   std::ifstream cover(metadata::ArtworkDir(config, "celeste") / info["artwork"].value("file", std::string()),
                       std::ios::binary);
@@ -156,19 +179,19 @@ TEST_CASE("SelectArtwork that fails to download keeps the slot's current image")
   const fs::path dir = TempDir("metadata-select-keeps");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
   const fs::path art = metadata::ArtworkDir(config, "celeste");
   fs::create_directories(art);
   std::ofstream(art / "cover.png") << "current";
-  const fs::path metadata_file = metadata::MetadataFile(config, "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << nlohmann::json{
+  REQUIRE(cache.Write("celeste", nlohmann::json{
       {"artwork", {{"file", "cover.png"}, {"content_type", "image/png"}}},
       {"art_candidates",
        {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + (dir / "missing.png").string()}}})}}},
-  }.dump();
+  }).has_value());
 
-  CHECK_FALSE(metadata::SelectArtwork(config, "celeste", "cover", 5).has_value());
+  CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
   std::ifstream in(art / "cover.png");
   std::string kept;
   in >> kept;
@@ -180,22 +203,22 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
   const fs::path dir = TempDir("metadata-thumbs");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
 
   const fs::path image = dir / "thumb.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG fake";
-  const fs::path metadata_file = metadata::MetadataFile(config, "celeste");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << nlohmann::json{
+  REQUIRE(cache.Write("celeste", nlohmann::json{
       {"art_candidates",
        {{"cover", nlohmann::json::array({
                       {{"id", 1}, {"url", "file://" + image.string()}},
                       {{"id", 2}, {"url", "https://example.invalid/big.jpg"}, {"thumb", "file://" + image.string()}},
                       {{"id", 3}, {"url", "file://" + (dir / "missing.png").string()}},
                   })}}},
-  }.dump();
+  }).has_value());
 
   CHECK(metadata::CandidateThumbFile(config, "celeste", "cover", 1).empty());
-  const Result<metadata::ThumbBatch> batch = metadata::FetchCandidateThumbs(config, "celeste", "cover", {1, 2, 3, 4});
+  const Result<metadata::ThumbBatch> batch = metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1, 2, 3, 4});
   REQUIRE(batch.has_value());
   CHECK(std::set<std::int64_t>(batch->ready.begin(), batch->ready.end()) == std::set<std::int64_t>{1, 2});
   // 3's file doesn't exist; 4 isn't a candidate at all.
@@ -205,12 +228,12 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
 
   // Cached now: a second batch doesn't fetch it again.
   fs::remove(image);
-  const Result<metadata::ThumbBatch> again = metadata::FetchCandidateThumbs(config, "celeste", "cover", {1});
+  const Result<metadata::ThumbBatch> again = metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1});
   REQUIRE(again.has_value());
   CHECK(again->ready == std::vector<std::int64_t>{1});
 
   // The slot names a file, so anything but a plain word is refused.
-  CHECK_FALSE(metadata::FetchCandidateThumbs(config, "celeste", "../cover", {1}).has_value());
+  CHECK_FALSE(metadata::FetchCandidateThumbs(config, cache, "celeste", "../cover", {1}).has_value());
   CHECK(metadata::CandidateThumbFile(config, "celeste", "../cover", 1).empty());
 
   // Kept apart from the game's art, which a clear leaves alone.
@@ -226,16 +249,18 @@ TEST_CASE("Enqueue skips when metadata is off unless forced; a failure is only m
   const fs::path dir = TempDir("metadata-queue");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
   test::Isolate(config);
   REQUIRE(config.Set("metadata.enabled", false).has_value());
 
-  const auto run = [&config](bool force) {
+  const auto run = [&config, &cache](bool force) {
     api::EventBus events;
     model::Game game;
     game.id = "celeste";
     game.name = "Celeste";
     {
-      metadata::FetchQueue queue;
+      metadata::FetchQueue queue(cache);
       queue.Enqueue(config, events, game, force);
       queue.WaitIdle();
     }
@@ -260,12 +285,14 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
   const fs::path dir = TempDir("metadata-bulk");
   config::Config config(dir / "settings.toml");
   config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
   // No key and no Steam lookup: each fetch fails fast, offline.
   REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());
 
   api::EventBus events;
   {
-    metadata::FetchQueue queue;
+    metadata::FetchQueue queue(cache);
     for (int i = 0; i < 40; ++i) {
       model::Game game;
       game.id = "bulk-" + std::to_string(i);

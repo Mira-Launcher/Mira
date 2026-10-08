@@ -42,7 +42,7 @@ TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanl
   const fs::path state = TempDir("proc-post-script-state");
   const fs::path marker = state / "post-ran";
 
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
@@ -66,7 +66,7 @@ TEST_CASE("ProcessSupervisor::Launch runs post_script once the game exits cleanl
 
 TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens the game's log") {
   const fs::path state = TempDir("proc-crash-state");
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
@@ -98,7 +98,7 @@ TEST_CASE("ProcessSupervisor reports a crash with a hint and a fix that opens th
 
 TEST_CASE("ProcessSupervisor treats a non-zero exit as an ordinary quit") {
   const fs::path state = TempDir("proc-nonzero-state");
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events, /*stop_timeout_s=*/2);
@@ -127,7 +127,7 @@ TEST_CASE("ProcessSupervisor treats a non-zero exit as an ordinary quit") {
 
 TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") {
   const fs::path state = TempDir("proc-quit-state");
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   auto supervisor = std::make_unique<proc::ProcessSupervisor>(games, events);
@@ -156,7 +156,7 @@ TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") 
 
 TEST_CASE("ProcessSupervisor::Launch rejects a duplicate launch while one is already running") {
   const fs::path state = TempDir("proc-duplicate-state");
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
@@ -182,7 +182,7 @@ TEST_CASE("ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper
   const fs::path state = TempDir("proc-steam-track-state");
   const fs::path marker = state / "post-ran";
 
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
@@ -228,7 +228,7 @@ TEST_CASE("ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper
 TEST_CASE("ProcessSupervisor::Stop refuses a not-yet-confirmed TrackSteamLaunch instead of "
          "signalling pid 0") {
   const fs::path state = TempDir("proc-steam-unconfirmed-state");
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
@@ -325,9 +325,8 @@ TEST_CASE("FindPrefixProcesses does not match a game whose prefix is a string pr
 
 TEST_CASE("Reconcile archives a finished session a previous mirad never got to see") {
   const fs::path state = TempDir("proc-reconcile-finished-state");
-  const fs::path sessions_dir = state / "sessions";
 
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   model::Game game;
   game.id = "celeste";
@@ -342,28 +341,26 @@ TEST_CASE("Reconcile archives a finished session a previous mirad never got to s
   record.ended_at = 1700000042;
   record.duration_seconds = 42;
   record.exit_code = 0;
-  const auto session_path = proc::SessionFilePath(sessions_dir, "celeste", record.started_at);
-  REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
+  REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
 
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
-  supervisor.Reconcile(sessions_dir);
+  supervisor.Reconcile();
 
-  CHECK_FALSE(fs::exists(session_path));
+  CHECK(proc::UncountedSessions(games.File()).empty());
   auto stored = games.Find("celeste");
   REQUIRE(stored.has_value());
   CHECK(stored->play_seconds == 142);  // 100 already banked + 42 from the reconciled session
 
-  // A mirad that died before deleting the file finds the same session again: it isn't counted twice.
-  REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
-  supervisor.Reconcile(sessions_dir);
+  // mira-run writing the same record again (a late final write) doesn't make it count twice.
+  REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
+  supervisor.Reconcile();
   CHECK(games.Find("celeste")->play_seconds == 142);
 }
 
 TEST_CASE("A Windows game whose log has Wine's unhandled-exception report counts as crashed") {
   const fs::path state = TempDir("proc-wine-crash-state");
-  const fs::path sessions_dir = state / "sessions";
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   model::Game game;
   game.id = "splodey";
@@ -377,7 +374,7 @@ TEST_CASE("A Windows game whose log has Wine's unhandled-exception report counts
     record.finished = true;
     record.duration_seconds = 250;
     record.exit_code = exit_code;
-    REQUIRE(proc::WriteSessionRecord(proc::SessionFilePath(sessions_dir, "splodey", started_at), record).has_value());
+    REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
   };
   test::Touch(proc::GameLogPath(state, "splodey"),
               "Proton: Executable is a unix path, launching with 'umu.exe'.\n"
@@ -388,20 +385,19 @@ TEST_CASE("A Windows game whose log has Wine's unhandled-exception report counts
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
   finish(5, 1700000000);
-  supervisor.Reconcile(sessions_dir);
+  supervisor.Reconcile();
   CHECK(games.Find("splodey")->last_error == "Crashed after 4 minutes with an unhandled page fault on read access");
 
   // A helper process crashing while the game itself quits cleanly isn't the game crashing.
   finish(0, 1700000500);
-  supervisor.Reconcile(sessions_dir);
+  supervisor.Reconcile();
   CHECK(games.Find("splodey")->last_error.empty());
 }
 
 TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone too") {
   const fs::path state = TempDir("proc-reconcile-dead-state");
-  const fs::path sessions_dir = state / "sessions";
 
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   model::Game game;
   game.id = "celeste";
@@ -412,14 +408,13 @@ TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone
   record.wrapper_pid = 999999;  // not a real pid on any sane machine
   record.started_at = 1700000000;
   record.finished = false;  // still "in flight" as far as the file says
-  const auto session_path = proc::SessionFilePath(sessions_dir, "celeste", record.started_at);
-  REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
+  REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
 
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
-  supervisor.Reconcile(sessions_dir);
+  supervisor.Reconcile();
 
-  CHECK_FALSE(fs::exists(session_path));
+  CHECK(proc::UncountedSessions(games.File()).empty());
   auto stored = games.Find("celeste");
   REQUIRE(stored.has_value());
   CHECK(stored->last_error.find("restarted") != std::string::npos);
@@ -427,9 +422,8 @@ TEST_CASE("Reconcile closes out a session as incomplete when its wrapper is gone
 
 TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking it as running") {
   const fs::path state = TempDir("proc-reconcile-live-state");
-  const fs::path sessions_dir = state / "sessions";
 
-  store::GameStore games(state / "games.toml");
+  store::GameStore games(state / "mira.db");
   games.Load();
   model::Game game;
   game.id = "celeste";
@@ -449,33 +443,17 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   record.wrapper_pid = *pid;
   record.started_at = model::NowSeconds();
   record.finished = false;
-  const auto session_path = proc::SessionFilePath(sessions_dir, "celeste", record.started_at);
-  REQUIRE(proc::WriteSessionRecord(session_path, record).has_value());
+  REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
 
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
-  supervisor.Reconcile(sessions_dir);
+  supervisor.Reconcile();
 
   CHECK(supervisor.IsRunning("celeste"));
 
   ::kill(*pid, SIGKILL);
   ::waitpid(*pid, nullptr, 0);  // reap it ourselves; Reconcile's watcher only polls kill(pid, 0)
   CHECK(WaitFor([&] { return !supervisor.IsRunning("celeste"); }, std::chrono::seconds(5)));
-}
-
-TEST_CASE("Reconcile drops a corrupt session file instead of failing") {
-  const fs::path state = TempDir("proc-reconcile-corrupt-state");
-  const fs::path sessions_dir = state / "sessions";
-  fs::create_directories(sessions_dir);
-  std::ofstream(sessions_dir / "broken.toml") << "not valid toml {{{";
-
-  store::GameStore games(state / "games.toml");
-  games.Load();
-  api::EventBus events;
-  proc::ProcessSupervisor supervisor(games, events);
-  supervisor.Reconcile(sessions_dir);  // must not throw or hang
-
-  CHECK_FALSE(fs::exists(sessions_dir / "broken.toml"));
 }
 
 TEST_CASE("FindPrefixProcesses matches umu's rewritten WINEPREFIX and an empty one matches nothing") {

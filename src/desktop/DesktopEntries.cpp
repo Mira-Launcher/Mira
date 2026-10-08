@@ -42,15 +42,9 @@ std::string Sanitize(std::string_view value) {
 // a .desktop file's Icon= accepts an absolute path just as well as a themed
 // icon name, per spec, so a game with real artwork doesn't have to settle
 // for the generic fallback.
-std::optional<fs::path> CachedArtwork(const config::Config& config, const std::string& game_id) {
-  std::ifstream meta_in(metadata::MetadataFile(config, game_id));
-  if (!meta_in) return std::nullopt;
-  const nlohmann::json info = nlohmann::json::parse(meta_in, nullptr, false);
-  if (info.is_discarded() || !info.contains("artwork")) return std::nullopt;
-  const std::string name = core::JsonString(info["artwork"], "file");
-  if (name.empty()) return std::nullopt;  // otherwise the artwork directory itself
-  const fs::path file = metadata::ArtworkDir(config, game_id) / name;
-  return std::ifstream(file, std::ios::binary).good() ? std::make_optional(file) : std::nullopt;
+std::optional<fs::path> CachedArtwork(const store::MetadataStore& cache, const std::string& game_id) {
+  const auto art = cache.ArtFor(game_id, "cover");
+  return art ? std::make_optional(art->file) : std::nullopt;
 }
 
 // `mira` or `mira-gui` by full path, since a desktop session's PATH often lacks ~/.local/bin: from an
@@ -104,7 +98,8 @@ std::optional<std::string> ReadFile(const fs::path& path) {
 
 }  // namespace
 
-DesktopEntries::DesktopEntries(config::Config& config) : config_(config) {}
+DesktopEntries::DesktopEntries(config::Config& config, const store::MetadataStore& cache)
+    : config_(config), cache_(cache) {}
 
 fs::path DesktopEntries::EntryPath(const std::string& game_id) const {
   return config_.GetPath("desktop_entries.directory") /
@@ -136,7 +131,7 @@ std::string DesktopEntries::Render(const model::Game& game) const {
                            : resolver.GetString("desktop_entries.exec_mode") == "frontend"
                                ? std::format("{} --launch {}", Binary("mira-gui"), game.id)
                                : std::format("{} launch {}", Binary("mira"), game.id);
-  const std::optional<fs::path> artwork = CachedArtwork(config_, game.id);
+  const std::optional<fs::path> artwork = CachedArtwork(cache_, game.id);
   const bool app = std::ranges::contains(game.tags, "app");
   const std::string icon = artwork ? artwork->string() : app ? "application-x-executable" : "applications-games";
   const std::string categories = app ? "Utility;" : resolver.GetString("desktop_entries.categories");

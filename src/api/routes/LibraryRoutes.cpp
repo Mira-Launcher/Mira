@@ -257,7 +257,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     if (library::FindSource(source) == nullptr || !IsSafeRef(ref)) {
       return SendError(res, 400, "invalid_request", "expected ?source=<store>&ref=<ref>");
     }
-    SendCachedArtwork(s.config, source + "-" + ref, "cover", res);
+    SendCachedArtwork(s.games.Metadata(), source + "-" + ref, "cover", res);
   });
 
   http.Post("/v1/library/artwork", [&s](const Request& req, Response& res) {
@@ -281,7 +281,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       title.source_ref = text(entry, "ref");
       title.name = text(entry, "title");
       title.id = source + "-" + title.source_ref;
-      if (!IsSafeRef(title.source_ref) || title.name.empty() || s.art_index.For(title.id).contains("cover")) continue;
+      if (!IsSafeRef(title.source_ref) || title.name.empty() || s.games.Metadata().ArtVersions(title.id).contains("cover")) continue;
       // How Fetch tells a Steam game apart.
       if (source == "steam") title.runner_ref = "steam:" + title.source_ref;
       titles.push_back(std::move(title));

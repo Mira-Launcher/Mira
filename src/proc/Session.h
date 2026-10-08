@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "core/Result.h"
 
@@ -38,21 +39,16 @@ struct SessionRecord {
   bool incomplete = false;
 };
 
-std::filesystem::path SessionFilePath(const std::filesystem::path& sessions_dir, const std::string& game_id,
-                                      std::int64_t started_at);
-
 // Where mira-run writes a game's output; `state_dir` is the game store's folder.
 std::filesystem::path GameLogPath(const std::filesystem::path& state_dir, const std::string& game_id);
 
-// Write-temp-then-rename, matching store::GameStore::Save's durability
-// shape, plus an explicit fsync before the rename. A session record is
-// exactly the kind of thing that must survive a crash a moment later, which
-// is the whole reason it exists.
-Result<void> WriteSessionRecord(const std::filesystem::path& path, const SessionRecord& record);
-
-// A corrupt or truncated file is reported as an error, not thrown, so callers
-// (mirad's reconciliation) are expected to log it, delete the file, and move
-// on rather than fail startup over one bad record.
-Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& path);
+// Session records live in mira.db's sessions table, keyed by game and start time. mira-run writes one as
+// the session starts and again as it ends, through a connection of its own, so a record survives mirad
+// dying; mirad counts it, which marks it counted. Writing never unmarks a counted record.
+Result<void> WriteSessionRecord(const std::filesystem::path& database, const SessionRecord& record);
+Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database, const std::string& game_id,
+                                        std::int64_t started_at);
+// Records mirad hasn't counted yet: sessions still running, or finished while it was down.
+std::vector<SessionRecord> UncountedSessions(const std::filesystem::path& database);
 
 }  // namespace mira::proc

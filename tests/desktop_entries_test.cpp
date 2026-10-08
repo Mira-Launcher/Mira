@@ -8,6 +8,7 @@
 
 #include "config/Config.h"
 #include "desktop/DesktopEntries.h"
+#include "store/MetadataStore.h"
 #include "metadata/MetadataFetcher.h"
 #include "support/TestEnv.h"
 
@@ -40,7 +41,9 @@ TEST_CASE("DesktopEntries never writes an entry for a Steam-sourced game -- Stea
   native_game.status = model::GameStatus::Ready;
   native_game.exe_path = "game";
 
-  desktop::DesktopEntries entries(config);
+  store::MetadataStore cache(config.File().parent_path());
+  cache.Load();
+  desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({steam_game, native_game}).has_value());
 
   CHECK_FALSE(fs::exists(applications / "mira-some-steam-game.desktop"));
@@ -67,7 +70,9 @@ TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, and a Mic
   word.source = "office";
   word.source_ref = "word";
 
-  desktop::DesktopEntries entries(config);
+  store::MetadataStore cache(config.File().parent_path());
+  cache.Load();
+  desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({app, word}).has_value());
 
   const auto read = [&](const char* file) {
@@ -107,7 +112,9 @@ TEST_CASE("DesktopEntries: a per-game desktop_entries.enabled=false override exc
   included.status = model::GameStatus::Ready;
   included.exe_path = "game";
 
-  desktop::DesktopEntries entries(config);
+  store::MetadataStore cache(config.File().parent_path());
+  cache.Load();
+  desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({excluded, included}).has_value());
 
   CHECK_FALSE(fs::exists(applications / "mira-excluded-game.desktop"));
@@ -129,7 +136,9 @@ TEST_CASE("DesktopEntries: a sync leaves unchanged entries untouched but rewrite
   game.status = model::GameStatus::Ready;
   game.exe_path = "Celeste";
 
-  desktop::DesktopEntries entries(config);
+  store::MetadataStore cache(config.File().parent_path());
+  cache.Load();
+  desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({game}).has_value());
   const fs::path file = applications / "mira-celeste.desktop";
   const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(1);
@@ -154,10 +163,7 @@ TEST_CASE("DesktopEntries: uses cached artwork as Icon= when present, falls back
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   REQUIRE(config.Set("desktop_entries.directory", applications.string()).has_value());
 
-  const fs::path metadata_file = metadata::MetadataFile(config, "with-art");
   const fs::path artwork_dir = metadata::ArtworkDir(config, "with-art");
-  fs::create_directories(metadata_file.parent_path());
-  std::ofstream(metadata_file) << R"({"artwork": {"file": "cover.png"}})";
   fs::create_directories(artwork_dir);
   std::ofstream(artwork_dir / "cover.png") << "not really a png";
 
@@ -173,7 +179,10 @@ TEST_CASE("DesktopEntries: uses cached artwork as Icon= when present, falls back
   without_art.status = model::GameStatus::Ready;
   without_art.exe_path = "game";
 
-  desktop::DesktopEntries entries(config);
+  store::MetadataStore cache(config.File().parent_path());
+  cache.Load();
+  REQUIRE(cache.Write("with-art", nlohmann::json::parse(R"({"artwork": {"file": "cover.png"}})")).has_value());
+  desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({with_art, without_art}).has_value());
 
   std::ifstream with_art_in(applications / "mira-with-art.desktop");

@@ -60,7 +60,7 @@ void Isolate(config::Config& config) {
 }
 
 TestEnv::TestEnv(std::string_view name)
-    : dir(TempDir(name)), config(dir / "settings.toml"), games(dir / "games.toml") {
+    : dir(TempDir(name)), config(dir / "settings.toml"), games(dir / "mira.db") {
   config.Load();
   games.Load();
   Isolate(config);

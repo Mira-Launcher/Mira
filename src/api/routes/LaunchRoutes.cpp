@@ -336,13 +336,12 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     }
 
     const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
-    const std::filesystem::path sessions_dir = s.games.Dir() / "sessions";
     const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
     Command wrapped;
     wrapped.env = command->env;
     wrapped.cwd = command->cwd;
     wrapped.argv = {*mira_run,         "--game-id",       game->id,
-                    "--session-dir",  sessions_dir.string(), "--log-file", log_file.string(),
+                    "--database",     s.games.File().string(), "--log-file", log_file.string(),
                     "--log-max-mb",   std::to_string(resolver.GetInt("launch.log_max_mb")),
                     "--status-fd",    "3",
                     "--pre-timeout",  std::to_string(pre_timeout_s),
@@ -389,8 +388,12 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       return SendError(res, 500, "wrapper_failed", std::format("unexpected mira-run status: {}", status.code));
     }
 
-    if (auto launched = s.supervisor.LaunchWrapped(*game, *wrapper_pid, std::filesystem::path(status.detail));
-        !launched) {
+    std::int64_t session_started_at = 0;
+    if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at).ec !=
+        std::errc()) {
+      return SendError(res, 500, "wrapper_failed", std::format("mira-run sent no session start: {}", status.detail));
+    }
+    if (auto launched = s.supervisor.LaunchWrapped(*game, *wrapper_pid, session_started_at); !launched) {
       return SendError(res, 409, launched.error());
     }
     SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it

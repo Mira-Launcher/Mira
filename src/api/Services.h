@@ -18,7 +18,6 @@
 #include "config/Config.h"
 #include "core/Lane.h"
 #include "core/Result.h"
-#include "metadata/ArtIndex.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
@@ -54,8 +53,7 @@ private:
 
 public:
   proc::ProcessSupervisor supervisor;
-  metadata::ArtIndex art_index{config};
-  metadata::FetchQueue fetches;
+  metadata::FetchQueue fetches{games.Metadata()};
   Lane tricks{"tricks", 1};  // one at a time: winetricks runs overlap badly in one prefix
   Lane artwork_selects{"artwork-select", 2};
   Lane artwork_thumbs{"artwork-thumbs", 4};
@@ -78,6 +76,8 @@ public:
 
   // Rewrites the application menu entries to match the library.
   void SyncDesktopEntries();
+  // After settings.toml is saved: applies a hand edit and tells clients, or notifies that it doesn't parse.
+  void ReloadSettings();
   // The same for one game, after a change to just that game (also once it is deleted).
   void SyncDesktopEntry(const std::string& game_id);
   // Fetches metadata and art for games added outside a request.

@@ -52,7 +52,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
   events.SetGameRecordHook([this](json& game) {
     if (!game.contains("art")) Decorate(game);  // a Record() already is
   });
-  events.SetArtHook([this](const std::string& id) { return art_index.For(id); });
+  events.SetArtHook([this](const std::string& id) { return games.Metadata().ArtVersions(id); });
   supervisor.SetExitHook([this](const std::string& id) { CheckForInstall(id); });
 }
 
@@ -77,14 +77,29 @@ void Services::BeginStopping() {
 
 void Services::StartExternalWatch() { external_watch_ = std::thread(&Services::WatchExternalGames, this); }
 
+void Services::ReloadSettings() {
+  auto changed = config.Reload();
+  if (!changed) {
+    log::Warn("{}", changed.error().message);
+    events.PublishNotification(model::NotifyLevel::Error,
+                               std::format("{}. {}", changed.error().message, changed.error().hint));
+    return;
+  }
+  if (changed->empty()) return;  // Mira's own save, or an edit that changed no setting
+  log::Info("settings.toml was edited: {} setting(s) changed", changed->size());
+  SyncDesktopEntries();
+  if (std::ranges::contains(*changed, std::string("library_roots")) && on_roots_changed) on_roots_changed();
+  events.Publish("config.changed", {{"keys", *changed}, {"frontend", config.FrontendSettings()}});
+}
+
 void Services::SyncDesktopEntries() {
-  if (auto synced = desktop::DesktopEntries(config).Sync(games.All()); !synced) {
+  if (auto synced = desktop::DesktopEntries(config, games.Metadata()).Sync(games.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
   }
 }
 
 void Services::SyncDesktopEntry(const std::string& game_id) {
-  if (auto synced = desktop::DesktopEntries(config).SyncOne(game_id, games.Find(game_id)); !synced) {
+  if (auto synced = desktop::DesktopEntries(config, games.Metadata()).SyncOne(game_id, games.Find(game_id)); !synced) {
     log::Warn("could not update the application menu entry of {}: {}", game_id, synced.error().message);
   }
 }
@@ -126,7 +141,7 @@ void Services::Decorate(json& record, std::optional<double> threshold) {
   const std::string id = record.value("id", "");
   // So a client can resync after a reconnect.
   record["running"] = supervisor.IsRunning(id);
-  record["art"] = art_index.For(id);
+  record["art"] = games.Metadata().ArtVersions(id);
   AddNeedsCheck(record,
                 threshold ? *threshold : config.GetDouble("detect.low_confidence_threshold"));
 }
@@ -206,7 +221,7 @@ void Services::QueueMetadata(const std::vector<model::Game>& games) {
 }
 
 void Services::ReconcileSessions() {
-  supervisor.Reconcile(games.Dir() / "sessions");
+  supervisor.Reconcile();
   // A client that stayed open across a restart may still show games from the old daemon as
   // running. One event, not one per game, so a large library doesn't push the whole buffer out.
   json idle = json::array();
@@ -315,11 +330,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   }
   if (metadata) {
     // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
-    std::error_code ec;
-    std::filesystem::remove(metadata::MetadataFile(config, game.id), ec);
-    if (ec) log::Warn("could not remove metadata for {}: {}", game.id, ec.message());
-    std::filesystem::remove_all(metadata::ArtworkDir(config, game.id), ec);
-    if (ec) log::Warn("could not remove artwork for {}: {}", game.id, ec.message());
+    games.Metadata().Remove(game.id);
   }
   return {};
 }
@@ -370,7 +381,6 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                if (fresh != builds.end()) {
                  const std::string to = fresh->Reference();
                  json moved = json::array();
-                 const auto batch = games.BatchSaves();
                  for (const model::Game& game : games.All()) {
                    if (game.runner_ref != replacing) continue;
                    if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {

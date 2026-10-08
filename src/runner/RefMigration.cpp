@@ -101,7 +101,6 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
     }
   }
 
-  const auto batch = games.BatchSaves();
   for (const model::Game& game : games.All()) {
     auto to = migrated(game.runner_ref);
     nlohmann::json overrides = game.overrides;

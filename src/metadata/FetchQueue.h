@@ -11,6 +11,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
+#include "store/MetadataStore.h"
 #include "core/Lane.h"
 #include "model/Types.h"
 
@@ -23,6 +24,7 @@ namespace mira::metadata {
 // hundred. A game already waiting isn't queued twice.
 class FetchQueue {
 public:
+  explicit FetchQueue(store::MetadataStore& cache) : cache_(cache) {}
   ~FetchQueue();
 
   // A tracked game's full Fetch. `force` bypasses metadata.enabled, used
@@ -60,8 +62,9 @@ private:
   void StartWorkers(const config::Config& config, api::EventBus& events);
   void Work(const config::Config& config, api::EventBus& events);
   // Whether the fetch worked.
-  static bool Run(const config::Config& config, api::EventBus& events, const Job& job);
+  bool Run(const config::Config& config, api::EventBus& events, const Job& job);
 
+  store::MetadataStore& cache_;
   std::mutex mutex_;
   std::condition_variable idle_;
   std::deque<Job> games_;   // tracked games, first

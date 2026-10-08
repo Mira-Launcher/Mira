@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 
 #include "api/EventBus.h"
@@ -41,6 +42,8 @@ public:
   // Fetch through `queue` instead of a queue of its own, so one set of workers and one dedupe serve everything.
   // Before Run().
   void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
+  // Runs on the watcher's thread when settings.toml is saved, by hand or by Mira. Before Run().
+  void OnSettingsSaved(std::function<void()> callback) { on_settings_saved_ = std::move(callback); }
   // Where a scan runs an installer it starts on its own. Before Run().
   void UseInstallLane(Lane& lane) { installs_ = &lane; }
 
@@ -62,7 +65,7 @@ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;
-  metadata::FetchQueue own_fetches_;
+  metadata::FetchQueue own_fetches_{games_.Metadata()};
   metadata::FetchQueue* metadata_fetches_ = &own_fetches_;
   Lane* installs_ = nullptr;
 
@@ -71,6 +74,8 @@ private:
   int timer_fd_ = -1;
   int stop_fd_ = -1;
   int reload_fd_ = -1;
+  int settings_wd_ = -1;  // settings.toml's folder
+  std::function<void()> on_settings_saved_;
 
   std::map<int, std::filesystem::path> watch_to_root_;  // inotify watch descriptor -> root
   std::map<std::string, Pending> pending_;               // absolute dir path -> debounce state

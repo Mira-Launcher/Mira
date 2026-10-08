@@ -16,7 +16,7 @@ fs::path TempFile(const char* name) {
   const fs::path dir = fs::temp_directory_path() / "mira-tests";
   fs::create_directories(dir);
   const fs::path file = dir / name;
-  fs::remove(file);
+  for (const char* suffix : {"", "-wal", "-shm", ".bak"}) fs::remove(file.string() + suffix);
   return file;
 }
 
@@ -31,15 +31,15 @@ model::Game MakeGame(const std::string& id, const std::string& name) {
 }  // namespace
 
 TEST_CASE("NextId disambiguates collisions so ids stay readable") {
-  store::GameStore store(TempFile("games-ids.toml"));
+  store::GameStore store(TempFile("games-ids.db"));
   store.Load();
   CHECK(store.NextId("Celeste") == "celeste");
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.NextId("Celeste") == "celeste-2");
 }
 
-TEST_CASE("games round-trip through games.toml, including nested fields") {
-  const fs::path file = TempFile("games-roundtrip.toml");
+TEST_CASE("games round-trip through the database, including nested fields") {
+  const fs::path file = TempFile("games-roundtrip.db");
   store::GameStore store(file);
   store.Load();
 
@@ -61,7 +61,7 @@ TEST_CASE("games round-trip through games.toml, including nested fields") {
 }
 
 TEST_CASE("Update mutates under lock and reports the saved result") {
-  store::GameStore store(TempFile("games-update.toml"));
+  store::GameStore store(TempFile("games-update.db"));
   store.Load();
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
 
@@ -78,7 +78,7 @@ TEST_CASE("Update mutates under lock and reports the saved result") {
 }
 
 TEST_CASE("UpdateMany saves every changed game and skips unknown or unchanged ones") {
-  const auto file = TempFile("games-update-many.toml");
+  const auto file = TempFile("games-update-many.db");
   store::GameStore store(file);
   store.Load();
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
@@ -102,7 +102,7 @@ TEST_CASE("UpdateMany saves every changed game and skips unknown or unchanged on
 }
 
 TEST_CASE("Remove deletes a game and reports an error for an unknown id") {
-  store::GameStore store(TempFile("games-remove.toml"));
+  store::GameStore store(TempFile("games-remove.db"));
   store.Load();
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.Remove("celeste").has_value());
@@ -110,59 +110,43 @@ TEST_CASE("Remove deletes a game and reports an error for an unknown id") {
   CHECK_FALSE(store.Remove("celeste").has_value());
 }
 
-TEST_CASE("a SaveBatch holds saves back and writes them once when it ends") {
-  const fs::path file = TempFile("games-batch.toml");
+TEST_CASE("a finished session is counted once and goes with its game") {
+  store::GameStore store(TempFile("games-sessions.db"));
+  store.Load();
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  const store::PlaySession session{.game_id = "celeste", .started_at = 100, .ended_at = 160, .duration_seconds = 60};
+  for (int i = 0; i < 2; ++i) {
+    REQUIRE(store.FinishSession(session, [](model::Game& game) { game.play_seconds += 60; }).has_value());
+  }
+  CHECK(store.Sessions("celeste", 10).size() == 1);
+  REQUIRE(store.Remove("celeste").has_value());
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  CHECK(store.Sessions("celeste", 10).empty());
+}
+
+TEST_CASE("a damaged database is set aside and the library comes back from its backup") {
+  const fs::path file = TempFile("games-damaged.db");
+  {
+    store::GameStore store(file);
+    store.Load();
+    REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  }
+  store::GameStore(file).Load();  // backs up the library with celeste in it
+  {
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out << "not a database";
+  }
   store::GameStore store(file);
   store.Load();
-  {
-    const auto batch = store.BatchSaves();
-    REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
-    REQUIRE(store.Upsert(MakeGame("hades", "Hades")).has_value());
-    CHECK_FALSE(fs::exists(file));
-    CHECK(store.All().size() == 2);
-  }
-  store::GameStore reloaded(file);
-  reloaded.Load();
-  CHECK(reloaded.All().size() == 2);
-}
-
-TEST_CASE("a corrupt games.toml is quarantined and the library starts empty") {
-  const fs::path file = TempFile("games-corrupt.toml");
-  {
-    std::ofstream out(file);
-    out << "not [ valid toml at all";
-  }
-  store::GameStore store(file);
-  store.Load();  // must not throw
-  CHECK(store.All().empty());
+  CHECK(store.Find("celeste").has_value());
   CHECK(fs::exists(file.string() + ".bad"));
+  CHECK(store.Upsert(MakeGame("hades", "Hades")).has_value());
   fs::remove(file.string() + ".bad");
-}
-
-TEST_CASE("a second corrupt games.toml is kept beside the first, not over it") {
-  const fs::path file = TempFile("games-corrupt-twice.toml");
-  const auto write = [&](const std::string& text) {
-    std::ofstream out(file);
-    out << text;
-  };
-  const auto read = [](const std::string& path) {
-    std::ifstream in(path);
-    return std::string(std::istreambuf_iterator<char>(in), {});
-  };
-  write("first [ broken");
-  store::GameStore(file).Load();
-  write("second [ broken");
-  store::GameStore(file).Load();
-
-  CHECK(read(file.string() + ".bad") == "first [ broken");
-  CHECK(read(file.string() + ".bad.2") == "second [ broken");
-  fs::remove(file.string() + ".bad");
-  fs::remove(file.string() + ".bad.2");
 }
 
 TEST_CASE("concurrent updates all save, and the file ends with every change") {
   // The API serves requests on several threads, and batch actions send one per game.
-  const fs::path file = TempFile("games-concurrent.toml");
+  const fs::path file = TempFile("games-concurrent.db");
   store::GameStore store(file);
   store.Load();
   constexpr int kGames = 8;
