@@ -20,7 +20,7 @@ Config::Config(std::filesystem::path file)
   document_ = Schema::Instance().Defaults();
 }
 
-void Config::Load() {
+void Config::Load(const std::string& fallback) {
   const Schema& schema = Schema::Instance();
   std::lock_guard lock(mutex_);
   document_ = schema.Defaults();
@@ -28,47 +28,61 @@ void Config::Load() {
   ++revision_;
   keep_file_ = false;
   keep_frontend_file_ = false;
+  loaded_text_.clear();
 
   std::error_code ec;
-  const auto write_defaults = [&] {
+  const auto write_text = [&](const auto& text) {
     std::filesystem::create_directories(file_.parent_path(), ec);
     std::ofstream out(file_);
-    if (out) out << tomljson::ToToml(document_);
+    if (out) out << text;
+  };
+  const auto apply = [&](const toml::table& table, const std::string& text) {
+    json whole = tomljson::ToJson(table);
+
+    // An individual bad value falls back to its default rather than
+    // rejecting the whole file, so one typo cannot leave the user with a
+    // daemon that refuses to start.
+    for (const std::string& problem : schema.ValidateDocument(whole)) {
+      log::Warn("settings: {} (using the default)", problem);
+    }
+    for (const Entry& entry : schema.Entries()) {
+      const auto pointer = Schema::Pointer(entry.key);
+      if (!whole.contains(pointer)) continue;
+      if (schema.Validate(entry.key, whole[pointer])) whole[pointer] = entry.default_value;
+    }
+
+    document_.merge_patch(whole);
+    loaded_text_ = text;
   };
 
   if (!std::filesystem::exists(file_, ec)) {
     log::Info("no settings at {}, writing defaults", file_.string());
-    write_defaults();
+    write_text(tomljson::ToToml(document_));
   } else {
-    toml::parse_result parsed = toml::parse_file(file_.string());
-    if (!parsed) {
-      if (const auto broken = SetAside(file_)) {
+    std::ifstream in(file_);
+    const std::string text{std::istreambuf_iterator<char>(in), {}};
+    toml::parse_result parsed = toml::parse(text, file_.string());
+    if (parsed) {
+      apply(parsed.table(), text);
+    } else if (const auto broken = SetAside(file_)) {
+      toml::parse_result last_good = toml::parse(fallback);
+      if (!fallback.empty() && last_good) {
+        log::Error(
+            "settings at {} could not be parsed ({}); kept it as {} and went back to the last settings that loaded",
+            file_.string(), parsed.error().description(), broken->string());
+        write_text(fallback);
+        apply(last_good.table(), fallback);
+      } else {
         log::Error(
             "settings at {} could not be parsed ({}); kept it as {} and continuing with defaults",
             file_.string(), parsed.error().description(), broken->string());
-        write_defaults();
-      } else {
-        keep_file_ = true;
-        log::Error(
-            "settings at {} could not be parsed ({}) or set aside ({}); continuing with defaults",
-            file_.string(), parsed.error().description(), broken.error().message);
+        write_text(tomljson::ToToml(document_));
       }
     } else {
-      json whole = tomljson::ToJson(parsed.table());
-
-      // An individual bad value falls back to its default rather than
-      // rejecting the whole file, so one typo cannot leave the user with a
-      // daemon that refuses to start.
-      for (const std::string& problem : schema.ValidateDocument(whole)) {
-        log::Warn("settings: {} (using the default)", problem);
-      }
-      for (const Entry& entry : schema.Entries()) {
-        const auto pointer = Schema::Pointer(entry.key);
-        if (!whole.contains(pointer)) continue;
-        if (schema.Validate(entry.key, whole[pointer])) whole[pointer] = entry.default_value;
-      }
-
-      document_.merge_patch(whole);
+      keep_file_ = true;
+      log::Error(
+          "settings at {} could not be parsed ({}) or set aside ({}); continuing with defaults",
+          file_.string(), parsed.error().description(), broken.error().message);
     }
   }
 
@@ -106,6 +120,11 @@ Result<void> Config::SaveFrontendFile() {
   std::lock_guard lock(mutex_);  // frontend_ is also written by Patch and SetFrontendSettings
   if (keep_frontend_file_) return KeptFileError(frontend_file_);
   return WriteFileAtomic(frontend_file_, tomljson::ToTomlText(frontend_), "config_write_failed");
+}
+
+std::string Config::LoadedText() const {
+  std::lock_guard lock(mutex_);
+  return loaded_text_;
 }
 
 json Config::Document() const {

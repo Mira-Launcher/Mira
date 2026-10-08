@@ -130,6 +130,17 @@ TEST_CASE("an unparseable settings file is quarantined, not fatal") {
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());  // falls back to defaults
   CHECK(fs::exists(file.string() + ".bad"));
   fs::remove(file.string() + ".bad");
+
+  // With the last settings that loaded, those come back instead of defaults.
+  {
+    std::ofstream out(file);
+    out << "this is not [ valid toml";
+  }
+  const std::string last_good = "[scan]\ndebounce_ms = 1234\n";
+  config.Load(last_good);
+  CHECK(config.GetInt("scan.debounce_ms") == 1234);
+  CHECK(config.LoadedText() == last_good);
+  fs::remove(file.string() + ".bad");
 }
 
 TEST_CASE("Resolver layers game overrides above the config file above defaults") {

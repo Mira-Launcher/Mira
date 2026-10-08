@@ -72,7 +72,7 @@ Resets one key, or everything when `key` is left out.
 
 ## Games
 
-Stored in `games.toml`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
+Stored in the library database, `mira.db`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
 
 ### `GET /v1/games[?status=][&tag=][&include_hidden=true]`
 Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. With `scan.tag_by_root` on, detected games are tagged with the name of their library root.
@@ -451,7 +451,7 @@ Rewrites Mira's own desktop entries now.
 
 ## Metadata
 
-Store info and art are cached in the config directory (`metadata/<id>.json`, `artwork/<id>/<slot>.*`), never in `games.toml`. Sources:
+Store info and art are cached in the config directory (`metadata/<id>.json`, `artwork/<id>/<slot>.*`), never in the library database. Sources:
 
 - **Steam games**: Steam's store API, review summary and CDN art (`cover`, `hero`, `capsule`, `header`), plus the ProtonDB tier. No key needed.
 - **GOG, itch and Amazon**: cover and hero from GOG Galaxy's games database, with nile's cached art as a fallback for Amazon.

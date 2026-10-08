@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(mira LANGUAGES CXX VERSION 0.13.1)
+project(mira LANGUAGES C CXX VERSION 0.13.1)
 
-# Dependencies are header-only and vendored in third_party/, so a build needs
-# nothing fetched at configure time, and the only external dependency is the
-# C++ standard library itself.
+# Dependencies are vendored in third_party/ (header-only, except SQLite's one
+# C file), so a build needs nothing fetched at configure time, and the only
+# external dependency is the C++ standard library itself.
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -63,6 +63,15 @@ add_library(mira_third_party INTERFACE)
 target_compile_definitions(mira_third_party INTERFACE TOML_EXCEPTIONS=0 CPPHTTPLIB_LISTEN_BACKLOG=128)
 target_include_directories(mira_third_party SYSTEM INTERFACE third_party)
 
+# SQLite's amalgamation, built the same for every package rather than linked
+# against whichever version (and options) a distro ships.
+add_library(mira_sqlite STATIC third_party/sqlite3.c)
+target_include_directories(mira_sqlite SYSTEM PUBLIC third_party)
+target_compile_definitions(mira_sqlite PRIVATE SQLITE_THREADSAFE=1 SQLITE_DEFAULT_FOREIGN_KEYS=1 SQLITE_DQS=0
+  SQLITE_OMIT_LOAD_EXTENSION SQLITE_OMIT_DEPRECATED)
+target_link_libraries(mira_sqlite PRIVATE mira_glibc_compat)
+set_target_properties(mira_sqlite PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 file(GLOB_RECURSE MIRA_CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/mirad_main\\.cpp$")
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/cli/.*\\.cpp$")
@@ -77,7 +86,7 @@ list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")
 # mira_core is not itself broadcasting -Werror to it).
 add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
-target_link_libraries(mira_core PRIVATE mira_flags)
+target_link_libraries(mira_core PRIVATE mira_flags mira_sqlite)
 target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
 
 option(MIRA_PCH "Precompile the common headers" ON)

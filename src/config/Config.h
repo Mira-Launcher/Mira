@@ -26,9 +26,12 @@ public:
   explicit Config(std::filesystem::path file);
 
   // Never fails: a missing file is created from defaults and an unparseable
-  // one is preserved as <file>.bad and replaced. Priority one is that the
-  // daemon starts and works, so a broken config degrades rather than blocking.
-  void Load();
+  // one is preserved as <file>.bad and replaced, by `fallback` (the last file
+  // that parsed) when there is one, otherwise by defaults. Priority one is that
+  // the daemon starts and works, so a broken config degrades rather than blocking.
+  void Load(const std::string& fallback = {});
+  // The text of settings.toml as Load parsed it, empty when it didn't.
+  std::string LoadedText() const;
   Result<void> Save();
 
   nlohmann::json Document() const;  // backend keys only
@@ -68,6 +71,7 @@ private:
   nlohmann::json document_;
   nlohmann::json frontend_ = nlohmann::json::object();
   // An unparseable file couldn't be set aside: saving would overwrite the only copy.
+  std::string loaded_text_;
   bool keep_file_ = false;
   bool keep_frontend_file_ = false;
   std::atomic<std::uint64_t> revision_{0};

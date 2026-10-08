@@ -46,7 +46,7 @@ struct Fixture {
         empty_data_home(TempDir((std::string(name) + "-empty-data-home").c_str())),
         bin_dir(TempDir((std::string(name) + "-bin").c_str())),
         config(state_dir / "settings.toml"),
-        games(state_dir / "games.toml") {
+        games(state_dir / "mira.db") {
     for (const char* var : {"XDG_DATA_HOME", "XDG_DATA_DIRS", "PATH"}) {
       const char* value = std::getenv(var);
       saved_env[var] = value != nullptr ? std::optional<std::string>(value) : std::nullopt;

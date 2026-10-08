@@ -11,7 +11,7 @@
 namespace mira::config {
 
 // Global: one value for the whole daemon. PerGame: the same value, but a game
-// can also override it (games.toml overrides, PATCH /v1/games/{id}/config).
+// can also override it (a game's overrides, PATCH /v1/games/{id}/config).
 // GameOnly: only meaningful for a single game, so a settings screen lists it
 // per game and not globally.
 enum class Scope { Global, PerGame, GameOnly };

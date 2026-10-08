@@ -43,8 +43,8 @@ struct Candidate {
 };
 
 // A game's id is a filesystem-safe slug derived from its name (e.g.
-// "celeste"), not an opaque integer: games.toml is meant to be readable and
-// hand-editable, and a slug reads naturally as a TOML table key's value.
+// "celeste"), not an opaque integer, so it reads naturally in the API, the
+// CLI and log lines.
 struct Game {
   std::string id;
   std::string install_path;   // parent_path() is which library root this came from
@@ -126,7 +126,7 @@ nlohmann::json ToJson(const Game& game);
 nlohmann::json ToJson(const RunnerBuild& runner);
 nlohmann::json ToJson(const Event& event);
 
-// Inverse of ToJson(const Game&), used when loading games.toml. Missing or
+// Inverse of ToJson(const Game&), used when loading the library. Missing or
 // malformed fields fall back to their model defaults rather than failing the
 // whole load, so one bad entry cannot take down the rest of the library.
 Game GameFromJson(const nlohmann::json& document);

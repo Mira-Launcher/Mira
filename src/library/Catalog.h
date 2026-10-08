@@ -11,7 +11,7 @@
 // What you *own* on a storefront, as opposed to what Mira actually tracks.
 //
 // These are two different things and conflating them was a mistake worth
-// spelling out: a tracked game (model::Game, games.toml) is something Mira
+// spelling out: a tracked game (model::Game, in mira.db) is something Mira
 // manages -- installed, provisioned, launchable, with session history. A
 // catalog entry is an entitlement: a title the account owns, most of which
 // aren't on disk at all. Persisting entitlements as tracked games bloated a

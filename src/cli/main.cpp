@@ -1,7 +1,7 @@
 // mira: command-line client for mirad.
 //
 // A pure REST client over the same Unix socket the frontend uses: no direct
-// access to settings.toml/games.toml, no special privilege.
+// access to settings.toml or the library database, no special privilege.
 
 #include <httplib.h>
 #include <json.hpp>

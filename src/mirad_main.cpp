@@ -1,6 +1,6 @@
 // mirad: the Mira backend daemon.
 //
-// Owns settings.toml and games.toml, serves the REST API described in
+// Owns settings.toml and the library database (mira.db), serves the REST API described in
 // docs/api.md over a Unix domain socket, and watches every enabled library
 // root so a dropped-in game folder is picked up automatically (see
 // library/Watcher.h). This binary does not daemonize itself (no
@@ -76,8 +76,13 @@ int main(int argc, char** argv) {
     return 2;
   }
 
+  // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
+  mira::store::GameStore games(mira::paths::DatabaseFile());
+  games.Load();
+
   mira::config::Config config(mira::paths::SettingsFile());
-  config.Load();
+  config.Load(games.SettingsSnapshot());
+  if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);
   } else if (level == "warn") {
@@ -85,9 +90,6 @@ int main(int argc, char** argv) {
   } else if (level == "error") {
     mira::log::SetLevel(mira::log::Level::Error);
   }
-
-  mira::store::GameStore games(mira::paths::GamesFile());
-  games.Load();
 
   mira::api::EventBus events;
   mira::loghub::SetJournalDirectory(mira::paths::UserDir() / "logs");

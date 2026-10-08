@@ -66,7 +66,7 @@ TEST_CASE("PrefixDir skips a folder another game already owns even though it isn
   config.Load();
   const fs::path root = TempDir("prefix-naming-owned-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
-  store::GameStore games(root / "games.toml");
+  store::GameStore games(root / "mira.db");
   games.Load();
   model::Game first;
   first.id = "a";

@@ -8,7 +8,7 @@ Mira is a Linux game launcher for native games and Windows games run through Win
 | `mira`     | Command-line client. |
 | `mira-gui` | Qt frontend. |
 
-The only link between them is the REST API in [`api.md`](api.md), served over a Unix socket. `mira-gui` does not link against `mira_core` and never reads `settings.toml` or `games.toml` itself. If the frontend needs something the API doesn't offer, add an endpoint.
+The only link between them is the REST API in [`api.md`](api.md), served over a Unix socket. `mira-gui` does not link against `mira_core` and never reads `settings.toml` or the library database itself. If the frontend needs something the API doesn't offer, add an endpoint.
 
 Every endpoint gets a matching `mira` command, so anything the GUI can do can also be done from a terminal.
 
@@ -20,7 +20,7 @@ src/
   config/     Schema (every setting declared once), Config (settings.toml and frontend.toml),
               Resolver (default -> file -> per-game lookup), KnownExePatterns and RunnerSources (plain data)
   model/      Game, RunnerBuild, Event, Candidate: plain structs with ToJson/FromJson
-  store/      GameStore, backed by games.toml
+  store/      GameStore and Database, backed by mira.db (SQLite)
   library/    Detector, Scanner, AutoSetup, AutoInstall, Watcher, ArchiveExtractor, WinePrefix,
               PrefixNaming, Relocate, ILibrarySource, SourceRegistry, Catalog, SourceRemoval
   runner/     IRunner with Native, Proton, Wine and Steam runners, RunnerRegistry, Downloader,
@@ -56,7 +56,7 @@ All user state lives in `$XDG_CONFIG_HOME/mira` (normally `~/.config/mira`):
 
 ```
 settings.toml   backend settings, validated against config/Schema.cpp
-games.toml      the library, one [[game]] per entry
+mira.db         the library (SQLite; mira.db.bak is a copy from the last start)
 frontend.toml   GUI settings, stored and returned verbatim by the backend
 sessions/       records for sessions still running, or finished but not yet counted
 logs/           per-game output from the last launches

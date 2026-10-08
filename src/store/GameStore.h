@@ -10,29 +10,34 @@
 #include <vector>
 
 #include "core/Result.h"
+#include "store/Database.h"
 #include "model/Types.h"
 
 namespace mira::store {
 
-// The games.toml-backed source of truth for the library. One in-memory
-// vector guarded by one mutex, matching Config's approach: at the scale this
-// targets (hundreds of games, a single user) that is simpler than anything
-// else and no slower in practice. Every mutation is saved to disk before it
-// returns, so games.toml is never more than one write behind memory.
+// The library, in an SQLite database (mira.db). One in-memory copy of every
+// game, guarded by one mutex, answers reads; every mutation is written to the
+// database in a transaction first and reaches the copy only once it has.
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
 
-  // The directory games.toml itself lives in, the natural base for sibling
+  // The directory the database lives in, the natural base for sibling
   // state (sessions/, logs/) so it follows wherever a caller
   // (including a test) points the store, rather than hardcoding paths::UserDir().
   std::filesystem::path Dir() const { return file_.parent_path(); }
 
-  // Same never-fails contract as Config::Load: an unparseable file is kept as
-  // <file>.bad and the library starts empty rather than the daemon refusing
-  // to start.
+  // Never fails, like Config::Load. Opens (or creates) the database, checks it
+  // and backs it up to <file>.bak; a damaged file is set aside and the backup
+  // used. A games.toml beside it is imported once, then renamed
+  // games.toml.migrated.
   void Load();
-  Result<void> Save();
+
+  // The text of the last settings.toml that loaded cleanly, empty if none:
+  // what Config::Load falls back to when the file is broken.
+  std::string SettingsSnapshot();
+  void KeepSettingsSnapshot(const std::string& toml);
+
   // Changes whenever the library does, so a caller can keep what it derived from it until then.
   std::uint64_t Revision() const { return revision_.load(); }
 
@@ -43,7 +48,7 @@ public:
   bool HasInstallUnder(const std::string& dir) const;
 
   // Derives an id from the game's name, disambiguating against existing ids
-  // ("celeste", "celeste-2", ...) so games.toml stays readable.
+  // ("celeste", "celeste-2", ...) so ids stay readable.
   std::string NextId(const std::string& name) const;
 
   // Inserts or replaces a game wholesale, then saves.
@@ -74,9 +79,9 @@ public:
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
 
-  // While one of these lives, saves are held back and written once when the
-  // last one is destroyed (a failure is logged). For an import that upserts
-  // many games, which would otherwise rewrite games.toml once per game.
+  // While one of these lives, every change joins one transaction, committed
+  // when the last one is destroyed (a failure is logged and the changes
+  // dropped). For an import that upserts many games.
   class SaveBatch {
   public:
     explicit SaveBatch(GameStore& store);
@@ -90,18 +95,24 @@ public:
   [[nodiscard]] SaveBatch BatchSaves() { return SaveBatch(*this); }
 
 private:
+  Result<void> Open();
+  void ImportToml();
+  Result<void> Write(const model::Game& game);
+  Result<void> Delete(const std::string& id);
+  // Runs `write` in a transaction of its own, or in the open batch's.
+  Result<void> Transact(const std::function<Result<void>()>& write);
+  void ReadAll();
+
   mutable std::mutex mutex_;
-  // Held for a whole Save: concurrent saves share one temp file, and the last
-  // one to finish must also be the one holding the newest games_.
-  std::mutex save_mutex_;
   std::mutex folders_mutex_;
   std::filesystem::path file_;
+  Database db_;
   std::vector<model::Game> games_;
-  int batch_depth_ = 0;       // guarded by mutex_
-  bool batch_dirty_ = false;  // a save was held back; guarded by mutex_
-  // An unparseable file couldn't be set aside: saving would overwrite the only copy. Guarded by
-  // mutex_.
-  bool keep_file_ = false;
+  int batch_depth_ = 0;          // guarded by mutex_
+  bool batch_failed_ = false;    // a write in the open batch failed; guarded by mutex_
+  // The database couldn't be opened, or games.toml couldn't be imported: refuse
+  // changes rather than lose the library. Guarded by mutex_.
+  bool read_only_ = false;
   std::atomic<std::uint64_t> revision_{0};
 };
 
