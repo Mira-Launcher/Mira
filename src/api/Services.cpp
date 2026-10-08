@@ -293,10 +293,24 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
   // Through the store's own tool where it has one, so its records stay in sync.
-  if (files) {
+  if (files && game.source == "office") {
+    // The apps share one folder, so Office's own installer takes just this one out.
+    if (const auto host = games.Find(launchers::GameId(*launchers::Find("office")))) {
+      std::vector<std::string> apps = launchers::InstalledOfficeApps(*host);
+      std::erase(apps, game.source_ref);
+      if (auto removed = launchers::SetOfficeApps(config, games, events, std::move(apps)); !removed) return removed;
+    }
+  } else if (files) {
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
   }
-  if (prefix) {
+  if (prefix && !game.data_dir.empty()) {
+    const auto sharer = std::ranges::find_if(staying, [&](const model::Game& other) {
+      return other.id != game.id && other.data_dir == game.data_dir;
+    });
+    if (sharer != staying.end()) {
+      return Err("shared_prefix", std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
+                 "Remove the launcher it came with to delete its prefix.");
+    }
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
   }
   if (metadata) {

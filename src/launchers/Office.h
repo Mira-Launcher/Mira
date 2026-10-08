@@ -23,6 +23,7 @@ struct App {
   std::string_view ref;   // also the game id's suffix: office-<ref>
   std::string_view name;
   std::string_view exe;   // in kProgramDir
+  std::string_view mime;  // the file types it opens, as a desktop entry's MimeType=
 };
 
 inline constexpr std::string_view kProgramDir = "Program Files/Microsoft Office/root/Office16";
@@ -32,8 +33,9 @@ inline constexpr std::string_view kSetupFile = "office-setup.exe";
 // Every app Mira imports when its exe is installed.
 std::span<const App> Apps();
 
-// The Office Deployment Tool configuration for the configured plan.
-std::string Configuration(const config::Config& config);
+// The Office Deployment Tool configuration that leaves exactly `apps` (App refs) installed, for the
+// configured plan; none removes Office.
+std::string Configuration(const config::Config& config, std::span<const std::string> apps);
 
 // Installs a newer shims release into `host`'s prefix when one is out, checked
 // at most every few hours. Quiet and harmless when offline.

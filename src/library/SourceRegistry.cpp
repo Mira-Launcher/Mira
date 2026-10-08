@@ -4,6 +4,7 @@
 #include "epic/EpicSource.h"
 #include "gog/GogSource.h"
 #include "itch/ItchSource.h"
+#include "launchers/OfficeSource.h"
 #include "steam/SteamSource.h"
 
 namespace mira::library {
@@ -16,6 +17,7 @@ std::vector<std::unique_ptr<ILibrarySource>> BuildSources() {
   sources.push_back(std::make_unique<gog::GogSource>());
   sources.push_back(std::make_unique<itch::ItchSource>());
   sources.push_back(std::make_unique<amazon::AmazonSource>());
+  sources.push_back(std::make_unique<launchers::OfficeSource>());
   return sources;
 }
 

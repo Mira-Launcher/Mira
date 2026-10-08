@@ -8,7 +8,7 @@
 using namespace mira;
 namespace fs = std::filesystem;
 
-TEST_CASE("setup::Install writes the wrapper, links, desktop entry and unit; Remove undoes it") {
+TEST_CASE("setup::Install writes the wrapper, links, desktop entry and unit; Remove undoes it and drops the games' entries") {
   const fs::path dir = fs::temp_directory_path() / "mira-tests" / "setup";
   fs::remove_all(dir);
   fs::create_directories(dir);
@@ -24,7 +24,13 @@ TEST_CASE("setup::Install writes the wrapper, links, desktop entry and unit; Rem
   CHECK(unit_text.find("ExecStart=" + (paths.bin_dir / "mirad").string()) != std::string::npos);
   CHECK(fs::exists(paths.icons_dir / "hicolor/256x256/apps/mira.png"));
 
+  // A game's menu entry runs the wrapper; another app's entry is left alone.
+  std::ofstream(paths.applications_dir / "mira-balatro.desktop") << "[Desktop Entry]\nX-Mira-Game-Id=balatro\n";
+  std::ofstream(paths.applications_dir / "mira-other.desktop") << "[Desktop Entry]\nName=Other\n";
+
   REQUIRE(setup::Remove(paths));
+  CHECK_FALSE(fs::exists(paths.applications_dir / "mira-balatro.desktop"));
+  CHECK(fs::exists(paths.applications_dir / "mira-other.desktop"));
   CHECK_FALSE(fs::exists(paths.bin_dir / "mira"));
   CHECK_FALSE(fs::exists(fs::symlink_status(paths.bin_dir / "mirad")));
   CHECK_FALSE(fs::exists(paths.applications_dir / "mira.desktop"));

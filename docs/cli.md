@@ -24,7 +24,7 @@ mira: searching SteamGridDB needs an API key (HTTP 502)
 Execs `mirad` (next to `mira` or on `PATH`) with the given arguments.
 
 ### `mira setup [--enable-service] [--remove|--uninstall]`
-Run from the AppImage (`./Mira-x86_64.AppImage setup`). Writes a `~/.local/bin/mira` wrapper with `mirad` and `mira-run` links, a desktop entry with an "Uninstall Mira" action, the icon and a systemd user unit. `--enable-service` also enables the unit. `--remove` undoes all of it, and `--uninstall` also deletes the AppImage after asking. Games, settings and prefixes are never touched.
+Run from the AppImage (`./Mira-x86_64.AppImage setup`). Writes a `~/.local/bin/mira` wrapper with `mirad` and `mira-run` links, a desktop entry with an "Uninstall Mira" action, the icon and a systemd user unit. `--enable-service` also enables the unit. A running `mirad` then points the games' menu entries at the wrapper. `--remove` undoes all of it, games' menu entries included, and `--uninstall` also deletes the AppImage after asking. Games, settings and prefixes are never touched.
 
 ### `mira watch`
 Tails `GET /v1/events` and prints each event as it arrives.
@@ -77,8 +77,8 @@ mira set celeste --tag hidden
 
 ## Playing
 
-### `mira launch <id>` / `mira stop <id>`
-`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam://rungameid/<appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first.
+### `mira launch <id> [file...]` / `mira stop <id>`
+`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam://rungameid/<appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first. Files are passed to a Microsoft 365 app to open.
 
 ### `mira run <id> --exe PATH [--args ARGS]`
 `POST /v1/games/{id}/run`. Runs any executable in the game's prefix, creating the prefix first if needed. This is the manual way to run an installer:

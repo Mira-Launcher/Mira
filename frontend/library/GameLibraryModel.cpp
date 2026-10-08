@@ -1,5 +1,6 @@
 #include "GameLibraryModel.h"
 
+#include <QDateTime>
 #include <QTimer>
 
 #include <algorithm>
@@ -10,7 +11,11 @@
 
 namespace mira_gui {
 
-GameLibraryModel::GameLibraryModel(QObject* parent) : QAbstractListModel(parent) {}
+GameLibraryModel::GameLibraryModel(QObject* parent) : QAbstractListModel(parent) {
+  launch_tick_ = new QTimer(this);
+  launch_tick_->setInterval(400);
+  connect(launch_tick_, &QTimer::timeout, this, &GameLibraryModel::TickLaunching);
+}
 
 void GameLibraryModel::Replace(const std::vector<GameSummary>& games) {
   std::unordered_map<std::string, bool> listed;
@@ -101,7 +106,29 @@ void GameLibraryModel::RemoveSource(const std::string& source) {
   Remove(ids);
 }
 
+void GameLibraryModel::SetLaunching(const std::string& id, bool launching) {
+  if (launching) {
+    launching_[id] = QDateTime::currentMSecsSinceEpoch();
+    launch_tick_->start();
+  } else if (launching_.erase(id) == 0) {
+    return;
+  }
+  Touch(id);
+}
+
+void GameLibraryModel::TickLaunching() {
+  const qint64 now = QDateTime::currentMSecsSinceEpoch();
+  std::vector<std::string> ids;
+  for (const auto& [id, since] : launching_) ids.push_back(id);
+  for (const std::string& id : ids) {
+    if (now - launching_[id] >= kLaunchingMs) launching_.erase(id);
+    Touch(id);
+  }
+  if (launching_.empty()) launch_tick_->stop();
+}
+
 void GameLibraryModel::SetRunning(const std::string& id, bool running) {
+  if (!running) SetLaunching(id, false);
   const auto found = rows_.find(id);
   if (found == rows_.end() || games_[found->second].running == running) return;
   games_[found->second].running = running;
@@ -162,7 +189,12 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::ProgressRole:
     case GameTileDelegate::ProgressDetailRole: {
       const auto installing = install_progress ? install_progress(game.id) : std::nullopt;
-      if (!installing) return {};
+      if (!installing) {
+        const auto launching = launching_.find(game.id);
+        if (role != GameTileDelegate::StatusTextRole || launching == launching_.end()) return {};
+        const qint64 dots = (QDateTime::currentMSecsSinceEpoch() - launching->second) / 400 % 4;
+        return "Launching" + QString(".").repeated(static_cast<int>(dots));
+      }
       if (role == GameTileDelegate::StatusTextRole) return installing->status;
       if (role == GameTileDelegate::ProgressDetailRole) return installing->detail;
       return installing->fraction;

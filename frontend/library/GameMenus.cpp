@@ -87,7 +87,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   toggle_app->setToolTip(
       "An app is a program rather than a game: no playtime, and kept out of Continue");
   menu.addSeparator();
-  QAction* remove = menu.addAction("Remove from library…");
+  QAction* remove = menu.addAction(game.source == "office" ? "Uninstall…" : "Remove from library…");
 
   QAction* chosen = menu.exec(global_pos);
   if (chosen == play) {

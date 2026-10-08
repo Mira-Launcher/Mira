@@ -194,13 +194,14 @@ void EndSession(const Launcher& launcher, const std::string& prefix) {
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGKILL);
 }
 
+// `is_done` replaces the check for `step.done`'s file.
 Result<void> RunInstaller(config::Config& config, const Launcher& launcher, const Setup& step, const model::Game& game,
-                          const std::function<void(double)>& on_progress) {
+                          const std::function<void(double)>& on_progress, const std::function<bool()>& is_done = {}) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
   const fs::path setup = downloads / step.file;
   const fs::path done = step.done.empty() ? fs::path(launcher.exe) : fs::path(step.done);
-  const auto finished = [&] { return FindFile(game.data_dir, done).has_value(); };
+  const auto finished = [&] { return is_done ? is_done() : FindFile(game.data_dir, done).has_value(); };
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
@@ -219,6 +220,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   run_as.args.clear();
   auto command = resolved->runner->BuildCommand(run_as, resolved->build);
   if (!command) return std::unexpected(command.error());
+  // Proton silences Wine; its errors are often the only clue why a setup quit.
+  command->env.try_emplace("WINEDEBUG", "fixme-all,err+all");
   std::string windows_downloads = "Z:" + downloads.string();
   std::ranges::replace(windows_downloads, '/', '\\');
   for (std::string arg : step.args) {
@@ -258,7 +261,8 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // launcher exe exists afterwards decides.
   const std::string setup_dir = strings::ToLower("z:" + downloads.string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
-  while (::waitpid(*pid, nullptr, WNOHANG) != *pid) {
+  int status = 0;
+  while (::waitpid(*pid, &status, WNOHANG) != *pid) {
     CopyNewOutput(launcher, output_file, copied);
     if (step.progress) {
       // One line in the log that keeps updating (LogHub treats a leading "NN%" as a progress reading).
@@ -344,7 +348,11 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   }
   CopyNewOutput(launcher, output_file, copied);
   if (!finished()) {
-    return Err("launcher_not_installed", std::format("{} finished but {} wasn't installed", step.file, launcher.name));
+    const std::string how = WIFEXITED(status) ? std::format("exited with code {}", WEXITSTATUS(status))
+                            : WIFSIGNALED(status) ? std::format("was killed by signal {}", WTERMSIG(status))
+                                                  : "finished";
+    return Err("launcher_not_installed", std::format("{} {} but {} wasn't installed", step.file, how, launcher.name),
+               std::format("Its output, with Wine's errors, is in {}", output_file.string()));
   }
   return {};
 }
@@ -421,7 +429,10 @@ std::string WithoutNoise(std::string_view text) {
   constexpr std::array kNoise = {std::string_view("unable to use parent for game drive"),
                                  std::string_view("'Windows, Version=255.255.255.255"),
                                  std::string_view("InspectorOfficeGadget"),
-                                 std::string_view("xpdAgent.Log:telemetryService")};
+                                 std::string_view("xpdAgent.Log:telemetryService"),
+                                 // Wine's own at every start: no Bluetooth driver, and the touch keyboard's UI hook.
+                                 std::string_view("Services\\winebth"), std::string_view("err:tabtip:"),
+                                 std::string_view("57865755-6c05-4522-98df-4ca658b768ef")};
   const auto noise = [&](std::string_view line) {
     return std::ranges::any_of(kNoise, [&](std::string_view part) { return line.contains(part); });
   };
@@ -475,14 +486,12 @@ const std::vector<Launcher>& All() {
     Launcher m365;
     m365.id = "office";
     m365.name = "Microsoft 365";
-    m365.exe = std::format("{}/EXCEL.EXE", office::kProgramDir);
+    // Set up is the prefix and the Edge WebView2 runtime Office signs in with; each app is then installed
+    // on its own through SetOfficeApps.
+    m365.exe = "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe";
     m365.tricks = {"corefonts", "msxml6", "riched20", "gdiplus"};
-    // Both from Microsoft: the Edge WebView2 runtime Office signs in with, then
-    // the Office Deployment Tool, which downloads and installs Office.
     m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
-                      "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe", nullptr},
-                     {"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
-                      {"/configure", "{downloads}\\office-configuration.xml"}, "", office::InstallPercent, office::InstallBytes, office::DownloadProgress, true}};
+                    "", nullptr, {}, {}, true}};
     // Office presents with sync interval 0; under DXVK that tears into flicker.
     m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
@@ -505,6 +514,46 @@ const Launcher* ForGame(const model::Game& game) {
 bool Installed(const store::GameStore& games, const Launcher& launcher) {
   const auto game = games.Find(GameId(launcher));
   return game && game->status == model::GameStatus::Ready;
+}
+
+std::vector<std::string> InstalledOfficeApps(const model::Game& host) {
+  std::vector<std::string> apps;
+  std::error_code ec;
+  for (const office::App& app : office::Apps()) {
+    if (fs::is_regular_file(fs::path(host.data_dir) / "drive_c" / office::kProgramDir / app.exe, ec)) apps.emplace_back(app.ref);
+  }
+  return apps;
+}
+
+Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
+                           std::vector<std::string> apps) {
+  const Launcher& launcher = *Find("office");
+  const auto host = games.Find(GameId(launcher));
+  if (!host || host->status != model::GameStatus::Ready) return LauncherNotInstalled(launcher.id, launcher.name);
+  if (!BeginInstall(launcher)) return Err("install_running", "Microsoft 365's installer is already running");
+  loghub::Begin(LogChannel(launcher));
+  const fs::path downloads = paths::UserDir() / "downloads";
+  std::error_code ec;
+  fs::create_directories(downloads, ec);
+  std::ofstream(downloads / "office-configuration.xml") << office::Configuration(config, apps);
+  const Setup step{"https://officecdn.microsoft.com/pr/wsus/setup.exe", std::string(office::kSetupFile),
+                   {"/configure", "{downloads}\\office-configuration.xml"}, "", office::InstallPercent,
+                   office::InstallBytes, office::DownloadProgress, true};
+  // Done once exactly the wanted apps are there.
+  const auto is_done = [&] {
+    std::vector<std::string> now = InstalledOfficeApps(*host);
+    std::ranges::sort(now);
+    std::ranges::sort(apps);
+    return now == apps;
+  };
+  Result<void> done = RunInstaller(config, launcher, step, *host, {}, is_done);
+  if (done) {
+    if (auto imported = Import(config, games, events, launcher); !imported) done = std::unexpected(imported.error());
+  }
+  Say(launcher, done ? "Done." : "Failed: " + done.error().message);
+  loghub::End(LogChannel(launcher));
+  SetState(launcher, done ? "finished" : "failed");
+  return done;
 }
 
 bool BeginInstall(const Launcher& launcher) {
@@ -573,6 +622,9 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
   if (launcher->id == "office" && game.source != "launcher" && !game.exe_path.empty()) {
     run_as.install_path = game.install_path;
     run_as.exe_path = game.exe_path;
+    // Proton's default verb waits for the prefix's running apps to exit first, so a second app wouldn't
+    // start until the first closed.
+    run_as.env["PROTON_VERB"] = "run";
   }
   // The game's own id, so its window is its own app rather than the launcher's.
   run_as.id = game.id;

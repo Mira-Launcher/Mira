@@ -160,27 +160,19 @@ TEST_CASE("launchers: Office's install percent comes from Click-to-Run's log, UT
   CHECK_FALSE(launchers::office::InstallPercent(prefix, since + std::chrono::hours(1)).has_value());
 }
 
-TEST_CASE("launchers: Office installs only the apps picked, and refuses an empty or unknown pick") {
+TEST_CASE("launchers: Office's configuration installs exactly the apps given, and none removes it") {
   const fs::path state = test::TempDir("office-apps");
   config::Config config(state / "settings.toml");
   config.Load();
 
-  // The default is everything: nothing the five apps are named for is excluded.
-  const std::string all = launchers::office::Configuration(config);
-  for (const char* app : {"Word", "Excel", "PowerPoint", "Outlook", "OneNote"}) {
-    CHECK(all.find(std::string("<ExcludeApp ID=\"") + app + "\"/>") == std::string::npos);
-  }
-
-  REQUIRE(config.Set("launchers.office.apps", nlohmann::json::array({"excel", "word"})));
-  const std::string some = launchers::office::Configuration(config);
+  const std::vector<std::string> apps = {"excel", "word"};
+  const std::string some = launchers::office::Configuration(config, apps);
   CHECK(some.find("<ExcludeApp ID=\"Excel\"/>") == std::string::npos);
   CHECK(some.find("<ExcludeApp ID=\"Word\"/>") == std::string::npos);
-  for (const char* app : {"PowerPoint", "Outlook", "OneNote"}) {
+  for (const char* app : {"PowerPoint", "Outlook", "OneNote", "Access", "Publisher"}) {
     CHECK(some.find(std::string("<ExcludeApp ID=\"") + app + "\"/>") != std::string::npos);
   }
-
-  CHECK_FALSE(config.Set("launchers.office.apps", nlohmann::json::array()));
-  CHECK_FALSE(config.Set("launchers.office.apps", nlohmann::json::array({"excel", "access"})));
+  CHECK(launchers::office::Configuration(config, {}).find("<Remove All=\"TRUE\"/>") != std::string::npos);
 }
 
 TEST_CASE("launchers: setup output drops the lines that only look like trouble, and keeps real ones") {
