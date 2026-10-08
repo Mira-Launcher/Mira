@@ -126,7 +126,10 @@ Result<void> Database::BackUp(const std::filesystem::path& file) {
   std::filesystem::remove(temp, ec);
   auto vacuum = Prepare("VACUUM INTO ?");
   if (!vacuum) return std::unexpected(vacuum.error());
-  if (auto done = vacuum->Bind(1, temp.string()).Run(); !done) return done;
+  if (auto done = vacuum->Bind(1, temp.string()).Run(); !done) {
+    std::filesystem::remove(temp, ec);
+    return done;
+  }
   std::filesystem::rename(temp, file, ec);
   if (ec) return Err("database_error", std::format("could not write {}: {}", file.string(), ec.message()), kDiskHint);
   return {};

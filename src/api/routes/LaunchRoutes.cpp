@@ -389,7 +389,10 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
     }
 
     std::int64_t session_started_at = 0;
-    std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at);
+    if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at).ec !=
+        std::errc()) {
+      return SendError(res, 500, "wrapper_failed", std::format("mira-run sent no session start: {}", status.detail));
+    }
     if (auto launched = s.supervisor.LaunchWrapped(*game, *wrapper_pid, session_started_at); !launched) {
       return SendError(res, 409, launched.error());
     }

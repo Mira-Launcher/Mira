@@ -98,7 +98,10 @@ void MetadataStore::Load() {
   }
 
   auto rows = db_.Prepare("SELECT id, slot, version FROM artwork");
-  if (!rows) return;
+  if (!rows) {
+    log::Error("could not read the art versions: {}", rows.error().message);
+    return;
+  }
   for (auto row = rows->Step(); row && *row; row = rows->Step()) {
     if (InArtVersions(rows->Text(1))) versions_[rows->Text(0)][rows->Text(1)] = rows->Text(2);
   }
