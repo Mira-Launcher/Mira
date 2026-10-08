@@ -165,3 +165,31 @@ TEST_CASE("Resolver layers game overrides above the config file above defaults")
   CHECK_FALSE(Resolver::IsOverridable("scan.max_depth"));
   CHECK(bogus.Resolve("library_roots").layer != Layer::Game);
 }
+
+TEST_CASE("a hand edit is picked up, survives an app change, and a broken one changes nothing") {
+  const fs::path file = TempFile("settings-hand-edit.toml");
+  Config config(file);
+  config.Load();
+  const auto write = [&file](const std::string& text) { std::ofstream(file, std::ios::trunc) << text; };
+
+  write("[scan]\ndebounce_ms = 1234\n");
+  auto changed = config.Reload();
+  REQUIRE(changed.has_value());
+  CHECK(*changed == std::vector<std::string>{"scan.debounce_ms"});
+  CHECK(config.GetInt("scan.debounce_ms") == 1234);
+
+  // An edit the watcher hasn't reported yet is merged, not saved over.
+  write("[scan]\ndebounce_ms = 4321\n");
+  REQUIRE(config.Set("log.level", std::string("debug")).has_value());
+  CHECK(config.GetInt("scan.debounce_ms") == 4321);
+  Config reread(file);
+  reread.Load();
+  CHECK(reread.GetInt("scan.debounce_ms") == 4321);
+  CHECK(reread.GetString("log.level") == "debug");
+
+  write("[scan\ndebounce_ms = 1\n");
+  auto broken = config.Reload();
+  REQUIRE_FALSE(broken.has_value());
+  CHECK(broken.error().message.find("line 1") != std::string::npos);
+  CHECK(config.GetInt("scan.debounce_ms") == 4321);
+}

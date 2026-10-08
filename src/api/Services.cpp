@@ -77,6 +77,21 @@ void Services::BeginStopping() {
 
 void Services::StartExternalWatch() { external_watch_ = std::thread(&Services::WatchExternalGames, this); }
 
+void Services::ReloadSettings() {
+  auto changed = config.Reload();
+  if (!changed) {
+    log::Warn("{}", changed.error().message);
+    events.PublishNotification(model::NotifyLevel::Error,
+                               std::format("{}. {}", changed.error().message, changed.error().hint));
+    return;
+  }
+  if (changed->empty()) return;  // Mira's own save, or an edit that changed no setting
+  log::Info("settings.toml was edited: {} setting(s) changed", changed->size());
+  SyncDesktopEntries();
+  if (std::ranges::contains(*changed, std::string("library_roots")) && on_roots_changed) on_roots_changed();
+  events.Publish("config.changed", {{"keys", *changed}, {"frontend", config.FrontendSettings()}});
+}
+
 void Services::SyncDesktopEntries() {
   if (auto synced = desktop::DesktopEntries(config, games.Metadata()).Sync(games.All()); !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);

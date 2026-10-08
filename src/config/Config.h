@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -30,9 +31,14 @@ public:
   // that parsed) when there is one, otherwise by defaults. Priority one is that
   // the daemon starts and works, so a broken config degrades rather than blocking.
   void Load(const std::string& fallback = {});
+  // Picks up a hand edit made since the file was last read or written: the keys
+  // whose value changed. A file that doesn't parse changes nothing and is an error
+  // naming the line; a bad value keeps the current one.
+  Result<std::vector<std::string>> Reload();
+  // Called with the text of each settings.toml that loads or is written cleanly.
+  void OnValidText(std::function<void(const std::string&)> callback);
   // The text of settings.toml as Load parsed it, empty when it didn't.
   std::string LoadedText() const;
-  Result<void> Save();
 
   nlohmann::json Document() const;  // backend keys only
   nlohmann::json Get(std::string_view key) const;
@@ -41,7 +47,7 @@ public:
   // Applies a partial document, validating every key before changing anything.
   Result<void> Patch(const nlohmann::json& patch);
   Result<void> Reset(std::string_view key);
-  void ResetAll();
+  Result<void> ResetAll();
 
   // The opaque [frontend] table, read and written without validation.
   nlohmann::json FrontendSettings() const;
@@ -63,6 +69,9 @@ public:
 
 private:
   nlohmann::json GetLocked(std::string_view key) const;
+  Result<std::vector<std::string>> SyncLocked();
+  // Every app change: picks up hand edits first, so only the keys the app set change.
+  Result<void> ChangeAndSave(const std::function<void()>& change);
   Result<void> SaveFrontendFile();
 
   mutable std::mutex mutex_;
@@ -71,7 +80,8 @@ private:
   nlohmann::json document_;
   nlohmann::json frontend_ = nlohmann::json::object();
   // An unparseable file couldn't be set aside: saving would overwrite the only copy.
-  std::string loaded_text_;
+  std::string loaded_text_;  // as last read or written, to tell a hand edit apart
+  std::function<void(const std::string&)> on_valid_text_;
   bool keep_file_ = false;
   bool keep_frontend_file_ = false;
   std::atomic<std::uint64_t> revision_{0};

@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
   mira::config::Config config(mira::paths::SettingsFile());
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
+  config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);
   } else if (level == "warn") {
@@ -138,6 +139,7 @@ int main(int argc, char** argv) {
   mira::library::Watcher watcher(config, games, events);
   watcher.UseMetadataQueue(services.fetches);
   watcher.UseInstallLane(services.installs);
+  watcher.OnSettingsSaved([&services] { services.ReloadSettings(); });
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 

@@ -109,11 +109,74 @@ void Config::Load(const std::string& fallback) {
   }
 }
 
-Result<void> Config::Save() {
+void Config::OnValidText(std::function<void(const std::string&)> callback) {
   std::lock_guard lock(mutex_);
+  on_valid_text_ = std::move(callback);
+}
+
+Result<std::vector<std::string>> Config::SyncLocked() {
+  const Schema& schema = Schema::Instance();
+  std::ifstream in(file_);
+  if (!in) return std::vector<std::string>{};
+  const std::string text{std::istreambuf_iterator<char>(in), {}};
+  if (text == loaded_text_) return std::vector<std::string>{};
+
+  toml::parse_result parsed = toml::parse(text, file_.string());
+  if (!parsed) {
+    const auto& error = parsed.error();
+    return Err("settings_invalid",
+               std::format("{} line {}: {}", file_.filename().string(), error.source().begin.line, error.description()),
+               "Fix the line, or change the setting in Mira. Until then the settings before the edit stay in use.");
+  }
+  json whole = tomljson::ToJson(parsed.table());
+  for (const Entry& entry : schema.Entries()) {
+    const auto pointer = Schema::Pointer(entry.key);
+    if (!whole.contains(pointer)) continue;
+    if (auto problem = schema.Validate(entry.key, whole[pointer])) {
+      log::Warn("settings: {}: {} (keeping the current value)", entry.key, *problem);
+      whole[pointer] = GetLocked(entry.key);
+    }
+  }
+  json next = schema.Defaults();
+  next.merge_patch(whole);
+
+  std::vector<std::string> changed;
+  for (const Entry& entry : schema.Entries()) {
+    const auto pointer = Schema::Pointer(entry.key);
+    if (next.value(pointer, json()) != document_.value(pointer, json())) changed.push_back(entry.key);
+  }
+  document_ = std::move(next);
+  loaded_text_ = text;
+  keep_file_ = false;
+  ++revision_;
+  if (on_valid_text_) on_valid_text_(text);
+  return changed;
+}
+
+Result<std::vector<std::string>> Config::Reload() {
+  std::lock_guard lock(mutex_);
+  return SyncLocked();
+}
+
+Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
+  std::lock_guard lock(mutex_);
+  if (auto synced = SyncLocked(); !synced) {
+    // The app's change is saved over a broken hand edit, which is kept as <file>.bad.
+    if (const auto broken = SetAside(file_)) {
+      log::Warn("{}; kept it as {} and saved the settings before it with this change", synced.error().message,
+                broken->string());
+    } else {
+      keep_file_ = true;
+    }
+  }
+  change();
   ++revision_;  // every change to the settings saves
   if (keep_file_) return KeptFileError(file_);
-  return WriteFileAtomic(file_, tomljson::ToTomlText(document_), "config_write_failed");
+  const std::string text = tomljson::ToTomlText(document_);
+  if (auto written = WriteFileAtomic(file_, text, "config_write_failed"); !written) return written;
+  loaded_text_ = text;
+  if (on_valid_text_) on_valid_text_(text);
+  return {};
 }
 
 Result<void> Config::SaveFrontendFile() {
@@ -148,11 +211,7 @@ Result<void> Config::Set(std::string_view key, const json& value) {
   if (auto problem = Schema::Instance().Validate(key, value)) {
     return Err("invalid_setting", std::format("{}: {}", key, *problem));
   }
-  {
-    std::lock_guard lock(mutex_);
-    document_[Schema::Pointer(key)] = value;
-  }
-  return Save();
+  return ChangeAndSave([&] { document_[Schema::Pointer(key)] = value; });
 }
 
 Result<void> Config::Patch(const json& patch) {
@@ -177,38 +236,28 @@ Result<void> Config::Patch(const json& patch) {
     return Err("invalid_setting", joined);
   }
 
-  bool frontend_changed = false;
-  {
-    std::lock_guard lock(mutex_);
-    json backend_patch = patch;
-    if (backend_patch.contains("frontend")) {
-      if (backend_patch["frontend"].is_object()) {
+  json backend_patch = patch;
+  if (backend_patch.contains("frontend")) {
+    if (backend_patch["frontend"].is_object()) {
+      {
+        std::lock_guard lock(mutex_);
         frontend_.merge_patch(backend_patch["frontend"]);
-        frontend_changed = true;
       }
-      backend_patch.erase("frontend");
+      if (auto result = SaveFrontendFile(); !result) return result;
     }
-    document_.merge_patch(backend_patch);
+    backend_patch.erase("frontend");
   }
-  if (frontend_changed) {
-    if (auto result = SaveFrontendFile(); !result) return result;
-  }
-  return Save();
+  return ChangeAndSave([&] { document_.merge_patch(backend_patch); });
 }
 
 Result<void> Config::Reset(std::string_view key) {
   const Entry* entry = Schema::Instance().Find(key);
   if (entry == nullptr) return Err("unknown_setting", std::format("unknown setting \"{}\"", key));
-  {
-    std::lock_guard lock(mutex_);
-    document_[Schema::Pointer(key)] = entry->default_value;
-  }
-  return Save();
+  return ChangeAndSave([&] { document_[Schema::Pointer(key)] = entry->default_value; });
 }
 
-void Config::ResetAll() {
-  std::lock_guard lock(mutex_);
-  document_ = Schema::Instance().Defaults();
+Result<void> Config::ResetAll() {
+  return ChangeAndSave([&] { document_ = Schema::Instance().Defaults(); });
 }
 
 json Config::FrontendSettings() const {

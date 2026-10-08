@@ -174,6 +174,8 @@ void Watcher::Run() {
   }
 
   WatchRoots();
+  // Editors save by writing a new file and renaming it over, so the folder is watched, not the file.
+  settings_wd_ = inotify_add_watch(inotify_fd_, config_.File().parent_path().c_str(), IN_CLOSE_WRITE | IN_MOVED_TO);
 
   epoll_event ev{};
   ev.events = EPOLLIN;
@@ -220,6 +222,7 @@ void Watcher::HandleInotify() {
   // rather than assumed to be one event per read.
   alignas(inotify_event) char buffer[4096];
   std::set<fs::path> deleted_from;  // roots to rescan once the queue is drained
+  bool settings_saved = false;
 
   // Computed once per call, not per event: a runner build being downloaded
   // (runner/Downloader.cpp) into runner_search_paths/wine_search_paths must
@@ -237,6 +240,9 @@ void Watcher::HandleInotify() {
     while (offset < static_cast<size_t>(n)) {
       const auto* event = reinterpret_cast<const inotify_event*>(buffer + offset);
       offset += sizeof(inotify_event) + event->len;
+      if (event->wd == settings_wd_ && event->len > 0 && config_.File().filename() == event->name) {
+        settings_saved = true;
+      }
 
       const auto root_it = watch_to_root_.find(event->wd);
       if (root_it == watch_to_root_.end() || event->len == 0) continue;
@@ -264,6 +270,7 @@ void Watcher::HandleInotify() {
       }
     }
   }
+  if (settings_saved && on_settings_saved_) on_settings_saved_();
   // A deletion needs no debounce: rescan now so a removed game is marked
   // missing promptly. Once per root, however many entries went at once.
   if (!deleted_from.empty()) {
