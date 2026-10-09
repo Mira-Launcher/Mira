@@ -3,6 +3,7 @@
 #include <QGuiApplication>
 #include <QLinearGradient>
 #include <QPainter>
+#include <QScreen>
 #include <QUrl>
 #include <QVideoFrame>
 
@@ -124,7 +125,7 @@ void HeroBackground::LoadHero() {
         heroes_.insert(key, hero);
         if (key == key_ && !hero.isNull()) Fade(hero);
       },
-      size() * devicePixelRatioF());
+      ScreenSize());
 }
 
 void HeroBackground::LoadLogo(const QString& key) {
@@ -137,7 +138,7 @@ void HeroBackground::LoadLogo(const QString& key) {
         logos_.insert(key, image.isNull() ? QPixmap() : QPixmap::fromImage(std::move(image)));
         emit ArtChanged();
       },
-      QSize(width(), height() / 4) * devicePixelRatioF());
+      QSize(ScreenSize().width(), ScreenSize().height() / 4));
 }
 
 // Made on the first trailer: loading Qt's media backend pulls in FFmpeg, which big screen
@@ -179,6 +180,13 @@ void HeroBackground::EndTrailer() {
   if (player_ != nullptr) player_->stop();
   trailer_fade_.setDirection(QAbstractAnimation::Backward);
   trailer_fade_.start();
+}
+
+// The screen's size in pixels: the widget's own size is still the default until big screen
+// goes full screen, which can be after the first hero is fetched.
+QSize HeroBackground::ScreenSize() const {
+  const QScreen* shown = window_->screen();
+  return shown == nullptr ? QSize() : shown->size() * shown->devicePixelRatio();
 }
 
 QPixmap HeroBackground::Logo(const QString& key) const { return logos_.value(key); }

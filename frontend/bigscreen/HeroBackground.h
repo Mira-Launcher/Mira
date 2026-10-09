@@ -40,6 +40,7 @@ private:
   void Fade(const QPixmap& art);
   void LoadHero();
   void LoadLogo(const QString& key);
+  QSize ScreenSize() const;
   void CreatePlayer();
   void EndTrailer();
 

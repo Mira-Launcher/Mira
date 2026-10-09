@@ -384,7 +384,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     if (!result.ok) return;
     prefs_ = result.prefs;
     ApplyInputOptions();
-    for (Page* page : tabs_) page->Shown();
+    RefreshPages();
     hero_->update();
     chrome_->update();
   });
@@ -418,7 +418,7 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   ApplyInputOptions();
   ApplyStartOnLogin(prefs.start_on_login.value_or(false));
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
-  for (Page* page : tabs_) page->Shown();
+  RefreshPages();
   update();
   stack_->currentWidget()->update();
   chrome_->update();
@@ -724,6 +724,15 @@ void BigScreenWindow::Navigate(Nav nav) {
 void BigScreenWindow::SelectTab(int index) {
   tab_ = index;
   ShowPage(tabs_[index]);
+}
+
+// The page in front goes last, so the hero is its focused game and not another tab's.
+void BigScreenWindow::RefreshPages() {
+  auto* front = qobject_cast<Page*>(stack_->currentWidget());
+  for (Page* page : tabs_) {
+    if (page != front) page->Shown();
+  }
+  if (front != nullptr) front->Shown();
 }
 
 void BigScreenWindow::ShowPage(Page* page) {

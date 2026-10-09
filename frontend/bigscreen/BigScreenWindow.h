@@ -130,6 +130,7 @@ private:
   void Navigate(Nav nav);
   void SelectTab(int index);
   void ShowPage(Page* page);
+  void RefreshPages();
   void Back();
   void RaiseFromGame();
   void Guide();
