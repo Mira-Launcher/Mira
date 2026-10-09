@@ -1,5 +1,6 @@
 #include "Distro.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -73,9 +74,13 @@ bool NeedsRestart(const Distro& distro, const QString& output) {
            !output.contains("No update available");
   }
   if (QFileInfo::exists("/run/reboot-required") || QFileInfo::exists("/var/run/reboot-required")) return true;
-  // The running kernel's modules are gone once a new kernel replaced them.
+  // The running kernel's modules are gone once a new kernel replaced them. Only where kernels keep
+  // their modules there at all, or every update would ask.
   const QString kernel = QSysInfo::kernelVersion();
-  return !QFileInfo::exists("/usr/lib/modules/" + kernel) && !QFileInfo::exists("/lib/modules/" + kernel);
+  for (const QString dir : {"/usr/lib/modules/", "/lib/modules/"}) {
+    if (QFileInfo::exists(dir + kernel)) return false;
+  }
+  return QFileInfo::exists("/usr/lib/modules") && !QDir("/usr/lib/modules").isEmpty(QDir::Dirs | QDir::NoDotAndDotDot);
 }
 
 }  // namespace mira_gui::system

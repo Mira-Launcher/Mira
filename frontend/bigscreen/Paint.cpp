@@ -108,7 +108,7 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
 CoverGrid::CoverGrid(const QRectF& area, int columns, double gap, int focus_row)
     : area(area), columns(columns), gap(gap) {
   tile_w = (area.width() - gap * (columns - 1)) / columns;
-  tile_h = std::min(tile_w * 1.5, (area.height() - gap) / 2);
+  tile_h = std::max(1.0, std::min(tile_w * 1.5, (area.height() - gap) / 2));
   tile_w = tile_h / 1.5;
   left = area.left() + (area.width() - (tile_w * columns + gap * (columns - 1))) / 2;
   const int visible = std::max(1, int((area.height() + gap) / (tile_h + gap)));

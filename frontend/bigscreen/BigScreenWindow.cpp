@@ -586,6 +586,8 @@ void BigScreenWindow::Resume(const Item& item) {
 }
 
 void BigScreenWindow::CancelInstall(const Item& item) {
+  // `item` may belong to a page whose list the cancel rebuilds.
+  const QString name = item.name;
   const DownloadTracker::Entry* entry = Download(item);
   if (entry == nullptr) return;
   if (entry->state == DownloadTracker::State::Paused) {
@@ -593,7 +595,7 @@ void BigScreenWindow::CancelInstall(const Item& item) {
   } else if (const QString job = services_.downloads->JobFor(*entry); !job.isEmpty()) {
     jobs::Cancel(this, job.toStdString(), [](ApiError) {});
   }
-  Toast("Canceled " + item.name);
+  Toast("Canceled " + name);
 }
 
 void BigScreenWindow::Uninstall(const Item& item) {
@@ -950,6 +952,7 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
     if (update_ != nullptr && update_output_.isEmpty() && !keyboard_->Open(&error)) Tell("Type your password", error);
   });
   connect(update_, &QProcess::readyRead, this, [this] {
+    if (update_ == nullptr) return;
     const QString text = QString::fromUtf8(update_->readAll());
     // Output means the password was accepted: back to big screen to show progress.
     if (update_output_.isEmpty()) {
