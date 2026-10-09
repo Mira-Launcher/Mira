@@ -1226,8 +1226,9 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   switch_rows->setSpacing(0);
   login_ = new Switch(switches);
   login_->setChecked(context.prefs->start_on_login.value_or(true));
-  switch_rows->addWidget(SetupRow(switches, "Start Mira when I log in (in the tray)",
-                                  "Opens to the tray, so games are ready when you are.", login_));
+  QWidget* login_row = SetupRow(switches, "Start Mira when I log in (in the tray)",
+                                "Opens to the tray, so games are ready when you are.", login_);
+  switch_rows->addWidget(login_row);
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);
     big_screen_->setChecked(true);
@@ -1241,6 +1242,16 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
                   "muted", false));
     switch_rows->addWidget(MakeDivider(switches, Qt::Horizontal));
     switch_rows->addWidget(row);
+    // A login start opens big screen instead of the tray when that's on.
+    auto* login_name = login_row->findChild<QLabel*>();
+    const auto say_where = [login_name](bool big_screen) {
+      login_name->setText(big_screen ? "Start Mira when I log in"
+                                     : "Start Mira when I log in (in the tray)");
+      login_name->setToolTip(big_screen ? "Opens in big screen, so games are ready when you are."
+                                        : "Opens to the tray, so games are ready when you are.");
+    };
+    say_where(big_screen_->isChecked());
+    connect(big_screen_, &QAbstractButton::toggled, this, say_where);
   }
   layout->addWidget(switches);
 
