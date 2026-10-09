@@ -459,6 +459,13 @@ Schema::Schema() {
                 "detected. When off, the game still launches, but Mira does not show it as "
                 "running."});
 
+  s.Add({.key = "steam.mira_shortcut",
+         .label = "Add Mira to Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Keep a \"Mira\" shortcut in Steam that opens Mira's big screen, so Steam's Big "
+                "Picture can switch to Mira. Steam shows it after it restarts."});
+
   s.Group("Steam account");
 
   s.Add({.key = "steam.import_playtime",

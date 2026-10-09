@@ -380,6 +380,12 @@ Steam games are ordinary games with `runner_ref` `steam:<appid>`.
 ### `POST /v1/steam/scan`
 Reads Steam's `libraryfolders.vdf`, `appmanifest_*.acf` and `compatdata/<id>/config_info` directly and adds or updates installed games. A [job](#jobs) whose result is `{"added": 2, "updated": 0}`. A rescan updates `name`, `install_path` and `data_dir` and leaves user settings alone. `exe_path` is never filled in, because Steam keeps the launch command in its `appinfo` cache; only `steam.launch_mode: "direct"` needs it.
 
+### `POST /v1/steam/shortcut`
+Body `{"exe", "launch_options"}`. Keeps a non-Steam shortcut named "Mira" running `exe` with `launch_options` in every Steam account's `userdata/<id>/config/shortcuts.vdf`, so Big Picture can switch to Mira. An existing "Mira" entry is updated in place, other shortcuts are kept, and an unchanged file isn't rewritten. Answers `{"status": "ok", "added": [ids], "updated": [ids]}`, or `{"status": "disabled"}` with `steam.mira_shortcut` off. `404 steam_not_found` without Steam, `500 shortcuts_unreadable` for a file Mira can't parse (it's left alone). Steam shows a new shortcut after it restarts. The GUI calls this at start with its own path and `--big-screen`.
+
+### `POST /v1/steam/bigpicture`
+Opens Steam's Big Picture through `steam steam://open/bigpicture`, starting Steam if needed. Answers `{"status": "opened"}`.
+
 ### `POST /v1/steam/status`
 Body `{"status": "online" | "invisible"}`. Sets the Steam friends status through `steam steam://friends/status/<status>` and answers `{"status": "invisible"}`. Steam can't report the status back, so there is no GET. Answers 409 `steam_not_running` while Steam isn't running (by `~/.steam/steam.pid`), since the URL would start the client just to set a status, and 400 `invalid_status` for any other value.
 

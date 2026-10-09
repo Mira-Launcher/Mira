@@ -6,6 +6,7 @@
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "api/Services.h"
+#include "core/Command.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
@@ -18,6 +19,9 @@
 #include "lutris/LutrisImporter.h"
 #include "metadata/MetadataFetcher.h"
 #include "steam/FriendsStatus.h"
+#include "runner/Exec.h"
+#include "steam/Shortcuts.h"
+#include "steam/SteamDetector.h"
 #include "steam/SteamScanner.h"
 
 namespace mira::api {
@@ -173,6 +177,26 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     const auto set = steam::SetFriendsStatus(body.value("status", std::string()));
     if (!set) return SendError(res, set.error().code == "invalid_status" ? 400 : 409, set.error());
     SendJson(res, {{"status", body.value("status", std::string())}});
+  });
+
+  http.Post("/v1/steam/shortcut", [&s](const Request& req, Response& res) {
+    const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
+    if (body.is_discarded() || !body.is_object() || !body.contains("exe"))
+      return SendError(res, 400, "invalid_body", "expected {\"exe\", \"launch_options\"}");
+    if (!s.config.GetBool("steam.mira_shortcut")) return SendJson(res, {{"status", "disabled"}});
+    const auto root = steam::FindSteamRoot(s.config);
+    if (!root) return SendError(res, 404, "steam_not_found", "Steam isn't installed");
+    const auto change = steam::EnsureShortcut(*root, "Mira", body.value("exe", std::string()),
+                                              body.value("launch_options", std::string()));
+    if (!change) return SendError(res, 500, change.error());
+    SendJson(res, {{"status", "ok"}, {"added", change->added}, {"updated", change->updated}});
+  });
+
+  http.Post("/v1/steam/bigpicture", [](const Request&, Response& res) {
+    Command command;
+    command.argv = {"steam", "steam://open/bigpicture"};
+    if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
+    SendJson(res, {{"status", "opened"}});
   });
 
   // --- lutris -----------------------------------------------------------
