@@ -21,4 +21,8 @@ QString CoverInitials(const QString& name);
 
 QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr);
 
+// A cover scaled down to a few pixels and back up to `size`: a wash of its
+// colors, for backdrops where a slice of a portrait cover would read as noise.
+QPixmap BlurredCover(const QPixmap& cover, QSize size);
+
 }  // namespace mira_gui

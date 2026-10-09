@@ -40,6 +40,15 @@ class Sidebar;
 class SourcePage;
 class TopBar;
 struct SourceInfo;
+
+// The library state LibraryWindow keeps current from mirad's events, for
+// other windows to read instead of loading their own copy.
+struct LibraryServices {
+  GameLibraryModel* library = nullptr;
+  ArtworkStore* artwork = nullptr;
+  DownloadTracker* downloads = nullptr;
+  OwnedTitles* owned_titles = nullptr;
+};
 }  // namespace mira_gui
 
 // The main window: the top bar over the sidebar and, beside it, the library
@@ -53,6 +62,7 @@ class LibraryWindow : public QMainWindow {
 public:
   // `prefs` is frontend.toml as read at startup; the theme is already applied.
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
+  mira_gui::LibraryServices services() const { return {library_, artwork_, downloads_, owned_titles_}; }
 
 private:
   mira_gui::Sidebar* BuildSidebar(const mira_gui::FrontendPrefs& prefs);
