@@ -399,7 +399,8 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         }
         const std::string appid = game->runner_ref.substr(std::string_view("steam:").size());
         Command command;
-        command.argv = {"steam", std::format("steam://rungameid/{}", appid)};
+        // -silent: a Steam that wasn't running starts without opening its own window.
+        command.argv = {"steam", "-silent", std::format("steam://rungameid/{}", appid)};
         if (auto spawned = runner::SpawnDetached(command); !spawned) {
           return SendError(res, 500, spawned.error());
         }
