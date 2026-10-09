@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <map>
+#include <ranges>
 
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
@@ -67,13 +68,29 @@ void HomePage::Rebuild() {
   }
   Row installed{"Installed"};
   Row pinned{"Pinned"};
+  // A row per source, then per tag, sorted by name.
+  std::map<QString, Row> by_source, by_tag;
   for (const GameSummary& game : services.library->Games()) {
     if (!Browsable(game)) continue;
-    installed.items.push_back(window_->ItemFor(game));
-    if (IsPinned(game)) pinned.items.push_back(window_->ItemFor(game));
+    const Item item = window_->ItemFor(game);
+    installed.items.push_back(item);
+    if (IsPinned(game)) pinned.items.push_back(item);
+    const QString source = SourceName(QString::fromStdString(game.source));
+    by_source.try_emplace(source, Row{source}).first->second.items.push_back(item);
+    for (const std::string& tag : game.tags) {
+      if (IsMeaningTag(tag)) continue;
+      const QString name = QString::fromStdString(tag);
+      by_tag.try_emplace(name, Row{name}).first->second.items.push_back(item);
+    }
   }
-  std::ranges::sort(installed.items, ByName);
-  std::ranges::sort(pinned.items, ByName);
+  std::vector<Row*> order{&recent, &pinned, &installed};
+  // One source would only repeat Installed.
+  if (by_source.size() > 1) {
+    for (auto& [name, row] : by_source) order.push_back(&row);
+  }
+  for (auto& [name, row] : by_tag) order.push_back(&row);
+  // Continue playing stays most recent first.
+  for (Row* row : order | std::views::drop(1)) std::ranges::sort(row->items, ByName);
   Row available{"Ready to install"};
   if (window_->prefs().big_screen_show_uninstalled.value_or(true)) {
     for (const StoreTitle& title : services.owned_titles->Titles()) {
@@ -81,7 +98,8 @@ void HomePage::Rebuild() {
     }
     std::ranges::sort(available.items, ByName);
   }
-  for (Row* row : {&recent, &installed, &pinned, &available}) {
+  order.push_back(&available);
+  for (Row* row : order) {
     if (row->items.empty()) continue;
     if (const auto found = focused.find(row->label); found != focused.end()) {
       const auto at = std::ranges::find(row->items, found->second, &Item::key);
