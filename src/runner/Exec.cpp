@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cerrno>
@@ -91,12 +92,23 @@ std::vector<std::string> SessionEnv() {
   return cached;
 }
 
+// Inherited from whatever started Mira and not meant for what it starts: KWin's activation
+// token would file a game's window under Mira, and the AppImage's own variables describe Mira.
+constexpr std::array<std::string_view, 6> kNotPassedOn = {"XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID", "APPIMAGE",
+                                                         "APPDIR", "ARGV0", "OWD"};
+
 // Command.env is an overlay on the daemon's own environment, not a
-// replacement, so merge them for the child process.
+// replacement, so merge them for the child process. Each key appears once:
+// getenv() takes the first, which would let the daemon's value win.
 std::vector<std::string> MergedEnv(const Command& command) {
   std::vector<std::string> merged;
-  for (char** e = environ; *e != nullptr; ++e) merged.emplace_back(*e);
-  for (std::string& entry : SessionEnv()) merged.push_back(std::move(entry));
+  const auto inherited = [&](std::string entry) {
+    const std::string_view key = std::string_view(entry).substr(0, entry.find('='));
+    if (std::ranges::contains(kNotPassedOn, key) || command.env.contains(std::string(key))) return;
+    merged.push_back(std::move(entry));
+  };
+  for (char** e = environ; *e != nullptr; ++e) inherited(*e);
+  for (std::string& entry : SessionEnv()) inherited(std::move(entry));
   for (const auto& [key, value] : command.env) merged.push_back(key + "=" + value);
   return merged;
 }
