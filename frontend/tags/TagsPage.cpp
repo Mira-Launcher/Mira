@@ -456,6 +456,10 @@ void TagsPage::SetTileWidth(int width) {
   picker_->SetTileWidth(width);
 }
 
+TileRow TagsPage::Row() const {
+  return PickerOpen() ? picker_->Row() : TileRow{};
+}
+
 bool TagsPage::PickerOpen() const {
   return stack_->currentWidget() == picker_;
 }

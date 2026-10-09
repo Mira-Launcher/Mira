@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../client/Types.h"
+#include "../widgets/TileView.h"
 
 class QLabel;
 class QLineEdit;
@@ -43,6 +44,8 @@ public:
   void Open(const QString& name, bool existing, std::vector<Section> sections, const std::vector<GameSummary>& games,
             bool folder, std::vector<TagSummary> known);
   void SetTileWidth(int width);
+  // The row its tiles snap to fill; room 0 when none show.
+  TileRow Row() const;
   void ToggleHidden();
 
 signals:
@@ -57,6 +60,7 @@ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
+  static constexpr int kTileGap = 10;
   // `ticked` says which of `games` start ticked.
   QWidget* AddSection(const QString& heading, const std::vector<const GameSummary*>& games,
                       const std::vector<std::string>& ticked);

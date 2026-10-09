@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../client/Types.h"
+#include "../widgets/TileView.h"
 #include "Sources.h"
 
 class QLabel;
@@ -58,6 +59,8 @@ public:
   // A store title's cover arrived; a game's own tile repaints from the model.
   void UpdateCover(const QString& id);
   void SetTileWidth(int width);
+  // The row its tiles snap to fill; room 0 when none show.
+  TileRow Row() const;
   void SetDragSelectEnabled(bool enabled);
   // A few seconds of `text` over that game's tile in "In your library".
   void ShowTileNote(const QString& id, const QString& text);

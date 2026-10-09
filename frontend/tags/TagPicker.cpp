@@ -199,6 +199,15 @@ bool TagPicker::eventFilter(QObject* watched, QEvent* event) {
   return QWidget::eventFilter(watched, event);
 }
 
+TileRow TagPicker::Row() const {
+  for (const QWidget* grid : content_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
+    if (grid->isVisible() && dynamic_cast<const FlowLayout*>(grid->layout()) != nullptr) {
+      return {RoomBesideScrollbar(grid, grid->width()), kTileGap};
+    }
+  }
+  return {};
+}
+
 void TagPicker::SetTileWidth(int width) {
   tile_width_ = width;
   for (PickTile* tile : tiles_) tile->SetWidth(width);
@@ -305,7 +314,7 @@ QWidget* TagPicker::AddSection(const QString& heading, const std::vector<const G
   auto* label = MakeGroupHeading(content_, heading.toUpper());
   sections_->addWidget(label);
   auto* grid = new QWidget(content_);
-  auto* flow = new FlowLayout(grid, 10);
+  auto* flow = new FlowLayout(grid, kTileGap);
   for (const GameSummary* game : games) {
     auto* tile = new PickTile(*game, artwork_, tile_width_, grid);
     tile->setChecked(std::ranges::contains(ticked, game->id));

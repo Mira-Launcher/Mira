@@ -23,6 +23,7 @@ class QSplitter;
 class QStackedLayout;
 class QStackedWidget;
 class QTimer;
+class QVariantAnimation;
 
 namespace mira_gui {
 namespace bigscreen {
@@ -38,6 +39,7 @@ class GameMenus;
 class HoverCard;
 class LibraryPage;
 class OwnedTitles;
+struct TileRow;
 class RunnersPage;
 class TagsPage;
 class SettingsPanel;
@@ -118,6 +120,9 @@ private:
 
   // The slider moved: resizes whichever page is showing.
   void Zoom(int width);
+  void ApplyTileWidth(int width);
+  int ShownTileWidth() const;
+  mira_gui::TileRow ShownTileRow() const;
   int SourceTileWidth(const QString& id) const;
   // Points the slider at the page on screen, and off where there's no grid.
   void SyncZoom();
@@ -229,6 +234,7 @@ private:
   mira_gui::TopBar* top_bar_ = nullptr;
   QLabel* drop_overlay_ = nullptr;  // "Drop to add to Mira", shown while a drag is over the window
   QSlider* zoom_ = nullptr;
+  QVariantAnimation* zoom_animation_ = nullptr;  // eases tiles to a snapped size
   mira_gui::Sidebar* sidebar_ = nullptr;
   // Set by "Save and leave", so the save that follows closes Settings.
   bool close_settings_after_save_ = false;

@@ -3,12 +3,38 @@
 #include <QApplication>
 #include <QMouseEvent>
 #include <QRubberBand>
+#include <QAbstractScrollArea>
 #include <QScrollBar>
+#include <QStyle>
 #include <QTimer>
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace mira_gui {
+
+int FitTileWidth(int width, int from, TileRow row, int min, int max) {
+  const int step = (width > from) - (width < from);
+  int best = width;
+  for (int per_row = 1; per_row * min <= row.room; ++per_row) {
+    const int fit = (row.room + row.gap) / per_row - row.gap;
+    if (fit < min || fit > max) continue;
+    if (step > 0 ? fit > from && (best == width || fit < best)
+        : step < 0 ? fit < from && (best == width || fit > best)
+                   : best == width || std::abs(fit - width) < std::abs(best - width)) {
+      best = fit;
+    }
+  }
+  return best;
+}
+
+int RoomBesideScrollbar(const QWidget* widget, int width) {
+  for (const QWidget* w = widget; w != nullptr; w = w->parentWidget()) {
+    const auto* area = qobject_cast<const QAbstractScrollArea*>(w);
+    if (area != nullptr && area->verticalScrollBar()->isVisible()) return width;
+  }
+  return width - widget->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, widget);
+}
 
 TileView::TileView(QWidget* parent) : QListView(parent) {
   setSelectionMode(QAbstractItemView::ExtendedSelection);

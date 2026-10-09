@@ -594,6 +594,12 @@ void SourcePage::LibraryUpdated() {
   if (library_grid_ != nullptr) library_grid_->FitHeight();
 }
 
+TileRow SourcePage::Row() const {
+  if (library_grid_ != nullptr && library_grid_->isVisible()) return library_grid_->Row();
+  if (owned_grid_ != nullptr && owned_grid_->isVisible()) return owned_grid_->Row();
+  return {};
+}
+
 void SourcePage::SetTileWidth(int width) {
   const QSize tile(width, width * 3 / 2);
   if (tile == tile_) return;
