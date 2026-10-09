@@ -1039,6 +1039,18 @@ struct StoreActionResult {
   ApiError error;
 };
 
+// GET /v1/library/install/paused.
+struct PausedInstall {
+  std::string source;
+  std::string ref;
+  bool update = false;
+};
+struct PausedInstallsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<PausedInstall> installs;
+};
+
 // POST /v1/stores/humble/download, once its job has ended.
 struct HumbleDownloadResult {
   bool ok = false;

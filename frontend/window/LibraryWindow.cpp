@@ -872,6 +872,7 @@ void LibraryWindow::ConnectionChanged(bool connected) {
     RefreshGames();
     sidebar_->RefreshSources();
     downloads_->RecheckJobs();
+    downloads_->LoadPaused();
   }
 }
 
@@ -1552,6 +1553,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     RefreshGames();
     sidebar_->RefreshSources();
     downloads_->RecheckJobs();
+    downloads_->LoadPaused();
     return;
   }
   if (type == "config.changed") {

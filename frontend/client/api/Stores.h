@@ -39,6 +39,15 @@ void GetStoreLibraryAsync(QObject* context, const std::string& source,
 void InstallStoreTitleAsync(QObject* context, const std::string& source, const std::string& ref,
                             bool update, std::function<void(StoreActionResult)> callback);
 
+// POST /v1/library/install/pause: stops a running Epic/GOG/Amazon install, keeping its files.
+void PauseStoreInstallAsync(QObject* context, const std::string& source, const std::string& ref,
+                            std::function<void(StoreActionResult)> callback);
+// DELETE /v1/library/install/paused: forgets a paused install.
+void DiscardPausedInstallAsync(QObject* context, const std::string& source, const std::string& ref,
+                               std::function<void(StoreActionResult)> callback);
+// GET /v1/library/install/paused.
+void ListPausedInstallsAsync(QObject* context, std::function<void(PausedInstallsResult)> callback);
+
 // POST /v1/library/artwork: fetch covers for these titles, one at a time.
 // Each one ends in a library.artwork_ready/_failed event.
 void QueueTitleArtworkAsync(QObject* context, const std::string& source,

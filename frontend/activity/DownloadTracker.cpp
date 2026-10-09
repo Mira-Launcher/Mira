@@ -26,6 +26,8 @@ bool ToState(const std::string& state, DownloadTracker::State* out) {
     *out = DownloadTracker::State::Finished;
   } else if (state == "failed") {
     *out = DownloadTracker::State::Failed;
+  } else if (state == "paused") {
+    *out = DownloadTracker::State::Paused;
   } else {
     return false;
   }
@@ -64,6 +66,10 @@ QString DownloadTracker::LogChannelFor(const Entry& entry) {
     case Kind::Job: return "daemon";
   }
   return "daemon";
+}
+
+bool DownloadTracker::CanPause(const Entry& entry) {
+  return entry.kind == Kind::Title && (entry.source == "epic" || entry.source == "gog" || entry.source == "amazon");
 }
 
 QString DownloadTracker::JobFor(const Entry& entry) const {
@@ -156,6 +162,23 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   }
   emit Changed(entry.key);
   return true;
+}
+
+void DownloadTracker::LoadPaused() {
+  api::ListPausedInstallsAsync(this, [this](PausedInstallsResult result) {
+    if (!result.ok) return;
+    for (const PausedInstall& install : result.installs) {
+      const QString source = QString::fromStdString(install.source);
+      const QString ref = QString::fromStdString(install.ref);
+      Entry& entry = Upsert(Kind::Title, source, ref);
+      if (entry.state != State::Running) {
+        entry.state = State::Paused;
+        entry.update = install.update;
+      }
+      if (NameFor(entry) == ref) ResolveNames(source);
+    }
+    emit Changed(QString());
+  });
 }
 
 void DownloadTracker::RecheckJobs() {
@@ -291,7 +314,7 @@ int DownloadTracker::RunningCount() const {
 }
 
 void DownloadTracker::ClearFinished() {
-  std::erase_if(entries_, [](const Entry& e) { return e.state != State::Running; });
+  std::erase_if(entries_, [](const Entry& e) { return e.state != State::Running && e.state != State::Paused; });
   emit Changed(QString());
 }
 

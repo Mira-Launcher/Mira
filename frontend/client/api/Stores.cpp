@@ -81,6 +81,31 @@ StoreActionResult InstallStoreTitleSync(const std::string& source, const std::st
   return {reply.ok, reply.error};
 }
 
+StoreActionResult PauseStoreInstallSync(const std::string& source, const std::string& ref) {
+  const transport::Reply reply =
+      transport::PostJson("/v1/library/install/pause", {{"source", source}, {"ref", ref}});
+  return {reply.ok, reply.error};
+}
+
+StoreActionResult DiscardPausedInstallSync(const std::string& source, const std::string& ref) {
+  const transport::Reply reply = transport::Delete("/v1/library/install/paused?source=" +
+                                                   PercentEncode(source) + "&ref=" + PercentEncode(ref));
+  return {reply.ok, reply.error};
+}
+
+PausedInstallsResult ListPausedInstallsSync() {
+  return ReadReply<PausedInstallsResult>(
+      transport::Get("/v1/library/install/paused"), "GET /v1/library/install/paused", Shape::Array,
+      [](PausedInstallsResult& result, const json& body) {
+        for (const json& entry : body) {
+          if (!entry.is_object()) continue;
+          result.installs.push_back({.source = entry.value("source", std::string()),
+                                     .ref = entry.value("ref", std::string()),
+                                     .update = entry.value("update", false)});
+        }
+      });
+}
+
 HumbleLibraryResult GetHumbleLibrarySync() {
   return ReadReply<HumbleLibraryResult>(
       transport::Get("/v1/stores/humble/bundles", {.read_timeout = std::chrono::seconds(60)}),
@@ -272,6 +297,22 @@ void InstallStoreTitleAsync(QObject* context, const std::string& source, const s
   async::Run(
       context, [source, ref, update] { return InstallStoreTitleSync(source, ref, update); },
       std::move(callback));
+}
+
+void PauseStoreInstallAsync(QObject* context, const std::string& source, const std::string& ref,
+                            std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context, [source, ref] { return PauseStoreInstallSync(source, ref); }, std::move(callback));
+}
+
+void DiscardPausedInstallAsync(QObject* context, const std::string& source, const std::string& ref,
+                               std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context, [source, ref] { return DiscardPausedInstallSync(source, ref); }, std::move(callback));
+}
+
+void ListPausedInstallsAsync(QObject* context, std::function<void(PausedInstallsResult)> callback) {
+  async::Run(context, [] { return ListPausedInstallsSync(); }, std::move(callback));
 }
 
 void QueueTitleArtworkAsync(QObject* context, const std::string& source,
