@@ -29,9 +29,9 @@ const QSize kThumbArt(128, 128);
 // What the sidebar keeps for its games: a 40 px banner or small cover never needs more.
 const QSize kSidebarArt(640, 640);
 
-// Store titles' art held at once; the least recently drawn beyond this is dropped.
-constexpr int kMaxTitles = 250;
-constexpr int kKeepTitles = 200;
+// Covers drawn at tile size held at once; the least recently drawn beyond this are dropped.
+constexpr int kMaxDrawn = 250;
+constexpr int kKeepDrawn = 200;
 
 // A store title asked for and not drawn since has scrolled away; its request is dropped.
 constexpr qint64 kStaleMs = 500;
@@ -210,7 +210,7 @@ QPixmap ArtworkStore::CoverById(const QString& id, const QString& name, QSize ti
 QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
                            qreal device_pixel_ratio) {
   const QString scaled_key = id + '@' + QString::number(tile.width());
-  TouchTitle(id);
+  Touch(id);
   // Before the cached copy, which may be a placeholder drawn for a request since dropped.
   if (!answered_.contains(id)) {
     // Drawn at this size as soon as it lands.
@@ -245,31 +245,31 @@ void ArtworkStore::KeepScaled(const QString& key, const QPixmap& cover) {
   if (library_.contains(id)) last_drawn_.insert(id, cover);
 }
 
-void ArtworkStore::TouchTitle(const QString& id) {
-  if (!titles_.contains(id) || library_.contains(id)) return;
-  title_use_.insert(id, clock_.elapsed());
-  if (title_use_.size() <= kMaxTitles || trim_queued_) return;
+void ArtworkStore::Touch(const QString& id) {
+  drawn_.insert(id, clock_.elapsed());
+  if (drawn_.size() <= kMaxDrawn || trim_queued_) return;
   // After the paint, so every tile it drew is marked first.
   trim_queued_ = true;
-  QTimer::singleShot(0, this, &ArtworkStore::TrimTitles);
+  QTimer::singleShot(0, this, &ArtworkStore::Trim);
 }
 
-void ArtworkStore::TrimTitles() {
+void ArtworkStore::Trim() {
   trim_queued_ = false;
-  // Down to kKeepTitles at once, so this sort runs once per 50 new titles. Anything drawn in the
+  // Down to kKeepDrawn at once, so this sort runs once per 50 new covers. Anything drawn in the
   // last second is on screen or just was, and stays however many that is.
   const qint64 recent = clock_.elapsed() - 1000;
   std::vector<std::pair<qint64, QString>> by_use;
-  by_use.reserve(title_use_.size());
-  for (auto it = title_use_.cbegin(); it != title_use_.cend(); ++it) by_use.emplace_back(it.value(), it.key());
+  by_use.reserve(drawn_.size());
+  for (auto it = drawn_.cbegin(); it != drawn_.cend(); ++it) by_use.emplace_back(it.value(), it.key());
   std::ranges::sort(by_use);
   for (const auto& [used, old] : by_use) {
-    if (title_use_.size() <= kKeepTitles || used > recent) break;
+    if (drawn_.size() <= kKeepDrawn || used > recent) break;
     if (queued_.contains(old)) continue;
-    title_use_.remove(old);
-    if (library_.contains(old)) continue;  // installed since: the library's now
-    Drop(old);
+    drawn_.remove(old);
+    // A game's small copy stays for the sidebar and its color; a store title's goes too.
     InvalidateRendering(old.toStdString());
+    if (library_.contains(old)) continue;
+    Drop(old);
     answered_.remove(old);
     refetching_.remove(old);
   }
@@ -278,7 +278,7 @@ void ArtworkStore::TrimTitles() {
 void ArtworkStore::PrefetchTitle(const QString& source, const QString& ref, QSize tile, qreal device_pixel_ratio) {
   const QString id = source + "-" + ref;
   titles_.insert(id, {source.toStdString(), ref.toStdString()});
-  TouchTitle(id);
+  Touch(id);
   if (quick_ || queued_.contains(id)) return;
   const bool held = thumbs_.contains(id);
   // A placeholder is cached too, so only an answered title's copy counts.
@@ -432,8 +432,9 @@ bool ArtworkStore::NextRequest(QQueue<QString>& queue, QString* id) {
   const qint64 since = clock_.elapsed() - kStaleMs;
   while (!queue.isEmpty()) {
     QString next = queue.dequeue();
-    const auto used = title_use_.constFind(next);
-    if (used == title_use_.constEnd() || *used >= since) {
+    // Only store titles: everything that draws them repaints on RequestsDropped.
+    const auto used = drawn_.constFind(next);
+    if (!titles_.contains(next) || library_.contains(next) || used == drawn_.constEnd() || *used >= since) {
       *id = std::move(next);
       return true;
     }

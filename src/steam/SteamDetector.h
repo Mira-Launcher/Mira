@@ -38,8 +38,15 @@ struct ProtonCompatInfo {
 };
 
 // Finds the Steam installation: config's steam.root override if set,
-// otherwise the two real locations in use across distros.
+// otherwise the two real locations in use across distros, then Flathub's Steam.
 std::optional<std::filesystem::path> FindSteamRoot(const config::Config& config);
+
+// What starts the Steam client FindSteamRoot found: `steam`, or `flatpak run com.valvesoftware.Steam`
+// for Flathub's.
+std::vector<std::string> SteamCommand(const config::Config& config);
+
+// Where that client writes its pid while it runs.
+std::filesystem::path SteamPidFile(const config::Config& config);
 
 // Every library folder Steam knows about, including steam_root's own. Read
 // from libraryfolders.vdf, falling back to just steam_root if that file is

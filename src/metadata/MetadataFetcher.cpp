@@ -40,6 +40,9 @@
 
 namespace mira::metadata {
 namespace {
+
+// Raised when details gain a field worth fetching again for: 2 has Steam's trailer streams.
+constexpr int kDetailsVersion = 2;
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -750,8 +753,10 @@ bool FetchSteamDetails(const config::Config& config, store::MetadataStore& cache
     steam_info["screenshots"] = screenshots;
     json movies = json::array();
     for (const auto& movie : Value(data, "movies", json::array())) {
-      if (!movie.is_object() || !movie.contains("mp4")) continue;
-      const std::string url = Value(movie["mp4"], "max", std::string());
+      if (!movie.is_object()) continue;
+      // Steam lists streams now; an mp4 only on older answers.
+      std::string url = Value(movie, "hls_h264", std::string());
+      if (url.empty() && movie.contains("mp4")) url = Value(movie["mp4"], "max", std::string());
       if (!url.empty()) movies.push_back(url);
     }
     steam_info["movies"] = movies;
@@ -921,7 +926,10 @@ void FetchDetails(const config::Config& config, store::MetadataStore& cache, con
     }
     AddSteamByName(config, cache, game, steam_match, info);
   }
-  if (answered) info["details_fetched"] = model::NowSeconds();
+  if (answered) {
+    info["details_fetched"] = model::NowSeconds();
+    info["details_version"] = kDetailsVersion;
+  }
 }
 
 Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
@@ -1004,7 +1012,9 @@ void CarryChosenSlots(const json& old, json& info) {
 }
 
 Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
-  json info = {{"fetched_at", model::NowSeconds()}, {"details_fetched", model::NowSeconds()}};
+  json info = {{"fetched_at", model::NowSeconds()},
+               {"details_fetched", model::NowSeconds()},
+               {"details_version", kDetailsVersion}};
   CarryChosenSlots(cache.Read(game.id), info);
   const std::int64_t griddb_id = config::Resolver(config, game.overrides).GetInt("metadata.steamgriddb_id");
 
@@ -1067,6 +1077,7 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
       if (config.GetBool("tags.steam")) AddStoreItemTags(cache, appid, *steam_item, info);
       FetchProtonDb(appid, info);
       info["details_fetched"] = model::NowSeconds();
+      info["details_version"] = kDetailsVersion;
     } else {
       FetchDetails(config, cache, game, steam_match, info);
     }
@@ -1155,7 +1166,7 @@ bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& c
 
 bool DetailsFresh(const config::Config& config, const json& info) {
   const std::int64_t fetched = Value(info, "details_fetched", std::int64_t{0});
-  if (fetched == 0) return false;
+  if (fetched == 0 || Value(info, "details_version", 1) < kDetailsVersion) return false;
   const std::int64_t days = config.GetInt("metadata.refresh_days");
   return days == 0 || model::NowSeconds() - fetched < days * 86400;
 }

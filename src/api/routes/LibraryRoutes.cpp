@@ -206,11 +206,12 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     });
   });
 
-  http.Post("/v1/steam/status", [](const Request& req, Response& res) {
+  http.Post("/v1/steam/status", [&s](const Request& req, Response& res) {
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
     if (body.is_discarded() || !body.is_object())
       return SendError(res, 400, "invalid_body", "expected a JSON object");
-    const auto set = steam::SetFriendsStatus(body.value("status", std::string()));
+    const auto set = steam::SetFriendsStatus(body.value("status", std::string()), steam::SteamPidFile(s.config),
+                                             steam::SteamCommand(s.config));
     if (!set) return SendError(res, set.error().code == "invalid_status" ? 400 : 409, set.error());
     SendJson(res, {{"status", body.value("status", std::string())}});
   });
@@ -228,9 +229,10 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     SendJson(res, {{"status", "ok"}, {"added", change->added}, {"updated", change->updated}});
   });
 
-  http.Post("/v1/steam/bigpicture", [](const Request&, Response& res) {
+  http.Post("/v1/steam/bigpicture", [&s](const Request&, Response& res) {
     Command command;
-    command.argv = {"steam", "steam://open/bigpicture"};
+    command.argv = steam::SteamCommand(s.config);
+    command.argv.push_back("steam://open/bigpicture");
     if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });

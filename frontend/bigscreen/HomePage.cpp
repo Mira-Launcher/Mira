@@ -40,6 +40,7 @@ HomePage::HomePage(BigScreenWindow* window) : Page(window) {
     emit HintsChanged();
   });
   connect(services.artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(services.artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
   Rebuild();
 }
 

@@ -115,21 +115,29 @@ void HeroBackground::LoadHero() {
   const QString key = key_;
   LoadLogo(key);
   // ArtworkStore keeps only a small copy of most heroes, too coarse for a whole screen.
-  api::GetArtworkImageAsync(this, key.toStdString(), "hero", [this, key](QImage image) {
-    if (heroes_.size() > 16) heroes_.clear();
-    const QPixmap hero = image.isNull() ? QPixmap() : QPixmap::fromImage(std::move(image));
-    heroes_.insert(key, hero);
-    if (key == key_ && !hero.isNull()) Fade(hero);
-  });
+  // Decoded at the screen's size: a 4K hero is 33 MB unpacked.
+  api::GetArtworkImageAsync(
+      this, key.toStdString(), "hero",
+      [this, key](QImage image) {
+        if (heroes_.size() >= kKeepHeroes) heroes_.clear();
+        const QPixmap hero = image.isNull() ? QPixmap() : QPixmap::fromImage(std::move(image));
+        heroes_.insert(key, hero);
+        if (key == key_ && !hero.isNull()) Fade(hero);
+      },
+      size() * devicePixelRatioF());
 }
 
 void HeroBackground::LoadLogo(const QString& key) {
   if (logos_.contains(key)) return;
-  api::GetArtworkImageAsync(this, key.toStdString(), "logo", [this, key](QImage image) {
-    if (logos_.size() > 16) logos_.clear();
-    logos_.insert(key, image.isNull() ? QPixmap() : QPixmap::fromImage(std::move(image)));
-    emit ArtChanged();
-  });
+  // Drawn at most a few rows tall.
+  api::GetArtworkImageAsync(
+      this, key.toStdString(), "logo",
+      [this, key](QImage image) {
+        if (logos_.size() >= kKeepLogos) logos_.clear();
+        logos_.insert(key, image.isNull() ? QPixmap() : QPixmap::fromImage(std::move(image)));
+        emit ArtChanged();
+      },
+      QSize(width(), height() / 4) * devicePixelRatioF());
 }
 
 // Made on the first trailer: loading Qt's media backend pulls in FFmpeg, which big screen

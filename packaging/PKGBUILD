@@ -6,12 +6,17 @@ pkgdesc="Linux game launcher for native games and Windows games via Wine/Proton"
 arch=('x86_64')
 url="https://github.com/Mira-Launcher/Mira"
 license=('GPL-3.0-or-later')
-depends=('gcc-libs' 'curl' 'qt6-base' 'qt6-multimedia')
-makedepends=('cmake' 'ninja' 'clang')
+depends=('gcc-libs' 'curl' 'qt6-base' 'qt6-multimedia' '7zip')
+makedepends=('cmake' 'ninja')
 optdepends=('wine: run Windows games without Proton'
            'umu-launcher: Proton support (AUR)'
            'winetricks: install DLL/redistributable fixes into a game prefix'
-           '7zip: auto-extract archives dropped into a library root'
+           'cabextract: needed by winetricks'
+           'unzip: needed by winetricks'
+           'gamemode: GameMode while a game runs'
+           'mangohud: performance overlay'
+           'sdl3: controllers and sounds in big screen'
+           'polkit: install missing system packages from Mira'
            'sqlite: import Lutris libraries')
 backup=()
 source=("mira-$pkgver.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v$pkgver.tar.gz")

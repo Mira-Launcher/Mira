@@ -291,7 +291,12 @@ SystemPackagesResult GetSystemPackagesSync(const std::string& feature) {
         result.distro = body.value("distro", std::string());
         result.family = body.value("family", std::string());
         for (const json& item : body.value("missing", json::array())) {
-          if (item.is_object()) result.missing.push_back(item.value("package", std::string()));
+          if (!item.is_object()) continue;
+          result.missing.push_back(item.value("package", std::string()));
+          result.purposes.push_back(item.value("purpose", std::string()));
+        }
+        for (const json& item : body.value("unavailable", json::array())) {
+          if (item.is_object()) result.unavailable.push_back(item.value("purpose", std::string()));
         }
         result.install = body.value("install", std::vector<std::string>());
         result.restart = body.value("restart", false);

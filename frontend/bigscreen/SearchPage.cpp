@@ -34,9 +34,14 @@ SearchPage::SearchPage(BigScreenWindow* window) : Page(window) {
   connect(services.library, &GameLibraryModel::Changed, this, &SearchPage::Search);
   connect(services.owned_titles, &OwnedTitles::Changed, this, &SearchPage::Search);
   connect(services.artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(services.artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
 }
 
-void SearchPage::Shown() { Search(); }
+void SearchPage::Shown() {
+  // Arrive on the search box, not typing, so Q/E still switch tabs.
+  zone_ = Zone::Field;
+  Search();
+}
 
 void SearchPage::Search() {
   const LibraryServices& services = window_->services();
@@ -99,6 +104,8 @@ void SearchPage::SaveRecent() {
 }
 
 bool SearchPage::Typed(const QString& text) {
+  // Only the keyboard zone takes typing; elsewhere letters are buttons (Q/E switch tabs).
+  if (zone_ != Zone::Keys) return false;
   if (text.isEmpty()) {
     if (query_.isEmpty()) return false;
     query_.chop(1);
@@ -123,6 +130,10 @@ bool SearchPage::Navigate(Nav nav) {
     return true;
   }
   switch (zone_) {
+    case Zone::Field:
+      if (nav == Nav::Down || nav == Nav::Accept) zone_ = Zone::Keys;
+      if (nav == Nav::Right) zone_ = Zone::Filters;
+      break;
     case Zone::Keys: {
       const int row = key_ / kKeyColumns, col = key_ % kKeyColumns;
       if (nav == Nav::Accept) {
@@ -134,11 +145,15 @@ bool SearchPage::Navigate(Nav nav) {
       if (nav == Nav::Left && col > 0) --key_;
       if (nav == Nav::Right && col < kKeyColumns - 1) ++key_;
       if (nav == Nav::Right && col == kKeyColumns - 1 && results > 0) zone_ = Zone::Results, result_ = 0;
-      if (nav == Nav::Up) row > 0 ? void(key_ -= kKeyColumns) : void(zone_ = Zone::Filters);
+      if (nav == Nav::Up) row > 0 ? void(key_ -= kKeyColumns) : void(zone_ = Zone::Field);
       if (nav == Nav::Down && key_ + kKeyColumns < int(kKeys.size())) key_ += kKeyColumns;
       break;
     }
     case Zone::Filters:
+      if (nav == Nav::Left && filter_ == 0) {
+        zone_ = Zone::Field;
+        break;
+      }
       if (nav == Nav::Left) filter_ = std::max(0, filter_ - 1);
       if (nav == Nav::Right) filter_ = std::min(int(filters_.size()) - 1, filter_ + 1);
       if (nav == Nav::Down) zone_ = results > 0 ? Zone::Results : Zone::Keys;
@@ -188,6 +203,7 @@ bool SearchPage::Navigate(Nav nav) {
 
 QList<Hint> SearchPage::Hints() const {
   switch (zone_) {
+    case Zone::Field: return {{Nav::Accept, "Type"}, {Nav::Back, "Back"}};
     case Zone::Keys:
       return {{Nav::Accept, "Type"}, {Nav::Action, "Delete"}, {Nav::Search, "Space"}, {Nav::Back, "Back"}};
     case Zone::Filters: return {{Nav::Accept, "Filter"}, {Nav::Back, "Back"}};
@@ -208,7 +224,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
 
   // Query field and keyboard.
   const QRectF field(kMargin * u, kTop * u, kKeysW * u, 3.4 * u);
-  painter.setPen(QPen(tokens.border, 1));
+  painter.setPen(zone_ == Zone::Field ? QPen(Accent(), u * 0.12) : QPen(tokens.border, 1));
   painter.setBrush(tokens.surface);
   painter.drawRoundedRect(field, u * 0.5, u * 0.5);
   painter.setFont(Font(u, 1.25));
@@ -216,7 +232,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
   const QRectF text_box = field.adjusted(u * 1.1, 0, -u * 1.1, 0);
   painter.drawText(text_box, Qt::AlignVCenter | Qt::AlignLeft, query_.isEmpty() ? "Search your games" : query_);
   const double caret_x = text_box.left() + (query_.isEmpty() ? 0 : painter.fontMetrics().horizontalAdvance(query_) + u * 0.1);
-  painter.fillRect(QRectF(caret_x, field.center().y() - u * 0.7, u * 0.1, u * 1.4), Accent());
+  if (zone_ == Zone::Keys) painter.fillRect(QRectF(caret_x, field.center().y() - u * 0.7, u * 0.1, u * 1.4), Accent());
 
   const double gap = u * 0.45;
   const double key_w = (kKeysW * u - gap * (kKeyColumns - 1)) / kKeyColumns;

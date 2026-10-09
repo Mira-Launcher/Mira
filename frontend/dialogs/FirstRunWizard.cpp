@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QLibrary>
 #include <QLineEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
@@ -20,6 +21,7 @@
 
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
+#include "../system/PackageInstall.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -31,7 +33,8 @@ namespace {
 QString Home(const QString& rest) { return QDir::homePath() + "/" + rest; }
 
 bool SteamInstalled() {
-  return QFileInfo::exists(Home(".steam/steam")) || QFileInfo::exists(Home(".local/share/Steam"));
+  return QFileInfo::exists(Home(".steam/steam")) || QFileInfo::exists(Home(".local/share/Steam")) ||
+         QFileInfo::exists(Home(".var/app/com.valvesoftware.Steam/.local/share/Steam"));
 }
 
 bool LutrisInstalled() {
@@ -279,10 +282,21 @@ QWidget* FirstRunWizard::BuildSidebar() {
 
 QWidget* FirstRunWizard::BuildCheck() {
   QVBoxLayout* body = nullptr;
-  QWidget* page = MakePage("System check", "What Mira found on this computer.", body);
+  QWidget* page = MakePage("System check", "What Mira found on this computer, and what it can install for you.", body);
   check_ = MakeLabel(page, "Checking…", nullptr);
   check_->setTextFormat(Qt::RichText);
   body->addWidget(check_);
+  package_list_ = new QVBoxLayout();
+  body->addLayout(package_list_);
+  auto* buttons = new QHBoxLayout();
+  install_packages_ = new QPushButton("Install", page);
+  check_again_ = new QPushButton("Check again", page);
+  buttons->addWidget(install_packages_);
+  buttons->addWidget(check_again_);
+  buttons->addStretch(1);
+  body->addLayout(buttons);
+  connect(install_packages_, &QPushButton::clicked, this, &FirstRunWizard::InstallChecked);
+  connect(check_again_, &QPushButton::clicked, this, &FirstRunWizard::FillCheck);
   body->addStretch(1);
   return page;
 }
@@ -313,7 +327,9 @@ void FirstRunWizard::PreselectSources() {
   if (LutrisInstalled()) ids << "lutris";
   for (const auto& [id, box] : sources_) box->setChecked(ids.contains(id));
   if (SteamInstalled() && steam_root_ != nullptr) {
-    steam_root_->setPlaceholderText(QFileInfo::exists(Home(".steam/steam")) ? "~/.steam/steam" : "~/.local/share/Steam");
+    steam_root_->setPlaceholderText(QFileInfo::exists(Home(".steam/steam"))         ? "~/.steam/steam"
+                                    : QFileInfo::exists(Home(".local/share/Steam")) ? "~/.local/share/Steam"
+                                                                                     : "Flathub's Steam");
   }
 }
 
@@ -346,9 +362,63 @@ void FirstRunWizard::FillCheck() {
   const QString base = line(vulkan, vulkan ? "Vulkan is installed." : "Vulkan is missing. Install your distribution's vulkan loader and driver packages; most games need it.") +
                        line(have_runners_, have_runners_ ? "A Proton or Wine build is installed." : "No Proton or Wine build yet.");
   check_->setText(base);
-  api::GetGameModeStatusAsync(this, [this, base, line](GameModeStatusResult result) {
+  for (const auto& [box, package] : package_boxes_) delete box;
+  package_boxes_.clear();
+  install_packages_->setVisible(false);
+  check_again_->setVisible(false);
+  // Everything Mira uses, ticked: an AppImage brings none of it along.
+  api::GetSystemPackagesAsync(this, {}, [this, base, line](SystemPackagesResult result) {
     if (!result.ok) return;
-    check_->setText(base + line(result.installed, result.installed ? "GameMode is available." : "GameMode is not installed. Optional; it can raise performance."));
+    packages_ = result;
+    if (result.missing.empty() && result.unavailable.empty()) {
+      check_->setText(base + line(true, "Everything else Mira uses is installed."));
+      return;
+    }
+    QString text = base;
+    for (const std::string& purpose : result.unavailable) {
+      text += line(false, QString::fromStdString(purpose).toHtmlEscaped() + ": not packaged for " +
+                              QString::fromStdString(result.distro).toHtmlEscaped() + ".");
+    }
+    if (!result.missing.empty()) {
+      text += line(false, result.install.empty() ? "Missing. Install these with your system's package manager:"
+                                                 : "Missing. Mira can install these; your system asks for your password:");
+    }
+    check_->setText(text);
+    for (std::size_t i = 0; i < result.missing.size(); ++i) {
+      const QString purpose = i < result.purposes.size() ? QString::fromStdString(result.purposes[i]) : QString();
+      auto* box = new QCheckBox(QString::fromStdString(result.missing[i]) + (purpose.isEmpty() ? "" : " — " + purpose),
+                                check_->parentWidget());
+      box->setChecked(!unticked_.contains(result.missing[i]));
+      box->setEnabled(!result.install.empty());
+      package_list_->addWidget(box);
+      package_boxes_.emplace_back(box, result.missing[i]);
+    }
+    install_packages_->setVisible(!result.install.empty() && !result.missing.empty());
+    check_again_->setVisible(true);
+  });
+}
+
+void FirstRunWizard::InstallChecked() {
+  std::vector<std::string> chosen;
+  for (const auto& [box, package] : package_boxes_) {
+    if (box->isChecked()) {
+      chosen.push_back(package);
+      unticked_.erase(package);
+    } else {
+      unticked_.insert(package);
+    }
+  }
+  const std::vector<std::string>& install = packages_.install;
+  if (chosen.empty() || install.size() < packages_.missing.size()) return;
+  // mirad's command ends with every missing package; only the ticked ones go.
+  std::vector<std::string> argv(install.begin(), install.end() - static_cast<std::ptrdiff_t>(packages_.missing.size()));
+  argv.insert(argv.end(), chosen.begin(), chosen.end());
+  install_packages_->setEnabled(false);
+  QPointer<FirstRunWizard> guard(this);
+  system::InstallPackages(this, argv, system::Names(chosen), packages_.restart, [guard](bool) {
+    if (guard == nullptr) return;
+    guard->install_packages_->setEnabled(true);
+    guard->FillCheck();
   });
 }
 

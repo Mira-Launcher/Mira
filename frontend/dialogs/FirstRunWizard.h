@@ -4,6 +4,7 @@
 #include <QStringList>
 
 #include <map>
+#include <set>
 #include <vector>
 
 #include "../client/Types.h"
@@ -17,6 +18,7 @@ class QPushButton;
 class QRadioButton;
 class QSpinBox;
 class QStackedWidget;
+class QVBoxLayout;
 
 namespace mira_gui {
 
@@ -54,6 +56,8 @@ private:
   QString PrimaryUse() const;
   void PreselectSources();
   void FillCheck();
+  // Installs the ticked system packages.
+  void InstallChecked();
   QString SummaryText() const;
   std::vector<ConfigEdit> Edits() const;
   FrontendPrefs Prefs() const;
@@ -84,6 +88,12 @@ private:
   QComboBox* recent_style_ = nullptr;
   QSpinBox* recent_count_ = nullptr;
   QLabel* check_ = nullptr;
+  QVBoxLayout* package_list_ = nullptr;
+  std::vector<std::pair<QCheckBox*, std::string>> package_boxes_;  // each missing package's tick
+  SystemPackagesResult packages_;
+  std::set<std::string> unticked_;  // stays unticked when the list is checked again
+  QPushButton* install_packages_ = nullptr;
+  QPushButton* check_again_ = nullptr;
   QLabel* summary_ = nullptr;
 
   bool have_runners_ = true;  // until mirad says otherwise

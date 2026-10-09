@@ -32,9 +32,9 @@ namespace mira_gui {
 //    socket, and decodes its image there; a 500-game library would
 //    otherwise open 500 of both at once.
 //  - **Keep what's shown often, never a placeholder for art already seen.**
-//    A small copy of every library game's image stays, and so do the library
-//    covers as the grid draws them. A store title's art stays only while it is
-//    among the kMaxTitles most recently drawn. A sidebar-sized copy stays for
+//    A small copy of every library game's image stays. Covers drawn at a tile
+//    size stay while among the kMaxDrawn most recently drawn, and a store
+//    title's small copy with them. A sidebar-sized copy stays for
 //    the games the sidebar shows (Keep); any other size is fetched again from
 //    mirad's own cache, with the small copy stretched in its place meanwhile.
 //
@@ -143,9 +143,9 @@ private:
   QPixmap Held(const QString& key) const;
   // Stores a drawn cover, dropping store titles' copies nothing else holds any more.
   void KeepScaled(const QString& key, const QPixmap& cover);
-  // Marks a store title as just drawn; past kMaxTitles, TrimTitles drops the least recently drawn.
-  void TouchTitle(const QString& id);
-  void TrimTitles();
+  // Marks a cover as just drawn; past kMaxDrawn, Trim drops the least recently drawn's copies.
+  void Touch(const QString& id);
+  void Trim();
   // CoverById and TitleCover's shared body.
   QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio);
 
@@ -154,7 +154,7 @@ private:
   // Keys are a cover's id or a slot's "id#slot" (which also key answered_/queued_/pending_).
   QHash<QString, QPixmap> sidebar_;  // at up to kSidebarArt, for kept_ games only
   QSet<QString> kept_;              // game ids
-  QSet<QString> library_;           // ids drawn as library games, whose copies always stay
+  QSet<QString> library_;           // ids drawn as library games, whose small copies always stay
   QHash<QString, QPixmap> thumbs_;  // a small copy of every image held
   // Covers as drawn, by "id@tile width"; a store title's only while among the most recently drawn.
   QHash<QString, QPixmap> scaled_;
@@ -174,7 +174,7 @@ private:
   QQueue<QString> pending_;
   QQueue<QString> ahead_;  // PrefetchTitle's
   QHash<QString, std::pair<std::string, std::string>> titles_;  // id -> {source, ref}
-  QHash<QString, qint64> title_use_;  // store titles with art held, by when last drawn (clock_ ms)
+  QHash<QString, qint64> drawn_;  // covers drawn at tile size, by when last drawn (clock_ ms)
   QElapsedTimer clock_;
   bool trim_queued_ = false;
   bool drop_signal_queued_ = false;

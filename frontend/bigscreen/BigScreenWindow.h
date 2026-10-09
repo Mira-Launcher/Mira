@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QHash>
 #include <QList>
 #include <QPixmap>
@@ -46,6 +47,7 @@ public:
   void SetPrefs(const FrontendPrefs& prefs);
   double unit() const;
   // "xbox", "ps" or "nin": the setting, or the connected controller's.
+  // "keys", "xbox", "ps" or "nin": which labels the hints show.
   QString GlyphKind() const;
   const GamepadInput& input() const { return *input_; }
 
@@ -67,6 +69,8 @@ public:
   void ShowHero(const Item& item);
   void OpenGame(const Item& item);
   void Toast(const QString& text);
+  // Hints show keys (true) or the controller's buttons.
+  void UseKeys(bool keys);
   // A yes/no question over the current page; `on_confirm` runs on yes.
   void Confirm(const QString& title, const QString& body, const QString& confirm_label,
                std::function<void()> on_confirm);
@@ -165,6 +169,8 @@ private:
   int tab_ = 0;
   std::optional<Dialog> dialog_;
   std::optional<Menu> menu_;
+  bool keys_ = false;  // the keyboard was used last
+  QElapsedTimer escape_armed_;  // the first Esc on Home
   Sounds* sounds_ = nullptr;
   GameKeyboard* keyboard_ = nullptr;
   Notice* notice_ = nullptr;
@@ -178,7 +184,6 @@ private:
   QString toast_;
   QTimer toast_timer_;
   QTimer clock_timer_;
-  mutable QHash<QString, QPixmap> shown_covers_;
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
   QString playing_;

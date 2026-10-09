@@ -33,11 +33,11 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
     SendJson(res, {{"status", "ok"}, {"api", kApiVersion}});
   });
 
-  // ?for=winetricks|archives|performance; every tool without it.
+  // ?for=core|wine|winetricks|archives|performance|controllers; every tool without it.
   http.Get("/v1/system/packages", [](const Request& req, Response& res) {
     const std::string feature = Param(req, "for");
     if (!feature.empty() && system::ToolsFor(feature).empty()) {
-      return SendError(res, 400, "invalid_feature", "?for= must be winetricks, archives or performance");
+      return SendError(res, 400, "invalid_feature", "?for= must be core, wine, winetricks, archives, performance or controllers");
     }
     SendJson(res, system::Report(feature));
   });

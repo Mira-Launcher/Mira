@@ -43,6 +43,9 @@ private:
   void CreatePlayer();
   void EndTrailer();
 
+  static constexpr int kKeepHeroes = 4;
+  static constexpr int kKeepLogos = 8;
+
   BigScreenWindow* window_;
   QString key_;
   // Full heroes fetched lately, by key; a null one means it has none.

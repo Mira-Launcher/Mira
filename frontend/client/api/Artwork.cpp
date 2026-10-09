@@ -1,5 +1,8 @@
 #include "Artwork.h"
 
+#include <QBuffer>
+#include <QImageReader>
+
 #include <cctype>
 #include <chrono>
 #include <json.hpp>
@@ -19,9 +22,17 @@ namespace {
 
 using nlohmann::json;
 
-QImage DecodeImage(const std::string& bytes) {
+// `max` (when not empty) bounds the decoded size, keeping the aspect ratio.
+QImage DecodeImage(const std::string& bytes, QSize max = {}) {
+  QByteArray data = QByteArray::fromRawData(bytes.data(), static_cast<qsizetype>(bytes.size()));
+  QBuffer buffer(&data);
+  QImageReader reader(&buffer);
+  if (const QSize size = reader.size();
+      !max.isEmpty() && size.isValid() && (size.width() > max.width() || size.height() > max.height())) {
+    reader.setScaledSize(size.scaled(max, Qt::KeepAspectRatio));
+  }
   QImage image;
-  image.loadFromData(reinterpret_cast<const uchar*>(bytes.data()), static_cast<int>(bytes.size()));
+  reader.read(&image);
   return image;
 }
 
@@ -245,12 +256,12 @@ void ClearArtThumbsBlocking() {
 }
 
 void GetArtworkImageAsync(QObject* context, const std::string& id, const std::string& slot,
-                          std::function<void(QImage)> callback) {
+                          std::function<void(QImage)> callback, QSize max) {
   async::Run<QImage>(
       context,
-      [id, slot] {
+      [id, slot, max] {
         const ArtworkResult result = GetArtworkSync(id, slot);
-        return result.ok ? DecodeImage(result.bytes) : QImage();
+        return result.ok ? DecodeImage(result.bytes, max) : QImage();
       },
       std::move(callback));
 }
