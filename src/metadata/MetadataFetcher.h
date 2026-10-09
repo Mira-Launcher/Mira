@@ -43,8 +43,9 @@ std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::
 // metadata.refresh_days.
 bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache, const std::string& id);
 
-// Whether `info`'s details were fetched within metadata.refresh_days.
-bool DetailsFresh(const config::Config& config, const nlohmann::json& info);
+// Whether `info`'s details were fetched within metadata.refresh_days, by a Mira new enough for a
+// game, or with `title` for a store title.
+bool DetailsFresh(const config::Config& config, const nlohmann::json& info, bool title = false);
 
 // Shrinks art saved before downloads were fitted, and drops the unused capsule and header
 // images, once per game. Stops between games when its Lane task is stopped. Temporary: drop

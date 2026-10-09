@@ -41,8 +41,11 @@
 namespace mira::metadata {
 namespace {
 
-// Raised when details gain a field worth fetching again for: 2 has Steam's trailer streams.
-constexpr int kDetailsVersion = 2;
+// Raised when details gain a field worth fetching again for: 2 has Steam's trailer streams, 3 gives
+// a game matched to Steam by name its store details. Store titles still take 2, so a large store
+// library isn't fetched again for a change that leaves titles as they were.
+constexpr int kDetailsVersion = 3;
+constexpr int kTitleDetailsVersion = 2;
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -898,9 +901,15 @@ bool FetchLutrisOwned(const config::Config& config, const std::string& slug, con
 // the reviews and tags of a Steam game of exactly its name, since a wrong game's would mislead. A
 // store's launcher isn't a game, so it gets none. Returns whether a match was found for the tier.
 bool AddSteamByName(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
-                    SteamMatcher& steam_match, json& info) {
+                    SteamMatcher& steam_match, json& info, bool store_details) {
   if (!config.GetBool("metadata.steam_by_name") || game.source == "launcher") return false;
   const std::string& exact = steam_match().exact;
+  // A library game sold on Steam under its exact name gets the store page too: description,
+  // screenshots and trailers. Not store titles, which would be one appdetails call each.
+  if (store_details && !exact.empty()) {
+    FetchSteamDetails(config, cache, exact, SteamStoreItem(exact), info);
+    return true;
+  }
   json item;
   std::jthread lookup;
   if (!exact.empty()) lookup = Spawn([&] { item = SteamStoreItem(exact); });
@@ -915,7 +924,7 @@ bool AddSteamByName(const config::Config& config, store::MetadataStore& cache, c
 // The store info, reviews, tags and ProtonDB tier, without art. Sets details_fetched unless
 // Steam's store didn't answer, so a rate-limited try is made again.
 void FetchDetails(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
-                  SteamMatcher& steam_match, json& info) {
+                  SteamMatcher& steam_match, json& info, bool store_details) {
   bool answered = true;
   if (game.runner_ref.starts_with("steam:")) {
     const std::string appid = game.runner_ref.substr(std::string_view("steam:").size());
@@ -924,7 +933,7 @@ void FetchDetails(const config::Config& config, store::MetadataStore& cache, con
     if (game.source == "epic") {
       if (const json meta = LegendaryMeta(game.source_ref); !meta.is_null()) AddEpicDetails(game.source_ref, meta, info);
     }
-    AddSteamByName(config, cache, game, steam_match, info);
+    AddSteamByName(config, cache, game, steam_match, info, store_details);
   }
   if (answered) {
     info["details_fetched"] = model::NowSeconds();
@@ -940,7 +949,7 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
   // lookup needs no key, only a best-matched AppID, so this runs first and
   // can still leave something cached even when there's no key for cover art.
   SteamMatcher steam_match(config, game);
-  const bool found_protondb = AddSteamByName(config, cache, game, steam_match, info);
+  const bool found_protondb = AddSteamByName(config, cache, game, steam_match, info, /*store_details=*/true);
 
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (!api_key.empty()) FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
@@ -1070,7 +1079,7 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
   json info = {{"fetched_at", model::NowSeconds()}, {"source", game.source}};
   SteamMatcher steam_match(config, game);
 
-  if (config.GetBool("metadata.title_details") && !DetailsFresh(config, cached)) {
+  if (config.GetBool("metadata.title_details") && !DetailsFresh(config, cached, /*title=*/true)) {
     if (steam_item && Value(*steam_item, "success", 0) == 1) {
       const std::string appid = game.runner_ref.substr(std::string_view("steam:").size());
       AddStoreItemDetails(appid, *steam_item, info);
@@ -1079,7 +1088,7 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
       info["details_fetched"] = model::NowSeconds();
       info["details_version"] = kDetailsVersion;
     } else {
-      FetchDetails(config, cache, game, steam_match, info);
+      FetchDetails(config, cache, game, steam_match, info, /*store_details=*/false);
     }
   }
 
@@ -1150,7 +1159,7 @@ std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::
 Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& cache, const model::Game& game) {
   json info = json::object();
   SteamMatcher steam_match(config, game);
-  FetchDetails(config, cache, game, steam_match, info);
+  FetchDetails(config, cache, game, steam_match, info, /*store_details=*/true);
   if (!info.contains("details_fetched")) return Err("details_unavailable", "the store didn't answer");
   const std::lock_guard lock(MetadataFileMutex());
   json merged = cache.Read(game.id);
@@ -1161,12 +1170,12 @@ Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& 
 
 bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache, const std::string& id) {
   if (!cache.ArtVersions(id).contains("cover")) return true;
-  return config.GetBool("metadata.title_details") && !DetailsFresh(config, cache.Read(id));
+  return config.GetBool("metadata.title_details") && !DetailsFresh(config, cache.Read(id), /*title=*/true);
 }
 
-bool DetailsFresh(const config::Config& config, const json& info) {
+bool DetailsFresh(const config::Config& config, const json& info, bool title) {
   const std::int64_t fetched = Value(info, "details_fetched", std::int64_t{0});
-  if (fetched == 0 || Value(info, "details_version", 1) < kDetailsVersion) return false;
+  if (fetched == 0 || Value(info, "details_version", 1) < (title ? kTitleDetailsVersion : kDetailsVersion)) return false;
   const std::int64_t days = config.GetInt("metadata.refresh_days");
   return days == 0 || model::NowSeconds() - fetched < days * 86400;
 }
