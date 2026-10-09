@@ -128,9 +128,14 @@ public:
   void SlotArtChanged(const QString& id);
   // The zoom stopped: covers drawn quickly meanwhile should be asked for again.
   void QuickScalingEnded();
+  // Requests for tiles no longer drawn were dropped: a view repaints, asking again for any still shown.
+  void RequestsDropped();
 
 private:
-  void Request(const QString& id);
+  // `ahead` waits behind everything asked for by a draw.
+  void Request(const QString& id, bool ahead = false);
+  // The next request off `queue`, dropping store titles that scrolled away before their turn.
+  bool NextRequest(QQueue<QString>& queue, QString* id);
   void Pump();
   // Forgets the image held for a key; true if there was one.
   bool Drop(const QString& key);
@@ -167,10 +172,12 @@ private:
   QSet<QString> ask_again_;           // in flight when mirad said it has art now
   QHash<QString, QString> versions_;  // cover version by id, from NoteArt; empty for none
   QQueue<QString> pending_;
+  QQueue<QString> ahead_;  // PrefetchTitle's
   QHash<QString, std::pair<std::string, std::string>> titles_;  // id -> {source, ref}
   QHash<QString, qint64> title_use_;  // store titles with art held, by when last drawn (clock_ ms)
   QElapsedTimer clock_;
   bool trim_queued_ = false;
+  bool drop_signal_queued_ = false;
   int in_flight_ = 0;
 };
 

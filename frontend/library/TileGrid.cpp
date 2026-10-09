@@ -13,6 +13,7 @@ namespace mira_gui {
 
 TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent) : TileView(parent), artwork_(artwork) {
   setItemDelegate(new GameTileDelegate(this, tile, artwork));
+  if (artwork != nullptr) connect(artwork, &ArtworkStore::RequestsDropped, viewport(), qOverload<>(&QWidget::update));
   setViewMode(QListView::IconMode);
   setResizeMode(QListView::Adjust);
   setMovement(QListView::Static);

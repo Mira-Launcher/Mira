@@ -33,8 +33,12 @@ const QSize kSidebarArt(640, 640);
 constexpr int kMaxTitles = 250;
 constexpr int kKeepTitles = 200;
 
+// A store title asked for and not drawn since has scrolled away; its request is dropped.
+constexpr qint64 kStaleMs = 500;
+
 struct Decoded {
   QImage image;
+  bool reduced = false;  // decoded at the asked sizes only, smaller than the file
   QImage thumb;
   QImage sidebar;  // for a game the sidebar shows
   std::vector<QImage> fitted;  // the sizes asked for when the fetch started, in order
@@ -280,7 +284,7 @@ void ArtworkStore::PrefetchTitle(const QString& source, const QString& ref, QSiz
   if (answered_.contains(id) && !held) return;  // it has none
   wanted_[id] = {{tile, device_pixel_ratio}};
   if (held) refetching_.insert(id);
-  Request(id);
+  Request(id, /*ahead=*/true);
 }
 
 QColor ArtworkStore::CoverColor(const QString& id) {
@@ -411,16 +415,40 @@ void ArtworkStore::InvalidateAllRenderings() {
   colors_.clear();  // placeholders' colors follow the theme
 }
 
-void ArtworkStore::Request(const QString& id) {
+void ArtworkStore::Request(const QString& id, bool ahead) {
   if (queued_.contains(id)) return;
   queued_.insert(id);
-  pending_.enqueue(id);
+  (ahead ? ahead_ : pending_).enqueue(id);
   Pump();
 }
 
+bool ArtworkStore::NextRequest(QQueue<QString>& queue, QString* id) {
+  const qint64 since = clock_.elapsed() - kStaleMs;
+  while (!queue.isEmpty()) {
+    QString next = queue.dequeue();
+    const auto used = title_use_.constFind(next);
+    if (used == title_use_.constEnd() || *used >= since) {
+      *id = std::move(next);
+      return true;
+    }
+    queued_.remove(next);
+    wanted_.remove(next);
+    refetching_.remove(next);
+    // Still on screen if it is drawn again, which asks again.
+    if (!drop_signal_queued_) {
+      drop_signal_queued_ = true;
+      QTimer::singleShot(0, this, [this] {
+        drop_signal_queued_ = false;
+        emit RequestsDropped();
+      });
+    }
+  }
+  return false;
+}
+
 void ArtworkStore::Pump() {
-  while (in_flight_ < kMaxInFlight && !pending_.isEmpty()) {
-    const QString id = pending_.dequeue();
+  QString id;
+  while (in_flight_ < kMaxInFlight && (NextRequest(pending_, &id) || NextRequest(ahead_, &id))) {
     ++in_flight_;
     std::optional<std::pair<std::string, std::string>> title;
     if (const auto found = titles_.constFind(id); found != titles_.constEnd()) title = *found;
@@ -446,10 +474,22 @@ void ArtworkStore::Pump() {
       QImageReader reader(&buffer);
       // Never drawn bigger than the largest tile on a HiDPI screen; a bigger image is decoded
       // straight at that size, which for a JPEG skips most of the work.
-      if (const QSize size = reader.size();
-          size.width() > kMaxArt.width() || size.height() > kMaxArt.height()) {
-        reader.setScaledSize(size.scaled(kMaxArt, Qt::KeepAspectRatio));
+      const QSize size = reader.size();
+      QSize decode = size.width() > kMaxArt.width() || size.height() > kMaxArt.height()
+                         ? size.scaled(kMaxArt, Qt::KeepAspectRatio)
+                         : size;
+      // Only the tile sizes asked for, when nothing needs the whole image: a JPEG decodes at a fraction
+      // of its size for a fraction of the work.
+      if (!sidebar && !sizes.isEmpty() && size.isValid()) {
+        QSize need;
+        for (const auto& [tile, dpr] : sizes)
+          need = need.expandedTo(size.scaled(tile * dpr, Qt::KeepAspectRatioByExpanding));
+        if (need.width() < decode.width()) {
+          decode = need;
+          decoded.reduced = true;
+        }
       }
+      if (decode != size) reader.setScaledSize(decode);
       if (!reader.read(&decoded.image)) return Decoded();
       decoded.thumb =
           decoded.image.scaled(kThumbArt, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -476,6 +516,7 @@ void ArtworkStore::Pump() {
       const QString game = hash < 0 ? id : id.left(hash);
       const bool had = thumbs_.contains(id);
       const QList<std::pair<QSize, qreal>> wanted = wanted_.take(id);
+      QList<std::pair<QSize, qreal>> missing;
       if (found) {
         const QPixmap full = QPixmap::fromImage(std::move(decoded.image));
         thumbs_.insert(id, QPixmap::fromImage(std::move(decoded.thumb)));
@@ -488,10 +529,13 @@ void ArtworkStore::Pump() {
           for (const auto& size : wanted) {
             const auto& [tile, dpr] = size;
             const qsizetype fitted = sizes.indexOf(size);
-            KeepScaled(id + '@' + QString::number(tile.width()),
-                       fitted >= 0 && fitted < static_cast<qsizetype>(decoded.fitted.size())
-                           ? QPixmap::fromImage(std::move(decoded.fitted[fitted]))
-                           : FitToTile(full, tile, dpr));
+            if (fitted >= 0 && fitted < static_cast<qsizetype>(decoded.fitted.size())) {
+              KeepScaled(id + '@' + QString::number(tile.width()), QPixmap::fromImage(std::move(decoded.fitted[fitted])));
+            } else if (decoded.reduced) {
+              missing.append(size);  // asked for after the fetch began: too small here
+            } else {
+              KeepScaled(id + '@' + QString::number(tile.width()), FitToTile(full, tile, dpr));
+            }
           }
         }
       } else {
@@ -507,6 +551,10 @@ void ArtworkStore::Pump() {
       }
       if (ask_again_.remove(id)) {
         answered_.remove(id);
+        Request(id);
+      } else if (!missing.isEmpty()) {
+        wanted_.insert(id, missing);
+        refetching_.insert(id);
         Request(id);
       }
       Pump();
