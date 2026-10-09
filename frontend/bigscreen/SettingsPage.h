@@ -10,8 +10,8 @@
 
 namespace mira_gui::bigscreen {
 
-// Settings for the couch, in sections: the controller, the screen and sound,
-// apps, and the system (power, starting up, leaving big screen).
+// Settings for the couch, in sections: the controller (a page of its own), the
+// screen and sound, apps, and the system (power, updates, leaving big screen).
 class SettingsPage : public Page {
   Q_OBJECT
 
@@ -40,8 +40,17 @@ private:
   void Build();
   void PaintTest(QPainter& painter, double u);
 
+  void OpenController();
+  void CloseController();
+
+  // The rows shown: the main list, or the controller's page.
   std::vector<Row> rows_;
+  std::vector<Row> main_rows_;
+  std::vector<Row> controller_rows_;
+  bool in_controller_ = false;
   int focus_ = 0;
+  // Where the main list was, to return to.
+  int main_focus_ = 0;
   // The button test: every button lit while it's held.
   bool testing_ = false;
   QTimer test_refresh_;

@@ -47,6 +47,7 @@ SettingsPage::SettingsPage(BigScreenWindow* window) : Page(window) {
 }
 
 void SettingsPage::Shown() {
+  if (in_controller_) CloseController();
   testing_ = false;
   test_refresh_.stop();
   update();
@@ -69,33 +70,39 @@ void SettingsPage::Build() {
     return [w, field, fallback] { return OnOff((w->prefs().*field).value_or(fallback)); };
   };
 
-  rows_ = {
-      {"Controller", "Button labels", "Which names the button hints use. Match controller reads them from the controller.",
+  controller_rows_ = {
+      {"Buttons", "Button labels", "Which names the button hints use. Match controller reads them from the controller.",
        [w] { return LabelOf(kButtonKinds, w->prefs().big_screen_buttons.value_or("auto")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_buttons = Cycle(kButtonKinds, p.big_screen_buttons.value_or("auto"), step); }),
        {}},
-      {"Controller", "Select with", "Which face button selects; the other goes back. B selects on Nintendo controllers.",
+      {"Buttons", "Select with", "Which face button selects; the other goes back. B selects on Nintendo controllers.",
        [w] { return w->prefs().big_screen_swap_confirm.value_or(false) ? "Right button (B)" : "Bottom button (A)"; },
        flip(&FrontendPrefs::big_screen_swap_confirm, false), {}},
-      {"Controller", "Stick sensitivity", "How far the stick moves before it counts. High suits worn sticks less well.",
+      {"Movement", "Stick sensitivity", "How far the stick moves before it counts. High suits worn sticks less well.",
        [w] { return LabelOf(kStick, w->prefs().big_screen_stick.value_or("medium")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_stick = Cycle(kStick, p.big_screen_stick.value_or("medium"), step); }),
        {}},
-      {"Controller", "Scroll speed", "How fast lists move while a direction is held.",
+      {"Movement", "Scroll speed", "How fast lists move while a direction is held.",
        [w] { return LabelOf(kRepeat, w->prefs().big_screen_repeat.value_or("normal")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_repeat = Cycle(kRepeat, p.big_screen_repeat.value_or("normal"), step); }),
        {}},
-      {"Controller", "Vibration", "The controller rumbles when you pick something and knocks at the end of a list.",
+      {"Feedback", "Vibration", "The controller rumbles when you pick something and knocks at the end of a list.",
        [w] { return LabelOf(kRumble, w->prefs().big_screen_rumble.value_or("light")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_rumble = Cycle(kRumble, p.big_screen_rumble.value_or("light"), step); }),
        {}},
-      {"Controller", "Test buttons", "Shows each button as you press it, and the controllers connected. Press B twice to leave.",
+      {"Test", "Test buttons", "Shows each button as you press it, and the controllers connected. Press B twice to leave.",
        {}, {}, [this] {
          testing_ = true;
          test_refresh_.start();
          update();
          emit HintsChanged();
-       }},
+       }}
+  };
+
+  main_rows_ = {
+      {"Controller", "Controller settings", "Button labels, which button selects, stick sensitivity, scroll speed, vibration and a button test.",
+       [w] { return w->input().pads().empty() ? QString("No controller") : w->input().pads().front().name; }, {},
+       [this] { OpenController(); }},
 
       {"Screen and sound", "Text size", "Large scales everything up by 15%, for a TV across the room.",
        [w] { return w->prefs().big_screen_large_text.value_or(false) ? "Large" : "Standard"; },
@@ -142,6 +149,20 @@ void SettingsPage::Build() {
        }},
       {"System", "Exit big screen", "Back to the desktop library.", {}, {}, [w] { w->Exit(); }},
   };
+  rows_ = main_rows_;
+}
+
+void SettingsPage::OpenController() {
+  main_focus_ = focus_;
+  rows_ = controller_rows_;
+  in_controller_ = true;
+  focus_ = 0;
+}
+
+void SettingsPage::CloseController() {
+  rows_ = main_rows_;
+  in_controller_ = false;
+  focus_ = main_focus_;
 }
 
 bool SettingsPage::Navigate(Nav nav) {
@@ -169,6 +190,10 @@ bool SettingsPage::Navigate(Nav nav) {
       if (row.act) row.act();
       else if (row.change) row.change(1);
       break;
+    case Nav::Back:
+      if (!in_controller_) return false;
+      CloseController();
+      break;
     default: return false;
   }
   update();
@@ -179,7 +204,8 @@ bool SettingsPage::Navigate(Nav nav) {
 QList<Hint> SettingsPage::Hints() const {
   if (testing_) return {};
   const Row& row = rows_[size_t(focus_)];
-  return {{Nav::Accept, row.act ? (row.label == "Exit big screen" ? "Exit" : "Select") : "Change"}, {Nav::Back, "Back"}};
+  return {{Nav::Accept, row.act ? (row.label == "Exit big screen" ? "Exit" : "Select") : "Change"},
+          {Nav::Back, in_controller_ ? "Settings" : "Back"}};
 }
 
 void SettingsPage::PaintTest(QPainter& painter, double u) {
@@ -246,7 +272,7 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   painter.fillRect(rect(), QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 170));
   painter.setFont(Font(u, 2.0, QFont::ExtraBold));
   painter.setPen(tokens.text);
-  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), testing_ ? "Test buttons" : "Settings");
+  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), testing_ ? "Test buttons" : in_controller_ ? "Controller" : "Settings");
   if (testing_) return PaintTest(painter, u);
 
   // Rows top to bottom with a heading where each section starts, in units before scrolling.
