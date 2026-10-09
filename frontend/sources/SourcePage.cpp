@@ -615,13 +615,7 @@ void SourcePage::UpdateCover(const QString& id) {
   const QString prefix = source_.id + "-";
   if (owned_grid_ == nullptr || id_ == "humble" || !id.startsWith(prefix)) return;
   const QString ref = id.mid(prefix.size());
-  for (int row = 0; row < owned_model_->rowCount(); ++row) {
-    QStandardItem* item = owned_model_->item(row);
-    if (item->data(GameTileDelegate::IdRole).toString() != ref) continue;
-    item->setData(artwork_->TitleCover(source_.id, ref, item->data(GameTileDelegate::NameRole).toString(), tile_,
-                                       devicePixelRatioF()),
-                  Qt::DecorationRole);
-  }
+  owned_grid_->viewport()->update();
   // Its details came with the cover, so its tier, reviews and tags may be new.
   if (tiers_.contains(ref) && tags_.contains(ref) && reviews_.contains(ref)) return;
   api::GetTitleMetadataAsync(this, id_, ref.toStdString(), [this, ref](GameMetadataResult result) {
@@ -927,9 +921,11 @@ void SourcePage::RebuildOwnedTiles() {
     QStandardItem* item = owned_model_->item(row);
     const auto& [ref, title] = owned_[row];
     // Bundles aren't games, so there's no cover to look up.
-    item->setData(id_ == "humble" ? PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF())
-                                  : artwork_->TitleCover(source_.id, ref, title, tile_, devicePixelRatioF()),
-                  Qt::DecorationRole);
+    if (id_ == "humble") {
+      item->setData(PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF()), Qt::DecorationRole);
+    } else {
+      item->setData(QStringList{source_.id, ref}, GameTileDelegate::TitleCoverRole);
+    }
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
     item->setData(review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
                   GameTileDelegate::ReviewRole);

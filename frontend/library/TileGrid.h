@@ -31,6 +31,7 @@ public:
   int VisibleCount() const;
 
 protected:
+  void paintEvent(QPaintEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
@@ -41,6 +42,8 @@ protected:
 
 private:
   QModelIndex ActionIndexAt(const QPoint& pos) const;
+
+  ArtworkStore* artwork_ = nullptr;
 };
 
 }  // namespace mira_gui

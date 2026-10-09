@@ -18,8 +18,8 @@ class ArtworkStore;
 // over it, and the status.
 //
 // Everything it draws comes from the index's roles, plus the cover: an
-// index's own DecorationRole if it has one (a store title), else the
-// artwork store's cover for its IdRole at this delegate's tile size.
+// index's own DecorationRole if it has one, else the artwork store's cover
+// for its TitleCoverRole or IdRole at this delegate's tile size.
 class GameTileDelegate : public QStyledItemDelegate {
 public:
   // The roles the grid sets on each item and this delegate reads.
@@ -49,6 +49,9 @@ public:
     ProtonDbRole,
     // Optional: the share of positive Steam reviews (int), on the status line.
     ReviewRole,
+    // Optional: a store title's {source, ref}, its cover drawn by the artwork store at paint
+    // time, so only tiles on screen are fetched and scaled.
+    TitleCoverRole,
   };
 
   // Where the tile's ActionRole pill sits inside its cell (empty without one); square when the

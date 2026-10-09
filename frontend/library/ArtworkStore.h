@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
 #include <QPixmap>
@@ -31,10 +32,11 @@ namespace mira_gui {
 //    socket, and decodes its image there; a 500-game library would
 //    otherwise open 500 of both at once.
 //  - **Keep what's shown often, never a placeholder for art already seen.**
-//    A small copy of every image stays, and so do the library covers as the
-//    grid draws them. Full images stay only for the games the sidebar shows
-//    (Keep); any other size is fetched again from mirad's own cache, with the
-//    small copy stretched in its place meanwhile.
+//    A small copy of every library game's image stays, and so do the library
+//    covers as the grid draws them. A store title's art stays only while it is
+//    among the kMaxTitles most recently drawn. Full images stay only for the
+//    games the sidebar shows (Keep); any other size is fetched again from
+//    mirad's own cache, with the small copy stretched in its place meanwhile.
 //
 // Everything here is main-thread only.
 class ArtworkStore : public QObject {
@@ -78,6 +80,9 @@ public:
   QPixmap SmallArtwork(const std::string& id) const {
     return thumbs_.value(QString::fromStdString(id));
   }
+
+  // A store title's cover drawn ahead at this size, for a tile about to scroll into view.
+  void PrefetchTitle(const QString& source, const QString& ref, QSize tile, qreal device_pixel_ratio);
 
   // Queues the fetch if this id hasn't been asked about yet, without also
   // scaling/caching a Cover() for some tile size nobody asked for.
@@ -133,6 +138,9 @@ private:
   QPixmap Held(const QString& key) const;
   // Stores a drawn cover, dropping store titles' copies nothing else holds any more.
   void KeepScaled(const QString& key, const QPixmap& cover);
+  // Marks a store title as just drawn; past kMaxTitles, TrimTitles drops the least recently drawn.
+  void TouchTitle(const QString& id);
+  void TrimTitles();
   // CoverById and TitleCover's shared body.
   QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio);
 
@@ -160,6 +168,9 @@ private:
   QHash<QString, QString> versions_;  // cover version by id, from NoteArt; empty for none
   QQueue<QString> pending_;
   QHash<QString, std::pair<std::string, std::string>> titles_;  // id -> {source, ref}
+  QHash<QString, qint64> title_use_;  // store titles with art held, by when last drawn (clock_ ms)
+  QElapsedTimer clock_;
+  bool trim_queued_ = false;
   int in_flight_ = 0;
 };
 

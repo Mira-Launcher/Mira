@@ -1,14 +1,17 @@
 #include "TileGrid.h"
 
+#include <algorithm>
+
 #include <QMouseEvent>
 #include <QTimer>
 #include <QWheelEvent>
 
+#include "ArtworkStore.h"
 #include "GameTileDelegate.h"
 
 namespace mira_gui {
 
-TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent) : TileView(parent) {
+TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent) : TileView(parent), artwork_(artwork) {
   setItemDelegate(new GameTileDelegate(this, tile, artwork));
   setViewMode(QListView::IconMode);
   setResizeMode(QListView::Adjust);
@@ -23,6 +26,23 @@ TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent) : TileVie
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   viewport()->setAutoFillBackground(false);
   setStyleSheet("QListView { background: transparent; border: none; }");
+}
+
+void TileGrid::paintEvent(QPaintEvent* event) {
+  TileView::paintEvent(event);
+  // Store titles' covers for the tiles just below the screen, so scrolling finds them drawn.
+  constexpr int kAhead = 50;
+  if (artwork_ == nullptr || model() == nullptr) return;
+  const QRect shown = viewport()->visibleRegion().boundingRect();
+  if (shown.isEmpty()) return;
+  const QModelIndex last = indexAt(QPoint(shown.left() + 1, shown.bottom()));
+  if (!last.isValid()) return;
+  const QSize tile = static_cast<GameTileDelegate*>(itemDelegate())->TileSize();
+  const int end = std::min(model()->rowCount(), last.row() + kAhead);
+  for (int row = last.row(); row < end; ++row) {
+    const QStringList title = model()->index(row, 0).data(GameTileDelegate::TitleCoverRole).toStringList();
+    if (title.size() == 2) artwork_->PrefetchTitle(title[0], title[1], tile, devicePixelRatioF());
+  }
 }
 
 void TileGrid::SetTileSize(QSize tile) {
