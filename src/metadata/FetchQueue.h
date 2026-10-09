@@ -39,25 +39,38 @@ public:
   void Enqueue(const config::Config& config, api::EventBus& events, model::Game game, bool force = false,
                bool announce = false, Done done = nullptr);
 
-  // Store titles not installed yet, cover only (FetchCover). Each game is
+  // Store titles not installed yet: details and a small cover (FetchTitle), Steam's in batches
+  // (FetchSteamTitles). Each game is
   // synthetic: id "<source>-<ref>", the id it gets once installed. Publishes
   // library.artwork_ready/_failed ({source, ref}). Returns how many were
   // queued.
   int EnqueueTitles(const config::Config& config, api::EventBus& events, std::vector<model::Game> titles);
 
+  // Tracked games whose details are older than metadata.refresh_days: details only
+  // (RefreshDetails), queued behind everything else. Publishes game.metadata_ready on success.
+  int EnqueueStale(const config::Config& config, api::EventBus& events, std::vector<model::Game> games);
+
   // Blocks until nothing is queued or running. For tests.
   void WaitIdle();
 
 private:
+  enum class Kind { Full, Title, Details, SteamTitles };
   struct Job {
     model::Game game;
-    bool title = false;
+    Kind kind = Kind::Full;
+    std::vector<model::Game> batch;  // SteamTitles: fetched together, `game` is the first
     bool announce = false;
     std::vector<Done> done;  // one per Enqueue merged into this job
   };
 
   static constexpr int kWorkers = 3;
+  static constexpr std::size_t kSteamBatch = 50;
 
+  // The games a job writes: its batch's, else its own.
+  static std::vector<std::string> Ids(const Job& job);
+  // Whether a low-priority job has `id`. Needs mutex_.
+  bool Queued(const std::string& id) const;
+  int EnqueueLow(const config::Config& config, api::EventBus& events, std::vector<model::Game> games, Kind kind);
   // Starts workers up to kWorkers while there's work for them. Needs mutex_.
   void StartWorkers(const config::Config& config, api::EventBus& events);
   void Work(const config::Config& config, api::EventBus& events);
@@ -68,7 +81,7 @@ private:
   std::mutex mutex_;
   std::condition_variable idle_;
   std::deque<Job> games_;   // tracked games, first
-  std::deque<Job> titles_;  // store titles
+  std::deque<Job> titles_;  // store titles and detail refreshes
   int workers_ = 0;
   int running_ = 0;
   std::set<std::string> running_ids_;

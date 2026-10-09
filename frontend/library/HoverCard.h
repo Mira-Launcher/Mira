@@ -47,8 +47,9 @@ private:
 
 // A floating, non-modal preview shown after a short dwell over a game: name,
 // status, ProtonDB tier, platform, last played, playtime, developer/genres.
-// Install path, description and reviews are left out: this is a glance; the
-// per-game edit page and GameDetailPageDialog have them.
+// Install path and description are left out: this is a glance; the per-game
+// edit page and GameDetailPageDialog have them. A store title also shows its
+// Steam reviews, since it has no detail page.
 class HoverCard : public QWidget {
   Q_OBJECT
 
@@ -61,8 +62,10 @@ public:
   // fetch result is dropped if a newer ShowGame has since moved on.
   // `hint` is a muted last line, e.g. what a click does.
   void ShowGame(const GameSummary& game, bool running, const QString& hint = QString());
-  // A store title that isn't in the library yet.
-  void ShowTitle(const QString& title, const QString& status, const QString& detail);
+  // A store title that isn't in the library yet, with its cached details
+  // (GET /v1/library/metadata) once they arrive.
+  void ShowTitle(const QString& source, const QString& ref, const QString& title, const QString& status,
+                 const QString& detail);
   // Shows the card beside `anchor` (global), and keeps it there as it grows.
   void PopUpBeside(const QRect& anchor);
 
@@ -82,6 +85,7 @@ private:
   QLabel* platform_line_ = nullptr;
   QLabel* played_line_ = nullptr;
   QLabel* developer_line_ = nullptr;
+  QLabel* review_line_ = nullptr;
   QLabel* error_line_ = nullptr;
   QLabel* hint_line_ = nullptr;
 };

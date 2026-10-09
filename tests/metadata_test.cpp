@@ -7,10 +7,13 @@
 #include <vector>
 
 #include <json.hpp>
+#include <stb_image.h>
+#include <stb_image_write.h>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "metadata/FetchQueue.h"
+#include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
 #include "model/Types.h"
 #include "store/MetadataStore.h"
@@ -20,13 +23,8 @@ using namespace mira;
 using test::TempDir;
 namespace fs = std::filesystem;
 
-// Everything here deliberately exercises only the non-Steam path with no
-// steamgriddb.api_key set: that's the one branch that's fully offline (see
-// MetadataFetcher.cpp's FetchNonSteam: metadata.protondb_for_non_steam
-// defaults to false for the same reason, so it adds no network call here
-// either), so these stay hermetic without mocking curl. The
-// Steam/ProtonDB/SteamGridDB paths themselves were verified live against
-// real APIs during development, not here.
+// Only the non-Steam path with no SteamGridDB key, under test::Isolate's
+// settings (no lookups by name), so these stay offline without mocking curl.
 
 TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches nothing") {
   // SteamGridDB is the only free cover source for a non-Steam game, so with
@@ -147,13 +145,47 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   CHECK(cache.ArtFor("celeste", "cover").has_value());
 }
 
+TEST_CASE("Downloaded art is fitted to its slot: an opaque PNG cover shrinks to JPEG, a small transparent logo stays") {
+  const fs::path dir = TempDir("metadata-fit");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+
+  const auto write_png = [](const fs::path& file, int width, int height, unsigned char alpha) {
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 4, 128);
+    for (std::size_t i = 3; i < pixels.size(); i += 4) pixels[i] = alpha;
+    REQUIRE(stbi_write_png(file.c_str(), width, height, 4, pixels.data(), 0) != 0);
+  };
+  write_png(dir / "big.png", 1200, 1800, 255);
+  write_png(dir / "logo.png", 400, 100, 0);
+  REQUIRE(cache.Write("celeste", nlohmann::json{
+      {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 1}, {"url", "file://" + (dir / "big.png").string()}}})},
+                          {"logo", nlohmann::json::array({{{"id", 2}, {"url", "file://" + (dir / "logo.png").string()}}})}}},
+  }).has_value());
+
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 1).has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "logo", 2).has_value());
+  const auto cover = cache.ArtFor("celeste", "cover");
+  REQUIRE(cover.has_value());
+  CHECK(cover->content_type == "image/jpeg");
+  int width = 0, height = 0, channels = 0;
+  REQUIRE(stbi_info(cover->file.c_str(), &width, &height, &channels) != 0);
+  CHECK(width == metadata::SlotBox("cover").width);
+  CHECK(height == metadata::SlotBox("cover").height);
+  const auto logo = cache.ArtFor("celeste", "logo");
+  REQUIRE(logo.has_value());
+  CHECK(logo->content_type == "image/png");
+  CHECK(fs::file_size(logo->file) == fs::file_size(dir / "logo.png"));
+}
+
 TEST_CASE("A refresh keeps art the user picked by hand") {
   const fs::path dir = TempDir("metadata-refresh-keeps-chosen");
   config::Config config(dir / "settings.toml");
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
-  REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());  // keeps Fetch offline
+  test::Isolate(config);  // keeps Fetch offline
 
   const fs::path image = dir / "picked.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG picked";
@@ -288,7 +320,7 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
   store::MetadataStore cache(dir);
   cache.Load();
   // No key and no Steam lookup: each fetch fails fast, offline.
-  REQUIRE(config.Set("metadata.steam_art_by_name", false).has_value());
+  test::Isolate(config);
 
   api::EventBus events;
   {
@@ -307,4 +339,56 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
     if (event.type == "game.metadata_failed") fetched.insert(event.payload.value("id", std::string()));
   }
   CHECK(fetched.size() == 40);
+}
+
+TEST_CASE("A store title needs fetching until it has a cover and details newer than metadata.refresh_days") {
+  const fs::path dir = TempDir("metadata-title-fresh");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+  test::Isolate(config);
+
+  const fs::path art = metadata::ArtworkDir(config, "gog-1");
+  fs::create_directories(art);
+  std::ofstream(art / "cover.jpg") << "cover";
+  const auto write = [&](std::int64_t fetched) {
+    REQUIRE(cache.Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}}, {"details_fetched", fetched}}).has_value());
+  };
+  CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached
+
+  write(model::NowSeconds());
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  write(model::NowSeconds() - 31 * 86400);
+  CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  REQUIRE(config.Set("metadata.refresh_days", 0).has_value());
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  REQUIRE(config.Set("metadata.title_details", false).has_value());
+  write(0);
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+}
+
+TEST_CASE("PruneOrphanArt removes old art folders with no cached record and keeps the rest") {
+  const fs::path dir = TempDir("metadata-prune");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+
+  const auto folder = [&](const std::string& id, bool old) {
+    const fs::path path = metadata::ArtworkDir(config, id);
+    fs::create_directories(path);
+    std::ofstream(path / "cover.jpg") << "cover";
+    if (old) fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::days(2));
+    return path;
+  };
+  const fs::path orphan = folder("gone", true);
+  const fs::path fresh = folder("fetching", false);
+  const fs::path kept = folder("celeste", true);
+  REQUIRE(cache.Write("celeste", {{"artwork", {{"file", "cover.jpg"}}}}).has_value());
+
+  metadata::PruneOrphanArt(config, cache);
+  CHECK_FALSE(fs::exists(orphan));
+  CHECK(fs::exists(fresh));
+  CHECK(fs::exists(kept));
 }

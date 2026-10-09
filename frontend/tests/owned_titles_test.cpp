@@ -7,7 +7,7 @@ using namespace mira_gui;
 namespace {
 
 StoreTitle Title(const char* source, const char* ref, const char* title, bool installed = false) {
-  return {.ref = ref, .title = title, .installed = installed, .owned = true, .source = source};
+  return {.ref = ref, .title = title, .installed = installed, .owned = true, .source = source, .protondb_tier = {}};
 }
 
 }  // namespace

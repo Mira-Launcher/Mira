@@ -12,6 +12,7 @@
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/Events.h"
+#include "../client/api/Artwork.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
 #include "../settings/SettingsCard.h"
@@ -23,6 +24,10 @@
 
 namespace mira_gui {
 
+namespace {
+constexpr std::size_t kPrefetchThumbs = 24;
+}  // namespace
+
 GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStore* artwork,
                    QWidget* parent)
     : HeroBackdrop(artwork, parent), id_(id), library_(library), artwork_(artwork) {
@@ -32,6 +37,18 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   // The hero fills the card's top and fades into it; everything below sits
   // over it.
   if (game != nullptr) ShowGame(*game);
+
+  // The first covers' previews, so Change art opens on pictures rather than placeholders.
+  // Dropped when the card closes.
+  api::GetMetadataAsync(this, id_, [this](GameMetadataResult result) {
+    if (!result.ok || result.missing) return;
+    std::vector<std::int64_t> ids;
+    for (const ArtCandidate& candidate : result.metadata.cover_candidates) {
+      if (ids.size() == kPrefetchThumbs) break;
+      ids.push_back(candidate.id);
+    }
+    if (!ids.empty()) api::FetchArtThumbsAsync(this, id_, "cover", ids, [](GameActionResult) {});
+  });
 
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);

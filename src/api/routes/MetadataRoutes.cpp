@@ -160,6 +160,13 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
     res.status = 204;
   });
 
+  // As a game's settings close: the previews fetched while they were open.
+  http.Delete(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
+    if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    metadata::ClearCandidateThumbs(s.config, req.matches[1]);
+    res.status = 204;
+  });
+
   // force=true: an explicit refresh works even with metadata.enabled off.
   http.Post(R"(/v1/games/([^/]+)/metadata/refresh)", [&s](const Request& req, Response& res) {
     auto game = s.games.Find(req.matches[1]);

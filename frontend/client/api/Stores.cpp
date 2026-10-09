@@ -59,11 +59,17 @@ StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
       "GET /v1/library", Shape::Array, [source](StoreLibraryResult& result, const json& body) {
         for (const json& entry : body) {
           if (!entry.is_object()) continue;
+          std::vector<std::string> steam_tags;
+          for (const json& tag : entry.value("steam_tags", json::array())) {
+            if (tag.is_string()) steam_tags.push_back(tag.get<std::string>());
+          }
           result.titles.push_back({.ref = entry.value("ref", std::string()),
                                    .title = entry.value("title", std::string()),
                                    .installed = entry.value("installed", false),
                                    .owned = entry.value("owned", true),
-                                   .source = entry.value("source", source)});
+                                   .source = entry.value("source", source),
+                                   .protondb_tier = entry.value("protondb_tier", std::string()),
+                                   .steam_tags = std::move(steam_tags)});
         }
       });
 }

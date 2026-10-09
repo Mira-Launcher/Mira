@@ -13,7 +13,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 1> kMigrations = {
+constexpr std::array<std::string_view, 2> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -34,6 +34,11 @@ CREATE TABLE lists(
   value TEXT NOT NULL CHECK(json_valid(value)),
   updated_at INTEGER NOT NULL
 ) STRICT;
+)sql",
+    // Art saved before downloads were shrunk, fitted once in the background.
+    R"sql(
+CREATE TABLE fit_pending(id TEXT PRIMARY KEY) STRICT;
+INSERT INTO fit_pending SELECT id FROM metadata;
 )sql",
 };
 
@@ -111,6 +116,14 @@ void MetadataStore::Load() {
   for (auto row = rows->Step(); row && *row; row = rows->Step()) {
     if (InArtVersions(rows->Text(1))) versions_[rows->Text(0)][rows->Text(1)] = rows->Text(2);
   }
+
+  tiers_.clear();
+  auto tiers = db_.Prepare("SELECT id, info->>'$.protondb.tier' FROM metadata WHERE info->>'$.protondb.tier' != ''");
+  if (!tiers) {
+    log::Error("could not read the ProtonDB tiers: {}", tiers.error().message);
+    return;
+  }
+  for (auto row = tiers->Step(); row && *row; row = tiers->Step()) tiers_[tiers->Text(0)] = tiers->Text(1);
 }
 
 json MetadataStore::Read(const std::string& id) const {
@@ -219,6 +232,10 @@ Result<void> MetadataStore::Write(const std::string& id, const json& info) {
     if (before.is_null()) versions_.erase(id); else versions_[id] = before;
     return committed;
   }
+  const std::string tier = info.contains("protondb") && info["protondb"].is_object()
+                               ? info["protondb"].value("tier", std::string())
+                               : std::string();
+  if (tier.empty()) tiers_.erase(id); else tiers_[id] = tier;
   return {};
 }
 
@@ -226,6 +243,7 @@ void MetadataStore::Remove(const std::string& id) {
   {
     std::lock_guard lock(mutex_);
     versions_.erase(id);
+    tiers_.erase(id);
     if (db_.IsOpen()) {
       if (auto remove = db_.Prepare("DELETE FROM metadata WHERE id = ?")) {
         if (auto done = remove->Bind(1, id).Run(); !done) {
@@ -256,6 +274,30 @@ json MetadataStore::ArtVersions(const std::string& id) const {
   std::lock_guard lock(mutex_);
   const auto found = versions_.find(id);
   return found == versions_.end() ? json::object() : found->second;
+}
+
+std::string MetadataStore::ProtonDbTier(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  const auto found = tiers_.find(id);
+  return found == tiers_.end() ? std::string() : found->second;
+}
+
+std::vector<std::string> MetadataStore::PendingFits() const {
+  std::lock_guard lock(mutex_);
+  std::vector<std::string> ids;
+  if (!db_.IsOpen()) return ids;
+  auto select = db_.Prepare("SELECT id FROM fit_pending");
+  if (!select) return ids;
+  for (auto row = select->Step(); row && *row; row = select->Step()) ids.push_back(select->Text(0));
+  return ids;
+}
+
+void MetadataStore::FitDone(const std::string& id) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  if (auto remove = db_.Prepare("DELETE FROM fit_pending WHERE id = ?"); remove && !remove->Bind(1, id).Run()) {
+    log::Warn("could not mark {}'s art fitted", id);
+  }
 }
 
 }  // namespace mira::store

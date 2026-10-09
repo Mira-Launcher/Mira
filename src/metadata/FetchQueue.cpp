@@ -29,7 +29,7 @@ void FetchQueue::Enqueue(const config::Config& config, api::EventBus& events, mo
     if (done) waiting->done.push_back(std::move(done));
     return;
   }
-  Job job{std::move(game), /*title=*/false, announce, {}};
+  Job job{std::move(game), Kind::Full, {}, announce, {}};
   if (done) job.done.push_back(std::move(done));
   games_.push_back(std::move(job));
   StartWorkers(config, events);
@@ -37,13 +37,49 @@ void FetchQueue::Enqueue(const config::Config& config, api::EventBus& events, mo
 
 int FetchQueue::EnqueueTitles(const config::Config& config, api::EventBus& events,
                               std::vector<model::Game> titles) {
+  std::vector<model::Game> others;
+  std::vector<model::Game> steam;
+  {
+    std::lock_guard lock(mutex_);
+    for (model::Game& title : titles) {
+      if (Queued(title.id)) continue;
+      (title.runner_ref.starts_with("steam:") ? steam : others).push_back(std::move(title));
+    }
+    for (std::size_t at = 0; at < steam.size(); at += kSteamBatch) {
+      Job job{steam[at], Kind::SteamTitles, {}, /*announce=*/false, {}};
+      job.batch.assign(steam.begin() + static_cast<std::ptrdiff_t>(at),
+                       steam.begin() + static_cast<std::ptrdiff_t>(std::min(steam.size(), at + kSteamBatch)));
+      titles_.push_back(std::move(job));
+    }
+  }
+  return static_cast<int>(steam.size()) + EnqueueLow(config, events, std::move(others), Kind::Title);
+}
+
+std::vector<std::string> FetchQueue::Ids(const Job& job) {
+  if (job.batch.empty()) return {job.game.id};
+  std::vector<std::string> ids;
+  for (const model::Game& game : job.batch) ids.push_back(game.id);
+  return ids;
+}
+
+bool FetchQueue::Queued(const std::string& id) const {
+  return std::any_of(titles_.begin(), titles_.end(), [&id](const Job& job) {
+    return job.game.id == id ||
+           std::any_of(job.batch.begin(), job.batch.end(), [&id](const model::Game& game) { return game.id == id; });
+  });
+}
+
+int FetchQueue::EnqueueStale(const config::Config& config, api::EventBus& events, std::vector<model::Game> games) {
+  return EnqueueLow(config, events, std::move(games), Kind::Details);
+}
+
+int FetchQueue::EnqueueLow(const config::Config& config, api::EventBus& events, std::vector<model::Game> games,
+                           Kind kind) {
   std::lock_guard lock(mutex_);
   int queued = 0;
-  for (model::Game& title : titles) {
-    if (std::any_of(titles_.begin(), titles_.end(), [&title](const Job& job) { return job.game.id == title.id; })) {
-      continue;
-    }
-    titles_.push_back({std::move(title), /*title=*/true, /*announce=*/false, {}});
+  for (model::Game& game : games) {
+    if (Queued(game.id)) continue;
+    titles_.push_back({std::move(game), kind, {}, /*announce=*/false, {}});
     ++queued;
   }
   StartWorkers(config, events);
@@ -72,8 +108,10 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       std::deque<Job>::iterator next;
       if (!stopping_) {
         for (std::deque<Job>* queue : {&games_, &titles_}) {
-          next = std::find_if(queue->begin(), queue->end(),
-                              [this](const Job& waiting) { return !running_ids_.contains(waiting.game.id); });
+          next = std::find_if(queue->begin(), queue->end(), [this](const Job& waiting) {
+            return std::ranges::none_of(Ids(waiting),
+                                        [this](const std::string& id) { return running_ids_.contains(id); });
+          });
           if (next != queue->end()) {
             from = queue;
             break;
@@ -87,7 +125,7 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       }
       job = std::move(*next);
       from->erase(next);
-      running_ids_.insert(job.game.id);
+      for (const std::string& id : Ids(job)) running_ids_.insert(id);
       ++running_;
     }
     bool ok = false;
@@ -104,7 +142,7 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
       }
     }
     std::lock_guard lock(mutex_);
-    running_ids_.erase(job.game.id);
+    for (const std::string& id : Ids(job)) running_ids_.erase(id);
     --running_;
     idle_.notify_all();
   }
@@ -112,8 +150,29 @@ void FetchQueue::Work(const config::Config& config, api::EventBus& events) {
 
 bool FetchQueue::Run(const config::Config& config, api::EventBus& events, const Job& job) {
   const model::Game& game = job.game;
-  if (job.title) {
-    if (const Result<void> fetched = FetchCover(config, cache_, game); !fetched) {
+  if (job.kind == Kind::SteamTitles) {
+    const std::vector<Result<void>> results = FetchSteamTitles(config, cache_, job.batch);
+    for (std::size_t i = 0; i < job.batch.size(); ++i) {
+      const model::Game& title = job.batch[i];
+      if (results[i]) {
+        events.Publish("library.artwork_ready", {{"source", title.source}, {"ref", title.source_ref}});
+      } else {
+        events.Publish("library.artwork_failed",
+                       api::FailedEvent({{"source", title.source}, {"ref", title.source_ref}}, results[i].error()));
+      }
+    }
+    return true;
+  }
+  if (job.kind == Kind::Details) {
+    if (const Result<void> refreshed = RefreshDetails(config, cache_, game); !refreshed) {
+      log::Debug("couldn't refresh {}'s details: {}", game.id, refreshed.error().message);
+      return false;
+    }
+    events.Publish("game.metadata_ready", {{"id", game.id}});
+    return true;
+  }
+  if (job.kind == Kind::Title) {
+    if (const Result<void> fetched = FetchTitle(config, cache_, game); !fetched) {
       log::Debug("no cover for {} {}: {}", game.source, game.source_ref, fetched.error().message);
       events.Publish("library.artwork_failed",
                      api::FailedEvent({{"source", game.source}, {"ref", game.source_ref}}, fetched.error()));

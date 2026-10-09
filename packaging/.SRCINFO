@@ -1,6 +1,6 @@
 pkgbase = mira-launcher
 	pkgdesc = Linux game launcher for native games and Windows games via Wine/Proton
-	pkgver = 0.13.1
+	pkgver = 0.13.2
 	pkgrel = 1
 	url = https://github.com/Mira-Launcher/Mira
 	arch = x86_64
@@ -16,7 +16,7 @@ pkgbase = mira-launcher
 	optdepends = winetricks: install DLL/redistributable fixes into a game prefix
 	optdepends = 7zip: auto-extract archives dropped into a library root
 	optdepends = sqlite: import Lutris libraries
-	source = mira-0.13.1.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v0.13.1.tar.gz
+	source = mira-0.13.2.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v0.13.2.tar.gz
 	sha256sums = SKIP
 
 pkgname = mira-launcher

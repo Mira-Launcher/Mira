@@ -263,15 +263,6 @@ Schema::Schema() {
              "Fetch each game's Steam tags with its other store info, to suggest tags on the Tags "
              "page. They're never added to a game on their own. Needs no key."});
 
-  s.Add({.key = "tags.steam_by_name",
-         .label = "Match other games to Steam by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc =
-             "Also fetch Steam tags for a game from another source when a Steam game has exactly "
-             "its name (case and punctuation are ignored). This sends the game's name to "
-             "Steam's public search."});
-
   s.Add({.key = "scan.tag_by_root",
          .label = "Tag new games by library folder",
          .type = Type::Bool,
@@ -319,6 +310,41 @@ Schema::Schema() {
          .constraint = Range(0, 1e12),
          .keywords = "sgdb"});
 
+  s.Add({.key = "metadata.art_size",
+         .label = "Art size",
+         .type = Type::String,
+         .default_value = "high",
+         .doc = "How large downloaded art is kept. High keeps covers sharp on large tiles and "
+                "high-DPI screens. Compact uses about half the disk space.",
+         .constraint = OneOf({"high", "compact"}),
+         .keywords = "quality resolution disk space cover hero"});
+
+  s.Add({.key = "metadata.title_details",
+         .label = "Details for games not installed",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "For games in a store library that are not installed, also fetch the description, "
+                "reviews and ProtonDB rating, not only the cover."});
+
+  s.Add({.key = "metadata.refresh_days",
+         .label = "Refresh details after (days)",
+         .type = Type::Int,
+         .default_value = 30,
+         .doc = "Fetch a game's details again once they are this many days old, so ProtonDB "
+                "ratings and reviews stay current. Art is kept. 0 never refreshes them.",
+         .constraint = Range(0, 365)});
+
+  s.Add({.key = "metadata.steam_appid",
+         .label = "Steam app ID for ratings",
+         .type = Type::Int,
+         .default_value = 0,
+         .scope = Scope::GameOnly,
+         .doc = "The Steam game this game's ProtonDB rating and reviews come from, for a game not "
+                "from Steam. 0 matches it by name. Enter the number from the game's "
+                "store.steampowered.com/app/ address when the match is wrong.",
+         .constraint = Range(0, 1e12),
+         .keywords = "protondb reviews match wrong"});
+
   s.Add({.key = "metadata.steam_art_by_name",
          .label = "Match Steam art by name",
          .type = Type::Bool,
@@ -327,53 +353,21 @@ Schema::Schema() {
                 "(case and punctuation are ignored). Needs no key. This sends the game's name to "
                 "Steam's public search."});
 
-  s.Add({.key = "metadata.protondb_for_non_steam",
-         .label = "ProtonDB for non-Steam games",
+  s.Add({.key = "metadata.steam_by_name",
+         .label = "Match other games to Steam by name",
          .type = Type::Bool,
-         .default_value = false,
-         .doc = "Show a ProtonDB rating for games that are not from Steam, found by matching the "
-                "game's name to a Steam game. The match can be wrong, and each lookup sends the "
-                "game's name to Steam's public search. It does not change how the game launches or "
-                "its cover art."});
+         .default_value = true,
+         .doc = "Show a ProtonDB rating, Steam's user reviews and Steam tags for games that are not "
+                "from Steam, from the Steam game of their name. Reviews and tags need the exact name "
+                "(case and punctuation are ignored); a game's Steam app ID setting replaces the "
+                "match. The match can be wrong, and each lookup sends the game's name to Steam's "
+                "public search. It does not change how the game launches or its cover art."});
 
   s.Add({.key = "lutris.import_art",
          .label = "Use Lutris artwork",
          .type = Type::Bool,
          .default_value = true,
          .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
-
-  s.Group("Steam account");
-
-  s.Add({.key = "steam.import_playtime",
-         .label = "Import Steam playtime and last played",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
-                "they are higher or later than what Mira recorded, so games started from Steam "
-                "itself count too. Read from Steam's files for the account signed in last, or the "
-                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
-         .keywords = "recently played last played date"});
-
-  s.Add({.key = "steam.web_api_key",
-         .label = "Steam Web API key",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "A free key from steamcommunity.com/dev/apikey. Steam's local files only list "
-                "installed games. With this key and your Steam ID, Mira can also list every game "
-                "you own and import your Steam playtime.",
-         .is_secret = true,
-         .link = "https://steamcommunity.com/dev/apikey",
-         .keywords = "token owned games"});
-
-  s.Add({.key = "steam.steamid64",
-         .label = "Steam ID (64-bit)",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "Your 64-bit Steam ID, a 17-digit number. It appears in your Steam profile URL or "
-                "on a Steam ID lookup site. Needed together with the Steam Web API key. It also "
-                "picks whose playtime to read when several Steam accounts use this computer.",
-         .link = "https://store.steampowered.com/account/",
-         .keywords = "steamid account user number"});
 
   // --- Sources ---------------------------------------------------------------
   s.Section("Sources", "Sources");
@@ -464,6 +458,39 @@ Schema::Schema() {
                 "Mira shows it as running and records playtime. Crashes and exit codes are not "
                 "detected. When off, the game still launches, but Mira does not show it as "
                 "running."});
+
+  s.Group("Steam account");
+
+  s.Add({.key = "steam.import_playtime",
+         .label = "Import Steam playtime and last played",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
+                "they are higher or later than what Mira recorded, so games started from Steam "
+                "itself count too. Read from Steam's files for the account signed in last, or the "
+                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
+         .keywords = "recently played last played date"});
+
+  s.Add({.key = "steam.web_api_key",
+         .label = "Steam Web API key",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
+                "localhost. Steam's local files only list installed games. With this key and your Steam ID, Mira can also list every game "
+                "you own and import your Steam playtime.",
+         .is_secret = true,
+         .link = "https://steamcommunity.com/dev/apikey",
+         .keywords = "token owned games"});
+
+  s.Add({.key = "steam.steamid64",
+         .label = "Steam ID (64-bit)",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Your 64-bit Steam ID, a 17-digit number. It appears in your Steam profile URL or "
+                "on a Steam ID lookup site. Needed together with the Steam Web API key. It also "
+                "picks whose playtime to read when several Steam accounts use this computer.",
+         .link = "https://store.steampowered.com/account/",
+         .keywords = "steamid account user number"});
 
   s.Group("Store tools");
 

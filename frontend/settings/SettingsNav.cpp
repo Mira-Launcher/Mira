@@ -416,6 +416,14 @@ void SettingsNavWidget::RevealRow(QWidget* row_widget) {
   });
 }
 
+void SettingsNavWidget::RevealPage(SettingsPage* page) {
+  if (!search_->text().isEmpty()) search_->clear();
+  const auto it = std::ranges::find(categories_, page, &Category::page);
+  if (it == categories_.end()) return;
+  const int index = static_cast<int>(it - categories_.begin());
+  QTimer::singleShot(0, this, [this, index] { Select(index); });
+}
+
 void SettingsNavWidget::SetHeaderWidget(QWidget* widget) {
   if (header_widget_ != nullptr) {
     left_layout_->removeWidget(header_widget_);

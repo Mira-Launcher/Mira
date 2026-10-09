@@ -1085,6 +1085,7 @@ void LibraryWindow::CloseGameEdit() {
   // form would otherwise still read dirty, and wrongly prompt again on the
   // next Ctrl+Q from the grid.
   if (game_card_ != nullptr) {
+    mira_gui::api::ClearGameArtThumbsAsync(this, game_card_->id());
     game_edit_overlay_layout_->removeWidget(game_card_);
     game_card_->deleteLater();
     game_card_ = nullptr;
