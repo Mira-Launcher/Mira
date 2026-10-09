@@ -25,6 +25,8 @@ public:
 
   // 0..1, or below 0 for busy.
   void SetProgress(double fraction);
+  // Quieter, with no groove: for work behind something already shown.
+  void SetFaint(bool faint);
   QSize sizeHint() const override;
 
 protected:
@@ -32,6 +34,7 @@ protected:
 
 private:
   double fraction_ = -1;
+  bool faint_ = false;
   QTimer* tick_ = nullptr;
 };
 

@@ -130,6 +130,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("library_filter", result.prefs.library_filter);
   read_string("sort_by", result.prefs.sort_by);
   read_bool("sort_descending", result.prefs.sort_descending);
+  read_string("not_installed_sort", result.prefs.not_installed_sort);
   read_bool("scan_on_startup", result.prefs.scan_on_startup);
   read_string("theme", result.prefs.theme);
   read_bool("drag_select", result.prefs.drag_select);
@@ -141,7 +142,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_int("control_radius", result.prefs.control_radius);
   read_int("sidebar_recent_count", result.prefs.sidebar_recent_count);
   read_bool("sidebar_source_counts", result.prefs.sidebar_source_counts);
-  read_bool("sidebar_source_icons", result.prefs.sidebar_source_icons);
+  read_bool("sidebar_source_covers", result.prefs.sidebar_source_covers);
   read_string("sidebar_pinned_style", result.prefs.sidebar_pinned_style);
   read_string("sidebar_recent_style", result.prefs.sidebar_recent_style);
   read_bool("sidebar_recent_when", result.prefs.sidebar_recent_when);
@@ -152,8 +153,6 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("library_apps_in_all", result.prefs.library_apps_in_all);
   read_bool("tile_status", result.prefs.tile_status);
   read_bool("tile_source_mark", result.prefs.tile_source_mark);
-  read_bool("tile_pin_badge", result.prefs.tile_pin_badge);
-  read_bool("source_page_tabs", result.prefs.source_page_tabs);
   read_string("big_screen_buttons", result.prefs.big_screen_buttons);
   read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
   read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
@@ -215,6 +214,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.library_filter) table["library_filter"] = *prefs.library_filter;
   if (prefs.sort_by) table["sort_by"] = *prefs.sort_by;
   if (prefs.sort_descending) table["sort_descending"] = *prefs.sort_descending;
+  if (prefs.not_installed_sort) table["not_installed_sort"] = *prefs.not_installed_sort;
   if (prefs.scan_on_startup) table["scan_on_startup"] = *prefs.scan_on_startup;
   if (prefs.theme) table["theme"] = *prefs.theme;
   if (prefs.drag_select) table["drag_select"] = *prefs.drag_select;
@@ -238,7 +238,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   }
   if (prefs.sidebar_recent_count) table["sidebar_recent_count"] = *prefs.sidebar_recent_count;
   if (prefs.sidebar_source_counts) table["sidebar_source_counts"] = *prefs.sidebar_source_counts;
-  if (prefs.sidebar_source_icons) table["sidebar_source_icons"] = *prefs.sidebar_source_icons;
+  if (prefs.sidebar_source_covers) table["sidebar_source_covers"] = *prefs.sidebar_source_covers;
   if (prefs.sidebar_pinned_style) table["sidebar_pinned_style"] = *prefs.sidebar_pinned_style;
   if (prefs.sidebar_recent_style) table["sidebar_recent_style"] = *prefs.sidebar_recent_style;
   if (prefs.sidebar_recent_when) table["sidebar_recent_when"] = *prefs.sidebar_recent_when;
@@ -249,8 +249,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.library_apps_in_all) table["library_apps_in_all"] = *prefs.library_apps_in_all;
   if (prefs.tile_status) table["tile_status"] = *prefs.tile_status;
   if (prefs.tile_source_mark) table["tile_source_mark"] = *prefs.tile_source_mark;
-  if (prefs.tile_pin_badge) table["tile_pin_badge"] = *prefs.tile_pin_badge;
-  if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
   if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
   if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
   if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
@@ -295,7 +293,8 @@ std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
   FillFrontendPrefs(result, body);
   json table = body["frontend"];
   for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width", "sidebar_width",
-                          "library_filter", "sort_by", "sort_descending", "source_tile_widths"}) {
+                          "library_filter", "sort_by", "sort_descending", "not_installed_sort",
+                          "source_tile_widths"}) {
     table.erase(key);
   }
   return ChangedPrefs{std::move(result.prefs), table.dump()};

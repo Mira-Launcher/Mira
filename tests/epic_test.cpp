@@ -1,14 +1,17 @@
 #include <doctest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "epic/EpicImporter.h"
 #include "epic/Legendary.h"
 #include "library/Catalog.h"
+#include "library/SourceRegistry.h"
 #include "library/StoreProgress.h"
 #include "store/GameStore.h"
 #include "support/LiveServer.h"
@@ -180,7 +183,7 @@ TEST_CASE("EpicImporter is idempotent") {
   CHECK(fixture.games.All().size() == 1);
 }
 
-TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones") {
+TEST_CASE("The Epic catalog reports every entitlement and marks tracked ones") {
   // `list` has two titles, only one of them installed: both are listed, but
   // only the installed one may end up in games.toml.
   Fixture fixture("epic-catalog");
@@ -195,7 +198,7 @@ TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones"
   CHECK_FALSE(fixture.games.Find("epic-xyz"));
 
   const Result<std::vector<library::CatalogEntry>> entries =
-      library::ListCatalog(fixture.config, fixture.games, "epic");
+      library::FindSource("epic")->Catalog(fixture.config, fixture.games);
   REQUIRE(entries);
   REQUIRE(entries->size() == 2);
 
@@ -209,6 +212,72 @@ TEST_CASE("ListCatalog reports entitlements read-through and marks tracked ones"
   CHECK(owned_only->title == "Not Installed");
   CHECK_FALSE(owned_only->installed);
   CHECK(owned_only->game_id.empty());
+}
+
+TEST_CASE("The library listing answers from the stored list and re-checks the store behind it") {
+  const fs::path state = test::TempDir("epic-api-stored");
+  test::LiveServer server(state);
+  const auto fake = [&](const std::string& list) {
+    WriteFakeLegendary(state / "legendary", kNoise, kLoggedIn, "[]", list);
+  };
+  fake(R"([{"app_name": "abc", "app_title": "A Game"}])");
+  REQUIRE(server.MutableConfig().Set("epic.legendary_bin", (state / "legendary").string()));
+  httplib::Client client = server.Client();
+  const auto titles = [&](const std::string& query = "") {
+    auto res = client.Get("/v1/library?source=epic" + query);
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    std::vector<std::string> out;
+    for (const auto& entry : nlohmann::json::parse(res->body)) out.push_back(entry["title"]);
+    return out;
+  };
+  const auto last_event = [&] {
+    const auto events = server.events().Since(0);
+    return events.empty() ? std::int64_t{0} : events.back().id;
+  };
+  // The first re-check of epic finished after event `after`, and whether it changed the list.
+  const auto checked = [&](std::int64_t after) -> std::optional<bool> {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < deadline) {
+      for (const auto& event : server.events().Since(after)) {
+        if (event.type == "library.catalog_checked" && event.payload["source"] == "epic") {
+          return event.payload["changed"].get<bool>();
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return std::nullopt;
+  };
+
+  // Never listed: asked at once.
+  CHECK(titles() == std::vector<std::string>{"A Game"});
+
+  fake(R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Another"}])");
+  std::int64_t before = last_event();
+  CHECK(titles() == std::vector<std::string>{"A Game"});
+  CHECK(checked(before) == true);
+  before = last_event();
+  CHECK(titles() == std::vector<std::string>{"A Game", "Another"});
+  CHECK(checked(before) == false);
+
+  // Steam's reviews of a title come with it, as a share of positive ones.
+  REQUIRE(server.games().Metadata().Write(
+      "epic-xyz", {{"steam_reviews",
+                    {{"score_description", "Very Positive"}, {"total_positive", 87}, {"total_negative", 13},
+                     {"total_reviews", 100}}}}));
+  before = last_event();
+  auto listed = client.Get("/v1/library?source=epic");
+  REQUIRE(listed != nullptr);
+  const auto entries = nlohmann::json::parse(listed->body);
+  REQUIRE(entries.size() == 2);
+  CHECK_FALSE(entries[0].contains("steam_reviews"));
+  CHECK(entries[1]["steam_reviews"] ==
+        nlohmann::json{{"score_description", "Very Positive"}, {"percent_positive", 87}, {"total_reviews", 100}});
+  REQUIRE(checked(before).has_value());
+
+  // `fresh` asks now.
+  fake("[]");
+  CHECK(titles("&fresh=1").empty());
 }
 
 TEST_CASE("Installing an owned Epic title reports progress, then tracks it as installed") {

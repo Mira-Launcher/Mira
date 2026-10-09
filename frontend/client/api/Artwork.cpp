@@ -96,6 +96,9 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     const json& reviews = body["steam_reviews"];
     out.review_summary = reviews.value("score_description", std::string());
     out.review_total = reviews.value("total_reviews", 0);
+    if (out.review_total > 0) {
+      out.review_percent = (reviews.value("total_positive", 0) * 100 + out.review_total / 2) / out.review_total;
+    }
   }
   if (body.contains("protondb") && body["protondb"].is_object()) {
     out.protondb_tier = body["protondb"].value("tier", std::string());

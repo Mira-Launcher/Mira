@@ -28,6 +28,7 @@ namespace mira_gui {
 
 class ArtworkStore;
 class GameLibraryModel;
+class OwnedTitles;
 struct SourceInfo;
 
 // The window's left side: Library, Runners and Settings, then (scrolling)
@@ -43,7 +44,7 @@ class Sidebar : public QWidget {
           QWidget* parent = nullptr);
 
   // What Settings saved: which sources show and in what order, the source
-  // rows' counts and icons, and how PINNED and RECENTLY PLAYED look.
+  // rows' counts and covers, and how PINNED and RECENTLY PLAYED look.
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
   void SetActive(bool library, bool runners, bool tags, const QString& source_id);
@@ -58,6 +59,8 @@ class Sidebar : public QWidget {
   void RefreshSources();
   std::vector<ManageSourcesCard::Entry> SourceEntries() const;
   void SetSourceHidden(const QString& id, bool hidden);
+  // What each store owns, so its row counts installed games out of them ("2/229 games").
+  void SetOwnedTitles(OwnedTitles* titles);
   // Shows and stores a new order.
   void SetSourceOrder(std::vector<QString> order);
   // Turns a source on or off in mirad's config.
@@ -112,7 +115,6 @@ class Sidebar : public QWidget {
   // Moves `id` to just before the visible row `before` (end if -1).
   void MoveSource(const QString& id, int before);
   int SourceDropRow(int y) const;
-  QIcon SourceIcon(const SourceInfo& source, bool active) const;
   void ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos);
   void ShowMenu(const QPoint& global_pos);
   // Both sections, if what they'd show changed.
@@ -130,6 +132,7 @@ class Sidebar : public QWidget {
 
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
+  OwnedTitles* owned_titles_ = nullptr;
 
   QPushButton* library_nav_ = nullptr;
   QPushButton* runners_nav_ = nullptr;
@@ -146,6 +149,11 @@ class Sidebar : public QWidget {
 
   // One row per AllSources() entry, same order.
   QList<QPushButton*> source_navs_;
+  // The parts each source row lays out in place of its own text: the deck of covers (or a
+  // dot), the name with a line under it, and the trailing count shown only without covers.
+  QList<QLabel*> source_decks_;
+  QList<QLabel*> source_names_;
+  QList<QLabel*> source_details_;
   QList<QLabel*> source_counts_;
   QVBoxLayout* source_nav_layout_ = nullptr;
   QLabel* sources_empty_ = nullptr;    // shown while no source row is
@@ -157,7 +165,8 @@ class Sidebar : public QWidget {
   QHash<QString, QString> source_account_;     // signed-in account, where a store says
   QHash<QString, qint64> source_imported_at_;  // last import, unix seconds
   bool show_source_counts_ = true;
-  bool source_icons_ = true;
+  bool show_source_covers_ = true;
+  QSet<QString> source_cover_ids_;  // the games source rows show covers of
   QWidget* source_nav_container_ = nullptr;  // accepts source row drops
   QWidget* source_drop_line_ = nullptr;
   QPushButton* source_drag_row_ = nullptr;

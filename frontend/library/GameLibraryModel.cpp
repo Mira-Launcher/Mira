@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "../sources/Sources.h"
 #include "GamePresentation.h"
 #include "GameTileDelegate.h"
 #include "LibrarySort.h"
@@ -184,7 +185,6 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::NameRole: return QString::fromStdString(game.name);
     case GameTileDelegate::StatusRole: return QString::fromStdString(game.status);
     case GameTileDelegate::RunningRole: return game.running;
-    case GameTileDelegate::PinnedRole: return IsPinned(game);
     case GameTileDelegate::StatusTextRole:
     case GameTileDelegate::ProgressRole:
     case GameTileDelegate::ProgressDetailRole: {
@@ -385,7 +385,7 @@ bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const
   const GameSummary& game = library_->Games()[source_row];
   if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
   if (!HasTags(game, tags_)) return false;
-  if (!source_.empty()) return game.source == source_;
+  if (!source_.empty()) return SourceIdOf(game.source) == source_;
   return MatchesKey(game, key_, apps_in_all_);
 }
 

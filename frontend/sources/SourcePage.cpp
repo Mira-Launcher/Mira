@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -33,11 +34,13 @@
 #include "../library/GameLibraryModel.h"
 #include "../library/GameTileDelegate.h"
 #include "../library/HoverCard.h"
+#include "../library/RatingChips.h"
 #include "../library/TileGrid.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
 #include "SourceRemoval.h"
@@ -56,15 +59,14 @@ QStringList ToQStringList(const std::vector<std::string>& values) {
 }  // namespace
 
 SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork,
-                       DownloadTracker* downloads, bool tabs, int tile_width, QWidget* parent)
+                       DownloadTracker* downloads, int tile_width, QWidget* parent)
     : QWidget(parent),
       source_(source),
       id_(source.id.toStdString()),
       library_(library),
       artwork_(artwork),
       downloads_(downloads),
-      tile_(tile_width, tile_width * 3 / 2),
-      use_tabs_(tabs) {
+      tile_(tile_width, tile_width * 3 / 2) {
   games_ = new GameFilterProxy(library_, this);
   games_->SetSource(id_);
   owned_model_ = new QStandardItemModel(this);
@@ -97,8 +99,8 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   });
   content_layout_->addWidget(setup_card_);
   if (id_ != "humble") content_layout_->addWidget(BuildLibrarySection());
+  if (id_ != "humble" && HasOwned()) content_layout_->addWidget(MakeDivider(content, Qt::Horizontal));
   if (HasOwned()) content_layout_->addWidget(BuildOwnedSection());
-  UpdateSections();
   content_layout_->addStretch(1);
   scroll->setWidget(content);
   // A click on the page's own background deselects, like one between tiles.
@@ -117,7 +119,9 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   LibraryUpdated();
 
   RefreshStatus();
-  if (id_ == "steam") RefreshOwned();
+  // mirad answers from the list it stored, so a store's doesn't wait for its status. Humble's
+  // purchases are asked for live, once signed in.
+  if (id_ == "steam" || (IsStore() && id_ != "humble")) RefreshOwned();
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
@@ -136,21 +140,18 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
-// Every page has both tabs; ones that can't list what the account owns say so.
-bool SourcePage::HasOwned() const { return true; }
+// Every page but Local has both sections; ones that can't list what the account owns say so.
+bool SourcePage::HasOwned() const { return id_ != "local"; }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return game.source == id_; }
+bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game.source) == id_; }
 
 // No title: the sidebar already says which source this is. One row holds the
-// tabs, the status and every action.
+// status and every action.
 QWidget* SourcePage::BuildTopRow() {
   tabs_ = new TabRow(this);
-  tabs_->AddTab("installed", "Installed");
-  tabs_->AddTab("owned", id_ == "humble" ? "Purchases" : "Not installed");
-  tabs_->SetCurrent(id_ == "humble" ? "owned" : "installed");
-  connect(tabs_, &TabRow::CurrentChanged, this, &SourcePage::UpdateSections);
+  tabs_->SetTabsVisible(false);
 
   status_line_ = new QLabel(tabs_);
   status_line_->setObjectName("page_status");
@@ -216,6 +217,8 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_->setAutoRaise(true);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
+  // Local has no settings of its own, and nothing to remove.
+  settings_button_->setVisible(id_ != "local");
 
   more_button_ = new QToolButton(tabs_);
   more_button_->setText("⋯");
@@ -226,6 +229,7 @@ QWidget* SourcePage::BuildTopRow() {
   connect(more_menu, &QMenu::aboutToShow, this, [this, more_menu] { FillMoreMenu(more_menu); });
   more_button_->setMenu(more_menu);
   tabs_->SetTrailing(more_button_);
+  more_button_->setVisible(id_ != "local");
 
   filter_ = new QLineEdit(tabs_);
   filter_->setPlaceholderText("Filter…");
@@ -398,6 +402,7 @@ QWidget* SourcePage::BuildLibrarySection() {
   layout->addWidget(library_empty_);
 
   library_grid_ = new TileGrid(tile_, artwork_, section);
+  static_cast<GameTileDelegate*>(library_grid_->itemDelegate())->SetShowSource(false);
   library_grid_->setModel(games_);
   library_grid_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(library_grid_, &QWidget::customContextMenuRequested, this, &SourcePage::ShowLibraryMenu);
@@ -418,13 +423,24 @@ QWidget* SourcePage::BuildOwnedSection() {
   layout->setSpacing(8);
 
   auto* header = new QHBoxLayout();
+  header->setSpacing(8);
   owned_heading_ = new QLabel(id_ == "humble" ? "Your purchases" : "Not installed", owned_section_);
   owned_heading_->setProperty("role", "heading");
-  header->addWidget(owned_heading_);
+  header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
+  owned_count_ = MakeLabel(owned_section_, QString(), "muted", /*wrap=*/false);
+  header->addWidget(owned_count_, 0, Qt::AlignBaseline);
   header->addStretch(1);
+  clear_filters_ = new QPushButton("Clear filters", owned_section_);
+  clear_filters_->setObjectName("text_button");
+  QSizePolicy keep = clear_filters_->sizePolicy();
+  keep.setRetainSizeWhenHidden(true);
+  clear_filters_->setSizePolicy(keep);
+  clear_filters_->setVisible(false);
+  header->addWidget(clear_filters_);
   owned_refresh_ = new QPushButton("Refresh", owned_section_);
+  owned_refresh_->setToolTip("Ask " + source_.name + " again now");
   icons::Follow(owned_refresh_, icons::Glyph::Refresh);
-  connect(owned_refresh_, &QPushButton::clicked, this, &SourcePage::RefreshOwned);
+  connect(owned_refresh_, &QPushButton::clicked, this, [this] { RefreshOwned(/*fresh=*/true); });
   if (id_ == "itch") {
     auto* collections = new QPushButton("Manage collections…", owned_section_);
     collections->setToolTip("Show games from itch.io collections here. Add your own or any collection by link.");
@@ -437,6 +453,39 @@ QWidget* SourcePage::BuildOwnedSection() {
   }
   header->addWidget(owned_refresh_);
   layout->addLayout(header);
+
+  // Always there, so nothing below moves when it starts or stops.
+  owned_rail_ = new ProgressRail(owned_section_);
+  owned_rail_->setFixedHeight(3);
+  QSizePolicy keep_rail = owned_rail_->sizePolicy();
+  keep_rail.setRetainSizeWhenHidden(true);
+  owned_rail_->setSizePolicy(keep_rail);
+  owned_rail_->SetProgress(0);
+  owned_rail_->setVisible(false);
+  layout->addWidget(owned_rail_);
+
+  if (id_ == "steam" || (IsStore() && id_ != "humble")) {
+    chips_ = new RatingChips(owned_section_);
+    chips_->setVisible(false);
+    connect(chips_, &RatingChips::Changed, this, &SourcePage::ApplyFilter);
+    connect(clear_filters_, &QPushButton::clicked, chips_, &RatingChips::Clear);
+    layout->addWidget(chips_);
+  }
+
+  owned_skeleton_ = new QWidget(owned_section_);
+  auto* skeleton = new QHBoxLayout(owned_skeleton_);
+  skeleton->setContentsMargins(0, 0, 0, 0);
+  skeleton->setSpacing(theme::Current().tile_spacing);
+  for (int i = 0; i < 3; ++i) {
+    auto* tile = new QWidget(owned_skeleton_);
+    tile->setObjectName("tile_skeleton");
+    tile->setAttribute(Qt::WA_StyledBackground);
+    tile->setFixedSize(tile_);
+    skeleton->addWidget(tile);
+  }
+  skeleton->addStretch(1);
+  owned_skeleton_->setVisible(false);
+  layout->addWidget(owned_skeleton_);
 
   owned_note_ = MakeLabel(owned_section_, QString(), "muted");
   owned_note_->setVisible(false);
@@ -465,12 +514,14 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (!ListsOwned()) {
     owned_refresh_->setVisible(false);
     if (art_key_ != nullptr) art_key_->setVisible(false);
-    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up under Installed."
-                                      : source_.name + " doesn't list games you own. What it installs shows up under Installed.";
+    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up in your library above."
+                                      : source_.name + " doesn't list games you own. What it installs shows up in your library above.";
     ShowLine(owned_note_, what, "muted");
   }
 
   owned_grid_ = new TileGrid(tile_, artwork_, owned_section_);
+  // The page already says which source these are from.
+  static_cast<GameTileDelegate*>(owned_grid_->itemDelegate())->SetShowSource(false);
   owned_grid_->setModel(owned_model_);
   owned_grid_->on_hover = [this](const QModelIndex& index) { ShowHoverCard(owned_grid_, index); };
   owned_grid_->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -515,7 +566,6 @@ void SourcePage::LibraryUpdated() {
   library_count_ = static_cast<int>(
       std::ranges::count_if(library_->Games(), [this](const GameSummary& game) { return IsOwnGame(game); }));
   if (library_heading_ != nullptr) library_heading_->setText(CountedHeading("In your library", library_count_));
-  tabs_->SetCount("installed", library_count_);
   UpdateStatusLine();
   if (library_grid_ != nullptr) library_grid_->FitHeight();
 }
@@ -529,6 +579,9 @@ void SourcePage::SetTileWidth(int width) {
   if (owned_grid_ != nullptr) {
     owned_grid_->SetTileSize(tile_);
     RebuildOwnedTiles();
+  }
+  if (owned_skeleton_ != nullptr) {
+    for (QWidget* placeholder : owned_skeleton_->findChildren<QWidget*>("tile_skeleton")) placeholder->setFixedSize(tile_);
   }
 }
 
@@ -545,17 +598,16 @@ void SourcePage::UpdateCover(const QString& id) {
                                        devicePixelRatioF()),
                   Qt::DecorationRole);
   }
-  // Its details came with the cover, so its tier and tags may be new.
-  if (tiers_.contains(ref) && tags_.contains(ref)) return;
+  // Its details came with the cover, so its tier, reviews and tags may be new.
+  if (tiers_.contains(ref) && tags_.contains(ref) && reviews_.contains(ref)) return;
   api::GetTitleMetadataAsync(this, id_, ref.toStdString(), [this, ref](GameMetadataResult result) {
     if (!result.ok) return;
-    if (!result.metadata.steam_tags.empty()) tags_.insert(ref, ToQStringList(result.metadata.steam_tags));
-    if (result.metadata.protondb_tier.empty()) return;
-    tiers_.insert(ref, QString::fromStdString(result.metadata.protondb_tier));
-    for (int row = 0; row < owned_model_->rowCount(); ++row) {
-      QStandardItem* item = owned_model_->item(row);
-      if (item->data(GameTileDelegate::IdRole).toString() == ref) item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
-    }
+    const GameMetadata& metadata = result.metadata;
+    if (!metadata.steam_tags.empty()) tags_.insert(ref, ToQStringList(metadata.steam_tags));
+    if (!metadata.protondb_tier.empty()) tiers_.insert(ref, QString::fromStdString(metadata.protondb_tier));
+    if (!metadata.review_summary.empty()) reviews_.insert(ref, QString::fromStdString(metadata.review_summary));
+    if (metadata.review_percent >= 0) review_percents_.insert(ref, metadata.review_percent);
+    RebuildOwnedTiles();
   });
 }
 
@@ -595,12 +647,17 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   owned_available_ = tool_installed_ && authenticated_;
   if (owned_section_ != nullptr && !owned_available_) {
     owned_refresh_->setEnabled(false);
+    // Whatever was listed before signing out isn't this account's to install.
+    owned_.clear();
+    RebuildOwnedTiles();
     ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.", "muted");
   } else if (owned_section_ != nullptr) {
-    owned_refresh_->setEnabled(true);
+    owned_refresh_->setEnabled(!owned_loading_);
   }
-  if (owned_section_ != nullptr && authenticated_ && !was_authenticated) RefreshOwned();
-  UpdateSections();
+  // Listed at once for a store already signed in; Humble and a new sign-in wait for the status.
+  const bool listed_at_open = id_ != "humble" && !status_known_;
+  if (owned_section_ != nullptr && authenticated_ && (!was_authenticated && !listed_at_open)) RefreshOwned();
+  status_known_ = true;
   UpdateStatusLine();
 }
 
@@ -655,23 +712,12 @@ void SourcePage::UpdateStatusLine() {
     library_empty_->setText("Games from " + source_.name + " show up here once you're signed in.");
   } else if (IsLauncher() && !launcher_installed_) {
     library_empty_->setText("Games you install through " + source_.name + " show up here.");
+  } else if (id_ == "local") {
+    library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
     library_empty_->setText("Nothing from " + source_.name + " in your library yet. \"" +
                             CopyFor(id_).import_button + "\" brings in what's already installed.");
   }
-}
-
-void SourcePage::UpdateSections() {
-  const bool has_owned = owned_section_ != nullptr;
-  // Tabs only when there's a choice to make.
-  const bool tabbed = use_tabs_ && has_owned && library_section_ != nullptr;
-  tabs_->SetTabsVisible(tabbed);
-  const QString current = tabs_->Current();
-  if (library_section_ != nullptr) library_section_->setVisible(!tabbed || current == "installed");
-  if (owned_section_ != nullptr) owned_section_->setVisible(has_owned && (!tabbed || current == "owned"));
-  // A tab names its section already.
-  if (library_heading_ != nullptr) library_heading_->setVisible(!tabbed);
-  if (owned_heading_ != nullptr) owned_heading_->setVisible(!tabbed);
 }
 
 void SourcePage::Import() {
@@ -687,7 +733,9 @@ void SourcePage::Import() {
     }
     if (ok && (added > 0 || updated > 0)) emit LibraryChanged();
   };
-  if (id_ == "steam") {
+  if (id_ == "local") {
+    api::ScanLibraryAsync(this, [done](ScanResult r) { done(r.ok, r.error, r.added, 0); });
+  } else if (id_ == "steam") {
     api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (id_ == "lutris") {
     api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
@@ -700,22 +748,74 @@ void SourcePage::Import() {
   }
 }
 
-void SourcePage::RefreshOwned() {
+void SourcePage::RefreshOwned(bool fresh) {
   owned_refresh_->setEnabled(false);
-  ShowLine(owned_note_, "Loading…", "muted");
+  owned_loading_ = true;
+  const int generation = ++owned_generation_;
+  // A stored list answers within a frame or two; only a store actually being asked is worth showing.
+  QTimer::singleShot(150, this, [this, generation] {
+    if (generation != owned_generation_ || !owned_loading_) return;
+    owned_waiting_ = true;
+    UpdateOwnedLoading();
+  });
+  const auto done = [this, generation] {
+    if (generation != owned_generation_) return false;
+    owned_loading_ = false;
+    owned_waiting_ = false;
+    owned_loaded_ = true;
+    owned_refresh_->setEnabled(owned_available_);
+    return true;
+  };
   if (id_ == "humble") {
-    api::GetHumbleLibraryAsync(this, [this](HumbleLibraryResult r) { ShowBundles(r); });
+    api::GetHumbleLibraryAsync(this, [this, done](HumbleLibraryResult r) {
+      if (!done()) return;
+      ShowBundles(r);
+      UpdateOwnedLoading();
+    });
   } else {
-    api::GetStoreLibraryAsync(this, id_, [this](StoreLibraryResult r) { ShowOwned(r); });
+    api::GetStoreLibraryAsync(this, id_, fresh, [this, done](StoreLibraryResult r) {
+      if (!done()) return;
+      ShowOwned(r);
+      UpdateOwnedLoading();
+    });
   }
 }
 
+void SourcePage::UpdateOwnedLoading() {
+  if (owned_rail_ == nullptr) return;
+  // The first time a store is asked there's nothing to show yet; after that the list stays put.
+  const bool first = owned_waiting_ && owned_.empty() && !owned_loaded_;
+  const bool quiet = !first && (owned_waiting_ || checking_);
+  owned_skeleton_->setVisible(first);
+  owned_rail_->SetFaint(!first);
+  owned_rail_->SetProgress(first || quiet ? -1 : 0);
+  owned_rail_->setVisible(first || quiet);
+  UpdateOwnedCount();
+}
+
+void SourcePage::UpdateOwnedCount() {
+  if (owned_count_ == nullptr) return;
+  if (owned_waiting_ && owned_.empty() && !owned_loaded_) {
+    owned_count_->setText("Asking " + source_.name + "…");
+    clear_filters_->setVisible(false);
+    return;
+  }
+  const int total = static_cast<int>(owned_.size());
+  const int shown = owned_grid_ != nullptr ? owned_grid_->VisibleCount() : total;
+  owned_count_->setText(total == 0 ? QString() : shown == total ? QString::number(total)
+                                                                : QString("%1 of %2").arg(shown).arg(total));
+  clear_filters_->setVisible(chips_ != nullptr && !chips_->Filter().Empty());
+}
+
 void SourcePage::ShowOwned(const StoreLibraryResult& result) {
-  owned_refresh_->setEnabled(true);
+  // Signed out since it was asked: the sign-in line stays.
+  if (status_known_ && !owned_available_) return;
   owned_.clear();
   not_owned_.clear();
   tiers_.clear();
   tags_.clear();
+  reviews_.clear();
+  review_percents_.clear();
   if (steam_settings_ != nullptr) steam_settings_->setVisible(false);
   if (!result.ok) {
     ShowError(owned_note_, "Could not list your games.", result.error);
@@ -732,6 +832,10 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
         tiers_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.protondb_tier));
       }
       if (!title.steam_tags.empty()) tags_.insert(QString::fromStdString(title.ref), ToQStringList(title.steam_tags));
+      if (!title.review_summary.empty()) {
+        reviews_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.review_summary));
+      }
+      if (title.review_percent >= 0) review_percents_.insert(QString::fromStdString(title.ref), title.review_percent);
       uninstalled.push_back(title);
     }
   }
@@ -758,7 +862,6 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
 }
 
 void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
-  owned_refresh_->setEnabled(true);
   owned_.clear();
   if (!result.ok) {
     ShowError(owned_note_, "Could not list your purchases.", result.error);
@@ -804,6 +907,8 @@ void SourcePage::RebuildOwnedTiles() {
                                   : artwork_->TitleCover(source_.id, ref, title, tile_, devicePixelRatioF()),
                   Qt::DecorationRole);
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
+    item->setData(review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
+                  GameTileDelegate::ReviewRole);
     // Cleared once the install stops: the item is reused.
     const QString state = owned_state_.value(ref);
     std::optional<DownloadTracker::TileProgress> installing;
@@ -824,9 +929,15 @@ void SourcePage::RebuildOwnedTiles() {
     // An outcome ("Sent to Steam") shows on the pill until the list refreshes.
     if (!installing && !state.isEmpty()) item->setData(false, GameTileDelegate::ActionEnabledRole);
   }
-  owned_heading_->setText(CountedHeading(id_ == "humble" ? "Your purchases" : "Not installed",
-                                  static_cast<int>(owned_.size())));
-  tabs_->SetCount("owned", static_cast<int>(owned_.size()));
+  if (chips_ != nullptr) {
+    std::vector<RatingChips::Title> rated;
+    rated.reserve(owned_.size());
+    for (const auto& [ref, title] : owned_) {
+      rated.push_back({tiers_.value(ref).toStdString(), reviews_.value(ref).toStdString()});
+    }
+    chips_->SetTitles(rated);
+    chips_->setVisible(!owned_.empty());
+  }
   ApplyFilter();
 }
 
@@ -834,13 +945,12 @@ void SourcePage::StartInstall(const QString& ref, bool update) {
   owned_state_.insert(ref, update ? "Updating…" : "Installing…");
   if (owned_grid_ != nullptr) RebuildOwnedTiles();
   api::InstallStoreTitleAsync(this, id_, ref.toStdString(), update,
-                                      [this, ref](StoreActionResult r) {
+                                      [this, ref, update](StoreActionResult r) {
                                         if (r.ok) return;  // events report the rest
                                         owned_state_.remove(ref);
                                         if (owned_grid_ != nullptr) RebuildOwnedTiles();
-                                        // import_result_ is hidden with its section on the owned tab.
-                                        ShowError(owned_note_ != nullptr && !library_section_->isVisibleTo(this) ? owned_note_
-                                                                                                                  : import_result_,
+                                        // An update starts from "In your library", an install from below.
+                                        ShowError(update || owned_note_ == nullptr ? import_result_ : owned_note_,
                                                   "Could not start it.", r.error);
                                       });
 }
@@ -854,14 +964,18 @@ void SourcePage::ApplyFilter() {
   if (owned_grid_ != nullptr) {
     for (int row = 0; row < owned_model_->rowCount(); ++row) {
       const QStandardItem* item = owned_model_->item(row);
+      const QString ref = item->data(GameTileDelegate::IdRole).toString();
       // A title's Steam tags match whole, so "rpg" finds RPGs without matching every word containing it.
-      const bool shown = needle.isEmpty() ||
+      const bool found = needle.isEmpty() ||
                          item->data(GameTileDelegate::NameRole).toString().contains(needle, Qt::CaseInsensitive) ||
-                         tags_.value(item->data(GameTileDelegate::IdRole).toString()).contains(needle, Qt::CaseInsensitive);
-      owned_grid_->setRowHidden(row, !shown);
+                         tags_.value(ref).contains(needle, Qt::CaseInsensitive);
+      const bool rated = chips_ == nullptr ||
+                         chips_->Filter().Matches(id_, tiers_.value(ref).toStdString(), reviews_.value(ref).toStdString());
+      owned_grid_->setRowHidden(row, !found || !rated);
     }
     owned_grid_->FitHeight();
   }
+  UpdateOwnedCount();
 }
 
 void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
@@ -962,6 +1076,14 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
       art_key_->setToolTip(error_help::HintFor(art.error));
       art_key_->setVisible(true);
     }
+    return;
+  }
+
+  if (CatalogCheckEvent check; events::ParseCatalogCheck(type, data, &check)) {
+    if (check.source != id_ || owned_section_ == nullptr) return;
+    checking_ = check.checking;
+    UpdateOwnedLoading();
+    if (check.changed) RefreshOwned();  // a list asked for before it changed is dropped
     return;
   }
 

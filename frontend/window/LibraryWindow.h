@@ -238,7 +238,6 @@ private:
   // Installer prompts waiting for Settings, a game's card or another card to close.
   std::deque<std::pair<std::string, std::function<void()>>> pending_cards_;  // key, show
   QElapsedTimer last_row_click_;
-  bool source_page_tabs_ = true;
   bool drag_select_ = true;
   bool double_click_play_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.

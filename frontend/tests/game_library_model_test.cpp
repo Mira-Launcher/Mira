@@ -131,6 +131,12 @@ TEST_CASE("A source's view lists only that source's games, hidden ones included"
   GameFilterProxy proxy(&library);
   proxy.SetSource("epic");
   CHECK(Shown(proxy) == std::vector<std::string>{"e1", "e2"});
+
+  // Local is every game from no source, never a store's game or its launcher.
+  library.Replace({Game("a", "Alpha"), Game("m", "Manual", {}, "manual"), Game("d", "Desktop", {}, "desktop-entry"),
+                   Game("s", "Steam One", {}, "steam"), Game("l", "Launcher", {}, "launcher")});
+  proxy.SetSource("local");
+  CHECK(Shown(proxy) == std::vector<std::string>{"a", "d", "m"});
 }
 
 TEST_CASE("Search matches names and the user's tags, and #word only tags") {

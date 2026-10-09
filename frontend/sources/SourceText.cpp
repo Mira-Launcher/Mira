@@ -8,6 +8,11 @@
 namespace mira_gui {
 
 SourceCopy CopyFor(const std::string& id) {
+  if (id == "local") {
+    return {"Games from no store or launcher: found in your library folders, added by hand, or from "
+            "desktop entries.",
+            "", "", "", "Scan library folders"};
+  }
   if (id == "steam") {
     return {"Your installed Steam games. Steam itself still installs and updates them.", "", "", "",
             "Scan Steam library"};

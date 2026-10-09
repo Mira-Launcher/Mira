@@ -67,9 +67,7 @@ void TileGrid::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int en
 QModelIndex TileGrid::ActionIndexAt(const QPoint& pos) const {
   const QModelIndex hit = indexAt(pos);
   if (!hit.isValid() || !hit.data(GameTileDelegate::ActionEnabledRole).toBool()) return {};
-  const QString text = hit.data(GameTileDelegate::ActionRole).toString();
-  if (text.isEmpty()) return {};
-  return GameTileDelegate::ActionRect(visualRect(hit), text, font()).contains(pos) ? hit : QModelIndex();
+  return GameTileDelegate::ActionRect(visualRect(hit), hit, font()).contains(pos) ? hit : QModelIndex();
 }
 
 void TileGrid::mouseMoveEvent(QMouseEvent* event) {

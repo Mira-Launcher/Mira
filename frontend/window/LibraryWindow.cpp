@@ -415,7 +415,6 @@ void LibraryWindow::BuildShortcuts() {
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   scan_on_startup_ = prefs.scan_on_startup.value_or(true);
   sidebar_->ApplyPrefs(prefs);
-  source_page_tabs_ = prefs.source_page_tabs.value_or(true);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
   double_click_play_ = prefs.double_click_play.value_or(true);
@@ -474,6 +473,7 @@ mira_gui::FrontendPrefs LibraryWindow::LayoutPrefs() const {
   prefs.library_filter = grid_page_->FilterKey().toStdString();
   prefs.sort_by = grid_page_->SortKey();
   prefs.sort_descending = grid_page_->SortDescending();
+  prefs.not_installed_sort = grid_page_->TitleSortKey();
   const QList<int> sizes = splitter_->sizes();
   if (sizes.size() == 2) prefs.sidebar_width = sizes[0];
   return prefs;
@@ -705,6 +705,7 @@ void LibraryWindow::OpenGameDetailPage(const std::string& id) {
 mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {
   using mira_gui::Sidebar;
   auto* sidebar = new Sidebar(library_, artwork_, prefs, this);
+  sidebar->SetOwnedTitles(owned_titles_);
   connect(sidebar, &Sidebar::LibraryClicked, this, &LibraryWindow::ShowLibrary);
   connect(sidebar, &Sidebar::RunnersClicked, this, &LibraryWindow::OpenRunners);
   connect(sidebar, &Sidebar::TagsClicked, this, &LibraryWindow::OpenTags);
@@ -744,6 +745,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
                                                        int tile_width) {
   auto* page = new mira_gui::LibraryPage(library_, artwork_, prefs.sort_by.value_or("name"),
                                          prefs.sort_descending.value_or(false), tile_width, this);
+  page->SetTitleSortKey(prefs.not_installed_sort.value_or("store"));
   connect(page, &mira_gui::LibraryPage::FilterChanged, this, &LibraryWindow::ScheduleSavePrefs);
   connect(page, &mira_gui::LibraryPage::SortChanged, this, &LibraryWindow::ScheduleSavePrefs);
   connect(page, &mira_gui::LibraryPage::ShownChanged, this, [this] {
@@ -967,8 +969,9 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   mira_gui::api::ListUnclearMovesAsync(this, [this](mira_gui::UnclearMovesResult result) {
     for (const mira_gui::UnclearMove& move : result.moves) AskUnclearMove(move);
   });
-  // Ready before the first search; after startup's own requests, since it asks every store.
-  QTimer::singleShot(5000, owned_titles_, &mira_gui::OwnedTitles::RefreshIfStale);
+  // At once: mirad answers from its stored lists and re-checks the stores behind them, so the
+  // sidebar's and the Not installed tab's counts show with the library.
+  owned_titles_->RefreshIfStale();
   // Built and listed ahead, so the Tags page opens at once; it follows the library from then on.
   QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
   // mirad restarted or came back: what changed meanwhile may be past its replay.
@@ -1484,8 +1487,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
     main_stack_->removeWidget(source_page_);
     source_page_->deleteLater();
   }
-  source_page_ = new mira_gui::SourcePage(source, library_, artwork_, downloads_, source_page_tabs_,
-                                          SourceTileWidth(source.id), this);
+  source_page_ = new mira_gui::SourcePage(source, library_, artwork_, downloads_, SourceTileWidth(source.id), this);
   source_page_->SetDragSelectEnabled(drag_select_);
   source_page_->setProperty("source_id", source.id);
   connect(source_page_, &mira_gui::SourcePage::ZoomRequested, this,

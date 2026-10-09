@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QPushButton>
 #include <QString>
 #include <QStringList>
 #include <QWidget>
@@ -8,10 +9,25 @@
 class QHBoxLayout;
 class QLineEdit;
 class QMenu;
-class QPushButton;
 class QToolButton;
 
 namespace mira_gui {
+
+// A button that opens `menu` below itself, with a chevron centered at its right edge. It opens the
+// menu itself: Qt's own menu indicator on a styled button sits low against the text.
+class DropdownButton : public QPushButton {
+  Q_OBJECT
+
+public:
+  DropdownButton(QMenu* menu, QWidget* parent = nullptr);
+  QMenu* Menu() const { return menu_; }
+
+protected:
+  void paintEvent(QPaintEvent* event) override;
+
+private:
+  QMenu* menu_ = nullptr;
+};
 
 // A page's tabs, each with a count, then the page's own actions at the end.
 // At most one tab is current; none is when the page shows something no tab
@@ -31,8 +47,6 @@ public:
 
   void AddTab(const QString& key, const QString& label);
   void SetCount(const QString& key, int count);
-  // Draws the count in the warning color, for a tab that wants a look.
-  void SetAlert(const QString& key, bool alert);
   void SetCurrent(const QString& key);
   QString Current() const;
   void SetTabsVisible(bool visible);
@@ -60,7 +74,6 @@ private:
     QPushButton* button = nullptr;
     QString label;
     int count = -1;
-    bool alert = false;
   };
   void Relabel(Tab& tab);
   void Select(const QString& key);
@@ -74,7 +87,7 @@ private:
   QString current_;
   bool tabs_visible_ = true;
   QList<QWidget*> trailing_;
-  QPushButton* more_ = nullptr;
+  DropdownButton* more_ = nullptr;
   QMenu* more_menu_ = nullptr;
   QLineEdit* search_ = nullptr;
   QToolButton* search_button_ = nullptr;

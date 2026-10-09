@@ -27,6 +27,7 @@
 #include "../dialogs/DesktopEntryImportDialog.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
+#include "../library/OwnedTitles.h"
 #include "../library/GamePresentation.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
@@ -46,18 +47,6 @@ constexpr const char* kSourceMime = "application/x-mira-source";
 QLabel* Heading(QWidget* parent, const QString& text) {
   QLabel* label = MakeGroupHeading(parent, text);
   label->setContentsMargins(0, 14, 0, 2);
-  return label;
-}
-
-// A muted label on the row's right, e.g. a game count.
-QLabel* AddTrailingLabel(QPushButton* row) {
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(0, 0, 10, 0);
-  layout->addStretch(1);
-  auto* label = new QLabel(row);
-  label->setProperty("role", "muted");
-  label->setAttribute(Qt::WA_TransparentForMouseEvents);
-  layout->addWidget(label);
   return label;
 }
 
@@ -162,13 +151,36 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   source_drop_line_->setFixedHeight(2);
   source_drop_line_->hide();
   for (const SourceInfo& source : AllSources()) {
-    auto* nav = new QPushButton(source.name, nav_content);
+    // The button draws only the background; its parts are labels, so the name can elide and
+    // carry a second line.
+    auto* nav = new QPushButton(nav_content);
     nav->setFlat(true);
     nav->setCheckable(true);
     nav->setVisible(false);  // until UpdateSources knows it's set up
     nav->setObjectName("source_nav");
-    nav->setIconSize(QSize(22, 22));
-    source_counts_.append(AddTrailingLabel(nav));
+    nav->setAccessibleName(source.name);
+    auto* row = new QHBoxLayout(nav);
+    auto* deck = new QLabel(nav);
+    deck->setAlignment(Qt::AlignCenter);
+    row->addWidget(deck);
+    auto* lines = new QVBoxLayout();
+    lines->setSpacing(1);
+    lines->addStretch(1);
+    auto* name = new ElidedLabel(source.name, nav);
+    name->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    lines->addWidget(name);
+    auto* detail = new QLabel(nav);
+    lines->addWidget(detail);
+    lines->addStretch(1);
+    row->addLayout(lines, /*stretch=*/1);
+    auto* count = new QLabel(nav);
+    count->setProperty("role", "muted");
+    row->addWidget(count);
+    for (QLabel* label : nav->findChildren<QLabel*>()) label->setAttribute(Qt::WA_TransparentForMouseEvents);
+    source_decks_.append(deck);
+    source_names_.append(name);
+    source_details_.append(detail);
+    source_counts_.append(count);
     connect(nav, &QPushButton::clicked, this, [this, source] { emit SourceClicked(source); });
     nav->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(
@@ -229,6 +241,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   // Game rows draw their cover, icon or hero, or take their color from it.
   const auto art_changed = [this](const QString& id) {
     if (ShowsArtOf(id)) RefreshGames();
+    if (source_cover_ids_.contains(id)) UpdateSources();
   };
   connect(artwork_, &ArtworkStore::CoverChanged, this, art_changed);
   connect(artwork_, &ArtworkStore::SlotArtChanged, this, art_changed);
@@ -294,7 +307,7 @@ void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {
       source_order_.push_back(QString::fromStdString(id));
   }
   show_source_counts_ = prefs.sidebar_source_counts.value_or(true);
-  source_icons_ = prefs.sidebar_source_icons.value_or(true);
+  show_source_covers_ = prefs.sidebar_source_covers.value_or(true);
   style_.pinned = sidebar::ParseStyle(prefs.sidebar_pinned_style.value_or("covers"));
   style_.recent = sidebar::ParseStyle(prefs.sidebar_recent_style.value_or("covers"));
   style_.recent_count = prefs.sidebar_recent_count.value_or(0);
@@ -325,9 +338,19 @@ void Sidebar::ShowActive() {
   for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
     const bool active = sources[i].id == active_source_;
     source_navs_[i]->setChecked(active);
-    source_navs_[i]->setIcon(SourceIcon(sources[i], active));
-    source_counts_[i]->setStyleSheet(active ? QString("color: %1;").arg(tokens.on_accent.name())
-                                            : QString());
+    // Without covers, a dot in the source's color leads the row.
+    if (!show_source_covers_) {
+      source_decks_[i]->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
+                                      .pixmap(QSize(18, 18), devicePixelRatioF()));
+    }
+    const QString on_accent = QString("color: %1;").arg(tokens.on_accent.name());
+    source_names_[i]->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
+    source_counts_[i]->setStyleSheet(active ? on_accent : QString());
+    QColor detail = active ? tokens.on_accent : tokens.text_muted;
+    if (active) detail.setAlpha(200);
+    source_details_[i]->setStyleSheet(QString("color: %1; font-size: %2px;")
+                                          .arg(theme::ColorToQss(detail))
+                                          .arg(tokens.font_size_small));
   }
 }
 
@@ -499,23 +522,82 @@ void Sidebar::RefreshSources() {
   });
 }
 
+void Sidebar::SetOwnedTitles(OwnedTitles* titles) {
+  owned_titles_ = titles;
+  connect(owned_titles_, &OwnedTitles::Changed, this, &Sidebar::UpdateSources);
+  UpdateSources();
+}
+
 void Sidebar::UpdateSources() {
+  std::map<std::string, int> owned;
+  if (owned_titles_ != nullptr) {
+    for (const StoreTitle& title : owned_titles_->Titles()) {
+      if (title.owned) ++owned[title.source];
+    }
+  }
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[game.source];
+  // Each source's visible games, most recently played first, for its row's covers.
+  std::map<std::string, std::vector<const GameSummary*>> shown;
+  for (const GameSummary& game : library_->Games()) {
+    const std::string source = SourceIdOf(game.source);
+    ++counts[source];
+    if (!IsHidden(game)) shown[source].push_back(&game);
+  }
+  constexpr size_t kCovers = 3;
+  source_cover_ids_.clear();
 
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
     const QString& id = sources[i].id;
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
+    // Out of what the store owns, once listed; games it doesn't list still count as owned.
+    const auto owns = owned.find(id.toStdString());
+    const int of = owns == owned.end() ? 0 : std::max(owns->second, games);
+    const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
     // Listed once enabled, set up or not: the page is where setup happens.
     source_navs_[i]->setVisible(!hidden_sources_.contains(id) && !disabled_sources_.contains(id));
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
-    QString label = show_source_counts_ ? QString::number(games) : QString();
-    if (signed_out) label = StatusDot(theme::Current().warning) + label;
-    source_counts_[i]->setText(label);
+    auto* row = qobject_cast<QHBoxLayout*>(source_navs_[i]->layout());
+    if (show_source_covers_) {
+      std::vector<const GameSummary*> covers = std::move(shown[id.toStdString()]);
+      const auto order = [](const GameSummary* a, const GameSummary* b) {
+        if (a->last_played_at.value_or(0) != b->last_played_at.value_or(0))
+          return a->last_played_at.value_or(0) > b->last_played_at.value_or(0);
+        return a->name < b->name;
+      };
+      std::ranges::partial_sort(covers, covers.begin() + std::min(kCovers, covers.size()), order);
+      covers.resize(std::min(kCovers, covers.size()));
+      for (const GameSummary* game : covers) source_cover_ids_.insert(QString::fromStdString(game->id));
+      source_navs_[i]->setFixedHeight(52);
+      row->setContentsMargins(6, 3, 10, 3);
+      row->setSpacing(10);
+      source_decks_[i]->setFixedSize(sidebar::kDeckSize);
+      source_decks_[i]->setPixmap(
+          sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF()));
+      QString detail = games == 0 && of == 0 ? QString("No games")
+                       : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
+                                             : QString();
+      if (signed_out) {
+        detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
+                 (detail.isEmpty() ? QString() : " · " + detail);
+      }
+      source_details_[i]->setText(detail);
+      source_details_[i]->setVisible(!detail.isEmpty());
+      source_counts_[i]->hide();
+    } else {
+      source_navs_[i]->setFixedHeight(38);
+      row->setContentsMargins(10, 0, 10, 0);
+      row->setSpacing(10);
+      source_decks_[i]->setFixedSize(18, 18);  // ShowActive draws the dot
+      source_details_[i]->hide();
+      QString label = show_source_counts_ ? counted : QString();
+      if (signed_out) label = StatusDot(theme::Current().warning) + label;
+      source_counts_[i]->setText(label);
+      source_counts_[i]->show();
+    }
     source_navs_[i]->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
                                            : QString());
   }
@@ -536,14 +618,14 @@ void Sidebar::UpdateSources() {
 
 std::vector<ManageSourcesCard::Entry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[game.source];
+  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
   std::vector<ManageSourcesCard::Entry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
     entries.push_back({.source = *source,
-                       .ready = games > 0 || source_ready_.value(id, false),
+                       .ready = games > 0 || id == "local" || source_ready_.value(id, false),
                        .enabled = !disabled_sources_.contains(id),
                        .games = games,
                        .in_sidebar = !hidden_sources_.contains(id),
@@ -588,17 +670,7 @@ void Sidebar::ForgetSource(const QString& id) {
   RefreshSources();
 }
 
-std::vector<QString> Sidebar::SourceOrder() const {
-  std::vector<QString> order;
-  for (const QString& id : source_order_) {
-    if (FindSourceInfo(id) != nullptr && std::ranges::find(order, id) == order.end())
-      order.push_back(id);
-  }
-  for (const SourceInfo& source : AllSources()) {
-    if (std::ranges::find(order, source.id) == order.end()) order.push_back(source.id);
-  }
-  return order;
-}
+std::vector<QString> Sidebar::SourceOrder() const { return OrderSources(source_order_); }
 
 int Sidebar::SourceDropRow(int y) const {
   // The layout row of the first visible source whose middle is below `y`.
@@ -666,30 +738,6 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
   std::ranges::sort(ids);
   prefs.hidden_sources = std::move(ids);
   SavePrefs(this, prefs, "Could not save which sources the sidebar shows.");
-}
-
-QIcon Sidebar::SourceIcon(const SourceInfo& source, bool active) const {
-  const theme::Tokens& tokens = theme::Current();
-  if (!source_icons_)
-    return icons::For(icons::Glyph::Dot, active ? tokens.on_accent : source.color);
-  // The source's initial on its color, like its page's header.
-  const qreal ratio = devicePixelRatioF();
-  constexpr int kSize = 22;
-  QPixmap pixmap(QSize(kSize, kSize) * ratio);
-  pixmap.setDevicePixelRatio(ratio);
-  pixmap.fill(Qt::transparent);
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(source.color);
-  painter.drawRoundedRect(QRectF(0, 0, kSize, kSize), 6, 6);
-  QFont font = this->font();
-  font.setPixelSize(12);
-  font.setWeight(QFont::Bold);
-  painter.setFont(font);
-  painter.setPen(Qt::white);
-  painter.drawText(QRectF(0, 0, kSize, kSize), Qt::AlignCenter, source.name.left(1));
-  return QIcon(pixmap);
 }
 
 void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos) {

@@ -9,6 +9,7 @@ namespace mira_gui {
 const std::vector<SourceInfo>& AllSources() {
   using Kind = SourceInfo::Kind;
   static const std::vector<SourceInfo> sources = {
+      {"local", "Local", Kind::Local, QColor("#5f6b7a")},
       {"steam", "Steam", Kind::Local, QColor("#2a475e")},
       {"epic", "Epic Games", Kind::Store, QColor("#4a4a4a")},
       {"gog", "GOG", Kind::Store, QColor("#86328a")},
@@ -37,9 +38,37 @@ QString KindLabel(SourceInfo::Kind kind) {
     case SourceInfo::Kind::Launcher:
       return "Launcher";
     case SourceInfo::Kind::Local:
-      return "Local";
+      return "On this computer";
   }
   return {};
+}
+
+std::string SourceIdOf(const std::string& game_source) {
+  // A store's own launcher is how its games run, not one of them.
+  if (game_source == "launcher") return {};
+  if (game_source != "local" && FindSourceInfo(QString::fromStdString(game_source)) != nullptr) return game_source;
+  return "local";
+}
+
+std::vector<QString> OrderSources(const std::vector<QString>& saved) {
+  std::vector<QString> order;
+  for (const QString& id : saved) {
+    if (FindSourceInfo(id) != nullptr && std::ranges::find(order, id) == order.end()) order.push_back(id);
+  }
+  const std::vector<SourceInfo>& all = AllSources();
+  for (auto source = all.begin(); source != all.end(); ++source) {
+    if (std::ranges::find(order, source->id) != order.end()) continue;
+    auto at = order.begin();
+    for (auto before = source; before != all.begin();) {
+      const auto it = std::ranges::find(order, (--before)->id);
+      if (it != order.end()) {
+        at = it + 1;
+        break;
+      }
+    }
+    order.insert(at, source->id);
+  }
+  return order;
 }
 
 QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim) {

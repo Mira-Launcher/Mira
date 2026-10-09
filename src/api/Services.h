@@ -18,6 +18,7 @@
 #include "config/Config.h"
 #include "core/Lane.h"
 #include "core/Result.h"
+#include "library/Catalog.h"
 #include "library/FolderTags.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
@@ -61,6 +62,8 @@ public:
   Lane artwork_thumbs{"artwork-thumbs", 4};
   Lane operations{"operations", 4};  // installs and downloads
   Lane installs{"installs", 1};      // installers a scan runs on its own
+  library::CatalogCache catalogs;
+  Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
   library::UnclearMoves unclear_moves{events};
   // After everything a job's work touches, so it's joined first on the way down.

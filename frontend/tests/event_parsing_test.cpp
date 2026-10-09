@@ -117,6 +117,18 @@ TEST_CASE("ParseGameState reads the launch/exit signal") {
   CHECK(state.state == "crashed");
 }
 
+TEST_CASE("ParseCatalogCheck tells a store's re-check starting from one that changed its list") {
+  CatalogCheckEvent check;
+  REQUIRE(events::ParseCatalogCheck("library.catalog_checking", R"({"source": "gog"})", &check));
+  CHECK(check.source == "gog");
+  CHECK(check.checking);
+  REQUIRE(events::ParseCatalogCheck("library.catalog_checked", R"({"source": "gog", "changed": true})", &check));
+  CHECK_FALSE(check.checking);
+  CHECK(check.changed);
+  CHECK_FALSE(events::ParseCatalogCheck("library.install.started", R"({"source": "gog"})", &check));
+  CHECK_FALSE(events::ParseCatalogCheck("library.catalog_checked", R"({"changed": true})", &check));
+}
+
 TEST_CASE("ParseGameState requires an id") {
   // Without one there is no row to act on, and acting on the wrong row is
   // worse than ignoring the event.

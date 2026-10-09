@@ -85,9 +85,8 @@ Result<library::ImportSummary> EpicImporter::Import() {
   // Titles the account owns but hasn't installed are deliberately NOT
   // upserted here: an entitlement isn't a tracked game, and persisting all
   // of them turned games.toml into 120 rows of placeholders carrying a
-  // meaningless data_dir/runner_ref/play_seconds each. They're served
-  // read-through from Legendary's own cache instead; see
-  // library::ListCatalog, GET /v1/library.
+  // meaningless data_dir/runner_ref/play_seconds each. GET /v1/library lists
+  // them instead; see library::CatalogCache.
   return summary;
 }
 

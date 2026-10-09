@@ -270,6 +270,7 @@ struct GameMetadata {
   int metacritic_score = 0;
   std::string review_summary;  // "Very Positive", from Steam's own wording
   int review_total = 0;
+  int review_percent = -1;  // share of positive reviews, -1 without any
   std::string protondb_tier;
   std::vector<std::string> steam_tags;  // most voted first
   std::string website;
@@ -810,6 +811,7 @@ struct FrontendPrefs {
   std::optional<int> sidebar_width;
   std::optional<std::string> sort_by;  // "name" | "last_played" | "playtime" | "status"
   std::optional<bool> sort_descending;
+  std::optional<std::string> not_installed_sort;  // "store" | "name" | "reviews" | "protondb"
   // Whether opening the frontend also kicks off POST /v1/library/scan.
   // Worth turning off for a large library on slow storage, where the scan
   // is the slowest thing about startup and the daemon's own watcher
@@ -843,8 +845,8 @@ struct FrontendPrefs {
   // (0, the default, hides them), and whether source rows show a game count.
   std::optional<int> sidebar_recent_count;
   std::optional<bool> sidebar_source_counts;
-  // Source rows show a colored tile with the source's initial, not a dot.
-  std::optional<bool> sidebar_source_icons;
+  // Source rows show a few of the source's covers, not a colored dot.
+  std::optional<bool> sidebar_source_covers;
   // How PINNED and RECENTLY PLAYED draw their games: "covers" (the default),
   // "hero" or "shelf" (see ui/SidebarGames), and whether recent rows say
   // when each was played.
@@ -860,11 +862,7 @@ struct FrontendPrefs {
   std::optional<bool> library_apps_in_all;    // apps under the All tab; on by default
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
-  std::optional<bool> tile_source_mark;
-  std::optional<bool> tile_pin_badge;
-  // Source pages split installed and not installed games into tabs; off
-  // stacks both sections.
-  std::optional<bool> source_page_tabs;
+  std::optional<bool> tile_source_mark;  // the source's name on the status line
   // Big screen: button labels ("auto", "xbox", "ps", "nin"), text 15% larger, and whether Mira
   // opens in big screen. `start_on_login` keeps an autostart entry for Mira.
   std::optional<std::string> big_screen_buttons;
@@ -1126,6 +1124,8 @@ struct StoreTitle {
   std::string source;  // the store it's from
   std::string protondb_tier;  // empty when none is cached
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
+  std::string review_summary;  // Steam's label ("Very Positive"), empty when none is cached
+  int review_percent = -1;     // share of positive Steam reviews, -1 when none is cached
 };
 
 // GET /v1/sources/{id}/removal.
@@ -1230,6 +1230,13 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+};
+
+// library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account owns.
+struct CatalogCheckEvent {
+  std::string source;
+  bool checking = false;  // started, else finished
+  bool changed = false;   // finished: list again
 };
 
 }  // namespace mira_gui

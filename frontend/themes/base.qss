@@ -39,6 +39,12 @@ QWidget#divider {
   background: @border;
 }
 
+/* A tile's place while a store is asked for its games the first time. */
+QWidget#tile_skeleton {
+  background: @surface;
+  border-radius: 6px;
+}
+
 /* Where a dragged source row would land in the sidebar. */
 QWidget#drop_line {
   background: @accent;
@@ -251,11 +257,6 @@ QWidget#left_sidebar QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-/* Source rows: taller, room for the 22px colored initial. */
-QWidget#left_sidebar QPushButton#source_nav {
-  padding: 8px 10px;
-  min-height: 22px;
-}
 
 QWidget#left_sidebar QPushButton:hover {
   background: @surface_alt;
@@ -861,10 +862,6 @@ QWidget#picker_tabs QPushButton:checked {
   border-bottom-color: @accent;
 }
 
-QWidget#tab_row QPushButton[alert="true"] {
-  color: @warning;
-}
-
 /* --- Continue playing (ui/ContinueRow) ----------------------------------- */
 
 QFrame#continue_card {
@@ -917,6 +914,13 @@ QPushButton#chip {
 
 QPushButton#chip:hover {
   border-color: @text_muted;
+}
+
+/* Room for DropdownButton's chevron. */
+QPushButton[dropdown="true"],
+QPushButton#chip[dropdown="true"],
+QWidget#tab_row QPushButton[dropdown="true"] {
+  padding-right: 28px;
 }
 
 QPushButton#chip:checked {

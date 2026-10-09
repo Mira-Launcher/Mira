@@ -126,7 +126,10 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (store->logout == nullptr) {
       return SendError(res, 400, "logout_unsupported", std::format("{} keeps its own sign-in", store->tool));
     }
-    SendResult(res, store->logout(s.config));
+    const Result<void> done = store->logout(s.config);
+    // Another account may sign in next.
+    if (done) s.games.Metadata().DropCatalog(req.matches[1].str());
+    SendResult(res, done);
   });
 
   // Imports what the store's own tool reports as installed. gog only looks under gog.install_root,

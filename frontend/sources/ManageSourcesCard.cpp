@@ -99,6 +99,13 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
   row.enabled->setToolTip("Off hides the source everywhere and stops its imports");
   connect(row.enabled, &Switch::toggled, this, [this, id](bool on) { emit EnabledToggled(id, on); });
   row.row->AddControl(row.enabled);
+  // Local is where games from no source go, so it can't be turned off or removed.
+  if (id == "local") {
+    QSizePolicy keep_switch = row.enabled->sizePolicy();
+    keep_switch.setRetainSizeWhenHidden(true);
+    row.enabled->setSizePolicy(keep_switch);
+    row.enabled->setVisible(false);
+  }
 
   row.more = new QToolButton(row.row);
   row.more->setAutoRaise(true);
@@ -129,16 +136,20 @@ void ManageSourcesCard::ShowMenu(const QString& id) {
   QMenu menu(this);
   if (entry.enabled) {
     menu.addAction("Open", this, [this, id] { emit OpenRequested(id); });
-    if (id != "humble" && !row->importing) menu.addAction("Import games", this, [this, id] { Import(id); });
+    if (id != "humble" && id != "local" && !row->importing) {
+      menu.addAction("Import games", this, [this, id] { Import(id); });
+    }
     QAction* sidebar = menu.addAction("Show in sidebar");
     sidebar->setCheckable(true);
     sidebar->setChecked(entry.in_sidebar);
     connect(sidebar, &QAction::toggled, this, [this, id](bool shown) { emit SidebarToggled(id, shown); });
-    menu.addSeparator();
+    if (id != "local") menu.addSeparator();
   }
-  menu.addAction("Remove…", this, [this, entry] {
-    RemoveSource(this, entry.source, [this, id = entry.source.id] { emit Removed(id); });
-  });
+  if (id != "local") {
+    menu.addAction("Remove…", this, [this, entry] {
+      RemoveSource(this, entry.source, [this, id = entry.source.id] { emit Removed(id); });
+    });
+  }
   menu.exec(row->more->mapToGlobal(QPoint(0, row->more->height())));
 }
 
