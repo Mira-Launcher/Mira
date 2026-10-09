@@ -15,12 +15,13 @@ using SDL_JoystickID = std::uint32_t;
 constexpr std::uint32_t kInitGamepad = 0x00002000u;
 enum Button { kSouth, kEast, kWest, kNorth, kBack, kGuide, kStart, kLeftStick, kRightStick,
               kLeftShoulder, kRightShoulder, kDpadUp, kDpadDown, kDpadLeft, kDpadRight };
-enum Axis { kLeftX, kLeftY };
+enum Axis { kLeftX, kLeftY, kRightX, kRightY, kLeftTrigger, kRightTrigger };
 enum Type { kTypeUnknown, kTypeStandard, kTypeXbox360, kTypeXboxOne, kTypePs3, kTypePs4, kTypePs5,
             kTypeSwitchPro, kTypeJoyconLeft, kTypeJoyconRight, kTypeJoyconPair, kTypeGamecube };
 enum PowerState { kPowerOnBattery = 1, kPowerNoBattery, kPowerCharging, kPowerCharged };
 constexpr int kConnectionWireless = 2;
-constexpr std::int16_t kStickThreshold = 18000;  // of 32767
+constexpr std::int16_t kTriggerThreshold = 16000;
+constexpr std::int64_t kHoldBackMs = 700;
 
 }  // namespace
 
@@ -43,8 +44,14 @@ struct GamepadInput::Sdl {
   bool (*RumbleGamepad)(SDL_Gamepad*, std::uint16_t, std::uint16_t, std::uint32_t) = nullptr;
   int (*GetGamepadPowerInfo)(SDL_Gamepad*, int*) = nullptr;
   int (*GetGamepadConnectionState)(SDL_Gamepad*) = nullptr;
+  SDL_JoystickID (*GetGamepadID)(SDL_Gamepad*) = nullptr;
 
-  SDL_Gamepad* pad = nullptr;
+  struct Open {
+    SDL_Gamepad* pad;
+    bool warned_low = false;
+  };
+  // In the same order as GamepadInput::pads_.
+  std::vector<Open> open;
   int scan_countdown = 0;
   int power_countdown = 0;
 
@@ -73,6 +80,7 @@ struct GamepadInput::Sdl {
     get(RumbleGamepad, "SDL_RumbleGamepad");
     get(GetGamepadPowerInfo, "SDL_GetGamepadPowerInfo");
     get(GetGamepadConnectionState, "SDL_GetGamepadConnectionState");
+    get(GetGamepadID, "SDL_GetGamepadID");
     if (!ok) return false;
     // Guide must still reach Mira while a game has focus.
     SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
@@ -85,7 +93,7 @@ struct GamepadInput::Sdl {
   }
 
   ~Sdl() {
-    if (pad != nullptr) CloseGamepad(pad);
+    for (const Open& pad : open) CloseGamepad(pad.pad);
     if (QuitSubSystem != nullptr && lib.isLoaded()) QuitSubSystem(kInitGamepad);
   }
 };
@@ -102,74 +110,131 @@ GamepadInput::GamepadInput(QObject* parent) : QObject(parent) {
 
 GamepadInput::~GamepadInput() = default;
 
-void GamepadInput::Poll() {
+void GamepadInput::SetOptions(const Options& options) {
+  options_ = options;
+  repeater_.SetTiming(options.first_repeat_ms, options.repeat_ms);
+}
+
+void GamepadInput::Scan() {
   Sdl& sdl = *sdl_;
-  sdl.UpdateGamepads();
-  if (sdl.pad != nullptr && !sdl.GamepadConnected(sdl.pad)) {
-    sdl.CloseGamepad(sdl.pad);
-    sdl.pad = nullptr;
-    pad_kind_.clear();
-    pad_name_.clear();
-    battery_ = -1;
-    emit PadChanged();
+  bool changed = false;
+  // Drop the ones unplugged.
+  for (size_t i = sdl.open.size(); i-- > 0;) {
+    if (sdl.GamepadConnected(sdl.open[i].pad)) continue;
+    sdl.CloseGamepad(sdl.open[i].pad);
+    sdl.open.erase(sdl.open.begin() + std::ptrdiff_t(i));
+    pads_.erase(pads_.begin() + std::ptrdiff_t(i));
+    changed = true;
   }
-  if (sdl.pad == nullptr) {
-    // Looking for a new controller twice a second is plenty.
-    if (sdl.scan_countdown-- > 0) return;
+  // Looking for new controllers twice a second is plenty.
+  if (sdl.scan_countdown-- <= 0) {
     sdl.scan_countdown = 60;
     int count = 0;
     SDL_JoystickID* ids = sdl.GetGamepads(&count);
-    if (ids != nullptr && count > 0) sdl.pad = sdl.OpenGamepad(ids[0]);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+      const bool known = std::ranges::any_of(sdl.open, [&](const Sdl::Open& pad) { return sdl.GetGamepadID(pad.pad) == ids[i]; });
+      if (known) continue;
+      SDL_Gamepad* pad = sdl.OpenGamepad(ids[i]);
+      if (pad == nullptr) continue;
+      const int type = sdl.GetGamepadType(pad);
+      Pad info;
+      info.kind = type >= kTypePs3 && type <= kTypePs5                ? "ps"
+                  : type >= kTypeSwitchPro && type <= kTypeGamecube ? "nin"
+                                                                    : "xbox";
+      info.name = QString::fromUtf8(sdl.GetGamepadName(pad));
+      sdl.open.push_back({pad});
+      pads_.push_back(info);
+      sdl.power_countdown = 0;
+      changed = true;
+    }
     if (ids != nullptr) sdl.Free(ids);
-    if (sdl.pad == nullptr) return;
-    const int type = sdl.GetGamepadType(sdl.pad);
-    pad_kind_ = type >= kTypePs3 && type <= kTypePs5          ? "ps"
-                : type >= kTypeSwitchPro && type <= kTypeGamecube ? "nin"
-                                                                  : "xbox";
-    pad_name_ = QString::fromUtf8(sdl.GetGamepadName(sdl.pad));
-    sdl.power_countdown = 0;
-    emit PadChanged();
   }
-
   // The battery changes slowly; every two seconds is enough.
   if (sdl.power_countdown-- <= 0) {
     sdl.power_countdown = 250;
-    int percent = -1;
-    const int state = sdl.GetGamepadPowerInfo(sdl.pad, &percent);
-    const int battery = state == kPowerOnBattery || state == kPowerCharging || state == kPowerCharged ? percent : -1;
-    const bool charging = state == kPowerCharging || state == kPowerCharged;
-    const bool wireless = sdl.GetGamepadConnectionState(sdl.pad) == kConnectionWireless;
-    if (battery != battery_ || charging != charging_ || wireless != wireless_) {
-      battery_ = battery;
-      charging_ = charging;
-      wireless_ = wireless;
-      emit PadChanged();
+    for (size_t i = 0; i < sdl.open.size(); ++i) {
+      int percent = -1;
+      const int state = sdl.GetGamepadPowerInfo(sdl.open[i].pad, &percent);
+      Pad& pad = pads_[i];
+      const int battery = state == kPowerOnBattery || state == kPowerCharging || state == kPowerCharged ? percent : -1;
+      const bool charging = state == kPowerCharging || state == kPowerCharged;
+      const bool wireless = sdl.GetGamepadConnectionState(sdl.open[i].pad) == kConnectionWireless;
+      if (battery != pad.battery || charging != pad.charging || wireless != pad.wireless) changed = true;
+      pad.battery = battery;
+      pad.charging = charging;
+      pad.wireless = wireless;
+      const bool low = battery >= 0 && battery < 15 && !charging;
+      if (low && !sdl.open[i].warned_low) emit BatteryLow(pad.name, battery);
+      // Warn again only after it's been charged.
+      if (!low && battery >= 25) sdl.open[i].warned_low = false;
+      if (low) sdl.open[i].warned_low = true;
     }
   }
+  if (changed) emit PadChanged();
+}
 
-  const auto button = [&](int b) { return sdl.GetGamepadButton(sdl.pad, b); };
-  const std::int16_t x = sdl.GetGamepadAxis(sdl.pad, kLeftX);
-  const std::int16_t y = sdl.GetGamepadAxis(sdl.pad, kLeftY);
+void GamepadInput::Poll() {
+  Sdl& sdl = *sdl_;
+  sdl.UpdateGamepads();
+  Scan();
+  if (sdl.open.empty()) return;
+
   std::array<bool, size_t(Nav::kCount)> down{};
-  down[size_t(Nav::Up)] = button(kDpadUp) || y < -kStickThreshold;
-  down[size_t(Nav::Down)] = button(kDpadDown) || y > kStickThreshold;
-  down[size_t(Nav::Left)] = button(kDpadLeft) || x < -kStickThreshold;
-  down[size_t(Nav::Right)] = button(kDpadRight) || x > kStickThreshold;
-  down[size_t(Nav::Accept)] = button(kSouth);
-  down[size_t(Nav::Back)] = button(kEast);
-  down[size_t(Nav::Action)] = button(kWest);
-  down[size_t(Nav::Search)] = button(kNorth);
-  down[size_t(Nav::PrevTab)] = button(kLeftShoulder);
-  down[size_t(Nav::NextTab)] = button(kRightShoulder);
-  down[size_t(Nav::Guide)] = button(kGuide);
-  down[size_t(Nav::Sort)] = button(kBack);
-  for (const Nav nav : repeater_.Feed(down, clock_.elapsed())) emit Pressed(nav);
+  const std::int16_t threshold = std::int16_t(options_.stick_threshold);
+  int used = -1;
+  for (size_t p = 0; p < sdl.open.size(); ++p) {
+    SDL_Gamepad* pad = sdl.open[p].pad;
+    const auto button = [&](int b) { return sdl.GetGamepadButton(pad, b); };
+    const auto axis = [&](int a) { return sdl.GetGamepadAxis(pad, a); };
+    std::array<bool, size_t(Nav::kCount)> mine{};
+    const std::int16_t x = axis(kLeftX), y = axis(kLeftY);
+    mine[size_t(Nav::Up)] = button(kDpadUp) || y < -threshold;
+    mine[size_t(Nav::Down)] = button(kDpadDown) || y > threshold;
+    mine[size_t(Nav::Left)] = button(kDpadLeft) || x < -threshold;
+    mine[size_t(Nav::Right)] = button(kDpadRight) || x > threshold;
+    mine[size_t(options_.swap_confirm ? Nav::Back : Nav::Accept)] = button(kSouth);
+    mine[size_t(options_.swap_confirm ? Nav::Accept : Nav::Back)] = button(kEast);
+    mine[size_t(Nav::Action)] = button(kWest);
+    mine[size_t(Nav::Search)] = button(kNorth);
+    mine[size_t(Nav::PrevTab)] = button(kLeftShoulder);
+    mine[size_t(Nav::NextTab)] = button(kRightShoulder);
+    mine[size_t(Nav::Guide)] = button(kGuide);
+    mine[size_t(Nav::Sort)] = button(kBack);
+    mine[size_t(Nav::PrevLetter)] = axis(kLeftTrigger) > kTriggerThreshold;
+    mine[size_t(Nav::NextLetter)] = axis(kRightTrigger) > kTriggerThreshold;
+    for (size_t i = 0; i < down.size(); ++i) {
+      if (!mine[i]) continue;
+      down[i] = true;
+      // A button newly down marks the controller in use.
+      if (!down_[i] && used < 0) used = int(p);
+    }
+  }
+  const std::int64_t now = clock_.elapsed();
+  // Held B goes Home, once per hold.
+  if (down[size_t(Nav::Back)]) {
+    if (back_since_ < 0) back_since_ = now;
+    if (back_since_ > 0 && now - back_since_ >= kHoldBackMs) {
+      back_since_ = 0;
+      emit Pressed(Nav::Home);
+    }
+  } else {
+    back_since_ = -1;
+  }
+  if (used > 0) {
+    // The last used controller goes first, so its labels and battery show.
+    std::rotate(sdl.open.begin(), sdl.open.begin() + used, sdl.open.begin() + used + 1);
+    std::rotate(pads_.begin(), pads_.begin() + used, pads_.begin() + used + 1);
+    emit PadChanged();
+  }
+  if (down != down_) emit Activity();
+  down_ = down;
+  for (const Nav nav : repeater_.Feed(down, now)) emit Pressed(nav);
 }
 
 void GamepadInput::Rumble(double low, double high, int ms) {
-  if (!sdl_ || sdl_->pad == nullptr) return;
+  if (!sdl_ || sdl_->open.empty()) return;
   const auto strength = [](double v) { return std::uint16_t(std::clamp(v, 0.0, 1.0) * 65535); };
-  sdl_->RumbleGamepad(sdl_->pad, strength(low), strength(high), std::uint32_t(ms));
+  sdl_->RumbleGamepad(sdl_->open.front().pad, strength(low), strength(high), std::uint32_t(ms));
 }
 
 }  // namespace mira_gui::bigscreen
