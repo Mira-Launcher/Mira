@@ -114,27 +114,16 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     out.art_slots.push_back(std::string(key) == "artwork" ? "cover" : key);
   }
 
-  const auto candidates = [&](const char* slot) {
-    std::vector<ArtCandidate> list;
-    if (!body.contains("art_candidates") || !body["art_candidates"].is_object() ||
-        !body["art_candidates"].contains(slot)) {
-      return list;
+  for (const char* slot : {"cover", "hero", "logo", "icon"}) {
+    if (body.contains("art_candidates") && body["art_candidates"].is_object() &&
+        body["art_candidates"].contains(slot) && body["art_candidates"][slot].is_array()) {
+      for (const json& item : body["art_candidates"][slot]) out.candidates[slot].push_back(mapping::ToArtCandidate(item));
     }
-    for (const json& item : body["art_candidates"][slot])
-      list.push_back(mapping::ToArtCandidate(item));
-    return list;
-  };
-  out.cover_candidates = candidates("cover");
-  out.hero_candidates = candidates("hero");
-
-  const auto active_id = [&](const char* key) -> std::optional<std::int64_t> {
-    if (!body.contains(key) || !body[key].is_object() || !body[key].contains("candidate_id")) {
-      return std::nullopt;
+    const char* key = std::string_view(slot) == "cover" ? "artwork" : slot;
+    if (body.contains(key) && body[key].is_object() && body[key].contains("candidate_id")) {
+      out.active_candidate_ids[slot] = body[key].value("candidate_id", std::int64_t{0});
     }
-    return body[key].value("candidate_id", std::int64_t{0});
-  };
-  out.cover_active_candidate_id = active_id("artwork");
-  out.hero_active_candidate_id = active_id("hero");
+  }
 }
 
 GameMetadataResult GetMetadataSync(const std::string& id) {
@@ -164,6 +153,12 @@ ArtworkSelectResult SelectArtworkSync(const std::string& id, const std::string& 
   const transport::Reply reply =
       transport::PostJson("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot,
                           json{{"candidate_id", candidate_id}});
+  return {reply.ok, reply.error};
+}
+
+ArtworkSelectResult UploadArtworkSync(const std::string& id, const std::string& slot, const std::string& bytes) {
+  const std::string type = bytes.starts_with("\x89PNG") ? "image/png" : "image/jpeg";
+  const transport::Reply reply = transport::Put("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot, bytes, type);
   return {reply.ok, reply.error};
 }
 
@@ -310,6 +305,13 @@ void SelectArtworkAsync(QObject* context, const std::string& id, const std::stri
                         std::function<void(ArtworkSelectResult)> callback) {
   async::Run(
       context, [id, slot, candidate_id] { return SelectArtworkSync(id, slot, candidate_id); },
+      std::move(callback));
+}
+
+void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot, std::string bytes,
+                        std::function<void(ArtworkSelectResult)> callback) {
+  async::Run(
+      context, [id, slot, bytes = std::move(bytes)] { return UploadArtworkSync(id, slot, bytes); },
       std::move(callback));
 }
 

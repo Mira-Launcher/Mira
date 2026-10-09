@@ -41,6 +41,7 @@ void HeroBackdrop::RefreshCover(const std::string& id) {
 }
 
 void HeroBackdrop::SetPreview(const QString& slot, const QPixmap& preview) {
+  if (slot != "hero" && slot != "cover") return;  // logos and icons aren't drawn here
   (slot == "hero" ? hero_preview_ : cover_preview_) = preview;
   rendered_ = QPixmap();
   update();

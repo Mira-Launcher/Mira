@@ -145,6 +145,11 @@ Reply Patch(const std::string& path, const json& body, const Options& options) {
   return Finish(MakeClient(options).Patch(path, body.dump(), "application/json"));
 }
 
+Reply Put(const std::string& path, const std::string& body, const std::string& content_type,
+          const Options& options) {
+  return Finish(MakeClient(options).Put(path, body, content_type));
+}
+
 Reply Delete(const std::string& path, const Options& options) {
   return Finish(MakeClient(options).Delete(path));
 }

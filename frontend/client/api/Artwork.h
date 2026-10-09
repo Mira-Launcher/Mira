@@ -48,11 +48,16 @@ void RefreshMetadataManyAsync(QObject* context, const std::vector<std::string>& 
                               std::function<void(MetadataBatchResult)> callback);
 
 // POST /v1/games/{id}/artwork?type=. `candidate_id` must be one of the ids
-// GetMetadataAsync's cover_candidates listed. mirad looks it up rather
+// GetMetadataAsync's candidates listed. mirad looks it up rather
 // than accepting a URL. Returns 202; watch for
 // game.artwork_selected/.artwork_select_failed.
 void SelectArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
                         std::int64_t candidate_id,
+                        std::function<void(ArtworkSelectResult)> callback);
+
+// PUT /v1/games/{id}/artwork?type=: `bytes`, a PNG or JPEG, becomes the
+// slot's image. Events as for SelectArtworkAsync.
+void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot, std::string bytes,
                         std::function<void(ArtworkSelectResult)> callback);
 
 // POST /v1/games/{id}/artwork/candidates?type=&page=: one page of

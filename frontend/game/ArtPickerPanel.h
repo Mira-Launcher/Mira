@@ -15,6 +15,8 @@
 
 class QButtonGroup;
 class QComboBox;
+class QDragEnterEvent;
+class QDropEvent;
 class QHBoxLayout;
 class QLabel;
 class QLineEdit;
@@ -28,9 +30,10 @@ namespace mira_gui {
 
 class TabRow;
 
-// A grid of one art slot's candidates ("cover" or "hero"; art_candidates in
-// GET .../metadata), shown as previews mirad caches for it
-// (POST .../artwork/thumbs), a screenful at a time as the grid scrolls.
+// A grid of one art slot's candidates ("cover", "hero", "logo" or "icon";
+// art_candidates in GET .../metadata), shown as previews mirad caches for it
+// (POST .../artwork/thumbs), a screenful at a time as the grid scrolls, led by
+// an image of the user's own once chosen or dropped.
 // Clicking one only previews it; Apply() is what switches the game's art.
 class ArtPickerPanel : public QWidget {
   Q_OBJECT
@@ -55,13 +58,20 @@ signals:
   // Null when the pick is the one in use.
   void Previewed(QString slot, QPixmap preview);
   void PickChanged(bool has_change);
-  // The user switched between Covers and Hero art; a pick in the other slot was dropped.
+  // The user switched slots; a pick in the other slot was dropped.
   void SlotChanged(QString slot);
   // Double-click or Enter on a candidate: the host applies it.
   void PickActivated();
   void ApplyFailed(QString slot, QString error);
 
+protected:
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
+
 private:
+  void ChooseFile();
+  // Reads `path` and adds it to the front of the grid as the pick.
+  void UseFile(const QString& path);
   void Populate(const GameMetadataResult& result);
   QListWidgetItem* AddItem(const ArtCandidate& candidate);
   void UpdateTitle();
@@ -94,6 +104,8 @@ private:
   bool fetching_ = false;
   bool matches_loaded_ = false;
   QString filter_;  // the chip's style; empty for all
+  // The user's own image for this slot, as PNG or JPEG bytes for mirad.
+  std::string upload_;
   // Paging through SteamGridDB's own results as the grid scrolls.
   int next_page_ = 0;
   bool more_pages_ = true;
@@ -103,7 +115,7 @@ private:
   // The slot and candidate an Apply() is waiting to hear back on.
   std::optional<std::pair<std::string, std::int64_t>> applying_;
 
-  TabRow* slots_ = nullptr;  // Covers and Hero art, each with its count once known
+  TabRow* slots_ = nullptr;  // one tab per slot, each with its count once known
   QHBoxLayout* chips_layout_ = nullptr;
   QButtonGroup* chips_ = nullptr;
   QWidget* match_row_ = nullptr;
@@ -116,6 +128,7 @@ private:
   QPushButton* fetch_button_ = nullptr;
   // Drives the pulse drawn on previews still loading.
   QVariantAnimation* pulse_ = nullptr;
+  class ThumbDelegate* delegate_ = nullptr;
 };
 
 }  // namespace mira_gui

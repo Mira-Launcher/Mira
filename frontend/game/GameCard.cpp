@@ -43,7 +43,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   api::GetMetadataAsync(this, id_, [this](GameMetadataResult result) {
     if (!result.ok || result.missing) return;
     std::vector<std::int64_t> ids;
-    for (const ArtCandidate& candidate : result.metadata.cover_candidates) {
+    for (const ArtCandidate& candidate : result.metadata.candidates["cover"]) {
       if (ids.size() == kPrefetchThumbs) break;
       ids.push_back(candidate.id);
     }
@@ -250,9 +250,10 @@ void GameCard::OpenArtPicker() {
     // The change bar is the picker's only while it's open; an apply can land after.
     connect(picker_, &ArtPickerPanel::PickChanged, this, [this](bool has_change) {
       if (!ArtPickerOpen()) return;
-      const bool hero = picker_->slot() == "hero";
-      bar_->SetText(has_change ? (hero ? "New hero art picked" : "New cover picked") : QString(),
-                    hero ? "Use this hero" : "Use this cover", "Cancel");
+      const std::string& slot = picker_->slot();
+      const QString noun = slot == "hero" ? "hero" : slot == "logo" ? "logo" : slot == "icon" ? "icon" : "cover";
+      bar_->SetText(has_change ? QString("New %1 picked").arg(slot == "hero" ? "hero art" : noun) : QString(),
+                    "Use this " + noun, "Cancel");
     });
     connect(picker_, &ArtPickerPanel::PickActivated, this, [this] {
       if (!ArtPickerOpen()) return;
