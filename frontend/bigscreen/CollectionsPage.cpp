@@ -215,7 +215,8 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
   // Above the hints at the bottom.
   const QRectF area(kMargin * u, (kTop + 3.6) * u, width() - kMargin * u * 2, height() - (kTop + 3.6 + 4.5) * u);
   const CoverGrid grid(area, kResultColumns, u * 1.3, game_ / kResultColumns);
-  painter.setClipRect(QRectF(0, area.top() - u * 0.5, width(), height()));
+  // Ends above the hints; the focus ring may spill into the margin.
+  painter.setClipRect(QRectF(0, area.top() - u * 0.5, width(), area.height() + u));
   for (int i = 0; i < count; ++i) {
     const QRectF box = grid.Box(i);
     if (box.bottom() < area.top()) continue;

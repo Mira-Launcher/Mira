@@ -17,6 +17,7 @@ public:
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
   void Shown() override;
+  bool Typed(const QString& text) override;
 
 protected:
   void paintEvent(QPaintEvent* event) override;

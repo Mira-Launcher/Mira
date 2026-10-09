@@ -22,6 +22,8 @@ public:
   virtual QList<Hint> Hints() const = 0;
   // Called when the page comes to the front.
   virtual void Shown() {}
+  // Typing on a real keyboard: `text`, or a backspace when empty. False leaves the key to Navigate.
+  virtual bool Typed(const QString& /*text*/) { return false; }
 
 signals:
   void HintsChanged();

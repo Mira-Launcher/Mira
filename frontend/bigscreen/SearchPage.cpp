@@ -98,6 +98,18 @@ void SearchPage::SaveRecent() {
   window_->SetPrefs(prefs);
 }
 
+bool SearchPage::Typed(const QString& text) {
+  if (text.isEmpty()) {
+    if (query_.isEmpty()) return false;
+    query_.chop(1);
+  } else {
+    query_ += text.toLower();
+  }
+  result_ = 0;
+  Search();
+  return true;
+}
+
 bool SearchPage::Navigate(Nav nav) {
   const int results = Entries();
   if (nav == Nav::Action && zone_ == Zone::Keys) {
@@ -266,7 +278,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
   painter.drawText(QPointF(right, results_top + u), QString("%1 %2").arg(results_.size()).arg(results_.size() == 1 ? "game" : "games"));
   const QRectF area(right, results_top + u * 2.4, width() - right - kMargin * u, height() - results_top - u * (2.4 + 4.5));
   const CoverGrid grid(area, kResultColumns, u * 1.3, zone_ == Zone::Results ? result_ / kResultColumns : 0);
-  painter.setClipRect(QRectF(right - u, results_top + u * 1.6, width(), height()));
+  painter.setClipRect(QRectF(right - u, results_top + u * 1.6, width(), area.bottom() + u - (results_top + u * 1.6)));
   for (int i = 0; i < int(results_.size()); ++i) {
     const QRectF box = grid.Box(i);
     if (box.bottom() < area.top()) continue;

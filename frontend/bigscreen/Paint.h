@@ -48,6 +48,10 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
 double GlyphWidth(double unit, Nav nav, const QString& kind);
 
 // A cover with its focus ring, dimming and install progress.
+// A game's name at the top of a page, in at most two lines inside `box` (its width and top): a
+// smaller size when it doesn't fit, then cut off. Returns the area used.
+QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size, const QString& text);
+
 // Covers (2:3) in rows of `columns` inside `area`: sized so two rows always fit, centered, and
 // scrolled so the focused row is whole.
 struct CoverGrid {

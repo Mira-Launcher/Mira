@@ -1010,8 +1010,20 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
       {Qt::Key_S, Nav::Sort},         {Qt::Key_Home, Nav::Guide},      {Qt::Key_BracketLeft, Nav::PrevLetter},
       {Qt::Key_BracketRight, Nav::NextLetter},
   };
+  const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+  // Letters go to a page that takes typing (Search) before they count as buttons.
+  if (auto* page = qobject_cast<Page*>(stack_->currentWidget()); page != nullptr && plain && !dialog_ && !menu_) {
+    const QString text = event->text();
+    const bool typed = event->key() == Qt::Key_Backspace ? page->Typed({})
+                       : !text.isEmpty() && text[0].isPrint() ? page->Typed(text)
+                                                                    : false;
+    if (typed) {
+      RestartIdle();
+      return;
+    }
+  }
   const auto found = kKeys.find(event->key());
-  if (found == kKeys.end() || (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+  if (found == kKeys.end() || !plain) {
     return QWidget::keyPressEvent(event);
   }
   RestartIdle();

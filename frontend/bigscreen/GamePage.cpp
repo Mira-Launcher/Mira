@@ -225,12 +225,11 @@ void GamePage::paintEvent(QPaintEvent*) {
   const double left = (kMargin + kCoverW + kMargin) * u;
   const double w = width() - left - kMargin * u;
   painter.setPen(tokens.text);
-  painter.setFont(Font(u, 3.0, QFont::ExtraBold));
   const QRectF title_box(left, kTop * u, w, 7 * u);
-  const QRectF title_used = painter.boundingRect(title_box, Qt::TextWordWrap, item_.name);
+  QRectF title_used = title_box;
   const QPixmap logo = window_->Logo(item_);
   if (logo.isNull()) {
-    painter.drawText(title_box, Qt::TextWordWrap, item_.name);
+    title_used = DrawTitle(painter, title_box, u, 3.0, item_.name);
   } else {
     const QSizeF logo_size = QSizeF(logo.size()).scaled(QSizeF(w, kLogoH * u), Qt::KeepAspectRatio);
     const QRectF logo_rect(QPointF(left, kTop * u + (kLogoH * u - logo_size.height()) / 2), logo_size);
@@ -239,7 +238,7 @@ void GamePage::paintEvent(QPaintEvent*) {
     painter.drawPixmap(logo_rect, logo, QRectF(logo.rect()));
     painter.restore();
   }
-  double y = std::min(title_used.bottom(), title_box.bottom()) + u * 0.9;
+  double y = title_used.bottom() + u * 0.9;
 
   const DownloadTracker::Entry* download = window_->Download(item_);
   const bool paused = download && download->state == DownloadTracker::State::Paused;

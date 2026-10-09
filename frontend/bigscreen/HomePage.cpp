@@ -281,15 +281,13 @@ void HomePage::paintEvent(QPaintEvent*) {
 
   // The focused game: name, status, how much it was played.
   const double info_w = std::min(44 * u, width() - kMargin * u * 2);
-  painter.setFont(Font(u, 3.1, QFont::ExtraBold));
   painter.setPen(tokens.text);
   const QRectF title_box(kMargin * u, kInfoTop * u, info_w, 7.2 * u);
-  const QRectF title_used = painter.boundingRect(title_box, Qt::TextWordWrap, focused->name);
-  painter.drawText(title_box, Qt::TextWordWrap, focused->name);
+  const QRectF title_used = DrawTitle(painter, title_box, u, 3.1, focused->name);
   const double progress = window_->Progress(*focused);
   const DownloadTracker::Entry* download = window_->Download(*focused);
   const bool paused = download && download->state == DownloadTracker::State::Paused;
-  QPointF at(kMargin * u, std::min(title_used.bottom(), title_box.bottom()) + u * 0.9);
+  QPointF at(kMargin * u, title_used.bottom() + u * 0.9);
   at.rx() += DrawPill(painter, at, u, StatusText(*focused, progress, paused), StatusColor(*focused, progress)) + u * 0.5;
   at.rx() += DrawPill(painter, at, u, SourceName(focused->source)) + u * 0.9;
   painter.setFont(Font(u, 0.95));

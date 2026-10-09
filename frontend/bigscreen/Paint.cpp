@@ -105,6 +105,24 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
   return w;
 }
 
+QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size, const QString& text) {
+  for (const double scale : {1.0, 0.82, 0.68}) {
+    painter.setFont(Font(unit, size * scale, QFont::ExtraBold));
+    const QFontMetricsF metrics(painter.font());
+    const QRectF room(box.left(), box.top(), box.width(), metrics.lineSpacing() * 2 + 1);
+    const QRectF used = painter.boundingRect(room, Qt::TextWordWrap, text);
+    if (used.height() <= room.height() || scale < 0.7) {
+      // Past two lines even at the smallest size: cut the end so it wraps into two.
+      const QString shown = used.height() <= room.height()
+                                ? text
+                                : metrics.elidedText(text, Qt::ElideRight, box.width() * 1.85);
+      painter.drawText(room, Qt::TextWordWrap, shown);
+      return painter.boundingRect(room, Qt::TextWordWrap, shown);
+    }
+  }
+  return {};
+}
+
 CoverGrid::CoverGrid(const QRectF& area, int columns, double gap, int focus_row)
     : area(area), columns(columns), gap(gap) {
   tile_w = (area.width() - gap * (columns - 1)) / columns;
