@@ -69,4 +69,12 @@ void ListUnclearMovesAsync(QObject* context, std::function<void(UnclearMovesResu
 void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const std::string& id,
                             std::function<void(SettleMoveResult)> callback);
 
+// What a dropped path is: kind "game", "app" or "unknown".
+void ClassifyImportAsync(QObject* context, const std::string& path,
+                         std::function<void(ImportGuessResult)> callback);
+
+// Moves it into the Games or Applications folder as a job; the library picks it up from there.
+void ImportPathAsync(QObject* context, const std::string& path, const std::string& kind,
+                     std::function<void(ImportPathResult)> callback);
+
 }  // namespace mira_gui::api

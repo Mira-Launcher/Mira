@@ -55,4 +55,7 @@ bool RunsExternalProgram(const model::Game& game);
 Result<model::Game> Relocate(const config::Config& config, model::Game game, const RelocateRequest& request = {},
                              std::span<const model::Game> library = {});
 
+// Renames `from` to `to`; across filesystems, with allow_copy, copies then removes the original.
+Result<void> MovePath(const std::filesystem::path& from, const std::filesystem::path& to, bool allow_copy);
+
 }  // namespace mira::library

@@ -96,6 +96,10 @@ void RelocateLibraryJob(QObject* context, std::optional<std::vector<std::string>
       FillRelocate, std::move(callback));
 }
 
+void FillImportPath(ImportPathResult& result, const json& body) {
+  result.path = body.value("path", std::string());
+}
+
 }  // namespace
 
 void ListAllGamesAsync(QObject* context, std::function<void(GamesResult)> callback) {
@@ -208,6 +212,33 @@ void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const s
                                            });
       },
       std::move(callback));
+}
+
+void ClassifyImportAsync(QObject* context, const std::string& path,
+                         std::function<void(ImportGuessResult)> callback) {
+  async::Run(
+      context,
+      [path] {
+        return ReadReply<ImportGuessResult>(
+            transport::PostJson("/v1/library/import/classify", json{{"path", path}}),
+            "POST /v1/library/import/classify", Shape::Object,
+            [](ImportGuessResult& result, const json& reply) {
+              result.kind = reply.value("kind", std::string());
+              result.name = reply.value("name", std::string());
+              result.reason = reply.value("reason", std::string());
+            });
+      },
+      std::move(callback));
+}
+
+void ImportPathAsync(QObject* context, const std::string& path, const std::string& kind,
+                     std::function<void(ImportPathResult)> callback) {
+  RunJob<ImportPathResult>(
+      context, "import_path",
+      [path, kind](const std::string& query) {
+        return transport::PostJson("/v1/library/import" + query, json{{"path", path}, {"kind", kind}});
+      },
+      FillImportPath, std::move(callback));
 }
 
 }  // namespace mira_gui::api

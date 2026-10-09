@@ -970,6 +970,22 @@ struct RelocateLibraryResult {
   std::vector<GameFailure> errors;
 };
 
+// POST /v1/library/import/classify: kind is "game", "app" or "unknown".
+struct ImportGuessResult {
+  bool ok = false;
+  ApiError error;
+  std::string kind;
+  std::string name;
+  std::string reason;
+};
+
+// POST /v1/library/import: path is where the dropped item now lives.
+struct ImportPathResult {
+  bool ok = false;
+  ApiError error;
+  std::string path;
+};
+
 // POST /v1/games/delete.
 struct DeleteGamesResult {
   bool ok = false;

@@ -17,6 +17,7 @@
 #include "../client/Types.h"
 
 class QGridLayout;
+class QLabel;
 class QSlider;
 class QSplitter;
 class QStackedLayout;
@@ -91,6 +92,13 @@ private:
   void ScheduleSavePrefs();
   void FlushPrefs(bool quitting = true);
   void resizeEvent(QResizeEvent* event) override;
+  // Files and folders dropped on the window are added to the library.
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dragMoveEvent(QDragMoveEvent* event) override;
+  void dragLeaveEvent(QDragLeaveEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
+  void ImportDropped(const QString& path);
+  void StartImport(const QString& path, const QString& kind, const QString& name);
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();
   void changeEvent(QEvent* event) override;
@@ -219,6 +227,7 @@ private:
   void HandleGameEvent(const std::string& type, const std::string& data, bool live);
 
   mira_gui::TopBar* top_bar_ = nullptr;
+  QLabel* drop_overlay_ = nullptr;  // "Drop to add to Mira", shown while a drag is over the window
   QSlider* zoom_ = nullptr;
   mira_gui::Sidebar* sidebar_ = nullptr;
   // Set by "Save and leave", so the save that follows closes Settings.

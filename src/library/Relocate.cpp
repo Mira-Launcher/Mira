@@ -13,10 +13,9 @@
 #include "library/PrefixNaming.h"
 
 namespace mira::library {
-namespace {
 namespace fs = std::filesystem;
 
-Result<void> Move(const fs::path& from, const fs::path& to, bool allow_copy) {
+Result<void> MovePath(const fs::path& from, const fs::path& to, bool allow_copy) {
   std::error_code ec;
   if (!fs::exists(from, ec)) return Err("source_missing", std::format("{} doesn't exist", from.string()));
 
@@ -44,6 +43,8 @@ Result<void> Move(const fs::path& from, const fs::path& to, bool allow_copy) {
               to.string(), ec.message());
   return {};
 }
+
+namespace {
 
 // `inner`'s place under `outer`, carried over to `moved_outer`.
 std::string Rebase(const fs::path& inner, const fs::path& outer, const fs::path& moved_outer) {
@@ -153,21 +154,21 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
       }
       const fs::path from = single_file ? program : fs::path(game.install_path);
       const fs::path to = single_file ? target / game.exe_path : target;
-      if (auto moved = Move(from, to, config.GetBool("relocate.allow_copy")); !moved) return std::unexpected(moved.error());
+      if (auto moved = MovePath(from, to, config.GetBool("relocate.allow_copy")); !moved) return std::unexpected(moved.error());
       game.install_path = target.string();
       if (prefix_in_install && !single_file) game.data_dir = Rebase(original_data, original_install, target);
     }
   }
 
   if (move_prefix && fs::path(game.data_dir) != prefix_target) {
-    if (auto moved = Move(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
+    if (auto moved = MovePath(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
         !moved) {
       if (game.install_path == original_install) return std::unexpected(moved.error());
       // Put the install back, so the stored paths stay true.
       const Result<void> undone = single_file
-                                      ? Move(fs::path(game.install_path) / game.exe_path,
+                                      ? MovePath(fs::path(game.install_path) / game.exe_path,
                                              fs::path(original_install) / game.exe_path, true)
-                                      : Move(game.install_path, original_install, true);
+                                      : MovePath(game.install_path, original_install, true);
       if (undone) return std::unexpected(moved.error());
       // It stays moved, so the game is returned with the install where it now is.
       log::Warn(

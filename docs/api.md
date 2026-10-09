@@ -219,6 +219,12 @@ Scans every library root now: adds new games (each folder in a root or in one of
 ### `POST /v1/library/relocate`
 Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout (inside the game's [sorting folder](#folders-by-tag) when the destination is sorted by tag), one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
 
+### `POST /v1/library/import/classify`
+Body `{"path": "/absolute/path"}`. Says what a dropped file or folder is, without moving it: `{"kind": "game" | "app" | "unknown", "name", "reason"}`. An AppImage is read from its own desktop entry (its `Categories`); anything else is looked up on Steam's store by exact name (software or game). 400 `invalid_body` for a missing or relative path, 404 `not_found` when it doesn't exist.
+
+### `POST /v1/library/import`
+Body `{"path": "/absolute/path", "kind": "game" | "app"}`. Moves the file or folder into the first games folder (`game`) or the Applications folder (`app`) in `library_roots`. A [job](#jobs) of kind `import_path` whose result is `{"path"}`, the new location (from another drive it is copied beside the root first, then the original is removed); the watcher then scans it. 400 `invalid_body` for a bad body or kind. The job fails with `source_missing`, `no_library_root` (no games or Applications folder in `library_roots`), `already_in_library` (the path is inside a library root already) or `target_exists`.
+
 ### Folders by tag
 `tags.sorted_roots` lists the library folders whose games are sorted, and `tags.folders` the tags that get a folder in each of them: `{"tags": {"sorted_roots": ["~/Mira/Games"], "folders": ["RPG", "Strategy"]}}`. A library folder not listed is never touched; with no folder tags, a listed one sorts only hidden games. A game's place is `<root>/[.hidden/][<folder tag>/]<its folder>`: the folder tag is the game's own pick (`folder_tag`, below) while it has that tag and it's a folder tag, else the first tag in `tags.folders` (in that order) the game has, matched ignoring case and spelled as listed; `.hidden` holds games tagged `hidden`. So reordering `tags.folders` moves the games with several folder tags and no pick. `favorite`, `hidden` and `app` can't be folder tags, and a tag can't contain `/` or start with `.`.
 
