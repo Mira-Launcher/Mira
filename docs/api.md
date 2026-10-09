@@ -541,6 +541,9 @@ The cached image for a slot (`cover` by default). `404` if that slot isn't cache
 ### `POST /v1/games/{id}/artwork?type=`
 Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
 
+### `PUT /v1/games/{id}/artwork?type=`
+The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
+
 ### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
 Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.
 

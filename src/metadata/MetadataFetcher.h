@@ -66,6 +66,11 @@ Result<nlohmann::json> SearchSteamGridDb(const config::Config& config, const std
 Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
                            const std::string& slot, std::int64_t candidate_id);
 
+// Makes a PNG or JPEG the user supplied `slot`'s image, fitted like any art and kept, like a
+// pick, through refreshes.
+Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
+                           const std::string& slot, std::string_view bytes);
+
 // One page (50) of SteamGridDB's art for a game's slot, asked for now, so the
 // current steamgriddb.nsfw applies and results past the first 50 a metadata
 // fetch cached are reachable: {"page", "total", "candidates": [...]}, each

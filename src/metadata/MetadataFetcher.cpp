@@ -117,6 +117,27 @@ Box ArtBox(const config::Config& config, std::string_view slot, bool title = fal
   return SlotBox(slot, title, config.GetString("metadata.art_size") == "compact");
 }
 
+// Fits the finished `part` into `box` and moves it to `dest`, whose extension follows the fitted
+// image's, then drops the slot's files of another type (.png to .jpg).
+bool CommitArt(const fs::path& part, fs::path& dest, Box box) {
+  if (const auto fitted = FitImage(part, box)) {
+    if (!WriteFileAtomic(part, fitted->bytes, "artwork_write_failed")) return false;
+    dest.replace_extension(fitted->ext);
+  }
+  std::error_code ec;
+  fs::rename(part, dest, ec);
+  if (ec) return false;
+  const std::string stem = dest.stem().string();
+  for (const auto& entry : fs::directory_iterator(dest.parent_path(), ec)) {
+    const std::string name = entry.path().filename().string();
+    if (entry.path() != dest && entry.path().stem() == stem && !name.ends_with(".part")) {
+      std::error_code remove_ec;
+      fs::remove(entry.path(), remove_ec);
+    }
+  }
+  return true;
+}
+
 // Downloads `url` into this game's artwork dir under `slot` (curl -f, so a
 // 404 never gets saved as art), recording it into
 // `info[slot == "cover" ? "artwork" : slot]` on success; "artwork" is
@@ -161,28 +182,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
                   trusted ? "=file,https,http" : "=https,http", "--max-time",
                   std::string(kMaxTime), "-o", part.string(), "--url", url};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  bool ok = result && result->exit_code == 0;
-  if (ok) {
-    if (const auto fitted = FitImage(part, ArtBox(config, slot))) {
-      ok = WriteFileAtomic(part, fitted->bytes, "artwork_write_failed").has_value();
-      if (ok) dest.replace_extension(fitted->ext);
-    }
-  }
-  if (ok) {
-    fs::rename(part, dest, ec);
-    if (!ec) {
-      // A slot that changed type (.png to .jpg) must not leave the old file behind.
-      for (const auto& entry : fs::directory_iterator(dir, ec)) {
-        const std::string name = entry.path().filename().string();
-        if (entry.path() != dest && entry.path().stem() == stem && !name.ends_with(".part")) {
-          std::error_code remove_ec;
-          fs::remove(entry.path(), remove_ec);
-        }
-      }
-      ec.clear();
-    }
-  }
-  if (!ok || ec) {
+  if (!result || result->exit_code != 0 || !CommitArt(part, dest, ArtBox(config, slot))) {
     log::Warn("couldn't download artwork for {} from {}", game_id, url);
     fs::remove(part, ec);
     return false;
@@ -1248,13 +1248,17 @@ void PruneOrphanArt(const config::Config& config, const store::MetadataStore& ca
   if (pruned > 0) log::Info("removed the art of {} games no longer cached", pruned);
 }
 
+// One pick or upload at a time, so two for one slot can't land their files and records in a
+// different order.
+std::mutex& PickMutex() {
+  static std::mutex picking;
+  return picking;
+}
+
 Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
                            const std::string& slot, std::int64_t candidate_id) {
-  // One pick at a time, so two picks for one slot can't land their files and records in a
-  // different order. The download itself runs without MetadataFileMutex, which every other
-  // game's fetch also needs.
-  static std::mutex picking;
-  const std::lock_guard pick_lock(picking);
+  // The download itself runs without MetadataFileMutex, which every other game's fetch also needs.
+  const std::lock_guard pick_lock(PickMutex());
   const auto read_info = [&]() -> Result<json> {
     if (!cache.Has(game_id)) return Err("metadata_not_found", "no metadata cached for this game yet");
     return cache.Read(game_id);
@@ -1300,6 +1304,37 @@ Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& c
   (*current)[key] = std::move(downloaded[key]);
   (*current)[key]["chosen"] = true;  // a refresh (Fetch) keeps it
   return cache.Write(game_id, *current);
+}
+
+Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
+                           const std::string& slot, std::string_view bytes) {
+  if (slot != "cover" && slot != "hero" && slot != "logo" && slot != "icon") {
+    return Err("invalid_type", "unknown art slot");
+  }
+  const bool png = bytes.starts_with("\x89PNG");
+  if (!png && !bytes.starts_with("\xFF\xD8\xFF")) return Err("unsupported_image", "only PNG and JPEG images can be used");
+  const std::lock_guard pick_lock(PickMutex());
+
+  const fs::path dir = ArtworkDir(config, game_id);
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  if (ec) return Err("artwork_write_failed", "couldn't create the game's artwork folder: " + ec.message());
+  const std::string ext = png ? ".png" : ".jpg";
+  const fs::path part = dir / std::format("{}.upload{}.part", slot, ext);
+  if (auto written = WriteFileAtomic(part, bytes, "artwork_write_failed"); !written) return std::unexpected(written.error());
+  fs::path dest = dir / std::format("{}.chosen{}", slot, ext);
+  if (!IsImage(part) || !CommitArt(part, dest, ArtBox(config, slot))) {
+    fs::remove(part, ec);
+    return Err("unsupported_image", "couldn't read that image");
+  }
+
+  const std::lock_guard lock(MetadataFileMutex());
+  json info = cache.Read(game_id);
+  info[slot == "cover" ? "artwork" : slot] = {{"file", dest.filename().string()},
+                                              {"content_type", ContentTypeFor(dest)},
+                                              {"source", "upload"},
+                                              {"chosen", true}};
+  return cache.Write(game_id, info);
 }
 
 Result<json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
