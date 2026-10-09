@@ -13,10 +13,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(mira-gui LANGUAGES CXX)
 
-find_package(Qt6 6.5 QUIET COMPONENTS Widgets DBus Network)
+find_package(Qt6 6.5 QUIET COMPONENTS Widgets DBus Network Multimedia)
 
 if(NOT Qt6_FOUND)
-  message(STATUS "Qt6 (>= 6.5, Widgets) not found, skipping mira-gui. "
+  message(STATUS "Qt6 (>= 6.5, Widgets, Multimedia) not found, skipping mira-gui. "
                  "The backend (mirad, mira) does not depend on it.")
   return()
 endif()
@@ -69,7 +69,7 @@ qt_add_resources(mira-gui "themes"
 # backend code, so linking it does not violate the "never link mira_core"
 # rule in docs/architecture.md: it's the same REST-client toolkit `mira`
 # uses, not a shortcut past the API.
-target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network mira_third_party Threads::Threads)
+target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Multimedia mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
 
 # The Qt and standard headers most files include, parsed once.

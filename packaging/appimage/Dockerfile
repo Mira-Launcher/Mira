@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Qt 6.5 or newer from Qt's own builds (22.04's Qt is 6.2).
 RUN pip3 install --no-cache-dir aqtinstall \
- && aqt install-qt linux desktop ${QT_VERSION} gcc_64 --outputdir /opt/Qt
+ && aqt install-qt linux desktop ${QT_VERSION} gcc_64 -m qtmultimedia --outputdir /opt/Qt
 
 # Compiler cache: its directory is mounted from the host (cmake/AppImageContainer.cmake), so a rebuilt
 # container, a changed Dockerfile or a clean build directory still reuses every object file it has seen.

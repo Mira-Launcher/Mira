@@ -13,7 +13,7 @@ cmake --preset dev
 cmake --build build/dev
 ```
 
-Needs a C++23 compiler, CMake 3.20+, Ninja, and Qt6 6.5+ (`Widgets`) for `mira-gui`. Other dependencies are vendored. Binaries land in `build/dev/`. Other presets are `release`, `asan` and `tsan`. `cmake --build build/dev --target run-gui` builds and starts the GUI.
+Needs a C++23 compiler, CMake 3.20+, Ninja, and Qt6 6.5+ (`Widgets`, `Multimedia`) for `mira-gui`. Other dependencies are vendored. Binaries land in `build/dev/`. Other presets are `release`, `asan` and `tsan`. `cmake --build build/dev --target run-gui` builds and starts the GUI.
 
 ## Running
 
