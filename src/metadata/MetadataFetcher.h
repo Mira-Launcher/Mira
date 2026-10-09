@@ -113,4 +113,7 @@ int FetchSteamTags(const config::Config& config, store::MetadataStore& cache, st
 // store::MetadataStore::ArtworkDir names.
 std::filesystem::path ArtworkDir(const config::Config& config, const std::string& game_id);
 
+// Whether Steam lists an app named exactly `name` as software (true) or a game (false); nullopt when no exact match.
+std::optional<bool> SteamSaysSoftware(const std::string& name);
+
 }  // namespace mira::metadata

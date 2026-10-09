@@ -4,6 +4,12 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDialog>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
+#include <QFont>
+#include <QFileInfo>
 #include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QGuiApplication>
@@ -11,6 +17,7 @@
 #include <QKeySequence>
 #include <QLabel>
 #include <QLocale>
+#include <QMimeData>
 #include <QMenu>
 #include <QScreen>
 #include <QSignalBlocker>
@@ -20,6 +27,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTimer>
+#include <QUrl>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -67,10 +75,24 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
+
+namespace {
+
+// Only local files can be added: a dropped web link or text is refused.
+bool CanAddDrop(const QMimeData* data) {
+  if (!data->hasUrls()) return false;
+  for (const QUrl& url : data->urls()) {
+    if (!url.isLocalFile()) return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent) : QMainWindow(parent) {
   setWindowTitle("Mira");
@@ -206,6 +228,22 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   root_stack_->setCurrentWidget(chrome);
 
   setCentralWidget(central);
+
+  setAcceptDrops(true);
+  drop_overlay_ = new QLabel("Drop to add to Mira", this);
+  drop_overlay_->setAlignment(Qt::AlignCenter);
+  drop_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
+  QFont overlay_font = drop_overlay_->font();
+  overlay_font.setBold(true);
+  overlay_font.setPointSizeF(overlay_font.pointSizeF() * 2);
+  drop_overlay_->setFont(overlay_font);
+  const mira_gui::theme::Tokens& tokens = mira_gui::theme::Current();
+  QColor overlay_background = tokens.window;
+  overlay_background.setAlpha(220);
+  drop_overlay_->setStyleSheet(QString("QLabel { background: %1; color: %2; }")
+                                   .arg(mira_gui::theme::ColorToQss(overlay_background),
+                                        mira_gui::theme::ColorToQss(tokens.text)));
+  drop_overlay_->hide();
 
   BuildShortcuts();
   UpdateLibraryNavActive();
@@ -444,7 +482,71 @@ mira_gui::FrontendPrefs LibraryWindow::LayoutPrefs() const {
 void LibraryWindow::resizeEvent(QResizeEvent* event) {
   QMainWindow::resizeEvent(event);
   SizeGameEditCard(game_card_);
+  if (drop_overlay_) drop_overlay_->setGeometry(rect());
   ScheduleSavePrefs();
+}
+
+void LibraryWindow::dragEnterEvent(QDragEnterEvent* event) {
+  if (!CanAddDrop(event->mimeData())) {
+    event->ignore();
+    return;
+  }
+  event->acceptProposedAction();
+  drop_overlay_->setGeometry(rect());
+  drop_overlay_->show();
+  drop_overlay_->raise();
+}
+
+void LibraryWindow::dragMoveEvent(QDragMoveEvent* event) {
+  if (!CanAddDrop(event->mimeData())) {
+    event->ignore();
+    return;
+  }
+  event->acceptProposedAction();
+  drop_overlay_->show();
+  drop_overlay_->raise();
+}
+
+void LibraryWindow::dragLeaveEvent(QDragLeaveEvent* event) {
+  QMainWindow::dragLeaveEvent(event);
+  drop_overlay_->hide();
+}
+
+void LibraryWindow::dropEvent(QDropEvent* event) {
+  drop_overlay_->hide();
+  for (const QUrl& url : event->mimeData()->urls()) ImportDropped(url.toLocalFile());
+  event->acceptProposedAction();
+}
+
+void LibraryWindow::ImportDropped(const QString& path) {
+  const QString filename = QFileInfo(path).fileName();
+  mira_gui::api::ClassifyImportAsync(this, path.toStdString(), [this, path, filename](mira_gui::ImportGuessResult result) {
+    if (!result.ok) {
+      mira_gui::notify::FailedRequest(this, "Could not add " + filename + ".", result.error);
+      return;
+    }
+    const QString name = result.name.empty() ? filename : QString::fromStdString(result.name);
+    if (result.kind == "game" || result.kind == "app") {
+      StartImport(path, QString::fromStdString(result.kind), name);
+      return;
+    }
+    constexpr int kGame = 1;
+    constexpr int kApp = 2;
+    mira_gui::PopupDialog dialog(this, mira_gui::notify::Level::Info, "Game or app?");
+    dialog.SetMessage("Mira couldn't tell what " + name + " is.");
+    dialog.AddButton("Game", kGame, /*default_button=*/true);
+    dialog.AddButton("App", kApp);
+    dialog.AddButton("Cancel", false);
+    const int answer = dialog.exec();
+    if (answer == kGame || answer == kApp) StartImport(path, answer == kApp ? "app" : "game", name);
+  });
+}
+
+void LibraryWindow::StartImport(const QString& path, const QString& kind, const QString& name) {
+  mira_gui::notify::Notice(this, "Adding " + name + " to " + (kind == "app" ? "Applications" : "Games"));
+  mira_gui::api::ImportPathAsync(this, path.toStdString(), kind.toStdString(), [this, name](mira_gui::ImportPathResult result) {
+    if (!result.ok) mira_gui::notify::FailedRequest(this, "Could not add " + name + ".", result.error);
+  });
 }
 
 void LibraryWindow::changeEvent(QEvent* event) {

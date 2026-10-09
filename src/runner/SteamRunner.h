@@ -11,7 +11,7 @@ namespace mira::runner {
 //
 // Used for steam.launch_mode == "direct" and for running an exe inside a
 // Steam-owned prefix. launch_mode == "steam" (the default) never reaches
-// this class, because that mode hands off to steam://rungameid/<appid> instead.
+// this class, because that mode hands off to steam -applaunch <appid> instead.
 class SteamRunner : public IRunner {
 public:
   std::string kind() const override { return "steam"; }

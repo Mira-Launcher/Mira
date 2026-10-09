@@ -962,6 +962,18 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
 
 }  // namespace
 
+std::optional<bool> SteamSaysSoftware(const std::string& name) {
+  const SteamMatch match = FindSteamAppIds(name);
+  if (match.exact.empty()) return std::nullopt;
+  const json items = SteamStoreItems({match.exact}, false);
+  if (items.empty()) return std::nullopt;
+  switch (Value(items[0], "type", -1)) {
+    case 0: return false;  // game
+    case 6: return true;   // software
+    default: return std::nullopt;
+  }
+}
+
 Result<json> SearchSteamGridDb(const config::Config& config, const std::string& name) {
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (api_key.empty()) return NoGriddbKey("searching SteamGridDB needs an API key");

@@ -11,6 +11,7 @@
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
 #include "library/FolderTags.h"
+#include "library/Import.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
@@ -156,6 +157,41 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                const int failed = static_cast<int>(errors.size());
                return json{{"moved", moved}, {"failed", failed}, {"errors", std::move(errors)}};
              });
+  });
+
+  // --- import ------------------------------------------------------------
+
+  http.Post("/v1/library/import/classify", [](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"path": "/absolute/path"})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const std::string path = body->contains("path") && (*body)["path"].is_string() ? (*body)["path"].get<std::string>() : "";
+    if (!std::filesystem::path(path).is_absolute()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return SendError(res, 404, "not_found", path + " doesn't exist");
+    const library::ImportGuess guess = library::ClassifyImport(path);
+    SendJson(res, json{{"kind", std::string(library::ImportKindName(guess.kind))}, {"name", guess.name},
+                       {"reason", guess.reason}});
+  });
+
+  http.Post("/v1/library/import", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"path": "/absolute/path", "kind": "game" or "app"})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const std::string path = body->contains("path") && (*body)["path"].is_string() ? (*body)["path"].get<std::string>() : "";
+    const std::optional<library::ImportKind> kind =
+        body->contains("kind") && (*body)["kind"].is_string() ? library::ParseImportKind((*body)["kind"].get<std::string>()) : std::nullopt;
+    if (!std::filesystem::path(path).is_absolute() || !kind) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    s.StartJob(req, res, "import_path", path, "Adding " + std::filesystem::path(path).filename().string(),
+               [&s, path, kind = *kind](JobRegistry::Progress&) -> Result<json> {
+                 const Result<std::filesystem::path> target = library::ImportInto(s.config, path, kind);
+                 if (!target) return std::unexpected(target.error());
+                 return json{{"path", target->string()}};
+               });
   });
 
   // --- steam ------------------------------------------------------------
