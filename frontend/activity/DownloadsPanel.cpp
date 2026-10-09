@@ -12,6 +12,7 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/Jobs.h"
+#include "../client/api/Stores.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -252,6 +253,8 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   const char* role = "muted";
   if (entry.state == State::Running) {
     state = RunningText(entry);
+  } else if (entry.state == State::Paused) {
+    state = entry.progress >= 0 ? QString("Paused at %1%").arg(qRound(entry.progress * 100)) : QString("Paused");
   } else if (entry.state == State::Finished) {
     state = FinishedText(entry);
   } else {
@@ -266,7 +269,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   status->setWordWrap(true);
   text->addWidget(status);
 
-  if (entry.state == State::Running) {
+  if (entry.state == State::Running || entry.state == State::Paused) {
     // Busy unless the source reports how far along it is.
     auto* rail = new ProgressRail(row);
     rail->SetProgress(entry.progress);
@@ -287,6 +290,18 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
   if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
+    if (DownloadTracker::CanPause(entry)) {
+      auto* pause = new QPushButton("Pause", row);
+      pause->setObjectName("download_pause");
+      connect(pause, &QPushButton::clicked, this,
+              [this, pause, source = entry.source.toStdString(), ref = entry.ref.toStdString()] {
+                pause->setEnabled(false);
+                api::PauseStoreInstallAsync(this, source, ref, [this](StoreActionResult result) {
+                  if (!result.ok) notify::FailedRequest(this, "Could not pause it.", result.error);
+                });
+              });
+      layout->addWidget(pause, 0, Qt::AlignVCenter);
+    }
     auto* cancel = new QPushButton("Cancel", row);
     cancel->setObjectName("download_cancel");
     connect(cancel, &QPushButton::clicked, this, [this, cancel, job] {
@@ -296,6 +311,27 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       });
     });
     layout->addWidget(cancel, 0, Qt::AlignVCenter);
+  } else if (entry.state == State::Paused) {
+    const std::string source = entry.source.toStdString();
+    const std::string ref = entry.ref.toStdString();
+    auto* resume = new QPushButton("Resume", row);
+    resume->setObjectName("download_resume");
+    connect(resume, &QPushButton::clicked, this, [this, resume, source, ref, update = entry.update] {
+      resume->setEnabled(false);
+      api::InstallStoreTitleAsync(this, source, ref, update, [this](StoreActionResult result) {
+        if (!result.ok) notify::FailedRequest(this, "Could not resume it.", result.error);
+      });
+    });
+    layout->addWidget(resume, 0, Qt::AlignVCenter);
+    auto* discard = new QPushButton("Cancel", row);
+    discard->setObjectName("download_cancel");
+    connect(discard, &QPushButton::clicked, this, [this, discard, source, ref] {
+      discard->setEnabled(false);
+      api::DiscardPausedInstallAsync(this, source, ref, [this](StoreActionResult result) {
+        if (!result.ok) notify::FailedRequest(this, "Could not cancel it.", result.error);
+      });
+    });
+    layout->addWidget(discard, 0, Qt::AlignVCenter);
   } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
     auto* show = new QPushButton("Show", row);
     connect(show, &QPushButton::clicked, this, [this, game_id] {

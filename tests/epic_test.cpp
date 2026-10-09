@@ -261,6 +261,45 @@ TEST_CASE("Installing an owned Epic title reports progress, then tracks it as in
   CHECK(bad->status == 400);
 }
 
+TEST_CASE("Pausing an Epic install stops legendary gracefully and installing again resumes it") {
+  const fs::path state = test::TempDir("epic-api-pause");
+  const fs::path game_dir = state / "Games" / "AGame";
+  test::Touch(game_dir / "A.exe");
+  test::LiveServer server(state);
+  WriteFakeLegendary(state / "legendary", kNoise, kLoggedIn, "[]", R"([{"app_name": "abc", "app_title": "A Game"}])",
+                     R"([{"app_name": "abc", "title": "A Game", "install_path": ")" + game_dir.string() +
+                         R"(", "executable": "A.exe"}])");
+  // The first install stalls until stopped and notes the SIGTERM; the second one finishes.
+  const fs::path slow = state / "legendary-slow";
+  std::ofstream(slow) << "#!/bin/sh\n"
+                      << "if [ \"$1\" = install ] && [ ! -f \"$0.started\" ]; then\n"
+                      << "  touch \"$0.started\"\n"
+                      << "  trap 'touch \"$0.term\"; exit 1' TERM\n"
+                      << "  printf '%s\\n' '[DLManager] INFO: = Progress: 10.00% (1/10), ETA: 00:01:30' >&2\n"
+                      << "  sleep 30 & wait\n"
+                      << "fi\n"
+                      << "exec \"" << (state / "legendary").string() << "\" \"$@\"\n";
+  fs::permissions(slow, fs::perms::owner_all);
+  REQUIRE(server.MutableConfig().Set("epic.legendary_bin", slow.string()));
+  httplib::Client client = server.Client();
+  const std::string body = nlohmann::json{{"source", "epic"}, {"ref", "abc"}}.dump();
+
+  REQUIRE(client.Post("/v1/library/install", body, "application/json")->status == 202);
+  REQUIRE(test::WaitForEvent(server.events(), "library.install.progress"));
+  auto paused = client.Post("/v1/library/install/pause", body, "application/json");
+  REQUIRE(paused != nullptr);
+  CHECK(paused->status == 200);
+  REQUIRE(test::WaitForEvent(server.events(), "library.install.paused"));
+  CHECK(fs::exists(state / "legendary-slow.term"));
+  CHECK(nlohmann::json::parse(client.Get("/v1/library/install/paused")->body).size() == 1);
+  CHECK(client.Post("/v1/library/install/pause", body, "application/json")->status == 409);
+
+  REQUIRE(client.Post("/v1/library/install", body, "application/json")->status == 202);
+  REQUIRE(test::WaitForEvent(server.events(), "library.install.finished"));
+  CHECK(server.games().Find("epic-abc"));
+  CHECK(nlohmann::json::parse(client.Get("/v1/library/install/paused")->body).empty());
+}
+
 TEST_CASE("An Epic install while signed out fails with a way to sign in") {
   const fs::path state = test::TempDir("epic-api-install-signed-out");
   test::LiveServer server(state);

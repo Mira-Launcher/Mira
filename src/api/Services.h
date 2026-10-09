@@ -66,6 +66,34 @@ public:
   // After everything a job's work touches, so it's joined first on the way down.
   JobRegistry jobs{events};
 
+  // Store installs stopped by POST /v1/library/install/pause, by "<source>-<ref>". Their files
+  // stay and installing again continues them. Kept in memory only.
+  class PausedInstalls {
+  public:
+    void Add(const std::string& target, nlohmann::json install) {
+      std::lock_guard lock(mutex_);
+      installs_[target] = std::move(install);
+    }
+    bool Remove(const std::string& target) {
+      std::lock_guard lock(mutex_);
+      return installs_.erase(target) > 0;
+    }
+    bool Contains(const std::string& target) const {
+      std::lock_guard lock(mutex_);
+      return installs_.contains(target);
+    }
+    nlohmann::json List() const {
+      std::lock_guard lock(mutex_);
+      nlohmann::json out = nlohmann::json::array();
+      for (const auto& [target, install] : installs_) out.push_back(install);
+      return out;
+    }
+
+  private:
+    mutable std::mutex mutex_;
+    std::map<std::string, nlohmann::json> installs_;
+  } paused_installs;
+
   // Called after a request changes library_roots, so the watcher can follow.
   std::function<void()> on_roots_changed;
   std::atomic<bool> stopping{false};  // checked by open event streams and long work

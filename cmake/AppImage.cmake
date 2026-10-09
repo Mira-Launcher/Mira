@@ -1,4 +1,7 @@
-# `cmake --build <preset> --target appimage` -> build/<preset>/Mira-x86_64.AppImage
+# `cmake --build <preset> --target appimage-host` -> build/<preset>/Mira-x86_64.AppImage
+#
+# Bundles the build machine's own libraries, so the result only runs on distributions as new as it.
+# Releases use `appimage` (cmake/AppImageContainer.cmake), which runs this inside Ubuntu 22.04.
 #
 # Bundles mirad + mira + mira-gui into a single self-contained AppImage,
 # the non-Arch install path the AUR PKGBUILD doesn't cover. Only defined
@@ -66,6 +69,11 @@ else()
   execute_process(
     COMMAND "${MIRA_QMAKE_EXECUTABLE}" -query QT_INSTALL_PLUGINS
     OUTPUT_VARIABLE MIRA_QT_REAL_PLUGINS_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  execute_process(
+    COMMAND "${MIRA_QMAKE_EXECUTABLE}" -query QT_INSTALL_LIBS
+    OUTPUT_VARIABLE MIRA_QT_LIBS_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
   set(MIRA_QT_FILTERED_PLUGINS_DIR "${MIRA_APPIMAGE_TOOLS_DIR}/qt-plugins-filtered")
@@ -138,7 +146,7 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
   # strings into the commands below, which is a confusing failure deep inside the
   # build instead of the clear one-line warning above. No target beats a
   # broken one.
-  add_custom_target(appimage
+  add_custom_target(appimage-host
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIRA_APPDIR}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_APPDIR}/usr/bin"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_APPDIR}/usr/share/applications"
@@ -159,6 +167,9 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIRA_QT_FILTERED_PLUGINS_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${MIRA_QT_REAL_PLUGINS_DIR}" "${MIRA_QT_FILTERED_PLUGINS_DIR}"
     COMMAND sh -c "rm -f '${MIRA_QT_FILTERED_PLUGINS_DIR}'/imageformats/kimg_*.so"
+    # Video plays through the FFmpeg backend. The GStreamer one would load the system's GStreamer
+    # plugins into a process of bundled libraries.
+    COMMAND sh -c "rm -f '${MIRA_QT_FILTERED_PLUGINS_DIR}'/multimedia/libgstreamermediaplugin.so"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_APPDIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy "${MIRA_APPRUN}" "${MIRA_APPDIR}/AppRun"
     COMMAND chmod 755 "${MIRA_APPDIR}/AppRun"
@@ -184,6 +195,7 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
               ${MIRA_BUNDLED_RUNTIME_ARGS}
               --plugin qt
               --output appimage
+    COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/check-appdir.sh" "${MIRA_APPDIR}" "${MIRA_QT_LIBS_DIR}"
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     DEPENDS mirad mira mira-run mira-gui "${MIRA_LINUXDEPLOY}" "${MIRA_LINUXDEPLOY_QT}"
     COMMENT "Building Mira AppImage"

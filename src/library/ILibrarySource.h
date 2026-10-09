@@ -40,6 +40,9 @@ public:
   // (Steam updates its own games); every other source overrides for real.
   virtual Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
                              const std::string& ref);
+
+  // Whether an install stopped partway continues where it left off when run again.
+  virtual bool CanPause() const { return false; }
 };
 
 }  // namespace mira::library

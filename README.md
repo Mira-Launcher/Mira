@@ -13,7 +13,7 @@ cmake --preset dev
 cmake --build build/dev
 ```
 
-Needs a C++23 compiler, CMake 3.20+, Ninja, and Qt6 6.5+ (`Widgets`) for `mira-gui`. Other dependencies are vendored. Binaries land in `build/dev/`. Other presets are `release`, `asan` and `tsan`. `cmake --build build/dev --target run-gui` builds and starts the GUI.
+Needs a C++23 compiler, CMake 3.20+, Ninja, and Qt6 6.5+ (`Widgets`, `Multimedia`) for `mira-gui`. Other dependencies are vendored. Binaries land in `build/dev/`. Other presets are `release`, `asan` and `tsan`. `cmake --build build/dev --target run-gui` builds and starts the GUI.
 
 ## Running
 
@@ -31,22 +31,16 @@ systemctl --user enable --now mirad.service
 
 [`docs/cli.md`](docs/cli.md) lists every `mira` command.
 
-### AppImage
+### AppImage, .deb and .rpm
 
 ```sh
 cmake --preset release
 cmake --build build/release --target appimage
 ```
 
-Produces `build/release/Mira-x86_64.AppImage` with `mirad`, `mira` and `mira-gui`. Needs Qt6 and `curl`. `linuxdeploy` and its Qt plugin are downloaded into `build/release/appimage-tools/` on first use. Arch users can use `packaging/PKGBUILD` instead.
+Builds in an Ubuntu 22.04 container (docker or podman; nothing else is needed on the host, not even Qt), so the results run on Ubuntu 22.04 and newer. `build/release/appimage/` gets `Mira-x86_64.AppImage`, the `.deb` and the `.rpm`. The first run builds the image with GCC 13 and Qt 6.5 (`packaging/appimage/Dockerfile`), which takes a while; later runs reuse it and its compiler cache.
 
-That AppImage bundles the build machine's libraries, so it only runs on a distribution as new as that machine. For one that runs on Ubuntu 22.04 and newer, build it in a container (docker or podman, nothing else needed):
-
-```sh
-cmake --build build/release --target appimage-container
-```
-
-The result is `build/release/appimage-container/Mira-x86_64.AppImage`. The first run builds an Ubuntu 22.04 image with GCC 13 and Qt 6.5 (`packaging/appimage/Dockerfile`), which takes a while.
+`--target appimage-host` (and `packages-host`) builds with the machine's own Qt and libraries instead: quicker, but the result only runs on distributions as new as that machine, so it's not for releases. It needs Qt6 and `curl`. Arch users can use `packaging/PKGBUILD` instead.
 
 ## Data
 

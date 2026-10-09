@@ -154,6 +154,18 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("tile_source_mark", result.prefs.tile_source_mark);
   read_bool("tile_pin_badge", result.prefs.tile_pin_badge);
   read_bool("source_page_tabs", result.prefs.source_page_tabs);
+  read_string("big_screen_buttons", result.prefs.big_screen_buttons);
+  read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
+  read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
+  read_bool("start_on_login", result.prefs.start_on_login);
+  read_bool("big_screen_sounds", result.prefs.big_screen_sounds);
+  read_string("big_screen_rumble", result.prefs.big_screen_rumble);
+  read_bool("big_screen_swap_confirm", result.prefs.big_screen_swap_confirm);
+  read_string("big_screen_stick", result.prefs.big_screen_stick);
+  read_string("big_screen_repeat", result.prefs.big_screen_repeat);
+  read_bool("big_screen_trailers", result.prefs.big_screen_trailers);
+  read_int("big_screen_idle_suspend", result.prefs.big_screen_idle_suspend);
+  read_bool("big_screen_show_apps", result.prefs.big_screen_show_apps);
   read_bool("onboarded", result.prefs.onboarded);
   read_string("primary_use", result.prefs.primary_use);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
@@ -182,6 +194,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   };
   read_strings("hidden_sources", result.prefs.hidden_sources);
   read_strings("source_order", result.prefs.source_order);
+  read_strings("big_screen_recent_searches", result.prefs.big_screen_recent_searches);
 
   if (table.contains("source_imported_at") && table["source_imported_at"].is_object()) {
     std::map<std::string, std::int64_t> imported;
@@ -238,6 +251,19 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.tile_source_mark) table["tile_source_mark"] = *prefs.tile_source_mark;
   if (prefs.tile_pin_badge) table["tile_pin_badge"] = *prefs.tile_pin_badge;
   if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
+  if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
+  if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
+  if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
+  if (prefs.start_on_login) table["start_on_login"] = *prefs.start_on_login;
+  if (prefs.big_screen_sounds) table["big_screen_sounds"] = *prefs.big_screen_sounds;
+  if (prefs.big_screen_rumble) table["big_screen_rumble"] = *prefs.big_screen_rumble;
+  if (prefs.big_screen_swap_confirm) table["big_screen_swap_confirm"] = *prefs.big_screen_swap_confirm;
+  if (prefs.big_screen_stick) table["big_screen_stick"] = *prefs.big_screen_stick;
+  if (prefs.big_screen_repeat) table["big_screen_repeat"] = *prefs.big_screen_repeat;
+  if (prefs.big_screen_trailers) table["big_screen_trailers"] = *prefs.big_screen_trailers;
+  if (prefs.big_screen_idle_suspend) table["big_screen_idle_suspend"] = *prefs.big_screen_idle_suspend;
+  if (prefs.big_screen_recent_searches) table["big_screen_recent_searches"] = *prefs.big_screen_recent_searches;
+  if (prefs.big_screen_show_apps) table["big_screen_show_apps"] = *prefs.big_screen_show_apps;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;

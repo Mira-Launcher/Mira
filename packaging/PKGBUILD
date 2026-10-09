@@ -6,7 +6,7 @@ pkgdesc="Linux game launcher for native games and Windows games via Wine/Proton"
 arch=('x86_64')
 url="https://github.com/Mira-Launcher/Mira"
 license=('GPL-3.0-or-later')
-depends=('gcc-libs' 'curl' 'qt6-base')
+depends=('gcc-libs' 'curl' 'qt6-base' 'qt6-multimedia')
 makedepends=('cmake' 'ninja' 'clang')
 optdepends=('wine: run Windows games without Proton'
            'umu-launcher: Proton support (AUR)'

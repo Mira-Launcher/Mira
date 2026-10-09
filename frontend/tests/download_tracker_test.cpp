@@ -187,3 +187,16 @@ TEST_CASE("DownloadTracker keeps finished jobs with steps and drops routine ones
   CHECK(tracker.Entries()[0].ref.toStdString() == "move-1");
   CHECK(tracker.Entries()[0].state == State::Finished);
 }
+
+TEST_CASE("DownloadTracker keeps a paused install's progress and lets it be paused") {
+  DownloadTracker tracker;
+  tracker.HandleEvent("library.install.progress",
+                      R"({"source": "epic", "ref": "abc", "progress": 0.4})");
+  tracker.HandleEvent("library.install.paused", R"({"source": "epic", "ref": "abc", "update": false})");
+  const DownloadTracker::Entry* entry = tracker.Find("epic:abc");
+  REQUIRE(entry != nullptr);
+  CHECK(entry->state == State::Paused);
+  CHECK(entry->progress == doctest::Approx(0.4));
+  CHECK(tracker.RunningCount() == 0);
+  CHECK(DownloadTracker::CanPause(*entry));
+}

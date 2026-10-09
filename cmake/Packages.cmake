@@ -1,9 +1,9 @@
-# `cmake --build <preset> --target packages` -> build/<preset>/mira-launcher_<version>_amd64.deb and
+# `cmake --build <preset> --target packages-host` -> build/<preset>/mira-launcher_<version>_amd64.deb and
 # mira-launcher-<version>-1.x86_64.rpm
 #
 # Both packages carry the tree the AppImage is made from (Mira's binaries with Qt and the libraries
-# linuxdeploy bundled), under /usr/lib/mira, and need nothing from the distribution but its C library. Built
-# in the container that makes the AppImage, they install on every distribution as new as Ubuntu 22.04.
+# linuxdeploy bundled), under /usr/lib/mira. From the distribution they need its C library, OpenGL,
+# Vulkan and 7-Zip, and recommend SDL3, GameMode, MangoHud and Wine. Built in the container that makes the AppImage, they install on every distribution as new as Ubuntu 22.04.
 # `mira`, `mirad`, `mira-run` and `mira-gui` in /usr/bin are small scripts that start the bundled ones.
 # Only defined next to the appimage target, which makes that tree.
 
@@ -41,8 +41,9 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
 set(CPACK_DEBIAN_PACKAGE_SECTION games)
 # Qt and what it loads are bundled; the OpenGL front ends and the C library are the distribution's.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libopengl0, libglx0, libegl1, libfontconfig1, libfreetype6, libgpg-error0")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "wine, winetricks, p7zip-full")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "libc6, libopengl0, libglx0, libegl1, libfontconfig1, libfreetype6, libgpg-error0, libvulkan1, 7zip | p7zip-full")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libsdl3-0, gamemode, mangohud, wine, winetricks")
 set(CPACK_DEBIAN_PACKAGE_SUGGESTS "sqlite3")
 
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
@@ -51,10 +52,12 @@ set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
 set(CPACK_RPM_PACKAGE_GROUP "Amusements/Games")
 set(CPACK_RPM_PACKAGE_AUTOREQ OFF)
 set(CPACK_RPM_PACKAGE_AUTOPROV OFF)
-set(CPACK_RPM_PACKAGE_REQUIRES "glibc, libglvnd-opengl, libglvnd-glx, libglvnd-egl, fontconfig, freetype, libgpg-error")
+set(CPACK_RPM_PACKAGE_REQUIRES
+    "glibc, libglvnd-opengl, libglvnd-glx, libglvnd-egl, fontconfig, freetype, libgpg-error, vulkan-loader, (7zip or p7zip)")
+set(CPACK_RPM_PACKAGE_RECOMMENDS "SDL3, gamemode, mangohud, wine, winetricks")
 # The libraries are bundled as linuxdeploy left them: no stripping, and no build-id links into /usr/lib.
 set(CPACK_RPM_SPEC_MORE_DEFINE "%global __os_install_post %{nil}\n%define _build_id_links none")
-set(CPACK_RPM_PACKAGE_SUGGESTS "wine, winetricks, p7zip, sqlite")
+set(CPACK_RPM_PACKAGE_SUGGESTS "sqlite")
 # The folders the icon theme, the desktop and systemd own.
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
     /usr/bin /usr/lib /usr/lib/systemd /usr/lib/systemd/user /usr/share/applications /usr/share/icons
@@ -76,11 +79,11 @@ add_custom_target(stage-packages
   COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/packaging/mirad.service" "${MIRA_PACKAGE_ROOT}/usr/lib/systemd/user"
   COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/packaging/mira.desktop" "${MIRA_PACKAGE_ROOT}/usr/share/applications"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/packaging/icons/hicolor" "${MIRA_PACKAGE_ROOT}/usr/share/icons/hicolor"
-  DEPENDS appimage
+  DEPENDS appimage-host
   COMMENT "Staging the package tree"
   VERBATIM)
 
-add_custom_target(packages
+add_custom_target(packages-host
   COMMAND "${CMAKE_CPACK_COMMAND}" --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake"
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
   DEPENDS stage-packages

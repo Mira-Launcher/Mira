@@ -47,6 +47,8 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
     return button;
   };
 
+  big_screen_ = tool("Big screen: a fullscreen mode for a TV and a controller");
+  connect(big_screen_, &QToolButton::clicked, this, &TopBar::BigScreenClicked);
   activity_ = tool("Activity");
   // Its count's text is taller than the icon; the bar shouldn't grow for it.
   activity_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
@@ -88,6 +90,7 @@ void TopBar::SyncMaximized() {
 
 void TopBar::ApplyIcons() {
   using icons::Glyph;
+  big_screen_->setIcon(icons::For(Glyph::Monitor));
   refresh_->setIcon(icons::For(Glyph::Refresh));
   activity_->setIcon(icons::For(Glyph::Download));
   shortcuts_->setIcon(icons::For(Glyph::Keyboard));

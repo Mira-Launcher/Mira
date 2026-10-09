@@ -108,6 +108,14 @@ Result<void> JobRegistry::Cancel(const std::string& id) {
   return known ? Err("not_running", "the job has already ended") : Err("job_not_found", "no such job");
 }
 
+std::optional<std::string> JobRegistry::RunningFor(const std::string& target) const {
+  std::lock_guard lock(mutex_);
+  for (const json& job : jobs_) {
+    if (job.value("target", "") == target && job.value("state", "") == "running") return job.value("id", "");
+  }
+  return std::nullopt;
+}
+
 std::optional<json> JobRegistry::Find(const std::string& id) const {
   std::lock_guard lock(mutex_);
   const auto found = std::ranges::find_if(jobs_, [&](const json& job) { return job.value("id", "") == id; });

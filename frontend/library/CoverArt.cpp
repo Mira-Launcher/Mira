@@ -66,4 +66,9 @@ QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, q
   return pixmap;
 }
 
+QPixmap BlurredCover(const QPixmap& cover, QSize size) {
+  return cover.scaled(size / 64, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation)
+      .scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+}
+
 }  // namespace mira_gui

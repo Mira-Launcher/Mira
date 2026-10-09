@@ -75,6 +75,10 @@ void PatchGamesAsync(QObject* context, const GamesPatch& patch,
 void GetGameLogAsync(QObject* context, const std::string& id, int lines,
                      std::function<void(GameLogResult)> callback);
 
+// GET /v1/games/{id}/sessions?limit=. Newest first.
+void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
+                          std::function<void(GameSessionsResult)> callback);
+
 // POST /v1/games/{id}/tricks. Returns 202; watch for
 // tricks.started/.finished/.failed via ParseTricksEvent.
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,

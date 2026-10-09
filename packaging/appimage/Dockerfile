@@ -16,13 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libx11-xcb1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
       libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
       libxcb-xfixes0 libxcb-sync1 libxcb-shm0 libxcb-util1 libxrender1 libsm6 libice6 libcurl4-openssl-dev rpm \
+      libpulse0 libxrandr2 \
  && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
  && apt-get update && apt-get install -y --no-install-recommends gcc-13 g++-13 \
  && rm -rf /var/lib/apt/lists/*
 
 # Qt 6.5 or newer from Qt's own builds (22.04's Qt is 6.2).
 RUN pip3 install --no-cache-dir aqtinstall \
- && aqt install-qt linux desktop ${QT_VERSION} gcc_64 --outputdir /opt/Qt
+ && aqt install-qt linux desktop ${QT_VERSION} gcc_64 -m qtmultimedia --outputdir /opt/Qt
 
 # Compiler cache: its directory is mounted from the host (cmake/AppImageContainer.cmake), so a rebuilt
 # container, a changed Dockerfile or a clean build directory still reuses every object file it has seen.

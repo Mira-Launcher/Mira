@@ -184,7 +184,7 @@ foreach(icon_size IN ITEMS 16 32 48 64 128 256)
           DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps)
 endforeach()
 
-# Builds the AppImage in an Ubuntu 22.04 container (target appimage-container); needs docker or podman.
+# The AppImage, .deb and .rpm, built in an Ubuntu 22.04 container (targets appimage, packages); needs docker or podman.
 include(cmake/AppImageContainer.cmake)
 
 option(MIRA_BUILD_FRONTEND "Build the Qt frontend skeleton if Qt6 is available" ON)
@@ -204,11 +204,11 @@ if(TARGET mira-gui)
     USES_TERMINAL
     COMMENT "Launching mira-gui")
 
-  # `cmake --build <preset> --target appimage` -> build/<preset>/Mira-x86_64.AppImage.
+  # `cmake --build <preset> --target appimage-host` -> build/<preset>/Mira-x86_64.AppImage, with the host's libraries.
   # Needs mira-gui built (it's the whole point of bundling), so this lives
   # inside the same guard as run-gui above rather than being unconditional.
   include(cmake/AppImage.cmake)
-  if(TARGET appimage)
+  if(TARGET appimage-host)
     include(cmake/Packages.cmake)
   endif()
 endif()

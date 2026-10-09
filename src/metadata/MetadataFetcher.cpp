@@ -741,6 +741,7 @@ bool FetchSteamDetails(const config::Config& config, store::MetadataStore& cache
     if (data.contains("achievements")) {
       steam_info["achievements_total"] = Value(data["achievements"], "total", 0);
     }
+    steam_info["controller_support"] = Value(data, "controller_support", std::string());
     json screenshots = json::array();
     for (const auto& shot : Value(data, "screenshots", json::array())) {
       const std::string url = Value(shot, "path_full", std::string());

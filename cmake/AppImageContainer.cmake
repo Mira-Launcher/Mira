@@ -1,15 +1,16 @@
-# `cmake --build <preset> --target appimage-container` -> build/<preset>/appimage-container/Mira-x86_64.AppImage
+# `cmake --build <preset> --target appimage` -> build/<preset>/appimage/: Mira-x86_64.AppImage, the .deb
+# and the .rpm (`packages` is the same build).
 #
-# Builds the AppImage inside an Ubuntu 22.04 container (packaging/appimage/Dockerfile), so the Qt and
-# other libraries it bundles need glibc 2.35 instead of whatever the host has. The plain `appimage`
-# target bundles the host's libraries, which only run on a distribution as new as the host.
+# Builds inside an Ubuntu 22.04 container (packaging/appimage/Dockerfile), so the Qt and other
+# libraries bundled need glibc 2.35 instead of whatever the host has. `appimage-host` and
+# `packages-host` bundle the host's libraries instead, which only run on distributions as new as it.
 #
 # Needs docker or podman. Nothing else is needed on the host, not even Qt. The first run builds the
 # image (Qt is downloaded into it); later runs reuse it.
 
 find_program(MIRA_CONTAINER_ENGINE NAMES podman docker)
 if(NOT MIRA_CONTAINER_ENGINE)
-  message(STATUS "docker or podman not found, skipping the 'appimage-container' target")
+  message(STATUS "docker or podman not found, skipping the 'appimage' and 'packages' targets (appimage-host builds without one)")
   return()
 endif()
 
@@ -21,7 +22,7 @@ if(MIRA_CONTAINER_NETWORK)
 endif()
 
 set(MIRA_CONTAINER_IMAGE "mira-appimage-builder")
-set(MIRA_CONTAINER_OUT "${CMAKE_BINARY_DIR}/appimage-container")
+set(MIRA_CONTAINER_OUT "${CMAKE_BINARY_DIR}/appimage")
 # Kept between runs, so only what changed is compiled again.
 set(MIRA_CONTAINER_BUILD "${CMAKE_BINARY_DIR}/appimage-container-build")
 set(MIRA_CONTAINER_CCACHE "${CMAKE_BINARY_DIR}/appimage-container-ccache")
@@ -35,7 +36,7 @@ else()
   set(MIRA_CONTAINER_USER_ARGS --user "${MIRA_UID}:${MIRA_GID}")
 endif()
 
-add_custom_target(appimage-container
+add_custom_target(appimage
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_CONTAINER_OUT}" "${MIRA_CONTAINER_BUILD}" "${MIRA_CONTAINER_CCACHE}"
   COMMAND "${MIRA_CONTAINER_ENGINE}" build
           ${MIRA_CONTAINER_NETWORK_ARGS}
@@ -55,3 +56,4 @@ add_custom_target(appimage-container
   USES_TERMINAL
   COMMENT "Building the Mira AppImage in an Ubuntu 22.04 container"
   VERBATIM)
+add_custom_target(packages DEPENDS appimage)

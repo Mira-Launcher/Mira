@@ -295,6 +295,7 @@ struct GameMetadata {
   std::vector<std::int64_t> dlc_ids;
   std::vector<std::string> content_descriptors;
   int achievements_total = 0;
+  std::string controller_support;  // "full", "partial" or empty (Steam store)
   std::vector<std::string> screenshots;  // URLs, opened externally
   std::vector<std::string> trailers;     // mp4 URLs, opened externally
 };
@@ -304,6 +305,18 @@ struct GameMetadataResult {
   bool missing = false;  // never fetched, or fetched and found nothing
   ApiError error;
   GameMetadata metadata;
+};
+
+struct GameSession {
+  std::int64_t started_at = 0;
+  std::int64_t ended_at = 0;
+  std::int64_t duration_seconds = 0;
+};
+
+struct GameSessionsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<GameSession> sessions;
 };
 
 // POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
@@ -852,6 +865,28 @@ struct FrontendPrefs {
   // Source pages split installed and not installed games into tabs; off
   // stacks both sections.
   std::optional<bool> source_page_tabs;
+  // Big screen: button labels ("auto", "xbox", "ps", "nin"), text 15% larger, and whether Mira
+  // opens in big screen. `start_on_login` keeps an autostart entry for Mira.
+  std::optional<std::string> big_screen_buttons;
+  std::optional<bool> big_screen_large_text;
+  std::optional<bool> big_screen_at_start;
+  std::optional<bool> start_on_login;
+  // Big screen navigation sounds and controller vibration, both on by default.
+  std::optional<bool> big_screen_sounds;
+  // Vibration: "off", "light" (default) or "strong".
+  std::optional<std::string> big_screen_rumble;
+  // Controller: B selects and A goes back; stick sensitivity and how fast a held direction
+  // repeats, each "low"/"slow", "medium"/"normal" (default) or "high"/"fast".
+  std::optional<bool> big_screen_swap_confirm;
+  std::optional<std::string> big_screen_stick;
+  std::optional<std::string> big_screen_repeat;
+  // Trailers behind the hero (default on), minutes idle on Home before suspending (0 never),
+  // and the last few searches.
+  std::optional<bool> big_screen_trailers;
+  std::optional<int> big_screen_idle_suspend;
+  std::optional<std::vector<std::string>> big_screen_recent_searches;
+  // Whether big screen lists applications (games tagged app, Microsoft 365); off by default.
+  std::optional<bool> big_screen_show_apps;
   // Set once the first-run wizard has been through (or skipped).
   std::optional<bool> onboarded;
   // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes
@@ -1037,6 +1072,18 @@ struct StoreStatusResult {
 struct StoreActionResult {
   bool ok = false;
   ApiError error;
+};
+
+// GET /v1/library/install/paused.
+struct PausedInstall {
+  std::string source;
+  std::string ref;
+  bool update = false;
+};
+struct PausedInstallsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<PausedInstall> installs;
 };
 
 // POST /v1/stores/humble/download, once its job has ended.

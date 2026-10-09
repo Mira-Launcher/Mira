@@ -130,6 +130,25 @@ void SetSteamStatusAsync(QObject* context, const std::string& status,
       std::move(callback));
 }
 
+void UpdateSteamShortcutAsync(QObject* context, const std::string& exe, const std::string& launch_options) {
+  async::Run(
+      context,
+      [exe, launch_options] {
+        return transport::PostJson("/v1/steam/shortcut", json{{"exe", exe}, {"launch_options", launch_options}}).ok;
+      },
+      std::function<void(bool)>([](bool) {}));
+}
+
+void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        const transport::Reply reply = transport::PostJson("/v1/steam/bigpicture", json::object());
+        return StoreActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback) {
   RunJob<LutrisImportResult>(
       context, "import",

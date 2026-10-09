@@ -61,6 +61,8 @@ RunInPrefixDialog::RunInPrefixDialog(std::string game_id, const std::string& ins
   // of a popup only reachable by clicking Run first to find out.
   run_->setEnabled(false);
   connect(run_, &QPushButton::clicked, this, &RunInPrefixDialog::Run);
+  // Opens 50 px taller than its contents need.
+  resize(sizeHint().width(), sizeHint().height() + 50);
 }
 
 void RunInPrefixDialog::Run() {

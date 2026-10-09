@@ -111,9 +111,7 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
       // A cover is portrait: a slice of it reads as noise, so blur it into
       // a wash of its colors (down to a few pixels and back up).
       if (hero_.isNull() && hero_preview_.isNull()) {
-        const QSize full = band.size() * dpr;
-        scaled = source.scaled(full / 64, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation)
-                     .scaled(full, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        scaled = BlurredCover(source, band.size() * dpr);
       } else {
         scaled = source.scaled(band.size() * dpr, Qt::KeepAspectRatioByExpanding, mode);
       }

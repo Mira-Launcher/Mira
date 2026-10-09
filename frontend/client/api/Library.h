@@ -29,6 +29,12 @@ void ScanSteamAsync(QObject* context, std::function<void(SteamScanResult)> callb
 void SetSteamStatusAsync(QObject* context, const std::string& status,
                          std::function<void(StoreActionResult)> callback);
 
+// POST /v1/steam/shortcut: keeps Steam's "Mira" shortcut running `exe` with `launch_options`.
+void UpdateSteamShortcutAsync(QObject* context, const std::string& exe, const std::string& launch_options);
+
+// POST /v1/steam/bigpicture.
+void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionResult)> callback);
+
 // Upserts every wine game Lutris has, reading Lutris's own database and
 // configs. Nothing on disk moves; see docs/api.md, POST /v1/lutris/import.
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback);

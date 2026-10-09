@@ -2,6 +2,7 @@
 
 #include <QElapsedTimer>
 #include <QMainWindow>
+#include <QPointer>
 #include <QString>
 
 #include <deque>
@@ -23,6 +24,9 @@ class QStackedWidget;
 class QTimer;
 
 namespace mira_gui {
+namespace bigscreen {
+class BigScreenWindow;
+}
 class ArtworkStore;
 class DaemonSupervisor;
 class DownloadTracker;
@@ -40,6 +44,16 @@ class Sidebar;
 class SourcePage;
 class TopBar;
 struct SourceInfo;
+
+// The library state LibraryWindow keeps current from mirad's events, for
+// other windows to read instead of loading their own copy.
+struct LibraryServices {
+  GameLibraryModel* library = nullptr;
+  ArtworkStore* artwork = nullptr;
+  DownloadTracker* downloads = nullptr;
+  OwnedTitles* owned_titles = nullptr;
+  GameMenus* menus = nullptr;
+};
 }  // namespace mira_gui
 
 // The main window: the top bar over the sidebar and, beside it, the library
@@ -53,6 +67,9 @@ class LibraryWindow : public QMainWindow {
 public:
   // `prefs` is frontend.toml as read at startup; the theme is already applied.
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
+  mira_gui::LibraryServices services() const { return {library_, artwork_, downloads_, owned_titles_, menus_}; }
+  // Opens big screen mode (or raises it), hiding this window until it closes.
+  void OpenBigScreen();
 
 private:
   mira_gui::Sidebar* BuildSidebar(const mira_gui::FrontendPrefs& prefs);
@@ -277,5 +294,6 @@ private:
   // Keyed by "<id>@<tile width>". A generated cover is cheap but not free,
   // and a filter or search change redraws every visible tile.
   mira_gui::ArtworkStore* artwork_ = nullptr;
+  QPointer<mira_gui::bigscreen::BigScreenWindow> big_screen_;
   mira_gui::shortcuts::Common common_;
 };

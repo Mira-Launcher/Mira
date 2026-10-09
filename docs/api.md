@@ -165,7 +165,7 @@ Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game
 
 The game runs under `mira-run`, which owns the scripts, the game's output log and the session record, so a session survives `mirad` restarting. If `mira-run` is missing, the game is started directly without a session record or log.
 
-The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam steam://rungameid/<appid>`. With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand.
+The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam -silent steam://rungameid/<appid>` (`-silent` keeps a Steam that wasn't running from opening its window). With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand.
 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
 
@@ -260,6 +260,17 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `
 - `office`: the Office Deployment Tool adds the app to Microsoft 365's prefix.
 
 A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
+
+Installing a title again while it's paused resumes it: the store tool continues from the files it left.
+
+### `POST /v1/library/install/pause`
+Same body. Stops a running Epic, GOG or Amazon install or update and keeps its files: legendary, gogdl and nile get SIGTERM, then SIGKILL after 3s. Answers `{"status": "pausing", "job": "<id>"}`; the job ends as `cancelled` and `library.install.paused {source, ref, update}` follows. Other stores return `409 pause_unsupported`, and a title with no install running `409 not_running`.
+
+### `GET /v1/library/install/paused`
+The paused installs, `[{"source", "ref", "update"}]`. Kept in memory: after mirad restarts the list is empty, but installing the title again still resumes it.
+
+### `DELETE /v1/library/install/paused?source=&ref=`
+Forgets a paused install, publishing `library.install.failed` with code `cancelled`. Its files stay, as with a cancelled install. `404 not_paused` if it isn't paused.
 
 ### `POST /v1/library/update`
 Same body and events as install. Steam returns `400 unsupported`.
@@ -368,6 +379,12 @@ Steam games are ordinary games with `runner_ref` `steam:<appid>`.
 
 ### `POST /v1/steam/scan`
 Reads Steam's `libraryfolders.vdf`, `appmanifest_*.acf` and `compatdata/<id>/config_info` directly and adds or updates installed games. A [job](#jobs) whose result is `{"added": 2, "updated": 0}`. A rescan updates `name`, `install_path` and `data_dir` and leaves user settings alone. `exe_path` is never filled in, because Steam keeps the launch command in its `appinfo` cache; only `steam.launch_mode: "direct"` needs it.
+
+### `POST /v1/steam/shortcut`
+Body `{"exe", "launch_options"}`. Keeps a non-Steam shortcut named "Mira" running `exe` with `launch_options` in every Steam account's `userdata/<id>/config/shortcuts.vdf`, so Big Picture can switch to Mira. An existing "Mira" entry is updated in place, other shortcuts are kept, and an unchanged file isn't rewritten. Answers `{"status": "ok", "added": [ids], "updated": [ids]}`, or `{"status": "disabled"}` with `steam.mira_shortcut` off. `404 steam_not_found` without Steam, `500 shortcuts_unreadable` for a file Mira can't parse (it's left alone). Steam shows a new shortcut after it restarts. The GUI calls this at start with its own path and `--big-screen`.
+
+### `POST /v1/steam/bigpicture`
+Opens Steam's Big Picture through `steam steam://open/bigpicture`, starting Steam if needed. Answers `{"status": "opened"}`.
 
 ### `POST /v1/steam/status`
 Body `{"status": "online" | "invisible"}`. Sets the Steam friends status through `steam steam://friends/status/<status>` and answers `{"status": "invisible"}`. Steam can't report the status back, so there is no GET. Answers 409 `steam_not_running` while Steam isn't running (by `~/.steam/steam.pid`), since the URL would start the client just to set a status, and 400 `invalid_status` for any other value.
@@ -510,7 +527,7 @@ Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover withi
 New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 
 ### `GET /v1/games/{id}/metadata`
-The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `404` when nothing is cached.
+The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
 
 ### `GET /v1/games/{id}/artwork?type=`
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.

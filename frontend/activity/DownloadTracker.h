@@ -32,7 +32,7 @@ class DownloadTracker : public QObject {
 
 public:
   enum class Kind { Game, Title, Launcher, Tool, Runner, Job };
-  enum class State { Running, Finished, Failed };
+  enum class State { Running, Paused, Finished, Failed };
 
   struct Entry {
     QString key;  // see KeyFor
@@ -68,10 +68,15 @@ public:
   };
   static TileProgress TileProgressFor(const Entry& entry);
 
+  // Epic, GOG and Amazon titles: their installs can be paused.
+  static bool CanPause(const Entry& entry);
+
   // Returns whether the event was one of ours.
   bool HandleEvent(const std::string& type, const std::string& data);
   // After a reconnect: ends running jobs whose finish event was missed.
   void RecheckJobs();
+  // Rows for the installs mirad has paused, e.g. after reconnecting.
+  void LoadPaused();
 
   // Newest first.
   const std::vector<Entry>& Entries() const { return entries_; }
