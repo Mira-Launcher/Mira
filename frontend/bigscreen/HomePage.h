@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QTimer>
 
 #include <vector>
@@ -8,8 +9,8 @@
 
 namespace mira_gui::bigscreen {
 
-// Rows of covers (Continue playing, Installed, Pinned, Ready to install)
-// under the focused game's name and status. The focused row stays put and
+// Rows of covers (Continue playing, Pinned, each tag, each source, Installed)
+// under the focused game's name and status. View cycles a row's order. The focused row stays put and
 // rows above it slide out of view.
 class HomePage : public Page {
   Q_OBJECT
@@ -37,6 +38,12 @@ private:
   void FocusChanged();
   double TargetScroll(const Row& row) const;
   void Animate();
+  enum class Order { Name, Recent, MostPlayed, kCount };
+  Order OrderOf(const Row& row) const;
+  void SortRow(Row& row) const;
+
+  // Each row's order, by label, when changed from its own.
+  QHash<QString, Order> orders_;
 
   std::vector<Row> rows_;
   int row_ = 0;

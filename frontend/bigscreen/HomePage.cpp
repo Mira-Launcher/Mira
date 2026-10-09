@@ -89,8 +89,7 @@ void HomePage::Rebuild() {
     for (auto& [name, row] : by_source) order.push_back(&row);
   }
   order.push_back(&installed);
-  // Continue playing stays most recent first.
-  for (Row* row : order | std::views::drop(1)) std::ranges::sort(row->items, ByName);
+  for (Row* row : order) SortRow(*row);
   for (Row* row : order) {
     if (row->items.empty()) continue;
     if (const auto found = focused.find(row->label); found != focused.end()) {
@@ -108,6 +107,23 @@ void HomePage::Rebuild() {
     if (rows_[i].label == focused_row) row_ = int(i);
   }
   FocusChanged();
+}
+
+HomePage::Order HomePage::OrderOf(const Row& row) const {
+  // Continue playing is most recent first unless changed; the rest go by name.
+  return orders_.value(row.label, row.label == "Continue playing" ? Order::Recent : Order::Name);
+}
+
+void HomePage::SortRow(Row& row) const {
+  const Order order = OrderOf(row);
+  const auto played = [](const Item& item) { return item.game ? item.game->play_seconds : 0; };
+  const auto last = [](const Item& item) { return item.game ? item.game->last_played_at.value_or(0) : 0; };
+  switch (order) {
+    case Order::Name: std::ranges::stable_sort(row.items, ByName); break;
+    case Order::Recent: std::ranges::stable_sort(row.items, std::greater{}, last); break;
+    case Order::MostPlayed: std::ranges::stable_sort(row.items, std::greater{}, played); break;
+    default: break;
+  }
 }
 
 const Item* HomePage::Focused() const {
@@ -130,14 +146,20 @@ bool HomePage::Navigate(Nav nav) {
     case Nav::Left:
     case Nav::Right: {
       const int next = std::clamp(row.focus + (nav == Nav::Right ? 1 : -1), 0, int(row.items.size()) - 1);
-      if (next == row.focus) return true;
+      if (next == row.focus) {
+        window_->Bump();
+        return true;
+      }
       row.focus = next;
       break;
     }
     case Nav::Up:
     case Nav::Down: {
       const int next = std::clamp(row_ + (nav == Nav::Down ? 1 : -1), 0, int(rows_.size()) - 1);
-      if (next == row_) return true;
+      if (next == row_) {
+        window_->Bump();
+        return true;
+      }
       row_ = next;
       break;
     }
@@ -147,6 +169,15 @@ bool HomePage::Navigate(Nav nav) {
       else window_->QuickAction(*Focused());
       return true;
     case Nav::Action: window_->OpenGame(*Focused()); return true;
+    case Nav::Sort: {
+      const QString key = row.items[size_t(row.focus)].key;
+      orders_[row.label] = Order((int(OrderOf(row)) + 1) % int(Order::kCount));
+      SortRow(row);
+      // The same game stays focused, wherever it moved to.
+      const auto at = std::ranges::find(row.items, key, &Item::key);
+      row.focus = at == row.items.end() ? 0 : int(at - row.items.begin());
+      break;
+    }
     default: return false;
   }
   FocusChanged();
@@ -159,6 +190,9 @@ QList<Hint> HomePage::Hints() const {
     const QString quick = window_->QuickActionLabel(*item);
     hints.append({Nav::Accept, quick.isEmpty() ? "Details" : quick});
     hints.append({Nav::Action, "Details"});
+    static const char* const kOrderNames[] = {"A–Z", "Recent", "Most played"};
+    const Order next = Order((int(OrderOf(rows_[size_t(row_)])) + 1) % int(Order::kCount));
+    hints.append({Nav::Sort, QString("Sort: ") + kOrderNames[int(next)]});
   }
   hints.append({Nav::Search, "Search"});
   return hints;
