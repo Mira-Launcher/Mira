@@ -293,7 +293,7 @@ struct GameMetadata {
   int achievements_total = 0;
   std::string controller_support;  // "full", "partial" or empty (Steam store)
   std::vector<std::string> screenshots;  // URLs, opened externally
-  std::vector<std::string> trailers;     // mp4 URLs, opened externally
+  std::vector<std::string> trailers;     // Steam trailer streams (HLS)
 };
 
 struct GameMetadataResult {

@@ -373,13 +373,18 @@ TEST_CASE("A store title needs fetching until it has a cover and details newer t
   const fs::path art = metadata::ArtworkDir(config, "gog-1");
   fs::create_directories(art);
   std::ofstream(art / "cover.jpg") << "cover";
-  const auto write = [&](std::int64_t fetched) {
-    REQUIRE(cache.Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}}, {"details_fetched", fetched}}).has_value());
+  const auto write = [&](std::int64_t fetched, int version = 2) {
+    REQUIRE(cache.Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}},
+                                  {"details_fetched", fetched},
+                                  {"details_version", version}})
+                .has_value());
   };
   CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached
 
   write(model::NowSeconds());
   CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
+  write(model::NowSeconds(), 1);  // fetched before Steam's trailer streams
+  CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));
   write(model::NowSeconds() - 31 * 86400);
   CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));
   REQUIRE(config.Set("metadata.refresh_days", 0).has_value());
