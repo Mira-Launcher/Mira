@@ -527,7 +527,7 @@ Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover withi
 New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 
 ### `GET /v1/games/{id}/metadata`
-The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `404` when nothing is cached.
+The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
 
 ### `GET /v1/games/{id}/artwork?type=`
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.

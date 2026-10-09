@@ -79,6 +79,7 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     }
     out.content_descriptors = strings(steam.value("content_descriptors", json::array()));
     out.achievements_total = steam.value("achievements_total", 0);
+    out.controller_support = steam.value("controller_support", std::string());
     out.screenshots = strings(steam.value("screenshots", json::array()));
     out.trailers = strings(steam.value("movies", json::array()));
   }
