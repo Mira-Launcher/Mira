@@ -21,6 +21,9 @@ public:
   // False with a reason when /dev/uinput can't be opened.
   bool Open(QString* error);
   void Navigate(Nav nav);
+  // Sends one key press (a Linux KEY_* code, held with `modifier` if set) to whatever has focus.
+  // False when uinput isn't available.
+  bool Press(int code, QString* error, int modifier = 0);
 
 protected:
   void paintEvent(QPaintEvent* event) override;

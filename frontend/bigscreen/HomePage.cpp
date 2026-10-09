@@ -22,8 +22,6 @@ constexpr double kRowsTop = 23.2;
 constexpr double kRowHeight = 18.6;
 constexpr double kTileW = 10, kTileH = 15, kTileGap = 1.1;
 
-bool Browsable(const GameSummary& game) { return !IsHidden(game) && !IsApp(game); }
-
 bool ByName(const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; }
 
 }  // namespace
@@ -62,33 +60,45 @@ void HomePage::Rebuild() {
   std::vector<Row> rows;
   Row recent{"Continue playing"};
   for (const GameSummary* game : services.library->RecentlyPlayed(12)) {
-    if (Browsable(*game) && (game->last_played_at || game->running)) recent.items.push_back(window_->ItemFor(*game));
+    if (window_->Browsable(*game) && (game->last_played_at || game->running)) recent.items.push_back(window_->ItemFor(*game));
   }
   Row installed{"Installed"};
   Row pinned{"Pinned"};
+  // Media apps get their own row; other apps (when shown) go last.
+  Row media{"Media"};
+  Row apps{"Apps"};
   // A row per source, then per tag, sorted by name.
   std::map<QString, Row> by_source, by_tag;
   for (const GameSummary& game : services.library->Games()) {
-    if (!Browsable(game)) continue;
+    if (!window_->Browsable(game)) continue;
     const Item item = window_->ItemFor(game);
-    installed.items.push_back(item);
     if (IsPinned(game)) pinned.items.push_back(item);
+    if (HasTag(game, "media")) {
+      media.items.push_back(item);
+      continue;
+    }
+    if (IsApp(game)) {
+      apps.items.push_back(item);
+      continue;
+    }
+    installed.items.push_back(item);
     const QString source = SourceName(QString::fromStdString(game.source));
     by_source.try_emplace(source, Row{source}).first->second.items.push_back(item);
     for (const std::string& tag : game.tags) {
-      if (IsMeaningTag(tag)) continue;
+      if (IsMeaningTag(tag) || tag == "media") continue;
       const QString name = QString::fromStdString(tag);
       by_tag.try_emplace(name, Row{name}).first->second.items.push_back(item);
     }
   }
   // Owned games that aren't installed are on the Downloads tab, not here.
-  std::vector<Row*> order{&recent, &pinned};
+  std::vector<Row*> order{&recent, &pinned, &media};
   for (auto& [name, row] : by_tag) order.push_back(&row);
   // One source would only repeat Installed.
   if (by_source.size() > 1) {
     for (auto& [name, row] : by_source) order.push_back(&row);
   }
   order.push_back(&installed);
+  order.push_back(&apps);
   for (Row* row : order) SortRow(*row);
   for (Row* row : order) {
     if (row->items.empty()) continue;
@@ -133,6 +143,7 @@ const Item* HomePage::Focused() const {
 }
 
 void HomePage::FocusChanged() {
+  lift_ = 0;
   if (const Item* item = Focused()) window_->ShowHero(*item);
   animation_.start();
   update();
@@ -169,6 +180,33 @@ bool HomePage::Navigate(Nav nav) {
       else window_->QuickAction(*Focused());
       return true;
     case Nav::Action: window_->OpenGame(*Focused()); return true;
+    case Nav::PrevLetter:
+    case Nav::NextLetter: {
+      // The first game of the next (or this, then previous) letter.
+      const auto letter = [&row](int i) { return row.items[size_t(i)].name.left(1).toUpper(); };
+      const int count = int(row.items.size());
+      int at = row.focus;
+      if (nav == Nav::NextLetter) {
+        while (at < count && letter(at) == letter(row.focus)) ++at;
+        if (at >= count) {
+          window_->Bump();
+          return true;
+        }
+      } else {
+        // Back to the start of this letter, or of the previous one when already there.
+        if (at > 0 && letter(at - 1) == letter(at)) {
+          while (at > 0 && letter(at - 1) == letter(row.focus)) --at;
+        } else if (at > 0) {
+          --at;
+          while (at > 0 && letter(at - 1) == letter(at)) --at;
+        } else {
+          window_->Bump();
+          return true;
+        }
+      }
+      row.focus = at;
+      break;
+    }
     case Nav::Sort: {
       const QString key = row.items[size_t(row.focus)].key;
       orders_[row.label] = Order((int(OrderOf(row)) + 1) % int(Order::kCount));
@@ -187,12 +225,15 @@ bool HomePage::Navigate(Nav nav) {
 QList<Hint> HomePage::Hints() const {
   QList<Hint> hints;
   if (const Item* item = Focused()) {
-    const QString quick = window_->QuickActionLabel(*item);
+    QString quick = window_->QuickActionLabel(*item);
+    // The last game played, first thing on Home.
+    if (quick == "Play" && row_ == 0 && rows_.front().label == "Continue playing" && rows_.front().focus == 0) quick = "Continue";
     hints.append({Nav::Accept, quick.isEmpty() ? "Details" : quick});
     hints.append({Nav::Action, "Details"});
     static const char* const kOrderNames[] = {"A–Z", "Recent", "Most played"};
     const Order next = Order((int(OrderOf(rows_[size_t(row_)])) + 1) % int(Order::kCount));
     hints.append({Nav::Sort, QString("Sort: ") + kOrderNames[int(next)]});
+    if (OrderOf(rows_[size_t(row_)]) == Order::Name) hints.append({Nav::NextLetter, "Next letter"});
   }
   hints.append({Nav::Search, "Search"});
   return hints;
@@ -218,6 +259,7 @@ void HomePage::Animate() {
     }
   };
   ease(row_scroll_, row_, 0.002);
+  ease(lift_, 1.0, 0.01);
   for (Row& row : rows_) ease(row.scroll, TargetScroll(row), 0.5);
   update();
   if (!moving) animation_.stop();
@@ -283,7 +325,11 @@ void HomePage::paintEvent(QPaintEvent*) {
       const Item& item = row.items[i];
       const bool focus = active && int(i) == row.focus;
       QRectF box(x, tiles_top, tile.width(), tile.height());
-      if (focus) box = QRectF(box.center() - QPointF(box.width(), box.height()) * 0.54, box.size() * 1.08);
+      // The focused tile lifts as focus lands on it.
+      if (focus) {
+        const double scale = 1 + 0.08 * lift_;
+        box = QRectF(box.center() - QPointF(box.width(), box.height()) * scale / 2, box.size() * scale);
+      }
       DrawCover(painter, box, window_->Cover(item, tile), u, focus, !item.installed(), window_->Progress(item));
     }
   }

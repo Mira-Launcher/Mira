@@ -1,10 +1,16 @@
 #pragma once
 
+#include <QTimer>
+
+#include <functional>
+#include <vector>
+
 #include "Page.h"
 
 namespace mira_gui::bigscreen {
 
-// The few settings that matter on the couch, and the way back to the desktop.
+// Settings for the couch, in sections: the controller, the screen and sound,
+// apps, and the system (power, starting up, leaving big screen).
 class SettingsPage : public Page {
   Q_OBJECT
 
@@ -13,16 +19,31 @@ public:
 
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
-  void Shown() override { update(); }
+  void Shown() override;
 
 protected:
   void paintEvent(QPaintEvent* event) override;
 
 private:
-  void Change(int step);
-  void Act();
+  struct Row {
+    QString section;
+    QString label;
+    QString help;
+    // A setting's value, and how Left/Right (-1/+1) change it; empty for an action.
+    std::function<QString()> value;
+    std::function<void(int)> change;
+    // What A does on an action row.
+    std::function<void()> act;
+  };
 
+  void Build();
+  void PaintTest(QPainter& painter, double u);
+
+  std::vector<Row> rows_;
   int focus_ = 0;
+  // The button test: every button lit while it's held.
+  bool testing_ = false;
+  QTimer test_refresh_;
 };
 
 }  // namespace mira_gui::bigscreen

@@ -873,7 +873,20 @@ struct FrontendPrefs {
   std::optional<bool> start_on_login;
   // Big screen navigation sounds and controller vibration, both on by default.
   std::optional<bool> big_screen_sounds;
-  std::optional<bool> big_screen_rumble;
+  // Vibration: "off", "light" (default) or "strong".
+  std::optional<std::string> big_screen_rumble;
+  // Controller: B selects and A goes back; stick sensitivity and how fast a held direction
+  // repeats, each "low"/"slow", "medium"/"normal" (default) or "high"/"fast".
+  std::optional<bool> big_screen_swap_confirm;
+  std::optional<std::string> big_screen_stick;
+  std::optional<std::string> big_screen_repeat;
+  // Trailers behind the hero (default on), minutes idle on Home before suspending (0 never),
+  // and the last few searches.
+  std::optional<bool> big_screen_trailers;
+  std::optional<int> big_screen_idle_suspend;
+  std::optional<std::vector<std::string>> big_screen_recent_searches;
+  // Whether big screen lists applications (games tagged app, Microsoft 365); off by default.
+  std::optional<bool> big_screen_show_apps;
   // Set once the first-run wizard has been through (or skipped).
   std::optional<bool> onboarded;
   // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes

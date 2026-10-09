@@ -44,6 +44,16 @@ void UpdateSteamShortcut(QObject* context) {
   api::UpdateSteamShortcutAsync(context, exe.toStdString(), "--big-screen");
 }
 
+SleepWatcher::SleepWatcher(QObject* parent) : QObject(parent) {
+  QDBusConnection::systemBus().connect("org.freedesktop.login1", "/org/freedesktop/login1",
+                                       "org.freedesktop.login1.Manager", "PrepareForSleep", this,
+                                       SLOT(OnPrepareForSleep(bool)));
+}
+
+void SleepWatcher::OnPrepareForSleep(bool sleeping) {
+  if (!sleeping) emit Woke();
+}
+
 bool Power(const char* action) {
   QDBusInterface logind("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
                         QDBusConnection::systemBus());

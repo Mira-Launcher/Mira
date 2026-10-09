@@ -7,89 +7,155 @@
 
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
+#include "GamepadInput.h"
+#include "WebApps.h"
 
 namespace mira_gui::bigscreen {
 namespace {
 
-constexpr double kMargin = 2.6, kTop = 6.4, kListW = 46, kRowH = 3.8;
+constexpr double kMargin = 2.6, kTop = 6.4, kListW = 46, kRowH = 3.8, kHeadH = 2.6;
 
-struct Setting {
-  const char* label;
-  const char* help;
-};
-// Rows up to kFirstAction change a value; the rest do something when picked.
-enum Row { kButtons, kTextSize, kSounds, kRumble, kAtStart, kOnLogin, kSteam, kSuspend, kRestart, kShutDown, kExit };
-constexpr int kFirstAction = kSteam;
-constexpr std::array<Setting, 11> kSettings = {{
-    {"Button labels", "Which names the button hints use. Match controller reads them from the connected controller."},
-    {"Text size", "Large scales everything up by 15%, for a TV across the room."},
-    {"Sounds", "Short sounds as you move around and pick things."},
-    {"Vibration", "The controller rumbles a little when you pick something or reach the end of a row."},
-    {"Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen."},
-    {"Start Mira when you log in", "Adds Mira to your desktop's autostart."},
-    {"Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back."},
-    {"Suspend", "Puts the computer to sleep."},
-    {"Restart", "Restarts the computer."},
-    {"Shut down", "Turns the computer off."},
-    {"Exit big screen", "Back to the desktop library."},
-}};
-const std::array<std::pair<const char*, const char*>, 4> kButtonKinds = {
-    {{"auto", "Match controller"}, {"xbox", "Xbox"}, {"ps", "PlayStation"}, {"nin", "Nintendo"}}};
+// Steps `current` through `options` (value, label) by `step`, wrapping.
+template <typename T>
+T Cycle(const std::vector<std::pair<T, QString>>& options, const T& current, int step) {
+  const auto at = std::ranges::find(options, current, &std::pair<T, QString>::first);
+  const int index = at == options.end() ? 0 : int(at - options.begin());
+  return options[size_t((index + step + int(options.size())) % int(options.size()))].first;
+}
+
+template <typename T>
+QString LabelOf(const std::vector<std::pair<T, QString>>& options, const T& current) {
+  const auto at = std::ranges::find(options, current, &std::pair<T, QString>::first);
+  return at == options.end() ? options.front().second : at->second;
+}
+
+const std::vector<std::pair<std::string, QString>> kButtonKinds = {
+    {"auto", "Match controller"}, {"xbox", "Xbox"}, {"ps", "PlayStation"}, {"nin", "Nintendo"}};
+const std::vector<std::pair<std::string, QString>> kStick = {{"low", "Low"}, {"medium", "Medium"}, {"high", "High"}};
+const std::vector<std::pair<std::string, QString>> kRepeat = {{"slow", "Slow"}, {"normal", "Normal"}, {"fast", "Fast"}};
+const std::vector<std::pair<std::string, QString>> kRumble = {{"off", "Off"}, {"light", "Light"}, {"strong", "Strong"}};
+const std::vector<std::pair<int, QString>> kIdle = {{0, "Never"}, {15, "15 minutes"}, {30, "30 minutes"}, {60, "1 hour"}};
+
+QString OnOff(bool on) { return on ? "On" : "Off"; }
 
 }  // namespace
 
-SettingsPage::SettingsPage(BigScreenWindow* window) : Page(window) {}
-
-void SettingsPage::Change(int step) {
-  FrontendPrefs prefs = window_->prefs();
-  const auto flip = [](std::optional<bool>& value, bool fallback) { value = !value.value_or(fallback); };
-  switch (focus_) {
-    case kButtons: {
-      const std::string current = prefs.big_screen_buttons.value_or("auto");
-      const auto at = std::ranges::find(kButtonKinds, current, [](const auto& kind) { return std::string(kind.first); });
-      const int index = at == kButtonKinds.end() ? 0 : int(at - kButtonKinds.begin());
-      prefs.big_screen_buttons = kButtonKinds[size_t((index + step + int(kButtonKinds.size())) % int(kButtonKinds.size()))].first;
-      break;
-    }
-    case kTextSize: flip(prefs.big_screen_large_text, false); break;
-    case kSounds: flip(prefs.big_screen_sounds, true); break;
-    case kRumble: flip(prefs.big_screen_rumble, true); break;
-    case kAtStart: flip(prefs.big_screen_at_start, false); break;
-    case kOnLogin: flip(prefs.start_on_login, false); break;
-    default: return;
-  }
-  window_->SetPrefs(prefs);
+SettingsPage::SettingsPage(BigScreenWindow* window) : Page(window) {
+  test_refresh_.setInterval(30);
+  connect(&test_refresh_, &QTimer::timeout, this, qOverload<>(&QWidget::update));
+  Build();
 }
 
-void SettingsPage::Act() {
-  switch (focus_) {
-    case kSteam: return window_->OpenSteamBigPicture();
-    case kSuspend: return window_->PowerAction("Suspend");
-    case kRestart:
-      return window_->Confirm("Restart the computer?", "Anything running is closed.", "Restart",
-                              [this] { window_->PowerAction("Reboot"); });
-    case kShutDown:
-      return window_->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down",
-                              [this] { window_->PowerAction("PowerOff"); });
-    case kExit: return window_->Exit();
-    default: return;
-  }
+void SettingsPage::Shown() {
+  testing_ = false;
+  test_refresh_.stop();
+  update();
+}
+
+void SettingsPage::Build() {
+  BigScreenWindow* w = window_;
+  // Changes one pref and saves it.
+  const auto edit = [w](auto apply) {
+    return [w, apply](int step) {
+      FrontendPrefs prefs = w->prefs();
+      apply(prefs, step);
+      w->SetPrefs(prefs);
+    };
+  };
+  const auto flip = [edit](std::optional<bool> FrontendPrefs::*field, bool fallback) {
+    return edit([field, fallback](FrontendPrefs& prefs, int) { prefs.*field = !(prefs.*field).value_or(fallback); });
+  };
+  const auto shows = [w](std::optional<bool> FrontendPrefs::*field, bool fallback) {
+    return [w, field, fallback] { return OnOff((w->prefs().*field).value_or(fallback)); };
+  };
+
+  rows_ = {
+      {"Controller", "Button labels", "Which names the button hints use. Match controller reads them from the controller.",
+       [w] { return LabelOf(kButtonKinds, w->prefs().big_screen_buttons.value_or("auto")); },
+       edit([](FrontendPrefs& p, int step) { p.big_screen_buttons = Cycle(kButtonKinds, p.big_screen_buttons.value_or("auto"), step); }),
+       {}},
+      {"Controller", "Select with", "Which face button selects; the other goes back. B selects on Nintendo controllers.",
+       [w] { return w->prefs().big_screen_swap_confirm.value_or(false) ? "Right button (B)" : "Bottom button (A)"; },
+       flip(&FrontendPrefs::big_screen_swap_confirm, false), {}},
+      {"Controller", "Stick sensitivity", "How far the stick moves before it counts. High suits worn sticks less well.",
+       [w] { return LabelOf(kStick, w->prefs().big_screen_stick.value_or("medium")); },
+       edit([](FrontendPrefs& p, int step) { p.big_screen_stick = Cycle(kStick, p.big_screen_stick.value_or("medium"), step); }),
+       {}},
+      {"Controller", "Scroll speed", "How fast lists move while a direction is held.",
+       [w] { return LabelOf(kRepeat, w->prefs().big_screen_repeat.value_or("normal")); },
+       edit([](FrontendPrefs& p, int step) { p.big_screen_repeat = Cycle(kRepeat, p.big_screen_repeat.value_or("normal"), step); }),
+       {}},
+      {"Controller", "Vibration", "The controller rumbles when you pick something and knocks at the end of a list.",
+       [w] { return LabelOf(kRumble, w->prefs().big_screen_rumble.value_or("light")); },
+       edit([](FrontendPrefs& p, int step) { p.big_screen_rumble = Cycle(kRumble, p.big_screen_rumble.value_or("light"), step); }),
+       {}},
+      {"Controller", "Test buttons", "Shows each button as you press it, and the controllers connected. Hold B to leave.",
+       {}, {}, [this] {
+         testing_ = true;
+         test_refresh_.start();
+         update();
+         emit HintsChanged();
+       }},
+
+      {"Screen and sound", "Text size", "Large scales everything up by 15%, for a TV across the room.",
+       [w] { return w->prefs().big_screen_large_text.value_or(false) ? "Large" : "Standard"; },
+       flip(&FrontendPrefs::big_screen_large_text, false), {}},
+      {"Screen and sound", "Sounds", "Short sounds as you move around and pick things.", shows(&FrontendPrefs::big_screen_sounds, true),
+       flip(&FrontendPrefs::big_screen_sounds, true), {}},
+      {"Screen and sound", "Trailers", "A muted trailer plays behind a game after a few seconds on it.",
+       shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}},
+
+      {"Apps", "Show applications", "Lists apps alongside games. Apps tagged media always show, in their own row.",
+       shows(&FrontendPrefs::big_screen_show_apps, false), flip(&FrontendPrefs::big_screen_show_apps, false), {}},
+      {"Apps", "Add a streaming app", "Netflix, YouTube and others, full screen in your browser with their own sign-in.",
+       {}, {}, [w] {
+         std::vector<std::pair<QString, std::function<void()>>> entries;
+         for (const WebApp& app : StreamingApps()) {
+           entries.emplace_back(app.name, [w, app] {
+             AddWebApp(w, app, [w, name = app.name](const QString& error) {
+               w->Toast(error.isEmpty() ? name + " is on Home, in Media" : error);
+             });
+           });
+         }
+         entries.emplace_back("Cancel", [] {});
+         w->ShowMenu("Add a streaming app", std::move(entries));
+       }},
+      {"Apps", "Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back.", {}, {},
+       [w] { w->OpenSteamBigPicture(); }},
+
+      {"System", "Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen.",
+       shows(&FrontendPrefs::big_screen_at_start, false), flip(&FrontendPrefs::big_screen_at_start, false), {}},
+      {"System", "Start Mira when you log in", "Adds Mira to your desktop's autostart.", shows(&FrontendPrefs::start_on_login, false),
+       flip(&FrontendPrefs::start_on_login, false), {}},
+      {"System", "Sleep when idle", "Suspends the computer after this long on big screen with nothing playing or installing.",
+       [w] { return LabelOf(kIdle, w->prefs().big_screen_idle_suspend.value_or(0)); },
+       edit([](FrontendPrefs& p, int step) { p.big_screen_idle_suspend = Cycle(kIdle, p.big_screen_idle_suspend.value_or(0), step); }),
+       {}},
+      {"System", "Suspend", "Puts the computer to sleep.", {}, {}, [w] { w->PowerAction("Suspend"); }},
+      {"System", "Restart", "Restarts the computer.", {}, {}, [w] {
+         w->Confirm("Restart the computer?", "Anything running is closed.", "Restart", [w] { w->PowerAction("Reboot"); });
+       }},
+      {"System", "Shut down", "Turns the computer off.", {}, {}, [w] {
+         w->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down", [w] { w->PowerAction("PowerOff"); });
+       }},
+      {"System", "Exit big screen", "Back to the desktop library.", {}, {}, [w] { w->Exit(); }},
+  };
 }
 
 bool SettingsPage::Navigate(Nav nav) {
+  // Every button is under test; holding B goes Home, which the window handles first.
+  if (testing_) return true;
+  Row& row = rows_[size_t(focus_)];
   switch (nav) {
     case Nav::Up: focus_ = std::max(0, focus_ - 1); break;
-    case Nav::Down: focus_ = std::min(int(kSettings.size()) - 1, focus_ + 1); break;
+    case Nav::Down: focus_ = std::min(int(rows_.size()) - 1, focus_ + 1); break;
     case Nav::Left:
     case Nav::Right:
-      if (focus_ < kFirstAction) Change(nav == Nav::Right ? 1 : -1);
+      if (row.change) row.change(nav == Nav::Right ? 1 : -1);
       break;
     case Nav::Accept:
-      if (focus_ >= kFirstAction) {
-        Act();
-        return true;
-      }
-      Change(1);
+      if (row.act) row.act();
+      else if (row.change) row.change(1);
       break;
     default: return false;
   }
@@ -99,7 +165,64 @@ bool SettingsPage::Navigate(Nav nav) {
 }
 
 QList<Hint> SettingsPage::Hints() const {
-  return {{Nav::Accept, focus_ == kExit ? "Exit" : focus_ >= kFirstAction ? "Select" : "Change"}, {Nav::Back, "Back"}};
+  if (testing_) return {};
+  const Row& row = rows_[size_t(focus_)];
+  return {{Nav::Accept, row.act ? (row.label == "Exit big screen" ? "Exit" : "Select") : "Change"}, {Nav::Back, "Back"}};
+}
+
+void SettingsPage::PaintTest(QPainter& painter, double u) {
+  const theme::Tokens& tokens = theme::Current();
+  const GamepadInput& input = window_->input();
+  const QString kind = window_->GlyphKind();
+  painter.setFont(Font(u, 1.0));
+  painter.setPen(tokens.text_muted);
+  painter.drawText(QPointF(kMargin * u, (kTop + 4) * u), "Press any button. Hold B to leave.");
+  // Every button as a pill, lit while held.
+  static const std::pair<Nav, const char*> kButtons[] = {
+      {Nav::Up, "Up"}, {Nav::Down, "Down"}, {Nav::Left, "Left"}, {Nav::Right, "Right"}, {Nav::Accept, ""},
+      {Nav::Back, ""}, {Nav::Action, ""}, {Nav::Search, ""}, {Nav::PrevTab, ""}, {Nav::NextTab, ""},
+      {Nav::PrevLetter, "Left trigger"}, {Nav::NextLetter, "Right trigger"}, {Nav::Sort, ""}, {Nav::Guide, "Guide"}};
+  double x = kMargin * u, y = (kTop + 6.5) * u;
+  for (const auto& [nav, label] : kButtons) {
+    const QString text = *label != '\0' ? QString(label) : GlyphText(nav, kind);
+    painter.setFont(Font(u, 1.1, QFont::Bold));
+    const double w = painter.fontMetrics().horizontalAdvance(text) + u * 2.4;
+    if (x + w > width() - kMargin * u) {
+      x = kMargin * u;
+      y += u * 3.6;
+    }
+    const bool lit = input.down()[size_t(nav)];
+    const QRectF box(x, y, w, u * 2.8);
+    painter.setPen(lit ? QPen(tokens.text, u * 0.12) : Qt::NoPen);
+    painter.setBrush(lit ? Accent() : tokens.surface);
+    painter.drawRoundedRect(box, u * 0.5, u * 0.5);
+    painter.setPen(tokens.text);
+    painter.drawText(box, Qt::AlignCenter, text);
+    x += w + u * 0.8;
+  }
+  // The controllers connected, last used first.
+  y += u * 5.5;
+  painter.setFont(Font(u, 1.2, QFont::Bold));
+  painter.setPen(tokens.text);
+  painter.drawText(QPointF(kMargin * u, y), "Controllers");
+  painter.setFont(Font(u, 1.0));
+  if (!input.available()) {
+    painter.setPen(tokens.text_muted);
+    painter.drawText(QPointF(kMargin * u, y + u * 2.2), "Controllers need SDL3 (the sdl3 package).");
+    return;
+  }
+  if (input.pads().empty()) {
+    painter.setPen(tokens.text_muted);
+    painter.drawText(QPointF(kMargin * u, y + u * 2.2), "None connected.");
+  }
+  for (size_t i = 0; i < input.pads().size(); ++i) {
+    const GamepadInput::Pad& pad = input.pads()[i];
+    QString line = QString("%1. %2").arg(i + 1).arg(pad.name);
+    line += pad.battery >= 0 ? QString(" · %1%%2").arg(pad.battery).arg(pad.charging ? " charging" : "")
+                             : pad.wireless ? QString(" · wireless") : QString(" · wired");
+    painter.setPen(i == 0 ? tokens.text : tokens.text_muted);
+    painter.drawText(QPointF(kMargin * u, y + u * (2.2 + 1.8 * double(i))), line);
+  }
 }
 
 void SettingsPage::paintEvent(QPaintEvent*) {
@@ -108,46 +231,52 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   painter.setRenderHint(QPainter::TextAntialiasing);
   const theme::Tokens& tokens = theme::Current();
   const double u = window_->unit();
-  const FrontendPrefs& prefs = window_->prefs();
   painter.fillRect(rect(), QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 170));
   painter.setFont(Font(u, 2.0, QFont::ExtraBold));
   painter.setPen(tokens.text);
-  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), "Settings");
+  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), testing_ ? "Test buttons" : "Settings");
+  if (testing_) return PaintTest(painter, u);
 
-  const std::string buttons = prefs.big_screen_buttons.value_or("auto");
-  const auto kind = std::ranges::find(kButtonKinds, buttons, [](const auto& k) { return std::string(k.first); });
-  // Action rows have no value.
-  const std::array<QString, kSettings.size()> values = {
-      kind == kButtonKinds.end() ? "Match controller" : kind->second,
-      prefs.big_screen_large_text.value_or(false) ? "Large" : "Standard",
-      prefs.big_screen_sounds.value_or(true) ? "On" : "Off",
-      prefs.big_screen_rumble.value_or(true) ? "On" : "Off",
-      prefs.big_screen_at_start.value_or(false) ? "On" : "Off",
-      prefs.start_on_login.value_or(false) ? "On" : "Off",
-  };
+  // Rows top to bottom with a heading where each section starts, in units before scrolling.
+  std::vector<double> tops;
+  double y = kTop + 3.2;
+  for (size_t i = 0; i < rows_.size(); ++i) {
+    if (i == 0 || rows_[i].section != rows_[i - 1].section) y += kHeadH;
+    tops.push_back(y);
+    y += kRowH + 0.5;
+  }
+  // Scrolled so the focused row stays above the hints, with its heading in view at the top.
+  const double bottom = height() / u - 4.5;
+  const double scroll = std::max(0.0, tops[size_t(focus_)] + kRowH - bottom);
   const double list_w = std::min(kListW * u, width() * 0.55);
-  // Scrolled so the focused row stays above the hints.
-  const double step = kRowH + 0.5;
-  const double scroll = std::max(0.0, kTop + 3.2 + (focus_ + 1) * step - (height() / u - 4.5));
   painter.save();
   painter.setClipRect(QRectF(0, (kTop + 2.6) * u, width(), height()));
-  for (size_t i = 0; i < kSettings.size(); ++i) {
-    const QRectF row(kMargin * u, (kTop + 3.2 + double(i) * step - scroll) * u, list_w, kRowH * u);
+  for (size_t i = 0; i < rows_.size(); ++i) {
+    const Row& row = rows_[i];
+    const double top = (tops[i] - scroll) * u;
+    if (top > height()) break;
+    if (i == 0 || row.section != rows_[i - 1].section) {
+      painter.setFont(Font(u, 0.95, QFont::Bold));
+      painter.setPen(tokens.text_muted);
+      painter.drawText(QPointF(kMargin * u, top - u * 0.8), row.section.toUpper());
+    }
+    const QRectF box(kMargin * u, top, list_w, kRowH * u);
     const bool focused = int(i) == focus_;
-    painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
+    painter.setPen(focused ? QPen(Accent(), u * 0.12) : Qt::NoPen);
     painter.setBrush(focused ? tokens.surface_alt : tokens.surface);
-    painter.drawRoundedRect(row, u * 0.5, u * 0.5);
-    const QRectF inner = row.adjusted(u * 1.3, 0, -u * 1.3, 0);
+    painter.drawRoundedRect(box, u * 0.5, u * 0.5);
+    const QRectF inner = box.adjusted(u * 1.3, 0, -u * 1.3, 0);
     painter.setFont(Font(u, 1.1, QFont::Bold));
     painter.setPen(tokens.text);
-    painter.drawText(inner, Qt::AlignVCenter | Qt::AlignLeft, kSettings[i].label);
-    if (!values[i].isEmpty()) {
+    painter.drawText(inner, Qt::AlignVCenter | Qt::AlignLeft, row.label);
+    if (row.value) {
       painter.setFont(Font(u, 1.0, QFont::DemiBold));
-      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, "‹  " + values[i] + "  ›");
+      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, "‹  " + row.value() + "  ›");
     }
   }
   painter.restore();
   // What the focused setting does.
+  const Row& row = rows_[size_t(focus_)];
   const QRectF help((kMargin * 2) * u + list_w, (kTop + 3.2) * u, width() - list_w - kMargin * 3 * u, 12 * u);
   painter.setPen(Qt::NoPen);
   painter.setBrush(QColor(255, 255, 255, 12));
@@ -155,11 +284,10 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   const QRectF help_text = help.adjusted(u * 1.6, u * 1.4, -u * 1.6, -u * 1.4);
   painter.setPen(tokens.text);
   painter.setFont(Font(u, 1.15, QFont::Bold));
-  painter.drawText(help_text, Qt::AlignTop | Qt::AlignLeft, kSettings[size_t(focus_)].label);
+  painter.drawText(help_text, Qt::AlignTop | Qt::AlignLeft, row.label);
   painter.setPen(tokens.text_muted);
   painter.setFont(Font(u, 1.0));
-  painter.drawText(help_text.adjusted(0, u * 2.2, 0, 0), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap,
-                   kSettings[size_t(focus_)].help);
+  painter.drawText(help_text.adjusted(0, u * 2.2, 0, 0), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, row.help);
 }
 
 }  // namespace mira_gui::bigscreen

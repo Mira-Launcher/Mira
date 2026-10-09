@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QList>
 #include <QPixmap>
+#include <QSet>
 #include <QTimer>
 #include <QWidget>
 
@@ -17,11 +18,13 @@ class QStackedWidget;
 namespace mira_gui::bigscreen {
 
 class Chrome;
+struct QuickSettings;
 class GameKeyboard;
 class GamePage;
 class GamepadInput;
 class HeroBackground;
 class Page;
+class Notice;
 class Sounds;
 
 // Big screen mode: a fullscreen window for the couch, driven by a controller
@@ -46,9 +49,14 @@ public:
 
   // The game or owned title with this key, fresh from the library.
   Item Find(const QString& key) const;
+  // Whether big screen lists this game or store title: never hidden ones, apps only when set to.
+  bool Browsable(const GameSummary& game) const;
+  bool Browsable(const StoreTitle& title) const;
   Item ItemFor(const GameSummary& game) const;
   Item ItemFor(const StoreTitle& title) const;
   QPixmap Cover(const Item& item, QSize size) const;
+  // The game's logo, when it has one and it's loaded (fetched along with its hero).
+  QPixmap Logo(const Item& item) const;
   // The item's install in the downloads list, if there is one running or paused.
   const DownloadTracker::Entry* Download(const Item& item) const;
   // 0..1 while installing or paused, else -1.
@@ -74,6 +82,8 @@ public:
   QString QuickActionLabel(const Item& item) const;
   void QuickAction(const Item& item);
 
+  // A list of choices over the page; picking one runs it.
+  void ShowMenu(const QString& title, std::vector<std::pair<QString, std::function<void()>>> entries);
   void Exit();
   void OpenSteamBigPicture();
   // "Suspend", "Reboot" or "PowerOff".
@@ -106,6 +116,7 @@ private:
     int focus = 1;  // 0 confirm, 1 cancel
   };
 
+  enum Tab { kHomeTab, kCollectionsTab, kSearchTab, kDownloadsTab, kSettingsTab };
   void Navigate(Nav nav);
   void SelectTab(int index);
   void ShowPage(Page* page);
@@ -114,6 +125,18 @@ private:
   void Guide();
   void ReturnToGame();
   void OpenGameKeyboard();
+  void Screenshot(const QString& game_name);
+  void TogglePerformanceOverlay(const std::string& id);
+  // The Guide menu's per-game settings: frame limit, overlay, GameMode.
+  void OpenQuickSettings(const std::string& id, const QString& name);
+  void ShowQuickSettings(const std::string& id, const QString& name, const QuickSettings& settings);
+  // An app rather than a game is in front (launched from here), so the controller drives it with keys.
+  bool AppInFront() const;
+  void AppControl(Nav nav);
+  void ApplyInputOptions();
+  // A message over the game when big screen isn't in front, else a toast.
+  void Tell(const QString& title, const QString& detail = {});
+  void FollowDownloads();
   // The game running now, if any.
   const GameSummary* RunningGame() const;
   void Feedback(Nav nav);
@@ -134,6 +157,13 @@ private:
   std::optional<Menu> menu_;
   Sounds* sounds_ = nullptr;
   GameKeyboard* keyboard_ = nullptr;
+  Notice* notice_ = nullptr;
+  // Guide waits for its release, so Guide + A can take a screenshot instead.
+  QTimer guide_hold_;
+  bool guide_chord_ = false;
+  QTimer idle_;
+  // Installs running at the last look, to tell when one finishes.
+  QSet<QString> installing_;
   unsigned blanking_cookie_ = 0;
   QString toast_;
   QTimer toast_timer_;

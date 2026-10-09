@@ -9,7 +9,7 @@
 
 namespace mira_gui::bigscreen {
 
-// Rows of covers (Continue playing, Pinned, each tag, each source, Installed)
+// Rows of covers (Continue playing, Pinned, Media, each tag, each source, Installed, Apps)
 // under the focused game's name and status. View cycles a row's order. The focused row stays put and
 // rows above it slide out of view.
 class HomePage : public Page {
@@ -48,6 +48,7 @@ private:
   std::vector<Row> rows_;
   int row_ = 0;
   double row_scroll_ = 0;  // shown, in rows
+  double lift_ = 1;  // the focused tile's rise, 0 to 1
   QTimer animation_;
   QTimer rebuild_;
 };

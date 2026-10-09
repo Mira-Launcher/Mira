@@ -41,7 +41,7 @@ void DownloadsPage::Refresh() {
   installs_ = int(items_.size());
   std::vector<Item> ready;
   for (const StoreTitle& title : window_->services().owned_titles->Titles()) {
-    if (!title.owned || title.installed) continue;
+    if (!title.owned || title.installed || !window_->Browsable(title)) continue;
     Item item = window_->ItemFor(title);
     if (window_->Download(item) == nullptr) ready.push_back(std::move(item));
   }
@@ -141,7 +141,7 @@ void DownloadsPage::paintEvent(QPaintEvent*) {
     if (row.bottom() < 0) continue;
     if (row.top() > height()) break;
     const bool focused = int(i) == focus_;
-    painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
+    painter.setPen(focused ? QPen(Accent(), u * 0.12) : Qt::NoPen);
     painter.setBrush(focused ? tokens.surface_alt : tokens.surface);
     painter.drawRoundedRect(row, u * 0.5, u * 0.5);
     DrawCover(painter, QRectF(row.left() + u * 0.75, row.top() + u * 0.75, thumb.width(), thumb.height()),
@@ -165,7 +165,7 @@ void DownloadsPage::paintEvent(QPaintEvent*) {
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(255, 255, 255, 28));
     painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
-    painter.setBrush(paused ? tokens.status_missing : tokens.accent);
+    painter.setBrush(paused ? tokens.status_missing : Accent());
     painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, entry->progress), bar.height())),
                             bar.height() / 2, bar.height() / 2);
   }

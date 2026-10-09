@@ -36,6 +36,9 @@ struct Hint {
 inline double Unit(int height, bool large_text) { return height / 49.0 * (large_text ? 1.15 : 1.0); }
 
 QFont Font(double unit, double size, int weight = QFont::Normal);
+// The focus color: picked from the focused game's art, else the theme's accent.
+QColor Accent();
+void SetAccent(const QColor& color);
 
 // The label a controller shows for `nav` ("A", "✕", "LB", ...) in `kind` ("xbox", "ps", "nin").
 QString GlyphText(Nav nav, const QString& kind);

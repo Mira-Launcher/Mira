@@ -1,7 +1,11 @@
 #include "BigScreenWindow.h"
 
+#include <linux/input-event-codes.h>
+
 #include <QApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QStackedWidget>
@@ -21,11 +25,15 @@
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "DownloadsPage.h"
+#include "CollectionsPage.h"
 #include "GameKeyboard.h"
 #include "GamePage.h"
 #include "GamepadInput.h"
 #include "HeroBackground.h"
 #include "HomePage.h"
+#include "Notice.h"
+#include "QuickSettings.h"
+#include "Screenshots.h"
 #include "SearchPage.h"
 #include "Session.h"
 #include "SettingsPage.h"
@@ -107,10 +115,14 @@ private:
     QString pad = !input.available()        ? "Keyboard · controllers need SDL3"
                   : input.pad_name().isEmpty() ? "No controller"
                                                : input.pad_name();
-    if (input.battery() >= 0) {
-      pad += QString(" · %1%2%").arg(input.charging() ? "⚡" : "").arg(input.battery());
-    } else if (input.available() && !input.pad_name().isEmpty() && !input.wireless()) {
-      pad += " · wired";
+    if (!input.pads().empty()) {
+      const GamepadInput::Pad& first = input.pads().front();
+      if (first.battery >= 0) {
+        pad += QString(" · %1%2%").arg(first.charging ? "⚡" : "").arg(first.battery);
+      } else if (!first.wireless) {
+        pad += " · wired";
+      }
+      if (input.pads().size() > 1) pad += QString("  +%1").arg(input.pads().size() - 1);
     }
     const double pad_w = painter.fontMetrics().horizontalAdvance(pad);
     painter.drawText(QPointF(right - pad_w, mid + u * 0.3), pad);
@@ -128,7 +140,7 @@ private:
       painter.setPen(Qt::NoPen);
       painter.setBrush(QColor(255, 255, 255, 34));
       painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
-      painter.setBrush(tokens.accent);
+      painter.setBrush(Accent());
       painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * progress, bar.height())), bar.height() / 2,
                               bar.height() / 2);
       painter.setPen(tokens.text);
@@ -202,7 +214,7 @@ private:
     for (size_t i = 0; i < menu.entries.size(); ++i) {
       const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i) * row_h, box.width() - u * 2.4, row_h - u * 0.4);
       const bool focused = int(i) == menu.focus;
-      painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
+      painter.setPen(focused ? QPen(Accent(), u * 0.12) : Qt::NoPen);
       painter.setBrush(focused ? tokens.surface_alt : Qt::transparent);
       painter.drawRoundedRect(row, u * 0.45, u * 0.45);
       painter.setPen(tokens.text);
@@ -283,26 +295,66 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   hero_ = new HeroBackground(this);
   stack_ = new QStackedWidget(this);
   stack_->setAttribute(Qt::WA_TranslucentBackground);
-  tabs_ = {new HomePage(this), new SearchPage(this), new DownloadsPage(this), new SettingsPage(this)};
-  tab_names_ = {"Home", "Search", "Downloads", "Settings"};
+  tabs_ = {new HomePage(this), new CollectionsPage(this), new SearchPage(this), new DownloadsPage(this),
+           new SettingsPage(this)};
+  tab_names_ = {"Home", "Collections", "Search", "Downloads", "Settings"};
   for (Page* page : tabs_) stack_->addWidget(page);
   game_page_ = new GamePage(this);
   stack_->addWidget(game_page_);
-  for (Page* page : {tabs_[0], tabs_[1], tabs_[2], tabs_[3], static_cast<Page*>(game_page_)}) {
+  for (Page* page : tabs_ + QList<Page*>{game_page_}) {
     connect(page, &Page::HintsChanged, this, [this] { chrome_->update(); });
   }
   chrome_ = new Chrome(this);
 
   sounds_ = new Sounds(this);
   keyboard_ = new GameKeyboard(this);
+  notice_ = new Notice(this);
   connect(input_, &GamepadInput::Pressed, this, [this](Nav nav) {
     // The keyboard over a game takes every button while it's up.
     if (keyboard_->isVisible()) return keyboard_->Navigate(nav);
-    if (nav == Nav::Guide) return Guide();
-    // A game in front has the controller; only Guide comes back to Mira.
-    if (!isActiveWindow()) return;
+    if (nav == Nav::Guide) {
+      guide_chord_ = false;
+      guide_hold_.start();
+      return;
+    }
+    if (guide_hold_.isActive() && nav == Nav::Accept) {
+      guide_chord_ = true;
+      if (const GameSummary* game = RunningGame()) Screenshot(QString::fromStdString(game->name));
+      return;
+    }
+    if (!isActiveWindow()) {
+      // A game in front has the controller; an app gets it as keys.
+      if (AppInFront()) AppControl(nav);
+      return;
+    }
     Navigate(nav);
   });
+  guide_hold_.setInterval(20);
+  connect(&guide_hold_, &QTimer::timeout, this, [this] {
+    if (input_->down()[size_t(Nav::Guide)]) return;
+    guide_hold_.stop();
+    if (!guide_chord_) Guide();
+  });
+  connect(input_, &GamepadInput::Activity, &idle_, qOverload<>(&QTimer::start));
+  connect(input_, &GamepadInput::BatteryLow, this, [this](const QString& name, int percent) {
+    Tell(QString("%1 is at %2%").arg(name).arg(percent), "Charge it soon.");
+  });
+  idle_.setSingleShot(true);
+  connect(&idle_, &QTimer::timeout, this, [this] {
+    // Only from a quiet Home: nothing playing, nothing installing.
+    const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || !isActiveWindow();
+    if (!busy) PowerAction("Suspend");
+  });
+  auto* sleep = new SleepWatcher(this);
+  connect(sleep, &SleepWatcher::Woke, this, [this] {
+    if (RunningGame() == nullptr) RaiseFromGame();
+    idle_.start();
+  });
+  connect(hero_, &HeroBackground::ArtChanged, this, [this] {
+    stack_->currentWidget()->update();
+    chrome_->update();
+  });
+  connect(services_.downloads, &DownloadTracker::Changed, this, &BigScreenWindow::FollowDownloads);
   blanking_cookie_ = InhibitScreenBlanking();
   connect(input_, &GamepadInput::PadChanged, chrome_, qOverload<>(&QWidget::update));
   connect(services_.downloads, &DownloadTracker::Changed, chrome_, qOverload<>(&QWidget::update));
@@ -325,6 +377,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   api::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
     if (!result.ok) return;
     prefs_ = result.prefs;
+    ApplyInputOptions();
     for (Page* page : tabs_) page->Shown();
     hero_->update();
     chrome_->update();
@@ -337,6 +390,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
 BigScreenWindow::~BigScreenWindow() {
   ReleaseScreenBlanking(blanking_cookie_);
   delete keyboard_;
+  delete notice_;
 }
 
 void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
@@ -348,6 +402,14 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.start_on_login = prefs.start_on_login;
   saved.big_screen_sounds = prefs.big_screen_sounds;
   saved.big_screen_rumble = prefs.big_screen_rumble;
+  saved.big_screen_show_apps = prefs.big_screen_show_apps;
+  saved.big_screen_swap_confirm = prefs.big_screen_swap_confirm;
+  saved.big_screen_stick = prefs.big_screen_stick;
+  saved.big_screen_repeat = prefs.big_screen_repeat;
+  saved.big_screen_trailers = prefs.big_screen_trailers;
+  saved.big_screen_idle_suspend = prefs.big_screen_idle_suspend;
+  saved.big_screen_recent_searches = prefs.big_screen_recent_searches;
+  ApplyInputOptions();
   ApplyStartOnLogin(prefs.start_on_login.value_or(false));
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   for (Page* page : tabs_) page->Shown();
@@ -382,6 +444,19 @@ Item BigScreenWindow::Find(const QString& key) const {
   }
   return {};
 }
+
+bool BigScreenWindow::Browsable(const GameSummary& game) const {
+  // Media apps (tagged media) stay, so Netflix or Stremio are there with apps hidden.
+  return !IsHidden(game) &&
+         (!IsApp(game) || prefs_.big_screen_show_apps.value_or(false) || HasTag(game, "media"));
+}
+
+bool BigScreenWindow::Browsable(const StoreTitle& title) const {
+  // Microsoft 365 is the one store whose titles are applications.
+  return title.source != "office" || prefs_.big_screen_show_apps.value_or(false);
+}
+
+QPixmap BigScreenWindow::Logo(const Item& item) const { return hero_->Logo(item.key); }
 
 QPixmap BigScreenWindow::Cover(const Item& item, QSize size) const {
   const qreal dpr = devicePixelRatioF();
@@ -547,6 +622,11 @@ void BigScreenWindow::QuickAction(const Item& item) {
 
 void BigScreenWindow::Exit() { close(); }
 
+void BigScreenWindow::ShowMenu(const QString& title, std::vector<std::pair<QString, std::function<void()>>> entries) {
+  menu_ = Menu{title, std::move(entries)};
+  chrome_->update();
+}
+
 void BigScreenWindow::OpenSteamBigPicture() {
   Toast("Opening Steam Big Picture");
   // Steam takes the screen; staying behind it until the player comes back.
@@ -580,6 +660,11 @@ void BigScreenWindow::closeEvent(QCloseEvent* event) {
 
 void BigScreenWindow::Navigate(Nav nav) {
   Feedback(nav);
+  if (nav == Nav::Home) {
+    menu_.reset();
+    dialog_.reset();
+    return SelectTab(kHomeTab);
+  }
   if (menu_) {
     const int count = int(menu_->entries.size());
     if (nav == Nav::Up || nav == Nav::Down) menu_->focus = (menu_->focus + (nav == Nav::Down ? 1 : count - 1)) % count;
@@ -616,7 +701,7 @@ void BigScreenWindow::Navigate(Nav nav) {
   switch (nav) {
     case Nav::PrevTab: return SelectTab((tab_ + int(tabs_.size()) - 1) % int(tabs_.size()));
     case Nav::NextTab: return SelectTab((tab_ + 1) % int(tabs_.size()));
-    case Nav::Search: return SelectTab(1);
+    case Nav::Search: return SelectTab(kSearchTab);
     case Nav::Back: return Back();
     default: return;
   }
@@ -645,12 +730,14 @@ void BigScreenWindow::Feedback(Nav nav) {
                   : nav == Nav::Back ? Sounds::Cue::Back
                                      : Sounds::Cue::Accept);
   }
-  if (prefs_.big_screen_rumble.value_or(true) && nav == Nav::Accept) input_->Rumble(0.15, 0.35, 45);
+  const std::string rumble = prefs_.big_screen_rumble.value_or("light");
+  if (rumble != "off" && nav == Nav::Accept) input_->Rumble(rumble == "strong" ? 0.4 : 0.15, rumble == "strong" ? 0.8 : 0.35, 45);
 }
 
 void BigScreenWindow::Bump() {
   if (prefs_.big_screen_sounds.value_or(true)) sounds_->Play(Sounds::Cue::Bump);
-  if (prefs_.big_screen_rumble.value_or(true)) input_->Rumble(0.45, 0.1, 70);
+  const std::string rumble = prefs_.big_screen_rumble.value_or("light");
+  if (rumble != "off") input_->Rumble(rumble == "strong" ? 0.9 : 0.45, 0.1, 70);
 }
 
 const GameSummary* BigScreenWindow::RunningGame() const {
@@ -672,15 +759,23 @@ void BigScreenWindow::Guide() {
   Menu menu{game != nullptr ? QString::fromStdString(game->name) : "Game"};
   menu.entries.emplace_back("Return to game", [this] { ReturnToGame(); });
   menu.entries.emplace_back("Keyboard", [this] { OpenGameKeyboard(); });
+  const QString shot_name = game != nullptr ? QString::fromStdString(game->name) : "Game";
+  menu.entries.emplace_back("Take a screenshot", [this, shot_name] {
+    ReturnToGame();
+    // Once the game is back on screen.
+    QTimer::singleShot(700, this, [this, shot_name] { Screenshot(shot_name); });
+  });
   if (game != nullptr) {
     const std::string id = game->id;
     const QString name = QString::fromStdString(game->name);
+    menu.entries.emplace_back("Performance overlay", [this, id] { TogglePerformanceOverlay(id); });
+    menu.entries.emplace_back("Game settings", [this, id, name] { OpenQuickSettings(id, name); });
     menu.entries.emplace_back("Stop " + name, [this, id, name] {
       Confirm("Stop " + name + "?", "Anything not saved in the game is lost.", "Stop",
               [this, id] { actions::Stop(this, id); });
     });
   }
-  menu.entries.emplace_back("Downloads", [this] { SelectTab(2); });
+  menu.entries.emplace_back("Downloads", [this] { SelectTab(kDownloadsTab); });
   menu_ = std::move(menu);
   chrome_->update();
 }
@@ -703,6 +798,123 @@ void BigScreenWindow::OpenGameKeyboard() {
   });
 }
 
+void BigScreenWindow::Tell(const QString& title, const QString& detail) {
+  if (isActiveWindow()) return Toast(detail.isEmpty() ? title : title + ". " + detail);
+  notice_->Show(title, detail);
+}
+
+void BigScreenWindow::FollowDownloads() {
+  QSet<QString> now;
+  for (const DownloadTracker::Entry& entry : services_.downloads->Entries()) {
+    if (entry.state == DownloadTracker::State::Running) now.insert(entry.key);
+    if (entry.state == DownloadTracker::State::Finished && installing_.contains(entry.key)) {
+      Tell(services_.downloads->NameFor(entry) + " is installed");
+    }
+  }
+  installing_ = now;
+}
+
+void BigScreenWindow::Screenshot(const QString& game_name) {
+  TakeScreenshot(this, game_name, [this, game_name](const QString& path, const QString& error) {
+    if (path.isEmpty()) return Tell("Couldn't take a screenshot", error);
+    Tell("Screenshot saved", "Pictures/Mira/" + QFileInfo(path).dir().dirName());
+  });
+}
+
+void BigScreenWindow::TogglePerformanceOverlay(const std::string& id) {
+  LoadQuickSettings(this, id, [this, id](bool ok, QuickSettings settings) {
+    if (!ok) return Toast("Couldn't read the game's settings.");
+    if (settings.overlay || settings.fps_limit > 0) {
+      // MangoHud is loaded: its own toggle, right Shift + F12.
+      ReturnToGame();
+      QTimer::singleShot(400, this, [this] {
+        QString error;
+        if (!keyboard_->Press(KEY_F12, &error, KEY_RIGHTSHIFT)) Tell("Couldn't toggle the overlay", error);
+      });
+      return;
+    }
+    settings.overlay = true;
+    SaveQuickSettings(this, id, settings, [this](const QString& error) {
+      Toast(error.isEmpty() ? "The overlay shows from the next start." : error);
+    });
+  });
+}
+
+void BigScreenWindow::OpenQuickSettings(const std::string& id, const QString& name) {
+  LoadQuickSettings(this, id, [this, id, name](bool ok, QuickSettings settings) {
+    if (!ok) return Toast("Couldn't read the game's settings.");
+    ShowQuickSettings(id, name, settings);
+  });
+}
+
+void BigScreenWindow::ShowQuickSettings(const std::string& id, const QString& name, const QuickSettings& settings) {
+  Menu menu{name + " · from its next start"};
+  const auto change = [this, id, name](QuickSettings next) {
+    ShowQuickSettings(id, name, next);
+    SaveQuickSettings(this, id, next, [this](const QString& error) {
+      if (!error.isEmpty()) Toast(error);
+    });
+  };
+  static const int kLimits[] = {0, 30, 40, 60, 90, 120};
+  menu.entries.emplace_back(
+      "Frame limit: " + (settings.fps_limit > 0 ? QString::number(settings.fps_limit) + " fps" : QString("Off")),
+      [settings, change] {
+        QuickSettings next = settings;
+        const auto at = std::ranges::find(kLimits, settings.fps_limit);
+        next.fps_limit = at == std::end(kLimits) || at + 1 == std::end(kLimits) ? 0 : *(at + 1);
+        change(next);
+      });
+  menu.entries.emplace_back(QString("Performance overlay: ") + (settings.overlay ? "On" : "Off"), [settings, change] {
+    QuickSettings next = settings;
+    next.overlay = !next.overlay;
+    change(next);
+  });
+  menu.entries.emplace_back(QString("GameMode: ") + (settings.gamemode ? "On" : "Off"), [settings, change] {
+    QuickSettings next = settings;
+    next.gamemode = !next.gamemode;
+    change(next);
+  });
+  menu.entries.emplace_back("Done", [] {});
+  menu_ = std::move(menu);
+  chrome_->update();
+}
+
+bool BigScreenWindow::AppInFront() const {
+  const GameSummary* game = RunningGame();
+  return game != nullptr ? IsApp(*game) : launching_.game && IsApp(*launching_.game);
+}
+
+void BigScreenWindow::AppControl(Nav nav) {
+  // TV-style apps (Stremio, a streaming site) take arrows, Enter, Escape and Space.
+  static const std::map<Nav, int> kKeys = {
+      {Nav::Up, KEY_UP},         {Nav::Down, KEY_DOWN}, {Nav::Left, KEY_LEFT},    {Nav::Right, KEY_RIGHT},
+      {Nav::Accept, KEY_ENTER},  {Nav::Back, KEY_ESC},  {Nav::Action, KEY_SPACE},
+  };
+  if (nav == Nav::Search) return OpenGameKeyboard();
+  const auto found = kKeys.find(nav);
+  if (found == kKeys.end()) return;
+  QString error;
+  if (!keyboard_->Press(found->second, &error)) Tell("Couldn't control the app", error);
+}
+
+void BigScreenWindow::ApplyInputOptions() {
+  GamepadInput::Options options;
+  options.swap_confirm = prefs_.big_screen_swap_confirm.value_or(false);
+  const std::string stick = prefs_.big_screen_stick.value_or("medium");
+  options.stick_threshold = stick == "high" ? 11000 : stick == "low" ? 25000 : 18000;
+  const std::string repeat = prefs_.big_screen_repeat.value_or("normal");
+  options.first_repeat_ms = repeat == "fast" ? 260 : repeat == "slow" ? 520 : 380;
+  options.repeat_ms = repeat == "fast" ? 60 : repeat == "slow" ? 140 : 90;
+  input_->SetOptions(options);
+  const int minutes = prefs_.big_screen_idle_suspend.value_or(0);
+  if (minutes > 0) {
+    idle_.setInterval(minutes * 60'000);
+    idle_.start();
+  } else {
+    idle_.stop();
+  }
+}
+
 void BigScreenWindow::PowerAction(const char* action) {
   if (!Power(action)) Toast("The system didn't allow that.");
 }
@@ -721,12 +933,14 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
       {Qt::Key_Space, Nav::Accept},   {Qt::Key_Escape, Nav::Back},     {Qt::Key_Backspace, Nav::Back},
       {Qt::Key_X, Nav::Action},       {Qt::Key_Y, Nav::Search},        {Qt::Key_Q, Nav::PrevTab},
       {Qt::Key_E, Nav::NextTab},      {Qt::Key_PageUp, Nav::PrevTab},  {Qt::Key_PageDown, Nav::NextTab},
-      {Qt::Key_S, Nav::Sort},         {Qt::Key_Home, Nav::Guide},
+      {Qt::Key_S, Nav::Sort},         {Qt::Key_Home, Nav::Guide},      {Qt::Key_BracketLeft, Nav::PrevLetter},
+      {Qt::Key_BracketRight, Nav::NextLetter},
   };
   const auto found = kKeys.find(event->key());
   if (found == kKeys.end() || (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
     return QWidget::keyPressEvent(event);
   }
+  idle_.start();
   if (found->second == Nav::Guide) return Guide();
   Navigate(found->second);
 }

@@ -75,7 +75,10 @@ bool GameKeyboard::EnsureDevice(QString* error) {
       if (key.code > 0) ioctl(fd, UI_SET_KEYBIT, key.code);
     }
   }
-  ioctl(fd, UI_SET_KEYBIT, KEY_LEFTSHIFT);
+  // Also what app controls and the MangoHud toggle send.
+  for (const int code : {KEY_LEFTSHIFT, KEY_RIGHTSHIFT, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESC, KEY_F12}) {
+    ioctl(fd, UI_SET_KEYBIT, code);
+  }
   uinput_setup setup{};
   setup.id.bustype = BUS_VIRTUAL;
   setup.id.vendor = 0x1209;
@@ -99,6 +102,17 @@ bool GameKeyboard::Open(QString* error) {
   setGeometry(screen.x() + (screen.width() - w) / 2, screen.bottom() - h, w, h);
   show();
   raise();
+  return true;
+}
+
+bool GameKeyboard::Press(int code, QString* error, int modifier) {
+  if (!EnsureDevice(error)) return false;
+  if (modifier != 0) Emit(fd_, EV_KEY, modifier, 1);
+  Type(code);
+  if (modifier != 0) {
+    Emit(fd_, EV_KEY, modifier, 0);
+    Emit(fd_, EV_SYN, SYN_REPORT, 0);
+  }
   return true;
 }
 
@@ -179,8 +193,8 @@ void GameKeyboard::paintEvent(QPaintEvent*) {
       const QRectF box(x, y, key.width * unit_w, key_h);
       const bool focused = int(r) == row_ && int(c) == column_;
       const bool lit = key.code == kShift && shift_;
-      painter.setPen(focused ? QPen(tokens.accent, u * 0.18) : Qt::NoPen);
-      painter.setBrush(focused ? tokens.surface_alt : lit ? tokens.accent : tokens.surface);
+      painter.setPen(focused ? QPen(Accent(), u * 0.18) : Qt::NoPen);
+      painter.setBrush(focused ? tokens.surface_alt : lit ? Accent() : tokens.surface);
       painter.drawRoundedRect(box, u * 0.4, u * 0.4);
       painter.setPen(tokens.text);
       painter.setFont(Font(u, key.label.size() > 1 ? 1.0 : 1.4, QFont::DemiBold));

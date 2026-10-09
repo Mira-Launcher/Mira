@@ -17,6 +17,14 @@ QFont Font(double unit, double size, int weight) {
   return font;
 }
 
+namespace {
+QColor g_accent;
+}  // namespace
+
+QColor Accent() { return g_accent.isValid() ? g_accent : theme::Current().accent; }
+
+void SetAccent(const QColor& color) { g_accent = color; }
+
 QString GlyphText(Nav nav, const QString& kind) {
   const bool ps = kind == "ps", nin = kind == "nin";
   switch (nav) {
@@ -27,12 +35,16 @@ QString GlyphText(Nav nav, const QString& kind) {
     case Nav::PrevTab: return ps ? "L1" : nin ? "L" : "LB";
     case Nav::NextTab: return ps ? "R1" : nin ? "R" : "RB";
     case Nav::Sort: return ps ? "Create" : nin ? "−" : "View";
+    case Nav::PrevLetter: return ps ? "L2" : nin ? "ZL" : "LT";
+    case Nav::NextLetter: return ps ? "R2" : nin ? "ZR" : "RT";
     default: return {};
   }
 }
 
 namespace {
-bool Wide(Nav nav) { return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::Sort; }
+bool Wide(Nav nav) {
+  return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::Sort || nav == Nav::PrevLetter || nav == Nav::NextLetter;
+}
 }  // namespace
 
 double GlyphWidth(double unit, Nav nav, const QString& kind) {
@@ -88,7 +100,7 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(0, 0, 0, 170));
     painter.drawRoundedRect(track, track.height() / 2, track.height() / 2);
-    painter.setBrush(tokens.accent);
+    painter.setBrush(Accent());
     painter.drawRoundedRect(QRectF(track.topLeft(), QSizeF(track.width() * progress, track.height())),
                             track.height() / 2, track.height() / 2);
   }
@@ -96,8 +108,17 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
   if (focused) {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
+    // A soft glow of the accent around the ring.
+    QColor glow = Accent();
+    painter.setBrush(Qt::NoBrush);
+    for (int i = 1; i <= 5; ++i) {
+      glow.setAlpha(46 - i * 8);
+      const double spread = unit * (0.2 + 0.18 * i);
+      painter.setPen(QPen(glow, unit * 0.2));
+      painter.drawRoundedRect(rect.adjusted(-spread, -spread, spread, spread), radius + spread, radius + spread);
+    }
     const double gap = unit * 0.2;
-    painter.setPen(QPen(tokens.accent, unit * 0.2));
+    painter.setPen(QPen(Accent(), unit * 0.2));
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(rect.adjusted(-gap, -gap, gap, gap), radius + gap, radius + gap);
     painter.restore();
