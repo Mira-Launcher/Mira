@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <map>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -73,6 +74,23 @@ void ApplyLaunchEnv(Command& command, const std::vector<std::string>& entries) {
     const std::string key = entry.substr(0, eq);
     if (!command.env.contains(key)) command.env[key] = entry.substr(eq + 1);
   }
+}
+
+// launch.mangohud: on loads MangoHud with its layout; off set for the game drops a MANGOHUD the
+// launch environment added, while one in the game's own env still wins.
+void ApplyMangoHud(Command& command, const config::Resolver& resolver, const model::Game& game, bool game_set) {
+  if (!resolver.GetBool("launch.mangohud")) {
+    if (!game_set && game.overrides.contains("launch.mangohud")) command.env.erase("MANGOHUD");
+    return;
+  }
+  command.env.try_emplace("MANGOHUD", "1");
+  static const std::map<std::string, std::string> kPresets = {
+      {"fps", "1"}, {"horizontal", "2"}, {"extended", "3"}, {"detailed", "4"}};
+  const auto preset = kPresets.find(resolver.GetString("launch.mangohud_layout"));
+  if (preset == kPresets.end()) return;
+  std::string& config = command.env["MANGOHUD_CONFIG"];
+  if (config.find("preset=") != std::string::npos) return;  // the game's own choice
+  config = "preset=" + preset->second + (config.empty() ? "" : "," + config);
 }
 
 // Used by the Steam handoff; otherwise mira-run runs the script.
@@ -191,7 +209,9 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   const config::Resolver resolver(s.config, game.overrides);
   const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
   if (auto checked = CheckCommandWrappers(wrappers); !checked) return std::unexpected(checked.error());
+  const bool game_mangohud = command->env.contains("MANGOHUD");
   ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
+  ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyCommandWrappers(*command, wrappers);
   return command;
 }
@@ -370,7 +390,9 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       if (auto ran = RunPreScriptInline(pre_script); !ran) {
         return SendError(res, 409, ran.error());
       }
+      const bool game_mangohud = command->env.contains("MANGOHUD");
       ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
+      ApplyMangoHud(*command, resolver, *game, game_mangohud);
       // Its output goes to the game's log, where the live log reads it, not to mirad's own stdout.
       const std::filesystem::path launch_log = proc::GameLogPath(s.games.Dir(), game->id);
       std::error_code log_ec;

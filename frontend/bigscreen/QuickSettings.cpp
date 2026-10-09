@@ -34,10 +34,12 @@ void LoadQuickSettings(QObject* context, const std::string& id, std::function<vo
       if (entry.section('=', 0, 0).trimmed() == "fps_limit") settings.fps_limit = entry.section('=', 1).trimmed().toInt();
     }
     if (!mangohud) settings.fps_limit = 0;
-    settings.overlay = mangohud && !hidden;
+    // A MANGOHUD the game's env sets by hand shows it too.
+    settings.overlay = mangohud && !hidden && settings.fps_limit == 0;
     api::GetGameConfigAsync(context, id, [settings, done](GameConfigResult config) mutable {
       for (const GameConfigEntry& entry : config.entries) {
         if (entry.key == "launch.gamemode") settings.gamemode = entry.value_display == "true";
+        if (entry.key == "launch.mangohud" && entry.value_display == "true") settings.overlay = true;
       }
       done(true, settings);
     });
@@ -52,7 +54,8 @@ void SaveQuickSettings(QObject* context, const std::string& id, const QuickSetti
     QStringList config = OtherEntries(env.value("MANGOHUD_CONFIG").toString());
     if (settings.fps_limit > 0) config << QString("fps_limit=%1").arg(settings.fps_limit);
     if (settings.fps_limit > 0 && !settings.overlay) config << "no_display";
-    const bool mangohud = settings.overlay || settings.fps_limit > 0;
+    // The overlay is launch.mangohud; the env loads MangoHud only for the FPS limit.
+    const bool mangohud = settings.fps_limit > 0;
     // A null removes a key (docs/api.md, PATCH /v1/games/{id}).
     QJsonObject patch_env;
     patch_env["MANGOHUD"] = mangohud ? QJsonValue("1") : QJsonValue(QJsonValue::Null);
@@ -61,7 +64,9 @@ void SaveQuickSettings(QObject* context, const std::string& id, const QuickSetti
     patch.env_json = QJsonDocument(patch_env).toJson(QJsonDocument::Compact).toStdString();
     api::PatchGameAsync(context, id, patch, [context, id, settings, done](PatchGameResult patched) {
       if (!patched.ok) return done(QString::fromStdString(patched.error.message));
-      const std::vector<GameConfigEdit> edits = {{"launch.gamemode", "a boolean", settings.gamemode ? "true" : "false"}};
+      const std::vector<GameConfigEdit> edits = {
+          {"launch.gamemode", "a boolean", settings.gamemode ? "true" : "false"},
+          {"launch.mangohud", "a boolean", settings.overlay ? "true" : "false"}};
       api::PatchGameConfigAsync(context, id, edits, [done](PatchGameConfigResult result) {
         done(result.ok ? QString() : QString::fromStdString(result.error.message));
       });

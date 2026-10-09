@@ -837,6 +837,24 @@ Schema::Schema() {
                 "without adding gamemoderun as a command wrapper. Does nothing if GameMode is not "
                 "installed or not running."});
 
+  s.Add({.key = "launch.mangohud",
+         .label = "Show MangoHud",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Show MangoHud's FPS and performance overlay in games; Right Shift + F12 hides it. Off "
+                "for a game also drops MANGOHUD from the launch environment, for a game it breaks. "
+                "Needs MangoHud installed, and doesn't reach Steam games launched through the Steam client."});
+
+  s.Add({.key = "launch.mangohud_layout",
+         .label = "MangoHud layout",
+         .type = Type::String,
+         .default_value = "full",
+         .scope = Scope::PerGame,
+         .doc = "What the overlay shows: \"fps\" only the frame rate, \"horizontal\" a one-line bar, "
+                "\"extended\" or \"detailed\" more readings, \"full\" MangoHud's own layout.",
+         .constraint = OneOf({"full", "fps", "horizontal", "extended", "detailed"})});
+
   s.Group("Scripts");
   s.ResetTogether();
 
