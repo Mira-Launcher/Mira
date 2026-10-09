@@ -322,11 +322,6 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   free_ = MakeLabel(folder, QString(), "muted", false);
   space->addWidget(free_);
   card->addLayout(space);
-  card->addWidget(MakeLabel(
-      folder,
-      "Games go in Games, their Windows setups in prefixes. Steam's games stay where Steam put "
-      "them.",
-      "muted"));
   drive_warning_ = MakeLabel(
       folder, "Windows games can fail to start or lose saves on NTFS and exFAT drives.", "error");
   QSizePolicy keep = drive_warning_->sizePolicy();
