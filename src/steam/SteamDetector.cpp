@@ -9,6 +9,7 @@
 #include "core/Files.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "runner/Exec.h"
 #include "steam/Vdf.h"
 
 namespace mira::steam {
@@ -61,6 +62,16 @@ bool LooksLikeSteamTooling(const fs::path& install_dir) {
   return false;
 }
 
+// Flathub's Steam keeps its whole tree in its app data folder.
+constexpr std::string_view kFlatpakApp = "com.valvesoftware.Steam";
+
+fs::path FlatpakDir() { return paths::Home() / ".var/app" / kFlatpakApp; }
+
+bool IsFlatpak(const fs::path& root) {
+  const fs::path relative = root.lexically_normal().lexically_relative(FlatpakDir());
+  return !relative.empty() && *relative.begin() != "..";
+}
+
 }  // namespace
 
 std::optional<fs::path> FindSteamRoot(const config::Config& config) {
@@ -70,12 +81,24 @@ std::optional<fs::path> FindSteamRoot(const config::Config& config) {
   }
   candidates.push_back(paths::Expand("~/.steam/steam"));
   candidates.push_back(paths::Expand("~/.local/share/Steam"));
+  candidates.push_back(FlatpakDir() / ".local/share/Steam");
 
   std::error_code ec;
   for (const fs::path& candidate : candidates) {
     if (fs::is_directory(candidate / "steamapps", ec)) return candidate;
   }
   return std::nullopt;
+}
+
+std::vector<std::string> SteamCommand(const config::Config& config) {
+  const auto root = FindSteamRoot(config);
+  if (root && IsFlatpak(*root) && runner::FindOnPath("flatpak")) return {"flatpak", "run", std::string(kFlatpakApp)};
+  return {"steam"};
+}
+
+fs::path SteamPidFile(const config::Config& config) {
+  const auto root = FindSteamRoot(config);
+  return (root && IsFlatpak(*root) ? FlatpakDir() : paths::Home()) / ".steam" / "steam.pid";
 }
 
 std::vector<fs::path> LibraryFolders(const fs::path& steam_root) {

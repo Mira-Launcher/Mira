@@ -34,6 +34,7 @@
 #include "runner/RunnerRegistry.h"
 #include "runner/WindowsTheme.h"
 #include "runner/Winetricks.h"
+#include "steam/SteamDetector.h"
 
 namespace mira::api {
 namespace {
@@ -401,7 +402,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         Command command;
         // -silent: a Steam that wasn't running starts without opening its window. -applaunch rather than a
         // steam:// URL, which a cold-started client answers by opening its window anyway.
-        command.argv = {"steam"};
+        command.argv = steam::SteamCommand(s.config);
         if (resolver.GetBool("steam.launch_silent")) command.argv.push_back("-silent");
         command.argv.insert(command.argv.end(), {"-applaunch", appid});
         if (auto spawned = runner::SpawnDetached(command); !spawned) {

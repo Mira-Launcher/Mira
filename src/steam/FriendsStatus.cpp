@@ -24,7 +24,8 @@ std::filesystem::path DefaultPidFile() {
   return paths::Home() / ".steam" / "steam.pid";
 }
 
-Result<void> SetFriendsStatus(std::string_view status, const std::filesystem::path& pid_file) {
+Result<void> SetFriendsStatus(std::string_view status, const std::filesystem::path& pid_file,
+                              std::vector<std::string> steam) {
   if (status != "online" && status != "invisible") {
     return Err("invalid_status", std::format("unknown Steam status \"{}\"", status),
                "Use online or invisible.");
@@ -34,7 +35,8 @@ Result<void> SetFriendsStatus(std::string_view status, const std::filesystem::pa
                "Start Steam, then set the status again.");
   }
   Command command;
-  command.argv = {"steam", std::format("steam://friends/status/{}", status)};
+  command.argv = std::move(steam);
+  command.argv.push_back(std::format("steam://friends/status/{}", status));
   if (auto spawned = runner::SpawnDetached(command); !spawned)
     return std::unexpected(spawned.error());
   return {};

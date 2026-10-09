@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <format>
 
+#include "steam/SteamDetector.h"
 #include "steam/SteamScanner.h"
 #include "support/TestEnv.h"
 
@@ -79,4 +80,22 @@ TEST_CASE("A Steam scan takes the later last played and the larger playtime from
     REQUIRE(scanner.Scan().has_value());
     CHECK_FALSE(env.games.Find("steam-70")->last_played_at.has_value());
   }
+}
+
+TEST_CASE("Flathub's Steam is found, with its own pid file") {
+  test::TestEnv env("steam-flatpak");
+  const fs::path home = env.dir / "home";
+  const fs::path flatpak = home / ".var/app/com.valvesoftware.Steam";
+  fs::create_directories(flatpak / ".local/share/Steam/steamapps");
+  REQUIRE(env.config.Set("steam.root", "").has_value());
+
+  const std::string old_home = std::getenv("HOME") != nullptr ? std::getenv("HOME") : "";
+  setenv("HOME", home.c_str(), 1);
+  const auto root = steam::FindSteamRoot(env.config);
+  const fs::path pid_file = steam::SteamPidFile(env.config);
+  setenv("HOME", old_home.c_str(), 1);
+
+  REQUIRE(root.has_value());
+  CHECK(*root == flatpak / ".local/share/Steam");
+  CHECK(pid_file == flatpak / ".steam/steam.pid");
 }

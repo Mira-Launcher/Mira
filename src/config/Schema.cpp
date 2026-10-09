@@ -434,7 +434,7 @@ Schema::Schema() {
          .label = "Steam folder",
          .type = Type::String,
          .default_value = "",
-         .doc = "Steam's install folder. Empty looks in ~/.steam/steam, then ~/.local/share/Steam.",
+         .doc = "Steam's install folder. Empty looks in ~/.steam/steam, then ~/.local/share/Steam, then Flathub's Steam.",
          .path = PathKind::Folder});
 
   s.Add({.key = "steam.launch_mode",

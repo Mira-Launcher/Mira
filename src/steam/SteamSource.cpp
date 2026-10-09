@@ -4,6 +4,7 @@
 
 #include "core/Command.h"
 #include "runner/Exec.h"
+#include "steam/SteamDetector.h"
 #include "steam/SteamWebApi.h"
 
 namespace mira::steam {
@@ -28,9 +29,10 @@ Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(const config::Co
   return entries;
 }
 
-Result<void> SteamSource::Install(config::Config&, store::GameStore&, api::EventBus&, const std::string& ref) {
+Result<void> SteamSource::Install(config::Config& config, store::GameStore&, api::EventBus&, const std::string& ref) {
   Command command;
-  command.argv = {"steam", std::format("steam://install/{}", ref)};
+  command.argv = SteamCommand(config);
+  command.argv.push_back(std::format("steam://install/{}", ref));
   if (auto spawned = runner::SpawnDetached(command); !spawned) return std::unexpected(spawned.error());
   return {};
 }

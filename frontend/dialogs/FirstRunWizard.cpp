@@ -33,7 +33,8 @@ namespace {
 QString Home(const QString& rest) { return QDir::homePath() + "/" + rest; }
 
 bool SteamInstalled() {
-  return QFileInfo::exists(Home(".steam/steam")) || QFileInfo::exists(Home(".local/share/Steam"));
+  return QFileInfo::exists(Home(".steam/steam")) || QFileInfo::exists(Home(".local/share/Steam")) ||
+         QFileInfo::exists(Home(".var/app/com.valvesoftware.Steam/.local/share/Steam"));
 }
 
 bool LutrisInstalled() {
@@ -326,7 +327,9 @@ void FirstRunWizard::PreselectSources() {
   if (LutrisInstalled()) ids << "lutris";
   for (const auto& [id, box] : sources_) box->setChecked(ids.contains(id));
   if (SteamInstalled() && steam_root_ != nullptr) {
-    steam_root_->setPlaceholderText(QFileInfo::exists(Home(".steam/steam")) ? "~/.steam/steam" : "~/.local/share/Steam");
+    steam_root_->setPlaceholderText(QFileInfo::exists(Home(".steam/steam"))         ? "~/.steam/steam"
+                                    : QFileInfo::exists(Home(".local/share/Steam")) ? "~/.local/share/Steam"
+                                                                                     : "Flathub's Steam");
   }
 }
 
