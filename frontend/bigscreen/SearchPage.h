@@ -24,6 +24,12 @@ protected:
 private:
   enum class Zone { Keys, Filters, Results };
   void Search();
+  // The saved searches shown while the query is empty.
+  QStringList Recents() const;
+  bool ShowRecents() const;
+  // How many entries the results zone focuses: recent searches or results.
+  int Entries() const;
+  void SaveRecent();
 
   QString query_;
   QStringList filters_;  // "All", "Installed", then source ids
