@@ -159,6 +159,30 @@ TEST_CASE("Relocate leaves a store launcher's shared prefix where it is") {
   CHECK_FALSE(library::Relocate(config, word, request).has_value());
 }
 
+TEST_CASE("Relocate leaves Steam's compatdata prefix where Steam keeps it") {
+  config::Config config(TempConfigFile("relocate-steam.toml"));
+  config.Load();
+  const fs::path prefixes = TempDir("relocate-steam-prefixes");
+  const fs::path compatdata = TempDir("relocate-steam-compatdata");
+  REQUIRE(config.Set("prefix_root", prefixes.string()).has_value());
+  fs::create_directories(compatdata / "1533420" / "pfx");
+
+  model::Game game;
+  game.id = "steam-1533420";
+  game.name = "Neon White";
+  game.source = "steam";
+  game.runner_ref = "steam:1533420";
+  game.data_dir = (compatdata / "1533420").string();
+  const auto relocated = library::Relocate(config, game);
+  REQUIRE(relocated.has_value());
+  CHECK(relocated->data_dir == game.data_dir);
+  CHECK(fs::is_directory(compatdata / "1533420" / "pfx"));
+
+  library::RelocateRequest request;
+  request.data_dir = prefixes / "neon-white";
+  CHECK_FALSE(library::Relocate(config, game, request).has_value());
+}
+
 TEST_CASE("NeedsProvisioning retries a broken store game") {
   model::Game game;
   game.runner_ref = "proton:GE-Proton9-20";
