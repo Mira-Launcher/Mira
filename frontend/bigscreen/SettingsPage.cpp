@@ -89,7 +89,7 @@ void SettingsPage::Build() {
        [w] { return LabelOf(kRumble, w->prefs().big_screen_rumble.value_or("light")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_rumble = Cycle(kRumble, p.big_screen_rumble.value_or("light"), step); }),
        {}},
-      {"Controller", "Test buttons", "Shows each button as you press it, and the controllers connected. Hold B to leave.",
+      {"Controller", "Test buttons", "Shows each button as you press it, and the controllers connected. Press B twice to leave.",
        {}, {}, [this] {
          testing_ = true;
          test_refresh_.start();
@@ -143,8 +143,18 @@ void SettingsPage::Build() {
 }
 
 bool SettingsPage::Navigate(Nav nav) {
-  // Every button is under test; holding B goes Home, which the window handles first.
-  if (testing_) return true;
+  // Every button is under test; B twice in a row leaves.
+  if (testing_) {
+    if (nav == Nav::Back && test_back_.isValid() && test_back_.elapsed() < 800) {
+      testing_ = false;
+      test_refresh_.stop();
+      update();
+      emit HintsChanged();
+    } else if (nav == Nav::Back) {
+      test_back_.start();
+    }
+    return true;
+  }
   Row& row = rows_[size_t(focus_)];
   switch (nav) {
     case Nav::Up: focus_ = std::max(0, focus_ - 1); break;
@@ -176,7 +186,7 @@ void SettingsPage::PaintTest(QPainter& painter, double u) {
   const QString kind = window_->GlyphKind();
   painter.setFont(Font(u, 1.0));
   painter.setPen(tokens.text_muted);
-  painter.drawText(QPointF(kMargin * u, (kTop + 4) * u), "Press any button. Hold B to leave.");
+  painter.drawText(QPointF(kMargin * u, (kTop + 4) * u), "Press any button. Press B twice to leave.");
   // Every button as a pill, lit while held.
   static const std::pair<Nav, const char*> kButtons[] = {
       {Nav::Up, "Up"}, {Nav::Down, "Down"}, {Nav::Left, "Left"}, {Nav::Right, "Right"}, {Nav::Accept, ""},

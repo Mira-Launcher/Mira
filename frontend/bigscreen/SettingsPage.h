@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QTimer>
 
 #include <functional>
@@ -44,6 +45,7 @@ private:
   // The button test: every button lit while it's held.
   bool testing_ = false;
   QTimer test_refresh_;
+  QElapsedTimer test_back_;
 };
 
 }  // namespace mira_gui::bigscreen
