@@ -11,6 +11,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
+#include "../widgets/TileView.h"
 #include "OwnedTitles.h"
 
 class QLabel;
@@ -92,6 +93,8 @@ class LibraryPage : public QWidget {
 
   int TileWidth() const { return tile_width_; }
   void SetTileWidth(int width);
+  // The row its tiles snap to fill; room 0 when none show.
+  TileRow Row() const;
   // A new cover for `id`, for the Continue row (the tiles follow the model).
   void UpdateCover(const std::string& id);
   // The filter pill and the search box, which mean nothing while the grid is covered.

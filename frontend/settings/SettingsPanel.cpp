@@ -2,6 +2,7 @@
 
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -72,8 +73,14 @@ void SettingsPanel::LoadFrontendPrefs() {
       toggle.saved = (prefs.*toggle.member).value_or(toggle.fallback);
       toggle.toggle->setChecked(toggle.saved);
     }
+    for (PrefSeconds& seconds : seconds_) {
+      seconds.spin->setValue((prefs.*seconds.member).value_or(seconds.fallback) / 1000.0);
+      seconds.saved = qRound(seconds.spin->value() * 1000);  // after the clamp
+    }
     continue_count_->setValue(prefs.library_continue_count.value_or(3));
     continue_count_saved_ = continue_count_->value();  // after the clamp
+    trailer_volume_->setValue(prefs.big_screen_trailer_volume.value_or(50));
+    trailer_volume_saved_ = trailer_volume_->value();
     for (ShapeField* field : {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
       field->saved = field->current = prefs.*(field->member);
       RefreshShape(*field);
@@ -372,7 +379,9 @@ void SettingsPanel::Save() {
   if (PrefsDirty()) {
     FrontendPrefs prefs;
     for (const PrefToggle& toggle : toggles_) prefs.*toggle.member = toggle.toggle->isChecked();
+    for (const PrefSeconds& seconds : seconds_) prefs.*seconds.member = qRound(seconds.spin->value() * 1000);
     prefs.library_continue_count = continue_count_->value();
+    prefs.big_screen_trailer_volume = trailer_volume_->value();
     const QString theme_name = SelectedTheme();
     prefs.theme = theme_name.toStdString();
 

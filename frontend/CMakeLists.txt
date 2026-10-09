@@ -72,6 +72,16 @@ qt_add_resources(mira-gui "themes"
 target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Multimedia mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
 
+# Optional: lets big screen focus a game's X11/XWayland window as it opens.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(XCB QUIET IMPORTED_TARGET xcb)
+endif()
+if(XCB_FOUND)
+  target_link_libraries(mira-gui PRIVATE PkgConfig::XCB)
+  target_compile_definitions(mira-gui PRIVATE MIRA_HAVE_XCB)
+endif()
+
 # The Qt and standard headers most files include, parsed once.
 if(MIRA_PCH)
   target_precompile_headers(mira-gui PRIVATE

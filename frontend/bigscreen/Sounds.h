@@ -12,7 +12,7 @@ class Sounds : public QObject {
   Q_OBJECT
 
 public:
-  enum class Cue { Move, Accept, Back, Bump };
+  enum class Cue { Move, Accept, Back, Bump, Tab };
 
   explicit Sounds(QObject* parent = nullptr);
   ~Sounds() override;

@@ -79,12 +79,14 @@ void DownloadsPage::Refresh() {
   // Keep the focus on the same game when the list moves under it.
   const auto at = std::ranges::find(items_, focused, &Item::key);
   focus_ = at != items_.end() ? int(at - items_.begin()) : std::clamp(focus_, 0, std::max(0, int(items_.size()) - 1));
+  // The focused install finished: the hero follows the game that took its place.
+  if (!items_.empty() && items_[size_t(focus_)].key != focused) window_->ShowHero(items_[size_t(focus_)], this);
   update();
   emit HintsChanged();
 }
 
 void DownloadsPage::FocusChanged() {
-  if (!items_.empty()) window_->ShowHero(items_[size_t(focus_)]);
+  if (!items_.empty()) window_->ShowHero(items_[size_t(focus_)], this);
   update();
   emit HintsChanged();
 }

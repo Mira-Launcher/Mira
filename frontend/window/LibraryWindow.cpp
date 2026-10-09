@@ -1,5 +1,6 @@
 #include "LibraryWindow.h"
 
+#include <QVariantAnimation>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -210,6 +211,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   top_bar_ = new mira_gui::TopBar(kMinTileWidth, kMaxTileWidth, tile_width, chrome);
   zoom_ = top_bar_->zoom();
   connect(zoom_, &QSlider::valueChanged, this, &LibraryWindow::Zoom);
+  connect(zoom_, &QSlider::sliderReleased, this, [this] { Zoom(zoom_->value()); });
   connect(top_bar_, &mira_gui::TopBar::ActivityClicked, this,
           [this] { downloads_panel_->ShowBelow(top_bar_->activity_button()); });
   connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, [this] { Reload(/*force_scan=*/true); });
@@ -814,11 +816,51 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
 
 void LibraryWindow::Zoom(int width) {
   ScheduleSavePrefs();
+  // Once the slider settles, tiles grow or shrink to fill their row exactly; a resize later
+  // leaves the spare on the right.
+  const mira_gui::TileRow row = ShownTileRow();
+  if (zoom_->isSliderDown() || row.room <= 0) {
+    if (zoom_animation_ != nullptr) zoom_animation_->stop();
+    ApplyTileWidth(width);
+    return;
+  }
+  const bool animating = zoom_animation_ != nullptr && zoom_animation_->state() == QAbstractAnimation::Running;
+  const int from = animating ? zoom_animation_->endValue().toInt() : ShownTileWidth();
+  const int fitted = mira_gui::FitTileWidth(width, from, row, kMinTileWidth, kMaxTileWidth);
+  {
+    const QSignalBlocker block(zoom_);
+    zoom_->setValue(fitted);
+  }
+  if (zoom_animation_ == nullptr) {
+    zoom_animation_ = new QVariantAnimation(this);
+    zoom_animation_->setDuration(180);
+    zoom_animation_->setEasingCurve(QEasingCurve::OutCubic);
+    connect(zoom_animation_, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant& value) { ApplyTileWidth(value.toInt()); });
+  }
+  zoom_animation_->stop();
+  zoom_animation_->setStartValue(ShownTileWidth());
+  zoom_animation_->setEndValue(fitted);
+  zoom_animation_->start();
+}
+
+void LibraryWindow::ApplyTileWidth(int width) {
   if (!SourcePageShown() || tile_size_synced_) grid_page_->SetTileWidth(width);
   if (tags_page_ != nullptr && !SourcePageShown()) tags_page_->SetTileWidth(width);
   if (!SourcePageShown()) return;
   if (!tile_size_synced_) source_tile_widths_[source_page_->property("source_id").toString().toStdString()] = width;
   source_page_->SetTileWidth(width);
+}
+
+int LibraryWindow::ShownTileWidth() const {
+  return SourcePageShown() ? SourceTileWidth(source_page_->property("source_id").toString()) : grid_page_->TileWidth();
+}
+
+mira_gui::TileRow LibraryWindow::ShownTileRow() const {
+  if (GridShown()) return grid_page_->Row();
+  if (SourcePageShown()) return source_page_->Row();
+  if (TagPickerShown()) return tags_page_->Row();
+  return {};
 }
 
 int LibraryWindow::SourceTileWidth(const QString& id) const {

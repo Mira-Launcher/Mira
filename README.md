@@ -36,7 +36,7 @@ cmake --preset release
 cmake --build build/release --target appimage
 ```
 
-Builds in an Ubuntu 22.04 container (docker or podman; nothing else is needed on the host, not even Qt), so the results run on Ubuntu 22.04 and newer. `build/release/appimage/` gets `Mira-x86_64.AppImage`, the `.deb` and the `.rpm`. The first run builds the image with GCC 13 and Qt 6.5 (`packaging/appimage/Dockerfile`), which takes a while; later runs reuse it and its compiler cache.
+Builds in an Ubuntu 22.04 container (docker or podman; nothing else is needed on the host, not even Qt), so the results run on Ubuntu 22.04 and newer. `build/release/appimage/` gets `Mira-x86_64.AppImage`, the `.deb` and the `.rpm`. The first run builds the image with GCC 13 and Qt 6.8 (`packaging/appimage/Dockerfile`), which takes a while; later runs reuse it and its compiler cache.
 
 `--target appimage-host` (and `packages-host`) builds with the machine's own Qt and libraries instead: quicker, but the result only runs on distributions as new as that machine, so it's not for releases. It needs Qt6 and `curl`. Arch users can use `packaging/PKGBUILD` instead.
 

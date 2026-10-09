@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../client/Types.h"
+#include "../widgets/TileView.h"
 
 class QGridLayout;
 class QLabel;
@@ -45,6 +46,8 @@ public:
   void SetGames(const std::vector<GameSummary>& games);
   // The picker's covers, as wide as the library's tiles.
   void SetTileWidth(int width);
+  // The open picker's row its tiles snap to fill; room 0 when it's closed.
+  TileRow Row() const;
   bool PickerOpen() const;
   // Ctrl+H while the picker is open: its hidden games show or not.
   void ToggleHidden();

@@ -20,6 +20,7 @@
 class QButtonGroup;
 class QLabel;
 class QSlider;
+class QDoubleSpinBox;
 class QSpinBox;
 
 namespace mira_gui {
@@ -110,6 +111,14 @@ private:
     bool saved = false;
   };
 
+  // A number of seconds kept in milliseconds.
+  struct PrefSeconds {
+    QDoubleSpinBox* spin = nullptr;
+    std::optional<int> FrontendPrefs::*member = nullptr;  // milliseconds
+    int fallback = 0;
+    int saved = 0;
+  };
+
   // One shape adjustment over the theme; unset follows the theme.
   struct ShapeField {
     QSlider* slider = nullptr;
@@ -151,6 +160,9 @@ private:
   SettingRow* AddSchemaRow(SettingsCard* card, size_t index);
   Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
                     std::optional<bool> FrontendPrefs::*member, bool fallback);
+  // A number of seconds kept in milliseconds; `maximum` in seconds.
+  QDoubleSpinBox* AddSeconds(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
+                             std::optional<int> FrontendPrefs::*member, int fallback_ms, double maximum);
   // Returns the field's index in pref_fields_.
   size_t AddPrefField(PrefField field);
   // A card's "Reset to defaults" over these pref_fields_ and fields_ indices.
@@ -190,8 +202,11 @@ private:
   QButtonGroup* themes_ = nullptr;
   QString theme_saved_;
   std::vector<PrefToggle> toggles_;
+  std::vector<PrefSeconds> seconds_;
   QSpinBox* continue_count_ = nullptr;
   int continue_count_saved_ = 3;
+  QSpinBox* trailer_volume_ = nullptr;
+  int trailer_volume_saved_ = 50;
   SettingRow* continue_count_row_ = nullptr;
   Switch* continue_row_ = nullptr;
   TilePreview* tile_preview_ = nullptr;

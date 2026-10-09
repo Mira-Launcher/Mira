@@ -356,6 +356,12 @@ void LibraryPage::SetTileWidth(int width) {
   FitGrid();
 }
 
+TileRow LibraryPage::Row() const {
+  if (grid_->isVisible()) return grid_->Row();
+  if (owned_grid_->isVisible()) return owned_grid_->Row();
+  return {};
+}
+
 void LibraryPage::UpdateCover(const std::string& id) {
   continue_row_->RefreshCover(id);
 }

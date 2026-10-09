@@ -107,8 +107,16 @@ void SettingsPage::Build() {
            flip(&FrontendPrefs::big_screen_large_text, false), {}},
           {"", "Sounds", "Short sounds as you move around and pick things.", shows(&FrontendPrefs::big_screen_sounds, true),
            flip(&FrontendPrefs::big_screen_sounds, true), {}},
-          {"", "Trailers", "A muted trailer plays behind a game after a few seconds on it.",
-           shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}}
+          {"", "Full screen games", "A game that opens in a window fills the screen, without borders.",
+           shows(&FrontendPrefs::big_screen_fullscreen_games, true), flip(&FrontendPrefs::big_screen_fullscreen_games, true), {}},
+          {"", "Trailers", "A trailer plays behind a game a moment after you rest on it.",
+           shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}},
+          {"", "Trailer sound", "Plays a trailer's sound, not only its picture.",
+           shows(&FrontendPrefs::big_screen_trailer_sound, false), flip(&FrontendPrefs::big_screen_trailer_sound, false), {}},
+          {"", "Trailer volume", "How loud a trailer plays when its sound is on.",
+           [w] { return QString("%1%").arg(w->prefs().big_screen_trailer_volume.value_or(50)); },
+           edit([](FrontendPrefs& p, int step) { p.big_screen_trailer_volume = std::clamp(p.big_screen_trailer_volume.value_or(50) + step * 10, 10, 100); }),
+           {}}
       }},
       {"Apps", {
           {"", "Show applications", "Lists apps alongside games. Apps tagged media always show, in their own row.",

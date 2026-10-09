@@ -39,6 +39,8 @@ QFont Font(double unit, double size, int weight = QFont::Normal);
 // The focus color: picked from the focused game's art, else the theme's accent.
 QColor Accent();
 void SetAccent(const QColor& color);
+// Whether A and B are swapped (B selects), so hints show the button that does each.
+void SetSwapConfirm(bool swap);
 
 // The label shown for `nav` ("A", "✕", "LB", "Enter", ...) in `kind` ("xbox", "ps", "nin", "keys").
 QString GlyphText(Nav nav, const QString& kind);
@@ -70,6 +72,8 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
                bool dim, double progress);
 
 // A filled pill with a colored dot; returns its width.
+// A soft glow in the focus color around a focused tile, drawn before it.
+void DrawGlow(QPainter& painter, const QRectF& tile, double unit);
 double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString& text,
                 const std::optional<QColor>& dot = std::nullopt);
 

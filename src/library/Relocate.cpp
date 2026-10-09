@@ -95,6 +95,11 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   const bool shared_prefix = launchers::ForGame(game) != nullptr;
   const bool store_managed = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
                              game.source == "itch" || game.source == "amazon" || shared_prefix;
+  // Steam makes its own prefix (compatdata) again where it expects it, so a moved one is just left behind.
+  const bool steam_prefix = game.source == "steam" || game.runner_ref.starts_with("steam:");
+  if (steam_prefix && request.data_dir) {
+    return Err("store_prefix", std::format("{}'s prefix belongs to Steam, which keeps it in its compatdata folder", game.name));
+  }
   if (shared_prefix && request.data_dir) {
     return Err("shared_prefix", std::format("{}'s prefix is shared with its launcher and the launcher's other games", game.name),
                "Move the launcher's prefix folder yourself, then point each of its games at the new folder.");
@@ -107,7 +112,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   bool single_file = false;  // only the program moved, out of a shared folder
 
   // The prefix's target is checked before anything moves, so a bad one never needs an undo.
-  const bool move_prefix = !game.data_dir.empty() && !prefix_in_install && !shared_prefix &&
+  const bool move_prefix = !game.data_dir.empty() && !prefix_in_install && !shared_prefix && !steam_prefix &&
                            (request.data_dir || !request.only_given);
   const fs::path prefix_root = config.GetPath("prefix_root");
   const fs::path prefix_target = !move_prefix ? fs::path()

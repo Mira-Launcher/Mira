@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QElapsedTimer>
+#include <QVariantAnimation>
 #include <QHash>
 #include <QList>
 #include <QPixmap>
@@ -66,7 +67,9 @@ public:
   // 0..1 while installing or paused, else -1.
   double Progress(const Item& item) const;
 
-  void ShowHero(const Item& item);
+  // From the page in front only; a page refreshing behind it leaves the hero alone.
+  void ShowHero(const Item& item, const Page* from);
+  bool Showcasing() const;
   void OpenGame(const Item& item);
   void Toast(const QString& text);
   // Hints show keys (true) or the controller's buttons.
@@ -130,6 +133,7 @@ private:
   void Navigate(Nav nav);
   void SelectTab(int index);
   void ShowPage(Page* page);
+  void RefreshPages();
   void Back();
   void RaiseFromGame();
   void Guide();
@@ -156,6 +160,7 @@ private:
   void Feedback(Nav nav);
   // Ends the launch overlay once the game runs, and comes back when it exits.
   void FollowLaunch();
+  void EndLaunch();
 
   LibraryServices services_;
   FrontendPrefs prefs_;
@@ -171,6 +176,7 @@ private:
   std::optional<Menu> menu_;
   bool keys_ = false;  // the keyboard was used last
   QElapsedTimer escape_armed_;  // the first Esc on Home
+  QVariantAnimation hints_fade_;  // 0 shown, 1 hidden
   Sounds* sounds_ = nullptr;
   GameKeyboard* keyboard_ = nullptr;
   Notice* notice_ = nullptr;
@@ -186,6 +192,8 @@ private:
   QTimer clock_timer_;
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
+  QString cancelled_;  // a launch cancelled before its game was running, stopped once it is
+  QTimer window_poll_;  // looks for the launching game's window
   QString playing_;
   // A game was handed to Steam, so nothing says when it runs or ends: stay
   // behind until the player comes back.

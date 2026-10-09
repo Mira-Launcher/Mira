@@ -17,6 +17,7 @@ public:
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
   void Shown() override;
+  void PrefsChanged() override { Search(); }
   bool Typed(const QString& text) override;
 
 protected:

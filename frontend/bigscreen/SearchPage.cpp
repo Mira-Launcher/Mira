@@ -61,19 +61,21 @@ void SearchPage::Search() {
   const QString chosen = filters_.value(filter_, "All");
   filters_ = QStringList{"All", "Installed"} + sources;
   filter_ = std::max(0, int(filters_.indexOf(chosen)));
+  // A source with nothing left falls back to All.
+  const QString filter = filters_[filter_];
 
   results_.clear();
   const QString query = query_.simplified();
   for (Item& item : all) {
     if (!query.isEmpty() && !item.name.contains(query, Qt::CaseInsensitive) && !TagMatches(item, query)) continue;
-    if (chosen == "Installed" && !item.installed()) continue;
-    if (chosen != "All" && chosen != "Installed" && item.source != chosen) continue;
+    if (filter == "Installed" && !item.installed()) continue;
+    if (filter != "All" && filter != "Installed" && item.source != filter) continue;
     results_.push_back(std::move(item));
   }
   std::ranges::sort(results_, [](const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
   result_ = std::clamp(result_, 0, std::max(0, Entries() - 1));
   if (zone_ == Zone::Results && Entries() == 0) zone_ = Zone::Keys;
-  if (zone_ == Zone::Results && !ShowRecents()) window_->ShowHero(results_[size_t(result_)]);
+  if (zone_ == Zone::Results && !ShowRecents()) window_->ShowHero(results_[size_t(result_)], this);
   update();
   emit HintsChanged();
 }
@@ -124,7 +126,7 @@ bool SearchPage::Navigate(Nav nav) {
     Search();
     return true;
   }
-  if (nav == Nav::Search) {
+  if (nav == Nav::Search && zone_ == Zone::Keys) {
     if (!query_.isEmpty() && !query_.endsWith(' ')) query_ += ' ';
     Search();
     return true;
@@ -195,7 +197,7 @@ bool SearchPage::Navigate(Nav nav) {
     }
   }
   if (nav == Nav::Back || nav == Nav::PrevTab || nav == Nav::NextTab) return false;
-  if (zone_ == Zone::Results && !ShowRecents()) window_->ShowHero(results_[size_t(result_)]);
+  if (zone_ == Zone::Results && !ShowRecents()) window_->ShowHero(results_[size_t(result_)], this);
   update();
   emit HintsChanged();
   return true;

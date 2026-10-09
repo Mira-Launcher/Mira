@@ -25,7 +25,20 @@ QColor Accent() { return g_accent.isValid() ? g_accent : theme::Current().accent
 
 void SetAccent(const QColor& color) { g_accent = color; }
 
+namespace {
+bool g_swap_confirm = false;
+
+// With the face buttons swapped, Select is labelled with the button that now selects.
+Nav PhysicalNav(Nav nav, const QString& kind) {
+  if (!g_swap_confirm || kind == "keys") return nav;
+  return nav == Nav::Accept ? Nav::Back : nav == Nav::Back ? Nav::Accept : nav;
+}
+}  // namespace
+
+void SetSwapConfirm(bool swap) { g_swap_confirm = swap; }
+
 QString GlyphText(Nav nav, const QString& kind) {
+  nav = PhysicalNav(nav, kind);
   if (kind == "keys") {
     switch (nav) {
       case Nav::Accept: return "Enter";
@@ -87,6 +100,7 @@ double GlyphWidth(double unit, Nav nav, const QString& kind) {
 
 double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind) {
   const QString text = GlyphText(nav, kind);
+  nav = PhysicalNav(nav, kind);  // for its color
   // A key is a keycap whatever it is.
   const bool shoulder = Wide(nav) || kind == "keys";
   const double h = unit * 1.45;
@@ -153,6 +167,21 @@ QRectF CoverGrid::Box(int index) const {
   return {left + (index % columns) * (tile_w + gap), area.top() + row * (tile_h + gap), tile_w, tile_h};
 }
 
+void DrawGlow(QPainter& painter, const QRectF& tile, double unit) {
+  painter.save();
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setPen(Qt::NoPen);
+  QColor glow = Accent();
+  // A few widening rings, fainter outward: cheaper than a blur and close enough.
+  for (int ring = 4; ring >= 1; --ring) {
+    glow.setAlpha(14 + (4 - ring) * 10);
+    painter.setBrush(glow);
+    const double grow = unit * 0.32 * ring;
+    painter.drawRoundedRect(tile.adjusted(-grow, -grow, grow, grow), unit * 0.45 + grow, unit * 0.45 + grow);
+  }
+  painter.restore();
+}
+
 void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,
                bool dim, double progress) {
   const theme::Tokens& tokens = theme::Current();
@@ -163,8 +192,22 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
   QPainterPath clip;
   clip.addRoundedRect(rect, radius, radius);
   painter.setClipPath(clip);
-  painter.fillRect(rect, tokens.tile_placeholder);
-  if (!cover.isNull()) painter.drawPixmap(rect, cover, QRectF(cover.rect()));
+  if (cover.isNull()) {
+    // Not loaded yet: a soft wash of the focus color rather than a flat box.
+    QLinearGradient wash(rect.topLeft(), rect.bottomRight());
+    QColor tint = Accent();
+    tint.setAlpha(46);
+    wash.setColorAt(0, tokens.tile_placeholder.lighter(118));
+    wash.setColorAt(1, tokens.tile_placeholder);
+    painter.fillRect(rect, wash);
+    painter.fillRect(rect, tint);
+  } else {
+    painter.fillRect(rect, tokens.tile_placeholder);
+    // Cropped to fill, never stretched: a cover that isn't 2:3 loses its edges.
+    const QSizeF shown = QSizeF(rect.size()).scaled(cover.size(), Qt::KeepAspectRatio);
+    const QRectF source((cover.width() - shown.width()) / 2, (cover.height() - shown.height()) / 2, shown.width(), shown.height());
+    painter.drawPixmap(rect, cover, source);
+  }
   if (dim) painter.fillRect(rect, QColor(0, 0, 0, 130));
   // Spelled out, since a darker cover alone doesn't say why.
   if (dim && progress < 0) {

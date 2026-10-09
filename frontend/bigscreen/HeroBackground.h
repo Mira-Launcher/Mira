@@ -25,12 +25,22 @@ public:
   explicit HeroBackground(BigScreenWindow* window);
 
   void Show(const Item& item);
+  // Another page came to the front: the trailer stops, and the next Show starts over even for
+  // the same game. The hero stays until then.
+  void Leave();
+  // While held (a game is starting) nothing showcases or plays; released, the wait starts over.
+  void Hold(bool on);
   // The game's logo art (transparent PNG), once fetched; null when it has none or isn't loaded.
   QPixmap Logo(const QString& key) const;
+  // Focus has rested on the game for the start delay: pages step back to show its hero, and its
+  // trailer when it has one.
+  bool Showcasing() const { return reveal_; }
 
 signals:
   // A logo arrived, or the accent color changed with the focused game.
   void ArtChanged();
+  // Showcasing() changed.
+  void ShowcaseChanged();
 
 protected:
   void paintEvent(QPaintEvent* event) override;
@@ -40,11 +50,21 @@ private:
   void Fade(const QPixmap& art);
   void LoadHero();
   void LoadLogo(const QString& key);
+  QSize ScreenSize() const;
   void CreatePlayer();
   void EndTrailer();
+  // Stops the trailer at once (fading its sound out when it has any) and clears its picture.
+  void StopTrailer();
+  // Starts the wait before showcasing and the trailer's load, unless held.
+  void StartWaiting();
 
   static constexpr int kKeepHeroes = 4;
   static constexpr int kKeepLogos = 8;
+  // Trailers this short start at the beginning, whatever the skip.
+  static constexpr qint64 kSkipFromMs = 20000;
+  // How long focus rests before a trailer starts loading. Loading stalls the GUI thread for a
+  // tenth of a second or more, so it waits until the hero and Home's rows have stopped moving.
+  static constexpr int kLoadAfterMs = 1000;
 
   BigScreenWindow* window_;
   QString key_;
@@ -60,12 +80,23 @@ private:
   QMediaPlayer* player_ = nullptr;
   QVideoSink* sink_ = nullptr;
   QAudioOutput* audio_ = nullptr;
-  // Starts the trailer after a short wait, so scrolling past doesn't play it.
+  // Loads the trailer a moment after focus lands, so scrolling past fetches nothing.
   QTimer trailer_delay_;
   QImage frame_;
+  // The first frame, blurred: the trailer fades in through it.
+  QPixmap frame_blur_;
+  // The game the player was loaded for; frames from an earlier one are dropped.
+  QString playing_key_;
+  // Lowers the sound before a trailer that's left stops, instead of cutting it.
+  QVariantAnimation volume_fade_;
+  qint64 skip_us_ = 0;  // frames before this are not drawn
+  // Shows the trailer once focus has rested for the start delay.
+  QTimer trailer_reveal_;
+  bool reveal_ = false;
   QVariantAnimation trailer_fade_;
   // The game whose trailer is wanted; empty when none.
   QString trailer_key_;
+  bool held_ = false;
 };
 
 }  // namespace mira_gui::bigscreen

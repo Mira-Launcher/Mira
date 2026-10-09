@@ -163,6 +163,12 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("big_screen_stick", result.prefs.big_screen_stick);
   read_string("big_screen_repeat", result.prefs.big_screen_repeat);
   read_bool("big_screen_trailers", result.prefs.big_screen_trailers);
+  read_int("big_screen_trailer_delay_ms", result.prefs.big_screen_trailer_delay_ms);
+  read_int("big_screen_trailer_skip_ms", result.prefs.big_screen_trailer_skip_ms);
+  read_bool("big_screen_trailer_hd_only", result.prefs.big_screen_trailer_hd_only);
+  read_bool("big_screen_fullscreen_games", result.prefs.big_screen_fullscreen_games);
+  read_bool("big_screen_trailer_sound", result.prefs.big_screen_trailer_sound);
+  read_int("big_screen_trailer_volume", result.prefs.big_screen_trailer_volume);
   read_int("big_screen_idle_suspend", result.prefs.big_screen_idle_suspend);
   read_bool("big_screen_show_apps", result.prefs.big_screen_show_apps);
   read_bool("onboarded", result.prefs.onboarded);
@@ -259,6 +265,12 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.big_screen_stick) table["big_screen_stick"] = *prefs.big_screen_stick;
   if (prefs.big_screen_repeat) table["big_screen_repeat"] = *prefs.big_screen_repeat;
   if (prefs.big_screen_trailers) table["big_screen_trailers"] = *prefs.big_screen_trailers;
+  if (prefs.big_screen_trailer_delay_ms) table["big_screen_trailer_delay_ms"] = *prefs.big_screen_trailer_delay_ms;
+  if (prefs.big_screen_trailer_skip_ms) table["big_screen_trailer_skip_ms"] = *prefs.big_screen_trailer_skip_ms;
+  if (prefs.big_screen_trailer_hd_only) table["big_screen_trailer_hd_only"] = *prefs.big_screen_trailer_hd_only;
+  if (prefs.big_screen_fullscreen_games) table["big_screen_fullscreen_games"] = *prefs.big_screen_fullscreen_games;
+  if (prefs.big_screen_trailer_sound) table["big_screen_trailer_sound"] = *prefs.big_screen_trailer_sound;
+  if (prefs.big_screen_trailer_volume) table["big_screen_trailer_volume"] = *prefs.big_screen_trailer_volume;
   if (prefs.big_screen_idle_suspend) table["big_screen_idle_suspend"] = *prefs.big_screen_idle_suspend;
   if (prefs.big_screen_recent_searches) table["big_screen_recent_searches"] = *prefs.big_screen_recent_searches;
   if (prefs.big_screen_show_apps) table["big_screen_show_apps"] = *prefs.big_screen_show_apps;
