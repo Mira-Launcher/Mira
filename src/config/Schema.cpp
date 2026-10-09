@@ -449,6 +449,14 @@ Schema::Schema() {
                 "stops, crashes and playtime.",
          .constraint = OneOf({"steam", "direct"})});
 
+  s.Add({.key = "steam.launch_silent",
+         .label = "Keep Steam's window closed",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "For games launched through the Steam client, start Steam with -silent so a Steam "
+                "that wasn't running stays in the background instead of opening its window."});
+
   s.Add({.key = "steam.track_process",
          .label = "Track the Steam process",
          .type = Type::Bool,
