@@ -12,6 +12,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
+#include "steam/SteamDetector.h"
 
 namespace mira::runner {
 namespace {
@@ -74,6 +75,11 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
   std::vector<fs::path> search_dirs = config.GetPathArray("runner_search_paths");
   if (config.GetBool("runner_scan_common_dirs")) {
     for (const char* dir : kKnownProtonDirs) search_dirs.push_back(paths::Expand(dir));
+    // Steam's own Proton in every library, on any drive, and steam.root's tools.
+    if (const auto root = steam::FindSteamRoot(config)) {
+      search_dirs.push_back(*root / "compatibilitytools.d");
+      for (const fs::path& library : steam::LibraryFolders(*root)) search_dirs.push_back(library / "steamapps" / "common");
+    }
   }
 
   for (const fs::path& search_dir : search_dirs) {
