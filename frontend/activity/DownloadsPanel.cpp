@@ -287,6 +287,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   });
   layout->addWidget(log, 0, Qt::AlignVCenter);
 
+  // Stacked, so Pause or Resume sits over Cancel at the same width.
+  auto* actions = new QVBoxLayout();
+  actions->setSpacing(6);
+  actions->addStretch(1);
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
   if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
@@ -300,7 +304,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
                   if (!result.ok) notify::FailedRequest(this, "Could not pause it.", result.error);
                 });
               });
-      layout->addWidget(pause, 0, Qt::AlignVCenter);
+      actions->addWidget(pause);
     }
     auto* cancel = new QPushButton("Cancel", row);
     cancel->setObjectName("download_cancel");
@@ -310,7 +314,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
         if (!error.message.empty()) notify::FailedRequest(this, "Could not cancel it.", error);
       });
     });
-    layout->addWidget(cancel, 0, Qt::AlignVCenter);
+    actions->addWidget(cancel);
   } else if (entry.state == State::Paused) {
     const std::string source = entry.source.toStdString();
     const std::string ref = entry.ref.toStdString();
@@ -322,7 +326,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
         if (!result.ok) notify::FailedRequest(this, "Could not resume it.", result.error);
       });
     });
-    layout->addWidget(resume, 0, Qt::AlignVCenter);
+    actions->addWidget(resume);
     auto* discard = new QPushButton("Cancel", row);
     discard->setObjectName("download_cancel");
     connect(discard, &QPushButton::clicked, this, [this, discard, source, ref] {
@@ -331,14 +335,14 @@ QWidget* DownloadsPanel::BuildRow(int index) {
         if (!result.ok) notify::FailedRequest(this, "Could not cancel it.", result.error);
       });
     });
-    layout->addWidget(discard, 0, Qt::AlignVCenter);
+    actions->addWidget(discard);
   } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
     auto* show = new QPushButton("Show", row);
     connect(show, &QPushButton::clicked, this, [this, game_id] {
       hide();
       emit ShowGameRequested(game_id);
     });
-    layout->addWidget(show, 0, Qt::AlignVCenter);
+    actions->addWidget(show);
   } else if (entry.state == State::Failed) {
     if (const auto action = error_help::ActionFor(entry.error)) {
       auto* fix = new QPushButton(action->label, row);
@@ -346,9 +350,11 @@ QWidget* DownloadsPanel::BuildRow(int index) {
         hide();
         run();
       });
-      layout->addWidget(fix, 0, Qt::AlignVCenter);
+      actions->addWidget(fix);
     }
   }
+  actions->addStretch(1);
+  layout->addLayout(actions);
   return row;
 }
 
