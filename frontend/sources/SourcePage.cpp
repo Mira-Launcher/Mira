@@ -136,12 +136,12 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
-// Every page has both tabs; ones that can't list what the account owns say so.
-bool SourcePage::HasOwned() const { return true; }
+// Every page but Local has both sections; ones that can't list what the account owns say so.
+bool SourcePage::HasOwned() const { return id_ != "local"; }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return game.source == id_; }
+bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game.source) == id_; }
 
 // No title: the sidebar already says which source this is. One row holds the
 // tabs, the status and every action.
@@ -216,6 +216,8 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_->setAutoRaise(true);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
+  // Local has no settings of its own, and nothing to remove.
+  settings_button_->setVisible(id_ != "local");
 
   more_button_ = new QToolButton(tabs_);
   more_button_->setText("⋯");
@@ -226,6 +228,7 @@ QWidget* SourcePage::BuildTopRow() {
   connect(more_menu, &QMenu::aboutToShow, this, [this, more_menu] { FillMoreMenu(more_menu); });
   more_button_->setMenu(more_menu);
   tabs_->SetTrailing(more_button_);
+  more_button_->setVisible(id_ != "local");
 
   filter_ = new QLineEdit(tabs_);
   filter_->setPlaceholderText("Filter…");
@@ -655,6 +658,8 @@ void SourcePage::UpdateStatusLine() {
     library_empty_->setText("Games from " + source_.name + " show up here once you're signed in.");
   } else if (IsLauncher() && !launcher_installed_) {
     library_empty_->setText("Games you install through " + source_.name + " show up here.");
+  } else if (id_ == "local") {
+    library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
     library_empty_->setText("Nothing from " + source_.name + " in your library yet. \"" +
                             CopyFor(id_).import_button + "\" brings in what's already installed.");
@@ -687,7 +692,9 @@ void SourcePage::Import() {
     }
     if (ok && (added > 0 || updated > 0)) emit LibraryChanged();
   };
-  if (id_ == "steam") {
+  if (id_ == "local") {
+    api::ScanLibraryAsync(this, [done](ScanResult r) { done(r.ok, r.error, r.added, 0); });
+  } else if (id_ == "steam") {
     api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (id_ == "lutris") {
     api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });

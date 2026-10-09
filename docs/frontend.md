@@ -36,7 +36,8 @@ Each source row opens `sources/SourcePage` in the grid's place:
 
 - **Stores** (Epic Games, GOG, itch.io, Amazon Games, Humble Bundle): install the helper tool, sign in by pasting what the login page shows, import installed games. Owned games that aren't installed show as a second grid with an Install button (Download for Humble). A downloaded Humble bundle's button becomes *Add to library…*, which opens the add-game dialog on its download folder; a bundle with nothing to download (such as a Steam key) says so.
 - **Launchers** (Battle.net, Ubisoft Connect, EA app): install the launcher into its own prefix, open it, import its games.
-- **Local** (Steam, Lutris): import what the other program installed. Steam also lists owned games once a Web API key is set.
+- **On this computer** (Steam, Lutris): import what the other program installed. Steam also lists owned games once a Web API key is set.
+- **Local**: every game from no source at all (scanned from library folders, added by hand, desktop entries), with *Scan library folders* as its import. It can't be turned off or removed, has no settings and no Not installed section. `SourceIdOf` maps a game's `source` to the listed source it belongs to.
 
 A page opens on a tab row that also holds the source's status and its Sign out / Open, Import, settings and ⋯ buttons, a "Set up <source>" card while a step is left (one row per numbered step, the current one bold and holding its explanation and accent button), and the source's games as tiles (`library/TileGrid`), split into Installed and Not installed tabs unless `source_page_tabs` is off. The zoom slider sizes each page on its own unless `tile_size_synced` is on. Covers for games that aren't installed come from `/v1/library/artwork`. Login URLs and paste parsing come from `mirad`, so the page only holds wording. A source turned off with `<id>.enabled` isn't listed.
 

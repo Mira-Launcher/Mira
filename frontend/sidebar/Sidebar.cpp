@@ -526,8 +526,9 @@ void Sidebar::UpdateSources() {
   // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
-    ++counts[game.source];
-    if (!IsHidden(game)) shown[game.source].push_back(&game);
+    const std::string source = SourceIdOf(game.source);
+    ++counts[source];
+    if (!IsHidden(game)) shown[source].push_back(&game);
   }
   constexpr size_t kCovers = 3;
   source_cover_ids_.clear();
@@ -600,14 +601,14 @@ void Sidebar::UpdateSources() {
 
 std::vector<ManageSourcesCard::Entry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[game.source];
+  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
   std::vector<ManageSourcesCard::Entry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
     entries.push_back({.source = *source,
-                       .ready = games > 0 || source_ready_.value(id, false),
+                       .ready = games > 0 || id == "local" || source_ready_.value(id, false),
                        .enabled = !disabled_sources_.contains(id),
                        .games = games,
                        .in_sidebar = !hidden_sources_.contains(id),
@@ -652,17 +653,7 @@ void Sidebar::ForgetSource(const QString& id) {
   RefreshSources();
 }
 
-std::vector<QString> Sidebar::SourceOrder() const {
-  std::vector<QString> order;
-  for (const QString& id : source_order_) {
-    if (FindSourceInfo(id) != nullptr && std::ranges::find(order, id) == order.end())
-      order.push_back(id);
-  }
-  for (const SourceInfo& source : AllSources()) {
-    if (std::ranges::find(order, source.id) == order.end()) order.push_back(source.id);
-  }
-  return order;
-}
+std::vector<QString> Sidebar::SourceOrder() const { return OrderSources(source_order_); }
 
 int Sidebar::SourceDropRow(int y) const {
   // The layout row of the first visible source whose middle is below `y`.

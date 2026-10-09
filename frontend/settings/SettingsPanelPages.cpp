@@ -413,11 +413,7 @@ QSet<QString> SettingsPanel::CurrentHiddenSources() const {
 }
 
 void SettingsPanel::ArrangeSources(const QStringList& order) {
-  // Sources missing from the saved order follow it, in their usual order.
-  QStringList full = order;
-  for (const SourceRow& row : source_rows_) {
-    if (!full.contains(row.id)) full << row.id;
-  }
+  const std::vector<QString> full = OrderSources({order.begin(), order.end()});
   const int first = static_cast<int>(sources_card_->Rows().size() - source_rows_.size());
   int at = first;
   for (const QString& id : full) {

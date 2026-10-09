@@ -188,6 +188,7 @@ QWidget* FirstRunWizard::BuildSources() {
                        "Sources show up in the sidebar. Signing in to a store happens on its own page afterwards.",
                        body);
   for (const SourceInfo& source : AllSources()) {
+    if (source.id == "local") continue;  // always on: it needs nothing set up
     auto* box = new QCheckBox(source.name, page);
     sources_[source.id] = box;
     body->addWidget(box);
