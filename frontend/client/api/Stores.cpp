@@ -230,6 +230,7 @@ LaunchersResult GetLaunchersSync() {
                .installed = entry.value("installed", false),
                .install_state = entry.value("install_state", std::string()),
                .interactive_install = entry.value("interactive_install", false),
+               .packages = entry.value("packages", std::string()),
                .prefix = entry.value("prefix", std::string()),
                .runner_ref = entry.value("runner_ref", std::string()),
                .error = entry.value("error", std::string())});

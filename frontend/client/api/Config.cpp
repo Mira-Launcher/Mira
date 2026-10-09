@@ -284,6 +284,20 @@ GameModeStatusResult GetGameModeStatusSync() {
       });
 }
 
+SystemPackagesResult GetSystemPackagesSync(const std::string& feature) {
+  return ReadReply<SystemPackagesResult>(
+      transport::Get("/v1/system/packages?for=" + feature), "GET /v1/system/packages", Shape::Object,
+      [](SystemPackagesResult& result, const json& body) {
+        result.distro = body.value("distro", std::string());
+        result.family = body.value("family", std::string());
+        for (const json& item : body.value("missing", json::array())) {
+          if (item.is_object()) result.missing.push_back(item.value("package", std::string()));
+        }
+        result.install = body.value("install", std::vector<std::string>());
+        result.restart = body.value("restart", false);
+      });
+}
+
 }  // namespace
 
 std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
@@ -341,6 +355,11 @@ PatchConfigResult SaveFrontendPrefsBlocking(const FrontendPrefs& prefs) {
 
 FrontendPrefsResult GetFrontendPrefsBlocking() {
   return GetFrontendPrefsSync();
+}
+
+void GetSystemPackagesAsync(QObject* context, const std::string& feature,
+                            std::function<void(SystemPackagesResult)> callback) {
+  async::Run(context, [feature] { return GetSystemPackagesSync(feature); }, std::move(callback));
 }
 
 void GetGameModeStatusAsync(QObject* context, std::function<void(GameModeStatusResult)> callback) {

@@ -11,9 +11,11 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "../client/api/Config.h"
 #include "../client/api/Logs.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/LogWindow.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -88,6 +90,19 @@ SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
   sign_in_layout->addWidget(sign_in_);
   body->addWidget(sign_in_row_);
 
+  packages_row_ = new QWidget(body_);
+  packages_row_->setVisible(false);
+  auto* packages_layout = new QHBoxLayout(packages_row_);
+  packages_layout->setContentsMargins(0, 0, 0, 0);
+  packages_text_ = MakeLabel(packages_row_, QString(), "muted");
+  packages_layout->addWidget(packages_text_, /*stretch=*/1);
+  auto* install_packages = new QPushButton("Install packages", packages_row_);
+  connect(install_packages, &QPushButton::clicked, this, [this] {
+    system::EnsurePackages(this, packages_, source_.name, [this](bool) { CheckPackages(); });
+  });
+  packages_layout->addWidget(install_packages);
+  body->addWidget(packages_row_);
+
   error_ = MakeLabel(body_, QString(), "error");
   error_->setVisible(false);
   body->addWidget(error_);
@@ -157,6 +172,8 @@ void SourceSetupCard::ShowLauncher(const LauncherInfo& launcher, bool installing
   button_->setVisible(true);
   button_->setEnabled(!installing);
   button_->setText(installing ? "Installing…" : "Install " + source_.name);
+  packages_ = launcher.packages;
+  CheckPackages();
   WatchLog(installing);
   if (!installing && launcher.install_state == "failed") log_box_->setVisible(true);
   if (launcher.install_state == "failed" && !launcher.error.empty()) {
@@ -177,6 +194,29 @@ void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed
   button_->setEnabled(true);
   button_->setText(IsLauncher() ? "Install " + source_.name : "Retry download");
   mira_gui::ShowError(error_, "It failed.", error);
+}
+
+void SourceSetupCard::InstallLauncher() {
+  button_->setText("Installing…");
+  emit LauncherInstallStarted();
+  api::InstallLauncherAsync(this, id_, [this](StoreActionResult result) {
+    if (result.ok) return;  // the event finishes the job
+    emit LauncherInstallFailed();
+    button_->setEnabled(true);
+    mira_gui::ShowError(error_, "Could not start it.", result.error);
+  });
+}
+
+void SourceSetupCard::CheckPackages() {
+  if (packages_.empty()) return packages_row_->setVisible(false);
+  api::GetSystemPackagesAsync(this, packages_, [this](SystemPackagesResult result) {
+    packages_row_->setVisible(result.ok && !result.missing.empty());
+    if (!packages_row_->isVisible()) return;
+    QStringList names;
+    for (const std::string& name : result.missing) names << QString::fromStdString(name);
+    packages_text_->setText("Needs " + names.join(", ") + " from your system. Installing " + source_.name +
+                            " installs it first.");
+  });
 }
 
 void SourceSetupCard::WatchLog(bool on) {
@@ -220,13 +260,14 @@ void SourceSetupCard::StartSetup() {
   error_->setVisible(false);
   WatchLog(true);
   if (IsLauncher()) {
-    button_->setText("Installing…");
-    emit LauncherInstallStarted();
-    api::InstallLauncherAsync(this, id_, [this](StoreActionResult result) {
-      if (result.ok) return;  // the event finishes the job
-      emit LauncherInstallFailed();
+    if (packages_.empty()) return InstallLauncher();
+    button_->setText("Checking packages…");
+    system::EnsurePackages(this, packages_, source_.name, [this](bool ready) {
+      CheckPackages();
+      if (ready) return InstallLauncher();
+      WatchLog(false);
       button_->setEnabled(true);
-      mira_gui::ShowError(error_, "Could not start it.", result.error);
+      button_->setText("Install " + source_.name);
     });
     return;
   }

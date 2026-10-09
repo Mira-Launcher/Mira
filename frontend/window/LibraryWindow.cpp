@@ -71,6 +71,7 @@
 #include "../sources/SourcePage.h"
 #include "../sources/SourceSettingsCard.h"
 #include "../sources/Sources.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -886,6 +887,9 @@ void LibraryWindow::InstallErrorNavigator() {
                                                                                 result.error);
                                               }
                                             });
+  };
+  nav.install_packages = [self](const std::string& feature) {
+    if (self) mira_gui::system::EnsurePackages(self, feature, "Mira", [](bool) {});
   };
   nav.start_daemon = [self] {
     if (!self) return;

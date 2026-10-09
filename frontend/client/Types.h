@@ -1007,6 +1007,17 @@ struct LogResult {
 
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.
 // Purely informational; `launch.gamemode` (a plain config key) is the toggle.
+// GET /v1/system/packages: what a feature needs that isn't installed, and the command that installs it.
+struct SystemPackagesResult {
+  bool ok = false;
+  ApiError error;
+  std::string distro;
+  std::string family;  // "arch", "debian", "fedora", "suse", "ostree", "steamos", "unknown"
+  std::vector<std::string> missing;  // package names
+  std::vector<std::string> install;  // argv to run as root; empty when Mira can't
+  bool restart = false;              // layered with rpm-ostree: only after a restart
+};
+
 struct GameModeStatusResult {
   bool ok = false;
   ApiError error;
@@ -1195,6 +1206,7 @@ struct LauncherInfo {
   bool installed = false;
   std::string install_state;  // "idle" | "running" | "finished" | "failed"
   bool interactive_install = false;
+  std::string packages;  // the feature whose system packages installing it needs; see GetSystemPackagesAsync
   std::string prefix;
   std::string runner_ref;
   ApiError error;

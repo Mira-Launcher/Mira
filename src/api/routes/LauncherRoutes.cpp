@@ -27,6 +27,7 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
                       {"installed", launchers::Installed(s.games, launcher)},
                       {"install_state", launchers::InstallState(launcher)},
                       {"interactive_install", launcher.interactive},
+                      {"packages", launcher.tricks.empty() ? "" : "winetricks"},
                       {"prefix", game ? game->data_dir : ""},
                       {"runner_ref", game ? game->runner_ref : ""},
                       {"error", game ? game->last_error : ""}});
