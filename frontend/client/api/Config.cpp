@@ -130,6 +130,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("library_filter", result.prefs.library_filter);
   read_string("sort_by", result.prefs.sort_by);
   read_bool("sort_descending", result.prefs.sort_descending);
+  read_string("not_installed_sort", result.prefs.not_installed_sort);
   read_bool("scan_on_startup", result.prefs.scan_on_startup);
   read_string("theme", result.prefs.theme);
   read_bool("drag_select", result.prefs.drag_select);
@@ -213,6 +214,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.library_filter) table["library_filter"] = *prefs.library_filter;
   if (prefs.sort_by) table["sort_by"] = *prefs.sort_by;
   if (prefs.sort_descending) table["sort_descending"] = *prefs.sort_descending;
+  if (prefs.not_installed_sort) table["not_installed_sort"] = *prefs.not_installed_sort;
   if (prefs.scan_on_startup) table["scan_on_startup"] = *prefs.scan_on_startup;
   if (prefs.theme) table["theme"] = *prefs.theme;
   if (prefs.drag_select) table["drag_select"] = *prefs.drag_select;
@@ -291,7 +293,8 @@ std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
   FillFrontendPrefs(result, body);
   json table = body["frontend"];
   for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width", "sidebar_width",
-                          "library_filter", "sort_by", "sort_descending", "source_tile_widths"}) {
+                          "library_filter", "sort_by", "sort_descending", "not_installed_sort",
+                          "source_tile_widths"}) {
     table.erase(key);
   }
   return ChangedPrefs{std::move(result.prefs), table.dump()};

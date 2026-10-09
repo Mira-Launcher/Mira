@@ -27,6 +27,7 @@
 #include "../dialogs/DesktopEntryImportDialog.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
+#include "../library/OwnedTitles.h"
 #include "../library/GamePresentation.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
@@ -521,7 +522,19 @@ void Sidebar::RefreshSources() {
   });
 }
 
+void Sidebar::SetOwnedTitles(OwnedTitles* titles) {
+  owned_titles_ = titles;
+  connect(owned_titles_, &OwnedTitles::Changed, this, &Sidebar::UpdateSources);
+  UpdateSources();
+}
+
 void Sidebar::UpdateSources() {
+  std::map<std::string, int> owned;
+  if (owned_titles_ != nullptr) {
+    for (const StoreTitle& title : owned_titles_->Titles()) {
+      if (title.owned) ++owned[title.source];
+    }
+  }
   std::map<std::string, int> counts;
   // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
@@ -538,6 +551,10 @@ void Sidebar::UpdateSources() {
     const QString& id = sources[i].id;
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
+    // Out of what the store owns, once listed; games it doesn't list still count as owned.
+    const auto owns = owned.find(id.toStdString());
+    const int of = owns == owned.end() ? 0 : std::max(owns->second, games);
+    const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
     // Listed once enabled, set up or not: the page is where setup happens.
     source_navs_[i]->setVisible(!hidden_sources_.contains(id) && !disabled_sources_.contains(id));
     // A store with games whose account is signed out wants a look.
@@ -560,8 +577,8 @@ void Sidebar::UpdateSources() {
       source_decks_[i]->setFixedSize(sidebar::kDeckSize);
       source_decks_[i]->setPixmap(
           sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF()));
-      QString detail = games == 0 ? QString("No games")
-                       : show_source_counts_ ? (games == 1 ? QString("1 game") : QString("%1 games").arg(games))
+      QString detail = games == 0 && of == 0 ? QString("No games")
+                       : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
                                              : QString();
       if (signed_out) {
         detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
@@ -576,7 +593,7 @@ void Sidebar::UpdateSources() {
       row->setSpacing(10);
       source_decks_[i]->setFixedSize(18, 18);  // ShowActive draws the dot
       source_details_[i]->hide();
-      QString label = show_source_counts_ ? QString::number(games) : QString();
+      QString label = show_source_counts_ ? counted : QString();
       if (signed_out) label = StatusDot(theme::Current().warning) + label;
       source_counts_[i]->setText(label);
       source_counts_[i]->show();

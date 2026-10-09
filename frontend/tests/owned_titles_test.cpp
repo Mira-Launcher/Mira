@@ -7,7 +7,13 @@ using namespace mira_gui;
 namespace {
 
 StoreTitle Title(const char* source, const char* ref, const char* title, bool installed = false) {
-  return {.ref = ref, .title = title, .installed = installed, .owned = true, .source = source, .protondb_tier = {}};
+  StoreTitle store_title;
+  store_title.ref = ref;
+  store_title.title = title;
+  store_title.installed = installed;
+  store_title.owned = true;
+  store_title.source = source;
+  return store_title;
 }
 
 }  // namespace
@@ -32,6 +38,27 @@ TEST_CASE("A search finds not-installed store titles, one entry per game across 
 
   CHECK(MatchOwned(titles, "  ").empty());
   CHECK(MatchOwned(titles, "DARK").front().title == "Styx: Shards of Darkness");
+}
+
+TEST_CASE("Every not-installed game lists in the stores' order, rated from whichever copy is") {
+  StoreTitle rated = Title("gog", "1242541569", "The Outer Worlds");
+  rated.protondb_tier = "gold";
+  rated.review_summary = "Very Positive";
+  rated.review_percent = 85;
+  const std::vector<StoreTitle> titles = {
+      Title("epic", "styx", "Styx: Shards of Darkness"),
+      Title("epic", "Rosemallow", "The Outer Worlds"),
+      rated,
+      Title("gog", "1207658924", "Celeste"),
+  };
+  const std::vector<OwnedMatch> all = GroupOwned(titles, "");
+  REQUIRE(all.size() == 3);
+  CHECK(all[0].title == "Styx: Shards of Darkness");
+  CHECK(all[1].title == "The Outer Worlds");
+  CHECK(all[1].protondb_tier == "gold");
+  CHECK(all[1].review_summary == "Very Positive");
+  CHECK(all[1].review_percent == 85);
+  CHECK(all[2].title == "Celeste");
 }
 
 TEST_CASE("A game installed from one store isn't offered from another") {

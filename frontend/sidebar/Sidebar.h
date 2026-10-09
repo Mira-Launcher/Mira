@@ -28,6 +28,7 @@ namespace mira_gui {
 
 class ArtworkStore;
 class GameLibraryModel;
+class OwnedTitles;
 struct SourceInfo;
 
 // The window's left side: Library, Runners and Settings, then (scrolling)
@@ -58,6 +59,8 @@ class Sidebar : public QWidget {
   void RefreshSources();
   std::vector<ManageSourcesCard::Entry> SourceEntries() const;
   void SetSourceHidden(const QString& id, bool hidden);
+  // What each store owns, so its row counts installed games out of them ("2/229 games").
+  void SetOwnedTitles(OwnedTitles* titles);
   // Shows and stores a new order.
   void SetSourceOrder(std::vector<QString> order);
   // Turns a source on or off in mirad's config.
@@ -129,6 +132,7 @@ class Sidebar : public QWidget {
 
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
+  OwnedTitles* owned_titles_ = nullptr;
 
   QPushButton* library_nav_ = nullptr;
   QPushButton* runners_nav_ = nullptr;

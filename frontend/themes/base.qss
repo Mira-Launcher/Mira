@@ -862,10 +862,6 @@ QWidget#picker_tabs QPushButton:checked {
   border-bottom-color: @accent;
 }
 
-QWidget#tab_row QPushButton[alert="true"] {
-  color: @warning;
-}
-
 /* --- Continue playing (ui/ContinueRow) ----------------------------------- */
 
 QFrame#continue_card {
@@ -918,6 +914,13 @@ QPushButton#chip {
 
 QPushButton#chip:hover {
   border-color: @text_muted;
+}
+
+/* Room for DropdownButton's chevron. */
+QPushButton[dropdown="true"],
+QPushButton#chip[dropdown="true"],
+QWidget#tab_row QPushButton[dropdown="true"] {
+  padding-right: 28px;
 }
 
 QPushButton#chip:checked {

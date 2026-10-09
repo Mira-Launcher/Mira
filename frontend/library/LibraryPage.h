@@ -32,6 +32,7 @@ class GameTileDelegate;
 class LibraryGrid;
 class TabRow;
 class TileGrid;
+class TitleFilterBar;
 
 // The library's own page: a tab row holding the filter tabs, the filter and
 // sort pill and the search box, then the Continue playing cards, then the
@@ -62,6 +63,9 @@ class LibraryPage : public QWidget {
   void ClearFilters();
   const std::string& SortKey() const;
   bool SortDescending() const;
+  // The Not installed tab's sort, as TitleFilterBar keys it.
+  std::string TitleSortKey() const;
+  void SetTitleSortKey(const std::string& key);
 
   void FocusSearch();
   // Esc: clears the search, then the selection.
@@ -133,6 +137,8 @@ class LibraryPage : public QWidget {
   // While store matches show under it, the grid is as tall as its tiles and the page scrolls.
   void FitGrid();
   void InstallMatch(const QModelIndex& index, const QPoint& global_pos);
+  // The Not installed tab: every store's titles that aren't installed, in place of the library's games.
+  void SetNotInstalled(bool on);
 
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
@@ -160,6 +166,8 @@ class LibraryPage : public QWidget {
   int continue_count_ = 3;
   bool continue_apps_ = false;
   bool apps_in_all_ = true;
+  bool not_installed_ = false;
+  TitleFilterBar* title_filters_ = nullptr;
 };
 
 }  // namespace mira_gui

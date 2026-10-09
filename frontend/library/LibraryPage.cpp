@@ -25,6 +25,7 @@
 #include "GameLibraryModel.h"
 #include "GameTileDelegate.h"
 #include "TileGrid.h"
+#include "TitleFilterBar.h"
 #include "../client/api/Stores.h"
 #include "../sources/Sources.h"
 
@@ -63,15 +64,14 @@ class LibraryGrid : public TileView {
 
 namespace {
 
-// The filters the tab row offers, with its own shorter labels.
+constexpr const char* kNotInstalled = "not_installed";
+
+// The filters the tab row offers, with its own shorter labels; the rest are only in the filter menu.
 const std::pair<const char*, const char*> kFilterTabs[] = {
     {"all", "All"},
     {"games", "Games"},
     {"apps", "Apps"},
     {"ready", "Installed"},
-    {"running", "Playing now"},
-    {"attention", "Needs attention"},
-    {"never", "Never played"},
 };
 
 }  // namespace
@@ -160,13 +160,22 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
 
   tabs_ = new TabRow(top);
   for (const auto& [key, label] : kFilterTabs) tabs_->AddTab(key, label);
-  tabs_->SetAlert("attention", true);
+  // Not a filter of the library's games: every store's titles that aren't installed.
+  tabs_->AddTab(kNotInstalled, "Not installed");
   tabs_->SetCurrent("all");
-  connect(tabs_, &TabRow::CurrentChanged, this, &LibraryPage::SetFilterKey);
+  connect(tabs_, &TabRow::CurrentChanged, this, [this](const QString& key) {
+    if (key == kNotInstalled) {
+      SetNotInstalled(true);
+      return;
+    }
+    SetNotInstalled(false);
+    SetFilterKey(key);
+  });
 
   pill_ = new FilterSortPill(sort_key, sort_descending, top);
   connect(pill_, &FilterSortPill::FilterChanged, this, [this] {
     tabs_->SetCurrent(FilterKey());
+    SetNotInstalled(false);
     ApplyFilter();
     emit FilterChanged();
   });
@@ -184,6 +193,15 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
   connect(search_, &QLineEdit::textChanged, this, &LibraryPage::ApplyFilter);
   tabs_->SetSearch(search_);
   layout->addWidget(tabs_);
+
+  title_filters_ = new TitleFilterBar(top);
+  title_filters_->setVisible(false);
+  connect(title_filters_, &TitleFilterBar::Changed, this, [this] {
+    scroll_->verticalScrollBar()->setValue(0);
+    UpdateOwnedMatches();
+  });
+  connect(title_filters_, &TitleFilterBar::SortChanged, this, &LibraryPage::SortChanged);
+  layout->addWidget(title_filters_);
 
   continue_row_ = new ContinueRow(artwork_, top);
   continue_row_->setVisible(false);
@@ -233,6 +251,14 @@ void LibraryPage::ToggleHidden() {
 
 const std::string& LibraryPage::SortKey() const {
   return pill_->SortKey();
+}
+
+std::string LibraryPage::TitleSortKey() const {
+  return title_filters_->SortKey();
+}
+
+void LibraryPage::SetTitleSortKey(const std::string& key) {
+  title_filters_->SetSortKey(key);
 }
 
 bool LibraryPage::SortDescending() const {
@@ -408,9 +434,37 @@ void LibraryPage::SetOwnedTitles(OwnedTitles* titles) {
   connect(search_, &QLineEdit::textEdited, titles, &OwnedTitles::RefreshIfStale);
 }
 
+void LibraryPage::SetNotInstalled(bool on) {
+  if (on == not_installed_) return;
+  not_installed_ = on;
+  title_filters_->setVisible(on);
+  pill_->setVisible(!on);
+  // Answered from what mirad stored, and it re-checks each store behind that.
+  if (on && owned_titles_ != nullptr) owned_titles_->Refresh();
+  ApplyFilter();
+}
+
 void LibraryPage::UpdateOwnedMatches() {
   const QString query = search_->text().trimmed();
-  owned_matches_ = owned_titles_ != nullptr ? MatchOwned(owned_titles_->Titles(), query) : std::vector<OwnedMatch>{};
+  const std::vector<StoreTitle> none;
+  const std::vector<StoreTitle>& titles = owned_titles_ != nullptr ? owned_titles_->Titles() : none;
+  if (not_installed_) {
+    owned_matches_ = GroupOwned(titles, query);
+    std::vector<QString> stores;
+    for (const OwnedMatch& match : GroupOwned(titles, QString())) {
+      for (const auto& [store, ref] : match.copies) {
+        if (std::ranges::find(stores, store) == stores.end()) stores.push_back(store);
+      }
+    }
+    {
+      const QSignalBlocker block(title_filters_);
+      title_filters_->SetStores(stores);
+    }
+    std::erase_if(owned_matches_, [this](const OwnedMatch& match) { return !title_filters_->Matches(match); });
+    title_filters_->SortMatches(owned_matches_);
+  } else {
+    owned_matches_ = MatchOwned(titles, query);
+  }
   owned_model_->clear();
   std::map<std::string, std::vector<StoreTitle>> art_to_fetch;
   for (const OwnedMatch& match : owned_matches_) {
@@ -426,7 +480,9 @@ void LibraryPage::UpdateOwnedMatches() {
       const SourceInfo* info = FindSourceInfo(store);
       stores << (info != nullptr ? info->name : store);
     }
-    item->setData(stores.join(", "), GameTileDelegate::StatusTextRole);
+    item->setData(QString::fromStdString(match.protondb_tier), GameTileDelegate::ProtonDbRole);
+    if (match.review_percent >= 0) item->setData(match.review_percent, GameTileDelegate::ReviewRole);
+    // The tile names its first store; every store that sells it is in the tooltip and Install's menu.
     item->setToolTip(match.title + "\n" + stores.join(", "));
     owned_model_->appendRow(item);
     if (covers_asked_.insert(source + "-" + ref).second) {
@@ -438,7 +494,10 @@ void LibraryPage::UpdateOwnedMatches() {
   for (auto& [source, titles] : art_to_fetch) api::QueueTitleArtworkAsync(this, source, std::move(titles), {});
   RefreshOwnedStates();
   owned_heading_->setText(QString("Not installed  %1").arg(owned_matches_.size()));
+  // The tab names it already.
+  owned_heading_->setVisible(!not_installed_);
   owned_section_->setVisible(!owned_matches_.empty());
+  tabs_->SetCount(kNotInstalled, static_cast<int>(GroupOwned(titles, QString()).size()));
   UpdateEmptyState();
   FitGrid();
 }
@@ -474,7 +533,7 @@ void LibraryPage::InstallMatch(const QModelIndex& index, const QPoint& global_po
 }
 
 void LibraryPage::FitGrid() {
-  const bool page_scrolls = owned_section_->isVisible();
+  const bool page_scrolls = owned_section_->isVisible() || not_installed_;
   grid_->page_scrolls = page_scrolls;
   // The grid fills the page, or the results sit at the top with the space left below them.
   content_layout_->setStretchFactor(grid_, page_scrolls ? 0 : 1);
@@ -489,7 +548,8 @@ void LibraryPage::FitGrid() {
   }
   scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   grid_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  grid_->setVisible(games_->rowCount() > 0);
+  grid_->setVisible(!not_installed_ && games_->rowCount() > 0);
+  if (not_installed_) return;
   const QSize cell = grid_->gridSize();
   const int margin = theme::Current().grid_margin;
   const int per_row = std::max(1, (grid_->width() - 2 * margin) / std::max(1, cell.width()));
@@ -554,6 +614,15 @@ void LibraryPage::UpdateCounts() {
 }
 
 void LibraryPage::UpdateEmptyState() {
+  if (not_installed_) {
+    const bool listed = owned_titles_ != nullptr && owned_titles_->Listed();
+    empty_hint_->setVisible(owned_matches_.empty());
+    empty_hint_->setText(!listed                                 ? QString("Asking your stores…")
+                         : !title_filters_->Filter().Empty() ||
+                                   !search_->text().trimmed().isEmpty() ? QString("No games match.")
+                                                                         : QString("Everything you own is installed."));
+    return;
+  }
   const int shown = games_->rowCount();
   empty_hint_->setVisible(shown == 0);
   if (shown == 0) {
@@ -568,7 +637,7 @@ void LibraryPage::RefreshContinue() {
   // Only over All, Games or Apps: under another filter or a search it's noise.
   std::vector<const GameSummary*> games;
   const QString key = FilterKey();
-  if (continue_row_enabled_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
+  if (continue_row_enabled_ && !not_installed_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
       search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
       if (IsHidden(game) || game.source == "launcher" || !GameFilterProxy::MatchesKey(game, key, apps_in_all_)) continue;

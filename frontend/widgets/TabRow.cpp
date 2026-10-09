@@ -6,14 +6,28 @@
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QMenu>
-#include <QPushButton>
-#include <QStyle>
+#include <QPainter>
 #include <QTimer>
 #include <QToolButton>
 
 #include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
+
+DropdownButton::DropdownButton(QMenu* menu, QWidget* parent) : QPushButton(parent), menu_(menu) {
+  setProperty("dropdown", true);  // base.qss leaves room on the right for the chevron
+  connect(this, &QPushButton::clicked, this, [this] { menu_->popup(mapToGlobal(QPoint(0, height()))); });
+}
+
+void DropdownButton::paintEvent(QPaintEvent* event) {
+  QPushButton::paintEvent(event);
+  constexpr int kSize = 12;
+  QPainter painter(this);
+  painter.drawPixmap(width() - 10 - kSize, (height() - kSize) / 2,
+                     icons::For(icons::Glyph::ChevronDown, theme::Current().text_muted).pixmap(kSize, kSize));
+}
+
 namespace {
 
 constexpr int kSearchMax = 320;
@@ -37,9 +51,10 @@ TabRow::TabRow(QWidget* parent) : QWidget(parent) {
   layout_->addLayout(tabs_);
   layout_->addStretch(1);
 
-  more_ = new QPushButton("More", this);
+  more_menu_ = new QMenu(this);
+  more_ = new DropdownButton(more_menu_, this);
+  more_->setText("More");
   more_->setCursor(Qt::PointingHandCursor);
-  more_menu_ = new QMenu(more_);
   connect(more_menu_, &QMenu::aboutToShow, this, [this] {
     more_menu_->clear();
     for (const QString& key : order_) {
@@ -48,7 +63,6 @@ TabRow::TabRow(QWidget* parent) : QWidget(parent) {
       connect(more_menu_->addAction(tab.button->text()), &QAction::triggered, this, [this, key] { Select(key); });
     }
   });
-  more_->setMenu(more_menu_);
   more_->hide();
   tabs_->addWidget(more_);
 }
@@ -74,9 +88,6 @@ void TabRow::Select(const QString& key) {
 
 void TabRow::Relabel(Tab& tab) {
   tab.button->setText(tab.count < 0 ? tab.label : QString("%1  %2").arg(tab.label).arg(tab.count));
-  tab.button->setProperty("alert", tab.alert && tab.count > 0);
-  tab.button->style()->unpolish(tab.button);
-  tab.button->style()->polish(tab.button);
   updateGeometry();
   Fit();
 }
@@ -85,13 +96,6 @@ void TabRow::SetCount(const QString& key, int count) {
   const auto it = by_key_.find(key);
   if (it == by_key_.end() || it->count == count) return;
   it->count = count;
-  Relabel(*it);
-}
-
-void TabRow::SetAlert(const QString& key, bool alert) {
-  const auto it = by_key_.find(key);
-  if (it == by_key_.end()) return;
-  it->alert = alert;
   Relabel(*it);
 }
 
