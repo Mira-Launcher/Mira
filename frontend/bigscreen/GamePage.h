@@ -1,6 +1,14 @@
 #pragma once
 
+#include <QPixmap>
+
+#include <optional>
+#include <vector>
+
+#include "../client/Types.h"
 #include "Page.h"
+
+class QNetworkAccessManager;
 
 namespace mira_gui::bigscreen {
 
@@ -31,10 +39,17 @@ private:
   };
   std::vector<Button> Buttons() const;
   void Refresh();
+  void LoadDetails(const QString& key);
+  void FetchShots(const QString& key, const std::vector<std::string>& urls);
 
   Item item_;
   Page* from_ = nullptr;
   int focus_ = 0;
+  QNetworkAccessManager* network_ = nullptr;
+  QString description_;
+  QString proton_tier_;  // lowercase, e.g. "gold"
+  std::optional<GameSession> last_session_;
+  std::vector<QPixmap> shots_ = std::vector<QPixmap>(3);
 };
 
 }  // namespace mira_gui::bigscreen

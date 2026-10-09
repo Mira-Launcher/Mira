@@ -202,6 +202,22 @@ GameLogResult GetGameLogSync(const std::string& id, int lines) {
       });
 }
 
+GameSessionsResult GetGameSessionsSync(const std::string& id, int limit) {
+  return ReadReply<GameSessionsResult>(
+      transport::Get("/v1/games/" + PercentEncode(id) + "/sessions?limit=" + std::to_string(limit)),
+      "GET /v1/games/" + id + "/sessions", Shape::Object,
+      [](GameSessionsResult& result, const json& body) {
+        if (!body.contains("sessions") || !body["sessions"].is_array()) return;
+        for (const json& item : body["sessions"]) {
+          GameSession session;
+          session.started_at = item.value("started_at", std::int64_t{0});
+          session.ended_at = item.value("ended_at", std::int64_t{0});
+          session.duration_seconds = item.value("duration_seconds", std::int64_t{0});
+          result.sessions.push_back(session);
+        }
+      });
+}
+
 TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
   const transport::Reply reply =
       transport::PostJson("/v1/games/" + PercentEncode(id) + "/tricks", json{{"verb", verb}});
@@ -336,6 +352,11 @@ void PatchGamesAsync(QObject* context, const GamesPatch& patch,
 void GetGameLogAsync(QObject* context, const std::string& id, int lines,
                      std::function<void(GameLogResult)> callback) {
   async::Run(context, [id, lines] { return GetGameLogSync(id, lines); }, std::move(callback));
+}
+
+void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
+                          std::function<void(GameSessionsResult)> callback) {
+  async::Run(context, [id, limit] { return GetGameSessionsSync(id, limit); }, std::move(callback));
 }
 
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,

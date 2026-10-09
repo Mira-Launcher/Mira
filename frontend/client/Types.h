@@ -306,6 +306,18 @@ struct GameMetadataResult {
   GameMetadata metadata;
 };
 
+struct GameSession {
+  std::int64_t started_at = 0;
+  std::int64_t ended_at = 0;
+  std::int64_t duration_seconds = 0;
+};
+
+struct GameSessionsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<GameSession> sessions;
+};
+
 // POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
 // fetch was accepted. The outcome arrives as game.metadata_ready or
 // game.metadata_failed on the event stream (docs/api.md).
@@ -858,6 +870,9 @@ struct FrontendPrefs {
   std::optional<bool> big_screen_large_text;
   std::optional<bool> big_screen_at_start;
   std::optional<bool> start_on_login;
+  // Big screen navigation sounds and controller vibration, both on by default.
+  std::optional<bool> big_screen_sounds;
+  std::optional<bool> big_screen_rumble;
   // Set once the first-run wizard has been through (or skipped).
   std::optional<bool> onboarded;
   // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes

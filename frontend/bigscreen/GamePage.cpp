@@ -1,9 +1,17 @@
 #include "GamePage.h"
 
+#include <QHash>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QPainter>
+#include <QPainterPath>
+#include <QTextDocumentFragment>
+#include <QTextLayout>
 
 #include <algorithm>
 
+#include "../client/api/Artwork.h"
+#include "../client/api/Games.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -15,10 +23,56 @@ namespace mira_gui::bigscreen {
 namespace {
 
 constexpr double kMargin = 2.6, kTop = 6.4, kCoverW = 17, kCoverH = 25.5;
+constexpr double kShotW = 14, kShotGap = 0.8;
+constexpr qsizetype kMaxShotBytes = 8 * 1024 * 1024;
+
+std::optional<QColor> ProtonColor(const QString& tier) {
+  static const QHash<QString, QString> colors = {{"platinum", "#b4c7dc"}, {"gold", "#cfb53b"},
+                                                 {"silver", "#a6a6a6"},   {"bronze", "#cd7f32"},
+                                                 {"borked", "#ff4d4d"}};
+  const auto it = colors.constFind(tier);
+  if (it == colors.constEnd()) return std::nullopt;
+  return QColor(*it);
+}
+
+// Word-wraps `text` to at most `max_lines`, eliding the last one. Returns its height.
+double DrawParagraph(QPainter& painter, QPointF top_left, double width, const QString& text, int max_lines) {
+  const QFontMetricsF metrics(painter.font());
+  QTextLayout layout(text, painter.font());
+  layout.beginLayout();
+  QList<int> starts;
+  for (QTextLine line = layout.createLine(); line.isValid() && int(starts.size()) <= max_lines;
+       line = layout.createLine()) {
+    line.setLineWidth(width);
+    starts.append(line.textStart());
+  }
+  layout.endLayout();
+  const bool more = int(starts.size()) > max_lines;
+  const int count = more ? max_lines : int(starts.size());
+  for (int i = 0; i < count; ++i) {
+    const int end = i + 1 < int(starts.size()) ? starts[i + 1] : text.size();
+    QString line = text.mid(starts[i], end - starts[i]).trimmed();
+    if (more && i == count - 1) line = metrics.elidedText(text.mid(starts[i]), Qt::ElideRight, width);
+    painter.drawText(QPointF(top_left.x(), top_left.y() + i * metrics.height() + metrics.ascent()), line);
+  }
+  return count * metrics.height();
+}
+
+void DrawShot(QPainter& painter, const QRectF& rect, const QPixmap& shot, double unit) {
+  painter.save();
+  painter.setRenderHint(QPainter::SmoothPixmapTransform);
+  QPainterPath clip;
+  clip.addRoundedRect(rect, unit * 0.4, unit * 0.4);
+  painter.setClipPath(clip);
+  QRectF target(QPointF(0, 0), QSizeF(shot.size()).scaled(rect.size(), Qt::KeepAspectRatioByExpanding));
+  target.moveCenter(rect.center());
+  painter.drawPixmap(target, shot, QRectF(shot.rect()));
+  painter.restore();
+}
 
 }  // namespace
 
-GamePage::GamePage(BigScreenWindow* window) : Page(window) {
+GamePage::GamePage(BigScreenWindow* window) : Page(window), network_(new QNetworkAccessManager(this)) {
   const LibraryServices& services = window->services();
   connect(services.library, &GameLibraryModel::Changed, this, &GamePage::Refresh);
   connect(services.owned_titles, &OwnedTitles::Changed, this, &GamePage::Refresh);
@@ -30,6 +84,42 @@ void GamePage::Open(const Item& item, Page* from) {
   item_ = item;
   if (from != this) from_ = from;
   focus_ = 0;
+  description_.clear();
+  proton_tier_.clear();
+  last_session_.reset();
+  for (QPixmap& shot : shots_) shot = QPixmap();
+  if (item.game) LoadDetails(item.key);
+}
+
+void GamePage::LoadDetails(const QString& key) {
+  api::GetMetadataAsync(this, key.toStdString(), [this, key](GameMetadataResult result) {
+    if (key != item_.key || !result.ok) return;
+    const GameMetadata& meta = result.metadata;
+    description_ = QTextDocumentFragment::fromHtml(QString::fromStdString(meta.description)).toPlainText().simplified();
+    proton_tier_ = QString::fromStdString(meta.protondb_tier).toLower();
+    FetchShots(key, meta.screenshots);
+    update();
+  });
+  api::GetGameSessionsAsync(this, key.toStdString(), 1, [this, key](GameSessionsResult result) {
+    if (key != item_.key || !result.ok || result.sessions.empty()) return;
+    last_session_ = result.sessions.front();
+    update();
+  });
+}
+
+void GamePage::FetchShots(const QString& key, const std::vector<std::string>& urls) {
+  for (size_t i = 0; i < std::min(shots_.size(), urls.size()); ++i) {
+    QNetworkReply* reply = network_->get(QNetworkRequest(QUrl(QString::fromStdString(urls[i]))));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, key, i] {
+      reply->deleteLater();
+      const QByteArray data = reply->readAll();
+      if (reply->error() != QNetworkReply::NoError || key != item_.key || data.size() > kMaxShotBytes) return;
+      QPixmap pixmap;
+      if (!pixmap.loadFromData(data)) return;
+      shots_[i] = pixmap;
+      update();
+    });
+  }
 }
 
 void GamePage::Shown() {
@@ -122,7 +212,11 @@ void GamePage::paintEvent(QPaintEvent*) {
   const bool paused = download && download->state == DownloadTracker::State::Paused;
   double x = left;
   x += DrawPill(painter, {x, y}, u, StatusText(item_, progress, paused), StatusColor(item_, progress)) + u * 0.5;
-  DrawPill(painter, {x, y}, u, SourceName(item_.source));
+  x += DrawPill(painter, {x, y}, u, SourceName(item_.source)) + u * 0.5;
+  if (!proton_tier_.isEmpty()) {
+    const QString label = "ProtonDB " + proton_tier_.left(1).toUpper() + proton_tier_.mid(1);
+    DrawPill(painter, {x, y}, u, label, ProtonColor(proton_tier_));
+  }
   y += u * 3.2;
 
   // Buttons.
@@ -168,6 +262,7 @@ void GamePage::paintEvent(QPaintEvent*) {
     facts.append({"Runs with", game.platform == "native"      ? QString("Linux build")
                                : game.runner_ref.empty() ? QString("Default runner")
                                                          : QString::fromStdString(game.runner_ref)});
+    if (last_session_) facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
   } else {
     facts.append({"Store", SourceName(item_.source)});
   }
@@ -180,6 +275,22 @@ void GamePage::paintEvent(QPaintEvent*) {
     painter.setPen(tokens.text);
     painter.drawText(QPointF(x, y + u * 1.6), value);
     x += std::max(painter.fontMetrics().horizontalAdvance(value), int(u * 8)) + u * 2.4;
+  }
+
+  // Description, then up to three screenshots, as far as the page has room.
+  y += u * 4.0;
+  if (!description_.isEmpty()) {
+    painter.setFont(Font(u, 0.95));
+    painter.setPen(tokens.text_muted);
+    y += DrawParagraph(painter, {left, y}, w, description_, 5) + u * 1.2;
+  }
+  const QSizeF shot_size(kShotW * u, kShotW * u * 9 / 16);
+  double shot_x = left;
+  for (const QPixmap& shot : shots_) {
+    if (shot.isNull()) continue;
+    if (y + shot_size.height() > height()) break;
+    DrawShot(painter, QRectF(QPointF(shot_x, y), shot_size), shot, u);
+    shot_x += shot_size.width() + kShotGap * u;
   }
 }
 
