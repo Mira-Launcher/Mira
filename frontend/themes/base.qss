@@ -542,9 +542,9 @@ QScrollBar::add-page, QScrollBar::sub-page {
 
 /* --- Lists, tables, menus ------------------------------------------------ */
 
-/* The grid paints its own tiles (ui/GameTileDelegate), so it wants a backdrop
+/* The grid paints its own tiles (library/GameTileDelegate), so it wants a backdrop
  * and nothing else: a stylesheet selection here would draw underneath them. */
-QListWidget#library_grid {
+QListView#library_grid {
   background: @window;
   border: none;
 }
