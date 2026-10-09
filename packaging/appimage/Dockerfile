@@ -2,7 +2,7 @@
 # 22.04 and anything newer. See cmake/AppImageContainer.cmake.
 FROM ubuntu:22.04
 
-ARG QT_VERSION=6.5.3
+ARG QT_VERSION=6.8.3
 ENV DEBIAN_FRONTEND=noninteractive \
     APPIMAGE_EXTRACT_AND_RUN=1 \
     QT_ROOT=/opt/Qt/${QT_VERSION}/gcc_64
@@ -21,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get update && apt-get install -y --no-install-recommends gcc-13 g++-13 \
  && rm -rf /var/lib/apt/lists/*
 
-# Qt 6.5 or newer from Qt's own builds (22.04's Qt is 6.2).
+# Qt 6.8 from Qt's own builds (22.04's Qt is 6.2); its FFmpeg loads OpenSSL 3 for https video.
 RUN pip3 install --no-cache-dir aqtinstall \
- && aqt install-qt linux desktop ${QT_VERSION} gcc_64 -m qtmultimedia --outputdir /opt/Qt
+ && aqt install-qt linux desktop ${QT_VERSION} linux_gcc_64 -m qtmultimedia --outputdir /opt/Qt
 
 # Compiler cache: its directory is mounted from the host (cmake/AppImageContainer.cmake), so a rebuilt
 # container, a changed Dockerfile or a clean build directory still reuses every object file it has seen.
