@@ -97,6 +97,8 @@ private:
   void ShowPage(Page* page);
   void Back();
   void RaiseFromGame();
+  // Ends the launch overlay once the game runs, and comes back when it exits.
+  void FollowLaunch();
 
   LibraryServices services_;
   FrontendPrefs prefs_;
@@ -113,6 +115,10 @@ private:
   QTimer toast_timer_;
   QTimer clock_timer_;
   mutable QHash<QString, QPixmap> shown_covers_;
+  // The game being started (shown over everything until it runs), and the one running from here.
+  Item launching_;
+  QString playing_;
+  QTimer launch_timeout_;
 };
 
 }  // namespace mira_gui::bigscreen

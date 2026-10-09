@@ -49,6 +49,7 @@ protected:
     PaintHints(painter);
     PaintToast(painter);
     PaintDialog(painter);
+    PaintLaunch(painter);
   }
 
 private:
@@ -129,7 +130,9 @@ private:
   void PaintHints(QPainter& painter) {
     const double u = window_->unit();
     QList<Hint> hints;
-    if (window_->dialog_) {
+    if (!window_->launching_.key.isEmpty()) {
+      hints = {{Nav::Back, "Hide"}};
+    } else if (window_->dialog_) {
       hints = {{Nav::Accept, "Select"}, {Nav::Back, "Cancel"}};
     } else if (auto* page = qobject_cast<Page*>(window_->stack_->currentWidget())) {
       hints = page->Hints();
@@ -202,6 +205,28 @@ private:
     }
   }
 
+  // While a game starts: its cover and name over a dimmed screen, so a slow
+  // Steam start doesn't look like nothing happened.
+  void PaintLaunch(QPainter& painter) {
+    const Item& item = window_->launching_;
+    if (item.key.isEmpty()) return;
+    const theme::Tokens& tokens = theme::Current();
+    const double u = window_->unit();
+    painter.fillRect(QRectF(0, u * 4.2, width(), height() - u * 7.6), QColor(0, 0, 0, 200));
+    const QSize cover(qRound(12 * u), qRound(18 * u));
+    const QRectF box((width() - cover.width()) / 2.0, height() / 2.0 - u * 14, cover.width(), cover.height());
+    DrawCover(painter, box, window_->Cover(item, cover), u, false, false, -1);
+    painter.setPen(tokens.text);
+    painter.setFont(Font(u, 2.0, QFont::Bold));
+    const QRectF title(0, box.bottom() + u * 1.4, width(), u * 3);
+    painter.drawText(title, Qt::AlignHCenter | Qt::AlignTop, "Starting " + item.name);
+    painter.setPen(tokens.text_muted);
+    painter.setFont(Font(u, 1.05));
+    const QString detail = item.game && item.game->source == "steam" ? "Steam is starting it. This can take a moment."
+                                                                    : "This can take a moment.";
+    painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
+  }
+
   BigScreenWindow* window_;
 };
 
@@ -237,6 +262,12 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     toast_.clear();
     chrome_->update();
   });
+  launch_timeout_.setSingleShot(true);
+  connect(&launch_timeout_, &QTimer::timeout, this, [this] {
+    launching_ = {};
+    chrome_->update();
+  });
+  connect(services_.library, &GameLibraryModel::Changed, this, &BigScreenWindow::FollowLaunch);
   clock_timer_.setInterval(10'000);
   connect(&clock_timer_, &QTimer::timeout, chrome_, qOverload<>(&QWidget::update));
   clock_timer_.start();
@@ -347,8 +378,38 @@ void BigScreenWindow::Confirm(const QString& title, const QString& body, const Q
 
 void BigScreenWindow::Play(const Item& item) {
   if (!item.game) return;
-  Toast("Starting " + item.name);
-  actions::Launch(this, item.game->id, [](bool) {});
+  launching_ = item;
+  // Steam may need a while to start, update or sync first.
+  launch_timeout_.start(120'000);
+  chrome_->update();
+  actions::Launch(
+      this, item.game->id,
+      [this](bool tracked) {
+        // Nothing will say an untracked game started: the overlay just goes after a moment.
+        if (!tracked) launch_timeout_.start(8000);
+      },
+      [this] {
+        launching_ = {};
+        chrome_->update();
+      });
+}
+
+void BigScreenWindow::FollowLaunch() {
+  if (!launching_.key.isEmpty()) {
+    const GameSummary* game = services_.library->Find(launching_.key.toStdString());
+    if (game != nullptr && game->running) {
+      playing_ = launching_.key;
+      launching_ = {};
+      launch_timeout_.stop();
+      chrome_->update();
+    }
+  } else if (!playing_.isEmpty()) {
+    const GameSummary* game = services_.library->Find(playing_.toStdString());
+    if (game == nullptr || !game->running) {
+      playing_.clear();
+      RaiseFromGame();
+    }
+  }
 }
 
 void BigScreenWindow::Stop(const Item& item) {
@@ -433,6 +494,14 @@ void BigScreenWindow::closeEvent(QCloseEvent* event) {
 }
 
 void BigScreenWindow::Navigate(Nav nav) {
+  if (!launching_.key.isEmpty()) {
+    if (nav == Nav::Back) {
+      launching_ = {};
+      launch_timeout_.stop();
+      chrome_->update();
+    }
+    return;
+  }
   if (dialog_) {
     if (nav == Nav::Left || nav == Nav::Right) dialog_->focus = nav == Nav::Left ? 0 : 1;
     if (nav == Nav::Back) dialog_.reset();
