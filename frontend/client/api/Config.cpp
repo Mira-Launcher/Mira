@@ -156,7 +156,6 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("source_page_tabs", result.prefs.source_page_tabs);
   read_string("big_screen_buttons", result.prefs.big_screen_buttons);
   read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
-  read_bool("big_screen_show_uninstalled", result.prefs.big_screen_show_uninstalled);
   read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
   read_bool("onboarded", result.prefs.onboarded);
   read_string("primary_use", result.prefs.primary_use);
@@ -244,7 +243,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
   if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
   if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
-  if (prefs.big_screen_show_uninstalled) table["big_screen_show_uninstalled"] = *prefs.big_screen_show_uninstalled;
   if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;

@@ -6,7 +6,8 @@
 
 namespace mira_gui::bigscreen {
 
-// Store installs running or paused, with pause, resume and cancel.
+// Store installs running or paused, with pause, resume and cancel, then the
+// owned games that aren't installed, to install from.
 class DownloadsPage : public Page {
   Q_OBJECT
 
@@ -22,8 +23,12 @@ protected:
 
 private:
   void Refresh();
+  // The top of row `i` in units, before scrolling.
+  double RowTop(int i) const;
 
+  // Installs first, then `ready` games to install.
   std::vector<Item> items_;
+  int installs_ = 0;
   int focus_ = 0;
 };
 

@@ -9,7 +9,6 @@
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
-#include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
 
@@ -38,7 +37,6 @@ HomePage::HomePage(BigScreenWindow* window) : Page(window) {
   connect(&rebuild_, &QTimer::timeout, this, &HomePage::Rebuild);
   const LibraryServices& services = window->services();
   connect(services.library, &GameLibraryModel::Changed, &rebuild_, qOverload<>(&QTimer::start));
-  connect(services.owned_titles, &OwnedTitles::Changed, &rebuild_, qOverload<>(&QTimer::start));
   connect(services.downloads, &DownloadTracker::Changed, this, [this] {
     update();
     emit HintsChanged();
@@ -83,22 +81,16 @@ void HomePage::Rebuild() {
       by_tag.try_emplace(name, Row{name}).first->second.items.push_back(item);
     }
   }
-  std::vector<Row*> order{&recent, &pinned, &installed};
+  // Owned games that aren't installed are on the Downloads tab, not here.
+  std::vector<Row*> order{&recent, &pinned};
+  for (auto& [name, row] : by_tag) order.push_back(&row);
   // One source would only repeat Installed.
   if (by_source.size() > 1) {
     for (auto& [name, row] : by_source) order.push_back(&row);
   }
-  for (auto& [name, row] : by_tag) order.push_back(&row);
+  order.push_back(&installed);
   // Continue playing stays most recent first.
   for (Row* row : order | std::views::drop(1)) std::ranges::sort(row->items, ByName);
-  Row available{"Ready to install"};
-  if (window_->prefs().big_screen_show_uninstalled.value_or(true)) {
-    for (const StoreTitle& title : services.owned_titles->Titles()) {
-      if (title.owned && !title.installed) available.items.push_back(window_->ItemFor(title));
-    }
-    std::ranges::sort(available.items, ByName);
-  }
-  order.push_back(&available);
   for (Row* row : order) {
     if (row->items.empty()) continue;
     if (const auto found = focused.find(row->label); found != focused.end()) {
@@ -149,8 +141,12 @@ bool HomePage::Navigate(Nav nav) {
       row_ = next;
       break;
     }
-    case Nav::Accept: window_->OpenGame(*Focused()); return true;
-    case Nav::Action: window_->QuickAction(*Focused()); return true;
+    case Nav::Accept:
+      // Mid-download there's nothing to play, so A opens the game instead.
+      if (window_->QuickActionLabel(*Focused()).isEmpty()) window_->OpenGame(*Focused());
+      else window_->QuickAction(*Focused());
+      return true;
+    case Nav::Action: window_->OpenGame(*Focused()); return true;
     default: return false;
   }
   FocusChanged();
@@ -160,8 +156,9 @@ bool HomePage::Navigate(Nav nav) {
 QList<Hint> HomePage::Hints() const {
   QList<Hint> hints;
   if (const Item* item = Focused()) {
-    hints.append({Nav::Accept, "Details"});
-    if (const QString quick = window_->QuickActionLabel(*item); !quick.isEmpty()) hints.append({Nav::Action, quick});
+    const QString quick = window_->QuickActionLabel(*item);
+    hints.append({Nav::Accept, quick.isEmpty() ? "Details" : quick});
+    hints.append({Nav::Action, "Details"});
   }
   hints.append({Nav::Search, "Search"});
   return hints;

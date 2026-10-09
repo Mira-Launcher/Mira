@@ -17,11 +17,9 @@ struct Setting {
   const char* label;
   const char* help;
 };
-constexpr std::array<Setting, 5> kSettings = {{
+constexpr std::array<Setting, 4> kSettings = {{
     {"Button labels", "Which names the button hints use. Match controller reads them from the connected controller."},
     {"Text size", "Large scales everything up by 15%, for a TV across the room."},
-    {"Show games that aren't installed",
-     "Lists owned games from your stores on Home, ready to install. Search finds them either way."},
     {"Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen."},
     {"Exit big screen", "Back to the desktop library."},
 }};
@@ -43,8 +41,7 @@ void SettingsPage::Change(int step) {
       break;
     }
     case 1: prefs.big_screen_large_text = !prefs.big_screen_large_text.value_or(false); break;
-    case 2: prefs.big_screen_show_uninstalled = !prefs.big_screen_show_uninstalled.value_or(true); break;
-    case 3: prefs.big_screen_at_start = !prefs.big_screen_at_start.value_or(false); break;
+    case 2: prefs.big_screen_at_start = !prefs.big_screen_at_start.value_or(false); break;
     default: return;
   }
   window_->SetPrefs(prefs);
@@ -91,7 +88,6 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   const QString values[] = {
       kind == kButtonKinds.end() ? "Match controller" : kind->second,
       prefs.big_screen_large_text.value_or(false) ? "Large" : "Standard",
-      prefs.big_screen_show_uninstalled.value_or(true) ? "On" : "Off",
       prefs.big_screen_at_start.value_or(false) ? "On" : "Off",
       QString(),
   };

@@ -5,18 +5,20 @@
 #include <algorithm>
 
 #include "../library/ArtworkStore.h"
+#include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
 
 namespace mira_gui::bigscreen {
 namespace {
 
-constexpr double kMargin = 2.6, kTop = 6.4, kListW = 52, kRowH = 6.6;
+constexpr double kMargin = 2.6, kTop = 6.4, kListW = 52, kRowH = 6.6, kHeadH = 3.0;
 
 }  // namespace
 
 DownloadsPage::DownloadsPage(BigScreenWindow* window) : Page(window) {
   connect(window->services().downloads, &DownloadTracker::Changed, this, &DownloadsPage::Refresh);
+  connect(window->services().owned_titles, &OwnedTitles::Changed, this, &DownloadsPage::Refresh);
   connect(window->services().artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
 }
 
@@ -36,19 +38,41 @@ void DownloadsPage::Refresh() {
     if (entry.kind == DownloadTracker::Kind::Title) item.ref = entry.ref;
     items_.push_back(std::move(item));
   }
+  installs_ = int(items_.size());
+  std::vector<Item> ready;
+  for (const StoreTitle& title : window_->services().owned_titles->Titles()) {
+    if (!title.owned || title.installed) continue;
+    Item item = window_->ItemFor(title);
+    if (window_->Download(item) == nullptr) ready.push_back(std::move(item));
+  }
+  std::ranges::sort(ready, [](const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
+  std::ranges::move(ready, std::back_inserter(items_));
   focus_ = std::clamp(focus_, 0, std::max(0, int(items_.size()) - 1));
   update();
   emit HintsChanged();
+}
+
+double DownloadsPage::RowTop(int i) const {
+  // A heading above each section.
+  double top = kTop + 3.2 + double(i) * (kRowH + 0.5);
+  if (installs_ > 0) top += kHeadH;
+  if (i >= installs_ && installs_ < int(items_.size())) top += kHeadH;
+  return top;
 }
 
 bool DownloadsPage::Navigate(Nav nav) {
   if (items_.empty()) return false;
   const Item& item = items_[size_t(focus_)];
   const DownloadTracker::Entry* entry = window_->Download(item);
+  const bool ready = focus_ >= installs_;
   switch (nav) {
     case Nav::Up: focus_ = std::max(0, focus_ - 1); break;
     case Nav::Down: focus_ = std::min(int(items_.size()) - 1, focus_ + 1); break;
     case Nav::Accept:
+      if (ready) {
+        window_->Install(item);
+        return true;
+      }
       if (entry == nullptr) return true;
       if (entry->state == DownloadTracker::State::Paused) {
         window_->Resume(item);
@@ -56,16 +80,21 @@ bool DownloadsPage::Navigate(Nav nav) {
         window_->Pause(item);
       }
       return true;
-    case Nav::Action: window_->CancelInstall(item); return true;
+    case Nav::Action:
+      if (ready) window_->OpenGame(item);
+      else window_->CancelInstall(item);
+      return true;
     default: return false;
   }
   update();
+  emit HintsChanged();
   return true;
 }
 
 QList<Hint> DownloadsPage::Hints() const {
   if (items_.empty()) return {{Nav::Back, "Back"}};
   QList<Hint> hints;
+  if (focus_ >= installs_) return {{Nav::Accept, "Install"}, {Nav::Action, "Details"}, {Nav::Back, "Back"}};
   const DownloadTracker::Entry* entry = window_->Download(items_[size_t(focus_)]);
   if (entry && entry->state == DownloadTracker::State::Paused) hints.append({Nav::Accept, "Resume"});
   else if (entry && DownloadTracker::CanPause(*entry)) hints.append({Nav::Accept, "Pause"});
@@ -89,14 +118,27 @@ void DownloadsPage::paintEvent(QPaintEvent*) {
     painter.setFont(Font(u, 1.05));
     painter.setPen(tokens.text_muted);
     painter.drawText(QRectF(kMargin * u, (kTop + 3.2) * u, list_w, 6 * u), Qt::TextWordWrap,
-                     "Nothing is downloading. Open a game that isn't installed and pick Install.");
+                     "Nothing is downloading, and every game you own is installed.");
     return;
   }
+  // Scrolled so the focused row stays on screen.
+  const double bottom = height() / u - 4.0;
+  const double scroll = std::max(0.0, RowTop(focus_) + kRowH - bottom);
+  const auto heading = [&](double top, const QString& text) {
+    painter.setFont(Font(u, 1.2, QFont::Bold));
+    painter.setPen(tokens.text_muted);
+    painter.drawText(QPointF(kMargin * u, (top - scroll - 0.9) * u), text);
+  };
+  painter.save();
+  painter.setClipRect(QRectF(0, (kTop + 2.4) * u, width(), height()));
+  if (installs_ > 0) heading(RowTop(0), "Installing");
+  if (installs_ < int(items_.size())) heading(RowTop(installs_), "Ready to install");
   const QSize thumb(qRound(3.4 * u), qRound(5.1 * u));
   for (size_t i = 0; i < items_.size(); ++i) {
     const Item& item = items_[i];
     const DownloadTracker::Entry* entry = window_->Download(item);
-    const QRectF row(kMargin * u, (kTop + 3.2 + double(i) * (kRowH + 0.5)) * u, list_w, kRowH * u);
+    const QRectF row(kMargin * u, (RowTop(int(i)) - scroll) * u, list_w, kRowH * u);
+    if (row.bottom() < 0) continue;
     if (row.top() > height()) break;
     const bool focused = int(i) == focus_;
     painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
@@ -108,7 +150,12 @@ void DownloadsPage::paintEvent(QPaintEvent*) {
     painter.setFont(Font(u, 1.1, QFont::Bold));
     painter.setPen(tokens.text);
     painter.drawText(QPointF(text_x, row.top() + u * 2.0), item.name);
-    if (entry == nullptr) continue;
+    if (entry == nullptr) {
+      painter.setFont(Font(u, 0.88));
+      painter.setPen(tokens.text_muted);
+      painter.drawText(QPointF(text_x, row.top() + u * 3.4), SourceName(item.source));
+      continue;
+    }
     const bool paused = entry->state == DownloadTracker::State::Paused;
     painter.setFont(Font(u, 0.88));
     painter.setPen(tokens.text_muted);
@@ -122,6 +169,7 @@ void DownloadsPage::paintEvent(QPaintEvent*) {
     painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, entry->progress), bar.height())),
                             bar.height() / 2, bar.height() / 2);
   }
+  painter.restore();
 }
 
 }  // namespace mira_gui::bigscreen
