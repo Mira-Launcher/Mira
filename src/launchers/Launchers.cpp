@@ -28,6 +28,7 @@
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
+#include "system/Packages.h"
 
 namespace mira::launchers {
 namespace {
@@ -362,6 +363,10 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
 
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher,
                                 const std::function<void(double)>& on_progress) {
+  // Before the prefix and downloads, rather than failing at the first winetricks verb.
+  if (!launcher.tricks.empty()) {
+    if (auto ready = system::RequireFeature("winetricks", launcher.name); !ready) return std::unexpected(ready.error());
+  }
   const std::string id = GameId(launcher);
   model::Game game = games.Find(id).value_or(model::Game{});
   const bool existed = !game.id.empty();

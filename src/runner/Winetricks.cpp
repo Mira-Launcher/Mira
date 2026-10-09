@@ -11,6 +11,7 @@
 #include "core/Paths.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
+#include "system/Packages.h"
 #include "steam/SteamDetector.h"
 
 namespace mira::runner {
@@ -96,6 +97,7 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
   if (winetricks.empty()) {
     return Err("winetricks_missing", "winetricks isn't installed", "Install winetricks.", Fix::Runners("winetricks"));
   }
+  if (auto ready = system::RequireFeature("winetricks", "winetricks"); !ready) return ready;
 
   if (verb.empty() || verb.front() == '-' ||
       !std::ranges::all_of(verb, [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '.' || c == '=' || c == '-'; })) {

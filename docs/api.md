@@ -11,7 +11,7 @@ Bodies are JSON. Errors share one envelope:
 `code` is stable and meant for code; `message` is meant for people and says what went wrong; it is never empty (a failure with nothing to say gets its code in words). Two optional fields say what to do about it:
 
 - `hint`: one sentence for the user, worded for any client (no CLI commands, no GUI paths).
-- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown).
+- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown), or `{"kind": "packages", "target": "<feature>"}` (install what `GET /v1/system/packages?for=<feature>` lists).
 
 ```json
 { "error": { "code": "no_steamgriddb_key", "message": "searching SteamGridDB needs an API key",
@@ -514,6 +514,9 @@ Body `{"ids": [...]}`. A Flatpak entry becomes `flatpak run <app-id>`. Anything 
 Rewrites Mira's own desktop entries now.
 
 ## GameMode
+
+### `GET /v1/system/packages[?for=]`
+The system packages Mira's features use and which are missing, for this distribution. `for` is `winetricks` (cabextract, unzip: winetricks verbs and store launchers like Microsoft 365), `archives` (7-Zip) or `performance` (GameMode, MangoHud); without it, all of them. Returns `{"distro", "family", "missing": [{"tool", "package", "purpose"}], "install": [argv...], "restart"}`. `family` is `arch`, `debian`, `fedora`, `suse`, `ostree` (Bazzite, Silverblue: layered with rpm-ostree, so `restart` is true), `steamos` or `unknown`. `install` is the command that installs the missing packages, for a client to run as root (`pkexec`), and empty when nothing's missing or Mira has no way to install them (SteamOS, unknown). Running winetricks or installing a launcher that uses it fails with `missing_packages` and fix `{"kind": "packages", "target": "winetricks"}` until they're there.
 
 ### `GET /v1/gamemode/status`
 `{"installed": true, "daemon_running": false}`. `installed` means `gamemoded` or `gamemoderun` is on `PATH`; `daemon_running` means GameMode owns its D-Bus name. With `launch.gamemode` on, an unreachable daemon is logged and the game still launches.
