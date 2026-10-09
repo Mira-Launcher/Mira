@@ -297,11 +297,17 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     }
     if (!IsSafeRef(ref)) return SendError(res, 400, "invalid_ref", "that ref isn't a store id");
 
+    s.paused_installs.Remove(source + "-" + ref);  // installing again resumes it
     s.events.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
     s.StartJob(req, res, is_update ? "update" : "install", source + "-" + ref, (is_update ? "Updating " : "Installing ") + ref,
                [&s, src, source, ref, is_update](JobRegistry::Progress&) -> Result<json> {
                  const Result<void> result = is_update ? src->Update(s.config, s.games, s.events, ref)
                                                        : src->Install(s.config, s.games, s.events, ref);
+                 if (!result && s.paused_installs.Contains(source + "-" + ref)) {
+                   log::Info("{} {} paused: {}", source, is_update ? "update" : "install", ref);
+                   s.events.Publish("library.install.paused", {{"source", source}, {"ref", ref}, {"update", is_update}});
+                   return std::unexpected(result.error());
+                 }
                  if (!result) {
                    log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref,
                               result.error().message);
@@ -309,6 +315,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                                     FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
                    return std::unexpected(result.error());
                  }
+                 s.paused_installs.Remove(source + "-" + ref);  // finished before a pause took hold
                  log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
                  s.SyncDesktopEntry(source + "-" + ref);
                  if (const auto game = s.games.Find(source + "-" + ref)) s.fetches.Enqueue(s.config, s.events, *game);
@@ -375,6 +382,46 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   });
   http.Post("/v1/library/update", [library_install_or_update](const Request& req, Response& res) {
     library_install_or_update(req, res, true);
+  });
+  http.Post("/v1/library/install/pause", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"source": "epic"|"gog"|"amazon", "ref": "..."})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    if (!b.contains("source") || !b["source"].is_string() || !b.contains("ref") || !b["ref"].is_string()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    const std::string source = b["source"];
+    const std::string ref = b["ref"];
+    const library::ILibrarySource* src = library::FindSource(source);
+    if (src == nullptr) {
+      return SendError(res, 400, "unknown_source", std::format("no installable source named \"{}\"", source));
+    }
+    if (!src->CanPause()) {
+      return SendError(res, 409, "pause_unsupported", std::format("{} installs can't be paused, only cancelled", source));
+    }
+    const std::string target = source + "-" + ref;
+    const auto job = s.jobs.RunningFor(target);
+    if (!job) return SendError(res, 409, "not_running", "no install of that title is running");
+    const bool update = s.jobs.Find(*job).value_or(json::object()).value("kind", "") == "update";
+    s.paused_installs.Add(target, {{"source", source}, {"ref", ref}, {"update", update}});
+    if (const auto cancelled = s.jobs.Cancel(*job); !cancelled) {
+      s.paused_installs.Remove(target);
+      return SendError(res, 409, cancelled.error());
+    }
+    SendJson(res, json{{"status", "pausing"}, {"job", *job}});
+  });
+  http.Get("/v1/library/install/paused", [&s](const Request&, Response& res) { SendJson(res, s.paused_installs.List()); });
+  http.Delete("/v1/library/install/paused", [&s](const Request& req, Response& res) {
+    const std::string source = Param(req, "source");
+    const std::string ref = Param(req, "ref");
+    if (!s.paused_installs.Remove(source + "-" + ref)) {
+      return SendError(res, 404, "not_paused", "no paused install of that title");
+    }
+    s.events.Publish("library.install.failed",
+                     FailedEvent({{"source", source}, {"ref", ref}, {"update", false}},
+                                 Error{"cancelled", "Cancelled", "", {}}));
+    SendJson(res, json{{"status", "cancelled"}});
   });
 
   // --- desktop entries --------------------------------------------------

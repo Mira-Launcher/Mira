@@ -58,6 +58,8 @@ public:
   // Stops a running job: the processes it runs are killed and it ends as
   // job.failed with code "cancelled". Err job_not_found or not_running.
   Result<void> Cancel(const std::string& id);
+  // The id of the job still running for `target`, if any.
+  std::optional<std::string> RunningFor(const std::string& target) const;
 
 private:
   void Update(const std::string& id, const std::function<void(nlohmann::json&)>& change);

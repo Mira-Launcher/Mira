@@ -261,6 +261,17 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `
 
 A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
 
+Installing a title again while it's paused resumes it: the store tool continues from the files it left.
+
+### `POST /v1/library/install/pause`
+Same body. Stops a running Epic, GOG or Amazon install or update and keeps its files: legendary, gogdl and nile get SIGTERM, then SIGKILL after 3s. Answers `{"status": "pausing", "job": "<id>"}`; the job ends as `cancelled` and `library.install.paused {source, ref, update}` follows. Other stores return `409 pause_unsupported`, and a title with no install running `409 not_running`.
+
+### `GET /v1/library/install/paused`
+The paused installs, `[{"source", "ref", "update"}]`. Kept in memory: after mirad restarts the list is empty, but installing the title again still resumes it.
+
+### `DELETE /v1/library/install/paused?source=&ref=`
+Forgets a paused install, publishing `library.install.failed` with code `cancelled`. Its files stay, as with a cancelled install. `404 not_paused` if it isn't paused.
+
 ### `POST /v1/library/update`
 Same body and events as install. Steam returns `400 unsupported`.
 

@@ -11,6 +11,7 @@ namespace mira::gog {
 class GogSource : public library::ILibrarySource {
 public:
   std::string Name() const override { return "gog"; }
+  bool CanPause() const override { return true; }
 
   Result<std::vector<library::CatalogEntry>> Catalog(const config::Config& config,
                                                      const store::GameStore& games) const override;

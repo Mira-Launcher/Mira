@@ -16,6 +16,7 @@
 #include <format>
 #include <map>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include "core/Lane.h"
@@ -261,13 +262,20 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     if (on_output) on_output(std::string_view(buffer, static_cast<size_t>(n)));
   }
   close(pipe_fds[0]);
+  int status = 0;
+  bool reaped = false;
   if (timed_out || stopped) {
+    // SIGTERM first so a store tool can save where it got to, then SIGKILL.
+    kill(-pid, SIGTERM);
+    for (int i = 0; i < 30 && !reaped; ++i) {
+      reaped = waitpid(pid, &status, WNOHANG) == pid;
+      if (!reaped) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
     kill(-pid, SIGKILL);
-    kill(pid, SIGKILL);
+    if (!reaped) kill(pid, SIGKILL);
   }
 
-  int status = 0;
-  if (waitpid(pid, &status, 0) < 0) return Err("exec_wait_failed", std::strerror(errno));
+  if (!reaped && waitpid(pid, &status, 0) < 0) return Err("exec_wait_failed", std::strerror(errno));
   if (stopped && ThisTaskCancelled()) return Err("cancelled", std::format("{} was cancelled", command.argv[0]));
   if (stopped) return Err("shutting_down", std::format("{} was stopped because mirad is shutting down", command.argv[0]));
   if (timed_out) {
