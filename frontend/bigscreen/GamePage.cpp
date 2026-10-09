@@ -18,13 +18,16 @@
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
+#include "Screenshots.h"
 
 namespace mira_gui::bigscreen {
 namespace {
 
-constexpr double kMargin = 2.6, kTop = 6.4, kCoverW = 17, kCoverH = 25.5;
+constexpr double kMargin = 2.6, kTop = 6.4, kCoverW = 17, kCoverH = 25.5, kLogoH = 6;
 constexpr double kShotW = 14, kShotGap = 0.8;
 constexpr qsizetype kMaxShotBytes = 8 * 1024 * 1024;
+constexpr qsizetype kMaxOwnShots = 6;
+constexpr int kOwnShotPx = 640;
 
 std::optional<QColor> ProtonColor(const QString& tier) {
   static const QHash<QString, QString> colors = {{"platinum", "#b4c7dc"}, {"gold", "#cfb53b"},
@@ -86,15 +89,23 @@ void GamePage::Open(const Item& item, Page* from) {
   focus_ = 0;
   description_.clear();
   proton_tier_.clear();
+  controller_.clear();
+  metadata_loaded_ = false;
   last_session_.reset();
   for (QPixmap& shot : shots_) shot = QPixmap();
-  if (item.game) LoadDetails(item.key);
+  own_shots_.clear();
+  if (item.game) {
+    LoadOwnShots();
+    LoadDetails(item.key);
+  }
 }
 
 void GamePage::LoadDetails(const QString& key) {
   api::GetMetadataAsync(this, key.toStdString(), [this, key](GameMetadataResult result) {
     if (key != item_.key || !result.ok) return;
     const GameMetadata& meta = result.metadata;
+    metadata_loaded_ = true;
+    controller_ = meta.controller_support;
     description_ = QTextDocumentFragment::fromHtml(QString::fromStdString(meta.description)).toPlainText().simplified();
     proton_tier_ = QString::fromStdString(meta.protondb_tier).toLower();
     FetchShots(key, meta.screenshots);
@@ -122,8 +133,20 @@ void GamePage::FetchShots(const QString& key, const std::vector<std::string>& ur
   }
 }
 
+void GamePage::LoadOwnShots() {
+  own_shots_.clear();
+  for (const QString& path : ScreenshotsFor(item_.name)) {
+    if (own_shots_.size() == kMaxOwnShots) break;
+    QPixmap shot(path);
+    if (shot.isNull()) continue;
+    if (shot.width() > kOwnShotPx) shot = shot.scaledToWidth(kOwnShotPx, Qt::SmoothTransformation);
+    own_shots_.push_back(shot);
+  }
+}
+
 void GamePage::Shown() {
   window_->ShowHero(item_);
+  if (item_.game) LoadOwnShots();
   Refresh();
 }
 
@@ -205,7 +228,17 @@ void GamePage::paintEvent(QPaintEvent*) {
   painter.setFont(Font(u, 3.0, QFont::ExtraBold));
   const QRectF title_box(left, kTop * u, w, 7 * u);
   const QRectF title_used = painter.boundingRect(title_box, Qt::TextWordWrap, item_.name);
-  painter.drawText(title_box, Qt::TextWordWrap, item_.name);
+  const QPixmap logo = window_->Logo(item_);
+  if (logo.isNull()) {
+    painter.drawText(title_box, Qt::TextWordWrap, item_.name);
+  } else {
+    const QSizeF logo_size = QSizeF(logo.size()).scaled(QSizeF(w, kLogoH * u), Qt::KeepAspectRatio);
+    const QRectF logo_rect(QPointF(left, kTop * u + (kLogoH * u - logo_size.height()) / 2), logo_size);
+    painter.save();
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.drawPixmap(logo_rect, logo, QRectF(logo.rect()));
+    painter.restore();
+  }
   double y = std::min(title_used.bottom(), title_box.bottom()) + u * 0.9;
 
   const DownloadTracker::Entry* download = window_->Download(item_);
@@ -230,7 +263,7 @@ void GamePage::paintEvent(QPaintEvent*) {
     QRectF box(x, y, bw, u * 2.8);
     if (focused) box = QRectF(box.center() - QPointF(bw, box.height()) * 0.525, box.size() * 1.05);
     painter.setPen(focused ? QPen(tokens.text, u * 0.12) : Qt::NoPen);
-    painter.setBrush(focused && danger ? tokens.error : primary ? tokens.accent : QColor(255, 255, 255, 26));
+    painter.setBrush(focused && danger ? tokens.error : primary ? Accent() : QColor(255, 255, 255, 26));
     painter.drawRoundedRect(box, u * 0.45, u * 0.45);
     painter.setPen(primary ? tokens.on_accent : danger && !focused ? tokens.error.lighter(140) : tokens.text);
     painter.drawText(box, Qt::AlignCenter, buttons[i].label);
@@ -247,7 +280,7 @@ void GamePage::paintEvent(QPaintEvent*) {
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(255, 255, 255, 28));
     painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
-    painter.setBrush(paused ? tokens.status_missing : tokens.accent);
+    painter.setBrush(paused ? tokens.status_missing : Accent());
     painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, progress), bar.height())),
                             bar.height() / 2, bar.height() / 2);
     y += u * 3;
@@ -263,6 +296,11 @@ void GamePage::paintEvent(QPaintEvent*) {
                                : game.runner_ref.empty() ? QString("Default runner")
                                                          : QString::fromStdString(game.runner_ref)});
     if (last_session_) facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
+    if (!controller_.empty()) {
+      facts.append({"Controller", controller_ == "full" ? QString("Full support") : QString("Partial support")});
+    } else if (metadata_loaded_ && item_.source == "steam") {
+      facts.append({"Controller", QString("Keyboard and mouse")});
+    }
   } else {
     facts.append({"Store", SourceName(item_.source)});
   }
@@ -285,6 +323,18 @@ void GamePage::paintEvent(QPaintEvent*) {
     y += DrawParagraph(painter, {left, y}, w, description_, 5) + u * 1.2;
   }
   const QSizeF shot_size(kShotW * u, kShotW * u * 9 / 16);
+  if (!own_shots_.empty() && y + u * 1.6 + shot_size.height() <= height()) {
+    painter.setFont(Font(u, 0.8, QFont::DemiBold));
+    painter.setPen(tokens.text_muted);
+    painter.drawText(QPointF(left, y + u * 1.2), "Your screenshots");
+    y += u * 1.6;
+    double own_x = left;
+    for (const QPixmap& shot : own_shots_) {
+      DrawShot(painter, QRectF(QPointF(own_x, y), shot_size), shot, u);
+      own_x += shot_size.width() + kShotGap * u;
+    }
+    y += shot_size.height() + u * 1.2;
+  }
   double shot_x = left;
   for (const QPixmap& shot : shots_) {
     if (shot.isNull()) continue;

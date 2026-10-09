@@ -41,6 +41,7 @@ private:
   void Refresh();
   void LoadDetails(const QString& key);
   void FetchShots(const QString& key, const std::vector<std::string>& urls);
+  void LoadOwnShots();
 
   Item item_;
   Page* from_ = nullptr;
@@ -48,8 +49,11 @@ private:
   QNetworkAccessManager* network_ = nullptr;
   QString description_;
   QString proton_tier_;  // lowercase, e.g. "gold"
+  std::string controller_;  // "full", "partial" or empty
+  bool metadata_loaded_ = false;
   std::optional<GameSession> last_session_;
   std::vector<QPixmap> shots_ = std::vector<QPixmap>(3);
+  std::vector<QPixmap> own_shots_;  // the user's screenshots, newest first
 };
 
 }  // namespace mira_gui::bigscreen
