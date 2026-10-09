@@ -837,6 +837,16 @@ Schema::Schema() {
                 "without adding gamemoderun as a command wrapper. Does nothing if GameMode is not "
                 "installed or not running."});
 
+  s.Add({.key = "launch.shader_cache",
+         .label = "Large shader cache",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Keep up to 10 GB of the game's compiled shaders instead of the drivers' usual 1 GB, "
+                "so they aren't built again mid-game, which stutters. Wine and native games also get a "
+                "cache folder of their own; Proton keeps its cache in the prefix. Doesn't reach Steam "
+                "games launched through the Steam client."});
+
   s.Add({.key = "launch.mangohud",
          .label = "Show MangoHud",
          .type = Type::Bool,

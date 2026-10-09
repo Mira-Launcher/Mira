@@ -93,6 +93,24 @@ void ApplyMangoHud(Command& command, const config::Resolver& resolver, const mod
   config = "preset=" + preset->second + (config.empty() ? "" : "," + config);
 }
 
+// launch.shader_cache: drivers keep 10 GB of shaders rather than 1 GB, and a game outside Proton
+// (which caches in the prefix) gets a folder of its own. Values the env already has win.
+void ApplyShaderCache(Command& command, const config::Resolver& resolver, const model::Game& game) {
+  if (!resolver.GetBool("launch.shader_cache")) return;
+  command.env.try_emplace("MESA_SHADER_CACHE_MAX_SIZE", "10G");
+  command.env.try_emplace("__GL_SHADER_DISK_CACHE_SIZE", "10737418240");
+  command.env.try_emplace("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP", "1");
+  if (command.env.contains("PROTONPATH")) return;
+  const std::filesystem::path dir = paths::ShaderCacheDir(game.id);
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) return;
+  for (const char* key : {"MESA_SHADER_CACHE_DIR", "__GL_SHADER_DISK_CACHE_PATH", "DXVK_STATE_CACHE_PATH",
+                          "VKD3D_SHADER_CACHE_PATH"}) {
+    command.env.try_emplace(key, dir.string());
+  }
+}
+
 // Used by the Steam handoff; otherwise mira-run runs the script.
 Result<void> RunPreScriptInline(const std::string& pre_script) {
   if (pre_script.empty()) return {};
@@ -212,6 +230,7 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   const bool game_mangohud = command->env.contains("MANGOHUD");
   ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
   ApplyMangoHud(*command, resolver, game, game_mangohud);
+  ApplyShaderCache(*command, resolver, game);
   ApplyCommandWrappers(*command, wrappers);
   return command;
 }
@@ -393,6 +412,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       const bool game_mangohud = command->env.contains("MANGOHUD");
       ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
       ApplyMangoHud(*command, resolver, *game, game_mangohud);
+      ApplyShaderCache(*command, resolver, *game);
       // Its output goes to the game's log, where the live log reads it, not to mirad's own stdout.
       const std::filesystem::path launch_log = proc::GameLogPath(s.games.Dir(), game->id);
       std::error_code log_ec;

@@ -65,6 +65,8 @@ void Isolate(config::Config& config) {
   }
   // Legendary's own sign-in and caches, which Mira reads without a setting.
   setenv("LEGENDARY_CONFIG_PATH", (dir / "legendary-config").c_str(), 1);
+  // Games' shader caches.
+  setenv("XDG_CACHE_HOME", (dir / "cache").c_str(), 1);
   // Windows games run natively: provisioning through the machine's Wine builds a real prefix.
   [[maybe_unused]] auto runner = config.Set("default_runner.windows", "native:native");
 }

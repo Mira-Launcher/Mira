@@ -500,7 +500,7 @@ TEST_CASE("POST /v1/games/{id}/launch: a game's own env wins over launch.env") {
   CHECK(LastError(client, "env-precedence-game").empty());
 }
 
-TEST_CASE("POST /v1/games/{id}/launch: launch.mangohud loads its layout, and off for a game drops launch.env's") {
+TEST_CASE("POST /v1/games/{id}/launch: launch.mangohud loads its layout, off for a game drops launch.env's, and the shader cache is large") {
   LiveServer server(TempDir("server-launch-mangohud"));
   httplib::Client client = server.Client();
   const auto launch = [&](const std::string& id, const std::string& check, nlohmann::json overrides) {
@@ -525,6 +525,7 @@ TEST_CASE("POST /v1/games/{id}/launch: launch.mangohud loads its layout, and off
          {{"launch.mangohud", true}, {"launch.mangohud_layout", "fps"}});
   launch("mangohud-off", R"([ -z "$MANGOHUD" ])",
          {{"launch.mangohud", false}, {"launch.env", nlohmann::json::array({"MANGOHUD=1"})}});
+  launch("shader-cache", R"([ "$MESA_SHADER_CACHE_MAX_SIZE" = 10G ] && [ -d "$MESA_SHADER_CACHE_DIR" ])", {});
 }
 
 TEST_CASE("POST /v1/games/{id}/launch with launch.gamemode never blocks or fails the launch") {
