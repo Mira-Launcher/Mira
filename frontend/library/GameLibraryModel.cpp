@@ -184,7 +184,6 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::NameRole: return QString::fromStdString(game.name);
     case GameTileDelegate::StatusRole: return QString::fromStdString(game.status);
     case GameTileDelegate::RunningRole: return game.running;
-    case GameTileDelegate::PinnedRole: return IsPinned(game);
     case GameTileDelegate::StatusTextRole:
     case GameTileDelegate::ProgressRole:
     case GameTileDelegate::ProgressDetailRole: {

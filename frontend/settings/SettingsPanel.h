@@ -196,8 +196,7 @@ private:
   Switch* continue_row_ = nullptr;
   TilePreview* tile_preview_ = nullptr;
   Switch* tile_status_ = nullptr;
-  Switch* tile_mark_ = nullptr;
-  Switch* tile_pin_ = nullptr;
+  Switch* tile_source_ = nullptr;
   LayoutPreview* layout_preview_ = nullptr;
   ShapeField tile_spacing_;
   ShapeField grid_margin_;

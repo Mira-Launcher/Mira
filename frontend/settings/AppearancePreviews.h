@@ -41,13 +41,13 @@ private:
 };
 
 // Two of the user's games drawn by the library's own tile painter, so the
-// status, source mark and pin badge toggles show exactly what they change.
+// status and source toggles show exactly what they change.
 class TilePreview : public QWidget {
   Q_OBJECT
 
 public:
   TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, QWidget* parent = nullptr);
-  void SetShown(bool status, bool source_mark, bool pin_badge);
+  void SetShown(bool status, bool source);
   QSize sizeHint() const override;
 
 protected:

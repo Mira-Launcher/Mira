@@ -206,8 +206,7 @@ void LibraryPage::ApplyPrefs(const FrontendPrefs& prefs) {
   games_->SetAppsInAll(apps_in_all_);
   UpdateCounts();  // All's count follows apps_in_all_
   delegate_->SetShowStatus(prefs.tile_status.value_or(true));
-  delegate_->SetShowSourceMark(prefs.tile_source_mark.value_or(true));
-  delegate_->SetShowPinBadge(prefs.tile_pin_badge.value_or(true));
+  delegate_->SetShowSource(prefs.tile_source_mark.value_or(true));
   grid_->SetDragSelectEnabled(prefs.drag_select.value_or(true));
   ApplyFilter();
 }

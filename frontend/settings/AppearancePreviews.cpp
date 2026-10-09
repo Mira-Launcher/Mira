@@ -133,7 +133,7 @@ constexpr QSize kPreviewTile(104, 156);
 TilePreview::TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, QWidget* parent)
     : QWidget(parent), model_(new QStandardItemModel(this)), delegate_(new GameTileDelegate(this, kPreviewTile, artwork)) {
   using Role = GameTileDelegate::Role;
-  // No games yet: two sample tiles, the second from a store so the source mark shows.
+  // No games yet: two sample tiles, the second from a store so its source shows.
   samples_ = games.empty();
   if (samples_) {
     for (const auto& [name, source] :
@@ -144,14 +144,13 @@ TilePreview::TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, 
       games.push_back(game);
     }
   }
-  // The first pinned, the second playing, so each badge has a tile to show on.
+  // The second playing, so the status line has a tile to show on.
   for (size_t i = 0; i < games.size() && i < 2; ++i) {
     auto* item = new QStandardItem();
     item->setData(QString::fromStdString(games[i].id), Role::IdRole);
     item->setData(QString::fromStdString(games[i].name), Role::NameRole);
     item->setData(QString("ready"), Role::StatusRole);
     item->setData(i == 1, Role::RunningRole);
-    item->setData(i == 0, Role::PinnedRole);
     item->setData(QString::fromStdString(games[i].source), Role::SourceRole);
     model_->appendRow(item);
   }
@@ -159,10 +158,9 @@ TilePreview::TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, 
   connect(artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
 }
 
-void TilePreview::SetShown(bool status, bool source_mark, bool pin_badge) {
+void TilePreview::SetShown(bool status, bool source) {
   delegate_->SetShowStatus(status);
-  delegate_->SetShowSourceMark(source_mark);
-  delegate_->SetShowPinBadge(pin_badge);
+  delegate_->SetShowSource(source);
   update();
 }
 

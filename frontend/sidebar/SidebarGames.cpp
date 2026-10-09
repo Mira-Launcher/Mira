@@ -37,19 +37,19 @@ QPixmap RoundedCrop(const QPixmap& source, QSize size, qreal radius, qreal dpr) 
   return out;
 }
 
-QPixmap CoverThumb(const GameSummary& game, ArtworkStore* artwork, qreal dpr) {
+QPixmap CoverThumb(const GameSummary& game, ArtworkStore* artwork, qreal dpr, QSize size = kThumb) {
   const QPixmap art = artwork->SmallArtwork(game.id);
-  if (!art.isNull()) return RoundedCrop(art, kThumb, 3, dpr);
+  if (!art.isNull()) return RoundedCrop(art, size, 3, dpr);
   // Not fetched yet, or none: the placeholder's color.
   artwork->EnsureRequested(game.id);
-  QPixmap out(kThumb * dpr);
+  QPixmap out(size * dpr);
   out.setDevicePixelRatio(dpr);
   out.fill(Qt::transparent);
   QPainter painter(&out);
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setPen(Qt::NoPen);
   painter.setBrush(PlaceholderBase(QString::fromStdString(game.id)));
-  painter.drawRoundedRect(QRectF(QPointF(0, 0), QSizeF(kThumb)), 3, 3);
+  painter.drawRoundedRect(QRectF(QPointF(0, 0), QSizeF(size)), 3, 3);
   return out;
 }
 
@@ -80,6 +80,47 @@ QString Rgba(QColor color, double alpha) {
 }
 
 }  // namespace
+
+QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr) {
+  const QSize card(24, 36);
+  QPixmap out(kDeckSize * dpr);
+  out.setDevicePixelRatio(dpr);
+  out.fill(Qt::transparent);
+  QPainter painter(&out);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setRenderHint(QPainter::SmoothPixmapTransform);
+  const QPointF centre(kDeckSize.width() / 2.0, kDeckSize.height() / 2.0);
+  const QRectF face(QPointF(-card.width() / 2.0, -card.height() / 2.0), QSizeF(card));
+  if (games.empty()) {
+    QColor edge = theme::Current().text_muted;
+    edge.setAlpha(110);
+    painter.setPen(QPen(edge, 1, Qt::DashLine));
+    painter.translate(centre);
+    painter.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+    return out;
+  }
+  // The second fans right and the third left, both under the first.
+  struct Place {
+    size_t game;
+    qreal dx;
+    qreal angle;
+  };
+  constexpr Place kPlaces[] = {{2, -9, -14}, {1, 9, 14}, {0, 0, 0}};
+  for (const Place& place : kPlaces) {
+    if (place.game >= games.size()) continue;
+    painter.save();
+    painter.translate(centre + QPointF(place.dx, 0));
+    painter.rotate(place.angle);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0, 0, 0, 60));
+    painter.drawRoundedRect(face.adjusted(-1, 0, 1, 2), 4, 4);
+    painter.setBrush(QColor(0, 0, 0, 90));
+    painter.drawRoundedRect(face.translated(0, 1), 3, 3);
+    painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
+    painter.restore();
+  }
+  return out;
+}
 
 const std::vector<StyleOption>& StyleOptions() {
   static const std::vector<StyleOption> kOptions = {

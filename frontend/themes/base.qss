@@ -251,11 +251,6 @@ QWidget#left_sidebar QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-/* Source rows: taller, room for the 22px colored initial. */
-QWidget#left_sidebar QPushButton#source_nav {
-  padding: 8px 10px;
-  min-height: 22px;
-}
 
 QWidget#left_sidebar QPushButton:hover {
   background: @surface_alt;

@@ -14,7 +14,6 @@
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 #include "../sources/Sources.h"
-#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/TileView.h"
@@ -187,40 +186,34 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   const QString status_text = index.data(StatusTextRole).toString();
   // Only when nothing more pressing is on the line.
   const bool unchecked = !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
+  // The source shares the status line: after the status, or alone and quieter without one.
+  const SourceInfo* source = show_source_ ? FindSourceInfo(index.data(SourceRole).toString()) : nullptr;
+  const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
+  const QFontMetrics small_metrics(small_font);
   if (!progress.isValid() && show_status_ && (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
     painter->setFont(small_font);
-    const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
     QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
     if (unchecked) dot = tokens.warning;
     painter->setPen(Qt::NoPen);
     painter->setBrush(dot.lighter(160));
     painter->drawEllipse(QPoint(status_rect.left() + 3, status_rect.center().y()), 3, 3);
     painter->setPen(QColor(255, 255, 255, 170));
-    painter->drawText(status_rect.adjusted(12, 0, 0, 0), Qt::AlignLeft | Qt::AlignVCenter,
-                      !status_text.isEmpty() ? status_text
-                      : running              ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
-                      : unchecked            ? QString("Not checked")
-                                             : StatusLabel(status));
+    QString line = !status_text.isEmpty() ? status_text
+                   : running              ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
+                   : unchecked            ? QString("Not checked")
+                                          : StatusLabel(status);
+    if (source != nullptr) line += " · " + source->name;
+    const QRect text_rect = status_rect.adjusted(12, 0, 0, 0);
+    painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
+                      small_metrics.elidedText(line, Qt::ElideRight, text_rect.width()));
+  } else if (!progress.isValid() && source != nullptr) {
+    painter->setFont(small_font);
+    painter->setPen(QColor(255, 255, 255, 128));
+    painter->drawText(status_rect, Qt::AlignLeft | Qt::AlignVCenter,
+                      small_metrics.elidedText(source->name, Qt::ElideRight, status_rect.width()));
   }
 
-  bool marked = false;
-  if (show_source_mark_) {
-    if (const SourceInfo* source = FindSourceInfo(index.data(SourceRole).toString())) {
-      marked = true;
-      const QRect mark(rect.left() + 6, rect.top() + 6, 20, 20);
-      painter->setPen(Qt::NoPen);
-      painter->setBrush(source->color);
-      painter->drawRoundedRect(mark, 5, 5);
-      QFont mark_font = option.font;
-      mark_font.setWeight(QFont::Bold);
-      mark_font.setPixelSize(11);
-      painter->setFont(mark_font);
-      painter->setPen(Qt::white);
-      painter->drawText(mark, Qt::AlignCenter, source->name.left(1));
-    }
-  }
-
-  if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty() && !marked) {
+  if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty()) {
     QFont tier_font = option.font;
     tier_font.setWeight(QFont::Bold);
     tier_font.setPixelSize(10);
@@ -248,17 +241,6 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
     painter->setPen(enabled ? tokens.on_accent : QColor(255, 255, 255, 200));
     painter->drawText(pill, Qt::AlignCenter, action);
-  }
-
-  // Top-right, opposite the source mark; left of the ActionRole pill if there is one.
-  if (show_pin_badge_ && index.data(PinnedRole).toBool()) {
-    const int right = pill.isNull() ? rect.right() - 6 : pill.left() - 4;
-    const QRect badge(right - 22 + 1, rect.top() + 6, 22, 22);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(QColor(0, 0, 0, 150));
-    painter->drawEllipse(badge);
-    static const QIcon kPin = icons::For(icons::Glyph::Pin, QColor(255, 255, 255, 235));
-    kPin.paint(painter, badge.adjusted(4, 4, -4, -4));
   }
 
   if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {

@@ -34,9 +34,7 @@ public:
     ActionEnabledRole,
     // Optional: replaces the status line's text ("Installing… 1.2 GB").
     StatusTextRole,
-    // Pinned by the user: a pin badge in the tile's top-right corner.
-    PinnedRole,
-    // Optional: the game's source id, drawn as a small colored mark.
+    // Optional: the game's source id, named on the status line.
     SourceRole,
     // Optional: 0..1, or below 0 while busy with no percentage, drawn as a
     // rail between the title and the status line.
@@ -62,8 +60,7 @@ public:
 
   void SetTileSize(QSize tile);
   void SetShowStatus(bool show) { show_status_ = show; }
-  void SetShowSourceMark(bool show) { show_source_mark_ = show; }
-  void SetShowPinBadge(bool show) { show_pin_badge_ = show; }
+  void SetShowSource(bool show) { show_source_ = show; }
   QSize TileSize() const { return tile_; }
   // Shows `text` over game `id`'s tile in `view` for a few seconds, e.g. why a double-click did nothing.
   static void ShowNote(QAbstractItemView* view, const QString& id, const QString& text);
@@ -75,8 +72,7 @@ public:
 private:
   QSize tile_;
   bool show_status_ = true;
-  bool show_source_mark_ = true;
-  bool show_pin_badge_ = true;
+  bool show_source_ = true;
   ArtworkStore* artwork_;
   QString note_id_;  // the tile ShowNote is drawing on, if any
   QString note_;

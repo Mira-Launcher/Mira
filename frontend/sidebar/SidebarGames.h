@@ -50,6 +50,11 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
 // Shelf columns for `count` covers: as many as there are, two to four.
 int ShelfColumns(int count);
 
+// Up to three of `games`' covers fanned like a hand of cards, the first on top, as a
+// source row leads with. With none, a dashed outline where a card would be.
+inline constexpr QSize kDeckSize(50, 46);
+QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr);
+
 // A Covers row: a flat button whose hover takes the cover's color.
 // `trailing` is muted text on the right ("Yesterday", "Playing"), empty for none.
 QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing,

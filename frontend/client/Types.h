@@ -843,8 +843,8 @@ struct FrontendPrefs {
   // (0, the default, hides them), and whether source rows show a game count.
   std::optional<int> sidebar_recent_count;
   std::optional<bool> sidebar_source_counts;
-  // Source rows show a colored tile with the source's initial, not a dot.
-  std::optional<bool> sidebar_source_icons;
+  // Source rows show a few of the source's covers, not a colored dot.
+  std::optional<bool> sidebar_source_covers;
   // How PINNED and RECENTLY PLAYED draw their games: "covers" (the default),
   // "hero" or "shelf" (see ui/SidebarGames), and whether recent rows say
   // when each was played.
@@ -860,8 +860,7 @@ struct FrontendPrefs {
   std::optional<bool> library_apps_in_all;    // apps under the All tab; on by default
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
-  std::optional<bool> tile_source_mark;
-  std::optional<bool> tile_pin_badge;
+  std::optional<bool> tile_source_mark;  // the source's name on the status line
   // Source pages split installed and not installed games into tabs; off
   // stacks both sections.
   std::optional<bool> source_page_tabs;

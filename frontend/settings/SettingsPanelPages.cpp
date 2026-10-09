@@ -187,10 +187,9 @@ void SettingsPanel::BuildInterfacePage() {
             "library cards recently played recent apps", &FrontendPrefs::library_continue_apps, false);
   tile_status_ = AddToggle(library, "Status on tiles", "Show Needs install, Broken, Playing and the like on a tile.",
                            "tile badge", &FrontendPrefs::tile_status, true);
-  tile_mark_ = AddToggle(library, "Source mark on tiles", "Show which store or launcher a game came from on its tile.",
-                         "tile store icon", &FrontendPrefs::tile_source_mark, true);
-  tile_pin_ = AddToggle(library, "Pin badge on tiles", "Show a pin in the corner of a pinned game's tile.",
-                        "tile pinned favorite icon", &FrontendPrefs::tile_pin_badge, true);
+  tile_source_ = AddToggle(library, "Source on tiles",
+                           "Name the store or launcher a game came from under its title.",
+                           "tile store launcher source", &FrontendPrefs::tile_source_mark, true);
   AddToggle(library, "Same tile size everywhere",
             "One tile size for the library and every source page. Off, each page keeps its own.",
             "tile size zoom synced source pages", &FrontendPrefs::tile_size_synced, false);
@@ -283,8 +282,8 @@ void SettingsPanel::RefreshShapeDefaults() {
 }
 
 void SettingsPanel::UpdatePreviews() {
-  if (tile_preview_ != nullptr && tile_status_ != nullptr && tile_mark_ != nullptr && tile_pin_ != nullptr) {
-    tile_preview_->SetShown(tile_status_->isChecked(), tile_mark_->isChecked(), tile_pin_->isChecked());
+  if (tile_preview_ != nullptr && tile_status_ != nullptr && tile_source_ != nullptr) {
+    tile_preview_->SetShown(tile_status_->isChecked(), tile_source_->isChecked());
   }
   if (layout_preview_ != nullptr) {
     layout_preview_->SetShape({tile_spacing_.current.value_or(tile_spacing_.theme_default),
@@ -354,8 +353,9 @@ void SettingsPanel::BuildSidebarPage() {
   sources_card_ = page->AddCard("In the sidebar");
   AddToggle(sources_card_, "Show game counts", "Show how many games each source has next to its name.",
             "sidebar source numbers", &FrontendPrefs::sidebar_source_counts, true);
-  AddToggle(sources_card_, "Colored source icons", "Show each source's colored initial instead of a dot.",
-            "sidebar source colors", &FrontendPrefs::sidebar_source_icons, true);
+  AddToggle(sources_card_, "Covers on source rows",
+            "Show a few of each source's games next to its name. Off shows a colored dot instead.",
+            "sidebar source covers colors icons", &FrontendPrefs::sidebar_source_covers, true);
   for (const SourceInfo& source : AllSources()) {
     auto* row = new SettingRow(source.name, {});
     row->ShowGrip();
