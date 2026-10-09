@@ -66,6 +66,8 @@ struct GamepadInput::Sdl {
     if (!ok) return false;
     // Guide must still reach Mira while a game has focus.
     SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+    // SDL would otherwise swallow SIGINT and SIGTERM, so mira-gui couldn't be stopped.
+    SetHint("SDL_NO_SIGNAL_HANDLERS", "1");
     if (!Init(kInitGamepad)) return false;
     // Polled below, so nothing should queue up as events.
     SetGamepadEventsEnabled(false);
