@@ -13,13 +13,13 @@
 
 #include "bigscreen/Session.h"
 #include "client/api/Config.h"
-#include "dialogs/FirstRunWizard.h"
 #include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
 #include "app/SystemNotifier.h"
 #include "app/Tray.h"
+#include "setup/SetupWindow.h"
 #include "theme/Theme.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
@@ -103,12 +103,13 @@ int main(int argc, char** argv) {
     // size and look instead of changing once shown.
     const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
     mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
-    if (!hidden && saved.ok && mira_gui::FirstRunWizard::Needed(prefs)) {
-      mira_gui::FirstRunWizard wizard(prefs);
-      wizard.exec();
-      // What it chose decides how the window opens.
-      const mira_gui::FrontendPrefsResult after = mira_gui::api::GetFrontendPrefsBlocking();
-      if (after.ok) prefs = after.prefs;
+    // A frontend.toml that already has a window size is an existing install, not a new one.
+    const bool first_launch =
+        !hidden && saved.ok && !prefs.onboarded.value_or(false) && !prefs.window_width.has_value();
+    if (first_launch) {
+      mira_gui::FrontendPrefs onboarded;
+      onboarded.onboarded = true;
+      mira_gui::api::SaveFrontendPrefsBlocking(onboarded);
     }
     mira_gui::ApplyAppearance(prefs);
     mira_gui::bigscreen::ApplyStartOnLogin(prefs.start_on_login.value_or(false));
@@ -118,7 +119,14 @@ int main(int argc, char** argv) {
     // means exactly what it always did.
     mira_gui::tray::Attach(window);
     mira_gui::bigscreen::UpdateSteamShortcut(window);
-    if (hidden) {
+    if (first_launch) {
+      // Set up Mira opens instead of the main window, which shows once it closes.
+      QObject::connect(window->OpenSetup(prefs), &mira_gui::SetupWindow::Finished, window,
+                       [window](bool big_screen) {
+                         if (big_screen) return window->OpenBigScreen();
+                         window->show();
+                       });
+    } else if (hidden) {
       // With no tray to come back from, the dock or taskbar.
       if (!mira_gui::tray::Available()) window->showMinimized();
     } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {

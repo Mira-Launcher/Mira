@@ -887,11 +887,8 @@ struct FrontendPrefs {
   std::optional<std::vector<std::string>> big_screen_recent_searches;
   // Whether big screen lists applications (games tagged app, Microsoft 365); off by default.
   std::optional<bool> big_screen_show_apps;
-  // Set once the first-run wizard has been through (or skipped).
+  // Set once first launch has opened Set up Mira, so it opens on its own only once.
   std::optional<bool> onboarded;
-  // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes
-  // what the sidebar and library lead with; nothing is hidden for good.
-  std::optional<std::string> primary_use;
   // Each source page's tile width, by source id; tile_width is the library's.
   // Synced: every page uses tile_width.
   std::optional<std::map<std::string, int>> source_tile_widths;

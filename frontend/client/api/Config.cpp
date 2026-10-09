@@ -166,7 +166,6 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_int("big_screen_idle_suspend", result.prefs.big_screen_idle_suspend);
   read_bool("big_screen_show_apps", result.prefs.big_screen_show_apps);
   read_bool("onboarded", result.prefs.onboarded);
-  read_string("primary_use", result.prefs.primary_use);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
   if (table.contains("source_tile_widths") && table["source_tile_widths"].is_object()) {
     std::map<std::string, int> widths;
@@ -263,7 +262,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.big_screen_recent_searches) table["big_screen_recent_searches"] = *prefs.big_screen_recent_searches;
   if (prefs.big_screen_show_apps) table["big_screen_show_apps"] = *prefs.big_screen_show_apps;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
-  if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;
   if (prefs.source_tile_widths) table["source_tile_widths"] = *prefs.source_tile_widths;
   for (const std::string& key : prefs.clear) table[key] = nullptr;  // merge-patch: null deletes

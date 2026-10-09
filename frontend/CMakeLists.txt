@@ -123,6 +123,7 @@ add_executable(mira_gui_tests
   library/TitleRatings.cpp
   settings/SettingsColumns.cpp
   settings/SettingsSearch.cpp
+  setup/SetupFlow.cpp
   sources/Sources.cpp
   theme/Theme.cpp
   widgets/Labels.cpp

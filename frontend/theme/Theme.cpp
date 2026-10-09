@@ -187,6 +187,14 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   QColor accent_soft = tokens.accent;
   accent_soft.setAlphaF(0.3);
   values.insert("accent_soft", ColorToQss(accent_soft));
+  // Faint washes behind a note or a mark, still readable under text.
+  for (const auto& [name, color] : {std::pair{"accent_faint", tokens.accent},
+                                    std::pair{"info_faint", tokens.info},
+                                    std::pair{"success_faint", tokens.success}}) {
+    QColor faint = color;
+    faint.setAlphaF(0.14);
+    values.insert(name, ColorToQss(faint));
+  }
   values.insert("radius_panel", QString("%1px").arg(tokens.radius_panel));
   values.insert("radius_control", QString("%1px").arg(tokens.radius_control));
   values.insert("font_size_small", QString("%1px").arg(tokens.font_size_small));

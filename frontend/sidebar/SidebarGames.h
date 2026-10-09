@@ -9,6 +9,7 @@
 #include "../client/Types.h"
 
 class QPainter;
+class QRectF;
 
 namespace mira_gui {
 
@@ -49,6 +50,10 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
 
 // Shelf columns for `count` covers: as many as there are, two to four.
 int ShelfColumns(int count);
+// A shelf cover's "Yesterday" or "Playing", over a dark fade at its foot.
+void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text, int pixel_size);
+// Space between shelf covers.
+inline constexpr int kShelfGap = 6;
 
 // Up to three of `games`' covers fanned like a hand of cards, the first on top, as a
 // source row leads with. With none, a dashed outline where a card would be.
@@ -124,7 +129,7 @@ protected:
   void resizeEvent(QResizeEvent* event) override;
 
 private:
-  static constexpr int kGap = 6;
+  static constexpr int kGap = kShelfGap;
   int Columns() const;
   int CellWidth(int width) const;
   std::vector<QWidget*> covers_;

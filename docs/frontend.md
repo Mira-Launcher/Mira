@@ -45,6 +45,25 @@ A page is one scroll: a top row with the source's status and its Sign out / Open
 
 The banner's gear opens `sources/SourceSettingsCard` under it: the source's runner (`/v1/sources/{id}/runner`) and every schema setting under its own keys (`<id>.*`, plus `launchers.<id>.*`), in the same rows as Settings and saved or discarded together from the card's foot. The banner's ⋯ menu updates a store's tool, opens a launcher's prefix tools (folder, winetricks, run a program, log) and removes the source through the same confirmation Manage sources uses.
 
+### Set up Mira
+
+First launch (a `frontend.toml` with neither `onboarded` nor a saved window size) shows `setup/SetupWindow` instead of the main window, and sets `onboarded` at once so it opens on its own only once; the main window (or big screen) opens when it closes. It's a fixed-size window of pages with Back, Skip and Next in its footer and dots for where you are, which follow the picks as they're made. Every page can be skipped: *Skip setup* on the first page goes straight to the last, and skipping a page that picks things (what for, stores, applications) drops the pages its picks would have added (`setup/SetupFlow`, tested). The window is as tall as its tallest page, measured once over every page, so it never resizes.
+
+Slow work starts only when a page is left with Next, never on Skip, and belongs to `setup/SetupWork`, owned by the main window, so it carries on after the window closes; a pill at the top right says what's under way. The pages:
+
+- **Welcome**: three example heroes with Mira's name, what Mira does, where Mira keeps games (a pick sets `library_roots`, `prefix_root` and each store's install folder under it; a library folder that already holds games stays; NTFS, exFAT and FAT flagged), and, only when system packages are missing (`GET /v1/system/packages`), a note that Next asks for the password once, with *Choose packages* to untick some. Next installs them through `system::InstallPackages` and downloads the newest Proton when there's no Proton or Wine build.
+- **What for**: Games and Windows applications, each a card; they decide the pages that follow.
+- **Found on this computer** (games): Steam's installed games with their covers (`GET /v1/steam/installed`, nothing added yet) and a switch to add them, the account to read them for when Steam has several (`GET /v1/steam/accounts`), Lutris with a switch, and chips for the Proton and Wine builds, GameMode and Vulkan. Next saves the account and imports what's switched on.
+- **Stores** (games): Steam, Epic, GOG, Amazon, itch.io and Humble as tiles, the first three picked. Next fetches each picked store's helper tool.
+- **Applications**: Microsoft 365, and whether apps show under All and in big screen. Next starts Office's Windows setup (`POST /v1/launchers/office/install`, after `winetricks`).
+- **A sign-in page per picked store**, "Store n of m": `setup/SignInPanel` with the drawing under the steps. Signing in refreshes the sidebar's sources and moves on by itself after a moment; the credential is gone from the clipboard by then, so the next store's page can't sign in with it.
+- **Microsoft 365**: the plan (`launchers.office.plan`) and which apps (Word, Excel and PowerPoint ticked). Next asks for the apps (`POST /v1/launchers/office/apps`), which mirad adds once Office's own setup is done.
+- **Look**: theme, corners and spacing presets over the shape overrides, and what tiles show, over a small library drawn with them; with only applications picked, the switches and preview are about apps. Changes apply as they're made.
+- **Sidebar**: how pinned and recently played games draw, beside a sidebar drawn that way; recently played starts at three. With only applications picked, only pinned apps.
+- **Done**: what was set up and what's left (and where to do it), *Start Mira when I log in*, *Open Mira in big screen* when the screen looks like a Steam Deck (1280×800) or a TV (over 40 inches), and a link to star the project on GitHub. *Open Mira* turns off every source that wasn't picked and has no games yet (`<id>.enabled`), unless setup was skipped as a whole.
+
+Previews use the user's own games, most recently played first, and until there are any, three example games whose covers and heroes are fetched from Steam's CDN into memory only (`DemoArt`).
+
 ### Runners page
 
 `runners/RunnersPage` has a Proton/Wine switch that filters both of its lists. They are settings cards in two columns, which stack into one on a window under 1150 px wide:

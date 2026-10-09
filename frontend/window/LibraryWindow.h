@@ -41,6 +41,7 @@ class OwnedTitles;
 class RunnersPage;
 class TagsPage;
 class SettingsPanel;
+class SetupWindow;
 class Sidebar;
 class SourcePage;
 class TopBar;
@@ -71,6 +72,9 @@ public:
   mira_gui::LibraryServices services() const { return {library_, artwork_, downloads_, owned_titles_, menus_}; }
   // Opens big screen mode (or raises it), hiding this window until it closes.
   void OpenBigScreen();
+  // Opens Set up Mira's window, on first launch. `prefs` is frontend.toml as it stands. The
+  // window's slow work belongs to this window, so it carries on after the setup window closes.
+  mira_gui::SetupWindow* OpenSetup(const mira_gui::FrontendPrefs& prefs);
 
 private:
   mira_gui::Sidebar* BuildSidebar(const mira_gui::FrontendPrefs& prefs);

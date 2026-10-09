@@ -983,6 +983,188 @@ QPushButton#choice_card:disabled {
   color: @text_muted;
 }
 
+/* --- Set up Mira (setup/SetupWindow) ------------------------------------------- */
+
+QWidget#setup_window,
+QScrollArea#setup_scroll,
+QScrollArea#setup_scroll > QWidget > QWidget {
+  background: @window;
+}
+
+QWidget#setup_foot {
+  background: @surface;
+  border-top: 1px solid @border;
+}
+
+QWidget#setup_foot QPushButton#text_button {
+  color: @text_muted;
+}
+
+QWidget#setup_window QWidget#segmented QPushButton {
+  padding: 4px 11px;
+}
+
+QLabel#setup_running {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: 8px;  /* Qt draws square corners past half the height */
+  padding: 2px 9px;
+  font-size: @font_size_small;
+  color: @text_muted;
+}
+
+QLabel#setup_badge {
+  background: @accent_faint;
+  border-radius: 12px;
+}
+
+QLabel#setup_title {
+  font-size: 21px;
+  font-weight: 600;
+}
+
+QLabel#setup_strong,
+QLabel#setup_tile_title {
+  font-weight: 600;
+}
+
+QLabel#setup_tile_title {
+  font-size: 15px;
+}
+
+QFrame#setup_card,
+QFrame#setup_feature {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: @radius_panel;
+}
+
+QFrame#setup_note {
+  background: @info_faint;
+  border: 1px solid @info;
+  border-radius: @radius_panel;
+}
+
+QLabel#setup_path {
+  background: @window;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+  padding: 5px 10px;
+  font-family: monospace;
+}
+
+/* Clear, so a picked card's wash covers it too. */
+QFrame#setup_art {
+  background: transparent;
+  border-bottom: 1px solid @border;
+}
+
+QLabel#setup_tick {
+  border: 1.5px solid @text_muted;
+  border-radius: 4px;
+  color: @on_accent;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+QLabel#setup_tick[on="true"] {
+  background: @accent;
+  border-color: @accent;
+}
+
+QLabel#setup_chip {
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-radius: 8px;
+  padding: 2px 9px;
+  font-size: @font_size_small;
+}
+
+QLabel#setup_chip[state="ok"] {
+  color: @success;
+  border-color: @success;
+}
+
+QLabel#setup_chip[state="warning"] {
+  color: @warning;
+  border-color: @warning;
+}
+
+QLabel#setup_chip[state="error"] {
+  color: @error;
+  border-color: @error;
+}
+
+QPushButton#setup_account {
+  background: transparent;
+  border: 1.5px solid @border;
+  border-radius: @radius_control;
+  text-align: left;
+}
+
+QPushButton#setup_account:checked {
+  border-color: @accent;
+}
+
+QLabel#setup_radio {
+  border: 1.5px solid @text_muted;
+  border-radius: 8px;
+}
+
+QLabel#setup_radio[on="true"] {
+  border: 5px solid @accent;
+}
+
+QLabel#setup_avatar {
+  border-radius: 14px;
+  color: white;
+  font-weight: 600;
+}
+
+QLabel#setup_mark {
+  background: @surface_alt;
+  border-radius: 9px;
+  color: @text_muted;
+  font-weight: 700;
+}
+
+QLabel#setup_doc {
+  border-radius: 5px;
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+QLabel#setup_check {
+  background: @success_faint;
+  border-radius: 32px;
+}
+
+QLabel#setup_done_title {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+QLabel#setup_signed_in {
+  color: @success;
+  font-weight: 600;
+}
+
+QFrame#setup_star {
+  background: rgba(227, 179, 65, 0.12);
+  border: 1px solid rgba(227, 179, 65, 0.5);
+  border-radius: @radius_panel;
+}
+
+QLabel#setup_star_glyph {
+  color: #e3b341;
+  font-size: 26px;
+}
+
+QLabel#setup_link {
+  font-weight: 600;
+}
+
 
 QPlainTextEdit#log_view {
   background: @window;
