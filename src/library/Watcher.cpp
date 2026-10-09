@@ -100,12 +100,13 @@ void Watcher::ReloadRoots() {
 }
 
 void CreateMissingRoots(const config::Config& config) {
-  const fs::path home = paths::Home().lexically_normal();
+  // Resolved, so /home/you and /var/home/you (Fedora Atomic's symlink) count as the same home.
+  std::error_code ec;
+  const fs::path home = fs::weakly_canonical(paths::Home(), ec);
   for (const fs::path& root : config.GetPathArray("library_roots")) {
     const fs::path normal = root.lexically_normal();
-    const fs::path relative = normal.lexically_relative(home);
+    const fs::path relative = fs::weakly_canonical(normal, ec).lexically_relative(home);
     if (relative.empty() || relative == "." || *relative.begin() == "..") continue;
-    std::error_code ec;
     if (fs::exists(normal, ec)) continue;
     if (fs::create_directories(normal, ec)) {
       log::Info("created library root {}", normal.string());

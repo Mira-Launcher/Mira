@@ -199,13 +199,23 @@ Result<void> CopyFile(const fs::path& from, const fs::path& to) {
   return {};
 }
 
+// A Wine install's 64-bit DLLs: lib on Arch and in Proton/Wine builds, lib64 on Fedora, the multiarch dir on Debian.
+fs::path WineDlls(const fs::path& root) {
+  std::error_code ec;
+  for (const char* lib : {"lib", "lib64", "lib/x86_64-linux-gnu"}) {
+    const fs::path dir = root / lib / "wine" / "x86_64-windows";
+    if (fs::is_directory(dir, ec)) return dir;
+  }
+  return root / "lib" / "wine" / "x86_64-windows";
+}
+
 Result<void> InstallShims(const config::Config& config, const runner::RunnerRegistry& runners, const model::Game& host,
                           const fs::path& downloads, std::string* version = nullptr) {
   const auto shims = ShimsDir(config, downloads, version);
   if (!shims) return std::unexpected(shims.error());
   const auto wine = runner::ResolveWineBinary(runners, host);
   if (!wine) return std::unexpected(wine.error());
-  const fs::path wine_dlls = wine->parent_path().parent_path() / "lib" / "wine" / "x86_64-windows";
+  const fs::path wine_dlls = WineDlls(wine->parent_path().parent_path());
   const fs::path system32 = fs::path(host.data_dir) / "drive_c" / "windows" / "system32";
 
   std::error_code ec;
@@ -214,8 +224,8 @@ Result<void> InstallShims(const config::Config& config, const runner::RunnerRegi
     if (!shim.wine_copy.empty()) {
       fs::path original = wine_dlls / dll;
       // A newer distro Wine has Direct2D fixes Office's start screen needs.
-      if (shim.name == "d2d1" && fs::is_regular_file("/usr/lib/wine/x86_64-windows/d2d1.dll", ec)) {
-        original = "/usr/lib/wine/x86_64-windows/d2d1.dll";
+      if (const fs::path distro = WineDlls("/usr") / dll; shim.name == "d2d1" && fs::is_regular_file(distro, ec)) {
+        original = distro;
       }
       const fs::path copy = system32 / std::format("{}.dll", shim.wine_copy);
       if (auto copied = CopyFile(original, copy); !copied) return copied;
