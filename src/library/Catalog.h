@@ -1,10 +1,15 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "api/EventBus.h"
 #include "config/Config.h"
+#include "core/Lane.h"
 #include "core/Result.h"
 #include "store/GameStore.h"
 
@@ -16,11 +21,12 @@
 // catalog entry is an entitlement: a title the account owns, most of which
 // aren't on disk at all. Persisting entitlements as tracked games bloated a
 // file the README promises stays hand-editable (120 Epic rows carrying a
-// meaningless data_dir/runner_ref/play_seconds each), so they aren't
-// persisted at all now -- they're read through from whatever each source
-// already caches, and a title becomes a real model::Game only once it's
-// installed.
+// meaningless data_dir/runner_ref/play_seconds each), so they stay out of
+// mira.db: cache.db keeps each store's last answer (CatalogCache), and a
+// title becomes a real model::Game only once it's installed.
 namespace mira::library {
+
+class ILibrarySource;
 
 struct CatalogEntry {
   std::string source;  // "epic" | "steam"
@@ -32,12 +38,23 @@ struct CatalogEntry {
   bool owned = true;  // false: listed (e.g. from an itch collection) but not installable
 };
 
-// Every entry `source` can report, or every source's at once when `source`
-// is empty. A source that isn't configured/authenticated contributes
-// nothing rather than failing the whole listing -- one broken storefront
-// shouldn't hide the others.
-Result<std::vector<CatalogEntry>> ListCatalog(const config::Config& config, const store::GameStore& games,
-                                             const std::string& source);
+// GET /v1/library's listing, from each source's list stored in cache.db with `installed` marked
+// now. A source with no stored list is asked now and its answer stored; every other one is
+// re-checked on `lane` (once at a time per source) between library.catalog_checking and
+// library.catalog_checked {source, changed}. `fresh` asks every source now instead.
+class CatalogCache {
+public:
+  Result<std::vector<CatalogEntry>> List(const config::Config& config, store::GameStore& games,
+                                         api::EventBus& events, Lane& lane, const std::string& source,
+                                         bool fresh);
+
+private:
+  // Asks `source` and stores its answer; null when it couldn't be asked.
+  std::optional<bool> Check(const config::Config& config, store::GameStore& games, ILibrarySource& source);
+
+  std::mutex mutex_;
+  std::set<std::string> checking_;  // guarded by mutex_
+};
 
 // Marks `entry` as already-tracked if Mira has a game for it. Every
 // ILibrarySource::Catalog implementation derives a tracked game's id the

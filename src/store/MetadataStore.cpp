@@ -13,7 +13,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 2> kMigrations = {
+constexpr std::array<std::string_view, 3> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -39,6 +39,19 @@ CREATE TABLE lists(
     R"sql(
 CREATE TABLE fit_pending(id TEXT PRIMARY KEY) STRICT;
 INSERT INTO fit_pending SELECT id FROM metadata;
+)sql",
+    // What each store last said the account owns, in its order, so a listing answers at once.
+    R"sql(
+CREATE TABLE catalog(
+  source TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  ref TEXT NOT NULL,
+  title TEXT NOT NULL,
+  play_seconds INTEGER NOT NULL,
+  owned INTEGER NOT NULL,
+  PRIMARY KEY(source, position)
+) STRICT;
+CREATE TABLE catalog_checked(source TEXT PRIMARY KEY, checked_at INTEGER NOT NULL) STRICT;
 )sql",
 };
 
@@ -186,6 +199,78 @@ Result<void> MetadataStore::WriteList(const std::string& name, const json& value
       .Bind(2, value.dump(-1, ' ', false, json::error_handler_t::replace))
       .Bind(3, model::NowSeconds())
       .Run();
+}
+
+std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog(const std::string& source) const {
+  std::lock_guard lock(mutex_);
+  return ReadCatalogLocked(source);
+}
+
+std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalogLocked(
+    const std::string& source) const {
+  if (!db_.IsOpen()) return std::nullopt;
+  auto checked = db_.Prepare("SELECT 1 FROM catalog_checked WHERE source = ?");
+  if (!checked) return std::nullopt;
+  checked->Bind(1, source);
+  if (auto row = checked->Step(); !row || !*row) return std::nullopt;
+
+  auto select = db_.Prepare("SELECT ref, title, play_seconds, owned FROM catalog WHERE source = ? ORDER BY position");
+  if (!select) return std::nullopt;
+  select->Bind(1, source);
+  std::vector<CatalogRow> rows;
+  for (auto row = select->Step(); row && *row; row = select->Step()) {
+    rows.push_back({select->Text(0), select->Text(1), select->Int(2), select->Int(3) != 0});
+  }
+  return rows;
+}
+
+Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::vector<CatalogRow>& rows) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
+  const auto before = ReadCatalogLocked(source);
+  const bool changed = !before || *before != rows;
+  Transaction transaction(db_);
+  if (auto begun = transaction.Begin(); !begun) return std::unexpected(begun.error());
+  if (changed) {
+    auto clear = db_.Prepare("DELETE FROM catalog WHERE source = ?");
+    if (!clear) return std::unexpected(clear.error());
+    if (auto done = clear->Bind(1, source).Run(); !done) return std::unexpected(done.error());
+    for (std::size_t at = 0; at < rows.size(); ++at) {
+      auto add = db_.Prepare(
+          "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, ?, ?)");
+      if (!add) return std::unexpected(add.error());
+      const CatalogRow& row = rows[at];
+      if (auto done = add->Bind(1, source)
+                          .Bind(2, static_cast<std::int64_t>(at))
+                          .Bind(3, row.ref)
+                          .Bind(4, row.title)
+                          .Bind(5, row.play_seconds)
+                          .Bind(6, std::int64_t{row.owned ? 1 : 0})
+                          .Run();
+          !done) {
+        return std::unexpected(done.error());
+      }
+    }
+  }
+  auto stamp = db_.Prepare(
+      "INSERT INTO catalog_checked(source, checked_at) VALUES(?, ?) "
+      "ON CONFLICT(source) DO UPDATE SET checked_at = excluded.checked_at");
+  if (!stamp) return std::unexpected(stamp.error());
+  if (auto done = stamp->Bind(1, source).Bind(2, model::NowSeconds()).Run(); !done) return std::unexpected(done.error());
+  if (auto committed = transaction.Commit(); !committed) return std::unexpected(committed.error());
+  return changed;
+}
+
+void MetadataStore::DropCatalog(const std::string& source) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  for (const char* sql : {"DELETE FROM catalog WHERE source = ?", "DELETE FROM catalog_checked WHERE source = ?"}) {
+    auto remove = db_.Prepare(sql);
+    if (!remove) continue;
+    if (auto done = remove->Bind(1, source).Run(); !done) {
+      log::Warn("could not drop {}'s stored catalog: {}", source, done.error().message);
+    }
+  }
 }
 
 Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info) {

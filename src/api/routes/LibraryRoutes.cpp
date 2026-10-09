@@ -314,9 +314,10 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
 
   http.Get("/v1/library", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
-    auto entries = library::ListCatalog(s.config, s.games, source);
+    auto entries = s.catalogs.List(s.config, s.games, s.events, s.catalog_checks, source, BoolParam(req, "fresh"));
     if (!entries) return SendError(res, 400, entries.error());
     const auto steam_tags = metadata::StoredSteamTags(s.games.Metadata());
+    const auto reviews = s.games.Metadata().Field("steam_reviews");
     json out = json::array();
     for (const library::CatalogEntry& entry : *entries) {
       out.push_back({{"source", entry.source},
@@ -332,6 +333,17 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       if (const auto tags = steam_tags.find(entry.source + "-" + entry.ref);
           tags != steam_tags.end() && tags->second && !tags->second->empty()) {
         out.back()["steam_tags"] = *tags->second;
+      }
+      if (const auto found = reviews.find(entry.source + "-" + entry.ref);
+          found != reviews.end() && found->second.is_object()) {
+        const json& r = found->second;
+        const std::int64_t total = r.value("total_reviews", std::int64_t{0});
+        if (total > 0) {
+          const std::int64_t positive = r.value("total_positive", std::int64_t{0});
+          out.back()["steam_reviews"] = {{"score_description", r.value("score_description", std::string())},
+                                         {"percent_positive", (positive * 100 + total / 2) / total},
+                                         {"total_reviews", total}};
+        }
       }
     }
     SendJson(res, std::move(out));

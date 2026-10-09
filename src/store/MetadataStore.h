@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -38,6 +39,21 @@ public:
   // when none is cached.
   nlohmann::json ReadList(const std::string& name) const;
   Result<void> WriteList(const std::string& name, const nlohmann::json& value);
+  // A store's owned titles as it last listed them, in its order.
+  struct CatalogRow {
+    std::string ref;
+    std::string title;
+    std::int64_t play_seconds = 0;
+    bool owned = true;
+    bool operator==(const CatalogRow&) const = default;
+  };
+  // Null when `source` was never listed (or was signed out of) since; an empty list is a store
+  // that owns nothing.
+  std::optional<std::vector<CatalogRow>> ReadCatalog(const std::string& source) const;
+  // Replaces the stored list; true when it differs from the one before.
+  Result<bool> WriteCatalog(const std::string& source, const std::vector<CatalogRow>& rows);
+  void DropCatalog(const std::string& source);
+
   // Replaces the id's info and its art rows together.
   Result<void> Write(const std::string& id, const nlohmann::json& info);
   // Drops the id's info, art rows and art files.
@@ -64,6 +80,7 @@ public:
 private:
   Result<void> Open();
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
+  std::optional<std::vector<CatalogRow>> ReadCatalogLocked(const std::string& source) const;
 
   std::filesystem::path dir_;
   mutable std::mutex mutex_;

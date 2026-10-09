@@ -242,7 +242,7 @@ The unclear moves scans found: `{"moves": [{"folder", "games": [{"id", "name"}]}
 ### `POST /v1/library/unclear`
 Body `{"folder": "...", "id"?: "..."}`. Settles an unclear move: with `id` (one of its games) the folder becomes that game's, with its tags following the new place; without, it's added as a new game. The library folders of the other games it could have been are scanned again before it returns, so each is marked missing or followed to where it went. Returns the game; publishes `library.move_settled {folder}`, which is also published when an unclear folder disappears on its own. `404 move_not_found` for a folder that isn't one.
 
-### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office]`
+### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office][&fresh=1]`
 What each account owns, whether or not it's installed:
 
 ```json
@@ -251,9 +251,9 @@ What each account owns, whether or not it's installed:
    "play_seconds": 0, "owned": true }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier` and `steam_tags` (most voted first) are there when cached.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
 
-Owned titles aren't stored; they are read live from each source and become games once installed. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
+Each source's owned titles are stored in cache.db as it last listed them, so the listing answers at once; titles become games once installed. A source never listed yet is asked during the request. Every other one is re-checked in the background, one check per source at a time, between `library.catalog_checking` and `library.catalog_checked` (`changed` says whether the list differs, the cue to list again). `fresh=1` asks each source during the request instead. Signing out of a store drops its stored list. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
 
 ### `POST /v1/library/install`
 Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
@@ -605,6 +605,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |
+| `library.catalog_checking`, `library.catalog_checked` | `{source}` while `GET /v1/library` re-checks a store's owned titles; `checked` adds `changed`. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |
