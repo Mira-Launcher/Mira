@@ -390,7 +390,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       return SendJson(res, {{"status", "launched_via_launcher"}, {"tracked", true}});
     }
 
-    // Steam games default to a steam://rungameid handoff for overlay and achievements.
+    // Steam games default to a handoff to the Steam client (-applaunch) for overlay, achievements and playtime.
     // Mira can't waitpid() that process; steam.track_process finds it in /proc instead.
     if (game->runner_ref.starts_with("steam:")) {
       if (resolver.GetString("steam.launch_mode") == "steam") {
@@ -399,10 +399,11 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         }
         const std::string appid = game->runner_ref.substr(std::string_view("steam:").size());
         Command command;
-        // -silent: a Steam that wasn't running starts without opening its own window.
+        // -silent: a Steam that wasn't running starts without opening its window. -applaunch rather than a
+        // steam:// URL, which a cold-started client answers by opening its window anyway.
         command.argv = {"steam"};
         if (resolver.GetBool("steam.launch_silent")) command.argv.push_back("-silent");
-        command.argv.push_back(std::format("steam://rungameid/{}", appid));
+        command.argv.insert(command.argv.end(), {"-applaunch", appid});
         if (auto spawned = runner::SpawnDetached(command); !spawned) {
           return SendError(res, 500, spawned.error());
         }

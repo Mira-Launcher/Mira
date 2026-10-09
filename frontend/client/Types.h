@@ -164,7 +164,7 @@ struct DeleteResult {
 // launch" (docs/api.md), not something inferred here. It is false only for
 // a Steam-sourced game under `steam.launch_mode: "steam"` *with*
 // `steam.track_process` off: mirad handed it to
-// `steam://rungameid/<appid>` and is watching nothing. With track_process
+// `steam -applaunch <appid>` and is watching nothing. With track_process
 // on (the default) mirad polls /proc for it and real game.state events do
 // arrive, a few seconds later than a normal launch.
 //

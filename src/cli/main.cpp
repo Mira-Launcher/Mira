@@ -1496,7 +1496,7 @@ void PrintUsage() {
       "  runners download --kind K --tag TAG [--source ID]   download and install one\n"
       "  runners updates | update <kind:name>     list or install newer builds\n"
       "  runners tools [install umu|winetricks]   check or install runner helpers\n"
-      "  launch <id>            launch a game (or fire steam://rungameid for a\n"
+      "  launch <id>            launch a game (or hand it to Steam for a\n"
       "                         Steam game, depending on steam.launch_mode)\n"
       "  stop <id>              stop a running game\n"
       "  run <id> --exe PATH [--args ARGS]        run an arbitrary exe in this\n"
