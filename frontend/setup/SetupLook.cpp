@@ -735,16 +735,19 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   games_switches_ = new QWidget(card);
   auto* games = new QHBoxLayout(games_switches_);
   games->setContentsMargins(0, 0, 0, 0);
-  games->setSpacing(14);
+  games->setSpacing(10);
   continue_ = new Switch(games_switches_);
   status_ = new Switch(games_switches_);
   source_ = new Switch(games_switches_);
+  const auto separator = [](QWidget* parent) { return MakeDivider(parent, Qt::Vertical, 28); };
   games->addWidget(SetupRow(games_switches_, "Continue playing",
                        "Large cards for running and recently played games above the grid.", continue_),
                    1);
+  games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
   games->addWidget(SetupRow(games_switches_, "Status on tiles",
                        "Show Needs install, Broken, Playing and the like on a tile.", status_),
                    1);
+  games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
   games->addWidget(SetupRow(games_switches_, "Source on tiles",
                        "Name the store or launcher a game came from under its title.", source_),
                    1);
@@ -752,12 +755,13 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   apps_switches_ = new QWidget(card);
   auto* apps = new QHBoxLayout(apps_switches_);
   apps->setContentsMargins(0, 0, 0, 0);
-  apps->setSpacing(14);
+  apps->setSpacing(10);
   recent_apps_ = new Switch(apps_switches_);
   app_status_ = new Switch(apps_switches_);
   apps->addWidget(SetupRow(apps_switches_, "Recently used apps",
                       "Large cards for the apps you used last, above the grid.", recent_apps_),
                   1);
+  apps->addWidget(separator(apps_switches_), 0, Qt::AlignVCenter);
   apps->addWidget(SetupRow(apps_switches_, "Status on tiles",
                       "Show Installing, Broken, Running and the like on a tile.", app_status_),
                   1);
@@ -911,7 +915,7 @@ void SidebarPage::Enter() {
                         "in Settings.");
   games_rows_->setVisible(!apps);
   const QString pinned = QString::fromStdString(prefs.sidebar_pinned_style.value_or("covers"));
-  const QString recent = QString::fromStdString(prefs.sidebar_recent_style.value_or("covers"));
+  const QString recent = QString::fromStdString(prefs.sidebar_recent_style.value_or("hero"));
   Pick(pinned_, pinned);
   Pick(recent_, recent);
   when_->setChecked(prefs.sidebar_recent_when.value_or(true));
@@ -924,12 +928,12 @@ void SidebarPage::Enter() {
 }
 
 void SidebarPage::Leave() {
-  // Recently played starts with the last three; Settings has the count.
-  if (context_.choices->games && !context_.prefs->sidebar_recent_count) {
-    FrontendPrefs change;
-    change.sidebar_recent_count = 3;
-    SaveSetupPrefs(context_, change);
-  }
+  // Recently played starts with the last three as banners; Settings has the count.
+  if (!context_.choices->games) return;
+  FrontendPrefs change;
+  if (!context_.prefs->sidebar_recent_count) change.sidebar_recent_count = 3;
+  if (!context_.prefs->sidebar_recent_style) change.sidebar_recent_style = "hero";
+  if (change.sidebar_recent_count || change.sidebar_recent_style) SaveSetupPrefs(context_, change);
 }
 
 }  // namespace mira_gui

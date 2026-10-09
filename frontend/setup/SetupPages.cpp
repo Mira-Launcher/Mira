@@ -300,7 +300,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   auto* head = new QHBoxLayout();
   head->setSpacing(8);
   head->addWidget(GlyphLabel(folder, icons::Glyph::Folder, 18, theme::Current().accent));
-  head->addWidget(Bold(folder, "Where Mira keeps your games"), /*stretch=*/1);
+  head->addWidget(Bold(folder, "Where Mira keeps your games and apps"), /*stretch=*/1);
   card->addLayout(head);
   auto* path_row = new QHBoxLayout();
   path_row->setSpacing(8);
@@ -309,8 +309,8 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   path_row->addWidget(path_, /*stretch=*/1);
   auto* change = new QPushButton("Change…", folder);
   connect(change, &QPushButton::clicked, this, [this] {
-    const QString picked =
-        QFileDialog::getExistingDirectory(window(), "Where Mira keeps your games", folder_);
+    const QString picked = QFileDialog::getExistingDirectory(
+        window(), "Where Mira keeps your games and apps", folder_);
     if (!picked.isEmpty()) ChooseFolder(picked);
   });
   path_row->addWidget(change);
@@ -505,9 +505,10 @@ void WelcomePage::Leave() {
 // --- What for --------------------------------------------------------------------------------
 
 UsePage::UsePage(const SetupContext& context) : context_(context) {
-  QVBoxLayout* layout =
-      SetupPageLayout(this, icons::Glyph::Search, "Getting started", "What will you use Mira for?",
-                      "Pick one or both. Mira only asks about what you pick.");
+  QVBoxLayout* layout = SetupPageLayout(
+      this, icons::Glyph::Search, "Getting started", "What do you want to configure right now?",
+      "Pick one or both. The next pages will let you configure your sources for "
+      "each pick.");
   auto* row = new QHBoxLayout();
   row->setSpacing(12);
   const auto tile = [this, &context](bool games) {
@@ -566,7 +567,8 @@ UsePage::UsePage(const SetupContext& context) : context_(context) {
   row->addWidget(games_, /*stretch=*/1);
   row->addWidget(apps_, /*stretch=*/1);
   layout->addLayout(row);
-  layout->addWidget(SetupLaterLine(this, "You can add either one later from the sidebar."));
+  layout->addWidget(
+      SetupLaterLine(this, "These can be configured at any time later in the sidebar."));
   layout->addStretch(1);
 }
 
@@ -1228,8 +1230,8 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   switch_rows->setContentsMargins(14, 4, 14, 4);
   switch_rows->setSpacing(0);
   login_ = new Switch(switches);
-  login_->setChecked(context.prefs->start_on_login.value_or(false));
-  switch_rows->addWidget(SetupRow(switches, "Start Mira when I log in",
+  login_->setChecked(context.prefs->start_on_login.value_or(true));
+  switch_rows->addWidget(SetupRow(switches, "Start Mira when I log in (in the tray)",
                                   "Opens to the tray, so games are ready when you are.", login_));
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);

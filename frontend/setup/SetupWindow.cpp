@@ -238,7 +238,7 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   layout->addWidget(foot_box);
 
   // Every page is made now, so the window takes the tallest one's height and never changes size.
-  setup::Choices everything;
+  setup::Choices everything{.games = true, .apps = true};
   everything.stores = setup::kStores;
   for (const QString& key : setup::Flow(everything)) PageFor(key);
 

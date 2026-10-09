@@ -9,13 +9,14 @@ using mira_gui::setup::ScreenKind;
 using mira_gui::setup::SourcesOn;
 
 TEST_CASE("Set up Mira asks only about what was picked, and skipped picks bring no pages") {
-  Choices both;
+  CHECK(Flow(Choices{}) == QStringList{"welcome", "use", "look", "sidebar", "done"});
+
+  Choices both{.games = true, .apps = true};
   both.stores = {"gog", "steam", "epic"};
   CHECK(Flow(both) == QStringList{"welcome", "use", "found", "stores", "apps", "sign:steam", "sign:epic",
                                   "sign:gog", "office", "look", "sidebar", "done"});
 
-  Choices apps_only;
-  apps_only.games = false;
+  Choices apps_only{.apps = true};
   CHECK(Flow(apps_only) == QStringList{"welcome", "use", "apps", "office", "look", "sidebar", "done"});
 
   Choices skipped = both;
@@ -23,18 +24,13 @@ TEST_CASE("Set up Mira asks only about what was picked, and skipped picks bring 
   skipped.apps_skipped = true;
   CHECK(Flow(skipped) == QStringList{"welcome", "use", "found", "stores", "apps", "look", "sidebar", "done"});
 
-  Choices neither;
-  neither.games = false;
-  neither.apps = false;
-  CHECK(Flow(neither) == QStringList{"welcome", "use", "look", "sidebar", "done"});
-
   Choices no_office = both;
   no_office.office = false;
   CHECK_FALSE(Flow(no_office).contains("office"));
 }
 
 TEST_CASE("Only the sources picked in setup stay on") {
-  Choices picks;
+  Choices picks{.games = true, .apps = true};
   picks.stores = {"epic", "gog"};
   picks.found = {"steam"};
   CHECK(SourcesOn(picks) == QStringList{"local", "steam", "epic", "gog", "office"});

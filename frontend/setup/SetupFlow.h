@@ -12,8 +12,8 @@ inline const QStringList kStores = {"steam", "epic", "gog", "amazon", "itch", "h
 
 // What has been answered so far, which decides the pages that follow.
 struct Choices {
-  bool games = true;
-  bool apps = true;
+  bool games = false;
+  bool apps = false;
   QStringList stores = {"steam", "epic", "gog"};
   bool office = true;  // Microsoft 365, picked on the applications page
   QStringList office_apps = {"word", "excel", "powerpoint"};

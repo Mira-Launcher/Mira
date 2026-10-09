@@ -1056,7 +1056,6 @@ QLabel#setup_path {
 /* Clear, so a picked card's wash covers it too. */
 QFrame#setup_art {
   background: transparent;
-  border-bottom: 1px solid @border;
 }
 
 QLabel#setup_tick {

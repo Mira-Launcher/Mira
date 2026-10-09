@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
   // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
   const bool big_screen = app.arguments().contains("--big-screen");
-  // Started by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
+  // Started at login or by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
   const bool hidden = app.arguments().contains("--hidden");
   if (!single_instance_lock.tryLock(0)) {
     if (hidden) return 0;
