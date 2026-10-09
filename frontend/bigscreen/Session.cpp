@@ -55,6 +55,8 @@ void SleepWatcher::OnPrepareForSleep(bool sleeping) {
 }
 
 bool Power(const char* action) {
+  // Set by test sandboxes, which share the real system bus.
+  if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) return false;
   QDBusInterface logind("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
                         QDBusConnection::systemBus());
   // interactive: polkit may ask for a password when another user is logged in.

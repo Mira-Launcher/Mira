@@ -335,12 +335,14 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     guide_hold_.stop();
     if (!guide_chord_) Guide();
   });
-  connect(input_, &GamepadInput::Activity, &idle_, qOverload<>(&QTimer::start));
+  connect(input_, &GamepadInput::Activity, this, &BigScreenWindow::RestartIdle);
   connect(input_, &GamepadInput::BatteryLow, this, [this](const QString& name, int percent) {
     Tell(QString("%1 is at %2%").arg(name).arg(percent), "Charge it soon.");
   });
   idle_.setSingleShot(true);
   connect(&idle_, &QTimer::timeout, this, [this] {
+    // Only with a time chosen in settings; "Never" must never suspend.
+    if (prefs_.big_screen_idle_suspend.value_or(0) <= 0) return;
     // Only from a quiet Home: nothing playing, nothing installing.
     const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || !isActiveWindow();
     if (!busy) PowerAction("Suspend");
@@ -348,7 +350,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   auto* sleep = new SleepWatcher(this);
   connect(sleep, &SleepWatcher::Woke, this, [this] {
     if (RunningGame() == nullptr) RaiseFromGame();
-    idle_.start();
+    RestartIdle();
   });
   connect(hero_, &HeroBackground::ArtChanged, this, [this] {
     stack_->currentWidget()->update();
@@ -906,13 +908,13 @@ void BigScreenWindow::ApplyInputOptions() {
   options.first_repeat_ms = repeat == "fast" ? 260 : repeat == "slow" ? 520 : 380;
   options.repeat_ms = repeat == "fast" ? 60 : repeat == "slow" ? 140 : 90;
   input_->SetOptions(options);
+  RestartIdle();
+}
+
+void BigScreenWindow::RestartIdle() {
   const int minutes = prefs_.big_screen_idle_suspend.value_or(0);
-  if (minutes > 0) {
-    idle_.setInterval(minutes * 60'000);
-    idle_.start();
-  } else {
-    idle_.stop();
-  }
+  if (minutes <= 0) return idle_.stop();
+  idle_.start(minutes * 60'000);
 }
 
 void BigScreenWindow::PowerAction(const char* action) {
@@ -940,7 +942,7 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   if (found == kKeys.end() || (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
     return QWidget::keyPressEvent(event);
   }
-  idle_.start();
+  RestartIdle();
   if (found->second == Nav::Guide) return Guide();
   Navigate(found->second);
 }

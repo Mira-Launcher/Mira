@@ -134,6 +134,8 @@ private:
   bool AppInFront() const;
   void AppControl(Nav nav);
   void ApplyInputOptions();
+  // Counts idle time from now, when a sleep time is set.
+  void RestartIdle();
   // A message over the game when big screen isn't in front, else a toast.
   void Tell(const QString& title, const QString& detail = {});
   void FollowDownloads();
