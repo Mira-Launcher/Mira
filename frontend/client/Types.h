@@ -270,6 +270,7 @@ struct GameMetadata {
   int metacritic_score = 0;
   std::string review_summary;  // "Very Positive", from Steam's own wording
   int review_total = 0;
+  int review_percent = -1;  // share of positive reviews, -1 without any
   std::string protondb_tier;
   std::vector<std::string> steam_tags;  // most voted first
   std::string website;
@@ -861,9 +862,6 @@ struct FrontendPrefs {
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
   std::optional<bool> tile_source_mark;  // the source's name on the status line
-  // Source pages split installed and not installed games into tabs; off
-  // stacks both sections.
-  std::optional<bool> source_page_tabs;
   // Big screen: button labels ("auto", "xbox", "ps", "nin"), text 15% larger, and whether Mira
   // opens in big screen. `start_on_login` keeps an autostart entry for Mira.
   std::optional<std::string> big_screen_buttons;
@@ -1125,6 +1123,8 @@ struct StoreTitle {
   std::string source;  // the store it's from
   std::string protondb_tier;  // empty when none is cached
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
+  std::string review_summary;  // Steam's label ("Very Positive"), empty when none is cached
+  int review_percent = -1;     // share of positive Steam reviews, -1 when none is cached
 };
 
 // GET /v1/sources/{id}/removal.
@@ -1229,6 +1229,13 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+};
+
+// library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account owns.
+struct CatalogCheckEvent {
+  std::string source;
+  bool checking = false;  // started, else finished
+  bool changed = false;   // finished: list again
 };
 
 }  // namespace mira_gui

@@ -47,10 +47,13 @@ public:
     AppRole,
     // Optional: a ProtonDB tier ("gold"), drawn as a small pill in the top-left corner.
     ProtonDbRole,
+    // Optional: the share of positive Steam reviews (int), on the status line.
+    ReviewRole,
   };
 
-  // Where the ActionRole pill sits inside a tile's cell.
-  static QRect ActionRect(const QRect& cell, const QString& text, const QFont& font);
+  // Where the tile's ActionRole pill sits inside its cell (empty without one); square when the
+  // tile is too narrow for its text, drawn as a download icon.
+  static QRect ActionRect(const QRect& cell, const QModelIndex& index, const QFont& font);
   // A store title's tile: a running install's rail and lines in place of the pill, or the
   // `idle_action` pill ("Install") while nothing runs.
   static void SetTileProgress(QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,

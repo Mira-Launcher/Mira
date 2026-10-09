@@ -33,23 +33,25 @@ class GameFilterProxy;
 class GameLibraryModel;
 class HoverCard;
 class ModalOverlay;
+class ProgressRail;
+class RatingChips;
 class SourceSettingsCard;
 class SourceSetupCard;
 class TabRow;
 class TileGrid;
 
-// One store, launcher or other program's page in the library window: the
-// games that came from it as cover tiles, whatever setup it still needs, and
-// (stores) what the account owns but hasn't installed. Rebuilt on every
-// open, so it starts from mirad's current state.
+// One store, launcher or other program's page in the library window, as one
+// scroll: whatever setup it still needs, the games that came from it as cover
+// tiles, then what the account owns but hasn't installed, filtered by chips.
+// Rebuilt on every open, so it starts from mirad's current state; mirad
+// answers the owned list from what it stored and re-checks the store behind it.
 class SourcePage : public QWidget {
   Q_OBJECT
 
 public:
   // `library` is the window's shared game model; the page shows this source's games from it.
-  // `tabs`: installed and not installed games as tabs, else stacked.
   SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork, DownloadTracker* downloads,
-             bool tabs, int tile_width, QWidget* parent = nullptr);
+             int tile_width, QWidget* parent = nullptr);
 
   // A store title's cover arrived; a game's own tile repaints from the model.
   void UpdateCover(const QString& id);
@@ -106,10 +108,12 @@ private:
   void ApplyStoreStatus(const StoreStatusResult& status);
   void ApplyLauncher(const LauncherInfo& launcher);
   void UpdateStatusLine();
-  // Which of the two sections shows, per the tabs and the account.
-  void UpdateSections();
   void Import();
-  void RefreshOwned();
+  // `fresh` waits for the store's own answer rather than the list mirad stored.
+  void RefreshOwned(bool fresh = false);
+  // The rail, placeholders and count while the owned list is asked for or re-checked.
+  void UpdateOwnedLoading();
+  void UpdateOwnedCount();
   void ShowOwned(const StoreLibraryResult& result);
   void ShowBundles(const HumbleLibraryResult& result);
   void RebuildOwnedTiles();
@@ -138,8 +142,13 @@ private:
   std::string account_;
   int library_count_ = 0;
   QSize tile_;
-  bool use_tabs_ = true;
   bool owned_available_ = false;  // the account is ready to list what it owns
+  bool status_known_ = false;     // a store's status arrived at least once
+  bool owned_loaded_ = false;     // a list (or its failure) arrived since the page opened
+  bool owned_loading_ = false;
+  bool owned_waiting_ = false;    // still loading after a moment: worth showing
+  bool checking_ = false;         // mirad is re-checking the store behind the list shown
+  int owned_generation_ = 0;
 
   QLabel* status_line_ = nullptr;
   QPushButton* banner_primary_ = nullptr;  // Open launcher / Sign out
@@ -164,7 +173,12 @@ private:
 
   QWidget* owned_section_ = nullptr;
   QLabel* owned_heading_ = nullptr;
+  QLabel* owned_count_ = nullptr;  // "51", "171 of 227", or "Asking GOG…"
+  QPushButton* clear_filters_ = nullptr;
   QPushButton* owned_refresh_ = nullptr;
+  ProgressRail* owned_rail_ = nullptr;
+  QWidget* owned_skeleton_ = nullptr;  // placeholder tiles the first time a store is asked
+  RatingChips* chips_ = nullptr;
   QLabel* owned_note_ = nullptr;
   QPushButton* steam_settings_ = nullptr;
   QPushButton* art_key_ = nullptr;  // covers need a SteamGridDB key
@@ -176,6 +190,8 @@ private:
   QSet<QString> not_owned_;  // refs listed from a collection but not bought
   QHash<QString, QString> tiers_;  // ref -> ProtonDB tier
   QHash<QString, QStringList> tags_;  // ref -> Steam tags, for the filter
+  QHash<QString, QString> reviews_;   // ref -> Steam's review label
+  QHash<QString, int> review_percents_;  // ref -> share of positive Steam reviews
   // Refs asked to install/update/download and not yet started by mirad, and
   // the ones done this session. What's running comes from downloads_.
   QHash<QString, QString> owned_state_;  // ref -> "Installing…", "Downloaded", ...

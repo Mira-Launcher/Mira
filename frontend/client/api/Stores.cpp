@@ -51,9 +51,10 @@ StoreActionResult SignOutStoreSync(const std::string& source) {
   return {reply.ok, reply.error};
 }
 
-StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
+StoreLibraryResult GetStoreLibrarySync(const std::string& source, bool fresh) {
   // Every store at once asks each in turn, so it gets longer.
-  const std::string path = source.empty() ? "/v1/library" : "/v1/library?source=" + PercentEncode(source);
+  std::string path = source.empty() ? "/v1/library" : "/v1/library?source=" + PercentEncode(source);
+  if (fresh) path += source.empty() ? "?fresh=1" : "&fresh=1";
   return ReadReply<StoreLibraryResult>(
       transport::Get(path, {.read_timeout = std::chrono::seconds(source.empty() ? 180 : 60)}),
       "GET /v1/library", Shape::Array, [source](StoreLibraryResult& result, const json& body) {
@@ -63,13 +64,16 @@ StoreLibraryResult GetStoreLibrarySync(const std::string& source) {
           for (const json& tag : entry.value("steam_tags", json::array())) {
             if (tag.is_string()) steam_tags.push_back(tag.get<std::string>());
           }
+          const json reviews = entry.value("steam_reviews", json::object());
           result.titles.push_back({.ref = entry.value("ref", std::string()),
                                    .title = entry.value("title", std::string()),
                                    .installed = entry.value("installed", false),
                                    .owned = entry.value("owned", true),
                                    .source = entry.value("source", source),
                                    .protondb_tier = entry.value("protondb_tier", std::string()),
-                                   .steam_tags = std::move(steam_tags)});
+                                   .steam_tags = std::move(steam_tags),
+                                   .review_summary = reviews.value("score_description", std::string()),
+                                   .review_percent = reviews.value("percent_positive", -1)});
         }
       });
 }
@@ -285,10 +289,10 @@ void ImportStoreAsync(QObject* context, const std::string& source,
       FillAddedUpdated<StoreImportResult>, std::move(callback));
 }
 
-void GetStoreLibraryAsync(QObject* context, const std::string& source,
+void GetStoreLibraryAsync(QObject* context, const std::string& source, bool fresh,
                           std::function<void(StoreLibraryResult)> callback) {
   async::Run(
-      context, [source] { return GetStoreLibrarySync(source); }, std::move(callback),
+      context, [source, fresh] { return GetStoreLibrarySync(source, fresh); }, std::move(callback),
       async::Lane::Slow);
 }
 

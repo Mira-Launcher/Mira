@@ -79,6 +79,8 @@ bool ParseInstallEvent(const std::string& event_type, const std::string& data, I
 
 bool ParseStoreEvent(const std::string& event_type, const std::string& data, StoreEvent* out);
 
+bool ParseCatalogCheck(const std::string& event_type, const std::string& data, CatalogCheckEvent* out);
+
 // Parses a `runners.download.started`/`.finished`/`.failed` payload.
 // `state` comes from the event type, which the payload itself doesn't
 // repeat.

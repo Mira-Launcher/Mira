@@ -14,6 +14,7 @@
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 #include "../sources/Sources.h"
+#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/TileView.h"
@@ -22,15 +23,31 @@ namespace mira_gui {
 namespace {
 
 constexpr int kScrimHeight = 62;
+constexpr int kActionHeight = 24;
+
+QFont TierFont(const QFont& font) {
+  QFont tier_font = font;
+  tier_font.setWeight(QFont::Bold);
+  tier_font.setPixelSize(10);
+  return tier_font;
+}
+
+QString TierLabel(const QString& tier) { return tier.left(1).toUpper() + tier.mid(1); }
 
 }  // namespace
 
-QRect GameTileDelegate::ActionRect(const QRect& cell, const QString& text, const QFont& font) {
+QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index, const QFont& font) {
+  const QString text = index.data(ActionRole).toString();
+  if (text.isEmpty()) return {};
   const int inset = theme::Current().tile_spacing;
   QFont bold = font;
   bold.setWeight(QFont::DemiBold);
-  const int width = QFontMetrics(bold).horizontalAdvance(text) + 20;
-  return QRect(cell.right() - inset - 6 - width + 1, cell.top() + inset + 6, width, 24);
+  int width = QFontMetrics(bold).horizontalAdvance(text) + 20;
+  // Too narrow beside the ProtonDB pill (or the tile itself): a round download button instead.
+  const QString tier = index.data(ProtonDbRole).toString();
+  const int tier_width = tier.isEmpty() ? 0 : QFontMetrics(TierFont(font)).horizontalAdvance(TierLabel(tier)) + 12 + 4;
+  if (tier_width + width > cell.width() - 2 * inset - 12) width = kActionHeight;
+  return QRect(cell.right() - inset - 6 - width + 1, cell.top() + inset + 6, width, kActionHeight);
 }
 
 void GameTileDelegate::SetTileProgress(QStandardItem& item,
@@ -206,19 +223,29 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const QRect text_rect = status_rect.adjusted(12, 0, 0, 0);
     painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
                       small_metrics.elidedText(line, Qt::ElideRight, text_rect.width()));
-  } else if (!progress.isValid() && source != nullptr) {
+  } else if (const QVariant review = index.data(ReviewRole); !progress.isValid() && (source != nullptr || review.isValid())) {
+    // "Steam", "97% positive", or "Epic Games · 97%" with the share in Steam's blue.
     painter->setFont(small_font);
-    painter->setPen(QColor(255, 255, 255, 128));
-    painter->drawText(status_rect, Qt::AlignLeft | Qt::AlignVCenter,
-                      small_metrics.elidedText(source->name, Qt::ElideRight, status_rect.width()));
+    const QColor muted(255, 255, 255, 128);
+    QRect rest = status_rect;
+    const auto draw = [&](const QString& text, const QColor& color) {
+      if (text.isEmpty() || rest.width() <= 0) return;
+      const QString shown = small_metrics.elidedText(text, Qt::ElideRight, rest.width());
+      painter->setPen(color);
+      painter->drawText(rest, Qt::AlignLeft | Qt::AlignVCenter, shown);
+      rest.setLeft(rest.left() + small_metrics.horizontalAdvance(shown));
+    };
+    if (source != nullptr) draw(review.isValid() ? source->name + " · " : source->name, muted);
+    if (review.isValid()) {
+      draw(QString("%1%").arg(review.toInt()), QColor(102, 192, 244, 230));
+      if (source == nullptr) draw(" positive", muted);
+    }
   }
 
   if (const QString tier = index.data(ProtonDbRole).toString(); !tier.isEmpty()) {
-    QFont tier_font = option.font;
-    tier_font.setWeight(QFont::Bold);
-    tier_font.setPixelSize(10);
+    const QFont tier_font = TierFont(option.font);
     painter->setFont(tier_font);
-    const QString label = tier.left(1).toUpper() + tier.mid(1);
+    const QString label = TierLabel(tier);
     const QRect badge(rect.left() + 6, rect.top() + 6, QFontMetrics(tier_font).horizontalAdvance(label) + 12, 18);
     const QColor color = ProtonDbTierColor(tier.toStdString());
     painter->setPen(Qt::NoPen);
@@ -228,19 +255,25 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->drawText(badge, Qt::AlignCenter, label);
   }
 
-  const QString action = index.data(ActionRole).toString();
-  QRect pill;
-  if (!action.isEmpty()) {
+  if (const QRect pill = ActionRect(option.rect, index, option.font); !pill.isNull()) {
     const bool enabled = index.data(ActionEnabledRole).toBool();
-    pill = ActionRect(option.rect, action, option.font);
-    QFont pill_font = option.font;
-    pill_font.setWeight(QFont::DemiBold);
-    painter->setFont(pill_font);
+    const QColor ink = enabled ? tokens.on_accent : QColor(255, 255, 255, 200);
     painter->setPen(Qt::NoPen);
     painter->setBrush(enabled ? tokens.accent : QColor(0, 0, 0, 150));
     painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
-    painter->setPen(enabled ? tokens.on_accent : QColor(255, 255, 255, 200));
-    painter->drawText(pill, Qt::AlignCenter, action);
+    if (pill.width() == pill.height()) {
+      constexpr int kGlyph = 14;
+      const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
+      QRect glyph(0, 0, kGlyph, kGlyph);
+      glyph.moveCenter(pill.center());
+      painter->drawPixmap(glyph, icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
+    } else {
+      QFont pill_font = option.font;
+      pill_font.setWeight(QFont::DemiBold);
+      painter->setFont(pill_font);
+      painter->setPen(ink);
+      painter->drawText(pill, Qt::AlignCenter, index.data(ActionRole).toString());
+    }
   }
 
   if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {

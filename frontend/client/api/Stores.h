@@ -32,8 +32,9 @@ void SignOutStoreAsync(QObject* context, const std::string& source,
 void ImportStoreAsync(QObject* context, const std::string& source,
                       std::function<void(StoreImportResult)> callback);
 
-// GET /v1/library?source=: owned titles, installed or not. An empty source lists every store's.
-void GetStoreLibraryAsync(QObject* context, const std::string& source,
+// GET /v1/library?source=: owned titles, installed or not, as mirad last stored them (it re-checks
+// behind). An empty source lists every store's; `fresh` waits for each store's own answer.
+void GetStoreLibraryAsync(QObject* context, const std::string& source, bool fresh,
                           std::function<void(StoreLibraryResult)> callback);
 
 void InstallStoreTitleAsync(QObject* context, const std::string& source, const std::string& ref,

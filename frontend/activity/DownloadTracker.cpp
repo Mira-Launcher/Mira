@@ -380,7 +380,7 @@ void DownloadTracker::Poll() {
 void DownloadTracker::ResolveNames(const QString& source) {
   if (asked_sources_.contains(source)) return;
   asked_sources_.insert(source);
-  api::GetStoreLibraryAsync(this, source.toStdString(), [this, source](StoreLibraryResult result) {
+  api::GetStoreLibraryAsync(this, source.toStdString(), false, [this, source](StoreLibraryResult result) {
     if (!result.ok) return;
     for (const StoreTitle& title : result.titles) {
       NoteTitle(source, QString::fromStdString(title.ref), QString::fromStdString(title.title));

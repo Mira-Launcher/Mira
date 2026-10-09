@@ -53,7 +53,7 @@ OwnedTitles::OwnedTitles(QObject* parent) : QObject(parent) {}
 void OwnedTitles::Refresh() {
   if (loading_) return;
   loading_ = true;
-  api::GetStoreLibraryAsync(this, std::string(), [this](StoreLibraryResult result) {
+  api::GetStoreLibraryAsync(this, std::string(), false, [this](StoreLibraryResult result) {
     loading_ = false;
     if (!result.ok) return;  // the last list stays; a store that's down isn't worth a notice here
     titles_ = std::move(result.titles);

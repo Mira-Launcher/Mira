@@ -152,7 +152,6 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("library_apps_in_all", result.prefs.library_apps_in_all);
   read_bool("tile_status", result.prefs.tile_status);
   read_bool("tile_source_mark", result.prefs.tile_source_mark);
-  read_bool("source_page_tabs", result.prefs.source_page_tabs);
   read_string("big_screen_buttons", result.prefs.big_screen_buttons);
   read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
   read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
@@ -248,7 +247,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.library_apps_in_all) table["library_apps_in_all"] = *prefs.library_apps_in_all;
   if (prefs.tile_status) table["tile_status"] = *prefs.tile_status;
   if (prefs.tile_source_mark) table["tile_source_mark"] = *prefs.tile_source_mark;
-  if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
   if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
   if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
   if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;

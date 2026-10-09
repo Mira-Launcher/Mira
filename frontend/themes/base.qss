@@ -39,6 +39,12 @@ QWidget#divider {
   background: @border;
 }
 
+/* A tile's place while a store is asked for its games the first time. */
+QWidget#tile_skeleton {
+  background: @surface;
+  border-radius: 6px;
+}
+
 /* Where a dragged source row would land in the sidebar. */
 QWidget#drop_line {
   background: @accent;

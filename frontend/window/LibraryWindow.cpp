@@ -415,7 +415,6 @@ void LibraryWindow::BuildShortcuts() {
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   scan_on_startup_ = prefs.scan_on_startup.value_or(true);
   sidebar_->ApplyPrefs(prefs);
-  source_page_tabs_ = prefs.source_page_tabs.value_or(true);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
   double_click_play_ = prefs.double_click_play.value_or(true);
@@ -1484,8 +1483,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
     main_stack_->removeWidget(source_page_);
     source_page_->deleteLater();
   }
-  source_page_ = new mira_gui::SourcePage(source, library_, artwork_, downloads_, source_page_tabs_,
-                                          SourceTileWidth(source.id), this);
+  source_page_ = new mira_gui::SourcePage(source, library_, artwork_, downloads_, SourceTileWidth(source.id), this);
   source_page_->SetDragSelectEnabled(drag_select_);
   source_page_->setProperty("source_id", source.id);
   connect(source_page_, &mira_gui::SourcePage::ZoomRequested, this,

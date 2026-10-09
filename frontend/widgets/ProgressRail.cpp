@@ -62,12 +62,19 @@ void ProgressRail::SetProgress(double fraction) {
   update();
 }
 
+void ProgressRail::SetFaint(bool faint) {
+  faint_ = faint;
+  update();
+}
+
 QSize ProgressRail::sizeHint() const { return {90, kHeight}; }
 
 void ProgressRail::paintEvent(QPaintEvent*) {
   QPainter painter(this);
   const theme::Tokens& tokens = theme::Current();
-  PaintRail(painter, QRectF(rect()), fraction_, tokens.accent, tokens.border);
+  QColor fill = tokens.accent;
+  if (faint_) fill.setAlphaF(0.55);
+  PaintRail(painter, QRectF(rect()), fraction_, fill, faint_ ? QColor(Qt::transparent) : tokens.border);
 }
 
 }  // namespace mira_gui

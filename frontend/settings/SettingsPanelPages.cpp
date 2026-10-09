@@ -193,9 +193,6 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(library, "Same tile size everywhere",
             "One tile size for the library and every source page. Off, each page keeps its own.",
             "tile size zoom synced source pages", &FrontendPrefs::tile_size_synced, false);
-  AddToggle(library, "Tabs on source pages",
-            "Split a source's games into Installed and Not installed tabs. Off lists both, one above the other.",
-            "source page installed not installed", &FrontendPrefs::source_page_tabs, true);
 
   SettingsCard* layout = page->AddCard("Layout");
   layout_preview_ = new LayoutPreview(games, previews_.artwork);
