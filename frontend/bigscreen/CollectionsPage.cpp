@@ -4,6 +4,7 @@
 #include <QPainterPath>
 
 #include <algorithm>
+#include <vector>
 
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
@@ -143,15 +144,24 @@ void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Colle
   painter.drawPath(card);
   painter.setClipPath(card);
 
-  // A 2x2 collage of the first covers over the top three quarters.
+  // A collage of the first covers over the top three quarters, filled whatever their number:
+  // one whole, two side by side, three as one tall and two stacked, four as a 2x2.
   const QRectF collage(box.left(), box.top(), box.width(), box.height() * 0.75);
   painter.setPen(Qt::NoPen);
   painter.setBrush(tokens.surface_alt);
   painter.drawRect(collage);
-  const double cell_w = collage.width() / 2, cell_h = collage.height() / 2;
   const int shown = std::min(kCards, int(collection.items.size()));
+  const double x = collage.left(), y = collage.top(), w = collage.width(), h = collage.height();
+  std::vector<QRectF> cells;
+  switch (shown) {
+    case 1: cells = {collage}; break;
+    case 2: cells = {{x, y, w / 2, h}, {x + w / 2, y, w / 2, h}}; break;
+    case 3: cells = {{x, y, w / 2, h}, {x + w / 2, y, w / 2, h / 2}, {x + w / 2, y + h / 2, w / 2, h / 2}}; break;
+    default:
+      for (int i = 0; i < shown; ++i) cells.emplace_back(x + (i % 2) * w / 2, y + (i / 2) * h / 2, w / 2, h / 2);
+  }
   for (int i = 0; i < shown; ++i) {
-    const QRectF cell(collage.left() + (i % 2) * cell_w, collage.top() + (i / 2) * cell_h, cell_w, cell_h);
+    const QRectF cell = cells[size_t(i)];
     const QSize size = cell.size().toSize();
     const QPixmap cover = window_->Cover(collection.items[size_t(i)], size);
     if (cover.isNull()) continue;
