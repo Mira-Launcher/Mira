@@ -101,8 +101,8 @@ HeroBackground::HeroBackground(BigScreenWindow* window) : QWidget(window), windo
   });
   // A trailer that couldn't load while big screen was in the background loads once it's back.
   connect(qApp, &QGuiApplication::focusWindowChanged, this, [this] {
-    if (window_->isActiveWindow() && !trailer_key_.isEmpty() && trailer_key_ == key_ && playing_key_ != key_ &&
-        !trailer_delay_.isActive()) {
+    if (window_->isActiveWindow() && !held_ && !trailer_key_.isEmpty() && trailer_key_ == key_ &&
+        playing_key_ != key_ && !trailer_delay_.isActive()) {
       trailer_delay_.start(kLoadAfterMs);
     }
   });
@@ -115,6 +115,26 @@ HeroBackground::HeroBackground(BigScreenWindow* window) : QWidget(window), windo
       player_->play();
     }
   });
+}
+
+void HeroBackground::StartWaiting() {
+  const bool was_showcasing = reveal_;
+  reveal_ = false;
+  trailer_reveal_.stop();
+  trailer_delay_.stop();
+  if (!held_) {
+    const int delay = std::max(0, window_->prefs().big_screen_trailer_delay_ms.value_or(3000));
+    if (!key_.isEmpty()) trailer_reveal_.start(delay);
+    if (!trailer_key_.isEmpty()) trailer_delay_.start(std::min(delay, kLoadAfterMs));
+  }
+  if (was_showcasing) emit ShowcaseChanged();
+}
+
+void HeroBackground::Hold(bool on) {
+  if (std::exchange(held_, on) == on) return;
+  if (on) StopTrailer();
+  StartWaiting();
+  update();
 }
 
 void HeroBackground::Leave() {
@@ -151,13 +171,7 @@ void HeroBackground::Show(const Item& item) {
   trailer_fade_.setCurrentTime(0);
   const bool trailers = window_->prefs().big_screen_trailers.value_or(true);
   trailer_key_ = item.game && trailers ? key_ : QString();
-  const bool was_showcasing = reveal_;
-  reveal_ = false;
-  trailer_reveal_.stop();
-  const int delay = std::max(0, window_->prefs().big_screen_trailer_delay_ms.value_or(3000));
-  if (!key_.isEmpty()) trailer_reveal_.start(delay);
-  if (!trailer_key_.isEmpty()) trailer_delay_.start(std::min(delay, kLoadAfterMs));
-  if (was_showcasing) emit ShowcaseChanged();
+  StartWaiting();
 
   const auto hero = heroes_.constFind(key_);
   if (hero != heroes_.constEnd() && !logos_.contains(key_)) LoadLogo(key_);

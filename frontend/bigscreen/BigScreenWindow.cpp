@@ -31,6 +31,7 @@
 #include "CollectionsPage.h"
 #include "GameKeyboard.h"
 #include "GamePage.h"
+#include "GameWindow.h"
 #include "GamepadInput.h"
 #include "HeroBackground.h"
 #include "HomePage.h"
@@ -157,7 +158,7 @@ private:
     const double u = window_->unit();
     QList<Hint> hints;
     if (!window_->launching_.key.isEmpty()) {
-      hints = {{Nav::Back, "Hide"}};
+      hints = {{Nav::Back, "Cancel"}};
     } else if (window_->menu_) {
       hints = {{Nav::Accept, "Select"}, {Nav::Back, "Close"}};
     } else if (window_->dialog_) {
@@ -291,6 +292,18 @@ private:
                            : first_run ? "Its first start sets things up, which can take a minute or two."
                                        : "This can take a moment.";
     painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
+    painter.drawText(title.translated(0, u * 4.6), Qt::AlignHCenter | Qt::AlignTop,
+                     "This screen closes once the game's window opens.");
+    // How to get back to Mira once the game is up. Steam games get Steam's own overlay instead.
+    if (item.game && item.game->source != "steam") {
+      const QString kind = window_->GlyphKind();
+      const QString button = kind == "ps" ? "PS button" : kind == "nin" ? "Home button" : kind == "xbox" ? "Xbox button"
+                                                                                                   : "controller's Guide button";
+      painter.setPen(tokens.text);
+      painter.setFont(Font(u, 0.95));
+      painter.drawText(title.translated(0, u * 7.2), Qt::AlignHCenter | Qt::AlignTop,
+                       "Tip: in the game, press the " + button + " to open Mira's menu.");
+    }
   }
 
   BigScreenWindow* window_;
@@ -389,11 +402,14 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     chrome_->update();
   });
   launch_timeout_.setSingleShot(true);
-  connect(&launch_timeout_, &QTimer::timeout, this, [this] {
-    launching_ = {};
-    chrome_->update();
-  });
+  connect(&launch_timeout_, &QTimer::timeout, this, &BigScreenWindow::EndLaunch);
   connect(services_.library, &GameLibraryModel::Changed, this, &BigScreenWindow::FollowLaunch);
+  // Games often open behind big screen: their window is brought forward once it's up.
+  window_poll_.setInterval(500);
+  connect(&window_poll_, &QTimer::timeout, this, [this] {
+    if (launching_.key.isEmpty() || playing_ != launching_.key) return window_poll_.stop();
+    if (FocusGameWindow(launching_.key.toStdString(), prefs_.big_screen_fullscreen_games.value_or(true))) EndLaunch();
+  });
   clock_timer_.setInterval(10'000);
   connect(&clock_timer_, &QTimer::timeout, chrome_, qOverload<>(&QWidget::update));
   clock_timer_.start();
@@ -431,6 +447,7 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_stick = prefs.big_screen_stick;
   saved.big_screen_repeat = prefs.big_screen_repeat;
   saved.big_screen_trailers = prefs.big_screen_trailers;
+  saved.big_screen_fullscreen_games = prefs.big_screen_fullscreen_games;
   saved.big_screen_trailer_delay_ms = prefs.big_screen_trailer_delay_ms;
   saved.big_screen_trailer_skip_ms = prefs.big_screen_trailer_skip_ms;
   saved.big_screen_trailer_hd_only = prefs.big_screen_trailer_hd_only;
@@ -549,6 +566,8 @@ void BigScreenWindow::Confirm(const QString& title, const QString& body, const Q
 void BigScreenWindow::Play(const Item& item) {
   if (!item.game) return;
   launching_ = item;
+  cancelled_.clear();
+  hero_->Hold(true);  // no trailer behind the launch screen
   // Steam may need a while to start, update or sync first.
   launch_timeout_.start(120'000);
   chrome_->update();
@@ -561,28 +580,47 @@ void BigScreenWindow::Play(const Item& item) {
           launch_timeout_.start(8000);
         }
       },
-      [this] {
-        launching_ = {};
-        chrome_->update();
-      });
+      [this] { EndLaunch(); });
 }
 
 void BigScreenWindow::FollowLaunch() {
+  // A launch cancelled before its game was running is stopped once it is.
+  if (!cancelled_.isEmpty()) {
+    const GameSummary* game = services_.library->Find(cancelled_.toStdString());
+    if (game != nullptr && game->running) {
+      actions::Stop(this, game->id);
+      cancelled_.clear();
+    }
+  }
   if (!launching_.key.isEmpty()) {
     const GameSummary* game = services_.library->Find(launching_.key.toStdString());
-    if (game != nullptr && game->running) {
+    // Running isn't up yet: the launch screen stays until the game's window takes focus.
+    const bool running = game != nullptr && game->running;
+    if (running && playing_ != launching_.key) {
       playing_ = launching_.key;
-      launching_ = {};
-      launch_timeout_.stop();
-      chrome_->update();
+      if (!isActiveWindow()) return EndLaunch();
+      launch_timeout_.start(60'000);  // a window that never takes focus
+      window_poll_.start();
+    } else if (!running && playing_ == launching_.key) {
+      playing_.clear();  // quit before its window showed
+      EndLaunch();
     }
   } else if (!playing_.isEmpty()) {
     const GameSummary* game = services_.library->Find(playing_.toStdString());
     if (game == nullptr || !game->running) {
       playing_.clear();
+      hero_->Hold(false);
       RaiseFromGame();
     }
   }
+}
+
+void BigScreenWindow::EndLaunch() {
+  launching_ = {};
+  if (playing_.isEmpty()) hero_->Hold(false);  // else once the game ends
+  launch_timeout_.stop();
+  window_poll_.stop();
+  chrome_->update();
 }
 
 void BigScreenWindow::Stop(const Item& item) {
@@ -682,6 +720,7 @@ void BigScreenWindow::OpenSteamBigPicture() {
 bool BigScreenWindow::event(QEvent* event) {
   if (event->type() == QEvent::WindowActivate) handed_off_ = false;
   if (event->type() == QEvent::WindowDeactivate) {
+    if (!launching_.key.isEmpty() && playing_ == launching_.key) EndLaunch();
     // Something like Steam's own window came over big screen while no game
     // runs: come back on top.
     QTimer::singleShot(300, this, [this] {
@@ -724,9 +763,13 @@ void BigScreenWindow::Navigate(Nav nav) {
   }
   if (!launching_.key.isEmpty()) {
     if (nav == Nav::Back) {
-      launching_ = {};
-      launch_timeout_.stop();
-      chrome_->update();
+      const GameSummary* game = services_.library->Find(launching_.key.toStdString());
+      if (game != nullptr && game->running) {
+        actions::Stop(this, game->id);
+      } else if (!handed_off_) {
+        cancelled_ = launching_.key;
+      }
+      EndLaunch();
     }
     return;
   }

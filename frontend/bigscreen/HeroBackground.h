@@ -28,6 +28,8 @@ public:
   // Another page came to the front: the trailer stops, and the next Show starts over even for
   // the same game. The hero stays until then.
   void Leave();
+  // While held (a game is starting) nothing showcases or plays; released, the wait starts over.
+  void Hold(bool on);
   // The game's logo art (transparent PNG), once fetched; null when it has none or isn't loaded.
   QPixmap Logo(const QString& key) const;
   // Focus has rested on the game for the start delay: pages step back to show its hero, and its
@@ -53,6 +55,8 @@ private:
   void EndTrailer();
   // Stops the trailer at once (fading its sound out when it has any) and clears its picture.
   void StopTrailer();
+  // Starts the wait before showcasing and the trailer's load, unless held.
+  void StartWaiting();
 
   static constexpr int kKeepHeroes = 4;
   static constexpr int kKeepLogos = 8;
@@ -92,6 +96,7 @@ private:
   QVariantAnimation trailer_fade_;
   // The game whose trailer is wanted; empty when none.
   QString trailer_key_;
+  bool held_ = false;
 };
 
 }  // namespace mira_gui::bigscreen

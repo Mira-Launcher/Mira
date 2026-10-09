@@ -160,6 +160,7 @@ private:
   void Feedback(Nav nav);
   // Ends the launch overlay once the game runs, and comes back when it exits.
   void FollowLaunch();
+  void EndLaunch();
 
   LibraryServices services_;
   FrontendPrefs prefs_;
@@ -191,6 +192,8 @@ private:
   QTimer clock_timer_;
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
+  QString cancelled_;  // a launch cancelled before its game was running, stopped once it is
+  QTimer window_poll_;  // looks for the launching game's window
   QString playing_;
   // A game was handed to Steam, so nothing says when it runs or ends: stay
   // behind until the player comes back.

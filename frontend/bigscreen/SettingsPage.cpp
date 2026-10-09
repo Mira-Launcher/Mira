@@ -107,6 +107,8 @@ void SettingsPage::Build() {
            flip(&FrontendPrefs::big_screen_large_text, false), {}},
           {"", "Sounds", "Short sounds as you move around and pick things.", shows(&FrontendPrefs::big_screen_sounds, true),
            flip(&FrontendPrefs::big_screen_sounds, true), {}},
+          {"", "Full screen games", "A game that opens in a window fills the screen, without borders.",
+           shows(&FrontendPrefs::big_screen_fullscreen_games, true), flip(&FrontendPrefs::big_screen_fullscreen_games, true), {}},
           {"", "Trailers", "A trailer plays behind a game a moment after you rest on it.",
            shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}},
           {"", "Trailer sound", "Plays a trailer's sound, not only its picture.",

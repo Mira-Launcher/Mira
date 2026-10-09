@@ -885,6 +885,8 @@ struct FrontendPrefs {
   std::optional<bool> big_screen_trailer_sound;
   std::optional<int> big_screen_trailer_volume;
   std::optional<int> big_screen_idle_suspend;
+  // Whether a game started from big screen in a window is made full screen; on by default.
+  std::optional<bool> big_screen_fullscreen_games;
   std::optional<std::vector<std::string>> big_screen_recent_searches;
   // Whether big screen lists applications (games tagged app, Microsoft 365); off by default.
   std::optional<bool> big_screen_show_apps;
