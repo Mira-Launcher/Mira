@@ -1,5 +1,6 @@
 #include "BigScreenWindow.h"
 
+#include <QApplication>
 #include <QDateTime>
 #include <QKeyEvent>
 #include <QPainter>
@@ -234,6 +235,8 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint), services_(services) {
   setWindowTitle("Mira");
   setFocusPolicy(Qt::StrongFocus);
+  // Driven by a controller or keys; a pointer would only sit over the art.
+  setCursor(Qt::BlankCursor);
   input_ = new GamepadInput(this);
   hero_ = new HeroBackground(this);
   stack_ = new QStackedWidget(this);
@@ -291,7 +294,6 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   FrontendPrefs saved;
   saved.big_screen_buttons = prefs.big_screen_buttons;
   saved.big_screen_large_text = prefs.big_screen_large_text;
-  saved.big_screen_show_uninstalled = prefs.big_screen_show_uninstalled;
   saved.big_screen_at_start = prefs.big_screen_at_start;
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   for (Page* page : tabs_) page->Shown();
@@ -386,7 +388,10 @@ void BigScreenWindow::Play(const Item& item) {
       this, item.game->id,
       [this](bool tracked) {
         // Nothing will say an untracked game started: the overlay just goes after a moment.
-        if (!tracked) launch_timeout_.start(8000);
+        if (!tracked) {
+          handed_off_ = true;
+          launch_timeout_.start(8000);
+        }
       },
       [this] {
         launching_ = {};
@@ -487,6 +492,21 @@ void BigScreenWindow::QuickAction(const Item& item) {
 }
 
 void BigScreenWindow::Exit() { close(); }
+
+bool BigScreenWindow::event(QEvent* event) {
+  if (event->type() == QEvent::WindowActivate) handed_off_ = false;
+  if (event->type() == QEvent::WindowDeactivate) {
+    // Something like Steam's own window came over big screen while no game
+    // runs: come back on top.
+    QTimer::singleShot(300, this, [this] {
+      if (isActiveWindow() || QApplication::activeWindow() != nullptr || handed_off_ || !launching_.key.isEmpty()) return;
+      const auto& games = services_.library->Games();
+      if (std::ranges::any_of(games, &GameSummary::running)) return;
+      RaiseFromGame();
+    });
+  }
+  return QWidget::event(event);
+}
 
 void BigScreenWindow::closeEvent(QCloseEvent* event) {
   emit Closed();

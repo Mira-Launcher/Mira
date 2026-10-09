@@ -79,6 +79,7 @@ signals:
 
 protected:
   void closeEvent(QCloseEvent* event) override;
+  bool event(QEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
@@ -118,6 +119,9 @@ private:
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
   QString playing_;
+  // A game was handed to Steam, so nothing says when it runs or ends: stay
+  // behind until the player comes back.
+  bool handed_off_ = false;
   QTimer launch_timeout_;
 };
 
