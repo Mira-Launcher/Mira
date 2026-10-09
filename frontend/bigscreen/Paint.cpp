@@ -26,6 +26,20 @@ QColor Accent() { return g_accent.isValid() ? g_accent : theme::Current().accent
 void SetAccent(const QColor& color) { g_accent = color; }
 
 QString GlyphText(Nav nav, const QString& kind) {
+  if (kind == "keys") {
+    switch (nav) {
+      case Nav::Accept: return "Enter";
+      case Nav::Back: return "Esc";
+      case Nav::Action: return "X";
+      case Nav::Search: return "Y";
+      case Nav::PrevTab: return "Q";
+      case Nav::NextTab: return "E";
+      case Nav::Sort: return "S";
+      case Nav::PrevLetter: return "[";
+      case Nav::NextLetter: return "]";
+      default: return {};
+    }
+  }
   const bool ps = kind == "ps", nin = kind == "nin";
   switch (nav) {
     case Nav::Accept: return ps ? "✕" : nin ? "B" : "A";
@@ -67,13 +81,14 @@ void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps) {
 }  // namespace
 
 double GlyphWidth(double unit, Nav nav, const QString& kind) {
-  if (!Wide(nav)) return unit * 1.45;
+  if (!Wide(nav) && kind != "keys") return unit * 1.45;
   return QFontMetricsF(Font(unit, 0.62, QFont::Bold)).horizontalAdvance(GlyphText(nav, kind)) + unit * 0.9;
 }
 
 double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind) {
   const QString text = GlyphText(nav, kind);
-  const bool shoulder = Wide(nav);
+  // A key is a keycap whatever it is.
+  const bool shoulder = Wide(nav) || kind == "keys";
   const double h = unit * 1.45;
   painter.save();
   painter.setFont(Font(unit, shoulder ? 0.62 : 0.78, QFont::Bold));
@@ -95,7 +110,7 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
     if (nav == Nav::Action) color = QColor("#ee8fdc");
     if (nav == Nav::Search) color = QColor("#4fd1a5");
   }
-  if (nav == Nav::Sort && kind != "nin") {
+  if (nav == Nav::Sort && kind != "nin" && kind != "keys") {
     DrawSortIcon(painter, rect, unit, kind == "ps");
   } else {
     painter.setPen(color);

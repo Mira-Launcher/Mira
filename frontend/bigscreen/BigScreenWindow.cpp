@@ -313,6 +313,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   keyboard_ = new GameKeyboard(this);
   notice_ = new Notice(this);
   connect(input_, &GamepadInput::Pressed, this, [this](Nav nav) {
+    UseKeys(false);
     // The keyboard over a game takes every button while it's up.
     if (keyboard_->isVisible()) return keyboard_->Navigate(nav);
     if (nav == Nav::Guide) {
@@ -426,9 +427,18 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
 double BigScreenWindow::unit() const { return Unit(height(), prefs_.big_screen_large_text.value_or(false)); }
 
 QString BigScreenWindow::GlyphKind() const {
+  // Keys while the keyboard was used last, or no controller is connected.
+  if (keys_ || input_->pad_kind().isEmpty()) return "keys";
   const std::string chosen = prefs_.big_screen_buttons.value_or("auto");
   if (chosen != "auto") return QString::fromStdString(chosen);
-  return input_->pad_kind().isEmpty() ? "xbox" : input_->pad_kind();
+  return input_->pad_kind();
+}
+
+void BigScreenWindow::UseKeys(bool keys) {
+  if (keys == keys_) return;
+  keys_ = keys;
+  chrome_->update();
+  if (QWidget* page = stack_->currentWidget()) page->update();
 }
 
 Item BigScreenWindow::ItemFor(const GameSummary& game) const {
@@ -468,9 +478,6 @@ QPixmap BigScreenWindow::Cover(const Item& item, QSize size) const {
   QPixmap cover;
   if (item.game) cover = services_.artwork->Cover(*item.game, size, dpr);
   if (!item.game && !item.ref.isEmpty()) cover = services_.artwork->TitleCover(item.source, item.ref, item.name, size, dpr);
-  // ArtworkStore drops a store title's scaled copy once nothing else holds it, and would fetch
-  // it again on every repaint.
-  shown_covers_.insert(item.key + '@' + QString::number(size.width()), cover);
   return cover;
 }
 
@@ -1011,6 +1018,7 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
       {Qt::Key_BracketRight, Nav::NextLetter},
   };
   const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+  UseKeys(true);
   // Letters go to a page that takes typing (Search) before they count as buttons.
   if (auto* page = qobject_cast<Page*>(stack_->currentWidget()); page != nullptr && plain && !dialog_ && !menu_) {
     const QString text = event->text();
@@ -1028,6 +1036,12 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   }
   RestartIdle();
   if (found->second == Nav::Guide) return Guide();
+  // Escape twice on Home leaves big screen; anywhere else it goes back.
+  if (event->key() == Qt::Key_Escape && !dialog_ && !menu_ && tab_ == 0 && stack_->currentWidget() == tabs_[0]) {
+    if (escape_armed_.isValid() && escape_armed_.elapsed() < 2000) return Exit();
+    escape_armed_.start();
+    return Toast("Press Esc again to exit big screen");
+  }
   Navigate(found->second);
 }
 

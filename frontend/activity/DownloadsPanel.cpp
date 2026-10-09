@@ -123,6 +123,10 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
     if (isVisible()) UpdateCover(id);
   });
+  // A store title's cover asked for here and dropped as scrolled past.
+  connect(artwork_, &ArtworkStore::RequestsDropped, this, [this] {
+    if (isVisible()) Rebuild();
+  });
 }
 
 void DownloadsPanel::ShowBelow(QWidget* anchor) {

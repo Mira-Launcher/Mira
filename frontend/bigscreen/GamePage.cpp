@@ -81,6 +81,7 @@ GamePage::GamePage(BigScreenWindow* window) : Page(window), network_(new QNetwor
   connect(services.owned_titles, &OwnedTitles::Changed, this, &GamePage::Refresh);
   connect(services.downloads, &DownloadTracker::Changed, this, &GamePage::Refresh);
   connect(services.artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(services.artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
 }
 
 void GamePage::Open(const Item& item, Page* from) {

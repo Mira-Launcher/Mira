@@ -23,7 +23,7 @@ protected:
   void paintEvent(QPaintEvent* event) override;
 
 private:
-  enum class Zone { Keys, Filters, Results };
+  enum class Zone { Field, Keys, Filters, Results };
   void Search();
   // The saved searches shown while the query is empty.
   QStringList Recents() const;
@@ -35,7 +35,7 @@ private:
   QString query_;
   QStringList filters_;  // "All", "Installed", then source ids
   std::vector<Item> results_;
-  Zone zone_ = Zone::Keys;
+  Zone zone_ = Zone::Field;
   int key_ = 0;
   int filter_ = 0;
   int result_ = 0;

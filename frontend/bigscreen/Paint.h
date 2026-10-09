@@ -40,7 +40,7 @@ QFont Font(double unit, double size, int weight = QFont::Normal);
 QColor Accent();
 void SetAccent(const QColor& color);
 
-// The label a controller shows for `nav` ("A", "✕", "LB", ...) in `kind` ("xbox", "ps", "nin").
+// The label shown for `nav` ("A", "✕", "LB", "Enter", ...) in `kind` ("xbox", "ps", "nin", "keys").
 QString GlyphText(Nav nav, const QString& kind);
 // A round (face) or rounded (shoulder) button glyph; returns its width.
 double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind);

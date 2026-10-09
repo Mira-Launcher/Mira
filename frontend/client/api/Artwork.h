@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QSize>
 #include <QObject>
 #include <cstdint>
 #include <functional>
@@ -20,9 +21,9 @@ void ClearArtThumbsBlocking();
 
 // One named art slot: "cover", "hero", "logo", "icon". Which ones exist depends on the source; GetMetadataAsync's
 // art_slots says which were cached. Decoded off the UI thread; a null
-// image when missing or undecodable.
+// image when missing or undecodable. A non-empty `max` decodes it no bigger than that.
 void GetArtworkImageAsync(QObject* context, const std::string& id, const std::string& slot,
-                          std::function<void(QImage)> callback);
+                          std::function<void(QImage)> callback, QSize max = {});
 
 // GET /v1/games/{id}/metadata. A 404 is ordinary (nothing fetched yet, or
 // fetched and nothing found) and comes back as missing, not as an error.

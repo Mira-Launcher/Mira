@@ -40,6 +40,7 @@ CollectionsPage::CollectionsPage(BigScreenWindow* window) : Page(window) {
   const LibraryServices& services = window->services();
   connect(services.library, &GameLibraryModel::Changed, this, &CollectionsPage::Rebuild);
   connect(services.artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(services.artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
 }
 
 void CollectionsPage::Shown() { Rebuild(); }

@@ -36,6 +36,7 @@ DownloadsPage::DownloadsPage(BigScreenWindow* window) : Page(window) {
   connect(window->services().downloads, &DownloadTracker::Changed, this, &DownloadsPage::Refresh);
   connect(window->services().owned_titles, &OwnedTitles::Changed, this, &DownloadsPage::Refresh);
   connect(window->services().artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(window->services().artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
 }
 
 void DownloadsPage::Shown() {
