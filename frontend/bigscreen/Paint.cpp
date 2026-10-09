@@ -26,17 +26,27 @@ QString GlyphText(Nav nav, const QString& kind) {
     case Nav::Search: return ps ? "△" : nin ? "X" : "Y";
     case Nav::PrevTab: return ps ? "L1" : nin ? "L" : "LB";
     case Nav::NextTab: return ps ? "R1" : nin ? "R" : "RB";
+    case Nav::Sort: return ps ? "Create" : nin ? "−" : "View";
     default: return {};
   }
 }
 
+namespace {
+bool Wide(Nav nav) { return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::Sort; }
+}  // namespace
+
+double GlyphWidth(double unit, Nav nav, const QString& kind) {
+  if (!Wide(nav)) return unit * 1.45;
+  return QFontMetricsF(Font(unit, 0.62, QFont::Bold)).horizontalAdvance(GlyphText(nav, kind)) + unit * 0.9;
+}
+
 double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind) {
   const QString text = GlyphText(nav, kind);
-  const bool shoulder = nav == Nav::PrevTab || nav == Nav::NextTab;
+  const bool shoulder = Wide(nav);
   const double h = unit * 1.45;
   painter.save();
   painter.setFont(Font(unit, shoulder ? 0.62 : 0.78, QFont::Bold));
-  const double w = shoulder ? painter.fontMetrics().horizontalAdvance(text) + unit * 0.9 : h;
+  const double w = GlyphWidth(unit, nav, kind);
   const QRectF rect(left_center.x(), left_center.y() - h / 2, w, h);
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setPen(QPen(QColor(255, 255, 255, 60), std::max(1.0, unit * 0.05)));

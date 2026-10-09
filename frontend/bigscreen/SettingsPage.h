@@ -20,6 +20,7 @@ protected:
 
 private:
   void Change(int step);
+  void Act();
 
   int focus_ = 0;
 };

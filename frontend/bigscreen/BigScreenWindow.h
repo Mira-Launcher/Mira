@@ -17,10 +17,12 @@ class QStackedWidget;
 namespace mira_gui::bigscreen {
 
 class Chrome;
+class GameKeyboard;
 class GamePage;
 class GamepadInput;
 class HeroBackground;
 class Page;
+class Sounds;
 
 // Big screen mode: a fullscreen window for the couch, driven by a controller
 // (through SDL3 when it's installed) or the keyboard. It reads the library
@@ -74,6 +76,10 @@ public:
 
   void Exit();
   void OpenSteamBigPicture();
+  // "Suspend", "Reboot" or "PowerOff".
+  void PowerAction(const char* action);
+  // Hitting the end of a list: a dull sound and a small knock.
+  void Bump();
 
 signals:
   void Closed();
@@ -86,6 +92,12 @@ protected:
 
 private:
   friend class Chrome;
+  // The Guide button's menu over a running game.
+  struct Menu {
+    QString title;
+    std::vector<std::pair<QString, std::function<void()>>> entries;
+    int focus = 0;
+  };
   struct Dialog {
     QString title;
     QString body;
@@ -99,6 +111,12 @@ private:
   void ShowPage(Page* page);
   void Back();
   void RaiseFromGame();
+  void Guide();
+  void ReturnToGame();
+  void OpenGameKeyboard();
+  // The game running now, if any.
+  const GameSummary* RunningGame() const;
+  void Feedback(Nav nav);
   // Ends the launch overlay once the game runs, and comes back when it exits.
   void FollowLaunch();
 
@@ -113,6 +131,10 @@ private:
   GamePage* game_page_ = nullptr;
   int tab_ = 0;
   std::optional<Dialog> dialog_;
+  std::optional<Menu> menu_;
+  Sounds* sounds_ = nullptr;
+  GameKeyboard* keyboard_ = nullptr;
+  unsigned blanking_cookie_ = 0;
   QString toast_;
   QTimer toast_timer_;
   QTimer clock_timer_;

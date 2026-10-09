@@ -1,6 +1,9 @@
 #include "Session.h"
 
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
@@ -39,6 +42,26 @@ void UpdateSteamShortcut(QObject* context) {
   const bool installed = !qEnvironmentVariable("APPIMAGE").isEmpty() || exe.startsWith("/usr/") || exe.startsWith("/opt/");
   if (!installed) return;
   api::UpdateSteamShortcutAsync(context, exe.toStdString(), "--big-screen");
+}
+
+bool Power(const char* action) {
+  QDBusInterface logind("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                        QDBusConnection::systemBus());
+  // interactive: polkit may ask for a password when another user is logged in.
+  const QDBusMessage reply = logind.call(action, true);
+  return reply.type() != QDBusMessage::ErrorMessage;
+}
+
+unsigned InhibitScreenBlanking() {
+  QDBusInterface saver("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver");
+  const QDBusReply<unsigned> cookie = saver.call("Inhibit", "Mira", "Big screen is open");
+  return cookie.isValid() ? cookie.value() : 0;
+}
+
+void ReleaseScreenBlanking(unsigned cookie) {
+  if (cookie == 0) return;
+  QDBusInterface saver("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver");
+  saver.call("UnInhibit", cookie);
 }
 
 }  // namespace mira_gui::bigscreen

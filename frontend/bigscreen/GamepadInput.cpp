@@ -2,6 +2,7 @@
 
 #include <QLibrary>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace mira_gui::bigscreen {
@@ -17,6 +18,8 @@ enum Button { kSouth, kEast, kWest, kNorth, kBack, kGuide, kStart, kLeftStick, k
 enum Axis { kLeftX, kLeftY };
 enum Type { kTypeUnknown, kTypeStandard, kTypeXbox360, kTypeXboxOne, kTypePs3, kTypePs4, kTypePs5,
             kTypeSwitchPro, kTypeJoyconLeft, kTypeJoyconRight, kTypeJoyconPair, kTypeGamecube };
+enum PowerState { kPowerOnBattery = 1, kPowerNoBattery, kPowerCharging, kPowerCharged };
+constexpr int kConnectionWireless = 2;
 constexpr std::int16_t kStickThreshold = 18000;  // of 32767
 
 }  // namespace
@@ -37,9 +40,13 @@ struct GamepadInput::Sdl {
   std::int16_t (*GetGamepadAxis)(SDL_Gamepad*, int) = nullptr;
   int (*GetGamepadType)(SDL_Gamepad*) = nullptr;
   const char* (*GetGamepadName)(SDL_Gamepad*) = nullptr;
+  bool (*RumbleGamepad)(SDL_Gamepad*, std::uint16_t, std::uint16_t, std::uint32_t) = nullptr;
+  int (*GetGamepadPowerInfo)(SDL_Gamepad*, int*) = nullptr;
+  int (*GetGamepadConnectionState)(SDL_Gamepad*) = nullptr;
 
   SDL_Gamepad* pad = nullptr;
   int scan_countdown = 0;
+  int power_countdown = 0;
 
   bool Load() {
     lib.setFileNameAndVersion("SDL3", 0);
@@ -63,6 +70,9 @@ struct GamepadInput::Sdl {
     get(GetGamepadAxis, "SDL_GetGamepadAxis");
     get(GetGamepadType, "SDL_GetGamepadType");
     get(GetGamepadName, "SDL_GetGamepadName");
+    get(RumbleGamepad, "SDL_RumbleGamepad");
+    get(GetGamepadPowerInfo, "SDL_GetGamepadPowerInfo");
+    get(GetGamepadConnectionState, "SDL_GetGamepadConnectionState");
     if (!ok) return false;
     // Guide must still reach Mira while a game has focus.
     SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
@@ -100,6 +110,7 @@ void GamepadInput::Poll() {
     sdl.pad = nullptr;
     pad_kind_.clear();
     pad_name_.clear();
+    battery_ = -1;
     emit PadChanged();
   }
   if (sdl.pad == nullptr) {
@@ -116,7 +127,24 @@ void GamepadInput::Poll() {
                 : type >= kTypeSwitchPro && type <= kTypeGamecube ? "nin"
                                                                   : "xbox";
     pad_name_ = QString::fromUtf8(sdl.GetGamepadName(sdl.pad));
+    sdl.power_countdown = 0;
     emit PadChanged();
+  }
+
+  // The battery changes slowly; every two seconds is enough.
+  if (sdl.power_countdown-- <= 0) {
+    sdl.power_countdown = 250;
+    int percent = -1;
+    const int state = sdl.GetGamepadPowerInfo(sdl.pad, &percent);
+    const int battery = state == kPowerOnBattery || state == kPowerCharging || state == kPowerCharged ? percent : -1;
+    const bool charging = state == kPowerCharging || state == kPowerCharged;
+    const bool wireless = sdl.GetGamepadConnectionState(sdl.pad) == kConnectionWireless;
+    if (battery != battery_ || charging != charging_ || wireless != wireless_) {
+      battery_ = battery;
+      charging_ = charging;
+      wireless_ = wireless;
+      emit PadChanged();
+    }
   }
 
   const auto button = [&](int b) { return sdl.GetGamepadButton(sdl.pad, b); };
@@ -134,7 +162,14 @@ void GamepadInput::Poll() {
   down[size_t(Nav::PrevTab)] = button(kLeftShoulder);
   down[size_t(Nav::NextTab)] = button(kRightShoulder);
   down[size_t(Nav::Guide)] = button(kGuide);
+  down[size_t(Nav::Sort)] = button(kBack);
   for (const Nav nav : repeater_.Feed(down, clock_.elapsed())) emit Pressed(nav);
+}
+
+void GamepadInput::Rumble(double low, double high, int ms) {
+  if (!sdl_ || sdl_->pad == nullptr) return;
+  const auto strength = [](double v) { return std::uint16_t(std::clamp(v, 0.0, 1.0) * 65535); };
+  sdl_->RumbleGamepad(sdl_->pad, strength(low), strength(high), std::uint32_t(ms));
 }
 
 }  // namespace mira_gui::bigscreen

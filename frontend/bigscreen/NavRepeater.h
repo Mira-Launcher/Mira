@@ -7,7 +7,7 @@
 namespace mira_gui::bigscreen {
 
 // What a controller or the keyboard asks big screen to do.
-enum class Nav { Up, Down, Left, Right, Accept, Back, Action, Search, PrevTab, NextTab, Guide, kCount };
+enum class Nav { Up, Down, Left, Right, Accept, Back, Action, Search, PrevTab, NextTab, Guide, Sort, kCount };
 
 // Turns sampled button states into presses: one on the way down, and for
 // directions, repeats while held (a pause first, then steadily).

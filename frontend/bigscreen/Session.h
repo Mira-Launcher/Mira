@@ -11,4 +11,11 @@ void ApplyStartOnLogin(bool on);
 // an AppImage or an installed build, so a dev build never ends up in Steam.
 void UpdateSteamShortcut(QObject* context);
 
+// "Suspend", "Reboot" or "PowerOff" through logind. False when logind refused.
+bool Power(const char* action);
+
+// Keeps the screen from blanking (org.freedesktop.ScreenSaver) until released; 0 when unavailable.
+unsigned InhibitScreenBlanking();
+void ReleaseScreenBlanking(unsigned cookie);
+
 }  // namespace mira_gui::bigscreen

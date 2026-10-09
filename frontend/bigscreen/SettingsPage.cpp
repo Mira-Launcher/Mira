@@ -17,12 +17,20 @@ struct Setting {
   const char* label;
   const char* help;
 };
-constexpr std::array<Setting, 6> kSettings = {{
+// Rows up to kFirstAction change a value; the rest do something when picked.
+enum Row { kButtons, kTextSize, kSounds, kRumble, kAtStart, kOnLogin, kSteam, kSuspend, kRestart, kShutDown, kExit };
+constexpr int kFirstAction = kSteam;
+constexpr std::array<Setting, 11> kSettings = {{
     {"Button labels", "Which names the button hints use. Match controller reads them from the connected controller."},
     {"Text size", "Large scales everything up by 15%, for a TV across the room."},
+    {"Sounds", "Short sounds as you move around and pick things."},
+    {"Vibration", "The controller rumbles a little when you pick something or reach the end of a row."},
     {"Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen."},
     {"Start Mira when you log in", "Adds Mira to your desktop's autostart."},
     {"Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back."},
+    {"Suspend", "Puts the computer to sleep."},
+    {"Restart", "Restarts the computer."},
+    {"Shut down", "Turns the computer off."},
     {"Exit big screen", "Back to the desktop library."},
 }};
 const std::array<std::pair<const char*, const char*>, 4> kButtonKinds = {
@@ -34,20 +42,38 @@ SettingsPage::SettingsPage(BigScreenWindow* window) : Page(window) {}
 
 void SettingsPage::Change(int step) {
   FrontendPrefs prefs = window_->prefs();
+  const auto flip = [](std::optional<bool>& value, bool fallback) { value = !value.value_or(fallback); };
   switch (focus_) {
-    case 0: {
+    case kButtons: {
       const std::string current = prefs.big_screen_buttons.value_or("auto");
       const auto at = std::ranges::find(kButtonKinds, current, [](const auto& kind) { return std::string(kind.first); });
       const int index = at == kButtonKinds.end() ? 0 : int(at - kButtonKinds.begin());
       prefs.big_screen_buttons = kButtonKinds[size_t((index + step + int(kButtonKinds.size())) % int(kButtonKinds.size()))].first;
       break;
     }
-    case 1: prefs.big_screen_large_text = !prefs.big_screen_large_text.value_or(false); break;
-    case 2: prefs.big_screen_at_start = !prefs.big_screen_at_start.value_or(false); break;
-    case 3: prefs.start_on_login = !prefs.start_on_login.value_or(false); break;
+    case kTextSize: flip(prefs.big_screen_large_text, false); break;
+    case kSounds: flip(prefs.big_screen_sounds, true); break;
+    case kRumble: flip(prefs.big_screen_rumble, true); break;
+    case kAtStart: flip(prefs.big_screen_at_start, false); break;
+    case kOnLogin: flip(prefs.start_on_login, false); break;
     default: return;
   }
   window_->SetPrefs(prefs);
+}
+
+void SettingsPage::Act() {
+  switch (focus_) {
+    case kSteam: return window_->OpenSteamBigPicture();
+    case kSuspend: return window_->PowerAction("Suspend");
+    case kRestart:
+      return window_->Confirm("Restart the computer?", "Anything running is closed.", "Restart",
+                              [this] { window_->PowerAction("Reboot"); });
+    case kShutDown:
+      return window_->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down",
+                              [this] { window_->PowerAction("PowerOff"); });
+    case kExit: return window_->Exit();
+    default: return;
+  }
 }
 
 bool SettingsPage::Navigate(Nav nav) {
@@ -56,15 +82,11 @@ bool SettingsPage::Navigate(Nav nav) {
     case Nav::Down: focus_ = std::min(int(kSettings.size()) - 1, focus_ + 1); break;
     case Nav::Left:
     case Nav::Right:
-      if (focus_ < int(kSettings.size()) - 2) Change(nav == Nav::Right ? 1 : -1);
+      if (focus_ < kFirstAction) Change(nav == Nav::Right ? 1 : -1);
       break;
     case Nav::Accept:
-      if (focus_ == int(kSettings.size()) - 2) {
-        window_->OpenSteamBigPicture();
-        return true;
-      }
-      if (focus_ == int(kSettings.size()) - 1) {
-        window_->Exit();
+      if (focus_ >= kFirstAction) {
+        Act();
         return true;
       }
       Change(1);
@@ -77,8 +99,7 @@ bool SettingsPage::Navigate(Nav nav) {
 }
 
 QList<Hint> SettingsPage::Hints() const {
-  const int from_end = int(kSettings.size()) - focus_;
-  return {{Nav::Accept, from_end == 1 ? "Exit" : from_end == 2 ? "Open" : "Change"}, {Nav::Back, "Back"}};
+  return {{Nav::Accept, focus_ == kExit ? "Exit" : focus_ >= kFirstAction ? "Select" : "Change"}, {Nav::Back, "Back"}};
 }
 
 void SettingsPage::paintEvent(QPaintEvent*) {
@@ -95,17 +116,23 @@ void SettingsPage::paintEvent(QPaintEvent*) {
 
   const std::string buttons = prefs.big_screen_buttons.value_or("auto");
   const auto kind = std::ranges::find(kButtonKinds, buttons, [](const auto& k) { return std::string(k.first); });
-  const QString values[] = {
+  // Action rows have no value.
+  const std::array<QString, kSettings.size()> values = {
       kind == kButtonKinds.end() ? "Match controller" : kind->second,
       prefs.big_screen_large_text.value_or(false) ? "Large" : "Standard",
+      prefs.big_screen_sounds.value_or(true) ? "On" : "Off",
+      prefs.big_screen_rumble.value_or(true) ? "On" : "Off",
       prefs.big_screen_at_start.value_or(false) ? "On" : "Off",
       prefs.start_on_login.value_or(false) ? "On" : "Off",
-      QString(),
-      QString(),
   };
   const double list_w = std::min(kListW * u, width() * 0.55);
+  // Scrolled so the focused row stays above the hints.
+  const double step = kRowH + 0.5;
+  const double scroll = std::max(0.0, kTop + 3.2 + (focus_ + 1) * step - (height() / u - 4.5));
+  painter.save();
+  painter.setClipRect(QRectF(0, (kTop + 2.6) * u, width(), height()));
   for (size_t i = 0; i < kSettings.size(); ++i) {
-    const QRectF row(kMargin * u, (kTop + 3.2 + double(i) * (kRowH + 0.5)) * u, list_w, kRowH * u);
+    const QRectF row(kMargin * u, (kTop + 3.2 + double(i) * step - scroll) * u, list_w, kRowH * u);
     const bool focused = int(i) == focus_;
     painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
     painter.setBrush(focused ? tokens.surface_alt : tokens.surface);
@@ -119,6 +146,7 @@ void SettingsPage::paintEvent(QPaintEvent*) {
       painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, "‹  " + values[i] + "  ›");
     }
   }
+  painter.restore();
   // What the focused setting does.
   const QRectF help((kMargin * 2) * u + list_w, (kTop + 3.2) * u, width() - list_w - kMargin * 3 * u, 12 * u);
   painter.setPen(Qt::NoPen);

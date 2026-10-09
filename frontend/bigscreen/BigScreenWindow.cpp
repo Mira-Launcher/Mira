@@ -21,6 +21,7 @@
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "DownloadsPage.h"
+#include "GameKeyboard.h"
 #include "GamePage.h"
 #include "GamepadInput.h"
 #include "HeroBackground.h"
@@ -28,6 +29,7 @@
 #include "SearchPage.h"
 #include "Session.h"
 #include "SettingsPage.h"
+#include "Sounds.h"
 
 namespace mira_gui::bigscreen {
 
@@ -53,6 +55,7 @@ protected:
     PaintToast(painter);
     PaintDialog(painter);
     PaintLaunch(painter);
+    PaintMenu(painter);
   }
 
 private:
@@ -101,9 +104,14 @@ private:
     painter.setFont(Font(u, 0.85));
     painter.setPen(tokens.text_muted);
     const GamepadInput& input = window_->input();
-    const QString pad = !input.available()        ? "Keyboard · controllers need SDL3"
-                        : input.pad_name().isEmpty() ? "No controller"
-                                                     : input.pad_name();
+    QString pad = !input.available()        ? "Keyboard · controllers need SDL3"
+                  : input.pad_name().isEmpty() ? "No controller"
+                                               : input.pad_name();
+    if (input.battery() >= 0) {
+      pad += QString(" · %1%2%").arg(input.charging() ? "⚡" : "").arg(input.battery());
+    } else if (input.available() && !input.pad_name().isEmpty() && !input.wireless()) {
+      pad += " · wired";
+    }
     const double pad_w = painter.fontMetrics().horizontalAdvance(pad);
     painter.drawText(QPointF(right - pad_w, mid + u * 0.3), pad);
     right -= pad_w + u * 1.4;
@@ -135,6 +143,8 @@ private:
     QList<Hint> hints;
     if (!window_->launching_.key.isEmpty()) {
       hints = {{Nav::Back, "Hide"}};
+    } else if (window_->menu_) {
+      hints = {{Nav::Accept, "Select"}, {Nav::Back, "Close"}};
     } else if (window_->dialog_) {
       hints = {{Nav::Accept, "Select"}, {Nav::Back, "Cancel"}};
     } else if (auto* page = qobject_cast<Page*>(window_->stack_->currentWidget())) {
@@ -152,7 +162,7 @@ private:
       x -= text_w;
       painter.setPen(theme::Current().text);
       painter.drawText(QPointF(x, mid + u * 0.33), it->label);
-      const double glyph_w = u * (it->nav == Nav::PrevTab || it->nav == Nav::NextTab ? 2.2 : 1.45);
+      const double glyph_w = GlyphWidth(u, it->nav, window_->GlyphKind());
       x -= glyph_w + u * 0.45;
       DrawGlyph(painter, {x, mid}, u, it->nav, window_->GlyphKind());
       x -= u * 1.6;
@@ -171,6 +181,33 @@ private:
     painter.drawRoundedRect(box, u * 0.5, u * 0.5);
     painter.setPen(tokens.text);
     painter.drawText(box, Qt::AlignCenter, window_->toast_);
+  }
+
+  void PaintMenu(QPainter& painter) {
+    if (!window_->menu_) return;
+    const BigScreenWindow::Menu& menu = *window_->menu_;
+    const theme::Tokens& tokens = theme::Current();
+    const double u = window_->unit();
+    painter.fillRect(rect(), QColor(0, 0, 0, 170));
+    const double row_h = u * 3.4;
+    const QRectF box((width() - u * 30) / 2, (height() - row_h * double(menu.entries.size()) - u * 6) / 2, u * 30,
+                     row_h * double(menu.entries.size()) + u * 6);
+    painter.setPen(QPen(tokens.border, 1));
+    painter.setBrush(tokens.surface);
+    painter.drawRoundedRect(box, u * 0.7, u * 0.7);
+    painter.setPen(tokens.text_muted);
+    painter.setFont(Font(u, 1.0, QFont::DemiBold));
+    painter.drawText(box.adjusted(u * 2, u * 1.4, -u * 2, 0), Qt::AlignTop | Qt::AlignLeft, menu.title);
+    painter.setFont(Font(u, 1.2, QFont::Bold));
+    for (size_t i = 0; i < menu.entries.size(); ++i) {
+      const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i) * row_h, box.width() - u * 2.4, row_h - u * 0.4);
+      const bool focused = int(i) == menu.focus;
+      painter.setPen(focused ? QPen(tokens.accent, u * 0.12) : Qt::NoPen);
+      painter.setBrush(focused ? tokens.surface_alt : Qt::transparent);
+      painter.drawRoundedRect(row, u * 0.45, u * 0.45);
+      painter.setPen(tokens.text);
+      painter.drawText(row.adjusted(u * 1.2, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, menu.entries[i].first);
+    }
   }
 
   void PaintDialog(QPainter& painter) {
@@ -225,8 +262,11 @@ private:
     painter.drawText(title, Qt::AlignHCenter | Qt::AlignTop, "Starting " + item.name);
     painter.setPen(tokens.text_muted);
     painter.setFont(Font(u, 1.05));
+    // Nothing reports a prefix being set up, but a Windows game's first start is when it happens.
+    const bool first_run = item.game && !item.game->last_played_at && item.game->play_seconds == 0;
     const QString detail = item.game && item.game->source == "steam" ? "Steam is starting it. This can take a moment."
-                                                                    : "This can take a moment.";
+                           : first_run ? "Its first start sets things up, which can take a minute or two."
+                                       : "This can take a moment.";
     painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
   }
 
@@ -253,12 +293,17 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   }
   chrome_ = new Chrome(this);
 
+  sounds_ = new Sounds(this);
+  keyboard_ = new GameKeyboard(this);
   connect(input_, &GamepadInput::Pressed, this, [this](Nav nav) {
-    if (nav == Nav::Guide) return RaiseFromGame();
+    // The keyboard over a game takes every button while it's up.
+    if (keyboard_->isVisible()) return keyboard_->Navigate(nav);
+    if (nav == Nav::Guide) return Guide();
     // A game in front has the controller; only Guide comes back to Mira.
     if (!isActiveWindow()) return;
     Navigate(nav);
   });
+  blanking_cookie_ = InhibitScreenBlanking();
   connect(input_, &GamepadInput::PadChanged, chrome_, qOverload<>(&QWidget::update));
   connect(services_.downloads, &DownloadTracker::Changed, chrome_, qOverload<>(&QWidget::update));
   toast_timer_.setSingleShot(true);
@@ -289,7 +334,10 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   if (!input_->available()) Toast("Controllers need SDL3 (the sdl3 package). The keyboard works.");
 }
 
-BigScreenWindow::~BigScreenWindow() = default;
+BigScreenWindow::~BigScreenWindow() {
+  ReleaseScreenBlanking(blanking_cookie_);
+  delete keyboard_;
+}
 
 void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   prefs_ = prefs;
@@ -298,6 +346,8 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_large_text = prefs.big_screen_large_text;
   saved.big_screen_at_start = prefs.big_screen_at_start;
   saved.start_on_login = prefs.start_on_login;
+  saved.big_screen_sounds = prefs.big_screen_sounds;
+  saved.big_screen_rumble = prefs.big_screen_rumble;
   ApplyStartOnLogin(prefs.start_on_login.value_or(false));
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   for (Page* page : tabs_) page->Shown();
@@ -529,6 +579,19 @@ void BigScreenWindow::closeEvent(QCloseEvent* event) {
 }
 
 void BigScreenWindow::Navigate(Nav nav) {
+  Feedback(nav);
+  if (menu_) {
+    const int count = int(menu_->entries.size());
+    if (nav == Nav::Up || nav == Nav::Down) menu_->focus = (menu_->focus + (nav == Nav::Down ? 1 : count - 1)) % count;
+    if (nav == Nav::Back) menu_.reset();
+    if (nav == Nav::Accept) {
+      auto action = std::move(menu_->entries[size_t(menu_->focus)].second);
+      menu_.reset();
+      action();
+    }
+    chrome_->update();
+    return;
+  }
   if (!launching_.key.isEmpty()) {
     if (nav == Nav::Back) {
       launching_ = {};
@@ -575,6 +638,75 @@ void BigScreenWindow::Back() {
   if (tab_ != 0) SelectTab(0);
 }
 
+void BigScreenWindow::Feedback(Nav nav) {
+  const bool directions = nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right;
+  if (prefs_.big_screen_sounds.value_or(true)) {
+    sounds_->Play(directions        ? Sounds::Cue::Move
+                  : nav == Nav::Back ? Sounds::Cue::Back
+                                     : Sounds::Cue::Accept);
+  }
+  if (prefs_.big_screen_rumble.value_or(true) && nav == Nav::Accept) input_->Rumble(0.15, 0.35, 45);
+}
+
+void BigScreenWindow::Bump() {
+  if (prefs_.big_screen_sounds.value_or(true)) sounds_->Play(Sounds::Cue::Bump);
+  if (prefs_.big_screen_rumble.value_or(true)) input_->Rumble(0.45, 0.1, 70);
+}
+
+const GameSummary* BigScreenWindow::RunningGame() const {
+  for (const GameSummary& game : services_.library->Games()) {
+    if (game.running) return &game;
+  }
+  return nullptr;
+}
+
+void BigScreenWindow::Guide() {
+  if (menu_ && isActiveWindow()) {
+    menu_.reset();
+    return ReturnToGame();
+  }
+  RaiseFromGame();
+  const GameSummary* game = RunningGame();
+  // Nothing to go back to: Guide just brings big screen up.
+  if (game == nullptr && !handed_off_) return;
+  Menu menu{game != nullptr ? QString::fromStdString(game->name) : "Game"};
+  menu.entries.emplace_back("Return to game", [this] { ReturnToGame(); });
+  menu.entries.emplace_back("Keyboard", [this] { OpenGameKeyboard(); });
+  if (game != nullptr) {
+    const std::string id = game->id;
+    const QString name = QString::fromStdString(game->name);
+    menu.entries.emplace_back("Stop " + name, [this, id, name] {
+      Confirm("Stop " + name + "?", "Anything not saved in the game is lost.", "Stop",
+              [this, id] { actions::Stop(this, id); });
+    });
+  }
+  menu.entries.emplace_back("Downloads", [this] { SelectTab(2); });
+  menu_ = std::move(menu);
+  chrome_->update();
+}
+
+void BigScreenWindow::ReturnToGame() {
+  // Out of the way, so the window manager hands focus back to the game.
+  handed_off_ = true;
+  showMinimized();
+}
+
+void BigScreenWindow::OpenGameKeyboard() {
+  ReturnToGame();
+  // After the game has the screen again, so the keyboard lands over it.
+  QTimer::singleShot(400, this, [this] {
+    QString error;
+    if (!keyboard_->Open(&error)) {
+      RaiseFromGame();
+      Toast(error);
+    }
+  });
+}
+
+void BigScreenWindow::PowerAction(const char* action) {
+  if (!Power(action)) Toast("The system didn't allow that.");
+}
+
 void BigScreenWindow::RaiseFromGame() {
   showFullScreen();
   raise();
@@ -589,11 +721,13 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
       {Qt::Key_Space, Nav::Accept},   {Qt::Key_Escape, Nav::Back},     {Qt::Key_Backspace, Nav::Back},
       {Qt::Key_X, Nav::Action},       {Qt::Key_Y, Nav::Search},        {Qt::Key_Q, Nav::PrevTab},
       {Qt::Key_E, Nav::NextTab},      {Qt::Key_PageUp, Nav::PrevTab},  {Qt::Key_PageDown, Nav::NextTab},
+      {Qt::Key_S, Nav::Sort},         {Qt::Key_Home, Nav::Guide},
   };
   const auto found = kKeys.find(event->key());
   if (found == kKeys.end() || (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
     return QWidget::keyPressEvent(event);
   }
+  if (found->second == Nav::Guide) return Guide();
   Navigate(found->second);
 }
 

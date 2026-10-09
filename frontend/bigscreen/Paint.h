@@ -41,6 +41,8 @@ QFont Font(double unit, double size, int weight = QFont::Normal);
 QString GlyphText(Nav nav, const QString& kind);
 // A round (face) or rounded (shoulder) button glyph; returns its width.
 double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind);
+// How wide DrawGlyph draws it.
+double GlyphWidth(double unit, Nav nav, const QString& kind);
 
 // A cover with its focus ring, dimming and install progress.
 void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,

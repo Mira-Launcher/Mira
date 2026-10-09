@@ -25,6 +25,13 @@ public:
   // "xbox", "ps" or "nin" for the open controller's button labels; empty with none.
   QString pad_kind() const { return pad_kind_; }
   QString pad_name() const { return pad_name_; }
+  // Battery percent, or -1 when the controller doesn't say (wired ones mostly).
+  int battery() const { return battery_; }
+  bool charging() const { return charging_; }
+  bool wireless() const { return wireless_; }
+
+  // Vibrates the open controller; `low` and `high` are the two motors' strengths, 0 to 1.
+  void Rumble(double low, double high, int ms);
 
 signals:
   void Pressed(Nav nav);
@@ -40,6 +47,9 @@ private:
   NavRepeater repeater_;
   QString pad_kind_;
   QString pad_name_;
+  int battery_ = -1;
+  bool charging_ = false;
+  bool wireless_ = false;
 };
 
 }  // namespace mira_gui::bigscreen
