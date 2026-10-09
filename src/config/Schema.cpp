@@ -1156,17 +1156,6 @@ Schema::Schema() {
          .doc = "The desktop menu categories for new entries, separated by semicolons. They decide "
                 "where the entries appear in your menu."});
 
-  s.Add({.key = "desktop_entries.exec_mode",
-         .label = "Menu entry launch method",
-         .type = Type::String,
-         .default_value = "cli",
-         .scope = Scope::PerGame,
-         .doc = "What a menu entry runs. \"cli\" runs \"mira launch\", which needs the Mira daemon "
-                "to be running already and shows an error if it is not. \"frontend\" opens Mira, "
-                "which starts the daemon itself. Either way the game launches through Mira, so "
-                "playtime is recorded.",
-         .constraint = OneOf({"cli", "frontend"})});
-
   s.Group("Importing");
 
   s.Add({.key = "desktop_import.enabled",

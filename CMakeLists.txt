@@ -175,8 +175,6 @@ add_test(NAME unit COMMAND mira_tests)
 
 include(GNUInstallDirs)
 install(TARGETS mirad mira mira-run RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES packaging/mirad.service
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)
 install(FILES packaging/mira.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 foreach(icon_size IN ITEMS 16 32 48 64 128 256)

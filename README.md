@@ -18,15 +18,13 @@ Needs a C++23 compiler, CMake 3.20+, Ninja, and Qt6 6.5+ (`Widgets`, `Multimedia
 ## Running
 
 ```sh
-build/dev/mirad &
-build/dev/mira status
-build/dev/mira list
+build/dev/mira-gui
 ```
 
-Or run it as a user service:
+`mira-gui` starts `mirad` itself and keeps it running from the tray. A `mira` command with Mira closed opens it in the tray first (or, with no desktop, starts `mirad` for that command only):
 
 ```sh
-systemctl --user enable --now mirad.service
+build/dev/mira list
 ```
 
 [`docs/cli.md`](docs/cli.md) lists every `mira` command.

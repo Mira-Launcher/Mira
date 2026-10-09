@@ -575,6 +575,15 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
     return;
   }
 
+  // mirad stops with the GUI that started it, cancelling what it's doing.
+  if (const int running = downloads_ != nullptr ? downloads_->RunningCount() : 0;
+      running > 0 && !mira_gui::notify::Confirm(this, "Quit Mira?",
+                                                 running == 1 ? "An install or download is still running. Quitting cancels it."
+                                                              : QString("%1 installs or downloads are still running. Quitting cancels them.").arg(running),
+                                                 "Quit", /*destructive=*/true)) {
+    event->ignore();
+    return;
+  }
   if (!ConfirmLeaveSource([this] { close(); })) {
     event->ignore();
     return;
