@@ -47,9 +47,9 @@ public:
   const std::vector<GameSummary>& Games() const { return games_; }
   // What recently played lists at `count`: running games first, then the last
   // played, `count` in all, more only when more than `count` run. Hidden games
-  // only while they run, so they can still be stopped. Apps only while they run:
+  // only while they run and `with_hidden` is set (the Hidden view). Apps only while they run:
   // they are played like any game, but a closed one doesn't take a place here.
-  std::vector<const GameSummary*> RecentlyPlayed(int count) const;
+  std::vector<const GameSummary*> RecentlyPlayed(int count, bool with_hidden = false) const;
   QModelIndex IndexOf(const std::string& id) const;
 
   // A game mid-install: its rail, status line and detail line; nullopt otherwise.

@@ -11,7 +11,7 @@ Bodies are JSON. Errors share one envelope:
 `code` is stable and meant for code; `message` is meant for people and says what went wrong; it is never empty (a failure with nothing to say gets its code in words). Two optional fields say what to do about it:
 
 - `hint`: one sentence for the user, worded for any client (no CLI commands, no GUI paths).
-- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, or `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown).
+- `fix`: where the fix is, for a client to turn into a button or a command. `{"kind": "setting", "target": "<dotted key>"}`, `{"kind": "runners", "target": ""}` (install a runner) or `"target": "winetricks"`, `{"kind": "source", "target": "<source id>", "step": "setup" | "login" | "install"}`, `{"kind": "game", "target": "<game id>", "step": "exe" | "data_dir" | "log" | "install"}` (`install`: run its installer with the window shown), or `{"kind": "packages", "target": "<feature>"}` (install what `GET /v1/system/packages?for=<feature>` lists).
 
 ```json
 { "error": { "code": "no_steamgriddb_key", "message": "searching SteamGridDB needs an API key",
@@ -459,7 +459,7 @@ Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs
 Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. Microsoft 365 (`office`) works the same way: its install sets up the prefix with the [mira-winapp-shims](https://github.com/Mira-Launcher/mira-winapp-shims) DLLs and Microsoft's Edge WebView2 runtime. Its apps (Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher) are then a library source like a store: `GET /v1/library?source=office` lists them and `POST /v1/library/install` installs one through the Office Deployment Tool, for the edition in `launchers.office.plan`, as `office-<app>`, tagged `app`. Deleting an app's files runs the Office Deployment Tool without it. Office signs in and checks the subscription itself; Mira never sees the account. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
 
 ### `GET /v1/launchers`
-`[{id, name, game_id, installed, install_state, interactive_install, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`.
+`[{id, name, game_id, installed, install_state, interactive_install, packages, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`. `packages` is the feature whose system packages installing it needs (`winetricks`, see `GET /v1/system/packages`), or empty.
 
 ### `POST /v1/launchers/{id}/install`
 Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. A job (kind `install`). `409 install_running`. Events: `launcher.install.*`; `launcher.install.progress` (`progress` 0..1) when the installer reports how far along it is (Microsoft 365 does).
@@ -515,6 +515,9 @@ Rewrites Mira's own desktop entries now.
 
 ## GameMode
 
+### `GET /v1/system/packages[?for=]`
+The system packages Mira's features use and which are missing, for this distribution. `for` is `winetricks` (cabextract, unzip: winetricks verbs and store launchers like Microsoft 365), `archives` (7-Zip) or `performance` (GameMode, MangoHud); without it, all of them. Returns `{"distro", "family", "missing": [{"tool", "package", "purpose"}], "install": [argv...], "restart"}`. `family` is `arch`, `debian`, `fedora`, `suse`, `ostree` (Bazzite, Silverblue: layered with rpm-ostree, so `restart` is true), `steamos` or `unknown`. `install` is the command that installs the missing packages, for a client to run as root (`pkexec`), and empty when nothing's missing or Mira has no way to install them (SteamOS, unknown). Running winetricks or installing a launcher that uses it fails with `missing_packages` and fix `{"kind": "packages", "target": "winetricks"}` until they're there.
+
 ### `GET /v1/gamemode/status`
 `{"installed": true, "daemon_running": false}`. `installed` means `gamemoded` or `gamemoderun` is on `PATH`; `daemon_running` means GameMode owns its D-Bus name. With `launch.gamemode` on, an unreachable daemon is logged and the game still launches.
 
@@ -540,6 +543,9 @@ The cached image for a slot (`cover` by default). `404` if that slot isn't cache
 
 ### `POST /v1/games/{id}/artwork?type=`
 Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
+
+### `PUT /v1/games/{id}/artwork?type=`
+The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
 
 ### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
 Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.

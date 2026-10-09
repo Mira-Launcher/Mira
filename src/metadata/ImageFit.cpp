@@ -34,6 +34,11 @@ Box SlotBox(std::string_view slot, bool title, bool compact) {
   return box;
 }
 
+bool IsImage(const std::filesystem::path& file) {
+  int width = 0, height = 0, channels = 0;
+  return stbi_info(file.c_str(), &width, &height, &channels) != 0;
+}
+
 std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box) {
   int width = 0, height = 0, channels = 0;
   if (!stbi_info(file.c_str(), &width, &height, &channels)) return std::nullopt;

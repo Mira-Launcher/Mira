@@ -829,7 +829,7 @@ bool Sidebar::ShowsArtOf(const QString& id) const {
 
 void Sidebar::RefreshGames() {
   const std::vector<const GameSummary*> pinned = PinnedGames();
-  const std::vector<const GameSummary*> recent = library_->RecentlyPlayed(style_.recent_count);
+  const std::vector<const GameSummary*> recent = library_->RecentlyPlayed(style_.recent_count, showing_hidden_);
   // Shown all the time, so their full images stay.
   QSet<QString> kept;
   for (const auto* games : {&pinned, &recent}) {

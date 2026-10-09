@@ -4,14 +4,15 @@
 # Both packages carry the tree the AppImage is made from (Mira's binaries with Qt and the libraries
 # linuxdeploy bundled), under /usr/lib/mira. From the distribution they need its C library, OpenGL,
 # Vulkan and 7-Zip, and recommend SDL3, GameMode, MangoHud and Wine. Built in the container that makes the AppImage, they install on every distribution as new as Ubuntu 22.04.
-# `mira`, `mirad`, `mira-run` and `mira-gui` in /usr/bin are small scripts that start the bundled ones.
+# `mira` and `mira-gui` in /usr/bin are small scripts that start the bundled ones; mira-gui starts
+# mirad itself.
 # Only defined next to the appimage target, which makes that tree.
 
 set(MIRA_PACKAGE_ROOT "${CMAKE_BINARY_DIR}/package-root")
 set(MIRA_PACKAGE_LIB /usr/lib/mira)
 
 set(MIRA_LAUNCHER_DIR "${CMAKE_BINARY_DIR}/package-launchers")
-foreach(program IN ITEMS mira mirad mira-run mira-gui)
+foreach(program IN ITEMS mira mira-gui)
   set(default_platform "")
   if(program STREQUAL "mira-gui")
     # As in the AppImage: the bundled Qt has the xcb platform plugin, which also runs through XWayland.
@@ -60,7 +61,7 @@ set(CPACK_RPM_SPEC_MORE_DEFINE "%global __os_install_post %{nil}\n%define _build
 set(CPACK_RPM_PACKAGE_SUGGESTS "sqlite")
 # The folders the icon theme, the desktop and systemd own.
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
-    /usr/bin /usr/lib /usr/lib/systemd /usr/lib/systemd/user /usr/share/applications /usr/share/icons
+    /usr/bin /usr/lib /usr/share/applications /usr/share/icons
     /usr/share/icons/hicolor)
 foreach(icon_size IN ITEMS 16 32 48 64 128 256)
   list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
@@ -74,9 +75,7 @@ add_custom_target(stage-packages
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_PACKAGE_ROOT}/usr/bin" "${MIRA_PACKAGE_ROOT}${MIRA_PACKAGE_LIB}"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${MIRA_APPDIR}/usr" "${MIRA_PACKAGE_ROOT}${MIRA_PACKAGE_LIB}"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${MIRA_LAUNCHER_DIR}" "${MIRA_PACKAGE_ROOT}/usr/bin"
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_PACKAGE_ROOT}/usr/lib/systemd/user"
-          "${MIRA_PACKAGE_ROOT}/usr/share/applications"
-  COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/packaging/mirad.service" "${MIRA_PACKAGE_ROOT}/usr/lib/systemd/user"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_PACKAGE_ROOT}/usr/share/applications"
   COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/packaging/mira.desktop" "${MIRA_PACKAGE_ROOT}/usr/share/applications"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/packaging/icons/hicolor" "${MIRA_PACKAGE_ROOT}/usr/share/icons/hicolor"
   DEPENDS appimage-host

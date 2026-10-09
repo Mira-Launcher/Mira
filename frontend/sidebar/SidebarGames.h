@@ -130,8 +130,8 @@ private:
   std::vector<QWidget*> covers_;
 };
 
-// Whether the art a style draws for this game has landed yet, so a section
-// can tell a row worth rebuilding from one that would come out the same.
+// Which art a style draws for this game, so a section can tell a row worth
+// rebuilding from one that would come out the same.
 QString ArtSignature(const GameSummary& game, Style style, ArtworkStore* artwork);
 
 }  // namespace sidebar

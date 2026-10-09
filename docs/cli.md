@@ -17,14 +17,13 @@ mira: searching SteamGridDB needs an API key (HTTP 502)
 
 ## Daemon and install
 
+Any command other than `status` and `setup` finds Mira running, or opens it in the tray first (`mira-gui --hidden`). Without a desktop it starts `mirad` for the length of the command instead.
+
 ### `mira status`
-`GET /v1/health`. Says whether `mirad` is reachable, or which socket it tried.
+`GET /v1/health`. Says whether Mira is running, or which socket it tried. Never starts it.
 
-### `mira daemon [args...]`
-Execs `mirad` (next to `mira` or on `PATH`) with the given arguments.
-
-### `mira setup [--enable-service] [--remove|--uninstall]`
-Run from the AppImage (`./Mira-x86_64.AppImage setup`). Writes a `~/.local/bin/mira` wrapper with `mirad` and `mira-run` links, a desktop entry with an "Uninstall Mira" action, the icon and a systemd user unit. `--enable-service` also enables the unit. A running `mirad` then points the games' menu entries at the wrapper. `--remove` undoes all of it, games' menu entries included, and `--uninstall` also deletes the AppImage after asking. Games, settings and prefixes are never touched.
+### `mira setup [--remove|--uninstall]`
+Run from the AppImage (`./Mira-x86_64.AppImage setup`). Writes a `~/.local/bin/mira` wrapper with a `mira-run` link, a desktop entry with an "Uninstall Mira" action and the icon. A running Mira then points the games' menu entries at the wrapper. `--remove` undoes all of it, games' menu entries included, and `--uninstall` also deletes the AppImage after asking. Games, settings and prefixes are never touched.
 
 ### `mira watch`
 Tails `GET /v1/events` and prints each event as it arrives.

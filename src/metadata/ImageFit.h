@@ -26,4 +26,7 @@ struct Fitted {
 // for a JPEG or transparent PNG that already fits, and for a file stb can't read: keep it as is.
 std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box);
 
+// Whether stb can read `file` as an image.
+bool IsImage(const std::filesystem::path& file);
+
 }  // namespace mira::metadata

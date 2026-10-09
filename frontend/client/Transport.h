@@ -60,6 +60,8 @@ Blob GetBinary(const std::string& path, const Options& options = {});
 Reply Post(const std::string& path, const Options& options = {});
 Reply PostJson(const std::string& path, const nlohmann::json& body, const Options& options = {});
 Reply Patch(const std::string& path, const nlohmann::json& body, const Options& options = {});
+Reply Put(const std::string& path, const std::string& body, const std::string& content_type,
+          const Options& options = {});
 Reply Delete(const std::string& path, const Options& options = {});
 
 // The message for a reply that arrived intact but isn't the JSON kind the

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mira LANGUAGES C CXX VERSION 0.13.2)
+project(mira LANGUAGES C CXX VERSION 0.13.3)
 
 # Dependencies are vendored in third_party/ (header-only, except SQLite's one
 # C file), so a build needs nothing fetched at configure time, and the only
@@ -175,8 +175,6 @@ add_test(NAME unit COMMAND mira_tests)
 
 include(GNUInstallDirs)
 install(TARGETS mirad mira mira-run RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES packaging/mirad.service
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user)
 install(FILES packaging/mira.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 foreach(icon_size IN ITEMS 16 32 48 64 128 256)

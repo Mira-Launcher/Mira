@@ -145,6 +145,27 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   CHECK(cache.ArtFor("celeste", "cover").has_value());
 }
 
+TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readable PNG or JPEG is refused") {
+  const fs::path dir = TempDir("metadata-upload");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+
+  std::vector<unsigned char> pixels(16 * 16 * 4, 200);
+  std::string png;
+  stbi_write_png_to_func([](void* out, void* data, int size) { static_cast<std::string*>(out)->append(static_cast<char*>(data), size); },
+                         &png, 16, 16, 4, pixels.data(), 0);
+
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "GIF89a").error().code == "unsupported_image");
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "\x89PNG broken").error().code == "unsupported_image");
+  REQUIRE(metadata::UploadArtwork(config, cache, "celeste", "hero", png).has_value());
+  const nlohmann::json info = cache.Read("celeste");
+  CHECK(info["hero"].value("chosen", false));
+  CHECK(info["hero"].value("source", "") == "upload");
+  CHECK(cache.ArtFor("celeste", "hero").has_value());
+}
+
 TEST_CASE("Downloaded art is fitted to its slot: an opaque PNG cover shrinks to JPEG, a small transparent logo stays") {
   const fs::path dir = TempDir("metadata-fit");
   config::Config config(dir / "settings.toml");

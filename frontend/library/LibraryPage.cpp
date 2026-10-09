@@ -345,7 +345,7 @@ void LibraryPage::SetTileWidth(int width) {
       if (drawn_width_ != 0 && drawn_width_ != tile_width_) artwork_->ForgetWidth(drawn_width_);
       drawn_width_ = tile_width_;
       grid_->viewport()->update();
-      if (!owned_matches_.empty()) UpdateOwnedMatches();
+      owned_grid_->viewport()->update();
     });
   }
   artwork_->SetQuickScaling(true);
@@ -353,7 +353,6 @@ void LibraryPage::SetTileWidth(int width) {
   delegate_->SetTileSize(TileSize());
   grid_->setGridSize(TileSize());
   owned_grid_->SetTileSize(TileSize());
-  if (!owned_matches_.empty()) UpdateOwnedMatches();  // covers at the new size
   FitGrid();
 }
 
@@ -415,15 +414,7 @@ QWidget* LibraryPage::BuildOwnedSection() {
   layout->addWidget(owned_grid_);
 
   // A store title's cover arriving after the search drew its placeholder.
-  connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
-    for (int row = 0; row < owned_model_->rowCount(); ++row) {
-      QStandardItem* item = owned_model_->item(row);
-      if (item->data(GameTileDelegate::IdRole).toString() != id) continue;
-      const auto& [source, ref] = owned_matches_[row].copies.front();
-      item->setData(artwork_->TitleCover(source, ref, owned_matches_[row].title, TileSize(), devicePixelRatioF()),
-                    Qt::DecorationRole);
-    }
-  });
+  connect(artwork_, &ArtworkStore::CoverChanged, owned_grid_->viewport(), qOverload<>(&QWidget::update));
   return owned_section_;
 }
 
@@ -474,7 +465,7 @@ void LibraryPage::UpdateOwnedMatches() {
     item->setData(match.title, GameTileDelegate::NameRole);
     item->setData(QString("ready"), GameTileDelegate::StatusRole);
     item->setData(source, GameTileDelegate::SourceRole);
-    item->setData(artwork_->TitleCover(source, ref, match.title, TileSize(), devicePixelRatioF()), Qt::DecorationRole);
+    item->setData(QStringList{source, ref}, GameTileDelegate::TitleCoverRole);
     QStringList stores;
     for (const auto& [store, store_ref] : match.copies) {
       const SourceInfo* info = FindSourceInfo(store);

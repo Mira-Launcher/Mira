@@ -8,6 +8,9 @@
 #include <QStandardPaths>
 #include <QStringList>
 
+#include <cstdlib>
+#include <filesystem>
+
 #include "bigscreen/Session.h"
 #include "client/api/Config.h"
 #include "dialogs/FirstRunWizard.h"
@@ -21,7 +24,27 @@
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
 
+namespace {
+
+// A bundled build (AppImage, .deb, .rpm) carries only Qt's xcb platform plugin; picking it up
+// front runs through XWayland instead of failing to find wayland when started without the
+// /usr/bin/mira-gui wrapper (from `mira`, autostart or Steam).
+void DefaultToBundledPlatform() {
+  if (std::getenv("QT_QPA_PLATFORM") != nullptr) return;
+  std::error_code ec;
+  const std::filesystem::path platforms =
+      std::filesystem::read_symlink("/proc/self/exe", ec).parent_path().parent_path() / "plugins" / "platforms";
+  if (ec || !std::filesystem::is_directory(platforms, ec)) return;
+  for (const auto& entry : std::filesystem::directory_iterator(platforms, ec)) {
+    if (entry.path().filename().string().starts_with("libqwayland")) return;
+  }
+  ::setenv("QT_QPA_PLATFORM", "xcb", 0);
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+  DefaultToBundledPlatform();
   QApplication app(argc, argv);
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
@@ -36,7 +59,10 @@ int main(int argc, char** argv) {
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
   // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
   const bool big_screen = app.arguments().contains("--big-screen");
+  // Started by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
+  const bool hidden = app.arguments().contains("--hidden");
   if (!single_instance_lock.tryLock(0)) {
+    if (hidden) return 0;
     // Ask the instance already holding the lock to raise its own window
     // instead of just quietly doing nothing -- see the QLocalServer set up
     // below, alongside window creation.
@@ -70,14 +96,14 @@ int main(int argc, char** argv) {
 
   // docs/architecture.md's "frontend-managed" daemon path: start mirad
   // ourselves if nothing is already listening, so the AppImage works as one
-  // self-contained app with no systemd unit required.
+  // self-contained app.
   auto* supervisor = new mira_gui::DaemonSupervisor(&app);
-  QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen] {
+  QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, hidden] {
     // Read once and applied before the window exists, so it opens at its saved
     // size and look instead of changing once shown.
     const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
     mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
-    if (saved.ok && mira_gui::FirstRunWizard::Needed(prefs)) {
+    if (!hidden && saved.ok && mira_gui::FirstRunWizard::Needed(prefs)) {
       mira_gui::FirstRunWizard wizard(prefs);
       wizard.exec();
       // What it chose decides how the window opens.
@@ -92,7 +118,10 @@ int main(int argc, char** argv) {
     // means exactly what it always did.
     mira_gui::tray::Attach(window);
     mira_gui::bigscreen::UpdateSteamShortcut(window);
-    if (big_screen || prefs.big_screen_at_start.value_or(false)) {
+    if (hidden) {
+      // With no tray to come back from, the dock or taskbar.
+      if (!mira_gui::tray::Available()) window->showMinimized();
+    } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {
       window->OpenBigScreen();
     } else {
       window->show();
@@ -123,17 +152,14 @@ int main(int argc, char** argv) {
     mira_gui::notify::FailedWithHint(
         nullptr, "Could not start mirad.", error,
         "Mira looks for \"mirad\" next to its own binary, then on PATH. Build it "
-        "(cmake --build build --target mirad) or install the package that provides it, or "
-        "start it yourself first: run \"mirad\" in a terminal, or run "
-        "systemctl --user enable --now mirad.service to start it with your session.");
+        "(cmake --build build --target mirad) or reinstall Mira.");
     QApplication::quit();
   });
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Outdated, &app, [](int api) {
     mira_gui::notify::FailedWithHint(
         nullptr, "The running mirad doesn't match this version of Mira.",
         QString("It speaks API %1; this app needs API %2.").arg(api).arg(mira_gui::kExpectedApiVersion),
-        "Restart it so it picks up the update: systemctl --user restart mirad.service, or stop the mirad "
-        "process and start Mira again.");
+        "Quit Mira from the tray, or stop the mirad process, and start Mira again.");
     QApplication::quit();
   });
   supervisor->EnsureRunning();

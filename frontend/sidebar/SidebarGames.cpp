@@ -539,11 +539,12 @@ void Shelf::resizeEvent(QResizeEvent*) {
 }
 
 QString ArtSignature(const GameSummary& game, Style style, ArtworkStore* artwork) {
-  const bool cover = artwork->HasArtwork(game.id);
+  // Each image's cacheKey, so a replaced cover or hero rebuilds the row.
+  const qint64 cover = artwork->SmallArtwork(game.id).cacheKey();
   switch (style) {
     case Style::Covers:
-      return QString("%1%2").arg(artwork->CoverColor(QString::fromStdString(game.id)).name()).arg(cover);
-    case Style::Hero: return QString("%1%2").arg(!artwork->SlotArt(game.id, "hero").isNull()).arg(cover);
+      return QString("%1 %2").arg(artwork->CoverColor(QString::fromStdString(game.id)).name()).arg(cover);
+    case Style::Hero: return QString("%1 %2").arg(artwork->SlotArt(game.id, "hero").cacheKey()).arg(cover);
     case Style::Shelf: return QString::number(cover);
   }
   return QString();

@@ -330,6 +330,23 @@ TEST_CASE("A Proton build Steam updates in place keeps its reference across upda
   CHECK(resolved->build->release == "proton-11.0-4-x86_64");
 }
 
+TEST_CASE("Steam's Proton is found in a library on another drive") {
+  test::TestEnv env("steam-library-proton");
+  const fs::path root = env.dir / "steam";
+  const fs::path library = env.dir / "games-drive";
+  test::Touch(root / "steamapps" / "libraryfolders.vdf",
+              "\"libraryfolders\"\n{\n \"0\" { \"path\" \"" + root.string() + "\" }\n \"1\" { \"path\" \"" +
+                  library.string() + "\" }\n}\n");
+  const fs::path proton = library / "steamapps" / "common" / "Proton 9.0";
+  test::Touch(proton / "proton");
+  test::Touch(proton / "toolmanifest.vdf");
+  REQUIRE(env.config.Set("steam.root", root.string()));
+  REQUIRE(env.config.Set("runner_scan_common_dirs", true));
+
+  const runner::RunnerRegistry registry(env.config);
+  CHECK(registry.Resolve("proton:Proton 9.0").has_value());
+}
+
 TEST_CASE("An old Proton reference moves only to the build of its own version") {
   test::TestEnv env("in-place-runner-versions");
   REQUIRE(env.config.Set("runner_scan_common_dirs", false));

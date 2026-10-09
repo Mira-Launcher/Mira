@@ -28,6 +28,8 @@ std::string SniffImageType(std::string_view bytes) {
   return "image/jpeg";
 }
 
+constexpr std::size_t kMaxUpload = 32 << 20;
+
 }  // namespace
 
 // Serves one cached art slot for `id`, or 404s.
@@ -78,6 +80,26 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
                    s.events.Publish("game.artwork_select_failed",
                                     FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
                    return std::unexpected(selected.error());
+                 }
+                 s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+                 return json{{"id", id}, {"type", slot}};
+               },
+               &s.artwork_selects);
+  });
+
+  // The body is the image itself, PNG or JPEG.
+  http.Put(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
+    const std::string id = req.matches[1];
+    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
+    if (req.body.size() > kMaxUpload) return SendError(res, 413, "image_too_large", "the image is over 32 MB");
+    const std::string slot = req.get_param_value("type");
+    s.StartJob(req, res, "artwork", id, "Using your image",
+               [&s, id, slot, bytes = req.body](JobRegistry::Progress&) -> Result<json> {
+                 if (auto uploaded = metadata::UploadArtwork(s.config, s.games.Metadata(), id, slot, bytes); !uploaded) {
+                   s.events.Publish("game.artwork_select_failed",
+                                    FailedEvent({{"id", id}, {"type", slot}}, uploaded.error()));
+                   return std::unexpected(uploaded.error());
                  }
                  s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
                  return json{{"id", id}, {"type", slot}};

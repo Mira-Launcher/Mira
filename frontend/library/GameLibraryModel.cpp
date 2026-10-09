@@ -148,13 +148,14 @@ const GameSummary* GameLibraryModel::Find(const std::string& id) const {
   return found != rows_.end() ? &games_[found->second] : nullptr;
 }
 
-std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count) const {
+std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count, bool with_hidden) const {
   std::vector<const GameSummary*> running;
   std::vector<const GameSummary*> played;
   for (const GameSummary& game : games_) {
+    if (IsHidden(game) && !(with_hidden && game.running)) continue;
     if (game.running) {  // anything open shows, apps included
       running.push_back(&game);
-    } else if (!IsApp(game) && game.last_played_at && !IsHidden(game)) {
+    } else if (!IsApp(game) && game.last_played_at) {
       played.push_back(&game);
     }
   }

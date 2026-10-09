@@ -71,6 +71,7 @@
 #include "../sources/SourcePage.h"
 #include "../sources/SourceSettingsCard.h"
 #include "../sources/Sources.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -575,6 +576,15 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
     return;
   }
 
+  // mirad stops with the GUI that started it, cancelling what it's doing.
+  if (const int running = downloads_ != nullptr ? downloads_->RunningCount() : 0;
+      running > 0 && !mira_gui::notify::Confirm(this, "Quit Mira?",
+                                                 running == 1 ? "An install or download is still running. Quitting cancels it."
+                                                              : QString("%1 installs or downloads are still running. Quitting cancels them.").arg(running),
+                                                 "Quit", /*destructive=*/true)) {
+    event->ignore();
+    return;
+  }
   if (!ConfirmLeaveSource([this] { close(); })) {
     event->ignore();
     return;
@@ -877,6 +887,9 @@ void LibraryWindow::InstallErrorNavigator() {
                                                                                 result.error);
                                               }
                                             });
+  };
+  nav.install_packages = [self](const std::string& feature) {
+    if (self) mira_gui::system::EnsurePackages(self, feature, "Mira", [](bool) {});
   };
   nav.start_daemon = [self] {
     if (!self) return;

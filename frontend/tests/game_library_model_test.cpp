@@ -224,10 +224,13 @@ TEST_CASE("Recently played lists running games first and keeps to its count; app
   CHECK(ids(3) == std::vector<std::string>{"mid", "new", "old"});
   library.SetRunning("older", true);
   CHECK(ids(3) == std::vector<std::string>{"mid", "older", "new"});
-  // A running game always shows, past the count; a hidden one only while it runs, and an app likewise:
+  // A running game always shows, past the count; an app only while it runs:
   // closed, "writer" took no place above, though it was played last.
-  library.SetRunning("secret", true);
   library.SetRunning("writer", true);
-  CHECK(ids(2) == std::vector<std::string>{"mid", "older", "writer", "secret"});
-  CHECK(ids(0).size() == 4);
+  CHECK(ids(2) == std::vector<std::string>{"mid", "older", "writer"});
+  CHECK(ids(0).size() == 3);
+  // A hidden one only in the Hidden view, and only while it runs.
+  library.SetRunning("secret", true);
+  CHECK(ids(0).size() == 3);
+  CHECK(library.RecentlyPlayed(0, /*with_hidden=*/true).size() == 4);
 }

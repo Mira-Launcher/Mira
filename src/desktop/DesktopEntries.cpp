@@ -121,11 +121,9 @@ bool DesktopEntries::IsWanted(const model::Game& game) const {
 std::string DesktopEntries::Render(const model::Game& game) const {
   const config::Resolver resolver(config_, game.overrides);
   const std::string_view mime = MimeTypes(game);
-  // An app that opens files is handed them, which only the CLI passes on.
-  const std::string exec = !mime.empty() ? std::format("{} launch {} %F", Binary("mira"), game.id)
-                           : resolver.GetString("desktop_entries.exec_mode") == "frontend"
-                               ? std::format("{} --launch {}", Binary("mira-gui"), game.id)
-                               : std::format("{} launch {}", Binary("mira"), game.id);
+  // `mira launch` opens Mira in the tray first when it isn't running. An app that opens files is
+  // handed them.
+  const std::string exec = std::format("{} launch {}{}", Binary("mira"), game.id, mime.empty() ? "" : " %F");
   const std::optional<fs::path> artwork = CachedArtwork(cache_, game.id);
   const bool app = std::ranges::contains(game.tags, "app");
   const std::string icon = artwork ? artwork->string() : app ? "application-x-executable" : "applications-games";

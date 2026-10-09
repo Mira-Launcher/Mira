@@ -32,9 +32,11 @@ class DownloadTracker;
 class GameFilterProxy;
 class GameLibraryModel;
 class HoverCard;
+class ItchCollectionsCard;
 class ModalOverlay;
 class ProgressRail;
 class RatingChips;
+class SettingsCard;
 class SourceSettingsCard;
 class SourceSetupCard;
 class TabRow;
@@ -100,6 +102,9 @@ private:
   QWidget* BuildOwnedSection();
 
   void OpenSettingsModal();
+  void OpenCollectionsModal();
+  // Shows `card` alone over the page, in place of whichever card was there.
+  void ShowModal(mira_gui::SettingsCard* card);
   void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
@@ -159,6 +164,8 @@ private:
   QWidget* content_ = nullptr;
   QVBoxLayout* content_layout_ = nullptr;
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
+  ItchCollectionsCard* collections_card_ = nullptr;  // itch only, built on first open
+  mira_gui::SettingsCard* modal_card_ = nullptr;  // the one the overlay shows
   ModalOverlay* settings_overlay_ = nullptr;
   QScrollArea* settings_scroll_ = nullptr;
 

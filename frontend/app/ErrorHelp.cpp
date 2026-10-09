@@ -19,6 +19,9 @@ std::optional<Action> ActionFor(const ApiError& error) {
   if (fix.kind == "setting" && nav.open_setting) {
     return Action{"Open settings", [key = QString::fromStdString(fix.target)] { Nav().open_setting(key); }};
   }
+  if (fix.kind == "packages" && nav.install_packages) {
+    return Action{"Install packages", [feature = fix.target] { Nav().install_packages(feature); }};
+  }
   if (fix.kind == "runners" && nav.open_runners) return Action{"Open Runners", nav.open_runners};
   if (fix.kind == "source" && nav.open_source) {
     const QString name = nav.source_name ? nav.source_name(fix.target) : QString();

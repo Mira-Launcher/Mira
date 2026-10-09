@@ -277,17 +277,12 @@ struct GameMetadata {
   // Which art slots are actually cached, so a panel knows whether asking for
   // one is worth a round trip. See GET /v1/games/{id}/artwork?type=.
   std::vector<std::string> art_slots;
-  // Every cover/hero SteamGridDB returned, cached alongside whichever one is
-  // active. Populated for a Steam-owned game too now (as alternates to
-  // Steam's own CDN default, not a replacement for it). Empty only when no
-  // steamgriddb.api_key is set, or SteamGridDB has no match for the name.
-  std::vector<ArtCandidate> cover_candidates;
-  std::vector<ArtCandidate> hero_candidates;
-  // The candidate currently applied to each slot, when it came from one of
-  // the lists above, and unset for Steam's own CDN art, which isn't a
-  // candidate. What ArtworkPickerDialog marks "(current)".
-  std::optional<std::int64_t> cover_active_candidate_id;
-  std::optional<std::int64_t> hero_active_candidate_id;
+  // Each slot's ("cover", "hero", "logo", "icon") cached candidates: the
+  // store's own art and what SteamGridDB returned. A slot without any is left out.
+  std::map<std::string, std::vector<ArtCandidate>> candidates;
+  // The candidate each slot uses, when it came from its list; left out for
+  // art that isn't a candidate, such as an uploaded image.
+  std::map<std::string, std::int64_t> active_candidate_ids;
 
   // The wider store info that doesn't fit the sidebar; see
   // GameDetailPageDialog. requirements_min/rec are HTML, not plain text.
@@ -1012,6 +1007,17 @@ struct LogResult {
 
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.
 // Purely informational; `launch.gamemode` (a plain config key) is the toggle.
+// GET /v1/system/packages: what a feature needs that isn't installed, and the command that installs it.
+struct SystemPackagesResult {
+  bool ok = false;
+  ApiError error;
+  std::string distro;
+  std::string family;  // "arch", "debian", "fedora", "suse", "ostree", "steamos", "unknown"
+  std::vector<std::string> missing;  // package names
+  std::vector<std::string> install;  // argv to run as root; empty when Mira can't
+  bool restart = false;              // layered with rpm-ostree: only after a restart
+};
+
 struct GameModeStatusResult {
   bool ok = false;
   ApiError error;
@@ -1200,6 +1206,7 @@ struct LauncherInfo {
   bool installed = false;
   std::string install_state;  // "idle" | "running" | "finished" | "failed"
   bool interactive_install = false;
+  std::string packages;  // the feature whose system packages installing it needs; see GetSystemPackagesAsync
   std::string prefix;
   std::string runner_ref;
   ApiError error;

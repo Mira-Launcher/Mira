@@ -2,7 +2,15 @@
 
 #include <QButtonGroup>
 #include <QCache>
+#include <QBuffer>
 #include <QComboBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QImageReader>
+#include <QMimeData>
 #include <QHBoxLayout>
 #include <QHash>
 #include <QLabel>
@@ -46,6 +54,18 @@ enum ThumbState { kIdle, kLoading, kReady, kFailed };
 constexpr int kInset = 6;
 // mirad takes at most this many ids per batch.
 constexpr std::size_t kMaxBatch = 64;
+// The grid's item for the user's own image; candidate ids are never negative.
+constexpr std::int64_t kUploadId = -1;
+
+// "covers", "hero art", ... for messages about a slot.
+QString SlotNoun(const std::string& slot) {
+  return slot == "hero" ? "hero art" : slot == "logo" ? "logos" : slot == "icon" ? "icons" : "covers";
+}
+
+// A local image file, if it's one Qt can read.
+bool IsImageUrl(const QUrl& url) {
+  return url.isLocalFile() && !QImageReader::imageFormat(url.toLocalFile()).isEmpty();
+}
 
 // What a candidate's chip calls it: SteamGridDB's style, or where it's from
 // for a store's own art, which has none.
@@ -76,9 +96,14 @@ protected:
   }
 };
 
+}  // namespace
+
 class ThumbDelegate : public QStyledItemDelegate {
 public:
   ThumbDelegate(QVariantAnimation* pulse, QObject* parent) : QStyledItemDelegate(parent), pulse_(pulse) {}
+
+  // Logos and icons are shown whole on a backing; covers and heroes fill their cell.
+  bool fit = false;
 
   QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex&) const override {
     const auto* view = qobject_cast<const QListView*>(option.widget);
@@ -100,14 +125,23 @@ public:
       const QSize target = (box.size() * dpr).toSize();
       QPixmap* scaled = scaled_.object(pixmap.cacheKey());
       if (scaled == nullptr || scaled->size() != target) {
-        // Fills the box, cropping the overflow, like a library tile.
-        const QPixmap filled = pixmap.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-        scaled = new QPixmap(filled.copy((filled.width() - target.width()) / 2,
-                                         (filled.height() - target.height()) / 2, target.width(),
-                                         target.height()));
+        if (fit) {
+          scaled = new QPixmap(target);
+          scaled->fill(Qt::transparent);
+          const QPixmap whole = pixmap.scaled(target * 0.86, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+          QPainter inner(scaled);
+          inner.drawPixmap((target.width() - whole.width()) / 2, (target.height() - whole.height()) / 2, whole);
+        } else {
+          // Fills the box, cropping the overflow, like a library tile.
+          const QPixmap filled = pixmap.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+          scaled = new QPixmap(filled.copy((filled.width() - target.width()) / 2,
+                                           (filled.height() - target.height()) / 2, target.width(),
+                                           target.height()));
+        }
         scaled_.insert(pixmap.cacheKey(), scaled,
                        std::max(1, target.width() * target.height() * 4 / 1024));
       }
+      if (fit) painter->fillPath(path, tokens.surface_alt);
       painter->setClipPath(path);
       painter->drawPixmap(box, *scaled, QRectF(scaled->rect()));
       painter->setClipping(false);
@@ -162,8 +196,6 @@ private:
   mutable QCache<qint64, QPixmap> scaled_{32 * 1024};
 };
 
-}  // namespace
-
 ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(parent), id_(std::move(game_id)) {
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -179,6 +211,8 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
   slots_->setObjectName("picker_tabs");
   slots_->AddTab("cover", "Covers");
   slots_->AddTab("hero", "Hero art");
+  slots_->AddTab("logo", "Logos");
+  slots_->AddTab("icon", "Icons");
   connect(slots_, &TabRow::CurrentChanged, this, [this](const QString& slot) {
     if (HasChange()) emit Previewed(QString::fromStdString(slot_), QPixmap());
     Open(slot.toStdString());
@@ -225,6 +259,11 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
   match_layout->addWidget(match_search_);
   match_row_->hide();
   bar_layout->addWidget(match_row_);
+  auto* choose = new QPushButton("Choose image…", bar);
+  choose->setToolTip("Use a PNG, JPEG or WebP of your own. You can also drop one here.");
+  connect(choose, &QPushButton::clicked, this, &ArtPickerPanel::ChooseFile);
+  bar_layout->addWidget(choose);
+  setAcceptDrops(true);
   layout->addWidget(bar);
 
   stack_ = new QStackedWidget(this);
@@ -253,7 +292,8 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
   grid_->setMouseTracking(true);
   grid_->setStyleSheet("QListWidget { background: transparent; padding: 8px 10px; }");
   grid_->viewport()->setAutoFillBackground(false);
-  grid_->setItemDelegate(new ThumbDelegate(pulse_, grid_));
+  delegate_ = new ThumbDelegate(pulse_, grid_);
+  grid_->setItemDelegate(delegate_);
   grid->on_resize = [this] {
     UpdateGridSize();
     QTimer::singleShot(0, this, &ArtPickerPanel::RequestVisible);
@@ -312,14 +352,20 @@ void ArtPickerPanel::Open(const std::string& slot) {
 }
 
 void ArtPickerPanel::Populate(const GameMetadataResult& result) {
-  const bool hero = slot_ == "hero";
+  candidates_.clear();
+  active_id_.reset();
   if (result.ok) {
-    candidates_ = hero ? result.metadata.hero_candidates : result.metadata.cover_candidates;
-    active_id_ = hero ? result.metadata.hero_active_candidate_id : result.metadata.cover_active_candidate_id;
-  } else {
-    candidates_.clear();
-    active_id_.reset();
+    if (const auto found = result.metadata.candidates.find(slot_); found != result.metadata.candidates.end()) {
+      candidates_ = found->second;
+    }
+    if (const auto found = result.metadata.active_candidate_ids.find(slot_);
+        found != result.metadata.active_candidate_ids.end()) {
+      active_id_ = found->second;
+    }
   }
+  upload_.clear();
+  thumbs_.erase({slot_, kUploadId});
+  delegate_->fit = slot_ == "logo" || slot_ == "icon";
   filter_.clear();
   next_page_ = 0;
   more_pages_ = true;
@@ -392,7 +438,7 @@ void ArtPickerPanel::RequestPage() {
     if (result.ok || slot != slot_) return;  // game.artwork_candidates_ready follows
     page_loading_ = false;
     more_pages_ = false;
-    if (candidates_.empty()) ShowMessage(QString("No other %1 found for this game.").arg(slot == "hero" ? "hero art" : "covers"), true);
+    if (candidates_.empty()) ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot)), true);
   });
 }
 
@@ -402,7 +448,7 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
     // No key or no match: what the fetch cached is all there is.
     more_pages_ = false;
     if (candidates_.empty()) {
-      ShowMessage(QString("No other %1 found for this game.").arg(slot_ == "hero" ? "hero art" : "covers"), true);
+      ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot_)), true);
     }
     return;
   }
@@ -436,7 +482,7 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
   UpdateTitle();
   RebuildChips();
   if (candidates_.empty()) {
-    ShowMessage(QString("No other %1 found for this game.").arg(slot_ == "hero" ? "hero art" : "covers"), true);
+    ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot_)), true);
     return;
   }
   stack_->setCurrentWidget(grid_);
@@ -477,7 +523,9 @@ void ArtPickerPanel::ApplyFilter(const QString& style) {
   filter_ = style;
   for (int i = 0; i < grid_->count(); ++i) {
     QListWidgetItem* item = grid_->item(i);
-    item->setHidden(!style.isEmpty() && item->data(kStyleRole).toString() != style);
+    // The user's own image has no style, and stays in sight while it's there.
+    const bool upload = item->data(kIdRole).toLongLong() == kUploadId;
+    item->setHidden(!upload && !style.isEmpty() && item->data(kStyleRole).toString() != style);
   }
   grid_->verticalScrollBar()->setValue(0);
   // The grid lays the rest out again only once control returns to it.
@@ -578,11 +626,82 @@ void ArtPickerPanel::Apply() {
   const std::string slot = slot_;
   const std::int64_t candidate_id = *pick_;
   applying_ = {slot, candidate_id};
-  api::SelectArtworkAsync(this, id_, slot, candidate_id, [this, slot](ArtworkSelectResult result) {
+  auto done = [this, slot](ArtworkSelectResult result) {
     if (result.ok) return;  // game.artwork_selected follows
     applying_.reset();
     emit ApplyFailed(QString::fromStdString(slot), error_help::Describe(result.error));
-  });
+  };
+  if (candidate_id == kUploadId) {
+    api::UploadArtworkAsync(this, id_, slot, upload_, std::move(done));
+  } else {
+    api::SelectArtworkAsync(this, id_, slot, candidate_id, std::move(done));
+  }
+}
+
+void ArtPickerPanel::ChooseFile() {
+  const QString path = QFileDialog::getOpenFileName(this, "Choose an image", QString(),
+                                                    "Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)");
+  if (!path.isEmpty()) UseFile(path);
+}
+
+void ArtPickerPanel::dragEnterEvent(QDragEnterEvent* event) {
+  const QList<QUrl> urls = event->mimeData()->urls();
+  if (urls.size() == 1 && IsImageUrl(urls.front())) event->acceptProposedAction();
+}
+
+void ArtPickerPanel::dropEvent(QDropEvent* event) {
+  const QList<QUrl> urls = event->mimeData()->urls();
+  if (urls.size() != 1 || !IsImageUrl(urls.front())) return;
+  event->acceptProposedAction();
+  UseFile(urls.front().toLocalFile());
+}
+
+void ArtPickerPanel::UseFile(const QString& path) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly)) {
+    emit ApplyFailed(QString::fromStdString(slot_), "Could not open " + path + ": " + file.errorString());
+    return;
+  }
+  const QByteArray bytes = file.readAll();
+  QImageReader reader(path);
+  reader.setAutoTransform(true);
+  const QImage image = reader.read();
+  if (image.isNull()) {
+    emit ApplyFailed(QString::fromStdString(slot_), "Could not read " + path + ": " + reader.errorString());
+    return;
+  }
+  // mirad reads PNG and JPEG, and ignores EXIF rotation; anything else goes as PNG, upright.
+  if ((bytes.startsWith("\x89PNG") || bytes.startsWith("\xFF\xD8\xFF")) &&
+      reader.transformation() == QImageIOHandler::TransformationNone) {
+    upload_ = bytes.toStdString();
+  } else {
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "PNG");
+    upload_ = png.toStdString();
+  }
+  const QPixmap pixmap = QPixmap::fromImage(image.width() > 1920 || image.height() > 1920
+                                                ? image.scaled(1920, 1920, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                                                : image);
+  thumbs_[{slot_, kUploadId}] = pixmap;
+
+  QListWidgetItem* item = ItemFor(kUploadId);
+  if (item == nullptr) {
+    item = new QListWidgetItem();
+    item->setData(kIdRole, QVariant::fromValue<qlonglong>(kUploadId));
+    item->setData(kStyleRole, QString("Yours"));
+    grid_->insertItem(0, item);
+  }
+  item->setData(Qt::DecorationRole, pixmap);
+  item->setData(kStateRole, kReady);
+  item->setData(kCurrentRole, false);
+  item->setToolTip(QFileInfo(path).fileName() + QString(" · %1×%2").arg(image.width()).arg(image.height()));
+  item->setHidden(false);
+  stack_->setCurrentWidget(grid_);
+  grid_->setCurrentItem(item);  // picks it, through currentItemChanged
+  grid_->scrollToItem(item);
+  if (pick_ == kUploadId) EmitPreview();  // the same item again, with a new image
 }
 
 void ArtPickerPanel::UpdateGridSize() {
@@ -590,12 +709,14 @@ void ArtPickerPanel::UpdateGridSize() {
   // change the column count and lay everything out again.
   const int scroll_bar = grid_->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
   const int width = grid_->width() - 20 - scroll_bar;  // less the grid's padding
+  // SteamGridDB heroes are 96:31, covers 2:3; logos vary, so a wide box, and icons are square.
   const bool hero = slot_ == "hero";
-  const int columns = std::max(2, width / (hero ? 230 : 118));
+  const bool logo = slot_ == "logo";
+  const bool icon = slot_ == "icon";
+  const int columns = std::max(2, width / (hero ? 230 : logo ? 200 : icon ? 96 : 118));
   const int cell = std::max(40, width / columns);
-  // SteamGridDB heroes are 96:31; covers 2:3.
   const int art = cell - 2 * kInset;
-  const int height = (hero ? qRound(art * 31.0 / 96.0) : qRound(art * 1.5)) + 2 * kInset;
+  const int height = qRound(art * (hero ? 31.0 / 96.0 : logo ? 0.5 : icon ? 1.0 : 1.5)) + 2 * kInset;
   grid_->setGridSize(QSize(cell, height));
 }
 

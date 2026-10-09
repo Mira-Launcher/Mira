@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 constexpr std::string_view kMarker = "# Written by `mira setup`";
 // The hand-written wrapper this replaces (same behavior, no marker).
 constexpr std::string_view kLegacyMarker = "Wrapper: always run whichever binary";
-constexpr const char* kLinks[] = {"mirad", "mira-run"};
+constexpr const char* kLinks[] = {"mira-run"};
 
 bool IsOurs(const fs::path& path) {
   const std::string content = files::ReadFile(path).value_or("");
@@ -86,29 +86,8 @@ Exec="{0}" setup --uninstall
                      appimage.string(), kMarker);
 }
 
-std::string Unit(const fs::path& mirad) {
-  return std::format(R"({}
-[Unit]
-Description=Mira game launcher backend
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart={}
-Restart=on-failure
-RestartSec=2
-# Games run as mirad's children; stopping or updating mirad leaves them running.
-KillMode=process
-
-[Install]
-WantedBy=default.target
-)",
-                     kMarker, mirad.string());
-}
-
 fs::path IconPath(const SetupPaths& paths) { return paths.icons_dir / "hicolor/256x256/apps/mira.png"; }
 fs::path DesktopPath(const SetupPaths& paths) { return paths.applications_dir / "mira.desktop"; }
-fs::path UnitPath(const SetupPaths& paths) { return paths.systemd_dir / "mirad.service"; }
 
 }  // namespace
 
@@ -119,7 +98,6 @@ SetupPaths DefaultPaths() {
       .bin_dir = home / ".local/bin",
       .applications_dir = data / "applications",
       .icons_dir = data / "icons",
-      .systemd_dir = paths::EnvOr("XDG_CONFIG_HOME", home / ".config") / "systemd/user",
   };
 }
 
@@ -162,8 +140,6 @@ Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& a
     if (!ec) written.push_back(IconPath(paths));
   }
 
-  if (auto ok = WriteFile(UnitPath(paths), Unit(paths.bin_dir / "mirad")); !ok) return std::unexpected(ok.error());
-  written.push_back(UnitPath(paths));
   return written;
 }
 
@@ -182,7 +158,6 @@ Result<std::vector<fs::path>> Remove(const SetupPaths& paths) {
   }
   remove_if(wrapper, wrapper_ours);
   remove_if(DesktopPath(paths), fs::exists(DesktopPath(paths), ec) && IsOurs(DesktopPath(paths)));
-  remove_if(UnitPath(paths), fs::exists(UnitPath(paths), ec) && IsOurs(UnitPath(paths)));
   if (!removed.empty()) remove_if(IconPath(paths), fs::exists(IconPath(paths), ec));
   // Each game's menu entry runs the wrapper just removed. mirad writes them again if it runs.
   for (const auto& entry : fs::directory_iterator(paths.applications_dir, ec)) {

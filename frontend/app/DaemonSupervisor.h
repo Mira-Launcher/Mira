@@ -6,7 +6,7 @@
 
 namespace mira_gui {
 
-// Same resolution `mira daemon` uses (src/cli/main.cpp): mirad next to
+// Same resolution `mira` uses (src/cli/main.cpp): mirad next to
 // own_binary_dir if present there (true inside an AppImage, where mirad and
 // mira-gui sit in the same usr/bin/), else a bare name for QProcess/PATH
 // lookup. A free function so it's testable without spawning anything.

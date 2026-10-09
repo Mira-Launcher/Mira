@@ -18,6 +18,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <csignal>
+#include <cstdlib>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "config/Schema.h"
@@ -46,11 +50,72 @@ std::filesystem::path ResolveSocketPath() {
   return path;
 }
 
-httplib::Client Connect() {
+// Talks to whatever mirad is running, starting none.
+httplib::Client ConnectRunning() {
   httplib::Client client(ResolveSocketPath().string(), 80);
   client.set_address_family(AF_UNIX);
   client.set_connection_timeout(std::chrono::seconds(2));
   return client;
+}
+
+pid_t g_started_daemon = 0;
+
+void StopStartedDaemon() {
+  if (g_started_daemon <= 0) return;
+  ::kill(g_started_daemon, SIGTERM);
+  ::waitpid(g_started_daemon, nullptr, 0);
+  g_started_daemon = 0;
+}
+
+// Runs `program` beside this binary, else from PATH, with no terminal. `detach` puts it in a
+// session of its own, so it outlives this command and a Ctrl-C here.
+pid_t Spawn(const std::string& program, std::vector<std::string> args, bool detach) {
+  std::error_code ec;
+  const std::filesystem::path sibling = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / program;
+  const std::string exe = !ec && std::filesystem::exists(sibling, ec) ? sibling.string() : program;
+  const pid_t pid = ::fork();
+  if (pid != 0) return pid;
+  if (detach) ::setsid();
+  if (const int null = ::open("/dev/null", O_RDWR); null >= 0) {
+    ::dup2(null, STDIN_FILENO);
+    ::dup2(null, STDOUT_FILENO);
+    ::dup2(null, STDERR_FILENO);
+  }
+  std::vector<char*> argv = {const_cast<char*>(exe.c_str())};
+  for (std::string& arg : args) argv.push_back(arg.data());
+  argv.push_back(nullptr);
+  ::execvp(exe.c_str(), argv.data());
+  ::_exit(127);
+}
+
+// With Mira closed nothing is listening. On a desktop, start Mira hidden in the tray, which
+// starts mirad and stays; without one (SSH, a script), start mirad for this command only. A game
+// launched either way keeps running, and mira-run records its session itself.
+void EnsureDaemon() {
+  static bool checked = false;
+  if (std::exchange(checked, true) || ConnectRunning().Get("/v1/health")) return;
+  const bool desktop = std::getenv("WAYLAND_DISPLAY") != nullptr || std::getenv("DISPLAY") != nullptr;
+  const pid_t pid = desktop ? Spawn("mira-gui", {"--hidden"}, /*detach=*/true)
+                            : Spawn("mirad", {"--socket", ResolveSocketPath().string()}, /*detach=*/false);
+  if (pid < 0) return;
+  if (!desktop) {
+    g_started_daemon = pid;
+    std::atexit(StopStartedDaemon);
+  }
+  for (int i = 0; i < 150; ++i) {
+    if (ConnectRunning().Get("/v1/health")) return;
+    // Gone already: the request that follows reports mirad unreachable.
+    if (::waitpid(pid, nullptr, WNOHANG) == pid) {
+      g_started_daemon = 0;
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+httplib::Client Connect() {
+  EnsureDaemon();
+  return ConnectRunning();
 }
 
 // The command that does an error's `fix` (docs/api.md), or "" when there isn't one.
@@ -78,8 +143,7 @@ void PrintError(const httplib::Result& res) {
     if (!command.empty()) std::fprintf(stderr, "      Try: %s\n", command.c_str());
   } else {
     std::fprintf(stderr,
-                 "mira: cannot reach mirad at %s (%s). Is it running? "
-                 "Try `systemctl --user status mirad` or just running `mirad`.\n",
+                 "mira: cannot reach Mira's background service at %s (%s). Open Mira and try again.\n",
                  ResolveSocketPath().string().c_str(), httplib::to_string(res.error()).c_str());
   }
 }
@@ -129,7 +193,7 @@ bool AwaitJob(httplib::Client& client, const httplib::Result& res, json& result)
 }
 
 int CmdStatus() {
-  auto client = Connect();
+  auto client = ConnectRunning();
   auto res = client.Get("/v1/health");
   if (!Ok(res)) {
     PrintError(res);
@@ -138,7 +202,7 @@ int CmdStatus() {
   std::puts("mirad is running");
   const json health = json::parse(res->body, nullptr, false);
   if (!health.is_object() || health.value("api", 0) != mira::kApiVersion) {
-    std::fprintf(stderr, "mira: mirad's API doesn't match this mira; restart it (systemctl --user restart mirad)\n");
+    std::fprintf(stderr, "mira: the running Mira is a different version; quit it from the tray and try again\n");
     return 1;
   }
   return 0;
@@ -1370,26 +1434,10 @@ int CmdWatch() {
   return 0;
 }
 
-int CmdDaemon(int argc, char** argv, const char* self) {
-  // `mira daemon` is a convenience that execs mirad alongside this binary (or
-  // on PATH), forwarding any remaining arguments. It does not talk to the
-  // API, since there is nothing listening yet.
-  std::filesystem::path candidate = std::filesystem::path(self).parent_path() / "mirad";
-  std::vector<char*> exec_argv;
-  const std::string exe = std::filesystem::exists(candidate) ? candidate.string() : "mirad";
-  exec_argv.push_back(const_cast<char*>(exe.c_str()));
-  for (int i = 0; i < argc; ++i) exec_argv.push_back(argv[i]);
-  exec_argv.push_back(nullptr);
-  execvp(exe.c_str(), exec_argv.data());
-  std::perror("mira: failed to start mirad");
-  return 1;
-}
-
 int CmdSetup(int argc, char** argv) {
   // Local only, like `daemon`: writes user-level files, no mirad involved.
   bool remove = false;
   bool uninstall = false;
-  bool enable_service = false;
   for (int i = 0; i < argc; ++i) {
     const std::string_view arg = argv[i];
     if (arg == "--remove") {
@@ -1397,10 +1445,8 @@ int CmdSetup(int argc, char** argv) {
     } else if (arg == "--uninstall") {
       remove = true;
       uninstall = true;
-    } else if (arg == "--enable-service") {
-      enable_service = true;
     } else {
-      std::fprintf(stderr, "usage: mira setup [--enable-service] [--remove] [--uninstall]\n");
+      std::fprintf(stderr, "usage: mira setup [--remove] [--uninstall]\n");
       return 2;
     }
   }
@@ -1427,11 +1473,9 @@ int CmdSetup(int argc, char** argv) {
     }
   }
   if (remove) {
-    std::system("systemctl --user disable --now mirad.service >/dev/null 2>&1");
     const auto removed = mira::setup::Remove(paths);
     for (const auto& path : *removed) std::printf("removed %s\n", path.c_str());
     if (removed->empty()) std::puts("nothing to remove");
-    std::system("systemctl --user daemon-reload >/dev/null 2>&1");
     if (uninstall) {
       std::error_code ec;
       std::filesystem::remove_all(mira::paths::Home() / ".cache/mira-appimage", ec);
@@ -1456,25 +1500,15 @@ int CmdSetup(int argc, char** argv) {
     return 1;
   }
   for (const auto& path : *written) std::printf("wrote %s\n", path.c_str());
-  std::system("systemctl --user daemon-reload >/dev/null 2>&1");
   std::system("update-desktop-database -q ~/.local/share/applications >/dev/null 2>&1");
   // A running mirad points the games' menu entries at the new wrapper.
-  if (auto synced = Connect().Post("/v1/desktop-entries/sync"); synced && synced->status == 200) {
+  if (auto synced = ConnectRunning().Post("/v1/desktop-entries/sync"); synced && synced->status == 200) {
     std::puts("updated the games' menu entries");
   }
 
   const char* path_env = std::getenv("PATH");
   if (!path_env || std::string(path_env).find(paths.bin_dir.string()) == std::string::npos) {
     std::printf("note: %s isn't on PATH -- add it to use `mira` from a shell\n", paths.bin_dir.c_str());
-  }
-  if (enable_service) {
-    if (std::system("systemctl --user enable --now mirad.service") != 0) {
-      std::fprintf(stderr, "mira: couldn't enable mirad.service\n");
-      return 1;
-    }
-    std::puts("mirad.service enabled");
-  } else {
-    std::puts("mirad starts with the GUI; `systemctl --user enable --now mirad` keeps it running instead");
   }
   return 0;
 }
@@ -1484,10 +1518,9 @@ void PrintUsage() {
       "usage: mira <command> [args...]\n"
       "\n"
       "commands:\n"
-      "  status                 check whether mirad is reachable\n"
-      "  daemon [args...]       exec mirad in the foreground\n"
-      "  setup [--enable-service] [--remove|--uninstall]   add mira to PATH, the app\n"
-      "                         menu and systemd; --uninstall also deletes the AppImage\n"
+      "  status                 check whether Mira is running\n"
+      "  setup [--remove|--uninstall]   add mira to PATH and the app menu;\n"
+      "                         --uninstall also deletes the AppImage\n"
       "                         (run from the AppImage: Mira-x86_64.AppImage setup)\n"
       "  scan                   scan all library roots now\n"
       "  runners                list installed Proton/Wine builds\n"
@@ -1567,7 +1600,6 @@ int Dispatch(int argc, char** argv) {
   if (command == "metadata") return CmdMetadata(rest_argc, rest);
   if (command == "tricks") return CmdTricks(rest_argc, rest);
   if (command == "setup") return CmdSetup(rest_argc, rest);
-  if (command == "daemon") return CmdDaemon(rest_argc, rest, argv[0]);
   if (command == "list") return CmdList(rest_argc, rest);
   if (command == "show") return CmdShow(rest_argc, rest);
   if (command == "set") return CmdSet(rest_argc, rest);

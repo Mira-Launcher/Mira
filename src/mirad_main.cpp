@@ -3,10 +3,8 @@
 // Owns settings.toml and the library database (mira.db), serves the REST API described in
 // docs/api.md over a Unix domain socket, and watches every enabled library
 // root so a dropped-in game folder is picked up automatically (see
-// library/Watcher.h). This binary does not daemonize itself (no
-// double-fork): run it under `systemctl --user`, or let the frontend spawn
-// and supervise it. Both are first-class per the plan in
-// docs/architecture.md, and neither needs mirad to background itself.
+// library/Watcher.h). Started and stopped by mira-gui (or briefly by `mira`
+// without a desktop); it never daemonizes itself. See docs/architecture.md.
 
 #include <unistd.h>
 

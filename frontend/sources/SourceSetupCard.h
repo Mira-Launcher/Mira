@@ -44,6 +44,9 @@ class SourceSetupCard : public SettingsCard {
  private:
   bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
   void StartSetup();
+  void InstallLauncher();
+  // The launcher's missing system packages, with a button that installs them.
+  void CheckPackages();
   // Marks steps before `current` done and shows the body under it.
   void SetStep(int current);
   void OpenLogin();
@@ -69,6 +72,9 @@ class SourceSetupCard : public SettingsCard {
   QLineEdit* credential_ = nullptr;
   QPushButton* sign_in_ = nullptr;
   QLabel* error_ = nullptr;
+  std::string packages_;  // the feature whose system packages the launcher needs; empty for none
+  QWidget* packages_row_ = nullptr;
+  QLabel* packages_text_ = nullptr;
   QWidget* log_box_ = nullptr;
   ProgressRail* progress_ = nullptr;  // shown once setup reports a percentage
   QLabel* log_tail_ = nullptr;

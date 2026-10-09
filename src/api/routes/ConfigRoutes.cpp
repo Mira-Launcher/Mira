@@ -6,6 +6,7 @@
 #include "api/Services.h"
 #include "config/Schema.h"
 #include "runner/GameMode.h"
+#include "system/Packages.h"
 
 namespace mira::api {
 namespace {
@@ -30,6 +31,15 @@ void RegisterConfigRoutes(httplib::Server& http, Services& s) {
 
   http.Get("/v1/health", [](const Request&, Response& res) {
     SendJson(res, {{"status", "ok"}, {"api", kApiVersion}});
+  });
+
+  // ?for=winetricks|archives|performance; every tool without it.
+  http.Get("/v1/system/packages", [](const Request& req, Response& res) {
+    const std::string feature = Param(req, "for");
+    if (!feature.empty() && system::ToolsFor(feature).empty()) {
+      return SendError(res, 400, "invalid_feature", "?for= must be winetricks, archives or performance");
+    }
+    SendJson(res, system::Report(feature));
   });
 
   http.Get("/v1/gamemode/status", [](const Request&, Response& res) {

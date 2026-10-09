@@ -22,8 +22,8 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
-#include "../dialogs/ItchCollectionsDialog.h"
 #include "../dialogs/LogWindow.h"
+#include "ItchCollectionsCard.h"
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -125,7 +125,7 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
-  if (watched == settings_card_ && event->type() == QEvent::LayoutRequest && SettingsModalOpen()) {
+  if (watched == modal_card_ && modal_card_ != nullptr && event->type() == QEvent::LayoutRequest && SettingsModalOpen()) {
     QMetaObject::invokeMethod(this, &SourcePage::FitSettingsModal, Qt::QueuedConnection);
   }
   if (watched == content_ && event->type() == QEvent::MouseButtonPress) {
@@ -243,8 +243,6 @@ QWidget* SourcePage::BuildTopRow() {
 void SourcePage::OpenSettingsModal() {
   if (settings_card_ == nullptr) {
     settings_card_ = new SourceSettingsCard(source_, this);
-    // Its rows arrive from mirad after it opens: the dialog follows its height.
-    settings_card_->installEventFilter(this);
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
     auto* close = new QToolButton(settings_card_);
@@ -256,6 +254,26 @@ void SourcePage::OpenSettingsModal() {
   } else {
     settings_card_->Refresh();
   }
+  ShowModal(settings_card_);
+}
+
+void SourcePage::OpenCollectionsModal() {
+  if (collections_card_ == nullptr) {
+    collections_card_ = new ItchCollectionsCard(this);
+    collections_card_->setMaximumWidth(560);
+    connect(collections_card_, &ItchCollectionsCard::Changed, this, [this] { RefreshOwned(); });
+    auto* close = new QToolButton(collections_card_);
+    icons::Follow(close, icons::Glyph::Close);
+    close->setToolTip("Close");
+    close->setAutoRaise(true);
+    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
+    collections_card_->Header()->addWidget(close);
+  }
+  collections_card_->Refresh();
+  ShowModal(collections_card_);
+}
+
+void SourcePage::ShowModal(mira_gui::SettingsCard* card) {
   if (settings_overlay_ == nullptr) {
     settings_overlay_ = new ModalOverlay(this);
     settings_overlay_->scrim = QColor(0, 0, 0, 150);
@@ -270,13 +288,23 @@ void SourcePage::OpenSettingsModal() {
     scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
     // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.
     settings_scroll_ = scroll;
-    scroll->setWidget(settings_card_);
     auto* column = new QVBoxLayout(settings_overlay_);
     column->setContentsMargins(32, 32, 32, 32);
     column->addStretch(1);
     column->addWidget(scroll, 0, Qt::AlignHCenter);
     column->addStretch(1);
   }
+  if (settings_scroll_->widget() != card) {
+    if (QWidget* shown = settings_scroll_->takeWidget()) {
+      shown->hide();
+      shown->setParent(this);
+    }
+    settings_scroll_->setWidget(card);
+    card->show();
+    // Its rows arrive from mirad after it opens: the dialog follows its height.
+    card->installEventFilter(this);
+  }
+  modal_card_ = card;
   settings_overlay_->setGeometry(rect());
   FitSettingsModal();
   settings_overlay_->show();
@@ -288,7 +316,7 @@ bool SourcePage::SettingsModalOpen() const { return settings_overlay_ != nullptr
 
 void SourcePage::CloseSettingsModal() {
   if (!SettingsModalOpen()) return;
-  if (settings_card_ != nullptr && settings_card_->IsDirty()) {
+  if (modal_card_ == settings_card_ && settings_card_->IsDirty()) {
     const bool leave = notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
       connect(settings_card_, &SourceSettingsCard::SaveFinished, this,
               [this](bool ok) {
@@ -306,12 +334,12 @@ void SourcePage::CloseSettingsModal() {
 
 // The card at its natural size, 560 wide at most, shrunk to fit a small window.
 void SourcePage::FitSettingsModal() {
-  if (settings_scroll_ == nullptr) return;
+  if (settings_scroll_ == nullptr || modal_card_ == nullptr) return;
   constexpr int kMargin = 32;
   const int width = std::min(560, std::max(280, this->width() - 2 * kMargin));
-  settings_card_->setFixedWidth(width);
-  const int wanted = settings_card_->heightForWidth(width) > 0 ? settings_card_->heightForWidth(width)
-                                                               : settings_card_->sizeHint().height();
+  modal_card_->setFixedWidth(width);
+  const int wanted = modal_card_->heightForWidth(width) > 0 ? modal_card_->heightForWidth(width)
+                                                               : modal_card_->sizeHint().height();
   settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->style()->pixelMetric(QStyle::PM_ScrollBarExtent) : 0));
   settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
@@ -444,11 +472,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (id_ == "itch") {
     auto* collections = new QPushButton("Manage collections…", owned_section_);
     collections->setToolTip("Show games from itch.io collections here. Add your own or any collection by link.");
-    connect(collections, &QPushButton::clicked, this, [this] {
-      ItchCollectionsDialog dialog(this);
-      dialog.exec();
-      if (dialog.Changed()) RefreshOwned();
-    });
+    connect(collections, &QPushButton::clicked, this, &SourcePage::OpenCollectionsModal);
     header->addWidget(collections);
   }
   header->addWidget(owned_refresh_);
@@ -591,13 +615,7 @@ void SourcePage::UpdateCover(const QString& id) {
   const QString prefix = source_.id + "-";
   if (owned_grid_ == nullptr || id_ == "humble" || !id.startsWith(prefix)) return;
   const QString ref = id.mid(prefix.size());
-  for (int row = 0; row < owned_model_->rowCount(); ++row) {
-    QStandardItem* item = owned_model_->item(row);
-    if (item->data(GameTileDelegate::IdRole).toString() != ref) continue;
-    item->setData(artwork_->TitleCover(source_.id, ref, item->data(GameTileDelegate::NameRole).toString(), tile_,
-                                       devicePixelRatioF()),
-                  Qt::DecorationRole);
-  }
+  owned_grid_->viewport()->update();
   // Its details came with the cover, so its tier, reviews and tags may be new.
   if (tiers_.contains(ref) && tags_.contains(ref) && reviews_.contains(ref)) return;
   api::GetTitleMetadataAsync(this, id_, ref.toStdString(), [this, ref](GameMetadataResult result) {
@@ -903,9 +921,11 @@ void SourcePage::RebuildOwnedTiles() {
     QStandardItem* item = owned_model_->item(row);
     const auto& [ref, title] = owned_[row];
     // Bundles aren't games, so there's no cover to look up.
-    item->setData(id_ == "humble" ? PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF())
-                                  : artwork_->TitleCover(source_.id, ref, title, tile_, devicePixelRatioF()),
-                  Qt::DecorationRole);
+    if (id_ == "humble") {
+      item->setData(PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF()), Qt::DecorationRole);
+    } else {
+      item->setData(QStringList{source_.id, ref}, GameTileDelegate::TitleCoverRole);
+    }
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
     item->setData(review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
                   GameTileDelegate::ReviewRole);

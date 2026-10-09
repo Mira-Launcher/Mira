@@ -5,10 +5,13 @@
 #include <QImageReader>
 #include <QPainter>
 #include <QPainterPath>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <type_traits>
+#include <vector>
 
 #include "../client/Async.h"
 #include "../client/api/Artwork.h"
@@ -23,10 +26,22 @@ const QSize kMaxArt(900, 1350);
 // Big enough for the sidebar's small covers and a dominant color, small enough to keep for every
 // game.
 const QSize kThumbArt(128, 128);
+// What the sidebar keeps for its games: a 40 px banner or small cover never needs more.
+const QSize kSidebarArt(640, 640);
+
+// Store titles' art held at once; the least recently drawn beyond this is dropped.
+constexpr int kMaxTitles = 250;
+constexpr int kKeepTitles = 200;
+
+// A store title asked for and not drawn since has scrolled away; its request is dropped.
+constexpr qint64 kStaleMs = 500;
 
 struct Decoded {
   QImage image;
+  bool reduced = false;  // decoded at the asked sizes only, smaller than the file
   QImage thumb;
+  QImage sidebar;  // for a game the sidebar shows
+  std::vector<QImage> fitted;  // the sizes asked for when the fetch started, in order
 };
 
 // Real artwork isn't always 2:3 like the tile, so it's scaled to cover and
@@ -37,17 +52,24 @@ struct Decoded {
 // re-clips the grid's own copy to the same token on every paint, but a plain
 // QLabel (the sidebar's cover) has no such second clip, so an unrounded or
 // wrongly-rounded pixmap here would show through as-is.
-QPixmap FitToTile(const QPixmap& source, QSize tile, qreal device_pixel_ratio, bool quick = false) {
+//
+// A template so a fetch's worker thread can do the same to a QImage, with the radius read beforehand.
+template <typename Image>
+Image FitAnyToTile(const Image& source, QSize tile, qreal device_pixel_ratio, int radius, bool quick = false) {
   const QSize target = tile * device_pixel_ratio;
-  const QPixmap filled = source.scaled(target, Qt::KeepAspectRatioByExpanding,
-                                       quick ? Qt::FastTransformation : Qt::SmoothTransformation);
+  const Image filled = source.scaled(target, Qt::KeepAspectRatioByExpanding,
+                                     quick ? Qt::FastTransformation : Qt::SmoothTransformation);
 
-  QPixmap out(target);
+  Image out;
+  if constexpr (std::is_same_v<Image, QImage>) {
+    out = QImage(target, QImage::Format_ARGB32_Premultiplied);
+  } else {
+    out = QPixmap(target);
+  }
   out.fill(Qt::transparent);
   {
     QPainter painter(&out);
     painter.setRenderHint(QPainter::Antialiasing);
-    const int radius = theme::Current().radius_tile;
     QPainterPath clip;
     if (radius > 0) {
       clip.addRoundedRect(QRectF(QPointF(0, 0), QSizeF(target)), radius * device_pixel_ratio,
@@ -56,11 +78,19 @@ QPixmap FitToTile(const QPixmap& source, QSize tile, qreal device_pixel_ratio, b
       clip.addRect(QRectF(QPointF(0, 0), QSizeF(target)));
     }
     painter.setClipPath(clip);
-    painter.drawPixmap((target.width() - filled.width()) / 2,
-                       (target.height() - filled.height()) / 2, filled);
+    const QPoint at((target.width() - filled.width()) / 2, (target.height() - filled.height()) / 2);
+    if constexpr (std::is_same_v<Image, QImage>) {
+      painter.drawImage(at, filled);
+    } else {
+      painter.drawPixmap(at, filled);
+    }
   }
   out.setDevicePixelRatio(device_pixel_ratio);
   return out;
+}
+
+QPixmap FitToTile(const QPixmap& source, QSize tile, qreal device_pixel_ratio, bool quick = false) {
+  return FitAnyToTile(source, tile, device_pixel_ratio, theme::Current().radius_tile, quick);
 }
 
 // The most colorful hue that covers a fair share of the cover, not the
@@ -109,7 +139,7 @@ QString SlotKey(const QString& id, const std::string& slot) { return id + "#" + 
 
 }  // namespace
 
-ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {}
+ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) { clock_.start(); }
 
 void ArtworkStore::SetQuickScaling(bool quick) {
   const bool ended = quick_ && !quick;
@@ -118,30 +148,30 @@ void ArtworkStore::SetQuickScaling(bool quick) {
 }
 
 bool ArtworkStore::Drop(const QString& key) {
-  full_.remove(key);
+  sidebar_.remove(key);
   wanted_.remove(key);
   return thumbs_.remove(key) > 0;
 }
 
 QPixmap ArtworkStore::Held(const QString& key) const {
-  if (const auto full = full_.constFind(key); full != full_.constEnd()) return *full;
+  if (const auto kept = sidebar_.constFind(key); kept != sidebar_.constEnd()) return *kept;
   return thumbs_.value(key);
 }
 
 void ArtworkStore::Keep(const QSet<QString>& ids) {
   if (ids == kept_) return;
   kept_ = ids;
-  for (auto it = full_.begin(); it != full_.end();) {
+  for (auto it = sidebar_.begin(); it != sidebar_.end();) {
     if (kept_.contains(it.key().section('#', 0, 0))) {
       ++it;
     } else {
-      it = full_.erase(it);
+      it = sidebar_.erase(it);
     }
   }
-  // Newly kept: their full images, fetched again where only the small copy is held.
+  // Newly kept: their sidebar copies, fetched again where only the small copy is held.
   for (const QString& id : kept_) {
     for (const QString& key : {id, SlotKey(id, kSlots[0])}) {
-      if (thumbs_.contains(key) && !full_.contains(key)) {
+      if (thumbs_.contains(key) && !sidebar_.contains(key)) {
         refetching_.insert(key);
         Request(key);
       }
@@ -180,18 +210,18 @@ QPixmap ArtworkStore::CoverById(const QString& id, const QString& name, QSize ti
 QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
                            qreal device_pixel_ratio) {
   const QString scaled_key = id + '@' + QString::number(tile.width());
+  TouchTitle(id);
+  // Before the cached copy, which may be a placeholder drawn for a request since dropped.
+  if (!answered_.contains(id)) {
+    // Drawn at this size as soon as it lands.
+    if (!quick_ && !queued_.contains(id)) wanted_[id] = {{tile, device_pixel_ratio}};
+    Request(id);
+  }
   if (const auto cached = scaled_.constFind(scaled_key); cached != scaled_.constEnd())
     return *cached;
 
-  if (!answered_.contains(id)) Request(id);
-
-  if (const auto full = full_.constFind(id); full != full_.constEnd()) {
-    const QPixmap cover = FitToTile(*full, tile, device_pixel_ratio, quick_);
-    if (!quick_) KeepScaled(scaled_key, cover);
-    return cover;
-  }
   if (const auto thumb = thumbs_.constFind(id); thumb != thumbs_.constEnd()) {
-    // Its full image isn't kept: fetched again for this size, the small copy stretched meanwhile.
+    // Fetched again for this size, the small copy stretched meanwhile.
     if (!quick_) {
       QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
       if (!sizes.contains(std::pair{tile, device_pixel_ratio}))
@@ -210,19 +240,53 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
 }
 
 void ArtworkStore::KeepScaled(const QString& key, const QPixmap& cover) {
-  // A store title's copies stay only while something on screen still holds them (a pixmap is
-  // shared, so that costs nothing); one only this store holds is dropped.
-  const QString id = key.section('@', 0, 0);
-  for (auto it = scaled_.begin(); it != scaled_.end();) {
-    const QString owner = it.key().section('@', 0, 0);
-    if (owner != id && !library_.contains(owner) && titles_.contains(owner) && it->isDetached()) {
-      it = scaled_.erase(it);
-    } else {
-      ++it;
-    }
-  }
   scaled_.insert(key, cover);
+  const QString id = key.section('@', 0, 0);
   if (library_.contains(id)) last_drawn_.insert(id, cover);
+}
+
+void ArtworkStore::TouchTitle(const QString& id) {
+  if (!titles_.contains(id) || library_.contains(id)) return;
+  title_use_.insert(id, clock_.elapsed());
+  if (title_use_.size() <= kMaxTitles || trim_queued_) return;
+  // After the paint, so every tile it drew is marked first.
+  trim_queued_ = true;
+  QTimer::singleShot(0, this, &ArtworkStore::TrimTitles);
+}
+
+void ArtworkStore::TrimTitles() {
+  trim_queued_ = false;
+  // Down to kKeepTitles at once, so this sort runs once per 50 new titles. Anything drawn in the
+  // last second is on screen or just was, and stays however many that is.
+  const qint64 recent = clock_.elapsed() - 1000;
+  std::vector<std::pair<qint64, QString>> by_use;
+  by_use.reserve(title_use_.size());
+  for (auto it = title_use_.cbegin(); it != title_use_.cend(); ++it) by_use.emplace_back(it.value(), it.key());
+  std::ranges::sort(by_use);
+  for (const auto& [used, old] : by_use) {
+    if (title_use_.size() <= kKeepTitles || used > recent) break;
+    if (queued_.contains(old)) continue;
+    title_use_.remove(old);
+    if (library_.contains(old)) continue;  // installed since: the library's now
+    Drop(old);
+    InvalidateRendering(old.toStdString());
+    answered_.remove(old);
+    refetching_.remove(old);
+  }
+}
+
+void ArtworkStore::PrefetchTitle(const QString& source, const QString& ref, QSize tile, qreal device_pixel_ratio) {
+  const QString id = source + "-" + ref;
+  titles_.insert(id, {source.toStdString(), ref.toStdString()});
+  TouchTitle(id);
+  if (quick_ || queued_.contains(id)) return;
+  const bool held = thumbs_.contains(id);
+  // A placeholder is cached too, so only an answered title's copy counts.
+  if (answered_.contains(id) && scaled_.contains(id + '@' + QString::number(tile.width()))) return;
+  if (answered_.contains(id) && !held) return;  // it has none
+  wanted_[id] = {{tile, device_pixel_ratio}};
+  if (held) refetching_.insert(id);
+  Request(id, /*ahead=*/true);
 }
 
 QColor ArtworkStore::CoverColor(const QString& id) {
@@ -353,16 +417,44 @@ void ArtworkStore::InvalidateAllRenderings() {
   colors_.clear();  // placeholders' colors follow the theme
 }
 
-void ArtworkStore::Request(const QString& id) {
-  if (queued_.contains(id)) return;
+void ArtworkStore::Request(const QString& id, bool ahead) {
+  if (queued_.contains(id)) {
+    // Drawn now: no longer behind the tiles below the screen.
+    if (!ahead && ahead_.removeOne(id)) pending_.enqueue(id);
+    return;
+  }
   queued_.insert(id);
-  pending_.enqueue(id);
+  (ahead ? ahead_ : pending_).enqueue(id);
   Pump();
 }
 
+bool ArtworkStore::NextRequest(QQueue<QString>& queue, QString* id) {
+  const qint64 since = clock_.elapsed() - kStaleMs;
+  while (!queue.isEmpty()) {
+    QString next = queue.dequeue();
+    const auto used = title_use_.constFind(next);
+    if (used == title_use_.constEnd() || *used >= since) {
+      *id = std::move(next);
+      return true;
+    }
+    queued_.remove(next);
+    wanted_.remove(next);
+    refetching_.remove(next);
+    // Still on screen if it is drawn again, which asks again.
+    if (!drop_signal_queued_) {
+      drop_signal_queued_ = true;
+      QTimer::singleShot(0, this, [this] {
+        drop_signal_queued_ = false;
+        emit RequestsDropped();
+      });
+    }
+  }
+  return false;
+}
+
 void ArtworkStore::Pump() {
-  while (in_flight_ < kMaxInFlight && !pending_.isEmpty()) {
-    const QString id = pending_.dequeue();
+  QString id;
+  while (in_flight_ < kMaxInFlight && (NextRequest(pending_, &id) || NextRequest(ahead_, &id))) {
     ++in_flight_;
     std::optional<std::pair<std::string, std::string>> title;
     if (const auto found = titles_.constFind(id); found != titles_.constEnd()) title = *found;
@@ -374,7 +466,11 @@ void ArtworkStore::Pump() {
     const qsizetype hash = id.indexOf('#');
     const std::string game = (hash < 0 ? id : id.left(hash)).toStdString();
     const std::string slot = hash < 0 ? std::string("cover") : id.mid(hash + 1).toStdString();
-    auto fetch = [game, slot, title] {
+    // Fitted to the tile there too: a smooth scale per cover on this thread is a stutter per cover.
+    const QList<std::pair<QSize, qreal>> sizes = hash < 0 ? wanted_.value(id) : QList<std::pair<QSize, qreal>>();
+    const int radius = theme::Current().radius_tile;
+    const bool sidebar = kept_.contains(hash < 0 ? id : id.left(hash));
+    auto fetch = [game, slot, title, sizes, radius, sidebar] {
       const ArtworkResult result = title ? api::GetTitleArtworkBlocking(title->first, title->second)
                                          : api::GetArtworkBlocking(game, slot);
       Decoded decoded;
@@ -384,16 +480,35 @@ void ArtworkStore::Pump() {
       QImageReader reader(&buffer);
       // Never drawn bigger than the largest tile on a HiDPI screen; a bigger image is decoded
       // straight at that size, which for a JPEG skips most of the work.
-      if (const QSize size = reader.size();
-          size.width() > kMaxArt.width() || size.height() > kMaxArt.height()) {
-        reader.setScaledSize(size.scaled(kMaxArt, Qt::KeepAspectRatio));
+      const QSize size = reader.size();
+      QSize decode = size.width() > kMaxArt.width() || size.height() > kMaxArt.height()
+                         ? size.scaled(kMaxArt, Qt::KeepAspectRatio)
+                         : size;
+      // Only the tile sizes asked for, when nothing needs the whole image: a JPEG decodes at a fraction
+      // of its size for a fraction of the work.
+      if (!sidebar && !sizes.isEmpty() && size.isValid()) {
+        QSize need;
+        for (const auto& [tile, dpr] : sizes)
+          need = need.expandedTo(size.scaled(tile * dpr, Qt::KeepAspectRatioByExpanding));
+        if (need.width() < decode.width()) {
+          decode = need;
+          decoded.reduced = true;
+        }
       }
+      if (decode != size) reader.setScaledSize(decode);
       if (!reader.read(&decoded.image)) return Decoded();
       decoded.thumb =
           decoded.image.scaled(kThumbArt, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+      for (const auto& [tile, dpr] : sizes) decoded.fitted.push_back(FitAnyToTile(decoded.image, tile, dpr, radius));
+      if (sidebar) {
+        const QSize size = decoded.image.size();
+        decoded.sidebar = size.width() > kSidebarArt.width() || size.height() > kSidebarArt.height()
+                              ? decoded.image.scaled(kSidebarArt, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                              : decoded.image;
+      }
       return decoded;
     };
-    async::Run<Decoded>(this, std::move(fetch), [this, id, hash](Decoded decoded) {
+    async::Run<Decoded>(this, std::move(fetch), [this, id, hash, sizes](Decoded decoded) {
       --in_flight_;
       queued_.remove(id);
       // Answered covers all three outcomes on purpose: re-asking on every
@@ -406,15 +521,27 @@ void ArtworkStore::Pump() {
       const bool same_art = refetching_.remove(id) && !ask_again_.contains(id) && found;
       const QString game = hash < 0 ? id : id.left(hash);
       const bool had = thumbs_.contains(id);
-      const QList<std::pair<QSize, qreal>> sizes = wanted_.take(id);
+      const QList<std::pair<QSize, qreal>> wanted = wanted_.take(id);
+      QList<std::pair<QSize, qreal>> missing;
       if (found) {
         const QPixmap full = QPixmap::fromImage(std::move(decoded.image));
         thumbs_.insert(id, QPixmap::fromImage(std::move(decoded.thumb)));
-        if (kept_.contains(game)) full_.insert(id, full);
+        if (kept_.contains(game)) {
+          sidebar_.insert(id, decoded.sidebar.isNull() ? full.scaled(kSidebarArt, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                                                      : QPixmap::fromImage(std::move(decoded.sidebar)));
+        }
         if (hash < 0) {
           if (!same_art) InvalidateRendering(id.toStdString());
-          for (const auto& [tile, dpr] : sizes) {
-            KeepScaled(id + '@' + QString::number(tile.width()), FitToTile(full, tile, dpr));
+          for (const auto& size : wanted) {
+            const auto& [tile, dpr] = size;
+            const qsizetype fitted = sizes.indexOf(size);
+            if (fitted >= 0 && fitted < static_cast<qsizetype>(decoded.fitted.size())) {
+              KeepScaled(id + '@' + QString::number(tile.width()), QPixmap::fromImage(std::move(decoded.fitted[fitted])));
+            } else if (decoded.reduced) {
+              missing.append(size);  // asked for after the fetch began: too small here
+            } else {
+              KeepScaled(id + '@' + QString::number(tile.width()), FitToTile(full, tile, dpr));
+            }
           }
         }
       } else {
@@ -430,6 +557,10 @@ void ArtworkStore::Pump() {
       }
       if (ask_again_.remove(id)) {
         answered_.remove(id);
+        Request(id);
+      } else if (!missing.isEmpty()) {
+        wanted_.insert(id, missing);
+        refetching_.insert(id);
         Request(id);
       }
       Pump();
