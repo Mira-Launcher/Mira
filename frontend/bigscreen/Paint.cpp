@@ -43,7 +43,26 @@ QString GlyphText(Nav nav, const QString& kind) {
 
 namespace {
 bool Wide(Nav nav) {
-  return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::Sort || nav == Nav::PrevLetter || nav == Nav::NextLetter;
+  return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::PrevLetter || nav == Nav::NextLetter;
+}
+
+// The small button left of center: Xbox's View (two overlapping squares) or PlayStation's Create
+// (a pill with three rays). Nintendo's minus is plain text.
+void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps) {
+  const QPointF c = rect.center();
+  const double s = unit * 0.36;
+  painter.setPen(QPen(theme::Current().text, std::max(1.0, unit * 0.08)));
+  painter.setBrush(Qt::NoBrush);
+  if (ps) {
+    painter.drawRoundedRect(QRectF(c.x() - s * 0.45, c.y() - s * 0.2, s * 0.9, s * 1.2), s * 0.3, s * 0.3);
+    for (const double dx : {-0.6, 0.0, 0.6}) {
+      painter.drawLine(QPointF(c.x() + dx * s * 0.75, c.y() - s * 0.55), QPointF(c.x() + dx * s, c.y() - s * 0.95));
+    }
+    return;
+  }
+  painter.drawRect(QRectF(c.x() - s * 0.8, c.y() - s * 0.8, s * 1.1, s * 1.1));
+  painter.setBrush(QColor("#2a2e36"));
+  painter.drawRect(QRectF(c.x() - s * 0.3, c.y() - s * 0.3, s * 1.1, s * 1.1));
 }
 }  // namespace
 
@@ -76,10 +95,29 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
     if (nav == Nav::Action) color = QColor("#ee8fdc");
     if (nav == Nav::Search) color = QColor("#4fd1a5");
   }
-  painter.setPen(color);
-  painter.drawText(rect, Qt::AlignCenter, text);
+  if (nav == Nav::Sort && kind != "nin") {
+    DrawSortIcon(painter, rect, unit, kind == "ps");
+  } else {
+    painter.setPen(color);
+    painter.drawText(rect, Qt::AlignCenter, text);
+  }
   painter.restore();
   return w;
+}
+
+CoverGrid::CoverGrid(const QRectF& area, int columns, double gap, int focus_row)
+    : area(area), columns(columns), gap(gap) {
+  tile_w = (area.width() - gap * (columns - 1)) / columns;
+  tile_h = std::min(tile_w * 1.5, (area.height() - gap) / 2);
+  tile_w = tile_h / 1.5;
+  left = area.left() + (area.width() - (tile_w * columns + gap * (columns - 1))) / 2;
+  const int visible = std::max(1, int((area.height() + gap) / (tile_h + gap)));
+  first_row = std::max(0, focus_row - visible + 1);
+}
+
+QRectF CoverGrid::Box(int index) const {
+  const int row = index / columns - first_row;
+  return {left + (index % columns) * (tile_w + gap), area.top() + row * (tile_h + gap), tile_w, tile_h};
 }
 
 void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,
@@ -94,7 +132,19 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
   painter.setClipPath(clip);
   painter.fillRect(rect, tokens.tile_placeholder);
   if (!cover.isNull()) painter.drawPixmap(rect, cover, QRectF(cover.rect()));
-  if (dim) painter.fillRect(rect, QColor(0, 0, 0, 110));
+  if (dim) painter.fillRect(rect, QColor(0, 0, 0, 130));
+  // Spelled out, since a darker cover alone doesn't say why.
+  if (dim && progress < 0) {
+    painter.setFont(Font(unit, 0.72, QFont::Bold));
+    const QString label = "↓  Not installed";
+    const double w = std::min(rect.width() - unit * 1.2, painter.fontMetrics().horizontalAdvance(label) + unit * 1.4);
+    const QRectF pill(rect.center().x() - w / 2, rect.bottom() - unit * 2.1, w, unit * 1.5);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0, 0, 0, 190));
+    painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+    painter.setPen(tokens.text);
+    painter.drawText(pill, Qt::AlignCenter, painter.fontMetrics().elidedText(label, Qt::ElideRight, int(w - unit)));
+  }
   if (progress >= 0) {
     const QRectF track(rect.left() + unit * 0.6, rect.bottom() - unit * 0.95, rect.width() - unit * 1.2, unit * 0.35);
     painter.setPen(Qt::NoPen);

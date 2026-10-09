@@ -212,19 +212,16 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
   // A tag's games as a cover grid, like the search results.
   const int count = int(current.items.size());
   painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), QString("%1 (%2)").arg(current.tag).arg(count));
-  const double results_top = (kTop + 3.6) * u, cell_gap = u * 1.3;
-  const double tile_w = (width() - kMargin * u * 2 - cell_gap * (kResultColumns - 1)) / kResultColumns;
-  const QSize tile(qRound(tile_w), qRound(tile_w * 1.5));
-  const int first_row = std::max(0, game_ / kResultColumns - 1);
-  painter.setClipRect(QRectF(0, results_top - u * 0.5, width(), height()));
-  for (size_t i = 0; i < current.items.size(); ++i) {
-    const int row = int(i) / kResultColumns - first_row;
-    if (row < 0) continue;
-    const QRectF box(kMargin * u + double(int(i) % kResultColumns) * (tile_w + cell_gap), results_top + row * (tile.height() + cell_gap),
-                     tile.width(), tile.height());
+  // Above the hints at the bottom.
+  const QRectF area(kMargin * u, (kTop + 3.6) * u, width() - kMargin * u * 2, height() - (kTop + 3.6 + 4.5) * u);
+  const CoverGrid grid(area, kResultColumns, u * 1.3, game_ / kResultColumns);
+  painter.setClipRect(QRectF(0, area.top() - u * 0.5, width(), height()));
+  for (int i = 0; i < count; ++i) {
+    const QRectF box = grid.Box(i);
+    if (box.bottom() < area.top()) continue;
     if (box.top() > height()) break;
-    const Item& item = current.items[i];
-    DrawCover(painter, box, window_->Cover(item, tile), u, int(i) == game_, !item.installed(), window_->Progress(item));
+    const Item& item = current.items[size_t(i)];
+    DrawCover(painter, box, window_->Cover(item, grid.Tile()), u, i == game_, !item.installed(), window_->Progress(item));
   }
 }
 

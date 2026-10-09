@@ -32,6 +32,8 @@ struct GamepadInput::Sdl {
   void (*QuitSubSystem)(std::uint32_t) = nullptr;
   void (*SetGamepadEventsEnabled)(bool) = nullptr;
   void (*UpdateGamepads)() = nullptr;
+  void (*PumpEvents)() = nullptr;
+  void (*FlushEvents)(std::uint32_t, std::uint32_t) = nullptr;
   SDL_JoystickID* (*GetGamepads)(int*) = nullptr;
   void (*Free)(void*) = nullptr;
   SDL_Gamepad* (*OpenGamepad)(SDL_JoystickID) = nullptr;
@@ -68,6 +70,8 @@ struct GamepadInput::Sdl {
     get(QuitSubSystem, "SDL_QuitSubSystem");
     get(SetGamepadEventsEnabled, "SDL_SetGamepadEventsEnabled");
     get(UpdateGamepads, "SDL_UpdateGamepads");
+    get(PumpEvents, "SDL_PumpEvents");
+    get(FlushEvents, "SDL_FlushEvents");
     get(GetGamepads, "SDL_GetGamepads");
     get(Free, "SDL_free");
     get(OpenGamepad, "SDL_OpenGamepad");
@@ -129,6 +133,9 @@ void GamepadInput::Scan() {
   // Looking for new controllers twice a second is plenty.
   if (sdl.scan_countdown-- <= 0) {
     sdl.scan_countdown = 60;
+    // Only pumping events finds controllers plugged in since; the events themselves aren't used.
+    sdl.PumpEvents();
+    sdl.FlushEvents(0, 0xffffffff);
     int count = 0;
     SDL_JoystickID* ids = sdl.GetGamepads(&count);
     for (int i = 0; ids != nullptr && i < count; ++i) {

@@ -264,21 +264,16 @@ void SearchPage::paintEvent(QPaintEvent*) {
     return;
   }
   painter.drawText(QPointF(right, results_top + u), QString("%1 %2").arg(results_.size()).arg(results_.size() == 1 ? "game" : "games"));
-  const double cell_gap = u * 1.3;
-  const double tile_w = (width() - right - kMargin * u - cell_gap * (kResultColumns - 1)) / kResultColumns;
-  const QSize tile(qRound(tile_w), qRound(tile_w * 1.5));
-  const int focus_row = zone_ == Zone::Results ? result_ / kResultColumns : 0;
-  const int first_row = std::max(0, focus_row - 1);
+  const QRectF area(right, results_top + u * 2.4, width() - right - kMargin * u, height() - results_top - u * (2.4 + 4.5));
+  const CoverGrid grid(area, kResultColumns, u * 1.3, zone_ == Zone::Results ? result_ / kResultColumns : 0);
   painter.setClipRect(QRectF(right - u, results_top + u * 1.6, width(), height()));
-  for (size_t i = 0; i < results_.size(); ++i) {
-    const int row = int(i) / kResultColumns - first_row;
-    if (row < 0) continue;
-    const QRectF box(right + double(i % kResultColumns) * (tile_w + cell_gap), results_top + u * 2.4 + row * (tile.height() + cell_gap),
-                     tile.width(), tile.height());
+  for (int i = 0; i < int(results_.size()); ++i) {
+    const QRectF box = grid.Box(i);
+    if (box.bottom() < area.top()) continue;
     if (box.top() > height()) break;
-    const bool focused = zone_ == Zone::Results && int(i) == result_;
-    DrawCover(painter, box, window_->Cover(results_[i], tile), u, focused, !results_[i].installed(),
-              window_->Progress(results_[i]));
+    const bool focused = zone_ == Zone::Results && i == result_;
+    DrawCover(painter, box, window_->Cover(results_[size_t(i)], grid.Tile()), u, focused, !results_[size_t(i)].installed(),
+              window_->Progress(results_[size_t(i)]));
   }
 }
 

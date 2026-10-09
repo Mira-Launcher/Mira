@@ -48,6 +48,20 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
 double GlyphWidth(double unit, Nav nav, const QString& kind);
 
 // A cover with its focus ring, dimming and install progress.
+// Covers (2:3) in rows of `columns` inside `area`: sized so two rows always fit, centered, and
+// scrolled so the focused row is whole.
+struct CoverGrid {
+  CoverGrid(const QRectF& area, int columns, double gap, int focus_row);
+  // Where cover `index` goes; rows scrolled past are above `area`.
+  QRectF Box(int index) const;
+  QSize Tile() const { return {qRound(tile_w), qRound(tile_h)}; }
+
+  QRectF area;
+  int columns;
+  double gap, tile_w, tile_h, left;
+  int first_row;
+};
+
 void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,
                bool dim, double progress);
 
