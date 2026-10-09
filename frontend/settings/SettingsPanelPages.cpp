@@ -3,6 +3,7 @@
 #include "SettingsPanel.h"
 
 #include <QButtonGroup>
+#include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSlider>
@@ -107,6 +108,32 @@ Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const
   return toggle;
 }
 
+QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& label, const QString& doc,
+                                          const QString& search, std::optional<int> FrontendPrefs::*member,
+                                          int fallback_ms, double maximum) {
+  auto* row = new SettingRow(label, doc);
+  auto* spin = new QDoubleSpinBox(row);
+  spin->setRange(0, maximum);
+  spin->setSingleStep(0.5);
+  spin->setDecimals(1);
+  spin->setSuffix(" s");
+  spin->setMinimumWidth(90);
+  spin->setValue(fallback_ms / 1000.0);
+  row->AddControl(spin);
+  card->AddRow(row);
+  nav_->RegisterRow(row, label + ' ' + search);
+  seconds_.push_back({spin, member, fallback_ms, fallback_ms});
+  const size_t index = seconds_.size() - 1;
+  connect(spin, &QDoubleSpinBox::valueChanged, this, &SettingsPanel::Refresh);
+  AddPrefField({.row = row,
+                .changed = [this, index] { return qRound(seconds_[index].spin->value() * 1000) != seconds_[index].saved; },
+                .is_default = [this, index] { return qRound(seconds_[index].spin->value() * 1000) == seconds_[index].fallback; },
+                .revert = [this, index] { seconds_[index].spin->setValue(seconds_[index].saved / 1000.0); },
+                .reset = [this, index] { seconds_[index].spin->setValue(seconds_[index].fallback / 1000.0); },
+                .mark_saved = [this, index] { seconds_[index].saved = qRound(seconds_[index].spin->value() * 1000); }});
+  return spin;
+}
+
 void SettingsPanel::BuildInterfacePage() {
   SettingsPage* page = nav_->AddCategory("Interface", CategoryGlyph("Interface"), CategoryNavGroup("Interface"));
   pages_["Interface"] = page;
@@ -193,6 +220,35 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(library, "Same tile size everywhere",
             "One tile size for the library and every source page. Off, each page keeps its own.",
             "tile size zoom synced source pages", &FrontendPrefs::tile_size_synced, false);
+
+  SettingsCard* trailers = page->AddCard("Big screen trailers");
+  AddToggle(trailers, "Trailers", "In big screen, a trailer plays behind the game you rest on.",
+            "big screen trailer video", &FrontendPrefs::big_screen_trailers, true);
+  AddSeconds(trailers, "Start after", "How long to rest on a game before its trailer starts.",
+             "big screen trailer delay wait", &FrontendPrefs::big_screen_trailer_delay_ms, 3000, 10);
+  AddSeconds(trailers, "Skip the opening", "Starts trailers this far in, past rating cards and logos. Trailers under 20 seconds always start at the beginning.",
+             "big screen trailer skip intro rating", &FrontendPrefs::big_screen_trailer_skip_ms, 3000, 15);
+  AddToggle(trailers, "HD trailers only", "Skips trailers below 720p instead of showing them blurry.",
+            "big screen trailer quality low resolution", &FrontendPrefs::big_screen_trailer_hd_only, false);
+  AddToggle(trailers, "Trailer sound", "Plays a trailer's sound, not only its picture.",
+            "big screen trailer audio sound mute", &FrontendPrefs::big_screen_trailer_sound, false);
+  auto* volume_row = new SettingRow("Trailer volume", "How loud a trailer plays when its sound is on.");
+  trailer_volume_ = new QSpinBox(volume_row);
+  trailer_volume_->setRange(10, 100);
+  trailer_volume_->setSingleStep(10);
+  trailer_volume_->setSuffix("%");
+  trailer_volume_->setValue(50);
+  trailer_volume_->setMinimumWidth(90);
+  volume_row->AddControl(trailer_volume_);
+  trailers->AddRow(volume_row);
+  nav_->RegisterRow(volume_row, "big screen trailer volume loud");
+  connect(trailer_volume_, &QSpinBox::valueChanged, this, &SettingsPanel::Refresh);
+  AddPrefField({.row = volume_row,
+                .changed = [this] { return trailer_volume_->value() != trailer_volume_saved_; },
+                .is_default = [this] { return trailer_volume_->value() == 50; },
+                .revert = [this] { trailer_volume_->setValue(trailer_volume_saved_); },
+                .reset = [this] { trailer_volume_->setValue(50); },
+                .mark_saved = [this] { trailer_volume_saved_ = trailer_volume_->value(); }});
 
   SettingsCard* layout = page->AddCard("Layout");
   layout_preview_ = new LayoutPreview(games, previews_.artwork);

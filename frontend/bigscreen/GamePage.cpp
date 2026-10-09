@@ -146,7 +146,7 @@ void GamePage::LoadOwnShots() {
 }
 
 void GamePage::Shown() {
-  window_->ShowHero(item_);
+  window_->ShowHero(item_, this);
   if (item_.game) LoadOwnShots();
   Refresh();
 }

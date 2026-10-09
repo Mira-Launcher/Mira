@@ -876,6 +876,14 @@ struct FrontendPrefs {
   // Trailers behind the hero (default on), minutes idle on Home before suspending (0 never),
   // and the last few searches.
   std::optional<bool> big_screen_trailers;
+  // Trailers: how long focus rests before one starts (ms, default 3000), how much of its opening is
+  // skipped (ms, default 3000), only trailers 720p or better (default off), and sound (default off)
+  // at a volume in percent (default 50).
+  std::optional<int> big_screen_trailer_delay_ms;
+  std::optional<int> big_screen_trailer_skip_ms;
+  std::optional<bool> big_screen_trailer_hd_only;
+  std::optional<bool> big_screen_trailer_sound;
+  std::optional<int> big_screen_trailer_volume;
   std::optional<int> big_screen_idle_suspend;
   std::optional<std::vector<std::string>> big_screen_recent_searches;
   // Whether big screen lists applications (games tagged app, Microsoft 365); off by default.

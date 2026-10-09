@@ -48,7 +48,7 @@ void CollectionsPage::Shown() { Rebuild(); }
 void CollectionsPage::Rebuild() {
   // Keep the focus on the same tag and game across the rebuild.
   const QString tag = collections_.empty() ? QString() : Current().tag;
-  const QString key = collections_.empty() ? QString() : Current().items[size_t(game_)].key;
+  const QString key = collections_.empty() || game_ >= int(Current().items.size()) ? QString() : Current().items[size_t(game_)].key;
 
   collections_.clear();
   for (const GameSummary& game : window_->services().library->Games()) {
@@ -96,6 +96,7 @@ bool CollectionsPage::Navigate(Nav nav) {
     const int count = int(in_tags ? collections_.size() : Current().items.size());
     int& index = in_tags ? collection_ : game_;
     if (!Move(index, nav, in_tags ? Columns() : kResultColumns, count)) window_->Bump();
+    if (in_tags) game_ = 0;
   } else if (nav == Nav::Accept && !open_) {
     open_ = true;
     game_ = 0;
@@ -115,7 +116,7 @@ bool CollectionsPage::Navigate(Nav nav) {
   } else {
     return false;
   }
-  window_->ShowHero(open_ ? Current().items[size_t(game_)] : Current().items.front());
+  window_->ShowHero(open_ ? Current().items[size_t(game_)] : Current().items.front(), this);
   update();
   emit HintsChanged();
   return true;

@@ -165,6 +165,13 @@ private:
     } else if (auto* page = qobject_cast<Page*>(window_->stack_->currentWidget())) {
       hints = page->Hints();
     }
+    // Faded on Home while it showcases a game; menus and dialogs always show theirs.
+    const bool overlay = !window_->launching_.key.isEmpty() || window_->menu_ || window_->dialog_;
+    const double hidden = !overlay && window_->stack_->currentWidget() == window_->tabs_[0]
+                              ? window_->hints_fade_.currentValue().toDouble()
+                              : 0.0;
+    if (hidden >= 1.0) return;
+    painter.setOpacity(1.0 - hidden);
     QLinearGradient shade(0, height(), 0, height() - u * 3.4);
     shade.setColorAt(0, QColor(0, 0, 0, 170));
     shade.setColorAt(1, QColor(0, 0, 0, 0));
@@ -182,6 +189,7 @@ private:
       DrawGlyph(painter, {x, mid}, u, it->nav, window_->GlyphKind());
       x -= u * 1.6;
     }
+    painter.setOpacity(1.0);
   }
 
   void PaintToast(QPainter& painter) {
@@ -356,6 +364,16 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     if (RunningGame() == nullptr) RaiseFromGame();
     RestartIdle();
   });
+  connect(hero_, &HeroBackground::ShowcaseChanged, static_cast<HomePage*>(tabs_[0]), &HomePage::ShowcaseChanged);
+  // Home's button hints fade away while it showcases a game, and come back when focus moves.
+  hints_fade_.setDuration(500);
+  hints_fade_.setStartValue(0.0);
+  hints_fade_.setEndValue(1.0);
+  connect(&hints_fade_, &QVariantAnimation::valueChanged, chrome_, qOverload<>(&QWidget::update));
+  connect(hero_, &HeroBackground::ShowcaseChanged, this, [this] {
+    hints_fade_.setDirection(hero_->Showcasing() ? QAbstractAnimation::Forward : QAbstractAnimation::Backward);
+    if (hints_fade_.state() != QAbstractAnimation::Running) hints_fade_.start();
+  });
   connect(hero_, &HeroBackground::ArtChanged, this, [this] {
     stack_->currentWidget()->update();
     chrome_->update();
@@ -413,6 +431,11 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_stick = prefs.big_screen_stick;
   saved.big_screen_repeat = prefs.big_screen_repeat;
   saved.big_screen_trailers = prefs.big_screen_trailers;
+  saved.big_screen_trailer_delay_ms = prefs.big_screen_trailer_delay_ms;
+  saved.big_screen_trailer_skip_ms = prefs.big_screen_trailer_skip_ms;
+  saved.big_screen_trailer_hd_only = prefs.big_screen_trailer_hd_only;
+  saved.big_screen_trailer_sound = prefs.big_screen_trailer_sound;
+  saved.big_screen_trailer_volume = prefs.big_screen_trailer_volume;
   saved.big_screen_idle_suspend = prefs.big_screen_idle_suspend;
   saved.big_screen_recent_searches = prefs.big_screen_recent_searches;
   ApplyInputOptions();
@@ -500,7 +523,11 @@ double BigScreenWindow::Progress(const Item& item) const {
   return std::max(0.0, entry->progress);
 }
 
-void BigScreenWindow::ShowHero(const Item& item) { hero_->Show(item); }
+void BigScreenWindow::ShowHero(const Item& item, const Page* from) {
+  if (from == stack_->currentWidget()) hero_->Show(item);
+}
+
+bool BigScreenWindow::Showcasing() const { return hero_->Showcasing(); }
 
 void BigScreenWindow::OpenGame(const Item& item) {
   game_page_->Open(item, qobject_cast<Page*>(stack_->currentWidget()));
@@ -685,8 +712,12 @@ void BigScreenWindow::Navigate(Nav nav) {
     if (nav == Nav::Back) menu_.reset();
     if (nav == Nav::Accept) {
       auto action = std::move(menu_->entries[size_t(menu_->focus)].second);
+      const QString title = menu_->title;
+      const int focus = menu_->focus;
       menu_.reset();
       action();
+      // An entry that reopens its own menu (a toggle) keeps focus on itself.
+      if (menu_ && menu_->title == title) menu_->focus = std::min(focus, int(menu_->entries.size()) - 1);
     }
     chrome_->update();
     return;
@@ -736,6 +767,9 @@ void BigScreenWindow::RefreshPages() {
 }
 
 void BigScreenWindow::ShowPage(Page* page) {
+  escape_armed_.invalidate();  // the second Esc has to follow the first on Home
+  // The page's own Shown() picks the hero again, starting its trailer over.
+  if (page != stack_->currentWidget()) hero_->Leave();
   stack_->setCurrentWidget(page);
   page->Shown();
   chrome_->update();
@@ -749,7 +783,9 @@ void BigScreenWindow::Back() {
 void BigScreenWindow::Feedback(Nav nav) {
   const bool directions = nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right;
   if (prefs_.big_screen_sounds.value_or(true)) {
+    const bool tabs = nav == Nav::PrevTab || nav == Nav::NextTab;
     sounds_->Play(directions        ? Sounds::Cue::Move
+                  : tabs             ? Sounds::Cue::Tab
                   : nav == Nav::Back ? Sounds::Cue::Back
                                      : Sounds::Cue::Accept);
   }
@@ -923,6 +959,7 @@ void BigScreenWindow::AppControl(Nav nav) {
 void BigScreenWindow::ApplyInputOptions() {
   GamepadInput::Options options;
   options.swap_confirm = prefs_.big_screen_swap_confirm.value_or(false);
+  SetSwapConfirm(options.swap_confirm);
   const std::string stick = prefs_.big_screen_stick.value_or("medium");
   options.stick_threshold = stick == "high" ? 11000 : stick == "low" ? 25000 : 18000;
   const std::string repeat = prefs_.big_screen_repeat.value_or("normal");
@@ -1043,10 +1080,15 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   if (found == kKeys.end() || !plain) {
     return QWidget::keyPressEvent(event);
   }
+  // A held key repeats only directions; held Esc or Enter is one press.
+  const bool direction = found->second == Nav::Up || found->second == Nav::Down || found->second == Nav::Left ||
+                         found->second == Nav::Right;
+  if (event->isAutoRepeat() && !direction) return;
   RestartIdle();
   if (found->second == Nav::Guide) return Guide();
   // Escape twice on Home leaves big screen; anywhere else it goes back.
-  if (event->key() == Qt::Key_Escape && !dialog_ && !menu_ && tab_ == 0 && stack_->currentWidget() == tabs_[0]) {
+  if (event->key() == Qt::Key_Escape && !dialog_ && !menu_ && launching_.key.isEmpty() && tab_ == 0 &&
+      stack_->currentWidget() == tabs_[0]) {
     if (escape_armed_.isValid() && escape_armed_.elapsed() < 2000) return Exit();
     escape_armed_.start();
     return Toast("Press Esc again to exit big screen");

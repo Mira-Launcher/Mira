@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QElapsedTimer>
+#include <QVariantAnimation>
 #include <QHash>
 #include <QList>
 #include <QPixmap>
@@ -66,7 +67,9 @@ public:
   // 0..1 while installing or paused, else -1.
   double Progress(const Item& item) const;
 
-  void ShowHero(const Item& item);
+  // From the page in front only; a page refreshing behind it leaves the hero alone.
+  void ShowHero(const Item& item, const Page* from);
+  bool Showcasing() const;
   void OpenGame(const Item& item);
   void Toast(const QString& text);
   // Hints show keys (true) or the controller's buttons.
@@ -172,6 +175,7 @@ private:
   std::optional<Menu> menu_;
   bool keys_ = false;  // the keyboard was used last
   QElapsedTimer escape_armed_;  // the first Esc on Home
+  QVariantAnimation hints_fade_;  // 0 shown, 1 hidden
   Sounds* sounds_ = nullptr;
   GameKeyboard* keyboard_ = nullptr;
   Notice* notice_ = nullptr;

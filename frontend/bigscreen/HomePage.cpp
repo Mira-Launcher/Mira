@@ -1,9 +1,13 @@
 #include "HomePage.h"
 
+#include <QGuiApplication>
 #include <QPainter>
+#include <QScreen>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
+#include <numbers>
 #include <ranges>
 
 #include "../library/ArtworkStore.h"
@@ -17,8 +21,12 @@ namespace {
 
 // In units (see Unit).
 constexpr double kMargin = 2.6;
-constexpr double kInfoTop = 6.4;
+constexpr double kInfoTop = 5.0;
 constexpr double kRowsTop = 23.2;
+// While a trailer plays the rows sink until the focused one shows this much (in units) above the
+// screen's bottom edge, about half of its covers, and the other tiles turn see-through, more
+// so the further they are from the focused one.
+constexpr double kTrailerRowShown = 9;
 constexpr double kRowHeight = 18.6;
 constexpr double kTileW = 10, kTileH = 15, kTileGap = 1.1;
 
@@ -27,7 +35,12 @@ bool ByName(const Item& a, const Item& b) { return a.name.compare(b.name, Qt::Ca
 }  // namespace
 
 HomePage::HomePage(BigScreenWindow* window) : Page(window) {
-  animation_.setInterval(16);
+  // Ticks at the screen's refresh rate; the easing goes by elapsed time, so it runs at one speed
+  // on any display.
+  animation_.setTimerType(Qt::PreciseTimer);
+  const QScreen* screen = QGuiApplication::primaryScreen();
+  const double hz = screen != nullptr && screen->refreshRate() > 0 ? screen->refreshRate() : 60;
+  animation_.setInterval(std::max(4, int(1000 / hz)));
   connect(&animation_, &QTimer::timeout, this, &HomePage::Animate);
   // Bursts of library events become one rebuild.
   rebuild_.setSingleShot(true);
@@ -145,7 +158,12 @@ const Item* HomePage::Focused() const {
 
 void HomePage::FocusChanged() {
   lift_ = 0;
-  if (const Item* item = Focused()) window_->ShowHero(*item);
+  // A new game's name and details slide in.
+  if (const Item* item = Focused(); item != nullptr && item->key != info_key_) {
+    info_key_ = item->key;
+    info_ = 0;
+  }
+  if (const Item* item = Focused()) window_->ShowHero(*item, this);
   animation_.start();
   update();
   emit HintsChanged();
@@ -159,7 +177,7 @@ bool HomePage::Navigate(Nav nav) {
     case Nav::Right: {
       const int next = std::clamp(row.focus + (nav == Nav::Right ? 1 : -1), 0, int(row.items.size()) - 1);
       if (next == row.focus) {
-        window_->Bump();
+        StartBump(nav == Nav::Right ? 1 : -1, 0);
         return true;
       }
       row.focus = next;
@@ -169,7 +187,7 @@ bool HomePage::Navigate(Nav nav) {
     case Nav::Down: {
       const int next = std::clamp(row_ + (nav == Nav::Down ? 1 : -1), 0, int(rows_.size()) - 1);
       if (next == row_) {
-        window_->Bump();
+        StartBump(0, nav == Nav::Down ? 1 : -1);
         return true;
       }
       row_ = next;
@@ -249,21 +267,43 @@ double HomePage::TargetScroll(const Row& row) const {
   return std::clamp((row.focus - 1) * step, 0.0, max);
 }
 
+void HomePage::StartBump(int x, int y) {
+  window_->Bump();
+  bump_x_ = x;
+  bump_y_ = y;
+  bump_ = 0;
+  animation_.start();
+}
+
 void HomePage::Animate() {
+  // `rate` is the share of the way covered per 60 Hz frame, scaled to the time that really passed.
+  const double frames = std::clamp(double(frame_clock_.isValid() ? frame_clock_.restart() : 16), 1.0, 50.0) / (1000.0 / 60);
+  if (!frame_clock_.isValid()) frame_clock_.start();
   bool moving = false;
-  const auto ease = [&moving](double& value, double target, double snap) {
+  const auto ease = [&moving, frames](double& value, double target, double snap, double rate = 0.25) {
     if (std::abs(target - value) < snap) {
       value = target;
     } else {
-      value += (target - value) * 0.25;
+      value += (target - value) * (1 - std::pow(1 - rate, frames));
       moving = true;
     }
   };
+  const auto advance = [&moving, frames](double& value, double ms) {
+    if (value >= 1) return;
+    value = std::min(1.0, value + frames * (1000.0 / 60) / ms);
+    moving = true;
+  };
+  advance(info_, 260);
+  advance(bump_, 220);
   ease(row_scroll_, row_, 0.002);
   ease(lift_, 1.0, 0.01);
+  ease(drop_, window_->Showcasing() ? 1.0 : 0.0, 0.002, 0.1);
   for (Row& row : rows_) ease(row.scroll, TargetScroll(row), 0.5);
   update();
-  if (!moving) animation_.stop();
+  if (!moving) {
+    animation_.stop();
+    frame_clock_.invalidate();
+  }
 }
 
 void HomePage::paintEvent(QPaintEvent*) {
@@ -280,7 +320,11 @@ void HomePage::paintEvent(QPaintEvent*) {
     return;
   }
 
-  // The focused game: name, status, how much it was played.
+  // The focused game: name, status, how much it was played, sliding in as focus arrives.
+  const double arrive = 1 - std::pow(1 - info_, 3);
+  painter.save();
+  painter.setOpacity(arrive);
+  painter.translate((1 - arrive) * u * 1.6, 0);
   const double info_w = std::min(44 * u, width() - kMargin * u * 2);
   painter.setPen(tokens.text);
   const QRectF title_box(kMargin * u, kInfoTop * u, info_w, 7.2 * u);
@@ -299,17 +343,28 @@ void HomePage::paintEvent(QPaintEvent*) {
     meta << FormatPlayedAgo(focused->game->last_played_at);
   }
   painter.drawText(QPointF(at.x(), at.y() + u * 1.05), meta.join("   ·   "));
+  painter.restore();
 
-  // The rows, the focused one at kRowsTop.
-  painter.setClipRect(QRectF(0, (kRowsTop - 1.5) * u, width(), height()));
+  // A knock at the end of a row or the list: a short push that springs back.
+  const double knock = std::sin(bump_ * std::numbers::pi) * u * 0.7;
+
+  // The rows, the focused one at kRowsTop, lower while a trailer plays.
+  const double rows_top = kRowsTop + drop_ * std::max(0.0, height() / u - kTrailerRowShown - kRowsTop);
+  // How see-through something `distance` tiles from the focused game is while a trailer plays.
+  const auto faded = [this](double distance) { return drop_ * std::min(0.85, 0.2 + 0.12 * distance); };
+  const double step = (kTileW + kTileGap) * u;
+  const Row& focus_row = rows_[size_t(row_)];
+  const double focus_x = kMargin * u + double(focus_row.focus) * step - focus_row.scroll;
+  painter.setClipRect(QRectF(0, (rows_top - 1.5) * u, width(), height()));
   const QSize tile(qRound(kTileW * u), qRound(kTileH * u));
   for (size_t r = 0; r < rows_.size(); ++r) {
     const Row& row = rows_[r];
     const double offset = double(r) - row_scroll_;
-    const double top = (kRowsTop + offset * kRowHeight) * u;
+    const double top = (rows_top + offset * kRowHeight) * u + bump_y_ * knock;
     if (top > height() || offset < -1) continue;
     const bool active = int(r) == row_;
-    painter.setOpacity(offset < 0 ? std::max(0.0, 1 + offset * 2) : active ? 1.0 : 0.55);
+    const double row_opacity = offset < 0 ? std::max(0.0, 1 + offset * 2) : active ? 1.0 : 0.55;
+    painter.setOpacity(row_opacity * (1 - faded(std::abs(offset) * 1.2 + 0.5)));
     painter.setFont(Font(u, 1.15, QFont::Bold));
     painter.setPen(tokens.text);
     painter.drawText(QPointF(kMargin * u, top + u * 1.0), row.label);
@@ -319,7 +374,7 @@ void HomePage::paintEvent(QPaintEvent*) {
     painter.drawText(QPointF(kMargin * u + label_w + u * 0.6, top + u * 1.0), QString::number(row.items.size()));
     const double tiles_top = top + u * 2.3;
     for (size_t i = 0; i < row.items.size(); ++i) {
-      const double x = kMargin * u + double(i) * (kTileW + kTileGap) * u - row.scroll;
+      const double x = kMargin * u + double(i) * (kTileW + kTileGap) * u - row.scroll + (active ? bump_x_ * knock : 0);
       if (x > width() || x + tile.width() < 0) continue;
       const Item& item = row.items[i];
       const bool focus = active && int(i) == row.focus;
@@ -329,6 +384,9 @@ void HomePage::paintEvent(QPaintEvent*) {
         const double scale = 1 + 0.08 * lift_;
         box = QRectF(box.center() - QPointF(box.width(), box.height()) * scale / 2, box.size() * scale);
       }
+      const double distance = std::hypot((x - focus_x) / step, offset * 1.2);
+      painter.setOpacity(focus ? row_opacity : row_opacity * (1 - faded(distance)));
+      if (focus) DrawGlow(painter, box, u);
       DrawCover(painter, box, window_->Cover(item, tile), u, focus, !item.installed(), window_->Progress(item));
     }
   }

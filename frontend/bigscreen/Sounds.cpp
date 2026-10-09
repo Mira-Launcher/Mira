@@ -49,7 +49,7 @@ struct Sounds::Sdl {
   bool (*ClearAudioStream)(SDL_AudioStream*) = nullptr;
   void (*DestroyAudioStream)(SDL_AudioStream*) = nullptr;
   SDL_AudioStream* stream = nullptr;
-  std::vector<float> cues[4];
+  std::vector<float> cues[5];
 
   bool Load() {
     lib.setFileNameAndVersion("SDL3", 0);
@@ -78,6 +78,7 @@ struct Sounds::Sdl {
     cues[int(Cue::Accept)] = Tones({{880, 0.05}, {1320, 0.07}}, 0.08f);
     cues[int(Cue::Back)] = Tones({{1100, 0.05}, {740, 0.07}}, 0.07f);
     cues[int(Cue::Bump)] = Tones({{220, 0.06}}, 0.09f);
+    cues[int(Cue::Tab)] = Tones({{990, 0.03}, {1480, 0.045}}, 0.06f);
     return true;
   }
 
