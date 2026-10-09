@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libx11-xcb1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
       libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
       libxcb-xfixes0 libxcb-sync1 libxcb-shm0 libxcb-util1 libxrender1 libsm6 libice6 libcurl4-openssl-dev rpm \
+      libpulse0 libxrandr2 \
  && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
  && apt-get update && apt-get install -y --no-install-recommends gcc-13 g++-13 \
  && rm -rf /var/lib/apt/lists/*

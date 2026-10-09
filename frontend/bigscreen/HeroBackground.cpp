@@ -75,39 +75,10 @@ HeroBackground::HeroBackground(BigScreenWindow* window) : QWidget(window), windo
     const QString key = trailer_key_;
     api::GetMetadataAsync(this, key.toStdString(), [this, key](GameMetadataResult result) {
       if (key != trailer_key_ || !result.ok || result.metadata.trailers.empty()) return;
+      CreatePlayer();
       player_->setSource(QUrl(QString::fromStdString(result.metadata.trailers[0])));
       player_->play();
     });
-  });
-
-  player_ = new QMediaPlayer(this);
-  sink_ = new QVideoSink(this);
-  audio_ = new QAudioOutput(this);
-  audio_->setMuted(true);
-  audio_->setVolume(0);
-  player_->setAudioOutput(audio_);
-  player_->setVideoSink(sink_);
-  connect(sink_, &QVideoSink::videoFrameChanged, this, [this](const QVideoFrame& frame) {
-    if (trailer_key_ != key_) return;
-    QImage image = frame.toImage();
-    if (image.isNull()) return;
-    const bool first = frame_.isNull();
-    frame_ = std::move(image);
-    if (first) {
-      trailer_fade_.setDirection(QAbstractAnimation::Forward);
-      trailer_fade_.start();
-    }
-    update();
-  });
-  connect(player_, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
-    if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia) EndTrailer();
-  });
-  connect(player_, &QMediaPlayer::errorOccurred, this, [this] { EndTrailer(); });
-  // Trailers play only while the window has focus.
-  connect(qApp, &QGuiApplication::focusWindowChanged, this, [this] {
-    const bool active = window_->isActiveWindow();
-    if (!active && player_->playbackState() == QMediaPlayer::PlayingState) player_->pause();
-    if (active && player_->playbackState() == QMediaPlayer::PausedState) player_->play();
   });
 }
 
@@ -115,7 +86,7 @@ void HeroBackground::Show(const Item& item) {
   if (item.key == key_) return;
   key_ = item.key;
   trailer_delay_.stop();
-  player_->stop();
+  if (player_ != nullptr) player_->stop();
   frame_ = {};
   trailer_fade_.stop();
   trailer_fade_.setDirection(QAbstractAnimation::Forward);
@@ -161,8 +132,43 @@ void HeroBackground::LoadLogo(const QString& key) {
   });
 }
 
+// Made on the first trailer: loading Qt's media backend pulls in FFmpeg, which big screen
+// shouldn't depend on just to open.
+void HeroBackground::CreatePlayer() {
+  if (player_ != nullptr) return;
+  player_ = new QMediaPlayer(this);
+  sink_ = new QVideoSink(this);
+  audio_ = new QAudioOutput(this);
+  audio_->setMuted(true);
+  audio_->setVolume(0);
+  player_->setAudioOutput(audio_);
+  player_->setVideoSink(sink_);
+  connect(sink_, &QVideoSink::videoFrameChanged, this, [this](const QVideoFrame& frame) {
+    if (trailer_key_ != key_) return;
+    QImage image = frame.toImage();
+    if (image.isNull()) return;
+    const bool first = frame_.isNull();
+    frame_ = std::move(image);
+    if (first) {
+      trailer_fade_.setDirection(QAbstractAnimation::Forward);
+      trailer_fade_.start();
+    }
+    update();
+  });
+  connect(player_, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
+    if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia) EndTrailer();
+  });
+  connect(player_, &QMediaPlayer::errorOccurred, this, [this] { EndTrailer(); });
+  // Trailers play only while the window has focus.
+  connect(qApp, &QGuiApplication::focusWindowChanged, this, [this] {
+    const bool active = window_->isActiveWindow();
+    if (!active && player_->playbackState() == QMediaPlayer::PlayingState) player_->pause();
+    if (active && player_->playbackState() == QMediaPlayer::PausedState) player_->play();
+  });
+}
+
 void HeroBackground::EndTrailer() {
-  player_->stop();
+  if (player_ != nullptr) player_->stop();
   trailer_fade_.setDirection(QAbstractAnimation::Backward);
   trailer_fade_.start();
 }

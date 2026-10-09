@@ -231,8 +231,8 @@ QList<Hint> HomePage::Hints() const {
     hints.append({Nav::Accept, quick.isEmpty() ? "Details" : quick});
     hints.append({Nav::Action, "Details"});
     static const char* const kOrderNames[] = {"A–Z", "Recent", "Most played"};
-    const Order next = Order((int(OrderOf(rows_[size_t(row_)])) + 1) % int(Order::kCount));
-    hints.append({Nav::Sort, QString("Sort: ") + kOrderNames[int(next)]});
+    // The row's order now; View moves to the next.
+    hints.append({Nav::Sort, QString("Sorted: ") + kOrderNames[int(OrderOf(rows_[size_t(row_)]))]});
     if (OrderOf(rows_[size_t(row_)]) == Order::Name) hints.append({Nav::NextLetter, "Next letter"});
   }
   hints.append({Nav::Search, "Search"});

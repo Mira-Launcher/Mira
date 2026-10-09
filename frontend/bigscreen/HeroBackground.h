@@ -40,6 +40,7 @@ private:
   void Fade(const QPixmap& art);
   void LoadHero();
   void LoadLogo(const QString& key);
+  void CreatePlayer();
   void EndTrailer();
 
   BigScreenWindow* window_;
@@ -53,9 +54,9 @@ private:
   QPixmap previous_;
   QVariantAnimation fade_;
 
-  QMediaPlayer* player_;
-  QVideoSink* sink_;
-  QAudioOutput* audio_;
+  QMediaPlayer* player_ = nullptr;
+  QVideoSink* sink_ = nullptr;
+  QAudioOutput* audio_ = nullptr;
   // Starts the trailer after a short wait, so scrolling past doesn't play it.
   QTimer trailer_delay_;
   QImage frame_;

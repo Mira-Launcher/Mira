@@ -17,7 +17,7 @@ struct WebApp {
 // Streaming sites big screen can add as apps.
 const std::vector<WebApp>& StreamingApps();
 
-// The installed Chromium-based browser that runs them full screen, or empty.
+// The browser that runs them full screen: a Chromium-based one (they ship Widevine), else Firefox; empty with none.
 QString KioskBrowser();
 
 // Adds `app` to the library: a launcher script in ~/.local/share/mira/webapps/<id>/ that runs
