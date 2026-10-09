@@ -28,6 +28,7 @@
 #include "core/TomlJson.h"
 #include "core/Paths.h"
 #include "setup/Setup.h"
+#include "system/Packages.h"
 
 namespace {
 using nlohmann::json;
@@ -1434,6 +1435,28 @@ int CmdWatch() {
   return 0;
 }
 
+// What Mira uses that isn't installed (an AppImage brings none of it), and the command that installs it.
+void PrintMissingPackages() {
+  const nlohmann::json report = mira::system::Report();
+  if (report["missing"].empty() && report["unavailable"].empty()) return;
+  std::puts("\nnot installed:");
+  for (const nlohmann::json& item : report["missing"]) {
+    std::printf("  %-12s %s\n", item.value("package", "").c_str(), item.value("purpose", "").c_str());
+  }
+  for (const nlohmann::json& item : report["unavailable"]) {
+    std::printf("  %-12s %s (no package for %s)\n", item.value("tool", "").c_str(), item.value("purpose", "").c_str(),
+                report.value("distro", "").c_str());
+  }
+  std::string install;
+  for (const nlohmann::json& part : report["install"]) install += (install.empty() ? "" : " ") + part.get<std::string>();
+  if (install.empty()) {
+    if (!report["missing"].empty()) std::puts("install them with your system's package manager");
+    return;
+  }
+  std::printf("install them with:\n  sudo %s\n", install.c_str());
+  if (report.value("restart", false)) std::puts("then restart");
+}
+
 int CmdSetup(int argc, char** argv) {
   // Local only, like `daemon`: writes user-level files, no mirad involved.
   bool remove = false;
@@ -1510,6 +1533,7 @@ int CmdSetup(int argc, char** argv) {
   if (!path_env || std::string(path_env).find(paths.bin_dir.string()) == std::string::npos) {
     std::printf("note: %s isn't on PATH -- add it to use `mira` from a shell\n", paths.bin_dir.c_str());
   }
+  PrintMissingPackages();
   return 0;
 }
 

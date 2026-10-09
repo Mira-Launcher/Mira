@@ -1013,8 +1013,10 @@ struct SystemPackagesResult {
   ApiError error;
   std::string distro;
   std::string family;  // "arch", "debian", "fedora", "suse", "ostree", "steamos", "unknown"
-  std::vector<std::string> missing;  // package names
-  std::vector<std::string> install;  // argv to run as root; empty when Mira can't
+  std::vector<std::string> missing;   // package names
+  std::vector<std::string> purposes;  // what each of `missing` is for
+  std::vector<std::string> unavailable;  // purposes of tools with no package on this distro
+  std::vector<std::string> install;  // argv to run as root, ending with `missing`; empty when Mira can't
   bool restart = false;              // layered with rpm-ostree: only after a restart
 };
 

@@ -1,5 +1,7 @@
 #include "system/Packages.h"
 
+#include <dlfcn.h>
+
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -19,15 +21,50 @@ struct Entry {
 };
 
 constexpr Entry kEntries[] = {
-    {"winetricks", {"cabextract", "cabextract", "Unpacks Windows fonts and libraries for winetricks",
+    {"core", {"curl", "curl", "", "Downloads covers, store info and Proton builds", "curl", "curl", "curl", "curl"}},
+    {"wine", {"wine", "wine", "", "Runs Windows programs without a Proton build", "wine", "wine", "wine", "wine"}},
+    {"wine", {"winetricks", "winetricks", "", "Installs Windows libraries and fixes into a game's prefix",
+              "winetricks", "winetricks", "winetricks", "winetricks"}},
+    {"winetricks", {"cabextract", "cabextract", "", "Unpacks Windows fonts and libraries for winetricks",
                     "cabextract", "cabextract", "cabextract", "cabextract"}},
-    {"winetricks", {"unzip", "unzip", "Unpacks downloads for winetricks", "unzip", "unzip", "unzip", "unzip"}},
-    {"archives", {"7zip", "7z", "Extracts game archives and installers", "7zip", "7zip", "7zip", "7zip"}},
-    {"performance", {"gamemode", "gamemoded", "Raises performance while a game runs", "gamemode", "gamemode",
+    {"winetricks", {"unzip", "unzip", "", "Unpacks downloads for winetricks", "unzip", "unzip", "unzip", "unzip"}},
+    {"archives", {"7zip", "7z 7zz", "", "Extracts game archives and installers", "7zip", "7zip p7zip-full", "7zip",
+                  "7zip"}},
+    {"performance", {"gamemode", "gamemoded", "", "Raises performance while a game runs", "gamemode", "gamemode",
                      "gamemode", "gamemode"}},
-    {"performance", {"mangohud", "mangohud", "Shows an FPS and performance overlay", "mangohud", "mangohud",
+    {"performance", {"mangohud", "mangohud", "", "Shows an FPS and performance overlay", "mangohud", "mangohud",
                      "mangohud", "mangohud"}},
+    {"controllers", {"sdl3", "", "libSDL3.so.0", "Controllers and sounds in big screen", "sdl3", "libsdl3-0", "SDL3",
+                     "libSDL3-0"}},
 };
+
+bool Installed(const Tool& tool) {
+  if (!tool.library.empty()) {
+    void* handle = ::dlopen(std::string(tool.library).c_str(), RTLD_LAZY | RTLD_LOCAL);
+    if (handle != nullptr) ::dlclose(handle);
+    return handle != nullptr;
+  }
+  std::istringstream names{std::string(tool.binary)};
+  for (std::string name; names >> name;) {
+    if (runner::FindOnPath(name)) return true;
+  }
+  return false;
+}
+
+// The first of `alternatives` (space-separated) the distro has: apt rejects the whole install for one
+// unknown name, and Debian and Ubuntu releases name some differently. Other families take the first.
+std::string Choose(std::string_view alternatives, Family family) {
+  std::istringstream names{std::string(alternatives)};
+  for (std::string name; names >> name;) {
+    if (family != Family::Debian) return name;
+    Command show;
+    show.argv = {"apt-cache", "show", "--quiet=2", name};
+    show.timeout_s = 10;
+    const auto shown = runner::RunAndWait(show);
+    if (shown && shown->exit_code == 0) return name;
+  }
+  return {};
+}
 
 std::string_view FamilyName(Family family) {
   switch (family) {
@@ -133,16 +170,22 @@ std::vector<std::string> InstallCommand(Family family, const std::vector<std::st
 json Report(std::string_view feature) {
   const Distro distro = DetectDistro();
   json missing = json::array();
+  json unavailable = json::array();  // no package on this distro
   std::vector<std::string> packages;
   for (const Tool& tool : ToolsFor(feature)) {
-    if (runner::FindOnPath(tool.binary)) continue;
-    const std::string package(PackageFor(tool, distro.family));
+    if (Installed(tool)) continue;
+    const std::string package = Choose(PackageFor(tool, distro.family), distro.family);
+    if (package.empty()) {
+      unavailable.push_back({{"tool", tool.id}, {"purpose", tool.purpose}});
+      continue;
+    }
     missing.push_back({{"tool", tool.id}, {"package", package}, {"purpose", tool.purpose}});
     packages.push_back(package);
   }
   return {{"distro", distro.name.empty() ? distro.id : distro.name},
           {"family", FamilyName(distro.family)},
           {"missing", std::move(missing)},
+          {"unavailable", std::move(unavailable)},
           {"install", InstallCommand(distro.family, packages)},
           {"restart", distro.family == Family::Ostree && !packages.empty()}};
 }
