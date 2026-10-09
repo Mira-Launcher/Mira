@@ -131,6 +131,8 @@ void SettingsPage::Build() {
        [w] { return LabelOf(kIdle, w->prefs().big_screen_idle_suspend.value_or(0)); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_idle_suspend = Cycle(kIdle, p.big_screen_idle_suspend.value_or(0), step); }),
        {}},
+      {"System", "Update system", "Upgrades the system's packages. Your password is asked for, with the on-screen keyboard to type it.",
+       [w] { return w->UpdateStatus(); }, {}, [w] { w->UpdateSystem(); }},
       {"System", "Suspend", "Puts the computer to sleep.", {}, {}, [w] { w->PowerAction("Suspend"); }},
       {"System", "Restart", "Restarts the computer.", {}, {}, [w] {
          w->Confirm("Restart the computer?", "Anything running is closed.", "Restart", [w] { w->PowerAction("Reboot"); });
@@ -281,7 +283,8 @@ void SettingsPage::paintEvent(QPaintEvent*) {
     painter.drawText(inner, Qt::AlignVCenter | Qt::AlignLeft, row.label);
     if (row.value) {
       painter.setFont(Font(u, 1.0, QFont::DemiBold));
-      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, "‹  " + row.value() + "  ›");
+      // Arrows only where left and right change it.
+      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, row.change ? "‹  " + row.value() + "  ›" : row.value());
     }
   }
   painter.restore();

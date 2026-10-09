@@ -12,7 +12,9 @@
 #include "../activity/DownloadTracker.h"
 #include "../window/LibraryWindow.h"
 #include "Paint.h"
+#include "../system/Distro.h"
 
+class QProcess;
 class QStackedWidget;
 
 namespace mira_gui::bigscreen {
@@ -88,6 +90,10 @@ public:
   void OpenSteamBigPicture();
   // "Suspend", "Reboot" or "PowerOff".
   void PowerAction(const char* action);
+  // Upgrades the system's packages through pkexec, after asking.
+  void UpdateSystem();
+  // The update's latest output line; empty when none runs.
+  QString UpdateStatus() const { return update_status_; }
   // Hitting the end of a list: a dull sound and a small knock.
   void Bump();
 
@@ -125,6 +131,8 @@ private:
   void Guide();
   void ReturnToGame();
   void OpenGameKeyboard();
+  void StartUpdate(const system::Distro& distro, const QStringList& command);
+  void SetUpdateStatus(const QString& status);
   void Screenshot(const QString& game_name);
   void TogglePerformanceOverlay(const std::string& id);
   // The Guide menu's per-game settings: frame limit, overlay, GameMode.
@@ -177,6 +185,9 @@ private:
   // A game was handed to Steam, so nothing says when it runs or ends: stay
   // behind until the player comes back.
   bool handed_off_ = false;
+  QProcess* update_ = nullptr;
+  QString update_status_;
+  QString update_output_;
   QTimer launch_timeout_;
 };
 

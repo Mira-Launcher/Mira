@@ -8,7 +8,10 @@
 #include <QFileInfo>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QWindow>
 
 #include <algorithm>
@@ -344,7 +347,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     // Only with a time chosen in settings; "Never" must never suspend.
     if (prefs_.big_screen_idle_suspend.value_or(0) <= 0) return;
     // Only from a quiet Home: nothing playing, nothing installing.
-    const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || !isActiveWindow();
+    const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || update_ != nullptr || !isActiveWindow();
     if (!busy) PowerAction("Suspend");
   });
   auto* sleep = new SleepWatcher(this);
@@ -918,7 +921,73 @@ void BigScreenWindow::RestartIdle() {
 }
 
 void BigScreenWindow::PowerAction(const char* action) {
+  if (update_ != nullptr) return Toast("Wait for the system update to finish.");
   if (!Power(action)) Toast("The system didn't allow that.");
+}
+
+void BigScreenWindow::UpdateSystem() {
+  if (update_ != nullptr) return Toast("The system is already updating.");
+  const system::Distro distro = system::DetectDistro();
+  const QStringList command = system::UpgradeCommand(distro);
+  const QString name = distro.name.isEmpty() ? QString("this system") : distro.name;
+  if (command.isEmpty()) return Toast("Mira doesn't know how to update " + name + ".");
+  if (QStandardPaths::findExecutable("pkexec").isEmpty()) return Toast("Updating needs pkexec (polkit), which isn't installed.");
+  Confirm("Update " + name + "?", "Your password is asked for next, with the on-screen keyboard to type it.", "Update",
+          [this, distro, command] { StartUpdate(distro, command); });
+}
+
+void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringList& command) {
+  // Test sandboxes share the real system.
+  if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) return Toast("Updating is off here (MIRA_NO_POWER).");
+  update_ = new QProcess(this);
+  update_->setProcessChannelMode(QProcess::MergedChannels);
+  update_output_.clear();
+  SetUpdateStatus("Waiting for your password");
+  // The password prompt is the desktop's: step aside and bring up the keyboard to type into it.
+  ReturnToGame();
+  QTimer::singleShot(400, this, [this] {
+    QString error;
+    if (update_ != nullptr && update_output_.isEmpty() && !keyboard_->Open(&error)) Tell("Type your password", error);
+  });
+  connect(update_, &QProcess::readyRead, this, [this] {
+    const QString text = QString::fromUtf8(update_->readAll());
+    // Output means the password was accepted: back to big screen to show progress.
+    if (update_output_.isEmpty()) {
+      keyboard_->hide();
+      RaiseFromGame();
+    }
+    update_output_ = (update_output_ + text).right(100'000);
+    const QStringList lines = text.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
+    if (!lines.isEmpty()) SetUpdateStatus(lines.last().trimmed().left(48));
+  });
+  connect(update_, &QProcess::finished, this, [this, distro](int code, QProcess::ExitStatus status) {
+    update_->deleteLater();
+    update_ = nullptr;
+    SetUpdateStatus({});
+    keyboard_->hide();
+    if (!isActiveWindow()) RaiseFromGame();
+    // pkexec's own codes: the prompt was dismissed or the password refused.
+    if (status == QProcess::NormalExit && (code == 126 || code == 127) && update_output_.isEmpty()) {
+      return Toast("Update canceled.");
+    }
+    // steamos-update exits 7 when there's nothing new.
+    const bool steamos_current = distro.family == system::Distro::Family::SteamOS && code == 7;
+    if (status != QProcess::NormalExit || (code != 0 && !steamos_current)) {
+      const QStringList lines = update_output_.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
+      return Tell("The update failed", lines.isEmpty() ? QString() : lines.last().trimmed());
+    }
+    if (!steamos_current && system::NeedsRestart(distro, update_output_)) {
+      return Confirm("Restart to finish updating?", "Some of the update only takes effect after a restart.", "Restart",
+                     [this] { PowerAction("Reboot"); });
+    }
+    Toast("The system is up to date.");
+  });
+  update_->start("pkexec", command);
+}
+
+void BigScreenWindow::SetUpdateStatus(const QString& status) {
+  update_status_ = status;
+  if (QWidget* page = stack_->currentWidget()) page->update();
 }
 
 void BigScreenWindow::RaiseFromGame() {
