@@ -730,9 +730,9 @@ void BigScreenWindow::SelectTab(int index) {
 void BigScreenWindow::RefreshPages() {
   auto* front = qobject_cast<Page*>(stack_->currentWidget());
   for (Page* page : tabs_) {
-    if (page != front) page->Shown();
+    if (page != front) page->PrefsChanged();
   }
-  if (front != nullptr) front->Shown();
+  if (front != nullptr) front->PrefsChanged();
 }
 
 void BigScreenWindow::ShowPage(Page* page) {

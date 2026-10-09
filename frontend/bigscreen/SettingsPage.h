@@ -21,6 +21,7 @@ public:
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
   void Shown() override;
+  void PrefsChanged() override { update(); }
 
 protected:
   void paintEvent(QPaintEvent* event) override;
