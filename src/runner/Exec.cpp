@@ -10,6 +10,7 @@
 #include <cctype>
 #include <chrono>
 #include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -61,11 +62,41 @@ void UnblockSignals() {
   sigprocmask(SIG_SETMASK, &none, nullptr);
 }
 
+// mirad can start before the desktop session gives systemd its display, and keeps the
+// environment it started with. Then children take the display from the user manager's
+// current environment, read again at most once a minute.
+std::vector<std::string> SessionEnv() {
+  if (std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr) return {};
+  static std::mutex mutex;
+  static std::vector<std::string> cached;
+  static std::chrono::steady_clock::time_point read_at;
+  const std::lock_guard lock(mutex);
+  const auto now = std::chrono::steady_clock::now();
+  if (read_at != std::chrono::steady_clock::time_point() && now - read_at < std::chrono::minutes(1)) return cached;
+  read_at = now;
+  cached.clear();
+  FILE* pipe = popen("systemctl --user show-environment 2>/dev/null", "r");
+  if (pipe == nullptr) return cached;
+  char line[4096];
+  while (std::fgets(line, sizeof(line), pipe) != nullptr) {
+    std::string entry(line);
+    if (!entry.empty() && entry.back() == '\n') entry.pop_back();
+    for (const char* key : {"DISPLAY=", "WAYLAND_DISPLAY=", "XAUTHORITY=", "XDG_SESSION_TYPE=", "XDG_CURRENT_DESKTOP="}) {
+      if (entry.starts_with(key) && std::getenv(std::string(key, std::strlen(key) - 1).c_str()) == nullptr) {
+        cached.push_back(entry);
+      }
+    }
+  }
+  pclose(pipe);
+  return cached;
+}
+
 // Command.env is an overlay on the daemon's own environment, not a
 // replacement, so merge them for the child process.
 std::vector<std::string> MergedEnv(const Command& command) {
   std::vector<std::string> merged;
   for (char** e = environ; *e != nullptr; ++e) merged.emplace_back(*e);
+  for (std::string& entry : SessionEnv()) merged.push_back(std::move(entry));
   for (const auto& [key, value] : command.env) merged.push_back(key + "=" + value);
   return merged;
 }
