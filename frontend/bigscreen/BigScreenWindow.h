@@ -73,6 +73,7 @@ public:
   void QuickAction(const Item& item);
 
   void Exit();
+  void OpenSteamBigPicture();
 
 signals:
   void Closed();

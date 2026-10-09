@@ -12,6 +12,7 @@
 #include "../client/Jobs.h"
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
+#include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
@@ -25,6 +26,7 @@
 #include "HeroBackground.h"
 #include "HomePage.h"
 #include "SearchPage.h"
+#include "Session.h"
 #include "SettingsPage.h"
 
 namespace mira_gui::bigscreen {
@@ -295,6 +297,8 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_buttons = prefs.big_screen_buttons;
   saved.big_screen_large_text = prefs.big_screen_large_text;
   saved.big_screen_at_start = prefs.big_screen_at_start;
+  saved.start_on_login = prefs.start_on_login;
+  ApplyStartOnLogin(prefs.start_on_login.value_or(false));
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   for (Page* page : tabs_) page->Shown();
   update();
@@ -492,6 +496,17 @@ void BigScreenWindow::QuickAction(const Item& item) {
 }
 
 void BigScreenWindow::Exit() { close(); }
+
+void BigScreenWindow::OpenSteamBigPicture() {
+  Toast("Opening Steam Big Picture");
+  // Steam takes the screen; staying behind it until the player comes back.
+  handed_off_ = true;
+  api::OpenSteamBigPictureAsync(this, [this](StoreActionResult result) {
+    if (result.ok) return;
+    handed_off_ = false;
+    Toast("Couldn't open Steam: " + QString::fromStdString(result.error.message));
+  });
+}
 
 bool BigScreenWindow::event(QEvent* event) {
   if (event->type() == QEvent::WindowActivate) handed_off_ = false;

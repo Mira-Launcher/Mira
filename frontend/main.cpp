@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QStringList>
 
+#include "bigscreen/Session.h"
 #include "client/api/Config.h"
 #include "dialogs/FirstRunWizard.h"
 #include "app/Appearance.h"
@@ -84,11 +85,13 @@ int main(int argc, char** argv) {
       if (after.ok) prefs = after.prefs;
     }
     mira_gui::ApplyAppearance(prefs);
+    mira_gui::bigscreen::ApplyStartOnLogin(prefs.start_on_login.value_or(false));
     auto* window = new LibraryWindow(prefs);
     window->setAttribute(Qt::WA_DeleteOnClose);
     // A no-op on a desktop with no tray (Tray.cpp): window->close() then
     // means exactly what it always did.
     mira_gui::tray::Attach(window);
+    mira_gui::bigscreen::UpdateSteamShortcut(window);
     if (big_screen || prefs.big_screen_at_start.value_or(false)) {
       window->OpenBigScreen();
     } else {

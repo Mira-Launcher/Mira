@@ -139,6 +139,14 @@ QWidget* FirstRunWizard::BuildUse() {
   Choice(page, body, use_, "both", "Both", "Everything together, as it comes.");
   const QString use = QString::fromStdString(initial_.primary_use.value_or("both"));
   for (QAbstractButton* button : use_->buttons()) button->setChecked(button->property("key").toString() == use);
+  big_screen_ = new QCheckBox("Set it up as a big screen", page);
+  big_screen_->setChecked(initial_.big_screen_at_start.value_or(false));
+  body->addSpacing(8);
+  body->addWidget(big_screen_);
+  auto* note = MakeLabel(page, "For a TV or a handheld: Mira starts when you log in and opens fullscreen, "
+                               "driven by a controller.", "muted");
+  note->setContentsMargins(24, 0, 0, 8);
+  body->addWidget(note);
   body->addStretch(1);
   return page;
 }
@@ -351,9 +359,10 @@ QString FirstRunWizard::SummaryText() const {
   }
   const QString folder = Checked(folder_);
   QString where = folder == "none" ? "none managed" : folder == "custom" && !folder_path_->text().isEmpty() ? folder_path_->text() : "~/Mira";
-  return QString("<b>Use</b>: %1<br><b>Folder</b>: %2<br><b>Sources</b>: %3<br><b>Metadata</b>: %4<br>")
+  return QString("<b>Use</b>: %1%5<br><b>Folder</b>: %2<br><b>Sources</b>: %3<br><b>Metadata</b>: %4<br>")
       .arg(use == "games" ? "Games" : use == "apps" ? "Applications" : "Both", where.toHtmlEscaped(),
-           enabled.isEmpty() ? "none" : enabled.join(", ").toHtmlEscaped(), metadata_->isChecked() ? "on" : "off");
+           enabled.isEmpty() ? "none" : enabled.join(", ").toHtmlEscaped(), metadata_->isChecked() ? "on" : "off",
+           big_screen_->isChecked() ? ", as a big screen" : "");
 }
 
 std::vector<ConfigEdit> FirstRunWizard::Edits() const {
@@ -391,6 +400,8 @@ FrontendPrefs FirstRunWizard::Prefs() const {
   prefs.onboarded = true;
   prefs.primary_use = PrimaryUse().toStdString();
   if (PrimaryUse() == "apps") prefs.library_filter = "apps";
+  prefs.big_screen_at_start = big_screen_->isChecked();
+  prefs.start_on_login = big_screen_->isChecked();
   prefs.sidebar_pinned_style = pinned_style_->currentData().toString().toStdString();
   prefs.sidebar_recent_style = recent_style_->currentData().toString().toStdString();
   prefs.sidebar_recent_count = recent_count_->value();

@@ -157,6 +157,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("big_screen_buttons", result.prefs.big_screen_buttons);
   read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
   read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
+  read_bool("start_on_login", result.prefs.start_on_login);
   read_bool("onboarded", result.prefs.onboarded);
   read_string("primary_use", result.prefs.primary_use);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
@@ -244,6 +245,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
   if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
   if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
+  if (prefs.start_on_login) table["start_on_login"] = *prefs.start_on_login;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;

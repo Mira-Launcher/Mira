@@ -69,6 +69,7 @@ private:
   QPushButton* skip_ = nullptr;
 
   QButtonGroup* use_ = nullptr;
+  QCheckBox* big_screen_ = nullptr;
   QButtonGroup* folder_ = nullptr;
   QLineEdit* folder_path_ = nullptr;
   std::map<QString, QCheckBox*> sources_;

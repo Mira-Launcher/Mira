@@ -17,10 +17,12 @@ struct Setting {
   const char* label;
   const char* help;
 };
-constexpr std::array<Setting, 4> kSettings = {{
+constexpr std::array<Setting, 6> kSettings = {{
     {"Button labels", "Which names the button hints use. Match controller reads them from the connected controller."},
     {"Text size", "Large scales everything up by 15%, for a TV across the room."},
     {"Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen."},
+    {"Start Mira when you log in", "Adds Mira to your desktop's autostart."},
+    {"Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back."},
     {"Exit big screen", "Back to the desktop library."},
 }};
 const std::array<std::pair<const char*, const char*>, 4> kButtonKinds = {
@@ -42,6 +44,7 @@ void SettingsPage::Change(int step) {
     }
     case 1: prefs.big_screen_large_text = !prefs.big_screen_large_text.value_or(false); break;
     case 2: prefs.big_screen_at_start = !prefs.big_screen_at_start.value_or(false); break;
+    case 3: prefs.start_on_login = !prefs.start_on_login.value_or(false); break;
     default: return;
   }
   window_->SetPrefs(prefs);
@@ -51,9 +54,15 @@ bool SettingsPage::Navigate(Nav nav) {
   switch (nav) {
     case Nav::Up: focus_ = std::max(0, focus_ - 1); break;
     case Nav::Down: focus_ = std::min(int(kSettings.size()) - 1, focus_ + 1); break;
-    case Nav::Left: Change(-1); break;
-    case Nav::Right: Change(1); break;
+    case Nav::Left:
+    case Nav::Right:
+      if (focus_ < int(kSettings.size()) - 2) Change(nav == Nav::Right ? 1 : -1);
+      break;
     case Nav::Accept:
+      if (focus_ == int(kSettings.size()) - 2) {
+        window_->OpenSteamBigPicture();
+        return true;
+      }
       if (focus_ == int(kSettings.size()) - 1) {
         window_->Exit();
         return true;
@@ -68,7 +77,8 @@ bool SettingsPage::Navigate(Nav nav) {
 }
 
 QList<Hint> SettingsPage::Hints() const {
-  return {{Nav::Accept, focus_ == int(kSettings.size()) - 1 ? "Exit" : "Change"}, {Nav::Back, "Back"}};
+  const int from_end = int(kSettings.size()) - focus_;
+  return {{Nav::Accept, from_end == 1 ? "Exit" : from_end == 2 ? "Open" : "Change"}, {Nav::Back, "Back"}};
 }
 
 void SettingsPage::paintEvent(QPaintEvent*) {
@@ -89,6 +99,8 @@ void SettingsPage::paintEvent(QPaintEvent*) {
       kind == kButtonKinds.end() ? "Match controller" : kind->second,
       prefs.big_screen_large_text.value_or(false) ? "Large" : "Standard",
       prefs.big_screen_at_start.value_or(false) ? "On" : "Off",
+      prefs.start_on_login.value_or(false) ? "On" : "Off",
+      QString(),
       QString(),
   };
   const double list_w = std::min(kListW * u, width() * 0.55);
