@@ -211,14 +211,14 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
                            qreal device_pixel_ratio) {
   const QString scaled_key = id + '@' + QString::number(tile.width());
   TouchTitle(id);
-  if (const auto cached = scaled_.constFind(scaled_key); cached != scaled_.constEnd())
-    return *cached;
-
+  // Before the cached copy, which may be a placeholder drawn for a request since dropped.
   if (!answered_.contains(id)) {
     // Drawn at this size as soon as it lands.
     if (!quick_ && !queued_.contains(id)) wanted_[id] = {{tile, device_pixel_ratio}};
     Request(id);
   }
+  if (const auto cached = scaled_.constFind(scaled_key); cached != scaled_.constEnd())
+    return *cached;
 
   if (const auto thumb = thumbs_.constFind(id); thumb != thumbs_.constEnd()) {
     // Fetched again for this size, the small copy stretched meanwhile.
@@ -279,8 +279,10 @@ void ArtworkStore::PrefetchTitle(const QString& source, const QString& ref, QSiz
   const QString id = source + "-" + ref;
   titles_.insert(id, {source.toStdString(), ref.toStdString()});
   TouchTitle(id);
-  if (quick_ || queued_.contains(id) || scaled_.contains(id + '@' + QString::number(tile.width()))) return;
+  if (quick_ || queued_.contains(id)) return;
   const bool held = thumbs_.contains(id);
+  // A placeholder is cached too, so only an answered title's copy counts.
+  if (answered_.contains(id) && scaled_.contains(id + '@' + QString::number(tile.width()))) return;
   if (answered_.contains(id) && !held) return;  // it has none
   wanted_[id] = {{tile, device_pixel_ratio}};
   if (held) refetching_.insert(id);
@@ -416,7 +418,11 @@ void ArtworkStore::InvalidateAllRenderings() {
 }
 
 void ArtworkStore::Request(const QString& id, bool ahead) {
-  if (queued_.contains(id)) return;
+  if (queued_.contains(id)) {
+    // Drawn now: no longer behind the tiles below the screen.
+    if (!ahead && ahead_.removeOne(id)) pending_.enqueue(id);
+    return;
+  }
   queued_.insert(id);
   (ahead ? ahead_ : pending_).enqueue(id);
   Pump();
