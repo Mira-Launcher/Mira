@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -80,6 +81,10 @@ Result<void> CheckReady(const config::Config& config);
 // isn't installed, same as everything else here. `pasted` may also be the
 // whole JSON page kLoginUrl ends on; the code is pulled out of it.
 Result<void> Login(const config::Config& config, const std::string& pasted);
+
+// The authorization code in copied text: the JSON page, Firefox's JSON viewer
+// copied as text, or the bare code. nullopt when there's none.
+std::optional<std::string> FindCode(std::string_view text);
 
 Result<void> Logout(const config::Config& config);
 

@@ -36,6 +36,12 @@ namespace fs = std::filesystem;
 
 std::mutex state_mutex;
 std::map<std::string, std::string> states;  // launcher id -> running, finished, failed
+std::vector<std::string> queued_office_apps;  // asked for while Microsoft 365 was installing
+
+std::vector<std::string> TakeQueuedOfficeApps() {
+  const std::lock_guard lock(state_mutex);
+  return std::exchange(queued_office_apps, {});
+}
 
 void SetState(const Launcher& launcher, std::string state) {
   const std::lock_guard lock(state_mutex);
@@ -494,6 +500,7 @@ const std::vector<Launcher>& All() {
     Launcher m365;
     m365.id = "office";
     m365.name = "Microsoft 365";
+    m365.kind = "apps";
     // Set up is the prefix and the Edge WebView2 runtime Office signs in with; each app is then installed
     // on its own through SetOfficeApps.
     m365.exe = "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe";
@@ -562,6 +569,35 @@ Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api:
   loghub::End(LogChannel(launcher));
   SetState(launcher, done ? "finished" : "failed");
   return done;
+}
+
+bool QueueOfficeApps(const std::vector<std::string>& apps) {
+  const std::lock_guard lock(state_mutex);
+  if (states["office"] != "running") return false;
+  for (const std::string& app : apps) {
+    if (!std::ranges::contains(queued_office_apps, app)) queued_office_apps.push_back(app);
+  }
+  return true;
+}
+
+void DropQueuedOfficeApps() { TakeQueuedOfficeApps(); }
+
+Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
+                           std::vector<std::string> apps) {
+  Result<void> done;
+  for (std::vector<std::string> more = TakeQueuedOfficeApps();; more = TakeQueuedOfficeApps()) {
+    for (std::string& app : more) {
+      if (!std::ranges::contains(apps, app)) apps.push_back(std::move(app));
+    }
+    if (apps.empty() || !done) return done;
+    const auto host = games.Find(GameId(*Find("office")));
+    std::vector<std::string> wanted = host ? InstalledOfficeApps(*host) : std::vector<std::string>{};
+    for (std::string& app : apps) {
+      if (!std::ranges::contains(wanted, app)) wanted.push_back(std::move(app));
+    }
+    apps.clear();
+    done = SetOfficeApps(config, games, events, std::move(wanted));
+  }
 }
 
 bool BeginInstall(const Launcher& launcher) {

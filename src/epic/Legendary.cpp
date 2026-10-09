@@ -7,6 +7,7 @@
 #include <format>
 #include <fstream>
 #include <ranges>
+#include <regex>
 #include <string>
 #include <string_view>
 
@@ -113,15 +114,20 @@ Result<void> CheckReady(const config::Config& config) {
   return runner::CheckStoreReady(kTool, Status(config));
 }
 
-Result<void> Login(const config::Config& config, const std::string& pasted) {
-  std::string code = strings::Trim(pasted);
-  if (code.starts_with('{')) {
-    const json page = json::parse(code, nullptr, false);
-    if (page.is_discarded() || !page.contains("authorizationCode") || !page["authorizationCode"].is_string()) {
-      return Err("invalid_code", "that looks like JSON but has no \"authorizationCode\" field");
-    }
-    code = page["authorizationCode"].get<std::string>();
+std::optional<std::string> FindCode(std::string_view text) {
+  static const std::regex field(R"re(authorizationCode"?\s*:?\s*"([0-9a-fA-F]{32})")re");
+  static const std::regex bare(R"(^\s*([0-9a-fA-F]{32})\s*$)");
+  std::match_results<std::string_view::const_iterator> match;
+  if (std::regex_search(text.begin(), text.end(), match, field) ||
+      std::regex_match(text.begin(), text.end(), match, bare)) {
+    return match[1].str();
   }
+  return std::nullopt;
+}
+
+Result<void> Login(const config::Config& config, const std::string& pasted) {
+  std::string code = FindCode(pasted).value_or(strings::Trim(pasted));
+  if (code.starts_with('{')) return Err("invalid_code", "that looks like JSON but has no \"authorizationCode\" field");
   if (code.empty()) return Err("invalid_code", "no code entered");
   // legendary's own exit code is not trustworthy here: `auth --code` with an
   // invalid or expired code still exits 0, only reporting the failure as an

@@ -79,6 +79,13 @@ Result<void> CheckReady(const config::Config& config) {
   return runner::CheckStoreReady(kTool, Status(config));
 }
 
+std::optional<std::string> FindKey(std::string_view text) {
+  static const std::regex key(R"(^\s*([A-Za-z0-9]{32,64})\s*$)");
+  std::match_results<std::string_view::const_iterator> match;
+  if (!std::regex_match(text.begin(), text.end(), match, key)) return std::nullopt;
+  return match[1].str();
+}
+
 Result<void> Login(const config::Config& config, const std::string& pasted_key) {
   const std::string api_key = strings::Trim(pasted_key);
   // Checked before anything is written, so a bad key can't log out a working one.

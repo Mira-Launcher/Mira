@@ -206,6 +206,42 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     });
   });
 
+  http.Get("/v1/steam/accounts", [&s](const Request&, Response& res) {
+    json accounts = json::array();
+    std::string selected = s.config.GetString("steam.steamid64");
+    const auto root = steam::FindSteamRoot(s.config);
+    if (root) {
+      for (const steam::SteamAccount& account : steam::Accounts(*root)) {
+        accounts.push_back({{"steamid64", account.steamid64},
+                            {"account_name", account.account_name},
+                            {"persona_name", account.persona_name},
+                            {"most_recent", account.most_recent}});
+      }
+    }
+    if (selected.empty() && !accounts.empty()) selected = accounts.front()["steamid64"];
+    SendJson(res, {{"found", root.has_value()}, {"accounts", accounts}, {"selected", selected}});
+  });
+
+  http.Get("/v1/steam/installed", [&s](const Request&, Response& res) {
+    const auto root = steam::FindSteamRoot(s.config);
+    if (!root) return SendJson(res, {{"found", false}, {"games", json::array()}});
+    const auto activity = steam::ReadAppActivity(*root, s.config.GetString("steam.steamid64"));
+    const auto played = [&activity](const std::string& appid) {
+      const auto it = activity.find(appid);
+      return it == activity.end() ? std::int64_t{0} : it->second.last_played_at;
+    };
+    std::vector<steam::SteamApp> apps = steam::ListApps(*root);
+    std::ranges::stable_sort(apps, std::greater{},
+                             [&played](const steam::SteamApp& app) { return played(app.appid); });
+    json games = json::array();
+    for (const steam::SteamApp& app : apps) {
+      json game = {{"appid", app.appid}, {"name", app.name}};
+      if (const std::int64_t at = played(app.appid); at > 0) game["last_played_at"] = at;
+      games.push_back(std::move(game));
+    }
+    SendJson(res, {{"found", true}, {"games", games}});
+  });
+
   http.Post("/v1/steam/status", [&s](const Request& req, Response& res) {
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
     if (body.is_discarded() || !body.is_object())
@@ -238,6 +274,11 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   });
 
   // --- lutris -----------------------------------------------------------
+
+  http.Get("/v1/lutris", [&s](const Request&, Response& res) {
+    const auto dir = lutris::FindLutrisDataDir(s.config);
+    SendJson(res, {{"found", dir.has_value()}, {"data_dir", dir ? dir->string() : ""}});
+  });
 
   http.Post("/v1/lutris/import", [&s](const Request& req, Response& res) {
     s.StartJob(req, res, "import", "lutris", "Importing from Lutris", [&s](JobRegistry::Progress&) -> Result<json> {

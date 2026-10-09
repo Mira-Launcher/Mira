@@ -7,6 +7,7 @@
 #include <fstream>
 #include <optional>
 #include <ranges>
+#include <regex>
 
 #include <json.hpp>
 
@@ -84,12 +85,15 @@ Result<void> CheckReady(const config::Config& config) {
   return runner::CheckStoreReady(kTool, Status(config));
 }
 
+std::optional<std::string> FindCode(std::string_view text) {
+  static const std::regex code(R"([?&]code=([^&\s]+))");
+  std::match_results<std::string_view::const_iterator> match;
+  if (!std::regex_search(text.begin(), text.end(), match, code)) return std::nullopt;
+  return match[1].str();
+}
+
 Result<void> Login(const config::Config& config, const std::string& pasted) {
-  std::string code = strings::Trim(pasted);
-  if (const size_t marker = code.find("code="); marker != std::string::npos) {
-    code = code.substr(marker + 5);
-    code = code.substr(0, code.find('&'));
-  }
+  const std::string code = FindCode(pasted).value_or(strings::Trim(pasted));
   if (code.empty()) return Err("invalid_code", "no code entered");
   // Same posture as epic::Login: verify by re-reading what gogdl actually
   // wrote, not by trusting a nonzero/zero exit code: gogdl's own `auth`

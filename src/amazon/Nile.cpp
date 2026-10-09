@@ -8,6 +8,7 @@
 #include <mutex>
 #include <optional>
 #include <ranges>
+#include <regex>
 
 #include "core/Json.h"
 #include "core/StoreErrors.h"
@@ -84,6 +85,13 @@ Result<std::string> BeginLogin(const config::Config& config) {
   return parsed.value("url", std::string());
 }
 
+std::optional<std::string> FindCode(std::string_view text) {
+  static const std::regex code(R"(openid\.oa2\.authorization_code=([^&\s]+))");
+  std::match_results<std::string_view::const_iterator> match;
+  if (!std::regex_search(text.begin(), text.end(), match, code)) return std::nullopt;
+  return match[1].str();
+}
+
 Result<void> FinishLogin(const config::Config& config, const std::string& redirect) {
   json pending;
   {
@@ -94,12 +102,7 @@ Result<void> FinishLogin(const config::Config& config, const std::string& redire
     }
     pending = *pending_login;
   }
-  constexpr std::string_view kMarker = "openid.oa2.authorization_code=";
-  std::string code = redirect;
-  if (const std::size_t at = redirect.find(kMarker); at != std::string::npos) {
-    const std::size_t start = at + kMarker.size();
-    code = redirect.substr(start, redirect.find('&', start) - start);
-  }
+  const std::string code = FindCode(redirect).value_or(redirect);
   if (auto registered = RunNile(config, {"register", "--code", code, "--client-id", pending.value("client_id", ""),
                                          "--code-verifier", pending.value("code_verifier", ""), "--serial",
                                          pending.value("serial", "")});

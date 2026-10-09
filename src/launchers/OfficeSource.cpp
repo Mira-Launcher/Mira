@@ -29,10 +29,7 @@ Result<void> OfficeSource::Install(config::Config& config, store::GameStore& gam
   if (std::ranges::find(apps, ref, &office::App::ref) == apps.end()) {
     return Err("unknown_app", std::format("Microsoft 365 has no app \"{}\"", ref));
   }
-  const auto host = games.Find(GameId(*Find("office")));
-  std::vector<std::string> wanted = host ? InstalledOfficeApps(*host) : std::vector<std::string>{};
-  if (!std::ranges::contains(wanted, ref)) wanted.push_back(ref);
-  return SetOfficeApps(config, games, events, std::move(wanted));
+  return AddOfficeApps(config, games, events, {ref});
 }
 
 }  // namespace mira::launchers

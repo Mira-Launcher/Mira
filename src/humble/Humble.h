@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,6 +42,10 @@ runner::AuthStatus Status(const config::Config& config);
 // logged-in browser session (documented in humble-cli's own README).
 // There's no login URL/code flow the way Epic/GOG have).
 Result<void> Login(const config::Config& config, const std::string& session_key);
+
+// The text itself when it is shaped like that cookie's value ("eyJ…|<time>|<signature>", quoted or
+// not), else nullopt.
+std::optional<std::string> FindSessionKey(std::string_view text);
 
 struct BundleSummary {
   std::string key;

@@ -386,6 +386,12 @@ Steam games are ordinary games with `runner_ref` `steam:<appid>`.
 ### `POST /v1/steam/scan`
 Reads Steam's `libraryfolders.vdf`, `appmanifest_*.acf` and `compatdata/<id>/config_info` directly and adds or updates installed games. A [job](#jobs) whose result is `{"added": 2, "updated": 0}`. A rescan updates `name`, `install_path` and `data_dir` and leaves user settings alone. `exe_path` is never filled in, because Steam keeps the launch command in its `appinfo` cache; only `steam.launch_mode: "direct"` needs it.
 
+### `GET /v1/steam/accounts`
+Whether Steam is installed, and the accounts that have signed in to it on this computer, from `config/loginusers.vdf`: `{"found", "accounts": [{"steamid64", "account_name", "persona_name", "most_recent"}], "selected"}`. The one Steam flags as most recent comes first, then the newest sign-ins. `selected` is `steam.steamid64`, or the first account while that's empty, which is the account owned games and playtime are read for. Without Steam, `found` is false and both are empty.
+
+### `GET /v1/steam/installed`
+The games Steam has installed here, read the same way as `POST /v1/steam/scan` but without adding them: `{"found", "games": [{"appid", "name", "last_played_at"}]}`, the most recently played first (from the `selected` account's `localconfig.vdf`). `last_played_at` is left out for a game never played. Without Steam, `found` is false and `games` is empty.
+
 ### `POST /v1/steam/shortcut`
 Body `{"exe", "launch_options"}`. Keeps a non-Steam shortcut named "Mira" running `exe` with `launch_options` in every Steam account's `userdata/<id>/config/shortcuts.vdf`, so Big Picture can switch to Mira. An existing "Mira" entry is updated in place, other shortcuts are kept, and an unchanged file isn't rewritten. Answers `{"status": "ok", "added": [ids], "updated": [ids]}`, or `{"status": "disabled"}` with `steam.mira_shortcut` off. `404 steam_not_found` without Steam, `500 shortcuts_unreadable` for a file Mira can't parse (it's left alone). Steam shows a new shortcut after it restarts. The GUI calls this at start with its own path and `--big-screen`.
 
@@ -396,6 +402,9 @@ Opens Steam's Big Picture through `steam steam://open/bigpicture`, starting Stea
 Body `{"status": "online" | "invisible"}`. Sets the Steam friends status through `steam steam://friends/status/<status>` and answers `{"status": "invisible"}`. Steam can't report the status back, so there is no GET. Answers 409 `steam_not_running` while Steam isn't running (by `~/.steam/steam.pid`), since the URL would start the client just to set a status, and 400 `invalid_status` for any other value.
 
 ## Lutris
+
+### `GET /v1/lutris`
+Whether Lutris is on this computer: `{"found", "data_dir"}`, found by its `pga.db` (`lutris.data_dir`, else `$XDG_DATA_HOME/lutris`). `data_dir` is empty when not found.
 
 ### `POST /v1/lutris/import`
 Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config (`lutris.data_dir` overrides where to look) and imports `wine` and `linux` runner games. A [job](#jobs) whose result is:
@@ -416,14 +425,15 @@ Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five s
 
 - `GET /v1/stores`: `[{"id", "name", "tool_name", "can_import", "can_logout"}]`.
 - `GET /v1/stores/{id}/status`: `{id, name, tool, authenticated, account}`. `account` is only known for Epic. `tool` is `{"installed", "source", "path", "version"}`, where `source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy in `~/.config/mira/tools`), `path` or `none`, in that order. A missing tool is not an error.
-- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`.
+- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`. Setups of one store run one at a time; one asked for while another runs stops once that has installed the tool.
 - `POST /v1/stores/{id}/login/begin`: `{url}`, the page to sign in at. Amazon makes a fresh one each time.
 - `POST /v1/stores/{id}/login`: body `{"credential": "..."}`. Returns the status. What the credential is depends on the store:
-  - Epic: the `authorizationCode`, or the whole JSON the login page shows. Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
+  - Epic: the `authorizationCode`, or the whole page the login ends on (the JSON, or Firefox's JSON viewer copied as text). Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
   - GOG: the `code` from the redirect URL, or the whole URL. An expired token is refreshed once.
   - itch: an API key from [itch.io/user/settings/api-keys](https://itch.io/user/settings/api-keys), checked with butler straight away.
   - Amazon: the amazon.com URL the login ends on, or its `openid.oa2.authorization_code`, after `login/begin`.
   - Humble: the `_simpleauth_sess` cookie from a logged-in browser.
+- `POST /v1/stores/{id}/login/find`: body `{"text": "..."}`, text the user copied. Answers `{"credential": "..."}` when it holds what `login` takes, else `{"credential": null}`, so a client can sign in as soon as the right thing is on the clipboard. Stricter than `login`: a bare GOG or Amazon code isn't recognised (only the URL), an itch key or Humble cookie only when the text is nothing but that.
 - `POST /v1/stores/{id}/logout`: forgets the sign-in. `400 logout_unsupported` for Humble, whose tool keeps its own session.
 - `POST /v1/stores/{id}/import`: a [job](#jobs) (kind `import`) that adds the games the store's tool reports as installed, with the store as their `source`, and provisions a prefix for each. Result `{added, updated}`. `400 import_unsupported` for Humble.
 
@@ -459,10 +469,13 @@ Wraps [humble-cli](https://github.com/smbl64/humble-cli). Humble has no installs
 Battle.net, Ubisoft Connect and the EA app have no Linux client, so each is installed into its own prefix (game `launcher-<id>`). Games installed through a launcher are imported as `<id>-<ref>` with source `battlenet`, `ubisoft` or `ea`, sharing its prefix and runner. Microsoft 365 (`office`) works the same way: its install sets up the prefix with the [mira-winapp-shims](https://github.com/Mira-Launcher/mira-winapp-shims) DLLs and Microsoft's Edge WebView2 runtime. Its apps (Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher) are then a library source like a store: `GET /v1/library?source=office` lists them and `POST /v1/library/install` installs one through the Office Deployment Tool, for the edition in `launchers.office.plan`, as `office-<app>`, tagged `app`. Deleting an app's files runs the Office Deployment Tool without it. Office signs in and checks the subscription itself; Mira never sees the account. `launchers.auto_import` imports on every scan. umu's `STORE` and, when known, `GAMEID` are set so protonfixes apply.
 
 ### `GET /v1/launchers`
-`[{id, name, game_id, installed, install_state, interactive_install, packages, prefix, runner_ref, error}]`. `install_state` is `idle`, `running`, `finished` or `failed`. `packages` is the feature whose system packages installing it needs (`winetricks`, see `GET /v1/system/packages`), or empty.
+`[{id, name, kind, game_id, installed, install_state, interactive_install, packages, prefix, runner_ref, error}]`. `kind` is `games` for a game launcher, or `apps` for one that brings applications (Microsoft 365). `install_state` is `idle`, `running`, `finished` or `failed`. `packages` is the feature whose system packages installing it needs (`winetricks`, see `GET /v1/system/packages`), or empty. Microsoft 365 also lists `apps: [{ref, name}]`, installed or not, so they can be picked before Office is.
 
 ### `POST /v1/launchers/{id}/install`
 Creates the prefix, runs the winetricks steps, then the installer: silent for Ubisoft and EA, shown for Battle.net. Imports games afterwards. A job (kind `install`). `409 install_running`. Events: `launcher.install.*`; `launcher.install.progress` (`progress` 0..1) when the installer reports how far along it is (Microsoft 365 does).
+
+### `POST /v1/launchers/office/apps`
+Body `{"apps": ["word", "excel", ...]}`: Microsoft 365 apps to add to the installed ones, in one run of the Office Deployment Tool. While Microsoft 365 is installing (its prefix, or other apps), they're kept and added when that ends, answering `200 {"status": "queued"}`; a failed install drops them. Otherwise a [job](#jobs) (kind `install`, target `office`). `400 unknown_app`, `409 launcher_not_installed`. A failed run publishes `launcher.install.failed`.
 
 ### `POST /v1/launchers/{id}/import`
 A [job](#jobs) whose result is `{added, updated}`. Battle.net games are found by their default folders, Ubisoft games by registry keys and EA games by `__Installer/installerdata.xml`. `409 launcher_not_installed`.

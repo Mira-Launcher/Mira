@@ -1,7 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "config/Config.h"
@@ -56,6 +58,9 @@ inline constexpr std::string_view kLoginUrl =
 // client_id/client_secret (confirmed in heroic-gogdl's auth.py) -- Mira
 // never needs its own.
 Result<void> Login(const config::Config& config, const std::string& pasted);
+
+// The code in a copied redirect URL; nullopt for text that isn't one.
+std::optional<std::string> FindCode(std::string_view text);
 
 // Just removes AuthConfigPath -- gogdl has no "auth --delete" the way
 // Legendary does.
