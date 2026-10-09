@@ -10,8 +10,8 @@
 
 namespace mira_gui::bigscreen {
 
-// Settings for the couch, in sections: the controller (a page of its own), the
-// screen and sound, apps, and the system (power, updates, leaving big screen).
+// Settings for the couch: a short list of sub pages (controller, screen and sound,
+// apps, system, power) and Exit.
 class SettingsPage : public Page {
   Q_OBJECT
 
@@ -35,19 +35,25 @@ private:
     std::function<void(int)> change;
     // What A does on an action row.
     std::function<void()> act;
+    // The sub page A opens, or -1.
+    int page = -1;
+  };
+  struct SubPage {
+    QString title;
+    std::vector<Row> rows;
   };
 
   void Build();
   void PaintTest(QPainter& painter, double u);
 
-  void OpenController();
-  void CloseController();
+  void Open(int page);
+  void Close();
+  const std::vector<Row>& rows() const { return page_ < 0 ? main_rows_ : pages_[size_t(page_)].rows; }
 
-  // The rows shown: the main list, or the controller's page.
-  std::vector<Row> rows_;
   std::vector<Row> main_rows_;
-  std::vector<Row> controller_rows_;
-  bool in_controller_ = false;
+  std::vector<SubPage> pages_;
+  // The sub page shown, or -1 for the main list.
+  int page_ = -1;
   int focus_ = 0;
   // Where the main list was, to return to.
   int main_focus_ = 0;

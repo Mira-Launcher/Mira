@@ -47,7 +47,7 @@ SettingsPage::SettingsPage(BigScreenWindow* window) : Page(window) {
 }
 
 void SettingsPage::Shown() {
-  if (in_controller_) CloseController();
+  if (page_ >= 0) Close();
   testing_ = false;
   test_refresh_.stop();
   update();
@@ -70,7 +70,7 @@ void SettingsPage::Build() {
     return [w, field, fallback] { return OnOff((w->prefs().*field).value_or(fallback)); };
   };
 
-  controller_rows_ = {
+  const std::vector<Row> controller = {
       {"Buttons", "Button labels", "Which names the button hints use. Match controller reads them from the controller.",
        [w] { return LabelOf(kButtonKinds, w->prefs().big_screen_buttons.value_or("auto")); },
        edit([](FrontendPrefs& p, int step) { p.big_screen_buttons = Cycle(kButtonKinds, p.big_screen_buttons.value_or("auto"), step); }),
@@ -99,69 +99,78 @@ void SettingsPage::Build() {
        }}
   };
 
-  main_rows_ = {
-      {"Controller", "Controller settings", "Button labels, which button selects, stick sensitivity, scroll speed, vibration and a button test.",
-       [w] { return w->input().pads().empty() ? QString("No controller") : w->input().pads().front().name; }, {},
-       [this] { OpenController(); }},
-
-      {"Screen and sound", "Text size", "Large scales everything up by 15%, for a TV across the room.",
-       [w] { return w->prefs().big_screen_large_text.value_or(false) ? "Large" : "Standard"; },
-       flip(&FrontendPrefs::big_screen_large_text, false), {}},
-      {"Screen and sound", "Sounds", "Short sounds as you move around and pick things.", shows(&FrontendPrefs::big_screen_sounds, true),
-       flip(&FrontendPrefs::big_screen_sounds, true), {}},
-      {"Screen and sound", "Trailers", "A muted trailer plays behind a game after a few seconds on it.",
-       shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}},
-
-      {"Apps", "Show applications", "Lists apps alongside games. Apps tagged media always show, in their own row.",
-       shows(&FrontendPrefs::big_screen_show_apps, false), flip(&FrontendPrefs::big_screen_show_apps, false), {}},
-      {"Apps", "Add a streaming app", "Netflix, YouTube and others, full screen in your browser with their own sign-in.",
-       {}, {}, [w] {
-         std::vector<std::pair<QString, std::function<void()>>> entries;
-         for (const WebApp& app : StreamingApps()) {
-           entries.emplace_back(app.name, [w, app] {
-             AddWebApp(w, app, [w, name = app.name](const QString& error) {
-               w->Toast(error.isEmpty() ? name + " is on Home, in Media" : error);
-             });
-           });
-         }
-         entries.emplace_back("Cancel", [] {});
-         w->ShowMenu("Add a streaming app", std::move(entries));
-       }},
-      {"Apps", "Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back.", {}, {},
-       [w] { w->OpenSteamBigPicture(); }},
-
-      {"System", "Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen.",
-       shows(&FrontendPrefs::big_screen_at_start, false), flip(&FrontendPrefs::big_screen_at_start, false), {}},
-      {"System", "Start Mira when you log in", "Adds Mira to your desktop's autostart.", shows(&FrontendPrefs::start_on_login, false),
-       flip(&FrontendPrefs::start_on_login, false), {}},
-      {"System", "Sleep when idle", "Suspends the computer after this long on big screen with nothing playing or installing.",
-       [w] { return LabelOf(kIdle, w->prefs().big_screen_idle_suspend.value_or(0)); },
-       edit([](FrontendPrefs& p, int step) { p.big_screen_idle_suspend = Cycle(kIdle, p.big_screen_idle_suspend.value_or(0), step); }),
-       {}},
-      {"System", "Update system", "Upgrades the system's packages. Your password is asked for, with the on-screen keyboard to type it.",
-       [w] { return w->UpdateStatus(); }, {}, [w] { w->UpdateSystem(); }},
-      {"System", "Suspend", "Puts the computer to sleep.", {}, {}, [w] { w->PowerAction("Suspend"); }},
-      {"System", "Restart", "Restarts the computer.", {}, {}, [w] {
-         w->Confirm("Restart the computer?", "Anything running is closed.", "Restart", [w] { w->PowerAction("Reboot"); });
-       }},
-      {"System", "Shut down", "Turns the computer off.", {}, {}, [w] {
-         w->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down", [w] { w->PowerAction("PowerOff"); });
-       }},
-      {"System", "Exit big screen", "Back to the desktop library.", {}, {}, [w] { w->Exit(); }},
+  pages_ = {
+      {"Controller", controller},
+      {"Screen and sound", {
+          {"", "Text size", "Large scales everything up by 15%, for a TV across the room.",
+           [w] { return w->prefs().big_screen_large_text.value_or(false) ? "Large" : "Standard"; },
+           flip(&FrontendPrefs::big_screen_large_text, false), {}},
+          {"", "Sounds", "Short sounds as you move around and pick things.", shows(&FrontendPrefs::big_screen_sounds, true),
+           flip(&FrontendPrefs::big_screen_sounds, true), {}},
+          {"", "Trailers", "A muted trailer plays behind a game after a few seconds on it.",
+           shows(&FrontendPrefs::big_screen_trailers, true), flip(&FrontendPrefs::big_screen_trailers, true), {}}
+      }},
+      {"Apps", {
+          {"", "Show applications", "Lists apps alongside games. Apps tagged media always show, in their own row.",
+           shows(&FrontendPrefs::big_screen_show_apps, false), flip(&FrontendPrefs::big_screen_show_apps, false), {}},
+          {"", "Add a streaming app", "Netflix, YouTube and others, full screen in your browser with their own sign-in.",
+           {}, {}, [w] {
+             std::vector<std::pair<QString, std::function<void()>>> entries;
+             for (const WebApp& app : StreamingApps()) {
+               entries.emplace_back(app.name, [w, app] {
+                 AddWebApp(w, app, [w, name = app.name](const QString& error) {
+                   w->Toast(error.isEmpty() ? name + " is on Home, in Media" : error);
+                 });
+               });
+             }
+             entries.emplace_back("Cancel", [] {});
+             w->ShowMenu("Add a streaming app", std::move(entries));
+           }},
+          {"", "Switch to Steam Big Picture", "Opens Steam's Big Picture. Mira is in its library to come back.", {}, {},
+           [w] { w->OpenSteamBigPicture(); }}
+      }},
+      {"System", {
+          {"", "Open in big screen when Mira starts", "The same as starting Mira with mira-gui --big-screen.",
+           shows(&FrontendPrefs::big_screen_at_start, false), flip(&FrontendPrefs::big_screen_at_start, false), {}},
+          {"", "Start Mira when you log in", "Adds Mira to your desktop's autostart.", shows(&FrontendPrefs::start_on_login, false),
+           flip(&FrontendPrefs::start_on_login, false), {}},
+          {"", "Sleep when idle", "Suspends the computer after this long on big screen with nothing playing or installing.",
+           [w] { return LabelOf(kIdle, w->prefs().big_screen_idle_suspend.value_or(0)); },
+           edit([](FrontendPrefs& p, int step) { p.big_screen_idle_suspend = Cycle(kIdle, p.big_screen_idle_suspend.value_or(0), step); }),
+           {}},
+          {"", "Update system", "Upgrades the system's packages. Your password is asked for, with the on-screen keyboard to type it.",
+           [w] { return w->UpdateStatus(); }, {}, [w] { w->UpdateSystem(); }}
+      }},
+      {"Power", {
+          {"", "Suspend", "Puts the computer to sleep.", {}, {}, [w] { w->PowerAction("Suspend"); }},
+          {"", "Restart", "Restarts the computer.", {}, {}, [w] {
+             w->Confirm("Restart the computer?", "Anything running is closed.", "Restart", [w] { w->PowerAction("Reboot"); });
+           }},
+          {"", "Shut down", "Turns the computer off.", {}, {}, [w] {
+             w->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down", [w] { w->PowerAction("PowerOff"); });
+           }}
+      }},
   };
-  rows_ = main_rows_;
+
+  main_rows_ = {
+      {"", "Controller", "Button labels, which button selects, stick sensitivity, scroll speed, vibration and a button test.",
+       [w] { return w->input().pads().empty() ? QString("No controller") : w->input().pads().front().name; }, {}, {}, 0},
+      {"", "Screen and sound", "Text size, sounds and trailers.", {}, {}, {}, 1},
+      {"", "Apps", "Show applications, add a streaming app, or switch to Steam Big Picture.", {}, {}, {}, 2},
+      {"", "System", "Starting big screen, sleeping when idle, and system updates.", [w] { return w->UpdateStatus(); }, {}, {}, 3},
+      {"", "Power", "Suspend, restart or shut down the computer.", {}, {}, {}, 4},
+      {"", "Exit big screen", "Back to the desktop library.", {}, {}, [w] { w->Exit(); }},
+  };
 }
 
-void SettingsPage::OpenController() {
+void SettingsPage::Open(int page) {
   main_focus_ = focus_;
-  rows_ = controller_rows_;
-  in_controller_ = true;
+  page_ = page;
   focus_ = 0;
 }
 
-void SettingsPage::CloseController() {
-  rows_ = main_rows_;
-  in_controller_ = false;
+void SettingsPage::Close() {
+  page_ = -1;
   focus_ = main_focus_;
 }
 
@@ -178,21 +187,23 @@ bool SettingsPage::Navigate(Nav nav) {
     }
     return true;
   }
-  Row& row = rows_[size_t(focus_)];
+  const std::vector<Row>& rows = this->rows();
+  const Row& row = rows[size_t(focus_)];
   switch (nav) {
     case Nav::Up: focus_ = std::max(0, focus_ - 1); break;
-    case Nav::Down: focus_ = std::min(int(rows_.size()) - 1, focus_ + 1); break;
+    case Nav::Down: focus_ = std::min(int(rows.size()) - 1, focus_ + 1); break;
     case Nav::Left:
     case Nav::Right:
       if (row.change) row.change(nav == Nav::Right ? 1 : -1);
       break;
     case Nav::Accept:
-      if (row.act) row.act();
+      if (row.page >= 0) Open(row.page);
+      else if (row.act) row.act();
       else if (row.change) row.change(1);
       break;
     case Nav::Back:
-      if (!in_controller_) return false;
-      CloseController();
+      if (page_ < 0) return false;
+      Close();
       break;
     default: return false;
   }
@@ -203,9 +214,9 @@ bool SettingsPage::Navigate(Nav nav) {
 
 QList<Hint> SettingsPage::Hints() const {
   if (testing_) return {};
-  const Row& row = rows_[size_t(focus_)];
-  return {{Nav::Accept, row.act ? (row.label == "Exit big screen" ? "Exit" : "Select") : "Change"},
-          {Nav::Back, in_controller_ ? "Settings" : "Back"}};
+  const Row& row = rows()[size_t(focus_)];
+  const QString accept = row.page >= 0 ? "Open" : !row.act ? "Change" : row.label == "Exit big screen" ? "Exit" : "Select";
+  return {{Nav::Accept, accept}, {Nav::Back, page_ >= 0 ? "Settings" : "Back"}};
 }
 
 void SettingsPage::PaintTest(QPainter& painter, double u) {
@@ -272,14 +283,18 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   painter.fillRect(rect(), QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 170));
   painter.setFont(Font(u, 2.0, QFont::ExtraBold));
   painter.setPen(tokens.text);
-  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), testing_ ? "Test buttons" : in_controller_ ? "Controller" : "Settings");
+  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), testing_ ? "Test buttons" : page_ >= 0 ? pages_[size_t(page_)].title : "Settings");
   if (testing_) return PaintTest(painter, u);
 
-  // Rows top to bottom with a heading where each section starts, in units before scrolling.
+  const std::vector<Row>& rows = this->rows();
+  // Rows top to bottom with a heading where each named section starts, in units before scrolling.
+  const auto heads = [&rows](size_t i) {
+    return !rows[i].section.isEmpty() && (i == 0 || rows[i].section != rows[i - 1].section);
+  };
   std::vector<double> tops;
   double y = kTop + 3.2;
-  for (size_t i = 0; i < rows_.size(); ++i) {
-    if (i == 0 || rows_[i].section != rows_[i - 1].section) y += kHeadH;
+  for (size_t i = 0; i < rows.size(); ++i) {
+    if (heads(i)) y += kHeadH;
     tops.push_back(y);
     y += kRowH + 0.5;
   }
@@ -289,11 +304,11 @@ void SettingsPage::paintEvent(QPaintEvent*) {
   const double list_w = std::min(kListW * u, width() * 0.55);
   painter.save();
   painter.setClipRect(QRectF(0, (kTop + 2.6) * u, width(), height()));
-  for (size_t i = 0; i < rows_.size(); ++i) {
-    const Row& row = rows_[i];
+  for (size_t i = 0; i < rows.size(); ++i) {
+    const Row& row = rows[i];
     const double top = (tops[i] - scroll) * u;
     if (top > height()) break;
-    if (i == 0 || row.section != rows_[i - 1].section) {
+    if (heads(i)) {
       painter.setFont(Font(u, 0.95, QFont::Bold));
       painter.setPen(tokens.text_muted);
       painter.drawText(QPointF(kMargin * u, top - u * 0.8), row.section.toUpper());
@@ -307,15 +322,18 @@ void SettingsPage::paintEvent(QPaintEvent*) {
     painter.setFont(Font(u, 1.1, QFont::Bold));
     painter.setPen(tokens.text);
     painter.drawText(inner, Qt::AlignVCenter | Qt::AlignLeft, row.label);
-    if (row.value) {
+    // Arrows either side where left and right change it, one after where A opens a page.
+    QString value = row.value ? row.value() : QString();
+    if (row.change) value = "‹  " + value + "  ›";
+    else if (row.page >= 0) value = value.isEmpty() ? "›" : value + "   ›";
+    if (!value.isEmpty()) {
       painter.setFont(Font(u, 1.0, QFont::DemiBold));
-      // Arrows only where left and right change it.
-      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, row.change ? "‹  " + row.value() + "  ›" : row.value());
+      painter.drawText(inner, Qt::AlignVCenter | Qt::AlignRight, value);
     }
   }
   painter.restore();
   // What the focused setting does.
-  const Row& row = rows_[size_t(focus_)];
+  const Row& row = rows[size_t(focus_)];
   const QRectF help((kMargin * 2) * u + list_w, (kTop + 3.2) * u, width() - list_w - kMargin * 3 * u, 12 * u);
   painter.setPen(Qt::NoPen);
   painter.setBrush(QColor(255, 255, 255, 12));
