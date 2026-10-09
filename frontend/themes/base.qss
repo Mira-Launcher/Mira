@@ -882,7 +882,7 @@ QLabel#step_title[state="todo"] {
 
 QLabel#step_marker {
   border: 1px solid @border;
-  border-radius: 13px;
+  border-radius: 11px;
   color: @text_muted;
   font-weight: 600;
 }
@@ -955,6 +955,32 @@ QWidget#segmented QPushButton:checked {
   background: @accent;
   color: @on_accent;
   font-weight: 600;
+}
+
+/* A pick among a few: a store tile, a drive, a plan. Checked is outlined and washed in the accent. */
+QPushButton#choice_card {
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+  padding: 8px 14px;
+  text-align: left;
+}
+
+QPushButton#choice_card:hover {
+  border-color: @accent;
+}
+
+QPushButton#choice_card:checked {
+  background: @accent_soft;
+  border: 1px solid @accent;
+}
+
+QPushButton#choice_card:focus:!checked {
+  border: 1px dashed @accent;
+}
+
+QPushButton#choice_card:disabled {
+  color: @text_muted;
 }
 
 

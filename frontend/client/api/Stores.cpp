@@ -217,15 +217,59 @@ LoginUrlResult BeginStoreLoginSync(const std::string& source) {
       });
 }
 
+FoundCredentialResult FindStoreCredentialSync(const std::string& source, const std::string& text) {
+  const std::string path = StorePath(source, "login/find");
+  return ReadReply<FoundCredentialResult>(
+      transport::PostJson(path, {{"text", text}}), "POST " + path, Shape::Object,
+      [](FoundCredentialResult& result, const json& body) {
+        if (body.contains("credential") && body["credential"].is_string()) {
+          result.credential = body["credential"].get<std::string>();
+        }
+      });
+}
+
+SteamAccountsResult GetSteamAccountsSync() {
+  return ReadReply<SteamAccountsResult>(
+      transport::Get("/v1/steam/accounts"), "GET /v1/steam/accounts", Shape::Object,
+      [](SteamAccountsResult& result, const json& body) {
+        for (const json& entry : body.value("accounts", json::array())) {
+          if (!entry.is_object()) continue;
+          result.accounts.push_back({entry.value("steamid64", std::string()),
+                                     entry.value("account_name", std::string()),
+                                     entry.value("persona_name", std::string())});
+        }
+        result.selected = body.value("selected", std::string());
+        result.found = body.value("found", false);
+      });
+}
+
+SteamInstalledResult GetSteamInstalledSync() {
+  return ReadReply<SteamInstalledResult>(
+      transport::Get("/v1/steam/installed"), "GET /v1/steam/installed", Shape::Object,
+      [](SteamInstalledResult& result, const json& body) {
+        for (const json& entry : body.value("games", json::array())) {
+          if (!entry.is_object()) continue;
+          result.games.push_back(
+              {entry.value("appid", std::string()), entry.value("name", std::string())});
+        }
+        result.found = body.value("found", false);
+      });
+}
+
 LaunchersResult GetLaunchersSync() {
   return ReadReply<LaunchersResult>(
       transport::Get("/v1/launchers"), "GET /v1/launchers", Shape::Array,
       [](LaunchersResult& result, const json& body) {
         for (const json& entry : body) {
           if (!entry.is_object()) continue;
+          std::vector<LauncherApp> apps;
+          for (const json& app : entry.value("apps", json::array())) {
+            apps.push_back({app.value("ref", std::string()), app.value("name", std::string())});
+          }
           result.launchers.push_back(
               {.id = entry.value("id", std::string()),
                .name = entry.value("name", std::string()),
+               .kind = entry.value("kind", std::string("games")),
                .game_id = entry.value("game_id", std::string()),
                .installed = entry.value("installed", false),
                .install_state = entry.value("install_state", std::string()),
@@ -233,9 +277,16 @@ LaunchersResult GetLaunchersSync() {
                .packages = entry.value("packages", std::string()),
                .prefix = entry.value("prefix", std::string()),
                .runner_ref = entry.value("runner_ref", std::string()),
-               .error = entry.value("error", std::string())});
+               .error = entry.value("error", std::string()),
+               .apps = std::move(apps)});
         }
       });
+}
+
+StoreActionResult AddOfficeAppsSync(const std::vector<std::string>& refs) {
+  const transport::Reply reply =
+      transport::PostJson("/v1/launchers/office/apps", json{{"apps", refs}});
+  return {reply.ok, reply.error};
 }
 
 StoreActionResult InstallLauncherSync(const std::string& id) {
@@ -399,6 +450,19 @@ void BeginStoreLoginAsync(QObject* context, const std::string& source,
   async::Run(context, [source] { return BeginStoreLoginSync(source); }, std::move(callback));
 }
 
+void FindStoreCredentialAsync(QObject* context, const std::string& source, const std::string& text,
+                              std::function<void(FoundCredentialResult)> callback) {
+  async::Run(context, [source, text] { return FindStoreCredentialSync(source, text); }, std::move(callback));
+}
+
+void GetSteamAccountsAsync(QObject* context, std::function<void(SteamAccountsResult)> callback) {
+  async::Run(context, [] { return GetSteamAccountsSync(); }, std::move(callback));
+}
+
+void GetSteamInstalledAsync(QObject* context, std::function<void(SteamInstalledResult)> callback) {
+  async::Run(context, [] { return GetSteamInstalledSync(); }, std::move(callback));
+}
+
 void GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> callback) {
   async::Run(context, [] { return GetLaunchersSync(); }, std::move(callback));
 }
@@ -406,6 +470,11 @@ void GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> ca
 void InstallLauncherAsync(QObject* context, const std::string& id,
                           std::function<void(StoreActionResult)> callback) {
   async::Run(context, [id] { return InstallLauncherSync(id); }, std::move(callback));
+}
+
+void AddOfficeAppsAsync(QObject* context, const std::vector<std::string>& refs,
+                        std::function<void(StoreActionResult)> callback) {
+  async::Run(context, [refs] { return AddOfficeAppsSync(refs); }, std::move(callback));
 }
 
 void ImportLauncherAsync(QObject* context, const std::string& id,

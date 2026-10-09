@@ -762,6 +762,13 @@ struct SteamScanResult {
 };
 
 // POST /v1/lutris/import.
+// GET /v1/lutris.
+struct LutrisStatusResult {
+  bool ok = false;
+  ApiError error;
+  bool found = false;
+};
+
 struct LutrisImportResult {
   bool ok = false;
   ApiError error;
@@ -1201,9 +1208,16 @@ struct HumbleLibraryResult {
 };
 
 // GET /v1/launchers: Battle.net, Ubisoft Connect, the EA app.
+// An application a launcher can add, such as Word for Microsoft 365.
+struct LauncherApp {
+  std::string ref;
+  std::string name;
+};
+
 struct LauncherInfo {
   std::string id;  // also the `source` of the games imported through it
   std::string name;
+  std::string kind;     // "games", or "apps" for one that brings applications
   std::string game_id;  // the launcher's own game record
   bool installed = false;
   std::string install_state;  // "idle" | "running" | "finished" | "failed"
@@ -1212,6 +1226,7 @@ struct LauncherInfo {
   std::string prefix;
   std::string runner_ref;
   ApiError error;
+  std::vector<LauncherApp> apps;  // Microsoft 365's, listed before it's installed too
 };
 
 struct LaunchersResult {
@@ -1225,6 +1240,39 @@ struct LoginUrlResult {
   bool ok = false;
   ApiError error;
   std::string url;
+};
+
+// POST /v1/stores/{id}/login/find: the credential in copied text, empty when it holds none.
+struct FoundCredentialResult {
+  bool ok = false;
+  ApiError error;
+  std::string credential;
+};
+
+// GET /v1/steam/accounts.
+struct SteamAccount {
+  std::string steamid64;
+  std::string account_name;
+  std::string persona_name;
+};
+struct SteamAccountsResult {
+  bool ok = false;
+  ApiError error;
+  bool found = false;  // Steam is installed
+  std::vector<SteamAccount> accounts;  // most recent first
+  std::string selected;                // the steamid64 owned games are read for
+};
+
+// GET /v1/steam/installed: what a Steam import would add, most recently played first.
+struct SteamInstalledGame {
+  std::string appid;
+  std::string name;
+};
+struct SteamInstalledResult {
+  bool ok = false;
+  ApiError error;
+  bool found = false;
+  std::vector<SteamInstalledGame> games;
 };
 
 // A store helper's setup, a library install/update, a Humble download or a

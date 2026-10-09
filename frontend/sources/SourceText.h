@@ -13,8 +13,6 @@ namespace mira_gui {
 struct SourceCopy {
   QString blurb;  // one line under the page title
   QString tool;   // stores: the helper mirad drives
-  QString sign_in_steps;
-  QString credential_placeholder;
   QString import_button;  // empty: no import
   QString item = "game";   // what it imports, singular
 };

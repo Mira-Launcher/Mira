@@ -90,11 +90,23 @@ void DownloadHumbleBundleAsync(QObject* context, const std::string& bundle_key,
 void BeginStoreLoginAsync(QObject* context, const std::string& source,
                           std::function<void(LoginUrlResult)> callback);
 
+// The credential in text the user copied (mirad knows each store's shape), empty when there's none.
+void FindStoreCredentialAsync(QObject* context, const std::string& source, const std::string& text,
+                              std::function<void(FoundCredentialResult)> callback);
+
+void GetSteamAccountsAsync(QObject* context, std::function<void(SteamAccountsResult)> callback);
+void GetSteamInstalledAsync(QObject* context, std::function<void(SteamInstalledResult)> callback);
+
 void GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> callback);
 
 // Detached; a StoreEvent with kind "setup" and the launcher's id follows.
 void InstallLauncherAsync(QObject* context, const std::string& id,
                           std::function<void(StoreActionResult)> callback);
+
+// POST /v1/launchers/office/apps: adds these Microsoft 365 apps, now or once its running install
+// ends. Detached; a launcher.install.failed event says when adding them failed.
+void AddOfficeAppsAsync(QObject* context, const std::vector<std::string>& refs,
+                        std::function<void(StoreActionResult)> callback);
 
 void ImportLauncherAsync(QObject* context, const std::string& id,
                          std::function<void(StoreImportResult)> callback);
