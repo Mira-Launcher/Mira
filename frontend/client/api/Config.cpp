@@ -154,6 +154,10 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("tile_source_mark", result.prefs.tile_source_mark);
   read_bool("tile_pin_badge", result.prefs.tile_pin_badge);
   read_bool("source_page_tabs", result.prefs.source_page_tabs);
+  read_string("big_screen_buttons", result.prefs.big_screen_buttons);
+  read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
+  read_bool("big_screen_show_uninstalled", result.prefs.big_screen_show_uninstalled);
+  read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
   read_bool("onboarded", result.prefs.onboarded);
   read_string("primary_use", result.prefs.primary_use);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
@@ -238,6 +242,10 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.tile_source_mark) table["tile_source_mark"] = *prefs.tile_source_mark;
   if (prefs.tile_pin_badge) table["tile_pin_badge"] = *prefs.tile_pin_badge;
   if (prefs.source_page_tabs) table["source_page_tabs"] = *prefs.source_page_tabs;
+  if (prefs.big_screen_buttons) table["big_screen_buttons"] = *prefs.big_screen_buttons;
+  if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
+  if (prefs.big_screen_show_uninstalled) table["big_screen_show_uninstalled"] = *prefs.big_screen_show_uninstalled;
+  if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.primary_use) table["primary_use"] = *prefs.primary_use;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;

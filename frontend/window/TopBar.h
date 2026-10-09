@@ -27,6 +27,7 @@ class TopBar : public QWidget {
 
  signals:
   void ActivityClicked();
+  void BigScreenClicked();
   void RefreshClicked();
   void ShortcutsClicked();
   void AboutClicked();
@@ -43,6 +44,7 @@ class TopBar : public QWidget {
 
   QSlider* zoom_ = nullptr;
   QToolButton* activity_ = nullptr;
+  QToolButton* big_screen_ = nullptr;
   QToolButton* refresh_ = nullptr;
   QToolButton* shortcuts_ = nullptr;
   QToolButton* about_ = nullptr;

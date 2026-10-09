@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
   const QString runtime_dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/mira";
   QDir().mkpath(runtime_dir);
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
+  // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
+  const bool big_screen = app.arguments().contains("--big-screen");
   if (!single_instance_lock.tryLock(0)) {
     // Ask the instance already holding the lock to raise its own window
     // instead of just quietly doing nothing -- see the QLocalServer set up
@@ -40,7 +42,7 @@ int main(int argc, char** argv) {
     QLocalSocket socket;
     socket.connectToServer("mira-gui-activate");
     if (socket.waitForConnected(200)) {
-      socket.write("activate");
+      socket.write(big_screen ? "big-screen" : "activate");
       socket.waitForBytesWritten(200);
     }
     return 0;
@@ -69,7 +71,7 @@ int main(int argc, char** argv) {
   // ourselves if nothing is already listening, so the AppImage works as one
   // self-contained app with no systemd unit required.
   auto* supervisor = new mira_gui::DaemonSupervisor(&app);
-  QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [] {
+  QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen] {
     // Read once and applied before the window exists, so it opens at its saved
     // size and look instead of changing once shown.
     const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
@@ -87,7 +89,11 @@ int main(int argc, char** argv) {
     // A no-op on a desktop with no tray (Tray.cpp): window->close() then
     // means exactly what it always did.
     mira_gui::tray::Attach(window);
-    window->show();
+    if (big_screen || prefs.big_screen_at_start.value_or(false)) {
+      window->OpenBigScreen();
+    } else {
+      window->show();
+    }
 
     // Raises this window when a second launch pings "activate". removeServer
     // clears a stale socket left by a crashed instance.
@@ -97,11 +103,17 @@ int main(int argc, char** argv) {
     QObject::connect(activation_server, &QLocalServer::newConnection, window, [activation_server, window] {
       QLocalSocket* client = activation_server->nextPendingConnection();
       QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
-      if (window->isMinimized()) window->showNormal();
-      window->show();
-      window->raise();
-      window->activateWindow();
-      client->disconnectFromServer();
+      QObject::connect(client, &QLocalSocket::readyRead, window, [client, window] {
+        if (client->readAll() == "big-screen") {
+          window->OpenBigScreen();
+        } else {
+          if (window->isMinimized()) window->showNormal();
+          window->show();
+          window->raise();
+          window->activateWindow();
+        }
+        client->disconnectFromServer();
+      });
     });
   });
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Failed, &app, [](QString error) {

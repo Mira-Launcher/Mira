@@ -852,6 +852,12 @@ struct FrontendPrefs {
   // Source pages split installed and not installed games into tabs; off
   // stacks both sections.
   std::optional<bool> source_page_tabs;
+  // Big screen: button labels ("auto", "xbox", "ps", "nin"), text 15% larger, whether Home lists
+  // owned games that aren't installed, and whether Mira opens in big screen.
+  std::optional<std::string> big_screen_buttons;
+  std::optional<bool> big_screen_large_text;
+  std::optional<bool> big_screen_show_uninstalled;
+  std::optional<bool> big_screen_at_start;
   // Set once the first-run wizard has been through (or skipped).
   std::optional<bool> onboarded;
   // What Mira is mostly for: "games", "apps" or "both" (the default). Tunes

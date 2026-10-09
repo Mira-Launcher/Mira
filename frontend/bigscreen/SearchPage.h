@@ -1,0 +1,37 @@
+#pragma once
+
+#include <vector>
+
+#include "Page.h"
+
+namespace mira_gui::bigscreen {
+
+// An on-screen keyboard, store filters and the games that match, installed
+// or not.
+class SearchPage : public Page {
+  Q_OBJECT
+
+public:
+  explicit SearchPage(BigScreenWindow* window);
+
+  bool Navigate(Nav nav) override;
+  QList<Hint> Hints() const override;
+  void Shown() override;
+
+protected:
+  void paintEvent(QPaintEvent* event) override;
+
+private:
+  enum class Zone { Keys, Filters, Results };
+  void Search();
+
+  QString query_;
+  QStringList filters_;  // "All", "Installed", then source ids
+  std::vector<Item> results_;
+  Zone zone_ = Zone::Keys;
+  int key_ = 0;
+  int filter_ = 0;
+  int result_ = 0;
+};
+
+}  // namespace mira_gui::bigscreen

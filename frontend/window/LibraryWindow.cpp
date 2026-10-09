@@ -27,6 +27,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../activity/DownloadsPanel.h"
+#include "../bigscreen/BigScreenWindow.h"
 #include "../dialogs/LogWindow.h"
 #include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
@@ -191,6 +192,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, [this] { Reload(/*force_scan=*/true); });
   connect(top_bar_, &mira_gui::TopBar::ShortcutsClicked, this, [this] { common_.reference->trigger(); });
   connect(top_bar_, &mira_gui::TopBar::AboutClicked, this, &LibraryWindow::OpenAbout);
+  connect(top_bar_, &mira_gui::TopBar::BigScreenClicked, this, &LibraryWindow::OpenBigScreen);
   // Without an explicit cursor here, a resize cursor FramelessRoot set at its
   // edge margin would keep showing over the whole window after the drag ends.
   top_bar_->setCursor(Qt::ArrowCursor);
@@ -1756,4 +1758,23 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     }
     added_timer_->start();
   }
+}
+
+void LibraryWindow::OpenBigScreen() {
+  if (big_screen_ == nullptr) {
+    // A child, so it never outlives the library state it reads.
+    big_screen_ = new mira_gui::bigscreen::BigScreenWindow(services(), this);
+    big_screen_->setAttribute(Qt::WA_DeleteOnClose);
+    connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::Closed, this, [this] {
+      show();
+      raise();
+      activateWindow();
+    });
+  }
+  hide();
+  // Sized first: without a window manager, fullscreen alone leaves it at its default size.
+  big_screen_->setGeometry(screen()->geometry());
+  big_screen_->showFullScreen();
+  big_screen_->raise();
+  big_screen_->activateWindow();
 }
