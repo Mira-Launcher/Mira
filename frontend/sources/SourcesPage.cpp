@@ -19,6 +19,7 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Library.h"
+#include "../client/api/Stores.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -210,12 +211,17 @@ void SourcesPage::OpenSetup(const QString& id) {
   } else {
     setup_card_->ShowStore(/*tool_installed=*/true, /*authenticated=*/false);
   }
-  connect(setup_card_, &SourceSetupCard::StatusChanged, this, [this, id] {
-    if (id != "steam") {
-      CloseSetup();
+  // Done here, or already signed in from before: either way it's set up now.
+  const auto added = [this, id] {
+    CloseSetup();
+    api::AddSourceAsync(this, id.toStdString(), [this, id](PatchConfigResult r) {
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      emit Imported(id);
       emit OpenRequested(id);
-      return;
-    }
+    });
+  };
+  connect(setup_card_, &SourceSetupCard::StatusChanged, this, [this, id, added] {
+    if (id != "steam") return added();
     CloseSetup();
     api::ScanSteamAsync(this, [this, id](SteamScanResult r) {
       if (!r.ok) return notify::FailedRequest(this, "Could not scan the Steam library.", r.error);
@@ -223,10 +229,7 @@ void SourcesPage::OpenSetup(const QString& id) {
       emit OpenRequested(id);
     });
   });
-  connect(setup_card_, &SourceSetupCard::LauncherInstallStarted, this, [this, id] {
-    CloseSetup();
-    emit OpenRequested(id);
-  });
+  connect(setup_card_, &SourceSetupCard::LauncherInstallStarted, this, added);
 
   setup_scroll_->setWidget(setup_card_);
   setup_card_->installEventFilter(this);  // the panel grows as mirad answers

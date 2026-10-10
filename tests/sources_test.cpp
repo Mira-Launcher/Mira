@@ -241,6 +241,14 @@ TEST_CASE("A switched-off source's games are left out of the library unless incl
   };
   CHECK_FALSE(std::ranges::contains(ids(Get(client, "/v1/games")), std::string("steam-570")));
   CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")), std::string("steam-570")));
+
+  // Setting it up again turns it back on.
+  client.Patch("/v1/sources/steam", R"({"added": false})", "application/json");
+  client.Patch("/v1/sources/steam", R"({"added": true})", "application/json");
+  CHECK(server.games().Source("steam").enabled);
+  server.games().SaveSource({.id = "gog", .added = false, .enabled = false});
+  server.games().MarkSourceAdded("gog", false);
+  CHECK(server.games().Source("gog").enabled);
 }
 
 TEST_CASE("An unknown source can't be planned or removed") {

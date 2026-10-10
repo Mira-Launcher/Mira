@@ -326,6 +326,11 @@ PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> ena
   return {reply.ok, reply.error};
 }
 
+PatchConfigResult AddSourceSync(const std::string& id) {
+  const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), json{{"added", true}});
+  return {reply.ok, reply.error};
+}
+
 PatchConfigResult SetSourceOrderSync(const std::vector<std::string>& ids) {
   const json body = {{"order", ids}};
   const transport::Reply reply = transport::Put("/v1/sources/order", body.dump(), "application/json");
@@ -343,6 +348,10 @@ void PatchSourceAsync(QObject* context, const std::string& id, std::optional<boo
   async::Run(
       context, [id, enabled, in_sidebar] { return PatchSourceSync(id, enabled, in_sidebar); },
       std::move(callback));
+}
+
+void AddSourceAsync(QObject* context, const std::string& id, std::function<void(PatchConfigResult)> callback) {
+  async::Run(context, [id] { return AddSourceSync(id); }, std::move(callback));
 }
 
 void SetSourceOrderAsync(QObject* context, const std::vector<std::string>& ids,

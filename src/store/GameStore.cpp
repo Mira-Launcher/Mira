@@ -401,8 +401,9 @@ void GameStore::MarkSourceAdded(const std::string& id, bool imported) {
     log::Warn("could not mark the source {} added: {}", id, done.error().message);
     return;
   }
-  auto update = imported ? db_.Prepare("UPDATE sources SET added = 1, imported_at = ? WHERE id = ?")
-                         : db_.Prepare("UPDATE sources SET added = 1 WHERE id = ?");
+  // Newly added: on too. SET reads the old row, so `added` here is before this update.
+  auto update = imported ? db_.Prepare("UPDATE sources SET enabled = enabled OR NOT added, added = 1, imported_at = ? WHERE id = ?")
+                         : db_.Prepare("UPDATE sources SET enabled = enabled OR NOT added, added = 1 WHERE id = ?");
   if (!update) return;
   auto& bound = imported ? update->Bind(1, model::NowSeconds()).Bind(2, id) : update->Bind(1, id);
   if (auto done = bound.Run(); !done) {

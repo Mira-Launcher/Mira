@@ -377,7 +377,9 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     const auto flag = [&body](const char* key, bool& field) {
       if (body->contains(key) && (*body)[key].is_boolean()) field = (*body)[key].get<bool>();
     };
+    const bool was_added = state.added;
     flag("added", state.added);
+    if (state.added && !was_added) state.enabled = true;  // setting a source up means wanting its games
     flag("enabled", state.enabled);
     flag("in_sidebar", state.in_sidebar);
     s.games.SaveSource(state);

@@ -20,6 +20,8 @@ void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callb
 // PATCH /v1/sources/{id}: only the fields given change.
 void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
                       std::optional<bool> in_sidebar, std::function<void(PatchConfigResult)> callback);
+// PATCH /v1/sources/{id} {"added": true}: set up, which also turns it on.
+void AddSourceAsync(QObject* context, const std::string& id, std::function<void(PatchConfigResult)> callback);
 // PUT /v1/sources/order: the sidebar order, every source id first to last.
 void SetSourceOrderAsync(QObject* context, const std::vector<std::string>& ids,
                          std::function<void(PatchConfigResult)> callback);

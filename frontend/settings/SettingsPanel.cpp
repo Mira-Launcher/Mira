@@ -211,7 +211,6 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
       if (fields_[i].entry.source != source_id) continue;
       AddSchemaRow(card, i);
     }
-    card->SetCollapsible(/*collapsed=*/true);
   }
 }
 
