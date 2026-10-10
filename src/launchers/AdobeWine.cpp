@@ -101,13 +101,15 @@ Result<void> Prepare(const runner::RunnerRegistry& runners, const model::Game& h
   fs::create_directories(downloads, ec);
   const fs::path reg = downloads / "adobe-settings.reg";
   // Photoshop divides by zero at start on Windows 11's build; WebView2 presents through a composition
-  // swapchain only Wine's own dxgi has; a title bar resizes Adobe's maximised windows and leaves panels undrawn.
+  // swapchain only Wine's own dxgi has; a title bar resizes Adobe's maximised windows and leaves panels undrawn;
+  // and Wine's own tray window, opened when it finds no desktop tray, stays hidden.
   std::ofstream(reg) << "Windows Registry Editor Version 5.00\n\n"
                         "[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\Photoshop.exe]\n\"Version\"=\"win10\"\n\n"
                         "[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\msedgewebview2.exe\\DllOverrides]\n"
                         "\"dxgi\"=\"builtin\"\n\"d3d11\"=\"builtin\"\n\n"
                         "[HKEY_CURRENT_USER\\Software\\Wine\\Drivers]\n\"Graphics\"=\"x11\"\n\n"
                         "[HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver]\n\"Decorated\"=\"N\"\n\n"
+                        "[HKEY_CURRENT_USER\\Software\\Wine\\Explorer]\n\"ShowSystray\"=dword:00000000\n\n"
                         "[HKEY_CURRENT_USER\\Software\\Wine\\WineDbg]\n\"ShowCrashDialog\"=dword:00000000\n";
   std::string windows_reg = "Z:" + reg.string();
   std::ranges::replace(windows_reg, '/', '\\');
