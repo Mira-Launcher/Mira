@@ -583,6 +583,8 @@ QWidget* SourcePage::BuildOwnedSection() {
     if (index.data(GameTileDelegate::ActionEnabledRole).toBool() && owned_grid_->on_action) owned_grid_->on_action(index);
   });
   layout->addWidget(owned_grid_);
+  // Takes any height the section is given while the grid resizes, which otherwise spread the chips' rows apart.
+  layout->addStretch(1);
   return owned_section_;
 }
 
