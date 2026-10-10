@@ -19,7 +19,7 @@
 #include "store/GameStore.h"
 
 // Store launchers with no Linux client (Battle.net, Ubisoft Connect, EA
-// app), and Microsoft 365: each is installed once into its own prefix, and
+// app), Microsoft 365 and Adobe Creative Cloud: each is installed once into its own prefix, and
 // the games or apps it installs are imported as Mira games sharing that
 // prefix and launched through it.
 namespace mira::launchers {
@@ -50,8 +50,13 @@ struct Launcher {
   std::vector<Setup> setups;              // run in order; none: the last winetricks verb installs it
   std::vector<std::string> tricks;        // winetricks verbs run before the installer
   bool interactive = false;               // the installer needs clicking through
-  std::string kind = "games";             // what it brings: "games", or "apps" (Microsoft 365)
+  std::string kind = "games";             // what it brings: "games", or "apps" (Microsoft 365, Creative Cloud)
   std::map<std::string, std::string> env;
+  // The runner family its prefix needs, at `min_runner` or newer, unless launchers.runner names one.
+  std::string runner_family;
+  std::string min_runner;
+  // Registers mshtml, which prefixes are made without: its installer shows pages through it.
+  bool needs_mshtml = false;
 };
 
 const std::vector<Launcher>& All();
@@ -97,8 +102,8 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
 // the game once the launcher starts it ("c:/program files (x86)/hearthstone").
 std::string WindowsDir(const model::Game& game);
 
-// What tracks the game while it runs: WindowsDir, or for a Microsoft 365 app
-// its own exe, since all of them share one folder.
+// What tracks the game while it runs: WindowsDir, or for an app (Word, Photoshop)
+// its own exe, since Microsoft 365's share one folder.
 std::string TrackedPath(const model::Game& game);
 
 // Host path of a Windows path inside `prefix`.

@@ -44,10 +44,6 @@ SignInGuide Launcher(const QString& name, const QString& games) {
   guide.steps = {"Install " + name + ". It runs in the background.",
                  "Open " + name + " and sign in there.",
                  "Install games in " + name + ". Mira adds them to your library."};
-  guide.sketch.title = name;
-  guide.sketch.parts = {Part(Kind::Heading, "Log in"), Part(Kind::Field, "Email or phone"),
-                        Part(Kind::Field, "Password"), Part(Kind::Button, "Log in", true)};
-  guide.sketch.caption = "After installing: you sign in here, inside " + name + ".";
   guide.done = "Installed";
   return guide;
 }
@@ -153,6 +149,12 @@ SignInGuide GuideFor(const std::string& id) {
     guide = Launcher("EA app", "EA games");
   } else if (id == "ubisoft") {
     guide = Launcher("Ubisoft Connect", "Ubisoft games");
+  } else if (id == "adobe") {
+    guide = Launcher("Adobe Creative Cloud", "Photoshop, Illustrator and the other Creative Cloud apps");
+    guide.steps = {"Install Creative Cloud. Its installer opens; the mouse pointer may be hidden in it.",
+                   "Sign in with your Adobe account there.",
+                   "Install apps in Creative Cloud, then press Import apps. Mira adds them under Apps."};
+    guide.note = "The first install also downloads Wine staging-tkg, which Creative Cloud needs.";
   } else if (id == "office") {
     guide.title = "Microsoft 365";
     guide.line =

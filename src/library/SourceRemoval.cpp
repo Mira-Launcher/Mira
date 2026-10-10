@@ -93,10 +93,11 @@ Result<void> DeleteKeeping(const fs::path& dir, const std::vector<std::string>& 
 }
 
 // A launcher's program folder, relative to drive_c. EA keeps versioned
-// folders one level up from its exe.
+// folders one level up from its exe, Creative Cloud its helpers.
 fs::path ProgramDir(const launchers::Launcher& launcher) {
   const fs::path dir = fs::path(launcher.exe).parent_path();
   if (launcher.id == "office") return "Program Files/Microsoft Office";
+  if (launcher.id == "adobe") return dir.parent_path();
   return launcher.id == "ea" ? dir.parent_path() : dir;
 }
 

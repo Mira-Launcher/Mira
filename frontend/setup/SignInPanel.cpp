@@ -174,15 +174,18 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   left->addStretch(1);
   columns->addLayout(left, /*stretch=*/1);
 
-  auto* right = new QVBoxLayout();
-  right->setSpacing(6);
-  sketch_ = new BrowserSketch(body_);
-  right->addWidget(sketch_);
-  caption_ = MakeLabel(body_, QString(), "muted");
-  caption_->setTextFormat(Qt::RichText);
-  right->addWidget(caption_);
-  right->addStretch(1);
-  columns->addLayout(right, /*stretch=*/1);
+  // A launcher signs in inside itself once installed: its card is just the install.
+  if (mode_ != Mode::Launcher) {
+    auto* right = new QVBoxLayout();
+    right->setSpacing(6);
+    sketch_ = new BrowserSketch(body_);
+    right->addWidget(sketch_);
+    caption_ = MakeLabel(body_, QString(), "muted");
+    caption_->setTextFormat(Qt::RichText);
+    right->addWidget(caption_);
+    right->addStretch(1);
+    columns->addLayout(right, /*stretch=*/1);
+  }
   layout->addWidget(body_);
 
   // Picked up from the clipboard once the page is open; pasting is the fallback.
@@ -255,8 +258,10 @@ bool SignInPanel::eventFilter(QObject* watched, QEvent* event) {
 void SignInPanel::ShowBrowser(bool other) {
   other_browser_ = other;
   const Sketch& sketch = other ? guide_.other_sketch : guide_.sketch;
-  sketch_->SetSketch(sketch);
-  ShowLine(caption_, sketch.caption, "muted");
+  if (sketch_ != nullptr) {
+    sketch_->SetSketch(sketch);
+    ShowLine(caption_, sketch.caption, "muted");
+  }
   ShowSteps();
 }
 

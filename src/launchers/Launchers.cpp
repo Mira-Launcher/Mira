@@ -25,6 +25,7 @@
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
 #include "runner/Curl.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -367,6 +368,48 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   return {};
 }
 
+// mshtml's registration (its text/html handler), skipped when the prefix was made with mshtml turned off.
+Result<void> RegisterMshtml(const runner::RunnerRegistry& runners, const model::Game& game) {
+  const auto resolved = runners.Resolve(game.runner_ref);
+  if (!resolved) return std::unexpected(resolved.error());
+  for (const char* dir : {"system32", "syswow64"}) {
+    model::Game run_as = game;
+    run_as.install_path = (fs::path(game.data_dir) / "drive_c/windows" / dir).string();
+    run_as.exe_path = "regsvr32.exe";
+    run_as.args = "/s mshtml.dll";
+    auto command = resolved->runner->BuildCommand(run_as, resolved->build);
+    if (!command) return std::unexpected(command.error());
+    const auto ran = runner::RunAndWait(*command);
+    if (!ran) return std::unexpected(ran.error());
+    if (ran->exit_code != 0) {
+      return Err("install_failed", std::format("registering mshtml in {} failed (exit {})", dir, ran->exit_code));
+    }
+  }
+  return {};
+}
+
+// The newest installed build of the launcher's runner family, downloading the family's newest release if none will do.
+Result<std::string> FamilyRunner(config::Config& config, const Launcher& launcher) {
+  if (auto build = runner::RunnerRegistry(config).NewestOfFamily(launcher.runner_family, launcher.min_runner)) {
+    return build->Reference();
+  }
+  const auto family = runner::FindFamily(config, launcher.runner_family);
+  if (!family) return Err("runner_build_not_found", std::format("no runner family \"{}\"", launcher.runner_family));
+  const auto releases = runner::ListFamilyReleases(*family);
+  if (!releases) return std::unexpected(releases.error());
+  if (releases->empty()) return Err("runner_build_not_found", std::format("{} has no release to download", family->label));
+  Say(launcher, std::format("Downloading {}: {} needs {} {} or newer", runner::ReleaseName(family->kind, releases->front()),
+                            launcher.name, family->label, launcher.min_runner));
+  if (auto installed = runner::DownloadAndInstall(config, family->kind, releases->front()); !installed) {
+    return std::unexpected(installed.error());
+  }
+  if (auto build = runner::RunnerRegistry(config).NewestOfFamily(launcher.runner_family, launcher.min_runner)) {
+    return build->Reference();
+  }
+  return Err("runner_build_not_found", std::format("{} {} or newer isn't installed", family->label, launcher.min_runner),
+             "", Fix::Runners());
+}
+
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher,
                                 const std::function<void(double)>& on_progress) {
   // Before the prefix and downloads, rather than failing at the first winetricks verb.
@@ -384,6 +427,11 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
+  if (game.runner_ref.empty() && !launcher.runner_family.empty()) {
+    auto ref = FamilyRunner(config, launcher);
+    if (!ref) return std::unexpected(ref.error());
+    game.runner_ref = *ref;
+  }
   if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();
   game.status = model::GameStatus::SettingUp;
   game.last_error.clear();
@@ -414,6 +462,10 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
       Say(launcher, std::format("winetricks {} ({}/{})", verb, ++trick, launcher.tricks.size()));
       const auto on_output = [&launcher](std::string_view chunk) { loghub::Append(LogChannel(launcher), chunk); };
       if (auto tricked = runner::RunTricksVerb(runners, game, verb, on_output); !tricked) return std::unexpected(tricked.error());
+    }
+    if (launcher.needs_mshtml) {
+      Say(launcher, "Registering mshtml");
+      if (auto registered = RegisterMshtml(runners, game); !registered) return std::unexpected(registered.error());
     }
     if (launcher.id == "office") {
       Say(launcher, "Writing Microsoft 365's settings and installing its compatibility shims");
@@ -468,6 +520,10 @@ std::string WithoutNoise(std::string_view text) {
 
 const std::vector<Launcher>& All() {
   static const std::vector<Launcher> kLaunchers = [] {
+    // The Edge WebView2 runtime, which sign-in windows and installers draw with.
+    const Setup kWebView2{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
+                          "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe", nullptr, {}, {}, true};
+
     Launcher battlenet;
     battlenet.id = "battlenet";
     battlenet.name = "Battle.net";
@@ -503,13 +559,34 @@ const std::vector<Launcher>& All() {
     m365.kind = "apps";
     // Set up is the prefix and the Edge WebView2 runtime Office signs in with; each app is then installed
     // on its own through SetOfficeApps.
-    m365.exe = "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe";
+    m365.exe = kWebView2.done;
     m365.tricks = {"corefonts", "msxml6", "riched20", "gdiplus"};
-    m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
-                    "", nullptr, {}, {}, true}};
+    m365.setups = {kWebView2};
     // Office presents with sync interval 0; under DXVK that tears into flicker.
     m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
-    return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
+    Launcher adobe;
+    adobe.id = "adobe";
+    adobe.name = "Adobe Creative Cloud";
+    adobe.kind = "apps";
+    adobe.exe = "Program Files (x86)/Adobe/Adobe Creative Cloud/ACC/Creative Cloud.exe";
+    adobe.tricks = {"dxvk"};
+    // Adobe's installer signs in on an mshtml page, so it needs mshtml registered and Wine Gecko, which prefixes are
+    // made without, and Wine-Staging's mshtml and thread pool fixes (11.10).
+    const Setup kGecko64{"https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi",
+                         "wine-gecko-2.47.4-x86_64.msi", {"/quiet"}, "windows/system32/gecko/2.47.4/wine_gecko/xul.dll",
+                         nullptr};
+    const Setup kGecko32{"https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86.msi",
+                         "wine-gecko-2.47.4-x86.msi", {"/quiet"}, "windows/syswow64/gecko/2.47.4/wine_gecko/xul.dll",
+                         nullptr};
+    adobe.setups = {kGecko64, kGecko32, kWebView2,
+                    {"https://prod-rel-ffc-ccm.oobesaas.adobe.com/adobe-ffc-external/core/v1/wam/download"
+                     "?sapCode=KCCC&productName=Creative%20Cloud&os=win",
+                     "creative-cloud-setup.exe", {}, "", nullptr}};
+    adobe.interactive = true;
+    adobe.needs_mshtml = true;
+    adobe.runner_family = "wine_staging_tkg";
+    adobe.min_runner = "11.10";
+    return std::vector<Launcher>{battlenet, ubisoft, ea, m365, adobe};
   }();
   return kLaunchers;
 }
@@ -662,8 +739,8 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
     }
   }
   run_as.args.clear();
-  // A Microsoft 365 app is its own program in the shared prefix.
-  if (launcher->id == "office" && game.source != "launcher" && !game.exe_path.empty()) {
+  // An app (Word, Photoshop) is its own program in the shared prefix.
+  if (launcher->kind == "apps" && game.source != "launcher" && !game.exe_path.empty()) {
     run_as.install_path = game.install_path;
     run_as.exe_path = game.exe_path;
     // Proton's default verb waits for the prefix's running apps to exit first, so a second app wouldn't
@@ -705,7 +782,10 @@ std::string WindowsDir(const model::Game& game) {
 }
 
 std::string TrackedPath(const model::Game& game) {
-  if (game.source == "office" && !game.exe_path.empty()) return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
+  const Launcher* launcher = ForGame(game);
+  if (launcher && launcher->kind == "apps" && game.source != "launcher" && !game.exe_path.empty()) {
+    return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
+  }
   return WindowsDir(game);
 }
 

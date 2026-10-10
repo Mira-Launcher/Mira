@@ -49,6 +49,11 @@ SourceCopy CopyFor(const std::string& id) {
             "365 subscription.",
             "", "Import apps", "app"};
   }
+  if (id == "adobe") {
+    return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on Wine-Staging. "
+            "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
+            "", "Import apps", "app"};
+  }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",
             "Import games"};

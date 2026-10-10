@@ -50,6 +50,9 @@ public:
   };
   Result<Resolved> Resolve(const std::string& runner_ref) const;
 
+  // The newest installed build of runner family `family_id` ("wine_staging_tkg") at `min_version` or newer.
+  std::optional<model::RunnerBuild> NewestOfFamily(const std::string& family_id, const std::string& min_version) const;
+
   // Turns game.runner_ref into a concrete "kind:name" string, without
   // provisioning anything: empty -> default_runner.<platform>, "auto" ->
   // best available windows runner. Used by launch paths that must not

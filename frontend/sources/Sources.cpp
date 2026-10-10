@@ -20,6 +20,7 @@ const std::vector<SourceInfo>& AllSources() {
       {"ubisoft", "Ubisoft Connect", Kind::Launcher, QColor("#0070ff")},
       {"ea", "EA app", Kind::Launcher, QColor("#ff4747")},
       {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01")},
+      {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26")},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
   };
   return sources;
