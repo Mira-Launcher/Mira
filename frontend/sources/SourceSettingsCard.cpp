@@ -21,7 +21,7 @@ namespace {
 bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   const std::string id = source.id.toStdString();
   if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + ".")) return true;
-  // enabled belongs to Manage sources, runner has its own row, collections their own dialog.
+  // enabled belongs to the Sources page, runner has its own row, collections their own dialog.
   return key.starts_with(id + ".") && key != id + ".enabled" && key != id + ".runner" &&
          key != "itch.collections";
 }

@@ -10,15 +10,13 @@
 #include "Sources.h"
 
 class QLabel;
-class QPushButton;
 class QToolButton;
 
 namespace mira_gui {
 
-// Every source in one list, in sidebar order: drag a row (or Alt+Up/Down) to
+// Sources in one card, in sidebar order: drag a row (or Alt+Up/Down) to
 // reorder, the switch turns a source on or off, and ⋯ holds open, import,
-// sidebar visibility and remove. Each change applies at once, so there is no
-// Save; the window stores each one as it's made.
+// sidebar visibility and remove. Each change applies at once.
 class ManageSourcesCard : public SettingsCard {
   Q_OBJECT
 
@@ -33,7 +31,7 @@ public:
     std::int64_t imported_at = 0;  // unix seconds; 0 if never
   };
 
-  explicit ManageSourcesCard(QWidget* parent = nullptr);
+  explicit ManageSourcesCard(const QString& title, QWidget* parent = nullptr);
 
   // Entries in sidebar order. The first call builds the rows; later ones
   // update and reorder them in place, keeping any import in progress.
@@ -46,7 +44,6 @@ signals:
   void OrderChanged(QStringList ids);
   void Imported(QString id);  // an import finished and changed something
   void Removed(QString id);
-  void CloseRequested();
 
 private:
   struct Row {
@@ -55,7 +52,6 @@ private:
     QLabel* badge = nullptr;
     QLabel* status = nullptr;
     Switch* enabled = nullptr;
-    QPushButton* set_up = nullptr;
     QToolButton* more = nullptr;
     bool importing = false;
     QString note;  // an import's result, shown instead of the status from then on

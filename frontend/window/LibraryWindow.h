@@ -41,6 +41,7 @@ class LibraryPage;
 class OwnedTitles;
 struct TileRow;
 class RunnersPage;
+class SourcesPage;
 class TagsPage;
 class SettingsPanel;
 class SetupWindow;
@@ -183,9 +184,11 @@ private:
   // Points the sidebar's highlight and the slider at what's on screen.
   void UpdateLibraryNavActive();
   void ShowLibrary();
-  void OpenManageSources();
-  // A card that changes the sidebar (the pinned and recently played style,
-  // Manage sources), over the content with the sidebar left undimmed as its
+  // The Sources page, in the grid's place like the Runners page. `catalog` shows Add source.
+  void OpenSourcesPage(bool catalog);
+  void CloseSourcesPage();
+  // A card that changes the sidebar (the pinned and recently played style),
+  // over the content with the sidebar left undimmed as its
   // preview. Showing one replaces any other.
   QWidget* BuildSidebarCardOverlay();
   void ShowSidebarCard(QWidget* card);
@@ -256,6 +259,7 @@ private:
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
   mira_gui::TagsPage* tags_page_ = nullptr;
+  mira_gui::SourcesPage* sources_page_ = nullptr;
 
   QSplitter* splitter_ = nullptr;
   // The splitter's right side: grid_page_, source_page_, or runners_page_.

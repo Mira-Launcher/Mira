@@ -4,8 +4,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
-#include <QPushButton>
+#include <QStyle>
 #include <QToolButton>
+
+#include <QSet>
 
 #include <algorithm>
 
@@ -29,7 +31,6 @@ QString Ago(std::int64_t unix_seconds) {
 
 QString Status(const ManageSourcesCard::Entry& entry) {
   if (!entry.enabled) return "Off";
-  if (!entry.ready) return "Not set up";
   QStringList details{QString("%1 game%2").arg(entry.games).arg(entry.games == 1 ? "" : "s")};
   if (!entry.account.empty()) details << "signed in as " + QString::fromStdString(entry.account);
   if (entry.imported_at > 0) details << "imported " + Ago(entry.imported_at);
@@ -39,16 +40,7 @@ QString Status(const ManageSourcesCard::Entry& entry) {
 
 }  // namespace
 
-ManageSourcesCard::ManageSourcesCard(QWidget* parent) : SettingsCard("Manage sources", parent) {
-  SetProminentTitle();
-  setFixedWidth(720);
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close");
-  connect(close, &QToolButton::clicked, this, &ManageSourcesCard::CloseRequested);
-  Header()->addWidget(close);
-
+ManageSourcesCard::ManageSourcesCard(const QString& title, QWidget* parent) : SettingsCard(title, parent) {
   connect(this, &SettingsCard::RowsReordered, this, [this] {
     QStringList ids;
     for (QWidget* widget : Rows()) {
@@ -60,8 +52,15 @@ ManageSourcesCard::ManageSourcesCard(QWidget* parent) : SettingsCard("Manage sou
 }
 
 void ManageSourcesCard::SetEntries(const std::vector<Entry>& entries) {
-  if (rows_.empty()) {
+  QSet<QString> ids;
+  QSet<QString> have;
+  for (const Entry& entry : entries) ids.insert(entry.source.id);
+  for (const Row& row : rows_) have.insert(row.entry.source.id);
+  if (ids != have) {
+    ClearRows();
+    rows_.clear();
     for (const Entry& entry : entries) BuildRow(entry);
+    return;
   }
   // The order too, as the sidebar beside the card can still be dragged.
   for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
@@ -87,13 +86,6 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
   row.status->setProperty("role", "subtle");
   row.row->AddAfterLabel(row.status);
 
-  row.set_up = new QPushButton("Set up", row.row);
-  connect(row.set_up, &QPushButton::clicked, this, [this, id] { emit OpenRequested(id); });
-  QSizePolicy keep = row.set_up->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  row.set_up->setSizePolicy(keep);
-  row.row->AddControl(row.set_up);
-
   row.enabled = new Switch(row.row);
   row.enabled->setAccessibleName(QString("%1 on").arg(entry.source.name));
   row.enabled->setToolTip("Off hides the source everywhere and stops its imports");
@@ -111,7 +103,6 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
   row.more->setAutoRaise(true);
   icons::Follow(row.more, icons::Glyph::More);
   row.more->setToolTip("More");
-  row.more->setSizePolicy(keep);
   connect(row.more, &QToolButton::clicked, this, [this, id] { ShowMenu(id); });
   row.row->AddControl(row.more);
 
@@ -121,12 +112,13 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
 void ManageSourcesCard::Update(Row& row) {
   const Entry& entry = row.entry;
   SetSourceBadgeDim(row.badge, entry.source, !entry.ready || !entry.enabled);
+  row.row->Label()->setProperty("role", entry.enabled ? "" : "subtle");
+  row.row->Label()->style()->unpolish(row.row->Label());
+  row.row->Label()->style()->polish(row.row->Label());
   if (!row.importing && row.note.isEmpty()) row.status->setText(Status(entry));
   row.enabled->blockSignals(true);
   row.enabled->setChecked(entry.enabled);
   row.enabled->blockSignals(false);
-  row.set_up->setVisible(!entry.ready && entry.enabled);
-  row.more->setVisible(entry.ready);
 }
 
 void ManageSourcesCard::ShowMenu(const QString& id) {

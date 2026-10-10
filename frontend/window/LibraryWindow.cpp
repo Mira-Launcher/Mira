@@ -70,8 +70,8 @@
 #include "../settings/SettingsPanel.h"
 #include "../sidebar/Sidebar.h"
 #include "../sidebar/SidebarStyleCard.h"
-#include "../sources/ManageSourcesCard.h"
 #include "../sources/SourcePage.h"
+#include "../sources/SourcesPage.h"
 #include "../sources/SourceSettingsCard.h"
 #include "../sources/Sources.h"
 #include "../system/PackageInstall.h"
@@ -633,6 +633,7 @@ void LibraryWindow::OpenRunners() {
   }
   if (source_page_ != nullptr && !CloseSource([this] { OpenRunners(); })) return;
   CloseTags();
+  CloseSourcesPage();
   runners_page_ = new mira_gui::RunnersPage(downloads_, this);
   runners_page_->SetGames(library_->Games());
   main_stack_->addWidget(runners_page_);
@@ -678,6 +679,7 @@ void LibraryWindow::OpenTags() {
   }
   if (source_page_ != nullptr && !CloseSource([this] { OpenTags(); })) return;
   CloseRunners();
+  CloseSourcesPage();
   BuildTagsPage();
   main_stack_->setCurrentWidget(tags_page_);
   mira_gui::FocusPage(tags_page_);
@@ -733,7 +735,8 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   connect(sidebar, &Sidebar::TagsClicked, this, &LibraryWindow::OpenTags);
   connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
   connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
-  connect(sidebar, &Sidebar::ManageSourcesRequested, this, &LibraryWindow::OpenManageSources);
+  connect(sidebar, &Sidebar::SourcesClicked, this, [this] { OpenSourcesPage(false); });
+  connect(sidebar, &Sidebar::AddSourceRequested, this, [this] { OpenSourcesPage(true); });
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
   connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
   connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);
@@ -756,9 +759,7 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
           });
   connect(sidebar, &Sidebar::HoverEnded, this, &LibraryWindow::HideHoverCard);
   connect(sidebar, &Sidebar::SourcesChanged, this, [this] {
-    if (auto* card = qobject_cast<mira_gui::ManageSourcesCard*>(sidebar_card_)) {
-      card->SetEntries(sidebar_->SourceEntries());
-    }
+    if (sources_page_ != nullptr) sources_page_->SetEntries(sidebar_->SourceEntries());
   });
   return sidebar;
 }
@@ -1237,6 +1238,7 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
     if (source_page_ != nullptr) CloseSource();
     CloseRunners();
     CloseTags();
+    CloseSourcesPage();
     UpdateLibraryNavActive();
     grid_page_->ShowTag(tag);
   });
@@ -1348,7 +1350,8 @@ void LibraryWindow::SetGridControlsEnabled(bool enabled) {
   grid_page_->SetControlsEnabled(enabled);
   sidebar_->SetActionsEnabled(enabled);
   // Back from Settings onto a source page: the grid is still covered.
-  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr || TagsShown())) {
+  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr || sources_page_ != nullptr ||
+                  TagsShown())) {
     SetSourceControlsEnabled(false);
   }
 }
@@ -1366,7 +1369,9 @@ void LibraryWindow::UpdateLibraryNavActive() {
   if (sidebar_ != nullptr) {
     sidebar_->SetActive(GridShown() && !GameEditOpen(),
                         runners_page_ != nullptr && content_stack_->currentWidget() == splitter_,
-                        TagsShown() && content_stack_->currentWidget() == splitter_, open_source);
+                        TagsShown() && content_stack_->currentWidget() == splitter_,
+                        sources_page_ != nullptr && content_stack_->currentWidget() == splitter_,
+                        open_source);
   }
   // Every page switch ends here, so the slider follows the page too.
   SyncZoom();
@@ -1548,6 +1553,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   if (!ConfirmLeaveSource([this, source] { OpenSource(source); })) return;
   CloseRunners();
   CloseTags();
+  CloseSourcesPage();
   if (source_page_ != nullptr) {
     main_stack_->removeWidget(source_page_);
     source_page_->deleteLater();
@@ -1668,28 +1674,53 @@ void LibraryWindow::ShowGame(const std::string& id) {
   if (source_page_ != nullptr && !CloseSource([this, id] { ShowGame(id); })) return;
   CloseRunners();
   CloseTags();
+  CloseSourcesPage();
   if (!grid_page_->ShowGame(id)) OpenGameDialog(id);  // filtered out: its settings instead
 }
 
-void LibraryWindow::OpenManageSources() {
+void LibraryWindow::OpenSourcesPage(bool catalog) {
   if (!LeaveOverlays()) return;
-  using mira_gui::ManageSourcesCard;
-  auto* card = new ManageSourcesCard();
-  card->SetEntries(sidebar_->SourceEntries());
-  connect(card, &ManageSourcesCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
-  connect(card, &ManageSourcesCard::SidebarToggled, this,
+  if (sources_page_ != nullptr) {
+    if (catalog) {
+      sources_page_->ShowCatalog();
+    } else {
+      sources_page_->ShowAdded();
+    }
+    UpdateLibraryNavActive();
+    return;
+  }
+  if (source_page_ != nullptr && !CloseSource([this, catalog] { OpenSourcesPage(catalog); })) return;
+  CloseRunners();
+  CloseTags();
+  sources_page_ = new mira_gui::SourcesPage(this);
+  sources_page_->SetEntries(sidebar_->SourceEntries());
+  connect(sources_page_, &mira_gui::SourcesPage::SidebarToggled, this,
           [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
-  connect(card, &ManageSourcesCard::OrderChanged, this, [this](const QStringList& ids) {
+  connect(sources_page_, &mira_gui::SourcesPage::OrderChanged, this, [this](const QStringList& ids) {
     sidebar_->SetSourceOrder(std::vector<QString>(ids.begin(), ids.end()));
   });
-  connect(card, &ManageSourcesCard::EnabledToggled, sidebar_, &mira_gui::Sidebar::SetSourceEnabled);
-  connect(card, &ManageSourcesCard::Imported, sidebar_, &mira_gui::Sidebar::NoteImported);
-  connect(card, &ManageSourcesCard::Removed, sidebar_, &mira_gui::Sidebar::ForgetSource);
-  connect(card, &mira_gui::ManageSourcesCard::OpenRequested, this, [this](const QString& id) {
-    CloseSidebarCard();
+  connect(sources_page_, &mira_gui::SourcesPage::EnabledToggled, sidebar_, &mira_gui::Sidebar::SetSourceEnabled);
+  connect(sources_page_, &mira_gui::SourcesPage::Imported, sidebar_, &mira_gui::Sidebar::NoteImported);
+  connect(sources_page_, &mira_gui::SourcesPage::Removed, sidebar_, &mira_gui::Sidebar::ForgetSource);
+  connect(sources_page_, &mira_gui::SourcesPage::OpenRequested, this, [this](const QString& id) {
     if (const mira_gui::SourceInfo* source = mira_gui::FindSourceInfo(id)) OpenSource(*source);
   });
-  ShowSidebarCard(card);
+  main_stack_->addWidget(sources_page_);
+  main_stack_->setCurrentWidget(sources_page_);
+  mira_gui::FocusPage(sources_page_);
+  SetSourceControlsEnabled(false);
+  if (catalog) sources_page_->ShowCatalog();
+  UpdateLibraryNavActive();
+}
+
+void LibraryWindow::CloseSourcesPage() {
+  if (sources_page_ == nullptr) return;
+  main_stack_->setCurrentWidget(grid_page_);
+  main_stack_->removeWidget(sources_page_);
+  sources_page_->deleteLater();
+  sources_page_ = nullptr;
+  SetSourceControlsEnabled(true);
+  UpdateLibraryNavActive();
 }
 
 void LibraryWindow::RowClicked(const std::string& id) {
@@ -1709,6 +1740,8 @@ void LibraryWindow::ShowLibrary() {
     CloseSource();
   } else if (runners_page_ != nullptr) {
     CloseRunners();
+  } else if (sources_page_ != nullptr) {
+    CloseSourcesPage();
   } else if (TagsShown()) {
     CloseTags();
   } else {

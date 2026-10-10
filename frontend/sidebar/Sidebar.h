@@ -47,7 +47,7 @@ class Sidebar : public QWidget {
   // rows' counts and covers, and how PINNED and RECENTLY PLAYED look.
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
-  void SetActive(bool library, bool runners, bool tags, const QString& source_id);
+  void SetActive(bool library, bool runners, bool tags, bool sources, const QString& source_id);
   // Hidden pins show only while the grid shows the Hidden filter.
   void SetShowingHidden(bool showing_hidden);
   void SetFooter(int shown, int total, bool mirad_reachable);
@@ -86,7 +86,8 @@ class Sidebar : public QWidget {
   // Empty `focus_key` opens Settings at its start.
   void SettingsRequested(const QString& focus_key);
   void SourceClicked(const SourceInfo& source);
-  void ManageSourcesRequested();
+  void SourcesClicked();
+  void AddSourceRequested();
   void StyleRequested();
   void FetchArtRequested();
   // A pinned or recently played row's click.
@@ -97,7 +98,7 @@ class Sidebar : public QWidget {
   // A game row's hover card after its dwell (`anchor` is global), and its end.
   void HoverRequested(const std::string& id, const QRect& anchor, const QString& hint);
   void HoverEnded();
-  // Something Manage sources shows changed.
+  // Something the Sources page shows changed.
   void SourcesChanged();
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -137,14 +138,16 @@ class Sidebar : public QWidget {
   QPushButton* library_nav_ = nullptr;
   QPushButton* runners_nav_ = nullptr;
   QPushButton* tags_nav_ = nullptr;
+  QPushButton* sources_nav_ = nullptr;
   QPushButton* settings_button_ = nullptr;
-  QToolButton* manage_sources_button_ = nullptr;
+  QToolButton* add_source_button_ = nullptr;
   QToolButton* add_games_ = nullptr;
   QToolButton* fetch_art_button_ = nullptr;
   QLabel* footer_ = nullptr;
   bool library_active_ = true;
   bool runners_active_ = false;
   bool tags_active_ = false;
+  bool sources_active_ = false;
   QString active_source_;
 
   // One row per AllSources() entry, same order.
