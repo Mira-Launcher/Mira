@@ -96,13 +96,13 @@ TEST_CASE("Filters hide hidden games except under Hidden, and launchers everywhe
   CHECK(Shown(proxy) == std::vector<std::string>{"h"});
 }
 
-TEST_CASE("Apps and games get their own filters, apps can leave All, and apps never count as unplayed") {
+TEST_CASE("Apps and games get their own filters, apps can leave All or the library, and apps never count as unplayed") {
   GameLibraryModel library;
   library.Replace({Game("g", "Game"), Game("w", "Writer", {"app"})});
   GameFilterProxy proxy(&library);
 
   CHECK(Shown(proxy) == std::vector<std::string>{"g", "w"});
-  proxy.SetAppsInAll(false);
+  proxy.SetAppsIn(AppsIn::AppsTab);
   CHECK(Shown(proxy) == std::vector<std::string>{"g"});
   proxy.SetFilterKey("apps");
   CHECK(Shown(proxy) == std::vector<std::string>{"w"});
@@ -110,6 +110,11 @@ TEST_CASE("Apps and games get their own filters, apps can leave All, and apps ne
   CHECK(Shown(proxy) == std::vector<std::string>{"g"});
   proxy.SetFilterKey("never");
   CHECK(Shown(proxy) == std::vector<std::string>{"g"});
+  proxy.SetAppsIn(AppsIn::Search);
+  proxy.SetFilterKey("apps");
+  CHECK(Shown(proxy).empty());
+  proxy.SetSearch("writer");
+  CHECK(Shown(proxy) == std::vector<std::string>{"w"});
 }
 
 TEST_CASE("Needs attention lists games mirad wants checked beside broken ones") {

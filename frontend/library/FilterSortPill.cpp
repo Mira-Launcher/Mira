@@ -284,6 +284,10 @@ void FilterSortPill::SetCount(const QString& key, int count) {
   }
 }
 
+void FilterSortPill::SetFilterOffered(const QString& key, bool offered) {
+  if (const int row = FilterRow(key); row >= 0) filters_->item(row)->setHidden(!offered);
+}
+
 void FilterSortPill::SetTags(const QList<TagCount>& tags) {
   tags_ = tags;
   RebuildTags();

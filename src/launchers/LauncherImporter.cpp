@@ -192,6 +192,12 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     return LauncherNotInstalled(launcher.id, launcher.name);
   }
   const fs::path prefix = host->data_dir;
+  // Creative Cloud installed before it was an app.
+  if (launcher.id == "adobe" && !std::ranges::contains(host->tags, "app")) {
+    if (auto tagged = games.Update(host->id, [](model::Game& g) { g.tags.push_back("app"); })) {
+      events.Publish("game.updated", model::ToJson(*tagged));
+    }
+  }
   std::vector<Found> found;
   if (launcher.id == "battlenet") found = FindBattleNet(prefix);
   if (launcher.id == "ubisoft") found = FindUbisoft(prefix);

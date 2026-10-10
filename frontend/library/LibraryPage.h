@@ -12,6 +12,7 @@
 #include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
 #include "../widgets/TileView.h"
+#include "GameLibraryModel.h"
 #include "OwnedTitles.h"
 
 class QLabel;
@@ -168,7 +169,7 @@ class LibraryPage : public QWidget {
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;
   bool continue_apps_ = false;
-  bool apps_in_all_ = true;
+  AppsIn apps_ = AppsIn::All;
   bool not_installed_ = false;
   TitleFilterBar* title_filters_ = nullptr;
 };

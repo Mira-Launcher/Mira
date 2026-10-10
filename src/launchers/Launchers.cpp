@@ -405,6 +405,8 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   game.source = "launcher";
   game.source_ref = launcher.id;
   game.platform = model::Platform::Windows;
+  // Creative Cloud is an app of its own, in the library beside Photoshop.
+  if (launcher.id == "adobe" && !std::ranges::contains(game.tags, "app")) game.tags.push_back("app");
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");

@@ -145,7 +145,7 @@ bool SourcePage::HasOwned() const { return id_ != "local"; }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game.source) == id_; }
+bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game) == id_; }
 
 // No title: the sidebar already says which source this is. One row holds the
 // status and every action.

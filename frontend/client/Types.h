@@ -52,6 +52,7 @@ struct GameSummary {
   // Which importer owns it: "scan", "steam", "epic", "lutris", "battlenet",
   // ... ("launcher" for a store launcher's own install).
   std::string source;
+  std::string source_ref;  // the launcher's id, for a launcher's own install
   bool running = false;
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
@@ -857,6 +858,7 @@ struct FrontendPrefs {
   std::optional<int> library_continue_count;
   std::optional<bool> library_continue_apps;  // apps in the Continue row; off by default
   std::optional<bool> library_apps_in_all;    // apps under the All tab; on by default
+  std::optional<bool> library_apps;           // apps in the library at all, not only in sources and search
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
   std::optional<bool> tile_source_mark;  // the source's name on the status line

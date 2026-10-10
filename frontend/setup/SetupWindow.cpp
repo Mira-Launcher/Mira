@@ -343,7 +343,7 @@ void SetupWindow::Finish() {
     const QStringList on = setup::SourcesOn(choices_);
     QSet<QString> has_games;
     for (const GameSummary& game : context_.services.library->Games()) {
-      has_games.insert(QString::fromStdString(SourceIdOf(game.source)));
+      has_games.insert(QString::fromStdString(SourceIdOf(game)));
     }
     QStringList off;
     for (const SourceInfo& source : AllSources()) {

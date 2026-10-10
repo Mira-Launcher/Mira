@@ -63,6 +63,7 @@ GameSummary ToGameSummary(const json& entry) {
   game.play_seconds = entry.value("play_seconds", std::int64_t{0});
   game.tags = ReadTags(entry);
   game.source = entry.value("source", std::string("scan"));
+  game.source_ref = entry.value("source_ref", std::string());
   game.running = entry.value("running", false);
   game.art = ToArtVersions(entry);
   ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);

@@ -50,6 +50,8 @@ public:
   void SetCurrent(const QString& key);
   QString Current() const;
   void SetTabsVisible(bool visible);
+  // Leaves one tab out of the row and More.
+  void SetTabOffered(const QString& key, bool offered);
   // Appends `widget` after the tabs, right-aligned.
   void SetTrailing(QWidget* widget);
   // The page's search box, last in the row and the first to shrink.
@@ -79,11 +81,13 @@ private:
   void Select(const QString& key);
   // Sizes the search box and decides which tabs fit, for the current width.
   void Fit();
+  QStringList Offered() const;  // order_ without the tabs left out
 
   QHBoxLayout* tabs_ = nullptr;
   QHBoxLayout* layout_ = nullptr;
   QHash<QString, Tab> by_key_;
   QStringList order_;  // tab keys, left to right
+  QStringList left_out_;
   QString current_;
   bool tabs_visible_ = true;
   QList<QWidget*> trailing_;

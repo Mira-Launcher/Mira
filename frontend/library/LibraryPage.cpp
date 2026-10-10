@@ -220,9 +220,14 @@ void LibraryPage::ApplyPrefs(const FrontendPrefs& prefs) {
   continue_row_enabled_ = prefs.library_continue_row.value_or(true);
   continue_count_ = prefs.library_continue_count.value_or(3);
   continue_apps_ = prefs.library_continue_apps.value_or(false);
-  apps_in_all_ = prefs.library_apps_in_all.value_or(true);
-  games_->SetAppsInAll(apps_in_all_);
-  UpdateCounts();  // All's count follows apps_in_all_
+  apps_ = !prefs.library_apps.value_or(true)           ? AppsIn::Search
+          : prefs.library_apps_in_all.value_or(true) ? AppsIn::All
+                                                     : AppsIn::AppsTab;
+  games_->SetAppsIn(apps_);
+  tabs_->SetTabOffered("apps", apps_ != AppsIn::Search);
+  pill_->SetFilterOffered("apps", apps_ != AppsIn::Search);
+  if (apps_ == AppsIn::Search && FilterKey() == "apps") SetFilterKey("all");
+  UpdateCounts();  // the counts follow apps_
   delegate_->SetShowStatus(prefs.tile_status.value_or(true));
   delegate_->SetShowSource(prefs.tile_source_mark.value_or(true));
   grid_->SetDragSelectEnabled(prefs.drag_select.value_or(true));
@@ -598,13 +603,13 @@ void LibraryPage::UpdateCounts() {
   const QStringList picked = pill_->PickedTags();
   for (const QString& key : pill_->FilterKeys()) {
     const auto count = std::ranges::count_if(library_->Games(), [this, &key, &picked](const GameSummary& game) {
-      return GameFilterProxy::MatchesKey(game, key, apps_in_all_) && GameFilterProxy::HasTags(game, picked);
+      return GameFilterProxy::MatchesKey(game, key, apps_) && GameFilterProxy::HasTags(game, picked);
     });
     pill_->SetCount(key, static_cast<int>(count));
     tabs_->SetCount(key, static_cast<int>(count));
   }
   QList<FilterSortPill::TagCount> tags;
-  for (const LibraryTag& tag : TagsUnder(library_->Games(), FilterKey(), apps_in_all_)) {
+  for (const LibraryTag& tag : TagsUnder(library_->Games(), FilterKey(), apps_)) {
     tags.append({tag.tag, tag.count});
   }
   pill_->SetTags(tags);
@@ -637,7 +642,7 @@ void LibraryPage::RefreshContinue() {
   if (continue_row_enabled_ && !not_installed_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
       search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
-      if (IsHidden(game) || game.source == "launcher" || !GameFilterProxy::MatchesKey(game, key, apps_in_all_)) continue;
+      if (IsHidden(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
       if (IsApp(game) && !continue_apps_) continue;
       if (game.running || game.last_played_at) games.push_back(&game);
     }

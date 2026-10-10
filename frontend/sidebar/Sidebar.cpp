@@ -543,7 +543,7 @@ void Sidebar::UpdateSources() {
   // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
-    const std::string source = SourceIdOf(game.source);
+    const std::string source = SourceIdOf(game);
     ++counts[source];
     if (!IsHidden(game)) shown[source].push_back(&game);
   }
@@ -628,7 +628,7 @@ void Sidebar::UpdateSources() {
 
 std::vector<SourceEntry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
+  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game)];
   std::vector<SourceEntry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);

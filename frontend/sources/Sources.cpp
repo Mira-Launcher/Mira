@@ -44,9 +44,10 @@ QString KindLabel(SourceInfo::Kind kind) {
   return {};
 }
 
-std::string SourceIdOf(const std::string& game_source) {
-  // A store's own launcher is how its games run, not one of them.
-  if (game_source == "launcher") return {};
+std::string SourceIdOf(const GameSummary& game) {
+  const std::string& game_source = game.source;
+  // A store's own launcher is how its games run, not one of them, unless it's an app (Creative Cloud).
+  if (game_source == "launcher") return IsApp(game) ? game.source_ref : std::string();
   if (game_source != "local" && FindSourceInfo(QString::fromStdString(game_source)) != nullptr) return game_source;
   return "local";
 }

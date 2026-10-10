@@ -57,7 +57,7 @@ TabRow::TabRow(QWidget* parent) : QWidget(parent) {
   more_->setCursor(Qt::PointingHandCursor);
   connect(more_menu_, &QMenu::aboutToShow, this, [this] {
     more_menu_->clear();
-    for (const QString& key : order_) {
+    for (const QString& key : Offered()) {
       const Tab& tab = by_key_[key];
       if (!tab.button->isHidden()) continue;
       connect(more_menu_->addAction(tab.button->text()), &QAction::triggered, this, [this, key] { Select(key); });
@@ -77,6 +77,20 @@ void TabRow::AddTab(const QString& key, const QString& label) {
   by_key_.insert(key, Tab{button, label});
   order_.append(key);
   Relabel(by_key_[key]);
+}
+
+void TabRow::SetTabOffered(const QString& key, bool offered) {
+  if (offered == !left_out_.contains(key)) return;
+  if (offered) left_out_.removeAll(key);
+  else left_out_.append(key);
+  updateGeometry();
+  Fit();
+}
+
+QStringList TabRow::Offered() const {
+  QStringList offered = order_;
+  for (const QString& key : left_out_) offered.removeAll(key);
+  return offered;
 }
 
 void TabRow::Select(const QString& key) {
@@ -151,7 +165,7 @@ QSize TabRow::sizeHint() const {
   const int spacing = layout_->spacing();
   int width = kStretchMin;
   if (tabs_visible_) {
-    for (const QString& key : order_) width += by_key_[key].button->sizeHint().width() + spacing;
+    for (const QString& key : Offered()) width += by_key_[key].button->sizeHint().width() + spacing;
   }
   for (const QWidget* widget : trailing_) {
     if (!widget->isHidden()) width += WidthOf(widget) + spacing;
@@ -187,6 +201,7 @@ void TabRow::resizeEvent(QResizeEvent* event) {
 void TabRow::Fit() {
   if (fitting_) return;
   fitting_ = true;
+  const QStringList offered = Offered();
   const int spacing = layout_->spacing();
   const int room = width() - kStretchMin;
   int trailing = 0;
@@ -204,7 +219,7 @@ void TabRow::Fit() {
   // 160 to 320 px; below that a button, unless it's open or holds a query.
   int search_space = 0;
   if (search_ != nullptr) {
-    const int beside = room - trailing - (tabs_visible_ ? tabs_width(order_, false) : 0) - spacing;
+    const int beside = room - trailing - (tabs_visible_ ? tabs_width(offered, false) : 0) - spacing;
     bool collapsed = false;
     int search_width = kSearchMin;
     if (beside >= kSearchMin) {
@@ -220,20 +235,20 @@ void TabRow::Fit() {
 
   // Then the tabs: as many as fit in order, keeping the current one, the
   // rest in More.
-  QStringList shown = tabs_visible_ ? order_ : QStringList();
+  QStringList shown = tabs_visible_ ? offered : QStringList();
   if (tabs_visible_) {
     const int budget = room - trailing - search_space;
-    for (qsizetype keep = order_.size(); keep >= 1; --keep) {
-      shown = order_.mid(0, keep);
-      if (!current_.isEmpty() && !shown.contains(current_)) {
+    for (qsizetype keep = offered.size(); keep >= 1; --keep) {
+      shown = offered.mid(0, keep);
+      if (offered.contains(current_) && !shown.contains(current_)) {
         shown.removeLast();
         shown.append(current_);
       }
-      if (tabs_width(shown, shown.size() < order_.size()) <= budget) break;
+      if (tabs_width(shown, shown.size() < offered.size()) <= budget) break;
     }
   }
   for (const QString& key : order_) by_key_[key].button->setVisible(shown.contains(key));
-  more_->setVisible(tabs_visible_ && shown.size() < order_.size());
+  more_->setVisible(tabs_visible_ && shown.size() < offered.size());
   fitting_ = false;
 }
 

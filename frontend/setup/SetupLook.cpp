@@ -473,7 +473,7 @@ class SidebarPreview : public QWidget {
     }
     QHash<QString, std::vector<const GameSummary*>> by_source;
     for (const GameSummary& game : context_.services.library->Games()) {
-      const QString id = QString::fromStdString(SourceIdOf(game.source));
+      const QString id = QString::fromStdString(SourceIdOf(game));
       if (FindSourceInfo(id) != nullptr) by_source[id].push_back(&game);
     }
     if (by_source.isEmpty()) {
@@ -600,7 +600,7 @@ std::vector<Picture> PreviewGames(const SetupContext& context, int count, bool h
   ArtworkStore* artwork = context.services.artwork;
   for (int i = 0; i < static_cast<int>(games.size()) && i < count; ++i) {
     const GameSummary& game = *games[i];
-    const SourceInfo* source = FindSourceInfo(QString::fromStdString(SourceIdOf(game.source)));
+    const SourceInfo* source = FindSourceInfo(QString::fromStdString(SourceIdOf(game)));
     pictures.push_back(
         {.cover = artwork->Cover(game, QSize(120, 180), 2.0),
          .hero = heroes ? artwork->SlotArt(game.id, "hero") : QPixmap(),
