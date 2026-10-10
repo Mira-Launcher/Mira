@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "gog/Gog.h"
+#include "migrate/Sources.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
@@ -350,4 +351,25 @@ TEST_CASE("Steam's installed games are listed most recently played first without
   CHECK(listed["games"][2]["appid"] == "70");
   CHECK_FALSE(listed["games"][2].contains("last_played_at"));
   CHECK(Get(client, "/v1/games").empty());
+}
+
+TEST_CASE("Settings from before the sources table carry over to it") {
+  test::TestEnv env("sources-import");
+  Touch(env.dir / "settings.toml", "[gog]\nenabled = false\n");
+  env.config.Load();
+  test::Isolate(env.config);
+  env.config.SetFrontendSettings(json{{"hidden_sources", json::array({"epic"})},
+                                      {"source_order", json::array({"gog", "steam"})}});
+
+  migrate::ImportSourceState(env.config, env.games);
+
+  CHECK_FALSE(env.games.Source("gog").enabled);
+  CHECK_FALSE(env.games.Source("epic").in_sidebar);
+  std::vector<std::string> order;
+  for (const store::SourceState& source : env.games.Sources()) order.push_back(source.id);
+  const auto gog = std::find(order.begin(), order.end(), "gog");
+  const auto steam = std::find(order.begin(), order.end(), "steam");
+  REQUIRE(gog != order.end());
+  REQUIRE(steam != order.end());
+  CHECK(gog < steam);
 }

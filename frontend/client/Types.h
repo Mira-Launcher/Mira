@@ -23,7 +23,7 @@ namespace mira_gui {
 using ArtVersions = std::map<std::string, std::string>;
 
 // Matches mira::kApiVersion in src/core/Result.h.
-inline constexpr int kExpectedApiVersion = 1;
+inline constexpr int kExpectedApiVersion = 2;
 
 struct HealthStatus {
   bool reachable = false;

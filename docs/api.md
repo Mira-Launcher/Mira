@@ -42,7 +42,7 @@ Stops a running job: the programs it runs (a store tool, an installer and the Wi
 ## Health
 
 ### `GET /v1/health`
-`{"status": "ok", "api": 1}`. `api` is an integer bumped on a breaking change; the GUI and CLI compare it with their own and report a daemon that doesn't match.
+`{"status": "ok", "api": 2}`. `api` is an integer bumped on a breaking change; the GUI and CLI compare it with their own and report a daemon that doesn't match.
 
 ## Settings
 
