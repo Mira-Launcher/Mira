@@ -18,6 +18,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include <toml.hpp>
@@ -292,6 +293,26 @@ QString ColorToQss(const QColor& color) {
       .arg(color.green())
       .arg(color.blue())
       .arg(color.alphaF(), 0, 'f', 3);
+}
+
+QFont Larger(QFont font, qreal points) {
+  if (font.pointSizeF() > 0) {
+    font.setPointSizeF(font.pointSizeF() + points);
+  } else {
+    font.setPixelSize(font.pixelSize() + qRound(points));
+  }
+  return font;
+}
+
+namespace {
+std::optional<QFont> g_desktop_font;
+}  // namespace
+
+QFont DesktopFont() { return g_desktop_font.value_or(QApplication::font()); }
+
+void EnlargeAppFont() {
+  g_desktop_font = QApplication::font();
+  QApplication::setFont(Larger(*g_desktop_font));
 }
 
 const Tokens& Current() { return g_tokens; }

@@ -225,7 +225,7 @@ QLabel#brand_badge {
 
 QLabel#brand_title {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 /* --- Left sidebar ---------------------------------------------------------
@@ -808,7 +808,7 @@ QScrollArea {
  * what sits over the card's hero art. */
 
 QLabel#game_edit_title, QLabel#page_title {
-  font-size: 22px;
+  font-size: 23px;
   font-weight: 700;
 }
 
@@ -1034,7 +1034,7 @@ QLabel#setup_badge {
 }
 
 QLabel#setup_title {
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 600;
 }
 
@@ -1044,7 +1044,7 @@ QLabel#setup_tile_title {
 }
 
 QLabel#setup_tile_title {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 QFrame#setup_card,
@@ -1147,7 +1147,7 @@ QLabel#setup_doc {
   border-radius: 5px;
   color: white;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 QLabel#setup_check {

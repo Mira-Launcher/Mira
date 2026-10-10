@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QFont>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -56,8 +57,8 @@ struct Tokens {
 
   // Only the two sizes the UI actually names. The base size is left to the
   // desktop's own font setting, which is an accessibility setting.
-  int font_size_small = 11;
-  int font_size_heading = 16;
+  int font_size_small = 12;
+  int font_size_heading = 17;
 
   // The saturation/value a generated placeholder cover is drawn at; the hue
   // still comes from the game's own name (see CoverArt).
@@ -70,6 +71,13 @@ struct Tokens {
 inline std::array<QColor, 4> SampleArt(const Tokens& tokens) {
   return {tokens.accent, tokens.warning, tokens.success, tokens.error};
 }
+
+// `font` `points` larger, in whatever unit it's set in.
+QFont Larger(QFont font, qreal points = 1);
+// The desktop's font, which tile titles keep. Everything else is a point larger (EnlargeAppFont).
+QFont DesktopFont();
+// Sets the application's font a point above the desktop's, so text reads at a glance. Once, at start.
+void EnlargeAppFont();
 
 // What everything currently draws with. Valid before Apply() is ever called,
 // it starts as the built-in defaults.
