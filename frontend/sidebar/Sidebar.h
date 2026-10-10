@@ -170,6 +170,7 @@ class Sidebar : public QWidget {
   bool show_source_counts_ = true;
   bool show_source_covers_ = true;
   QSet<QString> source_cover_ids_;  // the games source rows show covers of
+  QSet<QString> empty_decks_;       // sources whose rows have no covers to show
   QWidget* source_nav_container_ = nullptr;  // accepts source row drops
   QWidget* source_drop_line_ = nullptr;
   QPushButton* source_drag_row_ = nullptr;

@@ -8,6 +8,7 @@
 #include <QPainterPath>
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
@@ -80,7 +81,8 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
   painter->restore();
 }
 
-QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr) {
+QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
+                  const QColor& empty) {
   const QSize card(24, 36);
   QPixmap out(kDeckSize * dpr);
   out.setDevicePixelRatio(dpr);
@@ -91,11 +93,17 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
   const QPointF centre(kDeckSize.width() / 2.0, kDeckSize.height() / 2.0);
   const QRectF face(QPointF(-card.width() / 2.0, -card.height() / 2.0), QSizeF(card));
   if (games.empty()) {
-    QColor edge = theme::Current().text_muted;
-    edge.setAlpha(110);
-    painter.setPen(QPen(edge, 1, Qt::DashLine));
+    // A color as dark as the sidebar (Steam's, Epic's) would vanish on it.
+    QColor edge = empty;
+    if (std::abs(edge.lightness() - theme::Current().window.lightness()) < 60) {
+      edge = theme::Current().window.lightness() < 128 ? edge.lighter(250) : edge.darker(200);
+    }
+    QColor fill = edge;
+    fill.setAlpha(60);
+    painter.setPen(QPen(edge, 1.2));
+    painter.setBrush(fill);
     painter.translate(centre);
-    painter.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+    painter.drawRoundedRect(face.adjusted(0.6, 0.6, -0.6, -0.6), 3, 3);
     return out;
   }
   // The second fans right and the third left, both under the first.

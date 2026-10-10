@@ -56,9 +56,10 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
 inline constexpr int kShelfGap = 6;
 
 // Up to three of `games`' covers fanned like a hand of cards, the first on top, as a
-// source row leads with. With none, a dashed outline where a card would be.
+// source row leads with. With none, a card tinted `empty`, the source's color.
 inline constexpr QSize kDeckSize(50, 46);
-QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr);
+QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
+                  const QColor& empty);
 
 // A Covers row: a flat button whose hover takes the cover's color.
 // `trailing` is muted text on the right ("Yesterday", "Playing"), empty for none.

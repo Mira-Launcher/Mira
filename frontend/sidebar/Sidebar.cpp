@@ -339,6 +339,9 @@ void Sidebar::ShowActive() {
     if (!show_source_covers_) {
       source_decks_[i]->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
                                       .pixmap(QSize(18, 18), devicePixelRatioF()));
+    } else if (empty_decks_.contains(sources[i].id)) {
+      source_decks_[i]->setPixmap(sidebar::CoverDeck({}, artwork_, devicePixelRatioF(),
+                                                     active ? tokens.on_accent : sources[i].color));
     }
     const QString on_accent = QString("color: %1;").arg(tokens.on_accent.name());
     source_names_[i]->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
@@ -582,8 +585,11 @@ void Sidebar::UpdateSources() {
       row->setContentsMargins(6, 3, 10, 3);
       row->setSpacing(10);
       source_decks_[i]->setFixedSize(sidebar::kDeckSize);
-      source_decks_[i]->setPixmap(
-          sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF()));
+      if (covers.empty()) empty_decks_.insert(id);
+      else empty_decks_.remove(id);
+      const bool active = id == active_source_;
+      source_decks_[i]->setPixmap(sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF(),
+                                                     active ? theme::Current().on_accent : sources[i].color));
       const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
       QString detail = games == 0 && of == 0 ? "No " + item + "s"
                        : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
