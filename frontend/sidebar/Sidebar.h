@@ -160,6 +160,7 @@ class Sidebar : public QWidget {
   QList<QLabel*> source_counts_;
   QVBoxLayout* source_nav_layout_ = nullptr;
   QLabel* sources_empty_ = nullptr;    // shown while no source row is
+  QSet<QString> added_sources_;        // set up; the Sources page adds the rest
   QSet<QString> hidden_sources_;       // unticked "In sidebar"
   QSet<QString> disabled_sources_;     // <id>.enabled = false
   std::vector<QString> source_order_;  // saved order; see SourceOrder()

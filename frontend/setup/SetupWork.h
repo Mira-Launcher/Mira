@@ -37,7 +37,7 @@ class SetupWork : public QObject {
   void AddOfficeApps(const std::vector<std::string>& refs);
   void ImportSteam();
   void ImportLutris();
-  // Turns each source on or off (`<id>.enabled`).
+  // Turns each source on or off.
   void SetSourcesOn(const QStringList& on, const QStringList& off);
 
   // What's under way, one short line each: "Installing packages", "Microsoft 365 · 34%".

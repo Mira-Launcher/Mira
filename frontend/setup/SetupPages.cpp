@@ -1037,7 +1037,7 @@ StorePage::StorePage(const SetupContext& context, const QString& store)
   layout->addWidget(done_);
   connect(panel_, &SignInPanel::Connected, this, [this, guide](bool just_now) {
     if (store_ != "steam") {
-      api::PatchConfigAsync(this, {{(store_ + ".enabled").toStdString(), "a boolean", "true"}},
+      api::PatchSourceAsync(this, store_.toStdString(), true, std::nullopt,
                             [work = context_.work](PatchConfigResult) { emit work->SourcesChanged(); });
     }
     if (!just_now) return;

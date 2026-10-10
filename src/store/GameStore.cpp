@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 1> kMigrations = {
+constexpr std::array<std::string_view, 2> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -86,6 +86,20 @@ CREATE TABLE ui_state(
   id INTEGER PRIMARY KEY CHECK(id = 1),
   state TEXT NOT NULL CHECK(json_valid(state))
 ) STRICT;
+)sql",
+    R"sql(
+CREATE TABLE sources(
+  id TEXT PRIMARY KEY,
+  added INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  in_sidebar INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  imported_at INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO sources(id, added)
+  SELECT DISTINCT source, 1 FROM games
+  WHERE source IN ('steam', 'epic', 'gog', 'itch', 'amazon', 'humble', 'battlenet', 'ubisoft', 'ea', 'office', 'lutris');
+INSERT INTO sources(id, added) VALUES('local', 1);
 )sql",
 };
 
@@ -299,6 +313,93 @@ void GameStore::KeepUiState(const json& state) {
   if (!keep) return;
   if (auto done = keep->Bind(1, state.dump()).Run(); !done) {
     log::Warn("could not save the window state: {}", done.error().message);
+  }
+}
+
+namespace {
+// Columns: id, added, enabled, in_sidebar, position, imported_at.
+SourceState ReadSource(const Statement& row) {
+  return SourceState{.id = row.Text(0),
+                     .added = row.Int(1) != 0,
+                     .enabled = row.Int(2) != 0,
+                     .in_sidebar = row.Int(3) != 0,
+                     .position = static_cast<int>(row.Int(4)),
+                     .imported_at = row.Int(5)};
+}
+}  // namespace
+
+std::vector<SourceState> GameStore::Sources() const {
+  std::lock_guard lock(mutex_);
+  std::vector<SourceState> sources;
+  if (!db_.IsOpen()) return sources;
+  auto select = db_.Prepare("SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources ORDER BY position, id");
+  if (!select) return sources;
+  for (auto row = select->Step(); row && *row; row = select->Step()) sources.push_back(ReadSource(*select));
+  return sources;
+}
+
+SourceState GameStore::Source(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  SourceState state{.id = id};
+  if (!db_.IsOpen()) return state;
+  auto select = db_.Prepare("SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources WHERE id = ?");
+  if (!select) return state;
+  auto row = select->Bind(1, id).Step();
+  if (row && *row) state = ReadSource(*select);
+  return state;
+}
+
+void GameStore::SaveSource(const SourceState& state) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  auto keep = db_.Prepare("INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) VALUES(?, ?, ?, ?, ?, ?)");
+  if (!keep) return;
+  if (auto done = keep->Bind(1, state.id)
+                      .Bind(2, std::int64_t{state.added})
+                      .Bind(3, std::int64_t{state.enabled})
+                      .Bind(4, std::int64_t{state.in_sidebar})
+                      .Bind(5, std::int64_t{state.position})
+                      .Bind(6, state.imported_at)
+                      .Run();
+      !done) {
+    log::Warn("could not save the source {}: {}", state.id, done.error().message);
+  }
+}
+
+void GameStore::SetSourceOrder(const std::vector<std::string>& ids) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  const auto written = Transact([&]() -> Result<void> {
+    std::int64_t position = 0;
+    for (const std::string& id : ids) {
+      ++position;
+      auto insert = db_.Prepare("INSERT OR IGNORE INTO sources(id) VALUES(?)");
+      if (!insert) return std::unexpected(insert.error());
+      if (auto done = insert->Bind(1, id).Run(); !done) return done;
+      auto update = db_.Prepare("UPDATE sources SET position = ? WHERE id = ?");
+      if (!update) return std::unexpected(update.error());
+      if (auto done = update->Bind(1, position).Bind(2, id).Run(); !done) return done;
+    }
+    return {};
+  });
+  if (!written) log::Warn("could not save the source order: {}", written.error().message);
+}
+
+void GameStore::MarkSourceAdded(const std::string& id, bool imported) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  auto insert = db_.Prepare("INSERT OR IGNORE INTO sources(id) VALUES(?)");
+  if (!insert) return;
+  if (auto done = insert->Bind(1, id).Run(); !done) {
+    log::Warn("could not mark the source {} added: {}", id, done.error().message);
+    return;
+  }
+  auto update = imported ? db_.Prepare("UPDATE sources SET added = 1, imported_at = ? WHERE id = ?")
+                         : db_.Prepare("UPDATE sources SET added = 1 WHERE id = ?");
+  if (!update) return;
+  auto& bound = imported ? update->Bind(1, model::NowSeconds()).Bind(2, id) : update->Bind(1, id);
+  if (auto done = bound.Run(); !done) {
+    log::Warn("could not mark the source {} added: {}", id, done.error().message);
   }
 }
 

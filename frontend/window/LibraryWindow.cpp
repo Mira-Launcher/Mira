@@ -1416,6 +1416,10 @@ QWidget* LibraryWindow::BuildSettingsPage() {
             if (close) CloseSettings();
           });
   connect(settings_panel_, &mira_gui::SettingsPanel::PrefsSaved, this, &LibraryWindow::ApplySettingsPrefs);
+  connect(settings_panel_, &mira_gui::SettingsPanel::SourcesPageRequested, this, [this] {
+    RequestCloseSettings();
+    if (!SettingsOpen()) OpenSourcesPage(false);  // unsaved edits keep Settings up
+  });
   layout->addWidget(settings_panel_, /*stretch=*/1);
 
   // As tall as the sidebar's Library row it replaces, so the column's top doesn't shift.

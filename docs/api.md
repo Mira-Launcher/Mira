@@ -485,6 +485,15 @@ Body `{action?: "launch"|"install", ref?}`. Opens the launcher, or asks it to la
 
 ## Sources
 
+### `GET /v1/sources`
+Every source, in sidebar order: stored ones by `position` first, then the rest in default order. `added` is true for `local` always. `games` counts the games it owns. `{"sources": [{"id": "steam", "added": true, "enabled": true, "in_sidebar": true, "position": 0, "imported_at": 1760000000, "games": 12}]}`
+
+### `PATCH /v1/sources/{id}`
+Body may hold `added`, `enabled` and `in_sidebar` (booleans); other keys are ignored. Returns the source as above and publishes `sources.changed`. `404 unknown_source` for an id not in the list.
+
+### `PUT /v1/sources/order`
+Body `{"order": ["gog", "local"]}`. Unknown ids are dropped and the rest get positions 1, 2, ... in that order. Returns `{"ok": true}` and publishes `sources.changed`.
+
 ### `GET /v1/sources/{id}/removal`
 What removing a source would do:
 
@@ -499,7 +508,7 @@ What removing a source would do:
 `deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files).
 
 ### `POST /v1/sources/{id}/remove`
-Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and sets `<id>.enabled` to false. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
+Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
 
 ### `GET /v1/sources/{id}/runner`
 The runner a source's games use: `{"runner_ref", "games", "differing"}`. `games` counts its Windows games and `differing` the ones on another runner. For Epic, GOG, itch and Amazon this is `<id>.runner`, the default for their games with no runner of their own (empty falls back to `default_runner.windows`). For a launcher it is the runner of its prefix, which its games share. `400 no_runner` for Steam, Lutris and Humble; `409 launcher_not_installed`.

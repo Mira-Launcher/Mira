@@ -197,7 +197,7 @@ LutrisImporter::LutrisImporter(config::Config& config, store::GameStore& games, 
 
 Result<LutrisImportSummary> LutrisImporter::Import() {
   LutrisImportSummary summary;
-  if (!config_.GetBool("lutris.enabled")) return summary;
+  if (!games_.SourceEnabled("lutris")) return summary;
 
   const auto data_dir = FindLutrisDataDir(config_);
   if (!data_dir) {

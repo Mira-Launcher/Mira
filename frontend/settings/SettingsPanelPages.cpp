@@ -6,6 +6,7 @@
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
 
@@ -409,71 +410,12 @@ void SettingsPanel::BuildSidebarPage() {
   AddToggle(sources_card_, "Covers on source rows",
             "Show a few of each source's games next to its name. Off shows a colored dot instead.",
             "sidebar source covers colors icons", &FrontendPrefs::sidebar_source_covers, true);
-  for (const SourceInfo& source : AllSources()) {
-    auto* row = new SettingRow(source.name, {});
-    row->ShowGrip();
-    row->SetLeading(MakeSourceBadge(source, 20, row));
-    row->AddAfterLabel(MakeKindTag(source, row));
-    auto* shown = new Switch(row);
-    shown->setChecked(true);
-    shown->setAccessibleName(QString("Show %1 in the sidebar").arg(source.name));
-    shown->setToolTip("Show in the sidebar");
-    row->AddControl(shown);
-    sources_card_->AddRow(row);
-    nav_->RegisterRow(row, QString("sidebar show source order %1").arg(source.name));
-    source_rows_.push_back({source.id, row, shown});
-    const size_t index = source_rows_.size() - 1;
-    connect(shown, &Switch::toggled, this, &SettingsPanel::Refresh);
-    AddPrefField({.row = row,
-                  .changed = [this, index] {
-                    return source_rows_[index].shown->isChecked() ==
-                           hidden_sources_saved_.contains(source_rows_[index].id);
-                  },
-                  .is_default = [this, index] { return source_rows_[index].shown->isChecked(); },
-                  .revert = [this, index] {
-                    source_rows_[index].shown->setChecked(!hidden_sources_saved_.contains(source_rows_[index].id));
-                  },
-                  .reset = [this, index] { source_rows_[index].shown->setChecked(true); },
-                  .mark_saved = [] {}});
-  }
-  // The order is one change however many rows a drag moves. The order shown
-  // is the baseline until the saved prefs arrive, so a failed fetch isn't a change.
-  source_order_saved_ = CurrentSourceOrder();
-  pref_fields_.push_back({.row = nullptr,
-                          .changed = [this] { return CurrentSourceOrder() != source_order_saved_; },
-                          .is_default = [] { return true; },
-                          .revert = [this] { ArrangeSources(source_order_saved_); },
-                          .reset = [] {},
-                          .mark_saved = [] {}});
-  connect(sources_card_, &SettingsCard::RowsReordered, this, &SettingsPanel::Refresh);
-}
-
-QStringList SettingsPanel::CurrentSourceOrder() const {
-  QStringList order;
-  for (QWidget* row : sources_card_->Rows()) {
-    const auto it = std::ranges::find(source_rows_, row, [](const SourceRow& source) -> QWidget* { return source.row; });
-    if (it != source_rows_.end()) order << it->id;
-  }
-  return order;
-}
-
-QSet<QString> SettingsPanel::CurrentHiddenSources() const {
-  QSet<QString> hidden;
-  for (const SourceRow& row : source_rows_) {
-    if (!row.shown->isChecked()) hidden.insert(row.id);
-  }
-  return hidden;
-}
-
-void SettingsPanel::ArrangeSources(const QStringList& order) {
-  const std::vector<QString> full = OrderSources({order.begin(), order.end()});
-  const int first = static_cast<int>(sources_card_->Rows().size() - source_rows_.size());
-  int at = first;
-  for (const QString& id : full) {
-    const auto it = std::ranges::find(source_rows_, id, &SourceRow::id);
-    if (it == source_rows_.end()) continue;
-    sources_card_->MoveRow(it->row, at++);
-  }
+  auto* sources_row = new SettingRow("Sources", "Which sources show, their order, and adding more.");
+  auto* open = new QPushButton("Open Sources", sources_row);
+  connect(open, &QPushButton::clicked, this, &SettingsPanel::SourcesPageRequested);
+  sources_row->AddControl(open);
+  sources_card_->AddRow(sources_row);
+  nav_->RegisterRow(sources_row, "sidebar sources open");
 }
 
 void SettingsPanel::BuildShortcutsPage() {

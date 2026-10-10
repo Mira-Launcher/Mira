@@ -78,6 +78,8 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
                    s.events.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
                    return std::unexpected(done.error());
                  }
+                 s.games.MarkSourceAdded(launcher->id, false);
+                 s.events.Publish("sources.changed", json::object());
                  if (const auto imported = launchers::Import(s.config, s.games, s.events, *launcher)) {
                    s.AfterImport(imported->added_games);
                  } else {
@@ -128,6 +130,8 @@ void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
              [&s, launcher](JobRegistry::Progress&) -> Result<json> {
                const auto summary = launchers::Import(s.config, s.games, s.events, *launcher);
                if (!summary) return std::unexpected(summary.error());
+               s.games.MarkSourceAdded(launcher->id, true);
+               s.events.Publish("sources.changed", json::object());
                s.AfterImport(summary->added_games);
                return json{{"added", summary->added}, {"updated", summary->updated}};
              });

@@ -12,7 +12,7 @@ namespace mira::steam {
 Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(const config::Config& config,
                                                                 const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
-  if (!config.GetBool("steam.enabled")) return entries;
+  if (!games.SourceEnabled("steam")) return entries;
 
   const Result<std::vector<OwnedGame>> owned = ListOwnedGames(config);
   if (!owned) return std::unexpected(owned.error());

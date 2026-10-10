@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <json.hpp>
+#include <memory>
 #include <utility>
 
 #include "../activity/DownloadTracker.h"
@@ -162,14 +163,20 @@ void SetupWork::ImportLutris() {
 }
 
 void SetupWork::SetSourcesOn(const QStringList& on, const QStringList& off) {
-  std::vector<ConfigEdit> edits;
-  for (const auto& [ids, value] : {std::pair{&on, "true"}, std::pair{&off, "false"}}) {
+  std::vector<std::pair<QString, bool>> edits;
+  for (const auto& [ids, value] : {std::pair{&on, true}, std::pair{&off, false}}) {
     for (const QString& id : *ids) {
-      if (id != "local") edits.push_back({(id + ".enabled").toStdString(), "a boolean", value});
+      if (id != "local") edits.emplace_back(id, value);
     }
   }
   if (edits.empty()) return;
-  api::PatchConfigAsync(this, edits, [this](PatchConfigResult) { emit SourcesChanged(); });
+  // One PATCH per source; the sidebar refreshes once the last one lands.
+  auto pending = std::make_shared<int>(static_cast<int>(edits.size()));
+  for (const auto& [id, enabled] : edits) {
+    api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt, [this, pending](PatchConfigResult) {
+      if (--*pending == 0) emit SourcesChanged();
+    });
+  }
 }
 
 QStringList SetupWork::Running() const {

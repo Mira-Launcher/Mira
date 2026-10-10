@@ -30,6 +30,16 @@ struct PlaySession {
   bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
 };
 
+// A source's place in Mira: whether it's set up, on, in the sidebar and where.
+struct SourceState {
+  std::string id;
+  bool added = false;    // set up: shown on the Sources page and in the sidebar, not in the catalog
+  bool enabled = true;   // off keeps it added but hidden, its games unlisted and imports skipped
+  bool in_sidebar = true;
+  int position = 0;      // sidebar order, ascending
+  std::int64_t imported_at = 0;  // unix seconds of the last successful import, 0 if none
+};
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
@@ -53,6 +63,16 @@ public:
   // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
   nlohmann::json UiState();
   void KeepUiState(const nlohmann::json& state);
+
+  // Stored source rows, by position. A source without a row has SourceState's defaults.
+  std::vector<SourceState> Sources() const;
+  SourceState Source(const std::string& id) const;
+  bool SourceEnabled(const std::string& id) const { return Source(id).enabled; }
+  void SaveSource(const SourceState& state);
+  // Positions follow `ids`' order; sources not named keep theirs.
+  void SetSourceOrder(const std::vector<std::string>& ids);
+  // Marks it set up; `imported` also stamps imported_at with now.
+  void MarkSourceAdded(const std::string& id, bool imported);
 
   std::string SettingsSnapshot();
   void KeepSettingsSnapshot(const std::string& toml);

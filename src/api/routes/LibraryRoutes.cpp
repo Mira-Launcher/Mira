@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
+#include <map>
 
 #include "api/Http.h"
 #include "api/Routes.h"
@@ -28,6 +30,17 @@
 namespace mira::api {
 namespace {
 using httplib::Request;
+
+// Known sources, in default order.
+const std::vector<std::string> kSourceIds = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
+                                             "humble", "battlenet", "ubisoft", "ea", "office", "lutris"};
+
+// The source a game's `source` counts toward, or "" for none.
+std::string SourceOfGame(const std::string& source) {
+  if (source == "scan" || source == "manual" || source == "desktop-entry" || source == "local") return "local";
+  if (source == "launcher") return "";
+  return source;
+}
 using httplib::Response;
 using nlohmann::json;
 
@@ -201,6 +214,8 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       steam::SteamScanner scanner(s.config, s.games, s.events);
       auto summary = scanner.Scan();
       if (!summary) return std::unexpected(summary.error());
+      s.games.MarkSourceAdded("steam", true);
+      s.events.Publish("sources.changed", json::object());
       s.AfterImport(summary->added_games);
       return json{{"added", summary->added}, {"updated", summary->updated}};
     });
@@ -285,6 +300,8 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       lutris::LutrisImporter importer(s.config, s.games, s.events);
       auto summary = importer.Import();
       if (!summary) return std::unexpected(summary.error());
+      s.games.MarkSourceAdded("lutris", true);
+      s.events.Publish("sources.changed", json::object());
       s.AfterImport(summary->added_games);
       return json{{"added", summary->added},
                   {"updated", summary->updated},
@@ -318,8 +335,74 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                auto removed = library::RemoveSource(s.config, s.games, s.events, source);
                if (!removed) return std::unexpected(removed.error());
                s.SyncDesktopEntries();
+               s.events.Publish("sources.changed", json::object());
                return json{{"removed", removed->removed}, {"problems", removed->problems}};
              });
+  });
+
+  // Games per source id, for the sources list.
+  const auto game_counts = [&s]() {
+    std::map<std::string, int> counts;
+    for (const auto& game : s.games.All()) {
+      if (const std::string id = SourceOfGame(game.source); !id.empty()) ++counts[id];
+    }
+    return counts;
+  };
+  const auto source_json = [](const std::map<std::string, int>& counts, const store::SourceState& state) {
+    const auto found = counts.find(state.id);
+    return json{{"id", state.id},
+                {"added", state.added || state.id == "local"},
+                {"enabled", state.enabled},
+                {"in_sidebar", state.in_sidebar},
+                {"position", state.position},
+                {"imported_at", state.imported_at},
+                {"games", found == counts.end() ? 0 : found->second}};
+  };
+
+  http.Get("/v1/sources", [&s, game_counts, source_json](const Request&, Response& res) {
+    std::vector<store::SourceState> states;
+    for (const std::string& id : kSourceIds) states.push_back(s.games.Source(id));
+    // Never-ordered sources (position 0) go last, in default order.
+    std::ranges::stable_sort(states, std::ranges::less{}, [](const store::SourceState& state) {
+      return state.position == 0 ? std::numeric_limits<int>::max() : state.position;
+    });
+    const auto counts = game_counts();
+    json sources = json::array();
+    for (const store::SourceState& state : states) sources.push_back(source_json(counts, state));
+    SendJson(res, {{"sources", sources}});
+  });
+
+  http.Patch(R"(/v1/sources/([a-z0-9-]+))", [&s, game_counts, source_json](const Request& req, Response& res) {
+    const std::string id = req.matches[1].str();
+    if (std::ranges::find(kSourceIds, id) == kSourceIds.end()) {
+      return SendError(res, 404, "unknown_source", std::format("no source named \"{}\"", id));
+    }
+    const auto body = BodyObject(req, res, R"({"enabled": true, "in_sidebar": true})");
+    if (!body) return;
+    store::SourceState state = s.games.Source(id);
+    const auto flag = [&body](const char* key, bool& field) {
+      if (body->contains(key) && (*body)[key].is_boolean()) field = (*body)[key].get<bool>();
+    };
+    flag("added", state.added);
+    flag("enabled", state.enabled);
+    flag("in_sidebar", state.in_sidebar);
+    s.games.SaveSource(state);
+    SendJson(res, source_json(game_counts(), state));
+    s.events.Publish("sources.changed", json::object());
+  });
+
+  http.Put("/v1/sources/order", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"order": ["steam", "..."]})");
+    if (!body) return;
+    const auto order = StringList(*body, "order");
+    if (!order || !body->contains("order")) return SendError(res, 400, "invalid_body", R"(expected {"order": [...]})");
+    std::vector<std::string> ids;
+    for (const std::string& id : *order) {
+      if (std::ranges::find(kSourceIds, id) != kSourceIds.end()) ids.push_back(id);
+    }
+    s.games.SetSourceOrder(ids);
+    SendJson(res, {{"ok", true}});
+    s.events.Publish("sources.changed", json::object());
   });
 
   const auto send_source_runner = [](Response& res, const Result<library::SourceRunner>& runner) {

@@ -134,6 +134,8 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (auto logged_in = store->login(s.config, (*body)["credential"].get<std::string>()); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
+    s.games.MarkSourceAdded(store->id, false);
+    s.events.Publish("sources.changed", json::object());
     SendJson(res, StatusJson(*store, store->status(s.config)));
   });
 
@@ -175,6 +177,8 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
                [&s, store](JobRegistry::Progress&) -> Result<json> {
                  auto summary = store->import(s.config, s.games, s.events);
                  if (!summary) return std::unexpected(summary.error());
+                 s.games.MarkSourceAdded(store->id, true);
+                 s.events.Publish("sources.changed", json::object());
                  s.AfterImport(summary->added_games);
                  return json{{"added", summary->added}, {"updated", summary->updated}};
                });

@@ -42,7 +42,7 @@ bool LibraryIsFresh() {
 Result<std::vector<library::CatalogEntry>> AmazonSource::Catalog(const config::Config& config,
                                                                  const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
-  if (!config.GetBool("amazon.enabled")) return entries;
+  if (!games.SourceEnabled("amazon")) return entries;
   if (!LibraryIsFresh()) {
     if (auto ready = CheckReady(config); !ready) return std::unexpected(ready.error());
     if (auto synced = RunNile(config, {"library", "sync"}); !synced) return std::unexpected(synced.error());

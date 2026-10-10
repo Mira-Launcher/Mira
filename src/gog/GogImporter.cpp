@@ -119,7 +119,7 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
 
 Result<library::ImportSummary> GogImporter::Import() {
   library::ImportSummary summary;
-  if (!config_.GetBool("gog.enabled")) return summary;
+  if (!games_.SourceEnabled("gog")) return summary;
 
   const fs::path root = InstallRoot(config_);
   std::error_code ec;

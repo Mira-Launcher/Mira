@@ -94,17 +94,6 @@ void SettingsPanel::LoadFrontendPrefs() {
     sidebar_style_saved_ = choices;
     sidebar_style_->SetChoices(choices);
 
-    hidden_sources_saved_.clear();
-    for (const std::string& id : prefs.hidden_sources.value_or(std::vector<std::string>{})) {
-      hidden_sources_saved_.insert(QString::fromStdString(id));
-    }
-    for (const SourceRow& row : source_rows_) row.shown->setChecked(!hidden_sources_saved_.contains(row.id));
-    QStringList order;
-    for (const std::string& id : prefs.source_order.value_or(std::vector<std::string>{})) {
-      order << QString::fromStdString(id);
-    }
-    ArrangeSources(order);
-    source_order_saved_ = CurrentSourceOrder();
     Refresh();
     LoadDone();
   });
@@ -220,15 +209,6 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
     if (source != nullptr) card->SetLeading(MakeSourceBadge(*source, 24, card));
     for (const size_t i : rows) {
       if (fields_[i].entry.source != source_id) continue;
-      if (fields_[i].entry.key == source_id + ".enabled") {
-        // The source's on switch sits in its card's header, not in a row of its own.
-        SettingRow* row = fields_[i].Build(card);
-        row->hide();
-        fields_[i].OnEdited(this, [this] { Refresh(); });
-        fields_[i].toggle->setToolTip(QString::fromStdString(fields_[i].entry.label));
-        card->Header()->addWidget(fields_[i].toggle);
-        continue;
-      }
       AddSchemaRow(card, i);
     }
     card->SetCollapsible(/*collapsed=*/true);
@@ -351,13 +331,6 @@ void SettingsPanel::Refresh() {
         std::ranges::all_of(reset.schema, [this](size_t i) { return fields_[i].IsDefault(); });
     reset.card->SetResettable(!all_default);
   }
-  // A dragged source row is marked too, though the order counts as one change.
-  if (!source_order_saved_.isEmpty()) {
-    const QStringList order = CurrentSourceOrder();
-    for (const SourceRow& row : source_rows_) {
-      if (order.indexOf(row.id) != source_order_saved_.indexOf(row.id)) row.row->SetModified(true);
-    }
-  }
   change_bar_->SetCount(ChangeCount());
   UpdatePreviews();
 }
@@ -426,22 +399,7 @@ void SettingsPanel::Save() {
     prefs.sidebar_recent_count = style.recent_count;
     prefs.sidebar_recent_when = style.recent_when;
 
-    // Only when changed here, so an untouched list doesn't overwrite one another client changed meanwhile.
-    if (CurrentHiddenSources() != hidden_sources_saved_) {
-      std::vector<std::string> hidden;
-      for (const QString& id : CurrentHiddenSources()) hidden.push_back(id.toStdString());
-      std::ranges::sort(hidden);
-      prefs.hidden_sources = std::move(hidden);
-    }
-    if (CurrentSourceOrder() != source_order_saved_) {
-      std::vector<std::string> order;
-      for (const QString& id : CurrentSourceOrder()) order.push_back(id.toStdString());
-      prefs.source_order = std::move(order);
-    }
-
     for (const PrefField& field : pref_fields_) field.mark_saved();
-    hidden_sources_saved_ = CurrentHiddenSources();
-    source_order_saved_ = CurrentSourceOrder();
     api::SaveFrontendPrefsAsync(this, prefs, [this](PatchConfigResult result) {
       if (!result.ok) notify::FailedRequest(this, "Could not save the display settings.", result.error);
     });

@@ -119,7 +119,7 @@ TEST_CASE("Removing Steam forgets its games but never touches their files") {
   CHECK(fs::exists(game_dir));
   CHECK_FALSE(server.games().Find("steam-1145360"));
   CHECK(server.games().Find("celeste"));
-  CHECK_FALSE(server.config().GetBool("steam.enabled"));
+  CHECK_FALSE(server.games().Source("steam").added);
 }
 
 TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, and signs out") {
@@ -151,7 +151,7 @@ TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, 
   CHECK(fs::exists(state / "prefixes" / "celeste" / "drive_c" / "users" / "save.dat"));
   CHECK_FALSE(fs::exists(gog::AuthConfigPath(server.config())));
   CHECK(server.games().All().empty());
-  CHECK_FALSE(server.config().GetBool("gog.enabled"));
+  CHECK_FALSE(server.games().Source("gog").added);
 }
 
 TEST_CASE("A launcher's games import from its prefix, and removing it keeps saves and the prefix") {
@@ -200,6 +200,28 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
   CHECK(fs::exists(program / "savegames" / "5595" / "1.save"));
   CHECK(fs::exists(prefix / "system.reg"));
   CHECK(server.games().All().empty());
+}
+
+TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
+  LiveServer server(TempDir("sources-list"));
+  httplib::Client client = server.Client();
+  auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})", "application/json");
+  REQUIRE(patched != nullptr);
+  CHECK(patched->status == 200);
+  auto ordered = client.Put("/v1/sources/order", R"({"order": ["gog", "local"]})", "application/json");
+  REQUIRE(ordered != nullptr);
+  CHECK(ordered->status == 200);
+
+  const json sources = Get(client, "/v1/sources")["sources"];
+  CHECK(sources[0]["id"] == "gog");
+  CHECK(sources[1]["id"] == "local");
+  CHECK(sources[1]["added"] == true);
+  json epic;
+  for (const json& source : sources) {
+    if (source["id"] == "epic") epic = source;
+  }
+  CHECK(epic["enabled"] == false);
+  CHECK(epic["in_sidebar"] == false);
 }
 
 TEST_CASE("An unknown source can't be planned or removed") {

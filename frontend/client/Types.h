@@ -837,12 +837,6 @@ struct FrontendPrefs {
   // QKeySequence::toString(PortableText) string. An id absent here just
   // means "whatever that action's own default is" -- see keybindings::All().
   std::optional<std::map<std::string, std::string>> shortcut_overrides;
-  // Source ids unticked under "In sidebar" on the Sources page.
-  std::optional<std::vector<std::string>> hidden_sources;
-  // The sidebar's source order, by id; sources missing from it follow.
-  std::optional<std::vector<std::string>> source_order;
-  // When each source last imported, as unix seconds.
-  std::optional<std::map<std::string, std::int64_t>> source_imported_at;
   // How many recently played games the sidebar lists besides running ones
   // (0, the default, hides them), and whether source rows show a game count.
   std::optional<int> sidebar_recent_count;
@@ -1094,6 +1088,23 @@ struct DesktopEntrySyncResult {
 // GET /v1/stores/{id}/status. `tool` is
 // the helper mirad drives for that store (Legendary, gogdl, butler,
 // humble-cli).
+// One entry from GET /v1/sources: a source's place in Mira, as mirad stores it.
+struct SourceState {
+  std::string id;
+  bool added = false;  // set up; the rest are offered on the Sources page's catalog
+  bool enabled = true;
+  bool in_sidebar = true;
+  int position = 0;
+  std::int64_t imported_at = 0;  // unix seconds; 0 if never
+  int games = 0;
+};
+
+struct SourcesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<SourceState> sources;  // every source, in sidebar order
+};
+
 struct StoreStatusResult {
   bool ok = false;
   ApiError error;

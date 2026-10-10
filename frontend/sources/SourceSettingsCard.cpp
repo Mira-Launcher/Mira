@@ -21,9 +21,8 @@ namespace {
 bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   const std::string id = source.id.toStdString();
   if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + ".")) return true;
-  // enabled belongs to the Sources page, runner has its own row, collections their own dialog.
-  return key.starts_with(id + ".") && key != id + ".enabled" && key != id + ".runner" &&
-         key != "itch.collections";
+  // runner has its own row, collections their own dialog.
+  return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
 
 QString Games(int count) { return QString("%1 game%2").arg(count).arg(count == 1 ? "" : "s"); }
