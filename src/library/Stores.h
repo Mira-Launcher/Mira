@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,9 @@ struct Store {
   Result<std::string> (*begin_login)(const config::Config& config);
   // Completes sign-in with what the user pasted: a code, an API key, a session key or a redirect URL.
   Result<void> (*login)(const config::Config& config, const std::string& credential);
+  // The credential in text the user copied, or nullopt when it holds none. Stricter than login, which
+  // also takes a bare code, so a client can sign in from the clipboard without guessing.
+  std::optional<std::string> (*find_credential)(std::string_view text);
   Result<void> (*logout)(const config::Config& config);  // null when the tool keeps the session itself
   // Null when the store has nothing installed to import.
   Result<ImportSummary> (*import)(config::Config& config, store::GameStore& games, api::EventBus& events);

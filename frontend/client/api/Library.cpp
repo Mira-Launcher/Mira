@@ -153,6 +153,18 @@ void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionRe
       std::move(callback));
 }
 
+void GetLutrisAsync(QObject* context, std::function<void(LutrisStatusResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<LutrisStatusResult>(transport::Get("/v1/lutris"), "GET /v1/lutris", Shape::Object,
+                                             [](LutrisStatusResult& result, const nlohmann::json& body) {
+                                               result.found = body.value("found", false);
+                                             });
+      },
+      std::move(callback));
+}
+
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback) {
   RunJob<LutrisImportResult>(
       context, "import",

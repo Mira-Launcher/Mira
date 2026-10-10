@@ -64,6 +64,8 @@
 #include "../library/OwnedTitles.h"
 #include "../library/LibraryPage.h"
 #include "../runners/RunnersPage.h"
+#include "../setup/SetupWindow.h"
+#include "../setup/SetupWork.h"
 #include "../tags/TagsPage.h"
 #include "../settings/SettingsPanel.h"
 #include "../sidebar/Sidebar.h"
@@ -690,6 +692,14 @@ void LibraryWindow::CloseTags() {
   main_stack_->setCurrentWidget(grid_page_);
   SetSourceControlsEnabled(true);
   UpdateLibraryNavActive();
+}
+
+mira_gui::SetupWindow* LibraryWindow::OpenSetup(const mira_gui::FrontendPrefs& prefs) {
+  auto* work = new mira_gui::SetupWork(downloads_, this);
+  connect(work, &mira_gui::SetupWork::SourcesChanged, sidebar_, &mira_gui::Sidebar::RefreshSources);
+  auto* setup = new mira_gui::SetupWindow(services(), work, prefs, this);
+  setup->show();
+  return setup;
 }
 
 void LibraryWindow::OpenAbout() {

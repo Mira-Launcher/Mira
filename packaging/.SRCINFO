@@ -1,6 +1,6 @@
 pkgbase = mira-launcher
 	pkgdesc = Linux game launcher for native games and Windows games via Wine/Proton
-	pkgver = 0.13.3
+	pkgver = 0.14.0
 	pkgrel = 1
 	url = https://github.com/Mira-Launcher/Mira
 	arch = x86_64
@@ -22,7 +22,7 @@ pkgbase = mira-launcher
 	optdepends = sdl3: controllers and sounds in big screen
 	optdepends = polkit: install missing system packages from Mira
 	optdepends = sqlite: import Lutris libraries
-	source = mira-0.13.3.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v0.13.3.tar.gz
+	source = mira-0.14.0.tar.gz::https://github.com/Mira-Launcher/Mira/archive/refs/tags/v0.14.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = mira-launcher

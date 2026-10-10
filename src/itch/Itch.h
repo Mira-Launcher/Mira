@@ -44,6 +44,9 @@ Result<void> CheckReady(const config::Config& config);
 // call).
 Result<void> Login(const config::Config& config, const std::string& api_key);
 
+// The text itself when it is shaped like an API key (one run of letters and digits), else nullopt.
+std::optional<std::string> FindKey(std::string_view text);
+
 Result<void> Logout(const config::Config& config);
 
 // Every Fetch.ProfileOwnedKeys/Install.Queue call needs a numeric

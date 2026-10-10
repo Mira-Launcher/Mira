@@ -30,7 +30,7 @@ void ApplyStartOnLogin(bool on) {
   }
   QDir().mkpath(dir);
   const QByteArray entry = "[Desktop Entry]\nType=Application\nName=Mira\nIcon=mira\nExec=\"" +
-                           Executable().toUtf8() + "\"\nX-GNOME-Autostart-enabled=true\n";
+                           Executable().toUtf8() + "\" --login\nX-GNOME-Autostart-enabled=true\n";
   QFile file(path);
   if (file.open(QIODevice::ReadOnly) && file.readAll() == entry) return;
   file.close();

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <format>
 #include <ranges>
+#include <regex>
 
 #include "config/RunnerSources.h"
 #include "core/StoreErrors.h"
@@ -81,6 +82,13 @@ runner::AuthStatus Status(const config::Config& config) {
   const Result<std::string> listed = RunHumbleCli(config, {"list", "--field", "key"});
   status.authenticated = listed.has_value();
   return status;
+}
+
+std::optional<std::string> FindSessionKey(std::string_view text) {
+  static const std::regex cookie(R"re(^\s*("?eyJ[A-Za-z0-9+/_=-]+\|\d+\|[0-9a-fA-F]+"?)\s*$)re");
+  std::match_results<std::string_view::const_iterator> match;
+  if (!std::regex_match(text.begin(), text.end(), match, cookie)) return std::nullopt;
+  return match[1].str();
 }
 
 Result<void> Login(const config::Config& config, const std::string& session_key) {

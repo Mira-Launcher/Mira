@@ -50,6 +50,7 @@ struct Launcher {
   std::vector<Setup> setups;              // run in order; none: the last winetricks verb installs it
   std::vector<std::string> tricks;        // winetricks verbs run before the installer
   bool interactive = false;               // the installer needs clicking through
+  std::string kind = "games";             // what it brings: "games", or "apps" (Microsoft 365)
   std::map<std::string, std::string> env;
 };
 
@@ -69,6 +70,15 @@ bool Installed(const store::GameStore& games, const Launcher& launcher);
 std::vector<std::string> InstalledOfficeApps(const model::Game& host);
 // Runs Office's installer in Microsoft 365's prefix so exactly `apps` are installed, then imports them.
 Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
+                           std::vector<std::string> apps);
+// Keeps `apps` for AddOfficeApps to add once Microsoft 365's running install ends. False when it
+// isn't installing, so they can be added now.
+bool QueueOfficeApps(const std::vector<std::string>& apps);
+// Forgets the queued apps, e.g. after Microsoft 365's install failed.
+void DropQueuedOfficeApps();
+// Adds `apps` and any queued ones to the installed apps, one installer run per batch, until none are
+// left. Stops at the first failure, dropping what's queued.
+Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
                            std::vector<std::string> apps);
 
 // False if this launcher is already installing.

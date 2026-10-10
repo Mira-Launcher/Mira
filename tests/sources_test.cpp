@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -210,4 +211,121 @@ TEST_CASE("An unknown source can't be planned or removed") {
   auto removed = client.Post("/v1/sources/nope/remove");
   REQUIRE(removed != nullptr);
   CHECK(removed->status == 404);
+}
+
+TEST_CASE("Microsoft 365's apps are asked for by name, and only once Office is being set up or is") {
+  LiveServer server(TempDir("office-apps"));
+  httplib::Client client = server.Client();
+  // Listed before Office is installed, so they can be picked first.
+  const json launchers = Get(client, "/v1/launchers");
+  const auto office = std::ranges::find(launchers, json("office"), [](const json& l) { return l["id"]; });
+  REQUIRE(office != launchers.end());
+  CHECK((*office)["installed"] == false);
+  CHECK(std::ranges::contains((*office)["apps"], json{{"ref", "word"}, {"name", "Word"}}));
+
+  const auto post = [&](const json& body) {
+    auto res = client.Post("/v1/launchers/office/apps", body.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    return std::pair{res->status, json::parse(res->body)};
+  };
+  const auto [unknown, unknown_body] = post({{"apps", {"word", "notepad"}}});
+  CHECK(unknown == 400);
+  CHECK(unknown_body["error"]["code"] == "unknown_app");
+  CHECK(post({{"apps", json::array()}}).first == 400);
+  CHECK(post({{"apps", {1}}}).first == 400);
+
+  const auto [missing, missing_body] = post({{"apps", {"word", "excel"}}});
+  CHECK(missing == 409);
+  CHECK(missing_body["error"]["code"] == "launcher_not_installed");
+}
+
+TEST_CASE("Copied text is searched for each store's credential, and other text finds none") {
+  LiveServer server(TempDir("store-find-credential"));
+  httplib::Client client = server.Client();
+  const auto find = [&](const std::string& store, const std::string& text) {
+    auto res = client.Post("/v1/stores/" + store + "/login/find", json{{"text", text}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return json::parse(res->body)["credential"];
+  };
+  const std::string epic_code = "7c1e05d8a3f94b6e9d2a41c0b8f3e5a7";
+  CHECK(find("epic", R"({"redirectUrl":"https://localhost","authorizationCode":")" + epic_code + R"(","sid":null})") ==
+        epic_code);
+  // Firefox's JSON viewer, all of it selected and copied.
+  CHECK(find("epic", "warning\t\"Do not share this code\"\nauthorizationCode\t\"" + epic_code + "\"\nsid\tnull") ==
+        epic_code);
+  CHECK(find("epic", "  " + epic_code + "\n") == epic_code);
+  CHECK(find("epic", "https://www.epicgames.com/id/login").is_null());
+
+  CHECK(find("gog", "https://embed.gog.com/on_login_success?origin=client&code=Kx9pR2vQ8mWZ&x=1") == "Kx9pR2vQ8mWZ");
+  CHECK(find("gog", "Kx9pR2vQ8mWZ").is_null());
+
+  CHECK(find("amazon", "https://www.amazon.com/?openid.oa2.authorization_code=ANbXqzKp&openid.mode=id_res") ==
+        "ANbXqzKp");
+  CHECK(find("amazon", "https://www.amazon.com/ap/signin").is_null());
+
+  CHECK(find("itch", " a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz ") == "a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz");
+  CHECK(find("itch", "Generate new API key").is_null());
+
+  const std::string cookie = R"("eyJpZCI6IjY4NDE1OTI3NyJ9|1791245011|a3f9c2d4e5")";
+  CHECK(find("humble", cookie + "\n") == cookie);
+  CHECK(find("humble", "csrf_cookie").is_null());
+
+  auto unknown = client.Post("/v1/stores/nope/login/find", json{{"text", "x"}}.dump(), "application/json");
+  REQUIRE(unknown != nullptr);
+  CHECK(unknown->status == 404);
+}
+
+TEST_CASE("Steam accounts on this computer list the most recent first, and the chosen one is selected") {
+  LiveServer server(TempDir("steam-accounts"));
+  const fs::path steam = server.config().GetPath("steam.root");
+  httplib::Client client = server.Client();
+  fs::create_directories(steam / "steamapps");
+  Touch(steam / "config" / "loginusers.vdf",
+        R"("users" { "76561198000000001" { "AccountName" "older" "PersonaName" "Old" "Timestamp" "100" }
+                     "76561198000000002" { "AccountName" "newer" "PersonaName" "New" "Timestamp" "300" }
+                     "76561198000000003" { "AccountName" "main" "PersonaName" "Main" "MostRecent" "1" "Timestamp" "200" } })");
+  const auto accounts = [&] {
+    auto res = client.Get("/v1/steam/accounts");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return json::parse(res->body);
+  };
+
+  const json listed = accounts();
+  REQUIRE(listed["accounts"].size() == 3);
+  CHECK(listed["accounts"][0]["account_name"] == "main");
+  CHECK(listed["accounts"][0]["persona_name"] == "Main");
+  CHECK(listed["accounts"][1]["account_name"] == "newer");
+  CHECK(listed["accounts"][2]["account_name"] == "older");
+  CHECK(listed["found"].get<bool>());
+  CHECK(listed["selected"] == "76561198000000003");
+
+  REQUIRE(server.MutableConfig().Set("steam.steamid64", "76561198000000001"));
+  CHECK(accounts()["selected"] == "76561198000000001");
+}
+
+TEST_CASE("Steam's installed games are listed most recently played first without being added") {
+  LiveServer server(TempDir("steam-installed"));
+  const fs::path steam = server.config().GetPath("steam.root");
+  httplib::Client client = server.Client();
+  for (const auto& [appid, name] : {std::pair{"400", "Portal"}, {"620", "Portal 2"}, {"70", "Half-Life"}}) {
+    WriteManifest(steam, appid, name, name);
+    fs::create_directories(steam / "steamapps" / "common" / name);
+  }
+  Touch(steam / "config" / "loginusers.vdf",
+        R"("users" { "76561198000000001" { "AccountName" "main" "MostRecent" "1" } })");
+  Touch(steam / "userdata" / "39734273" / "config" / "localconfig.vdf",
+        R"("UserLocalConfigStore" { "Software" { "Valve" { "Steam" { "apps" {
+             "400" { "LastPlayed" "1000" } "620" { "LastPlayed" "3000" } } } } } })");
+
+  const json listed = Get(client, "/v1/steam/installed");
+  CHECK(listed["found"].get<bool>());
+  REQUIRE(listed["games"].size() == 3);
+  CHECK(listed["games"][0]["name"] == "Portal 2");
+  CHECK(listed["games"][0]["last_played_at"] == 3000);
+  CHECK(listed["games"][1]["appid"] == "400");
+  CHECK(listed["games"][2]["appid"] == "70");
+  CHECK_FALSE(listed["games"][2].contains("last_played_at"));
+  CHECK(Get(client, "/v1/games").empty());
 }

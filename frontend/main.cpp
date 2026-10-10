@@ -13,13 +13,13 @@
 
 #include "bigscreen/Session.h"
 #include "client/api/Config.h"
-#include "dialogs/FirstRunWizard.h"
 #include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
 #include "app/SystemNotifier.h"
 #include "app/Tray.h"
+#include "setup/SetupWindow.h"
 #include "theme/Theme.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
@@ -61,8 +61,10 @@ int main(int argc, char** argv) {
   const bool big_screen = app.arguments().contains("--big-screen");
   // Started by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
   const bool hidden = app.arguments().contains("--hidden");
+  // Started at login: the tray too, unless big screen opens at start.
+  const bool login = app.arguments().contains("--login");
   if (!single_instance_lock.tryLock(0)) {
-    if (hidden) return 0;
+    if (hidden || login) return 0;
     // Ask the instance already holding the lock to raise its own window
     // instead of just quietly doing nothing -- see the QLocalServer set up
     // below, alongside window creation.
@@ -98,56 +100,67 @@ int main(int argc, char** argv) {
   // ourselves if nothing is already listening, so the AppImage works as one
   // self-contained app.
   auto* supervisor = new mira_gui::DaemonSupervisor(&app);
-  QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, hidden] {
-    // Read once and applied before the window exists, so it opens at its saved
-    // size and look instead of changing once shown.
-    const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
-    mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
-    if (!hidden && saved.ok && mira_gui::FirstRunWizard::Needed(prefs)) {
-      mira_gui::FirstRunWizard wizard(prefs);
-      wizard.exec();
-      // What it chose decides how the window opens.
-      const mira_gui::FrontendPrefsResult after = mira_gui::api::GetFrontendPrefsBlocking();
-      if (after.ok) prefs = after.prefs;
-    }
-    mira_gui::ApplyAppearance(prefs);
-    mira_gui::bigscreen::ApplyStartOnLogin(prefs.start_on_login.value_or(false));
-    auto* window = new LibraryWindow(prefs);
-    window->setAttribute(Qt::WA_DeleteOnClose);
-    // A no-op on a desktop with no tray (Tray.cpp): window->close() then
-    // means exactly what it always did.
-    mira_gui::tray::Attach(window);
-    mira_gui::bigscreen::UpdateSteamShortcut(window);
-    if (hidden) {
-      // With no tray to come back from, the dock or taskbar.
-      if (!mira_gui::tray::Available()) window->showMinimized();
-    } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {
-      window->OpenBigScreen();
-    } else {
-      window->show();
-    }
-
-    // Raises this window when a second launch pings "activate". removeServer
-    // clears a stale socket left by a crashed instance.
-    QLocalServer::removeServer("mira-gui-activate");
-    auto* activation_server = new QLocalServer(window);
-    activation_server->listen("mira-gui-activate");
-    QObject::connect(activation_server, &QLocalServer::newConnection, window, [activation_server, window] {
-      QLocalSocket* client = activation_server->nextPendingConnection();
-      QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
-      QObject::connect(client, &QLocalSocket::readyRead, window, [client, window] {
-        if (client->readAll() == "big-screen") {
+  QObject::connect(
+      supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, hidden, login] {
+        // Read once and applied before the window exists, so it opens at its saved
+        // size and look instead of changing once shown.
+        const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
+        mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
+        const bool tray = hidden || (login && !prefs.big_screen_at_start.value_or(false));
+        // A frontend.toml that already has a window size is an existing install, not a new one.
+        const bool first_launch = !tray && saved.ok && !prefs.onboarded.value_or(false) &&
+                                  !prefs.window_width.has_value();
+        if (first_launch) {
+          mira_gui::FrontendPrefs onboarded;
+          onboarded.onboarded = true;
+          mira_gui::api::SaveFrontendPrefsBlocking(onboarded);
+        }
+        mira_gui::ApplyAppearance(prefs);
+        mira_gui::bigscreen::ApplyStartOnLogin(prefs.start_on_login.value_or(false));
+        auto* window = new LibraryWindow(prefs);
+        window->setAttribute(Qt::WA_DeleteOnClose);
+        // A no-op on a desktop with no tray (Tray.cpp): window->close() then
+        // means exactly what it always did.
+        mira_gui::tray::Attach(window);
+        mira_gui::bigscreen::UpdateSteamShortcut(window);
+        if (first_launch) {
+          // Set up Mira opens instead of the main window, which shows once it closes.
+          QObject::connect(window->OpenSetup(prefs), &mira_gui::SetupWindow::Finished, window,
+                           [window](bool big_screen) {
+                             if (big_screen) return window->OpenBigScreen();
+                             window->show();
+                           });
+        } else if (tray) {
+          // With no tray to come back from, the dock or taskbar.
+          if (!mira_gui::tray::Available()) window->showMinimized();
+        } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {
           window->OpenBigScreen();
         } else {
-          if (window->isMinimized()) window->showNormal();
           window->show();
-          window->raise();
-          window->activateWindow();
         }
-        client->disconnectFromServer();
+
+        // Raises this window when a second launch pings "activate". removeServer
+        // clears a stale socket left by a crashed instance.
+        QLocalServer::removeServer("mira-gui-activate");
+        auto* activation_server = new QLocalServer(window);
+        activation_server->listen("mira-gui-activate");
+        QObject::connect(
+            activation_server, &QLocalServer::newConnection, window, [activation_server, window] {
+              QLocalSocket* client = activation_server->nextPendingConnection();
+              QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
+              QObject::connect(client, &QLocalSocket::readyRead, window, [client, window] {
+                if (client->readAll() == "big-screen") {
+                  window->OpenBigScreen();
+                } else {
+                  if (window->isMinimized()) window->showNormal();
+                  window->show();
+                  window->raise();
+                  window->activateWindow();
+                }
+                client->disconnectFromServer();
+              });
+            });
       });
-    });
-  });
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Failed, &app, [](QString error) {
     mira_gui::notify::FailedWithHint(
         nullptr, "Could not start mirad.", error,

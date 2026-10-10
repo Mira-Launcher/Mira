@@ -48,6 +48,17 @@ std::vector<std::string> SteamCommand(const config::Config& config);
 // Where that client writes its pid while it runs.
 std::filesystem::path SteamPidFile(const config::Config& config);
 
+// An account that has signed in to Steam on this computer, from config/loginusers.vdf.
+struct SteamAccount {
+  std::string steamid64;
+  std::string account_name;  // the sign-in name
+  std::string persona_name;  // the name friends see
+  bool most_recent = false;
+};
+
+// Every account in loginusers.vdf, the one flagged MostRecent first, then the newest sign-ins.
+std::vector<SteamAccount> Accounts(const std::filesystem::path& steam_root);
+
 // Every library folder Steam knows about, including steam_root's own. Read
 // from libraryfolders.vdf, falling back to just steam_root if that file is
 // missing or unparseable rather than finding nothing at all.

@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <charconv>
 #include <format>
+#include <map>
+#include <mutex>
 
 #include <httplib.h>
 
@@ -44,6 +46,13 @@ const library::Store* FindStoreOr404(const Request& req, Response& res) {
   return store;
 }
 
+std::mutex& SetupMutex(const std::string& store) {
+  static std::mutex guard;
+  static std::map<std::string, std::mutex> setups;
+  const std::lock_guard lock(guard);
+  return setups[store];
+}
+
 }  // namespace
 
 void RegisterStoreRoutes(httplib::Server& http, Services& s) {
@@ -70,6 +79,14 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
     if (!store) return;
     s.StartJob(req, res, "setup", store->id, std::format("Setting up {}", store->tool),
                [&s, store](JobRegistry::Progress&) -> Result<json> {
+                 // One setup per store at a time. One asked for while another ran (set up early, then
+                 // again from its sign-in page) finds the tool there and stops.
+                 std::unique_lock turn(SetupMutex(store->id), std::try_to_lock);
+                 if (!turn.owns_lock()) {
+                   turn.lock();
+                   const runner::ToolStatus tool = store->status(s.config).tool;
+                   if (tool.installed) return json{{"tag", tool.version}};
+                 }
                  const std::string channel = std::string("setup:") + store->id;
                  loghub::Begin(channel);
                  const auto say = [&channel](const std::string& line) { loghub::Append(channel, line + "\n"); };
@@ -118,6 +135,20 @@ void RegisterStoreRoutes(httplib::Server& http, Services& s) {
       return SendError(res, 400, logged_in.error());
     }
     SendJson(res, StatusJson(*store, store->status(s.config)));
+  });
+
+  // The credential in text the user copied, so a client can sign in once the right thing is on the
+  // clipboard. `null` when the text holds none.
+  http.Post(R"(/v1/stores/([a-z0-9-]+)/login/find)", [](const Request& req, Response& res) {
+    const library::Store* store = FindStoreOr404(req, res);
+    if (!store) return;
+    const auto body = BodyObject(req, res, R"({"text": "..."})");
+    if (!body) return;
+    if (!body->contains("text") || !(*body)["text"].is_string()) {
+      return SendError(res, 400, "invalid_body", R"(expected {"text": "..."})");
+    }
+    const auto found = store->find_credential((*body)["text"].get<std::string>());
+    SendJson(res, {{"credential", found ? json(*found) : json(nullptr)}});
   });
 
   http.Post(R"(/v1/stores/([a-z0-9-]+)/logout)", [&s](const Request& req, Response& res) {

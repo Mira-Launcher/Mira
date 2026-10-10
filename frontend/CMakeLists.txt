@@ -27,7 +27,7 @@ qt_standard_project_setup()
 
 # Each folder is one area of the GUI; docs/frontend.md lists what each holds.
 set(MIRA_GUI_DIRS
-  activity app bigscreen client client/api dialogs game library runners settings sidebar sources system tags theme widgets window)
+  activity app bigscreen client client/api dialogs game library runners settings setup sidebar sources system tags theme widgets window)
 set(MIRA_GUI_SOURCES main.cpp)
 foreach(dir IN LISTS MIRA_GUI_DIRS)
   file(GLOB dir_sources CONFIGURE_DEPENDS ${dir}/*.cpp ${dir}/*.h)
@@ -133,6 +133,7 @@ add_executable(mira_gui_tests
   library/TitleRatings.cpp
   settings/SettingsColumns.cpp
   settings/SettingsSearch.cpp
+  setup/SetupFlow.cpp
   sources/Sources.cpp
   theme/Theme.cpp
   widgets/Labels.cpp

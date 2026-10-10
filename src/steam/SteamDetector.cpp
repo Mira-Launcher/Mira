@@ -29,26 +29,10 @@ std::int64_t ParseInt64(const VdfValue* value) {
   return number;
 }
 
-// The SteamID64 of the account flagged MostRecent in loginusers.vdf, else
-// of the newest sign-in; empty when there is none.
+// The SteamID64 of the account Accounts() lists first; empty when there is none.
 std::string LastSignedIn(const fs::path& steam_root) {
-  const auto text = files::ReadFile(steam_root / "config" / "loginusers.vdf");
-  if (!text) return {};
-  const auto parsed = ParseVdf(*text);
-  const VdfValue* users = parsed ? parsed->Get({"users"}) : nullptr;
-  if (users == nullptr) return {};
-  std::string account;
-  std::int64_t newest = -1;
-  for (const auto& [id, user] : users->children) {
-    const VdfValue* recent = user.Get({"MostRecent"});
-    const std::int64_t stamp =
-        recent != nullptr && recent->scalar == "1" ? INT64_MAX : ParseInt64(user.Get({"Timestamp"}));
-    if (stamp > newest) {
-      newest = stamp;
-      account = id;
-    }
-  }
-  return account;
+  const std::vector<SteamAccount> accounts = Accounts(steam_root);
+  return accounts.empty() ? std::string() : accounts.front().steamid64;
 }
 
 // True if `install_dir` looks like a compatibility tool (Proton, Steam Linux
@@ -99,6 +83,27 @@ std::vector<std::string> SteamCommand(const config::Config& config) {
 fs::path SteamPidFile(const config::Config& config) {
   const auto root = FindSteamRoot(config);
   return (root && IsFlatpak(*root) ? FlatpakDir() : paths::Home()) / ".steam" / "steam.pid";
+}
+
+std::vector<SteamAccount> Accounts(const fs::path& steam_root) {
+  const auto text = files::ReadFile(steam_root / "config" / "loginusers.vdf");
+  if (!text) return {};
+  const auto parsed = ParseVdf(*text);
+  const VdfValue* users = parsed ? parsed->Get({"users"}) : nullptr;
+  if (users == nullptr) return {};
+  std::vector<std::pair<std::int64_t, SteamAccount>> found;
+  for (const auto& [id, user] : users->children) {
+    const auto field = [&user](const char* key) {
+      const VdfValue* value = user.Get({key});
+      return value != nullptr && value->scalar ? *value->scalar : std::string();
+    };
+    SteamAccount account{id, field("AccountName"), field("PersonaName"), field("MostRecent") == "1"};
+    found.emplace_back(account.most_recent ? INT64_MAX : ParseInt64(user.Get({"Timestamp"})), std::move(account));
+  }
+  std::ranges::stable_sort(found, std::greater<>(), &decltype(found)::value_type::first);
+  std::vector<SteamAccount> accounts;
+  for (auto& [stamp, account] : found) accounts.push_back(std::move(account));
+  return accounts;
 }
 
 std::vector<fs::path> LibraryFolders(const fs::path& steam_root) {

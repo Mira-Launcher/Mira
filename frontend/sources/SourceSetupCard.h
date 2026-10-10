@@ -1,26 +1,19 @@
 #pragma once
 
+#include <QPointer>
 #include <QString>
-#include <string>
-#include <vector>
 
 #include "../client/Types.h"
 #include "../settings/SettingsCard.h"
 #include "Sources.h"
 
 class QLabel;
-class QTimer;
-class QLineEdit;
-class QPushButton;
 
 namespace mira_gui {
 
-class ProgressRail;
-
-// What a store or launcher still needs before its page is useful, as
-// numbered steps: get the store's helper tool, then sign in; or install the
-// launcher. Then import. The current step holds its text, its button or
-// sign-in row, and the last error. Hidden once everything is set up.
+// What a store or launcher still needs before its page is useful: the same panel Set up Mira
+// shows (signing in step by step, or installing the launcher), made when first needed. Hidden
+// once the source is set up.
 class SourceSetupCard : public SettingsCard {
   Q_OBJECT
 
@@ -30,56 +23,24 @@ class SourceSetupCard : public SettingsCard {
   // A store's state as mirad last said.
   void ShowStore(bool tool_installed, bool authenticated);
   void ShowLauncher(const LauncherInfo& launcher, bool installing);
-  // Shows the card with "<what> <mirad's error>" under the current step.
+  // Shows the card with "<what> <mirad's error>".
   void ShowError(const QString& what, const ApiError& error);
   // The tool or launcher's setup job failed; `tool_installed` means it was an update.
   void ShowSetupFailed(const ApiError& error, bool tool_installed);
 
  signals:
-  // A download or sign-in finished: the page asks mirad for the state again.
+  // Signed in or installed: the page asks mirad for the state again.
   void StatusChanged();
   void LauncherInstallStarted();
   void LauncherInstallFailed();
 
  private:
-  bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
-  void StartSetup();
-  void InstallLauncher();
-  // The launcher's missing system packages, with a button that installs them.
-  void CheckPackages();
-  // Marks steps before `current` done and shows the body under it.
-  void SetStep(int current);
-  void OpenLogin();
-  // The running log under the step: the last few lines, refreshed while setup runs.
-  void WatchLog(bool on);
-  void PollLog();
-  void SignIn();
-
-  struct Step {
-    QWidget* row = nullptr;
-    QLabel* marker = nullptr;
-    QLabel* title = nullptr;
-  };
+  // Shows the card while the source isn't set up, making its panel the first time.
+  void ShowNeeded(bool needed);
 
   SourceInfo source_;
-  std::string id_;
-  std::vector<Step> steps_;
-  QWidget* body_ = nullptr;
-  QLabel* text_ = nullptr;
-  QPushButton* button_ = nullptr;  // download the tool / install the launcher
-  QWidget* sign_in_row_ = nullptr;
-  QPushButton* open_login_ = nullptr;
-  QLineEdit* credential_ = nullptr;
-  QPushButton* sign_in_ = nullptr;
-  QLabel* error_ = nullptr;
-  std::string packages_;  // the feature whose system packages the launcher needs; empty for none
-  QWidget* packages_row_ = nullptr;
-  QLabel* packages_text_ = nullptr;
-  QWidget* log_box_ = nullptr;
-  ProgressRail* progress_ = nullptr;  // shown once setup reports a percentage
-  QLabel* log_tail_ = nullptr;
-  QTimer* log_timer_ = nullptr;
-  bool log_busy_ = false;
+  QPointer<QWidget> panel_;  // a SignInPanel, or Microsoft 365's OfficePanel
+  QLabel* error_ = nullptr;  // for errors once the panel is gone
 };
 
 }  // namespace mira_gui

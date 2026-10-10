@@ -1,7 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <json.hpp>
@@ -43,6 +45,9 @@ Result<std::string> BeginLogin(const config::Config& config);
 // `redirect` is the amazon.com URL the login ended on, or just its
 // openid.oa2.authorization_code value.
 Result<void> FinishLogin(const config::Config& config, const std::string& redirect);
+
+// The authorization code in a copied redirect URL; nullopt for text that isn't one.
+std::optional<std::string> FindCode(std::string_view text);
 
 Result<void> Logout(const config::Config& config);
 

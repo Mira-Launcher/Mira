@@ -53,7 +53,13 @@ QPixmap CoverThumb(const GameSummary& game, ArtworkStore* artwork, qreal dpr, QS
   return out;
 }
 
-// A shelf cover's "Yesterday" or "Playing", over a dark fade at its foot.
+QString Rgba(QColor color, double alpha) {
+  color.setAlphaF(alpha);
+  return theme::ColorToQss(color);
+}
+
+}  // namespace
+
 void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text, int pixel_size) {
   if (text.isEmpty()) return;
   painter->save();
@@ -73,13 +79,6 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
                     QFontMetrics(font).elidedText(text, Qt::ElideRight, qRound(line.width())));
   painter->restore();
 }
-
-QString Rgba(QColor color, double alpha) {
-  color.setAlphaF(alpha);
-  return theme::ColorToQss(color);
-}
-
-}  // namespace
 
 QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr) {
   const QSize card(24, 36);
