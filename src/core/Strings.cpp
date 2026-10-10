@@ -214,4 +214,11 @@ double Similarity(std::string_view a, std::string_view b) {
   return static_cast<double>(common) / static_cast<double>(std::max(lhs.size(), rhs.size()));
 }
 
+std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_view url) {
+  static const std::regex kUrl(R"(https://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?(?:/releases/tag/([^/?#\s]+))?)");
+  std::match_results<std::string_view::const_iterator> match;
+  if (!std::regex_match(url.begin(), url.end(), match, kUrl)) return std::nullopt;
+  return std::pair{match[1].str(), match[2].str()};
+}
+
 }  // namespace mira::strings

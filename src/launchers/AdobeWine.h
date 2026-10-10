@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 
+#include "config/Config.h"
 #include "core/Result.h"
 #include "model/Types.h"
 #include "runner/RunnerRegistry.h"
@@ -18,8 +19,9 @@ inline constexpr std::string_view kRepo = "le-birnes/AdobeWine";
 // Where its builds are unpacked, one folder each: a Wine search folder, so they're runners.
 std::filesystem::path BuildsDir();
 
-// The runner ref of its newest release, downloaded first unless it's here. Offline: the newest one here.
-Result<std::string> Runtime(const std::function<void(const std::string&)>& say);
+// The runner ref of the release launchers.adobe.adobewine_url names, else kRepo's newest, downloaded
+// first unless it's here. Offline: the newest one here from that repository.
+Result<std::string> Runtime(const config::Config& config, const std::function<void(const std::string&)>& say);
 
 // What AdobeWine's own prefix setup does beyond winetricks: Windows 11, its Direct3D 12 shim,
 // WebView2 on Wine's own dxgi, and the X11 driver without window decorations.

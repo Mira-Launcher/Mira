@@ -410,13 +410,13 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
-  // Creative Cloud needs AdobeWine, also in an entry an older install left on another runner.
-  if (launcher.id == "adobe" && config.GetString("launchers.runner").empty() &&
-      !game.runner_ref.starts_with("wine:adobewine-")) {
-    auto ref = adobewine::Runtime([&launcher](const std::string& line) { Say(launcher, line); });
+  // Creative Cloud needs AdobeWine, the build launchers.adobe.adobewine_url picks, also in an entry an
+  // older install left on another runner.
+  if (launcher.id == "adobe" && config.GetString("launchers.runner").empty()) {
+    auto ref = adobewine::Runtime(config, [&launcher](const std::string& line) { Say(launcher, line); });
     if (!ref) return std::unexpected(ref.error());
     // Another Wine's server still running in the prefix would refuse this one.
-    if (!game.data_dir.empty()) EndSession(launcher, game.data_dir);
+    if (*ref != game.runner_ref && !game.data_dir.empty()) EndSession(launcher, game.data_dir);
     game.runner_ref = *ref;
   }
   if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();

@@ -4,9 +4,11 @@
 #include <format>
 #include <fstream>
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "runner/Curl.h"
 #include "runner/Downloader.h"
 #include "runner/Exec.h"
@@ -19,11 +21,13 @@ namespace fs = std::filesystem;
 // In a build: AdobeWine's own DLLs and tools (its lib folder), beside Wine's.
 constexpr std::string_view kExtras = "adobewine";
 
-std::optional<std::string> NewestHere() {
+// The newest build here whose name starts with `prefix`.
+std::optional<std::string> NewestHere(std::string_view prefix) {
   std::error_code ec;
   std::vector<std::string> names;
   for (const auto& entry : fs::directory_iterator(BuildsDir(), ec)) {
-    if (fs::exists(entry.path() / "bin" / "wine", ec)) names.push_back(entry.path().filename().string());
+    const std::string name = entry.path().filename().string();
+    if (name.starts_with(prefix) && fs::exists(entry.path() / "bin" / "wine", ec)) names.push_back(name);
   }
   if (names.empty()) return std::nullopt;
   return *std::ranges::max_element(names);
@@ -61,22 +65,35 @@ Result<void> Download(const runner::ReleaseAsset& release, const std::string& na
 
 fs::path BuildsDir() { return paths::UserDir() / "tools" / "adobewine"; }
 
-Result<std::string> Runtime(const std::function<void(const std::string&)>& say) {
-  const runner::RunnerFamily source{.id = "adobewine", .kind = "wine", .label = "AdobeWine", .repo = std::string(kRepo),
+Result<std::string> Runtime(const config::Config& config, const std::function<void(const std::string&)>& say) {
+  std::string repo(kRepo);
+  std::string tag;
+  if (const std::string url = config.GetString("launchers.adobe.adobewine_url"); !url.empty()) {
+    const auto parsed = strings::ParseGithubUrl(url);
+    if (!parsed) return Err("invalid_value", std::format("{} isn't a GitHub repository or release link", url));
+    std::tie(repo, tag) = *parsed;
+  }
+  // Another repository's builds keep its owner in their name, apart from le-birnes's.
+  const std::string prefix = repo == kRepo ? "" : repo.substr(0, repo.find('/')) + "-";
+  const runner::RunnerFamily source{.id = "adobewine", .kind = "wine", .label = "AdobeWine", .repo = repo,
                                     .asset_pattern = "adobewine-*-x86_64.tar.zst", .build_pattern = "", .exclude = {}};
   const auto releases = runner::ListFamilyReleases(source);
   if (releases && !releases->empty()) {
-    const std::string name = runner::ReleaseName("wine", releases->front());
+    const auto release = tag.empty() ? releases->begin() : std::ranges::find(*releases, tag, &runner::ReleaseAsset::tag);
+    if (release == releases->end()) {
+      return Err("runner_build_not_found", std::format("github.com/{} has no release {} with an AdobeWine build", repo, tag));
+    }
+    const std::string name = prefix + runner::ReleaseName("wine", *release);
     std::error_code ec;
     if (!fs::exists(BuildsDir() / name / "bin" / "wine", ec)) {
-      say(std::format("Downloading {} from github.com/{}", name, kRepo));
-      if (auto downloaded = Download(releases->front(), name); !downloaded) return std::unexpected(downloaded.error());
+      say(std::format("Downloading {} from github.com/{}", name, repo));
+      if (auto downloaded = Download(*release, name); !downloaded) return std::unexpected(downloaded.error());
     }
     return "wine:" + name;
   }
-  if (const auto here = NewestHere()) return "wine:" + *here;
+  if (const auto here = NewestHere(prefix.empty() ? "adobewine-" : prefix)) return "wine:" + *here;
   if (!releases) return std::unexpected(releases.error());
-  return Err("runner_build_not_found", std::format("github.com/{} has no release to download", kRepo));
+  return Err("runner_build_not_found", std::format("github.com/{} has no release to download", repo));
 }
 
 Result<void> Prepare(const runner::RunnerRegistry& runners, const model::Game& host, const fs::path& downloads) {

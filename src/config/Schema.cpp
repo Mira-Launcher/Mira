@@ -76,6 +76,16 @@ Validator NonEmptyString() {
   };
 }
 
+// Empty, or a GitHub repository or release link.
+Validator GithubUrl() {
+  return [](const json& value) -> std::optional<std::string> {
+    if (!value.is_string()) return "expected a string";
+    const std::string url = value.get<std::string>();
+    if (!url.empty() && !strings::ParseGithubUrl(url)) return "expected a github.com repository or release link";
+    return std::nullopt;
+  };
+}
+
 // tags.folders: each tag names a real folder, so it can't hold a path separator or start with a
 // dot, and the state tags never become folders.
 Validator FolderTags() {
@@ -967,6 +977,17 @@ Schema::Schema() {
          .default_value = true,
          .doc = "Turn off Battle.net's hardware acceleration when installing it; its UI renders blank under "
                 "Wine otherwise."});
+
+  s.Group("Adobe Creative Cloud");
+
+  s.Add({.key = "launchers.adobe.adobewine_url",
+         .label = "AdobeWine download",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "A GitHub link to take AdobeWine from instead of le-birnes/AdobeWine's newest release: a fork's "
+                "repository for its newest release, or one release's page. Used when Creative Cloud is installed; "
+                "install it again to switch.",
+         .constraint = GithubUrl()});
 
   s.Group("Microsoft 365");
 
