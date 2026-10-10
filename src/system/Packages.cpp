@@ -28,6 +28,8 @@ constexpr Entry kEntries[] = {
     {"winetricks", {"cabextract", "cabextract", "", "Unpacks Windows fonts and libraries for winetricks",
                     "cabextract", "cabextract", "cabextract", "cabextract"}},
     {"winetricks", {"unzip", "unzip", "", "Unpacks downloads for winetricks", "unzip", "unzip", "unzip", "unzip"}},
+    {"adobe", {"zstd", "zstd", "", "Unpacks AdobeWine, which Adobe Creative Cloud runs on", "zstd", "zstd", "zstd",
+               "zstd"}},
     {"archives", {"7zip", "7z 7zz", "", "Extracts game archives and installers", "7zip", "7zip p7zip-full", "7zip",
                   "7zip"}},
     {"performance", {"gamemode", "gamemoded", "", "Raises performance while a game runs", "gamemode", "gamemode",

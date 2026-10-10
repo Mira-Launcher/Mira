@@ -52,9 +52,6 @@ struct Launcher {
   bool interactive = false;               // the installer needs clicking through
   std::string kind = "games";             // what it brings: "games", or "apps" (Microsoft 365, Creative Cloud)
   std::map<std::string, std::string> env;
-  // The runner family its prefix needs, at `min_runner` or newer, unless launchers.runner names one.
-  std::string runner_family;
-  std::string min_runner;
   // Registers mshtml, which prefixes are made without: its installer shows pages through it.
   bool needs_mshtml = false;
 };

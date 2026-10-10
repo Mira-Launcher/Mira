@@ -34,8 +34,8 @@ struct Tool {
   std::string_view arch, debian, fedora, suse;
 };
 
-// Every tool Mira knows, or those `feature` needs ("core", "wine", "winetricks", "archives", "performance",
-// "controllers").
+// Every tool Mira knows, or those `feature` needs ("core", "wine", "winetricks", "adobe", "archives",
+// "performance", "controllers").
 // Empty for an unknown feature.
 std::vector<Tool> ToolsFor(std::string_view feature = {});
 

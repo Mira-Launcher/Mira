@@ -50,7 +50,7 @@ SourceCopy CopyFor(const std::string& id) {
             "", "Import apps", "app"};
   }
   if (id == "adobe") {
-    return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on Wine-Staging. "
+    return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on AdobeWine by le-birnes. "
             "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
             "", "Import apps", "app"};
   }

@@ -152,9 +152,9 @@ SignInGuide GuideFor(const std::string& id) {
   } else if (id == "adobe") {
     guide = Launcher("Adobe Creative Cloud", "Photoshop, Illustrator and the other Creative Cloud apps");
     guide.steps = {"Install Creative Cloud. Its installer opens; the mouse pointer may be hidden in it.",
-                   "Sign in with your Adobe account there.",
+                   "Sign in by scanning its QR code with your phone, or by typing its link into your web browser.",
                    "Install apps in Creative Cloud, then press Import apps. Mira adds them under Apps."};
-    guide.note = "The first install also downloads Wine staging-tkg, which Creative Cloud needs.";
+    guide.note = "The first install also downloads AdobeWine, Wine with fixes for Creative Cloud.";
   } else if (id == "office") {
     guide.title = "Microsoft 365";
     guide.line =

@@ -61,7 +61,7 @@ std::filesystem::path InstallDirFor(const config::Config& config, const std::str
 }
 
 std::string ArchiveStem(const std::string& asset_name) {
-  for (const char* ext : {".tar.gz", ".tar.xz", ".tgz", ".zip"}) {
+  for (const char* ext : {".tar.gz", ".tar.xz", ".tar.zst", ".tgz", ".zip"}) {
     if (asset_name.ends_with(ext)) return asset_name.substr(0, asset_name.size() - std::strlen(ext));
   }
   return asset_name;

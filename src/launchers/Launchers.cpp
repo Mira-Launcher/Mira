@@ -15,6 +15,7 @@
 #include <thread>
 
 #include "core/Lane.h"
+#include "launchers/AdobeWine.h"
 #include "core/LogHub.h"
 #include "launchers/Office.h"
 #include "core/Log.h"
@@ -25,7 +26,6 @@
 #include "core/Strings.h"
 #include "library/PrefixNaming.h"
 #include "runner/Curl.h"
-#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/Winetricks.h"
@@ -388,33 +388,14 @@ Result<void> RegisterMshtml(const runner::RunnerRegistry& runners, const model::
   return {};
 }
 
-// The newest installed build of the launcher's runner family, downloading the family's newest release if none will do.
-Result<std::string> FamilyRunner(config::Config& config, const Launcher& launcher) {
-  if (auto build = runner::RunnerRegistry(config).NewestOfFamily(launcher.runner_family, launcher.min_runner)) {
-    return build->Reference();
-  }
-  const auto family = runner::FindFamily(config, launcher.runner_family);
-  if (!family) return Err("runner_build_not_found", std::format("no runner family \"{}\"", launcher.runner_family));
-  const auto releases = runner::ListFamilyReleases(*family);
-  if (!releases) return std::unexpected(releases.error());
-  if (releases->empty()) return Err("runner_build_not_found", std::format("{} has no release to download", family->label));
-  Say(launcher, std::format("Downloading {}: {} needs {} {} or newer", runner::ReleaseName(family->kind, releases->front()),
-                            launcher.name, family->label, launcher.min_runner));
-  if (auto installed = runner::DownloadAndInstall(config, family->kind, releases->front()); !installed) {
-    return std::unexpected(installed.error());
-  }
-  if (auto build = runner::RunnerRegistry(config).NewestOfFamily(launcher.runner_family, launcher.min_runner)) {
-    return build->Reference();
-  }
-  return Err("runner_build_not_found", std::format("{} {} or newer isn't installed", family->label, launcher.min_runner),
-             "", Fix::Runners());
-}
-
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher,
                                 const std::function<void(double)>& on_progress) {
   // Before the prefix and downloads, rather than failing at the first winetricks verb.
   if (!launcher.tricks.empty()) {
     if (auto ready = system::RequireFeature("winetricks", launcher.name); !ready) return std::unexpected(ready.error());
+  }
+  if (launcher.id == "adobe") {
+    if (auto ready = system::RequireFeature("adobe", launcher.name); !ready) return std::unexpected(ready.error());
   }
   const std::string id = GameId(launcher);
   model::Game game = games.Find(id).value_or(model::Game{});
@@ -427,9 +408,13 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
-  if (game.runner_ref.empty() && !launcher.runner_family.empty()) {
-    auto ref = FamilyRunner(config, launcher);
+  // Creative Cloud needs AdobeWine, also in an entry an older install left on another runner.
+  if (launcher.id == "adobe" && config.GetString("launchers.runner").empty() &&
+      !game.runner_ref.starts_with("wine:adobewine-")) {
+    auto ref = adobewine::Runtime([&launcher](const std::string& line) { Say(launcher, line); });
     if (!ref) return std::unexpected(ref.error());
+    // Another Wine's server still running in the prefix would refuse this one.
+    if (!game.data_dir.empty()) EndSession(launcher, game.data_dir);
     game.runner_ref = *ref;
   }
   if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();
@@ -466,6 +451,12 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
     if (launcher.needs_mshtml) {
       Say(launcher, "Registering mshtml");
       if (auto registered = RegisterMshtml(runners, game); !registered) return std::unexpected(registered.error());
+    }
+    if (launcher.id == "adobe") {
+      Say(launcher, "Writing Creative Cloud's settings");
+      if (auto prepared = adobewine::Prepare(runners, game, paths::UserDir() / "downloads"); !prepared) {
+        return std::unexpected(prepared.error());
+      }
     }
     if (launcher.id == "office") {
       Say(launcher, "Writing Microsoft 365's settings and installing its compatibility shims");
@@ -569,9 +560,16 @@ const std::vector<Launcher>& All() {
     adobe.name = "Adobe Creative Cloud";
     adobe.kind = "apps";
     adobe.exe = "Program Files (x86)/Adobe/Adobe Creative Cloud/ACC/Creative Cloud.exe";
-    adobe.tricks = {"dxvk"};
-    // Adobe's installer signs in on an mshtml page, so it needs mshtml registered and Wine Gecko, which prefixes are
-    // made without, and Wine-Staging's mshtml and thread pool fixes (11.10).
+    // On AdobeWine, set up as its own prefix script does: real fonts (Creative Cloud's renderer crashes without
+    // them), the shader compiler Audition uses, DXVK and vkd3d-proton.
+    adobe.tricks = {"corefonts", "tahoma", "d3dcompiler_47", "dxvk", "vkd3d"};
+    // Creative Cloud's helpers write to heap blocks after freeing them; AdobeWine keeps those out of reuse.
+    adobe.env = {{"WINE_HEAP_QUARANTINE",
+                  "Creative Cloud.exe;Creative Cloud Helper.exe;Creative Cloud UI Helper.exe;Adobe Desktop Service.exe;"
+                  "node.exe;CCXProcess.exe;CoreSync.exe;CRLogTransport.exe;HDHelper.exe;AdobeIPCBroker.exe;"
+                  "AdobeUpdateService.exe"}};
+    // Its installer signs in on an mshtml page, so it needs mshtml registered and Wine Gecko, which prefixes are
+    // made without.
     const Setup kGecko64{"https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi",
                          "wine-gecko-2.47.4-x86_64.msi", {"/quiet"}, "windows/system32/gecko/2.47.4/wine_gecko/xul.dll",
                          nullptr};
@@ -584,8 +582,6 @@ const std::vector<Launcher>& All() {
                      "creative-cloud-setup.exe", {}, "", nullptr}};
     adobe.interactive = true;
     adobe.needs_mshtml = true;
-    adobe.runner_family = "wine_staging_tkg";
-    adobe.min_runner = "11.10";
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365, adobe};
   }();
   return kLaunchers;
@@ -769,6 +765,11 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
       command->argv.push_back(std::format("origin2://game/{}?offerIds={}&autoDownload=1",
                                           install ? "download" : "launch", ref));
     }
+  }
+  if (launcher->id == "adobe") {
+    adobewine::UseIeSignIn(host->data_dir);
+    // Creative Cloud draws with Chromium, where with GPU vsync a page change can stay off screen until a repaint.
+    if (game.source == "launcher") command->argv.push_back("--disable-gpu-vsync");
   }
   return command;
 }

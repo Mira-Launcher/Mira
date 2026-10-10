@@ -42,6 +42,7 @@ std::vector<model::RunnerBuild> WineRunner::Discover(const config::Config& confi
   if (config.GetBool("runner_scan_common_dirs")) {
     for (const char* dir : kKnownWineDirs) search_dirs.push_back(paths::Expand(dir));
   }
+  search_dirs.push_back(paths::UserDir() / "tools" / "adobewine");  // what Creative Cloud's install downloads
 
   std::error_code ec;
   for (const fs::path& search_dir : search_dirs) {
