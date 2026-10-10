@@ -1582,11 +1582,11 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
 
 TEST_CASE("Running a picked program in a game with no prefix first makes one with its runner") {
   const fs::path state = TempDir("server-run-in-prefix");
-  // A stand-in Wine: wineboot makes the prefix, anything else is logged as run.
+  // A stand-in Wine: wineboot makes the prefix, reg is provisioning's too, anything else is logged as run.
   const fs::path log = state / "wine.log";
   test::Touch(state / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine",
               "#!/bin/sh\ncase \"$1\" in\n  --version) echo wine-9.0 ;;\n"
-              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n"
+              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n  reg) ;;\n"
               "  *) echo \"$WINEPREFIX|$*\" >> '" + log.string() + "' ;;\nesac\n",
               /*executable=*/true);
   LiveServer server(state);
