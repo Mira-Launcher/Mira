@@ -978,6 +978,31 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
   return {};
 }
 
+// Adobe's and Microsoft's apps and Creative Cloud itself, by source and ref: their SteamGridDB
+// entries, since a search for "Word" finds games. 0: an app with no entry there, left without art.
+struct KnownApp {
+  std::string_view source;
+  std::string_view ref;
+  std::int64_t griddb_id;
+};
+constexpr KnownApp kKnownApps[] = {
+    {"launcher", "adobe", 5274606},     {"adobe", "photoshop", 5260300},     {"adobe", "illustrator", 5264673},
+    {"adobe", "premiere-pro", 5260302}, {"adobe", "after-effects", 5261148}, {"adobe", "audition", 5260301},
+    {"adobe", "media-encoder", 5261149}, {"adobe", "lightroom-classic", 5354035}, {"adobe", "animate", 5358622},
+    {"adobe", "bridge", 5264672},       {"office", "word", 5280911},         {"office", "excel", 5280913},
+    {"office", "powerpoint", 5280912},  {"office", "outlook", 5433991},      {"office", "onenote", 5433990},
+    {"office", "access", 5433989},      {"office", "publisher", 5433992},
+};
+
+// Whether `game` is one of those apps, and its entry.
+std::optional<std::int64_t> KnownAppGriddbId(const model::Game& game) {
+  const auto app = std::ranges::find_if(
+      kKnownApps, [&](const KnownApp& a) { return a.source == game.source && a.ref == game.source_ref; });
+  if (app != std::end(kKnownApps)) return app->griddb_id;
+  if (game.source == "adobe" || game.source == "office") return 0;
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::optional<bool> SteamSaysSoftware(const std::string& name) {
@@ -1042,6 +1067,13 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, co
     const bool found = config.GetBool("lutris.import_art") && FetchLutrisOwned(config, game.source_ref, game.id, info);
     if (Result<void> fetched = FetchNonSteam(config, cache, game, griddb_id, info); !fetched && !found) {
       return std::unexpected(fetched.error());
+    }
+  } else if (const std::optional<std::int64_t> app_id = KnownAppGriddbId(game)) {
+    info["source"] = "steamgriddb";
+    const std::string api_key = config.GetString("steamgriddb.api_key");
+    if (api_key.empty()) return NoGriddbKey("no cover for this app without a SteamGridDB API key");
+    if (const std::int64_t id = griddb_id != 0 ? griddb_id : *app_id; id != 0) {
+      FetchGriddbCandidates(config, api_key, game.name, game.id, id, info);
     }
   } else if (game.runner_ref.starts_with("steam:")) {
     info["source"] = "steam";
