@@ -25,8 +25,8 @@ void ShowLine(QLabel* label, const QString& text, const char* role);
 // start lowercase; this one follows a sentence.
 void ShowError(QLabel* label, const QString& what, const ApiError& error);
 
-// An import's outcome, e.g. "Added 3 games."
-QString ImportOutcome(int added, int updated);
+// An import's outcome, e.g. "Added 3 games." `item` is "game" or "app".
+QString ImportOutcome(int added, int updated, const QString& item);
 // A section heading with its count after it, dimmed.
 QString CountedHeading(const QString& text, int count);
 

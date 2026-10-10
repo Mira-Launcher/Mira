@@ -538,7 +538,9 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (!ListsOwned()) {
     owned_refresh_->setVisible(false);
     if (art_key_ != nullptr) art_key_->setVisible(false);
-    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up in your library above."
+    const QString items = CopyFor(id_).item + "s";
+    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. " + items.left(1).toUpper() + items.mid(1) +
+                                            " you install through it show up in your library above."
                                       : source_.name + " doesn't list games you own. What it installs shows up in your library above.";
     ShowLine(owned_note_, what, "muted");
   }
@@ -737,7 +739,8 @@ void SourcePage::UpdateStatusLine() {
   if (IsStore() && !authenticated_) {
     library_empty_->setText("Games from " + source_.name + " show up here once you're signed in.");
   } else if (IsLauncher() && !launcher_installed_) {
-    library_empty_->setText("Games you install through " + source_.name + " show up here.");
+    const QString item = CopyFor(id_).item;
+    library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " + source_.name + " show up here.");
   } else if (id_ == "local") {
     library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
@@ -753,7 +756,7 @@ void SourcePage::Import() {
   const auto done = [this](bool ok, const ApiError& error, int added, int updated) {
     import_button_->setEnabled(true);
     if (ok) {
-      ShowLine(import_result_, ImportOutcome(added, updated), "muted");
+      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), "muted");
     } else {
       ShowError(import_result_, "Could not import.", error);
     }

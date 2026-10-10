@@ -34,6 +34,8 @@
 #include "../library/LibraryActions.h"
 #include "../settings/SettingsPanel.h"
 #include "../sources/Sources.h"
+#include "../sources/SourceRemoval.h"
+#include "../sources/SourceText.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -582,8 +584,9 @@ void Sidebar::UpdateSources() {
       source_decks_[i]->setFixedSize(sidebar::kDeckSize);
       source_decks_[i]->setPixmap(
           sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF()));
-      QString detail = games == 0 && of == 0 ? QString("No games")
-                       : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
+      const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
+      QString detail = games == 0 && of == 0 ? "No " + item + "s"
+                       : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
                                              : QString();
       if (off) detail = "Off";
       if (signed_out && !off) {
@@ -759,6 +762,13 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   QAction* down = menu.addAction("Move down");
   down->setEnabled(position != shown.end() && position + 1 != shown.end());
   QAction* hide = menu.addAction("Hide from sidebar");
+  // Worded as on the source's own page.
+  QAction* remove = nullptr;
+  if (source.kind != SourceInfo::Kind::Local) {
+    menu.addSeparator();
+    remove = menu.addAction(icons::For(icons::Glyph::Trash, theme::Current().error),
+                            (source.kind == SourceInfo::Kind::Launcher ? "Uninstall " : "Remove ") + source.name + "…");
+  }
   menu.addSeparator();
   QAction* manage = menu.addAction("Manage sources…");
   QAction* settings = menu.addAction("Sidebar settings…");
@@ -772,6 +782,11 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
                position + 2 == shown.end() ? -1 : source_nav_layout_->indexOf(*(position + 2)));
   } else if (chosen == hide) {
     SetSourceHidden(source.id, true);
+  } else if (chosen != nullptr && chosen == remove) {
+    RemoveSource(window(), source, [this, id = source.id] {
+      ForgetSource(id);
+      emit SourceRemoved(id);
+    });
   } else if (chosen == manage) {
     emit ManageSourcesRequested();
   } else if (chosen == settings) {

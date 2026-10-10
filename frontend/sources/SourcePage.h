@@ -69,6 +69,7 @@ public:
   // Null until the banner's settings button first opens it.
   SourceSettingsCard* SettingsCard() const { return settings_card_; }
   bool SettingsModalOpen() const;
+  const SourceInfo& Source() const { return source_; }
   // The source's settings over the page.
   void OpenSettingsModal();
   // Esc: closes the settings dialog, asking first when it has unsaved edits.

@@ -52,6 +52,7 @@ class GameCard : public HeroBackdrop {
   // The form's change count, and room under its cards while the bar shows.
   void UpdateBar();
   // Play or Stop, as the game's state allows.
+  QString Noun() const;  // "game", or "app"
   void UpdatePlay();
   // The name and status line, from the library's copy of the game.
   void UpdateIdentity();

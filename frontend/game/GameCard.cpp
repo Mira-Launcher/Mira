@@ -182,14 +182,14 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   connect(form_, &GameEditForm::Loaded, title_, &QLabel::setText);
   connect(form_, &GameEditForm::TagFilterRequested, this, &GameCard::TagFilterRequested);
   connect(form_, &GameEditForm::LoadFailed, this, [this](QString error) {
-    notify::Failed(window(), "Could not load this game.", error);
+    notify::Failed(window(), QString("Could not load this %1.").arg(Noun()), error);
     emit CloseRequested();
   });
   connect(form_, &GameEditForm::SaveFinished, this, [this](bool ok, QString error) {
     const bool close = std::exchange(close_after_save_, false);
     bar_->SetBusy(false);
     if (!ok) {
-      notify::Failed(window(), "Could not save this game.", error);
+      notify::Failed(window(), QString("Could not save this %1.").arg(Noun()), error);
       return;
     }
     // The change bar going away is the feedback; no notice for a save the user just made.
@@ -218,7 +218,7 @@ void GameCard::Back() {
 }
 
 void GameCard::RequestClose() {
-  if (!IsDirty() || notify::LeaveUnsaved(window(), "This game's edits aren't saved.", [this] {
+  if (!IsDirty() || notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved.").arg(Noun()), [this] {
         close_after_save_ = true;
         Save();
       })) {
@@ -291,6 +291,11 @@ void GameCard::UpdateBar() {
     bottom_room_ = bar_->RoomNeeded();
     form_->SetBottomRoom(bottom_room_);
   }
+}
+
+QString GameCard::Noun() const {
+  const GameSummary* game = library_->Find(id_);
+  return game != nullptr ? mira_gui::Noun(*game) : "game";
 }
 
 void GameCard::UpdatePlay() {

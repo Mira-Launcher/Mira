@@ -130,6 +130,7 @@ inline std::vector<std::string> InTagOrder(std::vector<std::string> tags, const 
 // An app is opened and runs; a game is played.
 inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
 inline const char* RunningLabel(const GameSummary& game) { return IsApp(game) ? "Running" : "Playing"; }
+inline const char* Noun(const GameSummary& game) { return IsApp(game) ? "app" : "game"; }
 inline bool IsPinned(const GameSummary& game) { return HasTag(game, tags::kPinned); }
 
 // Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a 409.

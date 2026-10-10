@@ -99,6 +99,8 @@ class Sidebar : public QWidget {
   void HoverEnded();
   // Something the Sources page shows changed.
   void SourcesChanged();
+  // Removed from its row's menu.
+  void SourceRemoved(const QString& id);
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 

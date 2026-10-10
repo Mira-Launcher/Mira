@@ -14,6 +14,7 @@
 #include "../client/api/Stores.h"
 #include "../app/ErrorHelp.h"
 #include "../theme/Theme.h"
+#include "SourceText.h"
 
 namespace mira_gui {
 namespace {
@@ -25,7 +26,7 @@ bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
 
-QString Games(int count) { return QString("%1 game%2").arg(count).arg(count == 1 ? "" : "s"); }
+QString Counted(int count, const QString& item) { return QString("%1 %2%3").arg(count).arg(item).arg(count == 1 ? "" : "s"); }
 
 }  // namespace
 
@@ -183,7 +184,7 @@ void SourceSettingsCard::Refresh() {
 void SourceSettingsCard::BuildRunnerRow() {
   const QString runner_doc =
       source_.kind == SourceInfo::Kind::Launcher
-          ? "The Wine or Proton build that " + source_.name + " and its games run with."
+          ? "The Wine or Proton build that " + source_.name + " and its " + CopyFor(id_).item + "s run with."
           : "The Wine or Proton build for " + source_.name + " games that have no runner of their own.";
   runner_row_ = new SettingRow("Runner", runner_doc, this);
   runner_ = new QComboBox(runner_row_);
@@ -211,7 +212,7 @@ void SourceSettingsCard::BuildRunnerRow() {
                                       [this](SourceRunnerResult result) {
                                         runner_apply_->setEnabled(true);
                                         if (!result.ok) {
-                                          ShowStatus("Could not switch the games: " + error_help::Describe(result.error), true);
+                                          ShowStatus("Could not switch the " + CopyFor(id_).item + "s: " + error_help::Describe(result.error), true);
                                           return;
                                         }
                                         ShowStatus("Switched", false);
@@ -283,15 +284,16 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
     UpdateButtons();
   });
 
+  const QString item = CopyFor(id_).item;
   if (source_.kind == SourceInfo::Kind::Launcher) {
     runner_note_->setText(runner.games == 0
-                              ? source_.name + " and the games it installs share one prefix and runner."
-                              : source_.name + " and its " + Games(runner.games) +
+                              ? source_.name + " and the " + item + "s it installs share one prefix and runner."
+                              : source_.name + " and its " + Counted(runner.games, item) +
                                     " share one prefix, so they switch together.");
   } else if (runner.games == 0) {
     runner_note_->setText("For " + source_.name + " games you install.");
   } else if (runner.differing == 0) {
-    runner_note_->setText("All " + Games(runner.games) + " from " + source_.name + " use it.");
+    runner_note_->setText("All " + Counted(runner.games, item) + " from " + source_.name + " use it.");
   } else {
     runner_note_->setText(QString("For new games and ones without their own runner. %1 of %2 games %3 another one.")
                               .arg(runner.differing)

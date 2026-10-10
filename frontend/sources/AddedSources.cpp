@@ -195,9 +195,10 @@ void AddedSources::ShowMenu(const QString& id) {
   QMenu menu(this);
   menu.setToolTipsVisible(true);
   if (id != "humble" && id != "local") {
-    QAction* import = menu.addAction("Import games now", this, [this, id] { Import(id); });
+    const QString item = CopyFor(id.toStdString()).item;
+    QAction* import = menu.addAction("Import " + item + "s now", this, [this, id] { Import(id); });
     import->setEnabled(entry.enabled && !tile.importing);
-    if (!entry.enabled) import->setToolTip("Turn on Games in library first.");
+    if (!entry.enabled) import->setToolTip(QString("Turn on ") + item[0].toUpper() + item.mid(1) + "s in library first.");
   }
   // Local is where games from no source go, so it can't be removed.
   if (id != "local") {
