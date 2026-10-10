@@ -46,6 +46,12 @@ ProcessInfo Read(const std::string& pid) {
     info.argv0.clear();  // only Wine processes are matched by path; keep the index small
     info.argv0.shrink_to_fit();
   }
+  // Started by its host path, as Mira starts an app's exe, Wine keeps that path: matched as Windows sees it.
+  std::string prefix = info.prefix;
+  while (prefix.ends_with('/')) prefix.pop_back();
+  if (const std::string drive_c = prefix + "/drive_c/"; !prefix.empty() && info.argv0.starts_with(drive_c)) {
+    info.argv0 = "c:/" + info.argv0.substr(drive_c.size());
+  }
   std::ranges::replace(info.argv0, '\\', '/');
   info.argv0 = strings::ToLower(info.argv0);
   return info;

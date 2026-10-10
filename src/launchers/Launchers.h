@@ -54,6 +54,8 @@ struct Launcher {
   std::map<std::string, std::string> env;
   // Registers mshtml, which prefixes are made without: its installer shows pages through it.
   bool needs_mshtml = false;
+  // Stopping it ends everything in its prefix: closed, Creative Cloud only goes to its tray, and its services stay.
+  bool stop_ends_session = false;
 };
 
 const std::vector<Launcher>& All();
@@ -102,6 +104,9 @@ std::string WindowsDir(const model::Game& game);
 // What tracks the game while it runs: WindowsDir, or for an app (Word, Photoshop)
 // its own exe, since Microsoft 365's share one folder.
 std::string TrackedPath(const model::Game& game);
+
+// Stops everything running in `prefix`, in the background: asks, then insists.
+void EndPrefixSession(const std::string& prefix);
 
 // Host path of a Windows path inside `prefix`.
 std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_view windows_path);

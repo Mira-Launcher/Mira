@@ -192,14 +192,19 @@ std::string InstallLine(const Launcher& launcher, double percent, std::chrono::s
   return line + "\n";
 }
 
-// Stops everything running in `prefix`: asks, then insists. The installer's own session has done its job.
-void EndSession(const Launcher& launcher, const std::string& prefix) {
+// Asks everything in `prefix` to quit, then insists.
+void StopPrefix(const std::string& prefix) {
   const auto alive = [&] { return !proc::FindPrefixProcesses(prefix).empty(); };
-  if (!alive()) return;
-  Say(launcher, "Closing what the installer left running");
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGTERM);
   for (int i = 0; i < 20 && alive(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(500));
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGKILL);
+}
+
+// Stops everything running in `prefix`. The installer's own session has done its job.
+void EndSession(const Launcher& launcher, const std::string& prefix) {
+  if (proc::FindPrefixProcesses(prefix).empty()) return;
+  Say(launcher, "Closing what the installer left running");
+  StopPrefix(prefix);
 }
 
 // `is_done` replaces the check for `step.done`'s file.
@@ -561,7 +566,8 @@ const std::vector<Launcher>& All() {
     adobe.id = "adobe";
     adobe.name = "Adobe Creative Cloud";
     adobe.kind = "apps";
-    adobe.exe = "Program Files (x86)/Adobe/Adobe Creative Cloud/ACC/Creative Cloud.exe";
+    // Not the 32-bit stub in Program Files (x86), which only starts this one and exits: Mira tracks what runs.
+    adobe.exe = "Program Files/Adobe/Adobe Creative Cloud/ACC/Creative Cloud.exe";
     // On AdobeWine, set up as its own prefix script does: real fonts (Creative Cloud's renderer crashes without
     // them), the shader compiler Audition uses, DXVK and vkd3d-proton.
     adobe.tricks = {"corefonts", "tahoma", "d3dcompiler_47", "dxvk", "vkd3d"};
@@ -583,6 +589,7 @@ const std::vector<Launcher>& All() {
                      "?sapCode=KCCC&productName=Creative%20Cloud&os=win",
                      "creative-cloud-setup.exe", {}, "", nullptr}};
     adobe.interactive = true;
+    adobe.stop_ends_session = true;
     adobe.needs_mshtml = true;
     return std::vector<Launcher>{battlenet, ubisoft, ea, m365, adobe};
   }();
@@ -789,7 +796,15 @@ std::string TrackedPath(const model::Game& game) {
   if (launcher && launcher->kind == "apps" && game.source != "launcher" && !game.exe_path.empty()) {
     return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
   }
+  // A launcher's own folder from its definition, also for an entry an older install registered elsewhere.
+  if (launcher && game.source == "launcher" && launcher->stop_ends_session) {
+    return strings::ToLower("c:/" + fs::path(launcher->exe).parent_path().generic_string());
+  }
   return WindowsDir(game);
+}
+
+void EndPrefixSession(const std::string& prefix) {
+  std::thread([prefix] { StopPrefix(prefix); }).detach();
 }
 
 fs::path HostPath(const fs::path& prefix, std::string_view windows_path) {
