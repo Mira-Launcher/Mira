@@ -449,6 +449,11 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     }
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
   }
+  // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.
+  if ((files || prefix) && !game.id.empty()) {
+    std::error_code ec;
+    std::filesystem::remove_all(paths::ShaderCacheDir(game.id), ec);
+  }
   if (metadata) {
     // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
     games.Metadata().Remove(game.id);

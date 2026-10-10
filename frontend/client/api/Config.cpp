@@ -196,17 +196,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
     }
     out = std::move(values);
   };
-  read_strings("hidden_sources", result.prefs.hidden_sources);
-  read_strings("source_order", result.prefs.source_order);
   read_strings("big_screen_recent_searches", result.prefs.big_screen_recent_searches);
-
-  if (table.contains("source_imported_at") && table["source_imported_at"].is_object()) {
-    std::map<std::string, std::int64_t> imported;
-    for (const auto& [id, at] : table["source_imported_at"].items()) {
-      if (at.is_number_integer()) imported[id] = at.get<std::int64_t>();
-    }
-    result.prefs.source_imported_at = std::move(imported);
-  }
 }
 
 PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
@@ -233,13 +223,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
     json shortcuts = json::object();
     for (const auto& [id, keys] : *prefs.shortcut_overrides) shortcuts[id] = keys;
     table["shortcuts"] = shortcuts;
-  }
-  if (prefs.hidden_sources) table["hidden_sources"] = *prefs.hidden_sources;
-  if (prefs.source_order) table["source_order"] = *prefs.source_order;
-  if (prefs.source_imported_at) {
-    json imported = json::object();
-    for (const auto& [id, at] : *prefs.source_imported_at) imported[id] = at;
-    table["source_imported_at"] = imported;
   }
   if (prefs.sidebar_recent_count) table["sidebar_recent_count"] = *prefs.sidebar_recent_count;
   if (prefs.sidebar_source_counts) table["sidebar_source_counts"] = *prefs.sidebar_source_counts;

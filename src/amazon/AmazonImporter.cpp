@@ -32,7 +32,7 @@ AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games, 
 
 Result<library::ImportSummary> AmazonImporter::Import() {
   library::ImportSummary summary;
-  if (!config_.GetBool("amazon.enabled")) return summary;
+  if (!games_.SourceEnabled("amazon")) return summary;
   const json installed = ReadNileFile("installed.json");
   if (!installed.is_array()) return summary;  // nothing installed yet
   const json library = ReadNileFile("library.json");

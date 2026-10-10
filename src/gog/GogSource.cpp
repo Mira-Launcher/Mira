@@ -31,7 +31,7 @@ Result<json> GetJson(const std::string& url, const std::string& bearer_token) {
 Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Config& config,
                                                               const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
-  if (!config.GetBool("gog.enabled")) return entries;
+  if (!games.SourceEnabled("gog")) return entries;
 
   const Result<std::string> token = AccessToken(config);
   if (!token) return std::unexpected(token.error());

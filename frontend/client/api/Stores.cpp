@@ -300,7 +300,65 @@ StoreActionResult OpenLauncherSync(const std::string& id) {
   return {reply.ok, reply.error};
 }
 
+SourcesResult ListSourcesSync() {
+  return ReadReply<SourcesResult>(transport::Get("/v1/sources"), "GET /v1/sources", Shape::Object,
+                                  [](SourcesResult& result, const json& body) {
+                                    for (const json& item : body.value("sources", json::array())) {
+                                      SourceState source;
+                                      source.id = item.value("id", std::string());
+                                      source.added = item.value("added", false);
+                                      source.enabled = item.value("enabled", true);
+                                      source.in_sidebar = item.value("in_sidebar", true);
+                                      source.position = item.value("position", 0);
+                                      source.imported_at = item.value("imported_at", std::int64_t(0));
+                                      source.games = item.value("games", 0);
+                                      result.sources.push_back(std::move(source));
+                                    }
+                                  });
+}
+
+PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> enabled,
+                                  std::optional<bool> in_sidebar) {
+  json body = json::object();
+  if (enabled) body["enabled"] = *enabled;
+  if (in_sidebar) body["in_sidebar"] = *in_sidebar;
+  const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), body);
+  return {reply.ok, reply.error};
+}
+
+PatchConfigResult AddSourceSync(const std::string& id) {
+  const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), json{{"added", true}});
+  return {reply.ok, reply.error};
+}
+
+PatchConfigResult SetSourceOrderSync(const std::vector<std::string>& ids) {
+  const json body = {{"order", ids}};
+  const transport::Reply reply = transport::Put("/v1/sources/order", body.dump(), "application/json");
+  return {reply.ok, reply.error};
+}
+
 }  // namespace
+
+void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callback) {
+  async::Run(context, [] { return ListSourcesSync(); }, std::move(callback));
+}
+
+void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
+                      std::optional<bool> in_sidebar, std::function<void(PatchConfigResult)> callback) {
+  async::Run(
+      context, [id, enabled, in_sidebar] { return PatchSourceSync(id, enabled, in_sidebar); },
+      std::move(callback));
+}
+
+void AddSourceAsync(QObject* context, const std::string& id, std::function<void(PatchConfigResult)> callback) {
+  async::Run(context, [id] { return AddSourceSync(id); }, std::move(callback));
+}
+
+void SetSourceOrderAsync(QObject* context, const std::vector<std::string>& ids,
+                         std::function<void(PatchConfigResult)> callback) {
+  async::Run(context, [ids] { return SetSourceOrderSync(ids); }, std::move(callback));
+}
+
 
 void GetStoreStatusAsync(QObject* context, const std::string& source,
                          std::function<void(StoreStatusResult)> callback) {

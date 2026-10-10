@@ -28,6 +28,10 @@ std::filesystem::path RuntimeDir() {
   return EnvOr("XDG_RUNTIME_DIR", std::filesystem::path("/tmp")) / "mira";
 }
 
+std::filesystem::path ShaderCacheDir(const std::string& game_id) {
+  return EnvOr("XDG_CACHE_HOME", Home() / ".cache") / "mira" / "shaders" / game_id;
+}
+
 std::filesystem::path SettingsFile() { return UserDir() / "settings.toml"; }
 std::filesystem::path DatabaseFile() { return UserDir() / "mira.db"; }
 

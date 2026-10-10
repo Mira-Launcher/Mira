@@ -33,7 +33,7 @@ Result<std::vector<json>> FetchAllPages(const config::Config& config, const std:
 Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(const config::Config& config,
                                                                const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
-  if (!config.GetBool("itch.enabled")) return entries;
+  if (!games.SourceEnabled("itch")) return entries;
 
   const Result<std::int64_t> profile_id = CurrentProfileId(config);
   if (!profile_id) return std::unexpected(profile_id.error());

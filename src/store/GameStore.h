@@ -30,6 +30,19 @@ struct PlaySession {
   bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
 };
 
+// A source's place in Mira: whether it's set up, on, in the sidebar and where.
+struct SourceState {
+  std::string id;
+  bool added = false;    // set up: shown on the Sources page and in the sidebar, not in the catalog
+  bool enabled = true;   // off keeps it added but hidden, its games unlisted and imports skipped
+  bool in_sidebar = true;
+  int position = 0;      // sidebar order, ascending
+  std::int64_t imported_at = 0;  // unix seconds of the last successful import, 0 if none
+};
+
+// The source id a game's `source` counts toward, or "" for none.
+std::string SourceIdOf(const std::string& game_source);
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
@@ -44,6 +57,8 @@ public:
   // and backs it up to <file>.bak; a damaged file is set aside and the backup
   // used.
   void Load();
+  // The sources table was made by this Load, so the old settings still say what's set up.
+  bool SourcesNew() const { return sources_new_; }
 
   // The text of the last settings.toml that loaded cleanly, empty if none:
   // what Config::Load falls back to when the file is broken.
@@ -53,6 +68,16 @@ public:
   // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
   nlohmann::json UiState();
   void KeepUiState(const nlohmann::json& state);
+
+  // Stored source rows, by position. A source without a row has SourceState's defaults.
+  std::vector<SourceState> Sources() const;
+  SourceState Source(const std::string& id) const;
+  bool SourceEnabled(const std::string& id) const { return Source(id).enabled; }
+  void SaveSource(const SourceState& state);
+  // Positions follow `ids`' order; sources not named keep theirs.
+  void SetSourceOrder(const std::vector<std::string>& ids);
+  // Marks it set up; `imported` also stamps imported_at with now.
+  void MarkSourceAdded(const std::string& id, bool imported);
 
   std::string SettingsSnapshot();
   void KeepSettingsSnapshot(const std::string& toml);
@@ -121,6 +146,7 @@ private:
   std::vector<model::Game> games_;
   // The database couldn't be opened: refuse changes rather than lose the library. Guarded by mutex_.
   bool read_only_ = false;
+  bool sources_new_ = false;  // set by Load
   std::atomic<std::uint64_t> revision_{0};
 };
 

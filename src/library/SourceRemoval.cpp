@@ -224,9 +224,9 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     if (!signed_out) result.problems.push_back("signing out: " + signed_out.error().message);
   }
 
-  if (auto off = config.Set(std::format("{}.enabled", source), false); !off) {
-    result.problems.push_back("turning it off: " + off.error().message);
-  }
+  store::SourceState state = games.Source(std::string(source));
+  state.added = false;
+  games.SaveSource(state);
   log::Info("removed source {}: {} game(s), {} problem(s)", source, result.removed,
             result.problems.size());
   return result;

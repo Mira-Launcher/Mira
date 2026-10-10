@@ -90,6 +90,8 @@ signals:
   void SaveFinished(bool ok, QString error);
   // The frontend.toml values just saved; the theme and shortcuts are already applied.
   void PrefsSaved(const mira_gui::FrontendPrefs& prefs);
+  // The Settings > Sidebar "Open Sources" button was pressed.
+  void SourcesPageRequested();
 
 private:
   // A frontend.toml control, however it is drawn: whether it differs from what
@@ -142,13 +144,6 @@ private:
     std::vector<size_t> schema;  // into fields_
   };
 
-  // One source's row on the Sidebar page: shown in the sidebar, in this order.
-  struct SourceRow {
-    QString id;
-    SettingRow* row = nullptr;
-    Switch* shown = nullptr;
-  };
-
   void Load();
   void LoadFrontendPrefs();
   void BuildInterfacePage();
@@ -173,9 +168,6 @@ private:
   void UpdatePreviews();
   QString SelectedTheme() const;
   void SelectTheme(const QString& name);
-  QStringList CurrentSourceOrder() const;
-  QSet<QString> CurrentHiddenSources() const;
-  void ArrangeSources(const QStringList& order);
   struct SectionAction {
     QString category;
     QString card;
@@ -223,9 +215,6 @@ private:
   SidebarStyleChoices* sidebar_style_ = nullptr;
   SidebarStyleChoices::Choices sidebar_style_saved_;
   SettingsCard* sources_card_ = nullptr;
-  std::vector<SourceRow> source_rows_;
-  QStringList source_order_saved_;
-  QSet<QString> hidden_sources_saved_;
 
   std::vector<ShortcutField> shortcuts_;
   std::vector<PrefField> pref_fields_;

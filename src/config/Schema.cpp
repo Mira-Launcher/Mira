@@ -370,65 +370,7 @@ Schema::Schema() {
          .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
 
   // --- Sources ---------------------------------------------------------------
-  s.Section("Sources", "Sources");
-
-  s.Add({.key = "steam.enabled",
-         .label = "Enable Steam",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Find installed Steam games and launch them from Mira."});
-
-  s.Add({.key = "epic.enabled",
-         .label = "Enable Epic Games",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use Legendary, a command line Epic Games Store client, to log in, import "
-                "installed Epic games, and install or update games. Games still run through "
-                "Mira's Wine or Proton runner. Run \"mira epic setup\" if Legendary is not "
-                "installed."});
-
-  s.Add({.key = "gog.enabled",
-         .label = "Enable GOG",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use gogdl, Heroic's GOG downloader, to log in, import installed GOG games, and "
-                "install or update games. Games run through Mira's Wine or Proton runner, or "
-                "natively when GOG offers a Linux build. Run \"mira gog setup\" if gogdl is not "
-                "installed."});
-
-  s.Add({.key = "itch.enabled",
-         .label = "Enable itch.io",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use butler, itch.io's own tool, to log in, import installed itch.io games, and "
-                "install or update games. Games run through Mira's Wine or Proton runner, or "
-                "natively when a Linux build exists. Run \"mira itch setup\" if butler is not "
-                "installed."});
-
-  s.Add({.key = "humble.enabled",
-         .label = "Enable Humble Bundle",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use humble-cli, an unofficial Humble Bundle client, to list your bundles and "
-                "download their items. Downloads are plain files (installers, archives, or "
-                "DRM-free builds), so add them as games manually afterward."});
-
-  s.Add({.key = "amazon.enabled",
-         .label = "Enable Amazon Games",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use nile, Heroic's Amazon Games client, to log in, list, and install Amazon and "
-                "Prime Gaming games. Games run through Mira's Wine or Proton runner. Run \"mira "
-                "amazon setup\" if nile is not installed."});
-
-  s.Add({.key = "lutris.enabled",
-         .label = "Enable Lutris",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Let Mira read Lutris's game database and per-game configs, so you can import "
-                "Lutris games into the library."});
-
-  s.Group("Steam");
+  s.Section("Sources", "Steam");
 
   s.Add({.key = "steam.root",
          .label = "Steam folder",
@@ -837,6 +779,34 @@ Schema::Schema() {
                 "without adding gamemoderun as a command wrapper. Does nothing if GameMode is not "
                 "installed or not running."});
 
+  s.Add({.key = "launch.shader_cache",
+         .label = "Large shader cache",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Keep up to 10 GB of the game's compiled shaders instead of the drivers' usual 1 GB, "
+                "so they aren't built again mid-game, which stutters. Wine and native games also get a "
+                "cache folder of their own; Proton keeps its cache in the prefix. Doesn't reach Steam "
+                "games launched through the Steam client."});
+
+  s.Add({.key = "launch.mangohud",
+         .label = "Show MangoHud",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Show MangoHud's FPS and performance overlay in games; Right Shift + F12 hides it. Off "
+                "for a game also drops MANGOHUD from the launch environment, for a game it breaks. "
+                "Needs MangoHud installed, and doesn't reach Steam games launched through the Steam client."});
+
+  s.Add({.key = "launch.mangohud_layout",
+         .label = "MangoHud layout",
+         .type = Type::String,
+         .default_value = "full",
+         .scope = Scope::PerGame,
+         .doc = "What the overlay shows: \"fps\" only the frame rate, \"horizontal\" a one-line bar, "
+                "\"extended\" or \"detailed\" more readings, \"full\" MangoHud's own layout.",
+         .constraint = OneOf({"full", "fps", "horizontal", "extended", "detailed"})});
+
   s.Group("Scripts");
   s.ResetTogether();
 
@@ -949,17 +919,6 @@ Schema::Schema() {
 
   // --- Store launchers ------------------------------------------------------
   s.Section("Store launchers", "Launchers");
-
-  for (const auto& [id, name] : {std::pair{"battlenet", "Battle.net"}, std::pair{"ubisoft", "Ubisoft Connect"},
-                                 std::pair{"ea", "EA app"}, std::pair{"office", "Microsoft 365"}}) {
-    s.Add({.key = std::format("{}.enabled", id),
-           .label = std::format("Enable {}", name),
-           .type = Type::Bool,
-           .default_value = true,
-           .doc = std::format("Show {} in the sidebar and import its games. Removing the source turns "
-                              "this off.",
-                              name)});
-  }
 
   s.Add({.key = "launchers.auto_import",
          .label = "Import launcher games on scan",

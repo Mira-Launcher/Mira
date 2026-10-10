@@ -19,6 +19,10 @@ std::filesystem::path RuntimeDir();
 
 std::filesystem::path Home();
 
+// A game's shader caches: rebuilt when lost and many gigabytes, so under XDG_CACHE_HOME
+// rather than UserDir().
+std::filesystem::path ShaderCacheDir(const std::string& game_id);
+
 // $name when set and non-empty, otherwise fallback.
 std::filesystem::path EnvOr(const char* name, const std::filesystem::path& fallback);
 

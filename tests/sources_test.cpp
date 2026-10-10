@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "gog/Gog.h"
+#include "migrate/Sources.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
@@ -119,7 +120,7 @@ TEST_CASE("Removing Steam forgets its games but never touches their files") {
   CHECK(fs::exists(game_dir));
   CHECK_FALSE(server.games().Find("steam-1145360"));
   CHECK(server.games().Find("celeste"));
-  CHECK_FALSE(server.config().GetBool("steam.enabled"));
+  CHECK_FALSE(server.games().Source("steam").added);
 }
 
 TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, and signs out") {
@@ -151,7 +152,7 @@ TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, 
   CHECK(fs::exists(state / "prefixes" / "celeste" / "drive_c" / "users" / "save.dat"));
   CHECK_FALSE(fs::exists(gog::AuthConfigPath(server.config())));
   CHECK(server.games().All().empty());
-  CHECK_FALSE(server.config().GetBool("gog.enabled"));
+  CHECK_FALSE(server.games().Source("gog").added);
 }
 
 TEST_CASE("A launcher's games import from its prefix, and removing it keeps saves and the prefix") {
@@ -200,6 +201,54 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
   CHECK(fs::exists(program / "savegames" / "5595" / "1.save"));
   CHECK(fs::exists(prefix / "system.reg"));
   CHECK(server.games().All().empty());
+}
+
+TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
+  LiveServer server(TempDir("sources-list"));
+  httplib::Client client = server.Client();
+  auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})", "application/json");
+  REQUIRE(patched != nullptr);
+  CHECK(patched->status == 200);
+  auto ordered = client.Put("/v1/sources/order", R"({"order": ["gog", "local"]})", "application/json");
+  REQUIRE(ordered != nullptr);
+  CHECK(ordered->status == 200);
+
+  const json sources = Get(client, "/v1/sources")["sources"];
+  CHECK(sources[0]["id"] == "gog");
+  CHECK(sources[1]["id"] == "local");
+  CHECK(sources[1]["added"] == true);
+  json epic;
+  for (const json& source : sources) {
+    if (source["id"] == "epic") epic = source;
+  }
+  CHECK(epic["enabled"] == false);
+  CHECK(epic["in_sidebar"] == false);
+}
+
+TEST_CASE("A switched-off source's games are left out of the library unless include_off is set") {
+  const fs::path state = TempDir("sources-off-games");
+  LiveServer server(state);
+  REQUIRE(server.games().Upsert(SourceGame("steam-570", "steam", state / "Dota 2")));
+  httplib::Client client = server.Client();
+  auto patched = client.Patch("/v1/sources/steam", R"({"enabled": false})", "application/json");
+  REQUIRE(patched != nullptr);
+  CHECK(patched->status == 200);
+
+  const auto ids = [](const json& games) {
+    std::vector<std::string> out;
+    for (const json& game : games) out.push_back(game["id"]);
+    return out;
+  };
+  CHECK_FALSE(std::ranges::contains(ids(Get(client, "/v1/games")), std::string("steam-570")));
+  CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")), std::string("steam-570")));
+
+  // Setting it up again turns it back on.
+  client.Patch("/v1/sources/steam", R"({"added": false})", "application/json");
+  client.Patch("/v1/sources/steam", R"({"added": true})", "application/json");
+  CHECK(server.games().Source("steam").enabled);
+  server.games().SaveSource({.id = "gog", .added = false, .enabled = false});
+  server.games().MarkSourceAdded("gog", false);
+  CHECK(server.games().Source("gog").enabled);
 }
 
 TEST_CASE("An unknown source can't be planned or removed") {
@@ -328,4 +377,25 @@ TEST_CASE("Steam's installed games are listed most recently played first without
   CHECK(listed["games"][2]["appid"] == "70");
   CHECK_FALSE(listed["games"][2].contains("last_played_at"));
   CHECK(Get(client, "/v1/games").empty());
+}
+
+TEST_CASE("Settings from before the sources table carry over to it") {
+  test::TestEnv env("sources-import");
+  Touch(env.dir / "settings.toml", "[gog]\nenabled = false\n");
+  env.config.Load();
+  test::Isolate(env.config);
+  env.config.SetFrontendSettings(json{{"hidden_sources", json::array({"epic"})},
+                                      {"source_order", json::array({"gog", "steam"})}});
+
+  migrate::ImportSourceState(env.config, env.games);
+
+  CHECK_FALSE(env.games.Source("gog").enabled);
+  CHECK_FALSE(env.games.Source("epic").in_sidebar);
+  std::vector<std::string> order;
+  for (const store::SourceState& source : env.games.Sources()) order.push_back(source.id);
+  const auto gog = std::find(order.begin(), order.end(), "gog");
+  const auto steam = std::find(order.begin(), order.end(), "steam");
+  REQUIRE(gog != order.end());
+  REQUIRE(steam != order.end());
+  CHECK(gog < steam);
 }

@@ -44,7 +44,7 @@ EpicImporter::EpicImporter(config::Config& config, store::GameStore& games, api:
 
 Result<library::ImportSummary> EpicImporter::Import() {
   library::ImportSummary summary;
-  if (!config_.GetBool("epic.enabled")) return summary;
+  if (!games_.SourceEnabled("epic")) return summary;
 
   const Result<json> installed_json = RunLegendaryJson(config_, {"list-installed"});
   if (!installed_json) return std::unexpected(installed_json.error());

@@ -14,7 +14,7 @@ using nlohmann::json;
 Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(const config::Config& config,
                                                               const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
-  if (!config.GetBool("epic.enabled")) return entries;
+  if (!games.SourceEnabled("epic")) return entries;
 
   const Result<json> listed = RunLegendaryJson(config, {"list"});
   if (!listed) return std::unexpected(listed.error());

@@ -33,7 +33,7 @@ SteamScanner::SteamScanner(config::Config& config, store::GameStore& games, api:
 
 Result<library::ImportSummary> SteamScanner::Scan() {
   library::ImportSummary summary;
-  if (!config_.GetBool("steam.enabled")) return summary;
+  if (!games_.SourceEnabled("steam")) return summary;
 
   const auto root = FindSteamRoot(config_);
   if (!root) {

@@ -61,7 +61,7 @@ ItchImporter::ItchImporter(config::Config& config, store::GameStore& games, api:
 
 Result<library::ImportSummary> ItchImporter::Import() {
   library::ImportSummary summary;
-  if (!config_.GetBool("itch.enabled")) return summary;
+  if (!games_.SourceEnabled("itch")) return summary;
 
   const Result<std::int64_t> profile_id = CurrentProfileId(config_);
   if (!profile_id) return std::unexpected(profile_id.error());

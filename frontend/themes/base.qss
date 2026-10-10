@@ -958,6 +958,21 @@ QWidget#segmented QPushButton:checked {
 }
 
 /* A pick among a few: a store tile, a drive, a plan. Checked is outlined and washed in the accent. */
+/* Sources' tiles (sources/SourceTile): a step darker than the card they're on. */
+QFrame#source_tile {
+  background: @window;
+  border: 1px solid @border;
+  border-radius: @radius_panel;
+}
+
+QFrame#source_tile[clickable="true"]:hover {
+  border-color: @accent;
+}
+
+QLabel#source_tile_name {
+  font-weight: 600;
+}
+
 QPushButton#choice_card {
   background: @surface_alt;
   border: 1px solid @border;
@@ -1033,7 +1048,8 @@ QLabel#setup_tile_title {
 }
 
 QFrame#setup_card,
-QFrame#setup_feature {
+QFrame#setup_feature,
+QFrame#sources_card {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;

@@ -4,6 +4,7 @@
 #include <QObject>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,17 @@
 // Each call runs on a worker thread and delivers its result on the main thread
 // (client/Async.h), so the UI never blocks on the socket. See docs/api.md.
 namespace mira_gui::api {
+
+// GET /v1/sources: every source's state, in sidebar order.
+void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callback);
+// PATCH /v1/sources/{id}: only the fields given change.
+void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
+                      std::optional<bool> in_sidebar, std::function<void(PatchConfigResult)> callback);
+// PATCH /v1/sources/{id} {"added": true}: set up, which also turns it on.
+void AddSourceAsync(QObject* context, const std::string& id, std::function<void(PatchConfigResult)> callback);
+// PUT /v1/sources/order: the sidebar order, every source id first to last.
+void SetSourceOrderAsync(QObject* context, const std::vector<std::string>& ids,
+                         std::function<void(PatchConfigResult)> callback);
 
 void GetStoreStatusAsync(QObject* context, const std::string& source,
                          std::function<void(StoreStatusResult)> callback);

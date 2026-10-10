@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../sources/ManageSourcesCard.h"
+#include "../sources/AddedSources.h"
 #include "SidebarGames.h"
 #include "SidebarStyleCard.h"
 
@@ -54,10 +54,10 @@ class Sidebar : public QWidget {
   // Add games, Settings and fetch art, which act on a grid that's covered.
   void SetActionsEnabled(bool enabled);
 
-  // Hides the sources turned off in Settings (`<id>.enabled`), and asks
+  // Lists the set-up sources mirad reports, and asks
   // which stores are signed in and which launchers installed.
   void RefreshSources();
-  std::vector<ManageSourcesCard::Entry> SourceEntries() const;
+  std::vector<SourceEntry> SourceEntries() const;
   void SetSourceHidden(const QString& id, bool hidden);
   // What each store owns, so its row counts installed games out of them ("2/229 games").
   void SetOwnedTitles(OwnedTitles* titles);
@@ -97,7 +97,7 @@ class Sidebar : public QWidget {
   // A game row's hover card after its dwell (`anchor` is global), and its end.
   void HoverRequested(const std::string& id, const QRect& anchor, const QString& hint);
   void HoverEnded();
-  // Something Manage sources shows changed.
+  // Something the Sources page shows changed.
   void SourcesChanged();
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -157,6 +157,7 @@ class Sidebar : public QWidget {
   QList<QLabel*> source_counts_;
   QVBoxLayout* source_nav_layout_ = nullptr;
   QLabel* sources_empty_ = nullptr;    // shown while no source row is
+  QSet<QString> added_sources_;        // set up; the Sources page adds the rest
   QSet<QString> hidden_sources_;       // unticked "In sidebar"
   QSet<QString> disabled_sources_;     // <id>.enabled = false
   std::vector<QString> source_order_;  // saved order; see SourceOrder()

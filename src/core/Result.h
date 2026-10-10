@@ -7,7 +7,7 @@
 namespace mira {
 
 // Bumped on a breaking change to the REST API; GET /v1/health reports it so a newer client can spot an older daemon.
-inline constexpr int kApiVersion = 1;
+inline constexpr int kApiVersion = 2;
 
 // Where the user can fix an error, for clients to turn into a button or a
 // command; empty `kind` for none. Kinds and fields: docs/api.md, "Errors".

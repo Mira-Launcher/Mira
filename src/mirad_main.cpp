@@ -27,6 +27,7 @@
 #include "runner/RefMigration.h"
 #include "migrate/EarlySchema.h"
 #include "migrate/Legacy.h"
+#include "migrate/Sources.h"
 #include "store/GameStore.h"
 
 namespace {
@@ -89,6 +90,7 @@ int main(int argc, char** argv) {
                          [&games](const nlohmann::json& state) { games.KeepUiState(state); });
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
+  if (games.SourcesNew()) mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);

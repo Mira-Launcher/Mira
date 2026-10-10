@@ -21,6 +21,7 @@
 #include <map>
 
 #include "../app/Notify.h"
+#include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
@@ -44,10 +45,17 @@ namespace {
 
 constexpr const char* kSourceMime = "application/x-mira-source";
 
+// The heading's spacing sits on its row, so a button beside it centers on the text.
+constexpr QMargins kHeadingMargins(0, 14, 0, 2);
+
 QLabel* Heading(QWidget* parent, const QString& text) {
   QLabel* label = MakeGroupHeading(parent, text);
-  label->setContentsMargins(0, 14, 0, 2);
+  label->setContentsMargins(kHeadingMargins);
   return label;
+}
+
+QLabel* RowHeading(QWidget* parent, const QString& text) {
+  return MakeGroupHeading(parent, text);
 }
 
 // Saves only the fields set in `prefs`; a failure says what didn't stick.
@@ -63,13 +71,9 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
                  QWidget* parent)
     : QWidget(parent), library_(library), artwork_(artwork) {
   setObjectName("left_sidebar");
-  for (const std::string& id : prefs.source_order.value_or(std::vector<std::string>{})) {
-    source_order_.push_back(QString::fromStdString(id));
-  }
-  for (const auto& [id, at] :
-       prefs.source_imported_at.value_or(std::map<std::string, std::int64_t>{})) {
-    source_imported_at_[QString::fromStdString(id)] = at;
-  }
+  connect(EventHub::Instance(), &EventHub::Received, this, [this](const std::string& type) {
+    if (type == "sources.changed") RefreshSources();
+  });
 
   // Rows with their own menu handle it first; the rest fall through to here.
   setContextMenuPolicy(Qt::CustomContextMenu);
@@ -130,13 +134,13 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
 
   auto* sources_heading = new QWidget(nav_content);
   auto* sources_heading_layout = new QHBoxLayout(sources_heading);
-  sources_heading_layout->setContentsMargins(0, 0, 0, 0);
-  sources_heading_layout->addWidget(Heading(sources_heading, "SOURCES"), /*stretch=*/1);
+  sources_heading_layout->setContentsMargins(kHeadingMargins);
+  sources_heading_layout->addWidget(RowHeading(sources_heading, "SOURCES"), /*stretch=*/1);
   manage_sources_button_ = new QToolButton(sources_heading);
   manage_sources_button_->setAutoRaise(true);
   manage_sources_button_->setToolTip("Manage sources");
   connect(manage_sources_button_, &QToolButton::clicked, this, &Sidebar::ManageSourcesRequested);
-  sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignBottom);
+  sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignVCenter);
   nav_layout->addWidget(sources_heading);
 
   source_nav_layout_ = new QVBoxLayout();
@@ -257,13 +261,13 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
 QWidget* Sidebar::BuildGameHeading(QWidget* parent, const QString& text, QToolButton*& button) {
   auto* heading = new QWidget(parent);
   auto* heading_layout = new QHBoxLayout(heading);
-  heading_layout->setContentsMargins(0, 0, 0, 0);
-  heading_layout->addWidget(Heading(heading, text), /*stretch=*/1);
+  heading_layout->setContentsMargins(kHeadingMargins);
+  heading_layout->addWidget(RowHeading(heading, text), /*stretch=*/1);
   button = new QToolButton(heading);
   button->setAutoRaise(true);
   button->setToolTip("Customize how these look");
   connect(button, &QToolButton::clicked, this, &Sidebar::StyleRequested);
-  heading_layout->addWidget(button, 0, Qt::AlignBottom);
+  heading_layout->addWidget(button, 0, Qt::AlignVCenter);
   heading->setVisible(false);
   return heading;
 }
@@ -295,17 +299,6 @@ QMenu* Sidebar::BuildAddGamesMenu() {
 }
 
 void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {
-  // Set only when changed in Settings; the sidebar may have changed them since.
-  if (prefs.hidden_sources) {
-    hidden_sources_.clear();
-    for (const std::string& id : *prefs.hidden_sources)
-      hidden_sources_.insert(QString::fromStdString(id));
-  }
-  if (prefs.source_order) {
-    source_order_.clear();
-    for (const std::string& id : *prefs.source_order)
-      source_order_.push_back(QString::fromStdString(id));
-  }
   show_source_counts_ = prefs.sidebar_source_counts.value_or(true);
   show_source_covers_ = prefs.sidebar_source_covers.value_or(true);
   style_.pinned = sidebar::ParseStyle(prefs.sidebar_pinned_style.value_or("covers"));
@@ -492,15 +485,22 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void Sidebar::RefreshSources() {
-  api::GetConfigAsync(this, [this](ConfigResult result) {
+  api::ListSourcesAsync(this, [this](SourcesResult result) {
     if (!result.ok) return;
+    added_sources_.clear();
     disabled_sources_.clear();
-    for (const SourceInfo& source : AllSources()) {
-      const auto found = result.values.find(source.id.toStdString() + ".enabled");
-      if (found != result.values.end() && found->second == "false")
-        disabled_sources_.insert(source.id);
+    hidden_sources_.clear();
+    source_order_.clear();
+    for (const SourceState& source : result.sources) {
+      const QString id = QString::fromStdString(source.id);
+      source_order_.push_back(id);
+      if (source.added) added_sources_.insert(id);
+      if (!source.enabled) disabled_sources_.insert(id);
+      if (!source.in_sidebar) hidden_sources_.insert(id);
+      source_imported_at_[id] = source.imported_at;
     }
     UpdateSources();
+    emit SourcesChanged();
   });
   // A store counts as set up once signed in, a launcher once installed.
   for (const SourceInfo& source : AllSources()) {
@@ -555,8 +555,11 @@ void Sidebar::UpdateSources() {
     const auto owns = owned.find(id.toStdString());
     const int of = owns == owned.end() ? 0 : std::max(owns->second, games);
     const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
-    // Listed once enabled, set up or not: the page is where setup happens.
-    source_navs_[i]->setVisible(!hidden_sources_.contains(id) && !disabled_sources_.contains(id));
+    // Listed once set up; the Sources page adds the rest.
+    const bool added = id == "local" || added_sources_.contains(id);
+    source_navs_[i]->setVisible(added && !hidden_sources_.contains(id));
+    // An off source's games aren't in the library, so it shows that instead of a count.
+    const bool off = disabled_sources_.contains(id);
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
@@ -580,7 +583,8 @@ void Sidebar::UpdateSources() {
       QString detail = games == 0 && of == 0 ? QString("No games")
                        : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
                                              : QString();
-      if (signed_out) {
+      if (off) detail = "Off";
+      if (signed_out && !off) {
         detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
       }
@@ -594,7 +598,8 @@ void Sidebar::UpdateSources() {
       source_decks_[i]->setFixedSize(18, 18);  // ShowActive draws the dot
       source_details_[i]->hide();
       QString label = show_source_counts_ ? counted : QString();
-      if (signed_out) label = StatusDot(theme::Current().warning) + label;
+      if (off) label = "Off";
+      if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
       source_counts_[i]->setText(label);
       source_counts_[i]->show();
     }
@@ -616,16 +621,16 @@ void Sidebar::UpdateSources() {
   emit SourcesChanged();
 }
 
-std::vector<ManageSourcesCard::Entry> Sidebar::SourceEntries() const {
+std::vector<SourceEntry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
   for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
-  std::vector<ManageSourcesCard::Entry> entries;
+  std::vector<SourceEntry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
     entries.push_back({.source = *source,
-                       .ready = games > 0 || id == "local" || source_ready_.value(id, false),
+                       .ready = id == "local" || added_sources_.contains(id),
                        .enabled = !disabled_sources_.contains(id),
                        .games = games,
                        .in_sidebar = !hidden_sources_.contains(id),
@@ -635,18 +640,7 @@ std::vector<ManageSourcesCard::Entry> Sidebar::SourceEntries() const {
   return entries;
 }
 
-void Sidebar::NoteImported(const QString& id) {
-  source_imported_at_[id] = QDateTime::currentSecsSinceEpoch();
-  FrontendPrefs prefs;
-  std::map<std::string, std::int64_t> imported;
-  for (auto it = source_imported_at_.cbegin(); it != source_imported_at_.cend(); ++it) {
-    imported[it.key().toStdString()] = it.value();
-  }
-  prefs.source_imported_at = std::move(imported);
-  // A record, not a choice the user made: losing it isn't worth a notice.
-  api::SaveFrontendPrefsAsync(this, prefs, [](PatchConfigResult) {});
-  emit SourcesChanged();
-}
+void Sidebar::NoteImported(const QString&) { RefreshSources(); }
 
 void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
   if (enabled) {
@@ -655,14 +649,18 @@ void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
     disabled_sources_.insert(id);
   }
   UpdateSources();
-  const ConfigEdit edit{(id + ".enabled").toStdString(), "a boolean", enabled ? "true" : "false"};
-  api::PatchConfigAsync(this, {edit}, [this](PatchConfigResult result) {
-    if (!result.ok) notify::FailedRequest(this, "Could not change that source.", result.error);
-    RefreshSources();
-  });
+  api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt,
+                        [this](PatchConfigResult result) {
+                          if (!result.ok) {
+                            notify::FailedRequest(this, "Could not change that source.",
+                                                  result.error);
+                          }
+                          RefreshSources();
+                        });
 }
 
 void Sidebar::ForgetSource(const QString& id) {
+  added_sources_.remove(id);
   disabled_sources_.insert(id);
   source_ready_[id] = false;
   // mirad's game.removed events say the same; this just doesn't wait for them.
@@ -689,7 +687,7 @@ int Sidebar::SourceDropRow(int y) const {
 void Sidebar::MoveSource(const QString& id, int before) {
   // Placed right after the visible row that ends up above it (or right before
   // the first one), not next to rows the sidebar hides, so Settings and
-  // Manage sources, which list every source, show it where it was put.
+  // the Sources page, which list every source, show it where it was put.
   QString above;
   QString first;
   const int end = before >= 0 ? before : source_nav_layout_->count();
@@ -718,11 +716,11 @@ void Sidebar::MoveSource(const QString& id, int before) {
 void Sidebar::SetSourceOrder(std::vector<QString> order) {
   source_order_ = order;
   UpdateSources();
-  FrontendPrefs prefs;
   std::vector<std::string> ids;
   for (const QString& source : order) ids.push_back(source.toStdString());
-  prefs.source_order = std::move(ids);
-  SavePrefs(this, prefs, "Could not save the sources' order.");
+  api::SetSourceOrderAsync(this, ids, [this](PatchConfigResult result) {
+    if (!result.ok) notify::FailedRequest(this, "Could not save the sources' order.", result.error);
+  });
 }
 
 void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
@@ -732,12 +730,14 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
     hidden_sources_.remove(id);
   }
   UpdateSources();
-  FrontendPrefs prefs;
-  std::vector<std::string> ids;
-  for (const QString& hidden_id : hidden_sources_) ids.push_back(hidden_id.toStdString());
-  std::ranges::sort(ids);
-  prefs.hidden_sources = std::move(ids);
-  SavePrefs(this, prefs, "Could not save which sources the sidebar shows.");
+  api::PatchSourceAsync(this, id.toStdString(), std::nullopt, !hidden,
+                        [this](PatchConfigResult result) {
+                          if (!result.ok) {
+                            notify::FailedRequest(
+                                this, "Could not save which sources the sidebar shows.", result.error);
+                          }
+                          RefreshSources();
+                        });
 }
 
 void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos) {
