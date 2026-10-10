@@ -69,6 +69,8 @@ public:
   // Null until the banner's settings button first opens it.
   SourceSettingsCard* SettingsCard() const { return settings_card_; }
   bool SettingsModalOpen() const;
+  // The source's settings over the page.
+  void OpenSettingsModal();
   // Esc: closes the settings dialog, asking first when it has unsaved edits.
   void CloseSettingsModal();
 
@@ -104,7 +106,6 @@ private:
   QWidget* BuildLibrarySection();
   QWidget* BuildOwnedSection();
 
-  void OpenSettingsModal();
   void OpenCollectionsModal();
   // Shows `card` alone over the page, in place of whichever card was there.
   void ShowModal(mira_gui::SettingsCard* card);

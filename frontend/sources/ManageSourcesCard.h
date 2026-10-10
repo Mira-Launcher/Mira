@@ -15,8 +15,8 @@ class QToolButton;
 namespace mira_gui {
 
 // Sources in one card, in sidebar order: drag a row (or Alt+Up/Down) to
-// reorder, the switch turns a source on or off, and ⋯ holds open, import,
-// sidebar visibility and remove. Each change applies at once.
+// reorder, click it to open the source, the switch shows it in the sidebar,
+// and ⋯ holds import, on/off and remove. Each change applies at once.
 class ManageSourcesCard : public SettingsCard {
   Q_OBJECT
 
@@ -39,11 +39,15 @@ public:
 
 signals:
   void OpenRequested(QString id);
+  void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
   void EnabledToggled(QString id, bool enabled);
   void OrderChanged(QStringList ids);
   void Imported(QString id);  // an import finished and changed something
   void Removed(QString id);
+
+protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
   struct Row {
@@ -51,7 +55,7 @@ private:
     SettingRow* row = nullptr;
     QLabel* badge = nullptr;
     QLabel* status = nullptr;
-    Switch* enabled = nullptr;
+    Switch* in_sidebar = nullptr;
     QToolButton* more = nullptr;
     bool importing = false;
     QString note;  // an import's result, shown instead of the status from then on
@@ -64,6 +68,7 @@ private:
   Row* Find(const QString& id);
 
   std::vector<Row> rows_;
+  QPoint pressed_at_;
 };
 
 }  // namespace mira_gui

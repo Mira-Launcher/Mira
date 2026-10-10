@@ -112,6 +112,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
 
   for (ManageSourcesCard* card : {games_, apps_}) {
     connect(card, &ManageSourcesCard::OpenRequested, this, &SourcesPage::OpenRequested);
+    connect(card, &ManageSourcesCard::SettingsRequested, this, &SourcesPage::SettingsRequested);
     connect(card, &ManageSourcesCard::SidebarToggled, this, &SourcesPage::SidebarToggled);
     connect(card, &ManageSourcesCard::EnabledToggled, this, &SourcesPage::EnabledToggled);
     connect(card, &ManageSourcesCard::Imported, this, &SourcesPage::Imported);

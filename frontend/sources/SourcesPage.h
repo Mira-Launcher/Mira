@@ -39,6 +39,7 @@ public:
 
 signals:
   void OpenRequested(QString id);
+  void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
   void EnabledToggled(QString id, bool enabled);
   void OrderChanged(QStringList ids);

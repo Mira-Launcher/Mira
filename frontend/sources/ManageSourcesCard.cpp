@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QMenu>
 #include <QStyle>
 #include <QToolButton>
@@ -34,7 +35,6 @@ QString Status(const ManageSourcesCard::Entry& entry) {
   QStringList details{QString("%1 game%2").arg(entry.games).arg(entry.games == 1 ? "" : "s")};
   if (!entry.account.empty()) details << "signed in as " + QString::fromStdString(entry.account);
   if (entry.imported_at > 0) details << "imported " + Ago(entry.imported_at);
-  if (!entry.in_sidebar) details << "hidden from sidebar";
   return details.join(" · ");
 }
 
@@ -86,18 +86,18 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
   row.status->setProperty("role", "subtle");
   row.row->AddAfterLabel(row.status);
 
-  row.enabled = new Switch(row.row);
-  row.enabled->setAccessibleName(QString("%1 on").arg(entry.source.name));
-  row.enabled->setToolTip("Off hides the source everywhere and stops its imports");
-  connect(row.enabled, &Switch::toggled, this, [this, id](bool on) { emit EnabledToggled(id, on); });
-  row.row->AddControl(row.enabled);
-  // Local is where games from no source go, so it can't be turned off or removed.
-  if (id == "local") {
-    QSizePolicy keep_switch = row.enabled->sizePolicy();
-    keep_switch.setRetainSizeWhenHidden(true);
-    row.enabled->setSizePolicy(keep_switch);
-    row.enabled->setVisible(false);
-  }
+  row.in_sidebar = new Switch(row.row);
+  row.in_sidebar->setAccessibleName(QString("%1 in the sidebar").arg(entry.source.name));
+  row.in_sidebar->setToolTip("Show in the sidebar");
+  connect(row.in_sidebar, &Switch::toggled, this, [this, id](bool shown) { emit SidebarToggled(id, shown); });
+  row.row->AddControl(row.in_sidebar);
+
+  auto* settings = new QToolButton(row.row);
+  settings->setAutoRaise(true);
+  icons::Follow(settings, icons::Glyph::Settings);
+  settings->setToolTip(entry.source.name + " settings");
+  connect(settings, &QToolButton::clicked, this, [this, id] { emit SettingsRequested(id); });
+  row.row->AddControl(settings);
 
   row.more = new QToolButton(row.row);
   row.more->setAutoRaise(true);
@@ -106,7 +106,24 @@ void ManageSourcesCard::BuildRow(const Entry& entry) {
   connect(row.more, &QToolButton::clicked, this, [this, id] { ShowMenu(id); });
   row.row->AddControl(row.more);
 
+  // A click anywhere but the grip and controls opens the source's page.
+  row.row->setCursor(Qt::PointingHandCursor);
+  row.row->installEventFilter(this);
   AddRow(row.row);
+}
+
+bool ManageSourcesCard::eventFilter(QObject* watched, QEvent* event) {
+  const auto it = std::ranges::find(rows_, watched, [](const Row& row) -> QObject* { return row.row; });
+  if (it != rows_.end() && (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease)) {
+    const auto* mouse = static_cast<QMouseEvent*>(event);
+    if (event->type() == QEvent::MouseButtonPress) {
+      pressed_at_ = mouse->globalPosition().toPoint();
+    } else if (mouse->button() == Qt::LeftButton &&
+               (mouse->globalPosition().toPoint() - pressed_at_).manhattanLength() < 6) {
+      emit OpenRequested(it->entry.source.id);  // a click, not the end of a drag
+    }
+  }
+  return SettingsCard::eventFilter(watched, event);
 }
 
 void ManageSourcesCard::Update(Row& row) {
@@ -116,9 +133,10 @@ void ManageSourcesCard::Update(Row& row) {
   row.row->Label()->style()->unpolish(row.row->Label());
   row.row->Label()->style()->polish(row.row->Label());
   if (!row.importing && row.note.isEmpty()) row.status->setText(Status(entry));
-  row.enabled->blockSignals(true);
-  row.enabled->setChecked(entry.enabled);
-  row.enabled->blockSignals(false);
+  row.in_sidebar->blockSignals(true);
+  row.in_sidebar->setChecked(entry.in_sidebar);
+  row.in_sidebar->blockSignals(false);
+  row.in_sidebar->setEnabled(entry.enabled);  // an off source isn't in the sidebar either way
 }
 
 void ManageSourcesCard::ShowMenu(const QString& id) {
@@ -126,18 +144,14 @@ void ManageSourcesCard::ShowMenu(const QString& id) {
   if (row == nullptr) return;
   const Entry entry = row->entry;
   QMenu menu(this);
-  if (entry.enabled) {
-    menu.addAction("Open", this, [this, id] { emit OpenRequested(id); });
-    if (id != "humble" && id != "local" && !row->importing) {
-      menu.addAction("Import games", this, [this, id] { Import(id); });
-    }
-    QAction* sidebar = menu.addAction("Show in sidebar");
-    sidebar->setCheckable(true);
-    sidebar->setChecked(entry.in_sidebar);
-    connect(sidebar, &QAction::toggled, this, [this, id](bool shown) { emit SidebarToggled(id, shown); });
-    if (id != "local") menu.addSeparator();
+  if (entry.enabled && id != "humble" && id != "local" && !row->importing) {
+    menu.addAction("Import games", this, [this, id] { Import(id); });
   }
+  // Local is where games from no source go, so it can't be turned off or removed.
   if (id != "local") {
+    menu.addAction(entry.enabled ? "Turn off" : "Turn on", this,
+                   [this, id, on = !entry.enabled] { emit EnabledToggled(id, on); });
+    menu.addSeparator();
     menu.addAction("Remove…", this, [this, entry] {
       RemoveSource(this, entry.source, [this, id = entry.source.id] { emit Removed(id); });
     });

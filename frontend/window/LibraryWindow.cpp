@@ -1713,6 +1713,16 @@ void LibraryWindow::OpenSourcesPage(bool catalog) {
   connect(sources_page_, &mira_gui::SourcesPage::OpenRequested, this, [this](const QString& id) {
     if (const mira_gui::SourceInfo* source = mira_gui::FindSourceInfo(id)) OpenSource(*source);
   });
+  connect(sources_page_, &mira_gui::SourcesPage::SettingsRequested, this, [this](const QString& id) {
+    // Local's settings are the library folders; the others open over their page.
+    if (id == "local") return OpenSettings("library_roots");
+    const mira_gui::SourceInfo* source = mira_gui::FindSourceInfo(id);
+    if (source == nullptr) return;
+    OpenSource(*source);
+    if (source_page_ != nullptr && source_page_->property("source_id").toString() == id) {
+      source_page_->OpenSettingsModal();
+    }
+  });
   main_stack_->addWidget(sources_page_);
   main_stack_->setCurrentWidget(sources_page_);
   mira_gui::FocusPage(sources_page_);
