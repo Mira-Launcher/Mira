@@ -9,11 +9,15 @@
 #include "ManageSourcesCard.h"
 
 class QButtonGroup;
+class QResizeEvent;
+class QScrollArea;
 class QStackedWidget;
 
 namespace mira_gui {
 
+class ModalOverlay;
 class SourceCatalog;
+class SourceSetupCard;
 
 // The library window's Sources page: "Added" lists the sources that are set
 // up, games and apps apart, in sidebar order; "Add source" is the catalog of
@@ -29,6 +33,9 @@ public:
   // Shows the catalog, its search focused.
   void ShowCatalog();
   void ShowAdded();
+  // Whether the set-up dialog is up, and closing it (Esc).
+  bool SetupOpen() const;
+  void CloseSetup();
 
 signals:
   void OpenRequested(QString id);
@@ -45,6 +52,17 @@ private:
   ManageSourcesCard* apps_ = nullptr;
   SourceCatalog* catalog_ = nullptr;
   std::vector<ManageSourcesCard::Entry> entries_;
+  ModalOverlay* setup_overlay_ = nullptr;
+  QScrollArea* setup_scroll_ = nullptr;
+  SourceSetupCard* setup_card_ = nullptr;
+
+  // Lutris imports at once; other sources get a "Set up" dialog over the page.
+  void OpenSetup(const QString& id);
+  void FitSetup();
+
+protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 };
 
 }  // namespace mira_gui

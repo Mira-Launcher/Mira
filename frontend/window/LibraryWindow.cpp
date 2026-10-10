@@ -334,6 +334,10 @@ void LibraryWindow::BuildShortcuts() {
       source_page_->CloseSettingsModal();
       return;
     }
+    if (sources_page_ != nullptr && sources_page_->SetupOpen()) {
+      sources_page_->CloseSetup();
+      return;
+    }
     if (settings_loading_) {
       CloseSettings();
       return;
