@@ -122,6 +122,8 @@ QPushButton* PopupDialog::AddButton(const QString& text, int result, bool defaul
 
 void PopupDialog::showEvent(QShowEvent* event) {
   QDialog::showEvent(event);
+  // Tall enough for the wrapped lines at this width; a dialog's own size hint ignores wrapping.
+  if (layout()->hasHeightForWidth()) setFixedHeight(layout()->totalHeightForWidth(kWidth));
   // WM placement heuristics are tuned for decorated windows and place a
   // frameless one poorly. Center over the parent, matching QMessageBox.
   if (QWidget* owner = parentWidget() != nullptr ? parentWidget()->window() : nullptr) {

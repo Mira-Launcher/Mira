@@ -34,7 +34,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     if (!plan.launcher_dir.empty()) lines << "Deletes " + name + " itself.";
     if (plan.signs_out) lines << "Signs you out of " + name + ".";
     if (!plan.kept.empty()) lines << "Keeps game data and saves (prefixes stay on disk).";
-    lines << name + " is turned off; turn it on again on the Sources page any time.";
+    lines << name + " goes back to Add source, to set up again any time.";
     if (!notify::Confirm(parent, "Remove " + name, lines.join("\n"), "Remove",
                          /*destructive=*/true))
       return;
