@@ -83,9 +83,9 @@ SettingRow* HeadingsRow(QWidget* parent) {
   return row;
 }
 
-void KeepSpaceWhenHidden(QWidget* widget) {
+void KeepSpaceWhenHidden(QWidget* widget, bool keep) {
   QSizePolicy policy = widget->sizePolicy();
-  policy.setRetainSizeWhenHidden(true);
+  policy.setRetainSizeWhenHidden(keep);
   widget->setSizePolicy(policy);
 }
 
@@ -579,12 +579,11 @@ TagsPage::MineRow& TagsPage::MineRowFor(const std::string& name) {
       "A game with several folder tags goes in the one listed first. Drag to reorder, or press "
       "Alt+Up or "
       "Alt+Down");
-  // In every row, shown or not, so the names line up.
+  // In every row, shown or not while any tag is a folder, so the names line up.
   entry.icon = new QLabel(entry.row);
   icons::Follow(entry.icon, icons::Glyph::Folder, 14, &theme::Tokens::accent);
   entry.icon->setFixedSize(16, 16);
   entry.icon->setToolTip("A folder tag");
-  KeepSpaceWhenHidden(entry.icon);
   entry.row->SetLeading(entry.icon);
   entry.count = CountLabel(entry.row);
   entry.row->AddControl(entry.count);
@@ -630,12 +629,18 @@ void TagsPage::SyncMine() {
   }
   mine_note_->setVisible(order.empty());
   mine_->MoveRow(mine_note_, 0);
+  // With no folder tag, no row leaves room for a grip and folder icon.
+  const bool any_folder = std::ranges::any_of(order, [&](const TagSummary* tag) {
+    return std::ranges::any_of(settings_.folders, [&](const std::string& f) { return SameTag(f, tag->name); });
+  });
   for (std::size_t i = 0; i < order.size(); ++i) {
     const TagSummary& tag = *order[i];
     MineRow& entry = MineRowFor(tag.name);
     const bool folder = std::ranges::any_of(
         settings_.folders, [&](const std::string& f) { return SameTag(f, tag.name); });
     entry.row->SetGripShown(folder);
+    KeepSpaceWhenHidden(entry.row->Grip(), any_folder);
+    KeepSpaceWhenHidden(entry.icon, any_folder);
     entry.icon->setVisible(folder);
     entry.count->setText(QString::number(tag.ids.size()));
     entry.count->setToolTip(Games(tag.ids.size()));
