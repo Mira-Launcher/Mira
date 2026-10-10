@@ -2,13 +2,15 @@
 
 #include <QString>
 #include <QStringList>
-#include <QWidget>
+#include <QFrame>
 
 #include <vector>
 
-#include "ManageSourcesCard.h"
+#include "AddedSources.h"
 
 class QButtonGroup;
+class QLabel;
+class QLineEdit;
 class QResizeEvent;
 class QScrollArea;
 class QStackedWidget;
@@ -19,18 +21,18 @@ class ModalOverlay;
 class SourceCatalog;
 class SourceSetupCard;
 
-// The library window's Sources page: "Added" lists the sources that are set
-// up, games and apps apart, in sidebar order; "Add source" is the catalog of
-// the rest. A source moves from one to the other as it's set up or removed.
-class SourcesPage : public QWidget {
+// Sources, as a card over the library: "Added" shows the sources that are
+// set up, "Add source" the rest, and one search box filters either. A source
+// moves from one to the other as it's set up or removed.
+class SourcesPage : public QFrame {
   Q_OBJECT
 
 public:
   explicit SourcesPage(QWidget* parent = nullptr);
 
   // Every source, in sidebar order, as Sidebar::SourceEntries gives them.
-  void SetEntries(const std::vector<ManageSourcesCard::Entry>& entries);
-  // Shows the catalog, its search focused.
+  void SetEntries(const std::vector<SourceEntry>& entries);
+  // Shows the catalog, the search focused.
   void ShowCatalog();
   void ShowAdded();
   // Whether the set-up dialog is up, and closing it (Esc).
@@ -42,17 +44,18 @@ signals:
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
   void EnabledToggled(QString id, bool enabled);
-  void OrderChanged(QStringList ids);
   void Imported(QString id);
   void Removed(QString id);
+  void CloseRequested();
 
 private:
   QButtonGroup* views_ = nullptr;
   QStackedWidget* stack_ = nullptr;
-  ManageSourcesCard* games_ = nullptr;
-  ManageSourcesCard* apps_ = nullptr;
+  QLabel* hint_ = nullptr;
+  QLineEdit* search_ = nullptr;
+  AddedSources* added_ = nullptr;
   SourceCatalog* catalog_ = nullptr;
-  std::vector<ManageSourcesCard::Entry> entries_;
+  std::vector<SourceEntry> entries_;
   ModalOverlay* setup_overlay_ = nullptr;
   QScrollArea* setup_scroll_ = nullptr;
   SourceSetupCard* setup_card_ = nullptr;
@@ -60,6 +63,7 @@ private:
   // Lutris imports at once; other sources get a "Set up" dialog over the page.
   void OpenSetup(const QString& id);
   void FitSetup();
+  void ShowView(int view);
 
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;

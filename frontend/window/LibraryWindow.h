@@ -187,6 +187,7 @@ private:
   // The Sources page, in the grid's place like the Runners page. `catalog` shows Add source.
   void OpenSourcesPage(bool catalog);
   void CloseSourcesPage();
+  void SizeSourcesCard();
   // A card that changes the sidebar (the pinned and recently played style),
   // over the content with the sidebar left undimmed as its
   // preview. Showing one replaces any other.
@@ -259,7 +260,7 @@ private:
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
   mira_gui::TagsPage* tags_page_ = nullptr;
-  mira_gui::SourcesPage* sources_page_ = nullptr;
+  QPointer<mira_gui::SourcesPage> sources_page_;  // the sidebar card while it shows Sources
 
   QSplitter* splitter_ = nullptr;
   // The splitter's right side: grid_page_, source_page_, or runners_page_.

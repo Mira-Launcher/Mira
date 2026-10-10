@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../sources/ManageSourcesCard.h"
+#include "../sources/AddedSources.h"
 #include "SidebarGames.h"
 #include "SidebarStyleCard.h"
 
@@ -54,10 +54,10 @@ class Sidebar : public QWidget {
   // Add games, Settings and fetch art, which act on a grid that's covered.
   void SetActionsEnabled(bool enabled);
 
-  // Hides the sources turned off in Settings (`<id>.enabled`), and asks
+  // Lists the set-up sources mirad reports, and asks
   // which stores are signed in and which launchers installed.
   void RefreshSources();
-  std::vector<ManageSourcesCard::Entry> SourceEntries() const;
+  std::vector<SourceEntry> SourceEntries() const;
   void SetSourceHidden(const QString& id, bool hidden);
   // What each store owns, so its row counts installed games out of them ("2/229 games").
   void SetOwnedTitles(OwnedTitles* titles);

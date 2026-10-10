@@ -74,8 +74,8 @@ Resets one key, or everything when `key` is left out.
 
 Stored in the library database, `mira.db`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
 
-### `GET /v1/games[?status=][&tag=][&include_hidden=true]`
-Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. With `scan.tag_by_root` on, games a scan finds in a library root are tagged with its name; games added by hand, installed into a prefix or imported from a store aren't.
+### `GET /v1/games[?status=][&tag=][&include_hidden=true][&include_off=true]`
+Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. Games from a source that's switched off are left out too, unless `include_off=true` is given. With `scan.tag_by_root` on, games a scan finds in a library root are tagged with its name; games added by hand, installed into a prefix or imported from a store aren't.
 
 ### `GET /v1/games/{id}`
 

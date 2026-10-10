@@ -6,6 +6,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -19,38 +20,48 @@
 #include "../app/Notify.h"
 #include "../client/api/Library.h"
 #include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/Scrolling.h"
 #include "SourceCatalog.h"
 #include "SourceSetupCard.h"
-#include "SourceText.h"
 #include "Sources.h"
 
 namespace mira_gui {
 
 namespace {
-constexpr int kColumnWidth = 760;
+
+const char* kAddedHint = "Click a source to open it. Turning off its games keeps them out of the library; nothing is deleted.";
+const char* kCatalogHint = "Pick a source to set up. Search by name, kind or what it does.";
+
 }  // namespace
 
-SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
-  setObjectName("sources_page");
+SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
+  setObjectName("sources_card");
   auto* outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
 
-  auto* header_box = new QWidget(this);
-  header_box->setObjectName("settings_canvas");
-  auto* header_row = new QHBoxLayout(header_box);
-  header_row->setContentsMargins(32, 22, 32, 6);
-  // As wide as the column below, so the switch ends where the cards do.
-  auto* header_column = new QWidget(header_box);
-  header_column->setMaximumWidth(kColumnWidth);
-  header_row->addWidget(header_column, /*stretch=*/1);
-  auto* header = new QHBoxLayout(header_column);
-  header->setContentsMargins(0, 0, 0, 0);
+  auto* header = new QHBoxLayout();
+  header->setContentsMargins(24, 18, 14, 14);
+  header->setSpacing(10);
+  auto* titles = new QVBoxLayout();
+  titles->setSpacing(2);
   auto* title = new QLabel("Sources", this);
   title->setObjectName("page_title");
-  header->addWidget(title, /*stretch=*/1);
+  hint_ = MakeLabel(this, kAddedHint, "subtle");
+  titles->addWidget(title);
+  titles->addWidget(hint_);
+  header->addLayout(titles, /*stretch=*/1);
+
+  search_ = new QLineEdit(this);
+  search_->setPlaceholderText("Search sources");
+  search_->setClearButtonEnabled(true);
+  search_->setFixedWidth(220);
+  search_->addAction(icons::For(icons::Glyph::Search, theme::Current().text_muted), QLineEdit::LeadingPosition);
+  header->addWidget(search_, 0, Qt::AlignTop);
+
   auto* segmented = new QWidget(this);
   segmented->setObjectName("segmented");
   auto* segmented_layout = new QHBoxLayout(segmented);
@@ -64,102 +75,78 @@ SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
     views_->addButton(button, index++);
     segmented_layout->addWidget(button);
   }
-  header->addWidget(segmented);
-  outer->addWidget(header_box);
+  header->addWidget(segmented, 0, Qt::AlignTop);
+
+  auto* close = new QToolButton(this);
+  close->setAutoRaise(true);
+  icons::Follow(close, icons::Glyph::Close);
+  close->setToolTip("Close (Esc)");
+  close->setAccessibleName("Close Sources");
+  connect(close, &QToolButton::clicked, this, &SourcesPage::CloseRequested);
+  header->addWidget(close, 0, Qt::AlignTop);
+  outer->addLayout(header);
+  outer->addWidget(MakeDivider(this, Qt::Horizontal));
 
   auto* scroll = new QScrollArea(this);
-  scroll->setObjectName("settings_page");
+  scroll->setObjectName("card_scroll");
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   SetUpScrolling(scroll, this);
-  auto* canvas = new QWidget();
-  canvas->setObjectName("settings_canvas");
-  auto* canvas_layout = new QVBoxLayout(canvas);
-  canvas_layout->setContentsMargins(32, 12, 32, 22);
-  // Both views share this column, so they line up with each other and the header.
-  auto* column = new QWidget(canvas);
-  column->setMaximumWidth(kColumnWidth);
-  auto* column_layout = new QVBoxLayout(column);
-  column_layout->setContentsMargins(0, 0, 0, 0);
-  stack_ = new QStackedWidget(column);
-  column_layout->addWidget(stack_);
-  canvas_layout->addWidget(column);
-  canvas_layout->addStretch(1);
-  scroll->setWidget(canvas);
+  stack_ = new QStackedWidget();
+  stack_->setContentsMargins(24, 16, 24, 24);
+  added_ = new AddedSources(stack_);
+  catalog_ = new SourceCatalog(stack_);
+  stack_->addWidget(added_);
+  stack_->addWidget(catalog_);
+  scroll->setWidget(stack_);
   outer->addWidget(scroll, /*stretch=*/1);
 
-  auto* added = new QWidget(stack_);
-  auto* added_layout = new QVBoxLayout(added);
-  added_layout->setContentsMargins(0, 0, 0, 0);
-  added_layout->setSpacing(18);
-  games_ = new ManageSourcesCard("Game sources", added);
-  apps_ = new ManageSourcesCard("App sources", added);
-  added_layout->addWidget(games_);
-  added_layout->addWidget(apps_);
-  added_layout->addStretch(1);
-  stack_->addWidget(added);
-  catalog_ = new SourceCatalog(stack_);
-  stack_->addWidget(catalog_);
-
   views_->button(0)->setChecked(true);
-  connect(views_, &QButtonGroup::idClicked, this, [this](int view) {
-    if (view == 1) {
-      ShowCatalog();
-    } else {
-      ShowAdded();
-    }
+  connect(views_, &QButtonGroup::idClicked, this, &SourcesPage::ShowView);
+  connect(search_, &QLineEdit::textChanged, this, [this](const QString& text) {
+    added_->SetFilter(text);
+    catalog_->SetFilter(text);
   });
 
-  for (ManageSourcesCard* card : {games_, apps_}) {
-    connect(card, &ManageSourcesCard::OpenRequested, this, &SourcesPage::OpenRequested);
-    connect(card, &ManageSourcesCard::SettingsRequested, this, &SourcesPage::SettingsRequested);
-    connect(card, &ManageSourcesCard::SidebarToggled, this, &SourcesPage::SidebarToggled);
-    connect(card, &ManageSourcesCard::EnabledToggled, this, &SourcesPage::EnabledToggled);
-    connect(card, &ManageSourcesCard::Imported, this, &SourcesPage::Imported);
-    connect(card, &ManageSourcesCard::Removed, this, &SourcesPage::Removed);
-    // The card only reorders its own sources; the others keep their slots.
-    connect(card, &ManageSourcesCard::OrderChanged, this, [this](const QStringList& ids) {
-      QStringList full;
-      int next = 0;
-      for (const auto& entry : entries_) {
-        const QString id = entry.source.id;
-        full << (ids.contains(id) ? ids.at(next++) : id);
-      }
-      emit OrderChanged(full);
-    });
-  }
+  connect(added_, &AddedSources::OpenRequested, this, &SourcesPage::OpenRequested);
+  connect(added_, &AddedSources::SettingsRequested, this, &SourcesPage::SettingsRequested);
+  connect(added_, &AddedSources::SidebarToggled, this, &SourcesPage::SidebarToggled);
+  connect(added_, &AddedSources::EnabledToggled, this, &SourcesPage::EnabledToggled);
+  connect(added_, &AddedSources::Imported, this, &SourcesPage::Imported);
+  connect(added_, &AddedSources::Removed, this, &SourcesPage::Removed);
   connect(catalog_, &SourceCatalog::SetUpRequested, this, &SourcesPage::OpenSetup);
 }
 
-void SourcesPage::SetEntries(const std::vector<ManageSourcesCard::Entry>& entries) {
+void SourcesPage::SetEntries(const std::vector<SourceEntry>& entries) {
   entries_ = entries;
-  std::vector<ManageSourcesCard::Entry> games;
-  std::vector<ManageSourcesCard::Entry> apps;
+  std::vector<SourceEntry> added;
   std::vector<SourceInfo> offered;
   for (const auto& entry : entries) {
-    if (!entry.ready) {
-      offered.push_back(entry.source);
-    } else if (CopyFor(entry.source.id.toStdString()).item == "app") {
-      apps.push_back(entry);
+    if (entry.ready) {
+      added.push_back(entry);
     } else {
-      games.push_back(entry);
+      offered.push_back(entry.source);
     }
   }
-  games_->SetEntries(games);
-  apps_->SetEntries(apps);
-  apps_->setVisible(!apps.empty());
+  added_->SetEntries(added);
   catalog_->SetSources(offered);
+  views_->button(0)->setText(QString("Added  %1").arg(added.size()));
+  views_->button(1)->setText(QString("Add source  %1").arg(offered.size()));
 }
 
 void SourcesPage::ShowCatalog() {
-  views_->button(1)->setChecked(true);
-  stack_->setCurrentIndex(1);
-  catalog_->FocusSearch();
+  ShowView(1);
+  search_->setFocus(Qt::OtherFocusReason);
+  search_->selectAll();
 }
 
-void SourcesPage::ShowAdded() {
-  views_->button(0)->setChecked(true);
-  stack_->setCurrentIndex(0);
+void SourcesPage::ShowAdded() { ShowView(0); }
+
+void SourcesPage::ShowView(int view) {
+  views_->button(view)->setChecked(true);
+  stack_->setCurrentIndex(view);
+  hint_->setText(view == 1 ? kCatalogHint : kAddedHint);
 }
 
 bool SourcesPage::SetupOpen() const { return setup_overlay_ != nullptr && setup_overlay_->isVisible(); }
@@ -183,7 +170,7 @@ void SourcesPage::OpenSetup(const QString& id) {
     });
     return;
   }
-  const auto entry = std::ranges::find(entries_, id, [](const ManageSourcesCard::Entry& e) { return e.source.id; });
+  const auto entry = std::ranges::find(entries_, id, [](const SourceEntry& e) { return e.source.id; });
   if (entry == entries_.end()) return;
   const SourceInfo source = entry->source;
 
@@ -267,11 +254,11 @@ bool SourcesPage::eventFilter(QObject* watched, QEvent* event) {
   if (watched == setup_card_ && event->type() == QEvent::LayoutRequest && SetupOpen()) {
     QMetaObject::invokeMethod(this, &SourcesPage::FitSetup, Qt::QueuedConnection);
   }
-  return QWidget::eventFilter(watched, event);
+  return QFrame::eventFilter(watched, event);
 }
 
 void SourcesPage::resizeEvent(QResizeEvent* event) {
-  QWidget::resizeEvent(event);
+  QFrame::resizeEvent(event);
   if (setup_overlay_ != nullptr) {
     setup_overlay_->setGeometry(rect());
     FitSetup();

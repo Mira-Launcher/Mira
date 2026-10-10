@@ -40,6 +40,9 @@ struct SourceState {
   std::int64_t imported_at = 0;  // unix seconds of the last successful import, 0 if none
 };
 
+// The source id a game's `source` counts toward, or "" for none.
+std::string SourceIdOf(const std::string& game_source);
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);

@@ -35,12 +35,6 @@ using httplib::Request;
 const std::vector<std::string> kSourceIds = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
                                              "humble", "battlenet", "ubisoft", "ea", "office", "lutris"};
 
-// The source a game's `source` counts toward, or "" for none.
-std::string SourceOfGame(const std::string& source) {
-  if (source == "scan" || source == "manual" || source == "desktop-entry" || source == "local") return "local";
-  if (source == "launcher") return "";
-  return source;
-}
 using httplib::Response;
 using nlohmann::json;
 
@@ -344,7 +338,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   const auto game_counts = [&s]() {
     std::map<std::string, int> counts;
     for (const auto& game : s.games.All()) {
-      if (const std::string id = SourceOfGame(game.source); !id.empty()) ++counts[id];
+      if (const std::string id = store::SourceIdOf(game.source); !id.empty()) ++counts[id];
     }
     return counts;
   };

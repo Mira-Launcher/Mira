@@ -611,4 +611,12 @@ Result<void> GameStore::Remove(const std::string& id) {
   return {};
 }
 
+std::string SourceIdOf(const std::string& game_source) {
+  if (game_source == "scan" || game_source == "manual" || game_source == "desktop-entry" || game_source == "local") {
+    return "local";
+  }
+  if (game_source == "launcher") return "";
+  return game_source;
+}
+
 }  // namespace mira::store

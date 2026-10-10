@@ -569,8 +569,9 @@ void Sidebar::UpdateSources() {
     const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
     // Listed once set up; the Sources page adds the rest.
     const bool added = id == "local" || added_sources_.contains(id);
-    source_navs_[i]->setVisible(added && !hidden_sources_.contains(id) &&
-                                !disabled_sources_.contains(id));
+    source_navs_[i]->setVisible(added && !hidden_sources_.contains(id));
+    // An off source's games aren't in the library, so it shows that instead of a count.
+    const bool off = disabled_sources_.contains(id);
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
@@ -594,7 +595,8 @@ void Sidebar::UpdateSources() {
       QString detail = games == 0 && of == 0 ? QString("No games")
                        : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
                                              : QString();
-      if (signed_out) {
+      if (off) detail = "Off";
+      if (signed_out && !off) {
         detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
       }
@@ -608,7 +610,8 @@ void Sidebar::UpdateSources() {
       source_decks_[i]->setFixedSize(18, 18);  // ShowActive draws the dot
       source_details_[i]->hide();
       QString label = show_source_counts_ ? counted : QString();
-      if (signed_out) label = StatusDot(theme::Current().warning) + label;
+      if (off) label = "Off";
+      if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
       source_counts_[i]->setText(label);
       source_counts_[i]->show();
     }
@@ -630,10 +633,10 @@ void Sidebar::UpdateSources() {
   emit SourcesChanged();
 }
 
-std::vector<ManageSourcesCard::Entry> Sidebar::SourceEntries() const {
+std::vector<SourceEntry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
   for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
-  std::vector<ManageSourcesCard::Entry> entries;
+  std::vector<SourceEntry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);
     const auto count = counts.find(id.toStdString());

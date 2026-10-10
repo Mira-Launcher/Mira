@@ -225,6 +225,24 @@ TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
   CHECK(epic["in_sidebar"] == false);
 }
 
+TEST_CASE("A switched-off source's games are left out of the library unless include_off is set") {
+  const fs::path state = TempDir("sources-off-games");
+  LiveServer server(state);
+  REQUIRE(server.games().Upsert(SourceGame("steam-570", "steam", state / "Dota 2")));
+  httplib::Client client = server.Client();
+  auto patched = client.Patch("/v1/sources/steam", R"({"enabled": false})", "application/json");
+  REQUIRE(patched != nullptr);
+  CHECK(patched->status == 200);
+
+  const auto ids = [](const json& games) {
+    std::vector<std::string> out;
+    for (const json& game : games) out.push_back(game["id"]);
+    return out;
+  };
+  CHECK_FALSE(std::ranges::contains(ids(Get(client, "/v1/games")), std::string("steam-570")));
+  CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")), std::string("steam-570")));
+}
+
 TEST_CASE("An unknown source can't be planned or removed") {
   LiveServer server(TempDir("sources-unknown"));
   httplib::Client client = server.Client();
