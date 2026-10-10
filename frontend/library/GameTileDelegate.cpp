@@ -36,18 +36,10 @@ QString TierLabel(const QString& tier) { return tier.left(1).toUpper() + tier.mi
 
 }  // namespace
 
-QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index, const QFont& font) {
-  const QString text = index.data(ActionRole).toString();
-  if (text.isEmpty()) return {};
+QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index) {
+  if (index.data(ActionRole).toString().isEmpty()) return {};
   const int inset = theme::Current().tile_spacing;
-  QFont bold = font;
-  bold.setWeight(QFont::DemiBold);
-  int width = QFontMetrics(bold).horizontalAdvance(text) + 20;
-  // Too narrow beside the ProtonDB pill (or the tile itself): a round download button instead.
-  const QString tier = index.data(ProtonDbRole).toString();
-  const int tier_width = tier.isEmpty() ? 0 : QFontMetrics(TierFont(font)).horizontalAdvance(TierLabel(tier)) + 12 + 4;
-  if (tier_width + width > cell.width() - 2 * inset - 12) width = kActionHeight;
-  return QRect(cell.right() - inset - 6 - width + 1, cell.top() + inset + 6, width, kActionHeight);
+  return QRect(cell.right() - inset - 6 - kActionHeight + 1, cell.top() + inset + 6, kActionHeight, kActionHeight);
 }
 
 void GameTileDelegate::SetTileProgress(QStandardItem& item,
@@ -257,25 +249,17 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->drawText(badge, Qt::AlignCenter, label);
   }
 
-  if (const QRect pill = ActionRect(option.rect, index, option.font); !pill.isNull()) {
+  if (const QRect pill = ActionRect(option.rect, index); !pill.isNull()) {
     const bool enabled = index.data(ActionEnabledRole).toBool();
     const QColor ink = enabled ? tokens.on_accent : QColor(255, 255, 255, 200);
     painter->setPen(Qt::NoPen);
     painter->setBrush(enabled ? tokens.accent : QColor(0, 0, 0, 150));
-    painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
-    if (pill.width() == pill.height()) {
-      constexpr int kGlyph = 14;
-      const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
-      QRect glyph(0, 0, kGlyph, kGlyph);
-      glyph.moveCenter(pill.center());
-      painter->drawPixmap(glyph, icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
-    } else {
-      QFont pill_font = option.font;
-      pill_font.setWeight(QFont::DemiBold);
-      painter->setFont(pill_font);
-      painter->setPen(ink);
-      painter->drawText(pill, Qt::AlignCenter, index.data(ActionRole).toString());
-    }
+    painter->drawEllipse(pill);
+    constexpr int kGlyph = 14;
+    const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
+    QRect glyph(0, 0, kGlyph, kGlyph);
+    glyph.moveCenter(pill.center());
+    painter->drawPixmap(glyph, icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
   }
 
   if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {

@@ -2,8 +2,10 @@
 
 #include <algorithm>
 
+#include <QHelpEvent>
 #include <QMouseEvent>
 #include <QTimer>
+#include <QToolTip>
 #include <QWheelEvent>
 
 #include "ArtworkStore.h"
@@ -88,7 +90,7 @@ void TileGrid::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int en
 QModelIndex TileGrid::ActionIndexAt(const QPoint& pos) const {
   const QModelIndex hit = indexAt(pos);
   if (!hit.isValid() || !hit.data(GameTileDelegate::ActionEnabledRole).toBool()) return {};
-  return GameTileDelegate::ActionRect(visualRect(hit), hit, font()).contains(pos) ? hit : QModelIndex();
+  return GameTileDelegate::ActionRect(visualRect(hit), hit).contains(pos) ? hit : QModelIndex();
 }
 
 void TileGrid::mouseMoveEvent(QMouseEvent* event) {
@@ -104,6 +106,17 @@ void TileGrid::mouseReleaseEvent(QMouseEvent* event) {
     }
   }
   TileView::mouseReleaseEvent(event);
+}
+
+bool TileGrid::viewportEvent(QEvent* event) {
+  if (event->type() == QEvent::ToolTip) {
+    const auto* help = static_cast<QHelpEvent*>(event);
+    if (const QModelIndex hit = ActionIndexAt(help->pos()); hit.isValid()) {
+      QToolTip::showText(help->globalPos(), hit.data(GameTileDelegate::ActionRole).toString(), viewport());
+      return true;
+    }
+  }
+  return TileView::viewportEvent(event);
 }
 
 void TileGrid::wheelEvent(QWheelEvent* event) {
