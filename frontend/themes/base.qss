@@ -42,7 +42,7 @@ QWidget#divider {
 /* A tile's place while a store is asked for its games the first time. */
 QWidget#tile_skeleton {
   background: @surface;
-  border-radius: 6px;
+  border-radius: @radius_tile;
 }
 
 /* Where a dragged source row would land in the sidebar. */
@@ -817,7 +817,7 @@ QPushButton#hero_action {
   background: rgba(20, 22, 27, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #e6e8ec;
-  border-radius: 8px;
+  border-radius: @radius_control;
   padding: 5px 12px;
 }
 

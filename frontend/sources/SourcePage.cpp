@@ -221,7 +221,7 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_->setVisible(id_ != "local");
 
   more_button_ = new QToolButton(tabs_);
-  more_button_->setText("⋯");
+  icons::Follow(more_button_, icons::Glyph::More);
   more_button_->setToolTip("More");
   more_button_->setAutoRaise(true);
   more_button_->setPopupMode(QToolButton::InstantPopup);
