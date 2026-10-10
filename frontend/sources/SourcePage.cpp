@@ -452,7 +452,10 @@ QWidget* SourcePage::BuildOwnedSection() {
 
   auto* header = new QHBoxLayout();
   header->setSpacing(8);
-  owned_heading_ = new QLabel(id_ == "humble" ? "Your purchases" : "Not installed", owned_section_);
+  owned_heading_ = new QLabel(id_ == "humble"   ? QString("Your purchases")
+                              : IsLauncher() ? "More " + CopyFor(id_).item + "s"
+                                             : QString("Not installed"),
+                              owned_section_);
   owned_heading_->setProperty("role", "heading");
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
   owned_count_ = MakeLabel(owned_section_, QString(), "muted", /*wrap=*/false);
@@ -538,11 +541,11 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (!ListsOwned()) {
     owned_refresh_->setVisible(false);
     if (art_key_ != nullptr) art_key_->setVisible(false);
-    const QString items = CopyFor(id_).item + "s";
-    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. " + items.left(1).toUpper() + items.mid(1) +
-                                            " you install through it show up in your library above."
-                                      : source_.name + " doesn't list games you own. What it installs shows up in your library above.";
-    ShowLine(owned_note_, what, "muted");
+    // A launcher's note follows whether it's installed (UpdateStatusLine).
+    if (!IsLauncher()) {
+      ShowLine(owned_note_, source_.name + " doesn't list games you own. What it installs shows up in your library above.",
+               "muted");
+    }
   }
 
   owned_grid_ = new TileGrid(tile_, artwork_, owned_section_);
@@ -733,6 +736,14 @@ void SourcePage::UpdateStatusLine() {
   }
   status_line_->setText(parts.join("  ·  "));
 
+  if (IsLauncher() && owned_note_ != nullptr) {
+    const QString items = CopyFor(id_).item + "s";
+    ShowLine(owned_note_,
+             launcher_installed_ ? "Install more " + items + " in " + source_.name + ", then press \"" +
+                                       CopyFor(id_).import_button + "\" to add them here."
+                                 : "Install " + source_.name + " first, then install " + items + " in it.",
+             "muted");
+  }
   if (library_empty_ == nullptr) return;
   library_empty_->setVisible(library_count_ == 0);
   library_grid_->setVisible(library_count_ > 0);
