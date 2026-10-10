@@ -105,12 +105,6 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   connect(tags_nav_, &QPushButton::clicked, this, &Sidebar::TagsClicked);
   layout->addWidget(tags_nav_);
 
-  sources_nav_ = new QPushButton("Sources", this);
-  sources_nav_->setFlat(true);
-  sources_nav_->setCheckable(true);
-  connect(sources_nav_, &QPushButton::clicked, this, &Sidebar::SourcesClicked);
-  layout->addWidget(sources_nav_);
-
   settings_button_ = new QPushButton("Settings", this);
   settings_button_->setObjectName("sidebar_settings");
   settings_button_->setFlat(true);
@@ -142,11 +136,11 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   auto* sources_heading_layout = new QHBoxLayout(sources_heading);
   sources_heading_layout->setContentsMargins(kHeadingMargins);
   sources_heading_layout->addWidget(RowHeading(sources_heading, "SOURCES"), /*stretch=*/1);
-  add_source_button_ = new QToolButton(sources_heading);
-  add_source_button_->setAutoRaise(true);
-  add_source_button_->setToolTip("Add source");
-  connect(add_source_button_, &QToolButton::clicked, this, &Sidebar::AddSourceRequested);
-  sources_heading_layout->addWidget(add_source_button_, 0, Qt::AlignVCenter);
+  manage_sources_button_ = new QToolButton(sources_heading);
+  manage_sources_button_->setAutoRaise(true);
+  manage_sources_button_->setToolTip("Manage sources");
+  connect(manage_sources_button_, &QToolButton::clicked, this, &Sidebar::ManageSourcesRequested);
+  sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignVCenter);
   nav_layout->addWidget(sources_heading);
 
   source_nav_layout_ = new QVBoxLayout();
@@ -315,12 +309,10 @@ void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {
   RefreshGames();
 }
 
-void Sidebar::SetActive(bool library, bool runners, bool tags, bool sources,
-                        const QString& source_id) {
+void Sidebar::SetActive(bool library, bool runners, bool tags, const QString& source_id) {
   library_active_ = library;
   runners_active_ = runners;
   tags_active_ = tags;
-  sources_active_ = sources;
   active_source_ = source_id;
   ShowActive();
 }
@@ -335,9 +327,6 @@ void Sidebar::ShowActive() {
       icons::For(Glyph::Wrench, runners_active_ ? tokens.on_accent : tokens.text));
   tags_nav_->setChecked(tags_active_);
   tags_nav_->setIcon(icons::For(Glyph::Tag, tags_active_ ? tokens.on_accent : tokens.text));
-  sources_nav_->setChecked(sources_active_);
-  sources_nav_->setIcon(
-      icons::For(Glyph::Store, sources_active_ ? tokens.on_accent : tokens.text));
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
     const bool active = sources[i].id == active_source_;
@@ -386,8 +375,7 @@ void Sidebar::ApplyIcons() {
   settings_button_->setIcon(icons::For(Glyph::Settings));
   add_games_->setIcon(icons::For(Glyph::Plus, tokens.on_accent));
   fetch_art_button_->setIcon(icons::For(Glyph::Image));
-  add_source_button_->setIcon(icons::For(Glyph::Plus, tokens.text_muted));
-  for (QToolButton* button : {pinned_customize_, recent_customize_}) {
+  for (QToolButton* button : {manage_sources_button_, pinned_customize_, recent_customize_}) {
     button->setIcon(icons::For(Glyph::Sliders, tokens.text_muted));
   }}
 
@@ -770,7 +758,7 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   down->setEnabled(position != shown.end() && position + 1 != shown.end());
   QAction* hide = menu.addAction("Hide from sidebar");
   menu.addSeparator();
-  QAction* add = menu.addAction("Add source…");
+  QAction* manage = menu.addAction("Manage sources…");
   QAction* settings = menu.addAction("Sidebar settings…");
   QAction* chosen = menu.exec(global_pos);
   if (chosen == open) {
@@ -782,8 +770,8 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
                position + 2 == shown.end() ? -1 : source_nav_layout_->indexOf(*(position + 2)));
   } else if (chosen == hide) {
     SetSourceHidden(source.id, true);
-  } else if (chosen == add) {
-    emit AddSourceRequested();
+  } else if (chosen == manage) {
+    emit ManageSourcesRequested();
   } else if (chosen == settings) {
     emit SettingsRequested(SettingsPanel::kSidebarSourcesKey);
   }
@@ -791,12 +779,12 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
 
 void Sidebar::ShowMenu(const QPoint& global_pos) {
   QMenu menu(this);
-  QAction* add = menu.addAction("Add source…");
+  QAction* manage = menu.addAction("Manage sources…");
   QAction* customize = menu.addAction("Customize pinned and recent…");
   QAction* settings = menu.addAction("Sidebar settings…");
   QAction* chosen = menu.exec(global_pos);
-  if (chosen == add) {
-    emit AddSourceRequested();
+  if (chosen == manage) {
+    emit ManageSourcesRequested();
   } else if (chosen == customize) {
     emit StyleRequested();
   } else if (chosen == settings) {

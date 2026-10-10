@@ -740,8 +740,7 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   connect(sidebar, &Sidebar::TagsClicked, this, &LibraryWindow::OpenTags);
   connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
   connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
-  connect(sidebar, &Sidebar::SourcesClicked, this, [this] { OpenSourcesPage(false); });
-  connect(sidebar, &Sidebar::AddSourceRequested, this, [this] { OpenSourcesPage(true); });
+  connect(sidebar, &Sidebar::ManageSourcesRequested, this, [this] { OpenSourcesPage(false); });
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
   connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
   connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);
@@ -1375,7 +1374,6 @@ void LibraryWindow::UpdateLibraryNavActive() {
     sidebar_->SetActive(GridShown() && !GameEditOpen(),
                         runners_page_ != nullptr && content_stack_->currentWidget() == splitter_,
                         TagsShown() && content_stack_->currentWidget() == splitter_,
-                        sources_page_ != nullptr,
                         open_source);
   }
   // Every page switch ends here, so the slider follows the page too.
@@ -1735,11 +1733,11 @@ void LibraryWindow::CloseSourcesPage() {
   if (sources_page_ != nullptr) CloseSidebarCard();
 }
 
-// Over the content beside the sidebar, 1180 wide at most.
+// Over the content beside the sidebar, with the library showing around it.
 void LibraryWindow::SizeSourcesCard() {
   if (sources_page_ == nullptr) return;
-  const int content = width() - splitter_->widget(0)->width() - mira_gui::kResizeMargin - 48;
-  sources_page_->setFixedSize(std::clamp(content, 320, 1180), std::max(320, height() - 48));
+  const int content = width() - splitter_->widget(0)->width() - mira_gui::kResizeMargin;
+  sources_page_->setFixedSize(std::clamp(content - 120, 320, 960), std::clamp(height() - 120, 320, 720));
 }
 
 void LibraryWindow::RowClicked(const std::string& id) {
