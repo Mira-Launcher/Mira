@@ -167,10 +167,13 @@ Result<void> GameStore::Open() {
     opened = db_.Open(file_);
   }
   if (!opened) return opened;
-  auto version = db_.Prepare("PRAGMA user_version");
-  if (!version) return std::unexpected(version.error());
-  if (auto row = version->Step(); !row) return std::unexpected(row.error());
-  sources_new_ = version->Int(0) < 2;
+  {
+    // Scoped: an open statement would block the backup's VACUUM below.
+    auto version = db_.Prepare("PRAGMA user_version");
+    if (!version) return std::unexpected(version.error());
+    if (auto row = version->Step(); !row) return std::unexpected(row.error());
+    sources_new_ = version->Int(0) < 2;
+  }
   if (auto migrated = db_.Migrate(kMigrations); !migrated) return migrated;
   if (auto backed_up = db_.BackUp(backup); !backed_up) {
     log::Warn("could not back up the library: {}", backed_up.error().message);
