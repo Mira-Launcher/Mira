@@ -699,7 +699,8 @@ bool FetchStoreCover(const config::Config& config, const model::Game& game, json
 // `item`. Returns whether the store answered, so a rate-limited try can be made again.
 bool FetchSteamDetails(const config::Config& config, store::MetadataStore& cache, const std::string& appid,
                        const json& item, json& info) {
-  json proton_info;
+  // Objects, since update() throws on the null left when ProtonDB has no report.
+  json proton_info = json::object();
   std::jthread proton = Spawn([&] { FetchProtonDb(appid, proton_info); });
   const json store = CurlJson(
       {"curl", "-sSL", std::format("https://store.steampowered.com/api/appdetails?appids={}&l=english", appid)});
@@ -778,7 +779,7 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache, 
   // One store request names the cover and carries the reviews and tags. The details don't touch
   // the art's keys, so they're fetched alongside it.
   const json item = SteamStoreItem(appid);
-  json details;
+  json details = json::object();
   std::jthread details_thread = Spawn([&] { FetchSteamDetails(config, cache, appid, item, details); });
 
   // Steam's own cover/hero go into art_candidates too, as the first entry --
