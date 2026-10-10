@@ -36,10 +36,13 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
     chip->setObjectName("chip");
     chip->setCheckable(true);
     chip->setAutoExclusive(true);
-    connect(chip, &QPushButton::toggled, this, &SourceCatalog::ApplyFilter);
     chips->addWidget(chip);
   }
   all_->setChecked(true);
+  // Connected once checked, so the filter never runs before the cards exist.
+  for (QPushButton* chip : {all_, games_, apps_}) {
+    connect(chip, &QPushButton::toggled, this, &SourceCatalog::ApplyFilter);
+  }
   chips->addStretch(1);
   layout->addLayout(chips);
 

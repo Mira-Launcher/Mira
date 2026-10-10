@@ -28,6 +28,10 @@
 
 namespace mira_gui {
 
+namespace {
+constexpr int kColumnWidth = 760;
+}  // namespace
+
 SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
   setObjectName("sources_page");
   auto* outer = new QVBoxLayout(this);
@@ -36,8 +40,14 @@ SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
 
   auto* header_box = new QWidget(this);
   header_box->setObjectName("settings_canvas");
-  auto* header = new QHBoxLayout(header_box);
-  header->setContentsMargins(32, 22, 32, 6);
+  auto* header_row = new QHBoxLayout(header_box);
+  header_row->setContentsMargins(32, 22, 32, 6);
+  // As wide as the column below, so the switch ends where the cards do.
+  auto* header_column = new QWidget(header_box);
+  header_column->setMaximumWidth(kColumnWidth);
+  header_row->addWidget(header_column, /*stretch=*/1);
+  auto* header = new QHBoxLayout(header_column);
+  header->setContentsMargins(0, 0, 0, 0);
   auto* title = new QLabel("Sources", this);
   title->setObjectName("page_title");
   header->addWidget(title, /*stretch=*/1);
@@ -68,7 +78,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QWidget(parent) {
   canvas_layout->setContentsMargins(32, 12, 32, 22);
   // Both views share this column, so they line up with each other and the header.
   auto* column = new QWidget(canvas);
-  column->setMaximumWidth(760);
+  column->setMaximumWidth(kColumnWidth);
   auto* column_layout = new QVBoxLayout(column);
   column_layout->setContentsMargins(0, 0, 0, 0);
   stack_ = new QStackedWidget(column);

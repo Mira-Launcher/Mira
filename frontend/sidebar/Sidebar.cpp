@@ -45,10 +45,17 @@ namespace {
 
 constexpr const char* kSourceMime = "application/x-mira-source";
 
+// The heading's spacing sits on its row, so a button beside it centers on the text.
+constexpr QMargins kHeadingMargins(0, 14, 0, 2);
+
 QLabel* Heading(QWidget* parent, const QString& text) {
   QLabel* label = MakeGroupHeading(parent, text);
-  label->setContentsMargins(0, 14, 0, 2);
+  label->setContentsMargins(kHeadingMargins);
   return label;
+}
+
+QLabel* RowHeading(QWidget* parent, const QString& text) {
+  return MakeGroupHeading(parent, text);
 }
 
 // Saves only the fields set in `prefs`; a failure says what didn't stick.
@@ -133,13 +140,13 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
 
   auto* sources_heading = new QWidget(nav_content);
   auto* sources_heading_layout = new QHBoxLayout(sources_heading);
-  sources_heading_layout->setContentsMargins(0, 0, 0, 0);
-  sources_heading_layout->addWidget(Heading(sources_heading, "SOURCES"), /*stretch=*/1);
+  sources_heading_layout->setContentsMargins(kHeadingMargins);
+  sources_heading_layout->addWidget(RowHeading(sources_heading, "SOURCES"), /*stretch=*/1);
   add_source_button_ = new QToolButton(sources_heading);
   add_source_button_->setAutoRaise(true);
   add_source_button_->setToolTip("Add source");
   connect(add_source_button_, &QToolButton::clicked, this, &Sidebar::AddSourceRequested);
-  sources_heading_layout->addWidget(add_source_button_, 0, Qt::AlignBottom);
+  sources_heading_layout->addWidget(add_source_button_, 0, Qt::AlignVCenter);
   nav_layout->addWidget(sources_heading);
 
   source_nav_layout_ = new QVBoxLayout();
@@ -260,13 +267,13 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
 QWidget* Sidebar::BuildGameHeading(QWidget* parent, const QString& text, QToolButton*& button) {
   auto* heading = new QWidget(parent);
   auto* heading_layout = new QHBoxLayout(heading);
-  heading_layout->setContentsMargins(0, 0, 0, 0);
-  heading_layout->addWidget(Heading(heading, text), /*stretch=*/1);
+  heading_layout->setContentsMargins(kHeadingMargins);
+  heading_layout->addWidget(RowHeading(heading, text), /*stretch=*/1);
   button = new QToolButton(heading);
   button->setAutoRaise(true);
   button->setToolTip("Customize how these look");
   connect(button, &QToolButton::clicked, this, &Sidebar::StyleRequested);
-  heading_layout->addWidget(button, 0, Qt::AlignBottom);
+  heading_layout->addWidget(button, 0, Qt::AlignVCenter);
   heading->setVisible(false);
   return heading;
 }
