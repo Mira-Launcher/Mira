@@ -330,6 +330,74 @@ TEST_CASE("Installing an owned Epic title reports progress, then tracks it as in
   CHECK(bad->status == 400);
 }
 
+TEST_CASE("A hidden store title stays hidden through installing and removing its game") {
+  const fs::path state = test::TempDir("epic-api-hidden");
+  const fs::path game_dir = state / "Games" / "AGame";
+  test::Touch(game_dir / "A.exe");
+  test::LiveServer server(state);
+  WriteFakeLegendary(
+      state / "legendary", kNoise, kLoggedIn, "[]",
+      R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Other"}])",
+      R"([{"app_name": "abc", "title": "A Game", "install_path": ")" + game_dir.string() +
+          R"(", "executable": "A.exe"}])");
+  REQUIRE(server.MutableConfig().Set("epic.legendary_bin", (state / "legendary").string()));
+  httplib::Client client = server.Client();
+  const auto hidden = [&](const std::string& ref) {
+    auto res = client.Get("/v1/library?source=epic");
+    REQUIRE(res != nullptr);
+    for (const auto& entry : nlohmann::json::parse(res->body)) {
+      if (entry["ref"] == ref) return entry["hidden"].get<bool>();
+    }
+    FAIL("no title " << ref);
+    return false;
+  };
+  const auto set_hidden = [&](const nlohmann::json& refs, bool hide) {
+    const nlohmann::json body = {{"source", "epic"}, {"refs", refs}, {"hidden", hide}};
+    auto res = client.Post("/v1/library/hidden", body.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    return res->status;
+  };
+  const auto tagged = [&] {
+    const auto game = server.games().Find("epic-abc");
+    REQUIRE(game);
+    return std::ranges::contains(game->tags, std::string("hidden"));
+  };
+
+  CHECK_FALSE(hidden("abc"));
+  CHECK(set_hidden({"abc"}, true) == 200);
+  CHECK(hidden("abc"));
+  CHECK_FALSE(hidden("xyz"));
+  CHECK(test::WaitForEvent(server.events(), "library.hidden_changed"));
+
+  // Installing it hides the game.
+  REQUIRE(
+      client.Post("/v1/library/install", R"({"source": "epic", "ref": "abc"})", "application/json")
+          ->status == 202);
+  REQUIRE(test::WaitForEvent(server.events(), "library.install.finished"));
+  CHECK(tagged());
+  CHECK(hidden("abc"));
+
+  // While installed, the game's tag is what changes.
+  CHECK(set_hidden({"abc"}, false) == 200);
+  CHECK_FALSE(tagged());
+  CHECK_FALSE(hidden("abc"));
+  CHECK(set_hidden({"abc"}, true) == 200);
+  CHECK(tagged());
+
+  // Removing the hidden game leaves its title hidden.
+  auto removed = client.Delete("/v1/games/epic-abc");
+  REQUIRE(removed != nullptr);
+  REQUIRE(removed->status == 200);
+  CHECK(hidden("abc"));
+  CHECK(set_hidden({"abc"}, false) == 200);
+  CHECK_FALSE(hidden("abc"));
+
+  CHECK(set_hidden({"../x"}, true) == 400);
+  CHECK(set_hidden({"abc"}, true) == 200);
+  const nlohmann::json no_flag = {{"source", "epic"}, {"refs", {"abc"}}};
+  CHECK(client.Post("/v1/library/hidden", no_flag.dump(), "application/json")->status == 400);
+}
+
 TEST_CASE("Pausing an Epic install stops legendary gracefully and installing again resumes it") {
   const fs::path state = test::TempDir("epic-api-pause");
   const fs::path game_dir = state / "Games" / "AGame";

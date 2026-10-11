@@ -4,6 +4,7 @@
 #include <format>
 #include <limits>
 #include <map>
+#include <set>
 
 #include "api/Http.h"
 #include "api/Routes.h"
@@ -442,23 +443,27 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     if (!entries) return SendError(res, 400, entries.error());
     const auto steam_tags = metadata::StoredSteamTags(s.games.Metadata());
     const auto reviews = s.games.Metadata().Field("steam_reviews");
+    const std::set<std::string> hidden_keys = s.games.HiddenKeys();
     json out = json::array();
     for (const library::CatalogEntry& entry : *entries) {
+      const std::string key = entry.source + "-" + entry.ref;
+      const bool hidden = hidden_keys.contains(key);
       out.push_back({{"source", entry.source},
                      {"ref", entry.ref},
                      {"title", entry.title},
                      {"installed", entry.installed},
                      {"game_id", entry.game_id},
                      {"play_seconds", entry.play_seconds},
-                     {"owned", entry.owned}});
-      if (std::string tier = s.games.Metadata().ProtonDbTier(entry.source + "-" + entry.ref); !tier.empty()) {
+                     {"owned", entry.owned},
+                     {"hidden", hidden}});
+      if (std::string tier = s.games.Metadata().ProtonDbTier(key); !tier.empty()) {
         out.back()["protondb_tier"] = std::move(tier);
       }
-      if (const auto tags = steam_tags.find(entry.source + "-" + entry.ref);
+      if (const auto tags = steam_tags.find(key);
           tags != steam_tags.end() && tags->second && !tags->second->empty()) {
         out.back()["steam_tags"] = *tags->second;
       }
-      if (const auto found = reviews.find(entry.source + "-" + entry.ref);
+      if (const auto found = reviews.find(key);
           found != reviews.end() && found->second.is_object()) {
         const json& r = found->second;
         const std::int64_t total = r.value("total_reviews", std::int64_t{0});
@@ -571,6 +576,46 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
       titles.push_back(std::move(title));
     }
     SendJson(res, {{"queued", s.fetches.EnqueueTitles(s.config, s.events, std::move(titles))}}, 202);
+  });
+
+  // An installed title's game takes or drops the tag; the rest are kept as hidden titles.
+  http.Post("/v1/library/hidden", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"source": "...", "refs": ["..."], "hidden": true})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const json& b = *body;
+    const json refs = b.value("refs", json());
+    const std::string source =
+        b.contains("source") && b["source"].is_string() ? b["source"].get<std::string>() : "";
+    if (library::FindSource(source) == nullptr || !refs.is_array() || !b.contains("hidden") ||
+        !b["hidden"].is_boolean() || !std::ranges::all_of(refs, [](const json& ref) {
+          return ref.is_string() && IsSafeRef(ref.get<std::string>());
+        })) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    const bool hide = b["hidden"].get<bool>();
+    std::vector<std::string> games, titles;
+    for (const json& ref : refs) {
+      const std::string key = source + "-" + ref.get<std::string>();
+      (s.games.Find(key) ? games : titles).push_back(key);
+    }
+    const auto changed = s.games.UpdateMany(games, [hide](model::Game& game) {
+      const bool hidden = std::ranges::contains(game.tags, std::string("hidden"));
+      if (hidden == hide) return false;
+      if (hide) {
+        game.tags.push_back("hidden");
+      } else {
+        std::erase(game.tags, std::string("hidden"));
+      }
+      return true;
+    });
+    if (!changed) return SendError(res, 500, changed.error());
+    if (auto kept = s.games.SetTitlesHidden(titles, hide); !kept)
+      return SendError(res, 500, kept.error());
+    for (const model::Game& game : *changed) s.events.Publish("game.updated", s.Record(game));
+    const json payload = {{"source", source}, {"refs", refs}, {"hidden", hide}};
+    s.events.Publish("library.hidden_changed", payload);
+    SendJson(res, payload);
   });
 
   http.Post("/v1/library/install", [library_install_or_update](const Request& req, Response& res) {

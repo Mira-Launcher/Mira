@@ -248,12 +248,15 @@ What each account owns, whether or not it's installed:
 ```json
 [{ "source": "epic", "ref": "e8bbb84be35640cda646233152ff3428", "title": "Brotato",
    "installed": true, "game_id": "epic-e8bbb84be35640cda646233152ff3428",
-   "play_seconds": 0, "owned": true }]
+   "play_seconds": 0, "owned": true, "hidden": false }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `hidden` is the game's `hidden` tag once installed, and before that whether the title was hidden with `POST /v1/library/hidden`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
 
 Each source's owned titles are stored in cache.db as it last listed them, so the listing answers at once; titles become games once installed. A source never listed yet is asked during the request. Every other one is re-checked in the background, one check per source at a time, between `library.catalog_checking` and `library.catalog_checked` (`changed` says whether the list differs, the cue to list again). `fresh=1` asks each source during the request instead. Signing out of a store drops its stored list. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
+
+### `POST /v1/library/hidden`
+Body `{"source": "epic", "refs": ["..."], "hidden": true}`. Hides or shows owned titles. An installed title's game gets or loses the `hidden` tag (publishing `game.updated`); any other title is kept hidden in mira.db, so its game is tagged `hidden` when it's installed, and removing a hidden game keeps its title hidden. Answers and publishes `library.hidden_changed` with the body.
 
 ### `POST /v1/library/install`
 Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
