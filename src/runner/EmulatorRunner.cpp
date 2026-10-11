@@ -1,10 +1,13 @@
 #include "runner/EmulatorRunner.h"
 
+#include <algorithm>
 #include <format>
+#include <iterator>
 
 #include "core/Strings.h"
 #include "emulators/Emulators.h"
 #include "runner/NativeRunner.h"
+#include "system/Packages.h"
 
 namespace mira::runner {
 
@@ -19,6 +22,11 @@ Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
     return Err("emulator_missing", std::format("{} isn't installed", emulator->name),
                std::format("Install {} from its source page.", emulator->name));
   }
+  // Libraries a downloaded emulator needs from the system; a packaged one is its own package, found above.
+  if (emulators::Downloads(*emulator)) {
+    if (auto ready = system::RequireFeature(emulator->id, emulator->name); !ready) return std::unexpected(ready.error());
+  }
+  emulators::Prefill(*emulator);
   const std::filesystem::path rom = std::filesystem::path(game.install_path) / game.exe_path;
 
   Command command;
@@ -29,7 +37,14 @@ Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
   for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
   }
-  for (const std::string& arg : emulator->args) command.argv.push_back(arg == "{rom}" ? rom.string() : arg);
+  if (config_.GetBool("emulators.fullscreen")) std::ranges::copy(emulator->fullscreen, std::back_inserter(command.argv));
+  for (const std::string& arg : emulator->args) {
+    if (arg == "{rom}") command.argv.push_back(rom.string());
+    else if (arg == "{dir}") command.argv.push_back(rom.parent_path().string());
+    else if (arg == "{stem}") command.argv.push_back(rom.stem().string());
+    else command.argv.push_back(arg);
+  }
+  for (const auto& [key, value] : emulator->env) command.env[key] = value;
   for (const auto& [key, value] : game.env) command.env[key] = value;
   command.cwd = rom.parent_path();
   return command;

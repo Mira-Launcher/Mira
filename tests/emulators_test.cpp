@@ -3,6 +3,7 @@
 
 #include <filesystem>
 
+#include "core/Strings.h"
 #include "emulators/Emulators.h"
 #include "runner/EmulatorRunner.h"
 #include "support/TestEnv.h"
@@ -84,4 +85,12 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
   const auto summary = emulators::Import(env.config, env.games, env.events, mesen);
   REQUIRE(summary);
   CHECK(summary->added == 0);
+}
+
+TEST_CASE("emulators: download sources read as a repository or link") {
+  CHECK(emulators::DefaultSource(*emulators::Find("duckstation")) == "stenzek/duckstation");
+  CHECK(emulators::DefaultSource(*emulators::Find("bsnes")) == "bsnes-emu/bsnes");
+  CHECK(emulators::DefaultSource(*emulators::Find("ryujinx")).starts_with("https://mirror.cachyos.org/"));
+  CHECK(strings::GithubRepo("https://github.com/someone/duckstation") == "someone/duckstation");
+  CHECK(strings::GithubRepo("someone/duckstation") == "someone/duckstation");
 }

@@ -7,11 +7,15 @@
 #include <mutex>
 #include <regex>
 #include <set>
+#include <cstdlib>
+#include <cstring>
+#include <iterator>
 
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/Relocate.h"
+#include "runner/Curl.h"
 #include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "system/Packages.h"
@@ -20,7 +24,9 @@ namespace mira::emulators {
 namespace {
 namespace fs = std::filesystem;
 
-std::string GitHub(std::string_view repo) { return std::format("https://api.github.com/repos/{}/releases/latest", repo); }
+std::string GitHub(std::string_view repo) {
+  return std::format("https://api.github.com/repos/{}/releases/latest", repo);
+}
 
 }  // namespace
 
@@ -28,21 +34,26 @@ const std::vector<Emulator>& All() {
   static const std::vector<Emulator> emulators = {
       {.id = "duckstation", .name = "DuckStation", .consoles = {"ps1"},
        .extensions = {".cue", ".chd", ".m3u", ".pbp", ".iso", ".img", ".bin", ".ecm", ".mds"},
-       .args = {"-batch", "--", "{rom}"},
+       .args = {"-batch", "--", "{rom}"}, .fullscreen = {"-fullscreen"},
        .release_url = GitHub("stenzek/duckstation"), .asset = "DuckStation-x64.AppImage",
        .binary = "duckstation.AppImage",
-       .firmware = {{.id = "bios", .label = "PlayStation BIOS", .dir = "~/.local/share/duckstation/bios",
-                     .patterns = {"*.bin", "*.BIN"}}}},
+       .firmware = {{.id = "bios", .label = "PlayStation BIOS", .dir = "$XDG_CONFIG_HOME/duckstation/bios|~/.local/share/duckstation/bios",
+                     .patterns = {"*.bin", "*.BIN"}}},
+       .prefill = {{"$XDG_CONFIG_HOME/duckstation/settings.ini|~/.local/share/duckstation/settings.ini",
+                    "[Main]\nSetupWizardIncomplete = false\nNoDesktopFile = true\n"
+                    "[AutoUpdater]\nCheckAtStartup = false\n"}}},
       {.id = "pcsx2", .name = "PCSX2", .consoles = {"ps2"},
        .extensions = {".iso", ".chd", ".cso", ".zso", ".gz", ".bin", ".cue", ".m3u", ".mdf", ".elf"},
-       .args = {"-batch", "--", "{rom}"},
+       .args = {"-batch", "--", "{rom}"}, .fullscreen = {"-fullscreen"},
        .release_url = GitHub("PCSX2/pcsx2"), .asset = "pcsx2-*-linux-appimage-x64-Qt.AppImage",
        .binary = "pcsx2.AppImage",
        .firmware = {{.id = "bios", .label = "PlayStation 2 BIOS", .dir = "~/.config/PCSX2/bios",
-                     .patterns = {"*.bin", "*.BIN"}}}},
+                     .patterns = {"*.bin", "*.BIN"}}},
+       .prefill = {{"~/.config/PCSX2/inis/PCSX2.ini",
+                    "[UI]\nSettingsVersion = 1\nSetupWizardIncomplete = false\n[AutoUpdater]\nCheckAtStartup = false\n"}}},
       {.id = "ppsspp", .name = "PPSSPP", .consoles = {"psp"},
        .extensions = {".iso", ".cso", ".chd", ".pbp", ".elf", ".prx"},
-       .args = {"{rom}"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
        .release_url = GitHub("hrydgard/ppsspp"), .asset = "PPSSPP-*-anylinux-x86_64.AppImage",
        .binary = "ppsspp.AppImage"},
       {.id = "rpcs3", .name = "RPCS3", .consoles = {"ps3"},
@@ -51,22 +62,24 @@ const std::vector<Emulator>& All() {
        .release_url = GitHub("RPCS3/rpcs3-binaries-linux"), .asset = "rpcs3-*_linux64.AppImage",
        .binary = "rpcs3.AppImage",
        .firmware = {{.id = "firmware", .label = "PlayStation 3 firmware (PS3UPDAT.PUP)",
-                     .dir = "~/.config/rpcs3/dev_flash/vsh/module", .patterns = {"vsh.self"}}}},
+                     .dir = "~/.config/rpcs3/dev_flash/vsh/module", .patterns = {"vsh.self"},
+                     .install_flag = "--installfw"}},
+       .prefill = {{"~/.config/rpcs3/GuiConfigs/CurrentSettings.ini", "[main_window]\ninfoBoxEnabledWelcome=false\n"}}},
       {.id = "shadps4", .name = "shadPS4", .consoles = {"ps4"},
        .folder_game = "eboot.bin",
-       .args = {"-g", "{rom}"},
+       .args = {"-g", "{rom}"}, .fullscreen = {"--fullscreen", "true"},
        .release_url = GitHub("shadps4-emu/shadPS4"), .asset = "shadps4-linux-sdl-*.zip",
        .binary = "Shadps4-sdl.AppImage"},
       {.id = "azahar", .name = "Azahar", .consoles = {"3ds"},
        .extensions = {".3ds", ".cci", ".cxi", ".3dsx", ".app", ".elf", ".axf"},
-       .args = {"{rom}"},
+       .args = {"{rom}"}, .fullscreen = {"-f"},
        .release_url = GitHub("azahar-emu/azahar"), .asset = "azahar.AppImage",
        .binary = "azahar.AppImage",
        .firmware = {{.id = "aes_keys", .label = "AES keys, for encrypted games",
                      .dir = "~/.local/share/azahar-emu/sysdata", .patterns = {"aes_keys.txt"}, .required = false}}},
       {.id = "eden", .name = "Eden", .consoles = {"switch"},
        .extensions = {".nsp", ".xci", ".nca", ".nro", ".nso"},
-       .args = {"-g", "{rom}"},
+       .args = {"-g", "{rom}"}, .fullscreen = {"-f"},
        .release_url = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
        .asset = "Eden-Linux-v*-amd64-gcc-standard.AppImage",
        .binary = "eden.AppImage",
@@ -74,25 +87,103 @@ const std::vector<Emulator>& All() {
                      .patterns = {"prod.keys"}},
                     {.id = "firmware", .label = "Firmware (a zip of .nca files)",
                      .dir = "~/.local/share/eden/nand/system/Contents/registered", .patterns = {"*.nca"}}}},
+      {.id = "ryujinx", .name = "Ryujinx", .consoles = {"switch"},
+       .extensions = {".nsp", ".xci", ".nca", ".nro", ".nso"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .listing_url = "https://mirror.cachyos.org/repo/x86_64/cachyos/", .asset = "ryujinx-*-x86_64.pkg.tar.zst",
+       .binary = "Ryujinx",
+       .firmware = {{.id = "keys", .label = "Keys (prod.keys)", .dir = "~/.config/Ryujinx/system",
+                     .patterns = {"prod.keys"}}}},
+      {.id = "cemu", .name = "Cemu", .consoles = {"wiiu"},
+       .extensions = {".wud", ".wux", ".wua", ".rpx", ".iso"},
+       .args = {"-g", "{rom}"}, .fullscreen = {"-f"},
+       .release_url = GitHub("cemu-project/Cemu"), .asset = "Cemu-*-x86_64.AppImage",
+       .binary = "cemu.AppImage",
+       .firmware = {{.id = "keys", .label = "Disc keys (keys.txt), for .wud and .wux", .dir = "~/.local/share/Cemu",
+                     .patterns = {"keys.txt"}, .required = false}},
+       .prefill = {{"~/.config/Cemu/settings.xml",
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n</content>\n"}}},
+      {.id = "xemu", .name = "xemu", .consoles = {"xbox"},
+       .extensions = {".iso", ".xiso"},
+       .args = {"-dvd_path", "{rom}"}, .fullscreen = {"-full-screen"},
+       .release_url = GitHub("xemu-project/xemu"), .asset = "xemu-*-x86_64.AppImage", .exclude = {"-dbg-"},
+       .binary = "xemu.AppImage"},
+      {.id = "flycast", .name = "Flycast", .consoles = {"dreamcast"},
+       .extensions = {".gdi", ".cdi", ".chd", ".cue", ".bin"},
+       .args = {"{rom}"},
+       .release_url = GitHub("flyinghead/flycast"), .asset = "flycast-x86_64-*.AppImage",
+       .binary = "flycast.AppImage",
+       .firmware = {{.id = "bios", .label = "Dreamcast BIOS (dc_boot.bin)", .dir = "~/.local/share/flycast/data",
+                     .patterns = {"dc_boot.bin"}, .required = false}}},
+      {.id = "melonds", .name = "melonDS", .consoles = {"nds"},
+       .extensions = {".nds", ".dsi", ".ids", ".srl", ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .release_url = GitHub("melonDS-emu/melonDS"), .asset = "melonDS-*-appimage-x86_64.zip",
+       .binary = "melonDS-x86_64.AppImage"},
       {.id = "dolphin", .name = "Dolphin", .consoles = {"gamecube", "wii"},
        .extensions = {".iso", ".gcm", ".gcz", ".rvz", ".wbfs", ".wia", ".ciso", ".dol", ".elf", ".wad", ".tgc"},
-       .args = {"-b", "-e", "{rom}"},
-       .binary = "dolphin-emu"},
+       .args = {"-b", "-e", "{rom}"}, .fullscreen = {"-C", "Dolphin.Display.Fullscreen=True"},
+       .binary = "dolphin-emu",
+       .prefill = {{"~/.config/dolphin-emu/Dolphin.ini", "[Analytics]\nPermissionAsked = True\nEnabled = False\n"}}},
       {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg"},
        .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".zip"},
-       .args = {"{rom}"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
        .release_url = GitHub("SourMesen/Mesen2"), .asset = "Mesen_*_Linux_x64.zip",
-       .binary = "Mesen"},
+       .binary = "Mesen",
+       // Its first run sets up default controls; without ICU its core no longer aborts loading a game.
+       .prefill = {{"~/.config/Mesen2/settings.json", "{\"ConfigUpgrade\": 1}\n"}},
+       .env = {{"DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1"}}},
       {.id = "snes9x", .name = "Snes9x", .consoles = {"snes"},
        .extensions = {".sfc", ".smc", ".fig", ".swc", ".bs", ".st", ".zip"},
        .args = {"{rom}"},
-       .release_url = GitHub("snes9xgit/snes9x"), .asset = "Snes9x-*-x86_64.AppImage",
-       .binary = "snes9x.AppImage"},
+       .binary = "snes9x-gtk"},
+      {.id = "bsnes", .name = "bsnes", .consoles = {"snes"},
+       .extensions = {".sfc", ".smc", ".bs", ".st", ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .release_url = "https://api.github.com/repos/bsnes-emu/bsnes/releases/tags/nightly",
+       .asset = "bsnes-ubuntu.zip",
+       .binary = "bsnes"},
+      {.id = "ares", .name = "ares", .consoles = {"nes", "snes", "n64", "genesis", "gb", "gbc", "gba"},
+       .extensions = {".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".md", ".gen", ".smd", ".gb", ".gbc", ".gba",
+                      ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .binary = "ares"},
+      {.id = "blastem", .name = "BlastEm", .consoles = {"genesis"},
+       .extensions = {".md", ".gen", ".smd", ".bin", ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .download_url = "https://www.retrodev.com/blastem/blastem64-0.6.2.tar.gz",
+       .binary = "blastem"},
       {.id = "mgba", .name = "mGBA", .consoles = {"gb", "gbc", "gba"},
        .extensions = {".gba", ".gb", ".gbc", ".sgb", ".agb", ".zip", ".7z"},
-       .args = {"{rom}"},
+       .args = {"{rom}"}, .fullscreen = {"-f"},
        .release_url = GitHub("mgba-emu/mgba"), .asset = "mGBA-*-appimage-x64.appimage",
        .binary = "mgba.AppImage"},
+      {.id = "rmg", .name = "RMG", .consoles = {"n64"},
+       .extensions = {".z64", ".n64", ".v64", ".zip", ".7z"},
+       .args = {"-q", "{rom}"}, .fullscreen = {"-f"},
+       .release_url = GitHub("Rosalie241/RMG"), .asset = "RMG-Portable-Linux64-*.AppImage",
+       .binary = "RMG.AppImage"},
+      {.id = "vita3k", .name = "Vita3K", .consoles = {"psvita"},
+       .extensions = {".vpk"},
+       .args = {"{rom}"}, .fullscreen = {"-F"},
+       .release_url = GitHub("Vita3K/Vita3K"), .asset = "Vita3K-x86_64.AppImage",
+       .binary = "Vita3K.AppImage",
+       .firmware = {{.id = "firmware", .label = "PS Vita firmware (PSVUPDAT.PUP)",
+                     .dir = "~/.local/share/Vita3K/Vita3K/vs0/sys/external", .patterns = {"*.suprx"},
+                     .install_flag = "--firmware"}}},
+      {.id = "ymir", .name = "Ymir", .consoles = {"saturn"},
+       .extensions = {".cue", ".chd", ".ccd", ".iso", ".mds"},
+       .args = {"-u", "{rom}"}, .fullscreen = {"-f"},
+       .release_url = "https://api.github.com/repos/StrikerX3/Ymir/releases/tags/latest-nightly",
+       .asset = "ymir-linux-x86_64-SSE2-*.tar.xz",
+       .binary = "ymir-sdl3",
+       .firmware = {{.id = "bios", .label = "Saturn BIOS", .dir = "~/.local/share/StrikerX3/Ymir/roms/ipl",
+                     .patterns = {"*.bin", "*.rom"}}}},
+      // Arcade sets keep their zip's name, which MAME looks up in the folder.
+      {.id = "mame", .name = "MAME", .consoles = {"arcade"},
+       .extensions = {".zip", ".7z", ".chd"},
+       .args = {"-rompath", "{dir}", "{stem}"},
+       .binary = "mame"},
   };
   return emulators;
 }
@@ -105,14 +196,33 @@ const Emulator* Find(std::string_view id) {
 
 const Emulator* ForGame(const model::Game& game) { return Find(game.source); }
 
+bool Downloads(const Emulator& emulator) {
+  return !emulator.release_url.empty() || !emulator.listing_url.empty() || !emulator.download_url.empty();
+}
+
 namespace {
 
 fs::path ToolDir(const config::Config& config, const Emulator& emulator) {
   return config.File().parent_path() / "tools" / emulator.id;
 }
 
+// "~" is home; "~/.config" and "~/.local/share" follow XDG_CONFIG_HOME and XDG_DATA_HOME, as emulators do.
+// "$VAR/a|~/b" is $VAR/a when VAR is set, else ~/b.
 fs::path Expand(const std::string& dir) {
-  return dir.starts_with("~/") ? paths::Home() / dir.substr(2) : fs::path(dir);
+  if (dir.starts_with('$') && dir.contains('|')) {
+    const std::string first = dir.substr(1, dir.find('|') - 1);
+    const char* value = std::getenv(first.substr(0, first.find('/')).c_str());
+    if (value && value[0] == '/') return fs::path(value) / first.substr(first.find('/') + 1);
+    return Expand(dir.substr(dir.find('|') + 1));
+  }
+  if (!dir.starts_with("~/")) return dir;
+  for (const auto& [prefix, variable] : {std::pair{".config", "XDG_CONFIG_HOME"}, {".local/share", "XDG_DATA_HOME"}}) {
+    const std::string rest = dir.substr(2);
+    const char* home = std::getenv(variable);
+    if (home && home[0] == '/' && (rest == prefix || rest.starts_with(std::string(prefix) + "/")))
+      return fs::path(home) / fs::path(rest).lexically_relative(prefix);
+  }
+  return paths::Home() / dir.substr(2);
 }
 
 bool Accepts(const Emulator& emulator, const fs::path& file) {
@@ -201,7 +311,43 @@ Result<void> Transfer(const fs::path& from, const fs::path& to, bool move) {
   return {};
 }
 
+// The newest file matching `asset` the folder listing at `listing_url` links to, by version.
+Result<runner::ReleaseAsset> NewestListed(const config::Config& config, const Emulator& emulator) {
+  const fs::path page = ToolDir(config, emulator).parent_path() / (emulator.id + "-listing.html");
+  std::error_code ec;
+  fs::create_directories(page.parent_path(), ec);
+  if (auto fetched = runner::CurlDownload(emulator.listing_url, page); !fetched)
+    return std::unexpected(fetched.error());
+  std::ifstream in(page);
+  const std::string html((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  fs::remove(page, ec);
+  static const std::regex href(R"re(href="([^"/?]+)")re");
+  std::string newest;
+  for (auto it = std::sregex_iterator(html.begin(), html.end(), href); it != std::sregex_iterator(); ++it) {
+    const std::string name = (*it)[1].str();
+    if (strings::GlobMatch(emulator.asset, name) && (newest.empty() || strverscmp(name.c_str(), newest.c_str()) > 0))
+      newest = name;
+  }
+  if (newest.empty())
+    return Err("no_release_asset", std::format("{} lists no file matching {}", emulator.listing_url, emulator.asset));
+  runner::ReleaseAsset asset;
+  asset.tag = newest;
+  asset.asset_name = newest;
+  asset.download_url = emulator.listing_url + newest;
+  return asset;
+}
+
 }  // namespace
+
+void Prefill(const Emulator& emulator) {
+  for (const auto& [file, content] : emulator.prefill) {
+    const fs::path path = Expand(file);
+    std::error_code ec;
+    if (fs::exists(path, ec)) continue;
+    fs::create_directories(path.parent_path(), ec);
+    std::ofstream(path) << content;
+  }
+}
 
 fs::path RomDir(const config::Config& config, const Emulator& emulator) {
   return config.GetPath("emulators.roms_root") / emulator.name;
@@ -211,23 +357,55 @@ fs::path Binary(const config::Config& config, const Emulator& emulator) {
   std::error_code ec;
   if (const fs::path chosen = config.GetPath(std::format("emulators.{}.bin", emulator.id)); !chosen.empty())
     return fs::is_regular_file(chosen, ec) ? chosen : fs::path();
-  if (!emulator.release_url.empty()) {
-    if (const fs::path managed = ToolDir(config, emulator) / emulator.binary; fs::is_regular_file(managed, ec))
-      return managed;
+  if (Downloads(emulator)) {
+    // An archive may keep it in a folder of its own.
+    const auto installed = runner::InstalledToolOf(config, emulator.id);
+    if (installed && fs::is_regular_file(installed->binary, ec)) return installed->binary;
   }
   if (auto found = runner::FindOnPath(emulator.binary)) return *found;
   return {};
 }
 
 std::string InstalledVersion(const config::Config& config, const Emulator& emulator) {
-  std::ifstream in(ToolDir(config, emulator) / ".version");
-  std::string tag;
-  std::getline(in, tag);
-  return tag;
+  const auto installed = runner::InstalledToolOf(config, emulator.id);
+  return installed ? installed->tag : "";
+}
+
+constexpr std::string_view kGithubApi = "https://api.github.com/repos/";
+
+std::string DefaultSource(const Emulator& emulator) {
+  if (emulator.release_url.starts_with(kGithubApi)) {
+    const std::string rest = emulator.release_url.substr(kGithubApi.size());
+    return rest.substr(0, rest.find('/', rest.find('/') + 1));
+  }
+  if (!emulator.release_url.empty()) return emulator.release_url;
+  return emulator.listing_url.empty() ? emulator.download_url : emulator.listing_url;
+}
+
+Result<runner::ReleaseAsset> Latest(const config::Config& config, const Emulator& emulator) {
+  const std::string chosen = config.GetString(std::format("emulators.{}.repo", emulator.id));
+  if (!chosen.empty() && chosen != DefaultSource(emulator)) {
+    const std::string repo = strings::GithubRepo(chosen);
+    if (repo.starts_with("https://")) return runner::LatestRelease(repo, emulator.asset, emulator.exclude);
+    // A fork on GitHub: the same release of it (bsnes's is the nightly tag).
+    const std::string default_repo = DefaultSource(emulator);
+    std::string url = GitHub(repo);
+    if (emulator.release_url.starts_with(kGithubApi))
+      url = std::string(kGithubApi) + repo + emulator.release_url.substr(kGithubApi.size() + default_repo.size());
+    return runner::LatestRelease(url, emulator.asset, emulator.exclude);
+  }
+  if (!emulator.release_url.empty()) return runner::LatestRelease(emulator.release_url, emulator.asset, emulator.exclude);
+  if (!emulator.listing_url.empty()) return NewestListed(config, emulator);
+  // One fixed file, named by its version.
+  runner::ReleaseAsset asset;
+  asset.asset_name = fs::path(emulator.download_url).filename().string();
+  asset.download_url = emulator.download_url;
+  asset.tag = asset.asset_name;
+  return asset;
 }
 
 Result<fs::path> Install(const config::Config& config, const Emulator& emulator) {
-  if (emulator.release_url.empty()) {
+  if (!Downloads(emulator)) {
     if (auto ready = system::RequireFeature(emulator.id, emulator.name); !ready) return std::unexpected(ready.error());
     return Binary(config, emulator);
   }
@@ -245,11 +423,12 @@ Result<fs::path> Install(const config::Config& config, const Emulator& emulator)
       installing.erase(id);
     }
   } done{emulator.id};
-  const Result<runner::ReleaseAsset> asset = runner::LatestRelease(emulator.release_url, emulator.asset);
+  const Result<runner::ReleaseAsset> asset = Latest(config, emulator);
   if (!asset) return std::unexpected(asset.error());
   auto installed = runner::InstallToolBinary(config, emulator.id, *asset, emulator.binary);
   if (!installed) return installed;
-  std::ofstream(ToolDir(config, emulator) / ".version", std::ios::trunc) << asset->tag << "\n";
+  // Libraries the download doesn't carry (bsnes's libao).
+  if (auto ready = system::RequireFeature(emulator.id, emulator.name); !ready) return std::unexpected(ready.error());
   return installed;
 }
 
@@ -273,13 +452,15 @@ Result<void> AddFirmware(const config::Config& config, const Emulator& emulator,
   std::error_code ec;
   for (const fs::path& file : files) {
     const std::string ext = strings::ToLower(file.extension().string());
-    if (emulator.id == "rpcs3") {
+    if (!firmware.install_flag.empty()) {
       const fs::path binary = Binary(config, emulator);
-      if (binary.empty()) return Err("emulator_missing", "Install RPCS3 first, then add its firmware.");
+      if (binary.empty())
+        return Err("emulator_missing", std::format("Install {} first, then add its firmware.", emulator.name));
       Command command;
-      command.argv = {binary.string(), "--installfw", file.string()};
+      command.argv = {binary.string(), firmware.install_flag, file.string()};
       const Result<runner::ExecResult> ran = runner::RunAndWait(command);
-      if (!ran || ran->exit_code != 0) return Err("firmware_failed", "RPCS3 couldn't install that firmware file.");
+      if (!ran || ran->exit_code != 0)
+        return Err("firmware_failed", std::format("{} couldn't install that firmware file.", emulator.name));
       continue;
     }
     fs::create_directories(dir, ec);

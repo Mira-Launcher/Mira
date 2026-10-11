@@ -18,6 +18,7 @@ using nlohmann::json;
 struct Entry {
   std::string_view feature;
   Tool tool;
+  bool on_demand = false;  // an emulator's: asked for when it's set up, never in the full list
 };
 
 constexpr Entry kEntries[] = {
@@ -31,7 +32,13 @@ constexpr Entry kEntries[] = {
     {"adobe", {"zstd", "zstd", "", "Unpacks AdobeWine, which Adobe Creative Cloud runs on", "zstd", "zstd", "zstd",
                "zstd"}},
     {"dolphin", {"dolphin-emu", "dolphin-emu", "", "Plays GameCube and Wii games", "dolphin-emu", "dolphin-emu",
-                 "dolphin-emu", "dolphin-emu"}},
+                 "dolphin-emu", "dolphin-emu"},
+     true},
+    {"ares", {"ares", "ares", "", "Plays NES, SNES, Nintendo 64, Genesis and Game Boy games", "ares-emu", "", "", ""},
+     true},
+    {"snes9x", {"snes9x-gtk", "snes9x-gtk", "", "Plays SNES games", "snes9x-gtk", "", "snes9x-gtk", "snes9x-gtk"}, true},
+    {"mame", {"mame", "mame", "", "Plays arcade games", "mame", "mame", "mame", "mame"}, true},
+    {"bsnes", {"libao", "", "libao.so.4", "Plays bsnes's sound", "libao", "libao4", "libao", "libao4"}, true},
     {"archives", {"7zip", "7z 7zz", "", "Extracts game archives and installers", "7zip", "7zip p7zip-full", "7zip",
                   "7zip"}},
     {"performance", {"gamemode", "gamemoded", "", "Raises performance while a game runs", "gamemode", "gamemode",
@@ -137,7 +144,7 @@ Distro DetectDistro() {
 std::vector<Tool> ToolsFor(std::string_view feature) {
   std::vector<Tool> tools;
   for (const Entry& entry : kEntries) {
-    if (feature.empty() || entry.feature == feature) tools.push_back(entry.tool);
+    if (feature.empty() ? !entry.on_demand : entry.feature == feature) tools.push_back(entry.tool);
   }
   return tools;
 }

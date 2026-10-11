@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "api/EventBus.h"
@@ -12,6 +13,7 @@
 #include "core/Result.h"
 #include "library/ImportSummary.h"
 #include "model/Types.h"
+#include "runner/Downloader.h"
 #include "store/GameStore.h"
 
 // Standalone emulators. Each one is a source: its games are the ROMs in its own folder under
@@ -25,6 +27,7 @@ struct Firmware {
   std::string dir = {};                    // where it goes, "~" for home
   std::vector<std::string> patterns = {};  // file names it accepts; any match there means it's present
   bool required = true;
+  std::string install_flag = {};  // the emulator installs it itself: `<emulator> <flag> <file>`
 };
 
 struct Emulator {
@@ -34,18 +37,30 @@ struct Emulator {
   std::vector<std::string> extensions = {};  // lower case, with the dot
   // A folder is one game when this file is inside it (PS3's PS3_GAME/USRDIR/EBOOT.BIN); empty: games are files.
   std::string folder_game = {};
-  std::vector<std::string> args = {};  // "{rom}" is the game's file
-  // Where it comes from: the latest release at `release_url` (a GitHub or Forgejo API url) whose asset
-  // matches `asset`, or else the system package of the system::Packages feature named by its id.
+  std::vector<std::string> args = {};        // "{rom}" is the game's file, "{dir}" its folder, "{stem}" its name
+  std::vector<std::string> fullscreen = {};  // before `args`, with emulators.fullscreen
+  // Where it comes from: the release at `release_url` (a GitHub, Forgejo or GitLab API url) whose asset
+  // matches `asset`, the newest file matching `asset` in the folder listing at `listing_url` (a CachyOS
+  // package), the one file at `download_url`, or else the system package of the system::Packages feature
+  // named by its id.
   std::string release_url = {};
+  std::string listing_url = {};
   std::string asset = {};
+  std::vector<std::string> exclude = {};  // asset names with these in them are passed over
+  std::string download_url = {};
   std::string binary = {};  // the installed file's name, or the package's program
   std::vector<Firmware> firmware = {};
+  // Settings files written before it first runs, where none is ("~" for home), so its first-run
+  // questions (a setup wizard, a desktop shortcut) don't stand between a game and the screen.
+  std::vector<std::pair<std::string, std::string>> prefill = {};
+  std::vector<std::pair<std::string, std::string>> env = {};  // set when it runs
 };
 
 const std::vector<Emulator>& All();
 const Emulator* Find(std::string_view id);
 const Emulator* ForGame(const model::Game& game);
+// Whether Mira downloads it, rather than the system's packages installing it.
+bool Downloads(const Emulator& emulator);
 
 std::filesystem::path RomDir(const config::Config& config, const Emulator& emulator);
 
@@ -54,6 +69,13 @@ std::filesystem::path Binary(const config::Config& config, const Emulator& emula
 // The release tag of Mira's download, empty for any other copy.
 std::string InstalledVersion(const config::Config& config, const Emulator& emulator);
 
+// Writes the emulator's prefill files that aren't there yet.
+void Prefill(const Emulator& emulator);
+
+// Where it downloads from by default: "owner/repo" on GitHub, else the releases API, listing or file link.
+std::string DefaultSource(const Emulator& emulator);
+// The release Install would download, from emulators.<id>.repo; only for an emulator Mira downloads.
+Result<runner::ReleaseAsset> Latest(const config::Config& config, const Emulator& emulator);
 // Downloads the latest release over Mira's copy. A package emulator returns the packages error instead.
 Result<std::filesystem::path> Install(const config::Config& config, const Emulator& emulator);
 
@@ -62,7 +84,8 @@ struct FirmwareState {
   bool present = false;
 };
 std::vector<FirmwareState> FirmwareStatus(const Emulator& emulator);
-// Puts `files` where the emulator looks: a zip of Switch firmware is unpacked, PS3 firmware installed by RPCS3.
+// Puts `files` where the emulator looks: a zip of Switch firmware is unpacked, PS3 and Vita firmware installed by
+// the emulator.
 Result<void> AddFirmware(const config::Config& config, const Emulator& emulator, const Firmware& firmware,
                          const std::vector<std::filesystem::path>& files);
 

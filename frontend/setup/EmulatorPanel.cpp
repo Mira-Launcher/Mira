@@ -75,6 +75,11 @@ void EmulatorPanel::Install() {
   ShowLine(error_, "Downloading " + name + "…", "muted");
   api::InstallEmulatorAsync(this, emulator_.id, [this, name](StoreActionResult result) {
     install_->setEnabled(true);
+    // Downloaded, but it needs a library from the system's packages too.
+    if (!result.ok && result.error.fix.kind == "packages") {
+      error_->setVisible(false);
+      return system::EnsurePackages(this, emulator_.id, name, [this](bool) { emit Changed(); });
+    }
     if (!result.ok) return ShowFailure("Could not install " + name + ".", result.error);
     error_->setVisible(false);
     emit Changed();

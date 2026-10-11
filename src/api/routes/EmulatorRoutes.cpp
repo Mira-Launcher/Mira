@@ -33,7 +33,7 @@ json ToJson(const config::Config& config, const emulators::Emulator& emulator) {
           {"installed", !binary.empty()},
           {"path", binary.string()},
           {"version", emulators::InstalledVersion(config, emulator)},
-          {"package", emulator.release_url.empty() ? emulator.id : ""},
+          {"package", emulators::Downloads(emulator) ? "" : emulator.id},
           {"rom_dir", emulators::RomDir(config, emulator).string()},
           {"firmware", firmware}};
 }
@@ -125,8 +125,10 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
     if (!emulator) return SendError(res, 404, "emulator_not_found", "no such emulator");
     const fs::path binary = emulators::Binary(s.config, *emulator);
     if (binary.empty()) return SendError(res, 409, "emulator_missing", emulator->name + " isn't installed");
+    emulators::Prefill(*emulator);
     Command command;
     command.argv = {binary.string()};
+    for (const auto& [key, value] : emulator->env) command.env[key] = value;
     if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });

@@ -49,7 +49,7 @@ Result<Source> SourceFor(const config::Config& config, const std::string& kind) 
                   .exclude = {}};
   }
   if (kind == "umu") {
-    return Source{.repo = std::string(config::runner_sources::kUmuLauncherRepo),
+    return Source{.repo = config.GetString("runner_sources.umu.repo"),
                   .asset_pattern = std::string(config::runner_sources::kUmuLauncherAssetPattern), .exclude = {}};
   }
   return Err("unknown_runner_kind", std::format("no downloadable source for kind \"{}\"", kind));
@@ -98,20 +98,23 @@ bool Excluded(const std::vector<std::string>& exclude, const std::string& text) 
   return std::ranges::any_of(exclude, [&](const std::string& word) { return text.contains(word); });
 }
 
-// A release's first asset that matches; one per release is expected.
+// A release's first asset that matches; one per release is expected. GitHub and Forgejo list assets, GitLab
+// links under assets.links.
 std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& pattern,
                                     const std::vector<std::string>& exclude) {
-  if (!release.is_object() || !release.contains("assets") || !release["assets"].is_array()) return std::nullopt;
-  const json& assets = release["assets"];
+  if (!release.is_object() || !release.contains("assets")) return std::nullopt;
+  const bool gitlab = release["assets"].is_object();
+  const json& assets = gitlab ? release["assets"].value("links", json::array()) : release["assets"];
+  if (!assets.is_array()) return std::nullopt;
   for (const auto& asset : assets) {
     const std::string name = core::JsonString(asset, "name");
     if (!strings::GlobMatch(pattern, name) || Excluded(exclude, name)) continue;
     ReleaseAsset entry;
     entry.tag = core::JsonString(release, "tag_name");
     entry.asset_name = name;
-    entry.download_url = core::JsonString(asset, "browser_download_url");
+    entry.download_url = core::JsonString(asset, gitlab ? "url" : "browser_download_url");
     entry.size_bytes = core::JsonInt(asset, "size");
-    entry.published_at = core::JsonString(release, "published_at");
+    entry.published_at = core::JsonString(release, gitlab ? "released_at" : "published_at");
     FindChecksum(assets, name, entry);
     return entry;
   }
@@ -119,8 +122,9 @@ std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& patt
 }
 
 // Lists `repo`'s releases, keeping the first asset per release that matches.
-Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const std::string& pattern,
+Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo_setting, const std::string& pattern,
                                                 const std::vector<std::string>& exclude) {
+  const std::string repo = strings::GithubRepo(repo_setting);
   const Result<json> listed = CurlJson(std::format("https://api.github.com/repos/{}/releases?per_page=10", repo));
   if (!listed) return Err("github_api_error", std::format("couldn't list releases for {}: {}", repo, listed.error().message),
                           kConnectionHint);
@@ -231,7 +235,7 @@ Result<void> MoveAllInto(const fs::path& from, const fs::path& to) {
 bool IsZip(const std::string& asset_name) { return asset_name.ends_with(".zip"); }
 bool IsTarball(const std::string& asset_name) {
   return asset_name.ends_with(".tar") || asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tar.xz") ||
-         asset_name.ends_with(".tgz");
+         asset_name.ends_with(".tar.zst") || asset_name.ends_with(".tgz");
 }
 
 Result<void> Chmod(const fs::path& path) {
@@ -261,32 +265,32 @@ std::vector<RunnerFamily> Families(const config::Config& config, const std::stri
        .asset_pattern = config.GetString("runner_sources.proton_ge.asset_pattern"),
        .build_pattern = "GE-Proton*", .exclude = {}},
       {.id = "proton_cachyos", .kind = "proton", .label = "Proton-CachyOS",
-       .repo = std::string(rs::kProtonCachyOSRepo), .asset_pattern = std::string(rs::kProtonCachyOSAssetPattern),
+       .repo = config.GetString("runner_sources.proton_cachyos.repo"), .asset_pattern = std::string(rs::kProtonCachyOSAssetPattern),
        .build_pattern = "cachyos-*-slr", .exclude = {}},
       {.id = "proton_umu", .kind = "proton", .label = "UMU-Proton",
-       .repo = std::string(rs::kUmuProtonRepo), .asset_pattern = "UMU-Proton-*.tar.gz",
+       .repo = config.GetString("runner_sources.proton_umu.repo"), .asset_pattern = "UMU-Proton-*.tar.gz",
        .build_pattern = "UMU-Proton-*", .exclude = {}},
       {.id = "proton_em", .kind = "proton", .label = "Proton-EM",
-       .repo = std::string(rs::kProtonEMRepo), .asset_pattern = "proton-EM-*.tar.xz",
+       .repo = config.GetString("runner_sources.proton_em.repo"), .asset_pattern = "proton-EM-*.tar.xz",
        .build_pattern = "proton-EM-*", .exclude = {}},
       {.id = "proton_sarek", .kind = "proton", .label = "Proton-Sarek (older GPUs)",
-       .repo = std::string(rs::kProtonSarekRepo), .asset_pattern = "Proton-Sarek*.tar.gz",
+       .repo = config.GetString("runner_sources.proton_sarek.repo"), .asset_pattern = "Proton-Sarek*.tar.gz",
        .build_pattern = "Proton-Sarek*", .exclude = {"async"}},
       {.id = "wine_staging_tkg", .kind = "wine", .label = "Wine staging-tkg (Kron4ek)",
-       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-staging-tkg-amd64.tar.xz",
+       .repo = config.GetString("runner_sources.wine_staging_tkg.repo"), .asset_pattern = "wine-*-staging-tkg-amd64.tar.xz",
        .build_pattern = "wine-*-staging-tkg-amd64", .exclude = {}},
       {.id = "wine_staging", .kind = "wine", .label = "Wine staging (Kron4ek)",
-       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-staging-amd64.tar.xz",
+       .repo = config.GetString("runner_sources.wine_staging.repo"), .asset_pattern = "wine-*-staging-amd64.tar.xz",
        .build_pattern = "wine-*-staging-amd64", .exclude = {"tkg"}},
       {.id = "wine_vanilla", .kind = "wine", .label = "Wine (Kron4ek)",
-       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-amd64.tar.xz",
+       .repo = config.GetString("runner_sources.wine_vanilla.repo"), .asset_pattern = "wine-*-amd64.tar.xz",
        .build_pattern = "wine-*-amd64", .exclude = {"staging"}},
       {.id = "wine_ge", .kind = "wine", .label = "Wine-GE (archived)",
        .repo = config.GetString("runner_sources.wine_ge.repo"),
        .asset_pattern = config.GetString("runner_sources.wine_ge.asset_pattern"),
        .build_pattern = "lutris-GE-Proton*", .exclude = {}},
       {.id = "wine_lutris", .kind = "wine", .label = "Lutris Wine (archived)",
-       .repo = std::string(rs::kLutrisWineRepo), .asset_pattern = "wine-lutris-*-x86_64.tar.xz",
+       .repo = config.GetString("runner_sources.wine_lutris.repo"), .asset_pattern = "wine-lutris-*-x86_64.tar.xz",
        .build_pattern = "lutris-*-x86_64", .exclude = {"GE-Proton"}},
   };
   if (kind.empty()) return all;
@@ -438,9 +442,34 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
   return *asset;
 }
 
+namespace {
+
+fs::path ToolDir(const config::Config& config, const std::string& tool_name) {
+  return config.File().parent_path() / "tools" / tool_name;
+}
+
+// .version: the release tag, the binary's path in the tool's folder, and when it was published.
+fs::path Recorded(const fs::path& tool_dir, const ReleaseAsset& asset, const fs::path& binary) {
+  std::ofstream(tool_dir / ".version", std::ios::trunc)
+      << asset.tag << "\n" << binary.lexically_relative(tool_dir).string() << "\n" << asset.published_at << "\n";
+  return binary;
+}
+
+}  // namespace
+
+std::optional<InstalledTool> InstalledToolOf(const config::Config& config, const std::string& tool_name) {
+  std::ifstream in(ToolDir(config, tool_name) / ".version");
+  InstalledTool tool;
+  std::string binary;
+  if (!std::getline(in, tool.tag) || !std::getline(in, binary) || binary.empty()) return std::nullopt;
+  std::getline(in, tool.published_at);
+  tool.binary = ToolDir(config, tool_name) / binary;
+  return tool;
+}
+
 Result<fs::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
                                    const ReleaseAsset& asset, const std::string& binary_name) {
-  const fs::path tool_dir = config.File().parent_path() / "tools" / tool_name;
+  const fs::path tool_dir = ToolDir(config, tool_name);
   std::error_code ec;
   fs::create_directories(tool_dir, ec);
   if (ec) return Err("install_dir_failed", ec.message());
@@ -480,7 +509,7 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
     if (!moved) return std::unexpected(moved.error());
     const fs::path binary = tool_dir / found->lexically_relative(staging);
     if (auto chmodded = Chmod(binary); !chmodded) return std::unexpected(chmodded.error());
-    return binary;
+    return Recorded(tool_dir, asset, binary);
   }
 
   fs::rename(downloaded, target, ec);
@@ -488,7 +517,7 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
   fs::remove_all(download_dir, ec);
   if (renamed) return Err("install_failed", renamed.message());
   if (auto chmodded = Chmod(target); !chmodded) return std::unexpected(chmodded.error());
-  return target;
+  return Recorded(tool_dir, asset, target);
 }
 
 }  // namespace mira::runner

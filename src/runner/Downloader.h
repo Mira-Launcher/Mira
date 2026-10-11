@@ -83,7 +83,7 @@ Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config, con
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
                                 const ReleaseAsset& asset, const std::function<void(double)>& on_progress = {});
 
-// The latest release's asset matching `pattern`, from a GitHub or Forgejo ".../releases/latest" API url.
+// The asset matching `pattern` of the release a GitHub, Forgejo or GitLab API url gives (".../releases/latest").
 Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pattern,
                                    const std::vector<std::string>& exclude = {});
 
@@ -100,5 +100,13 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
 // DownloadAndInstall.
 Result<std::filesystem::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
                                                const ReleaseAsset& asset, const std::string& binary_name);
+
+struct InstalledTool {
+  std::string tag;
+  std::filesystem::path binary;
+  std::string published_at;
+};
+// What InstallToolBinary last put in the tool's folder; nullopt for none, or a download from before it kept a record.
+std::optional<InstalledTool> InstalledToolOf(const config::Config& config, const std::string& tool_name);
 
 }  // namespace mira::runner

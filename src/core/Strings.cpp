@@ -221,4 +221,9 @@ std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_vi
   return std::pair{match[1].str(), match[2].str()};
 }
 
+std::string GithubRepo(std::string_view text) {
+  const auto parsed = ParseGithubUrl(text);
+  return parsed ? parsed->first : std::string(text);
+}
+
 }  // namespace mira::strings

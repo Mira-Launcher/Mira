@@ -1028,6 +1028,12 @@ Schema::Schema() {
          .doc = "Each emulator keeps its games in a folder of its own here, which Mira watches.",
          .path = PathKind::Folder});
 
+  s.Add({.key = "emulators.fullscreen",
+         .label = "Fullscreen",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Emulators start their games fullscreen."});
+
   s.Add({.key = "emulators.move_added",
          .label = "Move added games",
          .type = Type::Bool,

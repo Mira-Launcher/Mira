@@ -34,5 +34,7 @@ double Similarity(std::string_view a, std::string_view b);
 
 // A GitHub repository link, or one release's: ("owner/name", the tag or ""). Nothing for another link.
 std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_view url);
+// "owner/name" from a GitHub link, or `text` itself when it isn't one.
+std::string GithubRepo(std::string_view text);
 
 }  // namespace mira::strings
