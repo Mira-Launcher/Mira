@@ -69,6 +69,10 @@ OwnedTitles::OwnedTitles(QObject* parent) : QObject(parent) {
     if (std::string source; live && fetched_.isValid() && events::ParseHiddenChanged(type, data, &source)) {
       Refresh();
     }
+    if (events::HiddenStateEvent state;
+        live && fetched_.isValid() && events::ParseHiddenState(type, data, &state)) {
+      Refresh();
+    }
   });
 }
 

@@ -1306,6 +1306,10 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
     if (source == id_ && owned_section_ != nullptr) RefreshOwned();
     return;
   }
+  if (events::HiddenStateEvent state; events::ParseHiddenState(type, data, &state)) {
+    if (owned_section_ != nullptr) RefreshOwned();
+    return;
+  }
 
   if (CatalogCheckEvent check; events::ParseCatalogCheck(type, data, &check)) {
     if (check.source != id_ || owned_section_ == nullptr) return;

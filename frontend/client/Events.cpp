@@ -272,6 +272,16 @@ bool ParseHiddenChanged(const std::string& event_type, const std::string& data,
   return !source->empty();
 }
 
+bool ParseHiddenState(const std::string& event_type, const std::string& data,
+                      HiddenStateEvent* out) {
+  if (event_type != "hidden.changed") return false;
+  const json entry = json::parse(data, nullptr, false);
+  if (entry.is_discarded() || !entry.is_object()) return false;
+  out->password = entry.value("password", false);
+  out->locked = entry.value("locked", false);
+  return true;
+}
+
 bool ParseRunnerDownload(const std::string& event_type, const std::string& data,
                          RunnerDownloadEvent* out) {
   constexpr std::string_view kPrefix = "runners.download.";

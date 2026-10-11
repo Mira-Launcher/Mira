@@ -334,8 +334,9 @@ private:
 
 // Events after which the tags or their counts may say something else.
 bool ChangesTags(const std::string& type) {
-  return type == "games.updated" || type == "game.updated" || type == "game.added" || type == "game.removed" ||
-         type == "games.removed" || type == "game.metadata_ready" || type == "config.changed";
+  return type == "games.updated" || type == "game.updated" || type == "game.added" ||
+         type == "game.removed" || type == "games.removed" || type == "game.metadata_ready" ||
+         type == "config.changed" || type == "hidden.changed";
 }
 
 }  // namespace

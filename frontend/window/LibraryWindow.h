@@ -116,13 +116,21 @@ private:
   void Reload(bool force_scan);
   // Ctrl+R and the refresh button: the scan, and every store's owned list asked again.
   void RefreshLibrary();
-  void RefreshGames();
+  // `done` runs once the new list is in the library.
+  void RefreshGames(std::function<void()> done = {});
   void ConnectionChanged(bool connected);
 
   // After any change to library_: the footer, an open card, Runners.
   void LibraryChanged();
   // Hidden mode turned on or off: the theme, the top bar's note and every page follow.
   void ShowingHiddenChanged(bool showing);
+  // Ctrl+H: into hidden mode, asking for the password first while hidden games are locked, or out.
+  void ToggleHiddenMode();
+  // hidden.changed, or GET /v1/hidden's answer: leaves hidden mode once they lock, and lists the
+  // games again when what mirad shows changed.
+  void ApplyHiddenState(bool password, bool locked);
+  // Tells mirad someone is using Mira (at most once a minute), so unlocked hidden games stay so.
+  bool eventFilter(QObject* watched, QEvent* event) override;
   // The games the hidden mode lists.
   std::vector<mira_gui::GameSummary> ShownGames() const;
   // What toggles hidden mode, as the user has it bound.
@@ -250,6 +258,9 @@ private:
 
   mira_gui::TopBar* top_bar_ = nullptr;
   QAction* hidden_action_ = nullptr;  // toggles hidden mode
+  bool hidden_password_ = false;      // as mirad last said
+  bool hidden_locked_ = false;
+  QElapsedTimer activity_reported_;  // see eventFilter
   QLabel* drop_overlay_ = nullptr;  // "Drop to add to Mira", shown while a drag is over the window
   QSlider* zoom_ = nullptr;
   QVariantAnimation* zoom_animation_ = nullptr;  // eases tiles to a snapped size

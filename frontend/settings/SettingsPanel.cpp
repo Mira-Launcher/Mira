@@ -22,6 +22,7 @@
 #include "../app/ErrorHelp.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
+#include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
 #include "../widgets/ShortcutEdit.h"
@@ -178,6 +179,14 @@ void SettingsPanel::BuildSchemaPages() {
       }
       AddSchemaRow(card, i);
       card_rows.push_back(i);
+      // The password sits with the settings for when hidden games lock again, before them.
+      if (fields_[i].entry.key.starts_with("hidden.") &&
+          card->findChild<HiddenPasswordRow*>() == nullptr) {
+        auto* password = new HiddenPasswordRow(card);
+        card->AddRow(password);
+        card->MoveRow(password, 0);
+        nav_->RegisterRow(password, "hidden games password lock");
+      }
     }
     finish_card();
 

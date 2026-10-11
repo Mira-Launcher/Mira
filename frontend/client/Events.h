@@ -85,6 +85,15 @@ bool ParseCatalogCheck(const std::string& event_type, const std::string& data, C
 bool ParseHiddenChanged(const std::string& event_type, const std::string& data,
                         std::string* source);
 
+// hidden.changed: the hidden games' password was set or removed, or they locked or unlocked, so
+// what mirad lists changed.
+struct HiddenStateEvent {
+  bool password = false;
+  bool locked = false;
+};
+bool ParseHiddenState(const std::string& event_type, const std::string& data,
+                      HiddenStateEvent* out);
+
 // Parses a `runners.download.started`/`.finished`/`.failed` payload.
 // `state` comes from the event type, which the payload itself doesn't
 // repeat.

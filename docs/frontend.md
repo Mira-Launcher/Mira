@@ -28,6 +28,8 @@ Ctrl+H (or *Hidden games* in the filter menu) turns hidden mode on or off on any
 
 A not-installed title's menu has *Hide* (or *Unhide* in hidden mode), through `POST /v1/library/hidden`; mirad tags the game `hidden` if the title is installed later, and keeps the title hidden when a hidden game is removed.
 
+Settings › Library › Hidden games sets a password (`library/HiddenLock`'s `HiddenPasswordRow`, a form that opens under the row). While hidden games are locked, mirad leaves them out of everything it sends, so the GUI simply doesn't have them. Ctrl+H then opens `HiddenUnlockCard` over the content first, and hidden mode opens once the unlocked list has arrived. `hidden.changed` keeps the window in step: when hidden games lock (idle, `hidden.lock_on_leave`, another client) the window leaves hidden mode and lists games again, as do owned titles, source pages and the Tags page. Leaving hidden mode posts `/v1/hidden/left` and mirad decides whether that locks. Key presses, clicks and scrolling anywhere post `/v1/hidden/activity` at most once a minute while unlocked, and quitting locks.
+
 ### Sidebar
 
 From top to bottom: the Mira header, the Library, Runners and Settings rows, pinned games, the sources, recently played games (off by default), and the Add games button.
