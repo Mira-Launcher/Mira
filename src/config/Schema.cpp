@@ -1048,6 +1048,14 @@ Schema::Schema() {
            .doc = std::format("The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
                               emulator.name),
            .path = PathKind::File});
+    if (!emulators::Downloads(emulator)) continue;
+    s.Add({.key = std::format("emulators.{}.repo", emulator.id),
+           .label = std::format("{} download source", emulator.name),
+           .type = Type::String,
+           .default_value = emulators::DefaultSource(emulator),
+           .doc = std::format("Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
+                              "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
+                              "from there.", emulator.name)});
   }
 
   // --- Detection -------------------------------------------------------------
@@ -1188,6 +1196,15 @@ Schema::Schema() {
          .doc = "Extra folders to search for desktop entries, in addition to the standard "
                 "application folders and the Flatpak export folders.",
          .path = PathKind::Folder});
+
+  // --- Updates ---------------------------------------------------------------
+  s.Section("Updates", "Updates");
+
+  s.Add({.key = "updates.check",
+         .label = "Check for updates",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Mira looks for newer releases of itself and of the emulators, store tools and runners it downloaded."});
 
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");

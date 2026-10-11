@@ -75,6 +75,7 @@ void Server::RegisterRoutes() {
   RegisterStoreRoutes(*http_, s_);
   RegisterLauncherRoutes(*http_, s_);
   RegisterEmulatorRoutes(*http_, s_);
+  RegisterUpdateRoutes(*http_, s_);
   RegisterMetadataRoutes(*http_, s_);
   RegisterRunnerRoutes(*http_, s_);
   RegisterEventRoutes(*http_, s_);

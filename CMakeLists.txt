@@ -79,6 +79,7 @@ target_link_libraries(mira_stb PRIVATE mira_glibc_compat)
 set_target_properties(mira_stb PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 file(GLOB_RECURSE MIRA_CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+set_source_files_properties(src/updates/Updates.cpp PROPERTIES COMPILE_DEFINITIONS MIRA_VERSION="${PROJECT_VERSION}")
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/mirad_main\\.cpp$")
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/cli/.*\\.cpp$")
 list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")

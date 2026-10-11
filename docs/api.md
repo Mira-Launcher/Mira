@@ -511,6 +511,21 @@ Opens the emulator alone, to change its settings. Not tracked.
 ### `POST /v1/games/{id}/emulator`
 Body `{"emulator": "<id>"}`: moves the game's files into that emulator's folder. It keeps its id, art, tags and playtime. Returns the game. `already_there`.
 
+## Updates
+
+### `GET /v1/updates`
+What has a newer release: Mira itself, and the emulators, store tools, umu and runner builds Mira downloaded. Copies the system or the user installed aren't checked. Sources that can't be reached are left out.
+
+```json
+[{ "kind": "mira", "id": "mira", "name": "Mira", "installed": "0.14.1", "latest": "v0.15.0",
+   "url": "https://github.com/Mira-Launcher/Mira/releases/tag/v0.15.0" },
+ { "kind": "emulator", "id": "duckstation", "name": "DuckStation", "installed": "latest", "latest": "latest", "url": "" }]
+```
+
+`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference. Mira's is the release at `url`. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+
+`emulators.<id>.repo` switches an emulator Mira downloads to a fork: `owner/repo` or a GitHub link, or a Forgejo or GitLab releases API link. The fork's release then no longer matches what's installed, so it shows here as an update.
+
 ## Sources
 
 ### `GET /v1/sources`

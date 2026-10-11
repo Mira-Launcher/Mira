@@ -23,6 +23,7 @@ void RegisterTagsRoutes(httplib::Server& http, Services& s);
 void RegisterStoreRoutes(httplib::Server& http, Services& s);
 void RegisterLauncherRoutes(httplib::Server& http, Services& s);
 void RegisterEmulatorRoutes(httplib::Server& http, Services& s);
+void RegisterUpdateRoutes(httplib::Server& http, Services& s);
 void RegisterMetadataRoutes(httplib::Server& http, Services& s);
 void RegisterRunnerRoutes(httplib::Server& http, Services& s);
 void RegisterEventRoutes(httplib::Server& http, Services& s);

@@ -49,7 +49,7 @@ Result<Source> SourceFor(const config::Config& config, const std::string& kind) 
                   .exclude = {}};
   }
   if (kind == "umu") {
-    return Source{.repo = config.GetString("runner_sources.umu.repo"),
+    return Source{.repo = std::string(config::runner_sources::kUmuLauncherRepo),
                   .asset_pattern = std::string(config::runner_sources::kUmuLauncherAssetPattern), .exclude = {}};
   }
   return Err("unknown_runner_kind", std::format("no downloadable source for kind \"{}\"", kind));
@@ -122,9 +122,8 @@ std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& patt
 }
 
 // Lists `repo`'s releases, keeping the first asset per release that matches.
-Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo_setting, const std::string& pattern,
+Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const std::string& pattern,
                                                 const std::vector<std::string>& exclude) {
-  const std::string repo = strings::GithubRepo(repo_setting);
   const Result<json> listed = CurlJson(std::format("https://api.github.com/repos/{}/releases?per_page=10", repo));
   if (!listed) return Err("github_api_error", std::format("couldn't list releases for {}: {}", repo, listed.error().message),
                           kConnectionHint);
@@ -265,32 +264,32 @@ std::vector<RunnerFamily> Families(const config::Config& config, const std::stri
        .asset_pattern = config.GetString("runner_sources.proton_ge.asset_pattern"),
        .build_pattern = "GE-Proton*", .exclude = {}},
       {.id = "proton_cachyos", .kind = "proton", .label = "Proton-CachyOS",
-       .repo = config.GetString("runner_sources.proton_cachyos.repo"), .asset_pattern = std::string(rs::kProtonCachyOSAssetPattern),
+       .repo = std::string(rs::kProtonCachyOSRepo), .asset_pattern = std::string(rs::kProtonCachyOSAssetPattern),
        .build_pattern = "cachyos-*-slr", .exclude = {}},
       {.id = "proton_umu", .kind = "proton", .label = "UMU-Proton",
-       .repo = config.GetString("runner_sources.proton_umu.repo"), .asset_pattern = "UMU-Proton-*.tar.gz",
+       .repo = std::string(rs::kUmuProtonRepo), .asset_pattern = "UMU-Proton-*.tar.gz",
        .build_pattern = "UMU-Proton-*", .exclude = {}},
       {.id = "proton_em", .kind = "proton", .label = "Proton-EM",
-       .repo = config.GetString("runner_sources.proton_em.repo"), .asset_pattern = "proton-EM-*.tar.xz",
+       .repo = std::string(rs::kProtonEMRepo), .asset_pattern = "proton-EM-*.tar.xz",
        .build_pattern = "proton-EM-*", .exclude = {}},
       {.id = "proton_sarek", .kind = "proton", .label = "Proton-Sarek (older GPUs)",
-       .repo = config.GetString("runner_sources.proton_sarek.repo"), .asset_pattern = "Proton-Sarek*.tar.gz",
+       .repo = std::string(rs::kProtonSarekRepo), .asset_pattern = "Proton-Sarek*.tar.gz",
        .build_pattern = "Proton-Sarek*", .exclude = {"async"}},
       {.id = "wine_staging_tkg", .kind = "wine", .label = "Wine staging-tkg (Kron4ek)",
-       .repo = config.GetString("runner_sources.wine_staging_tkg.repo"), .asset_pattern = "wine-*-staging-tkg-amd64.tar.xz",
+       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-staging-tkg-amd64.tar.xz",
        .build_pattern = "wine-*-staging-tkg-amd64", .exclude = {}},
       {.id = "wine_staging", .kind = "wine", .label = "Wine staging (Kron4ek)",
-       .repo = config.GetString("runner_sources.wine_staging.repo"), .asset_pattern = "wine-*-staging-amd64.tar.xz",
+       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-staging-amd64.tar.xz",
        .build_pattern = "wine-*-staging-amd64", .exclude = {"tkg"}},
       {.id = "wine_vanilla", .kind = "wine", .label = "Wine (Kron4ek)",
-       .repo = config.GetString("runner_sources.wine_vanilla.repo"), .asset_pattern = "wine-*-amd64.tar.xz",
+       .repo = std::string(rs::kKron4ekRepo), .asset_pattern = "wine-*-amd64.tar.xz",
        .build_pattern = "wine-*-amd64", .exclude = {"staging"}},
       {.id = "wine_ge", .kind = "wine", .label = "Wine-GE (archived)",
        .repo = config.GetString("runner_sources.wine_ge.repo"),
        .asset_pattern = config.GetString("runner_sources.wine_ge.asset_pattern"),
        .build_pattern = "lutris-GE-Proton*", .exclude = {}},
       {.id = "wine_lutris", .kind = "wine", .label = "Lutris Wine (archived)",
-       .repo = config.GetString("runner_sources.wine_lutris.repo"), .asset_pattern = "wine-lutris-*-x86_64.tar.xz",
+       .repo = std::string(rs::kLutrisWineRepo), .asset_pattern = "wine-lutris-*-x86_64.tar.xz",
        .build_pattern = "lutris-*-x86_64", .exclude = {"GE-Proton"}},
   };
   if (kind.empty()) return all;
@@ -437,6 +436,9 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
   const Result<json> release = CurlJson(url);
   if (!release) return Err("release_api_error", std::format("couldn't read {}: {}", url, release.error().message),
                            kConnectionHint);
+  // GitHub and Forgejo answer a missing repository or release with {"message": "Not Found"}.
+  if (release->is_object() && release->value("message", std::string()) == "Not Found")
+    return Err("release_not_found", std::format("there's no release at {}", url));
   auto asset = AssetOf(*release, pattern, exclude);
   if (!asset) return Err("no_release_asset", std::format("the latest release at {} has no file matching {}", url, pattern));
   return *asset;
