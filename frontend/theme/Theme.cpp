@@ -70,26 +70,21 @@ std::filesystem::path UserThemeDir() {
 
 QString BundledPath(const QString& name) { return QString(":/themes/%1.toml").arg(name); }
 
-// A theme file, bundled or not, as text. Empty if it isn't there.
-std::string ReadThemeFile(const QString& name) {
-  const QString bundled = BundledPath(name);
-  if (QFile::exists(bundled)) {
-    QFile file(bundled);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-      return file.readAll().toStdString();
-    }
-  }
-  const std::filesystem::path user = UserThemeDir() / (name.toStdString() + ".toml");
-  QFile file(QString::fromStdString(user.string()));
-  if (file.open(QIODevice::ReadOnly | QIODevice::Text)) return file.readAll().toStdString();
-  return {};
+QString UserPath(const QString& name) {
+  return QString::fromStdString((UserThemeDir() / (name.toStdString() + ".toml")).string());
+}
+
+// A file's text, or empty if it isn't there.
+std::string ReadText(const QString& path) {
+  QFile file(path);
+  return file.open(QIODevice::ReadOnly | QIODevice::Text) ? file.readAll().toStdString()
+                                                          : std::string();
 }
 
 // Every key is optional: a value that is missing, misspelled or of the wrong
 // type leaves that token at its default rather than failing the whole file, so
 // a half-written theme still produces a usable window.
-Tokens ParseTokens(const std::string& text) {
-  Tokens tokens;
+Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   toml::parse_result parsed = toml::parse(text);
   if (!parsed) return tokens;
   const toml::table& table = parsed.table();
@@ -135,6 +130,17 @@ Tokens ParseTokens(const std::string& text) {
   number("tile_spacing", tokens.tile_spacing);
   number("grid_margin", tokens.grid_margin);
 
+  return tokens;
+}
+
+// A theme by name: the bundled one of that name if there is one, then the user's file of that
+// name over it, key by key.
+Tokens ReadTokens(const QString& name) {
+  Tokens tokens;
+  if (const std::string bundled = ReadText(BundledPath(name)); !bundled.empty())
+    tokens = ParseTokens(bundled);
+  if (const std::string user = ReadText(UserPath(name)); !user.empty())
+    tokens = ParseTokens(user, tokens);
   return tokens;
 }
 
@@ -302,8 +308,7 @@ void Restyle() {
 
 void ApplyResolved(const QString& resolved) {
   g_resolved = resolved;
-  const std::string text = ReadThemeFile(resolved);
-  g_theme_tokens = text.empty() ? Tokens{} : ParseTokens(text);
+  g_theme_tokens = ReadTokens(resolved);
   Restyle();
 }
 
@@ -360,8 +365,18 @@ void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {
 QString CurrentName() { return g_name; }
 
 Tokens Peek(const QString& name) {
-  const std::string text = ReadThemeFile(name == "auto" ? DesktopTheme() : name);
-  return text.empty() ? Tokens{} : ParseTokens(text);
+  return ReadTokens(name == "auto" ? DesktopTheme() : name);
+}
+
+void WriteUserCopies() {
+  std::error_code error;
+  std::filesystem::create_directories(UserThemeDir(), error);
+  for (const QString& name : {QString("mira-dark"), QString("mira-light")}) {
+    if (QFile::exists(UserPath(name))) continue;
+    QFile file(UserPath(name));
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+      file.write(QByteArray::fromStdString(ReadText(BundledPath(name))));
+  }
 }
 
 Notifier* Notifier::Instance() {

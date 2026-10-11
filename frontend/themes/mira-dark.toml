@@ -1,9 +1,10 @@
 # Mira's default dark theme.
 #
-# Copy this file to ~/.config/mira/themes/<name>.toml to make your own. Every
-# key is optional, and anything left out keeps the value below. Colors are
-# "#rrggbb" or "#rrggbbaa" (alpha last, as in CSS), so a translucent panel is
-# just a longer color.
+# Mira writes this file to ~/.config/mira/themes/ on its first start. Edit it
+# there to change the theme, or copy it to <name>.toml in the same folder to
+# make a theme of your own. Every key is optional: one left out keeps Mira's
+# built-in value. Colors are "#rrggbb" or "#rrggbbaa" (alpha last, as in CSS),
+# so a translucent panel is just a longer color.
 
 window = "#16181d"
 surface = "#1e2127"

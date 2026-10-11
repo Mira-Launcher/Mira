@@ -119,7 +119,7 @@ Quit goes through `QApplication::closeAllWindows()` so `LibraryWindow::closeEven
 
 `theme/Theme` sets the Fusion style, palette and stylesheet at startup instead of inheriting the desktop's.
 
-A theme is a TOML file of tokens. `themes/base.qss` is the only stylesheet, and every `@token` in it is filled from the current theme. `mira-dark` and `mira-light` are built in; user themes go in `$XDG_CONFIG_HOME/mira/themes/*.toml`. Missing or invalid keys fall back to the defaults. The `theme` pref is a theme name or `auto`, which follows the desktop's light/dark setting.
+A theme is a TOML file of tokens. `themes/base.qss` is the only stylesheet, and every `@token` in it is filled from the current theme. `mira-dark` and `mira-light` are built in; user themes go in `$XDG_CONFIG_HOME/mira/themes/*.toml`. On start, Mira writes `mira-dark.toml` and `mira-light.toml` there if they're missing, to edit or copy. A user file with a built-in theme's name applies over it key by key, so a key the file doesn't set (such as one a later version adds) keeps its built-in value. Missing or invalid keys fall back to the defaults. The `theme` pref is a theme name or `auto`, which follows the desktop's light/dark setting.
 
 `theme::Overrides` applies tile spacing, grid padding and corner radii from `frontend.toml` on top of any theme. A key left out of the file uses the theme's value.
 

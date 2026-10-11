@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
   mira_gui::theme::EnlargeAppFont();
+  mira_gui::theme::WriteUserCopies();
 
   // Mira closes to tray rather than quitting, so a second launch (another
   // double-click on the AppImage, another "Mira" from the app menu) must

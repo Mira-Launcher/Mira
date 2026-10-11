@@ -106,6 +106,11 @@ struct Overrides {
 void SetOverrides(const Overrides& overrides);
 const Overrides& CurrentOverrides();
 
+// Writes each bundled theme into the user's theme directory unless a file of that name is there
+// already, to edit or copy. A user file of a bundled theme's name applies over it key by key, so a
+// key it lacks (one added in a later version) still comes from the bundled theme.
+void WriteUserCopies();
+
 // Theme names, bundled ones first, then any *.toml in the user's theme
 // directory. Not including "auto", which is a resolution rule rather than a
 // theme (see Apply).
