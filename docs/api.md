@@ -483,6 +483,34 @@ A [job](#jobs) whose result is `{added, updated}`. Battle.net games are found by
 ### `POST /v1/launchers/{id}/open`
 Body `{action?: "launch"|"install", ref?}`. Opens the launcher, or asks it to launch or install a game by store id (a Battle.net product code such as `WTCG`, a Ubisoft id or an EA offer id). Not tracked.
 
+## Emulators
+
+Each emulator is a source of its own: DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4, Dolphin, Eden, Azahar, Mesen, Snes9x and mGBA. Its games are the files (or, for RPCS3 and shadPS4, the folders) in `<emulators.roms_root>/<name>`, which the user adds and Mira watches. They import as `<id>-<file>`, Ready, with runner `emulator:<id>`, which runs the emulator with the game's file. Dolphin comes from the system's packages; the rest download from their releases page into Mira's `tools/<id>` folder. `emulators.<id>.bin` points at another copy, and one on `PATH` is found. BIOS, firmware and keys are never downloaded. Removing an emulator keeps its games' files; deleting a game deletes its file and the files a `.cue`, `.gdi` or `.m3u` names.
+
+### `GET /v1/emulators`
+`[{id, name, consoles, extensions, folder_games, installed, path, version, package, rom_dir, firmware: [{id, label, required, present}]}]`. `version` is the release Mira downloaded, `package` the system packages feature that installs it (see `GET /v1/system/packages`), empty for one Mira downloads.
+
+### `POST /v1/emulators/{id}/install`
+Downloads the latest release over Mira's copy and marks the source added. A [job](#jobs) (kind `install`) whose result is the emulator as above. A package emulator fails with the packages fix. `already_installing`.
+
+### `POST /v1/emulators/{id}/files`
+Body `{"paths": [...], "move"?}`: copies the files, and the ones a `.cue`, `.gdi` or `.m3u` names, into the emulator's folder, or moves them when `move` (default `emulators.move_added`), then imports. A [job](#jobs) whose result is `{added, updated}`. Fails with `wrong_files` when the emulator takes none of them.
+
+### `POST /v1/emulators/{id}/import`
+Imports its folder again. A [job](#jobs) whose result is `{added, updated}`.
+
+### `POST /v1/emulators/{id}/firmware/{firmware}`
+Body `{"paths": [...]}`: puts a BIOS, keys or firmware where the emulator looks. A zip is unpacked (Switch firmware) and RPCS3 installs a `.PUP` itself. Returns the emulator.
+
+### `POST /v1/emulators/{id}/open`
+Opens the emulator alone, to change its settings. Not tracked.
+
+### `GET /v1/games/{id}/emulators`
+`[{id, name}]`: the other installed emulators the game could move to, sharing its console and taking its file.
+
+### `POST /v1/games/{id}/emulator`
+Body `{"emulator": "<id>"}`: moves the game's files into that emulator's folder. It keeps its id, art, tags and playtime. Returns the game. `already_there`.
+
 ## Sources
 
 ### `GET /v1/sources`

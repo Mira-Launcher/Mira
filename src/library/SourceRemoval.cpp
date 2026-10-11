@@ -7,6 +7,7 @@
 #include "amazon/Nile.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "emulators/Emulators.h"
 #include "epic/Legendary.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
@@ -24,9 +25,9 @@ bool IsStore(std::string_view source) {
   return source == "epic" || source == "gog" || source == "itch" || source == "amazon";
 }
 
-// Only the app owns these games' files.
+// Only the app owns these games' files. An emulator's games are the user's own, kept when it goes.
 bool FilesOwnedElsewhere(std::string_view source) {
-  return source == "steam" || source == "lutris" || source == "humble";
+  return source == "steam" || source == "lutris" || source == "humble" || emulators::Find(source) != nullptr;
 }
 
 bool Belongs(const model::Game& game, std::string_view source,
@@ -142,6 +143,13 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
     return {};
   }
   if (game.source == "itch" && !game.source_ref.empty()) return UninstallItch(config, game.source_ref);
+  if (emulators::ForGame(game) != nullptr) {
+    for (const fs::path& file : emulators::GameFiles(game)) {
+      if (auto deleted = DeleteInside(file.string(), {config.GetPath("emulators.roms_root")}); !deleted)
+        return deleted;
+    }
+    return {};
+  }
   // A program the game only runs (an emulator) isn't the game's to delete.
   if (RunsExternalProgram(game)) return {};
   const std::vector<fs::path> roots = DeleteRoots(config, game.data_dir);

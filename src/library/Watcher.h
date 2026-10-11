@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <set>
+#include <string>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -61,13 +63,18 @@ private:
     std::uintmax_t last_size = 0;
     std::int64_t stable_since_ms = 0;
     bool is_archive = false;  // extract-and-remove on settle, instead of scanning it as a folder
+    std::string emulator;     // in this emulator's games folder: imported into it on settle
   };
 
   void HandleInotify();
   void HandleDebounceTick();
-  void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path, bool is_archive);
+  void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path, bool is_archive,
+                     const std::string& emulator = {});
+  // Imports into each emulator and fetches art for what it added.
+  void ImportRoms(const std::set<std::string>& emulators);
   void RearmTimer();
-  // Drops every root watch and adds library_roots afresh. Run()'s thread only.
+  // Drops every root watch and adds library_roots and each added emulator's games folder afresh. Run()'s
+  // thread only.
   void WatchRoots();
   // Watches `dir` for changes in `root`, and the sorting folders inside it (FolderTags.h).
   void WatchFolder(const std::filesystem::path& root, const std::filesystem::path& dir);
@@ -95,6 +102,7 @@ private:
   struct Watched {
     std::filesystem::path root;
     std::filesystem::path dir;  // the root, or a sorting folder in it
+    std::string emulator = {};  // an emulator's games folder, not a library root
   };
   std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
   std::atomic<int> roots_watched_{0};

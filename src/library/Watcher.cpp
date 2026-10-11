@@ -15,6 +15,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 #include "library/ArchiveExtractor.h"
 #include "library/FolderTags.h"
 #include "library/Scanner.h"
@@ -131,6 +132,18 @@ void Watcher::WatchRoots() {
     }
     WatchFolder(root, root);
   }
+  for (const emulators::Emulator& emulator : emulators::All()) {
+    if (!games_.Source(emulator.id).added) continue;
+    const fs::path dir = emulators::RomDir(config_, emulator);
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
+    if (wd < 0) {
+      log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
+      continue;
+    }
+    watches_[wd] = {.root = dir, .dir = dir, .emulator = emulator.id};
+  }
   ++roots_watched_;  // events queue in inotify from here, read once the loop runs
 }
 
@@ -180,11 +193,11 @@ void Watcher::RearmTimer() {
   timerfd_settime(timer_fd_, 0, &spec, nullptr);
 }
 
-void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive) {
-  std::error_code ec;
+void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive, const std::string& emulator) {
   Pending entry;
   entry.root = root;
   entry.is_archive = is_archive;
+  entry.emulator = emulator;
   entry.last_size = is_archive ? ArchiveSize(path) : TotalSize(path);
   entry.stable_since_ms = NowMs();
   pending_[path.string()] = entry;
@@ -249,6 +262,7 @@ void Watcher::HandleInotify() {
   // rather than assumed to be one event per read.
   alignas(inotify_event) char buffer[4096];
   std::set<fs::path> deleted_from;  // roots to rescan once the queue is drained
+  std::set<std::string> roms_deleted;  // emulators to import into once it is
   bool settings_saved = false;
 
   // Computed once per call, not per event: a runner build being downloaded
@@ -280,6 +294,16 @@ void Watcher::HandleInotify() {
       if (event->len == 0) continue;
       const fs::path root = watched->second.root;
       const fs::path path = watched->second.dir / event->name;
+      if (const std::string& emulator = watched->second.emulator; !emulator.empty()) {
+        if (std::string_view(event->name).starts_with('.')) continue;
+        if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+          ScheduleCheck(root, path, /*is_archive=*/false, emulator);
+        } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+          pending_.erase(path.string());
+          roms_deleted.insert(emulator);
+        }
+        continue;
+      }
 
       if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
         if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
@@ -311,6 +335,7 @@ void Watcher::HandleInotify() {
     }
   }
   if (settings_saved && on_settings_saved_) on_settings_saved_();
+  if (!roms_deleted.empty()) ImportRoms(roms_deleted);
   // A deletion needs no debounce: rescan now so a removed game is marked
   // missing promptly. Once per root, however many entries went at once.
   if (!deleted_from.empty()) {
@@ -347,9 +372,14 @@ void Watcher::HandleDebounceTick() {
   if (!settled.empty()) {
     // Extractions run one by one; each root is scanned once afterwards, however many paths settled in it.
     std::set<fs::path> to_scan;
+    std::set<std::string> roms;
     for (const std::string& path : settled) {
       const Pending entry = pending_.at(path);
       pending_.erase(path);
+      if (!entry.emulator.empty()) {
+        roms.insert(entry.emulator);
+        continue;
+      }
 
       if (entry.is_archive) {
         const fs::path archive(path);
@@ -372,8 +402,20 @@ void Watcher::HandleDebounceTick() {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
     }
+    if (!roms.empty()) ImportRoms(roms);
   }
   RearmTimer();
+}
+
+void Watcher::ImportRoms(const std::set<std::string>& ids) {
+  for (const std::string& id : ids) {
+    const emulators::Emulator* emulator = emulators::Find(id);
+    if (emulator == nullptr) continue;
+    log::Info("{}'s games folder changed, importing", emulator->name);
+    const auto summary = emulators::Import(config_, games_, events_, *emulator);
+    if (!summary) continue;
+    for (const model::Game& game : summary->added_games) metadata_fetches_->Enqueue(config_, events_, game);
+  }
 }
 
 }  // namespace mira::library

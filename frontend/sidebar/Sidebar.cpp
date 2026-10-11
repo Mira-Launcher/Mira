@@ -23,6 +23,7 @@
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/DesktopEntryImportDialog.h"
@@ -524,6 +525,14 @@ void Sidebar::RefreshSources() {
     if (!result.ok) return;
     for (const LauncherInfo& launcher : result.launchers) {
       source_ready_[QString::fromStdString(launcher.id)] = launcher.installed;
+    }
+    UpdateSources();
+  });
+  // An emulator once it's there to run.
+  api::GetEmulatorsAsync(this, [this](EmulatorsResult result) {
+    if (!result.ok) return;
+    for (const EmulatorInfo& emulator : result.emulators) {
+      source_ready_[QString::fromStdString(emulator.id)] = emulator.installed;
     }
     UpdateSources();
   });

@@ -19,6 +19,7 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Library.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Stores.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -174,6 +175,24 @@ void SourcesPage::OpenSetup(const QString& id) {
   const auto entry = std::ranges::find(entries_, id, [](const SourceEntry& e) { return e.source.id; });
   if (entry == entries_.end()) return;
   const SourceInfo source = entry->source;
+
+  // Added at once and its page opened, where it installs; one Mira downloads starts downloading now.
+  if (source.kind == SourceInfo::Kind::Emulator) {
+    api::AddSourceAsync(this, id.toStdString(), [this, id](PatchConfigResult r) {
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      emit Imported(id);
+      emit OpenRequested(id);
+    });
+    api::GetEmulatorsAsync(this, [this, id](EmulatorsResult result) {
+      if (!result.ok) return;
+      const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
+      if (it == result.emulators.end() || it->installed || !it->package.empty()) return;
+      api::InstallEmulatorAsync(this, it->id, [this, name = QString::fromStdString(it->name)](StoreActionResult r) {
+        if (!r.ok) notify::FailedRequest(this, "Could not install " + name + ".", r.error);
+      });
+    });
+    return;
+  }
 
   if (setup_overlay_ == nullptr) {
     setup_overlay_ = new ModalOverlay(this);

@@ -10,7 +10,9 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Artwork.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
+#include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "GameActions.h"
 #include "GameLibraryModel.h"
@@ -36,6 +38,24 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
   play->setEnabled(CanPlayOrStop(game));
   if (extra) extra(menu);
+  // An emulator's game moves to another one for its console; filled in when mirad answers.
+  const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
+  if (source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
+    QMenu* run_with = menu.addMenu("Run with");
+    run_with->setEnabled(false);
+    api::GetGameEmulatorsAsync(run_with, id, [this, run_with, id, name](EmulatorChoicesResult result) {
+      if (!result.ok || result.emulators.empty()) return;
+      for (const EmulatorChoice& choice : result.emulators) {
+        const QString emulator = QString::fromStdString(choice.name);
+        run_with->addAction(emulator, this, [this, id, name, emulator, to = choice.id] {
+          api::MoveGameToEmulatorAsync(parent_, id, to, [this, name, emulator](StoreActionResult moved) {
+            if (!moved.ok) notify::FailedRequest(parent_, "Could not move " + name + " to " + emulator + ".", moved.error);
+          });
+        });
+      }
+      run_with->setEnabled(true);
+    });
+  }
   QAction* details = menu.addAction("Game settings…");
   QAction* folder = menu.addAction("Open install folder");
   QAction* more_details = menu.addAction("More details…");

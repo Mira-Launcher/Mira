@@ -1250,6 +1250,45 @@ struct LauncherInfo {
   std::vector<LauncherApp> apps;  // Microsoft 365's, listed before it's installed too
 };
 
+// GET /v1/emulators: one emulator source's state.
+struct EmulatorFirmware {
+  std::string id;
+  std::string label;
+  bool required = true;
+  bool present = false;
+};
+
+struct EmulatorInfo {
+  std::string id;  // also its games' `source`
+  std::string name;
+  std::vector<std::string> extensions;  // ".sfc", lower case
+  bool folder_games = false;            // its games are folders (PS3, PS4), not files
+  bool installed = false;
+  std::string path;
+  std::string version;  // the release Mira downloaded, empty for a package or a chosen program
+  std::string package;  // the system packages feature that installs it, empty when Mira downloads it
+  std::string rom_dir;
+  std::vector<EmulatorFirmware> firmware;
+};
+
+struct EmulatorsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<EmulatorInfo> emulators;
+};
+
+// GET /v1/games/{id}/emulators: the other emulators a game can move to.
+struct EmulatorChoice {
+  std::string id;
+  std::string name;
+};
+
+struct EmulatorChoicesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<EmulatorChoice> emulators;
+};
+
 struct LaunchersResult {
   bool ok = false;
   ApiError error;

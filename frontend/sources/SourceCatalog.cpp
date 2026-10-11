@@ -15,7 +15,7 @@ namespace mira_gui {
 namespace {
 
 constexpr int kTileWidth = 280;
-const QStringList kGroups = {"Stores", "Launchers", "Apps", "On this computer"};
+const QStringList kGroups = {"Stores", "Launchers", "Apps", "Emulators", "On this computer"};
 
 int GroupOf(const SourceInfo& source) {
   if (CopyFor(source.id.toStdString()).item == "app") return 2;
@@ -24,10 +24,12 @@ int GroupOf(const SourceInfo& source) {
       return 0;
     case SourceInfo::Kind::Launcher:
       return 1;
-    case SourceInfo::Kind::Local:
+    case SourceInfo::Kind::Emulator:
       return 3;
+    case SourceInfo::Kind::Local:
+      return 4;
   }
-  return 3;
+  return 4;
 }
 
 // What setting it up takes, in a few words.
@@ -39,6 +41,8 @@ QString Needs(const SourceInfo& source) {
       return "Mira installs its launcher";
     case SourceInfo::Kind::Local:
       return "Reads what's on this computer";
+    case SourceInfo::Kind::Emulator:
+      return "Plays " + source.plays + " games";
   }
   return {};
 }

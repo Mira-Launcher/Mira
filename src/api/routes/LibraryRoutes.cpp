@@ -8,6 +8,7 @@
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "api/Services.h"
+#include "emulators/Emulators.h"
 #include "core/Command.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
@@ -32,8 +33,12 @@ namespace {
 using httplib::Request;
 
 // Known sources, in default order.
-const std::vector<std::string> kSourceIds = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
-                                             "humble", "battlenet", "ubisoft", "ea", "office", "adobe", "lutris"};
+const std::vector<std::string> kSourceIds = [] {
+  std::vector<std::string> ids = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
+                                  "humble", "battlenet", "ubisoft", "ea", "office", "adobe", "lutris"};
+  for (const emulators::Emulator& emulator : emulators::All()) ids.push_back(emulator.id);
+  return ids;
+}();
 
 using httplib::Response;
 using nlohmann::json;

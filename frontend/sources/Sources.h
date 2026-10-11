@@ -18,11 +18,13 @@ struct SourceInfo {
     Store,     // a helper tool, an account, and what the account owns
     Launcher,  // a Windows launcher installed into its own prefix
     Local,     // games already on this computer: another program's, or from no source at all
+    Emulator,  // an emulator, and the games you add to it
   };
   QString id;    // mirad's own name: "steam", "epic", ...; also the games' `source`
   QString name;  // shown in the sidebar and as the page title
   Kind kind = Kind::Local;
   QColor color;  // the source's icon tile
+  QString plays = {};  // an emulator's consoles, "PlayStation 2"
 };
 
 const std::vector<SourceInfo>& AllSources();
@@ -30,7 +32,7 @@ const std::vector<SourceInfo>& AllSources();
 // nullptr for a source id Mira doesn't list (a scanned or manual game).
 const SourceInfo* FindSourceInfo(const QString& id);
 
-// "Store", "Launcher" or "On this computer", for the small tag beside a source's name.
+// "Store", "Launcher", "Emulator" or "On this computer", for the small tag beside a source's name.
 QString KindLabel(SourceInfo::Kind kind);
 
 // The listed source a game with this `source` belongs to: its own when listed, "local" for games

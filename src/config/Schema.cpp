@@ -7,6 +7,7 @@
 #include "config/KnownExePatterns.h"
 #include "config/RunnerSources.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 
 namespace mira::config {
 namespace {
@@ -116,8 +117,10 @@ std::string SourceOf(std::string_view key) {
   static constexpr std::string_view kSources[] = {"steam", "epic", "gog", "itch", "humble", "amazon",
                                                   "lutris", "battlenet", "ubisoft", "ea", "office"};
   if (key.starts_with("launchers.")) key.remove_prefix(std::string_view("launchers.").size());
+  if (key.starts_with("emulators.")) key.remove_prefix(std::string_view("emulators.").size());
   const std::string_view head = key.substr(0, key.find('.'));
   if (head.size() == key.size()) return {};
+  if (emulators::Find(head) != nullptr) return std::string(head);
   return std::ranges::find(kSources, head) != std::end(kSources) ? std::string(head) : std::string();
 }
 
@@ -1014,6 +1017,32 @@ Schema::Schema() {
          .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as your own "
                 "build. Empty downloads them.",
          .path = PathKind::Folder});
+
+  // --- Emulators -------------------------------------------------------------
+  s.Section("Emulators", "Emulators");
+
+  s.Add({.key = "emulators.roms_root",
+         .label = "Games folder",
+         .type = Type::String,
+         .default_value = "~/Mira/Roms",
+         .doc = "Each emulator keeps its games in a folder of its own here, which Mira watches.",
+         .path = PathKind::Folder});
+
+  s.Add({.key = "emulators.move_added",
+         .label = "Move added games",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Games you add to an emulator are moved into its folder instead of copied."});
+
+  for (const emulators::Emulator& emulator : emulators::All()) {
+    s.Add({.key = std::format("emulators.{}.bin", emulator.id),
+           .label = std::format("{} program", emulator.name),
+           .type = Type::String,
+           .default_value = "",
+           .doc = std::format("The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
+                              emulator.name),
+           .path = PathKind::File});
+  }
 
   // --- Detection -------------------------------------------------------------
   s.Section("Detection", "Scoring");

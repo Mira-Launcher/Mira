@@ -83,6 +83,10 @@ Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config, con
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
                                 const ReleaseAsset& asset, const std::function<void(double)>& on_progress = {});
 
+// The latest release's asset matching `pattern`, from a GitHub or Forgejo ".../releases/latest" API url.
+Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pattern,
+                                   const std::vector<std::string>& exclude = {});
+
 // Downloads and installs a tool binary that isn't a runner build (gogdl,
 // butler, ...) into "<config dir>/tools/<tool_name>/<binary_name>",
 // returning that path. How `asset` unpacks depends on its own name: a

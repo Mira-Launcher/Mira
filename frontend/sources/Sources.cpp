@@ -22,6 +22,17 @@ const std::vector<SourceInfo>& AllSources() {
       {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01")},
       {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26")},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
+      {"duckstation", "DuckStation", Kind::Emulator, QColor("#c99a1e"), "PlayStation"},
+      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#2b6cb0"), "PlayStation 2"},
+      {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#2f8fcf"), "PSP"},
+      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#3d3d99"), "PlayStation 3"},
+      {"shadps4", "shadPS4", Kind::Emulator, QColor("#5865f2"), "PlayStation 4"},
+      {"dolphin", "Dolphin", Kind::Emulator, QColor("#1f9bd8"), "GameCube and Wii"},
+      {"eden", "Eden", Kind::Emulator, QColor("#7b3fe4"), "Switch"},
+      {"azahar", "Azahar", Kind::Emulator, QColor("#e0582b"), "3DS"},
+      {"mesen", "Mesen", Kind::Emulator, QColor("#3f7a3f"), "NES, SNES, Game Boy and PC Engine"},
+      {"snes9x", "Snes9x", Kind::Emulator, QColor("#8a4fbf"), "SNES"},
+      {"mgba", "mGBA", Kind::Emulator, QColor("#6a3d9a"), "Game Boy and Game Boy Advance"},
   };
   return sources;
 }
@@ -40,6 +51,8 @@ QString KindLabel(SourceInfo::Kind kind) {
       return "Launcher";
     case SourceInfo::Kind::Local:
       return "On this computer";
+    case SourceInfo::Kind::Emulator:
+      return "Emulator";
   }
   return {};
 }

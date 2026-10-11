@@ -13,6 +13,7 @@
 #include "config/Schema.h"
 #include "core/Log.h"
 #include "runner/Downloader.h"
+#include "runner/EmulatorRunner.h"
 #include "runner/NativeRunner.h"
 #include "runner/ProtonRunner.h"
 #include "runner/SteamRunner.h"
@@ -71,6 +72,8 @@ RunnerRegistry::RunnerRegistry(config::Config& config) : config_(config) {
   runners_[proton->kind()] = std::move(proton);
   runners_[wine->kind()] = std::move(wine);
   runners_[steam->kind()] = std::move(steam);
+  auto emulator = std::make_unique<EmulatorRunner>(config);
+  runners_[emulator->kind()] = std::move(emulator);
 }
 
 // One build, discovered once. On a normal Arch/Steam setup `~/.steam/steam`

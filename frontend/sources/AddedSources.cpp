@@ -8,6 +8,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../settings/SettingsCard.h"
@@ -233,6 +234,8 @@ void AddedSources::Import(const QString& id) {
     api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (tile.entry.source.kind == SourceInfo::Kind::Launcher) {
     api::ImportLauncherAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+  } else if (tile.entry.source.kind == SourceInfo::Kind::Emulator) {
+    api::ImportEmulatorAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else {
     api::ImportStoreAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   }

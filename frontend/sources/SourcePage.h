@@ -93,10 +93,14 @@ signals:
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
+  // An emulator's page takes its games as dropped files.
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
 
 private:
   bool IsStore() const { return source_.kind == SourceInfo::Kind::Store; }
   bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
+  bool IsEmulator() const { return source_.kind == SourceInfo::Kind::Emulator; }
   bool HasImport() const;
   bool HasOwned() const;
   // The source has a list of what the account owns, as opposed to a note saying it has none.
@@ -117,6 +121,10 @@ private:
   void RefreshStatus();
   void ApplyStoreStatus(const StoreStatusResult& status);
   void ApplyLauncher(const LauncherInfo& launcher);
+  void ApplyEmulator(const EmulatorInfo& emulator);
+  // Asks for an emulator's games: files it takes, or folders for one whose games are folders.
+  void PickGames();
+  void AddGames(const std::vector<std::string>& paths);
   void UpdateStatusLine();
   void Import();
   // `fresh` waits for the store's own answer rather than the list mirad stored.
@@ -149,6 +157,7 @@ private:
   std::string tool_version_;
   std::string launcher_game_id_;
   std::string launcher_prefix_;
+  EmulatorInfo emulator_;
   std::string account_;
   int library_count_ = 0;
   QSize tile_;

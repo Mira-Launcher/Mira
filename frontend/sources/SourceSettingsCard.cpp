@@ -22,6 +22,9 @@ namespace {
 bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   const std::string id = source.id.toStdString();
   if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + ".")) return true;
+  if (source.kind == SourceInfo::Kind::Emulator &&
+      (key.starts_with("emulators." + id + ".") || key == "emulators.move_added" || key == "emulators.roms_root"))
+    return true;
   // runner has its own row, collections their own dialog.
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
