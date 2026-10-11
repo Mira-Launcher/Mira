@@ -17,7 +17,6 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
-#include "core/Strings.h"
 #include "library/Detector.h"
 #include "library/Relocate.h"
 #include "runner/Exec.h"
@@ -76,13 +75,13 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
   constexpr char kPlain[] = "SELECT id, name, slug, runner, configpath FROM games;";
   constexpr char kWithCategories[] =
       "SELECT games.id AS id, games.name AS name, games.slug AS slug, games.runner AS runner, "
-      "games.configpath AS configpath, group_concat(categories.name, char(31)) AS categories FROM games "
+      "games.configpath AS configpath, json_group_array(categories.name) AS categories FROM games "
       "LEFT JOIN games_categories ON games_categories.game_id = games.id "
       "LEFT JOIN categories ON categories.id = games_categories.category_id GROUP BY games.id;";
   constexpr char kWithPlay[] =
       "SELECT games.id AS id, games.name AS name, games.slug AS slug, games.runner AS runner, "
       "games.configpath AS configpath, games.lastplayed AS lastplayed, games.playtime AS playtime, "
-      "group_concat(categories.name, char(31)) AS categories FROM games "
+      "json_group_array(categories.name) AS categories FROM games "
       "LEFT JOIN games_categories ON games_categories.game_id = games.id "
       "LEFT JOIN categories ON categories.id = games_categories.category_id GROUP BY games.id;";
   Result<json> parsed = Query(sqlite3_bin, pga_db, kWithPlay);
@@ -102,8 +101,11 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
         .lastplayed = core::JsonInt(row, "lastplayed"),
         .playtime_hours = row.contains("playtime") && row["playtime"].is_number() ? row["playtime"].get<double>() : 0,
     };
-    for (const std::string& category : strings::Split(core::JsonString(row, "categories"), '\x1f')) {
-      if (!category.empty()) entry.categories.push_back(TagForCategory(category));
+    // A JSON array: sqlite3 3.45's -json mangles control characters, so no separator is safe.
+    const json categories = json::parse(core::JsonString(row, "categories", "[]"), nullptr, false);
+    for (const json& category : categories.is_array() ? categories : json::array()) {
+      if (category.is_string() && !category.get<std::string>().empty())
+        entry.categories.push_back(TagForCategory(category.get<std::string>()));
     }
     rows.push_back(std::move(entry));
   }
