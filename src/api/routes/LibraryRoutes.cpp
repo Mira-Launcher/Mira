@@ -33,7 +33,7 @@ using httplib::Request;
 
 // Known sources, in default order.
 const std::vector<std::string> kSourceIds = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
-                                             "humble", "battlenet", "ubisoft", "ea", "office", "lutris"};
+                                             "humble", "battlenet", "ubisoft", "ea", "office", "adobe", "lutris"};
 
 using httplib::Response;
 using nlohmann::json;

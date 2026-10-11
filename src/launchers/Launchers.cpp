@@ -15,6 +15,7 @@
 #include <thread>
 
 #include "core/Lane.h"
+#include "launchers/AdobeWine.h"
 #include "core/LogHub.h"
 #include "launchers/Office.h"
 #include "core/Log.h"
@@ -191,14 +192,19 @@ std::string InstallLine(const Launcher& launcher, double percent, std::chrono::s
   return line + "\n";
 }
 
-// Stops everything running in `prefix`: asks, then insists. The installer's own session has done its job.
-void EndSession(const Launcher& launcher, const std::string& prefix) {
+// Asks everything in `prefix` to quit, then insists.
+void StopPrefix(const std::string& prefix) {
   const auto alive = [&] { return !proc::FindPrefixProcesses(prefix).empty(); };
-  if (!alive()) return;
-  Say(launcher, "Closing what the installer left running");
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGTERM);
   for (int i = 0; i < 20 && alive(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(500));
   for (pid_t pid : proc::FindPrefixProcesses(prefix)) ::kill(pid, SIGKILL);
+}
+
+// Stops everything running in `prefix`. The installer's own session has done its job.
+void EndSession(const Launcher& launcher, const std::string& prefix) {
+  if (proc::FindPrefixProcesses(prefix).empty()) return;
+  Say(launcher, "Closing what the installer left running");
+  StopPrefix(prefix);
 }
 
 // `is_done` replaces the check for `step.done`'s file.
@@ -367,11 +373,34 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   return {};
 }
 
+// mshtml's registration (its text/html handler), skipped when the prefix was made with mshtml turned off.
+Result<void> RegisterMshtml(const runner::RunnerRegistry& runners, const model::Game& game) {
+  const auto resolved = runners.Resolve(game.runner_ref);
+  if (!resolved) return std::unexpected(resolved.error());
+  for (const char* dir : {"system32", "syswow64"}) {
+    model::Game run_as = game;
+    run_as.install_path = (fs::path(game.data_dir) / "drive_c/windows" / dir).string();
+    run_as.exe_path = "regsvr32.exe";
+    run_as.args = "/s mshtml.dll";
+    auto command = resolved->runner->BuildCommand(run_as, resolved->build);
+    if (!command) return std::unexpected(command.error());
+    const auto ran = runner::RunAndWait(*command);
+    if (!ran) return std::unexpected(ran.error());
+    if (ran->exit_code != 0) {
+      return Err("install_failed", std::format("registering mshtml in {} failed (exit {})", dir, ran->exit_code));
+    }
+  }
+  return {};
+}
+
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games, const Launcher& launcher,
                                 const std::function<void(double)>& on_progress) {
   // Before the prefix and downloads, rather than failing at the first winetricks verb.
   if (!launcher.tricks.empty()) {
     if (auto ready = system::RequireFeature("winetricks", launcher.name); !ready) return std::unexpected(ready.error());
+  }
+  if (launcher.id == "adobe") {
+    if (auto ready = system::RequireFeature("adobe", launcher.name); !ready) return std::unexpected(ready.error());
   }
   const std::string id = GameId(launcher);
   model::Game game = games.Find(id).value_or(model::Game{});
@@ -381,9 +410,20 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   game.source = "launcher";
   game.source_ref = launcher.id;
   game.platform = model::Platform::Windows;
+  // Creative Cloud is an app of its own, in the library beside Photoshop.
+  if (launcher.id == "adobe" && !std::ranges::contains(game.tags, "app")) game.tags.push_back("app");
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
+  // Creative Cloud needs AdobeWine, the build launchers.adobe.adobewine_url picks, also in an entry an
+  // older install left on another runner.
+  if (launcher.id == "adobe" && config.GetString("launchers.runner").empty()) {
+    auto ref = adobewine::Runtime(config, [&launcher](const std::string& line) { Say(launcher, line); });
+    if (!ref) return std::unexpected(ref.error());
+    // Another Wine's server still running in the prefix would refuse this one.
+    if (*ref != game.runner_ref && !game.data_dir.empty()) EndSession(launcher, game.data_dir);
+    game.runner_ref = *ref;
+  }
   if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config, games, game).string();
   game.status = model::GameStatus::SettingUp;
   game.last_error.clear();
@@ -414,6 +454,16 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
       Say(launcher, std::format("winetricks {} ({}/{})", verb, ++trick, launcher.tricks.size()));
       const auto on_output = [&launcher](std::string_view chunk) { loghub::Append(LogChannel(launcher), chunk); };
       if (auto tricked = runner::RunTricksVerb(runners, game, verb, on_output); !tricked) return std::unexpected(tricked.error());
+    }
+    if (launcher.needs_mshtml) {
+      Say(launcher, "Registering mshtml");
+      if (auto registered = RegisterMshtml(runners, game); !registered) return std::unexpected(registered.error());
+    }
+    if (launcher.id == "adobe") {
+      Say(launcher, "Writing Creative Cloud's settings");
+      if (auto prepared = adobewine::Prepare(runners, game, paths::UserDir() / "downloads"); !prepared) {
+        return std::unexpected(prepared.error());
+      }
     }
     if (launcher.id == "office") {
       Say(launcher, "Writing Microsoft 365's settings and installing its compatibility shims");
@@ -468,6 +518,10 @@ std::string WithoutNoise(std::string_view text) {
 
 const std::vector<Launcher>& All() {
   static const std::vector<Launcher> kLaunchers = [] {
+    // The Edge WebView2 runtime, which sign-in windows and installers draw with.
+    const Setup kWebView2{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
+                          "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe", nullptr, {}, {}, true};
+
     Launcher battlenet;
     battlenet.id = "battlenet";
     battlenet.name = "Battle.net";
@@ -503,13 +557,41 @@ const std::vector<Launcher>& All() {
     m365.kind = "apps";
     // Set up is the prefix and the Edge WebView2 runtime Office signs in with; each app is then installed
     // on its own through SetOfficeApps.
-    m365.exe = "Program Files (x86)/Microsoft/EdgeWebView/Application/msedgewebview2.exe";
+    m365.exe = kWebView2.done;
     m365.tricks = {"corefonts", "msxml6", "riched20", "gdiplus"};
-    m365.setups = {{"https://go.microsoft.com/fwlink/?linkid=2124701", "webview2-setup.exe", {"/silent", "/install"},
-                    "", nullptr, {}, {}, true}};
+    m365.setups = {kWebView2};
     // Office presents with sync interval 0; under DXVK that tears into flicker.
     m365.env = {{"PROTON_USE_XALIA", "0"}, {"DXVK_CONFIG", "dxgi.syncInterval = 1"}};
-    return std::vector<Launcher>{battlenet, ubisoft, ea, m365};
+    Launcher adobe;
+    adobe.id = "adobe";
+    adobe.name = "Adobe Creative Cloud";
+    adobe.kind = "apps";
+    // Not the 32-bit stub in Program Files (x86), which only starts this one and exits: Mira tracks what runs.
+    adobe.exe = "Program Files/Adobe/Adobe Creative Cloud/ACC/Creative Cloud.exe";
+    // On AdobeWine, set up as its own prefix script does: real fonts (Creative Cloud's renderer crashes without
+    // them), the shader compiler Audition uses, DXVK and vkd3d-proton.
+    adobe.tricks = {"corefonts", "tahoma", "d3dcompiler_47", "dxvk", "vkd3d"};
+    // Creative Cloud's helpers write to heap blocks after freeing them; AdobeWine keeps those out of reuse.
+    adobe.env = {{"WINE_HEAP_QUARANTINE",
+                  "Creative Cloud.exe;Creative Cloud Helper.exe;Creative Cloud UI Helper.exe;Adobe Desktop Service.exe;"
+                  "node.exe;CCXProcess.exe;CoreSync.exe;CRLogTransport.exe;HDHelper.exe;AdobeIPCBroker.exe;"
+                  "AdobeUpdateService.exe"}};
+    // Its installer signs in on an mshtml page, so it needs mshtml registered and Wine Gecko, which prefixes are
+    // made without.
+    const Setup kGecko64{"https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi",
+                         "wine-gecko-2.47.4-x86_64.msi", {"/quiet"}, "windows/system32/gecko/2.47.4/wine_gecko/xul.dll",
+                         nullptr};
+    const Setup kGecko32{"https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86.msi",
+                         "wine-gecko-2.47.4-x86.msi", {"/quiet"}, "windows/syswow64/gecko/2.47.4/wine_gecko/xul.dll",
+                         nullptr};
+    adobe.setups = {kGecko64, kGecko32, kWebView2,
+                    {"https://prod-rel-ffc-ccm.oobesaas.adobe.com/adobe-ffc-external/core/v1/wam/download"
+                     "?sapCode=KCCC&productName=Creative%20Cloud&os=win",
+                     "creative-cloud-setup.exe", {}, "", nullptr}};
+    adobe.interactive = true;
+    adobe.stop_ends_session = true;
+    adobe.needs_mshtml = true;
+    return std::vector<Launcher>{battlenet, ubisoft, ea, m365, adobe};
   }();
   return kLaunchers;
 }
@@ -662,8 +744,8 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
     }
   }
   run_as.args.clear();
-  // A Microsoft 365 app is its own program in the shared prefix.
-  if (launcher->id == "office" && game.source != "launcher" && !game.exe_path.empty()) {
+  // An app (Word, Photoshop) is its own program in the shared prefix.
+  if (launcher->kind == "apps" && game.source != "launcher" && !game.exe_path.empty()) {
     run_as.install_path = game.install_path;
     run_as.exe_path = game.exe_path;
     // Proton's default verb waits for the prefix's running apps to exit first, so a second app wouldn't
@@ -693,6 +775,11 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
                                           install ? "download" : "launch", ref));
     }
   }
+  if (launcher->id == "adobe") {
+    adobewine::UseIeSignIn(host->data_dir);
+    // Creative Cloud draws with Chromium, where with GPU vsync a page change can stay off screen until a repaint.
+    if (game.source == "launcher") command->argv.push_back("--disable-gpu-vsync");
+  }
   return command;
 }
 
@@ -705,8 +792,19 @@ std::string WindowsDir(const model::Game& game) {
 }
 
 std::string TrackedPath(const model::Game& game) {
-  if (game.source == "office" && !game.exe_path.empty()) return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
+  const Launcher* launcher = ForGame(game);
+  if (launcher && launcher->kind == "apps" && game.source != "launcher" && !game.exe_path.empty()) {
+    return WindowsDir(game) + "/" + strings::ToLower(game.exe_path);
+  }
+  // A launcher's own folder from its definition, also for an entry an older install registered elsewhere.
+  if (launcher && game.source == "launcher" && launcher->stop_ends_session) {
+    return strings::ToLower("c:/" + fs::path(launcher->exe).parent_path().generic_string());
+  }
   return WindowsDir(game);
+}
+
+void EndPrefixSession(const std::string& prefix) {
+  std::thread([prefix] { StopPrefix(prefix); }).detach();
 }
 
 fs::path HostPath(const fs::path& prefix, std::string_view windows_path) {

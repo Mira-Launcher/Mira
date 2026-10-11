@@ -71,9 +71,9 @@ void RemoveAllDesktopEntries(QWidget* parent) {
   // remove every mira-<id>.desktop entry rather than immediately rewriting
   // them (see desktop::DesktopEntries::Sync), so there's no "wipe once, stay
   // enabled" concept, so this is honest about turning the setting off too.
-  if (!notify::Confirm(parent, "Remove All Desktop Entries",
+  if (!notify::Confirm(parent, "Remove all desktop entries",
                        "This turns off desktop entries and deletes every one Mira generated. "
-                       "Re-enable them any time in Settings → Desktop Entries.",
+                       "Re-enable them any time in Settings → Desktop entries.",
                        "Remove all", /*destructive=*/true)) {
     return;
   }
@@ -94,7 +94,7 @@ void RemoveAllDesktopEntries(QWidget* parent) {
 }
 
 void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& id)> game_name) {
-  if (!notify::Confirm(parent, "Move Games into Mira's Folders",
+  if (!notify::Confirm(parent, "Move every game to Mira's folders",
                        "Move every game's files into your games folder, and each prefix into the prefixes "
                        "folder, named after the game? Games installed by a store (Steam, Epic, GOG, itch.io) "
                        "keep their install folder; only the prefix moves. Games on another drive are copied "

@@ -4,9 +4,9 @@
 
 # Mira
 
-**One library for every game on your Linux PC.**
+**One library for every game and app on your Linux PC.**
 
-Native games, Windows games through Wine and Proton, and your Steam, Epic, GOG, itch.io, Amazon and Humble libraries, side by side in one place.
+Native games, Windows games through Wine and Proton, and your Steam, Epic, GOG, itch.io, Amazon and Humble libraries, side by side in one place. Windows apps like Microsoft 365 and Adobe Creative Cloud can live there too.
 
 [![Latest release](https://img.shields.io/github/v/release/Mira-Launcher/Mira?label=release)](https://github.com/Mira-Launcher/Mira/releases/latest)
 [![License: GPLv3](https://img.shields.io/github/license/Mira-Launcher/Mira)](LICENSE)
@@ -18,7 +18,7 @@ Native games, Windows games through Wine and Proton, and your Steam, Epic, GOG, 
 
 ## What Mira does
 
-Mira is a game launcher for Linux. Drop a game folder into a watched directory and Mira notices it, works out which program starts it, picks a runner, sets up a Wine prefix if it needs one and adds it to your library with its cover art. Sign in to your stores and their games join the same library, installed or not, so there's one place to find, install and play everything you own.
+Mira is a game launcher for Linux. Drop a game folder into a watched directory and Mira notices it, works out which program starts it, picks a runner, sets up a Wine prefix if it needs one and adds it to your library with its cover art. Sign in to your stores and their games join the same library, installed or not, so there's one place to find, install and play everything you own, and the Windows apps you need can sit alongside it.
 
 It's built for both a desk and a couch: a mouse-and-keyboard library window, and a big screen mode for a TV or a Steam Deck that you drive with a controller.
 
@@ -33,7 +33,7 @@ It's built for both a desk and a couch: a mouse-and-keyboard library window, and
 - **Stores:** Steam, Epic Games, GOG, itch.io, Amazon Games and Humble Bundle. Sign in, import what's installed, and install or download the rest from the store's page in Mira.
 - **Launchers:** Battle.net, Ubisoft Connect and the EA app, each installed into its own Wine prefix and kept separate from your games.
 - **Bring your own:** watched library folders, games added by hand, existing desktop entries and your Lutris library.
-- **Applications too:** Windows apps such as Microsoft 365 install and launch like games, and can stay out of the games view.
+- **Applications too:** Microsoft 365 and Adobe Creative Cloud (on [AdobeWine](https://github.com/le-birnes/AdobeWine)) install into their own prefixes, and their apps launch like games while staying out of the games view.
 
 <div align="center">
 <img src="docs/images/store.png" alt="Mira's Steam page: games in your library above, and owned games that aren't installed below, filtered by ProtonDB tier and Steam review chips" width=60%>
@@ -41,7 +41,7 @@ It's built for both a desk and a couch: a mouse-and-keyboard library window, and
 <sub>A store page: what's installed, then everything else you own, filterable by ProtonDB tier and Steam reviews.</sub>
 </div>
 
-### Windows games without the setup
+### Windows games and apps without the setup
 
 - **Automatic detection:** Mira scores the executables in a new folder, spots installers (Inno Setup, NSIS, MSI and more) and offers to run them, quietly where the format allows.
 - **Proton and Wine, handled:** Proton runs through `umu-run`, and Mira picks a sensible build (distro packages first, then GE-Proton or Wine staging-tkg). The Runners page downloads and updates builds from GitHub with checksums, and a working game stays pinned to its build when a newer one arrives.
@@ -68,7 +68,7 @@ A full-screen, controller-friendly view for the TV or a handheld: each game's he
 - **Ratings at a glance:** ProtonDB tiers and Steam review scores on tiles and hover cards.
 - **Tags and folders:** tag games yourself or from Steam's tags, and optionally have Mira sort a library folder into a subfolder per tag, keeping folders and tags in step.
 - **Playtime and crash tracking** for every launch, even when Mira itself is closed, plus logs of each game's last run.
-- **Menu entries:** each ready game gets an entry in your desktop's app menu.
+- **Menu entries:** each ready game or app gets an entry in your desktop's app menu.
 - **Hidden games, pins and recently played** in the sidebar, and keyboard shortcuts for everything, all rebindable.
 
 ### Light, and scriptable

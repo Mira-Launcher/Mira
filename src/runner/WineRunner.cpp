@@ -6,6 +6,7 @@
 #include <iterator>
 
 #include "config/Config.h"
+#include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
@@ -42,6 +43,7 @@ std::vector<model::RunnerBuild> WineRunner::Discover(const config::Config& confi
   if (config.GetBool("runner_scan_common_dirs")) {
     for (const char* dir : kKnownWineDirs) search_dirs.push_back(paths::Expand(dir));
   }
+  search_dirs.push_back(paths::UserDir() / "tools" / "adobewine");  // what Creative Cloud's install downloads
 
   std::error_code ec;
   for (const fs::path& search_dir : search_dirs) {
@@ -75,7 +77,9 @@ Result<void> WineRunner::Provision(const model::Game& game,
   // click would hang it indefinitely (and pop a real window on the user's
   // desktop for a prefix they didn't know was being created). Neither DLL
   // is needed for a plain wineboot init.
-  command.env["WINEDLLOVERRIDES"] = "mscoree,mshtml=";
+  // winemenubuilder: Mira makes the menu entries; Wine's would put an installer's shortcuts, file types and
+  // protocols on the desktop and in the app menu.
+  command.env["WINEDLLOVERRIDES"] = "mscoree,mshtml,winemenubuilder.exe=";
   command.timeout_s = 300;
 
   auto result = RunAndWait(command);
@@ -88,6 +92,11 @@ Result<void> WineRunner::Provision(const model::Game& game,
     return Err("provision_failed",
               std::format("wineboot produced no prefix (exit {}): {}", result->exit_code, result->output),
               "The Wine build may be broken. Try a different one.", Fix::Runners());
+  }
+  command.argv = {build->path, "reg", "add", "HKCU\\Software\\Wine\\DllOverrides", "/v", "winemenubuilder.exe",
+                  "/t", "REG_SZ", "/d", "", "/f"};
+  if (auto disabled = RunAndWait(command); !disabled || disabled->exit_code != 0) {
+    log::Warn("couldn't turn off winemenubuilder in {}", game.data_dir);
   }
   return {};
 }

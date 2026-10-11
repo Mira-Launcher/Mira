@@ -34,6 +34,8 @@
 #include "../library/LibraryActions.h"
 #include "../settings/SettingsPanel.h"
 #include "../sources/Sources.h"
+#include "../sources/SourceRemoval.h"
+#include "../sources/SourceText.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -71,6 +73,8 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
                  QWidget* parent)
     : QWidget(parent), library_(library), artwork_(artwork) {
   setObjectName("left_sidebar");
+  // A point above the rest of the window, so its rows read at a glance.
+  setFont(theme::Larger(font()));
   connect(EventHub::Instance(), &EventHub::Received, this, [this](const std::string& type) {
     if (type == "sources.changed") RefreshSources();
   });
@@ -335,6 +339,9 @@ void Sidebar::ShowActive() {
     if (!show_source_covers_) {
       source_decks_[i]->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
                                       .pixmap(QSize(18, 18), devicePixelRatioF()));
+    } else if (empty_decks_.contains(sources[i].id)) {
+      source_decks_[i]->setPixmap(sidebar::CoverDeck({}, artwork_, devicePixelRatioF(),
+                                                     active ? tokens.on_accent : sources[i].color));
     }
     const QString on_accent = QString("color: %1;").arg(tokens.on_accent.name());
     source_names_[i]->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
@@ -539,7 +546,7 @@ void Sidebar::UpdateSources() {
   // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
-    const std::string source = SourceIdOf(game.source);
+    const std::string source = SourceIdOf(game);
     ++counts[source];
     if (!IsHidden(game)) shown[source].push_back(&game);
   }
@@ -578,10 +585,14 @@ void Sidebar::UpdateSources() {
       row->setContentsMargins(6, 3, 10, 3);
       row->setSpacing(10);
       source_decks_[i]->setFixedSize(sidebar::kDeckSize);
-      source_decks_[i]->setPixmap(
-          sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF()));
-      QString detail = games == 0 && of == 0 ? QString("No games")
-                       : show_source_counts_ ? counted + (std::max(games, of) == 1 ? " game" : " games")
+      if (covers.empty()) empty_decks_.insert(id);
+      else empty_decks_.remove(id);
+      const bool active = id == active_source_;
+      source_decks_[i]->setPixmap(sidebar::CoverDeck(covers, artwork_, source_navs_[i]->devicePixelRatioF(),
+                                                     active ? theme::Current().on_accent : sources[i].color));
+      const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
+      QString detail = games == 0 && of == 0 ? "No " + item + "s"
+                       : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
                                              : QString();
       if (off) detail = "Off";
       if (signed_out && !off) {
@@ -623,7 +634,7 @@ void Sidebar::UpdateSources() {
 
 std::vector<SourceEntry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game.source)];
+  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game)];
   std::vector<SourceEntry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);
@@ -757,6 +768,13 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   QAction* down = menu.addAction("Move down");
   down->setEnabled(position != shown.end() && position + 1 != shown.end());
   QAction* hide = menu.addAction("Hide from sidebar");
+  // Worded as on the source's own page.
+  QAction* remove = nullptr;
+  if (source.kind != SourceInfo::Kind::Local) {
+    menu.addSeparator();
+    remove = menu.addAction(icons::For(icons::Glyph::Trash, theme::Current().error),
+                            (source.kind == SourceInfo::Kind::Launcher ? "Uninstall " : "Remove ") + source.name + "…");
+  }
   menu.addSeparator();
   QAction* manage = menu.addAction("Manage sources…");
   QAction* settings = menu.addAction("Sidebar settings…");
@@ -770,6 +788,11 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
                position + 2 == shown.end() ? -1 : source_nav_layout_->indexOf(*(position + 2)));
   } else if (chosen == hide) {
     SetSourceHidden(source.id, true);
+  } else if (chosen != nullptr && chosen == remove) {
+    RemoveSource(window(), source, [this, id = source.id] {
+      ForgetSource(id);
+      emit SourceRemoved(id);
+    });
   } else if (chosen == manage) {
     emit ManageSourcesRequested();
   } else if (chosen == settings) {

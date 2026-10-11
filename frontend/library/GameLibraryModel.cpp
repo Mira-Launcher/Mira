@@ -229,14 +229,15 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
   QSortFilterProxyModel::sort(0, Qt::AscendingOrder);
 }
 
-bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, bool apps_in_all) {
-  // Store launchers (Battle.net, ...) live on their source pages, not here.
-  if (game.source == "launcher") return false;
+bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, AppsIn apps) {
+  // Store launchers (Battle.net, ...) live on their source pages, not here; Creative Cloud is an app.
+  if (game.source == "launcher" && !IsApp(game)) return false;
+  if (apps == AppsIn::Search && IsApp(game)) return false;
   if (key == "hidden") return IsHidden(game);
   // Every other filter excludes a hidden game: "not displayed by default"
   // means not in "All games" either, not just off the initial screen.
   if (IsHidden(game)) return false;
-  if (key == "all") return apps_in_all || !IsApp(game);
+  if (key == "all") return apps == AppsIn::All || !IsApp(game);
   if (key == "running") return game.running;
   if (key == "games") return !IsApp(game);
   if (key == "apps") return IsApp(game);
@@ -293,7 +294,7 @@ std::vector<std::string> TagOrder(const std::vector<GameSummary>& games) {
   return folders;
 }
 
-std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, bool apps_in_all) {
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, AppsIn apps) {
   const auto is_folder = [&](const std::string& tag) {
     return std::ranges::any_of(games, [&](const GameSummary& game) {
       return std::ranges::any_of(game.folder_tags.value_or(std::vector<std::string>()),
@@ -303,7 +304,7 @@ std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const Q
   std::vector<LibraryTag> tags;
   for (const std::string& tag : TagOrder(games)) tags.push_back({QString::fromStdString(tag), 0, is_folder(tag)});
   for (const GameSummary& game : games) {
-    if (!GameFilterProxy::MatchesKey(game, key, apps_in_all)) continue;
+    if (!GameFilterProxy::MatchesKey(game, key, apps)) continue;
     for (LibraryTag& tag : tags) {
       if (std::ranges::any_of(game.tags, [&](const std::string& t) { return SameTag(t, tag.tag.toStdString()); }))
         ++tag.count;
@@ -358,9 +359,9 @@ void GameFilterProxy::SetSearch(const QString& text) {
   ChangeFilter([&] { search_ = trimmed; });
 }
 
-void GameFilterProxy::SetAppsInAll(bool apps_in_all) {
-  if (apps_in_all == apps_in_all_) return;
-  ChangeFilter([&] { apps_in_all_ = apps_in_all; });
+void GameFilterProxy::SetAppsIn(AppsIn apps) {
+  if (apps == apps_) return;
+  ChangeFilter([&] { apps_ = apps; });
 }
 
 void GameFilterProxy::SetSource(const std::string& source) {
@@ -386,8 +387,10 @@ bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const
   const GameSummary& game = library_->Games()[source_row];
   if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
   if (!HasTags(game, tags_)) return false;
-  if (!source_.empty()) return SourceIdOf(game.source) == source_;
-  return MatchesKey(game, key_, apps_in_all_);
+  if (!source_.empty()) return SourceIdOf(game) == source_;
+  // Apps kept out of the library still turn up in a search.
+  if (apps_ == AppsIn::Search && IsApp(game) && !search_.isEmpty()) return !IsHidden(game);
+  return MatchesKey(game, key_, apps_);
 }
 
 bool GameFilterProxy::lessThan(const QModelIndex& left, const QModelIndex& right) const {

@@ -28,8 +28,8 @@ public:
     NameRole,
     StatusRole,
     RunningRole,
-    // Optional: a button-like pill painted in the tile's top-right corner
-    // ("Install", "Installing…"). Hit-test clicks with ActionRect.
+    // Optional: a round download button in the tile's top-right corner; the text ("Install") is its
+    // name. Hit-test clicks with ActionRect.
     ActionRole,
     ActionEnabledRole,
     // Optional: replaces the status line's text ("Installing… 1.2 GB").
@@ -54,9 +54,8 @@ public:
     TitleCoverRole,
   };
 
-  // Where the tile's ActionRole pill sits inside its cell (empty without one); square when the
-  // tile is too narrow for its text, drawn as a download icon.
-  static QRect ActionRect(const QRect& cell, const QModelIndex& index, const QFont& font);
+  // Where the tile's ActionRole button, a round download icon, sits inside its cell (empty without one).
+  static QRect ActionRect(const QRect& cell, const QModelIndex& index);
   // A store title's tile: a running install's rail and lines in place of the pill, or the
   // `idle_action` pill ("Install") while nothing runs.
   static void SetTileProgress(QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,

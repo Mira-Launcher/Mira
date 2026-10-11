@@ -32,6 +32,8 @@ class FilterSortPill : public QWidget {
   int FilterRow(const QString& key) const;
   void SetFilterRow(int row);
   void SetCount(const QString& key, int count);
+  // Leaves one filter out of the list.
+  void SetFilterOffered(const QString& key, bool offered);
 
   // A tag the Tags section offers, with how many games under the current filter have it.
   struct TagCount {

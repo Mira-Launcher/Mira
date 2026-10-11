@@ -178,7 +178,6 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   install_path_edit_ = LineEdit(files, "Not installed");
   install_path_edit_->setReadOnly(true);
   move_button_ = new QPushButton("Move…", files);
-  move_button_->setToolTip("Move this game's files to another folder");
   connect(move_button_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/false); });
   auto* install_row = new SettingRow("Install folder", QString(), files);
   install_row->SetBelow(FieldLine(files, install_path_edit_, {move_button_}));
@@ -193,7 +192,6 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   });
   // Editing the path repoints the record to another prefix; Move… moves this one.
   move_prefix_ = new QPushButton("Move…", files);
-  move_prefix_->setToolTip("Move this game's prefix to another folder");
   move_prefix_->setVisible(false);
   connect(move_prefix_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/true); });
   data_dir_row_ = new SettingRow("Prefix and data folder",
@@ -330,6 +328,9 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   emit Loaded(QString::fromStdString(game.name));
 
   install_path_ = game.install_path;
+  noun_ = std::ranges::contains(game.tags, tags::kApp) ? "app" : "game";
+  move_button_->setToolTip("Move this " + noun_ + "'s files to another folder");
+  move_prefix_->setToolTip("Move this " + noun_ + "'s prefix to another folder");
   ShowInstallPath();
   // A desktop entry's files belong to another app; Steam moves its own games.
   move_button_->setVisible(!game.install_path.empty() && game.source != "desktop-entry" && game.source != "steam");
@@ -524,13 +525,13 @@ void GameEditForm::MoveFolder(bool prefix) {
   const QString parent_dir =
       current.empty() ? QString() : QString::fromStdString(std::filesystem::path(current).parent_path().string());
   const QString picked = QFileDialog::getExistingDirectory(
-      this, prefix ? "Move the prefix folder into" : "Move the game's folder into", parent_dir);
+      this, prefix ? "Move the prefix folder into" : "Move the " + noun_ + "'s folder into", parent_dir);
   if (picked.isEmpty()) return;
   const std::string target =
       (std::filesystem::path(picked.toStdString()) / std::filesystem::path(current).filename()).string();
   if (target == current) return;
-  const QString what = prefix ? "this game's prefix" : "this game's files";
-  if (!notify::Confirm(this, prefix ? "Move prefix" : "Move game",
+  const QString what = "this " + noun_ + (prefix ? "'s prefix" : "'s files");
+  if (!notify::Confirm(this, prefix ? "Move prefix" : "Move " + noun_,
                        QString("Move %1 to %2? A move to another drive copies them first, which can take a while.")
                            .arg(what, QString::fromStdString(target)),
                        "Move")) {
@@ -545,7 +546,7 @@ void GameEditForm::MoveFolder(bool prefix) {
                                    if (!result.ok) {
                                      button->setEnabled(true);
                                      notify::FailedRequest(
-                                         this, prefix ? "Could not move the prefix." : "Could not move the game.",
+                                         this, prefix ? "Could not move the prefix." : "Could not move the " + noun_ + ".",
                                          result.error);
                                      return;
                                    }

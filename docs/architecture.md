@@ -33,7 +33,7 @@ src/
   itch/       butlerd JSON-RPC client, importer, installer and source
   amazon/     Nile wrapper, importer and source
   humble/     humble-cli wrapper (downloads only, not an ILibrarySource)
-  launchers/  Battle.net, Ubisoft Connect and EA app, each installed into its own prefix
+  launchers/  Battle.net, Ubisoft Connect, EA app, Microsoft 365 and Creative Cloud, each installed into its own prefix
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage

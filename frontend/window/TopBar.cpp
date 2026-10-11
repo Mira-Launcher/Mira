@@ -15,6 +15,7 @@ namespace mira_gui {
 
 TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(parent) {
   setObjectName("top_bar");
+  setFont(theme::Larger(font()));  // a point above the rest of the window, like the sidebar
 
   auto* layout = new QHBoxLayout(this);
   layout->setContentsMargins(12, 4, 6, 4);

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "../client/Types.h"
+
 class QLabel;
 class QWidget;
 
@@ -33,7 +35,7 @@ QString KindLabel(SourceInfo::Kind kind);
 
 // The listed source a game with this `source` belongs to: its own when listed, "local" for games
 // from no source (scanned, added by hand, desktop entries), empty for a store's own launcher.
-std::string SourceIdOf(const std::string& game_source);
+std::string SourceIdOf(const GameSummary& game);
 
 // Every source, in the saved order where it names them. One it doesn't name (added since it was
 // saved) goes right after its neighbour in AllSources' order, so Local, listed first, leads.

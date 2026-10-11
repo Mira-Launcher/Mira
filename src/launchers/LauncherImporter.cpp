@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cctype>
+#include <functional>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -121,6 +123,53 @@ std::vector<Found> FindOffice(const fs::path& prefix) {
   return found;
 }
 
+// Creative Cloud apps by folder ("Adobe Photoshop 2026", a year after the name or none) and exe in it.
+struct AdobeApp {
+  std::string_view ref;
+  std::string_view name;
+  std::string_view folder;
+  std::string_view exe;
+};
+constexpr AdobeApp kAdobeApps[] = {
+    {"photoshop", "Photoshop", "Adobe Photoshop", "Photoshop.exe"},
+    {"illustrator", "Illustrator", "Adobe Illustrator", "Support Files/Contents/Windows/Illustrator.exe"},
+    {"premiere-pro", "Premiere Pro", "Adobe Premiere Pro", "Adobe Premiere Pro.exe"},
+    {"after-effects", "After Effects", "Adobe After Effects", "Support Files/AfterFX.exe"},
+    {"indesign", "InDesign", "Adobe InDesign", "InDesign.exe"},
+    {"audition", "Audition", "Adobe Audition", "Adobe Audition.exe"},
+    {"media-encoder", "Media Encoder", "Adobe Media Encoder", "Adobe Media Encoder.exe"},
+    {"lightroom", "Lightroom", "Adobe Lightroom CC", "lightroom.exe"},
+    {"lightroom-classic", "Lightroom Classic", "Adobe Lightroom Classic", "Lightroom.exe"},
+    {"animate", "Animate", "Adobe Animate", "Animate.exe"},
+    {"bridge", "Bridge", "Adobe Bridge", "Adobe Bridge.exe"},
+    {"acrobat", "Acrobat", "Acrobat DC", "Acrobat/Acrobat.exe"},
+};
+
+// "Adobe Photoshop 2026" and "Adobe Photoshop" are Photoshop's folder.
+bool IsAppFolder(std::string_view folder, std::string_view name) {
+  if (!folder.starts_with(name)) return false;
+  const std::string_view year = folder.substr(name.size());
+  return year.empty() || (year.size() > 1 && year[0] == ' ' &&
+                          std::ranges::all_of(year.substr(1), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); }));
+}
+
+std::vector<Found> FindAdobe(const fs::path& prefix) {
+  const fs::path adobe = prefix / "drive_c/Program Files/Adobe";
+  std::error_code ec;
+  std::vector<std::string> folders;
+  for (const auto& entry : fs::directory_iterator(adobe, ec)) folders.push_back(entry.path().filename().string());
+  std::ranges::sort(folders, std::greater{});  // the newest year first
+  std::vector<Found> found;
+  for (const AdobeApp& app : kAdobeApps) {
+    for (const std::string& folder : folders) {
+      if (!IsAppFolder(folder, app.folder) || !fs::is_regular_file(adobe / folder / app.exe, ec)) continue;
+      found.push_back({std::string(app.ref), std::string(app.name), adobe / folder, std::string(app.exe)});
+      break;
+    }
+  }
+  return found;
+}
+
 // umu's id for a store game, so protonfixes find it. Best effort.
 std::string LookupUmuId(const std::string& store, const std::string& ref) {
   const std::string codename = ref.substr(0, ref.find(','));
@@ -143,11 +192,18 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     return LauncherNotInstalled(launcher.id, launcher.name);
   }
   const fs::path prefix = host->data_dir;
+  // Creative Cloud installed before it was an app.
+  if (launcher.id == "adobe" && !std::ranges::contains(host->tags, "app")) {
+    if (auto tagged = games.Update(host->id, [](model::Game& g) { g.tags.push_back("app"); })) {
+      events.Publish("game.updated", model::ToJson(*tagged));
+    }
+  }
   std::vector<Found> found;
   if (launcher.id == "battlenet") found = FindBattleNet(prefix);
   if (launcher.id == "ubisoft") found = FindUbisoft(prefix);
   if (launcher.id == "ea") found = FindEa(prefix);
   if (launcher.id == "office") found = FindOffice(prefix);
+  if (launcher.id == "adobe") found = FindAdobe(prefix);
 
   library::ImportSummary summary;
   const library::Detector detector(library::SettingsFromConfig(config));
@@ -182,7 +238,7 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
       const auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
       if (exe != detected.candidates.end()) game.exe_path = exe->rel_path;
     }
-    if (launcher.id == "office" && std::ranges::find(game.tags, "app") == game.tags.end()) game.tags.push_back("app");
+    if (launcher.kind == "apps" && std::ranges::find(game.tags, "app") == game.tags.end()) game.tags.push_back("app");
     game.status = model::GameStatus::Ready;
     game.last_error.clear();
     if (existing && model::ToJson(game) == model::ToJson(*existing)) continue;  // nothing new

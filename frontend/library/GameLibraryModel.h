@@ -93,9 +93,12 @@ struct LibraryTag {
 // name. Spelled as first seen; the tags Mira gives a meaning to aren't listed.
 std::vector<std::string> TagOrder(const std::vector<GameSummary>& games);
 
+// Where the library lists apps: under All and Apps, only under Apps, or only in a search.
+enum class AppsIn { All, AppsTab, Search };
+
 // The tags of the games under filter `key`, for picking from, in TagOrder. The tags Mira gives a
 // meaning to aren't listed.
-std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, bool apps_in_all);
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, AppsIn apps);
 
 // One view's slice of the library: a filter key ("all", "hidden", a status,
 // ...), a search, optionally one source, and the sidebar's sort.
@@ -106,8 +109,7 @@ public:
   explicit GameFilterProxy(GameLibraryModel* library, QObject* parent = nullptr);
 
   // Whether `game` belongs under filter `key`. Shared with the filter counts.
-  // `apps_in_all`: whether All lists apps too, not only games.
-  static bool MatchesKey(const GameSummary& game, const QString& key, bool apps_in_all = true);
+  static bool MatchesKey(const GameSummary& game, const QString& key, AppsIn apps = AppsIn::All);
   // Whether `game` matches every word of `search`: a plain word is in its name or starts one of its
   // tags, a "#word" starts one of its tags. The tags Mira gives a meaning to (pinned, hidden, app)
   // never match, since they have filters of their own.
@@ -119,7 +121,7 @@ public:
   void SetSearch(const QString& text);
   // Only games with all of these tags; empty for any.
   void SetTags(const QStringList& tags);
-  void SetAppsInAll(bool apps_in_all);
+  void SetAppsIn(AppsIn apps);
   // Only this source's games, hidden ones included; empty for every source.
   void SetSource(const std::string& source);
   // The sidebar's sort.
@@ -139,7 +141,7 @@ private:
   QString key_ = "all";
   QString search_;
   QStringList tags_;
-  bool apps_in_all_ = true;
+  AppsIn apps_ = AppsIn::All;
   std::string source_;
   std::string sort_key_ = "name";
   bool descending_ = false;

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <map>
+#include <thread>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -421,6 +422,8 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
       auto spawned = runner::SpawnDetached(*command, log_fd);
       if (log_fd >= 0) ::close(log_fd);
       if (!spawned) return SendError(res, 500, spawned.error());
+      // Tracked by path, not waited on: reaped here, or its zombie keeps it looking alive.
+      std::thread([pid = *spawned] { ::waitpid(pid, nullptr, 0); }).detach();
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
       if (!reservation) return SendJson(res, {{"status", "opened_in_running_app"}, {"tracked", false}});
@@ -478,6 +481,15 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Post(R"(/v1/games/([^/]+)/stop)", [&s](const Request& req, Response& res) {
+    // Creative Cloud closes to its tray and leaves services behind, so stopping it ends its whole prefix.
+    if (const auto game = s.games.Find(req.matches[1]); game && game->source == "launcher" && !game->data_dir.empty()) {
+      if (const launchers::Launcher* launcher = launchers::ForGame(*game); launcher && launcher->stop_ends_session) {
+        launchers::EndPrefixSession(game->data_dir);
+        // Its watcher sees it go; one that never found it has nothing to stop.
+        [[maybe_unused]] auto _ = s.supervisor.Stop(game->id);
+        return SendJson(res, {{"status", "stopping"}});
+      }
+    }
     if (auto stopped = s.supervisor.Stop(req.matches[1]); !stopped) {
       // A client that missed the exit gets told it's stopped instead of an error.
       if (stopped.error().code == "not_running") {

@@ -741,6 +741,11 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
   connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
   connect(sidebar, &Sidebar::ManageSourcesRequested, this, [this] { OpenSourcesPage(false); });
+  connect(sidebar, &Sidebar::SourceRemoved, this, [this](const QString& id) {
+    if (source_page_ == nullptr || source_page_->Source().id != id) return;
+    if (mira_gui::SourceSettingsCard* card = source_page_->SettingsCard()) card->Discard();
+    CloseSource();
+  });
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
   connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
   connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);

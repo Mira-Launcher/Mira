@@ -49,6 +49,11 @@ SourceCopy CopyFor(const std::string& id) {
             "365 subscription.",
             "", "Import apps", "app"};
   }
+  if (id == "adobe") {
+    return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on AdobeWine by le-birnes. "
+            "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
+            "", "Import apps", "app"};
+  }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",
             "Import games"};
@@ -71,10 +76,10 @@ void ShowError(QLabel* label, const QString& what, const ApiError& error) {
   ShowLine(label, (what + " " + text).trimmed(), "error");
 }
 
-QString ImportOutcome(int added, int updated) {
-  if (added == 0 && updated == 0) return "No new games found.";
-  if (added == 0) return QString("No new games; %1 updated.").arg(updated);
-  return QString("Added %1 game%2.").arg(added).arg(added == 1 ? "" : "s");
+QString ImportOutcome(int added, int updated, const QString& item) {
+  if (added == 0 && updated == 0) return QString("No new %1s found.").arg(item);
+  if (added == 0) return QString("No new %1s; %2 updated.").arg(item).arg(updated);
+  return QString("Added %1 %2%3.").arg(added).arg(item).arg(added == 1 ? "" : "s");
 }
 
 QString CountedHeading(const QString& text, int count) {

@@ -41,7 +41,7 @@ RatingChips::RatingChips(QWidget* parent) : QWidget(parent) {
     name->setToolTip(help);
     grid->addWidget(name, at, 0, Qt::AlignTop);
     auto* chips = new QWidget(this);
-    new FlowLayout(chips, 6);
+    (new FlowLayout(chips, 6))->SetPreferOneLine(true);
     grid->addWidget(chips, at, 1);
     return chips;
   };

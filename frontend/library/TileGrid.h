@@ -35,6 +35,8 @@ protected:
   void resizeEvent(QResizeEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
+  // The tile's download button is named by its tooltip.
+  bool viewportEvent(QEvent* event) override;
   // Left to the page's own scroll area.
   void wheelEvent(QWheelEvent* event) override;
   void rowsInserted(const QModelIndex& parent, int start, int end) override;

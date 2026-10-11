@@ -42,7 +42,7 @@ QWidget#divider {
 /* A tile's place while a store is asked for its games the first time. */
 QWidget#tile_skeleton {
   background: @surface;
-  border-radius: 6px;
+  border-radius: @radius_tile;
 }
 
 /* Where a dragged source row would land in the sidebar. */
@@ -225,7 +225,7 @@ QLabel#brand_badge {
 
 QLabel#brand_title {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 /* --- Left sidebar ---------------------------------------------------------
@@ -808,7 +808,7 @@ QScrollArea {
  * what sits over the card's hero art. */
 
 QLabel#game_edit_title, QLabel#page_title {
-  font-size: 22px;
+  font-size: 23px;
   font-weight: 700;
 }
 
@@ -817,7 +817,7 @@ QPushButton#hero_action {
   background: rgba(20, 22, 27, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #e6e8ec;
-  border-radius: 8px;
+  border-radius: @radius_control;
   padding: 5px 12px;
 }
 
@@ -1034,7 +1034,7 @@ QLabel#setup_badge {
 }
 
 QLabel#setup_title {
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 600;
 }
 
@@ -1044,7 +1044,7 @@ QLabel#setup_tile_title {
 }
 
 QLabel#setup_tile_title {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 QFrame#setup_card,
@@ -1147,7 +1147,7 @@ QLabel#setup_doc {
   border-radius: 5px;
   color: white;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 QLabel#setup_check {

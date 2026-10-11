@@ -49,3 +49,13 @@ TEST_CASE("SplitArgs keeps quoted arguments together and JoinArgs reads back as 
   const Args tricky = {"plain", "has space", R"(a"quote)", "", R"(back\slash)"};
   CHECK(mira::strings::SplitArgs(mira::strings::JoinArgs(tricky)) == tricky);
 }
+
+TEST_CASE("ParseGithubUrl reads a repository or one release, and nothing else") {
+  using Parsed = std::optional<std::pair<std::string, std::string>>;
+  CHECK(mira::strings::ParseGithubUrl("https://github.com/le-birnes/AdobeWine") == Parsed({"le-birnes/AdobeWine", ""}));
+  CHECK(mira::strings::ParseGithubUrl("https://github.com/me/AdobeWine.git") == Parsed({"me/AdobeWine", ""}));
+  CHECK(mira::strings::ParseGithubUrl("https://github.com/me/AdobeWine/releases/tag/v0.2.0") ==
+        Parsed({"me/AdobeWine", "v0.2.0"}));
+  CHECK_FALSE(mira::strings::ParseGithubUrl("https://gitlab.com/me/AdobeWine"));
+  CHECK_FALSE(mira::strings::ParseGithubUrl("https://github.com/me"));
+}

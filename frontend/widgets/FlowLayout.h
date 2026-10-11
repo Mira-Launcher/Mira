@@ -29,6 +29,13 @@ public:
     invalidate();
   }
 
+  // Prefers the width that fits every item on one line, rather than one item's. A layout that sizes from
+  // hints for a moment then lays it out on one line, not wrapped one item per line.
+  void SetPreferOneLine(bool one_line) {
+    one_line_ = one_line;
+    invalidate();
+  }
+
   Qt::Orientations expandingDirections() const override { return {}; }
   bool hasHeightForWidth() const override { return true; }
   int heightForWidth(int width) const override { return Arrange(QRect(0, 0, width, 0), false); }
@@ -36,7 +43,16 @@ public:
     QLayout::setGeometry(rect);
     Arrange(rect, true);
   }
-  QSize sizeHint() const override { return minimumSize(); }
+  QSize sizeHint() const override {
+    if (!one_line_) return minimumSize();
+    QSize size;
+    for (const QLayoutItem* item : items_) {
+      if (item->widget() != nullptr && item->widget()->isHidden()) continue;
+      const QSize hint = item->sizeHint();
+      size = QSize(size.width() + (size.width() > 0 ? gap_ : 0) + hint.width(), std::max(size.height(), hint.height()));
+    }
+    return size.expandedTo(minimumSize());
+  }
   QSize minimumSize() const override {
     QSize size;
     for (const QLayoutItem* item : items_) size = size.expandedTo(item->minimumSize());
@@ -64,6 +80,7 @@ private:
   }
 
   int gap_;
+  bool one_line_ = false;
   QList<QLayoutItem*> items_;
 };
 

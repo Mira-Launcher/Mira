@@ -145,7 +145,7 @@ bool SourcePage::HasOwned() const { return id_ != "local"; }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game.source) == id_; }
+bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game) == id_; }
 
 // No title: the sidebar already says which source this is. One row holds the
 // status and every action.
@@ -221,7 +221,7 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_->setVisible(id_ != "local");
 
   more_button_ = new QToolButton(tabs_);
-  more_button_->setText("⋯");
+  icons::Follow(more_button_, icons::Glyph::More);
   more_button_->setToolTip("More");
   more_button_->setAutoRaise(true);
   more_button_->setPopupMode(QToolButton::InstantPopup);
@@ -452,7 +452,10 @@ QWidget* SourcePage::BuildOwnedSection() {
 
   auto* header = new QHBoxLayout();
   header->setSpacing(8);
-  owned_heading_ = new QLabel(id_ == "humble" ? "Your purchases" : "Not installed", owned_section_);
+  owned_heading_ = new QLabel(id_ == "humble"   ? QString("Your purchases")
+                              : IsLauncher() ? "More " + CopyFor(id_).item + "s"
+                                             : QString("Not installed"),
+                              owned_section_);
   owned_heading_->setProperty("role", "heading");
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
   owned_count_ = MakeLabel(owned_section_, QString(), "muted", /*wrap=*/false);
@@ -538,9 +541,11 @@ QWidget* SourcePage::BuildOwnedSection() {
   if (!ListsOwned()) {
     owned_refresh_->setVisible(false);
     if (art_key_ != nullptr) art_key_->setVisible(false);
-    const QString what = IsLauncher() ? source_.name + " doesn't share what you own. Games you install through it show up in your library above."
-                                      : source_.name + " doesn't list games you own. What it installs shows up in your library above.";
-    ShowLine(owned_note_, what, "muted");
+    // A launcher's note follows whether it's installed (UpdateStatusLine).
+    if (!IsLauncher()) {
+      ShowLine(owned_note_, source_.name + " doesn't list games you own. What it installs shows up in your library above.",
+               "muted");
+    }
   }
 
   owned_grid_ = new TileGrid(tile_, artwork_, owned_section_);
@@ -583,6 +588,8 @@ QWidget* SourcePage::BuildOwnedSection() {
     if (index.data(GameTileDelegate::ActionEnabledRole).toBool() && owned_grid_->on_action) owned_grid_->on_action(index);
   });
   layout->addWidget(owned_grid_);
+  // Takes any height the section is given while the grid resizes, which otherwise spread the chips' rows apart.
+  layout->addStretch(1);
   return owned_section_;
 }
 
@@ -729,13 +736,22 @@ void SourcePage::UpdateStatusLine() {
   }
   status_line_->setText(parts.join("  ·  "));
 
+  if (IsLauncher() && owned_note_ != nullptr) {
+    const QString items = CopyFor(id_).item + "s";
+    ShowLine(owned_note_,
+             launcher_installed_ ? "Install more " + items + " in " + source_.name + ", then press \"" +
+                                       CopyFor(id_).import_button + "\" to add them here."
+                                 : "Install " + source_.name + " first, then install " + items + " in it.",
+             "muted");
+  }
   if (library_empty_ == nullptr) return;
   library_empty_->setVisible(library_count_ == 0);
   library_grid_->setVisible(library_count_ > 0);
   if (IsStore() && !authenticated_) {
     library_empty_->setText("Games from " + source_.name + " show up here once you're signed in.");
   } else if (IsLauncher() && !launcher_installed_) {
-    library_empty_->setText("Games you install through " + source_.name + " show up here.");
+    const QString item = CopyFor(id_).item;
+    library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " + source_.name + " show up here.");
   } else if (id_ == "local") {
     library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
@@ -751,7 +767,7 @@ void SourcePage::Import() {
   const auto done = [this](bool ok, const ApiError& error, int added, int updated) {
     import_button_->setEnabled(true);
     if (ok) {
-      ShowLine(import_result_, ImportOutcome(added, updated), "muted");
+      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), "muted");
     } else {
       ShowError(import_result_, "Could not import.", error);
     }

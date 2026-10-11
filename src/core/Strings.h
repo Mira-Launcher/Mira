@@ -1,7 +1,9 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace mira::strings {
@@ -29,5 +31,8 @@ std::string CleanGameName(std::string_view directory_name);
 
 // 0..1 similarity, used to score an executable name against its folder name.
 double Similarity(std::string_view a, std::string_view b);
+
+// A GitHub repository link, or one release's: ("owner/name", the tag or ""). Nothing for another link.
+std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_view url);
 
 }  // namespace mira::strings

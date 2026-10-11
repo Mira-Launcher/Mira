@@ -136,7 +136,8 @@ DeleteChoice AskDeleteGame(QWidget* parent, const QString& name, const QString& 
   // them would delete someone else's install.
   const bool linked_only = source == "desktop-entry";
   // A store launcher's games and apps share its prefix: it goes when the launcher is removed.
-  const bool shared_prefix = source == "battlenet" || source == "ubisoft" || source == "ea" || source == "office";
+  const bool shared_prefix =
+      source == "battlenet" || source == "ubisoft" || source == "ea" || source == "office" || source == "adobe";
   QCheckBox* files_check = AddPathOption(
       layout, &dialog, "Also delete the game's files", linked_only ? QString() : install_path,
       linked_only ? "This game links to another app's own files, which Mira doesn't own."

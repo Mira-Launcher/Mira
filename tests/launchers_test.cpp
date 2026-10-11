@@ -95,7 +95,7 @@ TEST_CASE("launchers: games are matched by their folder as Wine shows it") {
   CHECK(launchers::WindowsDir(game) == "z:/mnt/games/trackmania");
 }
 
-TEST_CASE("launchers: Microsoft 365 apps are imported as apps with their own exe") {
+TEST_CASE("launchers: Microsoft 365 and Creative Cloud apps are imported as apps with their own exe") {
   test::TestEnv env("launcher-office");
   const fs::path prefix = env.dir / "prefixes" / "microsoft-365";
   const fs::path office16 = prefix / "drive_c" / "Program Files" / "Microsoft Office" / "root" / "Office16";
@@ -119,6 +119,26 @@ TEST_CASE("launchers: Microsoft 365 apps are imported as apps with their own exe
   CHECK(excel->exe_path == "EXCEL.EXE");
   CHECK(std::ranges::find(excel->tags, "app") != excel->tags.end());
   CHECK_FALSE(env.games.Find("office-powerpoint"));
+
+  // Creative Cloud: the newest year's folder, and Lightroom Classic isn't Lightroom.
+  const fs::path adobe = env.dir / "prefixes" / "creative-cloud" / "drive_c" / "Program Files" / "Adobe";
+  test::Touch(adobe / "Adobe Photoshop 2025" / "Photoshop.exe");
+  test::Touch(adobe / "Adobe Photoshop 2026" / "Photoshop.exe");
+  test::Touch(adobe / "Adobe Lightroom Classic" / "Lightroom.exe");
+  host.id = "launcher-adobe";
+  host.source_ref = "adobe";
+  host.data_dir = (env.dir / "prefixes" / "creative-cloud").string();
+  REQUIRE(env.games.Upsert(host));
+  const auto from_adobe = launchers::Import(env.config, env.games, env.events, *launchers::Find("adobe"));
+  REQUIRE(from_adobe);
+  CHECK(from_adobe->added == 2);
+  const auto photoshop = env.games.Find("adobe-photoshop");
+  REQUIRE(photoshop);
+  CHECK(fs::path(photoshop->install_path).filename() == "Adobe Photoshop 2026");
+  CHECK(photoshop->exe_path == "Photoshop.exe");
+  CHECK(std::ranges::find(photoshop->tags, "app") != photoshop->tags.end());
+  CHECK(env.games.Find("adobe-lightroom-classic"));
+  CHECK_FALSE(env.games.Find("adobe-lightroom"));
 }
 
 TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark setting are read") {

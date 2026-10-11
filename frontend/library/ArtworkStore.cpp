@@ -526,8 +526,10 @@ void ArtworkStore::Pump() {
       QList<std::pair<QSize, qreal>> missing;
       if (found) {
         const QPixmap full = QPixmap::fromImage(std::move(decoded.image));
-        thumbs_.insert(id, QPixmap::fromImage(std::move(decoded.thumb)));
-        if (kept_.contains(game)) {
+        // The same art fetched again for a size keeps its small copies: a new pixmap would read as a new cover to
+        // the sidebar, which rebuilds its rows for one.
+        if (!same_art || !thumbs_.contains(id)) thumbs_.insert(id, QPixmap::fromImage(std::move(decoded.thumb)));
+        if (kept_.contains(game) && (!same_art || !sidebar_.contains(id))) {
           sidebar_.insert(id, decoded.sidebar.isNull() ? full.scaled(kSidebarArt, Qt::KeepAspectRatio, Qt::SmoothTransformation)
                                                       : QPixmap::fromImage(std::move(decoded.sidebar)));
         }

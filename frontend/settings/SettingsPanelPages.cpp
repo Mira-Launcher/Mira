@@ -208,6 +208,9 @@ void SettingsPanel::BuildInterfacePage() {
                 .revert = [this] { continue_count_->setValue(continue_count_saved_); },
                 .reset = [this] { continue_count_->setValue(3); },
                 .mark_saved = [this] { continue_count_saved_ = continue_count_->value(); }});
+  AddToggle(library, "Apps in library",
+            "Show apps in the library. Off, they're only on their source's page and in a search.",
+            "library apps hide search sources", &FrontendPrefs::library_apps, true);
   AddToggle(library, "Apps under All", "List apps under the All tab too, not only under Apps.",
             "library apps all tab filter", &FrontendPrefs::library_apps_in_all, true);
   AddToggle(library, "Apps in Continue playing",
