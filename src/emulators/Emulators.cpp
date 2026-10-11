@@ -57,6 +57,7 @@ const std::vector<Emulator>& All() {
        .release_url = GitHub("hrydgard/ppsspp"), .asset = "PPSSPP-*-anylinux-x86_64.AppImage",
        .binary = "ppsspp.AppImage"},
       {.id = "rpcs3", .name = "RPCS3", .consoles = {"ps3"},
+       .extensions = {".elf", ".self"},
        .folder_game = "PS3_GAME/USRDIR/EBOOT.BIN",
        .args = {"--no-gui", "{rom}"},
        .release_url = GitHub("RPCS3/rpcs3-binaries-linux"), .asset = "rpcs3-*_linux64.AppImage",
@@ -181,7 +182,6 @@ const std::vector<Emulator>& All() {
        .binary = "ymir-sdl3",
        .firmware = {{.id = "bios", .label = "Saturn BIOS", .dir = "~/.local/share/StrikerX3/Ymir/roms/ipl",
                      .patterns = {"*.bin", "*.rom"}}}},
-      // Arcade sets keep their zip's name, which MAME looks up in the folder.
       {.id = "kyty", .name = "KytyPS5", .consoles = {"ps5"},
        .extensions = {".elf", ".zar"}, .folder_game = "eboot.bin",
        .args = {"--no-splash", "--game", "{rom}"}, .fullscreen = {"--fullscreen"}, .open_binary = "launcher",
@@ -256,6 +256,7 @@ const std::vector<Emulator>& All() {
        .args = {"--project-path", "{dir}"}, .fullscreen = {"--fullscreen"},
        .download_url = "https://easyrpg.org/downloads/player/0.8.1.1/easyrpg-player-0.8.1.1-linux.tar.gz",
        .binary = "easyrpg-player"},
+      // Arcade sets keep their zip's name, which MAME looks up in the folder.
       {.id = "mame", .name = "MAME", .consoles = {"arcade"},
        .extensions = {".zip", ".7z", ".chd"},
        .args = {"-skip_gameinfo", "-rompath", "{dir}", "{stem}"},
@@ -586,7 +587,11 @@ Result<void> AddFirmware(const config::Config& config, const Emulator& emulator,
       Command command;
       command.argv = {binary.string(), firmware.install_flag, file.string()};
       const Result<runner::ExecResult> ran = runner::RunAndWait(command);
-      if (!ran || ran->exit_code != 0)
+      // RPCS3 exits non-zero once its done dialog is closed, so its files have the last word.
+      const auto states = FirmwareStatus(emulator);
+      const bool present = std::ranges::any_of(
+          states, [&](const FirmwareState& state) { return state.firmware == &firmware && state.present; });
+      if (!ran || (ran->exit_code != 0 && !present))
         return Err("firmware_failed", std::format("{} couldn't install that firmware file.", emulator.name));
       continue;
     }

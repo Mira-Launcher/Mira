@@ -28,7 +28,7 @@ const std::vector<SourceInfo>& AllSources() {
       {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), {"ps1"}},
       {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), {"ps2"}, true},
       {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), {"psp"}},
-      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), {"ps3"}, true},
+      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), {"ps3"}},
       {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), {"ps4"}, true},
       {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), {"xbox"}, true},
       {"xenia", "Xenia Canary", Kind::Emulator, QColor("#d8a73a"), {"xbox360"}, true},
