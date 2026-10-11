@@ -320,7 +320,10 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     }
     SendJson(res, {{"source", plan->source},
                    {"games", games},
-                   {"launcher_dir", plan->launcher_dir},
+                   {"program_dir", plan->program_dir},
+                   {"packages", plan->packages},
+                   {"uninstall", plan->uninstall},
+                   {"data", plan->data},
                    {"kept", plan->kept},
                    {"signs_out", plan->signs_out}});
   });
@@ -329,9 +332,11 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     const std::string source = req.matches[1].str();
     // Checked now, so an unknown source is a 404 rather than a failed job.
     if (auto plan = library::PlanRemoval(s.config, s.games, source); !plan) return SendError(res, 404, plan.error());
+    const json body = json::parse(req.body, nullptr, false);
+    const bool delete_data = body.is_object() && body.value("delete_data", false);
     s.StartJob(req, res, "remove_source", source, "Removing " + source,
-             [&s, source](JobRegistry::Progress&) -> Result<json> {
-               auto removed = library::RemoveSource(s.config, s.games, s.events, source);
+             [&s, source, delete_data](JobRegistry::Progress&) -> Result<json> {
+               auto removed = library::RemoveSource(s.config, s.games, s.events, source, delete_data);
                if (!removed) return std::unexpected(removed.error());
                s.SyncDesktopEntries();
                s.events.Publish("sources.changed", json::object());

@@ -188,7 +188,7 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
 
   const json plan = Get(client, "/v1/sources/ubisoft/removal");
   REQUIRE(plan["games"].size() == 1);
-  CHECK(plan["launcher_dir"] == program.string());
+  CHECK(plan["program_dir"] == program.string());
   CHECK(plan["kept"] == json::array({prefix.string(), (program / "savegames").string()}));
 
   const json removed = AwaitJob(client, client.Post("/v1/sources/ubisoft/remove"));

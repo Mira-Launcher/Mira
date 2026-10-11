@@ -71,7 +71,8 @@ void QueueTitleArtworkAsync(QObject* context, const std::string& source,
 void GetRemovalPlanAsync(QObject* context, const std::string& source,
                          std::function<void(RemovalPlanResult)> callback);
 
-void RemoveSourceAsync(QObject* context, const std::string& source,
+// `delete_data` also deletes the plan's `data` (an emulator's settings and saves).
+void RemoveSourceAsync(QObject* context, const std::string& source, bool delete_data,
                        std::function<void(RemoveSourceResult)> callback);
 
 // GET/POST /v1/sources/{id}/runner: a store's default runner, or a launcher's prefix runner.

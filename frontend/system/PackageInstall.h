@@ -17,6 +17,10 @@ namespace mira_gui::system {
 void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
                      std::function<void(bool installed)> done);
 
+// The same for mirad's uninstall command (a removed emulator's package).
+void UninstallPackages(QWidget* parent, const std::vector<std::string>& uninstall, const QString& names,
+                       std::function<void(bool uninstalled)> done);
+
 // Makes sure the system packages `feature` needs (GET /v1/system/packages) are installed before
 // `what` ("Microsoft 365") goes ahead: shows the command, then InstallPackages. `done(true)` once nothing's missing.
 void EnsurePackages(QWidget* parent, const std::string& feature, const QString& what,

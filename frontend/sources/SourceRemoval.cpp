@@ -1,11 +1,16 @@
 #include "SourceRemoval.h"
 
+#include <QCheckBox>
+#include <QDir>
+#include <QPushButton>
 #include <QStringList>
 #include <QWidget>
 #include <algorithm>
 
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
+#include "../system/PackageInstall.h"
+#include "../widgets/PopupDialog.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -34,15 +39,37 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
                    .arg(item)
                    .arg(dropped == 1 ? "" : "s");
     }
-    if (!plan.launcher_dir.empty()) lines << "Deletes " + name + " itself.";
+    if (!plan.program_dir.empty()) lines << "Deletes " + name + " itself.";
+    if (!plan.uninstall.empty()) {
+      lines << "Uninstalls " + name + " from your system (asks for your password).";
+    } else if (!plan.packages.empty()) {
+      lines << "Leaves " + system::Names(plan.packages) + " installed: remove it with your system's package manager.";
+    }
     if (plan.signs_out) lines << "Signs you out of " + name + ".";
     if (!plan.kept.empty()) lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)."
                                               : "Keeps game data and saves (prefixes stay on disk).");
     lines << name + " goes back to Add source, to set up again any time.";
-    if (!notify::Confirm(parent, "Remove " + name, lines.join("\n"), "Remove",
-                         /*destructive=*/true))
-      return;
-    api::RemoveSourceAsync(parent, id, [parent, name, on_removed](RemoveSourceResult r) {
+    PopupDialog dialog(parent, notify::Level::Warning, "Remove " + name);
+    dialog.SetMessage(lines.join("\n"));
+    // Its settings and saves stay unless asked: they're the one thing here that can't be had again.
+    QCheckBox* delete_data = nullptr;
+    if (!plan.data.empty()) {
+      QStringList folders;
+      for (const std::string& path : plan.data) {
+        const QString shown = QString::fromStdString(path);
+        folders << "  • " + (shown.startsWith(QDir::homePath()) ? "~" + shown.mid(QDir::homePath().size()) : shown);
+      }
+      delete_data = new QCheckBox("Also delete " + name + "'s settings and saves", &dialog);
+      dialog.AddWidget(delete_data);
+      dialog.SetDetail("Your saves for its games are in these folders, and can't be recovered once deleted:\n" +
+                       folders.join("\n"));
+    }
+    dialog.AddButton("Remove", /*accept=*/true);
+    dialog.AddButton("Cancel", /*accept=*/false, /*default_button=*/true);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const std::vector<std::string> uninstall = plan.uninstall;
+    api::RemoveSourceAsync(parent, id, delete_data != nullptr && delete_data->isChecked(),
+                           [parent, name, uninstall, on_removed](RemoveSourceResult r) {
       if (!r.ok) {
         notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);
         return;
@@ -53,6 +80,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
         notify::Failed(parent, name + " was removed, but some steps failed.", problems.join("\n"));
       }
       on_removed();
+      if (!uninstall.empty()) system::UninstallPackages(parent, uninstall, name, [](bool) {});
     });
   });
 }

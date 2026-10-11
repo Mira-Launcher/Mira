@@ -1182,7 +1182,10 @@ struct RemovalPlanResult {
     std::string deletes;  // empty: nothing on disk
   };
   std::vector<Game> games;
-  std::string launcher_dir;
+  std::string program_dir;
+  std::vector<std::string> packages;   // a package emulator's installed packages
+  std::vector<std::string> uninstall;  // the command removing them as root; empty on a distro Mira can't
+  std::vector<std::string> data;       // an emulator's settings, saves and caches
   std::vector<std::string> kept;
   bool signs_out = false;
 };

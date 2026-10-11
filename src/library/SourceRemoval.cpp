@@ -14,6 +14,7 @@
 #include "launchers/Launchers.h"
 #include "library/Relocate.h"
 #include "library/Stores.h"
+#include "system/Packages.h"
 #include "metadata/MetadataFetcher.h"
 
 namespace mira::library {
@@ -162,7 +163,7 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
              "Delete the files by hand, or move the game to a folder of its own first.");
 }
 
-Result<RemovalPlan> PlanRemoval(const config::Config& /*config*/, const store::GameStore& games,
+Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameStore& games,
                                 std::string_view source) {
   const launchers::Launcher* launcher = launchers::Find(source);
   if (!launcher && !IsStore(source) && !FilesOwnedElsewhere(source)) {
@@ -171,14 +172,22 @@ Result<RemovalPlan> PlanRemoval(const config::Config& /*config*/, const store::G
   RemovalPlan plan;
   plan.source = std::string(source);
   plan.signs_out = IsStore(source);
+  if (const emulators::Emulator* emulator = emulators::Find(source)) {
+    plan.program_dir = emulators::DownloadDir(config, *emulator).string();
+    if (!emulators::Downloads(*emulator)) {
+      plan.packages = system::InstalledPackages(emulator->id);
+      plan.uninstall = system::UninstallCommand(system::DetectDistro().family, plan.packages);
+    }
+    for (const fs::path& path : emulators::DataPaths(*emulator)) plan.data.push_back(path.string());
+  }
   for (const model::Game& game : games.All()) {
     if (!Belongs(game, source, launcher)) continue;
     if (!game.data_dir.empty() && !std::ranges::contains(plan.kept, game.data_dir))
       plan.kept.push_back(game.data_dir);
     if (launcher != nullptr && game.id == launchers::GameId(*launcher)) {
-      plan.launcher_dir = (fs::path(game.data_dir) / "drive_c" / ProgramDir(*launcher)).string();
+      plan.program_dir = (fs::path(game.data_dir) / "drive_c" / ProgramDir(*launcher)).string();
       for (const std::string& keep : KeptInProgramDir(source)) {
-        plan.kept.push_back((fs::path(plan.launcher_dir) / keep).string());
+        plan.kept.push_back((fs::path(plan.program_dir) / keep).string());
       }
       continue;
     }
@@ -190,7 +199,7 @@ Result<RemovalPlan> PlanRemoval(const config::Config& /*config*/, const store::G
 }
 
 Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& games,
-                                   api::EventBus& events, std::string_view source) {
+                                   api::EventBus& events, std::string_view source, bool delete_data) {
   const Result<RemovalPlan> plan = PlanRemoval(config, games, source);
   if (!plan) return std::unexpected(plan.error());
   const launchers::Launcher* launcher = launchers::Find(source);
@@ -225,6 +234,14 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
       }
       forget(entry->id);
     }
+  }
+
+  std::vector<std::string> deleted = delete_data ? plan->data : std::vector<std::string>();
+  if (!plan->program_dir.empty() && launcher == nullptr) deleted.push_back(plan->program_dir);
+  for (const std::string& path : deleted) {
+    std::error_code ec;
+    fs::remove_all(path, ec);
+    if (ec) result.problems.push_back(std::format("deleting {}: {}", path, ec.message()));
   }
 
   if (plan->signs_out) {

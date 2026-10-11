@@ -63,6 +63,7 @@ struct Emulator {
   // questions (a setup wizard, a desktop shortcut) don't stand between a game and the screen.
   std::vector<std::pair<std::string, std::string>> prefill = {};
   std::vector<std::pair<std::string, std::string>> env = {};  // set when it runs
+  std::vector<std::string> data = {};  // what it creates for itself: settings, saves, caches ("~" for home)
 };
 
 const std::vector<Emulator>& All();
@@ -81,6 +82,10 @@ bool IsLooseFile(const config::Config& config, const model::Game& game);
 
 // Where the emulator runs from: the emulators.<id>.bin setting, Mira's download, then $PATH. Empty when none.
 std::filesystem::path Binary(const config::Config& config, const Emulator& emulator);
+// Its `data` that's on disk: settings, saves and caches, deleted only when asked.
+std::vector<std::filesystem::path> DataPaths(const Emulator& emulator);
+// Mira's download of it, empty when there's none.
+std::filesystem::path DownloadDir(const config::Config& config, const Emulator& emulator);
 // The release tag of Mira's download, empty for any other copy.
 std::string InstalledVersion(const config::Config& config, const Emulator& emulator);
 

@@ -190,6 +190,33 @@ std::vector<std::string> InstallCommand(Family family, const std::vector<std::st
   return argv;
 }
 
+std::vector<std::string> InstalledPackages(std::string_view feature) {
+  const Family family = DetectDistro().family;
+  std::vector<std::string> packages;
+  for (const Tool& tool : ToolsFor(feature)) {
+    if (tool.binary.empty() || !Installed(tool)) continue;
+    if (std::string package = Choose(PackageFor(tool, family), family); !package.empty())
+      packages.push_back(std::move(package));
+  }
+  return packages;
+}
+
+std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages) {
+  if (packages.empty()) return {};
+  std::vector<std::string> argv;
+  switch (family) {
+    case Family::Arch: argv = {"pacman", "-Rns", "--noconfirm"}; break;
+    case Family::Debian: argv = {"apt-get", "remove", "-y"}; break;
+    case Family::Fedora: argv = {"dnf", "remove", "-y"}; break;
+    case Family::Suse: argv = {"zypper", "--non-interactive", "remove"}; break;
+    case Family::Ostree: argv = {"rpm-ostree", "uninstall"}; break;
+    case Family::SteamOS:
+    case Family::Unknown: return {};
+  }
+  argv.insert(argv.end(), packages.begin(), packages.end());
+  return argv;
+}
+
 json Report(std::string_view feature) {
   const Distro distro = DetectDistro();
   json missing = json::array();

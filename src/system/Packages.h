@@ -45,6 +45,11 @@ std::string_view PackageFor(const Tool& tool, Family family);
 // The command that installs `packages` as root, or empty where Mira can't (SteamOS, unknown).
 std::vector<std::string> InstallCommand(Family family, const std::vector<std::string>& packages);
 
+// The packages of `feature`'s installed programs (not the libraries they use), named for this distro.
+std::vector<std::string> InstalledPackages(std::string_view feature);
+// The command that removes `packages` as root, or empty where Mira can't (SteamOS, unknown).
+std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages);
+
 // The tools of `feature` not installed: {"distro", "family", "missing": [{tool, package, purpose}],
 // "unavailable": [{tool, purpose}], "install": [argv...], "restart": bool}. `unavailable` has no
 // package on this distro; `install` is empty when nothing's missing or Mira can't install them.

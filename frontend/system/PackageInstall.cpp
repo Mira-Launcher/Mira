@@ -76,17 +76,22 @@ Answer ShowCommand(QWidget* parent, const QString& title, const QString& message
 
 QString Names(const std::vector<std::string>& packages) { return JoinAnd(Args(packages)); }
 
-void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
-                     std::function<void(bool installed)> done) {
-  const QStringList argv = Args(install);
+namespace {
+
+// Runs `command` as root through pkexec; `verb` ("install", "uninstall") words what it does.
+void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const QString& names, const QString& verb,
+               bool restart, std::function<void(bool done)> done) {
+  const QStringList argv = Args(command);
+  QString title_verb = verb;
+  title_verb[0] = title_verb[0].toUpper();
   // Test sandboxes share the real system.
   if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) {
-    notify::Info(parent, "Not installed", "Installing system packages is off here (MIRA_NO_POWER).");
+    notify::Info(parent, "Not done", "Changing system packages is off here (MIRA_NO_POWER).");
     return done(false);
   }
   if (QStandardPaths::findExecutable("pkexec").isEmpty()) {
-    ShowCommand(parent, "Install " + names, "Run this in a terminal to install " + names + ".", QString(), argv,
-                false);
+    ShowCommand(parent, title_verb + " " + names, "Run this in a terminal to " + verb + " " + names + ".", QString(),
+                argv, false);
     return done(false);
   }
 
@@ -94,26 +99,38 @@ void InstallPackages(QWidget* parent, const std::vector<std::string>& install, c
   auto* process = new QProcess(QCoreApplication::instance());
   process->setProcessChannelMode(QProcess::MergedChannels);
   QObject::connect(process, &QProcess::finished, process,
-                   [process, guard, names, argv, restart, done = std::move(done)](int code,
-                                                                                    QProcess::ExitStatus status) {
+                   [process, guard, names, verb, argv, restart, done = std::move(done)](int code,
+                                                                                          QProcess::ExitStatus status) {
     process->deleteLater();
     const QString output = QString::fromUtf8(process->readAll());
     // pkexec's own codes: the prompt was dismissed or the password refused.
     if (status == QProcess::NormalExit && (code == 126 || code == 127)) return done(false);
     if (status != QProcess::NormalExit || code != 0) {
       const QStringList lines = output.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
-      ShowCommand(guard.data(), "Could not install " + names,
-                  "Install it from a terminal instead.", lines.isEmpty() ? QString() : lines.last().trimmed(), argv,
+      ShowCommand(guard.data(), "Could not " + verb + " " + names,
+                  "Run it from a terminal instead.", lines.isEmpty() ? QString() : lines.last().trimmed(), argv,
                   false);
       return done(false);
     }
     if (restart) {
-      notify::Info(guard.data(), "Restart to finish", names + " is added to the system once you restart.");
+      notify::Info(guard.data(), "Restart to finish", "The change to " + names + " takes effect once you restart.");
       return done(false);
     }
     done(true);
   });
   process->start("pkexec", argv);
+}
+
+}  // namespace
+
+void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
+                     std::function<void(bool installed)> done) {
+  RunAsRoot(parent, install, names, "install", restart, std::move(done));
+}
+
+void UninstallPackages(QWidget* parent, const std::vector<std::string>& uninstall, const QString& names,
+                       std::function<void(bool uninstalled)> done) {
+  RunAsRoot(parent, uninstall, names, "uninstall", uninstall.front() == "rpm-ostree", std::move(done));
 }
 
 void EnsurePackages(QWidget* parent, const std::string& feature, const QString& what,
