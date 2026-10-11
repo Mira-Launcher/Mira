@@ -1,0 +1,72 @@
+# Builds Mira and runs the core and GUI tests under AddressSanitizer + UBSan. They run on
+# the runner itself rather than the release builder, since launch tests need a systemd user session.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-14
+      CXX: g++-14
+      # Without these ccache skips every file built with the precompiled headers.
+      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ccache pkg-config unzip cabextract sqlite3 p7zip-full \
+            libcurl4-openssl-dev libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libpulse0
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          modules: qtmultimedia
+          cache: true
+
+      # Proton builds are only found next to umu-run; the tests never run it.
+      - name: umu-run stub
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/umu-run"
+          chmod +x "$HOME/.local/bin/umu-run"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Games launch in a systemd-run --user scope.
+      - name: systemd user session
+        run: |
+          sudo loginctl enable-linger "$USER"
+          runtime="/run/user/$(id -u)"
+          for _ in $(seq 30); do [ -S "$runtime/bus" ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-asan-${{ github.sha }}
+          restore-keys: ccache-asan-
+
+      - name: Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMIRA_GLIBC_COMPAT=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DMIRA_ASAN=ON
+          cmake --build build --target mira_tests mira_gui_tests mira-run
+          ccache -sv
+
+      - name: Core tests
+        run: ./build/mira_tests
+
+      - name: GUI tests
+        run: QT_QPA_PLATFORM=offscreen ./build/frontend/mira_gui_tests

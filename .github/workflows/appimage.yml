@@ -1,0 +1,43 @@
+# Builds each PR's AppImage and links it from one comment on the PR, updated on every push. Builds on
+# main keep the compiler cache warm for new PRs.
+name: AppImage
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  appimage:
+    # A fork's PR gets a read-only token, so it couldn't comment.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/packages
+
+      - id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mira-x86_64.AppImage
+          path: out/Mira-x86_64.AppImage
+          retention-days: 14
+
+      - name: Comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          gh pr comment "$PR" --edit-last --create-if-none --body "**AppImage** for ${SHA:0:7}: [Mira-x86_64.AppImage]($URL) (zipped, kept 14 days)"

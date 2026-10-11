@@ -1,0 +1,43 @@
+# Pushing a v* tag builds the AppImage, .deb and .rpm in the Ubuntu 22.04 builder
+# (packaging/appimage) and attaches them to a draft release for that tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and attach to its draft release
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      # Packages are named from CMakeLists.txt's version, and a published release's files are never replaced.
+      - name: Check
+        run: |
+          version=$(sed -n 's/^project(.* VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          [ "v$version" = "$TAG" ] || { echo "::error::$TAG doesn't match version $version in CMakeLists.txt"; exit 1; }
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+            echo "::error::$TAG is already published"; exit 1
+          fi
+
+      - uses: ./.github/actions/packages
+
+      - name: Draft release
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --draft --verify-tag --title "Mira ${TAG#v}" --notes ""
+          gh release upload "$TAG" out/* --clobber
