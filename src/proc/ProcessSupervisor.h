@@ -85,8 +85,8 @@ public:
 
   // SIGTERM to the running game's whole process group, if any. Returns as
   // soon as the signal is sent; if the game ignores it, the watcher escalates
-  // to SIGKILL after stop_timeout_s rather than blocking the caller.
-  Result<void> Stop(const std::string& game_id);
+  // to SIGKILL after `timeout_s` (0: stop_timeout_s) rather than blocking the caller.
+  Result<void> Stop(const std::string& game_id, std::int64_t timeout_s = 0);
 
   bool IsRunning(const std::string& game_id) const;
 

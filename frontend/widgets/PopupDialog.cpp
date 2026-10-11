@@ -87,6 +87,8 @@ void PopupDialog::SetDetail(const QString& text) {
   detail_->setText(text);
 }
 
+void PopupDialog::AddWidget(QWidget* widget) { body_->addWidget(widget); }
+
 void PopupDialog::SetAction(const QString& label, const QString& url) {
   SetAction(label, [url] { QDesktopServices::openUrl(QUrl(url)); });
 }

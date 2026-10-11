@@ -33,6 +33,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 #include "epic/Legendary.h"
 #include "lutris/LutrisImporter.h"
 #include "metadata/ImageFit.h"
@@ -900,10 +901,12 @@ bool FetchLutrisOwned(const config::Config& config, const std::string& slug, con
 
 // With metadata.steam_by_name, a non-Steam game's ProtonDB tier from its closest Steam match, and
 // the reviews and tags of a Steam game of exactly its name, since a wrong game's would mislead. A
-// store's launcher isn't a game, so it gets none. Returns whether a match was found for the tier.
+// store's launcher isn't a game, nor is an emulator's game a Steam one, so neither gets any. Returns
+// whether a match was found for the tier.
 bool AddSteamByName(const config::Config& config, store::MetadataStore& cache, const model::Game& game,
                     SteamMatcher& steam_match, json& info, bool store_details) {
-  if (!config.GetBool("metadata.steam_by_name") || game.source == "launcher") return false;
+  if (!config.GetBool("metadata.steam_by_name") || game.source == "launcher" || emulators::ForGame(game))
+    return false;
   const std::string& exact = steam_match().exact;
   // A library game sold on Steam under its exact name gets the store page too: description,
   // screenshots and trailers. Not store titles, which would be one appdetails call each.

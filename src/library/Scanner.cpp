@@ -17,6 +17,7 @@
 #include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/WinePrefix.h"
+#include "emulators/Emulators.h"
 #include "launchers/Launchers.h"
 #include "runner/RunnerRegistry.h"
 
@@ -252,6 +253,9 @@ ScanSummary Scanner::ScanAll() {
     total.added += imported.added;
     std::ranges::move(imported.added_games, std::back_inserter(total.added_games));
   }
+  library::ImportSummary roms = emulators::ImportAll(config_, games_, events_);
+  total.added += roms.added;
+  std::ranges::move(roms.added_games, std::back_inserter(total.added_games));
   if (config_.GetBool("auto_setup")) RetryBrokenProvisioning(config_, games_, events_);
   return total;
 }
@@ -272,7 +276,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   const std::vector<fs::path> excluded_roots = {prefix_root, config_.GetPath("epic.install_root"),
                                                 config_.GetPath("gog.install_root"),
                                                 config_.GetPath("itch.install_root"),
-                                                config_.GetPath("amazon.install_root")};
+                                                config_.GetPath("amazon.install_root"),
+                                                config_.GetPath("emulators.roms_root")};
   const DetectorSettings detector_settings = SettingsFromConfig(config_);
   const Detector detector(detector_settings);
   AutoSetup auto_setup(config_, games_, events_);
@@ -409,6 +414,13 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
         const std::string file = entry.path().filename().string();
         seen_appimages.emplace(folder, file);
         const auto known = loose_programs.find({folder, file});
+        // An emulator isn't a game: it opens from its source's page.
+        if (const emulators::Emulator* emulator = emulators::Recognize(entry.path())) {
+          if (known != loose_programs.end() && games_.Remove(known->second.id))
+            events_.Publish("game.removed", {{"id", known->second.id}});
+          emulators::Adopt(config_, games_, events_, *emulator, entry.path());
+          continue;
+        }
         if (known == loose_programs.end()) {
           if (adopt(entry.path(), /*loose=*/true)) continue;
           const model::Game game = auto_setup.CreateAppImageGame(folder, entry.path());

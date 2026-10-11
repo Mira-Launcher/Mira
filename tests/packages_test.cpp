@@ -18,6 +18,9 @@ TEST_CASE("Install commands per family; none where Mira can't install") {
   CHECK(system::InstallCommand(system::Family::Ostree, {"cabextract"}).front() == "rpm-ostree");
   CHECK(system::InstallCommand(system::Family::SteamOS, {"cabextract"}).empty());
   CHECK(system::InstallCommand(system::Family::Fedora, {}).empty());
+  CHECK(system::UninstallCommand(system::Family::Debian, {"dolphin-emu"}) ==
+        std::vector<std::string>{"apt-get", "remove", "-y", "dolphin-emu"});
+  CHECK(system::UninstallCommand(system::Family::Unknown, {"dolphin-emu"}).empty());
   CHECK_FALSE(system::ToolsFor("winetricks").empty());
   CHECK(system::ToolsFor("nonsense").empty());
 }

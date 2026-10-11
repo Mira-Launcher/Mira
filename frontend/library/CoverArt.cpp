@@ -28,7 +28,12 @@ QString CoverInitials(const QString& name) {
   return initials;
 }
 
-QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr) {
+void DrawFitted(QPainter* painter, const QPointF& centre, qreal side, const QPixmap& pixmap) {
+  const QSizeF fit = pixmap.deviceIndependentSize().scaled(side, side, Qt::KeepAspectRatio);
+  painter->drawPixmap(QRectF(centre - QPointF(fit.width() / 2, fit.height() / 2), fit), pixmap, pixmap.rect());
+}
+
+QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr, const QPixmap& logo) {
   if (size.isEmpty()) return QPixmap();
 
   QPixmap pixmap(size * dpr);
@@ -54,14 +59,18 @@ QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, q
   painter.drawRect(QRect(-size.width(), -size.height() / 12, size.width() * 2, size.height() / 6));
   painter.restore();
 
+  // Biased upward: the bottom of a tile is where the title scrim goes.
+  const QRect face(0, 0, size.width(), size.height() - size.height() / 6);
+  if (!logo.isNull()) {
+    DrawFitted(&painter, QRectF(face).center(), size.width() * 0.45, logo);
+    return pixmap;
+  }
   QFont font = painter.font();
   font.setPixelSize(qMax(16, size.height() / 4));
   font.setWeight(QFont::DemiBold);
   painter.setFont(font);
   painter.setPen(QColor(255, 255, 255, 190));
-  // Biased upward: the bottom of a tile is where the title scrim goes.
-  painter.drawText(QRect(0, 0, size.width(), size.height() - size.height() / 6), Qt::AlignCenter,
-                   CoverInitials(name));
+  painter.drawText(face, Qt::AlignCenter, CoverInitials(name));
 
   return pixmap;
 }

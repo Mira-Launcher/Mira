@@ -24,6 +24,7 @@
 #include "core/Paths.h"
 #include "core/Result.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "library/AutoInstall.h"
@@ -490,7 +491,11 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
         return SendJson(res, {{"status", "stopping"}});
       }
     }
-    if (auto stopped = s.supervisor.Stop(req.matches[1]); !stopped) {
+    std::int64_t timeout_s = 0;
+    if (const auto game = s.games.Find(req.matches[1])) {
+      if (const emulators::Emulator* emulator = emulators::ForGame(*game)) timeout_s = emulator->stop_timeout_s;
+    }
+    if (auto stopped = s.supervisor.Stop(req.matches[1], timeout_s); !stopped) {
       // A client that missed the exit gets told it's stopped instead of an error.
       if (stopped.error().code == "not_running") {
         if (const auto game = s.games.Find(req.matches[1])) {

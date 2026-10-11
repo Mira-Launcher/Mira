@@ -1,8 +1,10 @@
 #include "SourceSetupCard.h"
 
 #include <QLabel>
+#include <algorithm>
 #include <QVBoxLayout>
 
+#include "../setup/EmulatorPanel.h"
 #include "../setup/OfficePanel.h"
 #include "../setup/SignInPanel.h"
 #include "../widgets/Labels.h"
@@ -55,10 +57,28 @@ void SourceSetupCard::ShowLauncher(const LauncherInfo& launcher, bool /*installi
   ShowNeeded(!launcher.installed);
 }
 
+void SourceSetupCard::ShowEmulator(const EmulatorInfo& emulator) {
+  // Made again each time: its rows follow what mirad says is there.
+  if (panel_ != nullptr) RemoveRow(panel_);
+  panel_ = nullptr;
+  const bool needed = !emulator.installed || std::ranges::any_of(emulator.firmware, [](const EmulatorFirmware& f) {
+                        return f.required && !f.present;
+                      });
+  setVisible(needed);
+  if (!needed) return;
+  error_->setVisible(false);
+  auto* panel = new EmulatorPanel(emulator, this);
+  connect(panel, &EmulatorPanel::Changed, this, &SourceSetupCard::StatusChanged);
+  panel_ = panel;
+  panel_->setContentsMargins(18, 4, 18, 14);
+  AddRow(panel_);
+}
+
 void SourceSetupCard::ShowError(const QString& what, const ApiError& error) {
   setVisible(true);
   if (auto* panel = qobject_cast<SignInPanel*>(panel_.data())) return panel->ShowFailure(what, error);
   if (auto* panel = qobject_cast<OfficePanel*>(panel_.data())) return panel->ShowFailure(what, error);
+  if (auto* panel = qobject_cast<EmulatorPanel*>(panel_.data())) return panel->ShowFailure(what, error);
   mira_gui::ShowError(error_, what, error);
 }
 

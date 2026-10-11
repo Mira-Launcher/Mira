@@ -4,6 +4,7 @@
 #include <QStyle>
 
 #include "../app/ErrorHelp.h"
+#include "Sources.h"
 
 namespace mira_gui {
 
@@ -53,6 +54,13 @@ SourceCopy CopyFor(const std::string& id) {
     return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on AdobeWine by le-birnes. "
             "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
             "", "Import apps", "app"};
+  }
+  if (const SourceInfo* source = FindSourceInfo(QString::fromStdString(id));
+      source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
+    return {QString("Plays %1 games you add: pick them or drop them here, or put them in its games folder. Mira "
+                    "sets %2 up for you.")
+                .arg(PlaysText(*source), source->name),
+            "", "Add games"};
   }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",

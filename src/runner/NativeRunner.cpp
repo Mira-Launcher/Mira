@@ -22,14 +22,6 @@ bool MissingExecuteBit(const fs::path& path) {
   return (status.permissions() & fs::perms::owner_exec) == fs::perms::none;
 }
 
-// A FUSE-less system needs "--appimage-extract-and-run" as the AppImage's
-// own first argument (see AppImage's own docs): /dev/fuse absent, or
-// neither fusermount nor fusermount3 on PATH, both mean no FUSE.
-bool HasFuse() {
-  std::error_code ec;
-  return std::filesystem::exists("/dev/fuse", ec) && (FindOnPath("fusermount") || FindOnPath("fusermount3"));
-}
-
 // Downloaded AppImages routinely lose their executable bit (a browser
 // download strips it) -- every AppImage-aware launcher chmods it before
 // running rather than erroring out over something this routine to fix.
@@ -43,6 +35,11 @@ void MakeExecutable(const fs::path& path) {
 }
 
 }  // namespace
+
+bool HasFuse() {
+  std::error_code ec;
+  return std::filesystem::exists("/dev/fuse", ec) && (FindOnPath("fusermount") || FindOnPath("fusermount3"));
+}
 
 Result<Command> NativeRunner::BuildCommand(const model::Game& game,
                                             const std::optional<model::RunnerBuild>&) const {

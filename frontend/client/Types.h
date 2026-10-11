@@ -828,6 +828,8 @@ struct FrontendPrefs {
   std::optional<bool> drag_select;
   // On (default): double-clicking a game in a grid plays it, or stops it while it runs.
   std::optional<bool> double_click_play;
+  // Off (default): installing or removing a system package asks for the password; on shows the command instead.
+  std::optional<bool> copy_commands;
   // Shape adjustments layered over whatever the theme sets, in pixels; see
   // theme::Overrides. Unset means "leave it to the theme".
   std::optional<int> tile_spacing;
@@ -1144,11 +1146,19 @@ struct HumbleDownloadResult {
 };
 
 // POST /v1/stores/{id}/import.
+// An added game whose start file Mira couldn't tell: a DOS game's folder with several programs.
+struct StartChoice {
+  std::string id;
+  std::string name;
+  std::vector<std::string> files;  // Mira's pick first
+};
+
 struct StoreImportResult {
   bool ok = false;
   ApiError error;
   int added = 0;
   int updated = 0;
+  std::vector<StartChoice> choose;  // adding an emulator's files only
 };
 
 // One GET /v1/library entry: something the account owns.
@@ -1174,7 +1184,10 @@ struct RemovalPlanResult {
     std::string deletes;  // empty: nothing on disk
   };
   std::vector<Game> games;
-  std::string launcher_dir;
+  std::string program_dir;
+  std::vector<std::string> packages;   // a package emulator's installed packages
+  std::vector<std::string> uninstall;  // the command removing them as root; empty on a distro Mira can't
+  std::vector<std::string> data;       // an emulator's settings, saves and caches
   std::vector<std::string> kept;
   bool signs_out = false;
 };
@@ -1248,6 +1261,53 @@ struct LauncherInfo {
   std::string runner_ref;
   ApiError error;
   std::vector<LauncherApp> apps;  // Microsoft 365's, listed before it's installed too
+};
+
+// GET /v1/emulators: one emulator source's state.
+struct EmulatorFirmware {
+  std::string id;
+  std::string label;
+  bool required = true;
+  bool present = false;
+};
+
+struct EmulatorInfo {
+  std::string id;  // also its games' `source`
+  std::string name;
+  std::vector<std::string> extensions;  // ".sfc", lower case
+  bool folder_games = false;            // its games are folders (PS3, PS4), not files
+  bool installed = false;
+  std::string path;
+  std::string version;  // the release Mira downloaded, empty for a package or a chosen program
+  std::string package;  // the system packages feature that installs it, empty when Mira downloads it
+  std::string rom_dir;
+  std::vector<EmulatorFirmware> firmware;
+};
+
+struct EmulatorsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<EmulatorInfo> emulators;
+};
+
+// GET /v1/games/{id}/emulators: the other emulators a game can move to.
+struct EmulatorChoice {
+  std::string id;
+  std::string name;
+};
+
+// GET /v1/emulators/{id}/existing: games it had before Mira did.
+struct ExistingEmulatorGamesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::pair<std::string, int>> dirs;  // folders its settings list, and how many games each holds
+  std::vector<std::string> shortcuts;             // names of desktop entries in the library that run one
+};
+
+struct EmulatorChoicesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<EmulatorChoice> emulators;
 };
 
 struct LaunchersResult {

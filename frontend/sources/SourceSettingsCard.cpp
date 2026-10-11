@@ -10,6 +10,7 @@
 
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../app/ErrorHelp.h"
@@ -22,6 +23,10 @@ namespace {
 bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   const std::string id = source.id.toStdString();
   if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + ".")) return true;
+  if (source.kind == SourceInfo::Kind::Emulator &&
+      (key.starts_with("emulators." + id + ".") || key == "emulators.move_added" || key == "emulators.roms_root" ||
+       key == "emulators.fullscreen"))
+    return true;
   // runner has its own row, collections their own dialog.
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
@@ -37,6 +42,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   Header()->addWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
+  if (source_.kind == SourceInfo::Kind::Emulator) BuildEmulatorRow();
   connect(EventHub::Instance(), &EventHub::RunnersChanged, this, &SourceSettingsCard::RunnersChanged);
 
   footer_ = new QWidget(this);
@@ -169,6 +175,22 @@ void SourceSettingsCard::FinishSave(bool ok) {
   saving_ = false;
   UpdateButtons();
   emit SaveFinished(ok);
+}
+
+// Its own settings live in the emulator.
+void SourceSettingsCard::BuildEmulatorRow() {
+  auto* row = new SettingRow("Controls, graphics and sound",
+                             "Set up in " + source_.name + " itself: open it, then use its own settings.", this);
+  auto* open = new QPushButton("Open " + source_.name, row);
+  connect(open, &QPushButton::clicked, this, [this, open] {
+    open->setEnabled(false);
+    api::OpenEmulatorAsync(this, id_, [this, open](StoreActionResult result) {
+      open->setEnabled(true);
+      if (!result.ok) ShowStatus("Could not open " + source_.name + ": " + error_help::Describe(result.error), true);
+    });
+  });
+  row->AddControl(open);
+  AddRow(row);
 }
 
 bool SourceSettingsCard::HasRunner() const {
@@ -318,8 +340,21 @@ void SourceSettingsCard::LoadSettings() {
         editor.entry = std::move(entry);
         settings_.push_back(std::move(editor));
       }
+      // An emulator's own settings, then those every emulator shares.
+      const std::string own = "emulators." + id_ + ".";
+      const auto shared = std::ranges::stable_partition(
+          settings_, [&](const SettingEditor& editor) { return editor.entry.key.starts_with(own); });
+      const size_t first_shared = source_.kind == SourceInfo::Kind::Emulator
+                                      ? static_cast<size_t>(shared.begin() - settings_.begin())
+                                      : settings_.size();
       for (size_t i = 0; i < settings_.size(); ++i) {
         SettingEditor& editor = settings_[i];
+        if (i == first_shared) {
+          auto* heading = new QLabel("All emulators", this);
+          theme::SetStyleProperty(heading, "role", "section");
+          heading->setContentsMargins(18, 12, 18, 2);
+          AddRow(heading);
+        }
         AddRow(editor.Build(this));
         editor.OnEdited(this, [this] { UpdateButtons(); });
         connect(editor.row, &SettingRow::RevertClicked, this, [this, i] {

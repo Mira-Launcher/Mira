@@ -49,6 +49,7 @@ void Isolate(config::Config& config) {
   const std::pair<const char*, nlohmann::json> folders[] = {
       {"library_roots", nlohmann::json::array()},
       {"prefix_root", (dir / "prefixes").string()},
+      {"emulators.roms_root", (dir / "Roms").string()},
       {"epic.install_root", (dir / "epic").string()},
       {"gog.install_root", (dir / "gog").string()},
       {"itch.install_root", (dir / "itch").string()},

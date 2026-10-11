@@ -50,7 +50,6 @@ signals:
 
 private:
   QButtonGroup* views_ = nullptr;
-  QStackedWidget* stack_ = nullptr;
   QLabel* hint_ = nullptr;
   QLineEdit* search_ = nullptr;
   AddedSources* added_ = nullptr;
@@ -62,6 +61,8 @@ private:
 
   // Lutris imports at once; other sources get a "Set up" dialog over the page.
   void OpenSetup(const QString& id);
+  static void InstallEmulator(QWidget* window, const QString& id);
+  static void OfferExistingGames(QWidget* window, const QString& id, const QString& name);
   void FitSetup();
   void ShowView(int view);
 

@@ -7,6 +7,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 #include "launchers/Launchers.h"
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
@@ -94,7 +95,8 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
   // A store launcher's prefix holds the launcher and every game installed in it.
   const bool shared_prefix = launchers::ForGame(game) != nullptr;
   const bool store_managed = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
-                             game.source == "itch" || game.source == "amazon" || shared_prefix;
+                             game.source == "itch" || game.source == "amazon" || shared_prefix ||
+                             emulators::ForGame(game) != nullptr;
   // Steam makes its own prefix (compatdata) again where it expects it, so a moved one is just left behind.
   const bool steam_prefix = game.source == "steam" || game.runner_ref.starts_with("steam:");
   if (steam_prefix && request.data_dir) {

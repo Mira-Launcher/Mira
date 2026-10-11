@@ -39,6 +39,7 @@ signals:
 private:
   bool HasRunner() const;
   bool RunnerDirty() const;
+  void BuildEmulatorRow();
   void BuildRunnerRow();
   void LoadRunner();
   void ShowRunner(const SourceRunnerResult& runner);

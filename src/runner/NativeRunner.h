@@ -4,6 +4,10 @@
 
 namespace mira::runner {
 
+// A FUSE-less system needs "--appimage-extract-and-run" as an AppImage's own first argument: /dev/fuse
+// absent, or neither fusermount nor fusermount3 on PATH, both mean no FUSE.
+bool HasFuse();
+
 // Runs a native Linux binary directly. No prefix, no versions to choose
 // between -- Discover() still reports one synthetic "native:native" entry
 // (not an empty list) so it shows up at all in GET /v1/runners: a runner

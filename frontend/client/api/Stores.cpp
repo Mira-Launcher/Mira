@@ -144,7 +144,13 @@ RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
                                   .name = game.value("name", std::string()),
                                   .deletes = game.value("deletes", std::string())});
         }
-        result.launcher_dir = body.value("launcher_dir", std::string());
+        result.program_dir = body.value("program_dir", std::string());
+        for (auto [key, list] : {std::pair{"packages", &result.packages}, {"uninstall", &result.uninstall},
+                                 {"data", &result.data}}) {
+          for (const json& part : body.value(key, json::array())) {
+            if (part.is_string()) list->push_back(part.get<std::string>());
+          }
+        }
         for (const json& path : body.value("kept", json::array())) {
           if (path.is_string()) result.kept.push_back(path.get<std::string>());
         }
@@ -443,12 +449,13 @@ void GetRemovalPlanAsync(QObject* context, const std::string& source,
   async::Run(context, [source] { return GetRemovalPlanSync(source); }, std::move(callback));
 }
 
-void RemoveSourceAsync(QObject* context, const std::string& source,
+void RemoveSourceAsync(QObject* context, const std::string& source, bool delete_data,
                        std::function<void(RemoveSourceResult)> callback) {
   RunJob<RemoveSourceResult>(
       context, "remove_source",
-      [source](const std::string& query) {
-        return transport::Post("/v1/sources/" + PercentEncode(source) + "/remove" + query);
+      [source, delete_data](const std::string& query) {
+        return transport::PostJson("/v1/sources/" + PercentEncode(source) + "/remove" + query,
+                                   {{"delete_data", delete_data}});
       },
       FillRemoveSource, std::move(callback));
 }

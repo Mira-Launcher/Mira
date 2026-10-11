@@ -483,6 +483,55 @@ A [job](#jobs) whose result is `{added, updated}`. Battle.net games are found by
 ### `POST /v1/launchers/{id}/open`
 Body `{action?: "launch"|"install", ref?}`. Opens the launcher, or asks it to launch or install a game by store id (a Battle.net product code such as `WTCG`, a Ubisoft id or an EA offer id). Not tracked.
 
+## Emulators
+
+Each emulator is a source of its own: DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4, KytyPS5, Dolphin, Cemu, Eden, Ryujinx, Azahar, melonDS, xemu, Xenia Canary, Flycast, Mesen, Snes9x, bsnes, mGBA, ares, BlastEm, RMG, Vita3K, Ymir, Mednafen, Stella, MAME, Mupen64Plus, Redream, atari800, Hatari, FS-UAE, VICE, openMSX, UZDoom, EasyRPG Player, DOSBox Staging and ScummVM. Its games are the files (or, for RPCS3, shadPS4, KytyPS5, EasyRPG Player, DOSBox Staging and ScummVM, the folders; DOSBox starts a folder with the file named like it, else one that isn't its setup, and keeps one the user picks) in `<emulators.roms_root>/<name>`, which the user adds and Mira watches. They import as `<id>-<file>`, Ready, with runner `emulator:<id>`, which runs the emulator with the game's file. Dolphin, ares, Snes9x and MAME come from the system's packages, and Ryujinx from CachyOS's package; the rest download from their releases page (GitHub or Forgejo), or BlastEm's from its site, into Mira's `tools/<id>` folder. A download that needs a library from the system's packages (bsnes's libao) asks for it, at install and at launch. With `emulators.fullscreen` (on by default) games start fullscreen. `emulators.<id>.bin` points at another copy, and one on `PATH` is found. MAME finds an arcade set by its zip's name in the folder. An emulator's AppImage found in a library folder isn't imported as a game: it becomes that emulator's program (when it has none) and its source is added. BIOS, firmware and keys are never downloaded. Removing an emulator keeps its games' files; deleting a game deletes its file and the files a `.cue`, `.gdi` or `.m3u` names.
+
+### `GET /v1/emulators`
+`[{id, name, consoles, extensions, folder_games, installed, path, version, package, rom_dir, firmware: [{id, label, required, present}]}]`. `version` is the release Mira downloaded, `package` the system packages feature that installs it (see `GET /v1/system/packages`), empty for one Mira downloads.
+
+### `POST /v1/emulators/{id}/install`
+Downloads the latest release over Mira's copy and marks the source added. A [job](#jobs) (kind `install`) whose result is the emulator as above. A package emulator fails with the packages fix. `already_installing`.
+
+### `POST /v1/emulators/{id}/files`
+Body `{"paths": [...], "move"?}`: copies the files, and the ones a `.cue`, `.gdi` or `.m3u` names, into the emulator's folder, or moves them when `move` (default: the emulator's `emulators.<id>.add_mode`, else `emulators.move_added`, on), then imports. A [job](#jobs) whose result is `{added, updated, choose}`; `choose` lists added games whose start file Mira couldn't tell (`{id, name, files}`, its pick first), for the client to ask about and set with `PATCH /v1/games/{id}` `exe_path`. Fails with `wrong_files` when the emulator takes none of them.
+
+### `POST /v1/emulators/{id}/import`
+Imports its folder again. A [job](#jobs) whose result is `{added, updated}`.
+
+### `GET /v1/emulators/{id}/existing`
+Games the emulator had before Mira: `{dirs: [{path, games}], shortcuts: [{id, name, file}]}`. `dirs` are the game folders its own settings list (Dolphin, DuckStation, PCSX2, Azahar, Eden, Cemu, Flycast) outside its folders that hold games; `shortcuts` are desktop entries in the library that run one of its games.
+
+### `POST /v1/emulators/{id}/existing`
+Body `{"move": bool}`: takes them in. A desktop entry becomes that game, keeping its id, playtime and art. With `move` the files go into the emulator's folder; otherwise the folders are added to `emulators.<id>.game_dirs`, which Mira imports from and watches as well. A [job](#jobs) whose result is `{added, updated}`.
+
+### `POST /v1/emulators/{id}/firmware/{firmware}`
+Body `{"paths": [...]}`: puts a BIOS, keys or firmware where the emulator looks. A zip is unpacked (Switch firmware) and RPCS3 installs a `.PUP` itself. Returns the emulator.
+
+### `POST /v1/emulators/{id}/open`
+Opens the emulator alone, to change its settings. Not tracked.
+
+### `GET /v1/games/{id}/emulators`
+`[{id, name}]`: the other installed emulators the game could move to, sharing its console and taking its file.
+
+### `POST /v1/games/{id}/emulator`
+Body `{"emulator": "<id>"}`: moves the game's files into that emulator's folder. It keeps its id, art, tags and playtime. Returns the game. `already_there`.
+
+## Updates
+
+### `GET /v1/updates`
+What has a newer release: Mira itself, and the emulators, store tools, umu and runner builds Mira downloaded. Copies the system or the user installed aren't checked. Sources that can't be reached are left out.
+
+```json
+[{ "kind": "mira", "id": "mira", "name": "Mira", "installed": "0.14.1", "latest": "v0.15.0",
+   "url": "https://github.com/Mira-Launcher/Mira/releases/tag/v0.15.0" },
+ { "kind": "emulator", "id": "duckstation", "name": "DuckStation", "installed": "latest", "latest": "latest", "url": "" }]
+```
+
+`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference. Mira's is the release at `url`. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+
+`emulators.<id>.repo` switches an emulator Mira downloads to a fork: `owner/repo` or a GitHub link, or a Forgejo or GitLab releases API link. The fork's release then no longer matches what's installed, so it shows here as an update.
+
 ## Sources
 
 ### `GET /v1/sources`
@@ -500,15 +549,16 @@ What removing a source would do:
 ```json
 { "source": "ubisoft", "games": [ { "id": "ubisoft-5595", "name": "Trackmania",
     "deletes": "/home/me/Mira/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
-  "launcher_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
+  "program_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
+  "packages": [], "uninstall": [], "data": [],
   "kept": [ "/home/me/Mira/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
   "signs_out": false }
 ```
 
-`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files).
+`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files, and an emulator's games are the user's). For an emulator, `program_dir` is Mira's download of it, `packages` the system packages it came from with `uninstall` the command removing them (empty on a distro Mira doesn't know), and `data` its settings, saves and caches.
 
 ### `POST /v1/sources/{id}/remove`
-Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
+Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
 
 ### `GET /v1/sources/{id}/runner`
 The runner a source's games use: `{"runner_ref", "games", "differing"}`. `games` counts its Windows games and `differing` the ones on another runner. For Epic, GOG, itch and Amazon this is `<id>.runner`, the default for their games with no runner of their own (empty falls back to `default_runner.windows`). For a launcher it is the runner of its prefix, which its games share. `400 no_runner` for Steam, Lutris and Humble; `409 launcher_not_installed`.

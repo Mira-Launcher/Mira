@@ -10,7 +10,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
-#include <QStackedWidget>
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -19,11 +18,14 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Library.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Stores.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
 #include "SourceCatalog.h"
 #include "SourceSetupCard.h"
@@ -94,13 +96,16 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   SetUpScrolling(scroll, this);
-  stack_ = new QStackedWidget();
-  stack_->setContentsMargins(24, 16, 24, 24);
-  added_ = new AddedSources(stack_);
-  catalog_ = new SourceCatalog(stack_);
-  stack_->addWidget(added_);
-  stack_->addWidget(catalog_);
-  scroll->setWidget(stack_);
+  // Not a QStackedWidget: that's as tall as its tallest page, so Added would scroll as far as Add source.
+  auto* views = new QWidget();
+  auto* views_layout = new QVBoxLayout(views);
+  views_layout->setContentsMargins(24, 16, 24, 24);
+  added_ = new AddedSources(views);
+  catalog_ = new SourceCatalog(views);
+  catalog_->hide();
+  views_layout->addWidget(added_);
+  views_layout->addWidget(catalog_);
+  scroll->setWidget(views);
   outer->addWidget(scroll, /*stretch=*/1);
 
   views_->button(0)->setChecked(true);
@@ -146,7 +151,8 @@ void SourcesPage::ShowAdded() { ShowView(0); }
 
 void SourcesPage::ShowView(int view) {
   views_->button(view)->setChecked(true);
-  stack_->setCurrentIndex(view);
+  added_->setVisible(view == 0);
+  catalog_->setVisible(view == 1);
   hint_->setText(view == 1 ? kCatalogHint : kAddedHint);
 }
 
@@ -157,6 +163,46 @@ void SourcesPage::CloseSetup() {
   setup_overlay_->hide();
   if (QWidget* card = setup_scroll_->takeWidget()) card->deleteLater();
   setup_card_ = nullptr;
+}
+
+// Installs a newly added emulator that isn't yet, over `window`: the install outlives this page.
+void SourcesPage::InstallEmulator(QWidget* window, const QString& id) {
+  api::GetEmulatorsAsync(window, [window, id](EmulatorsResult result) {
+    if (!result.ok) return;
+    const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
+    if (it == result.emulators.end() || it->installed) return;
+    // A package emulator comes from the system; asks for it the same way its page does.
+    if (!it->package.empty()) {
+      return system::EnsurePackages(window, it->package, QString::fromStdString(it->name), [](bool) {});
+    }
+    api::InstallEmulatorAsync(window, it->id, [window, name = QString::fromStdString(it->name)](StoreActionResult r) {
+      if (!r.ok) notify::FailedRequest(window, "Could not install " + name + ".", r.error);
+    });
+  });
+}
+
+// Games an already-installed emulator had: folders its settings list, and desktop entries that run one.
+// Asked over `window`, since this page closes once the emulator's opens; the library follows mirad's events.
+void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const QString& name) {
+  api::GetExistingEmulatorGamesAsync(window, id.toStdString(), [window, id, name](ExistingEmulatorGamesResult r) {
+    if (!r.ok || (r.dirs.empty() && r.shortcuts.empty())) return;
+    QStringList lines;
+    for (const auto& [path, games] : r.dirs)
+      lines << QString("%1 (%2 game%3)").arg(QString::fromStdString(path)).arg(games).arg(games == 1 ? "" : "s");
+    for (const std::string& shortcut : r.shortcuts) lines << QString::fromStdString(shortcut) + " (desktop entry)";
+    PopupDialog dialog(window, notify::Level::Info, "Games " + name + " already has");
+    dialog.SetMessage("Mira found these. Move them into " + name + "'s folder, or play them from where they are?");
+    dialog.SetDetail(lines.join('\n'));
+    enum { kSkip, kMove, kKeep };
+    dialog.AddButton("Skip", int(kSkip));
+    dialog.AddButton("Keep in place", int(kKeep));
+    dialog.AddButton("Move into Mira", int(kMove), /*default_button=*/true);
+    const int choice = dialog.exec();
+    if (choice != kMove && choice != kKeep) return;
+    api::AdoptEmulatorGamesAsync(window, id.toStdString(), choice == kMove, [window, name](StoreImportResult r) {
+      if (!r.ok) notify::FailedRequest(window, "Could not add " + name + "'s games.", r.error);
+    });
+  });
 }
 
 void SourcesPage::OpenSetup(const QString& id) {
@@ -174,6 +220,18 @@ void SourcesPage::OpenSetup(const QString& id) {
   const auto entry = std::ranges::find(entries_, id, [](const SourceEntry& e) { return e.source.id; });
   if (entry == entries_.end()) return;
   const SourceInfo source = entry->source;
+
+  // Added at once and its page opened, where it installs; one Mira downloads starts downloading now.
+  if (source.kind == SourceInfo::Kind::Emulator) {
+    api::AddSourceAsync(this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      emit Imported(id);
+      InstallEmulator(window(), id);  // before the page opens, which closes this one
+      OfferExistingGames(window(), id, name);
+      emit OpenRequested(id);
+    });
+    return;
+  }
 
   if (setup_overlay_ == nullptr) {
     setup_overlay_ = new ModalOverlay(this);

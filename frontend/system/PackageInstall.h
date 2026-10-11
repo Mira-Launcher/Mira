@@ -10,15 +10,22 @@ class QWidget;
 
 namespace mira_gui::system {
 
+// The copy_commands pref: show package commands to run in a terminal instead of the password prompt.
+void SetCopyCommands(bool copy);
+
 // Runs `install` (mirad's command for `names`) as root: through pkexec, where the desktop asks for the
-// password; without pkexec, in a terminal with sudo; without either, shows the command to copy. `done(true)`
-// once installed; false when it failed, was dismissed, went to a terminal or the user, or needs a restart
-// first (rpm-ostree).
+// password; with copy_commands, without pkexec, or when it fails, shows the command to copy or open in a terminal. `done(true)`
+// once installed; false when it failed, was dismissed, went to a terminal, or needs a restart first
+// (rpm-ostree).
 void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
                      std::function<void(bool installed)> done);
 
+// The same for mirad's uninstall command (a removed emulator's package).
+void UninstallPackages(QWidget* parent, const std::vector<std::string>& uninstall, const QString& names,
+                       std::function<void(bool uninstalled)> done);
+
 // Makes sure the system packages `feature` needs (GET /v1/system/packages) are installed before
-// `what` ("Microsoft 365") goes ahead: asks, then InstallPackages. `done(true)` once nothing's missing.
+// `what` ("Microsoft 365") goes ahead: shows the command, then InstallPackages. `done(true)` once nothing's missing.
 void EnsurePackages(QWidget* parent, const std::string& feature, const QString& what,
                     std::function<void(bool ready)> done);
 

@@ -33,6 +33,9 @@ public:
   // unless called.
   void SetDetail(const QString& text);
 
+  // A widget of the caller's under the message and detail.
+  void AddWidget(QWidget* widget);
+
   // Clickable link under the detail, for a popup that names where to go fix
   // the problem. Opens `url` in the desktop's browser.
   void SetAction(const QString& label, const QString& url);

@@ -135,6 +135,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("theme", result.prefs.theme);
   read_bool("drag_select", result.prefs.drag_select);
   read_bool("double_click_play", result.prefs.double_click_play);
+  read_bool("copy_commands", result.prefs.copy_commands);
   read_int("tile_spacing", result.prefs.tile_spacing);
   read_int("grid_margin", result.prefs.grid_margin);
   read_int("tile_radius", result.prefs.tile_radius);
@@ -215,6 +216,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.theme) table["theme"] = *prefs.theme;
   if (prefs.drag_select) table["drag_select"] = *prefs.drag_select;
   if (prefs.double_click_play) table["double_click_play"] = *prefs.double_click_play;
+  if (prefs.copy_commands) table["copy_commands"] = *prefs.copy_commands;
   if (prefs.tile_spacing) table["tile_spacing"] = *prefs.tile_spacing;
   if (prefs.grid_margin) table["grid_margin"] = *prefs.grid_margin;
   if (prefs.tile_radius) table["tile_radius"] = *prefs.tile_radius;

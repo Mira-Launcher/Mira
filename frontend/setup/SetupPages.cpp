@@ -55,12 +55,6 @@ QString Json(const QStringList& items) {
   return QString::fromStdString(list.dump());
 }
 
-// "a, b and c".
-QString Listed(const QStringList& items) {
-  if (items.size() < 2) return items.join("");
-  return items.mid(0, items.size() - 1).join(", ") + " and " + items.back();
-}
-
 void Repolish(QWidget* widget) {
   widget->style()->unpolish(widget);
   widget->style()->polish(widget);
@@ -451,13 +445,13 @@ void WelcomePage::ShowPackages() {
     note_text_->setText(QString("Mira uses %1 that aren't installed: %2. Install them with your "
                                 "system's package manager.")
                             .arg(all.size() == 1 ? QString("a package") : QString("packages"),
-                                 Listed(all).toHtmlEscaped()));
+                                 JoinAnd(all).toHtmlEscaped()));
   } else if (chosen.isEmpty()) {
     note_text_->setText("No system packages are installed. Mira works without them, with less.");
   } else {
     note_text_->setText(
         QString("<b>Next asks for your password once.</b> Mira installs %1 it uses: %2.")
-            .arg(count, Listed(chosen).toHtmlEscaped()));
+            .arg(count, JoinAnd(chosen).toHtmlEscaped()));
   }
   choose_->setVisible(can_install);
   if (package_list_->layout()->count() > 0 || !can_install) return;
@@ -691,8 +685,8 @@ void FoundPage::Show() {
       }
       detail = games.size() == 1 ? QString("1 installed game, %1").arg(names.front())
                : games.size() <= 3
-                   ? QString("%1 installed games: %2").arg(games.size()).arg(Listed(names))
-                   : QString("%1 installed games, including %2").arg(games.size()).arg(Listed(names));
+                   ? QString("%1 installed games: %2").arg(games.size()).arg(JoinAnd(names))
+                   : QString("%1 installed games, including %2").arg(games.size()).arg(JoinAnd(names));
     }
     text->addWidget(MakeLabel(card, detail, "muted"));
     head->addLayout(text, /*stretch=*/1);

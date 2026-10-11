@@ -7,6 +7,7 @@
 #include "config/KnownExePatterns.h"
 #include "config/RunnerSources.h"
 #include "core/Strings.h"
+#include "emulators/Emulators.h"
 
 namespace mira::config {
 namespace {
@@ -116,8 +117,10 @@ std::string SourceOf(std::string_view key) {
   static constexpr std::string_view kSources[] = {"steam", "epic", "gog", "itch", "humble", "amazon",
                                                   "lutris", "battlenet", "ubisoft", "ea", "office"};
   if (key.starts_with("launchers.")) key.remove_prefix(std::string_view("launchers.").size());
+  if (key.starts_with("emulators.")) key.remove_prefix(std::string_view("emulators.").size());
   const std::string_view head = key.substr(0, key.find('.'));
   if (head.size() == key.size()) return {};
+  if (emulators::Find(head) != nullptr) return std::string(head);
   return std::ranges::find(kSources, head) != std::end(kSources) ? std::string(head) : std::string();
 }
 
@@ -1015,6 +1018,59 @@ Schema::Schema() {
                 "build. Empty downloads them.",
          .path = PathKind::Folder});
 
+  // --- Emulators -------------------------------------------------------------
+  s.Section("Emulators", "Emulators");
+
+  s.Add({.key = "emulators.roms_root",
+         .label = "Games folder",
+         .type = Type::String,
+         .default_value = "~/Mira/Roms",
+         .doc = "Each emulator keeps its games in a folder of its own here, which Mira watches.",
+         .path = PathKind::Folder});
+
+  s.Add({.key = "emulators.fullscreen",
+         .label = "Fullscreen",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Emulators start their games fullscreen."});
+
+  s.Add({.key = "emulators.move_added",
+         .label = "Move added games",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Games you add to an emulator are moved into its folder. Off copies them, leaving the originals."});
+
+  for (const emulators::Emulator& emulator : emulators::All()) {
+    s.Add({.key = std::format("emulators.{}.bin", emulator.id),
+           .label = std::format("{} program", emulator.name),
+           .type = Type::String,
+           .default_value = "",
+           .doc = std::format("The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
+                              emulator.name),
+           .path = PathKind::File});
+    s.Add({.key = std::format("emulators.{}.game_dirs", emulator.id),
+           .label = std::format("{} games kept in place", emulator.name),
+           .type = Type::StringArray,
+           .default_value = json::array(),
+           .doc = std::format("Folders of {} games Mira tracks where they are, besides its own games folder.",
+                              emulator.name),
+           .path = PathKind::Folder});
+    s.Add({.key = std::format("emulators.{}.add_mode", emulator.id),
+           .label = std::format("Adding {} games", emulator.name),
+           .type = Type::String,
+           .default_value = "default",
+           .doc = "move or copy games added to it into its folder; default follows Move added games.",
+           .constraint = OneOf({"default", "move", "copy"})});
+    if (!emulators::Downloads(emulator)) continue;
+    s.Add({.key = std::format("emulators.{}.repo", emulator.id),
+           .label = std::format("{} download source", emulator.name),
+           .type = Type::String,
+           .default_value = emulators::DefaultSource(emulator),
+           .doc = std::format("Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
+                              "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
+                              "from there.", emulator.name)});
+  }
+
   // --- Detection -------------------------------------------------------------
   s.Section("Detection", "Scoring");
   s.ResetTogether();
@@ -1153,6 +1209,15 @@ Schema::Schema() {
          .doc = "Extra folders to search for desktop entries, in addition to the standard "
                 "application folders and the Flatpak export folders.",
          .path = PathKind::Folder});
+
+  // --- Updates ---------------------------------------------------------------
+  s.Section("Updates", "Updates");
+
+  s.Add({.key = "updates.check",
+         .label = "Check for updates",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Mira looks for newer releases of itself and of the emulators, store tools and runners it downloaded."});
 
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");

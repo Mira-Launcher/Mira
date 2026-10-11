@@ -8,6 +8,7 @@
 #include <QPainterPath>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 
 #include "../library/ArtworkStore.h"
@@ -82,7 +83,7 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
 }
 
 QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
-                  const QColor& empty) {
+                  const QColor& empty, const QPixmap& logo) {
   const QSize card(24, 36);
   QPixmap out(kDeckSize * dpr);
   out.setDevicePixelRatio(dpr);
@@ -92,6 +93,16 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
   painter.setRenderHint(QPainter::SmoothPixmapTransform);
   const QPointF centre(kDeckSize.width() / 2.0, kDeckSize.height() / 2.0);
   const QRectF face(QPointF(-card.width() / 2.0, -card.height() / 2.0), QSizeF(card));
+  // Games without art yet (homebrew, often) still show the source's logo.
+  const bool any_art = std::ranges::any_of(games, [&](const GameSummary* game) {
+    return artwork->HasArtwork(game->id);
+  });
+  if (!any_art && !logo.isNull()) {
+    for (const GameSummary* game : games) artwork->EnsureRequested(game->id);
+    const QSizeF size = logo.deviceIndependentSize();
+    painter.drawPixmap(QPointF(centre.x() - size.width() / 2, centre.y() - size.height() / 2), logo);
+    return out;
+  }
   if (games.empty()) {
     // A color as dark as the sidebar (Steam's, Epic's) would vanish on it.
     QColor edge = empty;
@@ -113,8 +124,10 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
     qreal angle;
   };
   constexpr Place kPlaces[] = {{2, -9, -14}, {1, 9, 14}, {0, 0, 0}};
+  // One or two games fill out the deck with the source's logo as the card behind them.
+  const size_t logo_card = !logo.isNull() && games.size() < 3 ? games.size() : SIZE_MAX;
   for (const Place& place : kPlaces) {
-    if (place.game >= games.size()) continue;
+    if (place.game >= games.size() && place.game != logo_card) continue;
     painter.save();
     painter.translate(centre + QPointF(place.dx, 0));
     painter.rotate(place.angle);
@@ -123,7 +136,13 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
     painter.drawRoundedRect(face.adjusted(-1, 0, 1, 2), 4, 4);
     painter.setBrush(QColor(0, 0, 0, 90));
     painter.drawRoundedRect(face.translated(0, 1), 3, 3);
-    painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
+    if (place.game == logo_card) {
+      painter.setBrush(theme::Current().surface_alt);
+      painter.drawRoundedRect(face, 3, 3);
+      DrawFitted(&painter, QPointF(0, 0), card.width() - 4, logo);
+    } else {
+      painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
+    }
     painter.restore();
   }
   return out;

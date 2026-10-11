@@ -98,6 +98,29 @@ bool Excluded(const std::vector<std::string>& exclude, const std::string& text) 
   return std::ranges::any_of(exclude, [&](const std::string& word) { return text.contains(word); });
 }
 
+// A release's first asset that matches; one per release is expected. GitHub and Forgejo list assets, GitLab
+// links under assets.links.
+std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& pattern,
+                                    const std::vector<std::string>& exclude) {
+  if (!release.is_object() || !release.contains("assets")) return std::nullopt;
+  const bool gitlab = release["assets"].is_object();
+  const json& assets = gitlab ? release["assets"].value("links", json::array()) : release["assets"];
+  if (!assets.is_array()) return std::nullopt;
+  for (const auto& asset : assets) {
+    const std::string name = core::JsonString(asset, "name");
+    if (!strings::GlobMatch(pattern, name) || Excluded(exclude, name)) continue;
+    ReleaseAsset entry;
+    entry.tag = core::JsonString(release, "tag_name");
+    entry.asset_name = name;
+    entry.download_url = core::JsonString(asset, gitlab ? "url" : "browser_download_url");
+    entry.size_bytes = core::JsonInt(asset, "size");
+    entry.published_at = core::JsonString(release, gitlab ? "released_at" : "published_at");
+    FindChecksum(assets, name, entry);
+    return entry;
+  }
+  return std::nullopt;
+}
+
 // Lists `repo`'s releases, keeping the first asset per release that matches.
 Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const std::string& pattern,
                                                 const std::vector<std::string>& exclude) {
@@ -112,22 +135,7 @@ Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const s
 
   std::vector<ReleaseAsset> releases;
   for (const auto& release : parsed) {
-    if (!release.is_object() || !release.contains("assets") || !release["assets"].is_array()) continue;
-    const json& assets = release["assets"];
-    for (const auto& asset : assets) {
-      const std::string name = core::JsonString(asset, "name");
-      if (!strings::GlobMatch(pattern, name) || Excluded(exclude, name)) continue;
-
-      ReleaseAsset entry;
-      entry.tag = core::JsonString(release, "tag_name");
-      entry.asset_name = name;
-      entry.download_url = core::JsonString(asset, "browser_download_url");
-      entry.size_bytes = core::JsonInt(asset, "size");
-      entry.published_at = core::JsonString(release, "published_at");
-      FindChecksum(assets, name, entry);
-      releases.push_back(std::move(entry));
-      break;  // one matching asset per release is expected
-    }
+    if (auto entry = AssetOf(release, pattern, exclude)) releases.push_back(std::move(*entry));
   }
   return releases;
 }
@@ -225,8 +233,9 @@ Result<void> MoveAllInto(const fs::path& from, const fs::path& to) {
 
 bool IsZip(const std::string& asset_name) { return asset_name.ends_with(".zip"); }
 bool IsTarball(const std::string& asset_name) {
-  return asset_name.ends_with(".tar") || asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tar.xz") ||
-         asset_name.ends_with(".tgz");
+  // Xenia Canary's is "xenia_canary_linux.tar_.xz".
+  return asset_name.ends_with(".tar") || asset_name.ends_with(".tar_.xz") || asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tar.xz") ||
+         asset_name.ends_with(".tar.zst") || asset_name.ends_with(".tgz");
 }
 
 Result<void> Chmod(const fs::path& path) {
@@ -423,9 +432,47 @@ Result<void> DownloadAndInstall(const config::Config& config, const std::string&
   return extracted;
 }
 
+Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pattern,
+                                   const std::vector<std::string>& exclude) {
+  const Result<json> release = CurlJson(url);
+  if (!release) return Err("release_api_error", std::format("couldn't read {}: {}", url, release.error().message),
+                           kConnectionHint);
+  // GitHub and Forgejo answer a missing repository or release with {"message": "Not Found"}.
+  if (release->is_object() && release->value("message", std::string()) == "Not Found")
+    return Err("release_not_found", std::format("there's no release at {}", url));
+  auto asset = AssetOf(*release, pattern, exclude);
+  if (!asset) return Err("no_release_asset", std::format("the latest release at {} has no file matching {}", url, pattern));
+  return *asset;
+}
+
+namespace {
+
+fs::path ToolDir(const config::Config& config, const std::string& tool_name) {
+  return config.File().parent_path() / "tools" / tool_name;
+}
+
+// .version: the release tag, the binary's path in the tool's folder, and when it was published.
+fs::path Recorded(const fs::path& tool_dir, const ReleaseAsset& asset, const fs::path& binary) {
+  std::ofstream(tool_dir / ".version", std::ios::trunc)
+      << asset.tag << "\n" << binary.lexically_relative(tool_dir).string() << "\n" << asset.published_at << "\n";
+  return binary;
+}
+
+}  // namespace
+
+std::optional<InstalledTool> InstalledToolOf(const config::Config& config, const std::string& tool_name) {
+  std::ifstream in(ToolDir(config, tool_name) / ".version");
+  InstalledTool tool;
+  std::string binary;
+  if (!std::getline(in, tool.tag) || !std::getline(in, binary) || binary.empty()) return std::nullopt;
+  std::getline(in, tool.published_at);
+  tool.binary = ToolDir(config, tool_name) / binary;
+  return tool;
+}
+
 Result<fs::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
                                    const ReleaseAsset& asset, const std::string& binary_name) {
-  const fs::path tool_dir = config.File().parent_path() / "tools" / tool_name;
+  const fs::path tool_dir = ToolDir(config, tool_name);
   std::error_code ec;
   fs::create_directories(tool_dir, ec);
   if (ec) return Err("install_dir_failed", ec.message());
@@ -465,7 +512,7 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
     if (!moved) return std::unexpected(moved.error());
     const fs::path binary = tool_dir / found->lexically_relative(staging);
     if (auto chmodded = Chmod(binary); !chmodded) return std::unexpected(chmodded.error());
-    return binary;
+    return Recorded(tool_dir, asset, binary);
   }
 
   fs::rename(downloaded, target, ec);
@@ -473,7 +520,7 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
   fs::remove_all(download_dir, ec);
   if (renamed) return Err("install_failed", renamed.message());
   if (auto chmodded = Chmod(target); !chmodded) return std::unexpected(chmodded.error());
-  return target;
+  return Recorded(tool_dir, asset, target);
 }
 
 }  // namespace mira::runner

@@ -23,6 +23,8 @@ class SourceSetupCard : public SettingsCard {
   // A store's state as mirad last said.
   void ShowStore(bool tool_installed, bool authenticated);
   void ShowLauncher(const LauncherInfo& launcher, bool installing);
+  // Shown while the emulator isn't there or lacks a BIOS or firmware it needs.
+  void ShowEmulator(const EmulatorInfo& emulator);
   // Shows the card with "<what> <mirad's error>".
   void ShowError(const QString& what, const ApiError& error);
   // The tool or launcher's setup job failed; `tool_installed` means it was an update.
@@ -39,7 +41,7 @@ class SourceSetupCard : public SettingsCard {
   void ShowNeeded(bool needed);
 
   SourceInfo source_;
-  QPointer<QWidget> panel_;  // a SignInPanel, or Microsoft 365's OfficePanel
+  QPointer<QWidget> panel_;  // a SignInPanel, Microsoft 365's OfficePanel, or an EmulatorPanel
   QLabel* error_ = nullptr;  // for errors once the panel is gone
 };
 

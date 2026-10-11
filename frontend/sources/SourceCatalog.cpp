@@ -15,7 +15,7 @@ namespace mira_gui {
 namespace {
 
 constexpr int kTileWidth = 280;
-const QStringList kGroups = {"Stores", "Launchers", "Apps", "On this computer"};
+const QStringList kGroups = {"Stores", "Launchers", "Apps", "Emulators", "On this computer"};
 
 int GroupOf(const SourceInfo& source) {
   if (CopyFor(source.id.toStdString()).item == "app") return 2;
@@ -24,10 +24,12 @@ int GroupOf(const SourceInfo& source) {
       return 0;
     case SourceInfo::Kind::Launcher:
       return 1;
-    case SourceInfo::Kind::Local:
+    case SourceInfo::Kind::Emulator:
       return 3;
+    case SourceInfo::Kind::Local:
+      return 4;
   }
-  return 3;
+  return 4;
 }
 
 // What setting it up takes, in a few words.
@@ -39,6 +41,8 @@ QString Needs(const SourceInfo& source) {
       return "Mira installs its launcher";
     case SourceInfo::Kind::Local:
       return "Reads what's on this computer";
+    case SourceInfo::Kind::Emulator:
+      return "Plays " + PlaysText(source) + " games";
   }
   return {};
 }
@@ -118,7 +122,7 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     groups_[group].grid->layout()->addWidget(tile);
     tiles_[id] = tile;
     group_of_[id] = group;
-    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb, copy.tool}.join(' ').toLower();
+    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb, copy.tool, PlaysSearchText(source)}.join(' ').toLower();
   }
   int total = 0;
   for (size_t i = 0; i < groups_.size(); ++i) {

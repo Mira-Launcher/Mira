@@ -3,9 +3,12 @@
 #include "../client/Async.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
+#include "../widgets/Labels.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
+#include "../sources/Sources.h"
 #include "../client/JsonMapping.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -100,8 +103,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* browse = new QPushButton("Browse…", launch);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
   // Shown while mirad wants its pick confirmed; saving any change confirms it too.
-  check_tag_ = new QLabel("Not checked", launch);
-  check_tag_->setObjectName("check_tag");
+  check_tag_ = MakeTag(launch, "Not checked", "warning");
   check_tag_->setToolTip("Mira wasn't sure which program starts this game");
   check_tag_->hide();
   looks_right_ = new QPushButton("Looks right", launch);
@@ -140,6 +142,23 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_ = new SettingRow("Runner", QString(), runner);
   runner_row_->SetBelow(runner_combo_);
   runner->AddRow(runner_row_);
+  emulator_row_ = new SettingRow("Emulator", "Picking another moves its files to that emulator's games folder.",
+                                 runner);
+  emulator_combo_ = new QComboBox(emulator_row_);
+  emulator_row_->AddControl(emulator_combo_);
+  connect(emulator_combo_, &QComboBox::activated, this, [this](int index) {
+    if (index <= 0) return;
+    const QString name = emulator_combo_->currentText();
+    api::MoveGameToEmulatorAsync(this, id_, emulator_combo_->currentData().toString().toStdString(),
+                                 [this, name](StoreActionResult moved) {
+      if (!moved.ok) {
+        emulator_combo_->setCurrentIndex(0);
+        notify::FailedRequest(this, "Could not move it to " + name + ".", moved.error);
+      }
+    });
+  });
+  emulator_row_->setVisible(false);
+  runner->AddRow(emulator_row_);
 
   // Under its label like the other rows, so a narrow card never squeezes the label.
   auto* advanced = new QPushButton("Advanced settings…", runner);
@@ -368,6 +387,27 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   original_patch_ = CurrentPatch();
   move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
+  // An emulator's game names its emulator here, and picking another moves it there.
+  const bool emulated = game.runner_ref.starts_with("emulator:");
+  runner_row_->setVisible(!emulated);
+  emulator_row_->setVisible(emulated);
+  if (emulated) {
+    const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
+    emulator_combo_->clear();
+    emulator_combo_->addItem(source != nullptr ? source->name : QString::fromStdString(game.source),
+                             QString::fromStdString(game.source));
+    emulator_combo_->setEnabled(false);
+    emulator_combo_->setToolTip(QString());
+    api::GetGameEmulatorsAsync(emulator_combo_, game.id, [this, id = game.id](EmulatorChoicesResult result) {
+      if (!result.ok || id != id_) return;
+      while (emulator_combo_->count() > 1) emulator_combo_->removeItem(1);  // an earlier Populate's answer
+      for (const EmulatorChoice& choice : result.emulators) {
+        emulator_combo_->addItem(QString::fromStdString(choice.name), QString::fromStdString(choice.id));
+      }
+      emulator_combo_->setEnabled(!result.emulators.empty());
+      if (result.emulators.empty()) emulator_combo_->setToolTip("No other installed emulator plays this");
+    });
+  }
   ShowRunnerOptions();
   UpdateModified();
 }

@@ -18,6 +18,7 @@ using nlohmann::json;
 struct Entry {
   std::string_view feature;
   Tool tool;
+  bool on_demand = false;  // an emulator's: asked for when it's set up, never in the full list
 };
 
 constexpr Entry kEntries[] = {
@@ -30,6 +31,26 @@ constexpr Entry kEntries[] = {
     {"winetricks", {"unzip", "unzip", "", "Unpacks downloads for winetricks", "unzip", "unzip", "unzip", "unzip"}},
     {"adobe", {"zstd", "zstd", "", "Unpacks AdobeWine, which Adobe Creative Cloud runs on", "zstd", "zstd", "zstd",
                "zstd"}},
+    {"dolphin", {"dolphin-emu", "dolphin-emu", "", "Plays GameCube and Wii games", "dolphin-emu", "dolphin-emu",
+                 "dolphin-emu", "dolphin-emu"},
+     true},
+    {"ares", {"ares", "ares", "", "Plays Nintendo, Sega, NEC, SNK and Bandai games", "ares-emu", "", "", ""},
+     true},
+    {"snes9x", {"snes9x-gtk", "snes9x-gtk", "", "Plays SNES games", "snes9x-gtk", "", "snes9x-gtk", "snes9x-gtk"}, true},
+    {"mame", {"mame", "mame", "", "Plays arcade games", "mame", "mame", "mame", "mame"}, true},
+    {"scummvm", {"scummvm", "scummvm", "", "Plays classic adventure games", "scummvm", "scummvm", "scummvm",
+                 "scummvm"},
+     true},
+    {"mednafen", {"mednafen", "mednafen", "", "Plays Saturn, Virtual Boy, Neo Geo Pocket, WonderSwan and Lynx games",
+                  "mednafen", "mednafen", "mednafen", "mednafen"},
+     true},
+    {"mupen64plus", {"mupen64plus", "mupen64plus", "", "Plays Nintendo 64 games", "mupen64plus",
+                     "mupen64plus-ui-console", "mupen64plus", "mupen64plus"},
+     true},
+    {"hatari", {"hatari", "hatari", "", "Plays Atari ST games", "hatari", "hatari", "hatari", "hatari"}, true},
+    {"vice", {"vice", "x64sc", "", "Plays Commodore 64 games", "vice", "vice", "vice", "vice"}, true},
+    {"stella", {"stella", "stella", "", "Plays Atari 2600 games", "stella", "stella", "stella", "stella"}, true},
+    {"bsnes", {"libao", "", "libao.so.4", "Plays bsnes's sound", "libao", "libao4", "libao", "libao4"}, true},
     {"archives", {"7zip", "7z 7zz", "", "Extracts game archives and installers", "7zip", "7zip p7zip-full", "7zip",
                   "7zip"}},
     {"performance", {"gamemode", "gamemoded", "", "Raises performance while a game runs", "gamemode", "gamemode",
@@ -135,7 +156,7 @@ Distro DetectDistro() {
 std::vector<Tool> ToolsFor(std::string_view feature) {
   std::vector<Tool> tools;
   for (const Entry& entry : kEntries) {
-    if (feature.empty() || entry.feature == feature) tools.push_back(entry.tool);
+    if (feature.empty() ? !entry.on_demand : entry.feature == feature) tools.push_back(entry.tool);
   }
   return tools;
 }
@@ -162,6 +183,33 @@ std::vector<std::string> InstallCommand(Family family, const std::vector<std::st
     case Family::Fedora: argv = {"dnf", "install", "-y"}; break;
     case Family::Suse: argv = {"zypper", "--non-interactive", "install"}; break;
     case Family::Ostree: argv = {"rpm-ostree", "install", "--idempotent", "--allow-inactive"}; break;
+    case Family::SteamOS:
+    case Family::Unknown: return {};
+  }
+  argv.insert(argv.end(), packages.begin(), packages.end());
+  return argv;
+}
+
+std::vector<std::string> InstalledPackages(std::string_view feature) {
+  const Family family = DetectDistro().family;
+  std::vector<std::string> packages;
+  for (const Tool& tool : ToolsFor(feature)) {
+    if (tool.binary.empty() || !Installed(tool)) continue;
+    if (std::string package = Choose(PackageFor(tool, family), family); !package.empty())
+      packages.push_back(std::move(package));
+  }
+  return packages;
+}
+
+std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages) {
+  if (packages.empty()) return {};
+  std::vector<std::string> argv;
+  switch (family) {
+    case Family::Arch: argv = {"pacman", "-Rns", "--noconfirm"}; break;
+    case Family::Debian: argv = {"apt-get", "remove", "-y"}; break;
+    case Family::Fedora: argv = {"dnf", "remove", "-y"}; break;
+    case Family::Suse: argv = {"zypper", "--non-interactive", "remove"}; break;
+    case Family::Ostree: argv = {"rpm-ostree", "uninstall"}; break;
     case Family::SteamOS:
     case Family::Unknown: return {};
   }

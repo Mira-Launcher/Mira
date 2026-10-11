@@ -15,6 +15,7 @@
 
 #include "../client/Async.h"
 #include "../client/api/Artwork.h"
+#include "../sources/Sources.h"
 #include "CoverArt.h"
 #include "../theme/Theme.h"
 
@@ -192,7 +193,7 @@ void ArtworkStore::ForgetWidth(int width) {
 
 QPixmap ArtworkStore::Cover(const GameSummary& game, QSize tile, qreal device_pixel_ratio) {
   return CoverById(QString::fromStdString(game.id), QString::fromStdString(game.name), tile,
-                  device_pixel_ratio);
+                  device_pixel_ratio, QString::fromStdString(game.source));
 }
 
 QPixmap ArtworkStore::TitleCover(const QString& source, const QString& ref, const QString& title, QSize tile,
@@ -202,13 +203,14 @@ QPixmap ArtworkStore::TitleCover(const QString& source, const QString& ref, cons
   return Draw(id, title, tile, device_pixel_ratio);
 }
 
-QPixmap ArtworkStore::CoverById(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio) {
+QPixmap ArtworkStore::CoverById(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+                                const QString& source) {
   library_.insert(id);  // a store title's id once installed: its copies are the library's now
-  return Draw(id, name, tile, device_pixel_ratio);
+  return Draw(id, name, tile, device_pixel_ratio, source);
 }
 
-QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
-                           qreal device_pixel_ratio) {
+QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+                           const QString& source) {
   const QString scaled_key = id + '@' + QString::number(tile.width());
   Touch(id);
   // Before the cached copy, which may be a placeholder drawn for a request since dropped.
@@ -232,9 +234,13 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
     const auto last = last_drawn_.constFind(id);
     return FitToTile(last != last_drawn_.constEnd() ? *last : *thumb, tile, device_pixel_ratio);
   }
-  // Keyed on the id, not the name, so it survives a rename.
+  // Keyed on the id, not the name, so it survives a rename. An emulator's game shows its emulator.
+  const SourceInfo* info = FindSourceInfo(source);
+  const QPixmap logo = info != nullptr && info->kind == SourceInfo::Kind::Emulator
+                           ? SourceLogo(*info, tile.width() / 2, device_pixel_ratio)
+                           : QPixmap();
   const QPixmap cover =
-      PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10), device_pixel_ratio);
+      PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10), device_pixel_ratio, logo);
   KeepScaled(scaled_key, cover);
   return cover;
 }

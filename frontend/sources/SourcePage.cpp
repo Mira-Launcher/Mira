@@ -2,7 +2,9 @@
 
 #include <algorithm>
 
+#include <QComboBox>
 #include <QEvent>
+#include <QFileDialog>
 #include <QGridLayout>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -15,10 +17,12 @@
 #include <QStyle>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
@@ -27,6 +31,8 @@
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
+#include "../client/api/Games.h"
+#include "../widgets/PopupDialog.h"
 #include "../client/EventHub.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
@@ -141,7 +147,7 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
 // Every page but Local has both sections; ones that can't list what the account owns say so.
-bool SourcePage::HasOwned() const { return id_ != "local"; }
+bool SourcePage::HasOwned() const { return id_ != "local" && !IsEmulator(); }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
@@ -164,6 +170,13 @@ QWidget* SourcePage::BuildTopRow() {
   banner_primary_->setVisible(false);
   connect(banner_primary_, &QPushButton::clicked, this, [this] {
     banner_primary_->setEnabled(false);
+    if (IsEmulator()) {
+      api::OpenEmulatorAsync(this, id_, [this](StoreActionResult result) {
+        banner_primary_->setEnabled(true);
+        if (!result.ok) setup_card_->ShowError("Could not open " + source_.name + ".", result.error);
+      });
+      return;
+    }
     if (IsLauncher()) {
       api::OpenLauncherAsync(this, id_, [this](StoreActionResult result) {
         banner_primary_->setEnabled(true);
@@ -205,10 +218,10 @@ QWidget* SourcePage::BuildTopRow() {
   }
 
   import_button_ = new QPushButton(CopyFor(id_).import_button, tabs_);
-  icons::Follow(import_button_, icons::Glyph::Refresh);
+  icons::Follow(import_button_, IsEmulator() ? icons::Glyph::Plus : icons::Glyph::Refresh);
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).
   import_button_->setVisible(HasImport() && !IsStore() && !IsLauncher());
-  connect(import_button_, &QPushButton::clicked, this, &SourcePage::Import);
+  connect(import_button_, &QPushButton::clicked, this, [this] { IsEmulator() ? PickGames() : Import(); });
   tabs_->SetTrailing(import_button_);
 
   settings_button_ = new QToolButton(tabs_);
@@ -365,6 +378,20 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
   if (IsLauncher() || IsStore()) {
     menu->addAction("View setup log", this, [this] { LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup"); });
   }
+  if (IsEmulator()) {
+    if (emulator_.installed && !emulator_.version.empty()) {
+      menu->addAction(icons::For(icons::Glyph::Download),
+                      "Update " + source_.name + " (" + QString::fromStdString(emulator_.version) + ")", this, [this] {
+                        api::InstallEmulatorAsync(this, id_, [this](StoreActionResult result) {
+                          if (!result.ok) setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
+                          RefreshStatus();
+                        });
+                      });
+    }
+    menu->addAction(icons::For(icons::Glyph::Home), "Open games folder", this,
+                    [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+    menu->addAction(icons::For(icons::Glyph::Refresh), "Look for new games", this, &SourcePage::Import);
+  }
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
     menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this, [this] {
@@ -408,6 +435,44 @@ void SourcePage::UpdateTool() {
   });
 }
 
+// An emulator's empty library: where its games go in.
+QWidget* SourcePage::BuildDropZone(QWidget* parent) {
+  drop_zone_ = new QFrame(parent);
+  drop_zone_->setObjectName("drop_zone");
+  drop_zone_->setVisible(false);
+  drop_zone_->setMinimumHeight(300);
+  auto* layout = new QVBoxLayout(drop_zone_);
+  layout->setContentsMargins(24, 28, 24, 28);
+  layout->addStretch(1);
+  layout->setSpacing(8);
+  auto* logo = new QLabel(drop_zone_);
+  logo->setPixmap(SourceLogo(source_, 48, devicePixelRatioF()));
+  layout->addWidget(logo, 0, Qt::AlignHCenter);
+  auto* title = new QLabel("Drop " + PlaysText(source_) + " games here", drop_zone_);
+  title->setProperty("role", "heading");
+  title->setAlignment(Qt::AlignCenter);
+  title->setWordWrap(true);
+  layout->addWidget(title);
+  auto* line = MakeLabel(drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.", "muted");
+  line->setAlignment(Qt::AlignCenter);
+  layout->addWidget(line);
+  auto* buttons = new QHBoxLayout();
+  buttons->setSpacing(8);
+  buttons->addStretch(1);
+  auto* add = new QPushButton("Add games…", drop_zone_);
+  add->setDefault(true);
+  connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
+  auto* folder = new QPushButton("Open games folder", drop_zone_);
+  connect(folder, &QPushButton::clicked, this, [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+  buttons->addWidget(add);
+  buttons->addWidget(folder);
+  buttons->addStretch(1);
+  layout->addSpacing(4);
+  layout->addLayout(buttons);
+  layout->addStretch(1);
+  return drop_zone_;
+}
+
 QWidget* SourcePage::BuildLibrarySection() {
   auto* section = new QWidget(this);
   library_section_ = section;
@@ -428,6 +493,7 @@ QWidget* SourcePage::BuildLibrarySection() {
 
   library_empty_ = MakeLabel(section, QString(), "muted");
   layout->addWidget(library_empty_);
+  if (IsEmulator()) layout->addWidget(BuildDropZone(section));
 
   library_grid_ = new TileGrid(tile_, artwork_, section);
   static_cast<GameTileDelegate*>(library_grid_->itemDelegate())->SetShowSource(false);
@@ -655,9 +721,73 @@ void SourcePage::RefreshStatus() {
         if (launcher.id == id_) ApplyLauncher(launcher);
       }
     });
+  } else if (IsEmulator()) {
+    api::GetEmulatorsAsync(this, [this](EmulatorsResult result) {
+      if (!result.ok) {
+        setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
+        return;
+      }
+      for (const EmulatorInfo& emulator : result.emulators) {
+        if (emulator.id == id_) ApplyEmulator(emulator);
+      }
+    });
   } else {
     UpdateStatusLine();
   }
+}
+
+void SourcePage::ApplyEmulator(const EmulatorInfo& emulator) {
+  emulator_ = emulator;
+  setup_card_->ShowEmulator(emulator);
+  banner_primary_->setText("Open " + source_.name);
+  banner_primary_->setVisible(emulator.installed);
+  UpdateStatusLine();
+}
+
+void SourcePage::PickGames() {
+  std::vector<std::string> paths;
+  if (emulator_.folder_games) {
+    const QString dir = QFileDialog::getExistingDirectory(this, "Add a " + source_.name + " game");
+    if (!dir.isEmpty()) paths.push_back(dir.toStdString());
+  } else {
+    QStringList patterns;
+    for (const std::string& ext : emulator_.extensions) {
+      patterns << "*" + QString::fromStdString(ext) << "*" + QString::fromStdString(ext).toUpper();
+    }
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, "Add " + source_.name + " games", QString(),
+        QString("%1 games (%2);;All files (*)").arg(PlaysText(source_), patterns.join(' ')));
+    for (const QString& file : files) paths.push_back(file.toStdString());
+  }
+  if (!paths.empty()) AddGames(paths);
+}
+
+void SourcePage::AddGames(const std::vector<std::string>& paths) {
+  import_button_->setEnabled(false);
+  import_result_->setVisible(false);
+  api::AddEmulatorFilesAsync(this, id_, paths, [this](StoreImportResult result) {
+    import_button_->setEnabled(true);
+    if (!result.ok) return ShowError(import_result_, "Could not add those games.", result.error);
+    ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), "muted");
+    if (result.added > 0 || result.updated > 0) emit LibraryChanged();
+    for (const StartChoice& choice : result.choose) AskStartFile(choice);
+  });
+}
+
+void SourcePage::AskStartFile(const StartChoice& choice) {
+  PopupDialog dialog(this, notify::Level::Info, "Which file starts " + QString::fromStdString(choice.name) + "?");
+  dialog.SetMessage("Its folder has more than one program. You can change it later in the game's settings.");
+  auto* files = new QComboBox(&dialog);
+  for (const std::string& file : choice.files) files->addItem(QString::fromStdString(file));
+  dialog.AddWidget(files);
+  dialog.AddButton("Use this file", true, true);
+  // Mira already starts it with the first.
+  if (dialog.exec() != QDialog::Accepted || files->currentIndex() <= 0) return;
+  GamePatch patch;
+  patch.exe_path = files->currentText().toStdString();
+  api::PatchGameAsync(this, choice.id, patch, [this](PatchGameResult result) {
+    if (!result.ok) notify::FailedRequest(this, "Could not change which file starts it.", result.error);
+  });
 }
 
 void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
@@ -728,6 +858,8 @@ void SourcePage::UpdateStatusLine() {
     parts << (launcher_installing_ ? StatusDot(tokens.info) + "Installing…"
               : launcher_installed_ ? StatusDot(tokens.success) + "Installed"
                                     : StatusDot(tokens.warning) + "Not installed");
+  } else if (IsEmulator()) {
+    parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed" : StatusDot(tokens.warning) + "Not installed");
   }
   if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
@@ -752,6 +884,9 @@ void SourcePage::UpdateStatusLine() {
   } else if (IsLauncher() && !launcher_installed_) {
     const QString item = CopyFor(id_).item;
     library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " + source_.name + " show up here.");
+  } else if (IsEmulator()) {
+    library_empty_->setVisible(false);
+    drop_zone_->setVisible(library_count_ == 0);
   } else if (id_ == "local") {
     library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
@@ -779,6 +914,8 @@ void SourcePage::Import() {
     api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (id_ == "lutris") {
     api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+  } else if (IsEmulator()) {
+    api::ImportEmulatorAsync(this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsLauncher()) {
     api::ImportLauncherAsync(this, id_,
                                      [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
@@ -1110,6 +1247,8 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
 void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/true); }
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
+  // An emulator installed or firmware added elsewhere (its install job, a second window).
+  if (IsEmulator() && type == "sources.changed") return RefreshStatus();
   if (StoreEvent art; events::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
     if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&

@@ -25,7 +25,10 @@ struct RemovalGame {
 struct RemovalPlan {
   std::string source;
   std::vector<RemovalGame> games;
-  std::string launcher_dir;       // a launcher's program folder, deleted
+  std::string program_dir;            // a launcher's program folder or Mira's download of an emulator, deleted
+  std::vector<std::string> packages;   // a package emulator's installed packages
+  std::vector<std::string> uninstall;  // the command removing them; empty where Mira can't (an unknown distro)
+  std::vector<std::string> data;  // an emulator's settings, saves and caches, deleted only when asked
   std::vector<std::string> kept;  // prefixes and save folders left alone
   bool signs_out = false;
 };
@@ -38,8 +41,9 @@ struct RemovalResult {
   std::vector<std::string> problems;  // steps that failed; the rest still ran
 };
 
+// `delete_data` also deletes the plan's `data`.
 Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& games,
-                                   api::EventBus& events, std::string_view source);
+                                   api::EventBus& events, std::string_view source, bool delete_data = false);
 
 // Deletes `target` if it is strictly inside one of `roots` (never a root
 // itself).

@@ -17,6 +17,19 @@ QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role, bool w
   return label;
 }
 
+QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone) {
+  auto* tag = new QLabel(text, parent);
+  tag->setObjectName("tag");
+  if (tone != nullptr) tag->setProperty("tone", tone);
+  return tag;
+}
+
+QString JoinAnd(QStringList items) {
+  if (items.size() < 2) return items.join(QString());
+  const QString last = items.takeLast();
+  return items.join(", ") + " and " + last;
+}
+
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text) {
   return MakeLabel(parent, text, "group_heading", /*wrap=*/false);
 }
