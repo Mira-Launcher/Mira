@@ -52,6 +52,8 @@ packaging/    desktop entry, icons, PKGBUILD
 cmake/        AppImage build
 ```
 
+Route files register through a `Router`, which runs every handler behind one gate that sees the parsed body (httplib's pre-routing handler runs before the body is read). While hidden games are locked, the gate answers a request naming one as a missing game; list routes skip them through `Services::Conceals`, and `EventBus`'s filter drops or rewrites events about them.
+
 ## Storage
 
 All user state lives in `$XDG_CONFIG_HOME/mira` (normally `~/.config/mira`):
@@ -67,7 +69,7 @@ logs/           per-game output from the last launches
 
 `settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once (`Services::SettingsChanged`, which a request's change goes through too), and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
 
-**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `settings_snapshot`, `ui_state` (the GUI's window state, kept out of `frontend.toml`), and `hidden_titles` (store titles hidden while not installed; a hidden title's game takes the `hidden` tag as it's added, and a removed hidden store game puts its title back). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
+**mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` and `sessions` (both removed with their game; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `settings_snapshot`, `ui_state` (the GUI's window state, kept out of `frontend.toml`), and `hidden_titles` (store titles hidden while not installed; a hidden title's game takes the `hidden` tag as it's added, and a removed hidden store game puts its title back), and `secrets` (values clients can't read through settings.toml: the hidden games' password hash). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
 **cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, and `lists` of what's fetched for the whole library (Steam's tag names). Everything in it can be fetched again, so a damaged one is started over.
 

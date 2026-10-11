@@ -17,7 +17,7 @@ using nlohmann::json;
 
 }  // namespace
 
-void RegisterEventRoutes(httplib::Server& http, Services& s) {
+void RegisterEventRoutes(Router& http, Services& s) {
   // --- events (SSE) -----------------------------------------------------
 
   http.Get("/v1/events", [&s](const Request& req, Response& res) {

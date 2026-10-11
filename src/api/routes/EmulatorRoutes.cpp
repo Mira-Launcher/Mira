@@ -66,7 +66,7 @@ void SourceAdded(Services& s, const emulators::Emulator& emulator, bool has_game
 
 }  // namespace
 
-void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
+void RegisterEmulatorRoutes(Router& http, Services& s) {
   http.Get("/v1/emulators", [&s](const Request&, Response& res) {
     json list = json::array();
     for (const emulators::Emulator& emulator : emulators::All()) list.push_back(ToJson(s.config, emulator));

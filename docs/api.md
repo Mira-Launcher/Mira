@@ -315,6 +315,35 @@ Body `{"name": "..."}`. Takes the tag off every game and out of `tags.folders`. 
 ### `POST /v1/tags/preview`
 Body `{"folders"?: [...], "sorted_roots"?: [...], "tags"?: {"<id>": [...]}}`: `tags.folders` and `tags.sorted_roots` as they would be, and games' tags as a client is editing them, none of it saved. Returns `{"moving": [{"id", "name", "to"}]}`: the games (and links) that would move, and where to, so a client can say what a change does before asking for it. Folder tags the setting would refuse are `400 invalid_setting`.
 
+## Hidden games
+
+Hidden games are those tagged `hidden`, plus store titles hidden with `POST /v1/library/hidden`. With a password set they start locked each time mirad starts, and while locked mirad answers as if they weren't there:
+
+- **Lists leave them out.** Every list skips them, whatever is asked for: `GET /v1/games` (even with `include_hidden` or `tag=hidden`), `/v1/tags` (their ids and counts), `/v1/library`, `/v1/sources` counts, `/v1/steam/installed`, `/v1/library/unclear`, `/v1/library/install/paused` and `/v1/tags/preview`.
+- **Naming one is a missing game.** A request that names one answers `404 game_not_found`, as for a game that doesn't exist. That covers `/v1/games/{id}...`, `source` with `ref` in the query, and `id`, `ids`, or `source` with `ref`, `refs` or `titles` in the body. Their jobs answer `404 job_not_found`.
+- **`POST /v1/tags/set` leaves their tags alone.**
+- **Events about them are dropped.** A game hidden while locked is published as `game.removed` (or `games.removed`). Buffered events about them become `concealed` events with no payload when hidden games lock, so a reconnecting client isn't replayed them.
+
+Only a crypt(3) hash of the password is kept (yescrypt from the system's libcrypt, in mira.db). With `hidden.lock_after_minutes`, they lock again once no client has reported activity for that long, unless a game is running. Every change of state publishes `hidden.changed` with `{password, locked}`, the cue for a client to fetch its games again.
+
+### `GET /v1/hidden`
+`{"password": bool, "locked": bool}`.
+
+### `PUT /v1/hidden/password`
+Body `{"current"?: "...", "password": "..."}`. Sets the password, changes it, or with `""` removes it. Once one is set, `current` must match it (`403 wrong_password`, after a pause). Leaves hidden games unlocked. Answers like `GET`.
+
+### `POST /v1/hidden/unlock`
+Body `{"password": "..."}`. `403 wrong_password` after a pause, or answers like `GET`.
+
+### `POST /v1/hidden/lock`
+Locks hidden games now. Answers like `GET`.
+
+### `POST /v1/hidden/left`
+A client left hidden mode: locks hidden games when `hidden.lock_on_leave` is on. Answers like `GET`.
+
+### `POST /v1/hidden/activity`
+Someone is using a client: restarts `hidden.lock_after_minutes`' count. `204`.
+
 ## Runners
 
 ### `GET /v1/runners`
@@ -687,6 +716,9 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |
 | `library.catalog_checking`, `library.catalog_checked` | `{source}` while `GET /v1/library` re-checks a store's owned titles; `checked` adds `changed`. |
+| `library.hidden_changed` | `{source, refs, hidden}` after `POST /v1/library/hidden`. |
+| `hidden.changed` | `{password, locked}` when the [hidden games](#hidden-games) password is set or removed, or they lock or unlock. |
+| `concealed` | No payload: a buffered event about a hidden game, blanked when hidden games locked. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |

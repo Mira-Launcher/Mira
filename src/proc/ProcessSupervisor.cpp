@@ -330,6 +330,11 @@ bool ProcessSupervisor::IsRunning(const std::string& game_id) const {
   return running_.contains(game_id);
 }
 
+bool ProcessSupervisor::AnyRunning() const {
+  std::lock_guard lock(mutex_);
+  return !running_.empty();
+}
+
 // Stop()'s SIGKILL escalation, for WatchWrapped and WatchReconciledLive: a game that
 // ignored SIGTERM past its deadline gets SIGKILL to its whole cgroup.
 void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_pid) {

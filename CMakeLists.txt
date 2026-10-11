@@ -94,7 +94,7 @@ list(FILTER MIRA_CORE_SOURCES EXCLUDE REGEX "src/wrapper/.*\\.cpp$")
 add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
 target_link_libraries(mira_core PRIVATE mira_flags mira_sqlite mira_stb)
-target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads)
+target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads ${CMAKE_DL_LIBS})
 
 option(MIRA_PCH "Precompile the common headers" ON)
 

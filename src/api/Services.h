@@ -15,6 +15,7 @@
 #include <json.hpp>
 
 #include "api/EventBus.h"
+#include "api/HiddenLock.h"
 #include "api/Jobs.h"
 #include "config/Config.h"
 #include "core/Lane.h"
@@ -49,6 +50,18 @@ public:
   config::Config& config;
   store::GameStore& games;
   EventBus& events;
+  HiddenLock hidden{games};
+
+  // While hidden games are locked: whether to answer as if this game, or the game or store title
+  // with this id ("<source>-<ref>" for a title), weren't there.
+  bool Conceals(const model::Game& game) const;
+  bool Conceals(const std::string& id) const;
+  // Locks hidden games, blanks buffered events about them and publishes hidden.changed; nothing
+  // when they're locked already.
+  void LockHidden();
+  // {password, locked}: GET /v1/hidden's answer and hidden.changed's payload.
+  nlohmann::json HiddenState() const;
+  void PublishHiddenState();
 
 private:
   // Prefix program folders as each running Windows game launched, for CheckForInstall.
@@ -186,6 +199,16 @@ public:
 
 private:
   void WatchExternalGames();
+  // Locks hidden games once hidden.lock_after_minutes pass with no one using Mira and no game
+  // running.
+  void LockHiddenWhenIdle();
+  // EventBus's filter: while locked, drops or rewrites events about concealed games.
+  bool FilterEvent(std::string& type, nlohmann::json& payload, bool live);
+
+  // Each running job's target, so its later events (which carry only the job's id) can be
+  // concealed.
+  std::mutex job_targets_mutex_;
+  std::map<std::string, std::string> job_targets_;
   // After a launched game exits: publishes game.install_detected when the run
   // added a program folder to its prefix, i.e. the "game" was an installer.
   void CheckForInstall(const std::string& game_id);

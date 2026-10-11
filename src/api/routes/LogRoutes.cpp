@@ -53,7 +53,7 @@ json GameLog(Services& s, const std::string& id, const std::optional<std::uint64
 // GET /v1/logs/<channel>?after=<cursor>&lines=<n>: a live log. Channels:
 // daemon, game:<id>, setup:<source>, install:<source>:<ref>, runner:<kind>:<name>.
 // Each task has its own, so two running at once don't mix. `next` is the cursor to send back.
-void RegisterLogRoutes(httplib::Server& http, Services& s) {
+void RegisterLogRoutes(Router& http, Services& s) {
   http.Get(R"(/v1/logs/([A-Za-z0-9._:-]+))", [&s](const httplib::Request& req, httplib::Response& res) {
     const std::string channel = req.matches[1];
     int tail = 300;

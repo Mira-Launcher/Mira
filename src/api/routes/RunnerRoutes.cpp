@@ -30,7 +30,7 @@ Result<void> DeleteUnderRoot(const std::string& target, const std::vector<std::f
 
 }  // namespace
 
-void RegisterRunnerRoutes(httplib::Server& http, Services& s) {
+void RegisterRunnerRoutes(Router& http, Services& s) {
   // --- runners --------------------------------------------------------------
 
   http.Get("/v1/runners", [&s](const Request&, Response& res) {

@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 3> kMigrations = {
+constexpr std::array<std::string_view, 4> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -105,6 +105,10 @@ INSERT INTO sources(id, added) VALUES('local', 1);
 -- Store titles hidden while not installed, as "<source>-<ref>"; an installed one's game carries the tag instead.
 CREATE TABLE hidden_titles(id TEXT PRIMARY KEY) STRICT;
 )sql",
+    R"sql(
+-- Values kept out of settings.toml, which clients can read: "hidden_password" is a crypt(3) hash.
+CREATE TABLE secrets(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+)sql",
 };
 
 // The title a store game was installed from, as hidden_titles keys it, or "" for a game from no
@@ -112,10 +116,6 @@ CREATE TABLE hidden_titles(id TEXT PRIMARY KEY) STRICT;
 std::string TitleKey(const model::Game& game) {
   if (game.source_ref.empty() || game.id != game.source + "-" + game.source_ref) return {};
   return game.id;
-}
-
-bool IsHidden(const model::Game& game) {
-  return std::ranges::contains(game.tags, std::string("hidden"));
 }
 
 constexpr std::array<std::string_view, 16> kTextColumns = {
@@ -161,6 +161,10 @@ void SetDatabaseAside(const fs::path& file) {
   log::Error("the library database {} is damaged; kept it as {}", file.string(), kept->string());
 }
 }  // namespace
+
+bool IsHidden(const model::Game& game) {
+  return std::ranges::contains(game.tags, std::string("hidden"));
+}
 
 GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)), metadata_(file_.parent_path()) {}
 
@@ -242,6 +246,28 @@ Result<void> GameStore::WriteTitleHidden(const std::string& key, bool hidden) {
   return statement->Bind(1, key).Run();
 }
 
+std::string GameStore::Secret(const std::string& key) const {
+  std::lock_guard lock(mutex_);
+  auto statement = db_.Prepare("SELECT value FROM secrets WHERE key = ?");
+  if (!statement) return {};
+  statement->Bind(1, key);
+  const auto row = statement->Step();
+  return row && *row ? statement->Text(0) : std::string();
+}
+
+Result<void> GameStore::SetSecret(const std::string& key, const std::string& value) {
+  std::lock_guard lock(mutex_);
+  return Transact([&]() -> Result<void> {
+    auto statement =
+        db_.Prepare(value.empty() ? "DELETE FROM secrets WHERE key = ?1"
+                                  : "INSERT OR REPLACE INTO secrets(key, value) VALUES(?1, ?2)");
+    if (!statement) return std::unexpected(statement.error());
+    statement->Bind(1, key);
+    if (!value.empty()) statement->Bind(2, value);
+    return statement->Run();
+  });
+}
+
 bool GameStore::AdoptHiddenTitle(model::Game& game) const {
   if (std::ranges::contains(games_, game.id, &model::Game::id) || !hidden_titles_.contains(game.id))
     return false;
@@ -261,6 +287,14 @@ std::set<std::string> GameStore::HiddenKeys() const {
     if (IsHidden(game)) keys.insert(game.id);
   }
   return keys;
+}
+
+bool GameStore::IsHiddenKey(const std::string& key) const {
+  std::lock_guard lock(mutex_);
+  if (const auto it = std::ranges::find(games_, key, &model::Game::id); it != games_.end()) {
+    return IsHidden(*it);
+  }
+  return hidden_titles_.contains(key);
 }
 
 Result<void> GameStore::SetTitlesHidden(const std::vector<std::string>& keys, bool hidden) {
@@ -496,10 +530,11 @@ bool GameStore::Contains(const std::string& id) const {
   return std::ranges::contains(games_, id, &model::Game::id);
 }
 
-std::map<std::string, int> GameStore::CountBySource() const {
+std::map<std::string, int> GameStore::CountBySource(bool skip_hidden) const {
   std::lock_guard lock(mutex_);
   std::map<std::string, int> counts;
   for (const model::Game& game : games_) {
+    if (skip_hidden && IsHidden(game)) continue;
     if (std::string id = SourceIdOf(game.source); !id.empty()) ++counts[std::move(id)];
   }
   return counts;

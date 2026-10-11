@@ -45,6 +45,9 @@ struct SourceState {
 // The source id a game's `source` counts toward, or "" for none.
 std::string SourceIdOf(const std::string& game_source);
 
+// Whether a game carries the "hidden" tag.
+bool IsHidden(const model::Game& game);
+
 class GameStore {
 public:
   explicit GameStore(std::filesystem::path file);
@@ -90,8 +93,8 @@ public:
   std::vector<model::Game> All() const;
   std::optional<model::Game> Find(const std::string& id) const;
   bool Contains(const std::string& id) const;
-  // Games per SourceIdOf.
-  std::map<std::string, int> CountBySource() const;
+  // Games per SourceIdOf, leaving out hidden ones when `skip_hidden`.
+  std::map<std::string, int> CountBySource(bool skip_hidden = false) const;
   std::optional<model::Game> FindByInstallPath(const std::string& install_path) const;
   // Whether a game's install_path is inside `dir` (a game whose program sits in a subfolder).
   bool HasInstallUnder(const std::string& dir) const;
@@ -141,7 +144,14 @@ public:
   // HiddenTitles plus the ids of games tagged "hidden", which is how a store game's id and its
   // title's key line up.
   std::set<std::string> HiddenKeys() const;
+  // Whether `key` is one of HiddenKeys(), without copying any.
+  bool IsHiddenKey(const std::string& key) const;
   Result<void> SetTitlesHidden(const std::vector<std::string>& keys, bool hidden);
+
+  // A value stored outside settings.toml, which clients can read; "" when unset. Setting "" removes
+  // it.
+  std::string Secret(const std::string& key) const;
+  Result<void> SetSecret(const std::string& key, const std::string& value);
 
 private:
   Result<void> Open();

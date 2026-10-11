@@ -73,6 +73,9 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     if (!game.contains("art")) Decorate(game);  // a Record() already is
   });
   events.SetArtHook([this](const std::string& id) { return games.Metadata().ArtVersions(id); });
+  events.SetFilter([this](std::string& type, json& payload, bool live) {
+    return FilterEvent(type, payload, live);
+  });
   supervisor.SetExitHook([this](const std::string& id) {
     CheckForInstall(id);
     SortByTags({id});  // its tags may have changed while it ran
@@ -82,10 +85,100 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
 Services::~Services() {
   events.SetGameRecordHook(nullptr);
   events.SetArtHook(nullptr);
+  events.SetFilter(nullptr);
   BeginStopping();
   if (external_watch_.joinable()) external_watch_.join();
   // Their tasks report to `jobs`, which is destroyed before the lanes are.
   for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs}) lane->Stop();
+}
+
+bool Services::Conceals(const model::Game& game) const {
+  return store::IsHidden(game) && hidden.Locked();
+}
+
+bool Services::Conceals(const std::string& id) const {
+  return !id.empty() && hidden.Locked() && games.IsHiddenKey(id);
+}
+
+void Services::LockHidden() {
+  if (!hidden.Lock()) return;
+  events.Refilter();
+  PublishHiddenState();
+}
+
+json Services::HiddenState() const {
+  return {{"password", hidden.HasPassword()}, {"locked", hidden.Locked()}};
+}
+
+void Services::PublishHiddenState() {
+  events.Publish("hidden.changed", HiddenState());
+}
+
+void Services::LockHiddenWhenIdle() {
+  if (hidden.Locked() || !hidden.HasPassword()) return;
+  if (supervisor.AnyRunning()) return hidden.Touch();  // playing isn't idle
+  const std::int64_t minutes = config.GetInt("hidden.lock_after_minutes");
+  if (minutes > 0 && hidden.Idle() >= std::chrono::minutes(minutes)) LockHidden();
+}
+
+bool Services::FilterEvent(std::string& type, json& payload, bool live) {
+  if (!payload.is_object()) return true;
+  const auto text = [&](const char* key) {
+    const auto found = payload.find(key);
+    return found != payload.end() && found->is_string() ? found->get<std::string>() : std::string();
+  };
+
+  // A job's events after job.started carry only its id.
+  if (type.starts_with("job.")) {
+    std::string target;
+    {
+      std::lock_guard lock(job_targets_mutex_);
+      const std::string id = text("id");
+      if (type == "job.started" && live) job_targets_[id] = text("target");
+      if (const auto found = job_targets_.find(id); found != job_targets_.end())
+        target = found->second;
+      if ((type == "job.finished" || type == "job.failed") && live) job_targets_.erase(id);
+    }
+    return !Conceals(target);
+  }
+  if (!hidden.Locked()) return true;
+
+  // Removals pass: a client drops what it has, and a just-hidden game has to leave it.
+  if (type == "game.removed" || type == "games.removed" || type == "library.hidden_changed")
+    return true;
+
+  if (const auto games_list = payload.find("games");
+      games_list != payload.end() && games_list->is_array()) {
+    std::vector<std::string> concealed;
+    json kept = json::array();
+    for (json& game : *games_list) {
+      const std::string id = game.is_object() ? game.value("id", std::string()) : std::string();
+      if (Conceals(id)) {
+        concealed.push_back(id);
+      } else {
+        kept.push_back(std::move(game));
+      }
+    }
+    *games_list = std::move(kept);
+    if (type == "games.updated" && live && !concealed.empty())
+      events.Publish("games.removed", {{"ids", concealed}});
+    return !games_list->empty() || concealed.empty();
+  }
+
+  const std::string id = text("id");
+  if (Conceals(id)) {
+    // A game hidden while locked leaves every client.
+    if ((type == "game.updated" || type == "game.added") && live) {
+      type = "game.removed";
+      payload = {{"id", id}};
+      return true;
+    }
+    return false;
+  }
+  if (Conceals(text("game_id"))) return false;
+  if (const std::string source = text("source"), ref = text("ref"); !source.empty() && !ref.empty())
+    return !Conceals(source + "-" + ref);
+  return true;
 }
 
 void Services::BeginStopping() {
@@ -207,6 +300,7 @@ void Services::WatchExternalGames() {
       const auto stopped = [this] { return stopping.load(std::memory_order_relaxed); };
       if (stop_wake_.wait_for(lock, wait, stopped)) return;
     }
+    LockHiddenWhenIdle();
 
     const std::pair revisions{games.Revision(), config.Revision()};
     if (built_for != revisions) {

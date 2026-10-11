@@ -46,7 +46,7 @@ using nlohmann::json;
 
 }  // namespace
 
-void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
+void RegisterLibraryRoutes(Router& http, Services& s) {
   // --- library ------------------------------------------------------------
 
   http.Post("/v1/library/scan", [&s](const Request& req, Response& res) {
@@ -62,7 +62,14 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
   http.Get("/v1/library/unclear", [&s](const Request&, Response& res) {
     json moves = json::array();
     for (const library::UnclearMove& move : s.unclear_moves.All()) {
-      moves.push_back(library::UnclearMoves::ToJson(move, s.games));
+      json entry = library::UnclearMoves::ToJson(move, s.games);
+      json games = json::array();
+      for (json& game : entry["games"]) {
+        if (!s.Conceals(game.value("id", std::string()))) games.push_back(std::move(game));
+      }
+      if (games.empty()) continue;
+      entry["games"] = std::move(games);
+      moves.push_back(std::move(entry));
     }
     SendJson(res, {{"moves", std::move(moves)}});
   });
@@ -245,6 +252,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                              [&played](const steam::SteamApp& app) { return played(app.appid); });
     json games = json::array();
     for (const steam::SteamApp& app : apps) {
+      if (s.Conceals("steam-" + app.appid)) continue;
       json game = {{"appid", app.appid}, {"name", app.name}};
       if (const std::int64_t at = played(app.appid); at > 0) game["last_played_at"] = at;
       games.push_back(std::move(game));
@@ -363,7 +371,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     std::ranges::stable_sort(states, std::ranges::less{}, [](const store::SourceState& state) {
       return state.position == 0 ? std::numeric_limits<int>::max() : state.position;
     });
-    const auto counts = s.games.CountBySource();
+    const auto counts = s.games.CountBySource(s.hidden.Locked());
     json sources = json::array();
     for (const store::SourceState& state : states) sources.push_back(source_json(counts, state));
     SendJson(res, {{"sources", sources}});
@@ -386,7 +394,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     flag("enabled", state.enabled);
     flag("in_sidebar", state.in_sidebar);
     s.games.SaveSource(state);
-    SendJson(res, source_json(s.games.CountBySource(), state));
+    SendJson(res, source_json(s.games.CountBySource(s.hidden.Locked()), state));
     s.events.Publish("sources.changed", json::object());
   });
 
@@ -445,9 +453,11 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     const auto reviews = s.games.Metadata().Field("steam_reviews");
     const std::set<std::string> hidden_keys = s.games.HiddenKeys();
     json out = json::array();
+    const bool locked = s.hidden.Locked();
     for (const library::CatalogEntry& entry : *entries) {
       const std::string key = entry.source + "-" + entry.ref;
       const bool hidden = hidden_keys.contains(key);
+      if (locked && hidden) continue;
       out.push_back({{"source", entry.source},
                      {"ref", entry.ref},
                      {"title", entry.title},
@@ -652,7 +662,15 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     }
     SendJson(res, json{{"status", "pausing"}, {"job", *job}});
   });
-  http.Get("/v1/library/install/paused", [&s](const Request&, Response& res) { SendJson(res, s.paused_installs.List()); });
+  http.Get("/v1/library/install/paused", [&s](const Request&, Response& res) {
+    json paused = json::array();
+    for (json& install : s.paused_installs.List()) {
+      if (!s.Conceals(install.value("source", std::string()) + "-" +
+                      install.value("ref", std::string())))
+        paused.push_back(std::move(install));
+    }
+    SendJson(res, std::move(paused));
+  });
   http.Delete("/v1/library/install/paused", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
     const std::string ref = Param(req, "ref");

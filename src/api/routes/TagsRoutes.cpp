@@ -89,7 +89,7 @@ void Changed(Services& s, const std::vector<model::Game>& updated, bool folders_
 
 }  // namespace
 
-void RegisterTagsRoutes(httplib::Server& http, Services& s) {
+void RegisterTagsRoutes(Router& http, Services& s) {
   http.Get("/v1/tags", [&s](const Request&, Response& res) {
     const std::vector<std::string> folders = s.config.GetStringArray("tags.folders");
     std::vector<Tally> mine;
@@ -97,6 +97,7 @@ void RegisterTagsRoutes(httplib::Server& http, Services& s) {
     int missing = 0;
     const auto stored = metadata::StoredSteamTags(s.games.Metadata());
     for (const model::Game& game : s.games.All()) {
+      if (s.Conceals(game)) continue;
       for (const std::string& tag : game.tags) {
         if (!IsMeaningTag(tag)) Count(mine, tag, game.id);
       }
@@ -184,6 +185,7 @@ void RegisterTagsRoutes(httplib::Server& http, Services& s) {
     }
     std::vector<std::string> touched;
     for (const model::Game& game : s.games.All()) {
+      if (s.Conceals(game)) continue;  // the client couldn't list it, so its tags stay
       const bool has = std::ranges::any_of(
           game.tags, [&](const std::string& t) { return library::SameTag(t, name); });
       if (has != std::ranges::contains(*ids, game.id)) touched.push_back(game.id);
@@ -320,6 +322,7 @@ void RegisterTagsRoutes(httplib::Server& http, Services& s) {
     }
     json moving = json::array();
     for (model::Game game : s.games.All()) {
+      if (s.Conceals(game)) continue;
       if (tags.contains(game.id)) game.tags = tags[game.id].get<std::vector<std::string>>();
       if (!library::NeedsPlacing(rules, game)) continue;
       const auto to = library::SortsByLink(rules, game) ? library::PlacedLinkPath(rules, game)

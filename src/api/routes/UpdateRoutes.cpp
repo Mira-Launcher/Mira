@@ -8,7 +8,7 @@
 
 namespace mira::api {
 
-void RegisterUpdateRoutes(httplib::Server& http, Services& s) {
+void RegisterUpdateRoutes(Router& http, Services& s) {
   // Each update installs through its own route: the emulator's install, the store's setup, umu's setup,
   // or /v1/runners/update. Mira's own is a link to its release.
   http.Get("/v1/updates", [&s](const httplib::Request&, httplib::Response& res) {
