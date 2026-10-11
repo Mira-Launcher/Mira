@@ -213,14 +213,9 @@ void TagPicker::SetTileWidth(int width) {
   for (PickTile* tile : tiles_) tile->SetWidth(width);
 }
 
-void TagPicker::ToggleHidden() {
-  show_hidden_ = !show_hidden_;
+void TagPicker::SetShowingHidden(bool showing) {
+  show_hidden_ = showing;
   Filter();
-  // Shown: brought into view, since it's the last section.
-  if (show_hidden_ && hidden_section_ != nullptr && !hidden_section_->isHidden()) {
-    QWidget* heading = sections_->itemAt(sections_->indexOf(hidden_section_) - 1)->widget();
-    scroll_->ensureWidgetVisible(heading != nullptr ? heading : hidden_section_, 0, 0);
-  }
 }
 
 void TagPicker::Open(const QString& name, bool existing, std::vector<Section> sections,
@@ -228,7 +223,6 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
   name_ = name;
   existing_ = existing;
   folder_was_ = folder;
-  show_hidden_ = false;
   known_ = std::move(known);
   had_.clear();
   kept_.clear();
@@ -331,15 +325,15 @@ void TagPicker::Filter() {
   for (PickTile* tile : tiles_) {
     tile->setVisible(text.isEmpty() || QString::fromStdString(tile->Game().name).contains(text, Qt::CaseInsensitive));
   }
-  // A section whose every cover is filtered out hides with its heading; the hidden games' section
-  // shows only after Ctrl+H.
+  // A section whose every cover is filtered out hides with its heading. Hidden mode shows only the
+  // hidden games' section, and only it hides it.
   for (int i = 0; i + 1 < sections_->count(); i += 2) {
     QWidget* heading = sections_->itemAt(i)->widget();
     QWidget* grid = sections_->itemAt(i + 1)->widget();
     if (heading == nullptr || grid == nullptr) continue;
     const bool any = std::ranges::any_of(
         tiles_, [grid](const PickTile* t) { return t->parentWidget() == grid && !t->isHidden(); });
-    const bool shown = any && (grid != hidden_section_ || show_hidden_);
+    const bool shown = any && (grid == hidden_section_) == show_hidden_;
     heading->setVisible(shown);
     grid->setVisible(shown);
   }

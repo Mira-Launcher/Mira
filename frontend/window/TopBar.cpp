@@ -15,6 +15,8 @@ namespace mira_gui {
 
 TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(parent) {
   setObjectName("top_bar");
+  setAttribute(
+      Qt::WA_StyledBackground);    // a plain QWidget subclass draws no QSS background otherwise
   setFont(theme::Larger(font()));  // a point above the rest of the window, like the sidebar
 
   auto* layout = new QHBoxLayout(this);
@@ -27,9 +29,15 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
   badge->setFixedSize(22, 22);
   badge->setAlignment(Qt::AlignCenter);
   layout->addWidget(badge);
-  auto* title = new QLabel("Mira", this);
-  title->setObjectName("brand_title");
-  layout->addWidget(title);
+  brand_ = new QLabel("Mira", this);
+  brand_->setObjectName("brand_title");
+  layout->addWidget(brand_);
+
+  // Outside the layout, so it appears without moving anything; clicks pass to the bar.
+  hidden_note_ = new QLabel(this);
+  hidden_note_->setObjectName("hidden_note");
+  hidden_note_->setAttribute(Qt::WA_TransparentForMouseEvents);
+  hidden_note_->hide();
 
   layout->addStretch(1);
 
@@ -87,6 +95,31 @@ void TopBar::SyncMaximized() {
   const bool maximized = window()->isMaximized();
   maximize_->setIcon(icons::For(maximized ? icons::Glyph::Restore : icons::Glyph::Maximize));
   maximize_->setToolTip(maximized ? "Restore" : "Maximize");
+}
+
+void TopBar::SetHiddenShortcut(const QString& shortcut) {
+  hidden_note_->setText(
+      shortcut.isEmpty() ? QString() : QString("Showing hidden games · %1 to leave").arg(shortcut));
+  hidden_note_->adjustSize();
+  PlaceHiddenNote();
+}
+
+void TopBar::PlaceHiddenNote() {
+  if (hidden_note_->text().isEmpty()) {
+    hidden_note_->hide();
+    return;
+  }
+  QRect place(QPoint(0, 0), hidden_note_->sizeHint());
+  place.moveCenter(rect().center());
+  constexpr int kGap = 12;
+  hidden_note_->setGeometry(place);
+  hidden_note_->setVisible(place.left() >= brand_->geometry().right() + kGap &&
+                           place.right() <= zoom_->geometry().left() - kGap);
+}
+
+void TopBar::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  PlaceHiddenNote();
 }
 
 void TopBar::ApplyIcons() {

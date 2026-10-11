@@ -121,6 +121,12 @@ private:
 
   // After any change to library_: the footer, an open card, Runners.
   void LibraryChanged();
+  // Hidden mode turned on or off: the theme, the top bar's note and every page follow.
+  void ShowingHiddenChanged(bool showing);
+  // The games the hidden mode lists.
+  std::vector<mira_gui::GameSummary> ShownGames() const;
+  // What toggles hidden mode, as the user has it bound.
+  QString HiddenShortcut() const;
   void UpdateFooter();
   void UpsertGames(const std::vector<mira_gui::GameSummary>& games);
   void RemoveGame(const std::string& id);
@@ -243,6 +249,7 @@ private:
   void HandleGameEvent(const std::string& type, const std::string& data, bool live);
 
   mira_gui::TopBar* top_bar_ = nullptr;
+  QAction* hidden_action_ = nullptr;  // toggles hidden mode
   QLabel* drop_overlay_ = nullptr;  // "Drop to add to Mira", shown while a drag is over the window
   QSlider* zoom_ = nullptr;
   QVariantAnimation* zoom_animation_ = nullptr;  // eases tiles to a snapped size

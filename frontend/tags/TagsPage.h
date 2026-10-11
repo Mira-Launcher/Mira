@@ -49,8 +49,8 @@ public:
   // The open picker's row its tiles snap to fill; room 0 when it's closed.
   TileRow Row() const;
   bool PickerOpen() const;
-  // Ctrl+H while the picker is open: its hidden games show or not.
-  void ToggleHidden();
+  // Hidden mode: counts are of hidden games only, else of the rest, and so are the picker's covers.
+  void SetShowingHidden(bool showing);
   // The window is leaving the page, which it keeps: a rename being typed, an open picker and a
   // question in the bar are all dropped, as Esc or Cancel would.
   void Leave();
@@ -119,8 +119,14 @@ private:
   void Failed(const QString& what, const ApiError& error);
   const TagSummary* Mine(const std::string& name) const;
 
+  // Sync now, unless a picker or question is open.
+  void RecountSoon();
+  // How many of `ids` the hidden mode shows.
+  std::size_t ShownCount(const std::vector<std::string>& ids) const;
+
   ArtworkStore* artwork_ = nullptr;
   std::vector<GameSummary> games_;
+  bool showing_hidden_ = false;
   TagsResult tags_;
   Settings settings_;
   bool fetching_steam_ = false;

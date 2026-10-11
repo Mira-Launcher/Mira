@@ -263,6 +263,15 @@ bool ParseCatalogCheck(const std::string& event_type, const std::string& data, C
   return !out->source.empty();
 }
 
+bool ParseHiddenChanged(const std::string& event_type, const std::string& data,
+                        std::string* source) {
+  if (event_type != "library.hidden_changed") return false;
+  const json entry = json::parse(data, nullptr, false);
+  if (entry.is_discarded() || !entry.is_object()) return false;
+  *source = entry.value("source", std::string());
+  return !source->empty();
+}
+
 bool ParseRunnerDownload(const std::string& event_type, const std::string& data,
                          RunnerDownloadEvent* out) {
   constexpr std::string_view kPrefix = "runners.download.";

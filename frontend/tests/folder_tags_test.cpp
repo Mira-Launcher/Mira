@@ -57,7 +57,7 @@ TEST_CASE("The Tags list puts folder tags first, then the tags most games have")
       Game("d", {"indie"}),
   };
   CHECK(TagOrder(games) == std::vector<std::string>{"RPG", "Roguelike", "Indie", "Action", "Zany"});
-  const std::vector<LibraryTag> all = TagsUnder(games, "all", AppsIn::All);
+  const std::vector<LibraryTag> all = TagsUnder(games, "all", AppsIn::All, /*hidden=*/false);
   REQUIRE(all.size() == 4);
   CHECK(all[0].tag == "RPG");
   CHECK(all[0].folder);
@@ -69,10 +69,12 @@ TEST_CASE("The Tags list puts folder tags first, then the tags most games have")
   CHECK_FALSE(all[2].folder);
   CHECK(all[3].tag == "Action");
 
-  const std::vector<LibraryTag> hidden = TagsUnder(games, "hidden", AppsIn::All);
+  const std::vector<LibraryTag> hidden = TagsUnder(games, "all", AppsIn::All, /*hidden=*/true);
   const auto zany = std::ranges::find_if(hidden, [](const LibraryTag& t) { return t.tag == "Zany"; });
   REQUIRE(zany != hidden.end());
   CHECK(zany->count == 1);
+  CHECK(std::ranges::find_if(hidden, [](const LibraryTag& t) { return t.tag == "Indie"; }) ==
+        hidden.end());
 }
 
 TEST_CASE("Records carry how their game is sorted") {

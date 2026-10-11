@@ -247,6 +247,10 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
     UpdateSources();
     RefreshGames();
   });
+  connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
+    UpdateSources();
+    RefreshGames();
+  });
   // Game rows draw their cover, icon or hero, or take their color from it.
   const auto art_changed = [this](const QString& id) {
     if (ShowsArtOf(id)) RefreshGames();
@@ -354,12 +358,6 @@ void Sidebar::ShowActive() {
                                           .arg(theme::ColorToQss(detail))
                                           .arg(tokens.font_size_small));
   }
-}
-
-void Sidebar::SetShowingHidden(bool showing_hidden) {
-  if (showing_hidden == showing_hidden_) return;
-  showing_hidden_ = showing_hidden;
-  RefreshGames();
 }
 
 void Sidebar::SetFooter(int shown, int total, bool mirad_reachable) {
@@ -549,16 +547,17 @@ void Sidebar::UpdateSources() {
   std::map<std::string, int> owned;
   if (owned_titles_ != nullptr) {
     for (const StoreTitle& title : owned_titles_->Titles()) {
-      if (title.owned) ++owned[title.source];
+      if (title.owned && title.hidden == library_->ShowingHidden()) ++owned[title.source];
     }
   }
+  // Each source's games under the hidden mode, for its count and its row's covers.
   std::map<std::string, int> counts;
-  // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
+    if (!library_->Shown(game)) continue;
     const std::string source = SourceIdOf(game);
     ++counts[source];
-    if (!IsHidden(game)) shown[source].push_back(&game);
+    shown[source].push_back(&game);
   }
   constexpr size_t kCovers = 3;
   source_cover_ids_.clear();
@@ -830,10 +829,10 @@ void Sidebar::ShowMenu(const QPoint& global_pos) {
 int Sidebar::FirstRowHeight() const { return library_nav_->sizeHint().height(); }
 
 std::vector<const GameSummary*> Sidebar::PinnedGames() const {
-  // By name, matching the grid: hidden pins only under the Hidden filter.
+  // By name, matching the grid: hidden pins only in hidden mode, and only they.
   std::vector<const GameSummary*> pinned;
   for (const GameSummary& game : library_->Games()) {
-    if (IsPinned(game) && IsHidden(game) == showing_hidden_) pinned.push_back(&game);
+    if (IsPinned(game) && library_->Shown(game)) pinned.push_back(&game);
   }
   std::ranges::sort(pinned, [](const GameSummary* a, const GameSummary* b) {
     return QString::compare(QString::fromStdString(a->name), QString::fromStdString(b->name),
@@ -864,7 +863,8 @@ bool Sidebar::ShowsArtOf(const QString& id) const {
 
 void Sidebar::RefreshGames() {
   const std::vector<const GameSummary*> pinned = PinnedGames();
-  const std::vector<const GameSummary*> recent = library_->RecentlyPlayed(style_.recent_count, showing_hidden_);
+  const std::vector<const GameSummary*> recent =
+      library_->RecentlyPlayed(style_.recent_count, library_->ShowingHidden());
   // Shown all the time, so their full images stay.
   QSet<QString> kept;
   for (const auto* games : {&pinned, &recent}) {

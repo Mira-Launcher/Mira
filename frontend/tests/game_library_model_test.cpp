@@ -85,15 +85,22 @@ TEST_CASE("Removing scattered games, a source, or everything keeps each row wher
   CHECK(library.Find("f") == nullptr);
 }
 
-TEST_CASE("Filters hide hidden games except under Hidden, and launchers everywhere") {
+TEST_CASE("Hidden mode shows only hidden games under every filter, and launchers never show") {
   GameLibraryModel library;
-  library.Replace({Game("a", "Alpha"), Game("h", "Hushed", {"hidden"}),
-                   Game("l", "Launcher", {}, "launcher")});
+  GameSummary unplayed_hidden = Game("u", "Unplayed", {"hidden"});
+  GameSummary played_hidden = Game("h", "Hushed", {"hidden"});
+  played_hidden.last_played_at = 100;
+  library.Replace(
+      {Game("a", "Alpha"), played_hidden, unplayed_hidden, Game("l", "Launcher", {}, "launcher")});
   GameFilterProxy proxy(&library);
 
   CHECK(Shown(proxy) == std::vector<std::string>{"a"});
-  proxy.SetFilterKey("hidden");
-  CHECK(Shown(proxy) == std::vector<std::string>{"h"});
+  library.SetShowingHidden(true);
+  CHECK(Shown(proxy) == std::vector<std::string>{"h", "u"});
+  proxy.SetFilterKey("never");
+  CHECK(Shown(proxy) == std::vector<std::string>{"u"});
+  library.SetShowingHidden(false);
+  CHECK(Shown(proxy) == std::vector<std::string>{"a"});
 }
 
 TEST_CASE("Apps and games get their own filters, apps can leave All or the library, and apps never count as unplayed") {
@@ -130,12 +137,15 @@ TEST_CASE("Needs attention lists games mirad wants checked beside broken ones") 
   CHECK(Shown(proxy) == std::vector<std::string>{"b", "u"});
 }
 
-TEST_CASE("A source's view lists only that source's games, hidden ones included") {
+TEST_CASE("A source's view lists only that source's games, hidden ones only in hidden mode") {
   GameLibraryModel library;
   library.Replace({Game("a", "Alpha"), Game("e1", "Epic One", {}, "epic"), Game("e2", "Epic Two", {"hidden"}, "epic")});
   GameFilterProxy proxy(&library);
   proxy.SetSource("epic");
-  CHECK(Shown(proxy) == std::vector<std::string>{"e1", "e2"});
+  CHECK(Shown(proxy) == std::vector<std::string>{"e1"});
+  library.SetShowingHidden(true);
+  CHECK(Shown(proxy) == std::vector<std::string>{"e2"});
+  library.SetShowingHidden(false);
 
   // Local is every game from no source, never a store's game or its launcher.
   library.Replace({Game("a", "Alpha"), Game("m", "Manual", {}, "manual"), Game("d", "Desktop", {}, "desktop-entry"),
@@ -167,7 +177,7 @@ TEST_CASE("Search matches names and the user's tags, and #word only tags") {
   CHECK(Shown(proxy).empty());
 }
 
-TEST_CASE("Picked tags all have to match, and never bring hidden games outside Hidden") {
+TEST_CASE("Picked tags all have to match, and never bring hidden games outside hidden mode") {
   GameLibraryModel library;
   library.Replace({Game("a", "Alpha", {"RPG", "Indie"}), Game("b", "Beta", {"rpg"}),
                    Game("h", "Hushed", {"RPG", "Indie", "hidden"})});
@@ -177,10 +187,10 @@ TEST_CASE("Picked tags all have to match, and never bring hidden games outside H
   CHECK(Shown(proxy) == std::vector<std::string>{"a", "b"});
   proxy.SetTags({"RPG", "indie"});
   CHECK(Shown(proxy) == std::vector<std::string>{"a"});
-  proxy.SetFilterKey("hidden");
+  library.SetShowingHidden(true);
   CHECK(Shown(proxy) == std::vector<std::string>{"h"});
+  library.SetShowingHidden(false);
   proxy.SetTags({});
-  proxy.SetFilterKey("all");
   CHECK(Shown(proxy) == std::vector<std::string>{"a", "b"});
 }
 
@@ -234,8 +244,11 @@ TEST_CASE("Recently played lists running games first and keeps to its count; app
   library.SetRunning("writer", true);
   CHECK(ids(2) == std::vector<std::string>{"mid", "older", "writer"});
   CHECK(ids(0).size() == 3);
-  // A hidden one only in the Hidden view, and only while it runs.
+  // Hidden ones never, even running; hidden mode lists only them.
   library.SetRunning("secret", true);
   CHECK(ids(0).size() == 3);
-  CHECK(library.RecentlyPlayed(0, /*with_hidden=*/true).size() == 4);
+  library.SetRunning("secret", false);
+  const std::vector<const GameSummary*> hidden = library.RecentlyPlayed(3, /*hidden=*/true);
+  REQUIRE(hidden.size() == 1);
+  CHECK(hidden[0]->id == "secret");
 }

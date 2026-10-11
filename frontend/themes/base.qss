@@ -87,8 +87,12 @@ QLabel[status="running"] {
 /* --- The custom top bar -------------------------------------------------- */
 
 QWidget#top_bar {
-  background: @surface;
-  border-bottom: 1px solid @border;
+  background: @top_bar;
+  border-bottom: 1px solid @top_bar_border;
+}
+
+QLabel#hidden_note {
+  color: @hidden_note;
 }
 
 QWidget#top_bar QToolButton {

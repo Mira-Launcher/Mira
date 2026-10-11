@@ -66,6 +66,9 @@ OwnedTitles::OwnedTitles(QObject* parent) : QObject(parent) {
     if (CatalogCheckEvent check; live && fetched_.isValid() && events::ParseCatalogCheck(type, data, &check) && check.changed) {
       Refresh();
     }
+    if (std::string source; live && fetched_.isValid() && events::ParseHiddenChanged(type, data, &source)) {
+      Refresh();
+    }
   });
 }
 

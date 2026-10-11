@@ -81,6 +81,10 @@ bool ParseStoreEvent(const std::string& event_type, const std::string& data, Sto
 
 bool ParseCatalogCheck(const std::string& event_type, const std::string& data, CatalogCheckEvent* out);
 
+// library.hidden_changed: owned titles of `source` were hidden or shown.
+bool ParseHiddenChanged(const std::string& event_type, const std::string& data,
+                        std::string* source);
+
 // Parses a `runners.download.started`/`.finished`/`.failed` payload.
 // `state` comes from the event type, which the payload itself doesn't
 // repeat.

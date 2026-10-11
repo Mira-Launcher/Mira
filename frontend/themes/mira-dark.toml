@@ -13,6 +13,8 @@ text = "#e6e8ec"
 text_muted = "#949aa6"
 accent = "#5c7cfa"
 on_accent = "#ffffff"
+# The accent while hidden games are shown (Ctrl+H); it also tints the top bar.
+accent_hidden = "#9b6cf5"
 
 running = "#4caf50"
 success = "#4caf50"

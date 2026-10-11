@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <unordered_set>
 
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
@@ -450,7 +451,24 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   Refresh();
 }
 
-void TagsPage::SetGames(const std::vector<GameSummary>& games) { games_ = games; }
+void TagsPage::SetGames(const std::vector<GameSummary>& games) {
+  games_ = games;
+  RecountSoon();  // a game hidden or shown changes the counts
+}
+
+void TagsPage::RecountSoon() {
+  // As RefreshSoon: not under an open picker or question.
+  if (tags_loaded_ && stack_->currentWidget() == overview_ && bar_->isHidden()) Sync();
+}
+
+std::size_t TagsPage::ShownCount(const std::vector<std::string>& ids) const {
+  std::unordered_set<std::string> hidden;
+  for (const GameSummary& game : games_) {
+    if (IsHidden(game)) hidden.insert(game.id);
+  }
+  return std::ranges::count_if(
+      ids, [&](const std::string& id) { return hidden.contains(id) == showing_hidden_; });
+}
 
 void TagsPage::SetTileWidth(int width) {
   picker_->SetTileWidth(width);
@@ -464,8 +482,10 @@ bool TagsPage::PickerOpen() const {
   return stack_->currentWidget() == picker_;
 }
 
-void TagsPage::ToggleHidden() {
-  if (PickerOpen()) picker_->ToggleHidden();
+void TagsPage::SetShowingHidden(bool showing) {
+  showing_hidden_ = showing;
+  picker_->SetShowingHidden(showing);
+  RecountSoon();
 }
 
 void TagsPage::Leave() {
@@ -642,8 +662,8 @@ void TagsPage::SyncMine() {
     KeepSpaceWhenHidden(entry.row->Grip(), any_folder);
     KeepSpaceWhenHidden(entry.icon, any_folder);
     entry.icon->setVisible(folder);
-    entry.count->setText(QString::number(tag.ids.size()));
-    entry.count->setToolTip(Games(tag.ids.size()));
+    entry.count->setText(QString::number(ShownCount(tag.ids)));
+    entry.count->setToolTip(Games(ShownCount(tag.ids)));
     const QSignalBlocker block(entry.folder);
     entry.folder->setChecked(folder);
     mine_->MoveRow(entry.row, static_cast<int>(i) + 1);
@@ -692,12 +712,12 @@ void TagsPage::SyncSteam() {
   }
   if (settings_.steam) {
     std::size_t most = 1;
-    for (const SteamTagSuggestion& tag : tags_.steam) most = std::max(most, tag.ids.size());
+    for (const SteamTagSuggestion& tag : tags_.steam) most = std::max(most, ShownCount(tag.ids));
     for (std::size_t i = 0; i < tags_.steam.size(); ++i) {
       const SteamTagSuggestion& tag = tags_.steam[i];
       SteamRow& entry = SteamRowFor(tag.name);
-      entry.games = tag.ids.size();
-      entry.count->Set(tag.ids.size(), most);
+      entry.games = ShownCount(tag.ids);
+      entry.count->Set(entry.games, most);
       steam_columns_->Place(entry.row, static_cast<int>(i));
     }
   }

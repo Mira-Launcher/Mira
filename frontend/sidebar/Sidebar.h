@@ -48,8 +48,6 @@ class Sidebar : public QWidget {
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
   void SetActive(bool library, bool runners, bool tags, const QString& source_id);
-  // Hidden pins show only while the grid shows the Hidden filter.
-  void SetShowingHidden(bool showing_hidden);
   void SetFooter(int shown, int total, bool mirad_reachable);
   // Add games, Settings and fetch art, which act on a grid that's covered.
   void SetActionsEnabled(bool enabled);
@@ -185,7 +183,6 @@ class Sidebar : public QWidget {
   QToolButton* pinned_customize_ = nullptr;
   QToolButton* recent_customize_ = nullptr;
   SidebarStyleCard::Choices style_;
-  bool showing_hidden_ = false;
   // Dwell before a game row's hover card.
   QTimer* hover_timer_ = nullptr;
   QPointer<QWidget> hover_row_;
