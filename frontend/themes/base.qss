@@ -655,6 +655,17 @@ QLabel#kind_tag {
   padding: 0px 6px;
 }
 
+/* An emulator's empty library, where its games are dropped. */
+QFrame#drop_zone {
+  border: 2px dashed @border;
+  border-radius: @radius_panel;
+  background: transparent;
+}
+QFrame#drop_zone[active="true"] {
+  border-color: @accent;
+  background: @surface;
+}
+
 /* "Beta" beside a source's name. */
 QLabel#beta_tag {
   color: @accent;

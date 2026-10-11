@@ -95,6 +95,7 @@ protected:
   void resizeEvent(QResizeEvent* event) override;
   // An emulator's page takes its games as dropped files.
   void dragEnterEvent(QDragEnterEvent* event) override;
+  void dragLeaveEvent(QDragLeaveEvent* event) override;
   void dropEvent(QDropEvent* event) override;
 
 private:
@@ -125,6 +126,11 @@ private:
   // Asks for an emulator's games: files it takes, or folders for one whose games are folders.
   void PickGames();
   void AddGames(const std::vector<std::string>& paths);
+  QWidget* BuildDropZone(QWidget* parent);
+  // Outlines the drop zone while files are dragged over the page.
+  void SetDropActive(bool active);
+  // Asks which file starts a just-added game whose folder has several.
+  void AskStartFile(const StartChoice& choice);
   void UpdateStatusLine();
   void Import();
   // `fresh` waits for the store's own answer rather than the list mirad stored.
@@ -191,6 +197,7 @@ private:
   QLabel* import_result_ = nullptr;
   TileGrid* library_grid_ = nullptr;
   QLabel* library_empty_ = nullptr;
+  QFrame* drop_zone_ = nullptr;  // an emulator's, in place of library_empty_
 
   QWidget* owned_section_ = nullptr;
   QLabel* owned_heading_ = nullptr;

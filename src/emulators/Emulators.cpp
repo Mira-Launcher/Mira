@@ -125,8 +125,9 @@ const std::vector<Emulator>& All() {
        .args = {"-b", "-e", "{rom}"}, .fullscreen = {"-C", "Dolphin.Display.Fullscreen=True"},
        .stop_timeout_s = 2, .binary = "dolphin-emu",
        .prefill = {{"~/.config/dolphin-emu/Dolphin.ini", "[Analytics]\nPermissionAsked = True\nEnabled = False\n"}}},
-      {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg"},
-       .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".zip"},
+      {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg", "ws"},
+       .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".ws",
+                      ".wsc", ".zip"},
        .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
        .release_url = GitHub("SourMesen/Mesen2"), .asset = "Mesen_*_Linux_x64.zip",
        .binary = "Mesen",
@@ -143,10 +144,13 @@ const std::vector<Emulator>& All() {
        .release_url = "https://api.github.com/repos/bsnes-emu/bsnes/releases/tags/nightly",
        .asset = "bsnes-ubuntu.zip",
        .binary = "bsnes"},
-      {.id = "ares", .name = "ares", .consoles = {"nes", "snes", "n64", "genesis", "gb", "gbc", "gba"},
-       .extensions = {".nes", ".sfc", ".smc", ".n64", ".z64", ".v64", ".md", ".gen", ".smd", ".gb", ".gbc", ".gba",
-                      ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+      {.id = "ares", .name = "ares",
+       .consoles = {"nes", "snes", "n64", "genesis", "32x", "sms", "gg", "sg1000", "gb", "gbc", "gba", "pce", "ngp",
+                    "ws", "colecovision", "atari2600"},
+       .extensions = {".nes", ".fds", ".sfc", ".smc", ".n64", ".z64", ".v64", ".md", ".gen", ".smd", ".32x", ".sms",
+                      ".gg", ".sg", ".gb", ".gbc", ".gba", ".pce", ".sgx", ".ngp", ".ngc", ".ws", ".wsc", ".pc2", ".col",
+                      ".a26", ".zip"},
+       .args = {"--no-file-prompt", "{rom}"}, .fullscreen = {"--fullscreen"},
        .binary = "ares"},
       {.id = "blastem", .name = "BlastEm", .consoles = {"genesis"},
        .extensions = {".md", ".gen", ".smd", ".bin", ".zip"},
@@ -180,6 +184,81 @@ const std::vector<Emulator>& All() {
        .firmware = {{.id = "bios", .label = "Saturn BIOS", .dir = "~/.local/share/StrikerX3/Ymir/roms/ipl",
                      .patterns = {"*.bin", "*.rom"}}}},
       // Arcade sets keep their zip's name, which MAME looks up in the folder.
+      {.id = "kyty", .name = "KytyPS5", .consoles = {"ps5"},
+       .extensions = {".elf", ".zar"}, .folder_game = "eboot.bin",
+       .args = {"--no-splash", "--game", "{rom}"}, .fullscreen = {"--fullscreen"}, .open_binary = "launcher",
+       .release_url = GitHub("KytyPS5/KytyPS5"), .asset = "KytyPS5-*-Linux-x86_64.tar.gz",
+       .binary = "kyty_emulator"},
+      {.id = "xenia", .name = "Xenia Canary", .consoles = {"xbox360"},
+       .extensions = {".iso", ".xex", ".zar"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen=true"},
+       .release_url = GitHub("xenia-canary/xenia-canary-releases"), .asset = "xenia_canary_linux.tar_.xz",
+       .binary = "xenia_canary"},
+      {.id = "dosbox", .name = "DOSBox Staging", .consoles = {"dos"},
+       .extensions = {".exe", ".com", ".bat"}, .folders = true,
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .release_url = GitHub("dosbox-staging/dosbox-staging"), .asset = "dosbox-staging-linux-x86_64-*.tar.xz",
+       .binary = "dosbox"},
+      {.id = "scummvm", .name = "ScummVM", .consoles = {"adventure"},
+       .folders = true,
+       .args = {"-p", "{dir}", "--auto-detect"}, .fullscreen = {"-f"},
+       .binary = "scummvm"},
+      {.id = "mednafen", .name = "Mednafen", .consoles = {"saturn", "ps1", "pce", "vb", "ngp", "ws", "lynx"},
+       .extensions = {".vb", ".vboy", ".ngp", ".ngc", ".ws", ".wsc", ".lnx", ".pce", ".cue", ".chd", ".toc", ".m3u",
+                      ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"-video.fs", "1"},
+       .binary = "mednafen",
+       .firmware = {{.id = "bios", .label = "BIOS, for Saturn, PlayStation, PC Engine CD and Lynx games",
+                     .dir = "~/.mednafen/firmware",
+                     .patterns = {"sega_101.bin", "mpr-17933.bin", "scph5500.bin", "scph5501.bin", "scph5502.bin",
+                                  "syscard3.pce", "lynxboot.img"},
+                     .required = false}}},
+      {.id = "stella", .name = "Stella", .consoles = {"atari2600"},
+       .extensions = {".a26", ".bin", ".zip"},
+       .args = {"{rom}"}, .fullscreen = {"-fullscreen", "1"},
+       .binary = "stella"},
+      {.id = "mupen64plus", .name = "Mupen64Plus", .consoles = {"n64"},
+       .extensions = {".n64", ".z64", ".v64"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .binary = "mupen64plus"},
+      {.id = "redream", .name = "Redream", .consoles = {"dreamcast"},
+       .extensions = {".gdi", ".cdi", ".chd", ".cue"},
+       .args = {"{rom}"},
+       .download_url = "https://redream.io/download/redream.x86_64-linux-v1.5.0.tar.gz",
+       .binary = "redream"},
+      {.id = "atari800", .name = "atari800", .consoles = {"atari8bit", "atari5200"},
+       .extensions = {".xex", ".atr", ".atx", ".xfd", ".car", ".cas"},
+       .args = {"{rom}"}, .fullscreen = {"-fullscreen"},
+       .release_url = GitHub("atari800/atari800"), .asset = "Atari800-*-x86_64.AppImage",
+       .binary = "atari800.AppImage"},
+      {.id = "hatari", .name = "Hatari", .consoles = {"atarist"},
+       .extensions = {".st", ".msa", ".stx", ".dim"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .binary = "hatari"},
+      {.id = "fsuae", .name = "FS-UAE", .consoles = {"amiga"},
+       .extensions = {".adf", ".adz", ".dms", ".ipf"},
+       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .release_url = GitHub("FrodeSolheim/fs-uae"), .asset = "FS-UAE_*_Linux_x86-64.tar.xz",
+       .binary = "fs-uae"},
+      {.id = "vice", .name = "VICE", .consoles = {"c64"},
+       .extensions = {".d64", ".g64", ".t64", ".prg", ".p00", ".crt", ".tap"},
+       .args = {"{rom}"}, .fullscreen = {"-fullscreen"},
+       .binary = "x64sc"},
+      {.id = "openmsx", .name = "openMSX", .consoles = {"msx"},
+       .extensions = {".rom", ".mx1", ".mx2", ".dsk", ".cas"},
+       .args = {"{rom}"}, .fullscreen = {"-command", "set fullscreen on"},
+       .release_url = GitHub("openMSX/openMSX"), .asset = "openmsx-*-linux-x86_64-bin.zip",
+       .binary = "openmsx"},
+      {.id = "uzdoom", .name = "UZDoom", .consoles = {"doom"},
+       .extensions = {".wad", ".iwad", ".ipk3"},
+       .args = {"-iwad", "{rom}"}, .fullscreen = {"+vid_fullscreen", "1"},
+       .release_url = GitHub("UZDoom/UZDoom"), .asset = "Linux-UZDoom-Release-x86_64.AppImage",
+       .binary = "UZDoom.AppImage"},
+      {.id = "easyrpg", .name = "EasyRPG Player", .consoles = {"rpgmaker"},
+       .folder_game = "RPG_RT.ldb",
+       .args = {"--project-path", "{dir}"}, .fullscreen = {"--fullscreen"},
+       .download_url = "https://easyrpg.org/downloads/player/0.8.1.1/easyrpg-player-0.8.1.1-linux.tar.gz",
+       .binary = "easyrpg-player"},
       {.id = "mame", .name = "MAME", .consoles = {"arcade"},
        .extensions = {".zip", ".7z", ".chd"},
        .args = {"-skip_gameinfo", "-rompath", "{dir}", "{stem}"},
@@ -225,6 +304,9 @@ fs::path Expand(const std::string& dir) {
   return paths::Home() / dir.substr(2);
 }
 
+// A game is its whole folder, not one file.
+bool ByFolder(const Emulator& emulator) { return !emulator.folder_game.empty() || emulator.folders; }
+
 bool Accepts(const Emulator& emulator, const fs::path& file) {
   return std::ranges::contains(emulator.extensions, strings::ToLower(file.extension().string()));
 }
@@ -232,6 +314,45 @@ bool Accepts(const Emulator& emulator, const fs::path& file) {
 bool IsFolderGame(const Emulator& emulator, const fs::path& dir) {
   std::error_code ec;
   return !emulator.folder_game.empty() && fs::is_regular_file(dir / emulator.folder_game, ec);
+}
+
+struct StartCandidates {
+  std::vector<std::string> files;  // likeliest first
+  bool named = false;              // the first is named like the folder
+};
+
+// The files a `folders` emulator could start a game folder with, likeliest first: one named like the folder,
+// then those that aren't its setup, each in the order of the emulator's extensions. Any file when it lists
+// none (ScummVM finds the game itself).
+StartCandidates RankStartFiles(const Emulator& emulator, const fs::path& dir) {
+  const auto plain = [](std::string text) {
+    std::erase_if(text, [](unsigned char c) { return !std::isalnum(c); });
+    return strings::ToLower(text);
+  };
+  static const std::regex setup(R"(setup|install|uninst|config|setsound|sound)", std::regex::icase);
+  const std::string folder = plain(dir.filename().string());
+  std::vector<std::pair<int, std::string>> ranked;
+  for (const fs::path& file : paths::ListDir(dir)) {
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) continue;
+    const auto listed = std::ranges::find(emulator.extensions, strings::ToLower(file.extension().string()));
+    if (!emulator.extensions.empty() && listed == emulator.extensions.end()) continue;
+    const std::string stem = file.stem().string();
+    int rank = 100 - static_cast<int>(listed - emulator.extensions.begin());
+    if (plain(stem) == folder) rank += 1000;
+    else if (!std::regex_search(stem, setup)) rank += 500;
+    ranked.emplace_back(-rank, file.filename().string());
+  }
+  std::ranges::stable_sort(ranked, {}, &std::pair<int, std::string>::first);
+  StartCandidates out;
+  out.named = !ranked.empty() && -ranked.front().first >= 1000;
+  for (auto& [rank, name] : ranked) out.files.push_back(std::move(name));
+  return out;
+}
+
+std::string StartFile(const Emulator& emulator, const fs::path& dir) {
+  const StartCandidates candidates = RankStartFiles(emulator, dir);
+  return candidates.files.empty() ? std::string() : candidates.files.front();
 }
 
 // The files a .cue/.gdi (FILE "x" lines, or a .gdi's third field) or .m3u (one per line) names, beside it.
@@ -285,7 +406,9 @@ void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::v
     if (entry.filename().string().starts_with('.')) continue;
     std::error_code ec;
     if (fs::is_directory(entry, ec)) {
-      if (IsFolderGame(emulator, entry)) found.push_back({entry, emulator.folder_game});
+      if (emulator.folders) {
+        if (const std::string start = StartFile(emulator, entry); !start.empty()) found.push_back({entry, start});
+      } else if (IsFolderGame(emulator, entry)) found.push_back({entry, emulator.folder_game});
       else if (depth < 2) FindGames(emulator, entry, depth + 1, found);
       continue;
     }
@@ -305,7 +428,7 @@ void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::v
 
 std::string Slug(const Emulator& emulator, const fs::path& rom_dir, const Found& item) {
   fs::path rel = (item.dir / item.exe).lexically_relative(rom_dir);
-  rel = emulator.folder_game.empty() ? rel.replace_extension() : (item.dir.lexically_relative(rom_dir));
+  rel = ByFolder(emulator) && item.dir != rom_dir ? item.dir.lexically_relative(rom_dir) : rel.replace_extension();
   return strings::Slugify(rel.string());
 }
 
@@ -503,9 +626,18 @@ std::string CleanName(std::string_view file_name) {
   return strings::Trim(out);
 }
 
-std::vector<fs::path> GameFiles(const model::Game& game) {
+std::vector<std::string> StartChoices(const config::Config& config, const model::Game& game) {
   const Emulator* emulator = ForGame(game);
-  if (emulator != nullptr && !emulator->folder_game.empty()) return {game.install_path};
+  if (emulator == nullptr || !emulator->folders || emulator->extensions.empty()) return {};
+  if (fs::path(game.install_path) == RomDir(config, *emulator)) return {};  // a loose file
+  StartCandidates candidates = RankStartFiles(*emulator, game.install_path);
+  if (candidates.named || candidates.files.size() < 2) return {};
+  return std::move(candidates.files);
+}
+
+std::vector<fs::path> GameFiles(const config::Config& config, const model::Game& game) {
+  const Emulator* emulator = ForGame(game);
+  if (emulator != nullptr && ByFolder(*emulator) && fs::path(game.install_path) != RomDir(config, *emulator)) return {game.install_path};
   return WithNamed(MainFile(game));
 }
 
@@ -520,6 +652,7 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
     const fs::path source = generic ? file.parent_path() : file;
     const bool folder = fs::is_directory(source, ec);
     const auto holds_game = [&] {
+      if (emulator.folders) return !StartFile(emulator, source).empty();
       return std::ranges::any_of(paths::ListDir(source), [&](const fs::path& entry) { return Accepts(emulator, entry); });
     };
     if (folder ? !IsFolderGame(emulator, source) && !holds_game() : !Accepts(emulator, file)) {
@@ -595,8 +728,8 @@ std::vector<const Emulator*> Alternatives(const config::Config& config, const mo
     const bool shares = std::ranges::any_of(from->consoles, [&](const std::string& console) {
       return std::ranges::contains(emulator.consoles, console);
     });
-    const bool takes = from->folder_game.empty() ? Accepts(emulator, game.exe_path)
-                                                 : emulator.folder_game == from->folder_game;
+    const bool takes = ByFolder(*from) ? emulator.folder_game == from->folder_game && emulator.folders == from->folders
+                                       : Accepts(emulator, game.exe_path);
     if (shares && takes) out.push_back(&emulator);
   }
   return out;
@@ -608,7 +741,7 @@ Result<model::Game> MoveGame(config::Config& config, store::GameStore& games, co
   if (from == nullptr) return Err("not_emulator_game", std::format("{} isn't an emulator's game", game.name));
   const fs::path from_dir = RomDir(config, *from);
   const fs::path to_dir = RomDir(config, to);
-  for (const fs::path& file : GameFiles(game)) {
+  for (const fs::path& file : GameFiles(config, game)) {
     const fs::path target = to_dir / file.lexically_relative(from_dir);
     std::error_code ec;
     if (fs::exists(target, ec)) return Err("already_there", std::format("{} already has {}", to.name, game.name));
@@ -631,30 +764,34 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
   std::vector<Found> found;
   FindGames(emulator, dir, 0, found);
 
-  // Known games by their file, so a game moved here from another emulator keeps its id.
+  // Known games by their file (or their folder, whose start file the user may have changed), so a game moved
+  // here from another emulator keeps its id.
+  const auto key = [&](const fs::path& folder, const std::string& file) {
+    return (emulator.folders && folder != dir ? folder : folder / file).lexically_normal();
+  };
   std::map<fs::path, model::Game> by_file;
   for (const model::Game& game : games.All()) {
-    if (game.source == emulator.id) by_file.emplace(MainFile(game).lexically_normal(), game);
+    if (game.source == emulator.id) by_file.emplace(key(game.install_path, game.exe_path), game);
   }
 
   library::ImportSummary summary;
   std::set<fs::path> found_keys;
   for (const Found& item : found) found_keys.insert(key(item.dir, item.exe));
   for (const Found& item : found) {
-    const fs::path file = (item.dir / item.exe).lexically_normal();
     std::optional<model::Game> existing;
-    if (const auto known = by_file.find(file); known != by_file.end()) existing = known->second;
+    if (const auto known = by_file.find(key(item.dir, item.exe)); known != by_file.end()) existing = known->second;
     model::Game game = existing.value_or(model::Game{});
     if (!existing) {
       const std::string base = std::format("{}-{}", emulator.id, Slug(emulator, dir, item));
       game.id = base;
       for (int n = 2; games.Find(game.id); ++n) game.id = std::format("{}-{}", base, n);
       const bool generic = IsGenericName(item.exe) && item.dir != dir;
-      game.name = CleanName(!emulator.folder_game.empty() || generic ? item.dir.filename().string() : item.exe);
+      game.name = CleanName((ByFolder(emulator) && item.dir != dir) || generic ? item.dir.filename().string() : item.exe);
     }
     game.source = emulator.id;
     game.install_path = item.dir.string();
-    game.exe_path = item.exe;
+    // A start file the user chose stays while it's there.
+    if (!existing || !fs::is_regular_file(item.dir / existing->exe_path, ec)) game.exe_path = item.exe;
     game.platform = model::Platform::Native;
     game.runner_ref = "emulator:" + emulator.id;
     game.status = model::GameStatus::Ready;

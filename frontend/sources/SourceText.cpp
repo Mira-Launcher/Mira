@@ -59,7 +59,7 @@ SourceCopy CopyFor(const std::string& id) {
       source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
     return {QString("Plays %1 games you add: pick them or drop them here, or put them in its games folder. Mira "
                     "sets %2 up for you.")
-                .arg(source->plays, source->name),
+                .arg(PlaysText(*source), source->name),
             "", "Add games"};
   }
   if (id == "ea") {

@@ -233,7 +233,8 @@ Result<void> MoveAllInto(const fs::path& from, const fs::path& to) {
 
 bool IsZip(const std::string& asset_name) { return asset_name.ends_with(".zip"); }
 bool IsTarball(const std::string& asset_name) {
-  return asset_name.ends_with(".tar") || asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tar.xz") ||
+  // Xenia Canary's is "xenia_canary_linux.tar_.xz".
+  return asset_name.ends_with(".tar") || asset_name.ends_with(".tar_.xz") || asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tar.xz") ||
          asset_name.ends_with(".tar.zst") || asset_name.ends_with(".tgz");
 }
 

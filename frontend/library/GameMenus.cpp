@@ -41,7 +41,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   // An emulator's game moves to another one for its console; filled in when mirad answers.
   const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
   if (source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
-    QMenu* run_with = menu.addMenu("Run with");
+    QMenu* run_with = menu.addMenu("Move to emulator");
     run_with->setEnabled(false);
     api::GetGameEmulatorsAsync(run_with, id, [this, run_with, id, name](EmulatorChoicesResult result) {
       if (!result.ok) return;

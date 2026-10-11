@@ -144,7 +144,7 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
   }
   if (game.source == "itch" && !game.source_ref.empty()) return UninstallItch(config, game.source_ref);
   if (emulators::ForGame(game) != nullptr) {
-    for (const fs::path& file : emulators::GameFiles(game)) {
+    for (const fs::path& file : emulators::GameFiles(config, game)) {
       if (auto deleted = DeleteInside(file.string(), {config.GetPath("emulators.roms_root")}); !deleted)
         return deleted;
     }

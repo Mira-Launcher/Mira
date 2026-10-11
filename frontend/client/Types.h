@@ -1144,11 +1144,19 @@ struct HumbleDownloadResult {
 };
 
 // POST /v1/stores/{id}/import.
+// An added game whose start file Mira couldn't tell: a DOS game's folder with several programs.
+struct StartChoice {
+  std::string id;
+  std::string name;
+  std::vector<std::string> files;  // Mira's pick first
+};
+
 struct StoreImportResult {
   bool ok = false;
   ApiError error;
   int added = 0;
   int updated = 0;
+  std::vector<StartChoice> choose;  // adding an emulator's files only
 };
 
 // One GET /v1/library entry: something the account owns.

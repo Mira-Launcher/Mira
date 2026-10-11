@@ -382,7 +382,8 @@ Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std:
 
 Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir) {
   const std::string name = strings::ToLower(archive.filename().string());
-  const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") || name.find(".tar.") != std::string::npos;
+  const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") || name.find(".tar.") != std::string::npos ||
+                       name.find(".tar_.") != std::string::npos;
 
   Command command;
   if (tarball) {

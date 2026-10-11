@@ -23,29 +23,46 @@ const std::vector<SourceInfo>& AllSources() {
       {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01"), {}, true},
       {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26"), {}, true},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
-      {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), "PlayStation"},
-      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), "PlayStation 2", true},
-      {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), "PSP"},
-      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), "PlayStation 3", true},
-      {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), "PlayStation 4", true},
-      {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), "Xbox", true},
-      {"dolphin", "Dolphin", Kind::Emulator, QColor("#00b5ff"), "GameCube and Wii"},
-      {"cemu", "Cemu", Kind::Emulator, QColor("#00a2df"), "Wii U", true},
-      {"eden", "Eden", Kind::Emulator, QColor("#b64ef8"), "Switch", true},
-      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#fd8b62"), "Switch", true},
-      {"melonds", "melonDS", Kind::Emulator, QColor("#fe544c"), "Nintendo DS"},
-      {"azahar", "Azahar", Kind::Emulator, QColor("#b5a816"), "3DS"},
-      {"mesen", "Mesen", Kind::Emulator, QColor("#933604"), "NES, SNES, Game Boy and PC Engine"},
-      {"snes9x", "Snes9x", Kind::Emulator, QColor("#8683e1"), "SNES"},
-      {"flycast", "Flycast", Kind::Emulator, QColor("#833de8"), "Dreamcast", true},
-      {"bsnes", "bsnes", Kind::Emulator, QColor("#16a1ff"), "SNES", true},
-      {"ares", "ares", Kind::Emulator, QColor("#c9b23a"), "NES, SNES, Nintendo 64, Genesis and Game Boy"},
-      {"blastem", "BlastEm", Kind::Emulator, QColor("#3a3a3a"), "Genesis", true},
-      {"mgba", "mGBA", Kind::Emulator, QColor("#4d299e"), "Game Boy and Game Boy Advance"},
-      {"rmg", "RMG", Kind::Emulator, QColor("#02b3d3"), "Nintendo 64"},
-      {"vita3k", "Vita3K", Kind::Emulator, QColor("#d4a900"), "PS Vita"},
-      {"ymir", "Ymir", Kind::Emulator, QColor("#414db5"), "Saturn", true},
-      {"mame", "MAME", Kind::Emulator, QColor("#4b9ecd"), "arcade"},
+      {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), {"ps1"}},
+      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), {"ps2"}, true},
+      {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), {"psp"}},
+      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), {"ps3"}, true},
+      {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), {"ps4"}, true},
+      {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), {"xbox"}, true},
+      {"xenia", "Xenia Canary", Kind::Emulator, QColor("#d8a73a"), {"xbox360"}, true},
+      {"dolphin", "Dolphin", Kind::Emulator, QColor("#00b5ff"), {"gamecube", "wii"}},
+      {"cemu", "Cemu", Kind::Emulator, QColor("#00a2df"), {"wiiu"}},
+      {"eden", "Eden", Kind::Emulator, QColor("#b64ef8"), {"switch"}, true},
+      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#fd8b62"), {"switch"}, true},
+      {"melonds", "melonDS", Kind::Emulator, QColor("#fe544c"), {"nds"}},
+      {"azahar", "Azahar", Kind::Emulator, QColor("#b5a816"), {"3ds"}},
+      {"mesen", "Mesen", Kind::Emulator, QColor("#933604"), {"nes", "snes", "gb", "gbc", "pce", "sms", "gg", "ws"}},
+      {"snes9x", "Snes9x", Kind::Emulator, QColor("#8683e1"), {"snes"}},
+      {"flycast", "Flycast", Kind::Emulator, QColor("#833de8"), {"dreamcast"}},
+      {"bsnes", "bsnes", Kind::Emulator, QColor("#16a1ff"), {"snes"}},
+      {"ares", "ares", Kind::Emulator, QColor("#c9b23a"),
+       {"nes", "snes", "n64", "genesis", "32x", "sms", "gg", "sg1000", "gb", "gbc", "gba", "pce", "ngp", "ws",
+        "colecovision", "atari2600"}},
+      {"blastem", "BlastEm", Kind::Emulator, QColor("#3a3a3a"), {"genesis"}},
+      {"mgba", "mGBA", Kind::Emulator, QColor("#4d299e"), {"gb", "gbc", "gba"}},
+      {"rmg", "RMG", Kind::Emulator, QColor("#02b3d3"), {"n64"}},
+      {"vita3k", "Vita3K", Kind::Emulator, QColor("#d4a900"), {"psvita"}},
+      {"ymir", "Ymir", Kind::Emulator, QColor("#414db5"), {"saturn"}, true},
+      {"mednafen", "Mednafen", Kind::Emulator, QColor("#7fb81c"), {"saturn", "ps1", "pce", "vb", "ngp", "ws", "lynx"}},
+      {"stella", "Stella", Kind::Emulator, QColor("#c8892e"), {"atari2600"}},
+      {"kyty", "KytyPS5", Kind::Emulator, QColor("#5b8cff"), {"ps5"}, true},
+      {"mupen64plus", "Mupen64Plus", Kind::Emulator, QColor("#d32f2f"), {"n64"}},
+      {"redream", "Redream", Kind::Emulator, QColor("#2f7bd8"), {"dreamcast"}},
+      {"atari800", "atari800", Kind::Emulator, QColor("#8f9299"), {"atari8bit", "atari5200"}},
+      {"hatari", "Hatari", Kind::Emulator, QColor("#3c9a2b"), {"atarist"}},
+      {"fsuae", "FS-UAE", Kind::Emulator, QColor("#7b2d8e"), {"amiga"}},
+      {"vice", "VICE", Kind::Emulator, QColor("#5a5a5a"), {"c64"}},
+      {"openmsx", "openMSX", Kind::Emulator, QColor("#d9a21b"), {"msx"}},
+      {"uzdoom", "UZDoom", Kind::Emulator, QColor("#2e8b9a"), {"doom"}},
+      {"easyrpg", "EasyRPG Player", Kind::Emulator, QColor("#6aa84f"), {"rpgmaker"}},
+      {"mame", "MAME", Kind::Emulator, QColor("#4b9ecd"), {"arcade"}},
+      {"dosbox", "DOSBox Staging", Kind::Emulator, QColor("#3e7bd6"), {"dos"}},
+      {"scummvm", "ScummVM", Kind::Emulator, QColor("#2fb84a"), {"adventure"}},
   };
   return sources;
 }
@@ -99,15 +116,58 @@ std::vector<QString> OrderSources(const std::vector<QString>& saved) {
   return order;
 }
 
+namespace {
+
+// What each console id in the daemon's emulator table is called, and the other names people search it by.
+struct Console {
+  const char* id;
+  const char* name;  // empty: shown under the one before it (Game Boy Color under Game Boy)
+  const char* also;
+};
+constexpr Console kConsoles[] = {
+    {"ps1", "PlayStation", "psx"}, {"ps2", "PlayStation 2", ""}, {"ps3", "PlayStation 3", ""},
+    {"ps4", "PlayStation 4", ""}, {"ps5", "PlayStation 5", ""}, {"psp", "PSP", ""}, {"psvita", "PS Vita", "vita psv"},
+    {"xbox", "Xbox", ""}, {"xbox360", "Xbox 360", "x360"}, {"gamecube", "GameCube", "gc ngc"}, {"wii", "Wii", ""}, {"wiiu", "Wii U", ""},
+    {"switch", "Switch", "nx"}, {"nes", "NES", "famicom"}, {"snes", "SNES", "super famicom"},
+    {"n64", "Nintendo 64", ""}, {"gb", "Game Boy", ""}, {"gbc", "", "game boy color"},
+    {"gba", "Game Boy Advance", ""}, {"nds", "Nintendo DS", ""}, {"3ds", "3DS", ""},
+    {"genesis", "Genesis", "mega drive megadrive md"}, {"32x", "32X", ""}, {"sms", "Master System", ""},
+    {"gg", "Game Gear", ""}, {"sg1000", "SG-1000", ""},
+    {"saturn", "Saturn", ""}, {"dreamcast", "Dreamcast", "dc"}, {"pce", "PC Engine", "turbografx"},
+    {"ngp", "Neo Geo Pocket", "ngpc"}, {"ws", "WonderSwan", "wsc"}, {"vb", "Virtual Boy", ""},
+    {"lynx", "Lynx", "atari lynx"}, {"atari2600", "Atari 2600", "2600 vcs"}, {"colecovision", "ColecoVision", ""},
+    {"atari8bit", "Atari 8-bit", "atari 800 xl xe"}, {"atari5200", "Atari 5200", ""}, {"atarist", "Atari ST", ""},
+    {"amiga", "Amiga", ""}, {"c64", "Commodore 64", "c64 commodore"}, {"msx", "MSX", ""},
+    {"doom", "Doom-engine", "doom heretic hexen wad"}, {"rpgmaker", "RPG Maker", "rpg maker 2000 2003"},
+    {"arcade", "arcade", ""}, {"dos", "DOS", "ms-dos pc"}, {"adventure", "adventure", "point and click scumm lucasarts sierra"},
+};
+
+const Console* FindConsole(const QString& id) {
+  for (const Console& console : kConsoles) {
+    if (id == console.id) return &console;
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+QString PlaysText(const SourceInfo& source) {
+  QStringList names;
+  for (const QString& id : source.consoles) {
+    const Console* console = FindConsole(id);
+    if (console == nullptr) names << id;
+    else if (*console->name != '\0') names << console->name;
+  }
+  if (names.size() < 2) return names.join(QString());
+  const QString last = names.takeLast();
+  return names.join(", ") + " and " + last;
+}
+
 QString PlaysSearchText(const SourceInfo& source) {
-  static const std::pair<const char*, const char*> kShort[] = {
-      {"PlayStation 4", "ps4"}, {"PlayStation 3", "ps3"}, {"PlayStation 2", "ps2"}, {"PlayStation", "ps1 psx"},
-      {"PS Vita", "vita psv"}, {"Nintendo 64", "n64"}, {"Nintendo DS", "nds"}, {"Game Boy Advance", "gba"},
-      {"Game Boy", "gb gbc"}, {"GameCube", "gc ngc"}, {"Genesis", "mega drive megadrive md"},
-      {"Dreamcast", "dc"}, {"Switch", "nx"}, {"PC Engine", "turbografx pce"}, {"arcade", "mame"}};
-  QStringList words{source.plays};
-  for (const auto& [name, short_names] : kShort) {
-    if (source.plays.contains(name)) words << short_names;
+  QStringList words{PlaysText(source)};
+  for (const QString& id : source.consoles) {
+    words << id;
+    if (const Console* console = FindConsole(id)) words << console->also;
   }
   return words.join(' ').toLower();
 }

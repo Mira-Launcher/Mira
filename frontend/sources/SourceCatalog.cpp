@@ -42,7 +42,7 @@ QString Needs(const SourceInfo& source) {
     case SourceInfo::Kind::Local:
       return "Reads what's on this computer";
     case SourceInfo::Kind::Emulator:
-      return "Plays " + source.plays + " games";
+      return "Plays " + PlaysText(source) + " games";
   }
   return {};
 }

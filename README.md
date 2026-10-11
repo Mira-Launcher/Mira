@@ -32,7 +32,7 @@ It's built for both a desk and a couch: a mouse-and-keyboard library window, and
 
 - **Stores:** Steam, Epic Games, GOG, itch.io, Amazon Games and Humble Bundle. Sign in, import what's installed, and install or download the rest from the store's page in Mira.
 - **Launchers:** Battle.net, Ubisoft Connect and the EA app, each installed into its own Wine prefix and kept separate from your games.
-- **Emulators:** DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4, Dolphin, Cemu, Eden, Ryujinx, Azahar, melonDS, xemu, Flycast, Mesen, Snes9x, bsnes, mGBA, ares, BlastEm, RMG, Vita3K, Ymir and MAME. Mira sets each one up from its releases page or your system's packages, and the games you add (pick them, drop them on its page or put them in its folder) launch like any other.
+- **Emulators:** DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4, KytyPS5, Dolphin, Cemu, Eden, Ryujinx, Azahar, melonDS, xemu, Xenia Canary, Flycast, Mesen, Snes9x, bsnes, mGBA, ares, BlastEm, RMG, Vita3K, Ymir, Mednafen, Stella, MAME, Mupen64Plus, Redream, atari800, Hatari, FS-UAE, VICE, openMSX, UZDoom, EasyRPG Player, DOSBox Staging and ScummVM. Mira sets each one up from its releases page or your system's packages, and the games you add (pick them, drop them on its page or put them in its folder) launch like any other.
 - **Bring your own:** watched library folders, games added by hand, existing desktop entries and your Lutris library.
 - **Applications too:** Microsoft 365 and Adobe Creative Cloud (on [AdobeWine](https://github.com/le-birnes/AdobeWine)) install into their own prefixes, and their apps launch like games while staying out of the games view.
 

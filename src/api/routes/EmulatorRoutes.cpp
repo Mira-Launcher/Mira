@@ -29,7 +29,7 @@ json ToJson(const config::Config& config, const emulators::Emulator& emulator) {
           {"name", emulator.name},
           {"consoles", emulator.consoles},
           {"extensions", emulator.extensions},
-          {"folder_games", !emulator.folder_game.empty()},
+          {"folder_games", !emulator.folder_game.empty() || emulator.folders},
           {"installed", !binary.empty()},
           {"path", binary.string()},
           {"version", emulators::InstalledVersion(config, emulator)},
@@ -102,7 +102,12 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
                  s.events.Publish("sources.changed", json::object());
                  if (s.on_roots_changed) s.on_roots_changed();
                  s.AfterImport(summary->added_games);
-                 return json{{"added", summary->added}, {"updated", summary->updated}};
+                 json choose = json::array();
+                 for (const model::Game& game : summary->added_games) {
+                   if (auto files = emulators::StartChoices(s.config, game); !files.empty())
+                     choose.push_back({{"id", game.id}, {"name", game.name}, {"files", std::move(files)}});
+                 }
+                 return json{{"added", summary->added}, {"updated", summary->updated}, {"choose", std::move(choose)}};
                });
   });
 
@@ -127,7 +132,8 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
     if (binary.empty()) return SendError(res, 409, "emulator_missing", emulator->name + " isn't installed");
     emulators::Prefill(*emulator);
     Command command;
-    command.argv = {binary.string()};
+    command.argv = {emulator->open_binary.empty() ? binary.string()
+                                                  : (binary.parent_path() / emulator->open_binary).string()};
     command.argv.insert(command.argv.end(), emulator->open_args.begin(), emulator->open_args.end());
     for (const auto& [key, value] : emulators::Environment(*emulator)) command.env[key] = value;
     if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());

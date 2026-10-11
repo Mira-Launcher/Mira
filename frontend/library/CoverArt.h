@@ -19,7 +19,8 @@ QColor PlaceholderBase(const QString& seed);
 // tail of a title is only used when there is nothing else.
 QString CoverInitials(const QString& name);
 
-QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr);
+// `logo` (an emulator's, for its games) takes the initials' place.
+QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr, const QPixmap& logo = {});
 
 // A cover scaled down to a few pixels and back up to `size`: a wash of its
 // colors, for backdrops where a slice of a portrait cover would read as noise.

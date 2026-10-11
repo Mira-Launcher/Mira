@@ -24,7 +24,7 @@ struct SourceInfo {
   QString name;  // shown in the sidebar and as the page title
   Kind kind = Kind::Local;
   QColor color;  // the source's icon tile
-  QString plays = {};  // an emulator's consoles, "PlayStation 2"
+  std::vector<QString> consoles = {};  // an emulator's, by the daemon's ids: "ps2", "snes"
   bool beta = false;   // works, but not well enough yet to promise it
 };
 
@@ -45,7 +45,9 @@ std::string SourceIdOf(const GameSummary& game);
 std::vector<QString> OrderSources(const std::vector<QString>& saved);
 
 // The source's initial on its color, `size` pixels square; faded when `dim`.
-// What an emulator plays, with the short names people search by: "Nintendo 64" also matches "n64".
+// What an emulator plays, by name: "GameCube and Wii".
+QString PlaysText(const SourceInfo& source);
+// Same, with the short names people search by: "Nintendo 64" also matches "n64".
 QString PlaysSearchText(const SourceInfo& source);
 // The source's own logo, `size` points square for `dpr`; null when it has none.
 QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr);

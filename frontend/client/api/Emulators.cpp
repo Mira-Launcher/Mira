@@ -63,7 +63,14 @@ void AddEmulatorFilesAsync(QObject* context, const std::string& id, const std::v
   RunJob<StoreImportResult>(
       context, "import",
       [id, body](const std::string& query) { return transport::PostJson(EmulatorPath(id, "files") + query, body); },
-      FillAddedUpdated<StoreImportResult>, std::move(callback));
+      [](StoreImportResult& result, const json& reply) {
+        FillAddedUpdated(result, reply);
+        for (const json& item : reply.value("choose", json::array())) {
+          result.choose.push_back({item.value("id", ""), item.value("name", ""),
+                                   item.value("files", std::vector<std::string>{})});
+        }
+      },
+      std::move(callback));
 }
 
 void ImportEmulatorAsync(QObject* context, const std::string& id, std::function<void(StoreImportResult)> callback) {

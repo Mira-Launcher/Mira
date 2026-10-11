@@ -3,6 +3,7 @@
 #include "../client/Async.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
@@ -141,10 +142,21 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_ = new SettingRow("Runner", QString(), runner);
   runner_row_->SetBelow(runner_combo_);
   runner->AddRow(runner_row_);
-  emulator_row_ = new SettingRow("Emulator", "Use Run with, in the game's menu, to play it with another emulator.",
+  emulator_row_ = new SettingRow("Emulator", "Picking another moves its files to that emulator's games folder.",
                                  runner);
-  emulator_name_ = new QLabel(emulator_row_);
-  emulator_row_->AddControl(emulator_name_);
+  emulator_combo_ = new QComboBox(emulator_row_);
+  emulator_row_->AddControl(emulator_combo_);
+  connect(emulator_combo_, &QComboBox::activated, this, [this](int index) {
+    if (index <= 0) return;
+    const QString name = emulator_combo_->currentText();
+    api::MoveGameToEmulatorAsync(this, id_, emulator_combo_->currentData().toString().toStdString(),
+                                 [this, name](StoreActionResult moved) {
+      if (!moved.ok) {
+        emulator_combo_->setCurrentIndex(0);
+        notify::FailedRequest(this, "Could not move it to " + name + ".", moved.error);
+      }
+    });
+  });
   emulator_row_->setVisible(false);
   runner->AddRow(emulator_row_);
 
@@ -375,13 +387,25 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   original_patch_ = CurrentPatch();
   move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
-  // An emulator's game keeps its emulator here; Run with, in its menu, moves it to another.
+  // An emulator's game names its emulator here, and picking another moves it there.
   const bool emulated = game.runner_ref.starts_with("emulator:");
   runner_row_->setVisible(!emulated);
   emulator_row_->setVisible(emulated);
   if (emulated) {
     const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
-    emulator_name_->setText(source != nullptr ? source->name : QString::fromStdString(game.source));
+    emulator_combo_->clear();
+    emulator_combo_->addItem(source != nullptr ? source->name : QString::fromStdString(game.source),
+                             QString::fromStdString(game.source));
+    emulator_combo_->setEnabled(false);
+    emulator_combo_->setToolTip(QString());
+    api::GetGameEmulatorsAsync(emulator_combo_, game.id, [this, id = game.id](EmulatorChoicesResult result) {
+      if (!result.ok || id != id_) return;
+      for (const EmulatorChoice& choice : result.emulators) {
+        emulator_combo_->addItem(QString::fromStdString(choice.name), QString::fromStdString(choice.id));
+      }
+      emulator_combo_->setEnabled(!result.emulators.empty());
+      if (result.emulators.empty()) emulator_combo_->setToolTip("No other installed emulator plays this");
+    });
   }
   ShowRunnerOptions();
   UpdateModified();

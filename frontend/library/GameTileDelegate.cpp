@@ -134,7 +134,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
     const QStringList title = index.data(TitleCoverRole).toStringList();
     cover = title.size() == 2 ? artwork_->TitleCover(title[0], title[1], name, tile_, dpr)
-                              : artwork_->CoverById(index.data(IdRole).toString(), name, tile_, dpr);
+                              : artwork_->CoverById(index.data(IdRole).toString(), name, tile_, dpr,
+                                                    index.data(SourceRole).toString());
   }
   if (cover.isNull()) {
     painter->fillRect(rect, tokens.tile_placeholder);

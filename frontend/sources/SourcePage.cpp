@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <QComboBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QEvent>
@@ -33,6 +34,8 @@
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
+#include "../client/api/Games.h"
+#include "../widgets/PopupDialog.h"
 #include "../client/EventHub.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
@@ -436,6 +439,48 @@ void SourcePage::UpdateTool() {
   });
 }
 
+// An emulator's empty library: where its games go in.
+QWidget* SourcePage::BuildDropZone(QWidget* parent) {
+  drop_zone_ = new QFrame(parent);
+  drop_zone_->setObjectName("drop_zone");
+  drop_zone_->setVisible(false);
+  auto* layout = new QVBoxLayout(drop_zone_);
+  layout->setContentsMargins(24, 28, 24, 28);
+  layout->setSpacing(8);
+  auto* logo = new QLabel(drop_zone_);
+  logo->setPixmap(SourceLogo(source_, 48, devicePixelRatioF()));
+  layout->addWidget(logo, 0, Qt::AlignHCenter);
+  auto* title = new QLabel("Drop " + PlaysText(source_) + " games here", drop_zone_);
+  title->setProperty("role", "heading");
+  title->setAlignment(Qt::AlignCenter);
+  title->setWordWrap(true);
+  layout->addWidget(title);
+  auto* line = MakeLabel(drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.", "muted");
+  line->setAlignment(Qt::AlignCenter);
+  layout->addWidget(line);
+  auto* buttons = new QHBoxLayout();
+  buttons->setSpacing(8);
+  buttons->addStretch(1);
+  auto* add = new QPushButton("Add games…", drop_zone_);
+  add->setDefault(true);
+  connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
+  auto* folder = new QPushButton("Open games folder", drop_zone_);
+  connect(folder, &QPushButton::clicked, this, [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+  buttons->addWidget(add);
+  buttons->addWidget(folder);
+  buttons->addStretch(1);
+  layout->addSpacing(4);
+  layout->addLayout(buttons);
+  return drop_zone_;
+}
+
+void SourcePage::SetDropActive(bool active) {
+  if (drop_zone_ == nullptr || drop_zone_->property("active").toBool() == active) return;
+  drop_zone_->setProperty("active", active);
+  drop_zone_->style()->unpolish(drop_zone_);
+  drop_zone_->style()->polish(drop_zone_);
+}
+
 QWidget* SourcePage::BuildLibrarySection() {
   auto* section = new QWidget(this);
   library_section_ = section;
@@ -456,6 +501,7 @@ QWidget* SourcePage::BuildLibrarySection() {
 
   library_empty_ = MakeLabel(section, QString(), "muted");
   layout->addWidget(library_empty_);
+  if (IsEmulator()) layout->addWidget(BuildDropZone(section));
 
   library_grid_ = new TileGrid(tile_, artwork_, section);
   static_cast<GameTileDelegate*>(library_grid_->itemDelegate())->SetShowSource(false);
@@ -718,7 +764,7 @@ void SourcePage::PickGames() {
     }
     const QStringList files = QFileDialog::getOpenFileNames(
         this, "Add " + source_.name + " games", QString(),
-        QString("%1 games (%2);;All files (*)").arg(source_.plays, patterns.join(' ')));
+        QString("%1 games (%2);;All files (*)").arg(PlaysText(source_), patterns.join(' ')));
     for (const QString& file : files) paths.push_back(file.toStdString());
   }
   if (!paths.empty()) AddGames(paths);
@@ -732,6 +778,23 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
     if (!result.ok) return ShowError(import_result_, "Could not add those games.", result.error);
     ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), "muted");
     if (result.added > 0 || result.updated > 0) emit LibraryChanged();
+    for (const StartChoice& choice : result.choose) AskStartFile(choice);
+  });
+}
+
+void SourcePage::AskStartFile(const StartChoice& choice) {
+  PopupDialog dialog(this, notify::Level::Info, "Which file starts " + QString::fromStdString(choice.name) + "?");
+  dialog.SetMessage("Its folder has more than one program. You can change it later in the game's settings.");
+  auto* files = new QComboBox(&dialog);
+  for (const std::string& file : choice.files) files->addItem(QString::fromStdString(file));
+  dialog.AddWidget(files);
+  dialog.AddButton("Use this file", true, true);
+  // Mira already starts it with the first.
+  if (dialog.exec() != QDialog::Accepted || files->currentIndex() <= 0) return;
+  GamePatch patch;
+  patch.exe_path = files->currentText().toStdString();
+  api::PatchGameAsync(this, choice.id, patch, [this](PatchGameResult result) {
+    if (!result.ok) notify::FailedRequest(this, "Could not change which file starts it.", result.error);
   });
 }
 
@@ -739,12 +802,19 @@ void SourcePage::dragEnterEvent(QDragEnterEvent* event) {
   const QList<QUrl> urls = event->mimeData()->urls();
   if (IsEmulator() && !urls.isEmpty() && std::ranges::all_of(urls, &QUrl::isLocalFile)) {
     event->acceptProposedAction();
+    SetDropActive(true);
     return;
   }
   QWidget::dragEnterEvent(event);
 }
 
+void SourcePage::dragLeaveEvent(QDragLeaveEvent* event) {
+  SetDropActive(false);
+  QWidget::dragLeaveEvent(event);
+}
+
 void SourcePage::dropEvent(QDropEvent* event) {
+  SetDropActive(false);
   if (!IsEmulator()) return QWidget::dropEvent(event);
   std::vector<std::string> paths;
   for (const QUrl& url : event->mimeData()->urls()) paths.push_back(url.toLocalFile().toStdString());
@@ -847,8 +917,8 @@ void SourcePage::UpdateStatusLine() {
     const QString item = CopyFor(id_).item;
     library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " + source_.name + " show up here.");
   } else if (IsEmulator()) {
-    library_empty_->setText(QString("No games yet. Press \"Add games\", drop them here, or put them in %1.")
-                                .arg(QString::fromStdString(emulator_.rom_dir)));
+    library_empty_->setVisible(false);
+    drop_zone_->setVisible(library_count_ == 0);
   } else if (id_ == "local") {
     library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {

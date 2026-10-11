@@ -39,9 +39,13 @@ struct Emulator {
   std::vector<std::string> extensions = {};  // lower case, with the dot
   // A folder is one game when this file is inside it (PS3's PS3_GAME/USRDIR/EBOOT.BIN); empty: games are files.
   std::string folder_game = {};
+  // Every folder in its games folder is one game, started by its likeliest file (DOSBox's, ScummVM's); loose
+  // files it takes are games too.
+  bool folders = false;
   std::vector<std::string> args = {};        // "{rom}" is the game's file, "{dir}" its folder, "{stem}" its name
   std::vector<std::string> fullscreen = {};  // before `args`, with emulators.fullscreen
   std::vector<std::string> open_args = {};   // opening it alone: shadPS4's own window is its Big Picture mode
+  std::string open_binary = {};  // opening it alone runs this file beside the binary instead (KytyPS5's launcher)
   // Seconds Stop waits before SIGKILL; 0 is launch.stop_timeout_s. Dolphin's batch mode never quits on SIGTERM.
   std::int64_t stop_timeout_s = 0;
   // Where it comes from: the release at `release_url` (a GitHub, Forgejo or GitLab API url) whose asset
@@ -96,8 +100,11 @@ Result<void> AddFirmware(const config::Config& config, const Emulator& emulator,
 
 // A ROM's name without its extension and dump tags: "Metroid Fusion (USA) [!].gba" reads "Metroid Fusion".
 std::string CleanName(std::string_view file_name);
+// The files a `folders` emulator's game could start with, when Mira can't tell (none is named like its
+// folder); empty when it can.
+std::vector<std::string> StartChoices(const config::Config& config, const model::Game& game);
 // The game's files: its ROM and those a .cue, .gdi or .m3u names, or its folder.
-std::vector<std::filesystem::path> GameFiles(const model::Game& game);
+std::vector<std::filesystem::path> GameFiles(const config::Config& config, const model::Game& game);
 
 // Copies (or moves) `files` into the emulator's folder with the files they name, then imports it.
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games, api::EventBus& events,

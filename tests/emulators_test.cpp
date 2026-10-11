@@ -39,13 +39,31 @@ TEST_CASE("emulators: a folder imports its games, hides what a cue names, and th
   CHECK(crash->name == "Crash Bandicoot");
   CHECK(crash->exe_path == "Crash Bandicoot (USA).cue");
   CHECK(crash->runner_ref == "emulator:duckstation");
-  CHECK(emulators::GameFiles(*crash).size() == 2);
+  CHECK(emulators::GameFiles(env.config, *crash).size() == 2);
   CHECK(env.games.Find("duckstation-homebrew-eboot")->name == "Homebrew");
 
   REQUIRE(emulators::Import(env.config, env.games, env.events, rpcs3));
   const auto ps3 = env.games.Find("rpcs3-blus30001");
   REQUIRE(ps3);
   CHECK(ps3->exe_path == "PS3_GAME/USRDIR/EBOOT.BIN");
+
+  // A DOS game is its folder, started by the file named like it; one the user picks stays picked.
+  const emulators::Emulator& dosbox = *emulators::Find("dosbox");
+  const fs::path dos = emulators::RomDir(env.config, dosbox);
+  test::Touch(dos / "Doom" / "SETUP.EXE");
+  test::Touch(dos / "Doom" / "DOOM.EXE");
+  test::Touch(dos / "Keen" / "INSTALL.BAT");
+  test::Touch(dos / "Keen" / "KEEN4E.EXE");
+  REQUIRE(emulators::Import(env.config, env.games, env.events, dosbox));
+  CHECK(env.games.Find("dosbox-doom")->exe_path == "DOOM.EXE");
+  CHECK(env.games.Find("dosbox-keen")->exe_path == "KEEN4E.EXE");
+  CHECK(emulators::StartChoices(env.config, *env.games.Find("dosbox-keen")) ==
+        std::vector<std::string>{"KEEN4E.EXE", "INSTALL.BAT"});
+  CHECK(emulators::StartChoices(env.config, *env.games.Find("dosbox-doom")).empty());
+  REQUIRE(env.games.Update("dosbox-doom", [](model::Game& g) { g.exe_path = "SETUP.EXE"; }));
+  REQUIRE(emulators::Import(env.config, env.games, env.events, dosbox));
+  CHECK(env.games.Find("dosbox-doom")->exe_path == "SETUP.EXE");
+  CHECK(env.games.All().size() == 6);
 
   fs::remove(ps1 / "Spyro (USA).chd");
   REQUIRE(emulators::Import(env.config, env.games, env.events, duckstation));

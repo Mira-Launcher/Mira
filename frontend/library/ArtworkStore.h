@@ -49,8 +49,9 @@ public:
   // with no artwork gets its placeholder, so a caller never has to decide
   // what to show instead. The first call for an id also queues the fetch.
   QPixmap Cover(const GameSummary& game, QSize tile, qreal device_pixel_ratio);
-  // The same by id and name, for a painter that has only those.
-  QPixmap CoverById(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio);
+  // The same by id, name and source, for a painter that has only those.
+  QPixmap CoverById(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+                    const QString& source = {});
 
   // The same for a store title that isn't installed yet. Keyed by the id it
   // gets once installed, "<source>-<ref>", so the cover carries over.
@@ -147,7 +148,8 @@ private:
   void Touch(const QString& id);
   void Trim();
   // CoverById and TitleCover's shared body.
-  QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio);
+  QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+               const QString& source = {});
 
   static constexpr int kMaxInFlight = 8;
 
