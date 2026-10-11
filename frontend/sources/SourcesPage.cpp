@@ -21,6 +21,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Stores.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -186,7 +187,11 @@ void SourcesPage::OpenSetup(const QString& id) {
     api::GetEmulatorsAsync(this, [this, id](EmulatorsResult result) {
       if (!result.ok) return;
       const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
-      if (it == result.emulators.end() || it->installed || !it->package.empty()) return;
+      if (it == result.emulators.end() || it->installed) return;
+      // A package emulator comes from the system; asks for it the same way its page does.
+      if (!it->package.empty()) {
+        return system::EnsurePackages(this, it->package, QString::fromStdString(it->name), [](bool) {});
+      }
       api::InstallEmulatorAsync(this, it->id, [this, name = QString::fromStdString(it->name)](StoreActionResult r) {
         if (!r.ok) notify::FailedRequest(this, "Could not install " + name + ".", r.error);
       });

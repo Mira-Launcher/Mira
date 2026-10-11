@@ -414,6 +414,13 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
         const std::string file = entry.path().filename().string();
         seen_appimages.emplace(folder, file);
         const auto known = loose_programs.find({folder, file});
+        // An emulator isn't a game: it opens from its source's page.
+        if (const emulators::Emulator* emulator = emulators::Recognize(entry.path())) {
+          if (known != loose_programs.end() && games_.Remove(known->second.id))
+            events_.Publish("game.removed", {{"id", known->second.id}});
+          emulators::Adopt(config_, games_, events_, *emulator, entry.path());
+          continue;
+        }
         if (known == loose_programs.end()) {
           if (adopt(entry.path(), /*loose=*/true)) continue;
           const model::Game game = auto_setup.CreateAppImageGame(folder, entry.path());

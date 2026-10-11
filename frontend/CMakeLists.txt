@@ -53,6 +53,14 @@ qt_add_resources(mira-gui "icons"
     "${MIRA_ICON_DIR}/256x256/apps/mira.png"
 )
 
+# Emulators' logos, from each project's own repository (sources/logos/SOURCES.md).
+file(GLOB MIRA_SOURCE_LOGOS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sources/logos/*.png")
+qt_add_resources(mira-gui "logos"
+  PREFIX "/logos"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/sources/logos"
+  FILES ${MIRA_SOURCE_LOGOS}
+)
+
 # The stylesheet and the themes that fill it in (theme/Theme.cpp). Embedded so a
 # build tree, an AppImage and an installed copy all theme themselves the same
 # way; a user's own themes are read from ~/.config/mira/themes at run time.

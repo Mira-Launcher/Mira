@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -39,6 +41,9 @@ struct Emulator {
   std::string folder_game = {};
   std::vector<std::string> args = {};        // "{rom}" is the game's file, "{dir}" its folder, "{stem}" its name
   std::vector<std::string> fullscreen = {};  // before `args`, with emulators.fullscreen
+  std::vector<std::string> open_args = {};   // opening it alone: shadPS4's own window is its Big Picture mode
+  // Seconds Stop waits before SIGKILL; 0 is launch.stop_timeout_s. Dolphin's batch mode never quits on SIGTERM.
+  std::int64_t stop_timeout_s = 0;
   // Where it comes from: the release at `release_url` (a GitHub, Forgejo or GitLab API url) whose asset
   // matches `asset`, the newest file matching `asset` in the folder listing at `listing_url` (a CachyOS
   // package), the one file at `download_url`, or else the system package of the system::Packages feature
@@ -98,6 +103,16 @@ std::vector<std::filesystem::path> GameFiles(const model::Game& game);
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games, api::EventBus& events,
                                         const Emulator& emulator, const std::vector<std::filesystem::path>& files,
                                         bool move);
+
+// What it runs with: its own variables, and its AppImage's self-updater turned off.
+std::map<std::string, std::string> Environment(const Emulator& emulator);
+
+// The emulator an AppImage found in a library folder is, by its file name; null for any other program.
+const Emulator* Recognize(const std::filesystem::path& appimage);
+// Makes `appimage` the emulator's program when it has none and adds its source, so it opens from its page
+// instead of being a game.
+void Adopt(config::Config& config, store::GameStore& games, api::EventBus& events, const Emulator& emulator,
+           const std::filesystem::path& appimage);
 
 // The other installed emulators `game` could run with: sharing a console and taking its file.
 std::vector<const Emulator*> Alternatives(const config::Config& config, const model::Game& game);

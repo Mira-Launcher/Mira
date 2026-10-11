@@ -6,6 +6,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
+#include "../sources/Sources.h"
 #include "../client/JsonMapping.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -140,6 +141,12 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_ = new SettingRow("Runner", QString(), runner);
   runner_row_->SetBelow(runner_combo_);
   runner->AddRow(runner_row_);
+  emulator_row_ = new SettingRow("Emulator", "Use Run with, in the game's menu, to play it with another emulator.",
+                                 runner);
+  emulator_name_ = new QLabel(emulator_row_);
+  emulator_row_->AddControl(emulator_name_);
+  emulator_row_->setVisible(false);
+  runner->AddRow(emulator_row_);
 
   // Under its label like the other rows, so a narrow card never squeezes the label.
   auto* advanced = new QPushButton("Advanced settings…", runner);
@@ -368,6 +375,14 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   original_patch_ = CurrentPatch();
   move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
+  // An emulator's game keeps its emulator here; Run with, in its menu, moves it to another.
+  const bool emulated = game.runner_ref.starts_with("emulator:");
+  runner_row_->setVisible(!emulated);
+  emulator_row_->setVisible(emulated);
+  if (emulated) {
+    const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
+    emulator_name_->setText(source != nullptr ? source->name : QString::fromStdString(game.source));
+  }
   ShowRunnerOptions();
   UpdateModified();
 }

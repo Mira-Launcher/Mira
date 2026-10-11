@@ -67,7 +67,7 @@ const std::vector<Emulator>& All() {
        .prefill = {{"~/.config/rpcs3/GuiConfigs/CurrentSettings.ini", "[main_window]\ninfoBoxEnabledWelcome=false\n"}}},
       {.id = "shadps4", .name = "shadPS4", .consoles = {"ps4"},
        .folder_game = "eboot.bin",
-       .args = {"-g", "{rom}"}, .fullscreen = {"--fullscreen", "true"},
+       .args = {"-g", "{rom}"}, .fullscreen = {"--fullscreen", "true"}, .open_args = {"-b"},
        .release_url = GitHub("shadps4-emu/shadPS4"), .asset = "shadps4-linux-sdl-*.zip",
        .binary = "Shadps4-sdl.AppImage"},
       {.id = "azahar", .name = "Azahar", .consoles = {"3ds"},
@@ -123,7 +123,7 @@ const std::vector<Emulator>& All() {
       {.id = "dolphin", .name = "Dolphin", .consoles = {"gamecube", "wii"},
        .extensions = {".iso", ".gcm", ".gcz", ".rvz", ".wbfs", ".wia", ".ciso", ".dol", ".elf", ".wad", ".tgc"},
        .args = {"-b", "-e", "{rom}"}, .fullscreen = {"-C", "Dolphin.Display.Fullscreen=True"},
-       .binary = "dolphin-emu",
+       .stop_timeout_s = 2, .binary = "dolphin-emu",
        .prefill = {{"~/.config/dolphin-emu/Dolphin.ini", "[Analytics]\nPermissionAsked = True\nEnabled = False\n"}}},
       {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg"},
        .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".zip"},
@@ -173,7 +173,7 @@ const std::vector<Emulator>& All() {
                      .install_flag = "--firmware"}}},
       {.id = "ymir", .name = "Ymir", .consoles = {"saturn"},
        .extensions = {".cue", ".chd", ".ccd", ".iso", ".mds"},
-       .args = {"-u", "{rom}"}, .fullscreen = {"-f"},
+       .args = {"-u", "{rom}"}, .fullscreen = {"-f"}, .open_args = {"-u"},
        .release_url = "https://api.github.com/repos/StrikerX3/Ymir/releases/tags/latest-nightly",
        .asset = "ymir-linux-x86_64-SSE2-*.tar.xz",
        .binary = "ymir-sdl3",
@@ -182,7 +182,7 @@ const std::vector<Emulator>& All() {
       // Arcade sets keep their zip's name, which MAME looks up in the folder.
       {.id = "mame", .name = "MAME", .consoles = {"arcade"},
        .extensions = {".zip", ".7z", ".chd"},
-       .args = {"-rompath", "{dir}", "{stem}"},
+       .args = {"-skip_gameinfo", "-rompath", "{dir}", "{stem}"},
        .binary = "mame"},
   };
   return emulators;
@@ -272,6 +272,12 @@ struct Found {
 };
 
 // The games in `root`: folder games, or files it takes that no .cue/.gdi/.m3u beside them names.
+// A homebrew's EBOOT.PBP or boot.elf: named, and added, by its folder.
+bool IsGenericName(const fs::path& file) {
+  const std::string stem = strings::ToLower(file.stem().string());
+  return stem == "eboot" || stem == "boot";
+}
+
 void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::vector<Found>& found) {
   std::set<fs::path> named;
   std::vector<fs::path> files;
@@ -286,6 +292,11 @@ void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::v
     if (!Accepts(emulator, entry)) continue;
     files.push_back(entry);
     for (const fs::path& file : Named(entry)) named.insert(file.lexically_normal());
+  }
+  // A homebrew's folder is one game, its EBOOT.PBP: the modules beside it (.prx) aren't games.
+  if (depth > 0) {
+    const auto boot = std::ranges::find_if(files, [](const fs::path& file) { return IsGenericName(file); });
+    if (boot != files.end()) return found.push_back({root, boot->filename().string()});
   }
   for (const fs::path& file : files) {
     if (!named.contains(file.lexically_normal())) found.push_back({root, file.filename().string()});
@@ -504,13 +515,19 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
   std::vector<std::string> refused;
   for (const fs::path& file : files) {
     std::error_code ec;
-    const bool folder = fs::is_directory(file, ec);
-    if (folder ? !IsFolderGame(emulator, file) : !Accepts(emulator, file)) {
+    // A homebrew comes as its folder: picked itself, or by its EBOOT.PBP.
+    const bool generic = Accepts(emulator, file) && IsGenericName(file);
+    const fs::path source = generic ? file.parent_path() : file;
+    const bool folder = fs::is_directory(source, ec);
+    const auto holds_game = [&] {
+      return std::ranges::any_of(paths::ListDir(source), [&](const fs::path& entry) { return Accepts(emulator, entry); });
+    };
+    if (folder ? !IsFolderGame(emulator, source) && !holds_game() : !Accepts(emulator, file)) {
       refused.push_back(file.filename().string());
       continue;
     }
     if (folder) {
-      if (auto done = Transfer(file, dir / file.filename(), move); !done) return std::unexpected(done.error());
+      if (auto done = Transfer(source, dir / source.filename(), move); !done) return std::unexpected(done.error());
       continue;
     }
     for (const fs::path& part : WithNamed(file)) {
@@ -524,6 +541,49 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
     return Err("wrong_files", std::format("{} doesn't run {}", emulator.name, names));
   }
   return Import(config, games, events, emulator);
+}
+
+std::map<std::string, std::string> Environment(const Emulator& emulator) {
+  // Mira updates the emulators it downloads; some AppImages would otherwise ask to update themselves.
+  std::map<std::string, std::string> env = {{"DISABLE_AUTO_UPDATES", "1"}};
+  for (const auto& [key, value] : emulator.env) env[key] = value;
+  return env;
+}
+
+const Emulator* Recognize(const fs::path& appimage) {
+  const std::string file = strings::ToLower(appimage.filename().string());
+  for (const Emulator& emulator : All()) {
+    if (!emulator.asset.empty() && strings::GlobMatch(strings::ToLower(emulator.asset), file)) return &emulator;
+    // Another build of it: its name, then a separator and the build's platform. A version alone isn't enough:
+    // "ares-of-war-1.0" is a game.
+    for (std::string name : {emulator.id, strings::ToLower(emulator.name)}) {
+      std::erase(name, ' ');
+      if (!file.starts_with(name) || file.size() <= name.size() + 1) continue;
+      const char separator = file[name.size()];
+      const std::string rest = file.substr(name.size() + 1);
+      const bool build = rest.contains("x86") || rest.contains("x64") || rest.contains("amd64") ||
+                         rest.contains("linux") || rest == "appimage";
+      if ((separator == '-' || separator == '_' || separator == '.') && build) return &emulator;
+    }
+  }
+  return nullptr;
+}
+
+void Adopt(config::Config& config, store::GameStore& games, api::EventBus& events, const Emulator& emulator,
+           const fs::path& appimage) {
+  bool changed = false;
+  if (Binary(config, emulator).empty()) {
+    if (auto set = config.Set(std::format("emulators.{}.bin", emulator.id), appimage.string()); !set)
+      log::Warn("couldn't use {} for {}: {}", appimage.string(), emulator.name, set.error().message);
+    changed = true;
+  }
+  if (!games.Source(emulator.id).added) {
+    games.MarkSourceAdded(emulator.id, false);
+    changed = true;
+  }
+  if (!changed) return;
+  events.Publish("sources.changed", nlohmann::json::object());
+  log::Info("{} is {}, added as its source", appimage.string(), emulator.name);
 }
 
 std::vector<const Emulator*> Alternatives(const config::Config& config, const model::Game& game) {
@@ -578,6 +638,8 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
   }
 
   library::ImportSummary summary;
+  std::set<fs::path> found_keys;
+  for (const Found& item : found) found_keys.insert(key(item.dir, item.exe));
   for (const Found& item : found) {
     const fs::path file = (item.dir / item.exe).lexically_normal();
     std::optional<model::Game> existing;
@@ -587,7 +649,8 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
       const std::string base = std::format("{}-{}", emulator.id, Slug(emulator, dir, item));
       game.id = base;
       for (int n = 2; games.Find(game.id); ++n) game.id = std::format("{}-{}", base, n);
-      game.name = CleanName(emulator.folder_game.empty() ? item.exe : item.dir.filename().string());
+      const bool generic = IsGenericName(item.exe) && item.dir != dir;
+      game.name = CleanName(!emulator.folder_game.empty() || generic ? item.dir.filename().string() : item.exe);
     }
     game.source = emulator.id;
     game.install_path = item.dir.string();
@@ -608,7 +671,12 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
 
   for (const model::Game& game : games.All()) {
     if (game.source != emulator.id || game.status == model::GameStatus::Missing) continue;
-    if (fs::exists(MainFile(game), ec)) continue;
+    // Still there but no longer a game of its own (a homebrew's module, once its folder became one game).
+    if (fs::exists(MainFile(game), ec)) {
+      if (!found_keys.contains(key(game.install_path, game.exe_path)) && games.Remove(game.id))
+        events.Publish("game.removed", {{"id", game.id}});
+      continue;
+    }
     if (config.GetBool("library.remove_missing")) {
       if (games.Remove(game.id)) events.Publish("game.removed", {{"id", game.id}});
       continue;

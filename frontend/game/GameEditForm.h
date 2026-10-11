@@ -146,6 +146,8 @@ private:
   SettingRow* working_dir_row_ = nullptr;
   SettingRow* tags_row_ = nullptr;
   SettingRow* runner_row_ = nullptr;
+  SettingRow* emulator_row_ = nullptr;  // in place of the runner for an emulator's game
+  QLabel* emulator_name_ = nullptr;
   SettingRow* data_dir_row_ = nullptr;
   SettingRow* env_row_ = nullptr;
 

@@ -5,6 +5,7 @@
 
 #include "core/Strings.h"
 #include "emulators/Emulators.h"
+#include "library/Scanner.h"
 #include "runner/EmulatorRunner.h"
 #include "support/TestEnv.h"
 
@@ -26,17 +27,20 @@ TEST_CASE("emulators: a folder imports its games, hides what a cue names, and th
   test::Touch(ps1 / "Crash" / "Crash Bandicoot (USA).bin");
   test::Touch(ps1 / "Spyro (USA).chd");
   test::Touch(ps1 / "notes.txt");
+  test::Touch(ps1 / "Homebrew" / "EBOOT.PBP");
+  test::Touch(ps1 / "Homebrew" / "module.pbp");
   test::Touch(emulators::RomDir(env.config, rpcs3) / "BLUS30001" / "PS3_GAME" / "USRDIR" / "EBOOT.BIN");
 
   const auto summary = emulators::Import(env.config, env.games, env.events, duckstation);
   REQUIRE(summary);
-  CHECK(summary->added == 2);
+  CHECK(summary->added == 3);
   const auto crash = env.games.Find("duckstation-crash-crash-bandicoot-usa");
   REQUIRE(crash);
   CHECK(crash->name == "Crash Bandicoot");
   CHECK(crash->exe_path == "Crash Bandicoot (USA).cue");
   CHECK(crash->runner_ref == "emulator:duckstation");
   CHECK(emulators::GameFiles(*crash).size() == 2);
+  CHECK(env.games.Find("duckstation-homebrew-eboot")->name == "Homebrew");
 
   REQUIRE(emulators::Import(env.config, env.games, env.events, rpcs3));
   const auto ps3 = env.games.Find("rpcs3-blus30001");
@@ -62,6 +66,10 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
   test::Touch(downloads / "readme.txt");
 
   CHECK_FALSE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "readme.txt"}, false));
+  test::Touch(downloads / "CMFileManager" / "EBOOT.PBP");
+  REQUIRE(emulators::AddFiles(env.config, env.games, env.events, *emulators::Find("ppsspp"),
+                              {downloads / "CMFileManager" / "EBOOT.PBP"}, false));
+  CHECK(env.games.Find("ppsspp-cmfilemanager-eboot")->name == "CMFileManager");
   REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "Super Metroid (USA).sfc"}, false));
   REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "Earthbound (USA).smc"}, true));
   CHECK(fs::exists(downloads / "Super Metroid (USA).sfc"));
@@ -93,4 +101,22 @@ TEST_CASE("emulators: download sources read as a repository or link") {
   CHECK(emulators::DefaultSource(*emulators::Find("ryujinx")).starts_with("https://mirror.cachyos.org/"));
   CHECK(strings::GithubRepo("https://github.com/someone/duckstation") == "someone/duckstation");
   CHECK(strings::GithubRepo("someone/duckstation") == "someone/duckstation");
+}
+
+TEST_CASE("emulators: an emulator's AppImage in a library folder sets up its source instead of a game") {
+  CHECK(emulators::Recognize("DuckStation-x64.AppImage")->id == "duckstation");
+  CHECK(emulators::Recognize("pcsx2-v2.2.0-linux-appimage-x64-Qt.AppImage")->id == "pcsx2");
+  CHECK(emulators::Recognize("Dolphin_Emulator-x86_64.AppImage")->id == "dolphin");
+  CHECK(emulators::Recognize("Eden Rising.AppImage") == nullptr);
+  CHECK(emulators::Recognize("Ares-of-War-1.0.AppImage") == nullptr);
+  CHECK(emulators::Recognize("Celeste.AppImage") == nullptr);
+
+  test::TestEnv env("emulators-adopt");
+  const fs::path root = env.dir / "Applications";
+  test::Touch(root / "mGBA-0.10.5-appimage-x64.appimage", "", true);
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})));
+  library::Scanner(env.config, env.games, env.events).ScanAll();
+  CHECK(env.games.All().empty());
+  CHECK(env.config.GetString("emulators.mgba.bin") == (root / "mGBA-0.10.5-appimage-x64.appimage").string());
+  CHECK(env.games.Source("mgba").added);
 }

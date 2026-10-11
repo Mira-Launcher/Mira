@@ -44,6 +44,11 @@ std::string SourceIdOf(const GameSummary& game);
 std::vector<QString> OrderSources(const std::vector<QString>& saved);
 
 // The source's initial on its color, `size` pixels square; faded when `dim`.
+// What an emulator plays, with the short names people search by: "Nintendo 64" also matches "n64".
+QString PlaysSearchText(const SourceInfo& source);
+// The source's own logo, `size` points square for `dpr`; null when it has none (an emulator's, from its project).
+QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr);
+// Its logo, or its colored initial.
 QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim = false);
 // Fades a badge from MakeSourceBadge, e.g. while its source is off or not set up.
 void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim);

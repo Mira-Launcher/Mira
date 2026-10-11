@@ -122,7 +122,7 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     groups_[group].grid->layout()->addWidget(tile);
     tiles_[id] = tile;
     group_of_[id] = group;
-    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb, copy.tool}.join(' ').toLower();
+    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb, copy.tool, PlaysSearchText(source)}.join(' ').toLower();
   }
   int total = 0;
   for (size_t i = 0; i < groups_.size(); ++i) {

@@ -252,7 +252,7 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
   return {};
 }
 
-Result<void> ProcessSupervisor::Stop(const std::string& game_id) {
+Result<void> ProcessSupervisor::Stop(const std::string& game_id, std::int64_t timeout_s) {
   pid_t pid = 0;
   std::optional<ExternalMatch> match;
   {
@@ -296,7 +296,7 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id) {
     std::lock_guard lock(mutex_);
     // Skipped if the game exited meanwhile: its watcher already cleaned up, and these would outlive it.
     if (running_.contains(game_id)) {
-      kill_deadlines_[game_id] = model::NowSeconds() + stop_timeout_s_;
+      kill_deadlines_[game_id] = model::NowSeconds() + (timeout_s > 0 ? timeout_s : stop_timeout_s_);
       stop_requested_.insert(game_id);
     }
   }

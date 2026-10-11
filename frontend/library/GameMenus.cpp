@@ -44,7 +44,9 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     QMenu* run_with = menu.addMenu("Run with");
     run_with->setEnabled(false);
     api::GetGameEmulatorsAsync(run_with, id, [this, run_with, id, name](EmulatorChoicesResult result) {
-      if (!result.ok || result.emulators.empty()) return;
+      if (!result.ok) return;
+      // Say why there's nothing to pick rather than leave the entry greyed out.
+      if (result.emulators.empty()) run_with->addAction("No other installed emulator plays this")->setEnabled(false);
       for (const EmulatorChoice& choice : result.emulators) {
         const QString emulator = QString::fromStdString(choice.name);
         run_with->addAction(emulator, this, [this, id, name, emulator, to = choice.id] {
@@ -81,6 +83,11 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QAction* winetricks = menu.addAction("Run winetricks…");
   QAction* relocate = menu.addAction("Move to Mira's folders…");
   relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
+  // An emulator's game has no installer, prefix or folder of Mira's to move it to.
+  const bool emulated = source != nullptr && source->kind == SourceInfo::Kind::Emulator;
+  // Nor store info for More details to show.
+  for (QAction* action : {install, run_in_prefix, finish_install, winetricks, relocate, more_details})
+    action->setVisible(!emulated);
   const bool native = game.platform == "native";
   winetricks->setEnabled(!native);
   winetricks->setToolTip(native ? "Native games have no Wine or Proton prefix." : QString());

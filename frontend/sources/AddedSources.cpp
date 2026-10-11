@@ -176,7 +176,7 @@ void AddedSources::ApplyFilter() {
   for (const auto& [id, tile] : tiles_) {
     const SourceInfo& source = tile.entry.source;
     const bool shown = filter_.isEmpty() || source.name.toLower().contains(filter_) ||
-                       KindLabel(source.kind).toLower().contains(filter_);
+                       KindLabel(source.kind).toLower().contains(filter_) || PlaysSearchText(source).contains(filter_);
     tile.tile->setVisible(shown);
     (tile.tile->parentWidget() == apps_grid_ ? apps_shown : games_shown) |= shown;
   }

@@ -128,7 +128,8 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
     emulators::Prefill(*emulator);
     Command command;
     command.argv = {binary.string()};
-    for (const auto& [key, value] : emulator->env) command.env[key] = value;
+    command.argv.insert(command.argv.end(), emulator->open_args.begin(), emulator->open_args.end());
+    for (const auto& [key, value] : emulators::Environment(*emulator)) command.env[key] = value;
     if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });

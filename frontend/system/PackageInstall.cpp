@@ -1,7 +1,13 @@
 #include "PackageInstall.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QCoreApplication>
+#include <QFontDatabase>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QPointer>
+#include <QPushButton>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -9,6 +15,8 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
+#include "../theme/Theme.h"
+#include "../widgets/PopupDialog.h"
 
 namespace mira_gui::system {
 namespace {
@@ -47,6 +55,47 @@ bool OpenTerminal(const QStringList& argv) {
   return false;
 }
 
+enum Answer { kClosed, kInstall };
+
+// The install command in a copyable field, with Open terminal, and Install (pkexec) when `offer_install`.
+Answer ShowCommand(QWidget* parent, const QString& title, const QString& message, const QString& detail,
+                   const QStringList& argv, bool offer_install) {
+  PopupDialog dialog(parent, detail.isEmpty() ? notify::Level::Info : notify::Level::Error, title);
+  dialog.SetMessage(message);
+  if (!detail.isEmpty()) dialog.SetDetail(detail);
+
+  auto* row = new QWidget(&dialog);
+  auto* layout = new QHBoxLayout(row);
+  layout->setContentsMargins(0, 0, 0, 0);
+  // Wraps between words: non-breaking hyphens keep "--needed" whole. Copy, not selection, since those
+  // hyphens aren't the shell's.
+  const QString command = "sudo " + argv.join(' ');
+  auto* field = new QLabel(QString(command).replace('-', QChar(0x2011)), row);
+  field->setWordWrap(true);
+  field->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  const theme::Tokens& tokens = theme::Current();
+  field->setStyleSheet(QString("QLabel { background: %1; border: 1px solid %2; border-radius: %3px; padding: 6px; }")
+                           .arg(theme::ColorToQss(tokens.window), theme::ColorToQss(tokens.border))
+                           .arg(tokens.radius_control));
+  auto* copy = new QPushButton("Copy", row);
+  QObject::connect(copy, &QPushButton::clicked, copy, [command, copy] {
+    QApplication::clipboard()->setText(command);
+    copy->setText("Copied");
+  });
+  layout->addWidget(field, 1);
+  layout->addWidget(copy, 0, Qt::AlignTop);
+  dialog.AddWidget(row);
+
+  if (offer_install) dialog.AddButton("Install", kInstall, /*default_button=*/true);
+  QPushButton* terminal = dialog.AddButton("Open terminal", kClosed, !offer_install);
+  QObject::connect(terminal, &QPushButton::clicked, &dialog, [parent, argv] {
+    if (!OpenTerminal(argv)) {
+      notify::Notice(parent, "No terminal found; copy the command instead.", notify::Level::Warning);
+    }
+  });
+  return dialog.exec() == kInstall ? kInstall : kClosed;
+}
+
 }  // namespace
 
 QString Names(const std::vector<std::string>& packages) {
@@ -59,19 +108,14 @@ QString Names(const std::vector<std::string>& packages) {
 void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
                      std::function<void(bool installed)> done) {
   const QStringList argv = Args(install);
-  const QString command = "sudo " + argv.join(' ');
   // Test sandboxes share the real system.
   if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) {
     notify::Info(parent, "Not installed", "Installing system packages is off here (MIRA_NO_POWER).");
     return done(false);
   }
   if (QStandardPaths::findExecutable("pkexec").isEmpty()) {
-    if (OpenTerminal(argv)) {
-      notify::Info(parent, "Finish in the terminal",
-                   "Type your password in the terminal that opened to install " + names + ".");
-    } else {
-      notify::Info(parent, "Install " + names, "Install it from a terminal:\n\n" + command);
-    }
+    ShowCommand(parent, "Install " + names, "Run this in a terminal to install " + names + ".", QString(), argv,
+                false);
     return done(false);
   }
 
@@ -79,7 +123,7 @@ void InstallPackages(QWidget* parent, const std::vector<std::string>& install, c
   auto* process = new QProcess(QCoreApplication::instance());
   process->setProcessChannelMode(QProcess::MergedChannels);
   QObject::connect(process, &QProcess::finished, process,
-                   [process, guard, names, command, restart, done = std::move(done)](int code,
+                   [process, guard, names, argv, restart, done = std::move(done)](int code,
                                                                                     QProcess::ExitStatus status) {
     process->deleteLater();
     const QString output = QString::fromUtf8(process->readAll());
@@ -87,9 +131,9 @@ void InstallPackages(QWidget* parent, const std::vector<std::string>& install, c
     if (status == QProcess::NormalExit && (code == 126 || code == 127)) return done(false);
     if (status != QProcess::NormalExit || code != 0) {
       const QStringList lines = output.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
-      notify::FailedWithHint(guard.data(), "Could not install " + names + ".",
-                             lines.isEmpty() ? QString() : lines.last().trimmed(),
-                             "Install it from a terminal instead: " + command);
+      ShowCommand(guard.data(), "Could not install " + names,
+                  "Install it from a terminal instead.", lines.isEmpty() ? QString() : lines.last().trimmed(), argv,
+                  false);
       return done(false);
     }
     if (restart) {
@@ -115,11 +159,13 @@ void EnsurePackages(QWidget* parent, const std::string& feature, const QString& 
                    "manager, then try again.");
       return done(false);
     }
-    QString question = what + " needs " + names + ", which isn't installed. Mira installs it now; your system "
-                       "asks for your password.";
+    const bool pkexec = !QStandardPaths::findExecutable("pkexec").isEmpty();
+    QString question = what + " needs " + names + ", which isn't installed. " +
+                       (pkexec ? "Install asks for your password." : "Run this in a terminal to install it.");
     if (result.restart) question += " On " + QString::fromStdString(result.distro) + " it's added to the system "
-                                    "image, so restart before installing " + what + ".";
-    if (!notify::Confirm(parent, "Install " + names + "?", question, "Install")) return done(false);
+                                    "image, so restart before using " + what + ".";
+    if (ShowCommand(parent, "Install " + names + "?", question, QString(), Args(result.install), pkexec) != kInstall)
+      return done(false);
     InstallPackages(parent, result.install, names, result.restart, done);
   });
 }

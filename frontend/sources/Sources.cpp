@@ -1,6 +1,7 @@
 #include "Sources.h"
 
 #include <QLabel>
+#include <QPainter>
 
 #include <algorithm>
 
@@ -22,29 +23,29 @@ const std::vector<SourceInfo>& AllSources() {
       {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01")},
       {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26")},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
-      {"duckstation", "DuckStation", Kind::Emulator, QColor("#c99a1e"), "PlayStation"},
-      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#2b6cb0"), "PlayStation 2"},
-      {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#2f8fcf"), "PSP"},
-      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#3d3d99"), "PlayStation 3"},
-      {"shadps4", "shadPS4", Kind::Emulator, QColor("#5865f2"), "PlayStation 4"},
-      {"xemu", "xemu", Kind::Emulator, QColor("#5a9e2f"), "Xbox"},
-      {"dolphin", "Dolphin", Kind::Emulator, QColor("#1f9bd8"), "GameCube and Wii"},
-      {"cemu", "Cemu", Kind::Emulator, QColor("#2f6fd1"), "Wii U"},
-      {"eden", "Eden", Kind::Emulator, QColor("#7b3fe4"), "Switch"},
-      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#4a90c8"), "Switch"},
-      {"melonds", "melonDS", Kind::Emulator, QColor("#c4413f"), "Nintendo DS"},
-      {"azahar", "Azahar", Kind::Emulator, QColor("#e0582b"), "3DS"},
-      {"mesen", "Mesen", Kind::Emulator, QColor("#3f7a3f"), "NES, SNES, Game Boy and PC Engine"},
-      {"snes9x", "Snes9x", Kind::Emulator, QColor("#8a4fbf"), "SNES"},
-      {"flycast", "Flycast", Kind::Emulator, QColor("#e07b1f"), "Dreamcast"},
-      {"bsnes", "bsnes", Kind::Emulator, QColor("#b03a48"), "SNES"},
-      {"ares", "ares", Kind::Emulator, QColor("#2e7d6b"), "NES, SNES, Nintendo 64, Genesis and Game Boy"},
+      {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), "PlayStation"},
+      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), "PlayStation 2"},
+      {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), "PSP"},
+      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), "PlayStation 3"},
+      {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), "PlayStation 4"},
+      {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), "Xbox"},
+      {"dolphin", "Dolphin", Kind::Emulator, QColor("#00b5ff"), "GameCube and Wii"},
+      {"cemu", "Cemu", Kind::Emulator, QColor("#00a2df"), "Wii U"},
+      {"eden", "Eden", Kind::Emulator, QColor("#b64ef8"), "Switch"},
+      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#fd8b62"), "Switch"},
+      {"melonds", "melonDS", Kind::Emulator, QColor("#fe544c"), "Nintendo DS"},
+      {"azahar", "Azahar", Kind::Emulator, QColor("#b5a816"), "3DS"},
+      {"mesen", "Mesen", Kind::Emulator, QColor("#933604"), "NES, SNES, Game Boy and PC Engine"},
+      {"snes9x", "Snes9x", Kind::Emulator, QColor("#8683e1"), "SNES"},
+      {"flycast", "Flycast", Kind::Emulator, QColor("#833de8"), "Dreamcast"},
+      {"bsnes", "bsnes", Kind::Emulator, QColor("#16a1ff"), "SNES"},
+      {"ares", "ares", Kind::Emulator, QColor("#c9b23a"), "NES, SNES, Nintendo 64, Genesis and Game Boy"},
       {"blastem", "BlastEm", Kind::Emulator, QColor("#3a3a3a"), "Genesis"},
-      {"mgba", "mGBA", Kind::Emulator, QColor("#6a3d9a"), "Game Boy and Game Boy Advance"},
-      {"rmg", "RMG", Kind::Emulator, QColor("#b5432a"), "Nintendo 64"},
-      {"vita3k", "Vita3K", Kind::Emulator, QColor("#1f4e9c"), "PS Vita"},
-      {"ymir", "Ymir", Kind::Emulator, QColor("#4b5d73"), "Saturn"},
-      {"mame", "MAME", Kind::Emulator, QColor("#8a6d1e"), "arcade"},
+      {"mgba", "mGBA", Kind::Emulator, QColor("#4d299e"), "Game Boy and Game Boy Advance"},
+      {"rmg", "RMG", Kind::Emulator, QColor("#02b3d3"), "Nintendo 64"},
+      {"vita3k", "Vita3K", Kind::Emulator, QColor("#d4a900"), "PS Vita"},
+      {"ymir", "Ymir", Kind::Emulator, QColor("#414db5"), "Saturn"},
+      {"mame", "MAME", Kind::Emulator, QColor("#4b9ecd"), "arcade"},
   };
   return sources;
 }
@@ -98,6 +99,27 @@ std::vector<QString> OrderSources(const std::vector<QString>& saved) {
   return order;
 }
 
+QString PlaysSearchText(const SourceInfo& source) {
+  static const std::pair<const char*, const char*> kShort[] = {
+      {"PlayStation 4", "ps4"}, {"PlayStation 3", "ps3"}, {"PlayStation 2", "ps2"}, {"PlayStation", "ps1 psx"},
+      {"PS Vita", "vita psv"}, {"Nintendo 64", "n64"}, {"Nintendo DS", "nds"}, {"Game Boy Advance", "gba"},
+      {"Game Boy", "gb gbc"}, {"GameCube", "gc ngc"}, {"Genesis", "mega drive megadrive md"},
+      {"Dreamcast", "dc"}, {"Switch", "nx"}, {"PC Engine", "turbografx pce"}, {"arcade", "mame"}};
+  QStringList words{source.plays};
+  for (const auto& [name, short_names] : kShort) {
+    if (source.plays.contains(name)) words << short_names;
+  }
+  return words.join(' ').toLower();
+}
+
+QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr) {
+  const QPixmap logo(":/logos/" + source.id + ".png");
+  if (logo.isNull()) return {};
+  QPixmap scaled = logo.scaled(QSize(size, size) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  scaled.setDevicePixelRatio(dpr);
+  return scaled;
+}
+
 QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim) {
   auto* badge = new QLabel(source.name.left(1), parent);
   badge->setFixedSize(size, size);
@@ -107,6 +129,22 @@ QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, boo
 }
 
 void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim) {
+  if (QPixmap logo = SourceLogo(source, badge->width(), badge->devicePixelRatioF()); !logo.isNull()) {
+    if (dim) {
+      QPixmap faded(logo.size());
+      faded.setDevicePixelRatio(logo.devicePixelRatio());
+      faded.fill(Qt::transparent);
+      QPainter painter(&faded);
+      painter.setOpacity(0.45);
+      painter.drawPixmap(0, 0, logo);
+      painter.end();
+      logo = faded;
+    }
+    badge->setText({});
+    badge->setStyleSheet("background: transparent;");
+    badge->setPixmap(logo);
+    return;
+  }
   QColor fill = source.color;
   if (dim) fill.setAlphaF(0.55);
   badge->setStyleSheet(QString("background: %1; color: white; border-radius: %2px; font-weight: 700;")

@@ -44,7 +44,7 @@ Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
     else if (arg == "{stem}") command.argv.push_back(rom.stem().string());
     else command.argv.push_back(arg);
   }
-  for (const auto& [key, value] : emulator->env) command.env[key] = value;
+  for (const auto& [key, value] : emulators::Environment(*emulator)) command.env[key] = value;
   for (const auto& [key, value] : game.env) command.env[key] = value;
   command.cwd = rom.parent_path();
   return command;
