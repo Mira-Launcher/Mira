@@ -42,7 +42,8 @@ const std::vector<Emulator>& All() {
        .prefill = {{"$XDG_CONFIG_HOME/duckstation/settings.ini|~/.local/share/duckstation/settings.ini",
                     "[Main]\nSetupWizardIncomplete = false\nNoDesktopFile = true\n"
                     "[AutoUpdater]\nCheckAtStartup = false\n"}},
-       .data = {"~/.local/share/duckstation"}},
+       .data = {"~/.local/share/duckstation"},
+       .known_dirs = {{"~/.local/share/duckstation/settings.ini", R"(^(?:Recursive)?Paths\s*=\s*(.+)$)"}}},
       {.id = "pcsx2", .name = "PCSX2", .consoles = {"ps2"},
        .extensions = {".iso", ".chd", ".cso", ".zso", ".gz", ".bin", ".cue", ".m3u", ".mdf", ".elf"},
        .args = {"-batch", "--", "{rom}"}, .fullscreen = {"-fullscreen"},
@@ -52,7 +53,8 @@ const std::vector<Emulator>& All() {
                      .patterns = {"*.bin", "*.BIN"}}},
        .prefill = {{"~/.config/PCSX2/inis/PCSX2.ini",
                     "[UI]\nSettingsVersion = 1\nSetupWizardIncomplete = false\n[AutoUpdater]\nCheckAtStartup = false\n"}},
-       .data = {"~/.config/PCSX2"}},
+       .data = {"~/.config/PCSX2"},
+       .known_dirs = {{"~/.config/PCSX2/inis/PCSX2.ini", R"(^(?:Recursive)?Paths\s*=\s*(.+)$)"}}},
       {.id = "ppsspp", .name = "PPSSPP", .consoles = {"psp"},
        .extensions = {".iso", ".cso", ".chd", ".pbp", ".elf", ".prx"},
        .fullscreen = {"--fullscreen"},
@@ -83,7 +85,8 @@ const std::vector<Emulator>& All() {
        .binary = "azahar.AppImage",
        .firmware = {{.id = "aes_keys", .label = "AES keys, for encrypted games",
                      .dir = "~/.local/share/azahar-emu/sysdata", .patterns = {"aes_keys.txt"}, .required = false}},
-       .data = {"~/.config/azahar-emu", "~/.local/share/azahar-emu"}},
+       .data = {"~/.config/azahar-emu", "~/.local/share/azahar-emu"},
+       .known_dirs = {{"~/.config/azahar-emu/qt-config.ini", R"(gamedirs\\\d+\\path=(.+)$)"}}},
       {.id = "eden", .name = "Eden", .consoles = {"switch"},
        .extensions = {".nsp", ".xci", ".nca", ".nro", ".nso"},
        .args = {"-g", "{rom}"}, .fullscreen = {"-f"},
@@ -94,7 +97,8 @@ const std::vector<Emulator>& All() {
                      .patterns = {"prod.keys"}},
                     {.id = "firmware", .label = "Firmware (a zip of .nca files)",
                      .dir = "~/.local/share/eden/nand/system/Contents/registered", .patterns = {"*.nca"}}},
-       .data = {"~/.config/eden", "~/.local/share/eden", "~/.cache/eden"}},
+       .data = {"~/.config/eden", "~/.local/share/eden", "~/.cache/eden"},
+       .known_dirs = {{"~/.config/eden/qt-config.ini", R"(gamedirs\\\d+\\path=(.+)$)"}}},
       {.id = "ryujinx", .name = "Ryujinx", .consoles = {"switch"},
        .extensions = {".nsp", ".xci", ".nca", ".nro", ".nso"},
        .fullscreen = {"--fullscreen"},
@@ -112,7 +116,8 @@ const std::vector<Emulator>& All() {
                      .patterns = {"keys.txt"}, .required = false}},
        .prefill = {{"~/.config/Cemu/settings.xml",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n</content>\n"}},
-       .data = {"~/.config/Cemu", "~/.local/share/Cemu", "~/.cache/Cemu"}},
+       .data = {"~/.config/Cemu", "~/.local/share/Cemu", "~/.cache/Cemu"},
+       .known_dirs = {{"~/.config/Cemu/settings.xml", R"(<Entry>(.+)</Entry>)"}}},
       {.id = "xemu", .name = "xemu", .consoles = {"xbox"},
        .extensions = {".iso", ".xiso"},
        .args = {"-dvd_path", "{rom}"}, .fullscreen = {"-full-screen"},
@@ -125,7 +130,8 @@ const std::vector<Emulator>& All() {
        .binary = "flycast.AppImage",
        .firmware = {{.id = "bios", .label = "Dreamcast BIOS (dc_boot.bin)", .dir = "~/.local/share/flycast/data",
                      .patterns = {"dc_boot.bin"}, .required = false}},
-       .data = {"~/.config/flycast", "~/.local/share/flycast"}},
+       .data = {"~/.config/flycast", "~/.local/share/flycast"},
+       .known_dirs = {{"~/.config/flycast/emu.cfg", R"(^Dreamcast\.ContentPath\s*=\s*(.+)$)", ';'}}},
       {.id = "melonds", .name = "melonDS", .consoles = {"nds"},
        .extensions = {".nds", ".dsi", ".ids", ".srl", ".zip"},
        .fullscreen = {"-f"},
@@ -137,7 +143,8 @@ const std::vector<Emulator>& All() {
        .args = {"-b", "-e", "{rom}"}, .fullscreen = {"-C", "Dolphin.Display.Fullscreen=True"},
        .stop_timeout_s = 2, .binary = "dolphin-emu",
        .prefill = {{"~/.config/dolphin-emu/Dolphin.ini", "[Analytics]\nPermissionAsked = True\nEnabled = False\n"}},
-       .data = {"~/.config/dolphin-emu", "~/.local/share/dolphin-emu", "~/.cache/dolphin-emu"}},
+       .data = {"~/.config/dolphin-emu", "~/.local/share/dolphin-emu", "~/.cache/dolphin-emu"},
+       .known_dirs = {{"~/.config/dolphin-emu/Dolphin.ini", R"(^ISOPath\d+\s*=\s*(.+)$)"}}},
       {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg", "ws"},
        .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".ws",
                       ".wsc", ".zip"},
@@ -266,7 +273,9 @@ const std::vector<Emulator>& All() {
        .fullscreen = {"--fullscreen"},
        .release_url = GitHub("FrodeSolheim/fs-uae"), .asset = "FS-UAE_*_Linux_x86-64.tar.xz",
        .binary = "fs-uae",
-       .data = {"~/FS-UAE"}},
+       // Not Floppies, Hard Drives, CD-ROMs or Kickstarts: the user's own files.
+       .data = {"~/FS-UAE/Configurations", "~/FS-UAE/Controllers", "~/FS-UAE/Save States", "~/FS-UAE/Data",
+                "~/FS-UAE/Cache"}},
       {.id = "vice", .name = "VICE", .consoles = {"c64"},
        .extensions = {".d64", ".g64", ".t64", ".prg", ".p00", ".crt", ".tap"},
        .fullscreen = {"-fullscreen"},
@@ -386,9 +395,9 @@ std::string StartFile(const Emulator& emulator, const fs::path& dir) {
 }
 
 // The files a .cue/.gdi (FILE "x" lines, or a .gdi's third field) or .m3u (one per line) names, beside it.
-std::vector<fs::path> Named(const fs::path& file) {
+std::vector<fs::path> Named(const fs::path& file, int depth = 0) {
   const std::string ext = strings::ToLower(file.extension().string());
-  if (ext != ".cue" && ext != ".gdi" && ext != ".m3u") return {};
+  if (depth > 2 || (ext != ".cue" && ext != ".gdi" && ext != ".m3u")) return {};
   std::vector<fs::path> named;
   std::ifstream in(file);
   std::string line;
@@ -397,13 +406,16 @@ std::vector<fs::path> Named(const fs::path& file) {
   while (std::getline(in, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     std::smatch match;
-    if (ext == ".cue" && std::regex_search(line, match, cue_file)) named.push_back(file.parent_path() / match[1].str());
-    if (ext == ".gdi" && std::regex_match(line, match, gdi_track)) named.push_back(file.parent_path() / match[1].str());
-    if (ext == ".m3u" && !line.empty() && !line.starts_with('#')) {
-      const fs::path disc = file.parent_path() / line;
-      named.push_back(disc);
-      std::ranges::move(Named(disc), std::back_inserter(named));
-    }
+    std::string name;
+    if (ext == ".cue" && std::regex_search(line, match, cue_file)) name = match[1].str();
+    if (ext == ".gdi" && std::regex_match(line, match, gdi_track)) name = match[1].str();
+    if (ext == ".m3u" && !line.starts_with('#')) name = line;
+    // Only files beside it or below: never another game's, and one named but missing is skipped.
+    const fs::path rel = fs::path(name).lexically_normal();
+    std::error_code ec;
+    if (name.empty() || rel.is_absolute() || *rel.begin() == ".." || !fs::exists(file.parent_path() / rel, ec)) continue;
+    named.push_back(file.parent_path() / rel);
+    if (ext == ".m3u") std::ranges::move(Named(named.back(), depth + 1), std::back_inserter(named));
   }
   return named;
 }
@@ -420,6 +432,7 @@ std::vector<fs::path> WithNamed(const fs::path& rom) {
 struct Found {
   fs::path dir;
   std::string exe;  // relative to dir
+  fs::path root = {};  // the games folder it's in
 };
 
 // A homebrew's EBOOT.PBP or boot.elf: named, and added, by its folder.
@@ -514,6 +527,14 @@ void Prefill(const Emulator& emulator) {
 
 fs::path RomDir(const config::Config& config, const Emulator& emulator) {
   return config.GetPath("emulators.roms_root") / emulator.name;
+}
+
+std::vector<fs::path> GameRoots(const config::Config& config, const Emulator& emulator) {
+  std::vector<fs::path> roots = {RomDir(config, emulator)};
+  for (const fs::path& dir : config.GetPathArray(std::format("emulators.{}.game_dirs", emulator.id))) {
+    if (!std::ranges::contains(roots, dir)) roots.push_back(dir.lexically_normal());
+  }
+  return roots;
 }
 
 fs::path Binary(const config::Config& config, const Emulator& emulator) {
@@ -684,7 +705,7 @@ fs::path MainFile(const model::Game& game) { return fs::path(game.install_path) 
 
 bool IsLooseFile(const config::Config& config, const model::Game& game) {
   const Emulator* emulator = ForGame(game);
-  return emulator != nullptr && fs::path(game.install_path) == RomDir(config, *emulator);
+  return emulator != nullptr && std::ranges::contains(GameRoots(config, *emulator), fs::path(game.install_path));
 }
 
 std::vector<std::string> StartChoices(const config::Config& config, const model::Game& game) {
@@ -699,6 +720,11 @@ std::vector<fs::path> GameFiles(const config::Config& config, const model::Game&
   const Emulator* emulator = ForGame(game);
   if (emulator != nullptr && ByFolder(*emulator) && !IsLooseFile(config, game)) return {game.install_path};
   return WithNamed(MainFile(game));
+}
+
+bool MovesAdded(const config::Config& config, const Emulator& emulator) {
+  const std::string mode = config.GetString(std::format("emulators.{}.add_mode", emulator.id));
+  return mode == "default" ? config.GetBool("emulators.move_added") : mode == "move";
 }
 
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games, api::EventBus& events,
@@ -799,7 +825,12 @@ Result<model::Game> MoveGame(config::Config& config, store::GameStore& games, co
                              const Emulator& to) {
   const Emulator* from = ForGame(game);
   if (from == nullptr) return Err("not_emulator_game", std::format("{} isn't an emulator's game", game.name));
-  const fs::path from_dir = RomDir(config, *from);
+  // Relative to the folder it sits in: the ROM folder, a game folder, or where a kept-in-place game is.
+  const fs::path install = game.install_path;
+  fs::path from_dir = ByFolder(*from) ? install.parent_path() : install;
+  for (const fs::path& root : GameRoots(config, *from)) {
+    if (paths::IsWithin(install, {root})) from_dir = root;
+  }
   const fs::path to_dir = RomDir(config, to);
   for (const fs::path& file : GameFiles(config, game)) {
     const fs::path target = to_dir / file.lexically_relative(from_dir);
@@ -808,26 +839,37 @@ Result<model::Game> MoveGame(config::Config& config, store::GameStore& games, co
     fs::create_directories(target.parent_path(), ec);
     if (auto moved = library::MovePath(file, target, true); !moved) return std::unexpected(moved.error());
   }
-  const fs::path install = to_dir / fs::path(game.install_path).lexically_relative(from_dir);
+  const fs::path moved = to_dir / install.lexically_relative(from_dir);
   return games.Update(game.id, [&](model::Game& g) {
     g.source = to.id;
     g.runner_ref = "emulator:" + to.id;
-    g.install_path = install.lexically_normal().string();
+    g.install_path = moved.lexically_normal().string();
   });
 }
 
 Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
                                       const Emulator& emulator) {
-  const fs::path dir = RomDir(config, emulator);
   std::error_code ec;
-  fs::create_directories(dir, ec);
+  fs::create_directories(RomDir(config, emulator), ec);
+  const std::vector<fs::path> roots = GameRoots(config, emulator);
   std::vector<Found> found;
-  FindGames(emulator, dir, 0, found);
+  for (const fs::path& root : roots) {
+    const size_t before = found.size();
+    FindGames(emulator, root, 0, found);
+    for (size_t i = before; i < found.size(); ++i) found[i].root = root;
+  }
+  const auto is_root = [&](const fs::path& folder) { return std::ranges::contains(roots, folder); };
+  const auto in_roots = [&](const fs::path& path) {
+    return std::ranges::any_of(roots, [&](const fs::path& root) {
+      const fs::path rel = path.lexically_relative(root);
+      return !rel.empty() && *rel.begin() != "..";
+    });
+  };
 
   // Known games by their file (or their folder, whose start file the user may have changed), so a game moved
-  // here from another emulator keeps its id.
+  // here from another emulator, or a desktop entry it took over, keeps its id.
   const auto key = [&](const fs::path& folder, const std::string& file) {
-    return (emulator.folders && folder != dir ? folder : folder / file).lexically_normal();
+    return (emulator.folders && !is_root(folder) ? folder : folder / file).lexically_normal();
   };
   std::map<fs::path, model::Game> by_file;
   for (const model::Game& game : games.All()) {
@@ -842,11 +884,11 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     if (const auto known = by_file.find(key(item.dir, item.exe)); known != by_file.end()) existing = known->second;
     model::Game game = existing.value_or(model::Game{});
     if (!existing) {
-      const std::string base = std::format("{}-{}", emulator.id, Slug(emulator, dir, item));
+      const std::string base = std::format("{}-{}", emulator.id, Slug(emulator, item.root, item));
       game.id = base;
       for (int n = 2; games.Find(game.id); ++n) game.id = std::format("{}-{}", base, n);
-      const bool generic = IsGenericName(item.exe) && item.dir != dir;
-      game.name = CleanName((ByFolder(emulator) && item.dir != dir) || generic ? item.dir.filename().string() : item.exe);
+      const bool generic = IsGenericName(item.exe) && item.dir != item.root;
+      game.name = CleanName((ByFolder(emulator) && item.dir != item.root) || generic ? item.dir.filename().string() : item.exe);
     }
     game.source = emulator.id;
     game.install_path = item.dir.string();
@@ -871,6 +913,7 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     // Still there but no longer a game of its own (a homebrew's module, once its folder became one game).
     const bool exists = fs::exists(MainFile(game), ec);
     if (exists && found_keys.contains(key(game.install_path, game.exe_path))) continue;
+    if (exists && !in_roots(game.install_path)) continue;  // kept where it was, outside its folders
     if (exists || config.GetBool("library.remove_missing")) {
       if (games.Remove(game.id)) events.Publish("game.removed", {{"id", game.id}});
       continue;
@@ -880,6 +923,138 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     }
   }
   return summary;
+}
+
+namespace {
+
+// Whether a desktop entry's command is this emulator: its program, or its Flatpak.
+bool RunsWith(const config::Config& config, const Emulator& emulator, const model::Game& game) {
+  const auto named = [&](const std::string& name) {
+    const std::string lower = strings::ToLower(name);
+    return lower == emulator.id || lower.starts_with(emulator.id + "-") || lower == strings::ToLower(emulator.binary);
+  };
+  const fs::path exe = game.exe_path;
+  if (named(exe.filename().string()) || exe == Binary(config, emulator)) return true;
+  if (exe.filename() != "flatpak") return false;
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
+    if (std::ranges::count(arg, '.') >= 2 && !arg.starts_with('-')) return named(arg.substr(arg.rfind('.') + 1));
+  }
+  return false;
+}
+
+// A game its desktop entry starts: the last argument that's a file it takes, or a folder game.
+fs::path ShortcutGame(const Emulator& emulator, const model::Game& game) {
+  fs::path file;
+  for (const std::string& arg : strings::SplitArgs(game.args)) {
+    const fs::path path = arg;
+    std::error_code ec;
+    if (fs::is_regular_file(path, ec) ? Accepts(emulator, path)
+                                      : fs::is_directory(path, ec) && (IsFolderGame(emulator, path) ||
+                                                                       (emulator.folders && !StartFile(emulator, path).empty())))
+      file = path;
+  }
+  return file;
+}
+
+// The folders its settings list, as written there.
+std::vector<fs::path> ListedDirs(const Emulator& emulator) {
+  std::vector<fs::path> dirs;
+  for (const KnownDirs& known : emulator.known_dirs) {
+    std::ifstream in(Expand(known.file));
+    const std::regex pattern(known.pattern);
+    for (std::string line; std::getline(in, line);) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      std::smatch match;
+      if (!std::regex_search(line, match, pattern)) continue;
+      const std::string listed = match[1].str();
+      for (std::string value : known.separator != 0 ? strings::Split(listed, known.separator)
+                                                    : std::vector<std::string>{listed}) {
+        value = strings::Trim(value);
+        if (value.size() >= 2 && (value.front() == '"' || value.front() == '\'')) value = value.substr(1, value.size() - 2);
+        if (!value.empty()) dirs.push_back(Expand(value).lexically_normal());
+      }
+    }
+  }
+  return dirs;
+}
+
+}  // namespace
+
+ExistingGames FindExisting(const config::Config& config, const store::GameStore& games, const Emulator& emulator) {
+  ExistingGames existing;
+  // Other emulators' folders too: their games stay theirs.
+  std::vector<fs::path> roots = GameRoots(config, emulator);
+  roots.push_back(config.GetPath("emulators.roms_root"));
+  for (const fs::path& dir : ListedDirs(emulator)) {
+    std::error_code ec;
+    const bool known = std::ranges::any_of(roots, [&](const fs::path& root) {
+      const fs::path rel = dir.lexically_relative(root);
+      return !rel.empty() && *rel.begin() != "..";
+    });
+    // Not home or above it: too much to watch.
+    const fs::path above = paths::Home().lexically_relative(dir);
+    const bool too_wide = !above.empty() && *above.begin() != "..";
+    if (!dir.is_absolute() || known || too_wide || !fs::is_directory(dir, ec) ||
+        std::ranges::contains(existing.dirs, dir, &ExistingGames::Dir::path))
+      continue;
+    std::vector<Found> found;
+    FindGames(emulator, dir, 0, found);
+    if (!found.empty()) existing.dirs.push_back({dir, static_cast<int>(found.size())});
+  }
+  for (const model::Game& game : games.All()) {
+    if (game.source != "desktop-entry" || !RunsWith(config, emulator, game)) continue;
+    if (fs::path file = ShortcutGame(emulator, game); !file.empty())
+      existing.shortcuts.push_back({game.id, game.name, std::move(file)});
+  }
+  return existing;
+}
+
+Result<library::ImportSummary> AdoptExisting(config::Config& config, store::GameStore& games, api::EventBus& events,
+                                             const Emulator& emulator, bool move) {
+  const ExistingGames existing = FindExisting(config, games, emulator);
+  const fs::path rom_dir = RomDir(config, emulator);
+  std::error_code ec;
+  fs::create_directories(rom_dir, ec);
+
+  for (const ExistingGames::Shortcut& shortcut : existing.shortcuts) {
+    fs::path file = shortcut.file;
+    // A file of that name already there stays where it is, rather than pointing at the other one.
+    if (move && !fs::exists(rom_dir / file.filename(), ec)) {
+      for (const fs::path& part : WithNamed(file)) {
+        if (auto moved = Transfer(part, rom_dir / part.filename(), true); !moved) return std::unexpected(moved.error());
+      }
+      file = rom_dir / file.filename();
+    }
+    const bool folder = fs::is_directory(file, ec);
+    const auto updated = games.Update(shortcut.id, [&](model::Game& game) {
+      game.source = emulator.id;
+      game.runner_ref = "emulator:" + emulator.id;
+      game.platform = model::Platform::Native;
+      game.status = model::GameStatus::Ready;
+      game.args.clear();  // the desktop entry's command line, which the emulator's own args replace
+      game.install_path = (folder ? file : file.parent_path()).string();
+      game.exe_path = !folder                         ? file.filename().string()
+                      : !emulator.folder_game.empty() ? emulator.folder_game
+                                                      : StartFile(emulator, file);
+    });
+    if (updated) events.Publish("game.updated", model::ToJson(*updated));
+  }
+
+  if (move) {
+    std::vector<fs::path> paths;
+    for (const ExistingGames::Dir& dir : existing.dirs) {
+      std::vector<Found> found;
+      FindGames(emulator, dir.path, 0, found);
+      for (const Found& item : found) paths.push_back(ByFolder(emulator) && item.dir != dir.path ? item.dir : item.dir / item.exe);
+    }
+    if (!paths.empty()) return AddFiles(config, games, events, emulator, paths, true);
+  } else if (!existing.dirs.empty()) {
+    const std::string key = std::format("emulators.{}.game_dirs", emulator.id);
+    nlohmann::json kept = config.Get(key);
+    for (const ExistingGames::Dir& dir : existing.dirs) kept.push_back(dir.path.string());
+    if (auto saved = config.Set(key, kept); !saved) return std::unexpected(saved.error());
+  }
+  return Import(config, games, events, emulator);
 }
 
 library::ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events) {

@@ -103,7 +103,7 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
     if (!emulator) return;
     std::vector<fs::path> files = PathsOf(req, res);
     if (files.empty()) return;
-    const bool move = json::parse(req.body).value("move", s.config.GetBool("emulators.move_added"));
+    const bool move = json::parse(req.body).value("move", emulators::MovesAdded(s.config, *emulator));
     s.StartJob(req, res, "import", emulator->id, "Adding " + emulator->name + " games",
                [&s, emulator, files = std::move(files), move](JobRegistry::Progress&) -> Result<json> {
                  const auto summary = emulators::AddFiles(s.config, s.games, s.events, *emulator, files, move);
@@ -141,6 +141,34 @@ void RegisterEmulatorRoutes(httplib::Server& http, Services& s) {
     std::ranges::copy(emulator->open_args, std::back_inserter(command.argv));
     if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
+  });
+
+  http.Get(R"(/v1/emulators/([^/]+)/existing)", [&s](const Request& req, Response& res) {
+    const emulators::Emulator* emulator = FindEmulator(req, res);
+    if (!emulator) return;
+    const emulators::ExistingGames existing = emulators::FindExisting(s.config, s.games, *emulator);
+    json dirs = json::array();
+    for (const auto& dir : existing.dirs) dirs.push_back({{"path", dir.path.string()}, {"games", dir.games}});
+    json shortcuts = json::array();
+    for (const auto& shortcut : existing.shortcuts)
+      shortcuts.push_back({{"id", shortcut.id}, {"name", shortcut.name}, {"file", shortcut.file.string()}});
+    SendJson(res, {{"dirs", dirs}, {"shortcuts", shortcuts}});
+  });
+
+  http.Post(R"(/v1/emulators/([^/]+)/existing)", [&s](const Request& req, Response& res) {
+    const emulators::Emulator* emulator = FindEmulator(req, res);
+    if (!emulator) return;
+    const auto body = BodyObject(req, res, "{move}");
+    if (!body) return;
+    const bool move = body->value("move", emulators::MovesAdded(s.config, *emulator));
+    s.StartJob(req, res, "import", emulator->id, "Adding " + emulator->name + "'s games",
+               [&s, emulator, move](JobRegistry::Progress&) -> Result<json> {
+                 const auto summary = emulators::AdoptExisting(s.config, s.games, s.events, *emulator, move);
+                 if (!summary) return std::unexpected(summary.error());
+                 SourceAdded(s, *emulator, true);
+                 s.AfterImport(summary->added_games);
+                 return json{{"added", summary->added}, {"updated", summary->updated}};
+               });
   });
 
   http.Get(R"(/v1/games/([^/]+)/emulators)", [&s](const Request& req, Response& res) {

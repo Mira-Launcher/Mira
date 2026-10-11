@@ -25,7 +25,8 @@ struct SourceInfo {
   Kind kind = Kind::Local;
   QColor color;  // the source's icon tile
   std::vector<QString> consoles = {};  // an emulator's, by the daemon's ids: "ps2", "snes"
-  bool beta = false;   // works, but not well enough yet to promise it
+  bool beta = false;         // works, but not well enough yet to promise it
+  bool recommended = false;  // the one to pick for its consoles
 };
 
 const std::vector<SourceInfo>& AllSources();

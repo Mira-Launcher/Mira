@@ -400,6 +400,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
     emulator_combo_->setToolTip(QString());
     api::GetGameEmulatorsAsync(emulator_combo_, game.id, [this, id = game.id](EmulatorChoicesResult result) {
       if (!result.ok || id != id_) return;
+      while (emulator_combo_->count() > 1) emulator_combo_->removeItem(1);  // an earlier Populate's answer
       for (const EmulatorChoice& choice : result.emulators) {
         emulator_combo_->addItem(QString::fromStdString(choice.name), QString::fromStdString(choice.id));
       }

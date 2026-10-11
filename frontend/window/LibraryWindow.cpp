@@ -427,6 +427,7 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
   double_click_play_ = prefs.double_click_play.value_or(true);
+  mira_gui::system::SetCopyCommands(prefs.copy_commands.value_or(false));
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
   grid_page_->ApplyPrefs(prefs);
@@ -502,6 +503,10 @@ void LibraryWindow::dragEnterEvent(QDragEnterEvent* event) {
     return;
   }
   event->acceptProposedAction();
+  // On an emulator's page the files are its games.
+  drop_overlay_->setText(SourcePageShown() && source_page_->TakesDroppedFiles()
+                             ? "Drop to add to " + source_page_->Source().name
+                             : QString("Drop to add to Mira"));
   drop_overlay_->setGeometry(rect());
   drop_overlay_->show();
   drop_overlay_->raise();
@@ -524,8 +529,14 @@ void LibraryWindow::dragLeaveEvent(QDragLeaveEvent* event) {
 
 void LibraryWindow::dropEvent(QDropEvent* event) {
   drop_overlay_->hide();
-  for (const QUrl& url : event->mimeData()->urls()) ImportDropped(url.toLocalFile());
   event->acceptProposedAction();
+  if (SourcePageShown() && source_page_->TakesDroppedFiles()) {
+    std::vector<std::string> paths;
+    for (const QUrl& url : event->mimeData()->urls()) paths.push_back(url.toLocalFile().toStdString());
+    source_page_->AddDroppedFiles(paths);
+    return;
+  }
+  for (const QUrl& url : event->mimeData()->urls()) ImportDropped(url.toLocalFile());
 }
 
 void LibraryWindow::ImportDropped(const QString& path) {
@@ -1074,12 +1085,13 @@ void LibraryWindow::UpdateFooter() {
 const mira_gui::GameSummary* LibraryWindow::FindGame(const std::string& id) const { return library_->Find(id); }
 
 void LibraryWindow::UpsertGames(const std::vector<mira_gui::GameSummary>& games) {
-  // A rename changes the placeholder's initials, so the rendered tile is
-  // stale even though the fetched artwork behind it isn't. Only then: drawn
+  // A rename changes the placeholder's initials, and a new source (a game moved to another emulator) its
+  // logo, so the rendered tile is stale even though the fetched artwork behind it isn't. Only then: drawn
   // covers are fetched again to be redrawn.
   for (const mira_gui::GameSummary& game : games) {
     const mira_gui::GameSummary* known = library_->Find(game.id);
-    if (known == nullptr || known->name != game.name) artwork_->InvalidateRendering(game.id);
+    if (known == nullptr || known->name != game.name || known->source != game.source)
+      artwork_->InvalidateRendering(game.id);
     artwork_->NoteArt(game.id, game.art);
   }
   library_->Upsert(games);

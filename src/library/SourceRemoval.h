@@ -28,7 +28,7 @@ struct RemovalPlan {
   std::string program_dir;            // a launcher's program folder or Mira's download of an emulator, deleted
   std::vector<std::string> packages;   // a package emulator's installed packages
   std::vector<std::string> uninstall;  // the command removing them; empty where Mira can't (an unknown distro)
-  std::vector<std::string> data;  // an emulator's settings, saves and caches, deleted only when asked  // a package emulator's uninstall command, for the client to run as root
+  std::vector<std::string> data;  // an emulator's settings, saves and caches, deleted only when asked
   std::vector<std::string> kept;  // prefixes and save folders left alone
   bool signs_out = false;
 };

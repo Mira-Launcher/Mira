@@ -10,8 +10,11 @@ class QWidget;
 
 namespace mira_gui::system {
 
+// The copy_commands pref: show package commands to run in a terminal instead of the password prompt.
+void SetCopyCommands(bool copy);
+
 // Runs `install` (mirad's command for `names`) as root: through pkexec, where the desktop asks for the
-// password; without pkexec, or when it fails, shows the command to copy or open in a terminal. `done(true)`
+// password; with copy_commands, without pkexec, or when it fails, shows the command to copy or open in a terminal. `done(true)`
 // once installed; false when it failed, was dismissed, went to a terminal, or needs a restart first
 // (rpm-ostree).
 void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,

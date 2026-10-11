@@ -179,6 +179,10 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(general, "Double-click a game to play it",
             "Double-clicking a game in the library or on a source page starts it, or stops it while it runs.",
             "double click launch start play", &FrontendPrefs::double_click_play, true);
+  AddToggle(general, "Show commands instead of asking for your password",
+            "When Mira needs to install or remove a system package, it shows the command to run in a terminal "
+            "instead of the system's password prompt.",
+            "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands, false);
 
   SettingsCard* library = page->AddCard("Library");
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);

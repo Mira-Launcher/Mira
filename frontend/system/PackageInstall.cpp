@@ -17,6 +17,8 @@
 namespace mira_gui::system {
 namespace {
 
+bool copy_commands = false;
+
 QStringList Args(const std::vector<std::string>& argv) {
   QStringList args;
   for (const std::string& part : argv) args << QString::fromStdString(part);
@@ -51,28 +53,27 @@ bool OpenTerminal(const QStringList& argv) {
   return false;
 }
 
-enum Answer { kClosed, kInstall };
-
-// The install command in a copyable field, with Open terminal, and Install (pkexec) when `offer_install`.
-Answer ShowCommand(QWidget* parent, const QString& title, const QString& message, const QString& detail,
-                   const QStringList& argv, bool offer_install) {
+// The command in a copyable field, with Open terminal.
+void ShowCommand(QWidget* parent, const QString& title, const QString& message, const QString& detail,
+                 const QStringList& argv) {
   PopupDialog dialog(parent, detail.isEmpty() ? notify::Level::Info : notify::Level::Error, title);
   dialog.SetMessage(message);
   if (!detail.isEmpty()) dialog.SetDetail(detail);
 
   dialog.AddWidget(new CopyField("sudo " + argv.join(' '), &dialog));
 
-  if (offer_install) dialog.AddButton("Install", kInstall, /*default_button=*/true);
-  QPushButton* terminal = dialog.AddButton("Open terminal", kClosed, !offer_install);
+  QPushButton* terminal = dialog.AddButton("Open terminal", false, true);
   QObject::connect(terminal, &QPushButton::clicked, &dialog, [parent, argv] {
     if (!OpenTerminal(argv)) {
       notify::Notice(parent, "No terminal found; copy the command instead.", notify::Level::Warning);
     }
   });
-  return dialog.exec() == kInstall ? kInstall : kClosed;
+  dialog.exec();
 }
 
 }  // namespace
+
+void SetCopyCommands(bool copy) { copy_commands = copy; }
 
 QString Names(const std::vector<std::string>& packages) { return JoinAnd(Args(packages)); }
 
@@ -89,11 +90,13 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
     notify::Info(parent, "Not done", "Changing system packages is off here (MIRA_NO_POWER).");
     return done(false);
   }
-  if (QStandardPaths::findExecutable("pkexec").isEmpty()) {
+  if (copy_commands || QStandardPaths::findExecutable("pkexec").isEmpty()) {
     ShowCommand(parent, title_verb + " " + names, "Run this in a terminal to " + verb + " " + names + ".", QString(),
-                argv, false);
+                argv);
     return done(false);
   }
+  // The system's prompt names only the command; this says what the password is for.
+  notify::Notice(parent, "Enter your password to " + verb + " " + names + ".");
 
   QPointer<QWidget> guard(parent);
   auto* process = new QProcess(QCoreApplication::instance());
@@ -102,14 +105,14 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
                    [process, guard, names, verb, argv, restart, done = std::move(done)](int code,
                                                                                           QProcess::ExitStatus status) {
     process->deleteLater();
+    if (guard.isNull()) return;  // its widget is gone, and with it what `done` would touch
     const QString output = QString::fromUtf8(process->readAll());
     // pkexec's own codes: the prompt was dismissed or the password refused.
     if (status == QProcess::NormalExit && (code == 126 || code == 127)) return done(false);
     if (status != QProcess::NormalExit || code != 0) {
       const QStringList lines = output.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
       ShowCommand(guard.data(), "Could not " + verb + " " + names,
-                  "Run it from a terminal instead.", lines.isEmpty() ? QString() : lines.last().trimmed(), argv,
-                  false);
+                  "Run it from a terminal instead.", lines.isEmpty() ? QString() : lines.last().trimmed(), argv);
       return done(false);
     }
     if (restart) {
@@ -147,14 +150,8 @@ void EnsurePackages(QWidget* parent, const std::string& feature, const QString& 
                    "manager, then try again.");
       return done(false);
     }
-    const bool pkexec = !QStandardPaths::findExecutable("pkexec").isEmpty();
-    QString question = what + " needs " + names + ", which isn't installed. " +
-                       (pkexec ? "Install asks for your password." : "Run this in a terminal to install it.");
-    if (result.restart) question += " On " + QString::fromStdString(result.distro) + " it's added to the system "
-                                    "image, so restart before using " + what + ".";
-    if (ShowCommand(parent, "Install " + names + "?", question, QString(), Args(result.install), pkexec) != kInstall)
-      return done(false);
-    InstallPackages(parent, result.install, names, result.restart, done);
+    // Straight to the password prompt; RunAsRoot shows the command instead where it must.
+    InstallPackages(parent, result.install, names + " for " + what, result.restart, done);
   });
 }
 

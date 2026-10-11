@@ -494,10 +494,16 @@ Each emulator is a source of its own: DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4
 Downloads the latest release over Mira's copy and marks the source added. A [job](#jobs) (kind `install`) whose result is the emulator as above. A package emulator fails with the packages fix. `already_installing`.
 
 ### `POST /v1/emulators/{id}/files`
-Body `{"paths": [...], "move"?}`: copies the files, and the ones a `.cue`, `.gdi` or `.m3u` names, into the emulator's folder, or moves them when `move` (default `emulators.move_added`), then imports. A [job](#jobs) whose result is `{added, updated, choose}`; `choose` lists added games whose start file Mira couldn't tell (`{id, name, files}`, its pick first), for the client to ask about and set with `PATCH /v1/games/{id}` `exe_path`. Fails with `wrong_files` when the emulator takes none of them.
+Body `{"paths": [...], "move"?}`: copies the files, and the ones a `.cue`, `.gdi` or `.m3u` names, into the emulator's folder, or moves them when `move` (default: the emulator's `emulators.<id>.add_mode`, else `emulators.move_added`, on), then imports. A [job](#jobs) whose result is `{added, updated, choose}`; `choose` lists added games whose start file Mira couldn't tell (`{id, name, files}`, its pick first), for the client to ask about and set with `PATCH /v1/games/{id}` `exe_path`. Fails with `wrong_files` when the emulator takes none of them.
 
 ### `POST /v1/emulators/{id}/import`
 Imports its folder again. A [job](#jobs) whose result is `{added, updated}`.
+
+### `GET /v1/emulators/{id}/existing`
+Games the emulator had before Mira: `{dirs: [{path, games}], shortcuts: [{id, name, file}]}`. `dirs` are the game folders its own settings list (Dolphin, DuckStation, PCSX2, Azahar, Eden, Cemu, Flycast) outside its folders that hold games; `shortcuts` are desktop entries in the library that run one of its games.
+
+### `POST /v1/emulators/{id}/existing`
+Body `{"move": bool}`: takes them in. A desktop entry becomes that game, keeping its id, playtime and art. With `move` the files go into the emulator's folder; otherwise the folders are added to `emulators.<id>.game_dirs`, which Mira imports from and watches as well. A [job](#jobs) whose result is `{added, updated}`.
 
 ### `POST /v1/emulators/{id}/firmware/{firmware}`
 Body `{"paths": [...]}`: puts a BIOS, keys or firmware where the emulator looks. A zip is unpacked (Switch firmware) and RPCS3 installs a `.PUP` itself. Returns the emulator.
@@ -543,15 +549,16 @@ What removing a source would do:
 ```json
 { "source": "ubisoft", "games": [ { "id": "ubisoft-5595", "name": "Trackmania",
     "deletes": "/home/me/Mira/prefixes/ubisoft-connect/drive_c/.../Trackmania" } ],
-  "launcher_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
+  "program_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
+  "packages": [], "uninstall": [], "data": [],
   "kept": [ "/home/me/Mira/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
   "signs_out": false }
 ```
 
-`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files).
+`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files, and an emulator's games are the user's). For an emulator, `program_dir` is Mira's download of it, `packages` the system packages it came from with `uninstall` the command removing them (empty on a distro Mira doesn't know), and `data` its settings, saves and caches.
 
 ### `POST /v1/sources/{id}/remove`
-Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
+Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
 
 ### `GET /v1/sources/{id}/runner`
 The runner a source's games use: `{"runner_ref", "games", "differing"}`. `games` counts its Windows games and `differing` the ones on another runner. For Epic, GOG, itch and Amazon this is `<id>.runner`, the default for their games with no runner of their own (empty falls back to `default_runner.windows`). For a launcher it is the runner of its prefix, which its games share. `400 no_runner` for Steam, Lutris and Humble; `409 launcher_not_installed`.

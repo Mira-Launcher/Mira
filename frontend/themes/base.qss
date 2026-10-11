@@ -652,12 +652,8 @@ QFrame#drop_zone {
   border-radius: @radius_panel;
   background: transparent;
 }
-QFrame#drop_zone[active="true"] {
-  border-color: @accent;
-  background: @surface;
-}
 
-/* widgets/Labels' MakeTag: a small pill beside a name ("Beta", "Not checked"). */
+/* widgets/Labels' MakeTag: a small pill beside a name ("Beta", "Recommended", "Not checked"). */
 QLabel#tag {
   color: @text_muted;
   font-size: @font_size_small;
@@ -668,6 +664,10 @@ QLabel#tag {
 QLabel#tag[tone="accent"] {
   color: @accent;
   border-color: @accent;
+}
+QLabel#tag[tone="success"] {
+  color: @success;
+  border-color: @success;
 }
 QLabel#tag[tone="warning"] {
   color: @warning;

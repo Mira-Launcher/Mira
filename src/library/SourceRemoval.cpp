@@ -144,10 +144,11 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
     return {};
   }
   if (game.source == "itch" && !game.source_ref.empty()) return UninstallItch(config, game.source_ref);
-  if (emulators::ForGame(game) != nullptr) {
+  if (const emulators::Emulator* emulator = emulators::ForGame(game)) {
+    std::vector<fs::path> roots = emulators::GameRoots(config, *emulator);
+    roots.push_back(config.GetPath("emulators.roms_root"));
     for (const fs::path& file : emulators::GameFiles(config, game)) {
-      if (auto deleted = DeleteInside(file.string(), {config.GetPath("emulators.roms_root")}); !deleted)
-        return deleted;
+      if (auto deleted = DeleteInside(file.string(), roots); !deleted) return deleted;
     }
     return {};
   }

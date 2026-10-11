@@ -134,15 +134,17 @@ void Watcher::WatchRoots() {
   }
   for (const emulators::Emulator& emulator : emulators::All()) {
     if (!games_.Source(emulator.id).added) continue;
-    const fs::path dir = emulators::RomDir(config_, emulator);
     std::error_code ec;
-    fs::create_directories(dir, ec);
-    const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
-    if (wd < 0) {
-      log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
-      continue;
+    fs::create_directories(emulators::RomDir(config_, emulator), ec);
+    for (const fs::path& dir : emulators::GameRoots(config_, emulator)) {
+      const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
+      if (wd < 0) {
+        log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
+        continue;
+      }
+      if (watches_.contains(wd)) continue;  // already a library root's: its games aren't the emulator's alone
+      watches_[wd] = {.root = dir, .dir = dir, .emulator = emulator.id};
     }
-    watches_[wd] = {.root = dir, .dir = dir, .emulator = emulator.id};
   }
   ++roots_watched_;  // events queue in inotify from here, read once the loop runs
 }

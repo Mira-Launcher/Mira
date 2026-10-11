@@ -32,6 +32,14 @@ struct Firmware {
   std::string install_flag = {};  // the emulator installs it itself: `<emulator> <flag> <file>`
 };
 
+// Where an emulator's own settings list its game folders: the paths `pattern`'s first group matches in
+// `file`, one line at a time, split at `separator` when it has one.
+struct KnownDirs {
+  std::string file;  // "~" for home
+  std::string pattern;
+  char separator = 0;
+};
+
 struct Emulator {
   std::string id = {};  // also its games' `source`
   std::string name = {};
@@ -64,6 +72,7 @@ struct Emulator {
   std::vector<std::pair<std::string, std::string>> prefill = {};
   std::vector<std::pair<std::string, std::string>> env = {};  // set when it runs
   std::vector<std::string> data = {};  // what it creates for itself: settings, saves, caches ("~" for home)
+  std::vector<KnownDirs> known_dirs = {};
 };
 
 const std::vector<Emulator>& All();
@@ -73,6 +82,8 @@ const Emulator* ForGame(const model::Game& game);
 bool Downloads(const Emulator& emulator);
 
 std::filesystem::path RomDir(const config::Config& config, const Emulator& emulator);
+// Its games folder, then the folders of games kept where they are (emulators.<id>.game_dirs).
+std::vector<std::filesystem::path> GameRoots(const config::Config& config, const Emulator& emulator);
 // A game is its whole folder, not one file.
 bool ByFolder(const Emulator& emulator);
 // The game's file: its ROM, or the file its folder starts with.
@@ -117,10 +128,33 @@ std::vector<std::string> StartChoices(const config::Config& config, const model:
 // The game's files: its ROM and those a .cue, .gdi or .m3u names, or its folder.
 std::vector<std::filesystem::path> GameFiles(const config::Config& config, const model::Game& game);
 
+// Whether games added to it are moved rather than copied: emulators.<id>.add_mode, else emulators.move_added.
+bool MovesAdded(const config::Config& config, const Emulator& emulator);
 // Copies (or moves) `files` into the emulator's folder with the files they name, then imports it.
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games, api::EventBus& events,
                                         const Emulator& emulator, const std::vector<std::filesystem::path>& files,
                                         bool move);
+
+// Games it had before Mira did: in the folders its own settings list, and desktop entries in the library that
+// run one with it.
+struct ExistingGames {
+  struct Dir {
+    std::filesystem::path path;
+    int games = 0;
+  };
+  struct Shortcut {
+    std::string id;  // the desktop entry's game
+    std::string name;
+    std::filesystem::path file;
+  };
+  std::vector<Dir> dirs;
+  std::vector<Shortcut> shortcuts;
+};
+ExistingGames FindExisting(const config::Config& config, const store::GameStore& games, const Emulator& emulator);
+// Makes them its games, keeping a shortcut's id, playtime and art: moved into its folder with `move`, else
+// tracked where they are.
+Result<library::ImportSummary> AdoptExisting(config::Config& config, store::GameStore& games, api::EventBus& events,
+                                             const Emulator& emulator, bool move);
 
 // What it runs with: its own variables, and its AppImage's self-updater turned off.
 std::map<std::string, std::string> Environment(const Emulator& emulator);

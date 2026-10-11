@@ -85,6 +85,29 @@ void AddEmulatorFirmwareAsync(QObject* context, const std::string& id, const std
   async::Run(context, [path, paths] { return PostAction(path, {{"paths", paths}}); }, std::move(callback));
 }
 
+void GetExistingEmulatorGamesAsync(QObject* context, const std::string& id,
+                                   std::function<void(ExistingEmulatorGamesResult)> callback) {
+  const std::string path = EmulatorPath(id, "existing");
+  async::Run(context, [path] {
+    return ReadReply<ExistingEmulatorGamesResult>(
+        transport::Get(path), "GET " + path, Shape::Object, [](ExistingEmulatorGamesResult& result, const json& body) {
+          for (const json& dir : body.value("dirs", json::array()))
+            result.dirs.emplace_back(dir.value("path", std::string()), dir.value("games", 0));
+          for (const json& shortcut : body.value("shortcuts", json::array()))
+            result.shortcuts.push_back(shortcut.value("name", std::string()));
+        });
+  }, std::move(callback));
+}
+
+void AdoptEmulatorGamesAsync(QObject* context, const std::string& id, bool move,
+                             std::function<void(StoreImportResult)> callback) {
+  const json body = {{"move", move}};
+  RunJob<StoreImportResult>(
+      context, "import",
+      [id, body](const std::string& query) { return transport::PostJson(EmulatorPath(id, "existing") + query, body); },
+      FillAddedUpdated<StoreImportResult>, std::move(callback));
+}
+
 void OpenEmulatorAsync(QObject* context, const std::string& id, std::function<void(StoreActionResult)> callback) {
   const std::string path = EmulatorPath(id, "open");
   async::Run(context, [path] { return PostAction(path, json::object()); }, std::move(callback));

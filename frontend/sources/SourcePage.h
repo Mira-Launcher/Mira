@@ -74,6 +74,9 @@ public:
   void OpenSettingsModal();
   // Esc: closes the settings dialog, asking first when it has unsaved edits.
   void CloseSettingsModal();
+  // Files dropped on the window while an emulator's page shows: its games. False on any other page.
+  bool TakesDroppedFiles() const { return IsEmulator(); }
+  void AddDroppedFiles(const std::vector<std::string>& paths) { AddGames(paths); }
 
 signals:
   // An import added or changed games.
@@ -93,10 +96,6 @@ signals:
 protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
-  // An emulator's page takes its games as dropped files.
-  void dragEnterEvent(QDragEnterEvent* event) override;
-  void dragLeaveEvent(QDragLeaveEvent* event) override;
-  void dropEvent(QDropEvent* event) override;
 
 private:
   bool IsStore() const { return source_.kind == SourceInfo::Kind::Store; }
@@ -127,8 +126,6 @@ private:
   void PickGames();
   void AddGames(const std::vector<std::string>& paths);
   QWidget* BuildDropZone(QWidget* parent);
-  // Outlines the drop zone while files are dragged over the page.
-  void SetDropActive(bool active);
   // Asks which file starts a just-added game whose folder has several.
   void AskStartFile(const StartChoice& choice);
   void UpdateStatusLine();

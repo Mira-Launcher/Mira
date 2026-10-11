@@ -1037,8 +1037,8 @@ Schema::Schema() {
   s.Add({.key = "emulators.move_added",
          .label = "Move added games",
          .type = Type::Bool,
-         .default_value = false,
-         .doc = "Games you add to an emulator are moved into its folder instead of copied."});
+         .default_value = true,
+         .doc = "Games you add to an emulator are moved into its folder. Off copies them, leaving the originals."});
 
   for (const emulators::Emulator& emulator : emulators::All()) {
     s.Add({.key = std::format("emulators.{}.bin", emulator.id),
@@ -1048,6 +1048,19 @@ Schema::Schema() {
            .doc = std::format("The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
                               emulator.name),
            .path = PathKind::File});
+    s.Add({.key = std::format("emulators.{}.game_dirs", emulator.id),
+           .label = std::format("{} games kept in place", emulator.name),
+           .type = Type::StringArray,
+           .default_value = json::array(),
+           .doc = std::format("Folders of {} games Mira tracks where they are, besides its own games folder.",
+                              emulator.name),
+           .path = PathKind::Folder});
+    s.Add({.key = std::format("emulators.{}.add_mode", emulator.id),
+           .label = std::format("Adding {} games", emulator.name),
+           .type = Type::String,
+           .default_value = "default",
+           .doc = "move or copy games added to it into its folder; default follows Move added games.",
+           .constraint = OneOf({"default", "move", "copy"})});
     if (!emulators::Downloads(emulator)) continue;
     s.Add({.key = std::format("emulators.{}.repo", emulator.id),
            .label = std::format("{} download source", emulator.name),

@@ -79,8 +79,9 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
         for (const std::string& problem : r.problems) problems << QString::fromStdString(problem);
         notify::Failed(parent, name + " was removed, but some steps failed.", problems.join("\n"));
       }
+      // Over the window: on_removed can close the page.
+      if (!uninstall.empty()) system::UninstallPackages(parent->window(), uninstall, name, [](bool) {});
       on_removed();
-      if (!uninstall.empty()) system::UninstallPackages(parent, uninstall, name, [](bool) {});
     });
   });
 }

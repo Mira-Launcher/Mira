@@ -3,8 +3,6 @@
 #include <algorithm>
 
 #include <QComboBox>
-#include <QDragEnterEvent>
-#include <QDropEvent>
 #include <QEvent>
 #include <QFileDialog>
 #include <QGridLayout>
@@ -14,7 +12,6 @@
 #include <QLineEdit>
 #include <QStandardItemModel>
 #include <QMenu>
-#include <QMimeData>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
@@ -127,7 +124,6 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   connect(library_, &GameLibraryModel::Changed, this, &SourcePage::LibraryUpdated);
   LibraryUpdated();
 
-  setAcceptDrops(IsEmulator());
   RefreshStatus();
   // mirad answers from the list it stored, so a store's doesn't wait for its status. Humble's
   // purchases are asked for live, once signed in.
@@ -444,8 +440,10 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   drop_zone_ = new QFrame(parent);
   drop_zone_->setObjectName("drop_zone");
   drop_zone_->setVisible(false);
+  drop_zone_->setMinimumHeight(300);
   auto* layout = new QVBoxLayout(drop_zone_);
   layout->setContentsMargins(24, 28, 24, 28);
+  layout->addStretch(1);
   layout->setSpacing(8);
   auto* logo = new QLabel(drop_zone_);
   logo->setPixmap(SourceLogo(source_, 48, devicePixelRatioF()));
@@ -471,11 +469,8 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   buttons->addStretch(1);
   layout->addSpacing(4);
   layout->addLayout(buttons);
+  layout->addStretch(1);
   return drop_zone_;
-}
-
-void SourcePage::SetDropActive(bool active) {
-  if (drop_zone_ != nullptr) theme::SetStyleProperty(drop_zone_, "active", active ? "true" : "false");
 }
 
 QWidget* SourcePage::BuildLibrarySection() {
@@ -793,30 +788,6 @@ void SourcePage::AskStartFile(const StartChoice& choice) {
   api::PatchGameAsync(this, choice.id, patch, [this](PatchGameResult result) {
     if (!result.ok) notify::FailedRequest(this, "Could not change which file starts it.", result.error);
   });
-}
-
-void SourcePage::dragEnterEvent(QDragEnterEvent* event) {
-  const QList<QUrl> urls = event->mimeData()->urls();
-  if (IsEmulator() && !urls.isEmpty() && std::ranges::all_of(urls, &QUrl::isLocalFile)) {
-    event->acceptProposedAction();
-    SetDropActive(true);
-    return;
-  }
-  QWidget::dragEnterEvent(event);
-}
-
-void SourcePage::dragLeaveEvent(QDragLeaveEvent* event) {
-  SetDropActive(false);
-  QWidget::dragLeaveEvent(event);
-}
-
-void SourcePage::dropEvent(QDropEvent* event) {
-  SetDropActive(false);
-  if (!IsEmulator()) return QWidget::dropEvent(event);
-  std::vector<std::string> paths;
-  for (const QUrl& url : event->mimeData()->urls()) paths.push_back(url.toLocalFile().toStdString());
-  event->acceptProposedAction();
-  AddGames(paths);
 }
 
 void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {

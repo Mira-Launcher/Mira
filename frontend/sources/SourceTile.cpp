@@ -31,13 +31,13 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent) : QFrame(paren
   name_->setObjectName("source_tile_name");
   line_ = new ElidedLabel(QString(), this);
   line_->setProperty("role", "subtle");
-  if (source.beta) {
+  if (source.beta || source.recommended) {
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
     name_row->addWidget(name_, 0);
-    QLabel* beta = MakeTag(this, "Beta", "accent");
-    beta->setToolTip("Works, but not everything does yet");
-    name_row->addWidget(beta, 0, Qt::AlignVCenter);
+    QLabel* tag = source.beta ? MakeTag(this, "Beta", "accent") : MakeTag(this, "Recommended", "success");
+    tag->setToolTip(source.beta ? "Works, but not everything does yet" : "The best pick for its consoles");
+    name_row->addWidget(tag, 0, Qt::AlignVCenter);
     name_row->addStretch(1);
     names->addLayout(name_row);
   } else {

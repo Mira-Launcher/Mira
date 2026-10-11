@@ -138,3 +138,45 @@ TEST_CASE("emulators: an emulator's AppImage in a library folder sets up its sou
   CHECK(env.config.GetString("emulators.mgba.bin") == (root / "mGBA-0.10.5-appimage-x64.appimage").string());
   CHECK(env.games.Source("mgba").added);
 }
+
+TEST_CASE("emulators: a desktop entry that runs one of its games becomes that game, kept in place or moved") {
+  test::TestEnv env("emulators-existing");
+  const emulators::Emulator& mgba = *emulators::Find("mgba");
+  const fs::path elsewhere = env.dir / "my-roms";
+  test::Touch(elsewhere / "Fusion.gba");
+  test::Touch(elsewhere / "Zero.gba");
+  for (const auto& [id, file] : {std::pair{"desktop-entry-fusion", "Fusion.gba"}, {"desktop-entry-zero", "Zero.gba"}}) {
+    model::Game shortcut;
+    shortcut.id = id;
+    shortcut.name = file;
+    shortcut.source = "desktop-entry";
+    shortcut.exe_path = "/usr/bin/mgba-qt";
+    shortcut.args = "-f " + (elsewhere / file).string();
+    shortcut.play_seconds = 60;
+    REQUIRE(env.games.Upsert(shortcut).has_value());
+  }
+  REQUIRE(emulators::FindExisting(env.config, env.games, mgba).shortcuts.size() == 2);
+
+  REQUIRE(emulators::AdoptExisting(env.config, env.games, env.events, mgba, /*move=*/false));
+  const auto kept = env.games.Find("desktop-entry-fusion");
+  REQUIRE(kept);
+  CHECK(kept->source == "mgba");
+  CHECK(kept->install_path == elsewhere.string());
+  CHECK(kept->play_seconds == 60);
+  CHECK(kept->args.empty());
+  // Outside its folder, so its next import leaves it alone.
+  REQUIRE(emulators::Import(env.config, env.games, env.events, mgba));
+  CHECK(env.games.Find("desktop-entry-fusion"));
+
+  REQUIRE(env.games.Update("desktop-entry-zero", [&](model::Game& game) {
+    game.source = "desktop-entry";
+    game.exe_path = "/usr/bin/mgba-qt";
+    game.args = (elsewhere / "Zero.gba").string();
+  }));
+  REQUIRE(emulators::AdoptExisting(env.config, env.games, env.events, mgba, /*move=*/true));
+  const auto moved = env.games.Find("desktop-entry-zero");
+  REQUIRE(moved);
+  CHECK(moved->install_path == emulators::RomDir(env.config, mgba).string());
+  CHECK(fs::exists(emulators::RomDir(env.config, mgba) / "Zero.gba"));
+  CHECK_FALSE(fs::exists(elsewhere / "Zero.gba"));
+}

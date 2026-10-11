@@ -828,6 +828,8 @@ struct FrontendPrefs {
   std::optional<bool> drag_select;
   // On (default): double-clicking a game in a grid plays it, or stops it while it runs.
   std::optional<bool> double_click_play;
+  // Off (default): installing or removing a system package asks for the password; on shows the command instead.
+  std::optional<bool> copy_commands;
   // Shape adjustments layered over whatever the theme sets, in pixels; see
   // theme::Overrides. Unset means "leave it to the theme".
   std::optional<int> tile_spacing;
@@ -1292,6 +1294,14 @@ struct EmulatorsResult {
 struct EmulatorChoice {
   std::string id;
   std::string name;
+};
+
+// GET /v1/emulators/{id}/existing: games it had before Mira did.
+struct ExistingEmulatorGamesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::pair<std::string, int>> dirs;  // folders its settings list, and how many games each holds
+  std::vector<std::string> shortcuts;             // names of desktop entries in the library that run one
 };
 
 struct EmulatorChoicesResult {
