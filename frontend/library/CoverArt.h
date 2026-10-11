@@ -5,6 +5,8 @@
 #include <QSize>
 #include <QString>
 
+class QPainter;
+
 namespace mira_gui {
 
 // Placeholder cover art, for a game with no fetched artwork: a grid of
@@ -18,6 +20,9 @@ QColor PlaceholderBase(const QString& seed);
 // digit. "The Witcher 3" reads better as "TW" than as "T3", so the numeric
 // tail of a title is only used when there is nothing else.
 QString CoverInitials(const QString& name);
+
+// `pixmap` scaled to fit a `side` square, centred on `centre`.
+void DrawFitted(QPainter* painter, const QPointF& centre, qreal side, const QPixmap& pixmap);
 
 // `logo` (an emulator's, for its games) takes the initials' place.
 QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr, const QPixmap& logo = {});

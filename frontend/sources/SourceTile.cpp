@@ -35,7 +35,9 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent) : QFrame(paren
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
     name_row->addWidget(name_, 0);
-    name_row->addWidget(MakeBetaTag(this), 0, Qt::AlignVCenter);
+    QLabel* beta = MakeTag(this, "Beta", "accent");
+    beta->setToolTip("Works, but not everything does yet");
+    name_row->addWidget(beta, 0, Qt::AlignVCenter);
     name_row->addStretch(1);
     names->addLayout(name_row);
   } else {

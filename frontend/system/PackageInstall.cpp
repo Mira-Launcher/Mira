@@ -1,11 +1,6 @@
 #include "PackageInstall.h"
 
-#include <QApplication>
-#include <QClipboard>
 #include <QCoreApplication>
-#include <QFontDatabase>
-#include <QHBoxLayout>
-#include <QLabel>
 #include <QPointer>
 #include <QPushButton>
 #include <QProcess>
@@ -15,7 +10,8 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
-#include "../theme/Theme.h"
+#include "../widgets/CopyField.h"
+#include "../widgets/Labels.h"
 #include "../widgets/PopupDialog.h"
 
 namespace mira_gui::system {
@@ -64,27 +60,7 @@ Answer ShowCommand(QWidget* parent, const QString& title, const QString& message
   dialog.SetMessage(message);
   if (!detail.isEmpty()) dialog.SetDetail(detail);
 
-  auto* row = new QWidget(&dialog);
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(0, 0, 0, 0);
-  // Wraps between words: non-breaking hyphens keep "--needed" whole. Copy, not selection, since those
-  // hyphens aren't the shell's.
-  const QString command = "sudo " + argv.join(' ');
-  auto* field = new QLabel(QString(command).replace('-', QChar(0x2011)), row);
-  field->setWordWrap(true);
-  field->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-  const theme::Tokens& tokens = theme::Current();
-  field->setStyleSheet(QString("QLabel { background: %1; border: 1px solid %2; border-radius: %3px; padding: 6px; }")
-                           .arg(theme::ColorToQss(tokens.window), theme::ColorToQss(tokens.border))
-                           .arg(tokens.radius_control));
-  auto* copy = new QPushButton("Copy", row);
-  QObject::connect(copy, &QPushButton::clicked, copy, [command, copy] {
-    QApplication::clipboard()->setText(command);
-    copy->setText("Copied");
-  });
-  layout->addWidget(field, 1);
-  layout->addWidget(copy, 0, Qt::AlignTop);
-  dialog.AddWidget(row);
+  dialog.AddWidget(new CopyField("sudo " + argv.join(' '), &dialog));
 
   if (offer_install) dialog.AddButton("Install", kInstall, /*default_button=*/true);
   QPushButton* terminal = dialog.AddButton("Open terminal", kClosed, !offer_install);
@@ -98,12 +74,7 @@ Answer ShowCommand(QWidget* parent, const QString& title, const QString& message
 
 }  // namespace
 
-QString Names(const std::vector<std::string>& packages) {
-  QStringList names = Args(packages);
-  if (names.size() < 2) return names.join(QString());
-  const QString last = names.takeLast();
-  return names.join(", ") + " and " + last;
-}
+QString Names(const std::vector<std::string>& packages) { return JoinAnd(Args(packages)); }
 
 void InstallPackages(QWidget* parent, const std::vector<std::string>& install, const QString& names, bool restart,
                      std::function<void(bool installed)> done) {

@@ -11,6 +11,16 @@
 
 namespace mira::runner {
 
+Command EmulatorCommand(const std::filesystem::path& program, const emulators::Emulator& emulator) {
+  emulators::Prefill(emulator);
+  Command command;
+  command.argv.push_back(program.string());
+  if (strings::ToLower(program.extension().string()) == ".appimage" && !HasFuse())
+    command.argv.push_back("--appimage-extract-and-run");
+  for (const auto& [key, value] : emulators::Environment(emulator)) command.env[key] = value;
+  return command;
+}
+
 Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
                                              const std::optional<model::RunnerBuild>&) const {
   const emulators::Emulator* emulator = emulators::ForGame(game);
@@ -26,13 +36,8 @@ Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
   if (emulators::Downloads(*emulator)) {
     if (auto ready = system::RequireFeature(emulator->id, emulator->name); !ready) return std::unexpected(ready.error());
   }
-  emulators::Prefill(*emulator);
-  const std::filesystem::path rom = std::filesystem::path(game.install_path) / game.exe_path;
-
-  Command command;
-  command.argv.push_back(binary.string());
-  if (strings::ToLower(binary.extension().string()) == ".appimage" && !HasFuse())
-    command.argv.push_back("--appimage-extract-and-run");
+  const std::filesystem::path rom = emulators::MainFile(game);
+  Command command = EmulatorCommand(binary, *emulator);
   // The game's own args are the emulator's options, so they go before its file.
   for (const std::string& arg : strings::SplitArgs(game.args)) {
     if (!arg.empty()) command.argv.push_back(arg);
@@ -44,7 +49,6 @@ Result<Command> EmulatorRunner::BuildCommand(const model::Game& game,
     else if (arg == "{stem}") command.argv.push_back(rom.stem().string());
     else command.argv.push_back(arg);
   }
-  for (const auto& [key, value] : emulators::Environment(*emulator)) command.env[key] = value;
   for (const auto& [key, value] : game.env) command.env[key] = value;
   command.cwd = rom.parent_path();
   return command;

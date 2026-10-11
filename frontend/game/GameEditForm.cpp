@@ -3,6 +3,7 @@
 #include "../client/Async.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
+#include "../widgets/Labels.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
@@ -102,8 +103,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* browse = new QPushButton("Browse…", launch);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
   // Shown while mirad wants its pick confirmed; saving any change confirms it too.
-  check_tag_ = new QLabel("Not checked", launch);
-  check_tag_->setObjectName("check_tag");
+  check_tag_ = MakeTag(launch, "Not checked", "warning");
   check_tag_->setToolTip("Mira wasn't sure which program starts this game");
   check_tag_->hide();
   looks_right_ = new QPushButton("Looks right", launch);

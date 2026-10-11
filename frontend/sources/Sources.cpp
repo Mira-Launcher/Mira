@@ -5,6 +5,8 @@
 
 #include <algorithm>
 
+#include "../widgets/Labels.h"
+
 namespace mira_gui {
 
 const std::vector<SourceInfo>& AllSources() {
@@ -158,9 +160,7 @@ QString PlaysText(const SourceInfo& source) {
     if (console == nullptr) names << id;
     else if (*console->name != '\0') names << console->name;
   }
-  if (names.size() < 2) return names.join(QString());
-  const QString last = names.takeLast();
-  return names.join(", ") + " and " + last;
+  return JoinAnd(names);
 }
 
 QString PlaysSearchText(const SourceInfo& source) {
@@ -212,17 +212,5 @@ void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim) {
                            .arg(badge->width() / 4));
 }
 
-QLabel* MakeKindTag(const SourceInfo& source, QWidget* parent) {
-  auto* tag = new QLabel(KindLabel(source.kind), parent);
-  tag->setObjectName("kind_tag");
-  return tag;
-}
-
-QLabel* MakeBetaTag(QWidget* parent) {
-  auto* tag = new QLabel("Beta", parent);
-  tag->setObjectName("beta_tag");
-  tag->setToolTip("Works, but not everything does yet");
-  return tag;
-}
 
 }  // namespace mira_gui

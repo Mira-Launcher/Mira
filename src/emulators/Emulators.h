@@ -42,7 +42,7 @@ struct Emulator {
   // Every folder in its games folder is one game, started by its likeliest file (DOSBox's, ScummVM's); loose
   // files it takes are games too.
   bool folders = false;
-  std::vector<std::string> args = {};        // "{rom}" is the game's file, "{dir}" its folder, "{stem}" its name
+  std::vector<std::string> args = {"{rom}"}; // "{rom}" is the game's file, "{dir}" its folder, "{stem}" its name
   std::vector<std::string> fullscreen = {};  // before `args`, with emulators.fullscreen
   std::vector<std::string> open_args = {};   // opening it alone: shadPS4's own window is its Big Picture mode
   std::string open_binary = {};  // opening it alone runs this file beside the binary instead (KytyPS5's launcher)
@@ -72,6 +72,12 @@ const Emulator* ForGame(const model::Game& game);
 bool Downloads(const Emulator& emulator);
 
 std::filesystem::path RomDir(const config::Config& config, const Emulator& emulator);
+// A game is its whole folder, not one file.
+bool ByFolder(const Emulator& emulator);
+// The game's file: its ROM, or the file its folder starts with.
+std::filesystem::path MainFile(const model::Game& game);
+// A file straight in its emulator's folder, not a folder game.
+bool IsLooseFile(const config::Config& config, const model::Game& game);
 
 // Where the emulator runs from: the emulators.<id>.bin setting, Mira's download, then $PATH. Empty when none.
 std::filesystem::path Binary(const config::Config& config, const Emulator& emulator);

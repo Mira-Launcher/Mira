@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QLabel>
 #include <QString>
+#include <QStringList>
 #include <Qt>
 
 class QWidget;
@@ -16,6 +17,12 @@ QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role = nullp
 
 // A small caps-style group heading ("PINNED", "SORT") in the muted color.
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text);
+
+// A small outlined pill beside a name: "Beta", "Not checked". `tone` colors it: "accent", "warning", or muted.
+QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr);
+
+// "a, b and c".
+QString JoinAnd(QStringList items);
 
 // A size as every label shows one: "1.8 GB", "12.5 MB".
 QString SizeText(qint64 bytes);

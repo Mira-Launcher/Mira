@@ -55,10 +55,5 @@ QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr);
 QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim = false);
 // Fades a badge from MakeSourceBadge, e.g. while its source is off or not set up.
 void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim);
-// The kind tag itself.
-QLabel* MakeKindTag(const SourceInfo& source, QWidget* parent);
-
-// "Beta", beside the name of a source that's `beta`.
-QLabel* MakeBetaTag(QWidget* parent);
 
 }  // namespace mira_gui

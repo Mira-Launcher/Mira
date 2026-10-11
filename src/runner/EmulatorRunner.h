@@ -2,7 +2,15 @@
 
 #include "runner/IRunner.h"
 
+namespace mira::emulators {
+struct Emulator;
+}
+
 namespace mira::runner {
+
+// Runs `program` as the emulator: its prefill files written, its environment, and an AppImage working
+// without FUSE.
+Command EmulatorCommand(const std::filesystem::path& program, const emulators::Emulator& emulator);
 
 // Runs an emulator's game: the emulator (emulators::Binary) with its args and the game's file.
 class EmulatorRunner final : public IRunner {

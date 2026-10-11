@@ -53,7 +53,7 @@ const std::vector<Emulator>& All() {
                     "[UI]\nSettingsVersion = 1\nSetupWizardIncomplete = false\n[AutoUpdater]\nCheckAtStartup = false\n"}}},
       {.id = "ppsspp", .name = "PPSSPP", .consoles = {"psp"},
        .extensions = {".iso", ".cso", ".chd", ".pbp", ".elf", ".prx"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .release_url = GitHub("hrydgard/ppsspp"), .asset = "PPSSPP-*-anylinux-x86_64.AppImage",
        .binary = "ppsspp.AppImage"},
       {.id = "rpcs3", .name = "RPCS3", .consoles = {"ps3"},
@@ -72,7 +72,7 @@ const std::vector<Emulator>& All() {
        .binary = "Shadps4-sdl.AppImage"},
       {.id = "azahar", .name = "Azahar", .consoles = {"3ds"},
        .extensions = {".3ds", ".cci", ".cxi", ".3dsx", ".app", ".elf", ".axf"},
-       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .fullscreen = {"-f"},
        .release_url = GitHub("azahar-emu/azahar"), .asset = "azahar.AppImage",
        .binary = "azahar.AppImage",
        .firmware = {{.id = "aes_keys", .label = "AES keys, for encrypted games",
@@ -89,7 +89,7 @@ const std::vector<Emulator>& All() {
                      .dir = "~/.local/share/eden/nand/system/Contents/registered", .patterns = {"*.nca"}}}},
       {.id = "ryujinx", .name = "Ryujinx", .consoles = {"switch"},
        .extensions = {".nsp", ".xci", ".nca", ".nro", ".nso"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .listing_url = "https://mirror.cachyos.org/repo/x86_64/cachyos/", .asset = "ryujinx-*-x86_64.pkg.tar.zst",
        .binary = "Ryujinx",
        .firmware = {{.id = "keys", .label = "Keys (prod.keys)", .dir = "~/.config/Ryujinx/system",
@@ -110,14 +110,13 @@ const std::vector<Emulator>& All() {
        .binary = "xemu.AppImage"},
       {.id = "flycast", .name = "Flycast", .consoles = {"dreamcast"},
        .extensions = {".gdi", ".cdi", ".chd", ".cue", ".bin"},
-       .args = {"{rom}"},
        .release_url = GitHub("flyinghead/flycast"), .asset = "flycast-x86_64-*.AppImage",
        .binary = "flycast.AppImage",
        .firmware = {{.id = "bios", .label = "Dreamcast BIOS (dc_boot.bin)", .dir = "~/.local/share/flycast/data",
                      .patterns = {"dc_boot.bin"}, .required = false}}},
       {.id = "melonds", .name = "melonDS", .consoles = {"nds"},
        .extensions = {".nds", ".dsi", ".ids", ".srl", ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .fullscreen = {"-f"},
        .release_url = GitHub("melonDS-emu/melonDS"), .asset = "melonDS-*-appimage-x86_64.zip",
        .binary = "melonDS-x86_64.AppImage"},
       {.id = "dolphin", .name = "Dolphin", .consoles = {"gamecube", "wii"},
@@ -128,7 +127,7 @@ const std::vector<Emulator>& All() {
       {.id = "mesen", .name = "Mesen", .consoles = {"nes", "snes", "gb", "gbc", "pce", "sms", "gg", "ws"},
        .extensions = {".nes", ".fds", ".unf", ".sfc", ".smc", ".bs", ".gb", ".gbc", ".pce", ".sms", ".gg", ".ws",
                       ".wsc", ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .release_url = GitHub("SourMesen/Mesen2"), .asset = "Mesen_*_Linux_x64.zip",
        .binary = "Mesen",
        // Its first run sets up default controls; without ICU its core no longer aborts loading a game.
@@ -136,11 +135,10 @@ const std::vector<Emulator>& All() {
        .env = {{"DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1"}}},
       {.id = "snes9x", .name = "Snes9x", .consoles = {"snes"},
        .extensions = {".sfc", ".smc", ".fig", ".swc", ".bs", ".st", ".zip"},
-       .args = {"{rom}"},
        .binary = "snes9x-gtk"},
       {.id = "bsnes", .name = "bsnes", .consoles = {"snes"},
        .extensions = {".sfc", ".smc", ".bs", ".st", ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .release_url = "https://api.github.com/repos/bsnes-emu/bsnes/releases/tags/nightly",
        .asset = "bsnes-ubuntu.zip",
        .binary = "bsnes"},
@@ -154,12 +152,12 @@ const std::vector<Emulator>& All() {
        .binary = "ares"},
       {.id = "blastem", .name = "BlastEm", .consoles = {"genesis"},
        .extensions = {".md", ".gen", ".smd", ".bin", ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .fullscreen = {"-f"},
        .download_url = "https://www.retrodev.com/blastem/blastem64-0.6.2.tar.gz",
        .binary = "blastem"},
       {.id = "mgba", .name = "mGBA", .consoles = {"gb", "gbc", "gba"},
        .extensions = {".gba", ".gb", ".gbc", ".sgb", ".agb", ".zip", ".7z"},
-       .args = {"{rom}"}, .fullscreen = {"-f"},
+       .fullscreen = {"-f"},
        .release_url = GitHub("mgba-emu/mgba"), .asset = "mGBA-*-appimage-x64.appimage",
        .binary = "mgba.AppImage"},
       {.id = "rmg", .name = "RMG", .consoles = {"n64"},
@@ -169,7 +167,7 @@ const std::vector<Emulator>& All() {
        .binary = "RMG.AppImage"},
       {.id = "vita3k", .name = "Vita3K", .consoles = {"psvita"},
        .extensions = {".vpk"},
-       .args = {"{rom}"}, .fullscreen = {"-F"},
+       .fullscreen = {"-F"},
        .release_url = GitHub("Vita3K/Vita3K"), .asset = "Vita3K-x86_64.AppImage",
        .binary = "Vita3K.AppImage",
        .firmware = {{.id = "firmware", .label = "PS Vita firmware (PSVUPDAT.PUP)",
@@ -191,12 +189,12 @@ const std::vector<Emulator>& All() {
        .binary = "kyty_emulator"},
       {.id = "xenia", .name = "Xenia Canary", .consoles = {"xbox360"},
        .extensions = {".iso", ".xex", ".zar"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen=true"},
+       .fullscreen = {"--fullscreen=true"},
        .release_url = GitHub("xenia-canary/xenia-canary-releases"), .asset = "xenia_canary_linux.tar_.xz",
        .binary = "xenia_canary"},
       {.id = "dosbox", .name = "DOSBox Staging", .consoles = {"dos"},
        .extensions = {".exe", ".com", ".bat"}, .folders = true,
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .release_url = GitHub("dosbox-staging/dosbox-staging"), .asset = "dosbox-staging-linux-x86_64-*.tar.xz",
        .binary = "dosbox"},
       {.id = "scummvm", .name = "ScummVM", .consoles = {"adventure"},
@@ -206,7 +204,7 @@ const std::vector<Emulator>& All() {
       {.id = "mednafen", .name = "Mednafen", .consoles = {"saturn", "ps1", "pce", "vb", "ngp", "ws", "lynx"},
        .extensions = {".vb", ".vboy", ".ngp", ".ngc", ".ws", ".wsc", ".lnx", ".pce", ".cue", ".chd", ".toc", ".m3u",
                       ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"-video.fs", "1"},
+       .fullscreen = {"-video.fs", "1"},
        .binary = "mednafen",
        .firmware = {{.id = "bios", .label = "BIOS, for Saturn, PlayStation, PC Engine CD and Lynx games",
                      .dir = "~/.mednafen/firmware",
@@ -215,38 +213,37 @@ const std::vector<Emulator>& All() {
                      .required = false}}},
       {.id = "stella", .name = "Stella", .consoles = {"atari2600"},
        .extensions = {".a26", ".bin", ".zip"},
-       .args = {"{rom}"}, .fullscreen = {"-fullscreen", "1"},
+       .fullscreen = {"-fullscreen", "1"},
        .binary = "stella"},
       {.id = "mupen64plus", .name = "Mupen64Plus", .consoles = {"n64"},
        .extensions = {".n64", ".z64", ".v64"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .binary = "mupen64plus"},
       {.id = "redream", .name = "Redream", .consoles = {"dreamcast"},
        .extensions = {".gdi", ".cdi", ".chd", ".cue"},
-       .args = {"{rom}"},
        .download_url = "https://redream.io/download/redream.x86_64-linux-v1.5.0.tar.gz",
        .binary = "redream"},
       {.id = "atari800", .name = "atari800", .consoles = {"atari8bit", "atari5200"},
        .extensions = {".xex", ".atr", ".atx", ".xfd", ".car", ".cas"},
-       .args = {"{rom}"}, .fullscreen = {"-fullscreen"},
+       .fullscreen = {"-fullscreen"},
        .release_url = GitHub("atari800/atari800"), .asset = "Atari800-*-x86_64.AppImage",
        .binary = "atari800.AppImage"},
       {.id = "hatari", .name = "Hatari", .consoles = {"atarist"},
        .extensions = {".st", ".msa", ".stx", ".dim"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .binary = "hatari"},
       {.id = "fsuae", .name = "FS-UAE", .consoles = {"amiga"},
        .extensions = {".adf", ".adz", ".dms", ".ipf"},
-       .args = {"{rom}"}, .fullscreen = {"--fullscreen"},
+       .fullscreen = {"--fullscreen"},
        .release_url = GitHub("FrodeSolheim/fs-uae"), .asset = "FS-UAE_*_Linux_x86-64.tar.xz",
        .binary = "fs-uae"},
       {.id = "vice", .name = "VICE", .consoles = {"c64"},
        .extensions = {".d64", ".g64", ".t64", ".prg", ".p00", ".crt", ".tap"},
-       .args = {"{rom}"}, .fullscreen = {"-fullscreen"},
+       .fullscreen = {"-fullscreen"},
        .binary = "x64sc"},
       {.id = "openmsx", .name = "openMSX", .consoles = {"msx"},
        .extensions = {".rom", ".mx1", ".mx2", ".dsk", ".cas"},
-       .args = {"{rom}"}, .fullscreen = {"-command", "set fullscreen on"},
+       .fullscreen = {"-command", "set fullscreen on"},
        .release_url = GitHub("openMSX/openMSX"), .asset = "openmsx-*-linux-x86_64-bin.zip",
        .binary = "openmsx"},
       {.id = "uzdoom", .name = "UZDoom", .consoles = {"doom"},
@@ -295,17 +292,14 @@ fs::path Expand(const std::string& dir) {
     return Expand(dir.substr(dir.find('|') + 1));
   }
   if (!dir.starts_with("~/")) return dir;
+  const std::string rest = dir.substr(2);
   for (const auto& [prefix, variable] : {std::pair{".config", "XDG_CONFIG_HOME"}, {".local/share", "XDG_DATA_HOME"}}) {
-    const std::string rest = dir.substr(2);
     const char* home = std::getenv(variable);
     if (home && home[0] == '/' && (rest == prefix || rest.starts_with(std::string(prefix) + "/")))
       return fs::path(home) / fs::path(rest).lexically_relative(prefix);
   }
   return paths::Home() / dir.substr(2);
 }
-
-// A game is its whole folder, not one file.
-bool ByFolder(const Emulator& emulator) { return !emulator.folder_game.empty() || emulator.folders; }
 
 bool Accepts(const Emulator& emulator, const fs::path& file) {
   return std::ranges::contains(emulator.extensions, strings::ToLower(file.extension().string()));
@@ -392,13 +386,13 @@ struct Found {
   std::string exe;  // relative to dir
 };
 
-// The games in `root`: folder games, or files it takes that no .cue/.gdi/.m3u beside them names.
 // A homebrew's EBOOT.PBP or boot.elf: named, and added, by its folder.
 bool IsGenericName(const fs::path& file) {
   const std::string stem = strings::ToLower(file.stem().string());
   return stem == "eboot" || stem == "boot";
 }
 
+// The games in `root`: folder games, or files it takes that no .cue/.gdi/.m3u beside them names.
 void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::vector<Found>& found) {
   std::set<fs::path> named;
   std::vector<fs::path> files;
@@ -427,12 +421,11 @@ void FindGames(const Emulator& emulator, const fs::path& root, int depth, std::v
 }
 
 std::string Slug(const Emulator& emulator, const fs::path& rom_dir, const Found& item) {
-  fs::path rel = (item.dir / item.exe).lexically_relative(rom_dir);
-  rel = ByFolder(emulator) && item.dir != rom_dir ? item.dir.lexically_relative(rom_dir) : rel.replace_extension();
+  const fs::path rel = ByFolder(emulator) && item.dir != rom_dir
+                           ? item.dir.lexically_relative(rom_dir)
+                           : (item.dir / item.exe).lexically_relative(rom_dir).replace_extension();
   return strings::Slugify(rel.string());
 }
-
-fs::path MainFile(const model::Game& game) { return fs::path(game.install_path) / game.exe_path; }
 
 // Copies or moves `from` to `to`, keeping what's already there.
 Result<void> Transfer(const fs::path& from, const fs::path& to, bool move) {
@@ -626,10 +619,18 @@ std::string CleanName(std::string_view file_name) {
   return strings::Trim(out);
 }
 
+bool ByFolder(const Emulator& emulator) { return !emulator.folder_game.empty() || emulator.folders; }
+
+fs::path MainFile(const model::Game& game) { return fs::path(game.install_path) / game.exe_path; }
+
+bool IsLooseFile(const config::Config& config, const model::Game& game) {
+  const Emulator* emulator = ForGame(game);
+  return emulator != nullptr && fs::path(game.install_path) == RomDir(config, *emulator);
+}
+
 std::vector<std::string> StartChoices(const config::Config& config, const model::Game& game) {
   const Emulator* emulator = ForGame(game);
-  if (emulator == nullptr || !emulator->folders || emulator->extensions.empty()) return {};
-  if (fs::path(game.install_path) == RomDir(config, *emulator)) return {};  // a loose file
+  if (emulator == nullptr || !emulator->folders || emulator->extensions.empty() || IsLooseFile(config, game)) return {};
   StartCandidates candidates = RankStartFiles(*emulator, game.install_path);
   if (candidates.named || candidates.files.size() < 2) return {};
   return std::move(candidates.files);
@@ -637,7 +638,7 @@ std::vector<std::string> StartChoices(const config::Config& config, const model:
 
 std::vector<fs::path> GameFiles(const config::Config& config, const model::Game& game) {
   const Emulator* emulator = ForGame(game);
-  if (emulator != nullptr && ByFolder(*emulator) && fs::path(game.install_path) != RomDir(config, *emulator)) return {game.install_path};
+  if (emulator != nullptr && ByFolder(*emulator) && !IsLooseFile(config, game)) return {game.install_path};
   return WithNamed(MainFile(game));
 }
 
@@ -809,12 +810,9 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
   for (const model::Game& game : games.All()) {
     if (game.source != emulator.id || game.status == model::GameStatus::Missing) continue;
     // Still there but no longer a game of its own (a homebrew's module, once its folder became one game).
-    if (fs::exists(MainFile(game), ec)) {
-      if (!found_keys.contains(key(game.install_path, game.exe_path)) && games.Remove(game.id))
-        events.Publish("game.removed", {{"id", game.id}});
-      continue;
-    }
-    if (config.GetBool("library.remove_missing")) {
+    const bool exists = fs::exists(MainFile(game), ec);
+    if (exists && found_keys.contains(key(game.install_path, game.exe_path))) continue;
+    if (exists || config.GetBool("library.remove_missing")) {
       if (games.Remove(game.id)) events.Publish("game.removed", {{"id", game.id}});
       continue;
     }

@@ -475,10 +475,7 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
 }
 
 void SourcePage::SetDropActive(bool active) {
-  if (drop_zone_ == nullptr || drop_zone_->property("active").toBool() == active) return;
-  drop_zone_->setProperty("active", active);
-  drop_zone_->style()->unpolish(drop_zone_);
-  drop_zone_->style()->polish(drop_zone_);
+  if (drop_zone_ != nullptr) theme::SetStyleProperty(drop_zone_, "active", active ? "true" : "false");
 }
 
 QWidget* SourcePage::BuildLibrarySection() {

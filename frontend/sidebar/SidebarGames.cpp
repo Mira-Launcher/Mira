@@ -139,8 +139,7 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
     if (place.game == logo_card) {
       painter.setBrush(theme::Current().surface_alt);
       painter.drawRoundedRect(face, 3, 3);
-      const QSizeF size = logo.deviceIndependentSize().scaled(card.width() - 4, card.width() - 4, Qt::KeepAspectRatio);
-      painter.drawPixmap(QRectF(QPointF(-size.width() / 2, -size.height() / 2), size), logo, logo.rect());
+      DrawFitted(&painter, QPointF(0, 0), card.width() - 4, logo);
     } else {
       painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
     }
