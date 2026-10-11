@@ -1,0 +1,34 @@
+# Builds the AppImage, .deb and .rpm into out/ in the Ubuntu 22.04 builder (packaging/appimage).
+name: Packages
+description: Build Mira's packages in the release builder
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+
+    - name: Builder image
+      uses: docker/build-push-action@v6
+      env:
+        DOCKER_BUILD_RECORD_UPLOAD: false
+      with:
+        context: packaging/appimage
+        file: packaging/appimage/Dockerfile
+        tags: mira-appimage-builder
+        load: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - uses: actions/cache@v4
+      with:
+        path: ccache
+        key: ccache-packages-${{ github.sha }}
+        restore-keys: ccache-packages-
+
+    - name: Build
+      shell: bash
+      run: |
+        mkdir -p out build ccache
+        docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+          -v "$PWD:/src:ro" -v "$PWD/out:/out" \
+          -v "$PWD/build:/tmp/mira-build" -v "$PWD/ccache:/tmp/ccache" \
+          mira-appimage-builder /src/packaging/appimage/build-in-container.sh
