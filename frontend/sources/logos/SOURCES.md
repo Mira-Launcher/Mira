@@ -1,4 +1,4 @@
-# Emulator logos
+# Source logos
 
 Each emulator's own icon, from its project's repository and under that project's license, scaled to 128 px.
 
@@ -26,5 +26,6 @@ Each emulator's own icon, from its project's repository and under that project's
 | vita3k | github.com/Vita3K/Vita3K `dist/image/org.vita3k.vita3k.svg` |
 | xemu | github.com/xemu-project/xemu `ui/icons/xemu.svg` |
 | ymir | github.com/StrikerX3/Ymir `apps/ymir-sdl3/res/ymir.png` |
+| blastem | retrodev.com/blastem `logo.png`, scaled up without smoothing |
 
-BlastEm ships no logo, so it keeps its colored initial.
+Stores and launchers are white glyphs from Simple Icons (CC0) on the source's color: steam, epicgames, gogdotcom, itchdotio, humblebundle, battledotnet, ubisoft, ea, lutris (v15.0.0), amazongames, adobecreativecloud (v13.0.0), microsoftoffice (v9.0.0). Local is Lucide's `monitor` (ISC).

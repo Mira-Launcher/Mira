@@ -8,6 +8,7 @@
 #include <QPainterPath>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 
 #include "../library/ArtworkStore.h"
@@ -123,8 +124,10 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
     qreal angle;
   };
   constexpr Place kPlaces[] = {{2, -9, -14}, {1, 9, 14}, {0, 0, 0}};
+  // One or two games fill out the deck with the source's logo as the card behind them.
+  const size_t logo_card = !logo.isNull() && games.size() < 3 ? games.size() : SIZE_MAX;
   for (const Place& place : kPlaces) {
-    if (place.game >= games.size()) continue;
+    if (place.game >= games.size() && place.game != logo_card) continue;
     painter.save();
     painter.translate(centre + QPointF(place.dx, 0));
     painter.rotate(place.angle);
@@ -133,7 +136,14 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
     painter.drawRoundedRect(face.adjusted(-1, 0, 1, 2), 4, 4);
     painter.setBrush(QColor(0, 0, 0, 90));
     painter.drawRoundedRect(face.translated(0, 1), 3, 3);
-    painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
+    if (place.game == logo_card) {
+      painter.setBrush(theme::Current().surface_alt);
+      painter.drawRoundedRect(face, 3, 3);
+      const QSizeF size = logo.deviceIndependentSize().scaled(card.width() - 4, card.width() - 4, Qt::KeepAspectRatio);
+      painter.drawPixmap(QRectF(QPointF(-size.width() / 2, -size.height() / 2), size), logo, logo.rect());
+    } else {
+      painter.drawPixmap(face.topLeft(), CoverThumb(*games[place.game], artwork, dpr, card));
+    }
     painter.restore();
   }
   return out;

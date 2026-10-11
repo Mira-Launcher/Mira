@@ -655,6 +655,15 @@ QLabel#kind_tag {
   padding: 0px 6px;
 }
 
+/* "Beta" beside a source's name. */
+QLabel#beta_tag {
+  color: @accent;
+  font-size: @font_size_small;
+  border: 1px solid @accent;
+  border-radius: 8px;
+  padding: 0px 6px;
+}
+
 /* The game card's "Not checked" beside Executable, when mirad wasn't sure of its pick. */
 QLabel#check_tag {
   color: @warning;

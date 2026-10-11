@@ -31,7 +31,16 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent) : QFrame(paren
   name_->setObjectName("source_tile_name");
   line_ = new ElidedLabel(QString(), this);
   line_->setProperty("role", "subtle");
-  names->addWidget(name_);
+  if (source.beta) {
+    auto* name_row = new QHBoxLayout();
+    name_row->setSpacing(6);
+    name_row->addWidget(name_, 0);
+    name_row->addWidget(MakeBetaTag(this), 0, Qt::AlignVCenter);
+    name_row->addStretch(1);
+    names->addLayout(name_row);
+  } else {
+    names->addWidget(name_);
+  }
   names->addWidget(line_);
   head->addLayout(names, /*stretch=*/1);
   corner_ = new QHBoxLayout();

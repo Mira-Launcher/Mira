@@ -20,31 +20,31 @@ const std::vector<SourceInfo>& AllSources() {
       {"battlenet", "Battle.net", Kind::Launcher, QColor("#148eff")},
       {"ubisoft", "Ubisoft Connect", Kind::Launcher, QColor("#0070ff")},
       {"ea", "EA app", Kind::Launcher, QColor("#ff4747")},
-      {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01")},
-      {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26")},
+      {"office", "Microsoft 365", Kind::Launcher, QColor("#d83b01"), {}, true},
+      {"adobe", "Adobe Creative Cloud", Kind::Launcher, QColor("#da1f26"), {}, true},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
       {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), "PlayStation"},
-      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), "PlayStation 2"},
+      {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), "PlayStation 2", true},
       {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), "PSP"},
-      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), "PlayStation 3"},
-      {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), "PlayStation 4"},
-      {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), "Xbox"},
+      {"rpcs3", "RPCS3", Kind::Emulator, QColor("#563cc8"), "PlayStation 3", true},
+      {"shadps4", "shadPS4", Kind::Emulator, QColor("#3d57e2"), "PlayStation 4", true},
+      {"xemu", "xemu", Kind::Emulator, QColor("#3c8f45"), "Xbox", true},
       {"dolphin", "Dolphin", Kind::Emulator, QColor("#00b5ff"), "GameCube and Wii"},
-      {"cemu", "Cemu", Kind::Emulator, QColor("#00a2df"), "Wii U"},
-      {"eden", "Eden", Kind::Emulator, QColor("#b64ef8"), "Switch"},
-      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#fd8b62"), "Switch"},
+      {"cemu", "Cemu", Kind::Emulator, QColor("#00a2df"), "Wii U", true},
+      {"eden", "Eden", Kind::Emulator, QColor("#b64ef8"), "Switch", true},
+      {"ryujinx", "Ryujinx", Kind::Emulator, QColor("#fd8b62"), "Switch", true},
       {"melonds", "melonDS", Kind::Emulator, QColor("#fe544c"), "Nintendo DS"},
       {"azahar", "Azahar", Kind::Emulator, QColor("#b5a816"), "3DS"},
       {"mesen", "Mesen", Kind::Emulator, QColor("#933604"), "NES, SNES, Game Boy and PC Engine"},
       {"snes9x", "Snes9x", Kind::Emulator, QColor("#8683e1"), "SNES"},
-      {"flycast", "Flycast", Kind::Emulator, QColor("#833de8"), "Dreamcast"},
-      {"bsnes", "bsnes", Kind::Emulator, QColor("#16a1ff"), "SNES"},
+      {"flycast", "Flycast", Kind::Emulator, QColor("#833de8"), "Dreamcast", true},
+      {"bsnes", "bsnes", Kind::Emulator, QColor("#16a1ff"), "SNES", true},
       {"ares", "ares", Kind::Emulator, QColor("#c9b23a"), "NES, SNES, Nintendo 64, Genesis and Game Boy"},
-      {"blastem", "BlastEm", Kind::Emulator, QColor("#3a3a3a"), "Genesis"},
+      {"blastem", "BlastEm", Kind::Emulator, QColor("#3a3a3a"), "Genesis", true},
       {"mgba", "mGBA", Kind::Emulator, QColor("#4d299e"), "Game Boy and Game Boy Advance"},
       {"rmg", "RMG", Kind::Emulator, QColor("#02b3d3"), "Nintendo 64"},
       {"vita3k", "Vita3K", Kind::Emulator, QColor("#d4a900"), "PS Vita"},
-      {"ymir", "Ymir", Kind::Emulator, QColor("#414db5"), "Saturn"},
+      {"ymir", "Ymir", Kind::Emulator, QColor("#414db5"), "Saturn", true},
       {"mame", "MAME", Kind::Emulator, QColor("#4b9ecd"), "arcade"},
   };
   return sources;
@@ -155,6 +155,13 @@ void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim) {
 QLabel* MakeKindTag(const SourceInfo& source, QWidget* parent) {
   auto* tag = new QLabel(KindLabel(source.kind), parent);
   tag->setObjectName("kind_tag");
+  return tag;
+}
+
+QLabel* MakeBetaTag(QWidget* parent) {
+  auto* tag = new QLabel("Beta", parent);
+  tag->setObjectName("beta_tag");
+  tag->setToolTip("Works, but not everything does yet");
   return tag;
 }
 

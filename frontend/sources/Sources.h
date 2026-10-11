@@ -25,6 +25,7 @@ struct SourceInfo {
   Kind kind = Kind::Local;
   QColor color;  // the source's icon tile
   QString plays = {};  // an emulator's consoles, "PlayStation 2"
+  bool beta = false;   // works, but not well enough yet to promise it
 };
 
 const std::vector<SourceInfo>& AllSources();
@@ -46,7 +47,7 @@ std::vector<QString> OrderSources(const std::vector<QString>& saved);
 // The source's initial on its color, `size` pixels square; faded when `dim`.
 // What an emulator plays, with the short names people search by: "Nintendo 64" also matches "n64".
 QString PlaysSearchText(const SourceInfo& source);
-// The source's own logo, `size` points square for `dpr`; null when it has none (an emulator's, from its project).
+// The source's own logo, `size` points square for `dpr`; null when it has none.
 QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr);
 // Its logo, or its colored initial.
 QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, bool dim = false);
@@ -54,5 +55,8 @@ QLabel* MakeSourceBadge(const SourceInfo& source, int size, QWidget* parent, boo
 void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim);
 // The kind tag itself.
 QLabel* MakeKindTag(const SourceInfo& source, QWidget* parent);
+
+// "Beta", beside the name of a source that's `beta`.
+QLabel* MakeBetaTag(QWidget* parent);
 
 }  // namespace mira_gui
