@@ -69,15 +69,16 @@ OwnedTitles::OwnedTitles(QObject* parent) : QObject(parent) {
   });
 }
 
-void OwnedTitles::Refresh() {
+void OwnedTitles::Refresh(bool fresh) {
   if (loading_) {
     again_ = true;  // what's in flight may predate the change
+    again_fresh_ = again_fresh_ || fresh;
     return;
   }
   loading_ = true;
-  api::GetStoreLibraryAsync(this, std::string(), false, [this](StoreLibraryResult result) {
+  api::GetStoreLibraryAsync(this, std::string(), fresh, [this](StoreLibraryResult result) {
     loading_ = false;
-    if (std::exchange(again_, false)) Refresh();
+    if (std::exchange(again_, false)) Refresh(std::exchange(again_fresh_, false));
     if (!result.ok) return;  // the last list stays; a store that's down isn't worth a notice here
     titles_ = std::move(result.titles);
     fetched_ = QDateTime::currentDateTimeUtc();

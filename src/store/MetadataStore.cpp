@@ -206,6 +206,15 @@ std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog
   return ReadCatalogLocked(source);
 }
 
+std::int64_t MetadataStore::CatalogCheckedAt(const std::string& source) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return 0;
+  auto select = db_.Prepare("SELECT checked_at FROM catalog_checked WHERE source = ?");
+  if (!select) return 0;
+  auto row = select->Bind(1, source).Step();
+  return row && *row ? select->Int(0) : 0;
+}
+
 std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalogLocked(
     const std::string& source) const {
   if (!db_.IsOpen()) return std::nullopt;

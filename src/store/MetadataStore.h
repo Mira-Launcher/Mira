@@ -50,6 +50,8 @@ public:
   // Null when `source` was never listed (or was signed out of) since; an empty list is a store
   // that owns nothing.
   std::optional<std::vector<CatalogRow>> ReadCatalog(const std::string& source) const;
+  // When WriteCatalog last stored `source`'s list (unix seconds); 0 if never.
+  std::int64_t CatalogCheckedAt(const std::string& source) const;
   // Replaces the stored list; true when it differs from the one before.
   Result<bool> WriteCatalog(const std::string& source, const std::vector<CatalogRow>& rows);
   void DropCatalog(const std::string& source);

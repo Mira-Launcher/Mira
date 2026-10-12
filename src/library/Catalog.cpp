@@ -3,8 +3,15 @@
 #include "core/Log.h"
 #include "library/ILibrarySource.h"
 #include "library/SourceRegistry.h"
+#include "model/Types.h"
 
 namespace mira::library {
+namespace {
+
+// How old a stored list gets before listing every store asks them again; one store's own list is asked each time.
+constexpr std::int64_t kRecheckSeconds = 12 * 60 * 60;
+
+}  // namespace
 
 void MarkTracked(const store::GameStore& games, CatalogEntry& entry) {
   const std::string id = entry.source + "-" + entry.ref;
@@ -50,7 +57,7 @@ Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& confi
       }
       rows = games.Metadata().ReadCatalog(name);
       if (!rows) continue;
-    } else {
+    } else if (!source.empty() || model::NowSeconds() - games.Metadata().CatalogCheckedAt(name) >= kRecheckSeconds) {
       std::lock_guard lock(mutex_);
       if (checking_.insert(name).second) {
         events.Publish("library.catalog_checking", {{"source", name}});

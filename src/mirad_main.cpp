@@ -147,14 +147,10 @@ int main(int argc, char** argv) {
   // GameStore::LockFolders.
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
-    mira::library::Scanner startup_scan(config, games, events);
-    startup_scan.UseUnclearMoves(services.unclear_moves);
-    startup_scan.UseMetadataQueue(services.fetches);
-    startup_scan.UseInstallLane(services.installs);
-    const mira::library::ScanSummary summary = startup_scan.ScanAll();
+    // A client's scan asked for meanwhile waits for this one rather than scanning again.
+    const mira::library::ScanSummary summary = services.Scan();
     mira::log::Info("startup scan: added {}, missing {}, restored {}, moved {}", summary.added,
                     summary.missing, summary.restored, summary.moved);
-    services.QueueMetadata(summary.added_games);
     services.SortAllByTags();  // in case the folder tags changed while mirad was off
   });
 

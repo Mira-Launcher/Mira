@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <map>
 #include <mutex>
 #include <set>
@@ -20,6 +21,7 @@
 #include "core/Result.h"
 #include "library/Catalog.h"
 #include "library/FolderTags.h"
+#include "library/Scanner.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
@@ -52,6 +54,8 @@ private:
   // Prefix program folders as each running Windows game launched, for CheckForInstall.
   // Before `supervisor`, whose watcher threads use it.
   std::mutex install_watch_mutex_;
+  std::mutex scan_mutex_;
+  std::shared_future<library::ScanSummary> scan_;  // the running scan's, guarded by scan_mutex_
   std::map<std::string, std::set<std::filesystem::path>> install_watch_;
 
 public:
@@ -124,6 +128,9 @@ public:
   void SyncDesktopEntry(const std::string& game_id);
   // Fetches metadata and art for games added outside a request.
   void QueueMetadata(const std::vector<model::Game>& games);
+  // A full library scan, metadata queued for what it added. One asked for while another runs waits for that
+  // one's summary instead of scanning again.
+  library::ScanSummary Scan();
   // What every import and scan ends with: menu entries, then metadata for what it added.
   void AfterImport(const std::vector<model::Game>& added);
 

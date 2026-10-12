@@ -222,7 +222,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(zoom_, &QSlider::sliderReleased, this, [this] { Zoom(zoom_->value()); });
   connect(top_bar_, &mira_gui::TopBar::ActivityClicked, this,
           [this] { downloads_panel_->ShowBelow(top_bar_->activity_button()); });
-  connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, [this] { Reload(/*force_scan=*/true); });
+  connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, &LibraryWindow::RefreshLibrary);
   connect(top_bar_, &mira_gui::TopBar::ShortcutsClicked, this, [this] { common_.reference->trigger(); });
   connect(top_bar_, &mira_gui::TopBar::AboutClicked, this, &LibraryWindow::OpenAbout);
   connect(top_bar_, &mira_gui::TopBar::BigScreenClicked, this, &LibraryWindow::OpenBigScreen);
@@ -398,7 +398,7 @@ void LibraryWindow::BuildShortcuts() {
   // taught, and a second binding costs nothing.
   window_action("refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
                {QKeySequence(Qt::CTRL | Qt::Key_R)},
-               [this] { Reload(/*force_scan=*/true); });
+               [this] { RefreshLibrary(); });
 
   // Qt::Key_Enter is the keypad one, a separate key from Qt::Key_Return,
   // and binding only Return would leave it dead.
@@ -1037,6 +1037,11 @@ void LibraryWindow::Reload(bool force_scan) {
   if (force_scan || scan_on_startup_) {
     mira_gui::api::ScanLibraryAsync(this, [](mira_gui::ScanResult) {});
   }
+}
+
+void LibraryWindow::RefreshLibrary() {
+  Reload(/*force_scan=*/true);
+  owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
 }
 
 void LibraryWindow::RefreshGames() {

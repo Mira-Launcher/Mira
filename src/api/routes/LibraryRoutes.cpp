@@ -50,12 +50,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
 
   http.Post("/v1/library/scan", [&s](const Request& req, Response& res) {
     s.StartJob(req, res, "scan", "", "Scanning your library", [&s](JobRegistry::Progress&) -> Result<json> {
-      library::Scanner scanner(s.config, s.games, s.events);
-      scanner.UseUnclearMoves(s.unclear_moves);
-      scanner.UseMetadataQueue(s.fetches);
-      scanner.UseInstallLane(s.installs);
-      const library::ScanSummary summary = scanner.ScanAll();
-      for (const model::Game& game : summary.added_games) s.fetches.Enqueue(s.config, s.events, game);
+      const library::ScanSummary summary = s.Scan();
       return json{{"added", summary.added},
                   {"missing", summary.missing},
                   {"restored", summary.restored},

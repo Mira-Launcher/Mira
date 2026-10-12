@@ -114,6 +114,8 @@ private:
   // Lists the library and scans it at once; the scan's changes arrive as
   // events. `force_scan` is Refresh's: startup honours scan_on_startup.
   void Reload(bool force_scan);
+  // Ctrl+R and the refresh button: the scan, and every store's owned list asked again.
+  void RefreshLibrary();
   void RefreshGames();
   void ConnectionChanged(bool connected);
 

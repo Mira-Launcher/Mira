@@ -259,6 +259,38 @@ void Services::QueueMetadata(const std::vector<model::Game>& games) {
   for (const model::Game& game : games) fetches.Enqueue(config, events, game);
 }
 
+library::ScanSummary Services::Scan() {
+  std::unique_lock lock(scan_mutex_);
+  if (scan_.valid()) {
+    const std::shared_future<library::ScanSummary> running = scan_;
+    lock.unlock();
+    return running.get();
+  }
+  std::promise<library::ScanSummary> done;
+  scan_ = done.get_future().share();
+  lock.unlock();
+  try {
+    library::Scanner scanner(config, games, events);
+    scanner.UseUnclearMoves(unclear_moves);
+    scanner.UseMetadataQueue(fetches);
+    scanner.UseInstallLane(installs);
+    library::ScanSummary summary = scanner.ScanAll();
+    QueueMetadata(summary.added_games);
+    lock.lock();
+    scan_ = {};
+    lock.unlock();
+    done.set_value(summary);
+    return summary;
+  } catch (...) {
+    // Waiters get the same failure rather than waiting forever.
+    lock.lock();
+    scan_ = {};
+    lock.unlock();
+    done.set_exception(std::current_exception());
+    throw;
+  }
+}
+
 void Services::ReconcileSessions() {
   supervisor.Reconcile();
   // A client that stayed open across a restart may still show games from the old daemon as
