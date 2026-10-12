@@ -517,7 +517,7 @@ Schema::Schema() {
   s.Add({.key = "epic.install_root",
          .label = "Epic Games install folder",
          .type = Type::String,
-         .default_value = "~/.local/share/mira/epic",
+         .default_value = "~/Mira/Games/Epic",
          .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
                 "never scans it for games, so it can be inside a library folder.",
          .path = PathKind::Folder});
@@ -525,7 +525,7 @@ Schema::Schema() {
   s.Add({.key = "gog.install_root",
          .label = "GOG install folder",
          .type = Type::String,
-         .default_value = "~/.local/share/mira/gog",
+         .default_value = "~/Mira/Games/GOG",
          .doc = "The folder GOG games are installed into, with one subfolder per game. Mira never "
                 "scans it for games, so it can be inside a library folder.",
          .path = PathKind::Folder});
@@ -557,7 +557,7 @@ Schema::Schema() {
   s.Add({.key = "itch.install_root",
          .label = "itch.io install folder",
          .type = Type::String,
-         .default_value = "~/.local/share/mira/itch",
+         .default_value = "~/Mira/Games/Itch",
          .doc = "The folder itch.io games are installed into. Mira never scans it for games, so "
                 "it can be inside a library folder.",
          .path = PathKind::Folder});
@@ -565,7 +565,7 @@ Schema::Schema() {
   s.Add({.key = "amazon.install_root",
          .label = "Amazon Games install folder",
          .type = Type::String,
-         .default_value = "~/.local/share/mira/amazon",
+         .default_value = "~/Mira/Games/Amazon",
          .doc = "The folder Amazon games are installed into, with one subfolder per game. Mira "
                 "never scans it for games, so it can be inside a library folder.",
          .path = PathKind::Folder});
