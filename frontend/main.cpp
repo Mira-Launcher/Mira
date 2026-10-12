@@ -20,6 +20,7 @@
 #include "app/SystemNotifier.h"
 #include "app/Tray.h"
 #include "setup/SetupWindow.h"
+#include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
@@ -95,6 +96,7 @@ int main(int argc, char** argv) {
   // Before any window exists, so nothing is ever painted unthemed. "auto"
   // follows the desktop's light/dark preference until frontend.toml is read
   // below, once mirad answers.
+  mira_gui::theme::portal::Watch();
   mira_gui::theme::Apply("auto");
   mira_gui::tooltip::Install();
 

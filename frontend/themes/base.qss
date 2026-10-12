@@ -1188,6 +1188,10 @@ QLabel#setup_signed_in {
   font-weight: 600;
 }
 
+QLabel#setup_done {
+  color: @success;
+}
+
 QFrame#setup_star {
   background: rgba(227, 179, 65, 0.12);
   border: 1px solid rgba(227, 179, 65, 0.5);

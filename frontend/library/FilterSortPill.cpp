@@ -50,7 +50,7 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   layout->setSpacing(8);
   auto* icon = new QLabel(row);
   icon->setObjectName("icon");
-  icon->setPixmap(icons::For(glyph, theme::Current().text_muted).pixmap(14, 14));
+  icons::Follow(icon, glyph, 14);
   layout->addWidget(icon);
   auto* text = new QLabel(label, row);
   layout->addWidget(text, /*stretch=*/1);

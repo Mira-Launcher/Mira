@@ -78,7 +78,7 @@ QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString&
   badge->setObjectName("setup_badge");
   badge->setFixedSize(44, 44);
   badge->setAlignment(Qt::AlignCenter);
-  badge->setPixmap(icons::For(glyph, theme::Current().accent).pixmap(QSize(24, 24), page->devicePixelRatioF()));
+  icons::Follow(badge, glyph, 24, &theme::Tokens::accent);
   head->addWidget(badge, 0, Qt::AlignTop);
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
@@ -104,8 +104,7 @@ QWidget* SetupLaterLine(QWidget* parent, const QString& text) {
   line->setContentsMargins(0, 4, 0, 0);
   line->setSpacing(8);
   auto* clock = new QLabel(row);
-  clock->setPixmap(icons::For(icons::Glyph::Clock, theme::Current().text_muted)
-                       .pixmap(QSize(15, 15), row->devicePixelRatioF()));
+  icons::Follow(clock, icons::Glyph::Clock, 15);
   line->addWidget(clock, 0, Qt::AlignTop);
   auto* label = MakeLabel(row, text, "muted");
   label->setTextFormat(Qt::RichText);

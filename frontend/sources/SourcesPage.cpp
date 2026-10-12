@@ -63,7 +63,8 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   search_->setPlaceholderText("Search sources");
   search_->setClearButtonEnabled(true);
   search_->setFixedWidth(220);
-  search_->addAction(icons::For(icons::Glyph::Search, theme::Current().text_muted), QLineEdit::LeadingPosition);
+  icons::Follow(search_->addAction(QIcon(), QLineEdit::LeadingPosition), icons::Glyph::Search,
+                &theme::Tokens::text_muted);
   header->addWidget(search_, 0, Qt::AlignTop);
 
   auto* segmented = new QWidget(this);

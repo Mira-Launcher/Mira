@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QFont>
 #include <QObject>
+#include <QPalette>
 #include <QString>
 #include <QStringList>
 
@@ -65,6 +66,10 @@ struct Tokens {
   // still comes from the game's own name (see CoverArt).
   int placeholder_saturation = 110;
   int placeholder_value = 135;
+
+  // Take the window, panel, text and accent colors from the desktop's palette, where it has one.
+  // The window, panel and text colors only when the desktop is as light or dark as the theme.
+  bool system_colors = false;
 };
 
 // Stand-ins for covers in a preview with no games to show: `tokens`' own
@@ -72,6 +77,15 @@ struct Tokens {
 inline std::array<QColor, 4> SampleArt(const Tokens& tokens) {
   return {tokens.accent, tokens.warning, tokens.success, tokens.error};
 }
+
+// `tokens` with the desktop's colors, as a theme with system_colors gets them: those of its
+// palette `system` where Qt reads one (KDE), and its portal `accent` where the desktop sets one.
+Tokens WithSystemColors(Tokens tokens, const std::optional<QPalette>& system,
+                        std::optional<QColor> accent = std::nullopt);
+
+// The desktop's accent and light or dark preference from its portal (theme/DesktopPortal), for
+// desktops whose palette Qt doesn't read. Restyles if they change what's drawn.
+void SetDesktopAppearance(std::optional<QColor> accent, std::optional<Qt::ColorScheme> scheme);
 
 // `font` `points` larger, in whatever unit it's set in.
 QFont Larger(QFont font, qreal points = 1);

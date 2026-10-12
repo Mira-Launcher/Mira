@@ -67,9 +67,9 @@ QLabel* Bold(QWidget* parent, const QString& text) {
   return label;
 }
 
-QLabel* GlyphLabel(QWidget* parent, icons::Glyph glyph, int size, const QColor& color) {
+QLabel* GlyphLabel(QWidget* parent, icons::Glyph glyph, int size, icons::Role role) {
   auto* label = new QLabel(parent);
-  label->setPixmap(icons::For(glyph, color).pixmap(QSize(size, size), parent->devicePixelRatioF()));
+  icons::Follow(label, glyph, size, role);
   label->setFixedSize(size, size);
   return label;
 }
@@ -137,7 +137,7 @@ QFrame* Note(QWidget* parent, icons::Glyph glyph, QLabel* text) {
   auto* line = new QHBoxLayout(note);
   line->setContentsMargins(12, 10, 12, 10);
   line->setSpacing(10);
-  line->addWidget(GlyphLabel(note, glyph, 18, theme::Current().info), 0, Qt::AlignTop);
+  line->addWidget(GlyphLabel(note, glyph, 18, &theme::Tokens::info), 0, Qt::AlignTop);
   text->setParent(note);
   text->setWordWrap(true);
   text->setTextFormat(Qt::RichText);
@@ -276,7 +276,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
     auto* line = new QHBoxLayout(card);
     line->setContentsMargins(12, 10, 12, 10);
     line->setSpacing(10);
-    line->addWidget(GlyphLabel(card, kFeatures[i].glyph, 20, theme::Current().accent), 0,
+    line->addWidget(GlyphLabel(card, kFeatures[i].glyph, 20, &theme::Tokens::accent), 0,
                     Qt::AlignTop);
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
@@ -293,7 +293,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   card->setSpacing(8);
   auto* head = new QHBoxLayout();
   head->setSpacing(8);
-  head->addWidget(GlyphLabel(folder, icons::Glyph::Folder, 18, theme::Current().accent));
+  head->addWidget(GlyphLabel(folder, icons::Glyph::Folder, 18, &theme::Tokens::accent));
   head->addWidget(Bold(folder, "Where Mira keeps your games and apps"), /*stretch=*/1);
   card->addLayout(head);
   auto* path_row = new QHBoxLayout();
@@ -1196,8 +1196,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   check->setObjectName("setup_check");
   check->setFixedSize(64, 64);
   check->setAlignment(Qt::AlignCenter);
-  check->setPixmap(icons::For(icons::Glyph::CheckCircle, theme::Current().success)
-                       .pixmap(QSize(34, 34), devicePixelRatioF()));
+  icons::Follow(check, icons::Glyph::CheckCircle, 34, &theme::Tokens::success);
   layout->addWidget(check, 0, Qt::AlignHCenter);
   title_ = new QLabel(this);
   title_->setObjectName("setup_done_title");

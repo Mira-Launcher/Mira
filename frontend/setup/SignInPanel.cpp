@@ -98,7 +98,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
     head->addWidget(title);
     head->addStretch(1);
     done_label_ = new QLabel(this);
-    done_label_->setStyleSheet(QString("color: %1;").arg(theme::Current().success.name()));
+    done_label_->setObjectName("setup_done");
     done_label_->setVisible(false);
     head->addWidget(done_label_);
     layout->addLayout(head);

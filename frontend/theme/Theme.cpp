@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -15,11 +16,13 @@
 #include <QStyle>
 #include <QStyleFactory>
 #include <QStyleHints>
+#include <QTimer>
 
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include <toml.hpp>
 
@@ -31,7 +34,10 @@ Tokens g_theme_tokens;  // parsed theme, before g_overrides is layered on
 Overrides g_overrides;
 QString g_name = "auto";
 QString g_resolved = "mira-dark";
-bool g_following_desktop = false;
+bool g_applied = false;
+// From the desktop's portal (SetDesktopAppearance).
+std::optional<QColor> g_desktop_accent;
+std::optional<Qt::ColorScheme> g_desktop_scheme;
 bool g_hidden_mode = false;
 
 // `from` moved `amount` (0 to 1) of the way to `to`.
@@ -129,18 +135,89 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   number("placeholder_value", tokens.placeholder_value);
   number("tile_spacing", tokens.tile_spacing);
   number("grid_margin", tokens.grid_margin);
+  if (const auto value = table["system_colors"].value<bool>()) tokens.system_colors = *value;
 
   return tokens;
 }
 
+// Fusion rather than the desktop's own style: ours is the only palette and stylesheet in play, and
+// Breeze/Adwaita would otherwise keep drawing the parts our QSS doesn't name, which is what
+// "half-themed" looks like.
+void UseFusion() {
+  if (QApplication::style() == nullptr || QApplication::style()->name() != "fusion") {
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
+  }
+}
+
+// The desktop's palette (KDE's color scheme, for one), or none when the platform gives
+// Qt only the style's stock palette. Read once and again when the desktop's theme changes.
+std::optional<QPalette> g_system_palette;
+bool g_system_palette_read = false;
+
+void ReadSystemPalette() {
+  UseFusion();
+  // Qt has no public getter for it once an app sets its own, but resolves an app palette with no
+  // roles set against it.
+  QPalette blank;
+  blank.setResolveMask(0);
+  QApplication::setPalette(blank);
+  const QPalette system = QGuiApplication::palette();
+  const QPalette stock = QApplication::style()->standardPalette();
+  g_system_palette_read = true;
+  g_system_palette = std::nullopt;
+  for (const QPalette::ColorRole role : {QPalette::Window, QPalette::Base, QPalette::Highlight}) {
+    if (system.color(role) != stock.color(role)) g_system_palette = system;
+  }
+}
+
+const std::optional<QPalette>& SystemPalette() {
+  if (!g_system_palette_read) ReadSystemPalette();
+  return g_system_palette;
+}
+
+}  // namespace
+
+Tokens WithSystemColors(Tokens tokens, const std::optional<QPalette>& system,
+                        std::optional<QColor> accent) {
+  if (system) {
+    tokens.accent = system->color(QPalette::Highlight);
+    tokens.on_accent = system->color(QPalette::HighlightedText);
+    const QColor window = system->color(QPalette::Window);
+    if ((window.lightness() < 128) == (tokens.window.lightness() < 128)) {
+      tokens.window = window;
+      tokens.text = system->color(QPalette::WindowText);
+      // Panels sit a step lighter than the window, as in Mira's own themes; a dark desktop's view
+      // color is darker than its window, which would sink them.
+      const QColor base = system->color(QPalette::Base);
+      tokens.surface =
+          base.lightness() > window.lightness() ? base : Mix(window, tokens.text, 0.06);
+      tokens.surface_alt = Mix(tokens.surface, tokens.text, 0.06);
+      tokens.border = Mix(window, tokens.text, 0.16);
+      tokens.text_muted = Mix(tokens.text, window, 0.4);
+      tokens.tile_placeholder = tokens.surface_alt;
+    }
+  }
+  if (accent && accent->isValid() && tokens.accent != *accent) {
+    tokens.accent = *accent;
+    // Text on it is dark only where the accent is light enough that white wouldn't read.
+    const double luminance =
+        0.299 * accent->redF() + 0.587 * accent->greenF() + 0.114 * accent->blueF();
+    tokens.on_accent = luminance > 0.6 ? QColor(20, 20, 20) : QColor(255, 255, 255);
+  }
+  return tokens;
+}
+
+namespace {
+
 // A theme by name: the bundled one of that name if there is one, then the user's file of that
-// name over it, key by key.
+// name over it, key by key, then the desktop's colors if it asks for them.
 Tokens ReadTokens(const QString& name) {
   Tokens tokens;
   if (const std::string bundled = ReadText(BundledPath(name)); !bundled.empty())
     tokens = ParseTokens(bundled);
   if (const std::string user = ReadText(UserPath(name)); !user.empty())
     tokens = ParseTokens(user, tokens);
+  if (tokens.system_colors) tokens = WithSystemColors(tokens, SystemPalette(), g_desktop_accent);
   return tokens;
 }
 
@@ -277,8 +354,10 @@ QPalette PaletteFor(const Tokens& tokens) {
 }
 
 QString DesktopTheme() {
-  return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light ? "mira-light"
-                                                                               : "mira-dark";
+  Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+  // Qt's theme for some desktops doesn't ask the portal.
+  if (scheme == Qt::ColorScheme::Unknown && g_desktop_scheme) scheme = *g_desktop_scheme;
+  return scheme == Qt::ColorScheme::Light ? "mira-light" : "mira-dark";
 }
 
 // Styles the app with the theme read last, the user's overrides and hidden mode.
@@ -294,12 +373,7 @@ void Restyle() {
   if (g_overrides.radius_control) g_tokens.radius_control = *g_overrides.radius_control;
   if (g_hidden_mode) g_tokens.accent = g_tokens.accent_hidden;
 
-  // Fusion rather than the desktop's own style: ours is the only palette and
-  // stylesheet in play, and Breeze/Adwaita would otherwise keep drawing the
-  // parts our QSS doesn't name, which is what "half-themed" looks like.
-  if (QApplication::style() == nullptr || QApplication::style()->name() != "fusion") {
-    QApplication::setStyle(QStyleFactory::create("Fusion"));
-  }
+  UseFusion();
   emit Notifier::Instance()->AboutToRestyle();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
@@ -308,9 +382,38 @@ void Restyle() {
 
 void ApplyResolved(const QString& resolved) {
   g_resolved = resolved;
+  g_applied = true;
   g_theme_tokens = ReadTokens(resolved);
   Restyle();
 }
+
+// Follows the desktop: its colors once its theme changes, and its light or dark preference for
+// "auto". Qt sends ThemeChange to every window, so one restyle covers them all.
+class DesktopWatch : public QObject {
+public:
+  DesktopWatch() {
+    qApp->installEventFilter(this);
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+            &DesktopWatch::Schedule);
+  }
+
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() == QEvent::ThemeChange) Schedule();
+    return QObject::eventFilter(watched, event);
+  }
+
+private:
+  void Schedule() {
+    if (std::exchange(pending_, true)) return;
+    QTimer::singleShot(0, this, [this] {
+      pending_ = false;
+      ReadSystemPalette();
+      ApplyResolved(g_name == "auto" ? DesktopTheme() : g_resolved);
+    });
+  }
+
+  bool pending_ = false;
+};
 
 }  // namespace
 
@@ -396,19 +499,16 @@ QStringList Available() {
 
 void Apply(const QString& name) {
   g_name = name.isEmpty() ? "auto" : name;
+  static DesktopWatch* watch = new DesktopWatch;
+  Q_UNUSED(watch);
+  ApplyResolved(g_name == "auto" ? DesktopTheme() : g_name);
+}
 
-  if (g_name == "auto") {
-    ApplyResolved(DesktopTheme());
-    if (!g_following_desktop) {
-      g_following_desktop = true;
-      QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
-                       Notifier::Instance(), [] {
-                         if (g_name == "auto") ApplyResolved(DesktopTheme());
-                       });
-    }
-    return;
-  }
-  ApplyResolved(g_name);
+void SetDesktopAppearance(std::optional<QColor> accent, std::optional<Qt::ColorScheme> scheme) {
+  if (accent == g_desktop_accent && scheme == g_desktop_scheme) return;
+  g_desktop_accent = accent;
+  g_desktop_scheme = scheme;
+  if (g_applied) ApplyResolved(g_name == "auto" ? DesktopTheme() : g_resolved);
 }
 
 void SetHiddenMode(bool on) {

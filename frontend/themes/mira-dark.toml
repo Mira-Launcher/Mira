@@ -6,6 +6,12 @@
 # built-in value. Colors are "#rrggbb" or "#rrggbbaa" (alpha last, as in CSS),
 # so a translucent panel is just a longer color.
 
+# Take the desktop's colors: its accent on any desktop that sets one, and its
+# window, panel and text colors where it shares them (KDE's color scheme, for
+# one). From a light desktop only its accent is taken, and where the desktop
+# has no colors the ones below apply. false uses only the colors below.
+system_colors = true
+
 window = "#16181d"
 surface = "#1e2127"
 surface_alt = "#272b33"
