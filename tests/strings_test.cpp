@@ -1,3 +1,5 @@
+#include <cstdio>
+
 #include <doctest.h>
 
 #include "core/Strings.h"
@@ -48,6 +50,21 @@ TEST_CASE("SplitArgs keeps quoted arguments together and JoinArgs reads back as 
 
   const Args tricky = {"plain", "has space", R"(a"quote)", "", R"(back\slash)"};
   CHECK(mira::strings::SplitArgs(mira::strings::JoinArgs(tricky)) == tricky);
+}
+
+TEST_CASE("ShellQuote and DesktopExecArg keep a path one literal argument") {
+  // sh gets the path back unexpanded.
+  const std::string path = R"(/home/me/Mira x$(touch pwned)`id`'s "1".AppImage)";
+  FILE* out = popen(("printf %s " + ShellQuote(path)).c_str(), "r");
+  REQUIRE(out != nullptr);
+  char buffer[256] = {};
+  const std::size_t read = std::fread(buffer, 1, sizeof buffer - 1, out);
+  pclose(out);
+  CHECK(std::string(buffer, read) == path);
+
+  CHECK(DesktopExecArg("/opt/Mira.AppImage") == R"("/opt/Mira.AppImage")");
+  CHECK(DesktopExecArg(R"(/a b/$x"y`z\w 100%)") == R"("/a b/\\$x\\"y\\`z\\\\w 100%%")");
+  CHECK(DesktopExecArg("a\nb") == R"("a\nb")");
 }
 
 TEST_CASE("ParseGithubUrl reads a repository or one release, and nothing else") {

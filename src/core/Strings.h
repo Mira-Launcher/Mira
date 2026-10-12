@@ -17,6 +17,10 @@ std::vector<std::string> Split(std::string_view input, char delimiter);
 std::vector<std::string> SplitArgs(std::string_view text);
 // The inverse: quotes what needs it, so SplitArgs gives `args` back.
 std::string JoinArgs(const std::vector<std::string>& args);
+// `arg` in single quotes for sh, so nothing in it ($, `, \) is expanded.
+std::string ShellQuote(std::string_view arg);
+// `arg` as one quoted argument of a desktop entry's Exec= line, escaped as the spec asks.
+std::string DesktopExecArg(std::string_view arg);
 
 // Shell-style glob with '*' and '?', matched against the whole string.
 bool GlobMatch(std::string_view pattern, std::string_view text);

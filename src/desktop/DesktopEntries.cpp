@@ -16,6 +16,7 @@
 #include "core/Files.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "launchers/Office.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
@@ -123,7 +124,7 @@ std::string DesktopEntries::Render(const model::Game& game) const {
   const std::string_view mime = MimeTypes(game);
   // `mira launch` opens Mira in the tray first when it isn't running. An app that opens files is
   // handed them.
-  const std::string exec = std::format("{} launch {}{}", Binary("mira"), game.id, mime.empty() ? "" : " %F");
+  const std::string exec = std::format("{} launch {}{}", strings::DesktopExecArg(Binary("mira")), game.id, mime.empty() ? "" : " %F");
   const std::optional<fs::path> artwork = CachedArtwork(cache_, game.id);
   const bool app = std::ranges::contains(game.tags, "app");
   const std::string icon = artwork ? artwork->string() : app ? "application-x-executable" : "applications-games";
