@@ -127,6 +127,7 @@ Box ArtBox(const config::Config& config, std::string_view slot, bool title = fal
 // Fits the finished `part` into `box` and moves it to `dest`, whose extension follows the fitted
 // image's, then drops the slot's files of another type (.png to .jpg).
 bool CommitArt(const fs::path& part, fs::path& dest, Box box) {
+  if (IsTooLarge(part)) return false;
   if (const auto fitted = FitImage(part, box)) {
     if (!WriteFileAtomic(part, fitted->bytes, "artwork_write_failed")) return false;
     dest.replace_extension(fitted->ext);

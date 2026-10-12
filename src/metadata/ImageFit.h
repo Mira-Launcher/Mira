@@ -29,4 +29,7 @@ std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box);
 // Whether stb can read `file` as an image.
 bool IsImage(const std::filesystem::path& file);
 
+// Whether `file`'s header claims more pixels than any art needs, so it's never decoded or kept.
+bool IsTooLarge(const std::filesystem::path& file);
+
 }  // namespace mira::metadata

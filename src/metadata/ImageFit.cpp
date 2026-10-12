@@ -23,6 +23,9 @@ bool IsJpeg(const std::filesystem::path& file) {
   return in && std::fread(magic, 1, 3, in.get()) == 3 && magic[0] == 0xFF && magic[1] == 0xD8 && magic[2] == 0xFF;
 }
 
+// Art is far smaller; a header claiming more is a decompression bomb (50M pixels decode to 200 MB).
+constexpr long long kMaxPixels = 50'000'000;
+
 }  // namespace
 
 Box SlotBox(std::string_view slot, bool title, bool compact) {
@@ -39,9 +42,15 @@ bool IsImage(const std::filesystem::path& file) {
   return stbi_info(file.c_str(), &width, &height, &channels) != 0;
 }
 
+bool IsTooLarge(const std::filesystem::path& file) {
+  int width = 0, height = 0, channels = 0;
+  return stbi_info(file.c_str(), &width, &height, &channels) && static_cast<long long>(width) * height > kMaxPixels;
+}
+
 std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box) {
   int width = 0, height = 0, channels = 0;
   if (!stbi_info(file.c_str(), &width, &height, &channels)) return std::nullopt;
+  if (static_cast<long long>(width) * height > kMaxPixels) return std::nullopt;
   const bool fits = width <= box.width && height <= box.height;
   // A JPEG that fits is kept: encoding it again only loses detail.
   if (fits && IsJpeg(file)) return std::nullopt;
