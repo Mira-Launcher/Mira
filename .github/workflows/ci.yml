@@ -4,8 +4,10 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -20,6 +22,8 @@ jobs:
       # Without these ccache skips every file built with the precompiled headers.
       CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
       CCACHE_MAXSIZE: 2G
+      # By content, not mtime: a runner image update changes gcc's mtime and would miss everything.
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v4
 

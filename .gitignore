@@ -65,3 +65,4 @@ AGENTS.md
 .pr-draft.md
 .vscode/
 *.AppImage
+__pycache__/
