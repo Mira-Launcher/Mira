@@ -137,7 +137,7 @@ RunInPrefixResult RunInPrefixSync(const std::string& id, const std::string& exe_
       "/v1/games/" + PercentEncode(id) + "/run", json{{"exe_path", exe_path}, {"args", args}},
       // Provisions a prefix on demand if there isn't one yet, which is
       // genuinely slow (it's initialising Wine/Proton, see
-      // docs/architecture.md).
+      // docs/backend.md).
       {.read_timeout = std::chrono::seconds(120)});
   return {reply.ok, reply.error};
 }

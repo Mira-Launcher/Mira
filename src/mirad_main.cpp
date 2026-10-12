@@ -4,7 +4,7 @@
 // docs/api.md over a Unix domain socket, and watches every enabled library
 // root so a dropped-in game folder is picked up automatically (see
 // library/Watcher.h). Started and stopped by mira-gui (or briefly by `mira`
-// without a desktop); it never daemonizes itself. See docs/architecture.md.
+// without a desktop); it never daemonizes itself. See docs/backend.md.
 
 #include <unistd.h>
 
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
 
   // Before anything else: close out any session a previous mirad (crashed,
   // killed, or just restarted) left behind; see
-  // proc::ProcessSupervisor::Reconcile and docs/architecture.md. Must run
+  // proc::ProcessSupervisor::Reconcile and docs/backend.md. Must run
   // before Serve() so a re-adopted still-running game is already tracked by
   // the time the very first client request arrives.
   services.ReconcileSessions();
