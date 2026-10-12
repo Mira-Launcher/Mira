@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <list>
 #include <mutex>
 #include <stop_token>
 #include <string>
@@ -11,7 +12,8 @@
 
 namespace mira {
 
-// A named pool of at most `workers` threads running tasks in order. Threads start on first use and then park.
+// A named pool of at most `workers` threads running tasks in order. Threads start on first use and exit
+// after kIdleExit without work.
 // Stop() drops queued tasks, signals running ones through ThisTaskStop() and joins them.
 class Lane {
 public:
@@ -26,7 +28,11 @@ public:
   void WaitIdle();
 
 private:
-  void Work(std::stop_token stop);
+  struct Worker {
+    std::jthread thread;
+    bool done = false;
+  };
+  void Work(std::stop_token stop, Worker* self);
 
   std::string name_;
   int max_workers_;
@@ -35,8 +41,10 @@ private:
   std::condition_variable idle_;
   std::deque<std::function<void()>> queue_;
   int busy_ = 0;
+  int live_ = 0;  // workers not done
   bool stopped_ = false;
-  std::vector<std::jthread> threads_;
+  std::list<Worker> workers_;
+
 };
 
 // The stop token of the Lane task running on this thread, or one that never stops elsewhere.

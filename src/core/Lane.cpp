@@ -1,11 +1,15 @@
 #include "core/Lane.h"
 
+#include <malloc.h>
+
+#include <chrono>
 #include <exception>
 
 #include "core/Log.h"
 
 namespace mira {
 namespace {
+constexpr auto kIdleExit = std::chrono::seconds(30);
 thread_local std::stop_token current_stop;
 thread_local std::stop_token current_cancel;
 }  // namespace
@@ -36,21 +40,37 @@ Lane::Lane(std::string name, int workers) : name_(std::move(name)), max_workers_
 Lane::~Lane() { Stop(); }
 
 void Lane::Post(std::function<void()> task) {
+  std::list<Worker> finished;
   std::lock_guard lock(mutex_);
   if (stopped_) return;
+  for (auto it = workers_.begin(); it != workers_.end();) {
+    auto next = std::next(it);
+    if (it->done) finished.splice(finished.end(), workers_, it);
+    it = next;
+  }
   queue_.push_back(std::move(task));
-  const int idle = static_cast<int>(threads_.size()) - busy_;
-  if (idle < static_cast<int>(queue_.size()) && static_cast<int>(threads_.size()) < max_workers_) {
-    threads_.emplace_back([this](std::stop_token stop) { Work(stop); });
+  if (live_ - busy_ < static_cast<int>(queue_.size()) && live_ < max_workers_) {
+    Worker& worker = workers_.emplace_back();
+    ++live_;
+    worker.thread = std::jthread([this, &worker](std::stop_token stop) { Work(stop, &worker); });
   }
   wake_.notify_one();
+  // `finished` joins here, after their threads already returned under the lock.
 }
 
-void Lane::Work(std::stop_token stop) {
+void Lane::Work(std::stop_token stop, Worker* self) {
   current_stop = stop;
   std::unique_lock lock(mutex_);
   while (true) {
-    if (!wake_.wait(lock, stop, [this] { return !queue_.empty(); })) return;
+    if (!wake_.wait_for(lock, stop, kIdleExit, [this] { return !queue_.empty(); })) {
+      if (stop.stop_requested()) return;
+      self->done = true;
+      --live_;
+      lock.unlock();
+      // Quiet for a while: hand what the work freed back to the system.
+      malloc_trim(0);
+      return;
+    }
     std::function<void()> task = std::move(queue_.front());
     queue_.pop_front();
     ++busy_;
@@ -69,15 +89,15 @@ void Lane::Work(std::stop_token stop) {
 }
 
 void Lane::Stop() {
-  std::vector<std::jthread> threads;
+  std::list<Worker> workers;
   {
     std::lock_guard lock(mutex_);
     stopped_ = true;
     queue_.clear();
-    threads = std::move(threads_);
+    workers = std::move(workers_);
   }
-  for (std::jthread& thread : threads) thread.request_stop();
-  threads.clear();  // joins
+  for (Worker& worker : workers) worker.thread.request_stop();
+  workers.clear();  // joins
 }
 
 void Lane::WaitIdle() {

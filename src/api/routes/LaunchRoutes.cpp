@@ -569,7 +569,7 @@ void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
 
   http.Get(R"(/v1/games/([^/]+)/install/progress)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     const auto progress = library::Progress(id);
     if (!progress) return SendJson(res, {{"state", "idle"}});
     SendJson(res, {{"state", progress->state},

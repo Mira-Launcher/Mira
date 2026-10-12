@@ -8,7 +8,7 @@ namespace mira::library {
 
 void MarkTracked(const store::GameStore& games, CatalogEntry& entry) {
   const std::string id = entry.source + "-" + entry.ref;
-  if (const auto tracked = games.Find(id)) {
+  if (games.Contains(id)) {
     entry.installed = true;
     entry.game_id = id;
   }

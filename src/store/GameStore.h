@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -87,6 +88,9 @@ public:
 
   std::vector<model::Game> All() const;
   std::optional<model::Game> Find(const std::string& id) const;
+  bool Contains(const std::string& id) const;
+  // Games per SourceIdOf.
+  std::map<std::string, int> CountBySource() const;
   std::optional<model::Game> FindByInstallPath(const std::string& install_path) const;
   // Whether a game's install_path is inside `dir` (a game whose program sits in a subfolder).
   bool HasInstallUnder(const std::string& dir) const;

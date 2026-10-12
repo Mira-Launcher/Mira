@@ -37,18 +37,20 @@ void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id,
                        Response& res) {
   const auto art = cache.ArtFor(id, type);
   if (!art) return SendError(res, 404, "artwork_not_found", "no artwork cached for this game yet");
-  std::ifstream in(art->file, std::ios::binary);
+  std::ifstream in(art->file, std::ios::binary | std::ios::ate);
   if (!in) return SendError(res, 404, "artwork_not_found", "cached artwork file is missing");
-  std::ostringstream buffer;
-  buffer << in.rdbuf();
-  res.set_content(buffer.str(), art->content_type);
+  // Read straight into the reply: no stream copy per cover.
+  std::string bytes(static_cast<std::size_t>(in.tellg()), '\0');
+  in.seekg(0);
+  in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  res.set_content(std::move(bytes), art->content_type);
 }
 
 void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   // --- metadata ---------------------------------------------------------
 
   http.Get(R"(/v1/games/([^/]+)/metadata)", [&s](const Request& req, Response& res) {
-    if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
     if (!s.games.Metadata().Has(req.matches[1])) {
       return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
     }
@@ -56,7 +58,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   });
 
   http.Get(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
-    if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
     SendCachedArtwork(s.games.Metadata(), req.matches[1], Param(req, "type", "cover"), res);
   });
 
@@ -64,7 +66,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   // arbitrary address.
   http.Post(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const auto body = BodyObject(req, res, R"({"candidate_id": <id>})");
@@ -90,7 +92,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   // The body is the image itself, PNG or JPEG.
   http.Put(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     if (req.body.size() > kMaxUpload) return SendError(res, 413, "image_too_large", "the image is over 32 MB");
     const std::string slot = req.get_param_value("type");
@@ -109,7 +111,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
 
   http.Post(R"(/v1/games/([^/]+)/artwork/candidates)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     int page = 0;
@@ -134,7 +136,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
   // Cached previews are ready at once; the rest are fetched in the background.
   http.Post(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const auto body = BodyObject(req, res, R"({"candidate_ids": [<id>, ...]})");
@@ -162,7 +164,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
 
   http.Get(R"(/v1/games/([^/]+)/artwork/thumb)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     const std::string slot = Param(req, "type", "cover");
     std::int64_t candidate_id = 0;
     const std::string raw = Param(req, "candidate_id");
@@ -184,7 +186,7 @@ void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
 
   // As a game's settings close: the previews fetched while they were open.
   http.Delete(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
-    if (!s.games.Find(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
     metadata::ClearCandidateThumbs(s.config, req.matches[1]);
     res.status = 204;
   });

@@ -32,6 +32,9 @@ namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
 
+// butlerd holds a few dozen MB; it isn't kept running past this without a call.
+constexpr auto kIdleStop = std::chrono::minutes(5);
+
 struct Pending {
   std::optional<Result<json>> reply;
   NotificationHandler on_notification;
@@ -224,11 +227,21 @@ void AnswerServerRequest(int fd, const json& request, std::mutex* write_mutex = 
 // call, notifications to every call that wants them, and butlerd's own
 // requests get answered. When the connection drops, every waiting call fails.
 void ReadLoop(Connection& connection, int fd, LineReader reader) {
-  const auto forever = std::chrono::steady_clock::now() + std::chrono::hours(24 * 365);
   // A throw (odd JSON, a handler) ends up as a disconnect, so waiting callers still fail instead of the daemon terminating.
   try {
   while (true) {
-    const Result<std::string> line = reader.Read(forever);
+    const Result<std::string> line = reader.Read(std::chrono::steady_clock::now() + kIdleStop);
+    if (!line && line.error().code == "timeout") {
+      // Quiet with nothing waiting: butlerd goes until the next call starts it again.
+      const std::lock_guard<std::mutex> lock(connection.mutex);
+      if (!connection.pending.empty()) continue;
+      if (connection.socket_fd == fd) {
+        connection.connected = false;
+        connection.socket_fd = -1;
+        StopDaemon(connection.daemon_pid);
+      }
+      break;
+    }
     if (!line) break;
     const json parsed = json::parse(*line, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) continue;

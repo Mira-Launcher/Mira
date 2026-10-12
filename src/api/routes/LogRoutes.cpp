@@ -74,7 +74,7 @@ void RegisterLogRoutes(httplib::Server& http, Services& s) {
     }
     if (channel.starts_with("game:")) {
       const std::string id = channel.substr(5);
-      if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+      if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
       return SendJson(res, GameLog(s, id, after, tail));
     }
     const loghub::Page page = loghub::Read(channel, after ? &*after : nullptr, tail);

@@ -423,6 +423,20 @@ std::optional<model::Game> GameStore::Find(const std::string& id) const {
   return *it;
 }
 
+bool GameStore::Contains(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  return std::ranges::contains(games_, id, &model::Game::id);
+}
+
+std::map<std::string, int> GameStore::CountBySource() const {
+  std::lock_guard lock(mutex_);
+  std::map<std::string, int> counts;
+  for (const model::Game& game : games_) {
+    if (std::string id = SourceIdOf(game.source); !id.empty()) ++counts[std::move(id)];
+  }
+  return counts;
+}
+
 std::optional<model::Game> GameStore::FindByInstallPath(const std::string& install_path) const {
   std::lock_guard lock(mutex_);
   const auto it = std::ranges::find(games_, install_path, &model::Game::install_path);
