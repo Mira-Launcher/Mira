@@ -113,6 +113,16 @@ json CurlJson(std::vector<std::string> argv) {
   return json::parse(result->output, nullptr, false);
 }
 
+// CurlJson for SteamGridDB: its key goes through a private curl config, not curl's command line, which other
+// users can read.
+json GriddbJson(const std::string& auth_header, const std::string& url) {
+  const Result<runner::ExecResult> result = runner::RunCurlWithSecrets(
+      {"-sSL", "--max-time", std::string(kMaxTime), "--retry", "2", "--retry-max-time", "30", url},
+      runner::CurlConfigLine("header", auth_header));
+  if (!result || result->exit_code != 0) return json();
+  return json::parse(result->output, nullptr, false);
+}
+
 std::string ContentTypeFor(const fs::path& file) {
   const std::string ext = strings::ToLower(file.extension().string());
   if (ext == ".png") return "image/png";
@@ -231,9 +241,8 @@ json FetchGriddbPage(const config::Config& config, const std::string& auth_heade
   const std::string_view nsfw = config.GetBool("steamgriddb.nsfw") ? "any" : "false";
   // "Grids" include Steam's wide 920x430 capsules; a cover is the tall kind.
   const std::string_view dimensions = endpoint == "grids" ? "&dimensions=600x900,342x482,660x930" : "";
-  return CurlJson({"curl", "-sSL", "-H", auth_header,
-                   std::format("https://www.steamgriddb.com/api/v2/{}/game/{}?nsfw={}&page={}{}", endpoint, griddb_id,
-                               nsfw, page, dimensions)});
+  return GriddbJson(auth_header, std::format("https://www.steamgriddb.com/api/v2/{}/game/{}?nsfw={}&page={}{}",
+                                             endpoint, griddb_id, nsfw, page, dimensions));
 }
 
 // A SteamGridDB result as an art_candidates entry; null without a url.
@@ -317,9 +326,8 @@ void FetchGriddbSlot(const config::Config& config, const std::string& auth_heade
 // alternates to offer).
 // SteamGridDB's top match for `name`, or 0.
 std::int64_t FindGriddbId(const std::string& auth_header, const std::string& name) {
-  const json search = CurlJson({"curl", "-sSL", "-H", auth_header,
-                                std::format("https://www.steamgriddb.com/api/v2/search/autocomplete/{}",
-                                           UrlEncode(name))});
+  const json search =
+      GriddbJson(auth_header, std::format("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", UrlEncode(name)));
   if (search.is_discarded() || !Value(search, "success", false) || Value(search, "data", json::array()).empty()) {
     return 0;
   }
@@ -1024,9 +1032,8 @@ std::optional<bool> SteamSaysSoftware(const std::string& name) {
 Result<json> SearchSteamGridDb(const config::Config& config, const std::string& name) {
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (api_key.empty()) return NoGriddbKey("searching SteamGridDB needs an API key");
-  const json search = CurlJson({"curl", "-sSL", "-H", std::format("Authorization: Bearer {}", api_key),
-                                std::format("https://www.steamgriddb.com/api/v2/search/autocomplete/{}",
-                                           UrlEncode(name))});
+  const json search = GriddbJson(std::format("Authorization: Bearer {}", api_key),
+                                 std::format("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", UrlEncode(name)));
   if (search.is_discarded() || !Value(search, "success", false)) {
     return Err("steamgriddb_error", "SteamGridDB search failed");
   }
