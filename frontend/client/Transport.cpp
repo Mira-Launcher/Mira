@@ -65,6 +65,14 @@ std::string Home() {
   return "/tmp";
 }
 
+// paths::RuntimeDir: never /tmp, where another user could make mira/ first and take the socket's place.
+std::string RuntimeDir() {
+  for (const char* name : {"XDG_RUNTIME_DIR", "XDG_CACHE_HOME"}) {
+    if (const char* value = std::getenv(name); value && *value) return value;
+  }
+  return Home() + "/.cache";
+}
+
 // mirad's socket_path setting from settings.toml, expanded as paths::Expand does (keep the two
 // in step), or "" when it isn't set there. Read once: mirad itself only reads it at startup.
 std::string ConfiguredSocket() {
@@ -85,7 +93,12 @@ std::string ConfiguredSocket() {
     } else if (c == '$' && i + 1 < raw->size()) {
       size_t end = i + 1;
       while (end < raw->size() && (std::isalnum(static_cast<unsigned char>((*raw)[end])) || (*raw)[end] == '_')) ++end;
-      if (const char* value = std::getenv(raw->substr(i + 1, end - i - 1).c_str())) out += value;
+      const std::string name = raw->substr(i + 1, end - i - 1);
+      if (const char* value = std::getenv(name.c_str()); value && *value) {
+        out += value;
+      } else if (name == "XDG_RUNTIME_DIR") {
+        out += RuntimeDir();
+      }
       i = end - 1;
     } else {
       out += c;
@@ -104,9 +117,7 @@ std::string SocketPath() {
   static const std::string configured = ConfiguredSocket();
   if (!configured.empty()) return configured;
 
-  const char* runtime_dir = std::getenv("XDG_RUNTIME_DIR");
-  const std::filesystem::path base = runtime_dir && *runtime_dir ? runtime_dir : "/tmp";
-  return (base / "mira" / "mirad.sock").string();
+  return (std::filesystem::path(RuntimeDir()) / "mira" / "mirad.sock").string();
 }
 
 Reply Get(const std::string& path, const Options& options) {
