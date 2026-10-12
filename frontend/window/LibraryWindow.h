@@ -109,6 +109,7 @@ private:
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();
   void changeEvent(QEvent* event) override;
+  void showEvent(QShowEvent* event) override;
 
   // Lists the library and scans it at once; the scan's changes arrive as
   // events. `force_scan` is Refresh's: startup honours scan_on_startup.

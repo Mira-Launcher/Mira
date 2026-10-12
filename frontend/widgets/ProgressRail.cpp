@@ -54,7 +54,7 @@ ProgressRail::ProgressRail(QWidget* parent) : QWidget(parent), tick_(new QTimer(
 
 void ProgressRail::SetProgress(double fraction) {
   fraction_ = fraction;
-  if (fraction < 0) {
+  if (fraction < 0 && isVisible()) {
     tick_->start();
   } else {
     tick_->stop();
@@ -65,6 +65,16 @@ void ProgressRail::SetProgress(double fraction) {
 void ProgressRail::SetFaint(bool faint) {
   faint_ = faint;
   update();
+}
+
+void ProgressRail::showEvent(QShowEvent* event) {
+  QWidget::showEvent(event);
+  if (fraction_ < 0) tick_->start();
+}
+
+void ProgressRail::hideEvent(QHideEvent* event) {
+  QWidget::hideEvent(event);
+  tick_->stop();
 }
 
 QSize ProgressRail::sizeHint() const { return {90, kHeight}; }

@@ -30,6 +30,8 @@ public:
   void Leave();
   // While held (a game is starting) nothing showcases or plays; released, the wait starts over.
   void Hold(bool on);
+  // A game took over from big screen: only the hero on screen stays, the others fetched again when shown.
+  void Release();
   // The game's logo art (transparent PNG), once fetched; null when it has none or isn't loaded.
   QPixmap Logo(const QString& key) const;
   // Focus has rested on the game for the start delay: pages step back to show its hero, and its

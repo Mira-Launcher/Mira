@@ -1096,6 +1096,18 @@ void BigScreenWindow::RaiseFromGame() {
   if (QWindow* handle = windowHandle()) handle->requestActivate();
 }
 
+void BigScreenWindow::changeEvent(QEvent* event) {
+  QWidget::changeEvent(event);
+  if (event->type() != QEvent::WindowStateChange) return;
+  // Minimized for a game: its RAM is worth more than art nobody sees; back, covers are fetched again.
+  if (isMinimized()) {
+    services_.artwork->Release();
+    hero_->Release();
+  } else {
+    services_.artwork->Restore();
+  }
+}
+
 void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   static const std::map<int, Nav> kKeys = {
       {Qt::Key_Up, Nav::Up},          {Qt::Key_Down, Nav::Down},       {Qt::Key_Left, Nav::Left},
@@ -1108,6 +1120,11 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   };
   const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
   UseKeys(true);
+  if (event->key() == Qt::Key_F5 || (event->key() == Qt::Key_R && event->modifiers() == Qt::ControlModifier)) {
+    Toast("Refreshing your library");
+    emit RefreshRequested();
+    return;
+  }
   // Letters go to a page that takes typing (Search) before they count as buttons.
   if (auto* page = qobject_cast<Page*>(stack_->currentWidget()); page != nullptr && plain && !dialog_ && !menu_) {
     const QString text = event->text();

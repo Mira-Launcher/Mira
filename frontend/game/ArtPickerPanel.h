@@ -72,6 +72,8 @@ private:
   void ChooseFile();
   // Reads `path` and adds it to the front of the grid as the pick.
   void UseFile(const QString& path);
+  // The loaded file as the "Yours" tile, picked.
+  void ShowUpload(const QString& path, const QPixmap& pixmap, QSize size);
   void Populate(const GameMetadataResult& result);
   QListWidgetItem* AddItem(const ArtCandidate& candidate);
   void UpdateTitle();

@@ -31,6 +31,9 @@ public:
 
 protected:
   void paintEvent(QPaintEvent* event) override;
+  // Ticks only while on screen.
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
 
 private:
   double fraction_ = -1;

@@ -31,12 +31,12 @@ namespace mira_gui {
 //  - **At most `kMaxInFlight` at a time.** Every request is a thread and a
 //    socket, and decodes its image there; a 500-game library would
 //    otherwise open 500 of both at once.
-//  - **Keep what's shown often, never a placeholder for art already seen.**
-//    A small copy of every library game's image stays. Covers drawn at a tile
-//    size stay while among the kMaxDrawn most recently drawn, and a store
-//    title's small copy with them. A sidebar-sized copy stays for
-//    the games the sidebar shows (Keep); any other size is fetched again from
-//    mirad's own cache, with the small copy stretched in its place meanwhile.
+//  - **Keep what's shown often, and never draw art blurry.** A small copy of
+//    every library game's image stays, for drawing it small. Covers drawn at a
+//    tile size stay while among the kMaxDrawn most recently drawn, and a store
+//    title's small copy with them. A sidebar-sized copy stays for the games the
+//    sidebar shows (Keep). Any other size is fetched again from mirad's own
+//    cache, with the generated placeholder shown meanwhile, as on first load.
 //
 // Everything here is main-thread only.
 class ArtworkStore : public QObject {
@@ -74,7 +74,7 @@ public:
 
   // The unscaled artwork for this id, for a caller that wants to fit it
   // itself rather than Cover()'s tile-shaped crop: the sidebar-sized copy for a kept
-  // game, the small copy for any other. Null until fetched, call
+  // game (null while it's fetched), the small copy for any other. Null until fetched, call
   // EnsureRequested() first.
   QPixmap RawArtwork(const std::string& id) const;
   // A copy at most 128 px on a side, kept for every cover held, for drawing it small.
@@ -121,6 +121,14 @@ public:
   // Drops the covers drawn at this tile width, once the grid no longer uses it.
   void ForgetWidth(int width);
 
+  // With the window in the tray: everything but the small copies goes. Restore fetches the sidebar's
+  // copies again, and a cover drawn again is fetched for its size, its placeholder shown meanwhile.
+  void Release();
+  void Restore();
+  // Drops the covers not drawn since `mark` (a Clock() reading), once another page has taken the grid's place.
+  void ForgetDrawnBefore(qint64 mark);
+  qint64 Clock() const { return clock_.elapsed(); }
+
  signals:
   // Real artwork arrived (or was dropped) for this id; whatever is drawing
   // it should ask for the cover again.
@@ -147,6 +155,9 @@ private:
   // Marks a cover as just drawn; past kMaxDrawn, Trim drops the least recently drawn's copies.
   void Touch(const QString& id);
   void Trim();
+  void TrimTo(int keep, qint64 recent);
+  QPixmap Placeholder(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+                      const QString& source) const;
   // CoverById and TitleCover's shared body.
   QPixmap Draw(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
                const QString& source = {});
@@ -156,13 +167,15 @@ private:
   // Keys are a cover's id or a slot's "id#slot" (which also key answered_/queued_/pending_).
   QHash<QString, QPixmap> sidebar_;  // at up to kSidebarArt, for kept_ games only
   QSet<QString> kept_;              // game ids
+  std::optional<QSet<QString>> released_kept_;  // kept_ while Released
   QSet<QString> library_;           // ids drawn as library games, whose small copies always stay
   QHash<QString, QPixmap> thumbs_;  // a small copy of every image held
   // Covers as drawn, by "id@tile width"; a store title's only while among the most recently drawn.
   QHash<QString, QPixmap> scaled_;
-  // Each library game's newest smooth copy, kept past ForgetWidth: stretched in place of the small copy while
-  // the full image is fetched again for a new size.
+  // Each library game's newest smooth copy, scaled quickly while the zoom moves.
   QHash<QString, QPixmap> last_drawn_;
+  // The placeholder shown at a size while its cover is fetched again for it, by "id@tile width".
+  QHash<QString, QPixmap> loading_;
   // Sizes asked for while only the small copy was held, drawn when the full image is back.
   QHash<QString, QList<std::pair<QSize, qreal>>> wanted_;
   QSet<QString> refetching_;         // asked again for a size, not because the art changed

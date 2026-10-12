@@ -184,6 +184,12 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   main_stack_ = new QStackedWidget(this);
   grid_page_ = BuildLibraryPage(prefs, tile_width);
   main_stack_->addWidget(grid_page_);
+  // The grid's covers aren't kept behind a source page or Runners; they're fetched again on the way back.
+  connect(main_stack_, &QStackedWidget::currentChanged, this, [this] {
+    if (main_stack_->currentWidget() == grid_page_) return;
+    // After the new page has drawn, so only what it doesn't show goes.
+    QTimer::singleShot(1500, this, [this, mark = artwork_->Clock()] { artwork_->ForgetDrawnBefore(mark); });
+  });
   splitter_->addWidget(main_stack_);
   splitter_->setStretchFactor(0, 0);
   splitter_->setStretchFactor(1, 1);
@@ -570,6 +576,11 @@ void LibraryWindow::StartImport(const QString& path, const QString& kind, const 
   });
 }
 
+void LibraryWindow::showEvent(QShowEvent* event) {
+  artwork_->Restore();
+  QMainWindow::showEvent(event);
+}
+
 void LibraryWindow::changeEvent(QEvent* event) {
   if (event->type() == QEvent::WindowStateChange && top_bar_ != nullptr) {
     top_bar_->SyncMaximized();
@@ -593,6 +604,8 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
     FlushPrefs(/*quitting=*/false);  // the process stays, so the save needn't freeze the window
     event->ignore();
     hide();
+    // Nothing is drawn from the tray: its art goes until the window is back.
+    artwork_->Release();
     return;
   }
 
@@ -2004,6 +2017,7 @@ void LibraryWindow::OpenBigScreen() {
     // A child, so it never outlives the library state it reads.
     big_screen_ = new mira_gui::bigscreen::BigScreenWindow(services(), this);
     big_screen_->setAttribute(Qt::WA_DeleteOnClose);
+    connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::RefreshRequested, this, &LibraryWindow::RefreshLibrary);
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::Closed, this, [this] {
       show();
       raise();
