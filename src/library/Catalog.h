@@ -41,7 +41,8 @@ struct CatalogEntry {
 // GET /v1/library's listing, from each source's list stored in cache.db with `installed` marked
 // now. A source with no stored list is asked now and its answer stored; every other one is
 // re-checked on `lane` (once at a time per source) between library.catalog_checking and
-// library.catalog_checked {source, changed}. `fresh` asks every source now instead.
+// library.catalog_checked {source, changed}: always when one source is asked for, and when
+// listing every source only for a list over 12 hours old. `fresh` asks every source now instead.
 class CatalogCache {
 public:
   Result<std::vector<CatalogEntry>> List(const config::Config& config, store::GameStore& games,

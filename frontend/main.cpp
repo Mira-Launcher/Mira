@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
   mira_gui::theme::Apply("auto");
   mira_gui::tooltip::Install();
 
-  // docs/architecture.md's "frontend-managed" daemon path: start mirad
+  // docs/backend.md's "frontend-managed" daemon path: start mirad
   // ourselves if nothing is already listening, so the AppImage works as one
   // self-contained app.
   auto* supervisor = new mira_gui::DaemonSupervisor(&app);

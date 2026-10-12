@@ -134,14 +134,15 @@ ctest --test-dir build/dev
 
 Run the suite under the `tsan` preset for changes to anything shared across threads (`Config`, `GameStore`, `EventBus`).
 
-## How it fits together
+## Performance
 
-The repository has three programs: the daemon `mirad`, which owns all state and does all the work, the CLI `mira` and the Qt frontend `mira-gui`. Both clients talk to `mirad` over a REST API on a Unix socket, so anything the GUI can do also works from a terminal or a script.
+Every pull request is benchmarked against main ([`tools/bench`](tools/bench)) on a library of 150 games and 1,200 store titles:
 
-- [`docs/architecture.md`](docs/architecture.md): how the pieces fit, storage, detection, runners and launching.
-- [`docs/frontend.md`](docs/frontend.md): the GUI's structure and UX principles.
-- [`docs/api.md`](docs/api.md): the REST API.
-- [`docs/cli.md`](docs/cli.md): every `mira` command.
+| | Instructions | `mirad` memory |
+|---|---:|---:|
+| Start and scan the library | 177M | 12.6 MB |
+| List the whole library | 40M | 13.2 MB |
+| Idle | none | 13 MB |
 
 ## Your data
 

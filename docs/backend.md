@@ -1,4 +1,4 @@
-# Architecture
+# The backend (`mirad`)
 
 Mira is a Linux game launcher for native games and Windows games run through Wine or Proton. It is three programs:
 
@@ -34,10 +34,14 @@ src/
   amazon/     Nile wrapper, importer and source
   humble/     humble-cli wrapper (downloads only, not an ILibrarySource)
   launchers/  Battle.net, Ubisoft Connect, EA app, Microsoft 365 and Creative Cloud, each installed into its own prefix
+  emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
-  api/        EventBus (in-memory pub/sub) and Server (the REST routes)
+  system/     Packages: the distro packages each feature needs, and the command that installs them
+  updates/    What has a newer version: Mira, runners, store tools and emulators
+  migrate/    One-time import of Mira 0.13's files (temporary)
+  api/        EventBus (in-memory pub/sub), Jobs, Services and Server; routes/ holds the REST routes by area
   cli/        `mira`
   wrapper/    `mira-run`, the process that owns a launched game's session
   mirad_main.cpp
@@ -47,8 +51,6 @@ tests/        doctest unit tests (mira_tests)
 packaging/    desktop entry, icons, PKGBUILD
 cmake/        AppImage build
 ```
-
-Routes live in `Server::RegisterRoutes` in `src/api/Server.cpp`. If `api.md` disagrees with it, the doc is wrong.
 
 ## Storage
 
@@ -71,8 +73,6 @@ logs/           per-game output from the last launches
 
 Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
-The socket is at `$XDG_RUNTIME_DIR/mira/mirad.sock` unless the `socket_path` setting moves it. `mirad --socket` overrides it for the daemon, and `$MIRA_SOCKET` for the GUI and CLI. Without `$MIRA_SOCKET`, both clients read `socket_path` from `settings.toml`.
-
 ## Running the daemon
 
 `mirad` never daemonizes itself, and users don't run it:
@@ -90,7 +90,9 @@ The daemon should cost nothing when idle:
 
 - `EventBus::WaitNext` waits on a condition variable. The 20-second timeout only runs while an SSE client is connected, to notice when it goes away.
 - Shutdown uses `sigwait`, not a polled flag. Stopping wakes every background wait at once (open event streams, the external-game watcher, the per-game exit watchers), so quitting never waits out a poll interval.
-- The external-game watcher scans `/proc` every 3 seconds only while there are Steam or store-launcher games to look for, and rebuilds that list only when `GameStore::Revision()` or `Config::Revision()` changes.
+- Background work runs on `Lane`s (`src/core/Lane.h`): named pools whose threads start when work arrives and exit after 30 idle seconds, so an idle mirad keeps only a handful of threads.
+- `butlerd` (itch.io) stops after five quiet minutes and starts again on the next call.
+- The external-game watcher scans `/proc` every 3 seconds while there are Steam or store-launcher games to look for, and every 15 otherwise. It rebuilds that list only when `GameStore::Revision()` or `Config::Revision()` changes.
 - `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes. There is one non-recursive watch per library root and per sorting folder in it.
 
 ## Detection and scanning
@@ -107,12 +109,13 @@ In a root listed in `tags.sorted_roots`, games are sorted into `.hidden` and a f
 
 ## Runners
 
-`runner::IRunner` has `kind()`, `Discover(config)`, `Provision(game, build)` and `BuildCommand(game, build)`. There are four runners:
+`runner::IRunner` has `kind()`, `Discover(config)`, `Provision(game, build)` and `BuildCommand(game, build)`. There are five runners:
 
 - `NativeRunner` runs the executable directly.
 - `ProtonRunner` runs Proton builds through `umu-run`. It uses the `umu-run` on `PATH`, or Mira's own copy under the tools folder.
 - `WineRunner` runs the system Wine or any Wine build it finds.
 - `SteamRunner` runs a Steam game with the Proton build and prefix Steam already set up for it.
+- `EmulatorRunner` runs a ROM in its source's emulator, with that emulator's launch args.
 
 Neither `umu-run` nor `wineboot` gives a reliable exit code for prefix creation, so both runners check that `drive_c` exists afterwards.
 
@@ -138,11 +141,3 @@ If `mira-run` can't be found or started, `mirad` launches the game directly with
 
 `desktop::DesktopEntries` writes a `mira-<id>.desktop` entry for each ready game and keeps them in sync after scans and game changes. `desktop_entries.*` settings are resolved per game, so a game can opt out. `Exec=` always goes through `mira launch <id>` (or the GUI), never the game's executable, so playtime and crash tracking always apply. It only touches files it created.
 
-## Planned
-
-- A `winetricks_defaults` setting that runs baseline verbs on every new prefix.
-- Reading Steam's `appinfo.vdf` to fill in the launch executable for `steam.launch_mode: "direct"`.
-- `mirad --scan-once`: scan, provision, print a summary and exit.
-- An endpoint for per-session play history.
-- Steam achievements through the Steam Web API, when a key is configured.
-- Provisioning EOS and EasyAntiCheat for Epic games that need them.

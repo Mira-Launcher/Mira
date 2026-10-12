@@ -132,7 +132,7 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
 
   // A prefix directory sitting inside the library root must never be
   // rediscovered as a game. This is the regression the design specifically
-  // guards against (see docs/architecture.md).
+  // guards against (see docs/backend.md).
   fs::create_directories(lib / "prefix" / "celeste" / "drive_c");
   Touch(lib / "prefix" / "celeste" / "system.reg");
 

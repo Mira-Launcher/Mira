@@ -1,7 +1,7 @@
 // mira-run: the process that actually sits between mirad and a running
 // game. Owns the whole session end to end: pre_script, the game itself,
 // post_script, and the session record, so none of that depends on mirad
-// staying alive for the session's whole duration. See docs/architecture.md
+// staying alive for the session's whole duration. See docs/backend.md
 // and proc/Session.h.
 #include <fcntl.h>
 #include <signal.h>

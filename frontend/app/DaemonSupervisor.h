@@ -12,7 +12,7 @@ namespace mira_gui {
 // lookup. A free function so it's testable without spawning anything.
 QString ResolveMiradPath(const QString& own_binary_dir);
 
-// Implements docs/architecture.md's "frontend-managed" daemon path: if
+// Implements docs/backend.md's "frontend-managed" daemon path: if
 // mirad is already reachable, do nothing. If not, spawn it next to this
 // binary and supervise it, but only tear down a daemon *we* started; one
 // found already running (systemd or otherwise) is left alone regardless of

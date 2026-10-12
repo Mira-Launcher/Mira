@@ -506,7 +506,7 @@ struct ConfigResult {
   // matching Schema entries' own `key` (e.g. "scan.debounce_ms"), each
   // stringified for display/editing: a bool as "true"/"false", a number in
   // its natural text form, an array as JSON (mapping::ParseListText). The opaque
-  // `frontend` table (docs/architecture.md) is excluded because it isn't part of
+  // `frontend` table (docs/backend.md) is excluded because it isn't part of
   // the schema this screen renders.
   std::map<std::string, std::string> values;
 };
@@ -795,7 +795,7 @@ struct FinishInstallResult {
 
 // The frontend's own preferences, which live in frontend.toml, the sibling
 // file the backend stores verbatim and never interprets
-// (docs/architecture.md), reachable as the opaque `frontend` key of
+// (docs/backend.md), reachable as the opaque `frontend` key of
 // GET/PATCH /v1/config.
 //
 // Deliberately not settings.toml: every key there has to be declared in

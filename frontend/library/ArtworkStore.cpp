@@ -1,16 +1,20 @@
 #include "ArtworkStore.h"
 
+#include <malloc.h>
+
 #include <QBuffer>
 #include <QImage>
 #include <QImageReader>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPixmapCache>
 #include <QTimer>
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "../client/Async.h"
@@ -156,10 +160,16 @@ bool ArtworkStore::Drop(const QString& key) {
 
 QPixmap ArtworkStore::Held(const QString& key) const {
   if (const auto kept = sidebar_.constFind(key); kept != sidebar_.constEnd()) return *kept;
+  // A kept game's sidebar copy still on its way: nothing, for its placeholder, rather than the small copy stretched.
+  if (kept_.contains(key.section('#', 0, 0))) return QPixmap();
   return thumbs_.value(key);
 }
 
 void ArtworkStore::Keep(const QSet<QString>& ids) {
+  if (released_kept_) {
+    released_kept_ = ids;  // fetched on Restore
+    return;
+  }
   if (ids == kept_) return;
   kept_ = ids;
   for (auto it = sidebar_.begin(); it != sidebar_.end();) {
@@ -189,6 +199,26 @@ void ArtworkStore::ForgetWidth(int width) {
       ++it;
     }
   }
+}
+
+void ArtworkStore::Release() {
+  if (released_kept_) return;
+  scaled_.clear();
+  loading_.clear();
+  last_drawn_.clear();
+  sidebar_.clear();
+  drawn_.clear();
+  released_kept_ = std::exchange(kept_, {});
+  QPixmapCache::clear();
+  // After the event loop drops what the widgets still held.
+  QTimer::singleShot(0, [] { malloc_trim(0); });
+}
+
+void ArtworkStore::Restore() {
+  if (!released_kept_) return;
+  QSet<QString> kept = std::move(*released_kept_);
+  released_kept_.reset();
+  Keep(kept);
 }
 
 QPixmap ArtworkStore::Cover(const GameSummary& game, QSize tile, qreal device_pixel_ratio) {
@@ -222,31 +252,40 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile, q
   if (const auto cached = scaled_.constFind(scaled_key); cached != scaled_.constEnd())
     return *cached;
 
-  if (const auto thumb = thumbs_.constFind(id); thumb != thumbs_.constEnd()) {
-    // Fetched again for this size, the small copy stretched meanwhile.
+  // The zoom moving: the newest copy scaled quickly, and drawn smooth once it stops.
+  if (quick_) {
+    if (const auto last = last_drawn_.constFind(id); last != last_drawn_.constEnd())
+      return FitToTile(*last, tile, device_pixel_ratio);
+  }
+  if (thumbs_.contains(id)) {
+    // Fetched again for this size, the placeholder shown meanwhile; never kept as its cover.
     if (!quick_) {
       QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
-      if (!sizes.contains(std::pair{tile, device_pixel_ratio}))
-        sizes.append({tile, device_pixel_ratio});
+      if (!sizes.contains(std::pair{tile, device_pixel_ratio})) sizes.append({tile, device_pixel_ratio});
       if (!queued_.contains(id)) refetching_.insert(id);
       Request(id);
     }
-    const auto last = last_drawn_.constFind(id);
-    return FitToTile(last != last_drawn_.constEnd() ? *last : *thumb, tile, device_pixel_ratio);
+    if (const auto loading = loading_.constFind(scaled_key); loading != loading_.constEnd()) return *loading;
+    return loading_.insert(scaled_key, Placeholder(id, name, tile, device_pixel_ratio, source)).value();
   }
+  const QPixmap cover = Placeholder(id, name, tile, device_pixel_ratio, source);
+  KeepScaled(scaled_key, cover);
+  return cover;
+}
+
+QPixmap ArtworkStore::Placeholder(const QString& id, const QString& name, QSize tile, qreal device_pixel_ratio,
+                                  const QString& source) const {
   // Keyed on the id, not the name, so it survives a rename. An emulator's game shows its emulator.
   const SourceInfo* info = FindSourceInfo(source);
   const QPixmap logo = info != nullptr && info->kind == SourceInfo::Kind::Emulator
                            ? SourceLogo(*info, tile.width() / 2, device_pixel_ratio)
                            : QPixmap();
-  const QPixmap cover =
-      PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10), device_pixel_ratio, logo);
-  KeepScaled(scaled_key, cover);
-  return cover;
+  return PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10), device_pixel_ratio, logo);
 }
 
 void ArtworkStore::KeepScaled(const QString& key, const QPixmap& cover) {
   scaled_.insert(key, cover);
+  loading_.remove(key);
   const QString id = key.section('@', 0, 0);
   if (library_.contains(id)) last_drawn_.insert(id, cover);
 }
@@ -261,15 +300,20 @@ void ArtworkStore::Touch(const QString& id) {
 
 void ArtworkStore::Trim() {
   trim_queued_ = false;
-  // Down to kKeepDrawn at once, so this sort runs once per 50 new covers. Anything drawn in the
-  // last second is on screen or just was, and stays however many that is.
-  const qint64 recent = clock_.elapsed() - 1000;
+  // Down to kKeepDrawn at once, so this sort runs once per 50 new covers.
+  // Anything drawn in the last second is on screen or just was, and stays however many that is.
+  TrimTo(kKeepDrawn, clock_.elapsed() - 1000);
+}
+
+void ArtworkStore::ForgetDrawnBefore(qint64 mark) { TrimTo(0, mark); }
+
+void ArtworkStore::TrimTo(int keep, qint64 recent) {
   std::vector<std::pair<qint64, QString>> by_use;
   by_use.reserve(drawn_.size());
   for (auto it = drawn_.cbegin(); it != drawn_.cend(); ++it) by_use.emplace_back(it.value(), it.key());
   std::ranges::sort(by_use);
   for (const auto& [used, old] : by_use) {
-    if (drawn_.size() <= kKeepDrawn || used > recent) break;
+    if (drawn_.size() <= keep || used > recent) break;
     if (queued_.contains(old)) continue;
     drawn_.remove(old);
     // A game's small copy stays for the sidebar and its color; a store title's goes too.
@@ -413,12 +457,20 @@ void ArtworkStore::InvalidateRendering(const std::string& id) {
       ++it;
     }
   }
+  for (auto it = loading_.begin(); it != loading_.end();) {
+    if (it.key().startsWith(prefix)) {
+      it = loading_.erase(it);
+    } else {
+      ++it;
+    }
+  }
   last_drawn_.remove(QString::fromStdString(id));
   colors_.remove(QString::fromStdString(id));
 }
 
 void ArtworkStore::InvalidateAllRenderings() {
   scaled_.clear();
+  loading_.clear();
   last_drawn_.clear();
   colors_.clear();  // placeholders' colors follow the theme
 }

@@ -324,7 +324,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
       // being moved) stays, and keeps its folder.
       std::map<std::string, proc::ProcessSupervisor::Reservation> claims;
       for (const std::string& id : ids) {
-        if (!s.games.Find(id) || claims.contains(id)) continue;
+        if (!s.games.Contains(id) || claims.contains(id)) continue;
         if (auto claim = s.Claim(id, "deleted")) {
           claims.emplace(id, std::move(*claim));
         } else {

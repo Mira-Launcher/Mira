@@ -1,5 +1,5 @@
 # clang-tidy config for mira. Scoped to what this codebase actually needs
-# rather than every check LLVM ships; see docs/architecture.md on the
+# rather than every check LLVM ships; see docs/backend.md on the
 # guardrails a resident, multi-threaded C++ daemon needs (TSan/ASan in CI
 # matter more here than most of these; this catches what sanitizers can't:
 # things visible from the source alone).

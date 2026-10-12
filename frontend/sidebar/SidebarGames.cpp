@@ -565,13 +565,13 @@ void Shelf::resizeEvent(QResizeEvent*) {
 }
 
 QString ArtSignature(const GameSummary& game, Style style, ArtworkStore* artwork) {
-  // Each image's cacheKey, so a replaced cover or hero rebuilds the row.
-  const qint64 cover = artwork->SmallArtwork(game.id).cacheKey();
+  // Each image's cacheKey, so a replaced cover or hero, or a sidebar copy just fetched, rebuilds the row.
+  const QString cover = QString("%1 %2").arg(artwork->SmallArtwork(game.id).cacheKey()).arg(artwork->RawArtwork(game.id).cacheKey());
   switch (style) {
     case Style::Covers:
       return QString("%1 %2").arg(artwork->CoverColor(QString::fromStdString(game.id)).name()).arg(cover);
     case Style::Hero: return QString("%1 %2").arg(artwork->SlotArt(game.id, "hero").cacheKey()).arg(cover);
-    case Style::Shelf: return QString::number(cover);
+    case Style::Shelf: return cover;
   }
   return QString();
 }

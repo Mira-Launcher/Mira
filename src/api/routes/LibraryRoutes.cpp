@@ -50,12 +50,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
 
   http.Post("/v1/library/scan", [&s](const Request& req, Response& res) {
     s.StartJob(req, res, "scan", "", "Scanning your library", [&s](JobRegistry::Progress&) -> Result<json> {
-      library::Scanner scanner(s.config, s.games, s.events);
-      scanner.UseUnclearMoves(s.unclear_moves);
-      scanner.UseMetadataQueue(s.fetches);
-      scanner.UseInstallLane(s.installs);
-      const library::ScanSummary summary = scanner.ScanAll();
-      for (const model::Game& game : summary.added_games) s.fetches.Enqueue(s.config, s.events, game);
+      const library::ScanSummary summary = s.Scan();
       return json{{"added", summary.added},
                   {"missing", summary.missing},
                   {"restored", summary.restored},
@@ -344,14 +339,6 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
              });
   });
 
-  // Games per source id, for the sources list.
-  const auto game_counts = [&s]() {
-    std::map<std::string, int> counts;
-    for (const auto& game : s.games.All()) {
-      if (const std::string id = store::SourceIdOf(game.source); !id.empty()) ++counts[id];
-    }
-    return counts;
-  };
   const auto source_json = [](const std::map<std::string, int>& counts, const store::SourceState& state) {
     const auto found = counts.find(state.id);
     return json{{"id", state.id},
@@ -363,20 +350,25 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
                 {"games", found == counts.end() ? 0 : found->second}};
   };
 
-  http.Get("/v1/sources", [&s, game_counts, source_json](const Request&, Response& res) {
+  http.Get("/v1/sources", [&s, source_json](const Request&, Response& res) {
+    std::map<std::string, store::SourceState, std::less<>> saved;
+    for (store::SourceState& state : s.games.Sources()) saved.emplace(state.id, std::move(state));
     std::vector<store::SourceState> states;
-    for (const std::string& id : kSourceIds) states.push_back(s.games.Source(id));
+    for (const std::string& id : kSourceIds) {
+      const auto found = saved.find(id);
+      states.push_back(found != saved.end() ? found->second : store::SourceState{.id = id});
+    }
     // Never-ordered sources (position 0) go last, in default order.
     std::ranges::stable_sort(states, std::ranges::less{}, [](const store::SourceState& state) {
       return state.position == 0 ? std::numeric_limits<int>::max() : state.position;
     });
-    const auto counts = game_counts();
+    const auto counts = s.games.CountBySource();
     json sources = json::array();
     for (const store::SourceState& state : states) sources.push_back(source_json(counts, state));
     SendJson(res, {{"sources", sources}});
   });
 
-  http.Patch(R"(/v1/sources/([a-z0-9-]+))", [&s, game_counts, source_json](const Request& req, Response& res) {
+  http.Patch(R"(/v1/sources/([a-z0-9-]+))", [&s, source_json](const Request& req, Response& res) {
     const std::string id = req.matches[1].str();
     if (std::ranges::find(kSourceIds, id) == kSourceIds.end()) {
       return SendError(res, 404, "unknown_source", std::format("no source named \"{}\"", id));
@@ -393,7 +385,7 @@ void RegisterLibraryRoutes(httplib::Server& http, Services& s) {
     flag("enabled", state.enabled);
     flag("in_sidebar", state.in_sidebar);
     s.games.SaveSource(state);
-    SendJson(res, source_json(game_counts(), state));
+    SendJson(res, source_json(s.games.CountBySource(), state));
     s.events.Publish("sources.changed", json::object());
   });
 

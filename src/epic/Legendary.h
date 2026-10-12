@@ -18,7 +18,7 @@
 // for everything protocol-shaped (auth, catalog, install, update, uninstall).
 // Mira never runs Legendary's own `legendary launch`: once a game is
 // installed, it's launched through Mira's own Wine/Proton runners like any
-// other Windows game (see docs/architecture.md). This file only knows how to
+// other Windows game (see docs/backend.md). This file only knows how to
 // find or fetch the `legendary` binary and run it; it has no game-library
 // knowledge (see EpicImporter/EpicInstaller for that).
 namespace mira::epic {

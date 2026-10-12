@@ -1,11 +1,13 @@
-# Builds each PR's AppImage and links it from one comment on the PR, updated on every push. Builds on
-# main keep the compiler cache warm for new PRs.
+# Builds each PR's AppImage and links it from one comment on the PR, updated on every push, then benchmarks
+# it against main's latest AppImage (tools/bench). Builds on main keep the compiler cache warm for new PRs.
 name: AppImage
 
 on:
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
 
 concurrency:
   group: appimage-${{ github.ref }}
@@ -19,18 +21,21 @@ jobs:
   appimage:
     # A fork's PR gets a read-only token, so it couldn't comment.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/packages
+        with:
+          appimage-only: ${{ github.event_name == 'pull_request' }}
 
       - id: upload
         uses: actions/upload-artifact@v4
         with:
           name: Mira-x86_64.AppImage
           path: out/Mira-x86_64.AppImage
-          retention-days: 14
+          # Main's is what PRs are benchmarked against, so it's kept longer.
+          retention-days: ${{ github.event_name == 'push' && 90 || 14 }}
 
       - name: Comment
         if: github.event_name == 'pull_request'
@@ -40,4 +45,82 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
           URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
-          gh pr comment "$PR" --edit-last --create-if-none --body "**AppImage** for ${SHA:0:7}: [Mira-x86_64.AppImage]($URL) (zipped, kept 14 days)"
+          echo "**AppImage** for ${SHA:0:7}: [Mira-x86_64.AppImage]($URL) (zipped, kept 14 days)" > comment.md
+          .github/scripts/pr-comment.sh "$PR" appimage comment.md
+
+  bench:
+    needs: appimage
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    env:
+      MIRA_BENCH_NATIVE: 1
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends valgrind python3-pil curl sqlite3 xvfb xauth \
+            libgl1 libopengl0 libegl1 libfontconfig1 libfreetype6 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libpulse0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Mira-x86_64.AppImage
+          path: appimages/branch
+
+      # Main's last build may have failed or its AppImage expired; then there's nothing to compare with.
+      - name: Main's AppImage
+        id: main
+        run: |
+          run=$(gh run list --workflow appimage.yml --branch main --event push --status success --limit 1 \
+            --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')
+          if [ -z "$run" ] || ! gh run download "${run% *}" -n Mira-x86_64.AppImage -D appimages/base; then
+            echo "**Benchmark** skipped: main has no AppImage to compare against." > comment.md
+            exit 0
+          fi
+          sha=${run#* }
+          echo "name=main (${sha:0:7})" >> "$GITHUB_OUTPUT"
+
+      - name: Unpack
+        if: steps.main.outputs.name
+        run: |
+          for side in base branch; do
+            (cd appimages/$side && chmod +x Mira-x86_64.AppImage && ./Mira-x86_64.AppImage --appimage-extract >/dev/null)
+          done
+
+      - name: Benchmark
+        id: bench
+        if: steps.main.outputs.name
+        env:
+          MIRA_BENCH_BASE_BIN: ${{ github.workspace }}/appimages/base/squashfs-root/usr/bin
+          MIRA_BENCH_BRANCH_BIN: ${{ github.workspace }}/appimages/branch/squashfs-root/usr/bin
+          MIRA_BENCH_BASE_NAME: ${{ steps.main.outputs.name }}
+        run: tools/bench/run.sh main 3 || echo "failed=1" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        if: steps.main.outputs.name
+        run: cat build/bench/out/summary.md build/bench/out/full.md >> "$GITHUB_STEP_SUMMARY"
+
+      - id: upload
+        if: steps.main.outputs.name
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: |
+            build/bench/out/*.md
+            build/bench/out/*.json
+          retention-days: 14
+
+      - name: Comment
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          [ -f comment.md ] || { cat build/bench/out/summary.md; echo; echo "[Full log]($RUN) · [results]($URL)"; } > comment.md
+          .github/scripts/pr-comment.sh "$PR" bench comment.md
+
+      - name: Failed scenarios
+        if: steps.bench.outputs.failed == '1'
+        run: exit 1

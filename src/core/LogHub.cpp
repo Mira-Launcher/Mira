@@ -11,6 +11,8 @@ namespace mira::loghub {
 namespace {
 
 constexpr std::size_t kKeepLines = 4000;
+// Finished channels held in memory; older ones are read back from their journal.
+constexpr std::size_t kKeepEnded = 16;
 
 struct Channel {
   std::deque<std::string> lines;
@@ -19,11 +21,13 @@ struct Channel {
   std::string redraw;    // the line a '\r' cut off, which the next text replaces
   std::string progress;  // the latest download progress line, which the next one replaces
   bool active = false;
+  std::uint64_t ended = 0;  // when End last ran, by g_ends
   std::ofstream journal;  // open while the channel is being kept on disk (Journal)
 };
 
 std::mutex g_mutex;
 std::filesystem::path g_journal_dir;  // empty: channels are kept in memory only
+std::uint64_t g_ends = 0;
 
 // <dir>/setup_office.log for "setup:office"; empty for channels that are not journaled.
 std::filesystem::path JournalFile(std::string_view name) {
@@ -111,6 +115,17 @@ void End(std::string_view name) {
   channel.progress.clear();
   channel.active = false;
   channel.journal.close();
+  channel.ended = ++g_ends;
+  // The oldest finished channel with a journal to fall back on, past kKeepEnded.
+  auto& channels = Channels();
+  std::size_t ended = 0;
+  auto oldest = channels.end();
+  for (auto it = channels.begin(); it != channels.end(); ++it) {
+    if (it->second.active || JournalFile(it->first).empty()) continue;
+    ++ended;
+    if (oldest == channels.end() || it->second.ended < oldest->second.ended) oldest = it;
+  }
+  if (ended > kKeepEnded) channels.erase(oldest);
 }
 
 void Append(std::string_view name, std::string_view text) {
@@ -148,13 +163,17 @@ Page Read(std::string_view name, const std::uint64_t* after, int tail) {
   if (it == Channels().end()) {
     // Not written since mirad started: what an earlier run kept on disk.
     if (const std::filesystem::path file = JournalFile(name); !file.empty()) {
+      // Numbered from the file's first line, so a reader's cursor still means something.
       std::ifstream saved(file);
       std::deque<std::string> lines;
-      for (std::string line; std::getline(saved, line);) {
+      std::uint64_t count = 0;
+      for (std::string line; std::getline(saved, line); ++count) {
+        if (after != nullptr && count < *after) continue;
         lines.push_back(std::move(line));
         if (lines.size() > static_cast<std::size_t>(tail)) lines.pop_front();
       }
       page.lines.assign(lines.begin(), lines.end());
+      page.next = std::max(count, after != nullptr ? *after : 0);
     }
     return page;
   }

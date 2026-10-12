@@ -9,9 +9,27 @@
 
 #include "api/Http.h"
 #include "api/Routes.h"
+#include "core/Lane.h"
 #include "core/Log.h"
 
 namespace mira::api {
+namespace {
+
+// httplib's ThreadPool starts every thread at once and keeps them; a Lane starts them as requests come and lets
+// idle ones go.
+class LaneQueue final : public httplib::TaskQueue {
+public:
+  bool enqueue(std::function<void()> fn) override {
+    lane_.Post(std::move(fn));
+    return true;
+  }
+  void shutdown() override { lane_.Stop(); }
+
+private:
+  Lane lane_{"http", 64};
+};
+
+}  // namespace
 
 Server::Server(Services& services) : s_(services), http_(std::make_unique<httplib::Server>()) {}
 
@@ -24,10 +42,8 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
 
   RegisterRoutes();
 
-  // httplib's default is one thread per core with a floor of 8, and every
-  // event stream and every long request (a scan, a move) holds one for its
-  // whole length. Idle threads cost almost nothing.
-  http_->new_task_queue = [] { return new httplib::ThreadPool(32); };
+  // Every event stream and every long request (a scan, a move) holds a thread for its whole length.
+  http_->new_task_queue = [] { return new LaneQueue; };
   http_->set_address_family(AF_UNIX);
   if (!http_->bind_to_port(socket_path.string(), 80)) {
     return Err("socket_bind_failed", std::format("cannot bind {}", socket_path.string()));

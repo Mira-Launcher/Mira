@@ -287,6 +287,12 @@ QSize HeroBackground::ScreenSize() const {
   return shown == nullptr ? QSize() : shown->size() * shown->devicePixelRatio();
 }
 
+void HeroBackground::Release() {
+  heroes_.clear();
+  logos_.clear();
+  previous_ = QPixmap();
+}
+
 QPixmap HeroBackground::Logo(const QString& key) const { return logos_.value(key); }
 
 QPixmap HeroBackground::Blurred(const Item& item) const {

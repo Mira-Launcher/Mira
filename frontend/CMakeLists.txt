@@ -1,5 +1,5 @@
 # The Qt frontend: a cover-art library grid (LibraryWindow). See
-# docs/architecture.md for what it still grows into: a tray-capable process
+# docs/backend.md for what it still grows into: a tray-capable process
 # that can supervise mirad itself when systemd isn't managing it.
 # It is a separate binary and a separate CMake project scope
 # from mira_core: the frontend talks to the daemon exclusively over the REST
@@ -75,7 +75,7 @@ qt_add_resources(mira-gui "themes"
 
 # mira_third_party is header-only (httplib.h, json.hpp) and carries no
 # backend code, so linking it does not violate the "never link mira_core"
-# rule in docs/architecture.md: it's the same REST-client toolkit `mira`
+# rule in docs/backend.md: it's the same REST-client toolkit `mira`
 # uses, not a shortcut past the API.
 target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Multimedia mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
@@ -122,7 +122,7 @@ set_target_properties(mira-gui PROPERTIES
 # Only the layers with no Qt event loop and no socket in them are covered
 # here: client/JsonMapping (JSON <-> Types.h) and the parts of the client
 # that are pure functions. Anything needing a live mirad is exercised
-# against the real daemon instead; see docs/architecture.md.
+# against the real daemon instead; see docs/backend.md.
 file(GLOB MIRA_GUI_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp client/api/*.cpp)
 add_executable(mira_gui_tests
   ${MIRA_GUI_TEST_SOURCES}

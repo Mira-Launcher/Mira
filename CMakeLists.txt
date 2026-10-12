@@ -142,7 +142,7 @@ if(MIRA_PCH)
 endif()
 
 # The process mirad actually spawns for a game launch (see proc/Session.h,
-# docs/architecture.md), a separate binary, not a mirad-internal thread, so
+# docs/backend.md), a separate binary, not a mirad-internal thread, so
 # a launched game's session survives mirad restarting or crashing mid-game.
 add_executable(mira-run src/wrapper/main.cpp)
 mira_static_runtime(mira-run)

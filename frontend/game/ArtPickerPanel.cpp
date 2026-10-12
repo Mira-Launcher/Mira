@@ -32,6 +32,7 @@
 #include <functional>
 #include <set>
 
+#include "../client/Async.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
@@ -656,34 +657,56 @@ void ArtPickerPanel::dropEvent(QDropEvent* event) {
   UseFile(urls.front().toLocalFile());
 }
 
+namespace {
+
+struct LoadedFile {
+  QString error;
+  std::string upload;
+  QImage preview;
+  QSize size;
+};
+
+}  // namespace
+
 void ArtPickerPanel::UseFile(const QString& path) {
-  QFile file(path);
-  if (!file.open(QIODevice::ReadOnly)) {
-    emit ApplyFailed(QString::fromStdString(slot_), "Could not open " + path + ": " + file.errorString());
-    return;
-  }
-  const QByteArray bytes = file.readAll();
-  QImageReader reader(path);
-  reader.setAutoTransform(true);
-  const QImage image = reader.read();
-  if (image.isNull()) {
-    emit ApplyFailed(QString::fromStdString(slot_), "Could not read " + path + ": " + reader.errorString());
-    return;
-  }
-  // mirad reads PNG and JPEG, and ignores EXIF rotation; anything else goes as PNG, upright.
-  if ((bytes.startsWith("\x89PNG") || bytes.startsWith("\xFF\xD8\xFF")) &&
-      reader.transformation() == QImageIOHandler::TransformationNone) {
-    upload_ = bytes.toStdString();
-  } else {
-    QByteArray png;
-    QBuffer buffer(&png);
-    buffer.open(QIODevice::WriteOnly);
-    image.save(&buffer, "PNG");
-    upload_ = png.toStdString();
-  }
-  const QPixmap pixmap = QPixmap::fromImage(image.width() > 1920 || image.height() > 1920
-                                                ? image.scaled(1920, 1920, Qt::KeepAspectRatio, Qt::SmoothTransformation)
-                                                : image);
+  // Read, decoded and re-encoded off the UI thread: a big image takes a moment.
+  auto load = [path]() -> LoadedFile {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return {.error = "Could not open " + path + ": " + file.errorString()};
+    const QByteArray bytes = file.readAll();
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const QImage image = reader.read();
+    if (image.isNull()) return {.error = "Could not read " + path + ": " + reader.errorString()};
+    LoadedFile loaded{.size = image.size()};
+    // mirad reads PNG and JPEG, and ignores EXIF rotation; anything else goes as PNG, upright.
+    if ((bytes.startsWith("\x89PNG") || bytes.startsWith("\xFF\xD8\xFF")) &&
+        reader.transformation() == QImageIOHandler::TransformationNone) {
+      loaded.upload = bytes.toStdString();
+    } else {
+      QByteArray png;
+      QBuffer buffer(&png);
+      buffer.open(QIODevice::WriteOnly);
+      image.save(&buffer, "PNG");
+      loaded.upload = png.toStdString();
+    }
+    loaded.preview = image.width() > 1920 || image.height() > 1920
+                         ? image.scaled(1920, 1920, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                         : image;
+    return loaded;
+  };
+  async::Run<LoadedFile>(this, std::move(load), [this, path, slot = slot_](LoadedFile loaded) {
+    if (!loaded.error.isEmpty()) {
+      emit ApplyFailed(QString::fromStdString(slot), loaded.error);
+      return;
+    }
+    if (slot != slot_) return;  // moved to another slot meanwhile
+    upload_ = std::move(loaded.upload);
+    ShowUpload(path, QPixmap::fromImage(std::move(loaded.preview)), loaded.size);
+  });
+}
+
+void ArtPickerPanel::ShowUpload(const QString& path, const QPixmap& pixmap, QSize size) {
   thumbs_[{slot_, kUploadId}] = pixmap;
 
   QListWidgetItem* item = ItemFor(kUploadId);
@@ -696,7 +719,7 @@ void ArtPickerPanel::UseFile(const QString& path) {
   item->setData(Qt::DecorationRole, pixmap);
   item->setData(kStateRole, kReady);
   item->setData(kCurrentRole, false);
-  item->setToolTip(QFileInfo(path).fileName() + QString(" · %1×%2").arg(image.width()).arg(image.height()));
+  item->setToolTip(QFileInfo(path).fileName() + QString(" · %1×%2").arg(size.width()).arg(size.height()));
   item->setHidden(false);
   stack_->setCurrentWidget(grid_);
   grid_->setCurrentItem(item);  // picks it, through currentItemChanged

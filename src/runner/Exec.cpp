@@ -346,7 +346,8 @@ std::string ToolVersion(const std::string& path) {
   command.timeout_s = 15;  // a hung tool must not block its status
   const auto result = RunAndWait(command);
   std::string version = result && result->exit_code == 0 ? strings::Trim(result->output) : std::string();
-  if (!ec && !version.empty()) {
+  // A tool that answered without a version too, so it isn't run again until it changes; a timeout is asked again.
+  if (!ec && result) {
     const std::lock_guard lock(mutex);
     cache[resolved] = {mtime, version};
   }

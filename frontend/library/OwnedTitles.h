@@ -36,8 +36,9 @@ class OwnedTitles : public QObject {
 public:
   explicit OwnedTitles(QObject* parent = nullptr);
 
-  // Fetches again; one already running is left to finish.
-  void Refresh();
+  // Fetches again; one already running is left to finish. `fresh` waits for every store's own
+  // answer rather than the lists mirad stored, for a refresh the user asked for.
+  void Refresh(bool fresh = false);
   // Refresh(), unless the last one is recent.
   void RefreshIfStale();
   const std::vector<StoreTitle>& Titles() const { return titles_; }
@@ -52,6 +53,7 @@ private:
   QDateTime fetched_;
   bool loading_ = false;
   bool again_ = false;  // asked again while loading
+  bool again_fresh_ = false;
 };
 
 }  // namespace mira_gui

@@ -16,7 +16,7 @@ namespace mira::proc {
 // the game is forked (game_pid set, finished false), once after it exits
 // (finished true, everything below set). It is read by mirad both to serve
 // GET /v1/games/{id} while it's running and, on startup, to reconcile a
-// session that outlived a mirad restart (see docs/architecture.md).
+// session that outlived a mirad restart (see docs/backend.md).
 struct SessionRecord {
   std::string game_id;
   pid_t wrapper_pid = 0;  // mira-run's own pid, used to detect a live session on restart

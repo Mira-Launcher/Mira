@@ -106,11 +106,14 @@ public:
 
 signals:
   void Closed();
+  // F5 or Ctrl+R: the library scanned and every store asked again, as on the desktop.
+  void RefreshRequested();
 
 protected:
   void closeEvent(QCloseEvent* event) override;
   bool event(QEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
+  void changeEvent(QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
 private:
