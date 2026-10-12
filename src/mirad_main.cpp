@@ -11,6 +11,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <thread>
 
@@ -76,6 +77,11 @@ int main(int argc, char** argv) {
     PrintUsage();
     return 2;
   }
+
+  // Settings with API keys, the library and logs: only their owner may look in.
+  std::error_code ec;
+  std::filesystem::create_directories(mira::paths::UserDir(), ec);
+  std::filesystem::permissions(mira::paths::UserDir(), std::filesystem::perms::owner_all, ec);
 
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
   const auto cache_db = mira::paths::DatabaseFile().parent_path() / "cache.db";

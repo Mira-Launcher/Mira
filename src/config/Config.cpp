@@ -2,7 +2,6 @@
 
 #include <array>
 #include <format>
-#include <fstream>
 #include <sstream>
 
 #include "config/Schema.h"
@@ -14,6 +13,8 @@
 
 namespace mira::config {
 namespace {
+
+constexpr mode_t kSettingsMode = 0600;  // it holds API keys
 using nlohmann::json;
 
 }
@@ -35,9 +36,9 @@ void Config::Load(const std::string& fallback) {
 
   std::error_code ec;
   const auto write_text = [&](const auto& text) {
-    std::filesystem::create_directories(file_.parent_path(), ec);
-    std::ofstream out(file_);
-    if (out) out << text;
+    std::ostringstream out;
+    out << text;
+    (void)WriteFileAtomic(file_, out.str(), "config_write_failed", false, kSettingsMode);
   };
   const auto apply = [&](const toml::table& table, const std::string& text) {
     json whole = tomljson::ToJson(table);
@@ -62,6 +63,9 @@ void Config::Load(const std::string& fallback) {
     log::Info("no settings at {}, writing defaults", file_.string());
     write_text(tomljson::ToToml(document_));
   } else {
+    // A file from before saves were owner-only.
+    std::filesystem::permissions(file_, std::filesystem::perms::group_all | std::filesystem::perms::others_all,
+                                 std::filesystem::perm_options::remove, ec);
     const std::string text = files::ReadFile(file_).value_or("");
     toml::parse_result parsed = toml::parse(text, file_.string());
     if (parsed) {
@@ -203,7 +207,7 @@ Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
   ++revision_;  // every change to the settings saves
   if (keep_file_) return KeptFileError(file_);
   const std::string text = tomljson::ToTomlText(document_);
-  if (auto written = WriteFileAtomic(file_, text, "config_write_failed"); !written) return written;
+  if (auto written = WriteFileAtomic(file_, text, "config_write_failed", false, kSettingsMode); !written) return written;
   loaded_text_ = text;
   if (on_valid_text_) on_valid_text_(text);
   return {};
