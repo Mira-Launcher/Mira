@@ -294,6 +294,7 @@ void Restyle() {
   if (QApplication::style() == nullptr || QApplication::style()->name() != "fusion") {
     QApplication::setStyle(QStyleFactory::create("Fusion"));
   }
+  emit Notifier::Instance()->AboutToRestyle();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
   emit Notifier::Instance()->Changed();

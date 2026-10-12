@@ -180,6 +180,8 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // Connected before the views are built, so it runs before they repaint.
   connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, this,
           [this] { artwork_->ThemeChanged(); });
+  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::AboutToRestyle, this,
+          &LibraryWindow::DropTagsPageUnseen);
 
   splitter_ = new QSplitter(Qt::Horizontal, this);
   sidebar_ = BuildSidebar(prefs);
@@ -359,6 +361,10 @@ void LibraryWindow::BuildShortcuts() {
     }
     if (GameEditOpen()) {
       game_card_->Back();
+      return;
+    }
+    if (TagPickerShown()) {
+      tags_page_->ClosePicker();
       return;
     }
     grid_page_->ClearSearchOrSelection();
@@ -704,6 +710,14 @@ void LibraryWindow::BuildTagsPage() {
   connect(tags_page_, &mira_gui::TagsPage::PickerToggled, this,
           &LibraryWindow::UpdateLibraryNavActive);
   main_stack_->addWidget(tags_page_);
+}
+
+void LibraryWindow::DropTagsPageUnseen() {
+  if (tags_page_ == nullptr || TagsShown()) return;
+  main_stack_->removeWidget(tags_page_);
+  delete tags_page_;  // now, not deleteLater: it would still be there to polish
+  tags_page_ = nullptr;
+  QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
 }
 
 void LibraryWindow::OpenTags() {

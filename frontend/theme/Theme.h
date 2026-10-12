@@ -148,6 +148,9 @@ public:
   static Notifier* Instance();
 
 signals:
+  // Before the stylesheet is set, which re-polishes every widget there is: the moment to let go of
+  // what isn't shown.
+  void AboutToRestyle();
   void Changed();
 };
 

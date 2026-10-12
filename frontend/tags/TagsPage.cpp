@@ -36,6 +36,10 @@
 namespace mira_gui {
 namespace {
 
+// Steam was asked for missing tags this session. Not the page's: a page that isn't shown is built
+// again after a restyle, and a new one mustn't ask again.
+bool g_fetching_steam = false;
+
 constexpr int kCountWidth = 64;
 
 QString Games(std::size_t count) {
@@ -425,6 +429,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   stack_->addWidget(picker_);
   connect(picker_, &TagPicker::Closed, this, [this] {
     stack_->setCurrentWidget(overview_);
+    picker_->Clear();
     emit PickerToggled();
     Refresh();
   });
@@ -481,6 +486,10 @@ TileRow TagsPage::Row() const {
 
 bool TagsPage::PickerOpen() const {
   return stack_->currentWidget() == picker_;
+}
+
+void TagsPage::ClosePicker() {
+  if (PickerOpen()) emit picker_->Closed();
 }
 
 void TagsPage::SetShowingHidden(bool showing) {
@@ -547,13 +556,13 @@ void TagsPage::Refresh() {
     tags_ = std::move(result);
     tags_loaded_ = true;
     Sync();
-    // Games fetched before Steam tags were get them now, once a session (the page is kept).
-    if (tags_.steam_missing > 0 && settings_.steam && !fetching_steam_) {
-      fetching_steam_ = true;
+    // Games fetched before Steam tags were get them now, once a session.
+    if (tags_.steam_missing > 0 && settings_.steam && !g_fetching_steam) {
+      g_fetching_steam = true;
       SyncSteam();
       api::FetchSteamTagsAsync(this, [this](SteamTagsFetchResult fetched) {
         if (!fetched.ok) {
-          fetching_steam_ = false;  // asked again on the next refresh
+          g_fetching_steam = false;  // asked again on the next refresh
           return Failed("Could not get tags from Steam.", fetched.error);
         }
         Refresh();
@@ -693,8 +702,6 @@ TagsPage::SteamRow& TagsPage::SteamRowFor(const std::string& name) {
   connect(add, &QAbstractButton::clicked, this,
           [this, label] { OpenPicker(label, /*existing=*/false); });
   line->addWidget(add);
-  steam_columns_->Place(entry.row, static_cast<int>(steam_rows_.size()));
-  entry.row->show();
   return entry;
 }
 
@@ -711,17 +718,9 @@ void TagsPage::SyncSteam() {
       ++it;
     }
   }
-  if (settings_.steam) {
-    std::size_t most = 1;
-    for (const SteamTagSuggestion& tag : tags_.steam) most = std::max(most, ShownCount(tag.ids));
-    for (std::size_t i = 0; i < tags_.steam.size(); ++i) {
-      const SteamTagSuggestion& tag = tags_.steam[i];
-      SteamRow& entry = SteamRowFor(tag.name);
-      entry.games = ShownCount(tag.ids);
-      entry.count->Set(entry.games, most);
-      steam_columns_->Place(entry.row, static_cast<int>(i));
-    }
-  }
+  steam_most_ = 1;
+  for (const SteamTagSuggestion& tag : tags_.steam)
+    steam_most_ = std::max(steam_most_, ShownCount(tag.ids));
   FilterSteam();
 }
 
@@ -729,14 +728,30 @@ void TagsPage::FilterSteam() {
   const QString search = steam_search_->text().trimmed();
   int shown = 0;
   int rare = 0;
-  for (auto& [name, entry] : steam_rows_) {
-    const bool is_rare = entry.games < 2;
+  int place = 0;
+  static const std::vector<SteamTagSuggestion> kNone;
+  for (const SteamTagSuggestion& tag : settings_.steam ? tags_.steam : kNone) {
+    const std::size_t games = ShownCount(tag.ids);
+    // On no game shown in this mode (only hidden games', outside hidden mode): not listed at all.
+    const bool is_rare = games == 1;
     rare += is_rare;
-    const bool show = search.isEmpty()
-                          ? !is_rare || show_rare_steam_
-                          : QString::fromStdString(name).contains(search, Qt::CaseInsensitive);
-    entry.row->setVisible(show);
+    const bool show = games > 0 && (search.isEmpty() ? !is_rare || show_rare_steam_
+                                                     : QString::fromStdString(tag.name).contains(
+                                                           search, Qt::CaseInsensitive));
     shown += show;
+    // Only shown rows exist: most of Steam's tags are on one game and stay hidden, and a restyle
+    // would polish every row there is.
+    if (!show) {
+      if (const auto built = steam_rows_.find(tag.name); built != steam_rows_.end()) {
+        steam_columns_->Remove(built->second.row);
+        steam_rows_.erase(built);
+      }
+      continue;
+    }
+    SteamRow& entry = SteamRowFor(tag.name);
+    entry.count->Set(games, steam_most_);
+    steam_columns_->Place(entry.row, place++);
+    entry.row->show();
   }
   // Tags on one game are most of Steam's and say little about a library; search still finds them.
   steam_rare_row_->setVisible(search.isEmpty() && rare > 0);
@@ -745,7 +760,7 @@ void TagsPage::FilterSteam() {
   QString note;
   if (!settings_.steam) {
     note = "Getting tags from Steam is off (Tag settings).";
-  } else if (fetching_steam_ && tags_.steam_missing > 0) {
+  } else if (g_fetching_steam && tags_.steam_missing > 0) {
     note = "Getting tags from Steam…";
   } else if (shown == 0 && rare == 0) {
     note = search.isEmpty() ? QString("No Steam tags on your games yet.")
@@ -1030,7 +1045,7 @@ void TagsPage::PatchSetting(const std::string& key, const std::string& type, con
       Sync();
       return Failed("Could not save that setting.", result.error);
     }
-    fetching_steam_ = false;  // Steam turned on, or matching widened: what's missing is fetched
+    g_fetching_steam = false;  // Steam turned on, or matching widened: what's missing is fetched
     Refresh();
   });
 }

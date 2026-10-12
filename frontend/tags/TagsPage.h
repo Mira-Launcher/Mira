@@ -49,6 +49,8 @@ public:
   // The open picker's row its tiles snap to fill; room 0 when it's closed.
   TileRow Row() const;
   bool PickerOpen() const;
+  // Back from the picker, its choices dropped, as its back arrow; the window's Esc.
+  void ClosePicker();
   // Hidden mode: counts are of hidden games only, else of the rest, and so are the picker's covers.
   void SetShowingHidden(bool showing);
   // The window is leaving the page, which it keeps: a rename being typed, an open picker and a
@@ -84,7 +86,6 @@ private:
   struct SteamRow {
     SteamTagRow* row = nullptr;
     CountPill* count = nullptr;
-    std::size_t games = 0;
   };
 
   void Refresh();
@@ -129,7 +130,6 @@ private:
   bool showing_hidden_ = false;
   TagsResult tags_;
   Settings settings_;
-  bool fetching_steam_ = false;
   bool tags_loaded_ = false;
   bool settings_loaded_ = false;
   bool show_rare_steam_ = false;  // the Steam tags on only one game, which are many and say little
@@ -144,7 +144,9 @@ private:
   SettingsCard* settings_card_ = nullptr;
   std::map<std::string, MineRow> mine_rows_;
   SettingRow* mine_note_ = nullptr;
+  // Only the rows shown now; see FilterSteam.
   std::map<std::string, SteamRow> steam_rows_;
+  std::size_t steam_most_ = 1;  // the most games any Steam tag is on, for the pills' strength
   RowColumns* steam_columns_ = nullptr;  // the Steam rows, in as many columns as fit
   SettingRow* steam_note_ = nullptr;
   QPushButton* steam_rare_ = nullptr;  // shows or hides the Steam tags on one game

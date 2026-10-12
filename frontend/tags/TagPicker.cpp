@@ -8,7 +8,6 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QShortcut>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -175,9 +174,6 @@ TagPicker::TagPicker(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), 
   connect(apply_, &QPushButton::clicked, this, &TagPicker::Apply);
   bar->addWidget(apply_);
 
-  auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-  escape->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(escape, &QShortcut::activated, this, &TagPicker::Closed);
   connect(artwork_, &ArtworkStore::QuickScalingEnded, this, [this] {
     for (PickTile* tile : tiles_) tile->update();
   });
@@ -240,12 +236,7 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
   folder_->setChecked(folder);
   folder_label_->setText(existing ? "A folder" : "Also a folder");
 
-  tiles_.clear();
-  hidden_section_ = nullptr;
-  while (QLayoutItem* item = sections_->takeAt(0)) {
-    if (item->widget() != nullptr) item->widget()->deleteLater();
-    delete item;
-  }
+  Clear();
 
   // A store's launcher isn't a game to tag; one that had the tag keeps it.
   std::vector<const GameSummary*> sorted;
@@ -300,6 +291,15 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
     name_edit_->setFocus();
   } else {
     search_->setFocus();
+  }
+}
+
+void TagPicker::Clear() {
+  tiles_.clear();
+  hidden_section_ = nullptr;
+  while (QLayoutItem* item = sections_->takeAt(0)) {
+    if (item->widget() != nullptr) item->widget()->deleteLater();
+    delete item;
   }
 }
 

@@ -43,6 +43,8 @@ public:
   // typed name that's already a tag keeps the games that have it.
   void Open(const QString& name, bool existing, std::vector<Section> sections, const std::vector<GameSummary>& games,
             bool folder, std::vector<TagSummary> known);
+  // Lets go of the covers once closed, so a restyle doesn't polish a tile per game out of view.
+  void Clear();
   void SetTileWidth(int width);
   // The row its tiles snap to fill; room 0 when none show.
   TileRow Row() const;
