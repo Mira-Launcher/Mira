@@ -974,6 +974,12 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
           new sidebar::PlaceholderRow(style, static_cast<int>(games.size()) + i, parent));
     }
   }
+  // Rows added to a shown parent only show on a later event, so one frame would lay out the
+  // sections below without them (Recently played drawn higher, then dropping into place).
+  for (int i = 0; i < layout->count(); ++i) {
+    if (QWidget* row = layout->itemAt(i)->widget()) row->show();
+  }
+  if (parent->layout() != nullptr) parent->layout()->activate();
   parent->setUpdatesEnabled(true);
 }
 
