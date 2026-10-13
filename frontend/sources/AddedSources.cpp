@@ -195,7 +195,7 @@ void AddedSources::ShowMenu(const QString& id) {
   const SourceEntry entry = tile.entry;
   QMenu menu(this);
   menu.setToolTipsVisible(true);
-  if (id != "humble" && id != "local") {
+  if (id != "humble" && id != "local" && entry.source.kind != SourceInfo::Kind::ModManager) {
     const QString item = CopyFor(id.toStdString()).item;
     QAction* import = menu.addAction("Import " + item + "s now", this, [this, id] { Import(id); });
     import->setEnabled(entry.enabled && !tile.importing);

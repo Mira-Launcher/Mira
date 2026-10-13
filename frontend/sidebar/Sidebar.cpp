@@ -566,9 +566,10 @@ void Sidebar::UpdateSources() {
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
     if (!library_->Shown(game)) continue;
-    const std::string source = SourceIdOf(game);
-    ++counts[source];
-    shown[source].push_back(&game);
+    for (const std::string& source : SourcesOf(game)) {
+      ++counts[source];
+      shown[source].push_back(&game);
+    }
   }
   constexpr size_t kCovers = 3;
   source_cover_ids_.clear();
@@ -663,7 +664,9 @@ void Sidebar::UpdateSources() {
 
 std::vector<SourceEntry> Sidebar::SourceEntries() const {
   std::map<std::string, int> counts;
-  for (const GameSummary& game : library_->Games()) ++counts[SourceIdOf(game)];
+  for (const GameSummary& game : library_->Games()) {
+    for (const std::string& source : SourcesOf(game)) ++counts[source];
+  }
   std::vector<SourceEntry> entries;
   for (const QString& id : SourceOrder()) {
     const SourceInfo* source = FindSourceInfo(id);

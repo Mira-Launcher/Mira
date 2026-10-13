@@ -1309,6 +1309,21 @@ struct EmulatorInfo {
   std::vector<EmulatorFirmware> firmware;
 };
 
+// One of GET /v1/mod-managers (docs/api.md, Mod managers).
+struct ModManagerInfo {
+  std::string id;  // also its source and its launch option's id
+  std::string name;
+  bool installed = false;
+  std::string version;
+  std::vector<std::string> games;  // the games it's added to
+};
+
+struct ModManagersResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<ModManagerInfo> managers;
+};
+
 struct EmulatorsResult {
   bool ok = false;
   ApiError error;

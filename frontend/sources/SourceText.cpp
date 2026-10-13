@@ -62,6 +62,12 @@ SourceCopy CopyFor(const std::string& id) {
                 .arg(PlaysText(*source), source->name),
             "", "Add games"};
   }
+  if (id == "vortex" || id == "mo2") {
+    const QString name = id == "vortex" ? "Vortex" : "Mod Organizer 2";
+    return {"Mods your Windows games. Mira downloads " + name + " and runs it in each game's own prefix, where it "
+            "sees the game as the game does. Add it to a game, then open it from that game's page.",
+            "", "Add to a game"};
+  }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",
             "Import games"};

@@ -65,6 +65,8 @@ const std::vector<SourceInfo>& AllSources() {
       {"mame", "MAME", Kind::Emulator, QColor("#4b9ecd"), {"arcade"}},
       {"dosbox", "DOSBox Staging", Kind::Emulator, QColor("#3e7bd6"), {"dos"}},
       {"scummvm", "ScummVM", Kind::Emulator, QColor("#2fb84a"), {"adventure"}},
+      {"vortex", "Vortex", Kind::ModManager, QColor("#e8762d"), {}, true},
+      {"mo2", "Mod Organizer 2", Kind::ModManager, QColor("#3e6fb0"), {}, true},
   };
   return sources;
 }
@@ -85,6 +87,8 @@ QString KindLabel(SourceInfo::Kind kind) {
       return "On this computer";
     case SourceInfo::Kind::Emulator:
       return "Emulator";
+    case SourceInfo::Kind::ModManager:
+      return "Mod manager";
   }
   return {};
 }
@@ -95,6 +99,20 @@ std::string SourceIdOf(const GameSummary& game) {
   if (game_source == "launcher") return IsApp(game) ? game.source_ref : std::string();
   if (game_source != "local" && FindSourceInfo(QString::fromStdString(game_source)) != nullptr) return game_source;
   return "local";
+}
+
+std::vector<std::string> SourcesOf(const GameSummary& game) {
+  std::vector<std::string> sources = {SourceIdOf(game)};
+  for (const LaunchOption& option : game.launch.options) {
+    const SourceInfo* info = FindSourceInfo(QString::fromStdString(option.id));
+    if (info != nullptr && info->kind == SourceInfo::Kind::ModManager) sources.push_back(option.id);
+  }
+  return sources;
+}
+
+bool InSource(const GameSummary& game, const std::string& source) {
+  if (SourceIdOf(game) == source) return true;  // the common case, without building the list
+  return std::ranges::contains(SourcesOf(game), source);
 }
 
 std::vector<QString> OrderSources(const std::vector<QString>& saved) {

@@ -19,6 +19,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Library.h"
 #include "../client/api/Emulators.h"
+#include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
@@ -222,6 +223,22 @@ void SourcesPage::OpenSetup(const QString& id) {
   const SourceInfo source = entry->source;
 
   // Added at once and its page opened, where it installs; one Mira downloads starts downloading now.
+  if (source.kind == SourceInfo::Kind::ModManager) {
+    api::AddSourceAsync(this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      emit Imported(id);
+      // Installed unless it already is; the install outlives this page.
+      api::GetModManagersAsync(window(), [window = window(), id, name](ModManagersResult result) {
+        const auto it = std::ranges::find(result.managers, id.toStdString(), &ModManagerInfo::id);
+        if (!result.ok || it == result.managers.end() || it->installed) return;
+        api::InstallModManagerAsync(window, it->id, [window, name](StoreActionResult r) {
+          if (!r.ok) notify::FailedRequest(window, "Could not install " + name + ".", r.error);
+        });
+      });
+      emit OpenRequested(id);
+    });
+    return;
+  }
   if (source.kind == SourceInfo::Kind::Emulator) {
     api::AddSourceAsync(this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
       if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
