@@ -87,6 +87,7 @@ struct Game {
 
   nlohmann::json runner_config = nlohmann::json::object();  // opaque, owned by the runner
   nlohmann::json overrides = nlohmann::json::object();      // dotted config keys
+  nlohmann::json launch = nlohmann::json::object();         // other ways to start it (library/LaunchOptions)
 
   std::string last_error;
   std::int64_t created_at = 0;

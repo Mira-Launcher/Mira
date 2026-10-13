@@ -30,6 +30,7 @@
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/LaunchOptions.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "proc/Session.h"
@@ -189,13 +190,17 @@ int PrepareStatus(const Error& error) {
 struct RunProgram {
   std::string exe_path;
   std::string args;
+  bool native = false;      // run as a Linux program, not with the game's runner
+  bool as_game = true;      // with launch.env, MangoHud and command wrappers
 };
 
 // The command that starts `game` (or `program` in its prefix) under its resolved runner, with launch.env and
 // command wrappers applied. Pins the runner on the game when launch.pin_runner is on and none was set.
 Result<Command> PrepareCommand(Services& s, model::Game& game, const std::optional<RunProgram>& program) {
   const runner::RunnerRegistry registry(s.config);
-  auto resolved = registry.Resolve(registry.ResolveRef(game));
+  auto resolved = program && program->native
+                      ? Result<runner::RunnerRegistry::Resolved>(runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})
+                      : registry.Resolve(registry.ResolveRef(game));
   if (!resolved) return std::unexpected(resolved.error());
 
   if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
@@ -215,6 +220,7 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
     }
     target.exe_path = program->exe_path;
     target.args = program->args;
+    target.working_dir.clear();
   }
   auto command = resolved->runner->BuildCommand(target, resolved->build);
   if (!command) return std::unexpected(command.error());
@@ -225,6 +231,7 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
                "Check the game's folder is still there, or choose its executable again.",
                Fix::Game(game.id, "exe"));
   }
+  if (program && !program->as_game) return command;
 
   const config::Resolver resolver(s.config, game.overrides);
   const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
@@ -235,6 +242,49 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   ApplyShaderCache(*command, resolver, game);
   ApplyCommandWrappers(*command, wrappers);
   return command;
+}
+
+// One of the game's launch options as a program to run: in its prefix for a Windows game, unless it's native.
+RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& option) {
+  const bool native = option.native || game.platform != model::Platform::Windows;
+  std::vector<std::string> args = strings::SplitArgs(option.args);
+  for (std::string& arg : args) arg = library::FillLaunchPlaceholders(arg, game, !native);
+  return {.exe_path = library::FillLaunchPlaceholders(option.exe, game, false),
+          .args = strings::JoinArgs(args),
+          .native = native,
+          .as_game = option.mode == library::LaunchMode::Play};
+}
+
+// Starts a launch option detached and untracked, with its output in the game's log; `unit` puts it in a
+// systemd scope of that name.
+Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option, const std::string& unit) {
+  auto command = PrepareCommand(s, game, OptionProgram(game, option));
+  if (!command) return std::unexpected(command.error());
+  if (!unit.empty()) {
+    command->argv.insert(command->argv.begin(), {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit",
+                                                 unit, "--description", std::format("Mira: {} with {}", option.name, game.name), "--"});
+  }
+  const std::filesystem::path log = proc::GameLogPath(s.games.Dir(), game.id);
+  std::error_code ec;
+  std::filesystem::create_directories(log.parent_path(), ec);
+  const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+  auto spawned = runner::SpawnDetached(*command, log_fd);
+  if (log_fd >= 0) ::close(log_fd);
+  if (!spawned) return std::unexpected(spawned.error());
+  std::thread([pid = *spawned] { ::waitpid(pid, nullptr, 0); }).detach();
+  return {};
+}
+
+// Starts the game's alongside options once it's tracked; each is stopped when the game exits.
+void StartAlongside(Services& s, model::Game game) {
+  for (const library::LaunchOption& option : library::LaunchOptions(game)) {
+    if (option.mode != library::LaunchMode::Alongside) continue;
+    const std::string unit = std::format("mira-{}-{}-{}.scope", game.id, option.id, model::NowSeconds());
+    if (!s.supervisor.AddCompanion(game.id, unit)) return;
+    if (auto started = SpawnOption(s, game, option, unit); !started) {
+      log::Warn("couldn't start {} with {}: {}", option.name, game.id, started.error().message);
+    }
+  }
 }
 
 // Starts `command` under mira-run in its own systemd scope and tracks its session.
@@ -368,6 +418,23 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (!files->empty() && !(launchers::ForGame(*game) && game->source == "office")) {
       return SendError(res, 400, "files_unsupported", "only a Microsoft 365 app opens files");
     }
+    // One of the game's launch options, or with none named, its default one.
+    if (body.contains("option") && !body["option"].is_string()) {
+      return SendError(res, 400, "invalid_body", R"("option" must be a launch option's id)");
+    }
+    const std::string chosen = body.value("option", std::string());
+    std::optional<library::LaunchOption> option =
+        chosen.empty() ? library::DefaultLaunch(*game) : library::FindLaunchOption(*game, chosen);
+    if (!chosen.empty() && chosen != library::kGameLaunch && !option) {
+      return SendError(res, 404, "launch_option_not_found", std::format("\"{}\" has no launch option \"{}\"", game->id, chosen));
+    }
+    if (option && option->mode == library::LaunchMode::Alongside) {
+      return SendError(res, 400, "alongside_option", std::format("{} only runs beside the game", option->name));
+    }
+    if (option && option->mode == library::LaunchMode::Tool) {
+      if (auto opened = SpawnOption(s, *game, *option, ""); !opened) return SendError(res, PrepareStatus(opened.error()), opened.error());
+      return SendJson(res, {{"status", "opened"}, {"tracked", false}});
+    }
 
     // An app that's already open is handed the documents anyway; the running one stays tracked.
     const auto reservation = s.supervisor.Reserve(game->id);
@@ -390,6 +457,14 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       }
     }
     const std::string post_script = resolver.GetString("launch.post_script");
+
+    // A play option replaces how the game starts, whatever its source, and is tracked as the game.
+    if (option) {
+      auto command = PrepareCommand(s, *game, OptionProgram(*game, *option));
+      if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
+      LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script);
+      return StartAlongside(s, *game);
+    }
 
     // A launcher game is started by its launcher, which keeps running after the
     // game exits; the game's own processes are tracked.
@@ -434,6 +509,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
       }
+      StartAlongside(s, *game);
       return SendJson(res, {{"status", "launched_via_launcher"}, {"tracked", true}});
     }
 
@@ -463,6 +539,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
           if (auto started = s.supervisor.TrackSteamLaunch(*game, appid, post_script); !started) {
             log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
           }
+          StartAlongside(s, *game);
         }
         return SendJson(res, {{"status", "launched_via_steam"}, {"tracked", track}});
       }
@@ -479,6 +556,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
 
     LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script);
+    StartAlongside(s, *game);
   });
 
   http.Post(R"(/v1/games/([^/]+)/stop)", [&s](const Request& req, Response& res) {

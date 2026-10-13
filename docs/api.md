@@ -106,7 +106,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `source` says where the game came from: `scan`, `manual`, `steam`, `lutris`, `epic`, `gog`, `itch`, `amazon`, a launcher id, and so on. That source owns the fields it writes on a re-import.
 
 ### `PATCH /v1/games/{id}`
-Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `platform` (`windows` or `native`; anything else is `400 invalid_body`; a game turned `windows` without a `data_dir` gets one under `prefix_root`, and a ready one becomes `setting_up` while a `provision` [job](#jobs) sets up its prefix, then `ready` or `broken` with a `game.updated`; a game turned `native` keeps its `data_dir`, so turning it back reuses the prefix), `runner_config` (merged), `env` (merged, `null` removes a key), `tags` (replaced) and `folder_tag` (in a library folder sorted by tag, a change to either can move the game, see [Folders by tag](#folders-by-tag)). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
+Changes any of `name`, `exe_path`, `args` (one command line: arguments are split on spaces, and quotes keep one together, as in `--save "C:\My Games"`), `working_dir`, `runner_ref`, `data_dir`, `platform` (`windows` or `native`; anything else is `400 invalid_body`; a game turned `windows` without a `data_dir` gets one under `prefix_root`, and a ready one becomes `setting_up` while a `provision` [job](#jobs) sets up its prefix, then `ready` or `broken` with a `game.updated`; a game turned `native` keeps its `data_dir`, so turning it back reuses the prefix), `runner_config` (merged), `env` (merged, `null` removes a key), `tags` (replaced), `launch` (replaced, see [Launch options](#launch-options)) and `folder_tag` (in a library folder sorted by tag, a change to either can move the game, see [Folders by tag](#folders-by-tag)). An `exe_path` given relative but outside the game's folder (`../Applications/Eden.AppImage`) is stored absolute, here and in `POST /v1/games/manual`, so it survives a move. Any change marks the game `reviewed`; `{"reviewed": true}` confirms a game without changing anything else. Overrides go through `/config` below. Publishes `game.updated`.
 
 ### `PATCH /v1/games`
 Changes many games in one request, for a multi-select:
@@ -168,6 +168,21 @@ The game runs under `mira-run`, which owns the scripts, the game's output log an
 The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam -silent -applaunch <appid>` (`-silent`, on unless `steam.launch_silent` is off, keeps a Steam that wasn't running from opening its window). With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand.
 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
+
+#### Launch options
+A game's `launch` holds other ways to start it and programs that run beside it, such as a mod manager or a deck tracker:
+
+```json
+{ "default": "olympus", "only": false,
+  "options": [{ "id": "olympus", "name": "Olympus", "mode": "play", "exe": "/home/me/Olympus/olympus", "args": "", "native": true }] }
+```
+
+- `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself, untracked.
+- `exe` is absolute or relative to `install_path`. `{game_dir}`, `{game_exe}` and `{prefix}` in `exe` or `args` are filled in, as `Z:\...` Wine paths in the args of an option run in the prefix.
+- A Windows game's option runs with the game's runner and in its prefix (Steam's own Proton and prefix for a Steam game), unless `native` is set. Any other game's runs as a Linux program.
+- `default` is the `play` option Play starts with no option named; empty for the game's own program. `only` asks a client to offer nothing else. `id`s are made from the name when missing; `game` is reserved for the game's own program.
+
+The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`.
 
 ### `GET /v1/games/{id}/sessions?limit=`
 `{"sessions": [{"started_at", "ended_at", "duration_seconds", "exit_code", "signal", "incomplete"}, ...]}`: the game's finished play sessions, newest first, at most `limit` (default 50; `400 invalid_param` unless a whole number, 1 or more). `incomplete` is a session mirad restarted during, so how it ended is unknown. Removing the game removes its sessions.

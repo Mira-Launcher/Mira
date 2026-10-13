@@ -6,6 +6,7 @@
 #include "config/Resolver.h"
 #include "config/Schema.h"
 #include "library/FolderTags.h"
+#include "library/LaunchOptions.h"
 
 namespace mira::library {
 using nlohmann::json;
@@ -55,6 +56,8 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   if (patch.contains("folder_tag") && patch["folder_tag"].is_string())
     game.folder_tag = patch["folder_tag"];
   DropStalePick(game);
+  // Replaced, not merged.
+  if (patch.contains("launch") && patch["launch"].is_object()) game.launch = WithLaunchIds(patch["launch"]);
   // "env": null clears every entry; {"K": null} removes just K.
   if (patch.contains("env") && patch["env"].is_null()) {
     game.env.clear();
@@ -87,6 +90,9 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
   if (patch.contains("runner_config") && !patch["runner_config"].is_object()) return "\"runner_config\" must be an object";
   if (patch.contains("env") && !patch["env"].is_object() && !patch["env"].is_null()) return "\"env\" must be an object or null";
   if (patch.contains("reviewed") && !patch["reviewed"].is_boolean()) return "\"reviewed\" must be true or false";
+  if (patch.contains("launch")) {
+    if (auto problem = LaunchProblem(patch["launch"])) return problem;
+  }
   return std::nullopt;
 }
 

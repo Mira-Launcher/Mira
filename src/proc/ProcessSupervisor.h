@@ -91,6 +91,10 @@ public:
   bool IsRunning(const std::string& game_id) const;
   bool AnyRunning() const;
 
+  // Stops the systemd scope `unit`, a program started beside the game, when the game exits. False, and
+  // nothing kept, if the game isn't tracked.
+  bool AddCompanion(const std::string& game_id, std::string unit);
+
   // Claims a game before anything is spawned or any of its files change, so two quick
   // launches can't both start it and a game can't launch mid-move. Empty if it is
   // running or already claimed.
@@ -148,6 +152,7 @@ private:
   std::map<std::string, ExternalMatch> external_;  // game id -> match, for Stop()/WatchExternal()
   std::map<std::string, std::int64_t> kill_deadlines_;  // game id -> when to SIGKILL
   std::map<std::string, std::string> reserved_;  // games claimed by Reserve(), with the purpose
+  std::map<std::string, std::vector<std::string>> companions_;  // game id -> AddCompanion's units
   std::set<std::string> stop_requested_;  // Stop() was called; the exit isn't a crash
   std::map<std::string, Watcher> watchers_;
   // Watchers replaced by a relaunch of the same game; each is joined once it has finished.
