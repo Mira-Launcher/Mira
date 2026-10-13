@@ -61,7 +61,7 @@ jobs:
       - name: Packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends valgrind python3-pil curl sqlite3 xvfb xauth xdotool \
+          sudo apt-get install -y --no-install-recommends valgrind python3-pil curl sqlite3 xvfb xauth xdotool imagemagick \
             libgl1 libopengl0 libegl1 libfontconfig1 libfreetype6 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libpulse0
 
       - uses: actions/download-artifact@v4
