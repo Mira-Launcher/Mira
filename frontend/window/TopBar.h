@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class QLabel;
 class QSlider;
 class QToolButton;
 
@@ -24,6 +25,8 @@ class TopBar : public QWidget {
   void SetActivityCount(int running);
   // The window's maximized state changed: the button's icon and tooltip follow.
   void SyncMaximized();
+  // Hidden mode's note in the middle of the bar, naming `shortcut` as the way out; none for empty.
+  void SetHiddenShortcut(const QString& shortcut);
 
  signals:
   void ActivityClicked();
@@ -35,13 +38,18 @@ class TopBar : public QWidget {
  protected:
   void mousePressEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 
  private:
+  // Centered on the bar, and left out where it would run into the brand or the tools.
+  void PlaceHiddenNote();
   // Redrawn rather than stored: each glyph is painted in the theme's text
   // color, so a theme change has to regenerate them.
   void ApplyIcons();
   void ToggleMaximize();
 
+  QLabel* brand_ = nullptr;
+  QLabel* hidden_note_ = nullptr;
   QSlider* zoom_ = nullptr;
   QToolButton* activity_ = nullptr;
   QToolButton* big_screen_ = nullptr;

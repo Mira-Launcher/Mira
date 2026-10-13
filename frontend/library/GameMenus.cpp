@@ -112,7 +112,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QAction* toggle_hidden = menu.addAction(hidden ? "Unhide" : "Hide");
   toggle_hidden->setToolTip(hidden ? "Show this game in the library again"
                                    : "Keep this game out of the library until you ask for it "
-                                     "(Ctrl+H, or the Hidden filter)");
+                                     "(Ctrl+H shows hidden games)");
   const bool app = IsApp(game);
   QAction* toggle_app = menu.addAction(app ? "Mark as game" : "Mark as app");
   toggle_app->setToolTip(
@@ -189,8 +189,7 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
       hidden < count ? menu.addAction(QString("Hide (%1)").arg(count - hidden)) : nullptr;
   if (hide != nullptr) {
     hide->setToolTip(
-        "Keep these games out of the library until you ask for them (Ctrl+H, or the Hidden "
-        "filter)");
+        "Keep these games out of the library until you ask for them (Ctrl+H shows hidden games)");
   }
   QAction* unhide = hidden > 0 ? menu.addAction(QString("Unhide (%1)").arg(hidden)) : nullptr;
   QAction* mark_app =

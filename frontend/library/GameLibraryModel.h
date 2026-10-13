@@ -45,11 +45,18 @@ public:
 
   const GameSummary* Find(const std::string& id) const;
   const std::vector<GameSummary>& Games() const { return games_; }
+
+  // Hidden mode (Ctrl+H): every view lists only hidden games, instead of only the rest.
+  bool ShowingHidden() const { return showing_hidden_; }
+  void SetShowingHidden(bool showing);
+  // Whether `game` belongs in the views under the current mode.
+  bool Shown(const GameSummary& game) const { return IsHidden(game) == showing_hidden_; }
+
   // What recently played lists at `count`: running games first, then the last
-  // played, `count` in all, more only when more than `count` run. Hidden games
-  // only while they run and `with_hidden` is set (the Hidden view). Apps only while they run:
+  // played, `count` in all, more only when more than `count` run. Only hidden games with
+  // `hidden`, else only the rest. Apps only while they run:
   // they are played like any game, but a closed one doesn't take a place here.
-  std::vector<const GameSummary*> RecentlyPlayed(int count, bool with_hidden = false) const;
+  std::vector<const GameSummary*> RecentlyPlayed(int count, bool hidden = false) const;
   QModelIndex IndexOf(const std::string& id) const;
 
   // A game mid-install: its rail, status line and detail line; nullopt otherwise.
@@ -61,6 +68,7 @@ public:
 signals:
   // Once per burst of changes (a scan, mirad's replay), after the rows moved.
   void Changed();
+  void ShowingHiddenChanged(bool showing);
 
 private:
   void RebuildIndex();
@@ -76,6 +84,7 @@ private:
   std::vector<GameSummary> games_;
   std::unordered_map<std::string, int> rows_;  // id -> row
   bool change_pending_ = false;
+  bool showing_hidden_ = false;
   std::unordered_map<std::string, qint64> launching_;  // id -> when it was launched, in ms
   QTimer* launch_tick_ = nullptr;  // animates the launching tiles' dots
 };
@@ -96,19 +105,21 @@ std::vector<std::string> TagOrder(const std::vector<GameSummary>& games);
 // Where the library lists apps: under All and Apps, only under Apps, or only in a search.
 enum class AppsIn { All, AppsTab, Search };
 
-// The tags of the games under filter `key`, for picking from, in TagOrder. The tags Mira gives a
-// meaning to aren't listed.
-std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, AppsIn apps);
+// The tags of the games under filter `key`, hidden ones only with `hidden` and otherwise only the
+// rest, for picking from, in TagOrder. The tags Mira gives a meaning to aren't listed.
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key,
+                                  AppsIn apps, bool hidden);
 
-// One view's slice of the library: a filter key ("all", "hidden", a status,
-// ...), a search, optionally one source, and the sidebar's sort.
+// One view's slice of the library under its hidden mode: a filter key ("all", a status, ...), a
+// search, optionally one source, and the sidebar's sort.
 class GameFilterProxy : public QSortFilterProxyModel {
   Q_OBJECT
 
 public:
   explicit GameFilterProxy(GameLibraryModel* library, QObject* parent = nullptr);
 
-  // Whether `game` belongs under filter `key`. Shared with the filter counts.
+  // Whether `game` belongs under filter `key`, whether hidden or not. Shared with the filter
+  // counts.
   static bool MatchesKey(const GameSummary& game, const QString& key, AppsIn apps = AppsIn::All);
   // Whether `game` matches every word of `search`: a plain word is in its name or starts one of its
   // tags, a "#word" starts one of its tags. The tags Mira gives a meaning to (pinned, hidden, app)
@@ -122,7 +133,7 @@ public:
   // Only games with all of these tags; empty for any.
   void SetTags(const QStringList& tags);
   void SetAppsIn(AppsIn apps);
-  // Only this source's games, hidden ones included; empty for every source.
+  // Only this source's games; empty for every source.
   void SetSource(const std::string& source);
   // The sidebar's sort.
   void SetSort(const std::string& key, bool descending);

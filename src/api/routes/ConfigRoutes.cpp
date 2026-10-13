@@ -15,7 +15,7 @@ using httplib::Response;
 using nlohmann::json;
 }  // namespace
 
-void RegisterConfigRoutes(httplib::Server& http, Services& s) {
+void RegisterConfigRoutes(Router& http, Services& s) {
   http.Get("/v1/jobs/([A-Za-z0-9_-]+)", [&s](const Request& req, Response& res) {
     const auto job = s.jobs.Find(req.matches[1].str());
     if (!job) return SendError(res, 404, "job_not_found", "no such job, or it finished too long ago");

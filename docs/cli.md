@@ -41,7 +41,13 @@ celeste                  ready      [unreviewed] Celeste
 hollow-knight            setting_up              Hollow Knight  (windows)
 ```
 
-`[unreviewed]` marks a game nobody has corrected since it was detected. Games tagged `hidden` are left out unless you pass `--tag hidden`.
+`[unreviewed]` marks a game nobody has corrected since it was detected. Games tagged `hidden` are left out unless you pass `--tag hidden`. While hidden games are locked they're left out either way, and `--tag hidden` says so.
+
+### `mira hidden [status]` / `mira hidden unlock|lock`
+`GET /v1/hidden`, `POST /v1/hidden/unlock` / `lock`. Whether hidden games have a password and are locked, and unlocking or locking them. `unlock` asks for the password without echoing it, or reads one line from a pipe. While locked, every command answers as if hidden games weren't there.
+
+### `mira hidden password [--remove]`
+`PUT /v1/hidden/password`. Sets the password, or changes or removes it, which asks for the current one first. The new one is typed twice.
 
 ### `mira show <id> [--effective]`
 `GET /v1/games/{id}` as JSON. With `--effective`, `GET /v1/games/{id}/config` instead: every setting as it resolves for this game, with the layer that supplied it.
@@ -103,14 +109,17 @@ mira finish-install my-game
 ## Stores
 
 ### `mira library [source]`
-`GET /v1/library`. What each account owns, marked `[installed]` when Mira tracks it:
+`GET /v1/library`. What each account owns, marked `[installed]` when Mira tracks it and `[hidden]` when hidden:
 
 ```
-epic     e8bbb84be35640cda646233152ff3428  [installed]  Brotato
-epic     d26da9e047e4440a80781f13a8b7c062               Botanicula
+epic     e8bbb84be35640cda646233152ff3428  [installed]           Brotato
+epic     d26da9e047e4440a80781f13a8b7c062               [hidden]  Botanicula
 ```
 
 A source that isn't set up lists nothing. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed.
+
+### `mira library hide|unhide <source> <ref>...`
+`POST /v1/library/hidden`. Hides or shows owned titles. An installed one's game gets or loses the `hidden` tag; one not installed stays hidden once it is.
 
 ### `mira library install <source> <ref>` / `mira library update <source> <ref>`
 `POST /v1/library/install` / `update`. `<ref>` is the id `mira library` prints. The download runs in the background; watch for `library.install.finished`. Steam installs are handed to the Steam client and show up on the next `mira steam scan`. Steam updates its own games.

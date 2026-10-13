@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 2> kMigrations = {
+constexpr std::array<std::string_view, 4> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -101,7 +101,22 @@ INSERT INTO sources(id, added)
   WHERE source IN ('steam', 'epic', 'gog', 'itch', 'amazon', 'humble', 'battlenet', 'ubisoft', 'ea', 'office', 'lutris');
 INSERT INTO sources(id, added) VALUES('local', 1);
 )sql",
+    R"sql(
+-- Store titles hidden while not installed, as "<source>-<ref>"; an installed one's game carries the tag instead.
+CREATE TABLE hidden_titles(id TEXT PRIMARY KEY) STRICT;
+)sql",
+    R"sql(
+-- Values kept out of settings.toml, which clients can read: "hidden_password" is a crypt(3) hash.
+CREATE TABLE secrets(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+)sql",
 };
+
+// The title a store game was installed from, as hidden_titles keys it, or "" for a game from no
+// store list.
+std::string TitleKey(const model::Game& game) {
+  if (game.source_ref.empty() || game.id != game.source + "-" + game.source_ref) return {};
+  return game.id;
+}
 
 constexpr std::array<std::string_view, 16> kTextColumns = {
     "id",       "install_path", "name",      "status",   "platform",   "source",        "exe_path",
@@ -146,6 +161,10 @@ void SetDatabaseAside(const fs::path& file) {
   log::Error("the library database {} is damaged; kept it as {}", file.string(), kept->string());
 }
 }  // namespace
+
+bool IsHidden(const model::Game& game) {
+  return std::ranges::contains(game.tags, std::string("hidden"));
+}
 
 GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)), metadata_(file_.parent_path()) {}
 
@@ -212,6 +231,89 @@ void GameStore::ReadAll() {
   for (model::Game& game : games_) {
     if (auto it = tags.find(game.id); it != tags.end()) game.tags = std::move(it->second);
   }
+
+  hidden_titles_.clear();
+  auto hidden_rows = db_.Prepare("SELECT id FROM hidden_titles");
+  if (!hidden_rows) return;
+  for (auto row = hidden_rows->Step(); row && *row; row = hidden_rows->Step())
+    hidden_titles_.insert(hidden_rows->Text(0));
+}
+
+Result<void> GameStore::WriteTitleHidden(const std::string& key, bool hidden) {
+  auto statement = db_.Prepare(hidden ? "INSERT OR IGNORE INTO hidden_titles(id) VALUES(?)"
+                                      : "DELETE FROM hidden_titles WHERE id = ?");
+  if (!statement) return std::unexpected(statement.error());
+  return statement->Bind(1, key).Run();
+}
+
+std::string GameStore::Secret(const std::string& key) const {
+  std::lock_guard lock(mutex_);
+  auto statement = db_.Prepare("SELECT value FROM secrets WHERE key = ?");
+  if (!statement) return {};
+  statement->Bind(1, key);
+  const auto row = statement->Step();
+  return row && *row ? statement->Text(0) : std::string();
+}
+
+Result<void> GameStore::SetSecret(const std::string& key, const std::string& value) {
+  std::lock_guard lock(mutex_);
+  return Transact([&]() -> Result<void> {
+    auto statement =
+        db_.Prepare(value.empty() ? "DELETE FROM secrets WHERE key = ?1"
+                                  : "INSERT OR REPLACE INTO secrets(key, value) VALUES(?1, ?2)");
+    if (!statement) return std::unexpected(statement.error());
+    statement->Bind(1, key);
+    if (!value.empty()) statement->Bind(2, value);
+    return statement->Run();
+  });
+}
+
+bool GameStore::AdoptHiddenTitle(model::Game& game) const {
+  if (std::ranges::contains(games_, game.id, &model::Game::id) || !hidden_titles_.contains(game.id))
+    return false;
+  if (!IsHidden(game)) game.tags.push_back("hidden");
+  return true;
+}
+
+std::set<std::string> GameStore::HiddenTitles() const {
+  std::lock_guard lock(mutex_);
+  return hidden_titles_;
+}
+
+std::set<std::string> GameStore::HiddenKeys() const {
+  std::lock_guard lock(mutex_);
+  std::set<std::string> keys = hidden_titles_;
+  for (const model::Game& game : games_) {
+    if (IsHidden(game)) keys.insert(game.id);
+  }
+  return keys;
+}
+
+bool GameStore::IsHiddenKey(const std::string& key) const {
+  std::lock_guard lock(mutex_);
+  if (const auto it = std::ranges::find(games_, key, &model::Game::id); it != games_.end()) {
+    return IsHidden(*it);
+  }
+  return hidden_titles_.contains(key);
+}
+
+Result<void> GameStore::SetTitlesHidden(const std::vector<std::string>& keys, bool hidden) {
+  std::lock_guard lock(mutex_);
+  const auto written = Transact([&]() -> Result<void> {
+    for (const std::string& key : keys) {
+      if (auto done = WriteTitleHidden(key, hidden); !done) return done;
+    }
+    return {};
+  });
+  if (!written) return written;
+  for (const std::string& key : keys) {
+    if (hidden) {
+      hidden_titles_.insert(key);
+    } else {
+      hidden_titles_.erase(key);
+    }
+  }
+  return {};
 }
 
 void GameStore::Load() {
@@ -428,10 +530,11 @@ bool GameStore::Contains(const std::string& id) const {
   return std::ranges::contains(games_, id, &model::Game::id);
 }
 
-std::map<std::string, int> GameStore::CountBySource() const {
+std::map<std::string, int> GameStore::CountBySource(bool skip_hidden) const {
   std::lock_guard lock(mutex_);
   std::map<std::string, int> counts;
   for (const model::Game& game : games_) {
+    if (skip_hidden && IsHidden(game)) continue;
     if (std::string id = SourceIdOf(game.source); !id.empty()) ++counts[std::move(id)];
   }
   return counts;
@@ -468,7 +571,13 @@ std::string GameStore::NextId(const std::string& name) const {
 
 Result<void> GameStore::Upsert(model::Game game) {
   std::lock_guard lock(mutex_);
-  if (auto written = Transact([&] { return Write(game); }); !written) return written;
+  const bool adopted = AdoptHiddenTitle(game);
+  const auto written = Transact([&]() -> Result<void> {
+    if (auto done = Write(game); !done) return done;
+    return adopted ? WriteTitleHidden(game.id, false) : Result<void>{};
+  });
+  if (!written) return written;
+  if (adopted) hidden_titles_.erase(game.id);
   auto it = std::ranges::find(games_, game.id, &model::Game::id);
   if (it == games_.end()) {
     games_.push_back(std::move(game));
@@ -499,7 +608,13 @@ Result<void> GameStore::Merge(const std::optional<model::Game>& base, model::Gam
       return std::ranges::find(base->tags, tag) != base->tags.end() && std::ranges::find(game.tags, tag) == game.tags.end();
     });
   }
-  if (auto written = Transact([&] { return Write(merged); }); !written) return written;
+  const bool adopted = AdoptHiddenTitle(merged);
+  const auto written = Transact([&]() -> Result<void> {
+    if (auto done = Write(merged); !done) return done;
+    return adopted ? WriteTitleHidden(merged.id, false) : Result<void>{};
+  });
+  if (!written) return written;
+  if (adopted) hidden_titles_.erase(merged.id);
   if (it == games_.end()) {
     games_.push_back(merged);
   } else {
@@ -601,28 +716,32 @@ Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::st
 Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::string>& ids) {
   std::lock_guard lock(mutex_);
   std::vector<std::string> removed;
+  std::vector<std::string> still_hidden;  // store titles that stay hidden once their game is gone
   for (const model::Game& game : games_) {
-    if (std::ranges::find(ids, game.id) != ids.end()) removed.push_back(game.id);
+    if (std::ranges::find(ids, game.id) == ids.end()) continue;
+    removed.push_back(game.id);
+    if (IsHidden(game) && !TitleKey(game).empty()) still_hidden.push_back(game.id);
   }
   if (removed.empty()) return removed;
   const auto deleted = Transact([&]() -> Result<void> {
     for (const std::string& id : removed) {
       if (auto done = Delete(id); !done) return done;
     }
+    for (const std::string& key : still_hidden) {
+      if (auto done = WriteTitleHidden(key, true); !done) return done;
+    }
     return {};
   });
   if (!deleted) return std::unexpected(deleted.error());
   std::erase_if(games_, [&](const model::Game& game) { return std::ranges::find(removed, game.id) != removed.end(); });
+  hidden_titles_.insert(still_hidden.begin(), still_hidden.end());
   return removed;
 }
 
 Result<void> GameStore::Remove(const std::string& id) {
-  std::lock_guard lock(mutex_);
-  if (std::ranges::find(games_, id, &model::Game::id) == games_.end()) {
-    return Err("game_not_found", std::format("no game with id \"{}\"", id));
-  }
-  if (auto deleted = Transact([&] { return Delete(id); }); !deleted) return deleted;
-  std::erase_if(games_, [&](const model::Game& game) { return game.id == id; });
+  auto removed = RemoveMany({id});
+  if (!removed) return std::unexpected(removed.error());
+  if (removed->empty()) return Err("game_not_found", std::format("no game with id \"{}\"", id));
   return {};
 }
 

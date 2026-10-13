@@ -114,6 +114,26 @@ TEST_CASE("Remove deletes a game and reports an error for an unknown id") {
   CHECK_FALSE(store.Remove("celeste").has_value());
 }
 
+TEST_CASE("hidden store titles survive a reload, and only store games leave one behind") {
+  const fs::path file = TempFile("games-hidden-titles.db");
+  store::GameStore store(file);
+  store.Load();
+  model::Game store_game = MakeGame("gog-12", "Store Game");
+  store_game.source = "gog";
+  store_game.source_ref = "12";
+  store_game.tags = {"hidden"};
+  model::Game local = MakeGame("celeste", "Celeste");
+  local.tags = {"hidden"};
+  REQUIRE(store.Upsert(store_game).has_value());
+  REQUIRE(store.Upsert(local).has_value());
+  REQUIRE(store.SetTitlesHidden({"epic-abc"}, true).has_value());
+  REQUIRE(store.RemoveMany({"gog-12", "celeste"}).has_value());
+
+  store::GameStore reloaded(file);
+  reloaded.Load();
+  CHECK(reloaded.HiddenTitles() == std::set<std::string>{"epic-abc", "gog-12"});
+}
+
 TEST_CASE("a finished session is counted once and goes with its game") {
   store::GameStore store(TempFile("games-sessions.db"));
   store.Load();

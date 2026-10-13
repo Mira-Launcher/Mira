@@ -70,6 +70,15 @@ public:
   // the game's `art`, as its record would show it now. Empty clears it.
   void SetArtHook(std::function<nlohmann::json(const std::string& id)> hook);
 
+  // Runs on every event before it's kept, after the hooks above, and may rewrite it (its type too)
+  // or drop it by returning false. `live` is false while Refilter replays buffered events, when it
+  // must not publish. Empty clears it.
+  using Filter = std::function<bool(std::string& type, nlohmann::json& payload, bool live)>;
+  void SetFilter(Filter filter);
+  // Runs the filter again over the buffered events, after what it drops changed. One it now drops
+  // stays in place as a "concealed" event with no payload, so ids stay consecutive.
+  void Refilter();
+
 private:
   // Applies the two hooks above to `payload`.
   void DecorateGames(const std::string& type, nlohmann::json& payload);
@@ -77,6 +86,7 @@ private:
   std::mutex hook_mutex_;
   std::function<void(nlohmann::json& game)> game_hook_;
   std::function<nlohmann::json(const std::string& id)> art_hook_;
+  Filter filter_;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::deque<model::Event> events_;

@@ -89,6 +89,7 @@ public:
   Result<void> Stop(const std::string& game_id, std::int64_t timeout_s = 0);
 
   bool IsRunning(const std::string& game_id) const;
+  bool AnyRunning() const;
 
   // Claims a game before anything is spawned or any of its files change, so two quick
   // launches can't both start it and a game can't launch mid-move. Empty if it is

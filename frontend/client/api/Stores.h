@@ -52,6 +52,11 @@ void GetStoreLibraryAsync(QObject* context, const std::string& source, bool fres
 void InstallStoreTitleAsync(QObject* context, const std::string& source, const std::string& ref,
                             bool update, std::function<void(StoreActionResult)> callback);
 
+// POST /v1/library/hidden: hides or shows owned titles; an installed one's game takes the tag.
+void SetTitlesHiddenAsync(QObject* context, const std::string& source,
+                          std::vector<std::string> refs, bool hidden,
+                          std::function<void(StoreActionResult)> callback);
+
 // POST /v1/library/install/pause: stops a running Epic/GOG/Amazon install, keeping its files.
 void PauseStoreInstallAsync(QObject* context, const std::string& source, const std::string& ref,
                             std::function<void(StoreActionResult)> callback);

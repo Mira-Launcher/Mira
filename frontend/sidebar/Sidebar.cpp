@@ -159,46 +159,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   source_drop_line_->setAttribute(Qt::WA_StyledBackground);
   source_drop_line_->setFixedHeight(2);
   source_drop_line_->hide();
-  for (const SourceInfo& source : AllSources()) {
-    // The button draws only the background; its parts are labels, so the name can elide and
-    // carry a second line.
-    auto* nav = new QPushButton(nav_content);
-    nav->setFlat(true);
-    nav->setCheckable(true);
-    nav->setVisible(false);  // until UpdateSources knows it's set up
-    nav->setObjectName("source_nav");
-    nav->setAccessibleName(source.name);
-    auto* row = new QHBoxLayout(nav);
-    auto* deck = new QLabel(nav);
-    deck->setAlignment(Qt::AlignCenter);
-    row->addWidget(deck);
-    auto* lines = new QVBoxLayout();
-    lines->setSpacing(1);
-    lines->addStretch(1);
-    auto* name = new ElidedLabel(source.name, nav);
-    name->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    lines->addWidget(name);
-    auto* detail = new QLabel(nav);
-    lines->addWidget(detail);
-    lines->addStretch(1);
-    row->addLayout(lines, /*stretch=*/1);
-    auto* count = new QLabel(nav);
-    count->setProperty("role", "muted");
-    row->addWidget(count);
-    for (QLabel* label : nav->findChildren<QLabel*>()) label->setAttribute(Qt::WA_TransparentForMouseEvents);
-    source_decks_.append(deck);
-    source_names_.append(name);
-    source_details_.append(detail);
-    source_counts_.append(count);
-    connect(nav, &QPushButton::clicked, this, [this, source] { emit SourceClicked(source); });
-    nav->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(
-        nav, &QWidget::customContextMenuRequested, this,
-        [this, nav, source](const QPoint& pos) { ShowSourceMenu(source, nav->mapToGlobal(pos)); });
-    nav->installEventFilter(this);
-    source_nav_layout_->addWidget(nav);
-    source_navs_.append(nav);
-  }
+  source_rows_.resize(AllSources().size());
   nav_layout->addLayout(source_nav_layout_);
   sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", "muted");
   sources_empty_->setContentsMargins(8, 2, 8, 2);
@@ -244,6 +205,10 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
 
   ApplyIcons();
   connect(library_, &GameLibraryModel::Changed, this, [this] {
+    UpdateSources();
+    RefreshGames();
+  });
+  connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
     UpdateSources();
     RefreshGames();
   });
@@ -322,6 +287,52 @@ void Sidebar::SetActive(bool library, bool runners, bool tags, const QString& so
   ShowActive();
 }
 
+Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
+  SourceRow& built = source_rows_[index];
+  if (built.nav != nullptr) return built;
+  const SourceInfo& source = AllSources()[index];
+  // Its parts are labels, so the name can elide and carry a second line.
+  auto* nav = new QPushButton(source_nav_container_);
+  nav->setFlat(true);
+  nav->setCheckable(true);
+  nav->setObjectName("source_nav");
+  nav->setAccessibleName(source.name);
+  auto* row = new QHBoxLayout(nav);
+  auto* deck = new QLabel(nav);
+  deck->setAlignment(Qt::AlignCenter);
+  row->addWidget(deck);
+  auto* lines = new QVBoxLayout();
+  lines->setSpacing(1);
+  lines->addStretch(1);
+  auto* name = new ElidedLabel(source.name, nav);
+  name->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  lines->addWidget(name);
+  auto* detail = new QLabel(nav);
+  lines->addWidget(detail);
+  lines->addStretch(1);
+  row->addLayout(lines, /*stretch=*/1);
+  auto* count = new QLabel(nav);
+  count->setProperty("role", "muted");
+  row->addWidget(count);
+  for (QLabel* label : nav->findChildren<QLabel*>())
+    label->setAttribute(Qt::WA_TransparentForMouseEvents);
+  connect(nav, &QPushButton::clicked, this, [this, source] { emit SourceClicked(source); });
+  nav->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(nav, &QWidget::customContextMenuRequested, this, [this, nav, source](const QPoint& pos) {
+    ShowSourceMenu(source, nav->mapToGlobal(pos));
+  });
+  nav->installEventFilter(this);
+  source_nav_layout_->addWidget(nav);
+  built = {.nav = nav, .deck = deck, .name = name, .detail = detail, .count = count};
+  return built;
+}
+
+int Sidebar::SourceIndexOf(const QObject* nav) const {
+  if (nav == nullptr) return -1;
+  const auto found = std::ranges::find(source_rows_, nav, &SourceRow::nav);
+  return found == source_rows_.end() ? -1 : static_cast<int>(found - source_rows_.begin());
+}
+
 void Sidebar::ShowActive() {
   using icons::Glyph;
   const theme::Tokens& tokens = theme::Current();
@@ -333,33 +344,29 @@ void Sidebar::ShowActive() {
   tags_nav_->setChecked(tags_active_);
   tags_nav_->setIcon(icons::For(Glyph::Tag, tags_active_ ? tokens.on_accent : tokens.text));
   const std::vector<SourceInfo>& sources = AllSources();
-  for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
+  for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
+    const SourceRow& row = source_rows_[i];
+    if (row.nav == nullptr) continue;
     const bool active = sources[i].id == active_source_;
-    source_navs_[i]->setChecked(active);
+    row.nav->setChecked(active);
     // Without covers, a dot in the source's color leads the row.
     if (!show_source_covers_) {
-      source_decks_[i]->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
-                                      .pixmap(QSize(18, 18), devicePixelRatioF()));
+      row.deck->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
+                              .pixmap(QSize(18, 18), devicePixelRatioF()));
     } else if (empty_decks_.contains(sources[i].id)) {
-      source_decks_[i]->setPixmap(sidebar::CoverDeck({}, artwork_, devicePixelRatioF(),
-                                                     active ? tokens.on_accent : sources[i].color,
-                                                     SourceLogo(sources[i], 30, devicePixelRatioF())));
+      row.deck->setPixmap(sidebar::CoverDeck({}, artwork_, devicePixelRatioF(),
+                                             active ? tokens.on_accent : sources[i].color,
+                                             SourceLogo(sources[i], 30, devicePixelRatioF())));
     }
     const QString on_accent = QString("color: %1;").arg(tokens.on_accent.name());
-    source_names_[i]->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
-    source_counts_[i]->setStyleSheet(active ? on_accent : QString());
+    row.name->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
+    row.count->setStyleSheet(active ? on_accent : QString());
     QColor detail = active ? tokens.on_accent : tokens.text_muted;
     if (active) detail.setAlpha(200);
-    source_details_[i]->setStyleSheet(QString("color: %1; font-size: %2px;")
-                                          .arg(theme::ColorToQss(detail))
-                                          .arg(tokens.font_size_small));
+    row.detail->setStyleSheet(QString("color: %1; font-size: %2px;")
+                                  .arg(theme::ColorToQss(detail))
+                                  .arg(tokens.font_size_small));
   }
-}
-
-void Sidebar::SetShowingHidden(bool showing_hidden) {
-  if (showing_hidden == showing_hidden_) return;
-  showing_hidden_ = showing_hidden;
-  RefreshGames();
 }
 
 void Sidebar::SetFooter(int shown, int total, bool mirad_reachable) {
@@ -389,8 +396,7 @@ void Sidebar::ApplyIcons() {
   }}
 
 bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
-  if (auto* nav = qobject_cast<QPushButton*>(watched);
-      nav != nullptr && source_navs_.contains(nav)) {
+  if (auto* nav = qobject_cast<QPushButton*>(watched); SourceIndexOf(nav) >= 0) {
     auto* mouse = static_cast<QMouseEvent*>(event);
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton) {
       source_drag_row_ = nav;
@@ -399,7 +405,7 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
                (mouse->buttons() & Qt::LeftButton) &&
                (mouse->position().toPoint() - source_drag_start_).manhattanLength() >=
                    QApplication::startDragDistance()) {
-      const qsizetype index = source_navs_.indexOf(nav);
+      const int index = SourceIndexOf(nav);
       auto* mime = new QMimeData();
       mime->setData(kSourceMime, AllSources()[index].id.toUtf8());
       auto* drag = new QDrag(nav);
@@ -421,15 +427,18 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
         event->accept();
         const int row = SourceDropRow(drop->position().toPoint().y());
         QWidget* anchor = nullptr;
-        for (QPushButton* nav : source_navs_) {
-          if (nav->isVisible() && source_nav_layout_->indexOf(nav) == row) anchor = nav;
+        for (const SourceRow& source : source_rows_) {
+          QPushButton* nav = source.nav;
+          if (nav != nullptr && nav->isVisible() && source_nav_layout_->indexOf(nav) == row)
+            anchor = nav;
         }
         int y = 0;
         if (anchor != nullptr) {
           y = anchor->geometry().top() - 2;
         } else {
-          for (QPushButton* nav : source_navs_) {
-            if (nav->isVisible()) y = std::max(y, nav->geometry().bottom());
+          for (const SourceRow& source : source_rows_) {
+            if (source.nav != nullptr && source.nav->isVisible())
+              y = std::max(y, source.nav->geometry().bottom());
           }
         }
         source_drop_line_->setGeometry(0, y, source_nav_container_->width(), 2);
@@ -549,38 +558,45 @@ void Sidebar::UpdateSources() {
   std::map<std::string, int> owned;
   if (owned_titles_ != nullptr) {
     for (const StoreTitle& title : owned_titles_->Titles()) {
-      if (title.owned) ++owned[title.source];
+      if (title.owned && title.hidden == library_->ShowingHidden()) ++owned[title.source];
     }
   }
+  // Each source's games under the hidden mode, for its count and its row's covers.
   std::map<std::string, int> counts;
-  // Each source's visible games, most recently played first, for its row's covers.
   std::map<std::string, std::vector<const GameSummary*>> shown;
   for (const GameSummary& game : library_->Games()) {
+    if (!library_->Shown(game)) continue;
     const std::string source = SourceIdOf(game);
     ++counts[source];
-    if (!IsHidden(game)) shown[source].push_back(&game);
+    shown[source].push_back(&game);
   }
   constexpr size_t kCovers = 3;
   source_cover_ids_.clear();
 
   const std::vector<SourceInfo>& sources = AllSources();
-  for (int i = 0; i < source_navs_.size() && i < static_cast<int>(sources.size()); ++i) {
+  for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
     const QString& id = sources[i].id;
+    // Listed once set up; the Sources page adds the rest.
+    const bool listed =
+        (id == "local" || added_sources_.contains(id)) && !hidden_sources_.contains(id);
+    if (!listed) {
+      if (source_rows_[i].nav != nullptr) source_rows_[i].nav->hide();
+      continue;
+    }
+    const SourceRow& source_row = BuildSourceRow(i);
+    source_row.nav->show();
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
     // Out of what the store owns, once listed; games it doesn't list still count as owned.
     const auto owns = owned.find(id.toStdString());
     const int of = owns == owned.end() ? 0 : std::max(owns->second, games);
     const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
-    // Listed once set up; the Sources page adds the rest.
-    const bool added = id == "local" || added_sources_.contains(id);
-    source_navs_[i]->setVisible(added && !hidden_sources_.contains(id));
     // An off source's games aren't in the library, so it shows that instead of a count.
     const bool off = disabled_sources_.contains(id);
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
-    auto* row = qobject_cast<QHBoxLayout*>(source_navs_[i]->layout());
+    auto* row = qobject_cast<QHBoxLayout*>(source_row.nav->layout());
     if (show_source_covers_) {
       std::vector<const GameSummary*> covers = std::move(shown[id.toStdString()]);
       const auto order = [](const GameSummary* a, const GameSummary* b) {
@@ -591,17 +607,17 @@ void Sidebar::UpdateSources() {
       std::ranges::partial_sort(covers, covers.begin() + std::min(kCovers, covers.size()), order);
       covers.resize(std::min(kCovers, covers.size()));
       for (const GameSummary* game : covers) source_cover_ids_.insert(QString::fromStdString(game->id));
-      source_navs_[i]->setFixedHeight(52);
+      source_row.nav->setFixedHeight(52);
       row->setContentsMargins(6, 3, 10, 3);
       row->setSpacing(10);
-      source_decks_[i]->setFixedSize(sidebar::kDeckSize);
+      source_row.deck->setFixedSize(sidebar::kDeckSize);
       if (covers.empty()) empty_decks_.insert(id);
       else empty_decks_.remove(id);
       const bool active = id == active_source_;
-      const qreal dpr = source_navs_[i]->devicePixelRatioF();
-      source_decks_[i]->setPixmap(sidebar::CoverDeck(covers, artwork_, dpr,
-                                                     active ? theme::Current().on_accent : sources[i].color,
-                                                     SourceLogo(sources[i], 30, dpr)));
+      const qreal dpr = source_row.nav->devicePixelRatioF();
+      source_row.deck->setPixmap(sidebar::CoverDeck(
+          covers, artwork_, dpr, active ? theme::Current().on_accent : sources[i].color,
+          SourceLogo(sources[i], 30, dpr)));
       const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
       QString detail = games == 0 && of == 0 ? "No " + item + "s"
                        : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
@@ -611,33 +627,34 @@ void Sidebar::UpdateSources() {
         detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
       }
-      source_details_[i]->setText(detail);
-      source_details_[i]->setVisible(!detail.isEmpty());
-      source_counts_[i]->hide();
+      source_row.detail->setText(detail);
+      source_row.detail->setVisible(!detail.isEmpty());
+      source_row.count->hide();
     } else {
-      source_navs_[i]->setFixedHeight(38);
+      source_row.nav->setFixedHeight(38);
       row->setContentsMargins(10, 0, 10, 0);
       row->setSpacing(10);
-      source_decks_[i]->setFixedSize(18, 18);  // ShowActive draws the dot
-      source_details_[i]->hide();
+      source_row.deck->setFixedSize(18, 18);  // ShowActive draws the dot
+      source_row.detail->hide();
       QString label = show_source_counts_ ? counted : QString();
       if (off) label = "Off";
       if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
-      source_counts_[i]->setText(label);
-      source_counts_[i]->show();
+      source_row.count->setText(label);
+      source_row.count->show();
     }
-    source_navs_[i]->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
-                                           : QString());
+    source_row.nav->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
+                                          : QString());
   }
   // isHidden, not isVisible: this also runs while the sidebar itself is off screen.
-  sources_empty_->setVisible(
-      std::ranges::all_of(source_navs_, [](const QPushButton* nav) { return nav->isHidden(); }));
+  sources_empty_->setVisible(std::ranges::all_of(source_rows_, [](const SourceRow& row) {
+    return row.nav == nullptr || row.nav->isHidden();
+  }));
   int row = 0;
   for (const QString& id : SourceOrder()) {
     for (int i = 0; i < static_cast<int>(sources.size()); ++i) {
-      if (sources[i].id != id) continue;
-      source_nav_layout_->removeWidget(source_navs_[i]);
-      source_nav_layout_->insertWidget(row++, source_navs_[i]);
+      if (sources[i].id != id || source_rows_[i].nav == nullptr) continue;
+      source_nav_layout_->removeWidget(source_rows_[i].nav);
+      source_nav_layout_->insertWidget(row++, source_rows_[i].nav);
     }
   }
   ShowActive();
@@ -697,8 +714,9 @@ int Sidebar::SourceDropRow(int y) const {
   // The layout row of the first visible source whose middle is below `y`.
   int best = -1;
   int best_top = 0;
-  for (QPushButton* nav : source_navs_) {
-    if (!nav->isVisible() || y >= nav->geometry().center().y()) continue;
+  for (const SourceRow& row : source_rows_) {
+    QPushButton* nav = row.nav;
+    if (nav == nullptr || !nav->isVisible() || y >= nav->geometry().center().y()) continue;
     if (best == -1 || nav->geometry().top() < best_top) {
       best = source_nav_layout_->indexOf(nav);
       best_top = nav->geometry().top();
@@ -715,9 +733,10 @@ void Sidebar::MoveSource(const QString& id, int before) {
   QString first;
   const int end = before >= 0 ? before : source_nav_layout_->count();
   for (int row = 0; row < source_nav_layout_->count(); ++row) {
-    auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(row)->widget());
-    if (nav == nullptr || !nav->isVisible()) continue;
-    const QString nav_id = AllSources()[source_navs_.indexOf(nav)].id;
+    QWidget* nav = source_nav_layout_->itemAt(row)->widget();
+    const int index = SourceIndexOf(nav);
+    if (index < 0 || !nav->isVisible()) continue;
+    const QString nav_id = AllSources()[index].id;
     if (row == before && nav_id == id) return;  // dropped onto itself
     if (nav_id == id) continue;
     if (first.isEmpty()) first = nav_id;
@@ -772,8 +791,9 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
     auto* nav = qobject_cast<QPushButton*>(source_nav_layout_->itemAt(row)->widget());
     if (nav != nullptr && nav->isVisible()) shown.push_back(nav);
   }
-  QPushButton* self = source_navs_[std::ranges::find(AllSources(), source.id, &SourceInfo::id) -
-                                   AllSources().begin()];
+  QPushButton* self = source_rows_[std::ranges::find(AllSources(), source.id, &SourceInfo::id) -
+                                   AllSources().begin()]
+                          .nav;
   const auto position = std::ranges::find(shown, self);
   QAction* up = menu.addAction("Move up");
   up->setEnabled(position != shown.end() && position != shown.begin());
@@ -830,10 +850,10 @@ void Sidebar::ShowMenu(const QPoint& global_pos) {
 int Sidebar::FirstRowHeight() const { return library_nav_->sizeHint().height(); }
 
 std::vector<const GameSummary*> Sidebar::PinnedGames() const {
-  // By name, matching the grid: hidden pins only under the Hidden filter.
+  // By name, matching the grid: hidden pins only in hidden mode, and only they.
   std::vector<const GameSummary*> pinned;
   for (const GameSummary& game : library_->Games()) {
-    if (IsPinned(game) && IsHidden(game) == showing_hidden_) pinned.push_back(&game);
+    if (IsPinned(game) && library_->Shown(game)) pinned.push_back(&game);
   }
   std::ranges::sort(pinned, [](const GameSummary* a, const GameSummary* b) {
     return QString::compare(QString::fromStdString(a->name), QString::fromStdString(b->name),
@@ -864,7 +884,8 @@ bool Sidebar::ShowsArtOf(const QString& id) const {
 
 void Sidebar::RefreshGames() {
   const std::vector<const GameSummary*> pinned = PinnedGames();
-  const std::vector<const GameSummary*> recent = library_->RecentlyPlayed(style_.recent_count, showing_hidden_);
+  const std::vector<const GameSummary*> recent =
+      library_->RecentlyPlayed(style_.recent_count, library_->ShowingHidden());
   // Shown all the time, so their full images stay.
   QSet<QString> kept;
   for (const auto* games : {&pinned, &recent}) {
@@ -953,6 +974,12 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
           new sidebar::PlaceholderRow(style, static_cast<int>(games.size()) + i, parent));
     }
   }
+  // Rows added to a shown parent only show on a later event, so one frame would lay out the
+  // sections below without them (Recently played drawn higher, then dropping into place).
+  for (int i = 0; i < layout->count(); ++i) {
+    if (QWidget* row = layout->itemAt(i)->widget()) row->show();
+  }
+  if (parent->layout() != nullptr) parent->layout()->activate();
   parent->setUpdatesEnabled(true);
 }
 

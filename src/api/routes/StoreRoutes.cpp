@@ -55,7 +55,7 @@ std::mutex& SetupMutex(const std::string& store) {
 
 }  // namespace
 
-void RegisterStoreRoutes(httplib::Server& http, Services& s) {
+void RegisterStoreRoutes(Router& http, Services& s) {
   http.Get("/v1/stores", [](const Request&, Response& res) {
     json out = json::array();
     for (const library::Store& store : library::AllStores()) {

@@ -54,8 +54,35 @@ void EventBus::DecorateGames(const std::string& type, nlohmann::json& payload) {
   }
 }
 
+void EventBus::SetFilter(Filter filter) {
+  std::lock_guard lock(hook_mutex_);
+  filter_ = std::move(filter);
+}
+
+void EventBus::Refilter() {
+  Filter filter;
+  {
+    std::lock_guard lock(hook_mutex_);
+    filter = filter_;
+  }
+  if (!filter) return;
+  std::lock_guard lock(mutex_);
+  for (model::Event& event : events_) {
+    if (!filter(event.type, event.payload, /*live=*/false)) {
+      event.type = "concealed";
+      event.payload = nlohmann::json::object();
+    }
+  }
+}
+
 model::Event EventBus::Publish(std::string type, nlohmann::json payload) {
   DecorateGames(type, payload);
+  Filter filter;
+  {
+    std::lock_guard lock(hook_mutex_);
+    filter = filter_;
+  }
+  if (filter && !filter(type, payload, /*live=*/true)) return {};
   model::Event event;
   {
     std::lock_guard lock(mutex_);

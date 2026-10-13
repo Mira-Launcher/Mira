@@ -48,6 +48,7 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
+#include "../client/api/Hidden.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/GameDetailPageDialog.h"
@@ -59,6 +60,7 @@
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GameMenus.h"
+#include "../library/HiddenLock.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
 #include "../library/OwnedTitles.h"
@@ -132,6 +134,8 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
     return mira_gui::DownloadTracker::TileProgressFor(*entry);
   };
   connect(library_, &mira_gui::GameLibraryModel::Changed, this, &LibraryWindow::LibraryChanged);
+  connect(library_, &mira_gui::GameLibraryModel::ShowingHiddenChanged, this,
+          &LibraryWindow::ShowingHiddenChanged);
   menus_ = new mira_gui::GameMenus(
       this, {.find = [this](const std::string& id) { return FindGame(id); },
              .library = [this]() -> const std::vector<mira_gui::GameSummary>& { return library_->Games(); },
@@ -175,7 +179,9 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // is what we paint: the placeholder covers drawn in the theme's own colors.
   // Connected before the views are built, so it runs before they repaint.
   connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, this,
-          [this] { artwork_->InvalidateAllRenderings(); });
+          [this] { artwork_->ThemeChanged(); });
+  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::AboutToRestyle, this,
+          &LibraryWindow::DropTagsPageUnseen);
 
   splitter_ = new QSplitter(Qt::Horizontal, this);
   sidebar_ = BuildSidebar(prefs);
@@ -259,8 +265,8 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   BuildShortcuts();
   UpdateLibraryNavActive();
 
-  // Not Hidden: opening on hidden games reads as the library being gone.
-  if (prefs.library_filter && *prefs.library_filter != "hidden") {
+  // Hidden mode isn't kept: opening on hidden games reads as the library being gone.
+  if (prefs.library_filter) {
     grid_page_->SetFilterKey(QString::fromStdString(*prefs.library_filter));
   }
   ApplySettingsPrefs(prefs);
@@ -283,7 +289,7 @@ void LibraryWindow::BuildShortcuts() {
                 {"Ctrl+F", "Focus the search box"},
                 {"Esc", "Clear the search, then the selection"},
                 {"Ctrl+1…9", "Pick a filter"},
-                {"Ctrl+H", "Toggle the Hidden filter"},
+                {"Ctrl+H", "Show only hidden games, or leave hidden mode"},
                 {"F5, Ctrl+R", "Refresh the library"},
                 {"Enter", "Play the selected game, or stop it while it runs"},
                 {"Alt+Enter", "Game settings"},
@@ -306,6 +312,7 @@ void LibraryWindow::BuildShortcuts() {
     action->setShortcuts(keys);
     connect(action, &QAction::triggered, this, slot);
     addAction(action);
+    return action;
   };
 
   // Scoped to the grid, not the window: Delete and Enter still have to mean
@@ -356,6 +363,10 @@ void LibraryWindow::BuildShortcuts() {
       game_card_->Back();
       return;
     }
+    if (TagPickerShown()) {
+      tags_page_->ClosePicker();
+      return;
+    }
     grid_page_->ClearSearchOrSelection();
   });
 
@@ -381,19 +392,21 @@ void LibraryWindow::BuildShortcuts() {
     addAction(action);
   }
 
-  // A dedicated toggle for Hidden, on top of whatever Ctrl+9 already gives
-  // it. Toggles back to All on a second press so it never strands the grid.
-  window_action("toggle_hidden", "Toggle the Hidden filter", QKeySequence(Qt::CTRL | Qt::Key_H), {},
-                [this] {
-                  if (TagPickerShown()) return tags_page_->ToggleHidden();
-                  grid_page_->ToggleHidden();
-                });
+  // Hidden mode, on every page: each lists only hidden games until it's pressed again.
+  hidden_action_ =
+      window_action("toggle_hidden", "Show only hidden games, or leave hidden mode",
+                    QKeySequence(Qt::CTRL | Qt::Key_H), {}, [this] { ToggleHiddenMode(); });
+  qApp->installEventFilter(this);  // input anywhere keeps unlocked hidden games unlocked
+  grid_page_->SetHiddenShortcut(HiddenShortcut());
 
   // Neither is a menu entry anymore (both are sidebar rows now), kept here
   // so their shortcuts and Settings-screen Shortcuts-category listing
   // survive the menu trim.
   window_action("settings", "Settings", QKeySequence(Qt::CTRL | Qt::Key_Comma), {},
                [this] { OpenSettings(); });
+  // No default keys; Settings can give them some.
+  window_action("open_tags", "Tags", QKeySequence(), {}, [this] { OpenTags(); });
+  window_action("open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
   // F5 is the platform's own Refresh; Ctrl+R is the one every browser
   // taught, and a second binding costs nothing.
   window_action("refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
@@ -651,6 +664,7 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
 
   FlushPrefs();
   mira_gui::api::ClearArtThumbsBlocking();
+  if (hidden_password_ && !hidden_locked_) mira_gui::api::LockHiddenNow();
   QMainWindow::closeEvent(event);
 }
 
@@ -664,7 +678,7 @@ void LibraryWindow::OpenRunners() {
   CloseTags();
   CloseSourcesPage();
   runners_page_ = new mira_gui::RunnersPage(downloads_, this);
-  runners_page_->SetGames(library_->Games());
+  runners_page_->SetGames(ShownGames());
   main_stack_->addWidget(runners_page_);
   main_stack_->setCurrentWidget(runners_page_);
   mira_gui::FocusPage(runners_page_);
@@ -690,6 +704,7 @@ void LibraryWindow::BuildTagsPage() {
   if (tags_page_ != nullptr) return;
   tags_page_ = new mira_gui::TagsPage(artwork_, this);
   tags_page_->SetGames(library_->Games());
+  tags_page_->SetShowingHidden(library_->ShowingHidden());
   tags_page_->SetTileWidth(grid_page_->TileWidth());
   connect(tags_page_, &mira_gui::TagsPage::GamesChanged, this, &LibraryWindow::UpsertGames);
   // The picker's covers zoom with the library's tiles.
@@ -698,6 +713,14 @@ void LibraryWindow::BuildTagsPage() {
   connect(tags_page_, &mira_gui::TagsPage::PickerToggled, this,
           &LibraryWindow::UpdateLibraryNavActive);
   main_stack_->addWidget(tags_page_);
+}
+
+void LibraryWindow::DropTagsPageUnseen() {
+  if (tags_page_ == nullptr || TagsShown()) return;
+  main_stack_->removeWidget(tags_page_);
+  delete tags_page_;  // now, not deleteLater: it would still be there to polish
+  tags_page_ = nullptr;
+  QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
 }
 
 void LibraryWindow::OpenTags() {
@@ -804,10 +827,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
   page->SetTitleSortKey(prefs.not_installed_sort.value_or("store"));
   connect(page, &mira_gui::LibraryPage::FilterChanged, this, &LibraryWindow::ScheduleSavePrefs);
   connect(page, &mira_gui::LibraryPage::SortChanged, this, &LibraryWindow::ScheduleSavePrefs);
-  connect(page, &mira_gui::LibraryPage::ShownChanged, this, [this] {
-    UpdateFooter();
-    sidebar_->SetShowingHidden(grid_page_->FilterKey() == "hidden");  // pinned rows follow it
-  });
+  connect(page, &mira_gui::LibraryPage::ShownChanged, this, &LibraryWindow::UpdateFooter);
   connect(page, &mira_gui::LibraryPage::GameActivated, this, [this](const std::string& id) {
     const mira_gui::GameSummary* game = FindGame(id);
     if (game == nullptr) return;
@@ -1044,20 +1064,23 @@ void LibraryWindow::RefreshLibrary() {
   owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
 }
 
-void LibraryWindow::RefreshGames() {
-  // Hidden games included, so Ctrl+H is a client-side filter switch, not a round trip.
+void LibraryWindow::RefreshGames(std::function<void()> done) {
+  // Hidden games included (unless they're locked), so Ctrl+H is a client-side filter switch, not a
+  // round trip.
   const int request = ++games_request_;
-  mira_gui::api::ListAllGamesAsync(this, [this, request](mira_gui::GamesResult result) {
-    if (request != games_request_) return;  // a newer refresh is on its way
-    mirad_reachable_ = result.ok;
-    if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not list games.", result.error);
-      return;  // what's shown stays, rather than emptying the library
-    }
-    // Before the tiles paint, so a game without art is never asked for it.
-    for (const mira_gui::GameSummary& game : result.games) artwork_->NoteArt(game.id, game.art);
-    library_->Replace(result.games);
-  });
+  mira_gui::api::ListAllGamesAsync(
+      this, [this, request, done = std::move(done)](mira_gui::GamesResult result) {
+        if (request != games_request_) return;  // a newer refresh is on its way
+        mirad_reachable_ = result.ok;
+        if (!result.ok) {
+          mira_gui::notify::FailedRequest(this, "Could not list games.", result.error);
+          return;  // what's shown stays, rather than emptying the library
+        }
+        // Before the tiles paint, so a game without art is never asked for it.
+        for (const mira_gui::GameSummary& game : result.games) artwork_->NoteArt(game.id, game.art);
+        library_->Replace(result.games);
+        if (done) done();
+      });
 }
 
 void LibraryWindow::ConnectionChanged(bool connected) {
@@ -1069,6 +1092,9 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   }
   mirad_reachable_ = true;
   UpdateFooter();
+  mira_gui::api::GetHiddenStateAsync(this, [this](mira_gui::api::HiddenState state) {
+    if (state.ok) ApplyHiddenState(state.password, state.locked);
+  });
   // Folders a scan couldn't place wait in mirad until someone says which game each is.
   mira_gui::api::ListUnclearMovesAsync(this, [this](mira_gui::UnclearMovesResult result) {
     for (const mira_gui::UnclearMove& move : result.moves) AskUnclearMove(move);
@@ -1091,13 +1117,74 @@ void LibraryWindow::LibraryChanged() {
   // Its game was removed elsewhere (a source, the CLI): saving would only fail.
   if (game_card_ != nullptr && library_->Find(game_card_->id()) == nullptr) CloseGameEdit();
   UpdateFooter();
-  if (runners_page_ != nullptr) runners_page_->SetGames(library_->Games());
+  if (runners_page_ != nullptr) runners_page_->SetGames(ShownGames());
   if (tags_page_ != nullptr) tags_page_->SetGames(library_->Games());
 }
 
+std::vector<mira_gui::GameSummary> LibraryWindow::ShownGames() const {
+  std::vector<mira_gui::GameSummary> games;
+  std::ranges::copy_if(library_->Games(), std::back_inserter(games),
+                       [this](const mira_gui::GameSummary& game) { return library_->Shown(game); });
+  return games;
+}
+
+QString LibraryWindow::HiddenShortcut() const {
+  return hidden_action_->shortcut().toString(QKeySequence::NativeText);
+}
+
+void LibraryWindow::ShowingHiddenChanged(bool showing) {
+  mira_gui::theme::SetHiddenMode(showing);
+  top_bar_->SetHiddenShortcut(showing ? HiddenShortcut() : QString());
+  grid_page_->SetHiddenShortcut(HiddenShortcut());
+  if (tags_page_ != nullptr) tags_page_->SetShowingHidden(showing);
+  LibraryChanged();
+  if (!showing && hidden_password_ && !hidden_locked_) mira_gui::api::LeftHiddenModeAsync(this);
+}
+
+void LibraryWindow::ToggleHiddenMode() {
+  if (library_->ShowingHidden() || !hidden_locked_) {
+    library_->SetShowingHidden(!library_->ShowingHidden());
+    return;
+  }
+  if (!LeaveOverlays()) return;
+  auto* card = new mira_gui::HiddenUnlockCard;
+  connect(card, &mira_gui::HiddenUnlockCard::CloseRequested, this,
+          &LibraryWindow::CloseSidebarCard);
+  connect(card, &mira_gui::HiddenUnlockCard::Unlocked, this, [this] {
+    CloseSidebarCard();
+    hidden_locked_ = false;
+    // Into hidden mode once its games are listed, so it never opens empty.
+    RefreshGames([this] { library_->SetShowingHidden(true); });
+  });
+  ShowSidebarCard(card);
+}
+
+void LibraryWindow::ApplyHiddenState(bool password, bool locked) {
+  const bool lists_changed = locked != hidden_locked_;
+  hidden_password_ = password;
+  hidden_locked_ = locked;
+  if (locked) library_->SetShowingHidden(false);
+  if (!lists_changed) return;
+  RefreshGames();
+  sidebar_->RefreshSources();  // their counts
+}
+
+bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
+  const QEvent::Type type = event->type();
+  if ((type == QEvent::KeyPress || type == QEvent::MouseButtonPress || type == QEvent::Wheel) &&
+      hidden_password_ && !hidden_locked_ &&
+      (!activity_reported_.isValid() || activity_reported_.elapsed() > 60'000)) {
+    activity_reported_.start();
+    mira_gui::api::NoteHiddenActivityAsync(this);
+  }
+  return QMainWindow::eventFilter(watched, event);
+}
+
 void LibraryWindow::UpdateFooter() {
-  sidebar_->SetFooter(grid_page_->ShownCount(), static_cast<int>(library_->Games().size()),
-                      mirad_reachable_);
+  const auto total = std::ranges::count_if(
+      library_->Games(),
+      [this](const mira_gui::GameSummary& game) { return library_->Shown(game); });
+  sidebar_->SetFooter(grid_page_->ShownCount(), static_cast<int>(total), mirad_reachable_);
 }
 
 const mira_gui::GameSummary* LibraryWindow::FindGame(const std::string& id) const { return library_->Find(id); }
@@ -1812,6 +1899,11 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   }
   if (type == "config.changed") {
     if (live) ApplyChangedPrefs(data);
+    return;
+  }
+  if (mira_gui::events::HiddenStateEvent state;
+      mira_gui::events::ParseHiddenState(type, data, &state)) {
+    ApplyHiddenState(state.password, state.locked);
     return;
   }
   if (type == "notification") {

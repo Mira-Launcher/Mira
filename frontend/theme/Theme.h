@@ -29,6 +29,7 @@ struct Tokens {
   QColor text_muted{"#9aa0ab"};
   QColor accent{"#5c7cfa"};        // selection, focus, the active tab
   QColor on_accent{"#ffffff"};
+  QColor accent_hidden{"#9b6cf5"};  // the accent in hidden mode, which also tints the top bar
   QColor running{"#43a047"};       // a game that is playing right now
   QColor success{"#43a047"};
   QColor warning{"#ef6c00"};
@@ -115,6 +116,10 @@ QStringList Available();
 // it, so changing that setting re-themes a running window.
 void Apply(const QString& name);
 
+// Hidden mode (Ctrl+H): `accent` becomes the theme's `accent_hidden` and the top bar takes its
+// tint, until it's turned off again. Restyles like Apply.
+void SetHiddenMode(bool on);
+
 // SetOverrides and Apply in one restyle, for startup and a settings save
 // that changes both.
 void Configure(const QString& name, const Overrides& overrides);
@@ -143,6 +148,9 @@ public:
   static Notifier* Instance();
 
 signals:
+  // Before the stylesheet is set, which re-polishes every widget there is: the moment to let go of
+  // what isn't shown.
+  void AboutToRestyle();
   void Changed();
 };
 

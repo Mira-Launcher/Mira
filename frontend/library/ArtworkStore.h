@@ -9,9 +9,9 @@
 #include <QSet>
 #include <QSize>
 #include <QString>
-
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include "../client/Types.h"
 
@@ -105,10 +105,10 @@ public:
   // rename, which changes the placeholder's initials but not the artwork.
   void InvalidateRendering(const std::string& id);
 
-  // The same, for every game at once. For a theme change: a generated
-  // placeholder is drawn in the theme's colors (see ui/CoverArt), so all of
-  // them are stale even though the fetched artwork is not.
-  void InvalidateAllRenderings();
+  // The same, for every game at once, when the theme changed a value covers are drawn with (the
+  // tile radius, the placeholder colors in ui/CoverArt). Any other change, such as hidden mode's
+  // accent, keeps them.
+  void ThemeChanged();
 
   // While on (the zoom slider moving), a cover not already scaled is scaled
   // quickly and not kept, so each step costs little. Turning it off emits
@@ -180,6 +180,7 @@ private:
   QHash<QString, QList<std::pair<QSize, qreal>>> wanted_;
   QSet<QString> refetching_;         // asked again for a size, not because the art changed
   QHash<QString, QColor> colors_;    // CoverColor's, by id
+  std::tuple<int, int, int> drawn_with_;   // the theme values ThemeChanged compares
   QHash<QString, QString> slot_versions_;  // from NoteArt; empty for none
   bool quick_ = false;
   QSet<QString> answered_;            // asked and heard back, either way

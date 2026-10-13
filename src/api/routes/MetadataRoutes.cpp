@@ -46,7 +46,7 @@ void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id,
   res.set_content(std::move(bytes), art->content_type);
 }
 
-void RegisterMetadataRoutes(httplib::Server& http, Services& s) {
+void RegisterMetadataRoutes(Router& http, Services& s) {
   // --- metadata ---------------------------------------------------------
 
   http.Get(R"(/v1/games/([^/]+)/metadata)", [&s](const Request& req, Response& res) {

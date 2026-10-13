@@ -23,9 +23,9 @@ class Switch;
 
 // The Tags page's game picker: covers to tick, the games a tag would go on. Sections come first
 // (e.g. the games Steam gives the tag, ticked), then every other game unticked, with a search.
-// Hidden games wait in their own section that Ctrl+H shows, ticked as they would be elsewhere;
-// store launchers aren't offered, and keep the tag as they had it. Applying makes exactly the ticked games have the tag
-// (POST /v1/tags/set).
+// Hidden games wait in their own section, the only one hidden mode shows, ticked as they would be
+// elsewhere; store launchers aren't offered, and keep the tag as they had it. Applying makes
+// exactly the ticked games have the tag (POST /v1/tags/set).
 class TagPicker : public QWidget {
   Q_OBJECT
 
@@ -43,12 +43,15 @@ public:
   // typed name that's already a tag keeps the games that have it.
   void Open(const QString& name, bool existing, std::vector<Section> sections, const std::vector<GameSummary>& games,
             bool folder, std::vector<TagSummary> known);
+  // Lets go of the covers once closed, so a restyle doesn't polish a tile per game out of view.
+  void Clear();
   void SetTileWidth(int width);
   // The row its tiles snap to fill; room 0 when none show.
   TileRow Row() const;
-  void ToggleHidden();
+  // Hidden mode: only the hidden games' section shows, else every other one.
+  void SetShowingHidden(bool showing);
 
-signals:
+ signals:
   void Closed();
   // The tag was set; the records that changed, for the window to apply now.
   void Applied(const std::vector<GameSummary>& games);

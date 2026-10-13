@@ -122,6 +122,15 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
     if (owned_grid_ != nullptr && (key.isEmpty() || key.startsWith(source_.id + ":"))) RebuildOwnedTiles();
   });
   connect(library_, &GameLibraryModel::Changed, this, &SourcePage::LibraryUpdated);
+  connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
+    LibraryUpdated();
+    if (!owned_loaded_ || owned_section_ == nullptr) return;
+    if (id_ == "humble") {
+      ShowBundles(bundles_result_);
+    } else {
+      ShowOwned(owned_result_);
+    }
+  });
   LibraryUpdated();
 
   RefreshStatus();
@@ -660,8 +669,10 @@ QWidget* SourcePage::BuildOwnedSection() {
 }
 
 void SourcePage::LibraryUpdated() {
-  library_count_ = static_cast<int>(
-      std::ranges::count_if(library_->Games(), [this](const GameSummary& game) { return IsOwnGame(game); }));
+  library_count_ =
+      static_cast<int>(std::ranges::count_if(library_->Games(), [this](const GameSummary& game) {
+        return IsOwnGame(game) && library_->Shown(game);
+      }));
   if (library_heading_ != nullptr) library_heading_->setText(CountedHeading("In your library", library_count_));
   UpdateStatusLine();
   if (library_grid_ != nullptr) library_grid_->FitHeight();
@@ -987,6 +998,7 @@ void SourcePage::UpdateOwnedCount() {
 void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   // Signed out since it was asked: the sign-in line stays.
   if (status_known_ && !owned_available_) return;
+  if (&result != &owned_result_) owned_result_ = result;
   owned_.clear();
   not_owned_.clear();
   tiers_.clear();
@@ -1002,7 +1014,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   std::vector<StoreTitle> uninstalled;
   for (const StoreTitle& title : result.titles) {
     downloads_->NoteTitle(source_.id, QString::fromStdString(title.ref), QString::fromStdString(title.title));
-    if (!title.installed) {
+    if (!title.installed && title.hidden == library_->ShowingHidden()) {
       owned_.emplace_back(QString::fromStdString(title.ref), QString::fromStdString(title.title));
       if (!title.owned) not_owned_.insert(QString::fromStdString(title.ref));
       if (!title.protondb_tier.empty()) {
@@ -1027,7 +1039,10 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
              "muted");
     if (steam_settings_ != nullptr) steam_settings_->setVisible(true);
   } else if (owned_.empty()) {
-    ShowLine(owned_note_, "Everything you own is installed.", "muted");
+    ShowLine(
+        owned_note_,
+        library_->ShowingHidden() ? "Nothing hidden here." : "Everything you own is installed.",
+        "muted");
   } else {
     ShowLine(owned_note_,
              id_ == "steam" ? "Install hands the game to the Steam client; scan the Steam library "
@@ -1039,9 +1054,16 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
 }
 
 void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
+  if (&result != &bundles_result_) bundles_result_ = result;
   owned_.clear();
   if (!result.ok) {
     ShowError(owned_note_, "Could not list your purchases.", result.error);
+    RebuildOwnedTiles();
+    return;
+  }
+  // A bundle can't be hidden.
+  if (library_->ShowingHidden()) {
+    ShowLine(owned_note_, "Nothing hidden here.", "muted");
     RebuildOwnedTiles();
     return;
   }
@@ -1222,17 +1244,37 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   const QModelIndex index = owned_grid_->indexAt(pos);
   if (!index.isValid()) return;
   QStringList refs;
+  std::vector<std::string> selected;
   for (const QModelIndex& it : SelectForMenu(owned_grid_, index)) {
-    if (it.data(GameTileDelegate::ActionEnabledRole).toBool()) refs << it.data(GameTileDelegate::IdRole).toString();
+    const QString ref = it.data(GameTileDelegate::IdRole).toString();
+    selected.push_back(ref.toStdString());
+    if (it.data(GameTileDelegate::ActionEnabledRole).toBool()) refs << ref;
   }
   // One downloaded bundle adds to the library; several only download the rest.
   const bool add = refs.size() == 1 && humble_paths_.contains(refs.front());
   if (!add) refs.removeIf([this](const QString& ref) { return humble_paths_.contains(ref); });
   QMenu menu(this);
   const QString verb = add ? "Add to library…" : id_ == "humble" ? "Download" : "Install";
-  QAction* start = menu.addAction(refs.size() > 1 ? QString("%1 (%2)").arg(verb).arg(refs.size()) : verb);
+  const auto counted = [](const QString& label, size_t count) {
+    return count > 1 ? QString("%1 (%2)").arg(label).arg(count) : label;
+  };
+  QAction* start = menu.addAction(counted(verb, refs.size()));
   start->setEnabled(!refs.isEmpty());
-  if (menu.exec(owned_grid_->viewport()->mapToGlobal(pos)) != start || !owned_grid_->on_action) return;
+  // Every title in the list shares the mode, so they all hide or all unhide.
+  const bool hide = !library_->ShowingHidden();
+  QAction* hide_action = nullptr;
+  if (id_ != "humble") {
+    menu.addSeparator();
+    hide_action = menu.addAction(counted(hide ? "Hide" : "Unhide", selected.size()));
+  }
+  QAction* chosen = menu.exec(owned_grid_->viewport()->mapToGlobal(pos));
+  if (chosen != nullptr && chosen == hide_action) {
+    api::SetTitlesHiddenAsync(this, id_, std::move(selected), hide, [this](StoreActionResult r) {
+      if (!r.ok) ShowError(owned_note_, "Could not change what's hidden.", r.error);
+    });
+    return;
+  }
+  if (chosen != start || !owned_grid_->on_action) return;
   // Looked up again per title: each action can rebuild the tiles.
   for (const QString& ref : refs) {
     for (int row = 0; row < owned_model_->rowCount(); ++row) {
@@ -1257,6 +1299,15 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
       art_key_->setToolTip(error_help::HintFor(art.error));
       art_key_->setVisible(true);
     }
+    return;
+  }
+
+  if (std::string source; events::ParseHiddenChanged(type, data, &source)) {
+    if (source == id_ && owned_section_ != nullptr) RefreshOwned();
+    return;
+  }
+  if (events::HiddenStateEvent state; events::ParseHiddenState(type, data, &state)) {
+    if (owned_section_ != nullptr) RefreshOwned();
     return;
   }
 

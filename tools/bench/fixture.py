@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds the benchmark library: a HOME with a big library (150 games) of every kind Mira imports, across many emulators and stores, cover and hero art,
-store catalogs, tags and play history, packed as a tarball each scenario unpacks fresh.
+store catalogs, tags (a tenth of the games hidden) and play history, packed as a tarball each scenario unpacks fresh.
 
 The same seed gives the same library, so main and a branch are measured on identical input.
 Usage: fixture.py --mirad PATH --out fixture.tar [--games 150] [--titles 1200] [--seed 1]
@@ -49,11 +49,14 @@ umu_lookup = false
 
 [updates]
 check = false
-
-[frontend]
-onboarded = true
+"""
+FRONTEND = """onboarded = true
 window_width = 1600
 window_height = 1000
+
+# The Tags page has no default key, and the GUI scenarios reach it by keyboard.
+[shortcuts]
+open_tags = "Ctrl+Shift+F9"
 """
 
 
@@ -143,16 +146,27 @@ def seed_sources_and_catalogs(config_dir, rng, titles):
                        "ON CONFLICT(source) DO UPDATE SET checked_at = excluded.checked_at", (source, now))
 
 
-def seed_tags_and_history(config_dir, rng, ids):
+def seed_tags_and_history(config_dir, rng, ids, titles):
+    """Returns the hidden games' and store titles' counts."""
     now = int(time.time())
+    hidden = set(rng.sample(ids, len(ids) // 10))
     with closing(sqlite3.connect(config_dir / "mira.db")) as db, db:
         for game_id in ids:
-            for position, tag in enumerate(rng.sample(TAGS, rng.randint(0, 3))):
+            tags = rng.sample(TAGS, rng.randint(0, 3)) + (["hidden"] if game_id in hidden else [])
+            for position, tag in enumerate(tags):
                 db.execute("INSERT OR IGNORE INTO game_tags(game_id, position, tag) VALUES(?, ?, ?)", (game_id, position, tag))
         for game_id in rng.sample(ids, len(ids) // 4):
             played = now - rng.randint(60, 90 * 86400)
             db.execute("UPDATE games SET last_played_at = ?, last_session_at = ?, play_seconds = ? WHERE id = ?",
                        (played, played, rng.randint(300, 400_000), game_id))
+        # Hidden store titles, where the base's mirad keeps them.
+        hidden_titles = 0
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name = 'hidden_titles'").fetchone():
+            for source, share in CATALOGS:
+                for position in range(0, int(titles * share), 20):
+                    db.execute("INSERT INTO hidden_titles(id) VALUES(?)", (f"{source}-{source}{position:05d}",))
+                    hidden_titles += 1
+    return len(hidden), hidden_titles
 
 
 def main():
@@ -170,6 +184,7 @@ def main():
     config_dir = home / ".config" / "mira"
     config_dir.mkdir(parents=True)
     (config_dir / "settings.toml").write_text(SETTINGS)
+    (config_dir / "frontend.toml").write_text(FRONTEND)
     make_files(home, rng, args.games)
 
     # First start: mirad makes its databases and imports the game folders.
@@ -201,7 +216,7 @@ def main():
                                            headers={"Content-Type": "image/jpeg"}))
     mirad.stop()
 
-    seed_tags_and_history(config_dir, rng, ids)
+    hidden, hidden_titles = seed_tags_and_history(config_dir, rng, ids, args.titles)
     for leftover in ("run", "tmp", "mirad.log"):
         path = home / leftover
         shutil.rmtree(path) if path.is_dir() else path.unlink(missing_ok=True)
@@ -209,7 +224,8 @@ def main():
         tar.add(home, arcname=".")
     shutil.rmtree(home)
     titles = sum(int(args.titles * share) for _, share in CATALOGS)
-    Path(args.out).with_suffix(".json").write_text(json.dumps({"games": len(ids), "titles": titles, "sources": sources}))
+    Path(args.out).with_suffix(".json").write_text(json.dumps({"games": len(ids), "titles": titles, "sources": sources,
+                                                                 "hidden": hidden, "hidden_titles": hidden_titles}))
     print(f"fixture: {len(ids)} games -> {args.out}", file=sys.stderr)
 
 

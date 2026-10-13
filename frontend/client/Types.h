@@ -1167,6 +1167,7 @@ struct StoreTitle {
   std::string title;
   bool installed = false;
   bool owned = true;  // false: listed from an itch collection, but paid and not bought
+  bool hidden = false;  // its game's tag once installed, else POST /v1/library/hidden's
   std::string source;  // the store it's from
   std::string protondb_tier;  // empty when none is cached
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached

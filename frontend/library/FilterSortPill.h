@@ -25,7 +25,7 @@ class FilterSortPill : public QWidget {
   ~FilterSortPill() override;
 
   // Filter keys match mirad's `status` values; "all", "running", "never",
-  // "hidden", "attention" and "apps" are the frontend's own groupings.
+  // "attention" and "apps" are the frontend's own groupings.
   QString FilterKey() const;
   QStringList FilterKeys() const;
   // -1 for a key it doesn't list.
@@ -34,6 +34,8 @@ class FilterSortPill : public QWidget {
   void SetCount(const QString& key, int count);
   // Leaves one filter out of the list.
   void SetFilterOffered(const QString& key, bool offered);
+  // The Hidden games switch follows hidden mode; `shortcut` is what toggles it.
+  void SetShowingHidden(bool showing, const QString& shortcut);
 
   // A tag the Tags section offers, with how many games under the current filter have it.
   struct TagCount {
@@ -54,6 +56,7 @@ class FilterSortPill : public QWidget {
   void FilterChanged();
   void SortChanged();
   void TagsChanged();
+  void HiddenToggled();
 
  protected:
   void mousePressEvent(QMouseEvent* event) override;
@@ -74,6 +77,7 @@ class FilterSortPill : public QWidget {
   QLabel* chevron_ = nullptr;
   QWidget* popover_ = nullptr;
   QListWidget* filters_ = nullptr;
+  QPushButton* hidden_ = nullptr;
   QToolButton* sort_direction_ = nullptr;
   QList<QPushButton*> sort_buttons_;
   QWidget* tags_heading_ = nullptr;

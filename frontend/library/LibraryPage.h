@@ -57,8 +57,8 @@ class LibraryPage : public QWidget {
   // Ctrl+1…9: the filter in that row of the pill's list.
   void PickFilter(int row);
   int FilterCount() const;
-  // Ctrl+H: Hidden, or back to All from it.
-  void ToggleHidden();
+  // What toggles hidden mode, for the filter menu's Hidden games switch.
+  void SetHiddenShortcut(const QString& shortcut);
   // Only the games with `tag`, as picking it alone in the pill's Tags section would; clears the search.
   void ShowTag(const QString& tag);
   // All games, no tags picked, no search.
@@ -141,6 +141,8 @@ class LibraryPage : public QWidget {
   // While store matches show under it, the grid is as tall as its tiles and the page scrolls.
   void FitGrid();
   void InstallMatch(const QModelIndex& index, const QPoint& global_pos);
+  // A not-installed tile's menu: install (from each store that sells it) and hide or unhide.
+  void ShowTitleMenu(const QModelIndex& index, const QPoint& global_pos);
   // The Not installed tab: every store's titles that aren't installed, in place of the library's games.
   void SetNotInstalled(bool on);
 
@@ -171,6 +173,7 @@ class LibraryPage : public QWidget {
   bool continue_apps_ = false;
   AppsIn apps_ = AppsIn::All;
   bool not_installed_ = false;
+  QString hidden_shortcut_;
   TitleFilterBar* title_filters_ = nullptr;
 };
 

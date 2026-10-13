@@ -247,6 +247,26 @@ Schema::Schema() {
          .doc = "When a move goes to another drive, copy the files and then delete the originals. "
                 "When off, moves to another drive are refused."});
 
+  s.Group("Hidden games");
+
+  s.Add({.key = "hidden.lock_after_minutes",
+         .label = "Lock hidden games after (minutes idle)",
+         .type = Type::Int,
+         .default_value = 15,
+         .doc = "With a password set, lock hidden games again once Mira has been left alone this "
+                "long, which also leaves hidden mode. Time spent playing a game doesn't count. 0 "
+                "keeps them unlocked until hidden mode is left (with the setting below on) or Mira "
+                "quits.",
+         .constraint = Range(0, 1440),
+         .keywords = "password"});
+
+  s.Add({.key = "hidden.lock_on_leave",
+         .label = "Lock hidden games when leaving hidden mode",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "With a password set, ask for it again each time hidden mode is turned on.",
+         .keywords = "password"});
+
   // --- Tags ------------------------------------------------------------------
   s.Section("Tags", "Tags");
 

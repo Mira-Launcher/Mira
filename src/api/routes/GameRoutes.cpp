@@ -29,11 +29,11 @@ using nlohmann::json;
 
 }  // namespace
 
-void RegisterGameRoutes(httplib::Server& http, Services& s) {
+void RegisterGameRoutes(Router& http, Services& s) {
   // --- games ----------------------------------------------------------------
 
-  // Leaves out games tagged "hidden" unless a tag is asked for or include_hidden=true,
-  // and games from a source that's off unless include_off=true.
+  // Leaves out games tagged "hidden" unless a tag is asked for or include_hidden=true (and always
+  // while hidden games are locked), and games from a source that's off unless include_off=true.
   http.Get("/v1/games", [&s](const Request& req, Response& res) {
     std::vector<model::Game> all = s.games.All();
     json out = json::array();
@@ -49,6 +49,7 @@ void RegisterGameRoutes(httplib::Server& http, Services& s) {
     }
     const Services::RecordSettings settings = s.CurrentRecordSettings();
     for (const model::Game& game : all) {
+      if (s.Conceals(game)) continue;
       if (!include_off && off_sources.contains(store::SourceIdOf(game.source))) continue;
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {

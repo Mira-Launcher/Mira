@@ -144,7 +144,12 @@ QString SlotKey(const QString& id, const std::string& slot) { return id + "#" + 
 
 }  // namespace
 
-ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) { clock_.start(); }
+ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {
+  clock_.start();
+  const theme::Tokens& tokens = theme::Current();
+  drawn_with_ =
+      std::tuple(tokens.radius_tile, tokens.placeholder_saturation, tokens.placeholder_value);
+}
 
 void ArtworkStore::SetQuickScaling(bool quick) {
   const bool ended = quick_ && !quick;
@@ -468,7 +473,12 @@ void ArtworkStore::InvalidateRendering(const std::string& id) {
   colors_.remove(QString::fromStdString(id));
 }
 
-void ArtworkStore::InvalidateAllRenderings() {
+void ArtworkStore::ThemeChanged() {
+  const theme::Tokens& tokens = theme::Current();
+  const auto drawn_with =
+      std::tuple(tokens.radius_tile, tokens.placeholder_saturation, tokens.placeholder_value);
+  if (drawn_with == drawn_with_) return;
+  drawn_with_ = drawn_with;
   scaled_.clear();
   loading_.clear();
   last_drawn_.clear();

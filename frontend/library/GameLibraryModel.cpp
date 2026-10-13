@@ -148,11 +148,17 @@ const GameSummary* GameLibraryModel::Find(const std::string& id) const {
   return found != rows_.end() ? &games_[found->second] : nullptr;
 }
 
-std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count, bool with_hidden) const {
+void GameLibraryModel::SetShowingHidden(bool showing) {
+  if (showing == showing_hidden_) return;
+  showing_hidden_ = showing;
+  emit ShowingHiddenChanged(showing);
+}
+
+std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count, bool hidden) const {
   std::vector<const GameSummary*> running;
   std::vector<const GameSummary*> played;
   for (const GameSummary& game : games_) {
-    if (IsHidden(game) && !(with_hidden && game.running)) continue;
+    if (IsHidden(game) != hidden) continue;
     if (game.running) {  // anything open shows, apps included
       running.push_back(&game);
     } else if (!IsApp(game) && game.last_played_at) {
@@ -227,16 +233,13 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
   // Re-sorted and re-filtered as rows change, moving them rather than resetting.
   setDynamicSortFilter(true);
   QSortFilterProxyModel::sort(0, Qt::AscendingOrder);
+  connect(library, &GameLibraryModel::ShowingHiddenChanged, this, [this] { ChangeFilter([] {}); });
 }
 
 bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, AppsIn apps) {
   // Store launchers (Battle.net, ...) live on their source pages, not here; Creative Cloud is an app.
   if (game.source == "launcher" && !IsApp(game)) return false;
   if (apps == AppsIn::Search && IsApp(game)) return false;
-  if (key == "hidden") return IsHidden(game);
-  // Every other filter excludes a hidden game: "not displayed by default"
-  // means not in "All games" either, not just off the initial screen.
-  if (IsHidden(game)) return false;
   if (key == "all") return apps == AppsIn::All || !IsApp(game);
   if (key == "running") return game.running;
   if (key == "games") return !IsApp(game);
@@ -294,7 +297,8 @@ std::vector<std::string> TagOrder(const std::vector<GameSummary>& games) {
   return folders;
 }
 
-std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key, AppsIn apps) {
+std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const QString& key,
+                                  AppsIn apps, bool hidden) {
   const auto is_folder = [&](const std::string& tag) {
     return std::ranges::any_of(games, [&](const GameSummary& game) {
       return std::ranges::any_of(game.folder_tags.value_or(std::vector<std::string>()),
@@ -304,7 +308,7 @@ std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const Q
   std::vector<LibraryTag> tags;
   for (const std::string& tag : TagOrder(games)) tags.push_back({QString::fromStdString(tag), 0, is_folder(tag)});
   for (const GameSummary& game : games) {
-    if (!GameFilterProxy::MatchesKey(game, key, apps)) continue;
+    if (IsHidden(game) != hidden || !GameFilterProxy::MatchesKey(game, key, apps)) continue;
     for (LibraryTag& tag : tags) {
       if (std::ranges::any_of(game.tags, [&](const std::string& t) { return SameTag(t, tag.tag.toStdString()); }))
         ++tag.count;
@@ -385,11 +389,12 @@ const GameSummary* GameFilterProxy::GameAt(const QModelIndex& index) const {
 
 bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const {
   const GameSummary& game = library_->Games()[source_row];
+  if (!library_->Shown(game)) return false;
   if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
   if (!HasTags(game, tags_)) return false;
   if (!source_.empty()) return SourceIdOf(game) == source_;
   // Apps kept out of the library still turn up in a search.
-  if (apps_ == AppsIn::Search && IsApp(game) && !search_.isEmpty()) return !IsHidden(game);
+  if (apps_ == AppsIn::Search && IsApp(game) && !search_.isEmpty()) return true;
   return MatchesKey(game, key_, apps_);
 }
 

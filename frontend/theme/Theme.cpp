@@ -32,6 +32,14 @@ Overrides g_overrides;
 QString g_name = "auto";
 QString g_resolved = "mira-dark";
 bool g_following_desktop = false;
+bool g_hidden_mode = false;
+
+// `from` moved `amount` (0 to 1) of the way to `to`.
+QColor Mix(const QColor& from, const QColor& to, double amount) {
+  return QColor::fromRgbF(from.redF() + (to.redF() - from.redF()) * amount,
+                          from.greenF() + (to.greenF() - from.greenF()) * amount,
+                          from.blueF() + (to.blueF() - from.blueF()) * amount, from.alphaF());
+}
 
 // "#rrggbb" and "#rrggbbaa", in CSS order, because that is the order anyone
 // writing a theme by hand will reach for. (QColor's own "#aarrggbb" puts
@@ -101,6 +109,7 @@ Tokens ParseTokens(const std::string& text) {
   color("text_muted", tokens.text_muted);
   color("accent", tokens.accent);
   color("on_accent", tokens.on_accent);
+  color("accent_hidden", tokens.accent_hidden);
   color("running", tokens.running);
   color("success", tokens.success);
   color("warning", tokens.warning);
@@ -188,6 +197,13 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   QColor accent_soft = tokens.accent;
   accent_soft.setAlphaF(0.3);
   values.insert("accent_soft", ColorToQss(accent_soft));
+  // The top bar shows the window's color, except that hidden mode tints it with the (then purple)
+  // accent, so it's plain which mode this is. The border is always there, so the bar never resizes.
+  values.insert("top_bar", g_hidden_mode ? ColorToQss(Mix(tokens.window, tokens.accent, 0.22))
+                                         : "transparent");
+  values.insert("top_bar_border",
+                g_hidden_mode ? ColorToQss(Mix(tokens.border, tokens.accent, 0.6)) : "transparent");
+  values.insert("hidden_note", ColorToQss(Mix(tokens.text, tokens.accent, 0.35)));
   // Faint washes behind a note or a mark, still readable under text.
   for (const auto& [name, color] : {std::pair{"accent_faint", tokens.accent},
                                     std::pair{"info_faint", tokens.info},
@@ -259,11 +275,9 @@ QString DesktopTheme() {
                                                                                : "mira-dark";
 }
 
-void ApplyResolved(const QString& resolved) {
-  g_resolved = resolved;
-  const std::string text = ReadThemeFile(resolved);
-  g_tokens = text.empty() ? Tokens{} : ParseTokens(text);
-  g_theme_tokens = g_tokens;
+// Styles the app with the theme read last, the user's overrides and hidden mode.
+void Restyle() {
+  g_tokens = g_theme_tokens;
 
   // Last word: a theme supplies the shape, the user's own adjustment wins
   // over it.
@@ -272,6 +286,7 @@ void ApplyResolved(const QString& resolved) {
   if (g_overrides.radius_tile) g_tokens.radius_tile = *g_overrides.radius_tile;
   if (g_overrides.radius_panel) g_tokens.radius_panel = *g_overrides.radius_panel;
   if (g_overrides.radius_control) g_tokens.radius_control = *g_overrides.radius_control;
+  if (g_hidden_mode) g_tokens.accent = g_tokens.accent_hidden;
 
   // Fusion rather than the desktop's own style: ours is the only palette and
   // stylesheet in play, and Breeze/Adwaita would otherwise keep drawing the
@@ -279,9 +294,17 @@ void ApplyResolved(const QString& resolved) {
   if (QApplication::style() == nullptr || QApplication::style()->name() != "fusion") {
     QApplication::setStyle(QStyleFactory::create("Fusion"));
   }
+  emit Notifier::Instance()->AboutToRestyle();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
   emit Notifier::Instance()->Changed();
+}
+
+void ApplyResolved(const QString& resolved) {
+  g_resolved = resolved;
+  const std::string text = ReadThemeFile(resolved);
+  g_theme_tokens = text.empty() ? Tokens{} : ParseTokens(text);
+  Restyle();
 }
 
 }  // namespace
@@ -371,6 +394,12 @@ void Apply(const QString& name) {
     return;
   }
   ApplyResolved(g_name);
+}
+
+void SetHiddenMode(bool on) {
+  if (on == g_hidden_mode) return;
+  g_hidden_mode = on;
+  Restyle();
 }
 
 void Configure(const QString& name, const Overrides& overrides) {

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,9 @@ struct SourceState {
 
 // The source id a game's `source` counts toward, or "" for none.
 std::string SourceIdOf(const std::string& game_source);
+
+// Whether a game carries the "hidden" tag.
+bool IsHidden(const model::Game& game);
 
 class GameStore {
 public:
@@ -89,8 +93,8 @@ public:
   std::vector<model::Game> All() const;
   std::optional<model::Game> Find(const std::string& id) const;
   bool Contains(const std::string& id) const;
-  // Games per SourceIdOf.
-  std::map<std::string, int> CountBySource() const;
+  // Games per SourceIdOf, leaving out hidden ones when `skip_hidden`.
+  std::map<std::string, int> CountBySource(bool skip_hidden = false) const;
   std::optional<model::Game> FindByInstallPath(const std::string& install_path) const;
   // Whether a game's install_path is inside `dir` (a game whose program sits in a subfolder).
   bool HasInstallUnder(const std::string& dir) const;
@@ -129,10 +133,25 @@ public:
   // A game's sessions, newest first, at most `limit`.
   std::vector<PlaySession> Sessions(const std::string& id, int limit) const;
 
+  // A removed hidden store game leaves its title hidden (HiddenTitles).
   Result<void> Remove(const std::string& id);
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
 
+  // Store titles hidden while not installed, as "<source>-<ref>". A game added under one of
+  // these ids gets the "hidden" tag and the title leaves the set, so its tag says it once installed.
+  std::set<std::string> HiddenTitles() const;
+  // HiddenTitles plus the ids of games tagged "hidden", which is how a store game's id and its
+  // title's key line up.
+  std::set<std::string> HiddenKeys() const;
+  // Whether `key` is one of HiddenKeys(), without copying any.
+  bool IsHiddenKey(const std::string& key) const;
+  Result<void> SetTitlesHidden(const std::vector<std::string>& keys, bool hidden);
+
+  // A value stored outside settings.toml, which clients can read; "" when unset. Setting "" removes
+  // it.
+  std::string Secret(const std::string& key) const;
+  Result<void> SetSecret(const std::string& key, const std::string& value);
 
 private:
   Result<void> Open();
@@ -141,6 +160,9 @@ private:
   // Runs `write` in a transaction of its own.
   Result<void> Transact(const std::function<Result<void>()>& write);
   void ReadAll();
+  Result<void> WriteTitleHidden(const std::string& key, bool hidden);
+  // A new game for a hidden title: tags it hidden and returns true, so its row can go.
+  bool AdoptHiddenTitle(model::Game& game) const;
 
   mutable std::mutex mutex_;
   std::mutex folders_mutex_;
@@ -148,6 +170,7 @@ private:
   mutable Database db_;  // mutable for reads; guarded by mutex_
   MetadataStore metadata_;
   std::vector<model::Game> games_;
+  std::set<std::string> hidden_titles_;
   // The database couldn't be opened: refuse changes rather than lose the library. Guarded by mutex_.
   bool read_only_ = false;
   bool sources_new_ = false;  // set by Load

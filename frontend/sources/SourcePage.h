@@ -210,7 +210,10 @@ private:
   QString art_key_setting_;         // that failure's fix target
   TileGrid* owned_grid_ = nullptr;
 
-  // What the account owns and isn't installed, by ref, with its title.
+  // The last lists, kept so a switch of hidden mode shows the other part at once.
+  StoreLibraryResult owned_result_;
+  HumbleLibraryResult bundles_result_;
+  // What the account owns and isn't installed, under the hidden mode, by ref, with its title.
   std::vector<std::pair<QString, QString>> owned_;
   QSet<QString> not_owned_;  // refs listed from a collection but not bought
   QHash<QString, QString> tiers_;  // ref -> ProtonDB tier

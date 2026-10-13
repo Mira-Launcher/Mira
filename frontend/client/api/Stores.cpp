@@ -65,15 +65,17 @@ StoreLibraryResult GetStoreLibrarySync(const std::string& source, bool fresh) {
             if (tag.is_string()) steam_tags.push_back(tag.get<std::string>());
           }
           const json reviews = entry.value("steam_reviews", json::object());
-          result.titles.push_back({.ref = entry.value("ref", std::string()),
-                                   .title = entry.value("title", std::string()),
-                                   .installed = entry.value("installed", false),
-                                   .owned = entry.value("owned", true),
-                                   .source = entry.value("source", source),
-                                   .protondb_tier = entry.value("protondb_tier", std::string()),
-                                   .steam_tags = std::move(steam_tags),
-                                   .review_summary = reviews.value("score_description", std::string()),
-                                   .review_percent = reviews.value("percent_positive", -1)});
+          result.titles.push_back(
+              {.ref = entry.value("ref", std::string()),
+               .title = entry.value("title", std::string()),
+               .installed = entry.value("installed", false),
+               .owned = entry.value("owned", true),
+               .hidden = entry.value("hidden", false),
+               .source = entry.value("source", source),
+               .protondb_tier = entry.value("protondb_tier", std::string()),
+               .steam_tags = std::move(steam_tags),
+               .review_summary = reviews.value("score_description", std::string()),
+               .review_percent = reviews.value("percent_positive", -1)});
         }
       });
 }
@@ -82,6 +84,13 @@ StoreActionResult InstallStoreTitleSync(const std::string& source, const std::st
                                         bool update) {
   const transport::Reply reply = transport::PostJson(
       update ? "/v1/library/update" : "/v1/library/install", {{"source", source}, {"ref", ref}});
+  return {reply.ok, reply.error};
+}
+
+StoreActionResult SetTitlesHiddenSync(const std::string& source,
+                                      const std::vector<std::string>& refs, bool hidden) {
+  const transport::Reply reply = transport::PostJson(
+      "/v1/library/hidden", {{"source", source}, {"refs", refs}, {"hidden", hidden}});
   return {reply.ok, reply.error};
 }
 
@@ -416,6 +425,17 @@ void InstallStoreTitleAsync(QObject* context, const std::string& source, const s
                             bool update, std::function<void(StoreActionResult)> callback) {
   async::Run(
       context, [source, ref, update] { return InstallStoreTitleSync(source, ref, update); },
+      std::move(callback));
+}
+
+void SetTitlesHiddenAsync(QObject* context, const std::string& source,
+                          std::vector<std::string> refs, bool hidden,
+                          std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context,
+      [source, refs = std::move(refs), hidden] {
+        return SetTitlesHiddenSync(source, refs, hidden);
+      },
       std::move(callback));
 }
 

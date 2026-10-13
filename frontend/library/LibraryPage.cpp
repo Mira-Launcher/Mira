@@ -145,6 +145,12 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   layout->addWidget(scroll_, /*stretch=*/1);
 
   connect(library_, &GameLibraryModel::Changed, this, &LibraryPage::LibraryChanged);
+  connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this](bool showing) {
+    pill_->SetShowingHidden(showing, hidden_shortcut_);
+    grid_->clearSelection();  // none of the selected games are listed any more
+    UpdateOwnedMatches();
+    LibraryChanged();
+  });
   // The tiles are painted, so the stylesheet can't restyle them.
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
     ApplyLayoutTokens();
@@ -185,6 +191,8 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
     emit SortChanged();
   });
   connect(pill_, &FilterSortPill::TagsChanged, this, &LibraryPage::ApplyFilter);
+  connect(pill_, &FilterSortPill::HiddenToggled, this,
+          [this] { library_->SetShowingHidden(!library_->ShowingHidden()); });
   tabs_->SetTrailing(pill_);
   search_ = new QLineEdit(top);
   search_->setObjectName("library_search");
@@ -250,8 +258,9 @@ int LibraryPage::FilterCount() const {
   return static_cast<int>(pill_->FilterKeys().size());
 }
 
-void LibraryPage::ToggleHidden() {
-  SetFilterKey(FilterKey() == "hidden" ? "all" : "hidden");
+void LibraryPage::SetHiddenShortcut(const QString& shortcut) {
+  hidden_shortcut_ = shortcut;
+  pill_->SetShowingHidden(library_->ShowingHidden(), shortcut);
 }
 
 const std::string& LibraryPage::SortKey() const {
@@ -418,7 +427,7 @@ QWidget* LibraryPage::BuildOwnedSection() {
   owned_grid_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(owned_grid_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
     const QModelIndex index = owned_grid_->indexAt(pos);
-    if (index.isValid()) InstallMatch(index, owned_grid_->viewport()->mapToGlobal(pos));
+    if (index.isValid()) ShowTitleMenu(index, owned_grid_->viewport()->mapToGlobal(pos));
   });
   connect(owned_grid_, &QAbstractItemView::doubleClicked, this,
           [this](const QModelIndex& index) { InstallMatch(index, QCursor::pos()); });
@@ -448,8 +457,12 @@ void LibraryPage::SetNotInstalled(bool on) {
 
 void LibraryPage::UpdateOwnedMatches() {
   const QString query = search_->text().trimmed();
-  const std::vector<StoreTitle> none;
-  const std::vector<StoreTitle>& titles = owned_titles_ != nullptr ? owned_titles_->Titles() : none;
+  std::vector<StoreTitle> titles;
+  if (owned_titles_ != nullptr) {
+    std::ranges::copy_if(
+        owned_titles_->Titles(), std::back_inserter(titles),
+        [this](const StoreTitle& title) { return title.hidden == library_->ShowingHidden(); });
+  }
   if (not_installed_) {
     owned_matches_ = GroupOwned(titles, query);
     std::vector<QString> stores;
@@ -534,6 +547,31 @@ void LibraryPage::InstallMatch(const QModelIndex& index, const QPoint& global_po
   menu.exec(global_pos);
 }
 
+void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_pos) {
+  if (!index.isValid() || index.row() >= static_cast<int>(owned_matches_.size())) return;
+  const OwnedMatch match = owned_matches_[index.row()];
+  QMenu menu(this);
+  if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
+    for (const auto& [source, ref] : match.copies) {
+      const SourceInfo* info = FindSourceInfo(source);
+      const QString label = match.copies.size() == 1
+                                ? QString("Install")
+                                : "Install from " + (info != nullptr ? info->name : source);
+      connect(menu.addAction(label), &QAction::triggered, this,
+              [this, source, ref] { emit InstallTitleRequested(source, ref); });
+    }
+    menu.addSeparator();
+  }
+  const bool hide = !library_->ShowingHidden();
+  connect(menu.addAction(hide ? "Hide" : "Unhide"), &QAction::triggered, this, [this, match, hide] {
+    for (const auto& [source, ref] : match.copies) {
+      api::SetTitlesHiddenAsync(this, source.toStdString(), {ref.toStdString()}, hide,
+                                [](StoreActionResult) {});
+    }
+  });
+  menu.exec(global_pos);
+}
+
 void LibraryPage::FitGrid() {
   const bool page_scrolls = owned_section_->isVisible() || not_installed_;
   grid_->page_scrolls = page_scrolls;
@@ -602,14 +640,17 @@ void LibraryPage::LibraryChanged() {
 void LibraryPage::UpdateCounts() {
   const QStringList picked = pill_->PickedTags();
   for (const QString& key : pill_->FilterKeys()) {
-    const auto count = std::ranges::count_if(library_->Games(), [this, &key, &picked](const GameSummary& game) {
-      return GameFilterProxy::MatchesKey(game, key, apps_) && GameFilterProxy::HasTags(game, picked);
-    });
+    const auto count =
+        std::ranges::count_if(library_->Games(), [this, &key, &picked](const GameSummary& game) {
+          return library_->Shown(game) && GameFilterProxy::MatchesKey(game, key, apps_) &&
+                 GameFilterProxy::HasTags(game, picked);
+        });
     pill_->SetCount(key, static_cast<int>(count));
     tabs_->SetCount(key, static_cast<int>(count));
   }
   QList<FilterSortPill::TagCount> tags;
-  for (const LibraryTag& tag : TagsUnder(library_->Games(), FilterKey(), apps_)) {
+  for (const LibraryTag& tag :
+       TagsUnder(library_->Games(), FilterKey(), apps_, library_->ShowingHidden())) {
     tags.append({tag.tag, tag.count});
   }
   pill_->SetTags(tags);
@@ -619,19 +660,24 @@ void LibraryPage::UpdateEmptyState() {
   if (not_installed_) {
     const bool listed = owned_titles_ != nullptr && owned_titles_->Listed();
     empty_hint_->setVisible(owned_matches_.empty());
-    empty_hint_->setText(!listed                                 ? QString("Asking your stores…")
-                         : !title_filters_->Filter().Empty() ||
-                                   !search_->text().trimmed().isEmpty() ? QString("No games match.")
-                                                                         : QString("Everything you own is installed."));
+    empty_hint_->setText(!listed ? QString("Asking your stores…")
+                         : !title_filters_->Filter().Empty() || !search_->text().trimmed().isEmpty()
+                             ? QString("No games match.")
+                         : library_->ShowingHidden() ? QString("Nothing hidden here.")
+                                                     : QString("Everything you own is installed."));
     return;
   }
   const int shown = games_->rowCount();
   empty_hint_->setVisible(shown == 0);
   if (shown == 0) {
     const QString items = FilterKey() == "apps" ? "apps" : "games";
+    const bool none_hidden =
+        std::ranges::none_of(library_->Games(), [](const GameSummary& g) { return IsHidden(g); });
     empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet.").arg(items)
-                         : !owned_matches_.empty() ? QString("Nothing installed matches.")
-                                                   : QString("No %1 match this filter.").arg(items));
+                         : library_->ShowingHidden() && none_hidden ? QString("No hidden games.")
+                         : !owned_matches_.empty()
+                             ? QString("Nothing installed matches.")
+                             : QString("No %1 match this filter.").arg(items));
   }
 }
 
@@ -642,7 +688,7 @@ void LibraryPage::RefreshContinue() {
   if (continue_row_enabled_ && !not_installed_ && (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
       search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
-      if (IsHidden(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
+      if (!library_->Shown(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
       if (IsApp(game) && !continue_apps_) continue;
       if (game.running || game.last_played_at) games.push_back(&game);
     }

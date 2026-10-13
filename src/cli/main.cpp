@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include "config/Schema.h"
@@ -756,6 +757,36 @@ std::string Prompt(const char* prompt) {
   return line.substr(start);
 }
 
+termios g_echoing{};
+
+// Ctrl-C while a password is typed: the terminal gets its echo back before the command dies.
+void RestoreEchoAndExit(int signal) {
+  ::tcsetattr(STDIN_FILENO, TCSANOW, &g_echoing);
+  std::signal(signal, SIG_DFL);
+  std::raise(signal);
+}
+
+// A line typed without echo on a terminal, or read as is from a pipe.
+std::string ReadSecret(const char* prompt) {
+  const bool terminal = ::isatty(STDIN_FILENO) && ::tcgetattr(STDIN_FILENO, &g_echoing) == 0;
+  if (terminal) {
+    std::fputs(prompt, stderr);
+    termios quiet = g_echoing;
+    quiet.c_lflag &= ~static_cast<tcflag_t>(ECHO);
+    std::signal(SIGINT, RestoreEchoAndExit);
+    ::tcsetattr(STDIN_FILENO, TCSANOW, &quiet);
+  }
+  std::string line;
+  std::getline(std::cin, line);
+  if (terminal) {
+    ::tcsetattr(STDIN_FILENO, TCSANOW, &g_echoing);
+    std::signal(SIGINT, SIG_DFL);
+    std::fputs("\n", stderr);
+  }
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  return line;
+}
+
 // What each store wants pasted after signing in.
 const char* CredentialPrompt(std::string_view store) {
   if (store == "epic") return "Paste the \"authorizationCode\" shown, or the whole page.\ncode (or pasted JSON): ";
@@ -949,10 +980,10 @@ int CmdLibraryList(int argc, char** argv) {
     return 0;
   }
   for (const json& entry : entries) {
-    std::printf("%-8s %-40s %-12s %s\n", entry.value("source", "").c_str(),
-               entry.value("ref", "").c_str(),
-               entry.value("installed", false) ? "[installed]" : "",
-               entry.value("title", "").c_str());
+    std::printf("%-8s %-40s %-12s %-9s %s\n", entry.value("source", "").c_str(),
+                entry.value("ref", "").c_str(),
+                entry.value("installed", false) ? "[installed]" : "",
+                entry.value("hidden", false) ? "[hidden]" : "", entry.value("title", "").c_str());
   }
   return 0;
 }
@@ -973,7 +1004,30 @@ int CmdLibraryInstallOrUpdate(int argc, char** argv, bool is_update) {
   return 0;
 }
 
+// Hides or shows owned titles; an installed one's game gets or loses the hidden tag.
+int CmdLibraryHide(int argc, char** argv, bool hidden) {
+  if (argc < 2) {
+    std::fprintf(stderr, "usage: mira library %s <source> <ref>...\n", hidden ? "hide" : "unhide");
+    return 2;
+  }
+  json refs = json::array();
+  for (int i = 1; i < argc; ++i) refs.push_back(argv[i]);
+  auto client = Connect();
+  auto res = client.Post("/v1/library/hidden",
+                         json{{"source", argv[0]}, {"refs", refs}, {"hidden", hidden}}.dump(),
+                         "application/json");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  std::puts(hidden ? "hidden" : "shown");
+  return 0;
+}
+
 int CmdLibrary(int argc, char** argv) {
+  if (argc > 0 && (std::string_view(argv[0]) == "hide" || std::string_view(argv[0]) == "unhide")) {
+    return CmdLibraryHide(argc - 1, argv + 1, std::string_view(argv[0]) == "hide");
+  }
   if (argc > 0 && std::string_view(argv[0]) == "install") {
     return CmdLibraryInstallOrUpdate(argc - 1, argv + 1, false);
   }
@@ -1175,6 +1229,90 @@ int CmdMetadata(int argc, char** argv) {
   return 0;
 }
 
+// GET /v1/hidden's {password, locked}, or null after printing why it failed.
+json HiddenState(httplib::Client& client) {
+  auto res = client.Get("/v1/hidden");
+  if (!Ok(res)) {
+    PrintError(res);
+    return nullptr;
+  }
+  return json::parse(res->body);
+}
+
+const char* HiddenStateText(const json& state) {
+  if (!state.value("password", false)) return "hidden games have no password";
+  return state.value("locked", true) ? "hidden games are locked" : "hidden games are unlocked";
+}
+
+int CmdHiddenPassword(httplib::Client& client, const json& state, bool remove) {
+  const bool had = state.value("password", false);
+  if (remove && !had) {
+    std::puts("hidden games have no password");
+    return 0;
+  }
+  json body = json::object();
+  if (had) body["current"] = ReadSecret("current password: ");
+  std::string password;
+  if (!remove) {
+    password = ReadSecret("new password: ");
+    if (password.empty()) {
+      std::fprintf(
+          stderr,
+          "mira: nothing entered (to remove the password: mira hidden password --remove)\n");
+      return 2;
+    }
+    if (ReadSecret("new password again: ") != password) {
+      std::fprintf(stderr, "mira: the two passwords differ\n");
+      return 2;
+    }
+  }
+  body["password"] = password;
+  auto res = client.Put("/v1/hidden/password", body.dump(), "application/json");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  std::puts(remove ? "password removed"
+            : had  ? "password changed"
+                   : "password set (lock now with `mira hidden lock`)");
+  return 0;
+}
+
+int CmdHidden(int argc, char** argv) {
+  const std::string_view action = argc > 0 ? argv[0] : "status";
+  if (action != "status" && action != "unlock" && action != "lock" && action != "password") {
+    std::fprintf(stderr,
+                 "usage: mira hidden [status]          whether hidden games are locked\n"
+                 "       mira hidden unlock | lock\n"
+                 "       mira hidden password [--remove]   set, change or remove the password\n");
+    return 2;
+  }
+  auto client = Connect();
+  const json state = HiddenState(client);
+  if (state.is_null()) return 1;
+  if (action == "status") {
+    std::puts(HiddenStateText(state));
+    return 0;
+  }
+  if (action == "password")
+    return CmdHiddenPassword(client, state, argc > 1 && std::string_view(argv[1]) == "--remove");
+  if (!state.value("password", false) || state.value("locked", true) == (action == "lock")) {
+    std::puts(HiddenStateText(state));
+    return 0;
+  }
+  const httplib::Result res =
+      action == "lock"
+          ? client.Post("/v1/hidden/lock")
+          : client.Post("/v1/hidden/unlock", json{{"password", ReadSecret("password: ")}}.dump(),
+                        "application/json");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  std::puts(HiddenStateText(json::parse(res->body)));
+  return 0;
+}
+
 int CmdList(int argc, char** argv) {
   std::string status_filter, tag_filter;
   for (int i = 0; i < argc; ++i) {
@@ -1197,6 +1335,11 @@ int CmdList(int argc, char** argv) {
     return 1;
   }
   json games = json::parse(res->body);
+  if (tag_filter == "hidden") {
+    if (const json state = HiddenState(client);
+        state.is_object() && state.value("password", false) && state.value("locked", true))
+      std::fputs("hidden games are locked: mira hidden unlock\n", stderr);
+  }
   if (games.empty()) {
     std::puts("(no games)");
     return 0;
@@ -1571,6 +1714,10 @@ void PrintUsage() {
       "  add <install_path> <exe_path> [--name N] [--platform windows|native] [--installer]\n"
       "  relocate <id>           move a game's files into Mira's canonical layout\n"
       "  library relocate        relocate every tracked game (see `mira relocate`)\n"
+      "  library hide|unhide <source> <ref>...   hide or show owned titles, installed or not\n"
+      "  hidden [status]        whether hidden games are locked\n"
+      "  hidden unlock|lock     unlock or lock hidden games (asks for the password)\n"
+      "  hidden password [--remove]   set, change or remove the hidden games' password\n"
       "  steam scan             detect installed Steam games\n"
       "  steam status online|invisible   set your Steam friends status\n"
       "  lutris import          import games from Lutris's own database\n"
@@ -1625,6 +1772,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "tricks") return CmdTricks(rest_argc, rest);
   if (command == "setup") return CmdSetup(rest_argc, rest);
   if (command == "list") return CmdList(rest_argc, rest);
+  if (command == "hidden") return CmdHidden(rest_argc, rest);
   if (command == "show") return CmdShow(rest_argc, rest);
   if (command == "set") return CmdSet(rest_argc, rest);
   if (command == "config") return CmdConfig(rest_argc, rest);

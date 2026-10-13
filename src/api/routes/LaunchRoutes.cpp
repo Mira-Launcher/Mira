@@ -337,7 +337,7 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
 
 }  // namespace
 
-void RegisterLaunchRoutes(httplib::Server& http, Services& s) {
+void RegisterLaunchRoutes(Router& http, Services& s) {
   // --- launching ------------------------------------------------------------
 
   http.Post(R"(/v1/games/([^/]+)/launch)", [&s](const Request& req, Response& res) {

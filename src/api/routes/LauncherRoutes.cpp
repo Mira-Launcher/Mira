@@ -30,7 +30,7 @@ Result<void> AddOfficeApps(Services& s, std::vector<std::string> apps) {
 }
 }  // namespace
 
-void RegisterLauncherRoutes(httplib::Server& http, Services& s) {
+void RegisterLauncherRoutes(Router& http, Services& s) {
   http.Get("/v1/launchers", [&s](const Request&, Response& res) {
     json list = json::array();
     for (const launchers::Launcher& launcher : launchers::All()) {

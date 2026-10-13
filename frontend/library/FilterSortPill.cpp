@@ -36,10 +36,6 @@ const FilterEntry kFilters[] = {
     {"Broken", "broken", icons::Glyph::Warning},
     {"Missing", "missing", icons::Glyph::CircleX},
     {"Never played", "never", icons::Glyph::Moon},
-    // Every entry above excludes a hidden-tagged game; this is the only one
-    // that shows them, and only them.
-    {"Hidden", "hidden", icons::Glyph::EyeSlash},
-    // After Hidden so Ctrl+1…9 keep their filters.
     {"Needs attention", "attention", icons::Glyph::Warning},
     {"Apps", "apps", icons::Glyph::Wrench},
     {"Games", "games", icons::Glyph::Target},
@@ -191,6 +187,17 @@ QWidget* FilterSortPill::BuildPopover() {
   filters_->setFixedHeight(filters_height);
   layout->addWidget(filters_);
 
+  // Hidden mode applies on top of the filter, so it's a switch rather than a filter row.
+  hidden_ = new QPushButton("Hidden games", popover);
+  hidden_->setFlat(true);
+  hidden_->setCheckable(true);
+  connect(hidden_, &QPushButton::clicked, this, [this] {
+    hidden_->setChecked(!hidden_->isChecked());  // the mode's own change sets it
+    popover_->hide();
+    emit HiddenToggled();
+  });
+  layout->addWidget(hidden_);
+
   layout->addWidget(MakeDivider(popover, Qt::Horizontal));
 
   // Tags: pick any number; a game has to have all of them.
@@ -282,6 +289,12 @@ void FilterSortPill::SetCount(const QString& key, int count) {
   if (auto* label = filters_->itemWidget(filters_->item(row))->findChild<QLabel*>("count")) {
     label->setText(QString::number(count));
   }
+}
+
+void FilterSortPill::SetShowingHidden(bool showing, const QString& shortcut) {
+  hidden_->setChecked(showing);
+  hidden_->setToolTip(
+      QString(showing ? "Leave hidden mode (%1)" : "Show only hidden games (%1)").arg(shortcut));
 }
 
 void FilterSortPill::SetFilterOffered(const QString& key, bool offered) {

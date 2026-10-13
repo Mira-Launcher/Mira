@@ -9,6 +9,7 @@ text = "#1c1f25"
 text_muted = "#6b7280"
 accent = "#3b5bdb"
 on_accent = "#ffffff"
+accent_hidden = "#7048e8"
 
 running = "#2e7d32"
 success = "#2e7d32"

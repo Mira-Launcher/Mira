@@ -48,8 +48,6 @@ class Sidebar : public QWidget {
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
   void SetActive(bool library, bool runners, bool tags, const QString& source_id);
-  // Hidden pins show only while the grid shows the Hidden filter.
-  void SetShowingHidden(bool showing_hidden);
   void SetFooter(int shown, int total, bool mirad_reachable);
   // Add games, Settings and fetch art, which act on a grid that's covered.
   void SetActionsEnabled(bool enabled);
@@ -149,14 +147,21 @@ class Sidebar : public QWidget {
   bool tags_active_ = false;
   QString active_source_;
 
-  // One row per AllSources() entry, same order.
-  QList<QPushButton*> source_navs_;
-  // The parts each source row lays out in place of its own text: the deck of covers (or a
-  // dot), the name with a line under it, and the trailing count shown only without covers.
-  QList<QLabel*> source_decks_;
-  QList<QLabel*> source_names_;
-  QList<QLabel*> source_details_;
-  QList<QLabel*> source_counts_;
+  // A source's row: the button draws only the background, and its parts are the deck of covers
+  // (or a dot), the name with a line under it, and the trailing count shown only without covers.
+  struct SourceRow {
+    QPushButton* nav = nullptr;
+    QLabel* deck = nullptr;
+    QLabel* name = nullptr;
+    QLabel* detail = nullptr;
+    QLabel* count = nullptr;
+  };
+  // One per AllSources() entry, same order. A row is built the first time it shows, so the
+  // sources never in the sidebar cost nothing when the app restyles.
+  std::vector<SourceRow> source_rows_;
+  SourceRow& BuildSourceRow(int index);
+  // The AllSources() index of a source row's button, or -1.
+  int SourceIndexOf(const QObject* nav) const;
   QVBoxLayout* source_nav_layout_ = nullptr;
   QLabel* sources_empty_ = nullptr;    // shown while no source row is
   QSet<QString> added_sources_;        // set up; the Sources page adds the rest
@@ -185,7 +190,6 @@ class Sidebar : public QWidget {
   QToolButton* pinned_customize_ = nullptr;
   QToolButton* recent_customize_ = nullptr;
   SidebarStyleCard::Choices style_;
-  bool showing_hidden_ = false;
   // Dwell before a game row's hover card.
   QTimer* hover_timer_ = nullptr;
   QPointer<QWidget> hover_row_;

@@ -248,12 +248,15 @@ What each account owns, whether or not it's installed:
 ```json
 [{ "source": "epic", "ref": "e8bbb84be35640cda646233152ff3428", "title": "Brotato",
    "installed": true, "game_id": "epic-e8bbb84be35640cda646233152ff3428",
-   "play_seconds": 0, "owned": true }]
+   "play_seconds": 0, "owned": true, "hidden": false }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `hidden` is the game's `hidden` tag once installed, and before that whether the title was hidden with `POST /v1/library/hidden`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
 
 Each source's owned titles are stored in cache.db as it last listed them, so the listing answers at once; titles become games once installed. A source never listed yet is asked during the request. Every other one is re-checked in the background, one check per source at a time, between `library.catalog_checking` and `library.catalog_checked` (`changed` says whether the list differs, the cue to list again). `fresh=1` asks each source during the request instead. Signing out of a store drops its stored list. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
+
+### `POST /v1/library/hidden`
+Body `{"source": "epic", "refs": ["..."], "hidden": true}`. Hides or shows owned titles. An installed title's game gets or loses the `hidden` tag (publishing `game.updated`); any other title is kept hidden in mira.db, so its game is tagged `hidden` when it's installed, and removing a hidden game keeps its title hidden. Answers and publishes `library.hidden_changed` with the body.
 
 ### `POST /v1/library/install`
 Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `install`, target `<source>-<ref>`).
@@ -311,6 +314,35 @@ Body `{"name": "..."}`. Takes the tag off every game and out of `tags.folders`. 
 
 ### `POST /v1/tags/preview`
 Body `{"folders"?: [...], "sorted_roots"?: [...], "tags"?: {"<id>": [...]}}`: `tags.folders` and `tags.sorted_roots` as they would be, and games' tags as a client is editing them, none of it saved. Returns `{"moving": [{"id", "name", "to"}]}`: the games (and links) that would move, and where to, so a client can say what a change does before asking for it. Folder tags the setting would refuse are `400 invalid_setting`.
+
+## Hidden games
+
+Hidden games are those tagged `hidden`, plus store titles hidden with `POST /v1/library/hidden`. With a password set they start locked each time mirad starts, and while locked mirad answers as if they weren't there:
+
+- **Lists leave them out.** Every list skips them, whatever is asked for: `GET /v1/games` (even with `include_hidden` or `tag=hidden`), `/v1/tags` (their ids and counts), `/v1/library`, `/v1/sources` counts, `/v1/steam/installed`, `/v1/library/unclear`, `/v1/library/install/paused` and `/v1/tags/preview`.
+- **Naming one is a missing game.** A request that names one answers `404 game_not_found`, as for a game that doesn't exist. That covers `/v1/games/{id}...`, `source` with `ref` in the query, and `id`, `ids`, or `source` with `ref`, `refs` or `titles` in the body. Their jobs answer `404 job_not_found`.
+- **`POST /v1/tags/set` leaves their tags alone.**
+- **Events about them are dropped.** A game hidden while locked is published as `game.removed` (or `games.removed`). Buffered events about them become `concealed` events with no payload when hidden games lock, so a reconnecting client isn't replayed them.
+
+Only a crypt(3) hash of the password is kept (yescrypt from the system's libcrypt, in mira.db). With `hidden.lock_after_minutes`, they lock again once no client has reported activity for that long, unless a game is running. Every change of state publishes `hidden.changed` with `{password, locked}`, the cue for a client to fetch its games again.
+
+### `GET /v1/hidden`
+`{"password": bool, "locked": bool}`.
+
+### `PUT /v1/hidden/password`
+Body `{"current"?: "...", "password": "..."}`. Sets the password, changes it, or with `""` removes it. Once one is set, `current` must match it (`403 wrong_password`, after a pause). Leaves hidden games unlocked. Answers like `GET`.
+
+### `POST /v1/hidden/unlock`
+Body `{"password": "..."}`. `403 wrong_password` after a pause, or answers like `GET`.
+
+### `POST /v1/hidden/lock`
+Locks hidden games now. Answers like `GET`.
+
+### `POST /v1/hidden/left`
+A client left hidden mode: locks hidden games when `hidden.lock_on_leave` is on. Answers like `GET`.
+
+### `POST /v1/hidden/activity`
+Someone is using a client: restarts `hidden.lock_after_minutes`' count. `204`.
 
 ## Runners
 
@@ -684,6 +716,9 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |
 | `library.catalog_checking`, `library.catalog_checked` | `{source}` while `GET /v1/library` re-checks a store's owned titles; `checked` adds `changed`. |
+| `library.hidden_changed` | `{source, refs, hidden}` after `POST /v1/library/hidden`. |
+| `hidden.changed` | `{password, locked}` when the [hidden games](#hidden-games) password is set or removed, or they lock or unlock. |
+| `concealed` | No payload: a buffered event about a hidden game, blanked when hidden games locked. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
 | `umu.setup.*`, `winetricks.setup.*` | Tool installs. |
