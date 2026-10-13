@@ -11,7 +11,7 @@
 namespace mira {
 
 Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view content, std::string code,
-                             bool durable) {
+                             bool durable, mode_t mode) {
   std::error_code ec;
   std::filesystem::create_directories(path.parent_path(), ec);
 
@@ -23,7 +23,7 @@ Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view
     return Err(code, message, kDiskHint);
   };
 
-  const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
   if (fd < 0) return Err(code, std::format("couldn't write {}: {}", temp, std::strerror(errno)), kDiskHint);
   std::size_t written = 0;
   while (written < content.size()) {

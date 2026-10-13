@@ -138,6 +138,7 @@ add_executable(mira_gui_tests
   library/GameLibraryModel.cpp
   library/LibrarySort.cpp
   library/OwnedTitles.cpp
+  library/PlayChoices.cpp
   library/TitleRatings.cpp
   settings/SettingsColumns.cpp
   settings/SettingsSearch.cpp

@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 4> kMigrations = {
+constexpr std::array<std::string_view, 5> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -109,6 +109,9 @@ CREATE TABLE hidden_titles(id TEXT PRIMARY KEY) STRICT;
 -- Values kept out of settings.toml, which clients can read: "hidden_password" is a crypt(3) hash.
 CREATE TABLE secrets(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 )sql",
+    R"sql(
+ALTER TABLE games ADD COLUMN launch TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(launch));
+)sql",
 };
 
 // The title a store game was installed from, as hidden_titles keys it, or "" for a game from no
@@ -124,7 +127,7 @@ constexpr std::array<std::string_view, 16> kTextColumns = {
     "library_link", "folder_tag"};
 constexpr std::array<std::string_view, 4> kIntColumns = {"created_at", "updated_at", "play_seconds",
                                                          "last_session_at"};
-constexpr std::array<std::string_view, 4> kJsonColumns = {"runner_config", "overrides", "env", "candidates"};
+constexpr std::array<std::string_view, 5> kJsonColumns = {"runner_config", "overrides", "env", "candidates", "launch"};
 
 // Every column, in the order Write binds and ReadAll reads them.
 std::vector<std::string_view> Columns() {

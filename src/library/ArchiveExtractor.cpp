@@ -57,22 +57,13 @@ std::optional<Volume> VolumeOf(const fs::path& path) {
   return std::nullopt;
 }
 
-// Moves everything in `from` into `to`, replacing entries with the same name.
-Result<void> MoveContents(const fs::path& from, const fs::path& to) {
+// `dest`, or the first of "<dest> (2)", "<dest> (3)"... that's free: an archive never replaces a folder already
+// there, such as a game with its saves.
+fs::path FreeName(const fs::path& dest) {
   std::error_code ec;
-  if (!fs::exists(to, ec)) {
-    fs::rename(from, to, ec);
-    if (ec) return Err("move_failed", ec.message());
-    return {};
-  }
-  for (const auto& entry : fs::directory_iterator(from, ec)) {
-    const fs::path target = to / entry.path().filename();
-    fs::remove_all(target, ec);
-    fs::rename(entry.path(), target, ec);
-    if (ec) return Err("move_failed", std::format("{}: {}", target.string(), ec.message()));
-  }
-  fs::remove_all(from, ec);
-  return {};
+  fs::path name = dest;
+  for (int n = 2; fs::exists(name, ec); ++n) name = dest.parent_path() / std::format("{} ({})", dest.filename().string(), n);
+  return name;
 }
 
 }  // namespace
@@ -162,9 +153,10 @@ Result<void> ExtractAndRemove(const fs::path& archive, const fs::path& dest_dir)
     return extracted;
   }
 
-  if (auto moved = MoveContents(work_dir, dest_dir); !moved) {
+  fs::rename(work_dir, FreeName(dest_dir), ec);
+  if (ec) {
     fs::remove_all(work_dir, ec);
-    return moved;
+    return Err("move_failed", ec.message());
   }
 
   for (const fs::path& volume : VolumesOf(archive)) {

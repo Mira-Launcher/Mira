@@ -392,7 +392,7 @@ bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const
   if (!library_->Shown(game)) return false;
   if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
   if (!HasTags(game, tags_)) return false;
-  if (!source_.empty()) return SourceIdOf(game) == source_;
+  if (!source_.empty()) return InSource(game, source_);
   // Apps kept out of the library still turn up in a search.
   if (apps_ == AppsIn::Search && IsApp(game) && !search_.isEmpty()) return true;
   return MatchesKey(game, key_, apps_);

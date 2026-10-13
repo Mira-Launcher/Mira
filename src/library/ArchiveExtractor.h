@@ -30,7 +30,8 @@ std::filesystem::path StemWithoutArchiveExtension(const std::filesystem::path& a
 // Extracts into a hidden folder next to `dest_dir` and moves the result into
 // place only once the tool succeeds, so a failed or truncated archive never
 // leaves a partial game behind. Every volume is deleted on success; on
-// failure the archive is kept.
+// failure the archive is kept. A folder already at `dest_dir` is kept too: the archive goes in
+// "<dest_dir> (2)".
 Result<void> ExtractAndRemove(const std::filesystem::path& archive, const std::filesystem::path& dest_dir);
 
 // Name prefix of the hidden folders ExtractAndRemove works in.

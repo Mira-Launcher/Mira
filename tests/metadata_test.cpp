@@ -145,7 +145,7 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   CHECK(cache.ArtFor("celeste", "cover").has_value());
 }
 
-TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readable PNG or JPEG is refused") {
+TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readable PNG or JPEG of a sane size is refused") {
   const fs::path dir = TempDir("metadata-upload");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -159,6 +159,9 @@ TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readab
 
   CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "GIF89a").error().code == "unsupported_image");
   CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "\x89PNG broken").error().code == "unsupported_image");
+  std::string bomb = png;  // its header claims 20000x20000
+  for (const int offset : {16, 20}) bomb.replace(offset, 4, std::string("\x00\x00\x4e\x20", 4));
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", bomb).error().code == "unsupported_image");
   REQUIRE(metadata::UploadArtwork(config, cache, "celeste", "hero", png).has_value());
   const nlohmann::json info = cache.Read("celeste");
   CHECK(info["hero"].value("chosen", false));

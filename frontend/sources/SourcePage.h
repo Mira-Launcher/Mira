@@ -101,6 +101,8 @@ private:
   bool IsStore() const { return source_.kind == SourceInfo::Kind::Store; }
   bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
   bool IsEmulator() const { return source_.kind == SourceInfo::Kind::Emulator; }
+  bool IsModManager() const { return source_.kind == SourceInfo::Kind::ModManager; }
+  void AddToGame();
   bool HasImport() const;
   bool HasOwned() const;
   // The source has a list of what the account owns, as opposed to a note saying it has none.
@@ -161,6 +163,7 @@ private:
   std::string launcher_game_id_;
   std::string launcher_prefix_;
   EmulatorInfo emulator_;
+  ModManagerInfo manager_;
   std::string account_;
   int library_count_ = 0;
   QSize tile_;

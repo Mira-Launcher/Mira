@@ -8,6 +8,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "emulators/Emulators.h"
+#include "modmanagers/ModManagers.h"
 #include "epic/Legendary.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
@@ -28,7 +29,8 @@ bool IsStore(std::string_view source) {
 
 // Only the app owns these games' files. An emulator's games are the user's own, kept when it goes.
 bool FilesOwnedElsewhere(std::string_view source) {
-  return source == "steam" || source == "lutris" || source == "humble" || emulators::Find(source) != nullptr;
+  return source == "steam" || source == "lutris" || source == "humble" || emulators::Find(source) != nullptr ||
+         modmanagers::Find(source) != nullptr;
 }
 
 bool Belongs(const model::Game& game, std::string_view source,
@@ -181,6 +183,7 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
     }
     for (const fs::path& path : emulators::DataPaths(*emulator)) plan.data.push_back(path.string());
   }
+  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) plan.program_dir = modmanagers::Dir(*manager).string();
   for (const model::Game& game : games.All()) {
     if (!Belongs(game, source, launcher)) continue;
     if (!game.data_dir.empty() && !std::ranges::contains(plan.kept, game.data_dir))
@@ -243,6 +246,11 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     std::error_code ec;
     fs::remove_all(path, ec);
     if (ec) result.problems.push_back(std::format("deleting {}: {}", path, ec.message()));
+  }
+
+  // Off every game it was added to; its settings and mods stay in their prefixes.
+  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
+    if (auto done = modmanagers::Uninstall(games, *manager); !done) result.problems.push_back(done.error().message);
   }
 
   if (plan->signs_out) {

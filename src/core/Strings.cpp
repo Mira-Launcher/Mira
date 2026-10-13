@@ -113,6 +113,28 @@ std::string JoinArgs(const std::vector<std::string>& args) {
   return out;
 }
 
+std::string ShellQuote(std::string_view arg) {
+  std::string out = "'";
+  for (const char c : arg) out += c == '\'' ? std::string("'\\''") : std::string(1, c);
+  return out + "'";
+}
+
+std::string DesktopExecArg(std::string_view arg) {
+  // Inside quotes ", `, $ and \ take a backslash, which the key's own string escaping doubles; % is a field code.
+  std::string out = "\"";
+  for (const char c : arg) {
+    if (c == '"' || c == '`' || c == '$') out += "\\\\";
+    if (c == '\\') out += "\\\\\\";
+    if (c == '%') out += '%';
+    if (c == '\n' || c == '\t' || c == '\r') {  // the key's string escapes
+      out += c == '\n' ? "\\n" : c == '\t' ? "\\t" : "\\r";
+      continue;
+    }
+    out += c;
+  }
+  return out + "\"";
+}
+
 bool GlobMatch(std::string_view pattern, std::string_view text) {
   size_t p = 0, t = 0, star = std::string_view::npos, retry = 0;
   while (t < text.size()) {

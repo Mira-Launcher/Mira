@@ -79,7 +79,7 @@ public:
                std::function<void()> on_confirm);
 
   // The actions every page shares.
-  void Play(const Item& item);
+  void Play(const Item& item, const std::string& option = {});
   void Stop(const Item& item);
   void Install(const Item& item);
   void Pause(const Item& item);

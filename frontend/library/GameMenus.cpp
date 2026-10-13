@@ -15,6 +15,7 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "GameActions.h"
+#include "PlayChoices.h"
 #include "GameLibraryModel.h"
 #include "GamePresentation.h"
 
@@ -37,6 +38,18 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QMenu menu(parent_);
   QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
   play->setEnabled(CanPlayOrStop(game));
+  // The game's other ways to start, and its tools.
+  if (!running && CanPlayOrStop(game)) {
+    if (const std::vector<PlayChoice> choices = PlayChoices(game, /*all=*/true); choices.size() > 1) {
+      QMenu* with = menu.addMenu("Play with");
+      for (const PlayChoice& choice : choices) {
+        with->addAction(choice.label, this, [this, id, option = choice.option] { host_.launch(id, option); });
+      }
+    }
+  }
+  for (const PlayChoice& tool : ToolChoices(game)) {
+    menu.addAction("Open " + tool.label, this, [this, id, option = tool.option] { actions::Launch(parent_, id, option, {}); });
+  }
   if (extra) extra(menu);
   // An emulator's game moves to another one for its console; filled in when mirad answers.
   const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
@@ -123,7 +136,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
 
   QAction* chosen = menu.exec(global_pos);
   if (chosen == play) {
-    host_.toggle_running(id);
+    running ? host_.toggle_running(id) : host_.launch(id, {});  // the default; other choices are under Play with
   } else if (chosen == details) {
     host_.open_settings(id);
   } else if (chosen == folder) {

@@ -47,6 +47,7 @@ void RegisterHiddenRoutes(Router& http, Services& s);
 void RegisterStoreRoutes(Router& http, Services& s);
 void RegisterLauncherRoutes(Router& http, Services& s);
 void RegisterEmulatorRoutes(Router& http, Services& s);
+void RegisterModManagerRoutes(Router& http, Services& s);
 void RegisterUpdateRoutes(Router& http, Services& s);
 void RegisterMetadataRoutes(Router& http, Services& s);
 void RegisterRunnerRoutes(Router& http, Services& s);

@@ -91,6 +91,10 @@ public:
   bool IsRunning(const std::string& game_id) const;
   bool AnyRunning() const;
 
+  // A systemd scope name for a program started beside the game, empty if the game isn't tracked. Forget
+  // stops every such scope, including ones started before mirad restarted.
+  std::string CompanionUnit(const std::string& game_id, const std::string& option_id) const;
+
   // Claims a game before anything is spawned or any of its files change, so two quick
   // launches can't both start it and a game can't launch mid-move. Empty if it is
   // running or already claimed.

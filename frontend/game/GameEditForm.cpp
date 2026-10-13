@@ -18,6 +18,7 @@
 #include "../widgets/PathField.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TagEdit.h"
+#include "LaunchOptionsEdit.h"
 #include "OverridesEditor.h"
 
 #include <QComboBox>
@@ -135,6 +136,14 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   working_dir_row_ = new SettingRow("Working folder", QString(), launch);
   working_dir_row_->SetBelow(working_dir_edit_);
   launch->AddRow(working_dir_row_);
+
+  launch_options_ = new LaunchOptionsEdit(launch);
+  launch_options_row_ = new SettingRow(
+      "Launch options", "Other ways to start it, and programs to run beside it or open for it, such as mod managers.",
+      launch);
+  launch_options_row_->SetBelow(launch_options_);
+  launch->AddRow(launch_options_row_);
+  connect(launch_options_, &LaunchOptionsEdit::Changed, this, &GameEditForm::UpdateModified);
 
   // --- Runner
   auto* runner = new SettingsCard("Runner", cards_page);
@@ -270,6 +279,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   revert(exe_row_, &mira_gui::GamePatch::exe_path);
   revert(args_row_, &mira_gui::GamePatch::args);
   revert(working_dir_row_, &mira_gui::GamePatch::working_dir);
+  revert(launch_options_row_, &mira_gui::GamePatch::launch);
   revert(tags_row_, &mira_gui::GamePatch::tags);
   revert(runner_row_, &mira_gui::GamePatch::runner_ref);
   revert(data_dir_row_, &mira_gui::GamePatch::data_dir);
@@ -349,6 +359,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   emit Loaded(QString::fromStdString(game.name));
 
   install_path_ = game.install_path;
+  windows_ = game.platform == "windows";
   noun_ = std::ranges::contains(game.tags, tags::kApp) ? "app" : "game";
   move_button_->setToolTip("Move this " + noun_ + "'s files to another folder");
   move_prefix_->setToolTip("Move this " + noun_ + "'s prefix to another folder");
@@ -380,6 +391,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.data_dir = game.data_dir;
   patch.runner_config_json = game.runner_config_json;
   patch.env_json = game.env_json;
+  patch.launch = game.launch;
   default_runner_ = game.default_runner;
   tags_edit_->SetFolderTags(game.folder_tags);
   original_pick_ = game.folder_tag;
@@ -435,6 +447,7 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
     for (const auto& [key, value] : env_json.items()) env[key] = value.is_string() ? value.get<std::string>() : value.dump();
   }
   env_edit_->SetValues(env);
+  launch_options_->SetLaunch(patch.launch.value_or(GameLaunch()), windows_, install_path_);
 }
 
 std::string GameEditForm::RunnerKind() const {
@@ -631,6 +644,7 @@ mira_gui::GamePatch GameEditForm::CurrentPatch() const {
   patch.data_dir = data_dir_edit_->text().toStdString();
   patch.runner_config_json = runner_config_.dump(2);
   patch.env_json = nlohmann::json(env_edit_->Values()).dump(2);
+  patch.launch = launch_options_->Launch();
   return patch;
 }
 
@@ -641,6 +655,7 @@ void GameEditForm::UpdateModified() {
   exe_row_->SetModified(now.exe_path != original_patch_.exe_path);
   args_row_->SetModified(now.args != original_patch_.args);
   working_dir_row_->SetModified(now.working_dir != original_patch_.working_dir);
+  launch_options_row_->SetModified(now.launch != original_patch_.launch);
   tags_row_->SetModified(now.tags != original_patch_.tags ||
                          tags_edit_->FolderPick() != original_pick_);
   runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
@@ -663,7 +678,7 @@ int GameEditForm::ChangeCount() const {
       (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
       (now.tags != original_patch_.tags || tags_edit_->FolderPick() != original_pick_) +
       (now.runner_ref != original_patch_.runner_ref) + (now.data_dir != original_patch_.data_dir) +
-      (now.env_json != original_patch_.env_json);
+      (now.env_json != original_patch_.env_json) + (now.launch != original_patch_.launch);
   // One per runner option, since each is its own row.
   const int runner_options = static_cast<int>(
       mapping::MergePatchBetween(nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false),
@@ -718,6 +733,7 @@ void GameEditForm::Save() {
   changed(current.data_dir, original_patch_.data_dir, patch.data_dir);
   changed(current.runner_config_json, original_patch_.runner_config_json, patch.runner_config_json);
   changed(current.env_json, original_patch_.env_json, patch.env_json);
+  if (current.launch != original_patch_.launch) patch.launch = current.launch;
   // mirad merges both objects, so only changed keys go, and a removed one as null.
   for (auto [now, before] : {std::pair{&patch.runner_config_json, &original_patch_.runner_config_json},
                              std::pair{&patch.env_json, &original_patch_.env_json}}) {
@@ -727,7 +743,7 @@ void GameEditForm::Save() {
                .dump();
   }
   const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir || patch.runner_ref ||
-                              patch.data_dir || patch.runner_config_json || patch.env_json;
+                              patch.data_dir || patch.runner_config_json || patch.env_json || patch.launch;
 
   const mira_gui::GamesPatch tags = TagsPatch(current.tags);
   const bool tags_changed = !tags.add_tags.empty() || !tags.remove_tags.empty() || tags.folder_tag.has_value();

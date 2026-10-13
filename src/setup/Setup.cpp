@@ -9,6 +9,7 @@
 #include "core/AtomicFile.h"
 #include "core/Files.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 
 namespace mira::setup {
 namespace {
@@ -34,7 +35,7 @@ std::string Wrapper(const fs::path& appimage) {
   return std::format(R"sh(#!/bin/sh
 {}: runs the binaries bundled in the Mira AppImage.
 set -e
-APPIMAGE="{}"
+APPIMAGE={}
 CACHE_DIR="${{XDG_CACHE_HOME:-$HOME/.cache}}/mira-appimage"
 BIN_NAME=$(basename "$0")
 
@@ -63,7 +64,7 @@ exec 9>&-
 export APPIMAGE
 exec "$CACHE_DIR/squashfs-root/usr/bin/$BIN_NAME" "$@"
 )sh",
-                     kMarker, appimage.string());
+                     kMarker, strings::ShellQuote(appimage.string()));
 }
 
 std::string DesktopEntry(const fs::path& appimage) {
@@ -72,7 +73,7 @@ std::string DesktopEntry(const fs::path& appimage) {
 Type=Application
 Name=Mira
 Comment=Launch and manage native and Windows games
-Exec="{0}"
+Exec={0}
 Icon=mira
 Categories=Game;
 Terminal=false
@@ -81,9 +82,9 @@ Actions=uninstall;
 [Desktop Action uninstall]
 Name=Uninstall Mira
 Icon=edit-delete
-Exec="{0}" setup --uninstall
+Exec={0} setup --uninstall
 )",
-                     appimage.string(), kMarker);
+                     strings::DesktopExecArg(appimage.string()), kMarker);
 }
 
 fs::path IconPath(const SetupPaths& paths) { return paths.icons_dir / "hicolor/256x256/apps/mira.png"; }

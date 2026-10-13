@@ -75,12 +75,18 @@ TEST_CASE("Config materialises defaults when no file exists") {
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());
 }
 
-TEST_CASE("Config round-trips a value and preserves frontend settings") {
+TEST_CASE("Config round-trips a value and preserves frontend settings; settings.toml stays owner-only") {
   const fs::path file = TempFile("settings-roundtrip.toml");
   fs::remove(file);
   Config config(file);
   config.Load();
+  const auto owner_only = fs::perms::owner_read | fs::perms::owner_write;
+  fs::permissions(file, fs::perms::all);  // a save puts it back
   CHECK(config.Set("scan.debounce_ms", 9000).has_value());
+  CHECK(fs::status(file).permissions() == owner_only);
+  fs::permissions(file, fs::perms::owner_read | fs::perms::owner_write | fs::perms::others_read);  // and so does loading
+  Config(file).Load();
+  CHECK(fs::status(file).permissions() == owner_only);
   config.SetFrontendSettings({{"theme", "dark"}});
 
   Config reloaded(file);

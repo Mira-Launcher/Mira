@@ -23,9 +23,7 @@ std::filesystem::path Home() {
 std::filesystem::path UserDir() { return EnvOr("XDG_CONFIG_HOME", Home() / ".config") / "mira"; }
 
 std::filesystem::path RuntimeDir() {
-  // XDG_RUNTIME_DIR is absent under some session managers; /tmp keeps the
-  // daemon startable rather than failing over a socket location.
-  return EnvOr("XDG_RUNTIME_DIR", std::filesystem::path("/tmp")) / "mira";
+  return EnvOr("XDG_RUNTIME_DIR", EnvOr("XDG_CACHE_HOME", Home() / ".cache"));
 }
 
 std::filesystem::path ShaderCacheDir(const std::string& game_id) {
@@ -49,7 +47,11 @@ std::filesystem::path Expand(std::string_view raw) {
         ++end;
       }
       const std::string name(raw.substr(i + 1, end - i - 1));
-      if (const char* value = std::getenv(name.c_str())) out += value;
+      if (const char* value = std::getenv(name.c_str()); value && *value) {
+        out += value;
+      } else if (name == "XDG_RUNTIME_DIR") {
+        out += RuntimeDir().string();
+      }
       i = end - 1;
     } else {
       out += raw[i];

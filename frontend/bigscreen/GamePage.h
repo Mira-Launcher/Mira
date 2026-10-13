@@ -36,6 +36,7 @@ private:
   struct Button {
     Action action;
     QString label;
+    std::string option = {};  // the launch option Play starts; empty for the default
   };
   std::vector<Button> Buttons() const;
   void Refresh();

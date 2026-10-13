@@ -43,7 +43,7 @@ TEST_CASE("AnyOpenForWriting sees a file still being written") {
   CHECK_FALSE(library::AnyOpenForWriting({file}));
 }
 
-TEST_CASE("ExtractAndRemove only moves a fully extracted archive into place") {
+TEST_CASE("ExtractAndRemove only moves a fully extracted archive into place, and never over a folder") {
   const fs::path dir = test::TempDir("archive-extract");
   test::Touch(dir / "src" / "Game.exe", std::string(200000, 'x'));
   const fs::path archive = dir / "Game.tar.gz";
@@ -58,8 +58,11 @@ TEST_CASE("ExtractAndRemove only moves a fully extracted archive into place") {
   CHECK_FALSE(fs::exists(dir / (std::string(library::kExtractingPrefix) + "Broken")));
   CHECK(fs::exists(truncated));
 
+  // A folder already there keeps its files; the archive goes beside it.
+  test::Touch(dir / "Game" / "Game.exe", "the installed game");
   REQUIRE(library::ExtractAndRemove(archive, dir / "Game").has_value());
-  CHECK(fs::file_size(dir / "Game" / "Game.exe") == 200000);
+  CHECK(fs::file_size(dir / "Game" / "Game.exe") == 18);
+  CHECK(fs::file_size(dir / "Game (2)" / "Game.exe") == 200000);
   CHECK_FALSE(fs::exists(archive));
 
   const fs::path text = dir / "readme.txt";

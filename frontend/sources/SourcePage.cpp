@@ -23,6 +23,7 @@
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
 #include "../client/api/Emulators.h"
+#include "../client/api/ModManagers.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/AddManualGameDialog.h"
@@ -156,11 +157,11 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
 bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
 
 // Every page but Local has both sections; ones that can't list what the account owns say so.
-bool SourcePage::HasOwned() const { return id_ != "local" && !IsEmulator(); }
+bool SourcePage::HasOwned() const { return id_ != "local" && !IsEmulator() && !IsModManager(); }
 
 bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return SourceIdOf(game) == id_; }
+bool SourcePage::IsOwnGame(const GameSummary& game) const { return InSource(game, id_); }
 
 // No title: the sidebar already says which source this is. One row holds the
 // status and every action.
@@ -227,10 +228,14 @@ QWidget* SourcePage::BuildTopRow() {
   }
 
   import_button_ = new QPushButton(CopyFor(id_).import_button, tabs_);
-  icons::Follow(import_button_, IsEmulator() ? icons::Glyph::Plus : icons::Glyph::Refresh);
+  icons::Follow(import_button_, IsEmulator() || IsModManager() ? icons::Glyph::Plus : icons::Glyph::Refresh);
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).
   import_button_->setVisible(HasImport() && !IsStore() && !IsLauncher());
-  connect(import_button_, &QPushButton::clicked, this, [this] { IsEmulator() ? PickGames() : Import(); });
+  import_button_->setEnabled(!IsModManager());  // until its status says it's installed
+  connect(import_button_, &QPushButton::clicked, this, [this] {
+    if (IsModManager()) return AddToGame();
+    IsEmulator() ? PickGames() : Import();
+  });
   tabs_->SetTrailing(import_button_);
 
   settings_button_ = new QToolButton(tabs_);
@@ -239,8 +244,8 @@ QWidget* SourcePage::BuildTopRow() {
   settings_button_->setAutoRaise(true);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
-  // Local has no settings of its own, and nothing to remove.
-  settings_button_->setVisible(id_ != "local");
+  // Local has no settings of its own, and nothing to remove; a mod manager has no settings.
+  settings_button_->setVisible(id_ != "local" && !IsModManager());
 
   more_button_ = new QToolButton(tabs_);
   icons::Follow(more_button_, icons::Glyph::More);
@@ -400,6 +405,15 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     menu->addAction(icons::For(icons::Glyph::Home), "Open games folder", this,
                     [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
     menu->addAction(icons::For(icons::Glyph::Refresh), "Look for new games", this, &SourcePage::Import);
+  }
+  if (IsModManager() && manager_.installed) {
+    menu->addAction(icons::For(icons::Glyph::Download),
+                    "Update " + source_.name + " (" + QString::fromStdString(manager_.version) + ")", this, [this] {
+                      api::InstallModManagerAsync(this, id_, [this](StoreActionResult result) {
+                        if (!result.ok) setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
+                        RefreshStatus();
+                      });
+                    });
   }
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
@@ -742,9 +756,51 @@ void SourcePage::RefreshStatus() {
         if (emulator.id == id_) ApplyEmulator(emulator);
       }
     });
+  } else if (IsModManager()) {
+    api::GetModManagersAsync(this, [this](ModManagersResult result) {
+      if (!result.ok) return setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
+      for (const ModManagerInfo& manager : result.managers) {
+        if (manager.id == id_) manager_ = manager;
+      }
+      import_button_->setEnabled(manager_.installed);
+      UpdateStatusLine();
+    });
   } else {
     UpdateStatusLine();
   }
+}
+
+// Picks a Windows game to add the mod manager to; adding readies its prefix, which can take minutes.
+void SourcePage::AddToGame() {
+  std::vector<const GameSummary*> games;
+  for (const GameSummary& game : library_->Games()) {
+    if (game.platform == "windows" && !IsOwnGame(game)) games.push_back(&game);
+  }
+  if (games.empty()) {
+    notify::Info(this, "No Windows games to add it to", source_.name + " runs in a Windows game's prefix. Add one first.");
+    return;
+  }
+  std::ranges::sort(games, {}, &GameSummary::name);
+  PopupDialog dialog(this, notify::Level::Info, "Add " + source_.name + " to a game");
+  dialog.SetMessage(source_.name + " opens from the game's page and runs in its prefix. Mira first installs what it "
+                    "needs there, which can take a few minutes.");
+  auto* picker = new QComboBox(&dialog);
+  for (const GameSummary* game : games) {
+    picker->addItem(QString::fromStdString(game->name), QString::fromStdString(game->id));
+  }
+  dialog.AddWidget(picker);
+  dialog.AddButton("Cancel", false);
+  dialog.AddButton("Add", true, true);
+  if (dialog.exec() != QDialog::Accepted) return;
+  const std::string game_id = picker->currentData().toString().toStdString();
+  const QString name = picker->currentText();
+  import_button_->setEnabled(false);
+  ShowLine(import_result_, "Getting " + name + "'s prefix ready for " + source_.name + "…", "muted");
+  api::AddModManagerToGameAsync(this, id_, game_id, [this, name](StoreActionResult result) {
+    import_button_->setEnabled(manager_.installed);
+    if (!result.ok) return ShowError(import_result_, "Could not add it to " + name + ".", result.error);
+    ShowLine(import_result_, "Added to " + name + ". Open it from the game's page.", "muted");
+  });
 }
 
 void SourcePage::ApplyEmulator(const EmulatorInfo& emulator) {
@@ -871,6 +927,9 @@ void SourcePage::UpdateStatusLine() {
                                     : StatusDot(tokens.warning) + "Not installed");
   } else if (IsEmulator()) {
     parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed" : StatusDot(tokens.warning) + "Not installed");
+  } else if (IsModManager()) {
+    parts << (manager_.installed ? StatusDot(tokens.success) + "Installed"
+                                 : StatusDot(tokens.info) + "Installing…");
   }
   if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
@@ -898,6 +957,9 @@ void SourcePage::UpdateStatusLine() {
   } else if (IsEmulator()) {
     library_empty_->setVisible(false);
     drop_zone_->setVisible(library_count_ == 0);
+  } else if (IsModManager()) {
+    library_empty_->setText("Add " + source_.name + " to a Windows game, then open it from that game's page. It runs in "
+                            "the game's own prefix, where it finds the game the way the game finds itself.");
   } else if (id_ == "local") {
     library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
@@ -1290,7 +1352,7 @@ void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   // An emulator installed or firmware added elsewhere (its install job, a second window).
-  if (IsEmulator() && type == "sources.changed") return RefreshStatus();
+  if ((IsEmulator() || IsModManager()) && type == "sources.changed") return RefreshStatus();
   if (StoreEvent art; events::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
     if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&

@@ -6,11 +6,14 @@
 // library/Watcher.h). Started and stopped by mira-gui (or briefly by `mira`
 // without a desktop); it never daemonizes itself. See docs/backend.md.
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <thread>
 
@@ -75,6 +78,20 @@ int main(int argc, char** argv) {
                 arg.data());
     PrintUsage();
     return 2;
+  }
+
+  // Settings with API keys, the library and logs: only their owner may look in.
+  std::error_code ec;
+  std::filesystem::create_directories(mira::paths::UserDir(), ec);
+  std::filesystem::permissions(mira::paths::UserDir(), std::filesystem::perms::owner_all, ec);
+
+  // One mirad per library: a second would scan, reconcile sessions and clear caches under the first, then
+  // take its socket. The lock goes with the process.
+  const std::filesystem::path lock_file = mira::paths::UserDir() / "mirad.lock";
+  if (const int lock = ::open(lock_file.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+      lock < 0 || ::flock(lock, LOCK_EX | LOCK_NB) != 0) {
+    std::fprintf(stderr, "mirad: another mirad is already running for %s\n", mira::paths::UserDir().c_str());
+    return 1;
   }
 
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.

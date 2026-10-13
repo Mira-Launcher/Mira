@@ -44,8 +44,9 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
   return {reply.ok, reply.error};
 }
 
-LaunchResult LaunchGameSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/launch");
+LaunchResult LaunchGameSync(const std::string& id, const std::string& option) {
+  const std::string path = "/v1/games/" + PercentEncode(id) + "/launch";
+  const transport::Reply reply = option.empty() ? transport::Post(path) : transport::PostJson(path, {{"option", option}});
   // `tracked` (docs/api.md): whether game.state events are coming for this
   // launch. An older mirad only says `status`; with neither, assume so.
   bool tracked = true;
@@ -85,6 +86,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.data_dir) body["data_dir"] = *patch.data_dir;
   if (patch.tags) body["tags"] = *patch.tags;
   if (patch.reviewed) body["reviewed"] = *patch.reviewed;
+  if (patch.launch) body["launch"] = mapping::ToJson(*patch.launch);
 
   const auto parse_object = [&](const std::string& text, const char* field,
                                 const char* message) -> bool {
@@ -297,9 +299,9 @@ void DeleteGameAsync(QObject* context, const std::string& id, bool delete_files,
       [](DeleteResult&, const json&) {}, std::move(callback));
 }
 
-void LaunchGameAsync(QObject* context, const std::string& id,
+void LaunchGameAsync(QObject* context, const std::string& id, const std::string& option,
                      std::function<void(LaunchResult)> callback) {
-  async::Run(context, [id] { return LaunchGameSync(id); }, std::move(callback));
+  async::Run(context, [id, option] { return LaunchGameSync(id, option); }, std::move(callback));
 }
 
 void StopGameAsync(QObject* context, const std::string& id,

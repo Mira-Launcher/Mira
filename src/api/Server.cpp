@@ -1,6 +1,8 @@
 #include "api/Server.h"
 
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -77,7 +79,14 @@ Server::~Server() = default;
 
 Result<void> Server::Serve(const std::filesystem::path& socket_path) {
   std::error_code ec;
-  std::filesystem::create_directories(socket_path.parent_path(), ec);
+  const std::filesystem::path dir = socket_path.parent_path();
+  std::filesystem::create_directories(dir, ec);
+  // A folder another user made, or can write to, would let them swap in a socket of their own.
+  struct stat st {};
+  if (::lstat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != ::getuid()) {
+    return Err("socket_dir_unsafe", std::format("{} isn't a folder of this user's", dir.string()));
+  }
+  if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) ::chmod(dir.c_str(), st.st_mode & 0755);
   std::filesystem::remove(socket_path, ec);  // clear a stale socket from an unclean shutdown
 
   RegisterRoutes();
@@ -149,6 +158,7 @@ void Server::RegisterRoutes() {
   RegisterStoreRoutes(router, s_);
   RegisterLauncherRoutes(router, s_);
   RegisterEmulatorRoutes(router, s_);
+  RegisterModManagerRoutes(router, s_);
   RegisterUpdateRoutes(router, s_);
   RegisterMetadataRoutes(router, s_);
   RegisterRunnerRoutes(router, s_);

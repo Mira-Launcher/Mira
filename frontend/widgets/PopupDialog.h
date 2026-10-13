@@ -35,6 +35,8 @@ public:
 
   // A widget of the caller's under the message and detail.
   void AddWidget(QWidget* widget);
+  // Wider than a message needs, for a form.
+  void SetWidth(int width) { setFixedWidth(width); }
 
   // Clickable link under the detail, for a popup that names where to go fix
   // the problem. Opens `url` in the desktop's browser.

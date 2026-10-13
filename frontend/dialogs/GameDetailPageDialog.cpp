@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QLocale>
 #include <QScrollArea>
+#include <QUrl>
 #include <QStringList>
 #include <QVBoxLayout>
 
@@ -26,6 +27,18 @@ QLabel* BodyLabel(QWidget* parent) {
   auto* label = new QLabel(parent);
   label->setWordWrap(true);
   label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  return label;
+}
+
+// A link to a store-provided URL, or nullptr when it isn't http(s), so a store can't hand us a file:// or
+// another scheme to open.
+QLabel* LinkLabel(QWidget* parent, const std::string& url, const QString& text) {
+  const QUrl parsed(QString::fromStdString(url));
+  if (!parsed.isValid() || (parsed.scheme() != "https" && parsed.scheme() != "http")) return nullptr;
+  auto* label = BodyLabel(parent);
+  label->setTextFormat(Qt::RichText);
+  label->setOpenExternalLinks(true);
+  label->setText(QString("<a href=\"%1\">%2</a>").arg(parsed.toString(QUrl::FullyEncoded).toHtmlEscaped(), text.toHtmlEscaped()));
   return label;
 }
 
@@ -120,12 +133,7 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
         ratings_label->setText(ratings.join("\n"));
         layout->insertWidget(row++, ratings_label);
       }
-      if (!metadata.website.empty()) {
-        auto* website = BodyLabel(body);
-        website->setTextFormat(Qt::RichText);
-        website->setOpenExternalLinks(true);
-        const QString url = QString::fromStdString(metadata.website).toHtmlEscaped();
-        website->setText(QString("<a href=\"%1\">%1</a>").arg(url));
+      if (auto* website = LinkLabel(body, metadata.website, QString::fromStdString(metadata.website))) {
         layout->insertWidget(row++, website);
       }
     }
@@ -173,12 +181,10 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
       layout->insertWidget(row++, SectionLabel("Screenshots", body));
       int index = 1;
       for (const std::string& url : metadata.screenshots) {
-        auto* link = BodyLabel(body);
-        link->setTextFormat(Qt::RichText);
-        link->setOpenExternalLinks(true);
-        link->setText(QString("<a href=\"%1\">Screenshot %2</a>")
-                         .arg(QString::fromStdString(url)).arg(index++));
-        layout->insertWidget(row++, link);
+        if (auto* link = LinkLabel(body, url, QString("Screenshot %1").arg(index))) {
+          layout->insertWidget(row++, link);
+          ++index;
+        }
       }
     }
 
@@ -186,12 +192,10 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
       layout->insertWidget(row++, SectionLabel("Trailers", body));
       int index = 1;
       for (const std::string& url : metadata.trailers) {
-        auto* link = BodyLabel(body);
-        link->setTextFormat(Qt::RichText);
-        link->setOpenExternalLinks(true);
-        link->setText(QString("<a href=\"%1\">Trailer %2</a>")
-                         .arg(QString::fromStdString(url)).arg(index++));
-        layout->insertWidget(row++, link);
+        if (auto* link = LinkLabel(body, url, QString("Trailer %1").arg(index))) {
+          layout->insertWidget(row++, link);
+          ++index;
+        }
       }
     }
 

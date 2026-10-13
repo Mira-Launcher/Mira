@@ -141,6 +141,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
              .library = [this]() -> const std::vector<mira_gui::GameSummary>& { return library_->Games(); },
              .install_text = [this](const std::string& id) { return InstallText(id); },
              .toggle_running = [this](const std::string& id) { ToggleRunning(id); },
+             .launch = [this](const std::string& id, const std::string& option) { LaunchGame(id, option); },
              .open_settings = [this](const std::string& id) { OpenGameDialog(id); },
              .open_details = [this](const std::string& id) { OpenGameDetailPage(id); },
              .offer_install = [this](const std::string& id) { OfferInstall(id); },
@@ -1333,15 +1334,17 @@ void LibraryWindow::ToggleRunning(const std::string& id) {
   const mira_gui::GameSummary* game = FindGame(id);
   if (game != nullptr && game->running) {
     mira_gui::actions::Stop(this, id);
+  } else if (game != nullptr) {
+    mira_gui::actions::ChoosePlay(this, *game, [this, id](const std::string& option) { LaunchGame(id, option); });
   } else {
     LaunchGame(id);
   }
 }
 
-void LibraryWindow::LaunchGame(const std::string& id) {
+void LibraryWindow::LaunchGame(const std::string& id, const std::string& option) {
   library_->SetLaunching(id, true);
   mira_gui::actions::Launch(
-      this, id,
+      this, id, option,
       [this, id](bool tracked) {
         // Ahead of mirad's own game.state, which says the same. An untracked
         // (Steam) launch never gets one, so it isn't marked at all.

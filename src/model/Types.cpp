@@ -88,6 +88,7 @@ json ToJson(const Game& game) {
       {"folder_tag", game.folder_tag},
       {"runner_config", game.runner_config},
       {"overrides", game.overrides},
+      {"launch", game.launch},
       {"last_error", game.last_error},
       {"created_at", game.created_at},
       {"updated_at", game.updated_at},
@@ -147,6 +148,7 @@ Game GameFromJson(const json& document) {
   if (document.contains("overrides") && document["overrides"].is_object()) {
     game.overrides = document["overrides"];
   }
+  if (document.contains("launch") && document["launch"].is_object()) game.launch = document["launch"];
   game.last_error = document.value("last_error", std::string());
   game.created_at = document.value("created_at", std::int64_t{0});
   game.updated_at = document.value("updated_at", std::int64_t{0});

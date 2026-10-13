@@ -31,6 +31,27 @@ struct HealthStatus {
   std::string detail;
 };
 
+// One of a game's launch options (docs/api.md, Launch options).
+struct LaunchOption {
+  std::string id;
+  std::string name;
+  std::string mode = "play";  // "play", "alongside" or "tool"
+  std::string exe;
+  std::string args;
+  bool native = false;
+
+  bool operator==(const LaunchOption&) const = default;
+};
+
+// A game's `launch`: its options, the one Play starts, and whether that's the only choice offered.
+struct GameLaunch {
+  std::vector<LaunchOption> options;
+  std::string default_id;
+  bool only = false;
+
+  bool operator==(const GameLaunch&) const = default;
+};
+
 // Mirrors the subset of the `Game` fields (docs/api.md, GET /v1/games) a
 // library list needs, not the full record.
 struct GameSummary {
@@ -64,6 +85,7 @@ struct GameSummary {
   std::optional<std::vector<std::string>> folder_tags;
   // The folder tag picked for this game over the folder tags' order; empty to follow that order.
   std::string folder_tag;
+  GameLaunch launch;
 
   bool operator==(const GameSummary&) const = default;
 };
@@ -423,6 +445,7 @@ struct GameDetail {
   std::string sort_root;  // as GameSummary's
   std::optional<std::vector<std::string>> folder_tags;
   std::string folder_tag;
+  GameLaunch launch;
 };
 
 struct GameDetailResult {
@@ -448,6 +471,7 @@ struct GamePatch {
   std::optional<std::vector<std::string>> tags;
   // true confirms mirad's pick of executable without changing anything else.
   std::optional<bool> reviewed;
+  std::optional<GameLaunch> launch;  // replaces the whole set
 };
 
 struct PatchGameResult {
@@ -1283,6 +1307,21 @@ struct EmulatorInfo {
   std::string package;  // the system packages feature that installs it, empty when Mira downloads it
   std::string rom_dir;
   std::vector<EmulatorFirmware> firmware;
+};
+
+// One of GET /v1/mod-managers (docs/api.md, Mod managers).
+struct ModManagerInfo {
+  std::string id;  // also its source and its launch option's id
+  std::string name;
+  bool installed = false;
+  std::string version;
+  std::vector<std::string> games;  // the games it's added to
+};
+
+struct ModManagersResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<ModManagerInfo> managers;
 };
 
 struct EmulatorsResult {

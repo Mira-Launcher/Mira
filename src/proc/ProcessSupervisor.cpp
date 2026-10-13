@@ -16,6 +16,7 @@
 #include <set>
 
 #include "core/Log.h"
+#include "core/Strings.h"
 #include "proc/ExitReason.h"
 #include "proc/Cgroup.h"
 #include "proc/ProcessIndex.h"
@@ -325,6 +326,32 @@ void ProcessSupervisor::Release(const std::string& game_id) {
   reserved_.erase(game_id);
 }
 
+namespace {
+
+std::string CompanionPrefix(const std::string& game_id) { return "mira-with-" + strings::Slugify(game_id) + "."; }
+
+void StopUnits(const std::string& pattern) {
+  Command command;
+  command.argv = {"systemctl", "--user", "stop", "--no-block", pattern};
+  if (auto pid = runner::SpawnDetached(command); pid) {
+    std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();
+  } else {
+    log::Warn("couldn't stop {}: {}", pattern, pid.error().message);
+  }
+}
+
+}  // namespace
+
+std::string ProcessSupervisor::CompanionUnit(const std::string& game_id, const std::string& option_id) const {
+  {
+    std::lock_guard lock(mutex_);
+    if (!running_.contains(game_id) && !external_.contains(game_id)) return {};
+  }
+  const auto now = std::chrono::system_clock::now().time_since_epoch();
+  return std::format("{}{}-{}.scope", CompanionPrefix(game_id), strings::Slugify(option_id),
+                     std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+}
+
 bool ProcessSupervisor::IsRunning(const std::string& game_id) const {
   std::lock_guard lock(mutex_);
   return running_.contains(game_id);
@@ -378,11 +405,16 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std
 }
 
 bool ProcessSupervisor::Forget(const std::string& game_id) {
-  std::lock_guard lock(mutex_);
-  running_.erase(game_id);
-  external_.erase(game_id);
-  kill_deadlines_.erase(game_id);
-  return stop_requested_.erase(game_id) > 0;
+  bool requested_stop = false;
+  {
+    std::lock_guard lock(mutex_);
+    running_.erase(game_id);
+    external_.erase(game_id);
+    kill_deadlines_.erase(game_id);
+    requested_stop = stop_requested_.erase(game_id) > 0;
+  }
+  StopUnits(CompanionPrefix(game_id) + "*");
+  return requested_stop;
 }
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
