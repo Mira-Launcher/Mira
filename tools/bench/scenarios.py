@@ -97,7 +97,8 @@ class Context:
         return False
 
     def games(self):
-        status, body = self.client.get("/v1/games")
+        """Every game, hidden ones too while they're unlocked."""
+        status, body = self.client.get("/v1/games?include_hidden=true")
         check(status == 200, f"GET /v1/games answered {status}")
         return body if isinstance(body, list) else body["games"]
 
@@ -298,6 +299,38 @@ def events(ctx, meta):
     check(all(n == 50 for n in seen), f"a listener missed changes: {seen}")
 
 
+@scenario("hidden")
+def hidden(ctx, meta):
+    """Hidden games behind a password: what the GUI reads while they're locked, then unlocking them."""
+    status, _ = ctx.client.request("PUT", "/v1/hidden/password", {"password": "bench"})
+    check(status == 200, f"PUT /v1/hidden/password answered {status}")
+    ctx.client.request("POST", "/v1/hidden/lock")
+    shown = meta["games"] - meta["hidden"]
+
+    def games():
+        check(len(ctx.games()) == shown, "GET /v1/games, locked, didn't list exactly the games that aren't hidden")
+    ctx.repeat("GET /v1/games, locked", 10, games)
+
+    def library():
+        status, body = ctx.client.get("/v1/library")
+        check(status == 200, f"GET /v1/library answered {status}")
+        titles = body if isinstance(body, list) else body.get("titles", body.get("entries", []))
+        check(titles and not any(t.get("hidden") for t in titles), "GET /v1/library, locked, listed hidden titles")
+    ctx.repeat("GET /v1/library, locked", 5, library)
+
+    def tags():
+        status, body = ctx.client.get("/v1/tags")
+        check(status == 200 and len(body["tags"]) >= 5, "GET /v1/tags")
+    ctx.repeat("GET /v1/tags, locked", 10, tags)
+
+    def unlock():
+        ctx.client.request("POST", "/v1/hidden/lock")
+        status, body = ctx.client.request("POST", "/v1/hidden/unlock", {"password": "bench"})
+        check(status == 200 and not body["locked"], f"POST /v1/hidden/unlock answered {status}")
+    ctx.repeat("lock and unlock", 5, unlock)
+    check(len(ctx.games()) == meta["games"], "unlocked, GET /v1/games lost games")
+
+
 @scenario("relocate")
 def relocate(ctx, meta):
     """Moving a game's folder to another place in the library."""
@@ -328,9 +361,87 @@ def gui_pid(launcher, timeout=30):
     raise Failed("mira-gui never started")
 
 
-def open_gui(ctx, label, args=()):  # label names its log
+def main_thread_ns(pid):
+    """CPU time of a process's main thread, where Qt does its work, in nanoseconds."""
+    return int(Path(f"/proc/{pid}/schedstat").read_text().split()[0])
+
+
+class Display:
+    """Keys sent to the GUI's window on its Xvfb display."""
+
+    def __init__(self, pid):
+        environ = Path(f"/proc/{pid}/environ").read_text().split("\0")
+        gui_env = dict(line.split("=", 1) for line in environ if "=" in line)
+        self.env = os.environ | {k: gui_env[k] for k in ("DISPLAY", "XAUTHORITY") if k in gui_env}
+        windows = self.xdotool("search", "--onlyvisible", "--pid", str(pid)).split()
+        check(windows, "the GUI shows no window to send keys to")
+        # No window manager on Xvfb, so the window is given focus by hand.
+        self.xdotool("windowfocus", windows[-1])
+        time.sleep(0.2)
+
+    def xdotool(self, *args):
+        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=10).stdout
+
+    def key(self, keys):
+        self.xdotool("key", keys)
+
+    def snapshot(self):
+        """The screen, small and grey, to tell whether a key changed what's shown."""
+        return subprocess.run(["import", "-silent", "-window", "root", "-resize", "160x90!", "-depth", "8", "gray:-"],
+                              env=self.env, capture_output=True, timeout=10).stdout
+
+
+def changed(before, after):
+    """The share of a snapshot's pixels that differ clearly from another's."""
+    return sum(abs(a - b) > 16 for a, b in zip(before, after)) / max(len(before), 1)
+
+
+def respond(pid, press):
+    """Wall time from the GUI's main thread starting on `press` until it first pauses (0.3 s), and its CPU
+    until it rests (2 s), which counts work it put off, such as a page rebuilt after a restyle. Both in ms.
+    The clock starts with the GUI's work, not the press, so starting xdotool isn't counted."""
+    before, start = main_thread_ns(pid), time.perf_counter()
+    press()
+    last, last_poll, began, last_busy, first = before, start, None, None, None
+    while time.perf_counter() < start + 30:
+        time.sleep(0.005)
+        now, used = time.perf_counter(), main_thread_ns(pid)
+        if used - last > 500_000:  # busy over a tenth of the poll
+            began = began or last_poll
+            last_busy = now
+        last, last_poll = used, now
+        if last_busy is None:
+            check(now - start < 2, "the key did nothing")
+            continue
+        if first is None and now - last_busy >= 0.3:
+            first = last_busy
+        if now - last_busy >= 2:
+            return (first - began) * 1000, (used - before) / 1e6
+    raise Failed("the GUI never came to rest after a key")
+
+
+def hidden_mode(ctx, label, page_keys=None):
+    """Ctrl+H in and out of hidden mode three times, on the library or the page `page_keys` opens."""
+    def toggle(pid):
+        display = Display(pid)
+        if page_keys:
+            shown = display.snapshot()
+            wall, _ = respond(pid, lambda: display.key(page_keys))
+            check(changed(shown, display.snapshot()) > 0.2, f"{page_keys} didn't open the page")
+            ctx.results["open the page"] = round(wall, 1)
+        walls, cpus = [], []
+        for _ in range(6):
+            wall, cpu = respond(pid, lambda: display.key("ctrl+h"))
+            walls.append(wall)
+            cpus.append(cpu)
+        ctx.results["Ctrl+H"] = round(statistics.median(walls), 1)
+        ctx.results["Ctrl+H, CPU until done"] = round(statistics.median(cpus), 1)
+    open_gui(ctx, label, then=toggle)
+
+
+def open_gui(ctx, label, args=(), then=None):  # label names its log
     """The real GUI, offscreen, on the fixture: time until it goes quiet (library and art loaded), then its
-    CPU while idle, which catches redraw loops, and its memory and threads."""
+    CPU while idle, which catches redraw loops, and its memory and threads. `then(pid)` runs after."""
     # On Xvfb rather than Qt's offscreen platform, which the AppImage doesn't bundle.
     env = ctx.mirad.env() | {"QT_QPA_PLATFORM": "xcb"}
     # A build tree has it under frontend/; an AppImage beside mirad.
@@ -361,6 +472,8 @@ def open_gui(ctx, label, args=()):  # label names its log
         ctx.results["idle CPU ms per 5 s"] = idle * 10
         ctx.results.update({f"gui.{k}": v for k, v in proc_status(pid).items()})
         check(idle <= 10, f"the GUI used {idle * 10} ms of CPU in 5 idle seconds (a redraw loop?)")
+        if then:
+            then(pid)
         check(gui.poll() is None, f"the GUI exited with {gui.returncode}")
     except Failed as e:
         # Its last lines say why, such as a library the runner lacks.
@@ -387,6 +500,18 @@ def gui_library(ctx, meta):
 def gui_big_screen(ctx, meta):
     """Opening Mira straight into big screen."""
     open_gui(ctx, "GUI big screen", ["--big-screen"])
+
+
+@scenario("gui-hidden-mode", gui=True)
+def gui_hidden_mode(ctx, meta):
+    """Switching hidden mode on the library, which restyles every widget the GUI has built."""
+    hidden_mode(ctx, "GUI hidden mode")
+
+
+@scenario("gui-hidden-mode-tags", gui=True)
+def gui_hidden_mode_tags(ctx, meta):
+    """Switching hidden mode on the Tags page."""
+    hidden_mode(ctx, "GUI hidden mode on Tags", page_keys="ctrl+shift+F9")
 
 
 # --- runner ---------------------------------------------------------------------------------------------------

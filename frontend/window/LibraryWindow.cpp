@@ -404,6 +404,9 @@ void LibraryWindow::BuildShortcuts() {
   // survive the menu trim.
   window_action("settings", "Settings", QKeySequence(Qt::CTRL | Qt::Key_Comma), {},
                [this] { OpenSettings(); });
+  // No default keys; Settings can give them some.
+  window_action("open_tags", "Tags", QKeySequence(), {}, [this] { OpenTags(); });
+  window_action("open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
   // F5 is the platform's own Refresh; Ctrl+R is the one every browser
   // taught, and a second binding costs nothing.
   window_action("refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),

@@ -111,7 +111,7 @@ Hovering a tile shows `library/HoverCard` with the name, status, runner, ProtonD
 
 ### Keyboard
 
-`app/KeyBindings` holds every shortcut, and each can be changed in Settings (stored in `shortcut_overrides`). `app/Shortcuts` installs `Ctrl+Q`, `Ctrl+W` and `F1` (list of shortcuts) on both windows. The grid adds `Ctrl+F` search, `Esc`, `Ctrl+1` to `Ctrl+9` filters, `F5`/`Ctrl+R` refresh, `Ctrl+,` settings, tile size keys and, while the grid has focus, `Enter` to play or stop, `Alt+Enter` for details and `Delete` to remove. That last group is scoped to the grid so the keys still work in the search box.
+`app/KeyBindings` holds every shortcut, and each can be changed in Settings (stored in `shortcut_overrides`). `app/Shortcuts` installs `Ctrl+Q`, `Ctrl+W` and `F1` (list of shortcuts) on both windows. The grid adds `Ctrl+F` search, `Esc`, `Ctrl+1` to `Ctrl+9` filters, `F5`/`Ctrl+R` refresh, `Ctrl+,` settings, Tags and Runners (no keys until given some in Settings), tile size keys and, while the grid has focus, `Enter` to play or stop, `Alt+Enter` for details and `Delete` to remove. That last group is scoped to the grid so the keys still work in the search box.
 
 Quit goes through `QApplication::closeAllWindows()` so `LibraryWindow::closeEvent` saves its prefs.
 
