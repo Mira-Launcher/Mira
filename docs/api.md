@@ -564,6 +564,23 @@ Opens the emulator alone, to change its settings. Not tracked.
 ### `POST /v1/games/{id}/emulator`
 Body `{"emulator": "<id>"}`: moves the game's files into that emulator's folder. It keeps its id, art, tags and playtime. Returns the game. `already_there`.
 
+## Mod managers
+Windows mod managers that cover many games: `vortex` (Vortex) and `mo2` (Mod Organizer 2). Each is a source. Mira downloads it once into `~/.config/mira/tools/<id>`, and adding it to a Windows game makes it one of the game's `tool` [launch options](#launch-options), run in that game's prefix, where it sees the game's files and settings the way the game does.
+
+### `GET /v1/mod-managers`
+`[{"id", "name", "installed", "version", "games": [game ids it's on]}, ...]`.
+
+### `POST /v1/mod-managers/{id}/install`
+Downloads the latest release over Mira's copy and adds its source. A [job](#jobs). `404 mod_manager_not_found` for an unknown id.
+
+### `POST /v1/games/{id}/mod-managers/{manager}`
+Runs the winetricks verbs it needs in the game's prefix (Vortex: `vcrun2022`, `dotnetdesktop9`; Mod Organizer 2: `vcrun2022`), then adds it as the game's launch option with the manager's id. A job on the winetricks lane, since the verbs can take minutes. `409 not_windows_game` for a game without a prefix, `mod_manager_missing` while it isn't installed.
+
+### `DELETE /v1/games/{id}/mod-managers/{manager}`
+Takes it off the game. Its settings and mods stay in the prefix. Returns the game.
+
+Removing the source deletes Mira's copy and takes it off every game.
+
 ## Updates
 
 ### `GET /v1/updates`

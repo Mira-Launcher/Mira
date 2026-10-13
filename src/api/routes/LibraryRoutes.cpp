@@ -10,6 +10,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "emulators/Emulators.h"
+#include "modmanagers/ModManagers.h"
 #include "core/Command.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
@@ -38,6 +39,7 @@ const std::vector<std::string> kSourceIds = [] {
   std::vector<std::string> ids = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
                                   "humble", "battlenet", "ubisoft", "ea", "office", "adobe", "lutris"};
   for (const emulators::Emulator& emulator : emulators::All()) ids.push_back(emulator.id);
+  for (const modmanagers::ModManager& manager : modmanagers::All()) ids.push_back(manager.id);
   return ids;
 }();
 
