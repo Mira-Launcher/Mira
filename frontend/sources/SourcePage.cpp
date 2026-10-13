@@ -14,7 +14,7 @@
 #include <QMenu>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QStyle>
+#include <QScrollBar>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -367,7 +367,7 @@ void SourcePage::FitSettingsModal() {
   modal_card_->setFixedWidth(width);
   const int wanted = modal_card_->heightForWidth(width) > 0 ? modal_card_->heightForWidth(width)
                                                                : modal_card_->sizeHint().height();
-  settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->style()->pixelMetric(QStyle::PM_ScrollBarExtent) : 0));
+  settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->verticalScrollBar()->sizeHint().width() : 0));
   settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 
@@ -705,13 +705,13 @@ void SourcePage::SetTileWidth(int width) {
   zoom_settle_->Step(width);
   // The library grid's delegate draws its covers at its own size.
   if (library_grid_ != nullptr) library_grid_->SetTileSize(tile_);
-  if (owned_grid_ != nullptr) {
-    owned_grid_->SetTileSize(tile_);
-    RebuildOwnedTiles();
-  }
+  // Bundles' placeholder covers are made again at the new size once the zoom settles.
+  if (owned_grid_ != nullptr) owned_grid_->SetTileSize(tile_);
   if (owned_skeleton_ != nullptr) {
     for (QWidget* placeholder : owned_skeleton_->findChildren<QWidget*>("tile_skeleton")) placeholder->setFixedSize(tile_);
   }
+  // So the chips and the owned titles move with the library's covers in the same frame.
+  SettleLayout(content_);
 }
 
 void SourcePage::PrefetchTileWidth(int width) {

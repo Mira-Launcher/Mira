@@ -17,6 +17,7 @@
 #include <map>
 
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
 #include "../widgets/TileView.h"
 #include "ArtworkStore.h"
@@ -358,6 +359,8 @@ void LibraryPage::SetTileWidth(int width) {
   grid_->setGridSize(TileSize());
   owned_grid_->SetTileSize(TileSize());
   FitGrid();
+  // So the not-installed titles move with the covers above them in the same frame.
+  SettleLayout(scroll_->widget());
 }
 
 void LibraryPage::PrefetchTileWidth(int width) {
@@ -589,7 +592,8 @@ void LibraryPage::FitGrid() {
   if (not_installed_) return;
   const QSize cell = grid_->gridSize();
   const int margin = theme::Current().grid_margin;
-  const int per_row = std::max(1, (grid_->width() - 2 * margin) / std::max(1, cell.width()));
+  // The viewport (inside the margins) less a pixel, as in Row(): a tile ending at the edge wraps.
+  const int per_row = std::max(1, (grid_->viewport()->width() - 1) / std::max(1, cell.width()));
   const int rows = (games_->rowCount() + per_row - 1) / per_row;
   grid_->setFixedHeight(rows * cell.height() + 2 * margin + 2 * grid_->frameWidth());
 }

@@ -83,6 +83,7 @@
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
+#include "../widgets/TileView.h"
 #include "AboutPanel.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
@@ -372,10 +373,9 @@ void LibraryWindow::BuildShortcuts() {
   });
 
   window_action("zoom_in", "Bigger tiles", QKeySequence(QKeySequence::ZoomIn),
-               {QKeySequence(Qt::CTRL | Qt::Key_Equal)},
-               [this] { zoom_->setValue(zoom_->value() + zoom_->pageStep()); });
+                {QKeySequence(Qt::CTRL | Qt::Key_Equal)}, [this] { StepZoom(1); });
   window_action("zoom_out", "Smaller tiles", QKeySequence(QKeySequence::ZoomOut), {},
-               [this] { zoom_->setValue(zoom_->value() - zoom_->pageStep()); });
+                [this] { StepZoom(-1); });
   window_action("reset_zoom", "Reset tile size", QKeySequence(Qt::CTRL | Qt::Key_0), {},
                [this] {
                  zoom_->setValue(SourcePageShown() && !tile_size_synced_ ? kDefaultSourceTileWidth : kDefaultTileWidth);
@@ -710,7 +710,7 @@ void LibraryWindow::BuildTagsPage() {
   connect(tags_page_, &mira_gui::TagsPage::GamesChanged, this, &LibraryWindow::UpsertGames);
   // The picker's covers zoom with the library's tiles.
   connect(tags_page_, &mira_gui::TagsPage::ZoomRequested, this,
-          [this](int steps) { zoom_->setValue(zoom_->value() + steps * zoom_->pageStep()); });
+          [this](int steps) { StepZoom(steps); });
   connect(tags_page_, &mira_gui::TagsPage::PickerToggled, this,
           &LibraryWindow::UpdateLibraryNavActive);
   main_stack_->addWidget(tags_page_);
@@ -874,8 +874,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
     if (GridShown() && game != nullptr) ShowHoverCardFor(*game, anchor);
   });
   connect(page, &mira_gui::LibraryPage::HoverEnded, this, &LibraryWindow::HideHoverCard);
-  connect(page, &mira_gui::LibraryPage::ZoomStepped, this,
-          [this](int steps) { zoom_->setValue(zoom_->value() + steps * zoom_->pageStep()); });
+  connect(page, &mira_gui::LibraryPage::ZoomStepped, this, [this](int steps) { StepZoom(steps); });
   return page;
 }
 
@@ -896,6 +895,7 @@ void LibraryWindow::Zoom(int width) {
     const QSignalBlocker block(zoom_);
     zoom_->setValue(fitted);
   }
+  if (fitted == from) return;  // already there, or no size further that way
   if (SourcePageShown()) {
     source_page_->PrefetchTileWidth(fitted);
   } else if (GridShown()) {
@@ -912,6 +912,12 @@ void LibraryWindow::Zoom(int width) {
   zoom_animation_->setStartValue(ShownTileWidth());
   zoom_animation_->setEndValue(fitted);
   zoom_animation_->start();
+}
+
+void LibraryWindow::StepZoom(int steps) {
+  // Straight to Zoom, not through the slider: at its end the value doesn't change, and tiles a
+  // resize left off the row's fits still snap to one.
+  Zoom(std::clamp(zoom_->value() + steps * zoom_->pageStep(), zoom_->minimum(), zoom_->maximum()));
 }
 
 void LibraryWindow::ApplyTileWidth(int width) {
@@ -948,9 +954,24 @@ void LibraryWindow::SyncZoom() {
   if (zoom_ == nullptr) return;
   const bool source = SourcePageShown();
   const QSignalBlocker block(zoom_);  // showing a page's size isn't changing it
+  // From the smallest to the largest width that fills the row, so the slider's ends are the zoom's
+  // and a drag never shows a size it won't keep.
+  const mira_gui::TileRow row = ShownTileRow();
+  zoom_->setRange(
+      mira_gui::FitTileWidth(kMinTileWidth, kMinTileWidth, row, kMinTileWidth, kMaxTileWidth),
+      mira_gui::FitTileWidth(kMaxTileWidth, kMaxTileWidth, row, kMinTileWidth, kMaxTileWidth));
   zoom_->setValue(source ? SourceTileWidth(source_page_->property("source_id").toString())
                          : grid_page_->TileWidth());
   zoom_->setEnabled(!GameEditOpen() && (source || GridShown() || TagPickerShown()));
+}
+
+void LibraryWindow::SyncZoomSoon() {
+  if (!std::exchange(zoom_sync_queued_, true)) {
+    QTimer::singleShot(0, this, [this] {
+      zoom_sync_queued_ = false;
+      SyncZoom();
+    });
+  }
 }
 
 bool LibraryWindow::TagPickerShown() const {
@@ -1183,6 +1204,9 @@ bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
     activity_reported_.start();
     mira_gui::api::NoteHiddenActivityAsync(this);
   }
+  // A grid's width sets the zoom's range, whatever resized it.
+  if (type == QEvent::Resize && dynamic_cast<mira_gui::TileView*>(watched) != nullptr)
+    SyncZoomSoon();
   return QMainWindow::eventFilter(watched, event);
 }
 
@@ -1508,6 +1532,7 @@ void LibraryWindow::UpdateLibraryNavActive() {
   }
   // Every page switch ends here, so the slider follows the page too.
   SyncZoom();
+  SyncZoomSoon();  // its range, once a page shown for the first time is laid out
 }
 
 void LibraryWindow::RequestCloseSettings() {
@@ -1701,7 +1726,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   source_page_->SetDragSelectEnabled(drag_select_);
   source_page_->setProperty("source_id", source.id);
   connect(source_page_, &mira_gui::SourcePage::ZoomRequested, this,
-          [this](int steps) { zoom_->setValue(zoom_->value() + steps * zoom_->pageStep()); });
+          [this](int steps) { StepZoom(steps); });
   // The games themselves arrive as events.
   connect(source_page_, &mira_gui::SourcePage::LibraryChanged, this, [this, id = source.id] { sidebar_->NoteImported(id); });
   connect(source_page_, &mira_gui::SourcePage::OpenSettingsRequested, this,

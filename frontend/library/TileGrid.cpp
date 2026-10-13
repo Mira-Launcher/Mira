@@ -66,7 +66,8 @@ int TileGrid::VisibleCount() const {
 
 void TileGrid::FitHeight() {
   const QSize cell = gridSize();
-  const int per_row = qMax(1, viewport()->width() / qMax(1, cell.width()));
+  // A pixel less, as in Row(): a tile ending exactly at the edge wraps.
+  const int per_row = qMax(1, (viewport()->width() - 1) / qMax(1, cell.width()));
   const int rows = (VisibleCount() + per_row - 1) / per_row;
   setFixedHeight(rows * cell.height() + 2 * frameWidth());
 }

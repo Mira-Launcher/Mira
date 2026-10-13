@@ -77,4 +77,12 @@ void FocusPage(QWidget* page) {
   }
 }
 
+void SettleLayout(QWidget* page) {
+  // Each layout's new height reaches the one above it as a posted request, which this runs now.
+  QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+  // A height-for-width change doesn't reach the scroll area that sizes the page by itself.
+  page->updateGeometry();
+  QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+}
+
 }  // namespace mira_gui

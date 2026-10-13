@@ -6,20 +6,13 @@
 #include <functional>
 
 #include "../library/HoverCard.h"
+#include "TileFit.h"
 
 class QRubberBand;
 class QTimer;
 
 namespace mira_gui {
 
-// The width a row of tiles has, and the gap between them, for snapping the tile size.
-struct TileRow {
-  int room = 0;
-  int gap = 0;
-};
-// The width in [min, max] whose tiles fill `row` exactly: the next one past `from` toward
-// `width`, or the nearest when they're equal. `width` when none fits.
-int FitTileWidth(int width, int from, TileRow row, int min, int max);
 // What's left of `width` for tiles once a scrollbar shows, whether or not one does yet: one
 // showing up later then doesn't wrap the last tile of each row.
 int RoomBesideScrollbar(const QWidget* widget, int width);
@@ -37,7 +30,8 @@ public:
   // An index after the cursor rests on it, an invalid one once it moves off.
   std::function<void(const QModelIndex&)> on_hover;
 
-  TileRow Row() const { return {RoomBesideScrollbar(this, viewport()->width()), 0}; }
+  // A pixel less: QListView wraps a tile that ends exactly at the row's edge.
+  TileRow Row() const { return {RoomBesideScrollbar(this, viewport()->width()) - 1, 0}; }
   void SetDragSelectEnabled(bool enabled);
   // A tile painted something that moves (a busy progress rail): repaint soon.
   // Stops by itself once no paint asks again.

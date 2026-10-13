@@ -209,6 +209,8 @@ void TagPicker::SetTileWidth(int width) {
   tile_width_ = width;
   zoom_settle_->Step(width);
   for (PickTile* tile : tiles_) tile->SetWidth(width);
+  // So each heading moves with the covers above it in the same frame.
+  SettleLayout(content_);
 }
 
 void TagPicker::SetShowingHidden(bool showing) {

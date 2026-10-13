@@ -15,4 +15,9 @@ void SetUpScrolling(QAbstractScrollArea* area, QWidget* scope = nullptr);
 // clicked to open it. A no-op when `page` has none.
 void FocusPage(QWidget* page);
 
+// Lays out `page`, a scroll area's widget, and every layout in it before the next paint. Otherwise
+// a grid whose tiles resized moves what's below it a frame late, and the page grows a frame after
+// that.
+void SettleLayout(QWidget* page);
+
 }  // namespace mira_gui

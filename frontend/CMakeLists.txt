@@ -146,6 +146,7 @@ add_executable(mira_gui_tests
   sources/Sources.cpp
   theme/Theme.cpp
   widgets/Labels.cpp
+  widgets/TileFit.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 qt_add_resources(mira_gui_tests "test_themes"
