@@ -16,6 +16,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Tags.h"
 #include "../library/ArtworkStore.h"
+#include "../library/ZoomSettle.h"
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -174,7 +175,7 @@ TagPicker::TagPicker(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), 
   connect(apply_, &QPushButton::clicked, this, &TagPicker::Apply);
   bar->addWidget(apply_);
 
-  connect(artwork_, &ArtworkStore::QuickScalingEnded, this, [this] {
+  zoom_settle_ = new ZoomSettle(this, artwork_, tile_width_, [this] {
     for (PickTile* tile : tiles_) tile->update();
   });
   connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
@@ -206,6 +207,7 @@ TileRow TagPicker::Row() const {
 
 void TagPicker::SetTileWidth(int width) {
   tile_width_ = width;
+  zoom_settle_->Step(width);
   for (PickTile* tile : tiles_) tile->SetWidth(width);
 }
 

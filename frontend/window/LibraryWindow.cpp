@@ -896,6 +896,11 @@ void LibraryWindow::Zoom(int width) {
     const QSignalBlocker block(zoom_);
     zoom_->setValue(fitted);
   }
+  if (SourcePageShown()) {
+    source_page_->PrefetchTileWidth(fitted);
+  } else if (GridShown()) {
+    grid_page_->PrefetchTileWidth(fitted);
+  }
   if (zoom_animation_ == nullptr) {
     zoom_animation_ = new QVariantAnimation(this);
     zoom_animation_->setDuration(180);

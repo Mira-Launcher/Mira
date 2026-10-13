@@ -333,6 +333,12 @@ int Sidebar::SourceIndexOf(const QObject* nav) const {
   return found == source_rows_.end() ? -1 : static_cast<int>(found - source_rows_.begin());
 }
 
+void Sidebar::SetDeck(SourceRow& row, const QString& key, const std::function<QPixmap()>& draw) {
+  if (row.deck_key == key) return;
+  row.deck_key = key;
+  row.deck->setPixmap(draw());
+}
+
 void Sidebar::ShowActive() {
   using icons::Glyph;
   const theme::Tokens& tokens = theme::Current();
@@ -345,27 +351,29 @@ void Sidebar::ShowActive() {
   tags_nav_->setIcon(icons::For(Glyph::Tag, tags_active_ ? tokens.on_accent : tokens.text));
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
-    const SourceRow& row = source_rows_[i];
+    SourceRow& row = source_rows_[i];
     if (row.nav == nullptr) continue;
     const bool active = sources[i].id == active_source_;
     row.nav->setChecked(active);
+    const QColor color = active ? tokens.on_accent : sources[i].color;
+    const qreal dpr = devicePixelRatioF();
     // Without covers, a dot in the source's color leads the row.
     if (!show_source_covers_) {
-      row.deck->setPixmap(icons::For(Glyph::Dot, active ? tokens.on_accent : sources[i].color)
-                              .pixmap(QSize(18, 18), devicePixelRatioF()));
+      SetDeck(row, QString("dot %1 %2").arg(color.rgba()).arg(dpr),
+              [&] { return icons::For(Glyph::Dot, color).pixmap(QSize(18, 18), dpr); });
     } else if (empty_decks_.contains(sources[i].id)) {
-      row.deck->setPixmap(sidebar::CoverDeck({}, artwork_, devicePixelRatioF(),
-                                             active ? tokens.on_accent : sources[i].color,
-                                             SourceLogo(sources[i], 30, devicePixelRatioF())));
+      const QPixmap logo = SourceLogo(sources[i], 30, dpr);
+      SetDeck(row, sidebar::CoverDeckKey({}, artwork_, dpr, color, logo),
+              [&] { return sidebar::CoverDeck({}, artwork_, dpr, color, logo); });
     }
     const QString on_accent = QString("color: %1;").arg(tokens.on_accent.name());
-    row.name->setStyleSheet(active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
-    row.count->setStyleSheet(active ? on_accent : QString());
+    theme::SetStyleSheet(row.name, active ? on_accent + " font-weight: 600;" : "font-weight: 600;");
+    theme::SetStyleSheet(row.count, active ? on_accent : QString());
     QColor detail = active ? tokens.on_accent : tokens.text_muted;
     if (active) detail.setAlpha(200);
-    row.detail->setStyleSheet(QString("color: %1; font-size: %2px;")
-                                  .arg(theme::ColorToQss(detail))
-                                  .arg(tokens.font_size_small));
+    theme::SetStyleSheet(row.detail, QString("color: %1; font-size: %2px;")
+                                         .arg(theme::ColorToQss(detail))
+                                         .arg(tokens.font_size_small));
   }
 }
 
@@ -584,7 +592,7 @@ void Sidebar::UpdateSources() {
       if (source_rows_[i].nav != nullptr) source_rows_[i].nav->hide();
       continue;
     }
-    const SourceRow& source_row = BuildSourceRow(i);
+    SourceRow& source_row = BuildSourceRow(i);
     source_row.nav->show();
     const auto count = counts.find(id.toStdString());
     const int games = count == counts.end() ? 0 : count->second;
@@ -616,9 +624,10 @@ void Sidebar::UpdateSources() {
       else empty_decks_.remove(id);
       const bool active = id == active_source_;
       const qreal dpr = source_row.nav->devicePixelRatioF();
-      source_row.deck->setPixmap(sidebar::CoverDeck(
-          covers, artwork_, dpr, active ? theme::Current().on_accent : sources[i].color,
-          SourceLogo(sources[i], 30, dpr)));
+      const QColor color = active ? theme::Current().on_accent : sources[i].color;
+      const QPixmap logo = SourceLogo(sources[i], 30, dpr);
+      SetDeck(source_row, sidebar::CoverDeckKey(covers, artwork_, dpr, color, logo),
+              [&] { return sidebar::CoverDeck(covers, artwork_, dpr, color, logo); });
       const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
       QString detail = games == 0 && of == 0 ? "No " + item + "s"
                        : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")

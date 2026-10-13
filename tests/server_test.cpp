@@ -633,7 +633,9 @@ TEST_CASE("PATCH /v1/games sets per-game overrides, and rejects the whole batch 
   CHECK(malformed->status == 400);
 }
 
-TEST_CASE("GET /v1/games/{id}/artwork?type= serves the requested slot, 404s for an unknown one") {
+TEST_CASE(
+    "GET /v1/games/{id}/artwork?type= serves the requested slot as its image type, 404s for an "
+    "unknown one") {
   LiveServer server(TempDir("server-artwork-type"));
 
   model::Game game;
@@ -651,13 +653,25 @@ TEST_CASE("GET /v1/games/{id}/artwork?type= serves the requested slot, 404s for 
     std::ofstream hero(artwork_dir / "hero.jpg");
     hero << "hero-bytes";
   }
+  std::ofstream(artwork_dir / "icon.ico", std::ios::binary) << std::string("\0\0\1\0\1\0icon", 10);
   {
     REQUIRE(server.games()
                 .Metadata()
                 .Write("celeste",
                        nlohmann::json{
-                           {"artwork", {{"file", "cover.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
-                           {"hero", {{"file", "hero.jpg"}, {"content_type", "image/jpeg"}, {"source", "steam_cdn"}}},
+                           {"artwork",
+                            {{"file", "cover.jpg"},
+                             {"content_type", "image/jpeg"},
+                             {"source", "steam_cdn"}}},
+                           {"hero",
+                            {{"file", "hero.jpg"},
+                             {"content_type", "image/jpeg"},
+                             {"source", "steam_cdn"}}},
+                           // As records were written before types came from the bytes.
+                           {"icon",
+                            {{"file", "icon.ico"},
+                             {"content_type", "image/jpeg"},
+                             {"source", "steam_cdn"}}},
                        })
                 .has_value());
   }
@@ -673,6 +687,11 @@ TEST_CASE("GET /v1/games/{id}/artwork?type= serves the requested slot, 404s for 
   REQUIRE(hero_res != nullptr);
   CHECK(hero_res->status == 200);
   CHECK(hero_res->body == "hero-bytes");
+
+  auto icon_res = client.Get("/v1/games/celeste/artwork?type=icon");
+  REQUIRE(icon_res != nullptr);
+  CHECK(icon_res->status == 200);
+  CHECK(icon_res->get_header_value("Content-Type") == "image/vnd.microsoft.icon");
 
   auto missing_res = client.Get("/v1/games/celeste/artwork?type=logo");
   REQUIRE(missing_res != nullptr);

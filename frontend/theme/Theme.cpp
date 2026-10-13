@@ -426,6 +426,10 @@ QString ColorToQss(const QColor& color) {
       .arg(color.alphaF(), 0, 'f', 3);
 }
 
+void SetStyleSheet(QWidget* widget, const QString& sheet) {
+  if (widget->styleSheet() != sheet) widget->setStyleSheet(sheet);
+}
+
 QFont Larger(QFont font, qreal points) {
   if (font.pointSizeF() > 0) {
     font.setPointSizeF(font.pointSizeF() + points);

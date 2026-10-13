@@ -84,6 +84,9 @@ public:
 
   // A store title's cover drawn ahead at this size, for a tile about to scroll into view.
   void PrefetchTitle(const QString& source, const QString& ref, QSize tile, qreal device_pixel_ratio);
+  // A cover already held (a game's or a store title's id) drawn ahead at this size, for a zoom on
+  // its way there, so it ends on sharp covers.
+  void PrefetchCover(const QString& id, QSize tile, qreal device_pixel_ratio);
 
   // Queues the fetch if this id hasn't been asked about yet, without also
   // scaling/caching a Cover() for some tile size nobody asked for.
@@ -110,9 +113,8 @@ public:
   // accent, keeps them.
   void ThemeChanged();
 
-  // While on (the zoom slider moving), a cover not already scaled is scaled
-  // quickly and not kept, so each step costs little. Turning it off emits
-  // QuickScalingEnded, for every view to draw its smooth copies.
+  // While on (a zoom moving; see ZoomSettle), a cover not already scaled is scaled quickly and not
+  // kept, so each step costs little.
   void SetQuickScaling(bool quick);
 
   // The games whose sidebar-sized images stay (the sidebar's pinned and recently
@@ -135,8 +137,6 @@ public:
   void CoverChanged(const QString& id);
   // The same for a SlotArt slot.
   void SlotArtChanged(const QString& id);
-  // The zoom stopped: covers drawn quickly meanwhile should be asked for again.
-  void QuickScalingEnded();
   // Requests for tiles no longer drawn were dropped: a view repaints, asking again for any still shown.
   void RequestsDropped();
 
@@ -150,6 +150,8 @@ private:
   bool Drop(const QString& key);
   // The sidebar-sized copy for a kept key, else the small copy, else null.
   QPixmap Held(const QString& key) const;
+  // Fetches a held image again to draw it at this size.
+  void Refetch(const QString& id, QSize tile, qreal device_pixel_ratio);
   // Stores a drawn cover, dropping store titles' copies nothing else holds any more.
   void KeepScaled(const QString& key, const QPixmap& cover);
   // Marks a cover as just drawn; past kMaxDrawn, Trim drops the least recently drawn's copies.

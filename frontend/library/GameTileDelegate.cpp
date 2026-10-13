@@ -6,6 +6,7 @@
 #include <QFontMetrics>
 #include <QTimer>
 #include <QLinearGradient>
+#include <QListView>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -35,6 +36,28 @@ QFont TierFont(const QFont& font) {
 QString TierLabel(const QString& tier) { return tier.left(1).toUpper() + tier.mid(1); }
 
 }  // namespace
+
+void GameTileDelegate::PrefetchShown(QListView* view, ArtworkStore* artwork, QSize tile) {
+  if (view == nullptr || artwork == nullptr || view->model() == nullptr || !view->isVisible() ||
+      tile.isEmpty())
+    return;
+  const QRect shown = view->viewport()->visibleRegion().boundingRect();
+  if (shown.isEmpty()) return;
+  const QModelIndex first = view->indexAt(shown.topLeft());
+  const int fit = std::max(1, shown.width() / tile.width()) * (shown.height() / tile.height() + 2);
+  const qreal dpr = view->devicePixelRatioF();
+  int fetched = 0;
+  for (int row = first.isValid() ? first.row() : 0;
+       row < view->model()->rowCount() && fetched < fit; ++row) {
+    if (view->isRowHidden(row)) continue;
+    ++fetched;
+    const QModelIndex index = view->model()->index(row, 0);
+    if (!index.data(Qt::DecorationRole).value<QPixmap>().isNull()) continue;  // its own cover
+    const QStringList title = index.data(TitleCoverRole).toStringList();
+    artwork->PrefetchCover(
+        title.size() == 2 ? title[0] + "-" + title[1] : index.data(IdRole).toString(), tile, dpr);
+  }
+}
 
 QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index) {
   if (index.data(ActionRole).toString().isEmpty()) return {};

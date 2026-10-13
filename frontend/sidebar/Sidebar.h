@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QString>
 #include <QWidget>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -155,7 +156,11 @@ class Sidebar : public QWidget {
     QLabel* name = nullptr;
     QLabel* detail = nullptr;
     QLabel* count = nullptr;
+    QString deck_key;  // what the deck shows; see SetDeck
   };
+  // Gives the row's deck what `draw` makes, unless it already shows `key`. Rows update for every
+  // cover that lands, and a QLabel keeps each new pixmap in QPixmapCache (Qt 6.9 and later).
+  static void SetDeck(SourceRow& row, const QString& key, const std::function<QPixmap()>& draw);
   // One per AllSources() entry, same order. A row is built the first time it shows, so the
   // sources never in the sidebar cost nothing when the app restyles.
   std::vector<SourceRow> source_rows_;

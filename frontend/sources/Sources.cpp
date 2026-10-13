@@ -1,10 +1,12 @@
 #include "Sources.h"
 
+#include <QHash>
 #include <QLabel>
 #include <QPainter>
 
 #include <algorithm>
 
+#include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 
 namespace mira_gui {
@@ -191,10 +193,17 @@ QString PlaysSearchText(const SourceInfo& source) {
 }
 
 QPixmap SourceLogo(const SourceInfo& source, int size, qreal dpr) {
-  const QPixmap logo(":/logos/" + source.id + ".png");
-  if (logo.isNull()) return {};
-  QPixmap scaled = logo.scaled(QSize(size, size) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-  scaled.setDevicePixelRatio(dpr);
+  // Sidebar rows ask again for every cover that lands. A few sizes per source, so it stays small,
+  // and the same pixmap each time lets a caller tell nothing changed.
+  static QHash<QString, QPixmap> cache;
+  const QString key = source.id + '@' + QString::number(size) + 'x' + QString::number(dpr);
+  if (const auto found = cache.constFind(key); found != cache.constEnd()) return *found;
+  QPixmap scaled;
+  if (const QPixmap logo(":/logos/" + source.id + ".png"); !logo.isNull()) {
+    scaled = logo.scaled(QSize(size, size) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    scaled.setDevicePixelRatio(dpr);
+  }
+  cache.insert(key, scaled);
   return scaled;
 }
 
@@ -219,15 +228,16 @@ void SetSourceBadgeDim(QLabel* badge, const SourceInfo& source, bool dim) {
       logo = faded;
     }
     badge->setText({});
-    badge->setStyleSheet("background: transparent;");
+    theme::SetStyleSheet(badge, "background: transparent;");
     badge->setPixmap(logo);
     return;
   }
   QColor fill = source.color;
   if (dim) fill.setAlphaF(0.55);
-  badge->setStyleSheet(QString("background: %1; color: white; border-radius: %2px; font-weight: 700;")
-                           .arg(fill.name(QColor::HexArgb))
-                           .arg(badge->width() / 4));
+  theme::SetStyleSheet(
+      badge, QString("background: %1; color: white; border-radius: %2px; font-weight: 700;")
+                 .arg(fill.name(QColor::HexArgb))
+                 .arg(badge->width() / 4));
 }
 
 

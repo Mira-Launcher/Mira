@@ -42,6 +42,25 @@ bool IsImage(const std::filesystem::path& file) {
   return stbi_info(file.c_str(), &width, &height, &channels) != 0;
 }
 
+std::string ImageContentType(std::string_view bytes) {
+  if (bytes.starts_with("\xFF\xD8\xFF")) return "image/jpeg";
+  if (bytes.starts_with("\x89PNG")) return "image/png";
+  if (bytes.size() >= 12 && bytes.starts_with("RIFF") && bytes.substr(8, 4) == "WEBP")
+    return "image/webp";
+  if (bytes.starts_with("GIF8")) return "image/gif";
+  // Steam's game icons are .ico.
+  if (bytes.starts_with(std::string_view("\0\0\1\0", 4))) return "image/vnd.microsoft.icon";
+  if (bytes.starts_with("BM")) return "image/bmp";
+  return "application/octet-stream";
+}
+
+std::string FileContentType(const std::filesystem::path& file) {
+  std::unique_ptr<FILE, decltype(&std::fclose)> in(std::fopen(file.c_str(), "rb"), &std::fclose);
+  char head[12] = {};
+  const std::size_t read = in ? std::fread(head, 1, sizeof(head), in.get()) : 0;
+  return ImageContentType(std::string_view(head, read));
+}
+
 bool IsTooLarge(const std::filesystem::path& file) {
   int width = 0, height = 0, channels = 0;
   return stbi_info(file.c_str(), &width, &height, &channels) && static_cast<long long>(width) * height > kMaxPixels;

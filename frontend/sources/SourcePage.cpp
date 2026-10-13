@@ -43,6 +43,7 @@
 #include "../library/HoverCard.h"
 #include "../library/RatingChips.h"
 #include "../library/TileGrid.h"
+#include "../library/ZoomSettle.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -77,8 +78,7 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   games_ = new GameFilterProxy(library_, this);
   games_->SetSource(id_);
   owned_model_ = new QStandardItemModel(this);
-  // Covers drawn quickly while the zoom moved, drawn again now it has stopped.
-  connect(artwork_, &ArtworkStore::QuickScalingEnded, this, [this] {
+  zoom_settle_ = new ZoomSettle(this, artwork_, tile_width, [this] {
     if (library_grid_ != nullptr) library_grid_->viewport()->update();
     if (owned_grid_ != nullptr) RebuildOwnedTiles();
   });
@@ -702,6 +702,7 @@ void SourcePage::SetTileWidth(int width) {
   const QSize tile(width, width * 3 / 2);
   if (tile == tile_) return;
   tile_ = tile;
+  zoom_settle_->Step(width);
   // The library grid's delegate draws its covers at its own size.
   if (library_grid_ != nullptr) library_grid_->SetTileSize(tile_);
   if (owned_grid_ != nullptr) {
@@ -711,6 +712,13 @@ void SourcePage::SetTileWidth(int width) {
   if (owned_skeleton_ != nullptr) {
     for (QWidget* placeholder : owned_skeleton_->findChildren<QWidget*>("tile_skeleton")) placeholder->setFixedSize(tile_);
   }
+}
+
+void SourcePage::PrefetchTileWidth(int width) {
+  const QSize tile(width, width * 3 / 2);
+  zoom_settle_->Prefetched(width);
+  GameTileDelegate::PrefetchShown(library_grid_, artwork_, tile);
+  GameTileDelegate::PrefetchShown(owned_grid_, artwork_, tile);
 }
 
 void SourcePage::UpdateCover(const QString& id) {

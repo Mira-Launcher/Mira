@@ -406,7 +406,7 @@ void FilterSortPill::RestyleFilterRows() {
       } else {
         // Count included: on_accent for contrast against the accent
         // background, not left at its ordinary muted gray.
-        label->setStyleSheet(current ? QString("color: %1;").arg(color.name()) : QString());
+        theme::SetStyleSheet(label, current ? QString("color: %1;").arg(color.name()) : QString());
       }
     }
   }

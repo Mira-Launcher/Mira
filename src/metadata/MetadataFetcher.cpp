@@ -123,13 +123,6 @@ json GriddbJson(const std::string& auth_header, const std::string& url) {
   return json::parse(result->output, nullptr, false);
 }
 
-std::string ContentTypeFor(const fs::path& file) {
-  const std::string ext = strings::ToLower(file.extension().string());
-  if (ext == ".png") return "image/png";
-  if (ext == ".webp") return "image/webp";
-  return "image/jpeg";
-}
-
 Box ArtBox(const config::Config& config, std::string_view slot, bool title = false) {
   return SlotBox(slot, title, config.GetString("metadata.art_size") == "compact");
 }
@@ -205,8 +198,9 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
     fs::remove(part, ec);
     return false;
   }
-  info[key] = {{"file", dest.filename().string()}, {"content_type", ContentTypeFor(dest)},
-              {"source", source}};
+  info[key] = {{"file", dest.filename().string()},
+               {"content_type", FileContentType(dest)},
+               {"source", source}};
   if (candidate_id) info[key]["candidate_id"] = *candidate_id;
   return true;
 }
@@ -224,7 +218,7 @@ void RefitSlot(const fs::path& dir, json& slot, Box box) {
   std::error_code ec;
   if (dest != file) fs::remove(file, ec);
   slot["file"] = dest.filename().string();
-  slot["content_type"] = ContentTypeFor(dest);
+  slot["content_type"] = FileContentType(dest);
 }
 
 // Fetches every SteamGridDB candidate for one art slot (grids/heroes/logos/
@@ -1273,7 +1267,7 @@ void FitCachedArt(const config::Config& config, store::MetadataStore& cache,
           continue;
         }
         info[fit.key]["file"] = fit.dest.filename().string();
-        info[fit.key]["content_type"] = ContentTypeFor(fit.dest);
+        info[fit.key]["content_type"] = FileContentType(fit.dest);
         if (fit.dest != dir / fit.old_name) stale.push_back(dir / fit.old_name);
       }
       for (const char* key : {"capsule", "header"}) {
@@ -1395,7 +1389,7 @@ Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& c
   const std::lock_guard lock(MetadataFileMutex());
   json info = cache.Read(game_id);
   info[slot == "cover" ? "artwork" : slot] = {{"file", dest.filename().string()},
-                                              {"content_type", ContentTypeFor(dest)},
+                                              {"content_type", FileContentType(dest)},
                                               {"source", "upload"},
                                               {"chosen", true}};
   return cache.Write(game_id, info);

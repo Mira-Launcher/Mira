@@ -61,6 +61,9 @@ inline constexpr QSize kDeckSize(50, 46);
 // With no games, or none with art, it's the source's `logo` when given.
 QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
                   const QColor& empty, const QPixmap& logo = {});
+// Names what CoverDeck would draw from the same arguments, so a row can skip an unchanged deck.
+QString CoverDeckKey(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
+                     const QColor& empty, const QPixmap& logo = {});
 
 // A Covers row: a flat button whose hover takes the cover's color.
 // `trailing` is muted text on the right ("Yesterday", "Playing"), empty for none.

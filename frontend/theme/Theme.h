@@ -176,4 +176,8 @@ signals:
 // A QColor as CSS: hex when opaque, rgba() otherwise.
 QString ColorToQss(const QColor& color);
 
+// Sets a widget's own style sheet unless it already has that one. Qt repolishes the widget on
+// every call, the same sheet included, so this is for code that runs again and again.
+void SetStyleSheet(QWidget* widget, const QString& sheet);
+
 }  // namespace mira_gui::theme

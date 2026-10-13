@@ -82,6 +82,28 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
   painter->restore();
 }
 
+QString CoverDeckKey(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
+                     const QColor& empty, const QPixmap& logo) {
+  // The theme's window and surface_alt color the empty card's edge and the logo card, and its
+  // placeholder values a card without art.
+  const theme::Tokens& tokens = theme::Current();
+  QString key = QString("%1 %2 %3 %4 %5 %6 %7")
+                    .arg(dpr)
+                    .arg(empty.rgba())
+                    .arg(logo.cacheKey())
+                    .arg(tokens.window.rgba())
+                    .arg(tokens.surface_alt.rgba())
+                    .arg(tokens.placeholder_saturation)
+                    .arg(tokens.placeholder_value);
+  // A cover's pixmap is replaced when its art changes, which changes its cache key.
+  for (const GameSummary* game : games) {
+    key += QString(" %1:%2")
+               .arg(QString::fromStdString(game->id))
+               .arg(artwork->SmallArtwork(game->id).cacheKey());
+  }
+  return key;
+}
+
 QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* artwork, qreal dpr,
                   const QColor& empty, const QPixmap& logo) {
   const QSize card(24, 36);

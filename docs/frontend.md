@@ -229,7 +229,7 @@ On connect, `mirad` replays its event buffer and then sends `stream.live`. Windo
 - A game's record says which art it has (`art`, see [api.md](api.md)). A game without a cover is never asked for one; `library/CoverArt` draws a placeholder with a hue from the game's id, so it stays the same across restarts.
 - A cover is fetched once, and again only when its version changes in a record, `game.metadata_ready` or `game.artwork_selected`. The old image stays on screen until the new one lands.
 - At most eight requests are in flight.
-- The original image is kept and scaled on demand for the zoom slider.
+- A small copy of every image is kept; covers are kept as drawn at the tile width in use and fetched again for a new one. While a zoom moves (`library/ZoomSettle`, one per page and the Tags picker), covers are scaled quickly from the last copy and not kept; the covers on screen are fetched at the width it's heading to, and once it stops every other width that view kept is dropped.
 
 Without `steamgriddb.api_key`, non-Steam games may have no source. `mirad` then fails the fetch with `no_steamgriddb_key`, and the GUI says so once per session: a popup offering Settings when the user asked, a notice after a background scan.
 

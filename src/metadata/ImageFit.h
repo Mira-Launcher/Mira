@@ -29,6 +29,12 @@ std::optional<Fitted> FitImage(const std::filesystem::path& file, Box box);
 // Whether stb can read `file` as an image.
 bool IsImage(const std::filesystem::path& file);
 
+// The MIME type of an image from its first bytes, so a file's type never rests on its extension
+// (a URL's, or ".jpg" for none). "application/octet-stream" for a format not listed.
+std::string ImageContentType(std::string_view bytes);
+// Same, for the image in `file`.
+std::string FileContentType(const std::filesystem::path& file);
+
 // Whether `file`'s header claims more pixels than any art needs, so it's never decoded or kept.
 bool IsTooLarge(const std::filesystem::path& file);
 
