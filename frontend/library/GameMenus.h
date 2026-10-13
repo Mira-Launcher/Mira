@@ -27,6 +27,7 @@ public:
     // "Installing… 1.2 GB" while the game installs, else empty.
     std::function<QString(const std::string& id)> install_text;
     std::function<void(const std::string& id)> toggle_running;
+    std::function<void(const std::string& id, const std::string& option)> launch;
     std::function<void(const std::string& id)> open_settings;
     std::function<void(const std::string& id)> open_details;
     std::function<void(const std::string& id)> offer_install;

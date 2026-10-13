@@ -1,8 +1,11 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "HeroBackdrop.h"
+
+class QHBoxLayout;
 
 class QLabel;
 class QPushButton;
@@ -71,6 +74,8 @@ class GameCard : public HeroBackdrop {
   ArtPickerPanel* picker_ = nullptr;
   QPushButton* art_button_ = nullptr;
   QPushButton* play_ = nullptr;
+  QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, before Play
+  std::vector<std::string> tool_ids_;
   // The form's unsaved changes, or the picker's pick while it's open.
   ChangeBar* bar_ = nullptr;
   // Room kept under the last card for the bar. It only grows: shrinking it as the bar hides would

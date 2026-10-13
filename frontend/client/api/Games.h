@@ -23,7 +23,8 @@ void DeleteGameAsync(QObject* context, const std::string& id, bool delete_files,
 // POST /v1/games/{id}/launch. Returns once the process exists, not once
 // it exits. 409 if the game isn't `ready` (message explains why, e.g.
 // needs_install) or 400 if the runner reference doesn't resolve.
-void LaunchGameAsync(QObject* context, const std::string& id,
+// `option` names one of its launch options ("game" for its own program); empty for its default.
+void LaunchGameAsync(QObject* context, const std::string& id, const std::string& option,
                      std::function<void(LaunchResult)> callback);
 
 // POST /v1/games/{id}/stop. SIGTERMs the game's process group; 409 if it

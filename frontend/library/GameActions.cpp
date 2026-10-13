@@ -1,6 +1,9 @@
 #include "GameActions.h"
 
+#include <QCursor>
 #include <QDesktopServices>
+#include <QGuiApplication>
+#include <QMenu>
 #include <QStringList>
 #include <QUrl>
 #include <QWidget>
@@ -10,6 +13,7 @@
 #include <utility>
 
 #include "../client/api/Games.h"
+#include "PlayChoices.h"
 #include "../client/api/Library.h"
 #include "../dialogs/DeleteGameDialog.h"
 #include "../dialogs/LogWindow.h"
@@ -44,9 +48,9 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
 
 }  // namespace
 
-void Launch(QWidget* parent, const std::string& id, std::function<void(bool tracked)> on_launched,
-            std::function<void()> on_failed) {
-  api::LaunchGameAsync(parent, id, [parent, id, on_launched, on_failed](LaunchResult result) {
+void Launch(QWidget* parent, const std::string& id, const std::string& option,
+            std::function<void(bool tracked)> on_launched, std::function<void()> on_failed) {
+  api::LaunchGameAsync(parent, id, option, [parent, id, on_launched, on_failed](LaunchResult result) {
     if (!result.ok) {
       if (on_failed) on_failed();
       notify::FailedRequest(parent, "Could not launch the game.", result.error);
@@ -54,6 +58,22 @@ void Launch(QWidget* parent, const std::string& id, std::function<void(bool trac
     }
     if (on_launched) on_launched(result.tracked);
   });
+}
+
+void ChoosePlay(QWidget* parent, const GameSummary& game, const std::function<void(const std::string& option)>& launch) {
+  const bool all = QGuiApplication::keyboardModifiers().testFlag(Qt::ControlModifier);
+  const std::vector<PlayChoice> choices = PlayChoices(game, all);
+  const std::vector<PlayChoice> tools = all ? ToolChoices(game) : std::vector<PlayChoice>();
+  if (choices.size() == 1 && tools.empty()) return launch(choices.front().option);
+  QMenu menu(parent);
+  for (const PlayChoice& choice : choices) {
+    menu.addAction(choice.label, [&launch, option = choice.option] { launch(option); });
+  }
+  if (!tools.empty()) menu.addSection("Tools");
+  for (const PlayChoice& tool : tools) {
+    menu.addAction(tool.label, [parent, id = game.id, option = tool.option] { Launch(parent, id, option, {}); });
+  }
+  menu.exec(QCursor::pos());
 }
 
 void Stop(QWidget* parent, const std::string& id) {

@@ -563,7 +563,7 @@ void BigScreenWindow::Confirm(const QString& title, const QString& body, const Q
   chrome_->update();
 }
 
-void BigScreenWindow::Play(const Item& item) {
+void BigScreenWindow::Play(const Item& item, const std::string& option) {
   if (!item.game) return;
   launching_ = item;
   cancelled_.clear();
@@ -572,7 +572,7 @@ void BigScreenWindow::Play(const Item& item) {
   launch_timeout_.start(120'000);
   chrome_->update();
   actions::Launch(
-      this, item.game->id,
+      this, item.game->id, option,
       [this](bool tracked) {
         // Nothing will say an untracked game started: the overlay just goes after a moment.
         if (!tracked) {

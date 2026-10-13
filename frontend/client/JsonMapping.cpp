@@ -67,7 +67,35 @@ GameSummary ToGameSummary(const json& entry) {
   game.running = entry.value("running", false);
   game.art = ToArtVersions(entry);
   ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);
+  game.launch = ToGameLaunch(entry);
   return game;
+}
+
+GameLaunch ToGameLaunch(const json& entry) {
+  GameLaunch launch;
+  const json object = entry.is_object() ? entry.value("launch", json::object()) : json::object();
+  if (!object.is_object()) return launch;
+  launch.default_id = object.value("default", std::string());
+  launch.only = object.value("only", false);
+  for (const json& option : object.value("options", json::array())) {
+    if (!option.is_object()) continue;
+    launch.options.push_back({.id = option.value("id", std::string()),
+                              .name = option.value("name", std::string()),
+                              .mode = option.value("mode", std::string("play")),
+                              .exe = option.value("exe", std::string()),
+                              .args = option.value("args", std::string()),
+                              .native = option.value("native", false)});
+  }
+  return launch;
+}
+
+json ToJson(const GameLaunch& launch) {
+  json options = json::array();
+  for (const LaunchOption& option : launch.options) {
+    options.push_back({{"id", option.id}, {"name", option.name}, {"mode", option.mode}, {"exe", option.exe},
+                       {"args", option.args}, {"native", option.native}});
+  }
+  return {{"options", std::move(options)}, {"default", launch.default_id}, {"only", launch.only}};
 }
 
 UnclearMove ToUnclearMove(const json& entry) {
@@ -122,6 +150,7 @@ GameDetail ToGameDetail(const json& entry) {
     c.is_installer = candidate.value("is_installer", false);
     game.candidates.push_back(std::move(c));
   }
+  game.launch = ToGameLaunch(entry);
   return game;
 }
 

@@ -174,7 +174,7 @@ private:
   // One per `key`; a second ask while it waits is dropped.
   void QueueCard(const std::string& key, std::function<void()> show);
   void ShowNextCard();
-  void LaunchGame(const std::string& id);
+  void LaunchGame(const std::string& id, const std::string& option = {});
   void OpenGameDialog(const std::string& id);
   // Scrim + centered card slot, built once. Shown/hidden per open rather
   // than swapped into content_stack_, so the grid and sidebar stay live

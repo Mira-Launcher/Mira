@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
+#include "../library/PlayChoices.h"
 #include "../client/api/Games.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
@@ -174,7 +175,10 @@ std::vector<GamePage::Button> GamePage::Buttons() const {
   } else if (item_.game->status == "needs_install") {
     buttons = {{Action::Install, "Install"}};
   } else {
-    buttons = {{Action::Play, "Play"}};
+    const std::vector<PlayChoice> choices = PlayChoices(*item_.game, /*all=*/false);
+    for (const PlayChoice& choice : choices) {
+      buttons.push_back({Action::Play, buttons.empty() ? QString("Play") : choice.label, choice.option});
+    }
   }
   if (item_.game) {
     buttons.push_back({Action::Pin, IsPinned(*item_.game) ? "Unpin" : "Pin"});
@@ -198,7 +202,7 @@ bool GamePage::Navigate(Nav nav) {
     default: return false;
   }
   switch (buttons[size_t(focus_)].action) {
-    case Action::Play: window_->Play(item_); break;
+    case Action::Play: window_->Play(item_, buttons[size_t(focus_)].option); break;
     case Action::Stop: window_->Stop(item_); break;
     case Action::Install: window_->Install(item_); break;
     case Action::Pause: window_->Pause(item_); break;

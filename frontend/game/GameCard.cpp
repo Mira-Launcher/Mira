@@ -19,6 +19,8 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../library/GameActions.h"
+#include "../library/PlayChoices.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
 
@@ -121,6 +123,9 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
           });
   header->addWidget(cover_, 0, Qt::AlignBottom);
   header->addLayout(identity, /*stretch=*/1);
+  tools_ = new QHBoxLayout();
+  tools_->setSpacing(8);
+  header->addLayout(tools_);
   header->addWidget(play_, 0, Qt::AlignBottom);
   layout->addLayout(header);
 
@@ -302,6 +307,22 @@ void GameCard::UpdatePlay() {
   const GameSummary* game = library_->Find(id_);
   play_->setText(game == nullptr ? "Play" : game->running ? "Stop" : RunVerb(*game));
   play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
+
+  const std::vector<PlayChoice> tools = game != nullptr ? ToolChoices(*game) : std::vector<PlayChoice>();
+  std::vector<std::string> ids;
+  for (const PlayChoice& tool : tools) ids.push_back(tool.option + '\n' + tool.label.toStdString());
+  if (ids == tool_ids_) return;
+  tool_ids_ = std::move(ids);
+  while (QLayoutItem* item = tools_->takeAt(0)) {
+    delete item->widget();
+    delete item;
+  }
+  for (const PlayChoice& tool : tools) {
+    auto* button = new QPushButton(tool.label, this);
+    button->setToolTip("Open " + tool.label + " for this " + Noun());
+    connect(button, &QPushButton::clicked, this, [this, option = tool.option] { actions::Launch(this, id_, option, {}); });
+    tools_->addWidget(button, 0, Qt::AlignBottom);
+  }
 }
 
 void GameCard::UpdateIdentity() {

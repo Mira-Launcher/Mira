@@ -4,6 +4,7 @@
 
 #include "client/JsonMapping.h"
 #include "client/Events.h"
+#include "library/PlayChoices.h"
 
 using nlohmann::json;
 using namespace mira_gui;
@@ -235,4 +236,19 @@ TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {
   const ApiError bare = mapping::ToApiError(json::parse(R"({"code": "x", "message": "y", "fix": "junk"})"));
   CHECK(bare.hint.empty());
   CHECK(bare.fix.kind.empty());
+}
+
+TEST_CASE("Play offers the default launch option first, and only it when asked") {
+  GameSummary game = mapping::ToGameSummary(json::parse(R"({"id": "celeste", "launch": {"default": "olympus",
+    "options": [{"id": "olympus", "name": "Olympus", "mode": "play", "exe": "/o"},
+                {"id": "vortex", "name": "Vortex", "mode": "tool", "exe": "/v"}]}})"));
+  REQUIRE(game.launch.options.size() == 2);
+  std::vector<PlayChoice> choices = PlayChoices(game, false);
+  REQUIRE(choices.size() == 2);
+  CHECK(choices[0].option == "olympus");
+  CHECK(choices[1].label == "Play directly");
+  CHECK(ToolChoices(game).front().option == "vortex");
+  game.launch.only = true;
+  CHECK(PlayChoices(game, false).size() == 1);
+  CHECK(PlayChoices(game, true).size() == 2);
 }

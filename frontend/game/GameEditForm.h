@@ -14,6 +14,7 @@
 
 namespace mira_gui {
 class KeyValueEdit;
+class LaunchOptionsEdit;
 class OverridesEditor;
 class SettingRow;
 class SettingsCard;
@@ -144,6 +145,9 @@ private:
   SettingRow* exe_row_ = nullptr;
   SettingRow* args_row_ = nullptr;
   SettingRow* working_dir_row_ = nullptr;
+  SettingRow* launch_options_row_ = nullptr;
+  LaunchOptionsEdit* launch_options_ = nullptr;
+  bool windows_ = false;
   SettingRow* tags_row_ = nullptr;
   SettingRow* runner_row_ = nullptr;
   SettingRow* emulator_row_ = nullptr;  // in place of the runner for an emulator's game
