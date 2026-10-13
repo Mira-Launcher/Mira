@@ -3,7 +3,7 @@
 #
 # Both packages carry the tree the AppImage is made from (Mira's binaries with Qt and the libraries
 # linuxdeploy bundled), under /usr/lib/mira. From the distribution they need its C library, OpenGL,
-# Vulkan and 7-Zip, and recommend SDL3, GameMode, MangoHud and Wine. Built in the container that makes the AppImage, they install on every distribution as new as Ubuntu 22.04.
+# GLib, Vulkan and 7-Zip, and recommend SDL3, GameMode, MangoHud and Wine. Built in the container that makes the AppImage, they install on every distribution as new as Ubuntu 22.04.
 # `mira` and `mira-gui` in /usr/bin are small scripts that start the bundled ones; mira-gui starts
 # mirad itself.
 # Only defined next to the appimage target, which makes that tree.
@@ -41,9 +41,9 @@ set(CPACK_GENERATOR "DEB;RPM")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
 set(CPACK_DEBIAN_PACKAGE_SECTION games)
-# Qt and what it loads are bundled; the OpenGL front ends and the C library are the distribution's.
+# Qt and what it loads are bundled; the OpenGL front ends, GLib and the C library are the distribution's.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "libc6, libopengl0, libglx0, libegl1, libfontconfig1, libfreetype6, libgpg-error0, libvulkan1, curl, 7zip | p7zip-full")
+    "libc6, libopengl0, libglx0, libegl1, libglib2.0-0 | libglib2.0-0t64, libfontconfig1, libfreetype6, libgpg-error0, libvulkan1, curl, 7zip | p7zip-full")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "pkexec | policykit-1, libsdl3-0, gamemode, mangohud, wine, winetricks, cabextract, unzip")
 set(CPACK_DEBIAN_PACKAGE_SUGGESTS "sqlite3")
 
@@ -54,9 +54,9 @@ set(CPACK_RPM_PACKAGE_GROUP "Amusements/Games")
 set(CPACK_RPM_PACKAGE_AUTOREQ OFF)
 set(CPACK_RPM_PACKAGE_AUTOPROV OFF)
 set(CPACK_RPM_PACKAGE_REQUIRES
-    "glibc, libglvnd-opengl, libglvnd-glx, libglvnd-egl, fontconfig, freetype, libgpg-error, vulkan-loader, curl, (7zip or p7zip)")
+    "glibc, libglvnd-opengl, libglvnd-glx, libglvnd-egl, glib2, fontconfig, freetype, libgpg-error, vulkan-loader, curl, (7zip or p7zip)")
 # The libraries are bundled as linuxdeploy left them: no stripping, and no build-id links into /usr/lib.
-# Weak dependencies are written here too: the container's CMake 3.22 drops CPACK_RPM_PACKAGE_RECOMMENDS.
+# Weak dependencies are written into the spec here too, so they don't hang on CPack's RPM options.
 set(CPACK_RPM_SPEC_MORE_DEFINE "%global __os_install_post %{nil}\n%define _build_id_links none
 Recommends: polkit
 Recommends: SDL3
