@@ -45,6 +45,9 @@ struct Setup {
   // Click-to-Run service and Wine server) is stopped, since a later launch of an app waits on that
   // session instead of starting.
   bool end_session = false;
+  // It waits on the user once done (Autodesk's "Run Installer" dialog): finished as soon as `done`
+  // says so, and its session is ended.
+  bool stops_when_done = false;
 };
 
 struct Launcher {
@@ -62,6 +65,13 @@ struct Launcher {
   // Stopping it ends everything in its prefix: closed, Creative Cloud only goes to its tray, and
   // its services stay.
   bool stop_ends_session = false;
+  // A Windows app of the Apps source (Fusion, AutoCAD), which installs from an installer the user
+  // brings when `installer` names it: what to download and from where.
+  bool app = false;
+  std::string installer;
+  // Autodesk's product code in its Create Installer's file name (Create_Installer_ACD_2027_...):
+  // that installer builds an install image, which then installs the app.
+  std::string autodesk_code;
 };
 
 const std::vector<Launcher>& All();
@@ -95,10 +105,12 @@ Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api:
 // False if this launcher is already installing.
 bool BeginInstall(const Launcher& launcher);
 std::string InstallState(const Launcher& launcher);  // idle, running, finished, failed
-// `on_progress` gets the install's progress, 0..1, when the installer reports it.
+// `on_progress` gets the install's progress, 0..1, when the installer reports it. `installer` is
+// the user's own installer, for an app that needs one.
 Result<model::Game> Install(config::Config& config, store::GameStore& games,
                             const Launcher& launcher,
-                            const std::function<void(double)>& on_progress = {});
+                            const std::function<void(double)>& on_progress = {},
+                            const std::string& installer = {});
 
 // Runs the launcher, asking it to start `game` unless it is the launcher's
 // own entry. `action` is launch or install.

@@ -21,7 +21,9 @@
 #include "core/StoreErrors.h"
 #include "core/Strings.h"
 #include "launchers/AdobeWine.h"
+#include "launchers/Autodesk.h"
 #include "launchers/Office.h"
+#include "launchers/Shims.h"
 #include "library/PrefixNaming.h"
 #include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
@@ -132,7 +134,12 @@ std::optional<fs::path> FindFile(const fs::path& prefix, const fs::path& rel) {
       it.disable_recursion_pending();
       continue;
     }
-    if (it->path().filename() == rel.filename() && it->is_regular_file(ec)) return it->path();
+    // Windows names are case-insensitive (QuickBooks ships QBW.EXE).
+    if (strings::ToLower(it->path().filename().string()) ==
+            strings::ToLower(rel.filename().string()) &&
+        it->is_regular_file(ec)) {
+      return it->path();
+    }
   }
   return std::nullopt;
 }
@@ -224,7 +231,10 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
                           const std::function<bool()>& is_done = {}) {
   ReapOrphans();
   const fs::path downloads = paths::UserDir() / "downloads";
-  const fs::path setup = downloads / step.file;
+  // No URL: `step.file` is an installer already on disk (the user's own), run where it is and kept.
+  const bool local = step.url.empty();
+  const fs::path setup = local ? fs::path(step.file) : downloads / step.file;
+  const std::string file = setup.filename().string();
   const fs::path done = step.done.empty() ? fs::path(launcher.exe) : fs::path(step.done);
   const auto finished = [&] {
     return is_done ? is_done() : FindFile(game.data_dir, done).has_value();
@@ -232,20 +242,22 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   std::error_code ec;
   fs::create_directories(downloads, ec);
 
-  Say(launcher, std::format("Downloading {}", step.file));
-  if (auto fetched = runner::CurlDownload(step.url, setup); !fetched) {
-    return Err("download_failed",
-               std::format("couldn't download the {} installer: {}", launcher.name,
-                           fetched.error().message),
-               kConnectionHint);
+  if (!local) {
+    Say(launcher, std::format("Downloading {}", file));
+    if (auto fetched = runner::CurlDownload(step.url, setup); !fetched) {
+      return Err("download_failed",
+                 std::format("couldn't download the {} installer: {}", launcher.name,
+                             fetched.error().message),
+                 kConnectionHint);
+    }
   }
 
   const runner::RunnerRegistry runners(config);
   const auto resolved = runners.Resolve(game.runner_ref);
   if (!resolved) return std::unexpected(resolved.error());
   model::Game run_as = game;
-  run_as.install_path = downloads.string();
-  run_as.exe_path = setup.filename().string();
+  run_as.install_path = setup.parent_path().string();
+  run_as.exe_path = file;
   run_as.args.clear();
   auto command = resolved->runner->BuildCommand(run_as, resolved->build);
   if (!command) return std::unexpected(command.error());
@@ -260,9 +272,9 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
     command->argv.push_back(std::move(arg));
   }
 
-  Say(launcher, std::format("Running {}", step.file));
+  Say(launcher, std::format("Running {}", file));
   // Its output goes to a file that the wait loop below copies into the live log.
-  const fs::path output_file = downloads / (step.file + ".log");
+  const fs::path output_file = downloads / (file + ".log");
   std::error_code remove_ec;
   fs::remove(output_file, remove_ec);
   const int output_fd = ::open(output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
@@ -289,7 +301,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   // running. So wait for the setup process itself instead. Exit codes
   // aren't reliable either (EA's returns 768 on success); whether the
   // launcher exe exists afterwards decides.
-  const std::string setup_dir = strings::ToLower("z:" + downloads.string());
+  const std::string setup_dir = strings::ToLower("z:" + setup.parent_path().string());
   // Battle.net's setup hands off to a second stage, so the exe must exist too.
   int status = 0;
   while (::waitpid(*pid, &status, WNOHANG) != *pid) {
@@ -360,14 +372,14 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
         if (on_progress) on_progress(shown / 100.0);
       }
     }
-    if (!SetupRunning(game, setup_dir, step.file) && finished()) {
+    if ((step.stops_when_done || !SetupRunning(game, setup_dir, file)) && finished()) {
       CopyNewOutput(launcher, output_file, copied);
-      Say(launcher, std::format("{} finished", step.file));
-      if (step.end_session) EndSession(launcher, game.data_dir);
+      Say(launcher, std::format("{} finished", file));
+      if (step.end_session || step.stops_when_done) EndSession(launcher, game.data_dir);
       ReapOrphans(*pid);
       // Downloaded again on every run, so keeping it only takes space (WebView2's is 200 MB).
       std::error_code remove_setup_ec;
-      fs::remove(setup, remove_setup_ec);
+      if (!local) fs::remove(setup, remove_setup_ec);
       return {};
     }
     if (ThisTaskStop().stop_requested()) {
@@ -386,8 +398,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
     if (percent < 0 && now - last_note >= std::chrono::seconds(15)) {
       last_note = now;
       const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - started).count();
-      Say(launcher,
-          std::format("Still running {} ({}:{:02})", step.file, elapsed / 60, elapsed % 60));
+      Say(launcher, std::format("Still running {} ({}:{:02})", file, elapsed / 60, elapsed % 60));
     }
   }
   CopyNewOutput(launcher, output_file, copied);
@@ -397,7 +408,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
         : WIFSIGNALED(status) ? std::format("was killed by signal {}", WTERMSIG(status))
                               : "finished";
     return Err("launcher_not_installed",
-               std::format("{} {} but {} wasn't installed", step.file, how, launcher.name),
+               std::format("{} {} but {} wasn't installed", file, how, launcher.name),
                std::format("Its output, with Wine's errors, is in {}", output_file.string()));
   }
   return {};
@@ -425,9 +436,63 @@ Result<void> RegisterMshtml(const runner::RunnerRegistry& runners, const model::
   return {};
 }
 
+// Builds the install image with the user's Create Installer, then installs the app from it.
+Result<void> InstallAutodesk(config::Config& config, const Launcher& launcher,
+                             const model::Game& game, const fs::path& installer,
+                             const std::function<void(double)>& on_progress) {
+  const auto started = fs::file_time_type::clock::now();
+  const auto image = [&] { return autodesk::FindImage(game.data_dir, started); };
+  autodesk::ForgetImageBuilt(game.data_dir);
+  Say(launcher, "Building the install image (Autodesk's installer downloads the app)");
+  Setup create;
+  create.file = installer.string();
+  create.stops_when_done = true;
+  const auto built = [&] { return autodesk::ImageBuilt(game.data_dir) && image().has_value(); };
+  if (auto ran = RunInstaller(config, launcher, create, game, {}, built); !ran) return ran;
+  const auto setup = image();
+  if (auto prepared = autodesk::PrepareImage(*setup); !prepared) return prepared;
+  // wintrust: its packages' certificates have expired and each loads a registry hive, which Wine
+  // can't check or load. bcryptprimitives: its crash reporter is a Go service, which needs that
+  // shim to start under Wine.
+  constexpr std::array kShims = {shims::Shim{"wintrust", "wintrustw"},
+                                 shims::Shim{"bcryptprimitives", "bcryptprimitivesw"}};
+  const runner::RunnerRegistry runners(config);
+  if (auto installed =
+          shims::Install(config, runners, game, paths::UserDir() / "downloads", kShims);
+      !installed) {
+    return installed;
+  }
+  if (auto overridden = shims::Override(runners, game, kShims); !overridden) return overridden;
+  Setup install;
+  install.file = setup->string();
+  install.args = {"-q"};
+  if (auto installed = RunInstaller(config, launcher, install, game, on_progress); !installed)
+    return installed;
+  // The image is several GB and only needed to install.
+  std::error_code ec;
+  fs::remove_all(setup->parent_path(), ec);
+  return {};
+}
+
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
                                 const Launcher& launcher,
-                                const std::function<void(double)>& on_progress) {
+                                const std::function<void(double)>& on_progress,
+                                const std::string& installer) {
+  if (!launcher.installer.empty()) {
+    std::error_code ec;
+    if (installer.empty() || !fs::is_regular_file(installer, ec)) {
+      return Err("installer_needed",
+                 std::format("{} installs from your own installer", launcher.name),
+                 launcher.installer);
+    }
+    if (!launcher.autodesk_code.empty() &&
+        !autodesk::IsCreateInstaller(installer, launcher.autodesk_code)) {
+      return Err("wrong_installer",
+                 std::format("{} isn't the installer for {}",
+                             fs::path(installer).filename().string(), launcher.name),
+                 launcher.installer);
+    }
+  }
   // Before the prefix and downloads, rather than failing at the first winetricks verb.
   if (!launcher.tricks.empty()) {
     if (auto ready = system::RequireFeature("winetricks", launcher.name); !ready)
@@ -446,7 +511,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   game.source_ref = launcher.id;
   game.platform = model::Platform::Windows;
   // Creative Cloud is an app of its own, in the library beside Photoshop.
-  if (launcher.id == "adobe" && !std::ranges::contains(game.tags, "app"))
+  if ((launcher.id == "adobe" || launcher.app) && !std::ranges::contains(game.tags, "app"))
     game.tags.push_back("app");
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
@@ -474,6 +539,9 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
   // as the launcher itself.
   if (game.runner_ref.empty() || !fs::exists(fs::path(game.data_dir) / "drive_c", ec)) {
     Say(launcher, "Creating the Wine prefix (the first run downloads and sets up the runtime)");
+    // An install mirad stopped part way leaves its Wine processes behind, and provisioning would
+    // wait on them.
+    if (!game.data_dir.empty()) EndSession(launcher, game.data_dir);
     const model::Game provisioned = runners.ProvisionGame(game);
     if (provisioned.status == model::GameStatus::Broken) {
       return Err("provision_failed",
@@ -519,6 +587,16 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
       if (!step.done.empty() && FindFile(game.data_dir, step.done))
         continue;  // left from an earlier try
       if (auto ran = RunInstaller(config, launcher, step, game, on_progress); !ran)
+        return std::unexpected(ran.error());
+    }
+    if (!launcher.autodesk_code.empty()) {
+      if (auto ran = InstallAutodesk(config, launcher, game, installer, on_progress); !ran) {
+        return std::unexpected(ran.error());
+      }
+    } else if (!launcher.installer.empty()) {
+      Setup own;
+      own.file = installer;
+      if (auto ran = RunInstaller(config, launcher, own, game, on_progress); !ran)
         return std::unexpected(ran.error());
     }
     exe = FindExe(launcher, game.data_dir);
@@ -671,7 +749,65 @@ const std::vector<Launcher>& All() {
     adobe.interactive = true;
     adobe.stop_ends_session = true;
     adobe.needs_mshtml = true;
-    return std::vector<Launcher>{battlenet, ubisoft, ea, m365, adobe};
+    // The Apps source: each app in its own prefix.
+    Launcher fusion;
+    fusion.id = "fusion";
+    fusion.name = "Autodesk Fusion";
+    fusion.app = true;
+    // Its launcher's folder stays put; the app's own moves to a new hash folder with each update.
+    fusion.exe =
+        "users/steamuser/AppData/Local/Autodesk/webdeploy/production/"
+        "6a0c9611291d45bb9226980209917c3d/"
+        "FusionLauncher.exe";
+    fusion.tricks = {"corefonts", "msxml6", "gdiplus", "win10"};
+    fusion.setups = {
+        {"https://dl.appstreaming.autodesk.com/production/installers/"
+         "Fusion%20Client%20Downloader.exe",
+         "fusion-client-downloader.exe",
+         {"--quiet"},
+         "",
+         nullptr,
+         {},
+         {},
+         true}};
+    // An Autodesk desktop app, from the Create Installer of a custom install in the user's Autodesk
+    // account.
+    const auto autodesk_app = [](std::string id, std::string name, std::string code,
+                                 std::string exe) {
+      Launcher app;
+      app.id = std::move(id);
+      app.name = std::move(name);
+      app.app = true;
+      app.exe = std::move(exe);
+      app.tricks = {"corefonts", "msxml6", "gdiplus", "win10"};
+      app.installer = std::format(
+          "In your Autodesk account, make a custom install of {} and download its "
+          "installer (Create_Installer_{}_....exe), then choose it here.",
+          app.name, code);
+      app.autodesk_code = std::move(code);
+      return app;
+    };
+    const Launcher autocad =
+        autodesk_app("autocad", "AutoCAD", "ACD", "Program Files/Autodesk/AutoCAD 2027/acad.exe");
+    const Launcher inventor = autodesk_app("inventor", "Autodesk Inventor Professional", "INVPROSA",
+                                           "Program Files/Autodesk/Inventor 2027/Bin/Inventor.exe");
+    const Launcher max = autodesk_app("3dsmax", "Autodesk 3ds Max", "3DSMAX",
+                                      "Program Files/Autodesk/3ds Max 2027/3dsmax.exe");
+    const Launcher revit = autodesk_app("revit", "Autodesk Revit", "RVT",
+                                        "Program Files/Autodesk/Revit 2027/Revit.exe");
+    // Its installer asks for the licence and product numbers, so the user clicks through it.
+    Launcher quickbooks;
+    quickbooks.id = "quickbooks";
+    quickbooks.name = "QuickBooks Desktop";
+    quickbooks.app = true;
+    quickbooks.interactive = true;
+    quickbooks.exe = "Program Files/Intuit/QuickBooks Enterprise Solutions 24.0/QBW.exe";
+    quickbooks.tricks = {"corefonts", "msxml6", "gdiplus", "win10"};
+    quickbooks.installer =
+        "Download the QuickBooks Desktop installer from your Intuit account (QuickBooks*.exe), "
+        "then choose it here. Have its licence and product numbers ready.";
+    return std::vector<Launcher>{battlenet, ubisoft,  ea,  m365,  adobe,     fusion,
+                                 autocad,   inventor, max, revit, quickbooks};
   }();
   return kLaunchers;
 }
@@ -792,10 +928,11 @@ std::string InstallState(const Launcher& launcher) {
 
 Result<model::Game> Install(config::Config& config, store::GameStore& games,
                             const Launcher& launcher,
-                            const std::function<void(double)>& on_progress) {
+                            const std::function<void(double)>& on_progress,
+                            const std::string& installer) {
   loghub::Begin(LogChannel(launcher));
   Say(launcher, std::format("Installing {}", launcher.name));
-  const Result<model::Game> done = InstallInto(config, games, launcher, on_progress);
+  const Result<model::Game> done = InstallInto(config, games, launcher, on_progress, installer);
   Say(launcher, done ? "Done." : "Failed: " + done.error().message);
   loghub::End(LogChannel(launcher));
   SetState(launcher, done ? "finished" : "failed");

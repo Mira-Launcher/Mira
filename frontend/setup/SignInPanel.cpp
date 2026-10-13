@@ -4,7 +4,9 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDir>
 #include <QEvent>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -493,24 +495,41 @@ void SignInPanel::Install() {
       return ShowFailure("Could not start installing.", result.error);
     }
     std::string packages;
+    std::string needs_installer;
     for (const LauncherInfo& launcher : result.launchers) {
-      if (QString::fromStdString(launcher.id) == id_) packages = launcher.packages;
+      if (QString::fromStdString(launcher.id) != id_) continue;
+      packages = launcher.packages;
+      needs_installer = launcher.installer;
     }
-    const auto start = [this] {
+    std::string installer;
+    if (!needs_installer.empty()) {
+      installer = QFileDialog::getOpenFileName(
+                      this, "Choose the " + FindSourceInfo(id_)->name + " installer",
+                      QDir::homePath() + "/Downloads", "Installers (*.exe)")
+                      .toStdString();
+      if (installer.empty()) {
+        starting_ = false;
+        return;
+      }
+    }
+    const auto start = [this, installer] {
       starting_ = false;
       installing_ = true;
       install_progress_ = -1;
       ShowSteps();
       log_->Watch(true);
       emit InstallStarted();
-      api::InstallLauncherAsync(this, id_.toStdString(), [this](StoreActionResult started) {
-        if (started.ok) return;  // its events tell the rest
-        installing_ = false;
-        ShowSteps();
-        log_->Watch(false);
-        ShowFailure("Could not start installing.", started.error);
-        emit InstallFailed();
-      });
+      api::InstallLauncherAsync(
+          this, id_.toStdString(),
+          [this](StoreActionResult started) {
+            if (started.ok) return;  // its events tell the rest
+            installing_ = false;
+            ShowSteps();
+            log_->Watch(false);
+            ShowFailure("Could not start installing.", started.error);
+            emit InstallFailed();
+          },
+          installer);
     };
     if (packages.empty()) return start();
     system::EnsurePackages(this, packages, FindSourceInfo(id_)->name, [this, start](bool ready) {

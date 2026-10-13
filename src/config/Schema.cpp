@@ -1066,16 +1066,18 @@ Schema::Schema() {
                 "for Apps for enterprise.",
          .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
 
-  s.Add({.key = "launchers.office.shims_url",
-         .label = "Office shims download",
+  s.Add({.key = "launchers.shims_url",
+         .label = "Windows app shims download",
          .type = Type::String,
          .default_value =
-             "https://github.com/Mira-Launcher/mira-winapp-shims/releases/latest/download/"
+             "https://github.com/Mira-Launcher/Mira-winapp-shims/releases/latest/download/"
              "mira-winapp-shims.tar.gz",
-         .doc = "Where Mira downloads the mira-winapp-shims DLLs Office needs under Wine."});
+         .doc = "Where Mira downloads the mira-winapp-shims DLLs that Microsoft 365 and Autodesk's "
+                "apps need "
+                "under Wine."});
 
-  s.Add({.key = "launchers.office.shims_dir",
-         .label = "Office shims folder",
+  s.Add({.key = "launchers.shims_dir",
+         .label = "Windows app shims folder",
          .type = Type::String,
          .default_value = "",
          .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as "

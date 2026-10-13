@@ -59,6 +59,16 @@ SourceCopy CopyFor(const std::string& id) {
         "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
         "", "Import apps", "app"};
   }
+  if (id == "fusion" || id == "autocad" || id == "inventor" || id == "3dsmax" || id == "revit") {
+    return {
+        "Runs in its own Wine prefix. Sign in to your Autodesk account in the app; it needs a "
+        "subscription "
+        "or a free licence.",
+        "", "", "app"};
+  }
+  if (id == "quickbooks") {
+    return {"Runs in its own Wine prefix, from your own installer and licence.", "", "", "app"};
+  }
   if (const SourceInfo* source = FindSourceInfo(QString::fromStdString(id));
       source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
     return {QString("Plays %1 games you add: pick them or drop them here, or put them in its games "
