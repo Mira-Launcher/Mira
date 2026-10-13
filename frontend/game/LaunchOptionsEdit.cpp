@@ -8,12 +8,14 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
 #include <set>
 
+#include "../sources/Sources.h"
 #include "../widgets/PathField.h"
 #include "../widgets/PopupDialog.h"
 #include "../theme/Icons.h"
@@ -35,7 +37,8 @@ QString ModeText(const std::string& mode) {
   return QString::fromStdString(mode);
 }
 
-// An id from the name that no other option has; "game" names the game's own program.
+// An id from the name that no other option has; "game" names the game's own program, and mod managers' ids
+// mark them as on the game.
 std::string FreeId(const QString& name, const std::vector<LaunchOption>& options) {
   std::string base;
   for (const QChar ch : name.toLower()) {
@@ -45,6 +48,9 @@ std::string FreeId(const QString& name, const std::vector<LaunchOption>& options
   while (!base.empty() && base.back() == '-') base.pop_back();
   if (base.empty()) base = "option";
   std::set<std::string> taken = {"game"};
+  for (const SourceInfo& source : AllSources()) {
+    if (source.kind == SourceInfo::Kind::ModManager) taken.insert(source.id.toStdString());
+  }
   for (const LaunchOption& option : options) taken.insert(option.id);
   std::string id = base;
   for (int n = 2; taken.contains(id); ++n) id = base + "-" + std::to_string(n);
@@ -119,8 +125,12 @@ void LaunchOptionsEdit::SetLaunch(const GameLaunch& launch, bool windows, const 
 GameLaunch LaunchOptionsEdit::Launch() const { return launch_; }
 
 void LaunchOptionsEdit::Rebuild() {
+  // deleteLater: a row's own button may be what asked for this.
   while (QLayoutItem* item = rows_->takeAt(0)) {
-    delete item->widget();
+    if (QWidget* row = item->widget()) {
+      row->hide();
+      row->deleteLater();
+    }
     delete item;
   }
   for (size_t i = 0; i < launch_.options.size(); ++i) {
@@ -174,6 +184,7 @@ void LaunchOptionsEdit::Rebuild() {
   default_->setCurrentIndex(std::max(at, 0));
   default_->setEnabled(default_->count() > 1);
   only_->setEnabled(at > 0);
+  const QSignalBlocker quiet(only_);
   only_->setChecked(at > 0 && launch_.only);
 }
 
@@ -219,7 +230,7 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   option.exe = exe->text().trimmed().toStdString();
   option.args = args->text().trimmed().toStdString();
   option.native = windows_ && native->isChecked();
-  if (option.mode != "play" && option.id == launch_.default_id) {
+  if (option.mode != "play" && !option.id.empty() && option.id == launch_.default_id) {
     launch_.default_id.clear();
     launch_.only = false;
   }

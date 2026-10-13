@@ -128,10 +128,20 @@ Result<void> Install(const ModManager& manager) {
     return unpacked;
   }
   std::ofstream(staging / kVersionFile) << asset->tag << '\n';
-  fs::remove_all(dir, ec);
+  // Renames only, so the old copy stays whole until the new one is in place.
+  const fs::path old = dir.string() + ".old";
+  fs::remove_all(old, ec);
+  fs::rename(dir, old, ec);
+  ec.clear();
   fs::rename(staging, dir, ec);
+  if (ec) {
+    const std::string why = ec.message();
+    fs::rename(old, dir, ec);
+    cleanup();
+    return Err("install_failed", std::format("couldn't move {} into place: {}", manager.name, why));
+  }
+  fs::remove_all(old, ec);
   cleanup();
-  if (ec) return Err("install_failed", std::format("couldn't move {} into place: {}", manager.name, ec.message()));
   return {};
 }
 
@@ -175,7 +185,8 @@ Result<model::Game> RemoveFromGame(store::GameStore& games, const ModManager& ma
 
 Result<void> Uninstall(store::GameStore& games, const ModManager& manager) {
   for (const model::Game& game : games.All()) {
-    if (OnGame(game, manager)) [[maybe_unused]] auto _ = RemoveFromGame(games, manager, game.id);
+    if (!OnGame(game, manager)) continue;
+    if (auto removed = RemoveFromGame(games, manager, game.id); !removed) return std::unexpected(removed.error());
   }
   std::error_code ec;
   fs::remove_all(Dir(manager), ec);

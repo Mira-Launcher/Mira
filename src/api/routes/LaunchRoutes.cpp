@@ -279,8 +279,8 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
 void StartAlongside(Services& s, model::Game game) {
   for (const library::LaunchOption& option : library::LaunchOptions(game)) {
     if (option.mode != library::LaunchMode::Alongside) continue;
-    const std::string unit = std::format("mira-{}-{}-{}.scope", game.id, option.id, model::NowSeconds());
-    if (!s.supervisor.AddCompanion(game.id, unit)) return;
+    const std::string unit = s.supervisor.CompanionUnit(game.id, option.id);
+    if (unit.empty()) return;
     if (auto started = SpawnOption(s, game, option, unit); !started) {
       log::Warn("couldn't start {} with {}: {}", option.name, game.id, started.error().message);
     }

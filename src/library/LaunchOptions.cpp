@@ -35,6 +35,7 @@ std::vector<LaunchOption> LaunchOptions(const model::Game& game) {
   if (list == game.launch.end() || !list->is_array()) return options;
   for (const json& entry : *list) {
     if (!entry.is_object()) continue;
+    if (LaunchProblem({{"options", json::array({entry})}})) continue;  // skips malformed ones from old metadata
     LaunchOption option;
     option.id = entry.value("id", std::string());
     option.name = entry.value("name", std::string());
@@ -55,8 +56,9 @@ std::optional<LaunchOption> FindLaunchOption(const model::Game& game, std::strin
 }
 
 std::optional<LaunchOption> DefaultLaunch(const model::Game& game) {
-  const std::string id = game.launch.value("default", std::string());
-  if (id.empty()) return std::nullopt;
+  const auto it = game.launch.find("default");
+  if (it == game.launch.end() || !it->is_string() || it->get<std::string>().empty()) return std::nullopt;
+  const std::string id = *it;
   auto option = FindLaunchOption(game, id);
   if (option && option->mode != LaunchMode::Play) return std::nullopt;
   return option;
@@ -93,7 +95,8 @@ json WithLaunchIds(json launch) {
   for (const json& option : launch["options"]) taken.insert(option.value("id", std::string()));
   for (json& option : launch["options"]) {
     if (!option.value("id", std::string()).empty()) continue;
-    const std::string base = strings::Slugify(option.value("name", std::string()));
+    std::string base = strings::Slugify(option.value("name", std::string()));
+    if (base.empty()) base = "option";
     std::string id = base;
     for (int n = 2; taken.contains(id); ++n) id = std::format("{}-{}", base, n);
     taken.insert(id);

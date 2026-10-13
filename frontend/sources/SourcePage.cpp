@@ -231,6 +231,7 @@ QWidget* SourcePage::BuildTopRow() {
   icons::Follow(import_button_, IsEmulator() || IsModManager() ? icons::Glyph::Plus : icons::Glyph::Refresh);
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).
   import_button_->setVisible(HasImport() && !IsStore() && !IsLauncher());
+  import_button_->setEnabled(!IsModManager());  // until its status says it's installed
   connect(import_button_, &QPushButton::clicked, this, [this] {
     if (IsModManager()) return AddToGame();
     IsEmulator() ? PickGames() : Import();
@@ -796,7 +797,7 @@ void SourcePage::AddToGame() {
   import_button_->setEnabled(false);
   ShowLine(import_result_, "Getting " + name + "'s prefix ready for " + source_.name + "…", "muted");
   api::AddModManagerToGameAsync(this, id_, game_id, [this, name](StoreActionResult result) {
-    import_button_->setEnabled(true);
+    import_button_->setEnabled(manager_.installed);
     if (!result.ok) return ShowError(import_result_, "Could not add it to " + name + ".", result.error);
     ShowLine(import_result_, "Added to " + name + ". Open it from the game's page.", "muted");
   });
