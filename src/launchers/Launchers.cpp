@@ -29,8 +29,10 @@
 #include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Curl.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/RunnerUpdates.h"
 #include "runner/Winetricks.h"
 #include "system/Packages.h"
 
@@ -489,6 +491,29 @@ Result<void> InstallAutodesk(config::Config& config, const Launcher& launcher,
   return {};
 }
 
+// launchers.app_runner, downloaded when it isn't installed. Empty when that setting is.
+Result<std::string> AppRunner(config::Config& config, const Launcher& launcher) {
+  const std::string ref = config.GetString("launchers.app_runner");
+  if (ref.empty() || ref == "auto" || runner::RunnerRegistry(config).Resolve(ref)) return ref;
+  const std::size_t colon = ref.find(':');
+  const std::string kind = ref.substr(0, colon);
+  const std::string tag = ref.substr(colon + 1);
+  const auto family = runner::FamilyFor(config, kind, "");
+  if (!family) return std::unexpected(family.error());
+  const auto releases = runner::ListFamilyReleases(*family);
+  if (!releases) return std::unexpected(releases.error());
+  const auto match = std::ranges::find(*releases, tag, &runner::ReleaseAsset::tag);
+  if (match == releases->end()) {
+    return Err("release_not_found", std::format("no {} release tagged \"{}\"", family->label, tag),
+               "Set launchers.app_runner to an installed runner.");
+  }
+  Say(launcher, "Downloading " + tag);
+  if (auto installed = runner::DownloadAndInstall(config, kind, *match); !installed) {
+    return std::unexpected(installed.error());
+  }
+  return ref;
+}
+
 Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
                                 const Launcher& launcher,
                                 const std::function<void(double)>& on_progress,
@@ -530,6 +555,11 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
     game.tags.push_back("app");
   for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
   if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
+  if (game.runner_ref.empty() && launcher.app) {
+    auto ref = AppRunner(config, launcher);
+    if (!ref) return std::unexpected(ref.error());
+    game.runner_ref = *ref;
+  }
   if (game.runner_ref.empty()) game.runner_ref = config.GetString("launchers.runner");
   // Creative Cloud needs AdobeWine, the build launchers.adobe.adobewine_url picks, also in an entry
   // an older install left on another runner.

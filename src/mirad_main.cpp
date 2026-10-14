@@ -175,6 +175,8 @@ int main(int argc, char** argv) {
     mira::log::Info("startup scan: added {}, missing {}, restored {}, moved {}", summary.added,
                     summary.missing, summary.restored, summary.moved);
     services.SortAllByTags();  // in case the folder tags changed while mirad was off
+    // On a lane, so shutdown stops a download instead of waiting for it.
+    services.operations.Post([&services] { services.EnsureWindowsRunner(); });
   });
 
   mira::library::Watcher watcher(config, games, events);

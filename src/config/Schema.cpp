@@ -667,6 +667,12 @@ Schema::Schema() {
   s.Group("Where to find runners");
   s.ResetTogether();
 
+  s.Add({.key = "runners.download_when_missing",
+         .label = "Download a runner when none is installed",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "When Mira starts with no Wine or Proton runner, download the newest GE-Proton."});
+
   s.Add({.key = "runner_scan_common_dirs",
          .label = "Scan common runner folders",
          .type = Type::Bool,
@@ -1005,6 +1011,16 @@ Schema::Schema() {
          .doc = "The runner for a store launcher's prefix, for example \"proton:GE-Proton11-7\". "
                 "Empty uses the default Wine/Proton runner. Games the launcher installs use the "
                 "same runner.",
+         .constraint = OptionalRunnerRef(),
+         .is_runner_ref = true});
+
+  s.Add({.key = "launchers.app_runner",
+         .label = "Windows app runner",
+         .type = Type::String,
+         .default_value = "proton:GE-Proton11-7",
+         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks), downloaded "
+                "when it isn't "
+                "installed. Empty uses the launcher runner.",
          .constraint = OptionalRunnerRef(),
          .is_runner_ref = true});
 

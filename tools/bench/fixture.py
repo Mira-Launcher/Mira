@@ -49,6 +49,9 @@ umu_lookup = false
 
 [updates]
 check = false
+
+[runners]
+download_when_missing = false
 """
 FRONTEND = """onboarded = true
 window_width = 1600

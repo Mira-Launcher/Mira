@@ -186,6 +186,13 @@ class Services {
   void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
                      const std::string& source, const runner::ReleaseAsset& asset,
                      const std::string& replacing);
+  // InstallRunner's work: downloads and installs `asset`, publishing runners.download.*.
+  Result<nlohmann::json> DownloadRunner(const std::string& kind, const std::string& source,
+                                        const runner::ReleaseAsset& asset,
+                                        const std::string& replacing);
+  // With no Wine or Proton build installed (a fresh install), downloads the newest GE-Proton so
+  // Windows games run.
+  void EnsureWindowsRunner();
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
