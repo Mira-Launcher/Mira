@@ -5,7 +5,6 @@
 #include <cctype>
 #include <cstdlib>
 #include <format>
-#include <fstream>
 #include <optional>
 #include <set>
 
@@ -63,7 +62,7 @@ std::string Binary(std::string_view name) {
     found = fs::read_symlink("/proc/self/exe", ec).parent_path() / name;
   }
   if (ec || !fs::is_regular_file(found, ec)) return std::string(name);
-  return found.string().contains(' ') ? std::format("\"{}\"", found.string()) : found.string();
+  return found.string();
 }
 
 // The file types a Microsoft 365 app opens; empty for anything else.

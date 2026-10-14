@@ -87,11 +87,13 @@ TEST_CASE("DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain
               "Exec=flatpak run --branch=stable --command=example com.example.App @@u %u @@\n"
               "X-Flatpak=com.example.App\n");
 
-  test::Touch(fx.apps_dir / "native-game.desktop",
-              "[Desktop Entry]\n"
-              "Type=Application\n"
-              "Name=Native Game\n"
-              "Exec=\"/opt/nativegame/game\" --fullscreen\n");
+  const fs::path native_dir = TempDir("desktop-scan-candidates-exe");
+  test::Touch(native_dir / "game", "#!/bin/sh\n", /*executable=*/true);
+  test::Touch(fx.apps_dir / "native-game.desktop", std::format("[Desktop Entry]\n"
+                                                               "Type=Application\n"
+                                                               "Name=Native Game\n"
+                                                               "Exec=\"{}/game\" --fullscreen\n",
+                                                               native_dir.string()));
 
   test::Touch(fx.apps_dir / "mira-celeste.desktop",
               "[Desktop Entry]\n"
@@ -175,6 +177,7 @@ TEST_CASE("DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<
 TEST_CASE("DesktopEntryScanner: Import adds a plain native entry, and re-importing updates rather than duplicates") {
   Fixture fx("desktop-scan-import-native");
   const fs::path exe_dir = TempDir("desktop-scan-import-native-exe");
+  test::Touch(exe_dir / "game", "#!/bin/sh\n", /*executable=*/true);
   test::Touch(fx.apps_dir / "native-game.desktop", std::format("[Desktop Entry]\n"
                                                                "Type=Application\n"
                                                                "Name=Native Game\n"

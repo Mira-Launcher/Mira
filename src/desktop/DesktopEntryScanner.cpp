@@ -1,5 +1,9 @@
 #include "desktop/DesktopEntryScanner.h"
 
+#include <unistd.h>
+
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <map>
@@ -117,6 +121,23 @@ bool IsFieldCodeOrForwardBracket(const std::string& token) {
   return token.size() == 2 && token[0] == '%';
 }
 
+// Removes field codes that sit inside a token, such as --url=%U.
+std::string StripFieldCodes(const std::string& token) {
+  std::string kept;
+  for (size_t i = 0; i < token.size(); ++i) {
+    if (token[i] == '%' && i + 1 < token.size()) {
+      const char next = token[i + 1];
+      if (next == '%' || std::string_view("fFuUick").contains(next)) {
+        if (next == '%') kept += '%';  // an escaped percent sign
+        ++i;
+        continue;
+      }
+    }
+    kept += token[i];
+  }
+  return kept;
+}
+
 // Minimal desktop-entry-spec-aware tokenizer: splits on whitespace, honoring
 // one level of double-quoting. Drops field codes and Flatpak-style
 // @@...@@ forwarding brackets.
@@ -127,7 +148,8 @@ std::vector<std::string> TokenizeExec(const std::string& exec) {
   bool have_token = false;
 
   auto flush = [&] {
-    if (have_token && !IsFieldCodeOrForwardBracket(current)) tokens.push_back(current);
+    const std::string kept = StripFieldCodes(current);
+    if (have_token && !IsFieldCodeOrForwardBracket(current) && !kept.empty()) tokens.push_back(kept);
     current.clear();
     have_token = false;
   };
@@ -176,9 +198,14 @@ struct Resolved {
   model::Platform platform = model::Platform::Native;
 };
 
-// An absolute path for `command`: as given if already absolute, else looked up on PATH.
+// An absolute path for `command`: as given if already absolute and still there, else looked up on
+// PATH.
 std::optional<fs::path> AbsoluteCommand(const std::string& command) {
-  if (fs::path(command).is_absolute()) return fs::path(command);
+  if (fs::path(command).is_absolute()) {
+    std::error_code ec;
+    if (!fs::is_regular_file(command, ec) || ::access(command.c_str(), X_OK) != 0) return std::nullopt;
+    return fs::path(command);
+  }
   if (command.find('/') != std::string::npos) return std::nullopt;
   if (const auto found = runner::FindOnPath(command)) return fs::path(*found);
   return std::nullopt;
@@ -190,8 +217,12 @@ std::optional<Resolved> ResolveCandidate(const DesktopFile& file) {
     // Ignore Exec= entirely -- Flatpak's own Exec line is a mess of
     // "flatpak run --branch=... --command=... <app-id> @@u %u @@" that isn't
     // worth parsing when the app id alone is enough to relaunch it exactly.
+    // It goes into a path and the args, so only what a real app id holds (org.example.App).
+    const bool valid_id = std::ranges::all_of(app_id, [](char c) {
+      return std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == '-';
+    });
     const auto flatpak = AbsoluteCommand("flatpak");
-    if (!flatpak) return std::nullopt;
+    if (!valid_id || app_id.starts_with('.') || !flatpak) return std::nullopt;
     Resolved resolved;
     resolved.install_path = (paths::Home() / ".var" / "app" / app_id).string();
     resolved.exe_path = flatpak->string();
@@ -257,9 +288,9 @@ std::vector<ScannedEntry> ScanAll(const config::Config& config) {
 // The game imported from this entry, by desktop file id. Imports from before
 // source_ref was set stored a bare or relative command, so they're matched by
 // command name and args instead.
-std::optional<model::Game> FindImported(const store::GameStore& games, const ScannedEntry& entry) {
+std::optional<model::Game> FindImported(const std::vector<model::Game>& library, const ScannedEntry& entry) {
   const std::string command = fs::path(entry.resolved.exe_path).filename().string();
-  for (const model::Game& game : games.All()) {
+  for (const model::Game& game : library) {
     if (game.source != "desktop-entry") continue;
     if (game.source_ref == entry.id) return game;
     if (game.source_ref.empty() && fs::path(game.exe_path).filename() == command &&
@@ -279,10 +310,11 @@ Result<std::vector<DesktopEntryCandidate>> DesktopEntryScanner::ListCandidates()
   if (!config_.GetBool("desktop_import.enabled")) return std::vector<DesktopEntryCandidate>{};
 
   std::vector<DesktopEntryCandidate> candidates;
+  const std::vector<model::Game> library = games_.All();
   for (const ScannedEntry& entry : ScanAll(config_)) {
     // No reason to list something already in the library as a candidate to
     // add again.
-    if (FindImported(games_, entry)) continue;
+    if (FindImported(library, entry)) continue;
     candidates.push_back(DesktopEntryCandidate{
         .id = entry.id,
         .name = entry.file.Get("Name"),
@@ -300,10 +332,11 @@ Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std
   const std::set<std::string> wanted(ids.begin(), ids.end());
   library::ImportSummary summary;
 
+  const std::vector<model::Game> library = games_.All();
   for (const ScannedEntry& entry : ScanAll(config_)) {
     if (!wanted.contains(entry.id)) continue;
 
-    const auto existing = FindImported(games_, entry);
+    const auto existing = FindImported(library, entry);  // only the picked entries
     model::Game game = existing.value_or(model::Game{});
     game.id = existing ? game.id : games_.NextId(entry.file.Get("Name"));
     game.source = "desktop-entry";
