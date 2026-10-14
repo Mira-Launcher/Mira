@@ -23,15 +23,17 @@ const QKeySequence kQuit(Qt::CTRL | Qt::Key_Q);
 
 QList<Entry> CommonEntries() {
   return {
-      {"Ctrl+Q", "Quit Mira"},
-      {"Ctrl+W", "Close this window"},
-      {"F1", "Show this list"},
+      {"Ctrl+Q", "Quit Mira", "quit"},
+      {"Ctrl+W", "Close this window", "close_window"},
+      {"F1", "Show this list", "shortcuts_reference"},
   };
 }
 
 void AddRows(QFormLayout* form, QWidget* parent, const QList<Entry>& entries) {
   for (const Entry& entry : entries) {
-    auto* keys = new QLabel(entry.keys, parent);
+    const QString text = entry.id.isEmpty() ? entry.keys : keybindings::KeysText(entry.id, entry.keys);
+    if (text.isEmpty()) continue;
+    auto* keys = new QLabel(text, parent);
     keys->setProperty("role", "keys");
     form->addRow(keys, new QLabel(entry.description, parent));
   }
@@ -93,6 +95,11 @@ void ShowReference(QWidget* parent, const QList<Entry>& window_specific) {
   layout->addWidget(buttons);
 
   dialog.exec();
+}
+
+QString HiddenGamesHint() {
+  const QString keys = keybindings::KeysText("toggle_hidden", "Ctrl+H");
+  return "(" + (keys.isEmpty() ? QString("the Hidden filter") : keys) + " shows hidden games)";
 }
 
 }  // namespace mira_gui::shortcuts

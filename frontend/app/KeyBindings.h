@@ -55,6 +55,10 @@ std::map<std::string, std::string> Current();
 // before or after the ids in question are Register()ed.
 void LoadOverrides(const std::map<std::string, std::string>& saved);
 
+// `id`'s keys as the user sees them once overridden; `fallback` (the default's own wording) otherwise.
+// Empty when overridden to no shortcut.
+QString KeysText(const QString& id, const QString& fallback);
+
 // Sets (or, with an empty QKeySequence, deliberately clears) `id`'s override
 // and re-applies it (this key plus whatever extra_aliases that id was
 // registered with) to every currently-live QAction registered under it.
