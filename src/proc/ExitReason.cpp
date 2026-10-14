@@ -127,6 +127,7 @@ std::string ReadLogTail(const std::filesystem::path& log, std::size_t max_bytes)
   std::ifstream file(log, std::ios::binary | std::ios::ate);
   if (!file) return {};
   const std::streamoff size = file.tellg();
+  if (size < 0) return {};
   const std::streamoff start = size > static_cast<std::streamoff>(max_bytes) ? size - static_cast<std::streamoff>(max_bytes) : 0;
   file.seekg(start);
   std::string tail(static_cast<std::size_t>(size - start), '\0');

@@ -56,12 +56,13 @@ void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info, cons
   event["fix"] = {{"kind", "game"}, {"target", game_id}, {"step", "log"}};
 }
 
-void RunScript(const std::string& script, const std::string& game_id, const char* which) {
+void RunScript(const std::string& script, const std::string& game_id, std::int64_t timeout_s) {
   if (script.empty()) return;
   Command command;
   command.argv = {"sh", "-c", script};
+  command.timeout_s = static_cast<int>(timeout_s);
   if (auto result = runner::RunAndWait(command); !result || result->exit_code != 0) {
-    log::Warn("launch.{}_script for {} failed: {}", which, game_id,
+    log::Warn("launch.post_script for {} failed: {}", game_id,
              !result ? result.error().message : std::format("exited {}", result->exit_code));
   }
 }
@@ -333,10 +334,8 @@ std::string CompanionPrefix(const std::string& game_id) { return "mira-with-" + 
 void StopUnits(const std::string& pattern) {
   Command command;
   command.argv = {"systemctl", "--user", "stop", "--no-block", pattern};
-  if (auto pid = runner::SpawnDetached(command); pid) {
-    std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();
-  } else {
-    log::Warn("couldn't stop {}: {}", pattern, pid.error().message);
+  if (auto spawned = runner::SpawnReaped(command); !spawned) {
+    log::Warn("couldn't stop {}: {}", pattern, spawned.error().message);
   }
 }
 
@@ -365,12 +364,14 @@ bool ProcessSupervisor::AnyRunning() const {
 // Stop()'s SIGKILL escalation, for WatchWrapped and WatchReconciledLive: a game that
 // ignored SIGTERM past its deadline gets SIGKILL to its whole cgroup.
 void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_pid) {
-  std::lock_guard lock(mutex_);
-  const auto deadline = kill_deadlines_.find(game_id);
-  if (deadline == kill_deadlines_.end() || model::NowSeconds() < deadline->second) return;
+  {
+    std::lock_guard lock(mutex_);
+    const auto deadline = kill_deadlines_.find(game_id);
+    if (deadline == kill_deadlines_.end() || model::NowSeconds() < deadline->second) return;
+    kill_deadlines_.erase(deadline);
+  }
   log::Warn("{} ignored SIGTERM; sending SIGKILL", game_id);
   if (const auto group = WrappedGroup(wrapper_pid)) cgroup::Kill(*group);
-  kill_deadlines_.erase(deadline);
 }
 
 void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
@@ -514,21 +515,24 @@ void ProcessSupervisor::Reconcile() {
 }
 
 Result<void> ProcessSupervisor::TrackSteamLaunch(const model::Game& game, const std::string& appid,
-                                                 std::string post_script) {
+                                                 std::string post_script, std::int64_t post_timeout_s) {
   // Steam has real startup latency (client wakeup, update checks, Proton's
   // own prefix work) before the game process exists at all.
   ExternalMatch match;
   match.appid = appid;
   match.detect_timeout_s = 60;
+  match.post_timeout_s = post_timeout_s;
   return TrackExternal(game, std::move(match), std::move(post_script));
 }
 
 Result<void> ProcessSupervisor::TrackLauncherLaunch(const model::Game& game, const std::string& win_dir,
-                                                    std::int64_t detect_timeout_s, std::string post_script) {
+                                                    std::int64_t detect_timeout_s, std::string post_script,
+                                                    std::int64_t post_timeout_s) {
   ExternalMatch match;
   match.data_dir = game.data_dir;
   match.win_dir = win_dir;
   match.detect_timeout_s = detect_timeout_s;
+  match.post_timeout_s = post_timeout_s;
   return TrackExternal(game, std::move(match), std::move(post_script));
 }
 
@@ -598,14 +602,16 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
 
     // SIGKILL escalation, as KillIfOverdue does for a mira-run game: without it a Steam
     // game that ignored Stop's SIGTERM kept running with mirad unable to tell.
+    bool overdue = false;
     {
       std::lock_guard lock(mutex_);
       const auto deadline = kill_deadlines_.find(game_id);
-      if (deadline != kill_deadlines_.end() && model::NowSeconds() >= deadline->second) {
-        log::Warn("{} (launched externally) ignored SIGTERM; sending SIGKILL", game_id);
-        for (pid_t found : FindExternal(match)) ::kill(found, SIGKILL);
-        kill_deadlines_.erase(deadline);
-      }
+      overdue = deadline != kill_deadlines_.end() && model::NowSeconds() >= deadline->second;
+      if (overdue) kill_deadlines_.erase(deadline);
+    }
+    if (overdue) {
+      log::Warn("{} (launched externally) ignored SIGTERM; sending SIGKILL", game_id);
+      for (pid_t found : FindExternal(match)) ::kill(found, SIGKILL);
     }
 
     const std::int64_t elapsed = model::NowSeconds() - started_at;
@@ -637,7 +643,7 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
   event["played_seconds"] = played;
   events_.Publish("game.state", std::move(event));
 
-  RunScript(post_script, game_id, "post");
+  RunScript(post_script, game_id, match.post_timeout_s);
 }
 
 }  // namespace mira::proc

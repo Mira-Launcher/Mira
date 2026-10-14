@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
     std::error_code ec;
     std::filesystem::create_directories(args.log_file.parent_path(), ec);
     RotateLog(args.log_file, args.log_max_mb);
-    log_fd = ::open(args.log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644);
+    log_fd = ::open(args.log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0600);
     if (log_fd < 0) {
       std::cerr << "mira-run: could not open log file " << args.log_file << ": " << std::strerror(errno) << "\n";
     } else {
@@ -412,7 +412,9 @@ int main(int argc, char** argv) {
 
   std::error_code ec;
   std::filesystem::remove(game_group, ec);  // best effort: an empty cgroup is a plain rmdir
-  [[maybe_unused]] auto write_end = proc::WriteSessionRecord(args.database, record);
+  if (auto written = proc::WriteSessionRecord(args.database, record); !written && log_fd >= 0) {
+    WriteLogLine(log_fd, "[mira-run] couldn't record the session: " + written.error().message + "\n");
+  }
   if (log_fd >= 0) ::close(log_fd);
   return 0;
 }
