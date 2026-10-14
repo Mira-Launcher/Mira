@@ -59,6 +59,13 @@ Validator RunnerRef() {
   };
 }
 
+// A runner reference or "auto".
+Validator AutoOrRunnerRef() {
+  return [](const json& value) -> std::optional<std::string> {
+    return value == "auto" ? std::nullopt : RunnerRef()(value);
+  };
+}
+
 // A runner reference, "auto", or empty for "fall back to the default".
 Validator OptionalRunnerRef() {
   return [](const json& value) -> std::optional<std::string> {
@@ -608,6 +615,7 @@ Schema::Schema() {
                 "\"proton:GE-Proton11-7\" or \"wine:system\". A name of \"latest\" picks the newest "
                 "installed build. \"auto\" picks the best installed runner: Proton if any is "
                 "installed, otherwise Wine.",
+         .constraint = AutoOrRunnerRef(),
          .is_runner_ref = true});
 
   s.Add({.key = "default_runner.native",
@@ -911,7 +919,9 @@ Schema::Schema() {
          .default_value = "",
          .doc = "The runner that runs installers, for example \"proton:GE-Proton11-7\" or "
                 "\"wine:latest\". Empty uses the default Wine/Proton runner. The game keeps this "
-                "runner afterward, because its prefix was created with it."});
+                "runner afterward, because its prefix was created with it.",
+         .constraint = OptionalRunnerRef(),
+         .is_runner_ref = true});
 
   s.Add({.key = "install.show_progress",
          .label = "Show installer progress",
@@ -1302,18 +1312,6 @@ std::optional<std::string> Schema::Validate(std::string_view key, const json& va
 
   if (entry->constraint) return entry->constraint.validate(value);
   return std::nullopt;
-}
-
-std::vector<std::string> Schema::ValidateDocument(const json& document) const {
-  std::vector<std::string> problems;
-  for (const Entry& entry : entries_) {
-    const auto pointer = Pointer(entry.key);
-    if (!document.contains(pointer)) continue;  // absent means "use the default"
-    if (auto problem = Validate(entry.key, document[pointer])) {
-      problems.push_back(std::format("{}: {}", entry.key, *problem));
-    }
-  }
-  return problems;
 }
 
 std::string_view ToString(Scope scope) {

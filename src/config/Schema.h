@@ -39,7 +39,7 @@ struct Constraint {
 };
 
 // Declared with designated initializers in Schema.cpp, under the section it
-// shows in. See the comment at the top of Schema::Schema() for the pattern.
+// shows in.
 struct Entry {
   std::string key;    // dotted, e.g. "scan.debounce_ms"
   std::string label;  // what a settings screen calls it
@@ -68,9 +68,8 @@ struct Entry {
 
 // Every configurable value in the daemon is declared here exactly once. The
 // registry drives default materialisation, PATCH validation, the schema the
-// frontend builds its settings UI from, `mira config describe`, and the
-// generated docs/config.md. A new setting is one declaration and it exists in
-// all five places.
+// frontend builds its settings UI from, and `mira config describe`. A new
+// setting is one declaration and it exists in all four places.
 class Schema {
 public:
   static const Schema& Instance();
@@ -83,9 +82,6 @@ public:
 
   // Validates one value against its declared type and validator.
   std::optional<std::string> Validate(std::string_view key, const nlohmann::json& value) const;
-
-  // Validates a whole document, reporting every problem rather than the first.
-  std::vector<std::string> ValidateDocument(const nlohmann::json& document) const;
 
   // "scan.debounce_ms" -> "/scan/debounce_ms"
   static nlohmann::json::json_pointer Pointer(std::string_view dotted_key);
