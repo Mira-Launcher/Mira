@@ -88,12 +88,6 @@ SettingRow* HeadingsRow(QWidget* parent) {
   return row;
 }
 
-void KeepSpaceWhenHidden(QWidget* widget, bool keep) {
-  QSizePolicy policy = widget->sizePolicy();
-  policy.setRetainSizeWhenHidden(keep);
-  widget->setSizePolicy(policy);
-}
-
 QString FolderName(const std::string& root) { return QDir(QString::fromStdString(root)).dirName(); }
 
 // The same folder however a setting spells it: "~/Mira/Games", "/home/me/Mira/Games/".
@@ -457,8 +451,17 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   Refresh();
 }
 
+TagsPage::~TagsPage() {
+  // A reply dropped with the page would leave the flag set.
+  if (fetching_steam_) g_fetching_steam = false;
+}
+
 void TagsPage::SetGames(const std::vector<GameSummary>& games) {
   games_ = games;
+  hidden_ids_.clear();
+  for (const GameSummary& game : games_) {
+    if (IsHidden(game)) hidden_ids_.insert(game.id);
+  }
   RecountSoon();  // a game hidden or shown changes the counts
 }
 
@@ -468,12 +471,8 @@ void TagsPage::RecountSoon() {
 }
 
 std::size_t TagsPage::ShownCount(const std::vector<std::string>& ids) const {
-  std::unordered_set<std::string> hidden;
-  for (const GameSummary& game : games_) {
-    if (IsHidden(game)) hidden.insert(game.id);
-  }
   return std::ranges::count_if(
-      ids, [&](const std::string& id) { return hidden.contains(id) == showing_hidden_; });
+      ids, [&](const std::string& id) { return hidden_ids_.contains(id) == showing_hidden_; });
 }
 
 void TagsPage::SetTileWidth(int width) {
@@ -551,7 +550,9 @@ void TagsPage::RefreshSoon() {
 }
 
 void TagsPage::Refresh() {
-  api::GetTagsAsync(this, [this](TagsResult result) {
+  const int serial = ++refresh_serial_;
+  api::GetTagsAsync(this, [this, serial](TagsResult result) {
+    if (serial != refresh_serial_) return;  // a newer refresh is in flight
     if (!result.ok) return Failed("Could not list the tags.", result.error);
     tags_ = std::move(result);
     tags_loaded_ = true;
@@ -559,8 +560,10 @@ void TagsPage::Refresh() {
     // Games fetched before Steam tags were get them now, once a session.
     if (tags_.steam_missing > 0 && settings_.steam && !g_fetching_steam) {
       g_fetching_steam = true;
+      fetching_steam_ = true;
       SyncSteam();
       api::FetchSteamTagsAsync(this, [this](SteamTagsFetchResult fetched) {
+        fetching_steam_ = false;
         if (!fetched.ok) {
           g_fetching_steam = false;  // asked again on the next refresh
           return Failed("Could not get tags from Steam.", fetched.error);
