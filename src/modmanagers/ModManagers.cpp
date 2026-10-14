@@ -6,6 +6,7 @@
 #include <mutex>
 #include <set>
 
+#include "core/AtomicFile.h"
 #include "core/Paths.h"
 #include "runner/Curl.h"
 #include "runner/Downloader.h"
@@ -79,21 +80,29 @@ std::string InstalledVersion(const ModManager& manager) {
   return Installed(manager) ? tag : std::string();
 }
 
-Result<void> Install(const ModManager& manager) {
-  static std::mutex mutex;
-  static std::set<std::string> installing;
-  {
-    std::lock_guard lock(mutex);
-    if (!installing.insert(manager.id).second)
-      return Err("already_installing", std::format("{} is already being installed", manager.name));
+namespace {
+// The managers with an install or uninstall running; one at a time for each.
+std::mutex jobs_mutex;
+std::set<std::string> jobs;
+
+bool ClaimJob(const std::string& id) {
+  std::lock_guard lock(jobs_mutex);
+  return jobs.insert(id).second;
+}
+
+struct JobSlot {
+  const std::string& id;
+  ~JobSlot() {
+    std::lock_guard lock(jobs_mutex);
+    jobs.erase(id);
   }
-  struct Done {
-    const std::string& id;
-    ~Done() {
-      std::lock_guard lock(mutex);
-      installing.erase(id);
-    }
-  } done{manager.id};
+};
+}  // namespace
+
+Result<void> Install(const ModManager& manager) {
+  if (!ClaimJob(manager.id))
+    return Err("already_installing", std::format("{} is already being installed", manager.name));
+  const JobSlot job{manager.id};
 
   const auto asset = runner::LatestRelease(manager.release_url, manager.asset, manager.exclude);
   if (!asset) return std::unexpected(asset.error());
@@ -127,7 +136,10 @@ Result<void> Install(const ModManager& manager) {
     cleanup();
     return unpacked;
   }
-  std::ofstream(staging / kVersionFile) << asset->tag << '\n';
+  if (auto written = WriteFileAtomic(staging / kVersionFile, asset->tag + '\n', "install_failed"); !written) {
+    cleanup();
+    return written;
+  }
   // Renames only, so the old copy stays whole until the new one is in place.
   const fs::path old = dir.string() + ".old";
   fs::remove_all(old, ec);
@@ -184,6 +196,8 @@ Result<model::Game> RemoveFromGame(store::GameStore& games, const ModManager& ma
 }
 
 Result<void> Uninstall(store::GameStore& games, const ModManager& manager) {
+  if (!ClaimJob(manager.id)) return Err("busy", std::format("{} is busy with another install or uninstall", manager.name));
+  const JobSlot job{manager.id};
   for (const model::Game& game : games.All()) {
     if (!OnGame(game, manager)) continue;
     if (auto removed = RemoveFromGame(games, manager, game.id); !removed) return std::unexpected(removed.error());

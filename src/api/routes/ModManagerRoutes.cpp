@@ -66,8 +66,12 @@ void RegisterModManagerRoutes(Router& http, Services& s) {
     if (!modmanagers::CanAdd(*game)) {
       return SendError(res, 409, "not_windows_game", manager->name + " runs in a Windows game's prefix, and this game has none");
     }
+    // No move or delete while the tricks run.
+    auto claim = s.Claim(id, "adding a mod manager");
+    if (!claim) return SendError(res, 409, claim.error());
+    const auto held = std::make_shared<proc::ProcessSupervisor::Reservation>(std::move(*claim));
     s.StartJob(req, res, "mod_manager", id, "Adding " + manager->name + " to " + game->name,
-               [&s, id, manager](JobRegistry::Progress&) -> Result<json> {
+               [&s, id, manager, held](JobRegistry::Progress&) -> Result<json> {
                  const auto added = modmanagers::AddToGame(s.config, s.games, *manager, id);
                  if (!added) return std::unexpected(added.error());
                  Changed(s, added);
