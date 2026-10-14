@@ -192,7 +192,7 @@ int PickUpload(const json& uploads) {
   if (!uploads.is_array() || uploads.empty()) return 0;
   for (const char* platform : {"linux", "windows"}) {
     for (size_t i = 0; i < uploads.size(); ++i) {
-      const json platforms = uploads[i].value("platforms", json::object());
+      const json platforms = core::JsonObject(uploads[i], "platforms");
       if (platforms.is_object() && platforms.contains(platform)) return static_cast<int>(i);
     }
   }
@@ -202,11 +202,11 @@ int PickUpload(const json& uploads) {
 // butlerd asks the client things mid-call (which upload, accept a licence)
 // and waits for the answer, so every request gets one.
 void AnswerServerRequest(int fd, const json& request, std::mutex* write_mutex = nullptr) {
-  const std::string method = request.value("method", std::string());
-  const json params = request.value("params", json::object());
+  const std::string method = core::JsonString(request, "method");
+  const json params = core::JsonObject(request, "params");
   json reply = {{"jsonrpc", "2.0"}, {"id", request["id"]}};
   if (method == "PickUpload") {
-    reply["result"] = {{"index", PickUpload(params.value("uploads", json::array()))}};
+    reply["result"] = {{"index", PickUpload(core::JsonArray(params, "uploads"))}};
   } else if (method == "AcceptLicense") {
     reply["result"] = {{"accept", true}};
   } else if (method == "ExternalUploadsAreBad") {
@@ -269,7 +269,7 @@ void ReadLoop(Connection& connection, int fd, LineReader reader) {
     if (parsed.contains("error")) {
       found->second->reply = Err("butlerd_error", core::JsonString(parsed["error"], "message", "butlerd call failed"));
     } else {
-      found->second->reply = parsed.value("result", json::object());
+      found->second->reply = core::JsonObject(parsed, "result");
     }
     connection.replied.notify_all();
   }
@@ -277,7 +277,9 @@ void ReadLoop(Connection& connection, int fd, LineReader reader) {
     log::Warn("butlerd reader stopped: {}", error.what());
   }
 
-  const std::lock_guard<std::mutex> lock(connection.mutex);
+  // Unblocks a Send stuck writing, then write_mutex so none is writing to fd as it closes.
+  ::shutdown(fd, SHUT_RDWR);
+  const std::scoped_lock lock(connection.write_mutex, connection.mutex);
   if (connection.socket_fd == fd) {
     connection.connected = false;
     connection.socket_fd = -1;
@@ -306,16 +308,16 @@ Result<json> ReadResponse(int fd, LineReader& reader, int request_id,
       if (parsed.contains("id")) {
         AnswerServerRequest(fd, parsed);
       } else if (on_notification) {
-        on_notification(parsed.value("method", std::string()), parsed.value("params", json::object()));
+        on_notification(core::JsonString(parsed, "method"), core::JsonObject(parsed, "params"));
       }
       continue;
     }
     if (parsed.contains("id") && parsed["id"].is_number_integer() &&
         parsed["id"].get<int>() == request_id) {
       if (parsed.contains("error")) {
-        return Err("butlerd_error", parsed["error"].value("message", std::string("butlerd call failed")));
+        return Err("butlerd_error", core::JsonString(parsed["error"], "message", "butlerd call failed"));
       }
-      return parsed.value("result", json::object());
+      return core::JsonObject(parsed, "result");
     }
     // A notification for some other in-flight call, or one we don't act
     // on -- move on.
@@ -363,9 +365,9 @@ Result<void> EnsureConnected(const config::Config& config, Connection& connectio
     }
     const json parsed = json::parse(*line, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) continue;
-    if (parsed.value("type", std::string()) != "butlerd/listen-notification") continue;
-    secret = parsed.value("secret", std::string());
-    address = parsed.value("tcp", json::object()).value("address", std::string());
+    if (core::JsonString(parsed, "type") != "butlerd/listen-notification") continue;
+    secret = core::JsonString(parsed, "secret");
+    address = core::JsonString(core::JsonObject(parsed, "tcp"), "address");
   }
 
   // butlerd keeps logging to its stdout for as long as it runs -- drain it
@@ -446,8 +448,14 @@ Result<json> Send(const config::Config& config, const std::string& method, const
   if (fd < 0) return Err("butlerd_disconnected", "lost the connection to butlerd");
   Result<void> sent;
   {
-    const std::lock_guard<std::mutex> lock(connection.write_mutex);
-    sent = SendLine(fd, {{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", params}});
+    const std::lock_guard<std::mutex> write(connection.write_mutex);
+    bool open = false;
+    {
+      const std::lock_guard<std::mutex> lock(connection.mutex);
+      open = connection.socket_fd == fd;
+    }
+    sent = open ? SendLine(fd, {{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", params}})
+                : Err("butlerd_disconnected", "lost the connection to butlerd");
   }
   std::unique_lock<std::mutex> lock(connection.mutex);
   if (!sent) {

@@ -10,7 +10,6 @@
 #include "itch/Itch.h"
 #include "library/Detector.h"
 #include "library/ImportSummary.h"
-#include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::itch {
@@ -101,14 +100,8 @@ Result<library::ImportSummary> ItchImporter::Import() {
       }
     }
 
-    if (game.platform == model::Platform::Windows &&
-        library::NeedsProvisioning(existing)) {
-      if (game.data_dir.empty()) game.data_dir = library::PrefixDir(config_, games_, game).string();
-      const model::Game provisioned = provisioner.ProvisionGame(game);
-      game.runner_ref = provisioned.runner_ref;
-      game.data_dir = provisioned.data_dir;
-      game.status = provisioned.status;
-      game.last_error = provisioned.last_error;
+    if (game.platform == model::Platform::Windows) {
+      library::ProvisionOnImport(game, existing, config_, games_, provisioner);
     } else {
       game.status = model::GameStatus::Ready;
     }

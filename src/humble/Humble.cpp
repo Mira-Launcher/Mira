@@ -7,12 +7,18 @@
 #include <regex>
 
 #include "config/RunnerSources.h"
+#include "core/AtomicFile.h"
+#include "core/Files.h"
+#include "core/Log.h"
+#include "core/Paths.h"
 #include "core/StoreErrors.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::humble {
 namespace {
+
+std::filesystem::path KeyFile() { return paths::Home() / ".humble-cli-key"; }
 namespace fs = std::filesystem;
 
 // humble-cli's --field output is plain CSV, not a padded
@@ -76,11 +82,12 @@ runner::AuthStatus Status(const config::Config& config) {
   status.tool = DetectHumbleCli(config);
   if (!status.tool.installed) return status;
 
-  // No separate "am I logged in" call exists -- `list` is the cheapest
-  // real one, and fails with a specific, recognizable message
-  // ("config file not found...") when no session key has been set yet.
+  // No "am I logged in" call exists, so `list` stands in. Only its no-key and rejected-key
+  // messages mean signed out; a network error or crash doesn't.
   const Result<std::string> listed = RunHumbleCli(config, {"list", "--field", "key"});
-  status.authenticated = listed.has_value();
+  status.authenticated = listed || !(listed.error().message.contains("config file not found") ||
+                                     listed.error().message.contains("config file is empty") ||
+                                     listed.error().message.contains("Unauthorized"));
   return status;
 }
 
@@ -92,10 +99,31 @@ std::optional<std::string> FindSessionKey(std::string_view text) {
 }
 
 Result<void> Login(const config::Config& config, const std::string& session_key) {
-  if (auto output = RunHumbleCli(config, {"auth", session_key}); !output) return std::unexpected(output.error());
+  // What `humble-cli auth <key>` writes, without the key in a process's arguments for anyone to read.
+  const std::filesystem::path key_file = KeyFile();
+  const std::optional<std::string> previous = files::ReadFile(key_file);
+  if (auto written = WriteFileAtomic(key_file, strings::Trim(session_key), "login_failed", true, 0600); !written) {
+    return written;
+  }
   if (const runner::AuthStatus status = Status(config); !status.authenticated) {
+    // A rejected key doesn't log out a working one.
+    std::error_code ec;
+    if (previous) {
+      if (auto restored = WriteFileAtomic(key_file, *previous, "login_failed", true, 0600); !restored) {
+        log::Error("couldn't put the previous Humble key back: {}", restored.error().message);
+      }
+    } else {
+      std::filesystem::remove(key_file, ec);
+    }
     return Err("login_failed", "humble-cli didn't accept that session key");
   }
+  return {};
+}
+
+Result<void> Logout(const config::Config&) {
+  std::error_code ec;
+  std::filesystem::remove(KeyFile(), ec);
+  if (ec) return Err("logout_failed", std::format("couldn't remove {}: {}", KeyFile().string(), ec.message()));
   return {};
 }
 

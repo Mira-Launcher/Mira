@@ -64,7 +64,7 @@ runner::AuthStatus Status(const config::Config& config) {
   const Result<std::string> output = RunNile(config, {"auth", "--status"});
   if (!output) return status;
   const json parsed = core::ParseJsonTail(*output);
-  status.authenticated = parsed.is_object() && parsed.value("LoggedIn", false);
+  status.authenticated = core::JsonBool(parsed, "LoggedIn");
   return status;
 }
 
@@ -82,7 +82,7 @@ Result<std::string> BeginLogin(const config::Config& config) {
   }
   const std::lock_guard lock(pending_mutex);
   pending_login = parsed;
-  return parsed.value("url", std::string());
+  return core::JsonString(parsed, "url");
 }
 
 std::optional<std::string> FindCode(std::string_view text) {
@@ -103,9 +103,9 @@ Result<void> FinishLogin(const config::Config& config, const std::string& redire
     pending = *pending_login;
   }
   const std::string code = FindCode(redirect).value_or(redirect);
-  if (auto registered = RunNile(config, {"register", "--code", code, "--client-id", pending.value("client_id", ""),
-                                         "--code-verifier", pending.value("code_verifier", ""), "--serial",
-                                         pending.value("serial", "")});
+  if (auto registered = RunNile(config, {"register", "--code", code, "--client-id", core::JsonString(pending, "client_id"),
+                                         "--code-verifier", core::JsonString(pending, "code_verifier"), "--serial",
+                                         core::JsonString(pending, "serial")});
       !registered) {
     return Err("login_failed", "nile couldn't register this device. The code may be wrong or expired");
   }

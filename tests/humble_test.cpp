@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "config/Config.h"
+#include "core/Files.h"
 #include "humble/Humble.h"
 #include "support/TestEnv.h"
 
@@ -66,13 +67,20 @@ TEST_CASE("DetectHumbleCli honours the humble.humble_cli_bin override") {
   CHECK(status.source == "override");
 }
 
-TEST_CASE("Status reports unauthenticated when humble-cli has no session key yet") {
+TEST_CASE("Status reports unauthenticated when humble-cli has no session key yet, and a rejected key keeps the old one") {
   Fixture fixture("humble-status-unauth");
   fixture.UseFakeHumbleCli(false);
 
   const runner::AuthStatus status = humble::Status(fixture.config);
   REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
+
+  const std::string home = std::getenv("HOME");
+  setenv("HOME", fixture.dir.c_str(), 1);
+  std::ofstream(fixture.dir / ".humble-cli-key") << "old-key";
+  CHECK_FALSE(humble::Login(fixture.config, "new-key"));
+  CHECK(files::ReadFile(fixture.dir / ".humble-cli-key") == "old-key");
+  setenv("HOME", home.c_str(), 1);
 }
 
 TEST_CASE("Status reports authenticated once a session key works") {

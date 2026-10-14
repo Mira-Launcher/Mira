@@ -4,9 +4,6 @@
 #include <map>
 #include <mutex>
 
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -19,6 +16,7 @@
 #include <json.hpp>
 
 #include "itch/Butlerd.h"
+#include "core/AtomicFile.h"
 #include "core/StoreErrors.h"
 #include "runner/Exec.h"
 
@@ -93,27 +91,26 @@ Result<void> Login(const config::Config& config, const std::string& pasted_key) 
     return std::unexpected(result.error());
   }
   const fs::path key_file = ApiKeyFile(config);
-  std::error_code ec;
-  fs::create_directories(key_file.parent_path(), ec);
-  // Owner-only before the key is written, not after.
-  const int fd = ::open(key_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-  if (fd < 0) return Err("write_failed", "couldn't write " + key_file.string());
-  fchmod(fd, 0600);
-  const bool written = ::write(fd, api_key.data(), api_key.size()) == static_cast<ssize_t>(api_key.size());
-  ::close(fd);
-  if (!written) return Err("write_failed", "couldn't write " + key_file.string());
-  return {};
+  // Owner-only from the start, and the old key stays if the write fails.
+  return WriteFileAtomic(key_file, api_key, "write_failed", true, 0600);
 }
 
 Result<void> Logout(const config::Config& config) {
   std::error_code ec;
   fs::remove(ApiKeyFile(config), ec);
+  if (ec) return Err("logout_failed", std::format("couldn't remove {}: {}", ApiKeyFile(config).string(), ec.message()));
   return {};
 }
 
 Result<std::int64_t> CurrentProfileId(const config::Config& config) {
   std::ifstream file(ApiKeyFile(config));
-  if (!file) return StoreNotSignedIn("itch", "itch.io");
+  if (!file) {
+    std::error_code ec;
+    if (fs::exists(ApiKeyFile(config), ec)) {
+      return Err("store_auth_unreadable", std::format("couldn't read {}", ApiKeyFile(config).string()));
+    }
+    return StoreNotSignedIn("itch", "itch.io");
+  }
   const std::string api_key((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
   // No separate persisted profile id (see this function's header comment)

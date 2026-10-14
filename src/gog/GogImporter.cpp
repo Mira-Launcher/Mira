@@ -1,7 +1,6 @@
 #include "gog/GogImporter.h"
 
 #include <algorithm>
-#include <fstream>
 #include <optional>
 
 #include <json.hpp>
@@ -82,11 +81,11 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   } else if (const Result<std::string> imported = RunGogdl(config_, {"import", game_dir.string()}); imported) {
     const json parsed = core::ParseJsonTail(*imported);
     if (!parsed.is_discarded() && parsed.is_object()) {
-      title = parsed.value("title", std::string());
-      for (const json& task : parsed.value("tasks", json::array())) {
-        if (task.value("category", std::string()) == "game" && task.value("type", std::string()) == "FileTask" &&
-            task.value("isPrimary", false)) {
-          exe_path = task.value("path", std::string());
+      title = core::JsonString(parsed, "title");
+      for (const json& task : core::JsonArray(parsed, "tasks")) {
+        if (core::JsonString(task, "category") == "game" && core::JsonString(task, "type") == "FileTask" &&
+            core::JsonBool(task, "isPrimary")) {
+          exe_path = core::JsonString(task, "path");
           break;
         }
       }
@@ -99,7 +98,12 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   game.id = game_id;
   game.source = "gog";
   game.source_ref = id;
-  game.name = title.empty() ? id : title;
+  // gogdl failing keeps the name it had, rather than the bare GOG id.
+  if (!title.empty()) {
+    game.name = title;
+  } else if (game.name.empty()) {
+    game.name = id;
+  }
   game.install_path = game_dir.string();
   if (!exe_path.empty()) game.exe_path = exe_path;
   game.platform = model::Platform::Windows;

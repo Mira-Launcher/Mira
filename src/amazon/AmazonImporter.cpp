@@ -75,13 +75,16 @@ Result<library::ImportSummary> AmazonImporter::Import() {
       game.name = path.filename().string();
     }
     game.install_path = path.string();
-    if (!command.empty()) game.exe_path = command;
-    if (const json args = main.contains("Args") ? main["Args"] : json::array(); args.is_array() && game.args.empty()) {
+    game.exe_path = command;
+    if (const json args = main.contains("Args") ? main["Args"] : json::array(); args.is_array()) {
       std::vector<std::string> list;
       for (const json& arg : args) {
         if (arg.is_string()) list.push_back(arg.get<std::string>());
       }
-      game.args = strings::JoinArgs(list);
+      // Follows Nile's args unless the user changed them.
+      const std::string nile_args = strings::JoinArgs(list);
+      if (game.args.empty() || game.args == core::JsonString(game.runner_config, "nile_args")) game.args = nile_args;
+      game.runner_config["nile_args"] = nile_args;
     }
     if (main.contains("WorkingSubdirOverride") && main["WorkingSubdirOverride"].is_string()) {
       game.working_dir = ForwardSlashes(main["WorkingSubdirOverride"].get<std::string>());

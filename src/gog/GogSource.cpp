@@ -61,15 +61,17 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
     for (std::size_t i = start; i < std::min(ids.size(), start + kIdsPerRequest); ++i) {
       joined += (joined.empty() ? "" : ",") + ids[i];
     }
-    if (const Result<json> products =
-          GetJson(std::format("https://api.gog.com/products?ids={}", joined), *token);
-        products && products->is_array()) {
+    // Retried once: a failed batch would list its DLC as games.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      const Result<json> products = GetJson(std::format("https://api.gog.com/products?ids={}", joined), *token);
+      if (!products || !products->is_array()) continue;
       for (const json& product : *products) {
         const std::string id = std::to_string(core::JsonInt(product, "id"));
         titles[id] = core::JsonString(product, "title");
         const std::string type = core::JsonString(product, "game_type");
-        if ((!type.empty() && type != "game") || product.value("is_installable", true) == false) not_games.insert(id);
+        if ((!type.empty() && type != "game") || !core::JsonBool(product, "is_installable", true)) not_games.insert(id);
       }
+      break;
     }
   }
 

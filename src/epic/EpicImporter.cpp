@@ -2,6 +2,7 @@
 #include "epic/EpicImporter.h"
 
 #include <algorithm>
+#include <filesystem>
 
 #include <json.hpp>
 
@@ -64,7 +65,11 @@ Result<library::ImportSummary> EpicImporter::Import() {
     game.source_ref = title.app_name;
     game.name = title.title.empty() ? title.app_name : title.title;
     game.install_path = title.install_path;
-    game.exe_path = title.executable;
+    // Keep a picked exe while it still exists, as LutrisImporter does.
+    std::error_code ec;
+    const bool own_exe = existing && !existing->exe_path.empty() &&
+                         std::filesystem::exists(std::filesystem::path(title.install_path) / existing->exe_path, ec);
+    game.exe_path = own_exe ? existing->exe_path : title.executable;
     game.platform = model::Platform::Windows;
     game.last_error.clear();
     game.updated_at = model::NowSeconds();

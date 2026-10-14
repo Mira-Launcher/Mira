@@ -218,6 +218,12 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
   const auto rows = ReadCatalog(*sqlite3, pga_db);
   if (!rows) return std::unexpected(rows.error());
 
+  // One copy of the library for the whole import, kept current as games are saved.
+  std::vector<model::Game> library = games_.All();
+  const auto keep = [&](const model::Game& saved) {
+    std::erase_if(library, [&](const model::Game& known) { return known.id == saved.id; });
+    library.push_back(saved);
+  };
   for (const LutrisRow& row : *rows) {
     // "wine" is a Windows game; "linux" is Lutris's own native-Linux runner
     // (a .sh script or an AppImage, pointed at directly, no prefix at all).
@@ -278,17 +284,26 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
 
     // Moved into Mira's folders, so Mira's own game now (see library::Relocate).
     const std::string claimed = std::string(library::kClaimedLutrisPrefix) + row.slug;
-    if (!row.slug.empty() && std::ranges::any_of(games_.All(), [&](const model::Game& known) {
+    if (!row.slug.empty() && std::ranges::any_of(library, [&](const model::Game& known) {
           return known.source_ref == claimed;
         })) {
       continue;
     }
 
-    // By slug too: a game moved into Mira's folders no longer sits at Lutris's path.
-    auto existing = games_.FindByInstallPath(install_path);
-    if (!existing && !row.slug.empty()) {
-      for (const model::Game& known : games_.All()) {
+    // By slug first: a game moved into Mira's folders no longer sits at Lutris's path, and two Lutris
+    // games can share a folder. By path for one Mira has from elsewhere, never another Lutris game's.
+    std::optional<model::Game> existing;
+    if (!row.slug.empty()) {
+      for (const model::Game& known : library) {
         if (known.source == "lutris" && known.source_ref == row.slug) existing = known;
+      }
+    }
+    if (!existing) {
+      auto at_path = games_.FindByInstallPath(install_path);
+      const bool lutris_game = at_path && at_path->source == "lutris" &&
+                               (at_path->source_ref.empty() || at_path->source_ref == row.slug);
+      if (at_path && (at_path->source == "manual" || at_path->source == "scan" || lutris_game)) {
+        existing = std::move(at_path);
       }
     }
 
@@ -304,6 +319,7 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
             g.source_ref = claimed;
           })) {
         events_.Publish("game.updated", model::ToJson(*taken));
+        keep(*taken);
       }
       continue;
     }
@@ -324,11 +340,16 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       game.install_path = install_path;
       game.exe_path = exe_path;
     }
-    game.args = cfg->args;
+    // Arguments and environment follow Lutris's unless edited in Mira.
+    if (!existing || game.args == core::JsonString(existing->runner_config, "lutris_args")) game.args = cfg->args;
+    if (!existing || nlohmann::json(game.env) == existing->runner_config.value("lutris_env", nlohmann::json()))
+      game.env = cfg->env;
+    game.runner_config["lutris_args"] = cfg->args;
+    game.runner_config["lutris_env"] = cfg->env;
     if (!existing || existing->data_dir.empty() || !fs::exists(existing->data_dir, ec)) game.data_dir = data_dir_path;
     // Lutris names one executable; the folder's others are offered to pick from,
     // unless the folder holds other games too.
-    if (game.candidates.empty() && library::SharedFolder(config_, game, games_.All()).empty()) {
+    if (game.candidates.empty() && library::SharedFolder(config_, game, library).empty()) {
       game.candidates = library::Detector(library::SettingsFromConfig(config_)).Detect(game.install_path).candidates;
       for (model::Candidate& candidate : game.candidates) candidate.chosen = candidate.rel_path == game.exe_path;
       if (std::ranges::none_of(game.candidates, &model::Candidate::chosen)) {
@@ -340,7 +361,6 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       }
     }
     game.platform = is_native ? model::Platform::Native : model::Platform::Windows;
-    game.env = cfg->env;
     // Lutris's record, until Mira has a session of its own: then neither can
     // say which is right, so Mira's own stays.
     if (game.last_session_at == 0) {
@@ -362,6 +382,7 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       log::Error("failed to save lutris game {}: {}", game.id, result.error().message);
       continue;
     }
+    keep(game);  // as Merge saved it
     library::RecordImported(summary, events_, game, existing.has_value());
   }
 

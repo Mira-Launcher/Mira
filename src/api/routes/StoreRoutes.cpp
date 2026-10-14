@@ -11,6 +11,7 @@
 
 #include "api/Http.h"
 #include "api/Services.h"
+#include "core/Json.h"
 #include "core/Log.h"
 #include "humble/Humble.h"
 #include "itch/Itch.h"
@@ -134,6 +135,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     if (auto logged_in = store->login(s.config, (*body)["credential"].get<std::string>()); !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
+    // A different account may have been signed in before; its titles go.
+    s.games.Metadata().DropCatalog(store->id);
     s.games.MarkSourceAdded(store->id, false);
     s.events.Publish("sources.changed", json::object());
     SendJson(res, StatusJson(*store, store->status(s.config)));
@@ -161,7 +164,11 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     }
     const Result<void> done = store->logout(s.config);
     // Another account may sign in next.
-    if (done) s.games.Metadata().DropCatalog(req.matches[1].str());
+    if (done) {
+      s.catalogs.SignedOut(req.matches[1].str());
+      s.games.Metadata().DropCatalog(req.matches[1].str());
+      s.events.Publish("sources.changed", json::object());
+    }
     SendResult(res, done);
   });
 
@@ -177,10 +184,7 @@ void RegisterStoreRoutes(Router& http, Services& s) {
                [&s, store](JobRegistry::Progress&) -> Result<json> {
                  auto summary = store->import(s.config, s.games, s.events);
                  if (!summary) return std::unexpected(summary.error());
-                 s.games.MarkSourceAdded(store->id, true);
-                 s.events.Publish("sources.changed", json::object());
-                 s.AfterImport(summary->added_games);
-                 return json{{"added", summary->added}, {"updated", summary->updated}};
+                 return s.FinishImport(store->id, *summary);
                });
   });
 
@@ -232,10 +236,12 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     if (!body->contains("bundle_key") || !(*body)["bundle_key"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"bundle_key": "...", "item_numbers": "..."})");
     }
+    // A malformed item list mustn't fall back to the whole bundle.
+    if (body->contains("item_numbers") && !(*body)["item_numbers"].is_string()) {
+      return SendError(res, 400, "invalid_body", R"(expected {"bundle_key": "...", "item_numbers": "..."})");
+    }
     const std::string bundle_key = (*body)["bundle_key"];
-    const std::string item_numbers = body->contains("item_numbers") && (*body)["item_numbers"].is_string()
-                                         ? (*body)["item_numbers"].get<std::string>()
-                                         : std::string();
+    const std::string item_numbers = core::JsonString(*body, "item_numbers");
     // The key becomes a folder name and a humble-cli argument.
     if (bundle_key.empty() || !std::ranges::all_of(bundle_key, [](unsigned char c) { return std::isalnum(c); }) ||
         !std::ranges::all_of(item_numbers, [](unsigned char c) { return std::isdigit(c) || c == ',' || c == ' ' || c == '-'; })) {

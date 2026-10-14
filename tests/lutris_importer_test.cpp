@@ -468,3 +468,33 @@ TEST_CASE("LutrisImporter skips a \"linux\" row whose exe is relative -- nothing
   CHECK(summary->added == 0);
   CHECK(summary->incomplete == 1);
 }
+
+TEST_CASE("LutrisImporter keeps two games whose programs share a folder apart") {
+  if (!HaveSqlite3()) return;
+
+  Fixture fx("lutris-shared-folder");
+  const fs::path prefix = fx.lutris_dir.parent_path() / "shared";
+  const fs::path bin = prefix / "drive_c" / "Games";
+  fs::create_directories(bin);
+  test::Touch(bin / "one.exe");
+  test::Touch(bin / "two.exe");
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                         {{"One", "one", "wine", "one-1", {}}, {"Two", "two", "wine", "two-2", {}}})
+              .has_value());
+  for (const auto* name : {"one", "two"}) {
+    test::Touch(fx.lutris_dir / "games" / std::format("{}-{}.yml", name, name == std::string("one") ? 1 : 2),
+                std::format("game:\n  exe: {}/{}.exe\n  prefix: {}\n", bin.string(), name, prefix.string()));
+  }
+
+  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
+  REQUIRE(importer.Import().has_value());
+  REQUIRE(importer.Import().has_value());  // a re-import mustn't swap them either
+  const auto one = fx.games.Find("one");
+  const auto two = fx.games.Find("two");
+  REQUIRE(one);
+  REQUIRE(two);
+  CHECK(one->name == "One");
+  CHECK(one->exe_path == "one.exe");
+  CHECK(two->name == "Two");
+  CHECK(two->exe_path == "two.exe");
+}
