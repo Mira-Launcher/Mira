@@ -26,6 +26,7 @@ class EmulatorPanel : public QWidget {
   void Install();
   void ChooseProgram();
   void AddFirmware(const EmulatorFirmware& firmware);
+  void SendFirmware(const std::string& firmware_id, const std::vector<std::string>& paths, bool replace);
 
   EmulatorInfo emulator_;
   QLabel* error_ = nullptr;

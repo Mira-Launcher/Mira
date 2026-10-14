@@ -318,9 +318,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   card->addLayout(space);
   drive_warning_ = MakeLabel(
       folder, "Windows games can fail to start or lose saves on NTFS and exFAT drives.", "error");
-  QSizePolicy keep = drive_warning_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  drive_warning_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(drive_warning_);
   drive_warning_->hide();
   card->addWidget(drive_warning_);
   layout->addWidget(folder);

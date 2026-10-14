@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "../activity/DownloadTracker.h"
+#include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Config.h"
@@ -28,8 +29,14 @@ SetupWork::SetupWork(DownloadTracker* downloads, QObject* parent)
     proton_running_ = false;
     emit Changed();
   });
-  connect(downloads_, &DownloadTracker::Changed, this, [this](const QString&) {
-    if (proton_running_) emit Changed();
+  connect(downloads_, &DownloadTracker::Changed, this, [this](const QString& key) {
+    if (!proton_running_) return;
+    // Ends it even when RunnersChanged is missed.
+    const DownloadTracker::Entry* entry = downloads_->Find(key);
+    if (entry != nullptr && entry->kind == DownloadTracker::Kind::Runner && entry->source == "proton" &&
+        entry->state == DownloadTracker::State::Finished)
+      proton_running_ = false;
+    emit Changed();
   });
 }
 
@@ -38,6 +45,7 @@ void SetupWork::InstallPackages(QWidget* window, const std::vector<std::string>&
   if (packages.empty() || packages_running_) return;
   packages_running_ = true;
   emit Changed();
+  connect(window, &QObject::destroyed, this, &SetupWork::WindowGone, Qt::UniqueConnection);
   system::InstallPackages(window, install, system::Names(packages), restart, [this](bool) {
     packages_running_ = false;
     emit Changed();
@@ -52,12 +60,15 @@ void SetupWork::DownloadProton() {
   api::GetRunnerCatalogAsync(this, "proton", "", [this](RunnerCatalogResult catalog) {
     if (!catalog.ok || catalog.releases.empty()) {
       proton_running_ = false;
+      if (!catalog.ok) notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not list Proton versions.", catalog.error);
+      else notify::Notice(qobject_cast<QWidget*>(parent()), "No Proton versions are available right now.");
       return emit Changed();
     }
     const RunnerRelease& newest = catalog.releases.front();
     api::DownloadRunnerAsync(this, "proton", newest.tag, newest.source,
                              [this](RunnerDownloadResult result) {
                                if (result.ok) return;  // RunnersChanged ends it
+                               notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not download Proton.", result.error);
                                proton_running_ = false;
                                emit Changed();
                              });
@@ -71,14 +82,19 @@ void SetupWork::SetUpTools(const QStringList& stores) {
         tools_running_.contains(store))
       continue;
     tools_running_.insert(store);
-    api::GetStoreStatusAsync(this, store.toStdString(), [this, store](StoreStatusResult status) {
-      const auto done = [this, store](StoreActionResult) {
+    api::GetStoreStatusAsync(this, store.toStdString(), [this, store, name = source->name](StoreStatusResult status) {
+      const auto done = [this, store, name](StoreActionResult result) {
+        if (!result.ok)
+          notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not set up " + name + "'s tools.", result.error);
         tools_running_.remove(store);
         emit Changed();
       };
-      if (status.ok && status.tool_installed) return done({});
+      if (status.ok && status.tool_installed) return done({.ok = true});
       emit Changed();
-      api::SetupStoreToolAsync(this, store.toStdString(), done);
+      api::SetupStoreToolAsync(this, store.toStdString(), [this, done](StoreActionResult result) {
+        if (result.ok) return;  // the job's setup event ends it
+        done(result);
+      });
     });
   }
 }
@@ -89,11 +105,20 @@ void SetupWork::PrepareOffice(QWidget* window) {
   office_accepted_ = false;
   office_failed_ = false;
   office_window_ = window;
+  connect(window, &QObject::destroyed, this, &SetupWork::WindowGone, Qt::UniqueConnection);
   if (packages_running_) {
     office_waiting_ = true;
     return emit Changed();
   }
   StartOffice();
+}
+
+void SetupWork::WindowGone() {
+  packages_running_ = false;
+  office_waiting_ = false;
+  // Still asking for Office's packages: nothing will start it now.
+  if (office_started_ && !office_running_ && !office_accepted_) office_started_ = false;
+  emit Changed();
 }
 
 void SetupWork::StartOffice() {
@@ -210,9 +235,25 @@ QStringList SetupWork::Running() const {
 }
 
 void SetupWork::HandleEvent(const std::string& type, const std::string& data) {
+  // A failed download sends no RunnersChanged; the downloads panel says why.
+  if (type == "runners.download.failed" && proton_running_) {
+    const nlohmann::json failed = nlohmann::json::parse(data, nullptr, false);
+    if (!failed.is_object() || failed.value("kind", "") != "proton") return;
+    proton_running_ = false;
+    return emit Changed();
+  }
   StoreEvent event;
-  if (events::ParseStoreEvent(type, data, &event) && event.kind == "setup" &&
-      event.source == "office") {
+  const bool setup = events::ParseStoreEvent(type, data, &event) && event.kind == "setup";
+  const QString source = QString::fromStdString(event.source);
+  if (setup && (event.state == "finished" || event.state == "failed") && tools_running_.remove(source)) {
+    if (event.state == "failed") {
+      const SourceInfo* info = FindSourceInfo(source);
+      notify::FailedRequest(qobject_cast<QWidget*>(parent()),
+                            "Could not set up " + (info ? info->name : source) + "'s tools.", event.error);
+    }
+    emit Changed();
+  }
+  if (setup && event.source == "office") {
     if (event.state == "progress") {
       office_progress_ = event.progress;
       emit Changed();

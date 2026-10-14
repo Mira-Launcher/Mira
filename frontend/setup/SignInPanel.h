@@ -75,6 +75,7 @@ class SignInPanel : public QWidget {
   bool answered_ = false;  // mirad has said where things stand
   bool opened_ = false;    // the page was opened, so the clipboard is watched
   bool installing_ = false;  // a launcher
+  bool starting_ = false;    // Install clicked, its packages or list still being checked
   bool other_browser_ = false;
   double install_progress_ = -1;
   QString last_clipboard_;

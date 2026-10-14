@@ -3,9 +3,11 @@
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPointer>
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "../app/Notify.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
 #include "../sources/SourceText.h"
@@ -101,7 +103,20 @@ void EmulatorPanel::AddFirmware(const EmulatorFirmware& firmware) {
   if (files.isEmpty()) return;
   std::vector<std::string> paths;
   for (const QString& file : files) paths.push_back(file.toStdString());
-  api::AddEmulatorFirmwareAsync(this, emulator_.id, firmware.id, paths, [this](StoreActionResult result) {
+  SendFirmware(firmware.id, paths, false);
+}
+
+void EmulatorPanel::SendFirmware(const std::string& firmware_id, const std::vector<std::string>& paths, bool replace) {
+  api::AddEmulatorFirmwareAsync(this, emulator_.id, firmware_id, paths, replace,
+                                [this, firmware_id, paths](StoreActionResult result) {
+    if (!result.ok && result.error.code == "already_there") {
+      const QPointer<EmulatorPanel> self(this);  // the panel can be rebuilt while the prompt is up
+      if (notify::Confirm(this, "Replace firmware", QString::fromStdString(result.error.message) + ". Replace it?",
+                          "Replace", /*destructive=*/true) && self) {
+        SendFirmware(firmware_id, paths, true);
+      }
+      return;
+    }
     if (!result.ok) return ShowFailure("Could not add that.", result.error);
     emit Changed();
   });

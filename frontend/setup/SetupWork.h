@@ -53,6 +53,8 @@ class SetupWork : public QObject {
  private:
   void HandleEvent(const std::string& type, const std::string& data);
   void StartOffice();
+  // A window closed mid-request drops its callbacks (system::InstallPackages), so what waited on them ends here.
+  void WindowGone();
 
   DownloadTracker* downloads_ = nullptr;
   QPointer<QWidget> office_window_;  // asks for Office's packages, if any are still missing
