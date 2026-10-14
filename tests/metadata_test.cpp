@@ -246,7 +246,7 @@ TEST_CASE("A refresh keeps art the user picked by hand") {
   CHECK(bytes == "\x89PNG picked");
 }
 
-TEST_CASE("SelectArtwork that fails to download keeps the slot's current image") {
+TEST_CASE("SelectArtwork that fails to download, or gets a page instead of an image, keeps the slot's current image") {
   const fs::path dir = TempDir("metadata-select-keeps");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -256,13 +256,16 @@ TEST_CASE("SelectArtwork that fails to download keeps the slot's current image")
   const fs::path art = metadata::ArtworkDir(config, "celeste");
   fs::create_directories(art);
   std::ofstream(art / "cover.png") << "current";
+  std::ofstream(dir / "page.png") << "<html>not found</html>";
   REQUIRE(cache.Write("celeste", nlohmann::json{
       {"artwork", {{"file", "cover.png"}, {"content_type", "image/png"}}},
       {"art_candidates",
-       {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + (dir / "missing.png").string()}}})}}},
+       {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + (dir / "missing.png").string()}},
+                                         {{"id", 6}, {"url", "file://" + (dir / "page.png").string()}}})}}},
   }).has_value());
 
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
+  CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "cover", 6).has_value());
   std::ifstream in(art / "cover.png");
   std::string kept;
   in >> kept;
