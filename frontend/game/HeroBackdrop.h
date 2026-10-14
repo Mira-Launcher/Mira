@@ -48,6 +48,7 @@ private:
   QPixmap cover_preview_;
   // Source() scaled and blurred for the current size; rebuilt on a change.
   QPixmap rendered_;
+  mutable QPixmap placeholder_;  // made once per game, so its blur is cached too
   qint64 rendered_key_ = 0;
 };
 

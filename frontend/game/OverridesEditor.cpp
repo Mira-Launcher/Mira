@@ -32,8 +32,11 @@ OverridesEditor::OverridesEditor(std::string game_id, QWidget* parent)
 }
 
 void OverridesEditor::Load() {
+  // Rows are built once; a reload only refreshes their values.
+  if (!fields_.empty()) return Reload();
   api::GetConfigSchemaAsync(this, [this](ConfigSchemaResult schema) {
     if (!schema.ok) return;  // non-fatal: the main game fields still work without this section
+    if (!fields_.empty()) return Reload();  // an earlier Load's reply built them
     BuildRows(schema);
     Reload();
   });
@@ -42,6 +45,7 @@ void OverridesEditor::Load() {
 void OverridesEditor::Reload() {
   api::GetGameConfigAsync(this, game_id_, [this](GameConfigResult config) {
     if (config.ok) ApplyValues(config);
+    else resetting_key_.clear();
   });
 }
 
@@ -191,6 +195,7 @@ void OverridesEditor::ResetField(size_t index) {
       this, game_id_, {GameConfigEdit{field.entry.key, field.entry.type, std::string(), true}},
       [this](PatchGameConfigResult result) {
         if (!result.ok) {
+          resetting_key_.clear();
           notify::FailedRequest(this, "Could not reset this override.", result.error);
           return;
         }

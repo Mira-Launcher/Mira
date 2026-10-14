@@ -97,9 +97,12 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
   default_line->setSpacing(8);
   default_line->addWidget(new QLabel("Play starts", this));
   default_ = new QComboBox(this);
+  default_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+  default_->setMinimumContentsLength(8);
   default_line->addWidget(default_, /*stretch=*/1);
   layout->addLayout(default_line);
-  only_ = new QCheckBox("Offer nothing else (Ctrl+click Play still shows every choice)", this);
+  only_ = new QCheckBox("Offer nothing else", this);
+  only_->setToolTip("Ctrl+click Play still shows every choice");
   layout->addWidget(only_);
   connect(default_, &QComboBox::activated, this, [this] {
     launch_.default_id = default_->currentData().toString().toStdString();
@@ -142,6 +145,7 @@ void LaunchOptionsEdit::Rebuild() {
     layout->setSpacing(8);
     auto* text = new QLabel(row);
     text->setTextFormat(Qt::PlainText);
+    text->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     text->setText(QString::fromStdString(option.name) + "  ·  " + ModeText(option.mode));
     text->setToolTip(QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
     layout->addWidget(text, /*stretch=*/1);
@@ -149,10 +153,18 @@ void LaunchOptionsEdit::Rebuild() {
     edit->setAutoRaise(true);
     icons::Follow(edit, icons::Glyph::Settings, &theme::Tokens::text_muted);
     edit->setToolTip("Edit");
-    connect(edit, &QToolButton::clicked, this, [this, i] {
-      LaunchOption changed = launch_.options[i];
+    connect(edit, &QToolButton::clicked, this, [this, id = option.id] {
+      auto find = [this, &id] {
+        return std::find_if(launch_.options.begin(), launch_.options.end(),
+                            [&](const LaunchOption& o) { return o.id == id; });
+      };
+      auto it = find();
+      if (it == launch_.options.end()) return;
+      LaunchOption changed = *it;
       if (!Edit(changed)) return;
-      launch_.options[i] = std::move(changed);
+      it = find();  // a live reload may have replaced the list while the dialog was open
+      if (it == launch_.options.end()) return;
+      *it = std::move(changed);
       Rebuild();
       emit Changed();
     });
@@ -161,12 +173,15 @@ void LaunchOptionsEdit::Rebuild() {
     remove->setAutoRaise(true);
     icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
     remove->setToolTip("Remove");
-    connect(remove, &QToolButton::clicked, this, [this, i] {
-      if (launch_.options[i].id == launch_.default_id) {
+    connect(remove, &QToolButton::clicked, this, [this, id = option.id] {
+      auto it = std::find_if(launch_.options.begin(), launch_.options.end(),
+                             [&](const LaunchOption& o) { return o.id == id; });
+      if (it == launch_.options.end()) return;
+      if (it->id == launch_.default_id) {
         launch_.default_id.clear();
         launch_.only = false;
       }
-      launch_.options.erase(launch_.options.begin() + std::ptrdiff_t(i));
+      launch_.options.erase(it);
       Rebuild();
       emit Changed();
     });

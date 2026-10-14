@@ -105,9 +105,7 @@ InstallerCard::InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWi
   quiet_ = new QPushButton("Install quietly", this);
   quiet_->setToolTip("Run the installer in the background without its window");
   // Hidden until the format allows it, keeping its place so the row doesn't shift.
-  QSizePolicy keep = quiet_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  quiet_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(quiet_);
   quiet_->hide();
   connect(quiet_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/false); });
   buttons->addWidget(quiet_);
@@ -124,9 +122,14 @@ void InstallerCard::LoadInfo(const std::string& path) {
   shown_->setEnabled(false);
   quiet_->hide();
   error_->hide();
-  api::GetInstallerInfoAsync(this, game_id_, path, [this, path](InstallerInfoResult info) {
+  const int request = ++info_request_;
+  api::GetInstallerInfoAsync(this, game_id_, path, [this, path, request](InstallerInfoResult info) {
+    if (request != info_request_) return;
     if (!info.ok) {
-      file_->setText(QString());
+      // The last pick that loaded stays, if any did.
+      const bool loaded = !file_->text().isEmpty();
+      shown_->setEnabled(loaded);
+      quiet_->setVisible(loaded && silent_);
       error_->setText("Could not read the installer: " + error_help::Describe(info.error));
       error_->show();
       return;
@@ -137,6 +140,7 @@ void InstallerCard::LoadInfo(const std::string& path) {
     if (const QString format = FormatName(info.format); !format.isEmpty()) parts << format;
     file_->setText(parts.join("  ·  "));
     file_->setToolTip(QString::fromStdString(info.path));
+    silent_ = info.silent;
     quiet_->setVisible(info.silent);
     (info.silent ? quiet_ : shown_)->setDefault(true);
     shown_->setEnabled(true);
