@@ -2,13 +2,14 @@
 # Benchmarks this checkout against a base (default main). Both builds run this checkout's scenarios at the
 # same moment, so load on the machine hits both alike, each on its own copy of the fixture made by the
 # base's mirad. The GUI scenarios run after the callgrind pass, whose load would skew their times.
-# Usage: tools/bench/run.sh [BASE_REF] [TIME_RUNS]. Locally it runs in the mira-bench container, offline;
+# Usage: tools/bench/run.sh [BASE_REF] [TIME_RUNS] [GUI_RUNS], GUI_RUNS defaulting to TIME_RUNS. Locally it runs in the mira-bench container, offline;
 # MIRA_BENCH_NATIVE=1 runs on the machine itself (CI, where the runner is set up like the container).
 # MIRA_BENCH_BASE_BIN and MIRA_BENCH_BRANCH_BIN name folders of built binaries (an extracted AppImage's
 # usr/bin) to measure instead of building; CI uses the AppImages it already built.
 set -euo pipefail
 base=${1:-main}
 runs=${2:-3}
+gui_runs=${3:-$runs}
 repo=$(git rev-parse --show-toplevel)
 out=$repo/build/bench/out
 cd "$repo"
@@ -74,8 +75,8 @@ done
 both instr-1 "" --mode instr --only "${first[@]}"
 both instr-2 -2 --mode instr --only "${second[@]}"
 wait
-# The GUI's measures are times, so after callgrind's load and as often as the timed runs.
-for i in $(seq "$runs"); do
+# The GUI's measures are times, so they run after callgrind's load.
+for i in $(seq "$gui_runs"); do
   both "gui-$i" "" --gui
   wait
 done
