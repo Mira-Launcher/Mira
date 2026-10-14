@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -28,6 +29,7 @@
 #include "config/Schema.h"
 #include "core/TomlJson.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "setup/Setup.h"
 #include "system/Packages.h"
 
@@ -151,6 +153,16 @@ void PrintError(const httplib::Result& res) {
 }
 
 bool Ok(const httplib::Result& res) { return res && res->status >= 200 && res->status < 300; }
+
+// Percent-encodes user input for a URL path segment or query value.
+std::string Seg(std::string_view text) {
+  std::string out;
+  for (const unsigned char c : text) {
+    if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out += static_cast<char>(c);
+    else out += std::format("%{:02X}", c);
+  }
+  return out;
+}
 
 // A long request's reply is 202 {job}: waits for that job (docs/api.md, Jobs)
 // and fills `result` with what it returned. Prints why and returns false if
@@ -292,9 +304,13 @@ int CmdRunnersUpdate(int argc, char** argv) {
 }
 
 int CmdRunnersTools(int argc, char** argv) {
-  if (argc >= 2 && std::string_view(argv[0]) == "install") {
+  if (argc > 0 && (argc != 2 || std::string_view(argv[0]) != "install")) {
+    std::fprintf(stderr, "usage: mira runners tools [install <id>]\n");
+    return 2;
+  }
+  if (argc == 2) {
     auto client = Connect();
-    auto res = client.Post(std::format("/v1/runners/tools/{}/setup", argv[1]));
+    auto res = client.Post(std::format("/v1/runners/tools/{}/setup", Seg(argv[1])));
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -313,9 +329,13 @@ int CmdRunnersCatalog(int argc, char** argv) {
   for (int i = 0; i < argc; ++i) {
     if (std::string_view(argv[i]) == "--kind" && i + 1 < argc) kind = argv[++i];
     else if (std::string_view(argv[i]) == "--source" && i + 1 < argc) source = argv[++i];
+    else {
+      std::fprintf(stderr, "usage: mira runners catalog [--kind KIND] [--source SOURCE]\n");
+      return 2;
+    }
   }
   auto client = Connect();
-  auto res = client.Get(std::format("/v1/runners/catalog?kind={}&source={}", kind, source));
+  auto res = client.Get(std::format("/v1/runners/catalog?kind={}&source={}", Seg(kind), Seg(source)));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -364,7 +384,7 @@ int CmdRunnersSchema(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Get(std::format("/v1/runners/{}/schema", argv[0]));
+  auto res = client.Get(std::format("/v1/runners/{}/schema", Seg(argv[0])));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -383,7 +403,7 @@ int CmdRunnersRemove(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Delete(std::format("/v1/runners/{}", argv[0]));
+  auto res = client.Delete(std::format("/v1/runners/{}", Seg(argv[0])));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -418,7 +438,7 @@ int CmdLaunch(int argc, char** argv) {
   json files = json::array();
   for (int i = 1; i < argc; ++i) files.push_back(std::filesystem::absolute(argv[i]).string());
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/launch", argv[0]),
+  auto res = client.Post(std::format("/v1/games/{}/launch", Seg(argv[0])),
                          files.empty() ? std::string() : json{{"files", files}}.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
@@ -434,7 +454,7 @@ int CmdStop(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/stop", argv[0]));
+  auto res = client.Post(std::format("/v1/games/{}/stop", Seg(argv[0])));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -460,9 +480,12 @@ int CmdRun(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  json body = {{"exe_path", exe_path}};
+  // As in `mira add`: a path that's there from this shell is made absolute, else it's the game folder's.
+  std::error_code ec;
+  json body = {{"exe_path", std::filesystem::exists(exe_path, ec) ? std::filesystem::absolute(exe_path, ec).string()
+                                                                 : exe_path}};
   if (!args.empty()) body["args"] = args;
-  auto res = client.Post(std::format("/v1/games/{}/run", id), body.dump(), "application/json");
+  auto res = client.Post(std::format("/v1/games/{}/run", Seg(id)), body.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -482,7 +505,7 @@ int CmdAdd(int argc, char** argv) {
     else if (arg == "--installer") is_installer = true;
     else positional.push_back(std::string(arg));
   }
-  if (positional.size() < 2) {
+  if (positional.size() != 2) {
     std::fprintf(stderr,
                  "usage: mira add <install_path> <exe_path> [--name N] "
                  "[--platform windows|native] [--installer]\n"
@@ -491,7 +514,12 @@ int CmdAdd(int argc, char** argv) {
                  "  `mira finish-install` once it's actually installed.\n");
     return 2;
   }
-  json body = {{"install_path", positional[0]}, {"exe_path", positional[1]}};
+  // mirad would resolve a relative path against its own folder, not this shell's. The exe may be
+  // relative to the install folder instead, so it's made absolute only if it's there from here.
+  std::error_code ec;
+  const std::filesystem::path exe = positional[1];
+  json body = {{"install_path", std::filesystem::absolute(positional[0], ec).string()},
+               {"exe_path", std::filesystem::exists(exe, ec) ? std::filesystem::absolute(exe, ec).string() : exe.string()}};
   if (!name.empty()) body["name"] = name;
   if (!platform.empty()) body["platform"] = platform;
   if (is_installer) body["is_installer"] = true;
@@ -541,13 +569,13 @@ int CmdInstall(int argc, char** argv) {
   if (info) {
     httplib::Params params;
     if (!installer.empty()) params.emplace("path", installer);
-    res = client.Get(std::format("/v1/games/{}/installer", id), params, httplib::Headers{});
+    res = client.Get(std::format("/v1/games/{}/installer", Seg(id)), params, httplib::Headers{});
   } else if (progress) {
-    res = client.Get(std::format("/v1/games/{}/install/progress", id));
+    res = client.Get(std::format("/v1/games/{}/install/progress", Seg(id)));
   } else {
     json body = {{"interactive", interactive}};
     if (!installer.empty()) body["installer"] = installer;
-    res = client.Post(std::format("/v1/games/{}/install", id), body.dump(), "application/json");
+    res = client.Post(std::format("/v1/games/{}/install", Seg(id)), body.dump(), "application/json");
   }
   if (!Ok(res)) {
     PrintError(res);
@@ -571,7 +599,7 @@ int CmdFinishInstall(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/finish-install", argv[0]));
+  auto res = client.Post(std::format("/v1/games/{}/finish-install", Seg(argv[0])));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -591,7 +619,7 @@ int CmdRelocate(int argc, char** argv) {
   }
   auto client = Connect();
   json game;
-  if (!AwaitJob(client, client.Post(std::format("/v1/games/{}/relocate", argv[0])), game)) return 1;
+  if (!AwaitJob(client, client.Post(std::format("/v1/games/{}/relocate", Seg(argv[0]))), game)) return 1;
   std::printf("%s: install_path=%s data_dir=%s\n", game.value("id", "").c_str(),
              game.value("install_path", "").c_str(), game.value("data_dir", "").c_str());
   return 0;
@@ -618,9 +646,13 @@ int CmdRemove(int argc, char** argv) {
     else if (arg == "--delete-prefix") delete_prefix = true;
     else if (arg == "--delete-metadata") delete_metadata = true;
     else if (arg == "--purge") purge = true;
+    else {
+      std::fprintf(stderr, "mira: unknown remove option \"%s\"\n", argv[i]);
+      return 2;
+    }
   }
   auto client = Connect();
-  std::string path = std::format("/v1/games/{}", id);
+  std::string path = std::format("/v1/games/{}", Seg(id));
   if (delete_files || delete_prefix || delete_metadata || purge) {
     path += "?";
     if (delete_files) path += "delete_files=true&";
@@ -703,7 +735,7 @@ int CmdLauncher(int argc, char** argv) {
     return 0;
   }
   if ((sub == "install" || sub == "import") && argc >= 2) {
-    auto res = client.Post(std::format("/v1/launchers/{}/{}", argv[1], sub));
+    auto res = client.Post(std::format("/v1/launchers/{}/{}", Seg(argv[1]), sub));
     if (sub == "import") {
       json summary;
       if (!AwaitJob(client, res, summary)) return 1;
@@ -731,7 +763,7 @@ int CmdLauncher(int argc, char** argv) {
         return 2;
       }
     }
-    auto res = client.Post(std::format("/v1/launchers/{}/open", argv[1]), body.dump(), "application/json");
+    auto res = client.Post(std::format("/v1/launchers/{}/open", Seg(argv[1])), body.dump(), "application/json");
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -743,18 +775,6 @@ int CmdLauncher(int argc, char** argv) {
                "       mira launcher install|import <battlenet|ubisoft|ea|office>\n"
                "       mira launcher open <id> [--launch REF | --install REF]\n");
   return 2;
-}
-
-// Reads one trimmed line from the terminal, after `prompt`.
-std::string Prompt(const char* prompt) {
-  std::fputs(prompt, stdout);
-  std::string line;
-  std::getline(std::cin, line);
-  // A terminal paste routinely carries a trailing \r or spaces.
-  while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back()))) line.pop_back();
-  size_t start = 0;
-  while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start]))) ++start;
-  return line.substr(start);
 }
 
 termios g_echoing{};
@@ -797,7 +817,7 @@ const char* CredentialPrompt(std::string_view store) {
 }
 
 int CmdStoreStatus(httplib::Client& client, const std::string& id) {
-  auto res = client.Get(std::format("/v1/stores/{}/status", id));
+  auto res = client.Get(std::format("/v1/stores/{}/status", Seg(id)));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -820,22 +840,20 @@ int CmdStoreStatus(httplib::Client& client, const std::string& id) {
   return 0;
 }
 
-int CmdStoreLogin(httplib::Client& client, const std::string& id, int argc, char** argv) {
-  std::string credential = argc > 0 ? argv[0] : "";
-  if (credential.empty()) {
-    auto begun = client.Post(std::format("/v1/stores/{}/login/begin", id));
-    if (!Ok(begun)) {
-      PrintError(begun);
-      return 1;
-    }
-    std::printf("Visit this URL and sign in:\n%s\n\n", json::parse(begun->body).value("url", "").c_str());
-    credential = Prompt(CredentialPrompt(id));
-    if (credential.empty()) {
-      std::fprintf(stderr, "mira: nothing entered\n");
-      return 2;
-    }
+int CmdStoreLogin(httplib::Client& client, const std::string& id) {
+  auto begun = client.Post(std::format("/v1/stores/{}/login/begin", Seg(id)));
+  if (!Ok(begun)) {
+    PrintError(begun);
+    return 1;
   }
-  auto res = client.Post(std::format("/v1/stores/{}/login", id), json{{"credential", credential}}.dump(),
+  std::printf("Visit this URL and sign in:\n%s\n\n", json::parse(begun->body).value("url", "").c_str());
+  // A terminal paste routinely carries a trailing \r or spaces.
+  const std::string credential = mira::strings::Trim(ReadSecret(CredentialPrompt(id)));
+  if (credential.empty()) {
+    std::fprintf(stderr, "mira: nothing entered\n");
+    return 2;
+  }
+  auto res = client.Post(std::format("/v1/stores/{}/login", Seg(id)), json{{"credential", credential}}.dump(),
                          "application/json");
   if (!Ok(res)) {
     PrintError(res);
@@ -859,7 +877,7 @@ int CmdStoreItchCollections(httplib::Client& client, int argc, char** argv) {
     return 0;
   }
   if (action == "remove" && argc > 1) {
-    auto res = client.Delete(std::format("/v1/stores/itch/collections/{}", argv[1]));
+    auto res = client.Delete(std::format("/v1/stores/itch/collections/{}", Seg(argv[1])));
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -932,13 +950,13 @@ int CmdStore(int argc, char** argv) {
   const std::string id = argv[0];
   const std::string_view action = argc > 1 ? argv[1] : "status";
   if (action == "status") return CmdStoreStatus(client, id);
-  if (action == "login") return CmdStoreLogin(client, id, argc - 2, argv + 2);
+  if (action == "login") return CmdStoreLogin(client, id);
   if (id == "itch" && action == "collections") return CmdStoreItchCollections(client, argc - 2, argv + 2);
   if (id == "humble" && (action == "bundles" || action == "download")) {
     return CmdStoreHumble(client, action, argc - 2, argv + 2);
   }
   if (action == "logout") {
-    auto res = client.Post(std::format("/v1/stores/{}/logout", id));
+    auto res = client.Post(std::format("/v1/stores/{}/logout", Seg(id)));
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -948,7 +966,7 @@ int CmdStore(int argc, char** argv) {
   }
   if (action == "setup" || action == "import") {
     json result;
-    if (!AwaitJob(client, client.Post(std::format("/v1/stores/{}/{}", id, action)), result)) return 1;
+    if (!AwaitJob(client, client.Post(std::format("/v1/stores/{}/{}", Seg(id), action)), result)) return 1;
     if (action == "setup") {
       std::printf("installed %s\n", result.value("tag", std::string()).c_str());
     } else {
@@ -958,7 +976,7 @@ int CmdStore(int argc, char** argv) {
   }
   std::fprintf(stderr,
                "usage: mira store [list]\n"
-               "       mira store <epic|gog|itch|amazon|humble> status|setup|login [credential]|logout|import\n"
+               "       mira store <epic|gog|itch|amazon|humble> status|setup|login|logout|import\n"
                "       mira store itch collections [list | add <link> | remove <id>]\n"
                "       mira store humble bundles | download <bundle-key> [item-numbers]\n"
                "       (installing is source-generic: mira library install <source> <id>)\n");
@@ -968,7 +986,7 @@ int CmdStore(int argc, char** argv) {
 int CmdLibraryList(int argc, char** argv) {
   auto client = Connect();
   const std::string path =
-      argc > 0 ? std::format("/v1/library?source={}", argv[0]) : std::string("/v1/library");
+      argc > 0 ? std::format("/v1/library?source={}", Seg(argv[0])) : std::string("/v1/library");
   auto res = client.Get(path.c_str());
   if (!Ok(res)) {
     PrintError(res);
@@ -1123,7 +1141,7 @@ int CmdTricks(int argc, char** argv) {
 
   auto client = Connect();
   const json body = {{"verb", verb}};
-  auto res = client.Post(std::format("/v1/games/{}/tricks", id), body.dump(), "application/json");
+  auto res = client.Post(std::format("/v1/games/{}/tricks", Seg(id)), body.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -1150,7 +1168,7 @@ int CmdMetadata(int argc, char** argv) {
   auto client = Connect();
 
   if (flag == "--refresh") {
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/refresh", id));
+    auto posted = client.Post(std::format("/v1/games/{}/metadata/refresh", Seg(id)));
     if (!Ok(posted)) {
       PrintError(posted);
       return 1;
@@ -1160,7 +1178,7 @@ int CmdMetadata(int argc, char** argv) {
   }
 
   if (flag == "--wrong") {
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/wrong-match", id));
+    auto posted = client.Post(std::format("/v1/games/{}/metadata/wrong-match", Seg(id)));
     if (!Ok(posted)) {
       PrintError(posted);
       return 1;
@@ -1173,11 +1191,19 @@ int CmdMetadata(int argc, char** argv) {
 
   if (flag == "--matches" || flag == "--match" || flag == "--match-id") {
     std::int64_t chosen_id = -1;
-    if (flag == "--match-id" && argc > 2) chosen_id = std::atoll(argv[2]);
+    // A typo must not read as 0, which means "back to the top match".
+    const auto number = [&]() -> std::optional<std::int64_t> {
+      std::int64_t value = 0;
+      const std::string_view text = argc > 2 ? argv[2] : "";
+      const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+      if (text.empty() || ec != std::errc() || end != text.data() + text.size()) return std::nullopt;
+      return value;
+    };
+    if (flag == "--match-id") chosen_id = number().value_or(-1);
     if (flag == "--matches" || flag == "--match") {
       httplib::Params params;
       if (flag == "--matches" && argc > 2) params.emplace("q", argv[2]);
-      auto res = client.Get(std::format("/v1/games/{}/metadata/matches", id), params, httplib::Headers{});
+      auto res = client.Get(std::format("/v1/games/{}/metadata/matches", Seg(id)), params, httplib::Headers{});
       if (!Ok(res)) {
         PrintError(res);
         return 1;
@@ -1196,10 +1222,10 @@ int CmdMetadata(int argc, char** argv) {
         if (matches.empty()) std::puts("no matches");
         return 0;
       }
-      const int n = argc > 2 ? std::atoi(argv[2]) : -1;
+      const std::int64_t n = number().value_or(-1);
       if (n == 0) {
         chosen_id = 0;
-      } else if (n < 1 || n > static_cast<int>(matches.size())) {
+      } else if (n < 1 || n > static_cast<std::int64_t>(matches.size())) {
         std::fprintf(stderr, "mira: pick a number from `mira metadata %s --matches`\n", id.c_str());
         return 2;
       } else {
@@ -1210,7 +1236,7 @@ int CmdMetadata(int argc, char** argv) {
       std::fprintf(stderr, "usage: mira metadata <id> --match-id STEAMGRIDDB_ID\n");
       return 2;
     }
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/match", id),
+    auto posted = client.Post(std::format("/v1/games/{}/metadata/match", Seg(id)),
                               json{{"steamgriddb_id", chosen_id}}.dump(), "application/json");
     if (!Ok(posted)) {
       PrintError(posted);
@@ -1220,7 +1246,7 @@ int CmdMetadata(int argc, char** argv) {
     return 0;
   }
 
-  auto res = client.Get(std::format("/v1/games/{}/metadata", id));
+  auto res = client.Get(std::format("/v1/games/{}/metadata", Seg(id)));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
@@ -1323,8 +1349,8 @@ int CmdList(int argc, char** argv) {
   auto client = Connect();
   std::string path = "/v1/games";
   std::string query;
-  if (!status_filter.empty()) query += "status=" + status_filter + "&";
-  if (!tag_filter.empty()) query += "tag=" + tag_filter + "&";
+  if (!status_filter.empty()) query += "status=" + Seg(status_filter) + "&";
+  if (!tag_filter.empty()) query += "tag=" + Seg(tag_filter) + "&";
   if (!query.empty()) {
     query.pop_back();  // trailing '&'
     path += "?" + query;
@@ -1363,14 +1389,31 @@ int CmdShow(int argc, char** argv) {
   const bool effective = argc > 1 && std::string_view(argv[1]) == "--effective";
 
   auto client = Connect();
-  auto res = client.Get(effective ? std::format("/v1/games/{}/config", id)
-                                  : std::format("/v1/games/{}", id));
+  auto res = client.Get(effective ? std::format("/v1/games/{}/config", Seg(id))
+                                  : std::format("/v1/games/{}", Seg(id)));
   if (!Ok(res)) {
     PrintError(res);
     return 1;
   }
   std::cout << json::parse(res->body).dump(2) << '\n';
   return 0;
+}
+
+// The config schema, or an empty array when mirad can't say.
+json FetchSchema(httplib::Client& client) {
+  auto res = client.Get("/v1/config/schema");
+  if (!Ok(res)) return json::array();
+  json schema = json::parse(res->body, nullptr, false);
+  return schema.is_array() ? schema : json::array();
+}
+
+// A string setting keeps its text as written; anything else, or an unknown key, parses as JSON.
+json SettingValue(const json& schema, const std::string& key, const std::string& text) {
+  for (const json& entry : schema) {
+    if (entry.value("key", "") == key && entry.value("type", "") == "a string") return text;
+  }
+  json value = json::parse(text, nullptr, false);
+  return value.is_discarded() ? json(text) : value;
 }
 
 int CmdSet(int argc, char** argv) {
@@ -1393,7 +1436,12 @@ int CmdSet(int argc, char** argv) {
 
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
-    const auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    bool missing = false;
+    const auto next = [&]() -> std::string {
+      if (i + 1 < argc) return argv[++i];
+      missing = true;
+      return {};
+    };
     if (arg == "--name") {
       patch["name"] = next();
     } else if (arg == "--exe") {
@@ -1408,6 +1456,8 @@ int CmdSet(int argc, char** argv) {
       const std::string kv = next();
       if (const auto eq = kv.find('='); eq != std::string::npos) {
         env[kv.substr(0, eq)] = kv.substr(eq + 1);
+      } else {
+        missing = true;
       }
     } else if (arg == "--tag") {
       add_tags.push_back(next());
@@ -1416,16 +1466,32 @@ int CmdSet(int argc, char** argv) {
     } else if (arg == "--override") {
       const std::string kv = next();
       if (const auto eq = kv.find('='); eq != std::string::npos) {
-        json value = json::parse(kv.substr(eq + 1), nullptr, false);
-        overrides[kv.substr(0, eq)] = value.is_discarded() ? json(kv.substr(eq + 1)) : value;
+        overrides[kv.substr(0, eq)] = kv.substr(eq + 1);  // typed by the schema after Connect
+      } else {
+        missing = true;
       }
     } else if (arg == "--unset") {
-      overrides[next()] = nullptr;
+      const std::string key = next();
+      if (!missing) overrides[key] = nullptr;
+    } else {
+      std::fprintf(stderr, "mira: unknown set option \"%s\"\n", argv[i]);
+      return 2;
+    }
+    if (missing) {
+      std::fprintf(stderr, "mira: %s needs a value%s\n", std::string(arg).c_str(),
+                   arg == "--env" || arg == "--override" ? " as KEY=VALUE" : "");
+      return 2;
     }
   }
   if (!env.empty()) patch["env"] = env;
 
   auto client = Connect();
+  if (!overrides.empty()) {
+    const json schema = FetchSchema(client);
+    for (auto& entry : overrides.items()) {
+      if (entry.value().is_string()) entry.value() = SettingValue(schema, entry.key(), entry.value().get<std::string>());
+    }
+  }
   bool changed = false;
 
   // --tag/--untag go through the batch PATCH, which adds and removes on the server instead of
@@ -1441,7 +1507,7 @@ int CmdSet(int argc, char** argv) {
   }
 
   if (!patch.empty()) {
-    auto res = client.Patch(std::format("/v1/games/{}", id), patch.dump(), "application/json");
+    auto res = client.Patch(std::format("/v1/games/{}", Seg(id)), patch.dump(), "application/json");
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -1450,7 +1516,7 @@ int CmdSet(int argc, char** argv) {
   }
   if (!overrides.empty()) {
     auto res =
-        client.Patch(std::format("/v1/games/{}/config", id), overrides.dump(), "application/json");
+        client.Patch(std::format("/v1/games/{}/config", Seg(id)), overrides.dump(), "application/json");
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -1514,8 +1580,7 @@ int CmdConfig(int argc, char** argv) {
       std::fprintf(stderr, "usage: mira config set <key> <value>\n");
       return 2;
     }
-    json value = json::parse(argv[2], nullptr, false);
-    if (value.is_discarded()) value = std::string(argv[2]);  // bare strings need no quoting
+    const json value = SettingValue(FetchSchema(client), argv[1], argv[2]);
 
     std::string flat(argv[1]);
     json patch = json::object();
@@ -1541,7 +1606,7 @@ int CmdConfig(int argc, char** argv) {
   }
 
   if (sub == "reset") {
-    const std::string path = argc > 1 ? std::format("/v1/config/reset?key={}", argv[1])
+    const std::string path = argc > 1 ? std::format("/v1/config/reset?key={}", Seg(argv[1]))
                                        : "/v1/config/reset";
     auto res = client.Post(path);
     if (!Ok(res)) {
@@ -1628,27 +1693,38 @@ int CmdSetup(int argc, char** argv) {
           "if command -v zenity >/dev/null; then zenity --question --text='{0}'; "
           "elif command -v kdialog >/dev/null; then kdialog --yesno '{0}'; "
           "elif command -v yad >/dev/null; then yad --text='{0}'; "
-          "else exit 1; fi 2>/dev/null",
+          "else exit 2; fi 2>/dev/null",
           kQuestion);
-      if (std::system(ask.c_str()) != 0) return 1;
+      const int answer = std::system(ask.c_str());
+      if (answer != 0 && WIFEXITED(answer) && WEXITSTATUS(answer) == 2) {  // 2: no dialog tool
+        std::system("notify-send 'Mira' 'Run \"mira setup --uninstall\" in a terminal to remove Mira.' 2>/dev/null");
+        return 1;
+      }
+      if (answer != 0) return WIFEXITED(answer) && WEXITSTATUS(answer) == 1 ? 0 : 1;  // 1: declined
     } else {
       std::printf("%s [y/N] ", kQuestion);
       std::string answer;
       std::getline(std::cin, answer);
-      if (answer != "y" && answer != "Y") return 1;
+      if (answer != "y" && answer != "Y") return 0;
     }
   }
   if (remove) {
     const auto removed = mira::setup::Remove(paths);
     for (const auto& path : *removed) std::printf("removed %s\n", path.c_str());
-    if (removed->empty()) std::puts("nothing to remove");
+    bool removed_appimage = false;
     if (uninstall) {
       std::error_code ec;
-      std::filesystem::remove_all(mira::paths::Home() / ".cache/mira-appimage", ec);
+      // Where the wrapper extracts to.
+      const auto cache = mira::paths::EnvOr("XDG_CACHE_HOME", mira::paths::Home() / ".cache") / "mira-appimage";
+      const auto count = std::filesystem::remove_all(cache, ec);
+      if (ec) std::fprintf(stderr, "couldn't remove %s: %s\n", cache.c_str(), ec.message().c_str());
+      else if (count > 0) removed_appimage = true;
       if (appimage_env && *appimage_env && std::filesystem::remove(appimage_env, ec)) {
         std::printf("removed %s\n", appimage_env);
+        removed_appimage = true;
       }
     }
+    if (removed->empty() && !removed_appimage) std::puts("nothing to remove");
     return 0;
   }
 
@@ -1666,7 +1742,8 @@ int CmdSetup(int argc, char** argv) {
     return 1;
   }
   for (const auto& path : *written) std::printf("wrote %s\n", path.c_str());
-  std::system("update-desktop-database -q ~/.local/share/applications >/dev/null 2>&1");
+  std::system(std::format("update-desktop-database -q {} >/dev/null 2>&1",
+                          mira::strings::ShellQuote(paths.applications_dir.string())).c_str());
   // A running mirad points the games' menu entries at the new wrapper.
   if (auto synced = ConnectRunning().Post("/v1/desktop-entries/sync"); synced && synced->status == 200) {
     std::puts("updated the games' menu entries");
@@ -1723,13 +1800,14 @@ void PrintUsage() {
       "  lutris import          import games from Lutris's own database\n"
       "  launcher list|install|import|open   Battle.net, Ubisoft Connect and EA app\n"
       "  store [list]           list the stores: Epic, GOG, itch, Amazon Games, Humble Bundle\n"
-      "  store <id> status|setup|login [credential]|logout|import   one store's tool and account\n"
+      "  store <id> status|setup|login|logout|import   one store's tool and account\n"
       "  store itch collections [list|add <link>|remove <id>]\n"
       "  store humble bundles | download <bundle-key> [item-numbers]\n"
       "  desktop-entries list    list already-installed .desktop entries that could become games\n"
       "  desktop-entries import <id> [<id>...]   add the picked ones (covers Flatpak apps too)\n"
       "  gamemode status         check whether GameMode is installed/running\n"
-      "  metadata <id> [--refresh]                cached cover-art/store info\n"
+      "  metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]\n"
+      "                         cached cover-art/store info, or pick its SteamGridDB match\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"
       "  watch                  tail the event stream\n");
