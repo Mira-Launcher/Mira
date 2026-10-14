@@ -11,6 +11,7 @@
 #include <cstring>
 #include <iterator>
 
+#include "core/AtomicFile.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
@@ -413,7 +414,9 @@ std::vector<fs::path> Named(const fs::path& file, int depth = 0) {
     // Only files beside it or below: never another game's, and one named but missing is skipped.
     const fs::path rel = fs::path(name).lexically_normal();
     std::error_code ec;
-    if (name.empty() || rel.is_absolute() || *rel.begin() == ".." || !fs::exists(file.parent_path() / rel, ec)) continue;
+    if (name.empty() || rel.is_absolute() || *rel.begin() == ".." || !fs::is_regular_file(file.parent_path() / rel, ec)) {
+      continue;
+    }
     named.push_back(file.parent_path() / rel);
     if (ext == ".m3u") std::ranges::move(Named(named.back(), depth + 1), std::back_inserter(named));
   }
@@ -476,14 +479,28 @@ std::string Slug(const Emulator& emulator, const fs::path& rom_dir, const Found&
   return strings::Slugify(rel.string());
 }
 
-// Copies or moves `from` to `to`, keeping what's already there.
+// Fails when `to` is taken by another file, so a game isn't added on a different file of that name.
+Result<void> CheckFree(const fs::path& from, const fs::path& to) {
+  std::error_code ec;
+  if (fs::exists(to, ec) && !fs::equivalent(from, to, ec)) {
+    return Err("already_there", std::format("{} already exists", to.string()));
+  }
+  return {};
+}
+
+// Copies or moves `from` to `to`; `to` already being `from` is done.
 Result<void> Transfer(const fs::path& from, const fs::path& to, bool move) {
   std::error_code ec;
+  if (auto free = CheckFree(from, to); !free) return free;
   if (fs::exists(to, ec)) return {};
   fs::create_directories(to.parent_path(), ec);
   if (move) return library::MovePath(from, to, true);
   fs::copy(from, to, fs::copy_options::recursive, ec);
-  if (ec) return Err("copy_failed", std::format("couldn't copy {}: {}", from.filename().string(), ec.message()));
+  if (ec) {
+    std::error_code ignored;
+    fs::remove_all(to, ignored);  // a partial copy would count as done next time
+    return Err("copy_failed", std::format("couldn't copy {}: {}", from.filename().string(), ec.message()));
+  }
   return {};
 }
 
@@ -492,7 +509,7 @@ Result<runner::ReleaseAsset> NewestListed(const config::Config& config, const Em
   const fs::path page = ToolDir(config, emulator).parent_path() / (emulator.id + "-listing.html");
   std::error_code ec;
   fs::create_directories(page.parent_path(), ec);
-  if (auto fetched = runner::CurlDownload(emulator.listing_url, page); !fetched)
+  if (auto fetched = runner::CurlDownload(emulator.listing_url, page, 5000000); !fetched)
     return std::unexpected(fetched.error());
   std::ifstream in(page);
   const std::string html((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -521,7 +538,8 @@ void Prefill(const Emulator& emulator) {
     std::error_code ec;
     if (fs::exists(path, ec)) continue;
     fs::create_directories(path.parent_path(), ec);
-    std::ofstream(path) << content;
+    if (auto written = WriteFileAtomic(path, content, "prefill_write_failed"); !written)
+      log::Warn("couldn't write {}: {}", path.string(), written.error().message);
   }
 }
 
@@ -650,9 +668,14 @@ std::vector<FirmwareState> FirmwareStatus(const Emulator& emulator) {
 }
 
 Result<void> AddFirmware(const config::Config& config, const Emulator& emulator, const Firmware& firmware,
-                         const std::vector<fs::path>& files) {
+                         const std::vector<fs::path>& files, bool replace) {
   const fs::path dir = Expand(firmware.dir);
   std::error_code ec;
+  for (const fs::path& file : files) {
+    if (replace || !firmware.install_flag.empty()) break;
+    if (strings::ToLower(file.extension().string()) == ".zip") continue;
+    if (auto free = CheckFree(file, dir / file.filename()); !free) return free;
+  }
   for (const fs::path& file : files) {
     const std::string ext = strings::ToLower(file.extension().string());
     if (!firmware.install_flag.empty()) {
@@ -731,6 +754,7 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
                                         const Emulator& emulator, const std::vector<fs::path>& files, bool move) {
   const fs::path dir = RomDir(config, emulator);
   std::vector<std::string> refused;
+  std::vector<std::pair<fs::path, fs::path>> transfers;
   for (const fs::path& file : files) {
     std::error_code ec;
     // A homebrew comes as its folder: picked itself, or by its EBOOT.PBP.
@@ -746,13 +770,24 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
       continue;
     }
     if (folder) {
-      if (auto done = Transfer(source, dir / source.filename(), move); !done) return std::unexpected(done.error());
+      transfers.emplace_back(source, dir / source.filename());
       continue;
     }
     for (const fs::path& part : WithNamed(file)) {
-      if (auto done = Transfer(part, dir / part.lexically_relative(file.parent_path()), move); !done)
-        return std::unexpected(done.error());
+      // A track two cues name goes once; both cues then find it beside them.
+      if (std::ranges::find(transfers, part, &std::pair<fs::path, fs::path>::first) != transfers.end()) continue;
+      transfers.emplace_back(part, dir / part.lexically_relative(file.parent_path()));
     }
+  }
+  // Every target checked first, so a taken name doesn't leave the files before it moved but not added.
+  for (auto it = transfers.begin(); it != transfers.end(); ++it) {
+    if (auto free = CheckFree(it->first, it->second); !free) return std::unexpected(free.error());
+    // Two different files with one name would collide in the ROM folder.
+    if (std::ranges::find(transfers.begin(), it, it->second, &std::pair<fs::path, fs::path>::second) != it)
+      return Err("already_there", std::format("two files are named {}", it->second.filename().string()));
+  }
+  for (const auto& [from, to] : transfers) {
+    if (auto done = Transfer(from, to, move); !done) return std::unexpected(done.error());
   }
   if (!refused.empty() && refused.size() == files.size()) {
     std::string names;
@@ -1018,10 +1053,16 @@ Result<library::ImportSummary> AdoptExisting(config::Config& config, store::Game
 
   for (const ExistingGames::Shortcut& shortcut : existing.shortcuts) {
     fs::path file = shortcut.file;
-    // A file of that name already there stays where it is, rather than pointing at the other one.
-    if (move && !fs::exists(rom_dir / file.filename(), ec)) {
-      for (const fs::path& part : WithNamed(file)) {
-        if (auto moved = Transfer(part, rom_dir / part.filename(), true); !moved) return std::unexpected(moved.error());
+    // A game with any of its files' names taken there stays where it is, rather than pointing at the other one.
+    std::vector<std::pair<fs::path, fs::path>> moves;
+    for (const fs::path& part : WithNamed(file)) {
+      // Relative to the main file, so a .cue's tracks/ subfolder stays one.
+      const fs::path rel = part.lexically_relative(file.parent_path());
+      moves.emplace_back(part, rom_dir / (rel.empty() || *rel.begin() == ".." ? part.filename() : rel));
+    }
+    if (move && std::ranges::none_of(moves, [&](const auto& m) { return fs::exists(m.second, ec); })) {
+      for (const auto& [part, target] : moves) {
+        if (auto moved = Transfer(part, target, true); !moved) return std::unexpected(moved.error());
       }
       file = rom_dir / file.filename();
     }

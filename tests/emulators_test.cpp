@@ -23,7 +23,9 @@ TEST_CASE("emulators: a folder imports its games, hides what a cue names, and th
   const emulators::Emulator& duckstation = *emulators::Find("duckstation");
   const emulators::Emulator& rpcs3 = *emulators::Find("rpcs3");
   const fs::path ps1 = emulators::RomDir(env.config, duckstation);
-  test::Touch(ps1 / "Crash" / "Crash Bandicoot (USA).cue", "FILE \"Crash Bandicoot (USA).bin\" BINARY\n");
+  // A cue naming its own folder mustn't make the folder one of the game's files.
+  test::Touch(ps1 / "Crash" / "Crash Bandicoot (USA).cue",
+              "FILE \"Crash Bandicoot (USA).bin\" BINARY\nFILE \".\" BINARY\n");
   test::Touch(ps1 / "Crash" / "Crash Bandicoot (USA).bin");
   test::Touch(ps1 / "Spyro (USA).chd");
   test::Touch(ps1 / "notes.txt");
