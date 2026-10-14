@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -48,6 +49,8 @@ public:
   Result<std::vector<CatalogEntry>> List(const config::Config& config, store::GameStore& games,
                                          api::EventBus& events, Lane& lane, const std::string& source,
                                          bool fresh);
+  // A sign-out: a check still fetching that account's list won't store it.
+  void SignedOut(const std::string& source);
 
 private:
   // Asks `source` and stores its answer; null when it couldn't be asked.
@@ -55,6 +58,7 @@ private:
 
   std::mutex mutex_;
   std::set<std::string> checking_;  // guarded by mutex_
+  std::map<std::string, std::uint64_t> generations_;  // guarded by mutex_, bumped by SignedOut
 };
 
 // Marks `entry` as already-tracked if Mira has a game for it. Every

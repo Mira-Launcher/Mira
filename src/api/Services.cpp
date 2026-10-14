@@ -14,7 +14,6 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "desktop/DesktopEntries.h"
-#include "epic/Legendary.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
@@ -151,9 +150,10 @@ bool Services::FilterEvent(std::string& type, json& payload, bool live) {
       games_list != payload.end() && games_list->is_array()) {
     std::vector<std::string> concealed;
     json kept = json::array();
+    const std::set<std::string> hidden_keys = games.HiddenKeys();
     for (json& game : *games_list) {
       const std::string id = game.is_object() ? game.value("id", std::string()) : std::string();
-      if (Conceals(id)) {
+      if (!id.empty() && hidden_keys.contains(id)) {
         concealed.push_back(id);
       } else {
         kept.push_back(std::move(game));
@@ -232,6 +232,25 @@ void Services::SyncDesktopEntry(const std::string& game_id) {
 void Services::AfterImport(const std::vector<model::Game>& added) {
   SyncDesktopEntries();
   QueueMetadata(added);
+}
+
+nlohmann::json Services::FinishImport(const std::string& source, const library::ImportSummary& summary) {
+  // A store lists only what's installed, so a game uninstalled in its own client would stay Ready.
+  for (const model::Game& game : games.All()) {
+    if (game.source != source || game.status != model::GameStatus::Ready || game.install_path.empty() ||
+        game.exe_path.empty() || supervisor.IsRunning(game.id)) {
+      continue;
+    }
+    std::error_code ec;
+    if (std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec) || ec) continue;
+    if (auto missing = games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
+      events.Publish("game.updated", model::ToJson(*missing));
+    }
+  }
+  games.MarkSourceAdded(source, true);
+  events.Publish("sources.changed", nlohmann::json::object());
+  AfterImport(summary.added_games);
+  return {{"added", summary.added}, {"updated", summary.updated}};
 }
 
 void Services::WatchForInstall(const std::string& game_id, std::set<std::filesystem::path> folders) {
@@ -327,12 +346,15 @@ void Services::WatchExternalGames() {
     const auto post_script = [&](const model::Game& game) {
       return config::Resolver(config, game.overrides).GetString("launch.post_script");
     };
+    const auto post_timeout = [&](const model::Game& game) {
+      return config::Resolver(config, game.overrides).GetInt("launch.post_timeout_s");
+    };
     for (const Candidate& candidate : candidates) {
       if (supervisor.IsRunning(candidate.game.id)) continue;
       if (!candidate.appid.empty()) {
         if (!steam_running.contains(candidate.appid)) continue;
         if (supervisor.TrackSteamLaunch(candidate.game, candidate.appid,
-                                        post_script(candidate.game))) {
+                                        post_script(candidate.game), post_timeout(candidate.game))) {
           events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "steam"}, {"tracked", true}});
         }
         continue;
@@ -342,7 +364,7 @@ void Services::WatchExternalGames() {
                proc::UnderWindowsPath(item.second.argv0, candidate.win_dir);
       });
       if (running && supervisor.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10,
-                                                    post_script(candidate.game))) {
+                                                    post_script(candidate.game), post_timeout(candidate.game))) {
         events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});
       }
     }
@@ -368,6 +390,7 @@ library::ScanSummary Services::Scan() {
     scanner.UseUnclearMoves(unclear_moves);
     scanner.UseMetadataQueue(fetches);
     scanner.UseInstallLane(installs);
+    scanner.UseRunningCheck([this](const std::string& id) { return supervisor.IsRunning(id); });
     library::ScanSummary summary = scanner.ScanAll();
     QueueMetadata(summary.added_games);
     lock.lock();
@@ -490,7 +513,7 @@ void Services::SortByTags(std::vector<std::string> ids) {
                  if (!game || !library::NeedsPlacing(config, *game)) continue;  // changed meanwhile
                  const auto claim = Claim(id, "moved");
                  if (!claim) continue;
-                 const std::vector<model::Game> library = games.All();
+                 std::vector<model::Game> library = games.All();
                  auto placed = library::Place(config, *game, library);
                  if (!placed) {
                    log::Warn("couldn't sort {} by its tags: {}", id, placed.error().message);
@@ -507,12 +530,23 @@ void Services::SortByTags(std::vector<std::string> ids) {
                  if (!saved) {
                    log::Error("moved {} to {} but couldn't save it: {}", id, placed->install_path,
                               saved.error().message);
+                   // Back where the stored paths point. A loose AppImage moved alone, out of a
+                   // folder that stays.
+                   if (placed->install_path != game->install_path) {
+                     namespace fs = std::filesystem;
+                     std::error_code ec;
+                     const bool loose = fs::is_directory(game->install_path, ec);
+                     const fs::path exe = loose ? fs::path(game->exe_path) : fs::path();
+                     fs::rename(fs::path(placed->install_path) / exe, fs::path(game->install_path) / exe, ec);
+                     if (ec) log::Error("couldn't move {} back: {}", id, ec.message());
+                   }
                    failed.push_back(BatchFailure(id, saved.error()));
                    last_error = saved.error();
                    continue;
                  }
-                 library::PruneEmptyContainers(config, library::SortingFolderOf(config, *game),
-                                               games.All());
+                 // The snapshot as saved, rather than a second copy of the library.
+                 std::ranges::replace_if(library, [&](const model::Game& g) { return g.id == id; }, *saved);
+                 library::PruneEmptyContainers(config, library::SortingFolderOf(config, *game), library);
                  folders_lock.unlock();
                  events.Publish("game.updated", Record(*saved));
                  moved.push_back(id);
@@ -548,6 +582,14 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if (game.source == "desktop-entry") files = prefix = false;
   std::vector<model::Game> others(staying.begin(), staying.end());
   std::erase_if(others, [&](const model::Game& other) { return other.id == game.id; });
+  // Refused before anything is deleted, so a refusal leaves the game whole.
+  if (prefix && !game.data_dir.empty()) {
+    const auto sharer = std::ranges::find(others, game.data_dir, &model::Game::data_dir);
+    if (sharer != others.end()) {
+      return Err("shared_prefix", std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
+                 "Remove the launcher it came with to delete its prefix.");
+    }
+  }
   // Its link in a library folder goes with it, whatever else is kept.
   if (!game.library_link.empty()) {
     library::RemoveLink(game);
@@ -566,13 +608,6 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
   if (prefix && !game.data_dir.empty()) {
-    const auto sharer = std::ranges::find_if(staying, [&](const model::Game& other) {
-      return other.id != game.id && other.data_dir == game.data_dir;
-    });
-    if (sharer != staying.end()) {
-      return Err("shared_prefix", std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
-                 "Remove the launcher it came with to delete its prefix.");
-    }
     if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.

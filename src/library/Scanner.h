@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -60,6 +61,8 @@ public:
   void UseInstallLane(Lane& lane) { installs_ = &lane; }
   // Where the unclear moves it finds are kept for clients to settle.
   void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
+  // Games it must not remove (library.remove_missing) because they're running.
+  void UseRunningCheck(std::function<bool(const std::string&)> is_running) { is_running_ = std::move(is_running); }
 
   // Settles an unclear move: `folder` is game `id`'s, moved by hand, or a new game without one.
   Result<model::Game> Settle(const std::filesystem::path& folder,
@@ -76,6 +79,7 @@ private:
   metadata::FetchQueue* metadata_fetches_ = nullptr;
   Lane* installs_ = nullptr;
   UnclearMoves* unclear_moves_ = nullptr;
+  std::function<bool(const std::string&)> is_running_;
 };
 
 // Provisions again every Windows game left broken by a missing or failing

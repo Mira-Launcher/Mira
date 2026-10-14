@@ -20,11 +20,6 @@ namespace mira::library {
 namespace fs = std::filesystem;
 namespace {
 
-std::string Lower(std::string text) {
-  std::ranges::transform(text, text.begin(), [](unsigned char c) { return std::tolower(c); });
-  return text;
-}
-
 // The name a dropped path goes by: a file's stem (two for .tar.gz), a folder's own name.
 std::string NameOf(const fs::path& path) {
   std::error_code ec;
@@ -43,7 +38,7 @@ std::optional<std::string> AppImageCategories(const fs::path& path) {
   Command command;
   command.argv = {path.string(), "--appimage-extract", "*.desktop"};
   command.cwd = dir;
-  command.timeout_s = 20;
+  command.timeout_s = 5;  // runs on an HTTP worker
   const Result<runner::ExecResult> run = runner::RunAndWait(command);
   std::optional<std::string> categories;
   if (run && run->exit_code == 0) {
@@ -60,13 +55,14 @@ std::optional<std::string> AppImageCategories(const fs::path& path) {
       break;
     }
   }
-  fs::remove_all(dir);
+  std::error_code ignored;
+  fs::remove_all(dir, ignored);
   return categories;
 }
 
 // Whether `root` is the Applications folder.
 bool IsApplicationsRoot(const fs::path& root) {
-  return Lower(root.filename().string()) == "applications";
+  return strings::ToLower(root.filename().string()) == "applications";
 }
 
 }  // namespace
@@ -77,7 +73,7 @@ ImportGuess ClassifyImport(const fs::path& dropped) {
   guess.name = strings::CleanGameName(NameOf(path));
 
   std::error_code ec;
-  if (fs::is_regular_file(path, ec) && Lower(path.extension().string()) == ".appimage") {
+  if (fs::is_regular_file(path, ec) && strings::ToLower(path.extension().string()) == ".appimage") {
     if (const std::optional<std::string> categories = AppImageCategories(path)) {
       if (categories->find("Game") != std::string::npos) {
         guess.kind = ImportKind::kGame;
@@ -102,7 +98,10 @@ ImportGuess ClassifyImport(const fs::path& dropped) {
 Result<fs::path> ImportInto(const config::Config& config, const fs::path& dropped, ImportKind kind) {
   const fs::path path = dropped.has_filename() ? dropped : dropped.parent_path();
   std::error_code ec;
-  if (!fs::exists(path, ec)) return Err("source_missing", std::format("{} doesn't exist", path.string()));
+  if (!fs::exists(path, ec)) {
+    if (ec) return Err("io_error", std::format("couldn't check {}: {}", path.string(), ec.message()));
+    return Err("source_missing", std::format("{} doesn't exist", path.string()));
+  }
   if (kind != ImportKind::kGame && kind != ImportKind::kApp) {
     return Err("invalid_kind", "kind must be \"game\" or \"app\"");
   }
