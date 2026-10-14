@@ -17,6 +17,7 @@
 #include <map>
 
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
 #include "../widgets/TileView.h"
 #include "ArtworkStore.h"
@@ -26,6 +27,7 @@
 #include "GameTileDelegate.h"
 #include "TileGrid.h"
 #include "TitleFilterBar.h"
+#include "ZoomSettle.h"
 #include "../client/api/Stores.h"
 #include "../sources/Sources.h"
 
@@ -82,6 +84,10 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
     : QWidget(parent), library_(library), artwork_(artwork), tile_width_(tile_width) {
   games_ = new GameFilterProxy(library_, this);
   games_->SetSort(sort_key, sort_descending);
+  zoom_settle_ = new ZoomSettle(this, artwork_, tile_width_, [this] {
+    grid_->viewport()->update();
+    owned_grid_->viewport()->update();
+  });
 
   auto* layout = new QVBoxLayout(this);
   // Plus the grid's own padding and tile inset, lines up with the header.
@@ -348,26 +354,20 @@ QSize LibraryPage::TileSize() const {
 void LibraryPage::SetTileWidth(int width) {
   if (width == tile_width_) return;
   tile_width_ = width;
-  // Each step scales every visible cover again, so they're scaled quickly until the zoom stops.
-  if (zoom_settled_ == nullptr) {
-    zoom_settled_ = new QTimer(this);
-    zoom_settled_->setSingleShot(true);
-    zoom_settled_->setInterval(150);
-    connect(zoom_settled_, &QTimer::timeout, this, [this] {
-      artwork_->SetQuickScaling(false);
-      // The covers kept at the old size are no longer drawn.
-      if (drawn_width_ != 0 && drawn_width_ != tile_width_) artwork_->ForgetWidth(drawn_width_);
-      drawn_width_ = tile_width_;
-      grid_->viewport()->update();
-      owned_grid_->viewport()->update();
-    });
-  }
-  artwork_->SetQuickScaling(true);
-  zoom_settled_->start();
+  zoom_settle_->Step(width);
   delegate_->SetTileSize(TileSize());
   grid_->setGridSize(TileSize());
   owned_grid_->SetTileSize(TileSize());
   FitGrid();
+  // So the not-installed titles move with the covers above them in the same frame.
+  SettleLayout(scroll_->widget());
+}
+
+void LibraryPage::PrefetchTileWidth(int width) {
+  const QSize tile(width, width * 3 / 2);
+  zoom_settle_->Prefetched(width);
+  GameTileDelegate::PrefetchShown(grid_, artwork_, tile);
+  GameTileDelegate::PrefetchShown(owned_grid_, artwork_, tile);
 }
 
 TileRow LibraryPage::Row() const {
@@ -592,7 +592,8 @@ void LibraryPage::FitGrid() {
   if (not_installed_) return;
   const QSize cell = grid_->gridSize();
   const int margin = theme::Current().grid_margin;
-  const int per_row = std::max(1, (grid_->width() - 2 * margin) / std::max(1, cell.width()));
+  // The viewport (inside the margins) less a pixel, as in Row(): a tile ending at the edge wraps.
+  const int per_row = std::max(1, (grid_->viewport()->width() - 1) / std::max(1, cell.width()));
   const int rows = (games_->rowCount() + per_row - 1) / per_row;
   grid_->setFixedHeight(rows * cell.height() + 2 * margin + 2 * grid_->frameWidth());
 }

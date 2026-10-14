@@ -20,6 +20,7 @@
 #include "app/SystemNotifier.h"
 #include "app/Tray.h"
 #include "setup/SetupWindow.h"
+#include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
   mira_gui::theme::EnlargeAppFont();
+  mira_gui::theme::WriteUserCopies();
 
   // Mira closes to tray rather than quitting, so a second launch (another
   // double-click on the AppImage, another "Mira" from the app menu) must
@@ -94,6 +96,7 @@ int main(int argc, char** argv) {
   // Before any window exists, so nothing is ever painted unthemed. "auto"
   // follows the desktop's light/dark preference until frontend.toml is read
   // below, once mirad answers.
+  mira_gui::theme::portal::Watch();
   mira_gui::theme::Apply("auto");
   mira_gui::tooltip::Install();
 

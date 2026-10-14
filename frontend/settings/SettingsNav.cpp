@@ -296,7 +296,7 @@ void SettingsNavWidget::RefreshIcons() {
   for (const Category& category : categories_) {
     const QColor color = category.button->isChecked() ? tokens.on_accent : tokens.text_muted;
     category.button->setIcon(icons::For(category.glyph, color));
-    category.count->setStyleSheet(QString("color: %1;").arg(color.name()));
+    theme::SetStyleSheet(category.count, QString("color: %1;").arg(color.name()));
   }
 }
 

@@ -50,7 +50,7 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   layout->setSpacing(8);
   auto* icon = new QLabel(row);
   icon->setObjectName("icon");
-  icon->setPixmap(icons::For(glyph, theme::Current().text_muted).pixmap(14, 14));
+  icons::Follow(icon, glyph, 14);
   layout->addWidget(icon);
   auto* text = new QLabel(label, row);
   layout->addWidget(text, /*stretch=*/1);
@@ -406,7 +406,7 @@ void FilterSortPill::RestyleFilterRows() {
       } else {
         // Count included: on_accent for contrast against the accent
         // background, not left at its ordinary muted gray.
-        label->setStyleSheet(current ? QString("color: %1;").arg(color.name()) : QString());
+        theme::SetStyleSheet(label, current ? QString("color: %1;").arg(color.name()) : QString());
       }
     }
   }

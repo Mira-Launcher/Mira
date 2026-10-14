@@ -151,11 +151,7 @@ ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {
       std::tuple(tokens.radius_tile, tokens.placeholder_saturation, tokens.placeholder_value);
 }
 
-void ArtworkStore::SetQuickScaling(bool quick) {
-  const bool ended = quick_ && !quick;
-  quick_ = quick;
-  if (ended) emit QuickScalingEnded();
-}
+void ArtworkStore::SetQuickScaling(bool quick) { quick_ = quick; }
 
 bool ArtworkStore::Drop(const QString& key) {
   sidebar_.remove(key);
@@ -263,15 +259,17 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile, q
       return FitToTile(*last, tile, device_pixel_ratio);
   }
   if (thumbs_.contains(id)) {
-    // Fetched again for this size, the placeholder shown meanwhile; never kept as its cover.
-    if (!quick_) {
-      QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
-      if (!sizes.contains(std::pair{tile, device_pixel_ratio})) sizes.append({tile, device_pixel_ratio});
-      if (!queued_.contains(id)) refetching_.insert(id);
-      Request(id);
-    }
-    if (const auto loading = loading_.constFind(scaled_key); loading != loading_.constEnd()) return *loading;
-    return loading_.insert(scaled_key, Placeholder(id, name, tile, device_pixel_ratio, source)).value();
+    // Fetched again for this size, the last sharp copy stretched meanwhile (a settled zoom), else
+    // the placeholder; never kept as its cover.
+    if (!quick_) Refetch(id, tile, device_pixel_ratio);
+    if (const auto loading = loading_.constFind(scaled_key); loading != loading_.constEnd())
+      return *loading;
+    const auto last = last_drawn_.constFind(id);
+    return loading_
+        .insert(scaled_key, last != last_drawn_.constEnd()
+                                ? FitToTile(*last, tile, device_pixel_ratio)
+                                : Placeholder(id, name, tile, device_pixel_ratio, source))
+        .value();
   }
   const QPixmap cover = Placeholder(id, name, tile, device_pixel_ratio, source);
   KeepScaled(scaled_key, cover);
@@ -286,6 +284,19 @@ QPixmap ArtworkStore::Placeholder(const QString& id, const QString& name, QSize 
                            ? SourceLogo(*info, tile.width() / 2, device_pixel_ratio)
                            : QPixmap();
   return PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10), device_pixel_ratio, logo);
+}
+
+void ArtworkStore::Refetch(const QString& id, QSize tile, qreal device_pixel_ratio) {
+  QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
+  if (!sizes.contains(std::pair{tile, device_pixel_ratio}))
+    sizes.append({tile, device_pixel_ratio});
+  if (!queued_.contains(id)) refetching_.insert(id);
+  Request(id);
+}
+
+void ArtworkStore::PrefetchCover(const QString& id, QSize tile, qreal device_pixel_ratio) {
+  if (!thumbs_.contains(id) || scaled_.contains(id + '@' + QString::number(tile.width()))) return;
+  Refetch(id, tile, device_pixel_ratio);
 }
 
 void ArtworkStore::KeepScaled(const QString& key, const QPixmap& cover) {

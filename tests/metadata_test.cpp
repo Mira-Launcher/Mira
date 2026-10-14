@@ -183,13 +183,28 @@ TEST_CASE("Downloaded art is fitted to its slot: an opaque PNG cover shrinks to 
   };
   write_png(dir / "big.png", 1200, 1800, 255);
   write_png(dir / "logo.png", 400, 100, 0);
-  REQUIRE(cache.Write("celeste", nlohmann::json{
-      {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 1}, {"url", "file://" + (dir / "big.png").string()}}})},
-                          {"logo", nlohmann::json::array({{{"id", 2}, {"url", "file://" + (dir / "logo.png").string()}}})}}},
-  }).has_value());
+  // Steam's icons are .ico, which stb can't read: kept as is, and typed as what it is.
+  std::ofstream(dir / "icon.ico", std::ios::binary) << std::string("\0\0\1\0\1\0icon", 10);
+  REQUIRE(
+      cache
+          .Write(
+              "celeste",
+              nlohmann::json{
+                  {"art_candidates",
+                   {{"cover", nlohmann::json::array(
+                                  {{{"id", 1}, {"url", "file://" + (dir / "big.png").string()}}})},
+                    {"logo", nlohmann::json::array(
+                                 {{{"id", 2}, {"url", "file://" + (dir / "logo.png").string()}}})},
+                    {"icon",
+                     nlohmann::json::array(
+                         {{{"id", 3}, {"url", "file://" + (dir / "icon.ico").string()}}})}}},
+              })
+          .has_value());
 
   REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 1).has_value());
   REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "logo", 2).has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "icon", 3).has_value());
+  CHECK(cache.ArtFor("celeste", "icon")->content_type == "image/vnd.microsoft.icon");
   const auto cover = cache.ArtFor("celeste", "cover");
   REQUIRE(cover.has_value());
   CHECK(cover->content_type == "image/jpeg");

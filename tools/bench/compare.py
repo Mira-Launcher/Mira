@@ -77,6 +77,12 @@ class Report:
     def is_memory(key):
         return key.partition(".")[0] in PROCESSES
 
+    @staticmethod
+    def summarized(scenario, metric):
+        # With the GUI up, Qt's thread pool and mirad's HTTP lane start and retire idle workers on 30 s
+        # timers, so their thread counts follow timing, not the code. The full log still has them.
+        return not (metric == "threads" and scenario.startswith("gui"))
+
     def worse(self):
         """Every measure that got worse beyond its threshold, largest first. If none did but something got
         worse at all, the largest such change, so a regression is never left out."""
@@ -87,7 +93,7 @@ class Report:
                 timed = t_old is not None and t_new is not None
                 if self.is_memory(key):
                     process, _, metric = key.partition(".")
-                    c = change(t_old, t_new) if timed else 0
+                    c = change(t_old, t_new) if timed and self.summarized(scenario, metric) else 0
                     if c > 0:
                         floor = 2 if metric == "threads" else MEMORY_FLOOR_KB
                         found.append((c, f"**{scenario}**: {PROCESSES[process]} {MEMORY[metric]} "
@@ -146,7 +152,7 @@ class Report:
                 measured = 0
                 for scenario in self.scenarios:
                     old, new = self.pair("time", scenario, key)
-                    if old is None or new is None:
+                    if old is None or new is None or not self.summarized(scenario, metric):
                         continue
                     measured += 1
                     c = change(old, new)
@@ -159,10 +165,11 @@ class Report:
                                  f"**{scenario}**: {memory_text(metric, old)} → {memory_text(metric, new)} ({pct(c)})")
         return lines
 
-    def full(self):
+    def full(self, gui_runs):
+        once = " The GUI scenarios ran once, so their values are from that run." if gui_runs == 1 else ""
         out = ["# Benchmark: every value", "",
-               "Time is the median of the runs; instructions are from one callgrind run. Memory is measured at "
-               "the end of each scenario.", ""]
+               f"Time is the median of the runs; instructions are from one callgrind run.{once} Memory is measured "
+               "at the end of each scenario.", ""]
         for scenario in self.scenarios:
             out += [f"## {scenario}", "", "| Measure | Time base | Time branch | Change | Instr base | Instr branch | Change |",
                     "|---|---:|---:|---:|---:|---:|---:|"]
@@ -199,13 +206,16 @@ def main():
     base, base_failed, _ = load(args.base)
     branch, branch_failed, branch_runs = load(args.branch)
     report = Report(base, branch)
+    gui_runs = sum(1 for r in branch_runs if any(s.startswith("gui") for s in {**r["results"], **r["failures"]}))
 
     lines = [f"## Benchmark against {args.base_name}", ""]
     if args.fixture:
         meta = json.loads(Path(args.fixture).read_text())
         time_runs = sum(1 for r in branch_runs if r["mode"] == "time" and "startup" in r["results"])
+        once = " The GUI's values are from that one run, not a median." if gui_runs == 1 else ""
         lines += [f"{meta['games']} games over {len(meta['sources'])} sources, {meta['titles']:,} store titles; "
-                  f"{time_runs} timed runs and one callgrind run per side.", ""]
+                  f"{time_runs} timed runs of mirad's scenarios and {gui_runs} of the GUI's, plus one callgrind run "
+                  f"per side.{once}", ""]
     if branch_failed:
         lines += ["### Failed on the branch", *[f"- **{name}**: {error}" for name, error in branch_failed.items()], ""]
     new = sorted(set(base_failed) - set(branch_failed))
@@ -224,7 +234,7 @@ def main():
     if args.summary:
         Path(args.summary).write_text(summary + "\n")
     if args.full:
-        Path(args.full).write_text(report.full())
+        Path(args.full).write_text(report.full(gui_runs))
     sys.exit(1 if branch_failed else 0)
 
 

@@ -12,6 +12,7 @@
 #include "api/Services.h"
 #include "library/GamePatch.h"
 #include "config/Resolver.h"
+#include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
 
 namespace mira::api {
@@ -19,14 +20,6 @@ namespace {
 using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
-
-// A preview is saved without an extension, so its type comes from its bytes.
-std::string SniffImageType(std::string_view bytes) {
-  if (bytes.starts_with("\x89PNG")) return "image/png";
-  if (bytes.starts_with("GIF8")) return "image/gif";
-  if (bytes.size() >= 12 && bytes.starts_with("RIFF") && bytes.substr(8, 4) == "WEBP") return "image/webp";
-  return "image/jpeg";
-}
 
 constexpr std::size_t kMaxUpload = 32 << 20;
 
@@ -43,7 +36,9 @@ void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id,
   std::string bytes(static_cast<std::size_t>(in.tellg()), '\0');
   in.seekg(0);
   in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  res.set_content(std::move(bytes), art->content_type);
+  // From the bytes, not the record: older records call an .ico a JPEG.
+  const std::string mime = metadata::ImageContentType(bytes);
+  res.set_content(std::move(bytes), mime);
 }
 
 void RegisterMetadataRoutes(Router& http, Services& s) {
@@ -176,7 +171,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     if (file.empty() || !in) return SendError(res, 404, "thumb_not_cached", "no preview cached for that candidate");
     std::ostringstream buffer;
     buffer << in.rdbuf();
-    res.set_content(buffer.str(), SniffImageType(buffer.str()));
+    res.set_content(buffer.str(), metadata::ImageContentType(buffer.str()));
   });
 
   http.Delete("/v1/artwork/thumbs", [&s](const Request&, Response& res) {

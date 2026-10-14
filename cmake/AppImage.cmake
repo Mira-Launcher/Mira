@@ -129,6 +129,17 @@ fi
     endforeach()
   endif()
 
+  # Qt's GTK platform theme gives GNOME, Cinnamon, MATE and Xfce their colors and file picker. It is
+  # copied in as is (Qt builds it to find Qt in ../../lib) and loads the user's own GTK, which
+  # linuxdeploy never sees: it only follows usr/bin and usr/lib. GLib stays out too, since a newer
+  # system GTK needs a GLib at least as new as itself; GLib's own dependencies are listed because
+  # linuxdeploy still bundles an excluded library's.
+  set(MIRA_SYSTEM_LIBRARIES
+      libglib-2.0.so* libgobject-2.0.so* libgio-2.0.so* libgmodule-2.0.so* libgthread-2.0.so*
+      libffi.so* libpcre.so* libpcre2-8.so* libmount.so* libblkid.so* libselinux.so*)
+  # Read by linuxdeploy and its Qt plugin alike.
+  list(JOIN MIRA_SYSTEM_LIBRARIES ";" MIRA_EXCLUDED_LIBRARIES)
+
   set(MIRA_APPRUN "${MIRA_APPIMAGE_TOOLS_DIR}/AppRun")
   file(WRITE "${MIRA_APPRUN}" "\
 #!/bin/sh
@@ -173,6 +184,9 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MIRA_APPDIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy "${MIRA_APPRUN}" "${MIRA_APPDIR}/AppRun"
     COMMAND chmod 755 "${MIRA_APPDIR}/AppRun"
+    COMMAND "${CMAKE_COMMAND}" -E copy
+            "${MIRA_QT_FILTERED_PLUGINS_DIR}/platformthemes/libqgtk3.so"
+            "${MIRA_APPDIR}/usr/plugins/platformthemes/libqgtk3.so"
     # NO_STRIP: linuxdeploy bundles its own `strip`, which on at least one
     # real machine (very new binutils/ld defaults, e.g. RELR relative
     # relocations) can't parse some system libraries it's asked to strip
@@ -184,6 +198,7 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
             "QMAKE=${MIRA_QMAKE_WRAPPER}"
             "LINUXDEPLOY_PLUGIN_QT=${MIRA_LINUXDEPLOY_QT}"
             "NO_STRIP=1"
+            "LINUXDEPLOY_EXCLUDED_LIBRARIES=${MIRA_EXCLUDED_LIBRARIES}"
             "${MIRA_LINUXDEPLOY}"
               --appdir "${MIRA_APPDIR}"
               --executable "${MIRA_APPDIR}/usr/bin/mirad"

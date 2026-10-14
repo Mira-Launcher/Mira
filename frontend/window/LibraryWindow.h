@@ -142,12 +142,16 @@ private:
 
   // The slider moved: resizes whichever page is showing.
   void Zoom(int width);
+  // Ctrl+plus/minus and Ctrl+wheel: `steps` slider page steps, positive to grow.
+  void StepZoom(int steps);
   void ApplyTileWidth(int width);
   int ShownTileWidth() const;
   mira_gui::TileRow ShownTileRow() const;
   int SourceTileWidth(const QString& id) const;
   // Points the slider at the page on screen, and off where there's no grid.
   void SyncZoom();
+  // The same once the grids are laid out, after one resizes or a page shows.
+  void SyncZoomSoon();
   bool SourcePageShown() const;
   // The Tags page's game picker, whose covers follow the tile size.
   bool TagPickerShown() const;
@@ -318,6 +322,7 @@ private:
   // Bumped per RefreshGames, so an older reply landing late can't undo a newer one.
   int games_request_ = 0;
   QTimer* save_prefs_timer_ = nullptr;  // see ScheduleSavePrefs
+  bool zoom_sync_queued_ = false;       // see SyncZoomSoon
   mira_gui::DownloadsPanel* downloads_panel_ = nullptr;
   // game.added events asking for their settings to open, gathered briefly
   // so a scan's burst of them opens nothing.

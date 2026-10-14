@@ -1,8 +1,8 @@
-# The benchmark container: CI's toolchain (Ubuntu 24.04, GCC 14, Qt 6.8.3) plus the profilers, Xvfb for the
+# The benchmark container: CI's toolchain (Ubuntu 24.04, GCC 14, Qt 6.12.0) plus the profilers, Xvfb for the
 # GUI, and Pillow for the fixture's generated art. Runs with no network, so nothing measured can reach the web.
 FROM ubuntu:24.04
 
-ARG QT_VERSION=6.8.3
+ARG QT_VERSION=6.12.0
 ENV DEBIAN_FRONTEND=noninteractive \
     QT_ROOT=/opt/Qt/${QT_VERSION}/gcc_64
 

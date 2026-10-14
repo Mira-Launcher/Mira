@@ -39,6 +39,7 @@ class ProgressRail;
 class RatingChips;
 class SettingsCard;
 class SourceSettingsCard;
+class ZoomSettle;
 class SourceSetupCard;
 class TabRow;
 class TileGrid;
@@ -59,6 +60,8 @@ public:
   // A store title's cover arrived; a game's own tile repaints from the model.
   void UpdateCover(const QString& id);
   void SetTileWidth(int width);
+  // The covers on screen drawn ahead at `width`, the size a zoom is on its way to.
+  void PrefetchTileWidth(int width);
   // The row its tiles snap to fill; room 0 when none show.
   TileRow Row() const;
   void SetDragSelectEnabled(bool enabled);
@@ -153,6 +156,7 @@ private:
   SourceInfo source_;
   std::string id_;
   ArtworkStore* artwork_ = nullptr;
+  ZoomSettle* zoom_settle_ = nullptr;
   DownloadTracker* downloads_ = nullptr;
   bool tool_installed_ = false;
   bool authenticated_ = false;

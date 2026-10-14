@@ -28,6 +28,7 @@ namespace mira_gui {
 class ArtworkStore;
 class ContinueRow;
 class FilterSortPill;
+class ZoomSettle;
 class GameFilterProxy;
 class GameLibraryModel;
 class GameTileDelegate;
@@ -94,6 +95,8 @@ class LibraryPage : public QWidget {
 
   int TileWidth() const { return tile_width_; }
   void SetTileWidth(int width);
+  // The covers on screen drawn ahead at `width`, the size a zoom is on its way to.
+  void PrefetchTileWidth(int width);
   // The row its tiles snap to fill; room 0 when none show.
   TileRow Row() const;
   // A new cover for `id`, for the Continue row (the tiles follow the model).
@@ -166,8 +169,7 @@ class LibraryPage : public QWidget {
   std::vector<OwnedMatch> owned_matches_;
   std::set<QString> covers_asked_;  // "<source>-<ref>" whose cover fetch was queued
   int tile_width_ = 0;
-  QTimer* zoom_settled_ = nullptr;  // smooth covers once the zoom stops changing
-  int drawn_width_ = 0;             // the tile width covers were last kept at
+  ZoomSettle* zoom_settle_ = nullptr;
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;
   bool continue_apps_ = false;

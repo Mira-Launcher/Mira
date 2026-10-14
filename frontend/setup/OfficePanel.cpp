@@ -60,7 +60,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
     head->addWidget(title);
     head->addStretch(1);
     done_label_ = new QLabel(QString::fromUtf8("\xe2\x9c\x93 ") + guide.done, this);
-    done_label_->setStyleSheet(QString("color: %1;").arg(theme::Current().success.name()));
+    done_label_->setObjectName("setup_done");
     done_label_->setVisible(false);
     head->addWidget(done_label_);
     layout->addLayout(head);
@@ -133,8 +133,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* note = new QHBoxLayout();
   note->setSpacing(8);
   auto* icon = new QLabel(this);
-  icon->setPixmap(icons::For(icons::Glyph::EyeSlash, theme::Current().text_muted)
-                      .pixmap(QSize(14, 14), devicePixelRatioF()));
+  icons::Follow(icon, icons::Glyph::EyeSlash, 14);
   note->addWidget(icon, 0, Qt::AlignTop);
   note->addWidget(MakeLabel(this, guide.note, "muted"), /*stretch=*/1);
   layout->addLayout(note);

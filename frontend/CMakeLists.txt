@@ -63,7 +63,7 @@ qt_add_resources(mira-gui "logos"
 
 # The stylesheet and the themes that fill it in (theme/Theme.cpp). Embedded so a
 # build tree, an AppImage and an installed copy all theme themselves the same
-# way; a user's own themes are read from ~/.config/mira/themes at run time.
+# way; a user's own themes, and edits to these, are read from ~/.config/mira/themes at run time.
 qt_add_resources(mira-gui "themes"
   PREFIX "/themes"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/themes"
@@ -146,8 +146,16 @@ add_executable(mira_gui_tests
   sources/Sources.cpp
   theme/Theme.cpp
   widgets/Labels.cpp
+  widgets/TileFit.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+qt_add_resources(mira_gui_tests "test_themes"
+  PREFIX "/themes"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/themes"
+  FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/themes/mira-dark.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/themes/mira-light.toml"
+)
 # Widgets only for the game model's headers (its roles are the tile
 # delegate's) and theme colors; no test opens a window or runs an event loop.
 # Test for QAbstractItemModelTester, which checks the models' row signals.

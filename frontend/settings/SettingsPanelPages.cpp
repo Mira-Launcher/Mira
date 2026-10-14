@@ -141,9 +141,12 @@ void SettingsPanel::BuildInterfacePage() {
   const std::vector<GameSummary> games = PreviewGames(previews_);
 
   SettingsCard* appearance = page->AddCard("Appearance");
-  auto* theme_row = new SettingRow("Theme",
-                                   "To add a theme, put a .toml file in ~/.config/mira/themes. The bundled "
-                                   "themes show which keys you can set.");
+  auto* theme_row =
+      new SettingRow("Theme",
+                     "The built-in themes take their colors from the desktop's color scheme. "
+                     "Themes are .toml files in ~/.config/mira/themes. Edit mira-dark.toml "
+                     "or mira-light.toml there to change the built-in themes, or copy one to "
+                     "another name to add a theme of your own.");
   auto* tiles = new QWidget(theme_row);
   auto* tiles_layout = new QHBoxLayout(tiles);
   tiles_layout->setContentsMargins(0, 0, 0, 4);

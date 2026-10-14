@@ -730,7 +730,7 @@ void ArtPickerPanel::ShowUpload(const QString& path, const QPixmap& pixmap, QSiz
 void ArtPickerPanel::UpdateGridSize() {
   // Sized as if the scroll bar were always there, so it showing up doesn't
   // change the column count and lay everything out again.
-  const int scroll_bar = grid_->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
+  const int scroll_bar = grid_->verticalScrollBar()->sizeHint().width();
   const int width = grid_->width() - 20 - scroll_bar;  // less the grid's padding
   // SteamGridDB heroes are 96:31, covers 2:3; logos vary, so a wide box, and icons are square.
   const bool hero = slot_ == "hero";

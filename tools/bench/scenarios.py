@@ -30,7 +30,7 @@ SCENARIOS = []
 
 def scenario(name, startup=False, gui=False):
     """`startup` scenarios measure mirad's own start, so they get mirad before it's started. `gui` ones
-    measure the GUI, so they only run with --gui (time mode, beside the callgrind pass)."""
+    measure the GUI, so they only run with --gui (time mode, after the callgrind pass)."""
     def register(fn):
         SCENARIOS.append((name, fn, startup, gui))
         return fn
@@ -344,19 +344,25 @@ def relocate(ctx, meta):
 
 
 def gui_pid(launcher, timeout=30):
-    """mira-gui's own pid in the session xvfb-run started."""
+    """mira-gui's own pid in the session xvfb-run started. A child it forks is named mira-gui too until it
+    execs, so the one whose parent isn't mira-gui."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         check(launcher.poll() is None, f"xvfb-run exited with {launcher.returncode}")
+        parents = {}
         for stat in Path("/proc").glob("[0-9]*/stat"):
             try:
                 fields = stat.read_text().rsplit(")", 1)
                 name = fields[0].split("(", 1)[1]
-                session = int(fields[1].split()[3])
+                rest = fields[1].split()
+                parent, session = int(rest[1]), int(rest[3])
             except (OSError, IndexError, ValueError):
                 continue
             if name == "mira-gui" and session == launcher.pid:
-                return int(stat.parent.name)
+                parents[int(stat.parent.name)] = parent
+        own = [pid for pid, parent in parents.items() if parent not in parents]
+        if own:
+            return min(own)
         time.sleep(0.02)
     raise Failed("mira-gui never started")
 
@@ -396,10 +402,11 @@ def changed(before, after):
     return sum(abs(a - b) > 16 for a, b in zip(before, after)) / max(len(before), 1)
 
 
-def respond(pid, press):
+def respond(pid, press, may_idle=False):
     """Wall time from the GUI's main thread starting on `press` until it first pauses (0.3 s), and its CPU
     until it rests (2 s), which counts work it put off, such as a page rebuilt after a restyle. Both in ms.
-    The clock starts with the GUI's work, not the press, so starting xdotool isn't counted."""
+    The clock starts with the GUI's work, not the press, so starting xdotool isn't counted. None when
+    `may_idle` and the key did nothing."""
     before, start = main_thread_ns(pid), time.perf_counter()
     press()
     last, last_poll, began, last_busy, first = before, start, None, None, None
@@ -411,6 +418,8 @@ def respond(pid, press):
             last_busy = now
         last, last_poll = used, now
         if last_busy is None:
+            if may_idle and now - start >= 2:
+                return None
             check(now - start < 2, "the key did nothing")
             continue
         if first is None and now - last_busy >= 0.3:
@@ -470,11 +479,12 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
         time.sleep(5)
         idle = cpu_ticks(pid) - before
         ctx.results["idle CPU ms per 5 s"] = idle * 10
-        ctx.results.update({f"gui.{k}": v for k, v in proc_status(pid).items()})
         check(idle <= 10, f"the GUI used {idle * 10} ms of CPU in 5 idle seconds (a redraw loop?)")
         if then:
             then(pid)
         check(gui.poll() is None, f"the GUI exited with {gui.returncode}")
+        # After `then`, so what it did is counted, as for mirad's memory at a scenario's end.
+        ctx.results.update({f"gui.{k}": v for k, v in proc_status(pid).items()})
     except Failed as e:
         # Its last lines say why, such as a library the runner lacks.
         log.flush()
@@ -490,6 +500,27 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
         log.close()
 
 
+def zoom(ctx, label):
+    """Ctrl+minus until the tiles are smallest, then Ctrl+plus until they're largest, twice. Each step
+    fetches the covers on screen at the new size; memory at the end shows whether the sizes left behind
+    are let go."""
+    def sweep(pid):
+        display = Display(pid)
+        walls, cpus = [], []
+        for _ in range(2):
+            for key in ("ctrl+minus", "ctrl+plus"):
+                for _ in range(20):  # the window's width sets how many sizes there are
+                    step = respond(pid, lambda: display.key(key), may_idle=True)
+                    if step is None:
+                        break
+                    walls.append(step[0])
+                    cpus.append(step[1])
+        check(len(walls) >= 4, f"only {len(walls)} zoom steps did anything")
+        ctx.results["zoom step"] = round(statistics.median(walls), 1)
+        ctx.results["zoom step, CPU until done"] = round(statistics.median(cpus), 1)
+    open_gui(ctx, label, then=sweep)
+
+
 @scenario("gui", gui=True)
 def gui_library(ctx, meta):
     """Opening Mira on the library."""
@@ -499,6 +530,10 @@ def gui_library(ctx, meta):
 @scenario("gui-big-screen", gui=True)
 def gui_big_screen(ctx, meta):
     """Opening Mira straight into big screen."""
+    # Its home page showcases the focused game after a pause that would look like quiet; with no
+    # pause, quiet is after the showcase.
+    status, _ = ctx.client.request("PATCH", "/v1/config", {"frontend": {"big_screen_trailer_delay_ms": 0}})
+    check(status == 200, f"setting the showcase delay answered {status}")
     open_gui(ctx, "GUI big screen", ["--big-screen"])
 
 
@@ -512,6 +547,12 @@ def gui_hidden_mode(ctx, meta):
 def gui_hidden_mode_tags(ctx, meta):
     """Switching hidden mode on the Tags page."""
     hidden_mode(ctx, "GUI hidden mode on Tags", page_keys="ctrl+shift+F9")
+
+
+@scenario("gui-zoom", gui=True)
+def gui_zoom(ctx, meta):
+    """Zooming the library's tiles from smallest to largest and back."""
+    zoom(ctx, "GUI zoom")
 
 
 # --- runner ---------------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QFont>
 #include <QObject>
+#include <QPalette>
 #include <QString>
 #include <QStringList>
 
@@ -65,6 +66,10 @@ struct Tokens {
   // still comes from the game's own name (see CoverArt).
   int placeholder_saturation = 110;
   int placeholder_value = 135;
+
+  // Take the window, panel, text and accent colors from the desktop's palette, where it has one.
+  // The window, panel and text colors only when the desktop is as light or dark as the theme.
+  bool system_colors = false;
 };
 
 // Stand-ins for covers in a preview with no games to show: `tokens`' own
@@ -72,6 +77,15 @@ struct Tokens {
 inline std::array<QColor, 4> SampleArt(const Tokens& tokens) {
   return {tokens.accent, tokens.warning, tokens.success, tokens.error};
 }
+
+// `tokens` with the desktop's colors, as a theme with system_colors gets them: those of its
+// palette `system` where Qt reads one (KDE), and its portal `accent` where the desktop sets one.
+Tokens WithSystemColors(Tokens tokens, const std::optional<QPalette>& system,
+                        std::optional<QColor> accent = std::nullopt);
+
+// The desktop's accent and light or dark preference from its portal (theme/DesktopPortal), for
+// desktops whose palette Qt doesn't read. Restyles if they change what's drawn.
+void SetDesktopAppearance(std::optional<QColor> accent, std::optional<Qt::ColorScheme> scheme);
 
 // `font` `points` larger, in whatever unit it's set in.
 QFont Larger(QFont font, qreal points = 1);
@@ -105,6 +119,11 @@ struct Overrides {
 // Re-applies the current theme, so a change shows without a restart.
 void SetOverrides(const Overrides& overrides);
 const Overrides& CurrentOverrides();
+
+// Writes each bundled theme into the user's theme directory unless a file of that name is there
+// already, to edit or copy. A user file of a bundled theme's name applies over it key by key, so a
+// key it lacks (one added in a later version) still comes from the bundled theme.
+void WriteUserCopies();
 
 // Theme names, bundled ones first, then any *.toml in the user's theme
 // directory. Not including "auto", which is a resolution rule rather than a
@@ -156,5 +175,9 @@ signals:
 
 // A QColor as CSS: hex when opaque, rgba() otherwise.
 QString ColorToQss(const QColor& color);
+
+// Sets a widget's own style sheet unless it already has that one. Qt repolishes the widget on
+// every call, the same sheet included, so this is for code that runs again and again.
+void SetStyleSheet(QWidget* widget, const QString& sheet);
 
 }  // namespace mira_gui::theme

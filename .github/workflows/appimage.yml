@@ -96,7 +96,8 @@ jobs:
           MIRA_BENCH_BASE_BIN: ${{ github.workspace }}/appimages/base/squashfs-root/usr/bin
           MIRA_BENCH_BRANCH_BIN: ${{ github.workspace }}/appimages/branch/squashfs-root/usr/bin
           MIRA_BENCH_BASE_NAME: ${{ steps.main.outputs.name }}
-        run: tools/bench/run.sh main 3 || echo "failed=1" >> "$GITHUB_OUTPUT"
+        # One GUI pass: each takes about 3.5 minutes here.
+        run: tools/bench/run.sh main 3 1 || echo "failed=1" >> "$GITHUB_OUTPUT"
 
       - name: Report
         if: steps.main.outputs.name

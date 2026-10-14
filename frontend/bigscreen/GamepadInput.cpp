@@ -22,6 +22,9 @@ enum PowerState { kPowerOnBattery = 1, kPowerNoBattery, kPowerCharging, kPowerCh
 constexpr int kConnectionWireless = 2;
 constexpr std::int16_t kTriggerThreshold = 16000;
 constexpr std::int64_t kHoldBackMs = 700;
+constexpr int kPollMs = 8;
+// Looking for new controllers twice a second is plenty.
+constexpr int kScanMs = 500;
 
 }  // namespace
 
@@ -107,7 +110,7 @@ GamepadInput::GamepadInput(QObject* parent) : QObject(parent) {
   if (!sdl->Load()) return;
   sdl_ = std::move(sdl);
   clock_.start();
-  timer_.setInterval(8);
+  timer_.setInterval(kScanMs);
   connect(&timer_, &QTimer::timeout, this, &GamepadInput::Poll);
   timer_.start();
 }
@@ -130,9 +133,9 @@ void GamepadInput::Scan() {
     pads_.erase(pads_.begin() + std::ptrdiff_t(i));
     changed = true;
   }
-  // Looking for new controllers twice a second is plenty.
-  if (sdl.scan_countdown-- <= 0) {
-    sdl.scan_countdown = 60;
+  // Without a controller each tick is a scan.
+  if (sdl.open.empty() || sdl.scan_countdown-- <= 0) {
+    sdl.scan_countdown = kScanMs / kPollMs;
     // Only pumping events finds controllers plugged in since; the events themselves aren't used.
     sdl.PumpEvents();
     sdl.FlushEvents(0, 0xffffffff);
@@ -184,6 +187,9 @@ void GamepadInput::Poll() {
   Sdl& sdl = *sdl_;
   sdl.UpdateGamepads();
   Scan();
+  // Nothing to read between scans until a controller is connected, so big screen idles without it.
+  const int interval = sdl.open.empty() ? kScanMs : kPollMs;
+  if (timer_.interval() != interval) timer_.setInterval(interval);
   if (sdl.open.empty()) return;
 
   std::array<bool, size_t(Nav::kCount)> down{};

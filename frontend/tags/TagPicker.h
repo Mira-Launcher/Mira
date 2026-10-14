@@ -19,6 +19,7 @@ namespace mira_gui {
 
 class ArtworkStore;
 class PickTile;
+class ZoomSettle;
 class Switch;
 
 // The Tags page's game picker: covers to tick, the games a tag would go on. Sections come first
@@ -74,6 +75,7 @@ private:
   std::vector<std::string> Chosen() const;
 
   ArtworkStore* artwork_ = nullptr;
+  ZoomSettle* zoom_settle_ = nullptr;
   QLabel* title_ = nullptr;
   QLineEdit* name_edit_ = nullptr;
   QLineEdit* search_ = nullptr;

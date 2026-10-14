@@ -1,6 +1,12 @@
 # Mira's light theme, used when the desktop asks for light and the theme
 # setting is "Follow the desktop". Same keys as mira-dark.toml.
 
+# Take the desktop's colors: its accent on any desktop that sets one, and its
+# window, panel and text colors where it shares them (KDE's color scheme, for
+# one). From a dark desktop only its accent is taken, and where the desktop
+# has no colors the ones below apply. false uses only the colors below.
+system_colors = true
+
 window = "#f4f5f7"
 surface = "#ffffff"
 surface_alt = "#eceef2"

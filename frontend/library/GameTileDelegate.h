@@ -8,6 +8,7 @@
 #include "../activity/DownloadTracker.h"
 
 class QAbstractItemView;
+class QListView;
 class QStandardItem;
 
 namespace mira_gui {
@@ -60,6 +61,10 @@ public:
   // `idle_action` pill ("Install") while nothing runs.
   static void SetTileProgress(QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,
                               const QString& idle_action);
+
+  // The covers of `view`'s tiles from the first on screen, as many as fit on screen at `tile`,
+  // drawn ahead at that size: a zoom on its way there then ends on sharp covers.
+  static void PrefetchShown(QListView* view, ArtworkStore* artwork, QSize tile);
 
   GameTileDelegate(QObject* parent, QSize tile, ArtworkStore* artwork = nullptr);
 
