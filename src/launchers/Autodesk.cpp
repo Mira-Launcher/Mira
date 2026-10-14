@@ -41,6 +41,10 @@ fs::path DeployLog(const fs::path& prefix) {
   return prefix / "drive_c/users/steamuser/AppData/Local/Temp/AdOdisDeployTool.log";
 }
 
+fs::path InstallLog(const fs::path& prefix) {
+  return prefix / "drive_c/users/steamuser/AppData/Local/Autodesk/ODIS/Install.log";
+}
+
 }  // namespace
 
 bool ImageBuilt(const fs::path& prefix) {
@@ -71,6 +75,36 @@ Result<void> PrepareImage(const fs::path& setup) {
     }
   }
   return {};
+}
+
+FailureWatch::FailureWatch(const fs::path& prefix) : log_(InstallLog(prefix)) {
+  std::error_code ec;
+  const auto size = fs::file_size(log_, ec);
+  if (!ec) offset_ = size;  // an earlier install's lines don't count
+}
+
+std::optional<std::string> FailureWatch::Failed() {
+  std::ifstream log(log_, std::ios::binary);
+  if (!log) return std::nullopt;
+  log.seekg(static_cast<std::streamoff>(offset_));
+  // "... Failed to install Package (upi2:  {...} name: Revit 2027 )  Error Code:  1603 ..."
+  constexpr std::string_view kFailed = "Failed to install Package (", kName = "name: ";
+  for (std::string line; std::getline(log, line);) {
+    if (log.eof()) break;  // a line still being written: read again next time
+    offset_ += line.size() + 1;
+    if (line.contains("\"command\":\"ROLLBACK_PACKAGES\"")) rolled_back_ = true;
+    const auto at = line.find(kFailed);
+    if (at == std::string::npos) continue;
+    const auto name = line.find(kName, at);
+    const auto end = line.find(" )", name);
+    if (name != std::string::npos && end != std::string::npos)
+      packages_.push_back(line.substr(name + kName.size(), end - name - kName.size()));
+  }
+  if (!rolled_back_) return std::nullopt;
+  std::string list;
+  for (const std::string& package : packages_) list += (list.empty() ? "" : ", ") + package;
+  return std::format("Autodesk's installer failed{} and undid the install. Its log is {}",
+                     list.empty() ? "" : " on " + list, log_.string());
 }
 
 }  // namespace mira::launchers::autodesk

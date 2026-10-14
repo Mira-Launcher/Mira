@@ -7,6 +7,8 @@
 #include <fstream>
 
 #include "config/Config.h"
+#include "launchers/Autodesk.h"
+#include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
@@ -230,4 +232,25 @@ TEST_CASE(
         "System.NullReferenceException: something that is wrong\n"
         "done\n");
   CHECK(launchers::WithoutNoise("") == "");
+}
+
+TEST_CASE(
+    "launchers: an Autodesk install has failed once its log rolls back, and an earlier install's "
+    "lines don't count") {
+  const fs::path prefix = test::TempDir("autodesk-failed");
+  const fs::path log = prefix / "drive_c/users/steamuser/AppData/Local/Autodesk/ODIS/Install.log";
+  fs::create_directories(log.parent_path());
+  std::ofstream(log)
+      << "T1 Received Request On IPC channel:  {\"command\":\"ROLLBACK_PACKAGES\"}\n";
+  launchers::autodesk::FailureWatch watch(prefix);
+  CHECK_FALSE(watch.Failed());
+  std::ofstream(log, std::ios::app)
+      << "T2 [ InstallManager::HandleInstallFailure ]   Failed to install Package (upi2:  {C8} "
+         "name: Revit 2027 )  Error Code:  1603\n";
+  CHECK_FALSE(watch.Failed());
+  std::ofstream(log, std::ios::app)
+      << "T3 Received Request On IPC channel:  {\"command\":\"ROLLBACK_PACKAGES\"}\n";
+  const auto failed = watch.Failed();
+  REQUIRE(failed);
+  CHECK(failed->contains("failed on Revit 2027 and undid"));
 }

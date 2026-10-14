@@ -161,8 +161,9 @@ bool SourcePage::HasImport() const {
 }
 
 // Every page but Local has both sections; ones that can't list what the account owns say so.
+// A launcher without an import is one app (AutoCAD, Revit): there's nothing more to list.
 bool SourcePage::HasOwned() const {
-  return id_ != "local" && !IsEmulator() && !IsModManager();
+  return id_ != "local" && !IsEmulator() && !IsModManager() && !(IsLauncher() && !HasImport());
 }
 
 bool SourcePage::ListsOwned() const {

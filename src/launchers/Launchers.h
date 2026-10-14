@@ -48,6 +48,8 @@ struct Setup {
   // It waits on the user once done (Autodesk's "Run Installer" dialog): finished as soon as `done`
   // says so, and its session is ended.
   bool stops_when_done = false;
+  // Why it failed, once it has, for an installer that doesn't exit when it fails (Autodesk's).
+  std::function<std::optional<std::string>()> failed{};
 };
 
 struct Launcher {

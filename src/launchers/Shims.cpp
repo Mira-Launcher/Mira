@@ -140,6 +140,19 @@ Result<void> Install(const config::Config& config, const runner::RunnerRegistry&
   return {};
 }
 
+Result<void> InstallPowerShellHost(const config::Config& config, const model::Game& host,
+                                   const fs::path& downloads) {
+  const auto shims = Dir(config, downloads);
+  if (!shims) return std::unexpected(shims.error());
+  const fs::path gac = fs::path(host.data_dir) /
+                       "drive_c/windows/Microsoft.NET/assembly/GAC_MSIL/"
+                       "System.Management.Automation/v4.0_3.0.0.0__31bf3856ad364e35";
+  std::error_code ec;
+  fs::create_directories(gac, ec);
+  return CopyFile(*shims / "System.Management.Automation.dll",
+                  gac / "System.Management.Automation.dll");
+}
+
 Result<void> Override(const runner::RunnerRegistry& runners, const model::Game& host,
                       std::span<const Shim> list) {
   for (const Shim& shim : list) {

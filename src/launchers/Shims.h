@@ -32,6 +32,12 @@ Result<void> Install(const config::Config& config, const runner::RunnerRegistry&
                      const model::Game& host, const std::filesystem::path& downloads,
                      std::span<const Shim> list, std::string* version = nullptr);
 
+// Copies the System.Management.Automation shim into the prefix's GAC, where Wine's .NET finds it
+// for any program. It runs PS2EXE-wrapped scripts with PowerShell 7 (the powershell_core winetricks
+// verb).
+Result<void> InstallPowerShellHost(const config::Config& config, const model::Game& host,
+                                   const std::filesystem::path& downloads);
+
 // Sets each of `list` to load native first, in the prefix's registry (which Wine's services read
 // too).
 Result<void> Override(const runner::RunnerRegistry& runners, const model::Game& host,

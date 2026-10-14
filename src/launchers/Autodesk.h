@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/Result.h"
 
@@ -26,5 +29,19 @@ void ForgetImageBuilt(const std::filesystem::path& prefix);
 
 // Readies `setup` (an image's Setup.exe) to run under Wine.
 Result<void> PrepareImage(const std::filesystem::path& setup);
+
+// Reads Autodesk's install log from where it ends now. Once the installer rolls back, which it does
+// instead of exiting when a package fails under Wine, Failed() says which packages failed.
+class FailureWatch {
+ public:
+  explicit FailureWatch(const std::filesystem::path& prefix);
+  std::optional<std::string> Failed();
+
+ private:
+  std::filesystem::path log_;
+  std::uintmax_t offset_ = 0;
+  std::vector<std::string> packages_;
+  bool rolled_back_ = false;
+};
 
 }  // namespace mira::launchers::autodesk

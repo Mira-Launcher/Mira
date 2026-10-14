@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -372,6 +373,12 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
         if (on_progress) on_progress(shown / 100.0);
       }
     }
+    if (const auto why = step.failed ? step.failed() : std::nullopt) {
+      CopyNewOutput(launcher, output_file, copied);
+      EndSession(launcher, game.data_dir);
+      ReapOrphans(*pid);
+      return Err("install_failed", *why);
+    }
     if ((step.stops_when_done || !SetupRunning(game, setup_dir, file)) && finished()) {
       CopyNewOutput(launcher, output_file, copied);
       Say(launcher, std::format("{} finished", file));
@@ -463,9 +470,17 @@ Result<void> InstallAutodesk(config::Config& config, const Launcher& launcher,
     return installed;
   }
   if (auto overridden = shims::Override(runners, game, kShims); !overridden) return overridden;
+  // Some packages run PS2EXE-wrapped PowerShell steps, which need a PowerShell host Wine lacks.
+  if (auto installed = shims::InstallPowerShellHost(config, game, paths::UserDir() / "downloads");
+      !installed) {
+    return installed;
+  }
   Setup install;
   install.file = setup->string();
   install.args = {"-q"};
+  install.failed = [watch = std::make_shared<autodesk::FailureWatch>(game.data_dir)] {
+    return watch->Failed();
+  };
   if (auto installed = RunInstaller(config, launcher, install, game, on_progress); !installed)
     return installed;
   // The image is several GB and only needed to install.
@@ -550,6 +565,9 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
     }
     game.runner_ref = provisioned.runner_ref;
     game.data_dir = provisioned.data_dir;
+    // Saved now, so installing again after a failure finds the prefix set up. Provisioning it again
+    // would wait forever on services the app installed (Autodesk's licensing).
+    if (auto saved = games.Upsert(game); !saved) return std::unexpected(saved.error());
   }
 
   WriteDefaults(config, launcher, game.data_dir);
@@ -793,8 +811,10 @@ const std::vector<Launcher>& All() {
                                            "Program Files/Autodesk/Inventor 2027/Bin/Inventor.exe");
     const Launcher max = autodesk_app("3dsmax", "Autodesk 3ds Max", "3DSMAX",
                                       "Program Files/Autodesk/3ds Max 2027/3dsmax.exe");
-    const Launcher revit = autodesk_app("revit", "Autodesk Revit", "RVT",
-                                        "Program Files/Autodesk/Revit 2027/Revit.exe");
+    Launcher revit = autodesk_app("revit", "Autodesk Revit", "RVT",
+                                  "Program Files/Autodesk/Revit 2027/Revit.exe");
+    revit.tricks.push_back(
+        "powershell_core");  // its PS2EXE steps run their scripts in PowerShell 7
     // Its installer asks for the licence and product numbers, so the user clicks through it.
     Launcher quickbooks;
     quickbooks.id = "quickbooks";
