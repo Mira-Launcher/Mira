@@ -2,8 +2,10 @@
 
 #include <QDialogButtonBox>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QUrl>
 #include <QStringList>
@@ -57,33 +59,69 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
   SetUpScrolling(scroll, this);
   outer->addWidget(scroll, /*stretch=*/1);
 
-  auto* body = new QWidget(scroll);
-  auto* layout = new QVBoxLayout(body);
-  layout->setSpacing(12);
-  scroll->setWidget(body);
+  body_ = new QWidget(scroll);
+  layout_ = new QVBoxLayout(body_);
+  layout_->setSpacing(12);
+  scroll->setWidget(body_);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   outer->addWidget(buttons);
 
+  layout_->addStretch(1);
+  Load();
+}
+
+void GameDetailPageDialog::ShowEmpty(const QString& text) {
+  auto* empty = new QWidget(body_);
+  auto* row = new QHBoxLayout(empty);
+  row->setContentsMargins(0, 0, 0, 0);
+  auto* label = new QLabel(text, empty);
+  label->setWordWrap(true);
+  label->setProperty("role", "muted");
+  row->addWidget(label, /*stretch=*/1);
+  auto* fetch = new QPushButton("Fetch store info", empty);
+  row->addWidget(fetch);
+  layout_->insertWidget(0, empty);
+  connect(fetch, &QPushButton::clicked, this, [this, empty, label, fetch] {
+    fetch->setEnabled(false);
+    fetch->setText("Fetching…");
+    api::RefreshMetadataManyAsync(this, {game_id_}, [this, empty, label, fetch](MetadataBatchResult result) {
+      if (!result.ok) {
+        label->setText(error_help::Describe(result.error));
+        fetch->setEnabled(true);
+        fetch->setText("Fetch store info");
+        return;
+      }
+      fetched_ = true;
+      delete empty;
+      Load();
+    });
+  });
+}
+
+void GameDetailPageDialog::Load() {
+  QWidget* body = body_;
+  QVBoxLayout* layout = layout_;
   auto* loading = new QLabel("Loading…", body);
   loading->setProperty("role", "muted");
-  layout->addWidget(loading);
-  layout->addStretch(1);
+  layout->insertWidget(0, loading);
 
-  api::GetMetadataAsync(this, game_id_, [body, layout, loading](GameMetadataResult result) {
+  api::GetMetadataAsync(this, game_id_, [this, body, layout, loading](GameMetadataResult result) {
     delete loading;
 
     if (!result.ok || result.missing) {
       // `missing` (a 404) is the ordinary "never fetched, or fetched and
       // found nothing" case, not a failure: result.error is only set for
       // an actual transport/server failure, and is empty here otherwise.
-      const QString text = result.missing ? "No store info cached for this game yet."
-                                          : error_help::Describe(result.error);
-      auto* empty = new QLabel(text, body);
-      empty->setWordWrap(true);
-      empty->setProperty("role", "muted");
-      layout->insertWidget(0, empty);
+      if (!result.missing) {
+        auto* error = new QLabel(error_help::Describe(result.error), body);
+        error->setWordWrap(true);
+        error->setProperty("role", "muted");
+        layout->insertWidget(0, error);
+        return;
+      }
+      ShowEmpty(fetched_ ? "No store info found for this game." : "No store info cached for this game yet.");
       return;
     }
 
@@ -201,10 +239,7 @@ GameDetailPageDialog::GameDetailPageDialog(std::string game_id, QString game_nam
 
     if (row == 0) {
       // Art-only sources (SteamGridDB) cache none of these.
-      auto* empty = new QLabel("No store info cached for this game.", body);
-      empty->setWordWrap(true);
-      empty->setProperty("role", "muted");
-      layout->insertWidget(0, empty);
+      ShowEmpty(fetched_ ? "No store info found for this game." : "No store info cached for this game.");
     }
   });
 }
