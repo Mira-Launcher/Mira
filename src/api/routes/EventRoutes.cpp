@@ -41,7 +41,11 @@ void RegisterEventRoutes(Router& http, Services& s) {
     }
     // A new client gets the buffer replayed, then `stream.live` so it can tell
     // history (show it) from news (announce it). A resuming one only missed news.
+    // Read first: an event published in between is then replayed, not skipped.
+    const std::int64_t resume_id = s.events.ResumeId();
     const std::int64_t replay_end = resuming ? 0 : s.events.LatestId();
+    // Nothing to replay: start from the next event, so the marker below has an id to resume from.
+    if (!resuming && replay_end == 0) after_id = resume_id;
     bool live_sent = resuming;
     // Ids are consecutive, so a jump means the client fell behind the buffer and missed events.
     bool synced = resuming;
@@ -55,8 +59,10 @@ void RegisterEventRoutes(Router& http, Services& s) {
           if (s.stopping.load(std::memory_order_relaxed)) return false;
           if (!live_sent && after_id >= replay_end) {
             live_sent = true;
-            static constexpr std::string_view kLive = "event: stream.live\ndata: {}\n\n";
-            return sink.write(kLive.data(), kLive.size());
+            // With the id it's caught up to, so a client reconnecting before any news resumes instead of
+            // getting the history again as if it were new.
+            const std::string live = std::format("id: {}\nevent: stream.live\ndata: {{}}\n\n", after_id);
+            return sink.write(live.data(), live.size());
           }
           auto event = s.events.WaitNext(after_id, s.stopping, std::chrono::milliseconds(20000));
           if (!event) return sink.is_writable() && !s.stopping.load(std::memory_order_relaxed);

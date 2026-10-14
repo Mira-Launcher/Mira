@@ -29,6 +29,7 @@ bool HiddenLock::Locked() const {
 }
 
 Result<void> HiddenLock::SetPassword(const std::string& current, const std::string& next) {
+  std::lock_guard change(set_mutex_);
   std::string hash;
   {
     std::lock_guard lock(mutex_);

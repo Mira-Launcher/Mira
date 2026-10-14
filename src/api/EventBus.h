@@ -61,6 +61,8 @@ public:
 
   // The newest event's id, or 0 with none buffered: where a replay ends.
   std::int64_t LatestId() const;
+  // The id before the next event's: where a client that has seen everything resumes.
+  std::int64_t ResumeId() const;
 
   // Runs on every game record an event carries (game.added, game.updated,
   // each of games.updated's), whoever published it, so every record comes
