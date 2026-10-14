@@ -25,7 +25,7 @@ inline QString BatchRefreshSummary(const MetadataBatchResult& result) {
 }
 
 // A color per lifecycle state so status reads at a glance without a
-// legend. The theme owns the colors; see ui/Theme.h.
+// legend. The theme owns the colors; see theme/Theme.h.
 inline QColor StatusColor(const std::string& status) {
   const theme::Tokens& tokens = theme::Current();
   if (status == "running") return tokens.running;  // not a mirad status: "playing right now"

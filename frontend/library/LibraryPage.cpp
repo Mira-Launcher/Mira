@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <map>
 
+#include "../app/Notify.h"
 #include "../theme/Theme.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
@@ -204,7 +205,11 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
   search_->setObjectName("library_search");
   search_->setPlaceholderText("Search…");
   search_->setClearButtonEnabled(true);
-  connect(search_, &QLineEdit::textChanged, this, &LibraryPage::ApplyFilter);
+  search_timer_ = new QTimer(this);
+  search_timer_->setSingleShot(true);
+  search_timer_->setInterval(150);
+  connect(search_timer_, &QTimer::timeout, this, &LibraryPage::ApplyFilter);
+  connect(search_, &QLineEdit::textChanged, search_timer_, qOverload<>(&QTimer::start));
   tabs_->SetSearch(search_);
   layout->addWidget(tabs_);
 
@@ -566,7 +571,10 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
   connect(menu.addAction(hide ? "Hide" : "Unhide"), &QAction::triggered, this, [this, match, hide] {
     for (const auto& [source, ref] : match.copies) {
       api::SetTitlesHiddenAsync(this, source.toStdString(), {ref.toStdString()}, hide,
-                                [](StoreActionResult) {});
+                                [this, hide](StoreActionResult result) {
+                                  if (!result.ok)
+                                    notify::FailedRequest(this, hide ? "Could not hide it." : "Could not unhide it.", result.error);
+                                });
     }
   });
   menu.exec(global_pos);
@@ -661,7 +669,9 @@ void LibraryPage::UpdateEmptyState() {
   if (not_installed_) {
     const bool listed = owned_titles_ != nullptr && owned_titles_->Listed();
     empty_hint_->setVisible(owned_matches_.empty());
-    empty_hint_->setText(!listed ? QString("Asking your stores…")
+    empty_hint_->setText(!listed ? (owned_titles_ != nullptr && owned_titles_->Failed()
+                                        ? QString("Couldn't reach your stores.")
+                                        : QString("Asking your stores…"))
                          : !title_filters_->Filter().Empty() || !search_->text().trimmed().isEmpty()
                              ? QString("No games match.")
                          : library_->ShowingHidden() ? QString("Nothing hidden here.")

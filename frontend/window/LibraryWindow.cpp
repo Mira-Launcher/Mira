@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCursor>
 #include <QDialog>
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
@@ -30,6 +31,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QToolButton>
+#include <QToolTip>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -288,58 +290,44 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 void LibraryWindow::BuildShortcuts() {
   common_ = mira_gui::shortcuts::Install(
       this, {
-                {"Ctrl+F", "Focus the search box"},
-                {"Esc", "Clear the search, then the selection"},
+                {"Ctrl+F", "Focus the search box", "focus_search"},
+                {"Esc", "Clear the search, then the selection", "clear_or_deselect"},
                 {"Ctrl+1…9", "Pick a filter"},
-                {"Ctrl+H", "Show only hidden games, or leave hidden mode"},
-                {"F5, Ctrl+R", "Refresh the library"},
-                {"Enter", "Play the selected game, or stop it while it runs"},
-                {"Alt+Enter", "Game settings"},
-                {"Delete", "Remove the selected games"},
-                {"Ctrl++, Ctrl+-", "Tile size"},
-                {"Ctrl+0", "Reset tile size"},
-                {"Ctrl+,", "Settings"},
+                {"Ctrl+H", "Show only hidden games, or leave hidden mode", "toggle_hidden"},
+                {"F5, Ctrl+R", "Refresh the library", "refresh"},
+                {"Enter", "Play the selected game, or stop it while it runs", "play_stop"},
+                {"Alt+Enter", "Game settings", "details_settings"},
+                {"Delete", "Remove the selected games", "delete_game"},
+                {"Ctrl++", "Bigger tiles", "zoom_in"},
+                {"Ctrl+-", "Smaller tiles", "zoom_out"},
+                {"Ctrl+0", "Reset tile size", "reset_zoom"},
+                {"Ctrl+,", "Settings", "settings"},
             });
 
   // Each of these registers with ui/KeyBindings so Settings' Shortcuts
   // category can list and edit it; Ctrl+1…9's per-filter loop below is the
-  // one deliberate exception (see its own comment).
-  auto window_action = [this](const QString& id, const QString& label, QKeySequence default_keys,
-                              QList<QKeySequence> extra_aliases, auto slot) {
-    auto* action = new QAction(this);
+  // one deliberate exception (see its own comment). An `owner` other than the
+  // window scopes the shortcut to it and its children.
+  auto add_action = [this](QWidget* owner, const QString& id, const QString& label, QKeySequence default_keys,
+                           QList<QKeySequence> extra_aliases, auto slot) {
+    auto* action = new QAction(owner);
     const QKeySequence primary =
         mira_gui::keybindings::Register(action, id, label, default_keys, extra_aliases);
     QList<QKeySequence> keys{primary};
     keys.append(extra_aliases);
     action->setShortcuts(keys);
+    if (owner != this) action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     connect(action, &QAction::triggered, this, slot);
-    addAction(action);
+    owner->addAction(action);
     return action;
   };
 
-  // Scoped to the grid, not the window: Delete and Enter still have to mean
-  // what they mean inside the search box. WidgetWithChildrenShortcut keeps a
-  // keystroke aimed at a text field from reaching the library instead.
-  auto grid_action = [this](const QString& id, const QString& label, QKeySequence default_keys,
-                            QList<QKeySequence> extra_aliases, auto slot) {
-    QWidget* scope = grid_page_->ShortcutScope();
-    auto* action = new QAction(scope);
-    const QKeySequence primary =
-        mira_gui::keybindings::Register(action, id, label, default_keys, extra_aliases);
-    QList<QKeySequence> keys{primary};
-    keys.append(extra_aliases);
-    action->setShortcuts(keys);
-    action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-    connect(action, &QAction::triggered, this, slot);
-    scope->addAction(action);
-  };
-
-  window_action("focus_search", "Focus the search box", QKeySequence(QKeySequence::Find), {},
+  add_action(this, "focus_search", "Focus the search box", QKeySequence(QKeySequence::Find), {},
                 [this] { grid_page_->FocusSearch(); });
 
   // One key, three jobs, in the order a user expects to undo them: leave
   // settings first, then clear the search, then clear the selection.
-  window_action("clear_or_deselect", "Clear the search, then the selection",
+  add_action(this, "clear_or_deselect", "Clear the search, then the selection",
                QKeySequence(Qt::Key_Escape), {}, [this] {
     if (sources_page_ != nullptr && sources_page_->SetupOpen()) {
       sources_page_->CloseSetup();
@@ -372,11 +360,11 @@ void LibraryWindow::BuildShortcuts() {
     grid_page_->ClearSearchOrSelection();
   });
 
-  window_action("zoom_in", "Bigger tiles", QKeySequence(QKeySequence::ZoomIn),
+  add_action(this, "zoom_in", "Bigger tiles", QKeySequence(QKeySequence::ZoomIn),
                 {QKeySequence(Qt::CTRL | Qt::Key_Equal)}, [this] { StepZoom(1); });
-  window_action("zoom_out", "Smaller tiles", QKeySequence(QKeySequence::ZoomOut), {},
+  add_action(this, "zoom_out", "Smaller tiles", QKeySequence(QKeySequence::ZoomOut), {},
                 [this] { StepZoom(-1); });
-  window_action("reset_zoom", "Reset tile size", QKeySequence(Qt::CTRL | Qt::Key_0), {},
+  add_action(this, "reset_zoom", "Reset tile size", QKeySequence(Qt::CTRL | Qt::Key_0), {},
                [this] {
                  zoom_->setValue(SourcePageShown() && !tile_size_synced_ ? kDefaultSourceTileWidth : kDefaultTileWidth);
                });
@@ -395,7 +383,7 @@ void LibraryWindow::BuildShortcuts() {
 
   // Hidden mode, on every page: each lists only hidden games until it's pressed again.
   hidden_action_ =
-      window_action("toggle_hidden", "Show only hidden games, or leave hidden mode",
+      add_action(this, "toggle_hidden", "Show only hidden games, or leave hidden mode",
                     QKeySequence(Qt::CTRL | Qt::Key_H), {}, [this] { ToggleHiddenMode(); });
   qApp->installEventFilter(this);  // input anywhere keeps unlocked hidden games unlocked
   grid_page_->SetHiddenShortcut(HiddenShortcut());
@@ -403,33 +391,37 @@ void LibraryWindow::BuildShortcuts() {
   // Neither is a menu entry anymore (both are sidebar rows now), kept here
   // so their shortcuts and Settings-screen Shortcuts-category listing
   // survive the menu trim.
-  window_action("settings", "Settings", QKeySequence(Qt::CTRL | Qt::Key_Comma), {},
+  add_action(this, "settings", "Settings", QKeySequence(Qt::CTRL | Qt::Key_Comma), {},
                [this] { OpenSettings(); });
   // No default keys; Settings can give them some.
-  window_action("open_tags", "Tags", QKeySequence(), {}, [this] { OpenTags(); });
-  window_action("open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
+  add_action(this, "open_tags", "Tags", QKeySequence(), {}, [this] { OpenTags(); });
+  add_action(this, "open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
   // F5 is the platform's own Refresh; Ctrl+R is the one every browser
   // taught, and a second binding costs nothing.
-  window_action("refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
+  add_action(this, "refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
                {QKeySequence(Qt::CTRL | Qt::Key_R)},
                [this] { RefreshLibrary(); });
 
   // Qt::Key_Enter is the keypad one, a separate key from Qt::Key_Return,
   // and binding only Return would leave it dead.
-  grid_action("play_stop", "Play the selected game, or stop it while it runs", QKeySequence(Qt::Key_Return),
-             {QKeySequence(Qt::Key_Enter)}, [this] {
+  // Scoped to the grid, not the window: Delete and Enter still have to mean
+  // what they mean inside the search box, and a keystroke aimed at a text
+  // field mustn't reach the library instead.
+  QWidget* grid_scope = grid_page_->ShortcutScope();
+  add_action(grid_scope, "play_stop", "Play the selected game, or stop it while it runs",
+             QKeySequence(Qt::Key_Return), {QKeySequence(Qt::Key_Enter)}, [this] {
                const mira_gui::GameSummary* game = FindGame(grid_page_->SelectedId());
                if (game == nullptr || !mira_gui::CanPlayOrStop(*game)) return;
                ToggleRunning(std::string(game->id));
              });
 
-  grid_action("details_settings", "Game settings", QKeySequence(Qt::ALT | Qt::Key_Return),
+  add_action(grid_scope, "details_settings", "Game settings", QKeySequence(Qt::ALT | Qt::Key_Return),
              {QKeySequence(Qt::ALT | Qt::Key_Enter)}, [this] {
                const std::string id = grid_page_->SelectedId();
                if (!id.empty()) OpenGameDialog(id);
              });
 
-  grid_action("delete_game", "Remove the selected games", QKeySequence(Qt::Key_Delete), {}, [this] {
+  add_action(grid_scope, "delete_game", "Remove the selected games", QKeySequence(Qt::Key_Delete), {}, [this] {
     // Copied before the call: the dialog's event loop can change the library.
     const std::vector<std::pair<std::string, QString>> selected = grid_page_->SelectedGames();
     if (selected.size() > 1) {
@@ -809,7 +801,10 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
     menus_->ShowGameMenu(id, pos);
   });
   connect(sidebar, &Sidebar::SelectionToggled, this,
-          [this](const std::string& id) { grid_page_->ToggleSelected(id); });
+          [this](const std::string& id) {
+            if (!grid_page_->ToggleSelected(id))
+              QToolTip::showText(QCursor::pos(), "Not shown in the grid with this filter");
+          });
   connect(sidebar, &Sidebar::HoverRequested, this,
           [this](const std::string& id, const QRect& anchor, const QString& hint) {
             if (const mira_gui::GameSummary* game = FindGame(id)) ShowHoverCardFor(*game, anchor, hint);
@@ -1095,18 +1090,21 @@ void LibraryWindow::RefreshGames(std::function<void()> done) {
   // Hidden games included (unless they're locked), so Ctrl+H is a client-side filter switch, not a
   // round trip.
   const int request = ++games_request_;
+  // Kept until a refresh lands, so a newer one superseding this still runs it.
+  if (done) refresh_done_.push_back(std::move(done));
   mira_gui::api::ListAllGamesAsync(
-      this, [this, request, done = std::move(done)](mira_gui::GamesResult result) {
+      this, [this, request](mira_gui::GamesResult result) {
         if (request != games_request_) return;  // a newer refresh is on its way
         mirad_reachable_ = result.ok;
         if (!result.ok) {
           mira_gui::notify::FailedRequest(this, "Could not list games.", result.error);
-          return;  // what's shown stays, rather than emptying the library
+          return;  // what's shown stays, and the callbacks wait for the next refresh
         }
+        const auto waiting = std::exchange(refresh_done_, {});
         // Before the tiles paint, so a game without art is never asked for it.
         for (const mira_gui::GameSummary& game : result.games) artwork_->NoteArt(game.id, game.art);
         library_->Replace(result.games);
-        if (done) done();
+        for (const auto& done : waiting) done();
       });
 }
 

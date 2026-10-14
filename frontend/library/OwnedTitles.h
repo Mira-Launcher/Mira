@@ -44,6 +44,8 @@ public:
   const std::vector<StoreTitle>& Titles() const { return titles_; }
   // A list arrived at least once.
   bool Listed() const { return fetched_.isValid(); }
+  // The last fetch failed.
+  bool Failed() const { return failed_; }
 
 signals:
   void Changed();
@@ -52,6 +54,7 @@ private:
   std::vector<StoreTitle> titles_;
   QDateTime fetched_;
   bool loading_ = false;
+  bool failed_ = false;
   bool again_ = false;  // asked again while loading
   bool again_fresh_ = false;
 };

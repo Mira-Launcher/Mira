@@ -107,6 +107,7 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   setFixedWidth(240);
 
   name_ = new QLabel(this);
+  name_->setTextFormat(Qt::PlainText);
   name_->setProperty("role", "section");
   name_->setWordWrap(true);
   layout->addWidget(name_);
@@ -220,7 +221,8 @@ void HoverCard::PopUpBeside(const QRect& anchor) {
 }
 
 void HoverCard::Reposition() {
-  adjustSize();
+  // Sized for its width: adjustSize alone underestimates a long wrapped name, clipping it.
+  resize(width(), heightForWidth(width()));
   // Placed again once metadata grows it: flipped to a tile's left, its old
   // spot would now overlap the tile. Kept inside the window it's drawn in.
   QWidget* window = parentWidget();

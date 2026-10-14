@@ -8,6 +8,7 @@
 #include <QTimer>
 
 #include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
 #include "../client/api/Hidden.h"
 
 namespace mira_gui {
@@ -131,7 +132,8 @@ HiddenPasswordRow::HiddenPasswordRow(QWidget* parent)
   SetBelow(fields_);
 
   api::GetHiddenStateAsync(this, [this](api::HiddenState state) {
-    if (state.ok) ShowState(state.password);
+    if (!state.ok) return notify::FailedRequest(this, "Could not check the hidden-games password.", state.error);
+    ShowState(state.password);
   });
 }
 

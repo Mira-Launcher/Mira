@@ -321,6 +321,7 @@ private:
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list
   // Bumped per RefreshGames, so an older reply landing late can't undo a newer one.
   int games_request_ = 0;
+  std::vector<std::function<void()>> refresh_done_;  // RefreshGames callbacks waiting on the latest reply
   QTimer* save_prefs_timer_ = nullptr;  // see ScheduleSavePrefs
   bool zoom_sync_queued_ = false;       // see SyncZoomSoon
   mira_gui::DownloadsPanel* downloads_panel_ = nullptr;

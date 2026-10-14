@@ -86,7 +86,12 @@ void OwnedTitles::Refresh(bool fresh) {
   api::GetStoreLibraryAsync(this, std::string(), fresh, [this](StoreLibraryResult result) {
     loading_ = false;
     if (std::exchange(again_, false)) Refresh(std::exchange(again_fresh_, false));
-    if (!result.ok) return;  // the last list stays; a store that's down isn't worth a notice here
+    failed_ = !result.ok;
+    if (failed_) {
+      // The last list stays; a store that's down isn't worth a notice, but a first list that never came is.
+      if (!Listed()) emit Changed();
+      return;
+    }
     titles_ = std::move(result.titles);
     fetched_ = QDateTime::currentDateTimeUtc();
     emit Changed();

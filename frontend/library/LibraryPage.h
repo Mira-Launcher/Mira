@@ -155,6 +155,7 @@ class LibraryPage : public QWidget {
   TabRow* tabs_ = nullptr;
   FilterSortPill* pill_ = nullptr;
   QLineEdit* search_ = nullptr;
+  QTimer* search_timer_ = nullptr;  // waits for typing to pause before ApplyFilter
   ContinueRow* continue_row_ = nullptr;
   LibraryGrid* grid_ = nullptr;
   GameTileDelegate* delegate_ = nullptr;

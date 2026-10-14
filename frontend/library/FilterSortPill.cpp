@@ -209,9 +209,7 @@ QWidget* FilterSortPill::BuildPopover() {
   clear_tags_->setText("Clear");
   clear_tags_->setAutoRaise(true);
   // Its space stays, so the pills don't shift down under the pointer as the first is picked.
-  QSizePolicy clear_policy = clear_tags_->sizePolicy();
-  clear_policy.setRetainSizeWhenHidden(true);
-  clear_tags_->setSizePolicy(clear_policy);
+  KeepSpaceWhenHidden(clear_tags_);
   clear_tags_->hide();
   connect(clear_tags_, &QToolButton::clicked, this, [this] { SetPickedTags({}); });
   tags_heading->addWidget(clear_tags_);
