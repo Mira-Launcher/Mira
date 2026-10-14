@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QTimer>
 
 namespace mira_gui {
 
@@ -16,9 +17,14 @@ CopyField::CopyField(const QString& text, QWidget* parent) : QWidget(parent), te
   field->setObjectName("copy_field");
   field->setWordWrap(true);
   copy_ = new QPushButton("Copy", this);
-  connect(copy_, &QPushButton::clicked, this, [this] {
+  auto* reset = new QTimer(this);
+  reset->setSingleShot(true);
+  reset->setInterval(2000);
+  connect(reset, &QTimer::timeout, this, [this] { copy_->setText("Copy"); });
+  connect(copy_, &QPushButton::clicked, this, [this, reset] {
     QApplication::clipboard()->setText(text_);
     copy_->setText("Copied");
+    reset->start();
   });
   layout->addWidget(field, 1);
   layout->addWidget(copy_, 0, Qt::AlignTop);

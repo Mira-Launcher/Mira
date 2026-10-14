@@ -354,9 +354,20 @@ void SettingsPanel::DiscardChanges() {
 }
 
 void SettingsPanel::Save() {
+  // Qt fires neither of two actions that share a key.
+  for (std::size_t i = 0; i < shortcuts_.size(); ++i) {
+    const QKeySequence keys = shortcuts_[i].edit->Keys();
+    for (std::size_t j = i + 1; j < shortcuts_.size() && !keys.isEmpty(); ++j) {
+      if (shortcuts_[j].edit->Keys() != keys) continue;
+      notify::Failed(this, "Couldn't save shortcuts",
+                     keys.toString(QKeySequence::NativeText) + " is used by two shortcuts. Change one of them.");
+      return;
+    }
+  }
   change_bar_->SetBusy(true);
   save_error_.clear();
 
+  std::optional<FrontendPrefs> prefs_to_save;
   if (PrefsDirty()) {
     FrontendPrefs prefs;
     for (const PrefToggle& toggle : toggles_) prefs.*toggle.member = toggle.toggle->isChecked();
@@ -408,9 +419,7 @@ void SettingsPanel::Save() {
     prefs.sidebar_recent_when = style.recent_when;
 
     for (const PrefField& field : pref_fields_) field.mark_saved();
-    api::SaveFrontendPrefsAsync(this, prefs, [this](PatchConfigResult result) {
-      if (!result.ok) notify::FailedRequest(this, "Could not save the display settings.", result.error);
-    });
+    prefs_to_save = prefs;
     emit PrefsSaved(prefs);
   }
 
@@ -429,19 +438,28 @@ void SettingsPanel::Save() {
       edited.push_back(i);
     }
   }
-  saves_pending_ = (edits.empty() ? 0 : 1) + static_cast<int>(resets.size());
+  // The display settings count too, so Save doesn't report done (and close) before they fail.
+  saves_pending_ = (edits.empty() ? 0 : 1) + static_cast<int>(resets.size()) + (prefs_to_save ? 1 : 0);
   if (saves_pending_ == 0) {
     FinishSave(true, {});
     return;
   }
-  const auto done = [this](bool ok, const std::string& error, const std::vector<size_t>& indices) {
+  // What was sent: an edit typed while the save runs is still unsaved after it.
+  std::vector<std::string> sent(fields_.size());
+  for (size_t i = 0; i < fields_.size(); ++i) sent[i] = fields_[i].Text();
+  const auto done = [this, sent](bool ok, const std::string& error, const std::vector<size_t>& indices) {
     if (ok) {
-      for (const size_t i : indices) fields_[i].original = fields_[i].Text();
+      for (const size_t i : indices) fields_[i].original = sent[i];
     } else if (save_error_.isEmpty()) {
-      save_error_ = QString::fromStdString(error);
+      save_error_ = error.empty() ? QString("Could not save.") : QString::fromStdString(error);
     }
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
+  if (prefs_to_save) {
+    api::SaveFrontendPrefsAsync(this, *prefs_to_save, [done](PatchConfigResult result) {
+      done(result.ok, result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
+    });
+  }
   if (!edits.empty()) {
     api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
       done(result.ok, result.error, edited);

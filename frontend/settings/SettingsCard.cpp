@@ -23,6 +23,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/ToolTip.h"
 #include "SettingsColumns.h"
@@ -32,13 +33,6 @@ namespace mira_gui {
 namespace {
 
 constexpr int kRowPaddingX = 18;
-
-// Hidden widgets keep their space, so revealing one on hover doesn't shift the row.
-void KeepSpaceWhenHidden(QWidget* widget) {
-  QSizePolicy policy = widget->sizePolicy();
-  policy.setRetainSizeWhenHidden(true);
-  widget->setSizePolicy(policy);
-}
 
 // A card's rows, with a line between each two shown. Drawn here rather than by the card so the
 // lines scroll with the rows.

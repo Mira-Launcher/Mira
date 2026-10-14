@@ -31,6 +31,9 @@ QString SizeText(qint64 bytes);
 // `length` fixes its long side; 0 lets the layout stretch it.
 QWidget* MakeDivider(QWidget* parent, Qt::Orientation orientation, int length = 0);
 
+// `widget` keeps its space in the layout while hidden, so showing it doesn't shift its neighbours.
+void KeepSpaceWhenHidden(QWidget* widget, bool keep = true);
+
 // One line of text that shrinks with an ellipsis instead of pushing what's
 // beside it out of view; the full text is its tooltip while cut.
 class ElidedLabel : public QLabel {

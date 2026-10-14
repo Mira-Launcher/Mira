@@ -2,11 +2,7 @@
 
 #include <algorithm>
 
-#include <QAbstractSlider>
-#include <QAbstractSpinBox>
-#include <QApplication>
 #include <QButtonGroup>
-#include <QComboBox>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -29,7 +25,7 @@ namespace mira_gui {
 
 QString CategoryNavGroup(const QString& category) {
   static const QStringList kLookAndFeel = {"Interface", "Sidebar", "Shortcuts"};
-  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Advanced"};
+  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Updates", "Advanced"};
   if (kLookAndFeel.contains(category)) return "Look and feel";
   if (kSystem.contains(category)) return "System";
   return "Games";
@@ -123,7 +119,6 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   SetUpScrolling(scroll_, this);  // the nav column and search box beside it page the settings too
   canvas_->installEventFilter(this);
   scroll_->viewport()->installEventFilter(this);
-  qApp->installEventFilter(this);  // wheel events over the scroll's controls
   connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this, &SettingsNavWidget::SyncToScroll);
 
   sticky_ = new QLabel(scroll_->viewport());
@@ -155,21 +150,6 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
 
 bool SettingsNavWidget::eventFilter(QObject* watched, QEvent* event) {
   if ((watched == canvas_ || watched == scroll_->viewport()) && event->type() == QEvent::Resize) SyncToScroll();
-  // In one long scroll the wheel scrolls; a dropdown, number box or slider
-  // only takes it once focused, so passing over one doesn't change it.
-  if (event->type() == QEvent::Wheel || event->type() == QEvent::Polish) {
-    auto* control = qobject_cast<QWidget*>(watched);
-    const bool wheel_control = control != nullptr &&
-                               (qobject_cast<QComboBox*>(control) || qobject_cast<QAbstractSpinBox*>(control) ||
-                                qobject_cast<QAbstractSlider*>(control)) &&
-                               canvas_->isAncestorOf(control);
-    if (wheel_control && event->type() == QEvent::Polish) {
-      control->setFocusPolicy(Qt::StrongFocus);  // the wheel must not focus it on the way past
-    } else if (wheel_control && !control->hasFocus()) {
-      QCoreApplication::sendEvent(scroll_->verticalScrollBar(), event);
-      return true;
-    }
-  }
   return QWidget::eventFilter(watched, event);
 }
 
