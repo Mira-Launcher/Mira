@@ -186,12 +186,13 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   });
   connect(form_, &GameEditForm::Loaded, title_, &QLabel::setText);
   connect(form_, &GameEditForm::TagFilterRequested, this, &GameCard::TagFilterRequested);
-  connect(form_, &GameEditForm::LoadFailed, this, [this](QString error) {
+  connect(form_, &GameEditForm::LoadFailed, this, [this](QString error, bool first) {
     notify::Failed(window(), QString("Could not load this %1.").arg(Noun()), error);
-    emit CloseRequested();
+    if (first) emit CloseRequested();
   });
   connect(form_, &GameEditForm::SaveFinished, this, [this](bool ok, QString error) {
     const bool close = std::exchange(close_after_save_, false);
+    saving_ = false;
     bar_->SetBusy(false);
     if (!ok) {
       notify::Failed(window(), QString("Could not save this %1.").arg(Noun()), error);
@@ -208,6 +209,8 @@ bool GameCard::IsDirty() const {
 }
 
 void GameCard::Save() {
+  if (saving_) return;
+  saving_ = true;
   bar_->SetBusy(true);
   form_->Save();
 }
@@ -223,6 +226,11 @@ void GameCard::Back() {
 }
 
 void GameCard::RequestClose() {
+  // Mid-save it closes once the save is in, rather than tear down what's still being written.
+  if (saving_) {
+    close_after_save_ = true;
+    return;
+  }
   if (!IsDirty() || notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved.").arg(Noun()), [this] {
         close_after_save_ = true;
         Save();

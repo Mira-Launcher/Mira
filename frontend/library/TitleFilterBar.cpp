@@ -10,6 +10,7 @@
 #include <array>
 
 #include "../sources/Sources.h"
+#include "../widgets/Labels.h"
 #include "../widgets/TabRow.h"
 
 namespace mira_gui {
@@ -116,9 +117,7 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
 
   clear_ = new QPushButton("Clear filters", this);
   clear_->setObjectName("text_button");
-  QSizePolicy keep = clear_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  clear_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(clear_);
   connect(clear_, &QPushButton::clicked, this, &TitleFilterBar::Clear);
   layout->addWidget(clear_);
   layout->addStretch(1);
@@ -128,6 +127,13 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
 void TitleFilterBar::SetStores(const std::vector<QString>& stores) {
   if (stores == stores_) return;
   stores_ = stores;
+  // A store no longer listed has no entry to untick, so it stops filtering. Not while there are no
+  // titles at all (still loading), which would drop every pick.
+  if (!stores_.empty()) {
+    std::erase_if(filter_.stores, [&](const std::string& store) {
+      return std::ranges::none_of(stores_, [&](const QString& s) { return s.toStdString() == store; });
+    });
+  }
   store_menu_->clear();
   for (const QString& store : stores_) {
     QAction* action = store_menu_->addAction(StoreName(store));

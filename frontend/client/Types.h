@@ -997,6 +997,7 @@ struct RelocateLibraryResult {
   ApiError error;
   int moved = 0;
   int failed = 0;
+  int skipped = 0;
   std::vector<GameFailure> errors;
 };
 

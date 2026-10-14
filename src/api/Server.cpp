@@ -94,12 +94,12 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
   // Every event stream and every long request (a scan, a move) holds a thread for its whole length.
   http_->new_task_queue = [] { return new LaneQueue; };
   http_->set_address_family(AF_UNIX);
-  if (!http_->bind_to_port(socket_path.string(), 80)) {
-    return Err("socket_bind_failed", std::format("cannot bind {}", socket_path.string()));
-  }
-  std::filesystem::permissions(socket_path, std::filesystem::perms::owner_read |
-                                                std::filesystem::perms::owner_write,
-                               ec);
+  http_->set_payload_max_length(40 << 20);  // room for the 32 MB art upload
+  // Owner-only from the moment it exists.
+  const mode_t mask = ::umask(077);
+  const bool bound = http_->bind_to_port(socket_path.string(), 80);
+  ::umask(mask);
+  if (!bound) return Err("socket_bind_failed", std::format("cannot bind {}", socket_path.string()));
 
   log::Info("listening on {}", socket_path.string());
   if (s_.stopping) return {};  // Stop() came before listening, where it would have done nothing

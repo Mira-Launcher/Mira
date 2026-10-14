@@ -116,7 +116,7 @@ TEST_CASE("frontend settings live in their own file, never leaking into settings
   CHECK(reloaded.FrontendSettings().value("theme", "") == "dark");
 }
 
-TEST_CASE("Config::Set rejects an invalid value and changes nothing") {
+TEST_CASE("Config rejects an invalid value or an unknown key and changes nothing, and takes valid patches") {
   const fs::path file = TempFile("settings-invalid.toml");
   fs::remove(file);
   Config config(file);
@@ -124,7 +124,10 @@ TEST_CASE("Config::Set rejects an invalid value and changes nothing") {
   const auto before = config.GetInt("scan.debounce_ms");
   auto result = config.Set("scan.debounce_ms", -5);
   CHECK_FALSE(result.has_value());
+  CHECK_FALSE(config.Patch({{"scan", {{"debounce_ms", 9000}, {"debounce_mss", 1}}}}).has_value());
   CHECK(config.GetInt("scan.debounce_ms") == before);
+  CHECK(config.Patch({{"scan", {{"debounce_ms", 9000}}}, {"library_roots", {"/a", "/b"}}}).has_value());
+  CHECK(config.Patch(nlohmann::json::object()).has_value());
 }
 
 TEST_CASE("an unparseable settings file is quarantined, not fatal") {

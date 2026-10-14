@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPointer>
 #include <QPushButton>
 
 #include "../app/ErrorHelp.h"
@@ -69,9 +70,13 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
     } else {
       auto* remove = new QPushButton("Remove", row);
       const std::int64_t id = collection.id;
-      connect(remove, &QPushButton::clicked, this, [this, id] {
-        api::RemoveItchCollectionAsync(this, id, [this](StoreActionResult r) {
-          if (!r.ok) return SetStatus("Could not remove it: " + error_help::Describe(r.error), true);
+      connect(remove, &QPushButton::clicked, this, [this, id, remove] {
+        remove->setEnabled(false);
+        api::RemoveItchCollectionAsync(this, id, [this, button = QPointer<QPushButton>(remove)](StoreActionResult r) {
+          if (!r.ok) {
+            if (button) button->setEnabled(true);
+            return SetStatus("Could not remove it: " + error_help::Describe(r.error), true);
+          }
           emit Changed();
           Refresh();
         });

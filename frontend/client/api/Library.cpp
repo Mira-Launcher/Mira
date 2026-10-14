@@ -81,6 +81,7 @@ DesktopEntrySyncResult SyncDesktopEntriesSync() {
 void FillRelocate(RelocateLibraryResult& result, const json& body) {
   result.moved = body.value("moved", 0);
   result.failed = body.value("failed", 0);
+  result.skipped = body.value("skipped", 0);
   result.errors = mapping::ToGameFailures(body, "errors");
 }
 

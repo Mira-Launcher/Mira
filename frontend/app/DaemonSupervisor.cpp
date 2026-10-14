@@ -44,13 +44,16 @@ void DaemonSupervisor::EnsureRunning() {
       qWarning("mirad: %s", process->readAllStandardError().constData());
     });
     // The socket this frontend talks to: mirad ignores $MIRA_SOCKET, which can move it.
+    connect(process_, &QProcess::started, this, [this] {
+      self_started_ = true;
+      PollHealth(kPollAttempts);
+    });
+    connect(process_, &QProcess::errorOccurred, this,
+            [this, mirad_path, process = process_](QProcess::ProcessError error) {
+              if (error != QProcess::FailedToStart) return;
+              emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process->errorString()));
+            });
     process_->start(mirad_path, {"--socket", QString::fromStdString(api::ResolveSocketPath())});
-    if (!process_->waitForStarted(2000)) {
-      emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process_->errorString()));
-      return;
-    }
-    self_started_ = true;
-    PollHealth(kPollAttempts);
   });
 }
 

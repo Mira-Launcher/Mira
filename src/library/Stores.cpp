@@ -36,7 +36,7 @@ std::vector<Store> BuildStores() {
       {"humble", "Humble Bundle", "humble-cli", "humble", humble::InstallHumbleCliBinary,
        humble::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(humble::kLoginUrl); }, humble::Login,
-       humble::FindSessionKey, nullptr, nullptr},
+       humble::FindSessionKey, humble::Logout, nullptr},
   };
 }
 

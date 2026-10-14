@@ -12,6 +12,7 @@ class QBoxLayout;
 class QButtonGroup;
 class QComboBox;
 class QLabel;
+class QPushButton;
 
 namespace mira_gui {
 
@@ -50,7 +51,8 @@ private:
   QString SourceLabel(const std::string& id) const;
   void SetDefault(const std::string& reference);
   void Remove(const RunnerInfo& runner);
-  void Download(const std::string& tag);
+  // `button` is enabled again if the download doesn't start.
+  void Download(const std::string& tag, QPushButton* button);
   void DownloadChanged(const QString& key);
   void SetStatus(const QString& text, bool error = false);
 
@@ -58,6 +60,7 @@ private:
   QButtonGroup* kinds_ = nullptr;
   QBoxLayout* columns_ = nullptr;  // side by side, or stacked on a narrow window
   SettingsCard* installed_ = nullptr;
+  bool installed_error_ = false;  // the status shows a failed runner list
   QLabel* default_note_ = nullptr;
   SettingsCard* catalog_ = nullptr;
   QComboBox* source_ = nullptr;

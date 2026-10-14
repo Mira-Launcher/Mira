@@ -19,7 +19,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 5> kMigrations = {
+constexpr std::array<std::string_view, 6> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -112,7 +112,39 @@ CREATE TABLE secrets(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
     R"sql(
 ALTER TABLE games ADD COLUMN launch TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(launch));
 )sql",
+    R"sql(
+-- Play history outlives its game, and comes back when a store game with its id is added again.
+CREATE TABLE sessions_kept(
+  game_id TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  wrapper_pid INTEGER NOT NULL DEFAULT 0,
+  game_pid INTEGER NOT NULL DEFAULT 0,
+  finished INTEGER NOT NULL DEFAULT 0,
+  ended_at INTEGER NOT NULL DEFAULT 0,
+  duration_seconds INTEGER NOT NULL DEFAULT 0,
+  exit_code INTEGER NOT NULL DEFAULT -1,
+  signal INTEGER NOT NULL DEFAULT 0,
+  launch_error TEXT NOT NULL DEFAULT '',
+  post_exit_code INTEGER,
+  post_timed_out INTEGER NOT NULL DEFAULT 0,
+  incomplete INTEGER NOT NULL DEFAULT 0,
+  counted INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(game_id, started_at)
+) STRICT;
+INSERT INTO sessions_kept SELECT * FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_kept RENAME TO sessions;
+CREATE INDEX sessions_uncounted ON sessions(counted) WHERE counted = 0;
+)sql",
 };
+
+// An id names folders (its artwork's, among others), so it must be one plain path segment.
+Result<void> CheckId(const std::string& id) {
+  if (id.empty() || id == "." || id == ".." || id.find_first_of("/\\") != std::string::npos) {
+    return Err("invalid_id", std::format("\"{}\" can't be a game id", id));
+  }
+  return {};
+}
 
 // The title a store game was installed from, as hidden_titles keys it, or "" for a game from no
 // store list.
@@ -177,14 +209,18 @@ Result<void> GameStore::Open() {
   std::error_code ec;
   const bool existed = fs::exists(file_, ec);
   auto opened = db_.Open(file_);
-  if (opened && existed && !db_.Sound()) opened = Err("database_damaged", "the database failed its check");
-  if (!opened && existed) {
+  if (opened && existed) opened = db_.CheckSound();
+  if (!opened && existed && opened.error().code == "database_damaged") {
     log::Error("could not open {}: {}", file_.string(), opened.error().message);
     db_.Close();
     SetDatabaseAside(file_);
     if (fs::exists(backup, ec)) {
       fs::copy_file(backup, file_, ec);
-      log::Warn("restored the library from {}", backup.string());
+      if (ec) {
+        log::Error("could not restore the library from {}: {}", backup.string(), ec.message());
+      } else {
+        log::Warn("restored the library from {}", backup.string());
+      }
     }
     opened = db_.Open(file_);
   }
@@ -203,15 +239,13 @@ Result<void> GameStore::Open() {
   return {};
 }
 
-void GameStore::ReadAll() {
+Result<void> GameStore::ReadAll() {
   games_.clear();
   const std::vector<std::string_view> columns = Columns();
   auto select = db_.Prepare(std::format("SELECT {} FROM games ORDER BY rowid", Joined(columns, "{}")));
-  if (!select) {
-    log::Error("could not read the library: {}", select.error().message);
-    return;
-  }
-  for (auto row = select->Step(); row && *row; row = select->Step()) {
+  if (!select) return std::unexpected(select.error());
+  auto row = select->Step();
+  for (; row && *row; row = select->Step()) {
     json document = json::object();
     int column = 0;
     for (const std::string_view name : kTextColumns) document[name] = select->Text(column++);
@@ -224,22 +258,26 @@ void GameStore::ReadAll() {
     if (!select->IsNull(column)) document["last_played_at"] = select->Int(column);
     games_.push_back(model::GameFromJson(document));
   }
+  if (!row) return std::unexpected(row.error());
 
   std::map<std::string, std::vector<std::string>> tags;
   auto tag_rows = db_.Prepare("SELECT game_id, tag FROM game_tags ORDER BY game_id, position");
-  if (!tag_rows) return;
-  for (auto row = tag_rows->Step(); row && *row; row = tag_rows->Step()) {
+  if (!tag_rows) return std::unexpected(tag_rows.error());
+  for (row = tag_rows->Step(); row && *row; row = tag_rows->Step()) {
     tags[tag_rows->Text(0)].push_back(tag_rows->Text(1));
   }
+  if (!row) return std::unexpected(row.error());
   for (model::Game& game : games_) {
     if (auto it = tags.find(game.id); it != tags.end()) game.tags = std::move(it->second);
   }
 
   hidden_titles_.clear();
   auto hidden_rows = db_.Prepare("SELECT id FROM hidden_titles");
-  if (!hidden_rows) return;
-  for (auto row = hidden_rows->Step(); row && *row; row = hidden_rows->Step())
+  if (!hidden_rows) return std::unexpected(hidden_rows.error());
+  for (row = hidden_rows->Step(); row && *row; row = hidden_rows->Step())
     hidden_titles_.insert(hidden_rows->Text(0));
+  if (!row) return std::unexpected(row.error());
+  return {};
 }
 
 Result<void> GameStore::WriteTitleHidden(const std::string& key, bool hidden) {
@@ -332,7 +370,13 @@ void GameStore::Load() {
                opened.error().message);
     return;
   }
-  ReadAll();
+  // Part of a library isn't saved over: an id a missing row holds could be handed out again.
+  if (auto read = ReadAll(); !read) {
+    read_only_ = true;
+    log::Error("could not read the library at {} ({}); not saving any changes", file_.string(),
+               read.error().message);
+    return;
+  }
   log::Info("loaded {} game(s) from {}", games_.size(), file_.string());
 }
 
@@ -361,10 +405,10 @@ Result<void> GameStore::Write(const model::Game& game) {
   auto clear = db_.Prepare("DELETE FROM game_tags WHERE game_id = ?");
   if (!clear) return std::unexpected(clear.error());
   if (auto done = clear->Bind(1, game.id).Run(); !done) return done;
+  auto add = db_.Prepare("INSERT OR IGNORE INTO game_tags(game_id, position, tag) VALUES(?, ?, ?)");
+  if (!add) return std::unexpected(add.error());
   std::int64_t position = 0;
   for (const std::string& tag : game.tags) {
-    auto add = db_.Prepare("INSERT OR IGNORE INTO game_tags(game_id, position, tag) VALUES(?, ?, ?)");
-    if (!add) return std::unexpected(add.error());
     if (auto done = add->Bind(1, game.id).Bind(2, position++).Bind(3, tag).Run(); !done) return done;
   }
   return {};
@@ -373,7 +417,11 @@ Result<void> GameStore::Write(const model::Game& game) {
 Result<void> GameStore::Delete(const std::string& id) {
   auto remove = db_.Prepare("DELETE FROM games WHERE id = ?");
   if (!remove) return std::unexpected(remove.error());
-  return remove->Bind(1, id).Run();
+  if (auto done = remove->Bind(1, id).Run(); !done) return done;
+  // Its sessions stay; one still open is never counted now.
+  auto close = db_.Prepare("UPDATE sessions SET counted = 1 WHERE game_id = ? AND counted = 0");
+  if (!close) return std::unexpected(close.error());
+  return close->Bind(1, id).Run();
 }
 
 Result<void> GameStore::Transact(const std::function<Result<void>()>& write) {
@@ -418,14 +466,14 @@ json GameStore::UiState() {
   return state.is_object() ? state : json::object();
 }
 
-void GameStore::KeepUiState(const json& state) {
+Result<void> GameStore::KeepUiState(const json& state) {
   std::lock_guard lock(mutex_);
-  if (!db_.IsOpen()) return;
+  if (!db_.IsOpen()) return Err("database_error", "the library isn't open");
   auto keep = db_.Prepare("INSERT OR REPLACE INTO ui_state(id, state) VALUES(1, ?)");
-  if (!keep) return;
-  if (auto done = keep->Bind(1, state.dump()).Run(); !done) {
-    log::Warn("could not save the window state: {}", done.error().message);
-  }
+  if (!keep) return std::unexpected(keep.error());
+  auto done = keep->Bind(1, state.dump()).Run();
+  if (!done) log::Warn("could not save the window state: {}", done.error().message);
+  return done;
 }
 
 namespace {
@@ -446,7 +494,9 @@ std::vector<SourceState> GameStore::Sources() const {
   if (!db_.IsOpen()) return sources;
   auto select = db_.Prepare("SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources ORDER BY position, id");
   if (!select) return sources;
-  for (auto row = select->Step(); row && *row; row = select->Step()) sources.push_back(ReadSource(*select));
+  auto row = select->Step();
+  for (; row && *row; row = select->Step()) sources.push_back(ReadSource(*select));
+  if (!row) log::Error("could not read the sources: {}", row.error().message);
   return sources;
 }
 
@@ -458,6 +508,7 @@ SourceState GameStore::Source(const std::string& id) const {
   if (!select) return state;
   auto row = select->Bind(1, id).Step();
   if (row && *row) state = ReadSource(*select);
+  if (!row) log::Error("could not read the source {}: {}", id, row.error().message);
   return state;
 }
 
@@ -561,27 +612,36 @@ bool GameStore::HasInstallUnder(const std::string& dir) const {
 std::string GameStore::NextId(const std::string& name) const {
   const std::string base = strings::Slugify(name);
   std::lock_guard lock(mutex_);
-  if (std::ranges::none_of(games_, [&](const model::Game& g) { return g.id == base; })) {
-    return base;
-  }
+  // A removed game's id keeps its play history, which a new game of the same name mustn't take.
+  const auto used = [&](const std::string& id) {
+    if (std::ranges::any_of(games_, [&](const model::Game& g) { return g.id == id; })) return true;
+    if (!db_.IsOpen()) return false;
+    auto select = db_.Prepare("SELECT 1 FROM sessions WHERE game_id = ? LIMIT 1");
+    if (!select) return false;
+    const auto row = select->Bind(1, id).Step();
+    return row && *row;
+  };
+  if (!used(base)) return base;
   for (int suffix = 2;; ++suffix) {
     const std::string candidate = std::format("{}-{}", base, suffix);
-    if (std::ranges::none_of(games_, [&](const model::Game& g) { return g.id == candidate; })) {
-      return candidate;
-    }
+    if (!used(candidate)) return candidate;
   }
 }
 
 Result<void> GameStore::Upsert(model::Game game) {
+  if (auto valid = CheckId(game.id); !valid) return valid;
   std::lock_guard lock(mutex_);
   const bool adopted = AdoptHiddenTitle(game);
+  auto it = std::ranges::find(games_, game.id, &model::Game::id);
   const auto written = Transact([&]() -> Result<void> {
+    if (it == games_.end()) {
+      if (auto done = Reattach(game); !done) return done;
+    }
     if (auto done = Write(game); !done) return done;
     return adopted ? WriteTitleHidden(game.id, false) : Result<void>{};
   });
   if (!written) return written;
   if (adopted) hidden_titles_.erase(game.id);
-  auto it = std::ranges::find(games_, game.id, &model::Game::id);
   if (it == games_.end()) {
     games_.push_back(std::move(game));
   } else {
@@ -590,7 +650,22 @@ Result<void> GameStore::Upsert(model::Game game) {
   return {};
 }
 
+Result<void> GameStore::Reattach(model::Game& game) {
+  auto select = db_.Prepare(
+      "SELECT SUM(duration_seconds), MAX(ended_at), MAX(started_at) FROM sessions WHERE game_id = ? AND finished = 1");
+  if (!select) return std::unexpected(select.error());
+  auto row = select->Bind(1, game.id).Step();
+  if (!row) return std::unexpected(row.error());
+  if (!*row || select->IsNull(0)) return {};
+  // The larger figure wins, as with a store's own play time.
+  game.play_seconds = std::max(game.play_seconds, select->Int(0));
+  game.last_played_at = std::max(game.last_played_at.value_or(0), select->Int(1));
+  game.last_session_at = std::max(game.last_session_at, select->Int(2));
+  return {};
+}
+
 Result<void> GameStore::Merge(const std::optional<model::Game>& base, model::Game& game) {
+  if (auto valid = CheckId(game.id); !valid) return valid;
   std::lock_guard lock(mutex_);
   auto it = std::ranges::find(games_, game.id, &model::Game::id);
   model::Game merged = game;
@@ -613,6 +688,9 @@ Result<void> GameStore::Merge(const std::optional<model::Game>& base, model::Gam
   }
   const bool adopted = AdoptHiddenTitle(merged);
   const auto written = Transact([&]() -> Result<void> {
+    if (it == games_.end()) {
+      if (auto done = Reattach(merged); !done) return done;
+    }
     if (auto done = Write(merged); !done) return done;
     return adopted ? WriteTitleHidden(merged.id, false) : Result<void>{};
   });
@@ -680,7 +758,8 @@ std::vector<PlaySession> GameStore::Sessions(const std::string& id, int limit) c
       "WHERE game_id = ? AND finished = 1 ORDER BY started_at DESC LIMIT ?");
   if (!select) return sessions;
   select->Bind(1, id).Bind(2, std::int64_t{limit});
-  for (auto row = select->Step(); row && *row; row = select->Step()) {
+  auto row = select->Step();
+  for (; row && *row; row = select->Step()) {
     sessions.push_back({.game_id = id,
                         .started_at = select->Int(0),
                         .ended_at = select->Int(1),
@@ -689,6 +768,7 @@ std::vector<PlaySession> GameStore::Sessions(const std::string& id, int limit) c
                         .signal = static_cast<int>(select->Int(4)),
                         .incomplete = select->Int(5) != 0});
   }
+  if (!row) log::Error("could not read the sessions of {}: {}", id, row.error().message);
   return sessions;
 }
 

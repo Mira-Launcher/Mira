@@ -83,6 +83,7 @@ class GameCard : public HeroBackdrop {
   int bottom_room_ = 0;
   // Set by "Save and exit", so the save that follows closes the card.
   bool close_after_save_ = false;
+  bool saving_ = false;
 };
 
 }  // namespace mira_gui

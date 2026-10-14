@@ -118,7 +118,7 @@ void ImportUiState(store::GameStore& games) {
     moved = true;
   }
   if (!moved) return;
-  games.KeepUiState(state);
+  if (!games.KeepUiState(state)) return;  // the keys stay in frontend.toml for the next try
   (void)WriteFileAtomic(file, tomljson::ToTomlText(*frontend), "config_write_failed");
 }
 }  // namespace

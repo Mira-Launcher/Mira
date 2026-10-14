@@ -40,4 +40,23 @@ inline bool JsonBool(const nlohmann::json& j, const char* key, bool fallback = f
   return (it != j.end() && it->is_boolean()) ? it->get<bool>() : fallback;
 }
 
+inline double JsonDouble(const nlohmann::json& j, const char* key, double fallback = 0) {
+  if (!j.is_object()) return fallback;
+  const auto it = j.find(key);
+  return (it != j.end() && it->is_number()) ? it->get<double>() : fallback;
+}
+
+// The key's array or object, or an empty one.
+inline nlohmann::json JsonArray(const nlohmann::json& j, const char* key) {
+  if (!j.is_object()) return nlohmann::json::array();
+  const auto it = j.find(key);
+  return (it != j.end() && it->is_array()) ? *it : nlohmann::json::array();
+}
+
+inline nlohmann::json JsonObject(const nlohmann::json& j, const char* key) {
+  if (!j.is_object()) return nlohmann::json::object();
+  const auto it = j.find(key);
+  return (it != j.end() && it->is_object()) ? *it : nlohmann::json::object();
+}
+
 }  // namespace mira::core

@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
 
   mira::config::Config config(mira::paths::SettingsFile());
   config.UseUiStateStore([&games] { return games.UiState(); },
-                         [&games](const nlohmann::json& state) { games.KeepUiState(state); });
+                         [&games](const nlohmann::json& state) { (void)games.KeepUiState(state); });
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
   if (games.SourcesNew()) mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h

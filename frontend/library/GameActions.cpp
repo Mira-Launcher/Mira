@@ -221,6 +221,9 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
           // Nothing on screen shows a path, so success gets a notice.
           if (result.moved > 0) {
             notify::Notice(parent, QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+          } else if (result.skipped > 0) {
+            notify::Notice(parent, result.skipped == 1 ? QString("That game was removed meanwhile.")
+                                                       : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
           } else if (result.errors.empty()) {
             notify::Notice(parent, "Already in Mira's folders.");
           }

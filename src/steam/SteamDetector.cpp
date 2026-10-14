@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <charconv>
 #include <climits>
-#include <fstream>
-#include <sstream>
 
 #include "core/Files.h"
 #include "core/Paths.h"
@@ -197,6 +195,8 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       if (appid == nullptr || !appid->scalar || installdir == nullptr || !installdir->scalar) continue;
       if (*appid->scalar == kRedistAppId) continue;
       if (name && name->scalar && name->scalar->starts_with("Steam Linux Runtime")) continue;
+      const fs::path install_rel = fs::path(*installdir->scalar).lexically_normal();
+      if (install_rel.is_absolute() || install_rel.empty() || install_rel == "." || *install_rel.begin() == "..") continue;
 
       SteamApp app;
       app.appid = *appid->scalar;

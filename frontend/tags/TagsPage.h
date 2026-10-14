@@ -5,6 +5,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "../client/Types.h"
@@ -41,6 +42,7 @@ class TagsPage : public QWidget {
 
 public:
   explicit TagsPage(ArtworkStore* artwork, QWidget* parent = nullptr);
+  ~TagsPage() override;
 
   // The whole library, for the picker and the library folders' names.
   void SetGames(const std::vector<GameSummary>& games);
@@ -127,10 +129,12 @@ private:
 
   ArtworkStore* artwork_ = nullptr;
   std::vector<GameSummary> games_;
+  std::unordered_set<std::string> hidden_ids_;  // of games_, for the counts
   bool showing_hidden_ = false;
   TagsResult tags_;
   Settings settings_;
   bool tags_loaded_ = false;
+  bool fetching_steam_ = false;  // this page started the Steam fetch in g_fetching_steam
   bool settings_loaded_ = false;
   bool show_rare_steam_ = false;  // the Steam tags on only one game, which are many and say little
   int folder_width_ = 0;          // the Folder column's, as wide as its heading or a switch
@@ -159,6 +163,7 @@ private:
   std::function<void()> bar_apply_;  // what the bar's primary button does while it asks
   std::function<void()> end_rename_;  // ends the open rename's edit, if one is still open
   int asked_ = 0;                    // so a slow preview never answers a newer question
+  int refresh_serial_ = 0;           // so an older refresh reply never overwrites a newer one
   QTimer* refresh_timer_ = nullptr;
 };
 

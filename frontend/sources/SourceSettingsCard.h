@@ -63,6 +63,7 @@ private:
   QPushButton* runner_apply_ = nullptr;
   bool runner_can_apply_ = false;  // some games use another runner
   QString runner_ref_;  // what mirad last confirmed
+  int runner_serial_ = 0;  // bumped by Apply; older GET replies are dropped
 
   std::vector<SettingEditor> settings_;
   QWidget* footer_ = nullptr;

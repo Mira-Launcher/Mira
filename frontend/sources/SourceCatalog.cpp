@@ -96,6 +96,10 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
 }
 
 void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
+  QStringList shown;
+  for (const SourceInfo& source : sources) shown << source.id + '\n' + Needs(source);
+  if (shown == shown_) return;  // keeps hover and focus
+  shown_ = shown;
   for (auto& [id, tile] : tiles_) delete tile;
   tiles_.clear();
   group_of_.clear();

@@ -75,9 +75,13 @@ private:
     const theme::Tokens& tokens = theme::Current();
     const double u = window_->unit();
     const QString kind = window_->GlyphKind();
+    // The theme's own background, so its text reads on it in light themes too.
+    QColor heavy = tokens.window, clear = tokens.window;
+    heavy.setAlpha(150);
+    clear.setAlpha(0);
     QLinearGradient shade(0, 0, 0, u * 4.2);
-    shade.setColorAt(0, QColor(0, 0, 0, 150));
-    shade.setColorAt(1, QColor(0, 0, 0, 0));
+    shade.setColorAt(0, heavy);
+    shade.setColorAt(1, clear);
     painter.fillRect(QRectF(0, 0, width(), u * 4.2), shade);
     const double mid = u * 2.1;
     double x = u * 2.6;
@@ -173,9 +177,12 @@ private:
                               : 0.0;
     if (hidden >= 1.0) return;
     painter.setOpacity(1.0 - hidden);
+    QColor heavy = theme::Current().window, clear = heavy;
+    heavy.setAlpha(170);
+    clear.setAlpha(0);
     QLinearGradient shade(0, height(), 0, height() - u * 3.4);
-    shade.setColorAt(0, QColor(0, 0, 0, 170));
-    shade.setColorAt(1, QColor(0, 0, 0, 0));
+    shade.setColorAt(0, heavy);
+    shade.setColorAt(1, clear);
     painter.fillRect(QRectF(0, height() - u * 3.4, width(), u * 3.4), shade);
     painter.setFont(Font(u, 0.95));
     double x = width() - u * 2.6;
@@ -456,7 +463,7 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_idle_suspend = prefs.big_screen_idle_suspend;
   saved.big_screen_recent_searches = prefs.big_screen_recent_searches;
   ApplyInputOptions();
-  ApplyStartOnLogin(prefs.start_on_login.value_or(false));
+  if (!ApplyStartOnLogin(prefs.start_on_login.value_or(false))) Toast("Couldn't change start on login");
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   RefreshPages();
   update();
@@ -566,6 +573,7 @@ void BigScreenWindow::Confirm(const QString& title, const QString& body, const Q
 void BigScreenWindow::Play(const Item& item, const std::string& option) {
   if (!item.game) return;
   launching_ = item;
+  const int serial = ++launch_serial_;
   cancelled_.clear();
   hero_->Hold(true);  // no trailer behind the launch screen
   // Steam may need a while to start, update or sync first.
@@ -580,7 +588,11 @@ void BigScreenWindow::Play(const Item& item, const std::string& option) {
           launch_timeout_.start(8000);
         }
       },
-      [this] { EndLaunch(); });
+      [this, serial, key = item.key] {
+        if (serial != launch_serial_) return;
+        if (cancelled_ == key) cancelled_.clear();
+        if (launching_.key == key) EndLaunch();
+      });
 }
 
 void BigScreenWindow::FollowLaunch() {
@@ -675,8 +687,10 @@ void BigScreenWindow::Uninstall(const Item& item) {
   Confirm("Uninstall " + item.name + "?",
           "This deletes the game's files. Its Wine prefix, with saves and settings, is kept.", "Uninstall",
           [this, item] {
-            api::DeleteGameAsync(this, item.game->id, true, false, false, [this, name = item.name](DeleteResult result) {
-              Toast(result.ok ? name + " uninstalled" : "Could not uninstall " + name);
+            api::DeleteGameAsync(this, item.game->id, true, false, false, [this, item](DeleteResult result) {
+              Toast(result.ok ? item.name + " uninstalled" : "Could not uninstall " + item.name);
+              // Its page would offer Play for a game that's gone.
+              if (result.ok && stack_->currentWidget() == game_page_ && game_page_->key() == item.key) Back();
             });
           });
 }
@@ -767,7 +781,11 @@ void BigScreenWindow::Navigate(Nav nav) {
       if (game != nullptr && game->running) {
         actions::Stop(this, game->id);
       } else if (!handed_off_) {
+        // Only while its launch can still come up, so a later start from elsewhere isn't stopped.
         cancelled_ = launching_.key;
+        QTimer::singleShot(120'000, this, [this, serial = launch_serial_] {
+          if (serial == launch_serial_) cancelled_.clear();
+        });
       }
       EndLaunch();
     }
@@ -1020,7 +1038,9 @@ void BigScreenWindow::RestartIdle() {
 
 void BigScreenWindow::PowerAction(const char* action) {
   if (update_ != nullptr) return Toast("Wait for the system update to finish.");
-  if (!Power(action)) Toast("The system didn't allow that.");
+  Power(this, action, [this](bool allowed) {
+    if (!allowed) Toast("The system didn't allow that.");
+  });
 }
 
 void BigScreenWindow::UpdateSystem() {
@@ -1040,33 +1060,45 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
   update_ = new QProcess(this);
   update_->setProcessChannelMode(QProcess::MergedChannels);
   update_output_.clear();
+  update_accepted_ = false;
   SetUpdateStatus("Waiting for your password");
   // The password prompt is the desktop's: step aside and bring up the keyboard to type into it.
   ReturnToGame();
   QTimer::singleShot(400, this, [this] {
     QString error;
-    if (update_ != nullptr && update_output_.isEmpty() && !keyboard_->Open(&error)) Tell("Type your password", error);
+    if (update_ != nullptr && !update_accepted_ && !keyboard_->Open(&error)) Tell("Type your password", error);
   });
   connect(update_, &QProcess::readyRead, this, [this] {
     if (update_ == nullptr) return;
     const QString text = QString::fromUtf8(update_->readAll());
-    // Output means the password was accepted: back to big screen to show progress.
-    if (update_output_.isEmpty()) {
+    // The command's own output means the password was accepted: back to big screen to show progress.
+    // pkexec's own errors ("...: Request dismissed") don't count.
+    if (!update_accepted_ && !text.contains("Error executing command as another user")) {
+      update_accepted_ = true;
       keyboard_->hide();
       RaiseFromGame();
     }
     update_output_ = (update_output_ + text).right(100'000);
     const QStringList lines = text.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
-    if (!lines.isEmpty()) SetUpdateStatus(lines.last().trimmed().left(48));
+    if (update_accepted_ && !lines.isEmpty()) SetUpdateStatus(lines.last().trimmed().left(48));
   });
-  connect(update_, &QProcess::finished, this, [this, distro](int code, QProcess::ExitStatus status) {
+  const auto end = [this] {
     update_->deleteLater();
     update_ = nullptr;
     SetUpdateStatus({});
     keyboard_->hide();
     if (!isActiveWindow()) RaiseFromGame();
+  };
+  // No finished follows a failed start.
+  connect(update_, &QProcess::errorOccurred, this, [this, end](QProcess::ProcessError error) {
+    if (error != QProcess::FailedToStart || update_ == nullptr) return;
+    end();
+    Tell("The update failed", "pkexec couldn't be started.");
+  });
+  connect(update_, &QProcess::finished, this, [this, distro, end](int code, QProcess::ExitStatus status) {
+    end();
     // pkexec's own codes: the prompt was dismissed or the password refused.
-    if (status == QProcess::NormalExit && (code == 126 || code == 127) && update_output_.isEmpty()) {
+    if (status == QProcess::NormalExit && (code == 126 || code == 127) && !update_accepted_) {
       return Toast("Update canceled.");
     }
     // steamos-update exits 7 when there's nothing new.

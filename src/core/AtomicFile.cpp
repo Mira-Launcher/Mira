@@ -36,7 +36,11 @@ Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view
     }
     written += static_cast<std::size_t>(n);
   }
-  if (durable) ::fsync(fd);
+  if (durable && ::fsync(fd) != 0) {
+    const std::string message = std::strerror(errno);
+    ::close(fd);
+    return failed(std::format("couldn't write {}: {}", temp, message));
+  }
   if (::close(fd) != 0) return failed(std::format("couldn't write {}: {}", temp, std::strerror(errno)));
 
   std::filesystem::rename(temp, path, ec);

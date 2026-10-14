@@ -9,6 +9,12 @@
 
 namespace mira_gui::bigscreen {
 
+namespace {
+
+QString Quote(QString arg) { return "'" + arg.replace("'", "'\\''") + "'"; }
+
+}  // namespace
+
 const std::vector<WebApp>& StreamingApps() {
   static const std::vector<WebApp> apps = {
       {"netflix", "Netflix", "https://www.netflix.com/browse"},
@@ -56,11 +62,11 @@ void AddWebApp(QObject* context, const WebApp& app, std::function<void(QString)>
     if (app.id == "youtube") prefs += "user_pref(\"general.useragent.override\", \"" + tv_agent + "\");\n";
     QFile user_js(dir + "/profile/user.js");
     if (user_js.open(QIODevice::WriteOnly | QIODevice::Truncate)) user_js.write(prefs.toUtf8());
-    command = QString("exec '%1' --kiosk --new-instance --profile '%2/profile' '%3'").arg(browser, dir, app.url);
+    command = "exec " + Quote(browser) + " --kiosk --new-instance --profile " + Quote(dir + "/profile") + " " + Quote(app.url);
   } else {
-    const QString agent = app.id == "youtube" ? " --user-agent='" + tv_agent + "'" : QString();
-    command = QString("exec '%1' --kiosk --app='%2' --user-data-dir='%3/profile' --no-first-run --class='mira-%4'%5")
-                  .arg(browser, app.url, dir, app.id, agent);
+    const QString agent = app.id == "youtube" ? " --user-agent=" + Quote(tv_agent) : QString();
+    command = "exec " + Quote(browser) + " --kiosk --app=" + Quote(app.url) + " --user-data-dir=" + Quote(dir + "/profile") +
+              " --no-first-run --class=" + Quote("mira-" + app.id) + agent;
   }
   const QByteArray script = ("#!/bin/sh\n# Added by Mira's big screen.\n" + command + "\n").toUtf8();
   QFile file(dir + "/launch.sh");

@@ -44,6 +44,8 @@ Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std:
 
 // `output_fd` (if not -1) becomes the child's stdout and stderr.
 Result<pid_t> SpawnDetached(const Command& command, int output_fd = -1);
+// SpawnDetached for a child nobody tracks: a thread reaps it, so it never stays a zombie.
+Result<void> SpawnReaped(const Command& command, int output_fd = -1);
 
 // Like SpawnDetached, but the child's file descriptor 3 is connected to a
 // pipe whose read end is returned via `status_read_fd`, for spawning

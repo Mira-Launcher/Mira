@@ -240,7 +240,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const std::int64_t id = b["steamgriddb_id"];
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
     auto game = s.games.Update(req.matches[1], [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
-    if (!game) return SendError(res, 404, game.error());
+    if (!game) return SendStoreError(res, game.error());
     s.fetches.Enqueue(s.config, s.events, *game, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"steamgriddb_id", id}}, 202);
   });
@@ -252,11 +252,18 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const auto ids = StringList(*body, "ids");
     if (!ids) return SendError(res, 400, "invalid_body", R"(expected {"ids": [...]})");
     std::vector<model::Game> games;
+    json unknown = json::array();
     for (const std::string& id : *ids) {
       if (auto game = s.games.Find(id)) games.push_back(std::move(*game));
+      else unknown.push_back(id);
     }
+    if (games.empty()) return SendError(res, 404, "game_not_found", "no such game");
     s.StartJob(req, res, "metadata", "", "Refreshing metadata",
-             [&s, games = std::move(games)](JobRegistry::Progress& progress) { return s.RefreshMetadata(games, progress); });
+             [&s, games = std::move(games), unknown = std::move(unknown)](JobRegistry::Progress& progress) {
+               auto result = s.RefreshMetadata(games, progress);
+               if (result && !unknown.empty()) (*result)["unknown"] = unknown;
+               return result;
+             });
   });
 
   http.Post("/v1/games/metadata/refresh-missing", [&s](const Request& req, Response& res) {

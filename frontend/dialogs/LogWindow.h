@@ -5,6 +5,7 @@
 #include <QWidget>
 
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,7 +57,7 @@ private:
   QCheckBox* follow_ = nullptr;
   QTimer* timer_ = nullptr;
 
-  std::vector<QString> lines_;
+  std::deque<QString> lines_;
   std::optional<std::uint64_t> cursor_;
   bool active_ = false;
   bool paused_ = false;

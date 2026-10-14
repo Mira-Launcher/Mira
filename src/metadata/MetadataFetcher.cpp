@@ -59,6 +59,9 @@ std::unexpected<Error> NoGriddbKey(std::string message) {
 // not a user-triggered download, so an unreachable or hanging endpoint must
 // never pile up a stuck background thread.
 constexpr std::string_view kMaxTime = "10";
+// Art downloads stop past this; the pixel cap only applies once the file is in.
+constexpr std::string_view kMaxArtBytes = "64M";
+constexpr std::string_view kMaxJsonBytes = "16M";
 
 // Reads one optional field, treating "absent" and "present but null" the
 // same way.
@@ -84,6 +87,19 @@ T Value(const json& object, const char* key, T fallback) {
   }
 }
 
+// Percent-encodes a path for a file:// URL; '/' stays as is.
+std::string FileUrlPath(const fs::path& path) {
+  std::string out;
+  for (unsigned char c : path.string()) {
+    if (c == '/' || std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      out += static_cast<char>(c);
+    } else {
+      out += std::format("%{:02X}", c);
+    }
+  }
+  return out;
+}
+
 std::string UrlEncode(std::string_view input) {
   static constexpr char kHex[] = "0123456789ABCDEF";
   std::string out;
@@ -105,11 +121,12 @@ std::string UrlEncode(std::string_view input) {
 // error: every call site treats "couldn't get this source" as "skip it",
 // not "fail the whole fetch".
 json CurlJson(std::vector<std::string> argv) {
-  argv.insert(argv.begin() + 1, {"--max-time", std::string(kMaxTime), "--retry", "2", "--retry-max-time", "30"});
+  argv.insert(argv.begin() + 1, {"--max-time", std::string(kMaxTime), "--max-filesize", std::string(kMaxJsonBytes),
+                                 "--retry", "2", "--retry-max-time", "30"});
   Command command;
   command.argv = std::move(argv);
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
-  if (!result || result->exit_code != 0) return json();
+  if (!result || result->exit_code != 0) return json(json::value_t::discarded);
   return json::parse(result->output, nullptr, false);
 }
 
@@ -117,9 +134,10 @@ json CurlJson(std::vector<std::string> argv) {
 // users can read.
 json GriddbJson(const std::string& auth_header, const std::string& url) {
   const Result<runner::ExecResult> result = runner::RunCurlWithSecrets(
-      {"-sSL", "--max-time", std::string(kMaxTime), "--retry", "2", "--retry-max-time", "30", url},
+      {"-sSL", "--max-time", std::string(kMaxTime), "--max-filesize", std::string(kMaxJsonBytes), "--retry", "2",
+       "--retry-max-time", "30", url},
       runner::CurlConfigLine("header", auth_header));
-  if (!result || result->exit_code != 0) return json();
+  if (!result || result->exit_code != 0) return json(json::value_t::discarded);
   return json::parse(result->output, nullptr, false);
 }
 
@@ -128,9 +146,9 @@ Box ArtBox(const config::Config& config, std::string_view slot, bool title = fal
 }
 
 // Fits the finished `part` into `box` and moves it to `dest`, whose extension follows the fitted
-// image's, then drops the slot's files of another type (.png to .jpg).
+// image's, then drops the slot's files of another type (.png to .jpg). False when `part` isn't a known image type.
 bool CommitArt(const fs::path& part, fs::path& dest, Box box) {
-  if (IsTooLarge(part)) return false;
+  if (FileContentType(part) == "application/octet-stream" || IsTooLarge(part)) return false;
   if (const auto fitted = FitImage(part, box)) {
     if (!WriteFileAtomic(part, fitted->bytes, "artwork_write_failed")) return false;
     dest.replace_extension(fitted->ext);
@@ -166,7 +184,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
   const std::string key = slot == "cover" ? "artwork" : std::string(slot);
   // A slot the user picked by hand (SelectArtwork) stays until they pick again.
   if (info.contains(key) && Value(info[key], "chosen", false)) return true;
-  std::string ext = fs::path(std::string(url)).extension().string();
+  std::string ext = fs::path(url.substr(0, url.find_first_of("?#"))).extension().string();  // not a query's dot
   if (ext.empty() || ext.size() > 5) ext = ".jpg";
 
   const fs::path dir = ArtworkDir(config, game_id);
@@ -191,7 +209,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
   const bool trusted = source == "lutris" || source == "steamgriddb";
   command.argv = {"curl", "-sSL", "-f", "--retry", "2", "--retry-max-time", "30", "--proto",
                   trusted ? "=file,https,http" : "=https,http", "--max-time",
-                  std::string(kMaxTime), "-o", part.string(), "--url", url};
+                  std::string(kMaxTime), "--max-filesize", std::string(kMaxArtBytes), "-o", part.string(), "--url", url};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result || result->exit_code != 0 || !CommitArt(part, dest, ArtBox(config, slot))) {
     log::Warn("couldn't download artwork for {} from {}", game_id, url);
@@ -570,6 +588,7 @@ json SteamStoreItem(const std::string& appid) {
 std::map<std::int64_t, std::string> SteamTagNames(store::MetadataStore& cache,
                                                   const std::set<std::int64_t>& needed) {
   static std::mutex mutex;
+  static std::optional<std::chrono::steady_clock::time_point> asked_at;
   const std::lock_guard lock(mutex);
   constexpr const char* kList = "steam_tag_names";
   std::map<std::int64_t, std::string> names;
@@ -582,6 +601,10 @@ std::map<std::int64_t, std::string> SteamTagNames(store::MetadataStore& cache,
   };
   read(cache.ReadList(kList));
   if (std::ranges::all_of(needed, [&](std::int64_t id) { return names.contains(id); })) return names;
+  // An id Steam no longer lists would otherwise refetch the list for every game.
+  const auto now = std::chrono::steady_clock::now();
+  if (asked_at && now - *asked_at < std::chrono::hours(1)) return names;
+  asked_at = now;
   const json list =
       CurlJson({"curl", "-sSL", "https://api.steampowered.com/IStoreService/GetTagList/v1/?language=english"});
   if (list.is_discarded()) return names;
@@ -784,7 +807,9 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache, 
   // the art's keys, so they're fetched alongside it.
   const json item = SteamStoreItem(appid);
   json details = json::object();
-  std::jthread details_thread = Spawn([&] { FetchSteamDetails(config, cache, appid, item, details); });
+  bool answered = false;
+  std::jthread details_thread =
+      Spawn([&] { answered = FetchSteamDetails(config, cache, appid, item, details); });
 
   // Steam's own cover/hero go into art_candidates too, as the first entry --
   // otherwise there was no way back to it once you picked a SteamGridDB
@@ -822,6 +847,7 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache, 
   }
   details_thread.join();
   info.update(details);
+  if (!answered) info.erase("details_fetched");  // asked again next time, not after refresh_days
 }
 
 // Legendary's own catalog cache already has title metadata and store art
@@ -874,7 +900,7 @@ void FetchEpicOwned(const config::Config& config, const std::string& app_name, c
 // Returns whether any Lutris art was found.
 bool FetchLutrisOwned(const config::Config& config, const std::string& slug, const std::string& game_id,
                       json& info) {
-  if (slug.empty()) return false;
+  if (slug.empty() || slug.find('/') != std::string::npos) return false;
   bool found = false;
 
   // Steam CDN candidates use id -1, Epic -2 -- any small negative id is
@@ -883,7 +909,7 @@ bool FetchLutrisOwned(const config::Config& config, const std::string& slug, con
   auto try_slot = [&](const fs::path& file, std::string_view slot) {
     std::error_code ec;
     if (!fs::exists(file, ec)) return;
-    const std::string url = "file://" + file.string();
+    const std::string url = "file://" + FileUrlPath(file);
     if (FetchArtworkInto(config, url, game_id, "lutris", slot, info, kLutrisCandidateId)) {
       info["art_candidates"][std::string(slot)] =
           json::array({{{"id", kLutrisCandidateId}, {"url", url}, {"source", "lutris"}}});
@@ -1499,7 +1525,8 @@ Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config, const stor
   // One curl for the whole batch, fetching in parallel. -w reports each
   // transfer's own exit code, since the process's only says whether any failed.
   Command command;
-  command.argv = {"curl", "-sSL", "-f", "--proto", "=file,https,http", "--max-time", std::string(kMaxTime), "--parallel", "--parallel-max", "8",
+  command.argv = {"curl", "-sSL", "-f", "--proto", "=file,https,http", "--max-time", std::string(kMaxTime),
+                  "--max-filesize", std::string(kMaxArtBytes), "--parallel", "--parallel-max", "8",
                   "-w", "%{exitcode} %{filename_effective}\n"};
   std::set<std::int64_t> seen;
   for (const std::int64_t id : candidate_ids) {

@@ -364,7 +364,10 @@ void DownloadTracker::Poll() {
     if (entry.kind != Kind::Game || entry.state != State::Running) continue;
     any = true;
     const QString key = entry.key;
+    if (progress_pending_.contains(key)) continue;
+    progress_pending_.insert(key);
     api::GetInstallProgressAsync(this, entry.ref.toStdString(), [this, key](InstallProgressResult progress) {
+      progress_pending_.remove(key);
       auto found = std::find_if(entries_.begin(), entries_.end(), [&key](const Entry& e) { return e.key == key; });
       if (!progress.ok || found == entries_.end() || found->state != State::Running) return;
       found->bytes = progress.bytes_written;
@@ -381,7 +384,7 @@ void DownloadTracker::ResolveNames(const QString& source) {
   if (asked_sources_.contains(source)) return;
   asked_sources_.insert(source);
   api::GetStoreLibraryAsync(this, source.toStdString(), false, [this, source](StoreLibraryResult result) {
-    if (!result.ok) return;
+    if (!result.ok) return void(asked_sources_.remove(source));  // asked again on the next change
     for (const StoreTitle& title : result.titles) {
       NoteTitle(source, QString::fromStdString(title.ref), QString::fromStdString(title.title));
     }

@@ -152,6 +152,8 @@ void Append(std::string_view name, std::string_view text) {
       Push(channel, std::move(line));
     } else {
       channel.partial.push_back(c);
+      // Output that never ends a line (binary, a stuck progress bar) is cut into lines.
+      if (channel.partial.size() >= 64 * 1024) Push(channel, std::exchange(channel.partial, {}));
     }
   }
 }

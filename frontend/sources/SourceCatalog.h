@@ -48,6 +48,7 @@ private:
   std::map<QString, SourceTile*> tiles_;   // by source id
   std::map<QString, int> group_of_;        // by source id
   std::map<QString, QString> haystack_;    // by source id: name, kind and blurb, lowercased
+  QStringList shown_;  // id and Needs line per tile, to skip rebuilds that change nothing
   QString filter_;
 };
 

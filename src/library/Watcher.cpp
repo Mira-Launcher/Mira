@@ -287,6 +287,10 @@ void Watcher::HandleInotify() {
         settings_saved = true;
       }
 
+      if (event->mask & IN_Q_OVERFLOW) {  // events were dropped: rescan every root
+        for (const fs::path& root : config_.GetPathArray("library_roots")) deleted_from.insert(root);
+        continue;
+      }
       const auto watched = watches_.find(event->wd);
       if (watched == watches_.end()) continue;
       if (event->mask & IN_IGNORED) {  // the folder itself went away
@@ -359,6 +363,8 @@ void Watcher::HandleDebounceTick() {
   std::vector<std::string> settled;
 
   for (auto& [path, entry] : pending_) {
+    // Walked once per debounce window, not every tick: a big tree's walk is slow.
+    if (now - entry.stable_since_ms < debounce_ms) continue;
     std::error_code ec;
     const std::uintmax_t current_size = entry.is_archive ? ArchiveSize(path) : TotalSize(path);
     // A downloader that preallocates the file keeps its size fixed, so an

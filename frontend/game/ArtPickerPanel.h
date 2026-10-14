@@ -58,8 +58,6 @@ signals:
   // Null when the pick is the one in use.
   void Previewed(QString slot, QPixmap preview);
   void PickChanged(bool has_change);
-  // The user switched slots; a pick in the other slot was dropped.
-  void SlotChanged(QString slot);
   // Double-click or Enter on a candidate: the host applies it.
   void PickActivated();
   void ApplyFailed(QString slot, QString error);

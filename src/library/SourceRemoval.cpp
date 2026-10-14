@@ -217,17 +217,20 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     }
   };
 
+  // One copy of the library, less each game as it goes, rather than a copy per game.
+  std::vector<model::Game> library = games.All();
   for (const RemovalGame& planned : plan->games) {
     const auto folders_lock = games.LockFolders();
     const std::optional<model::Game> game = games.Find(planned.id);
     if (!game) continue;
     if (InLauncherFolder(*game, launcher)) {
       // Its files go with the launcher's program folder, below.
-    } else if (auto done = UninstallGame(config, *game, source, games.All()); !done) {
+    } else if (auto done = UninstallGame(config, *game, source, library); !done) {
       // Files stay; the record goes anyway so the source can still be removed.
       result.problems.push_back(std::format("{}: {}", game->name, done.error().message));
     }
     forget(game->id);
+    std::erase_if(library, [&](const model::Game& known) { return known.id == game->id; });
   }
 
   if (launcher != nullptr) {

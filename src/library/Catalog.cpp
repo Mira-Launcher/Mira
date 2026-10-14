@@ -22,6 +22,11 @@ void MarkTracked(const store::GameStore& games, CatalogEntry& entry) {
 }
 
 std::optional<bool> CatalogCache::Check(const config::Config& config, store::GameStore& games, ILibrarySource& source) {
+  std::uint64_t generation = 0;
+  {
+    std::lock_guard lock(mutex_);
+    generation = generations_[source.Name()];
+  }
   Result<std::vector<CatalogEntry>> listed = source.Catalog(config, games);
   if (!listed) {
     // Unconfigured or signed out is the normal case for most sources, and leaves the others listed.
@@ -31,12 +36,20 @@ std::optional<bool> CatalogCache::Check(const config::Config& config, store::Gam
   std::vector<store::MetadataStore::CatalogRow> rows;
   rows.reserve(listed->size());
   for (const CatalogEntry& entry : *listed) rows.push_back({entry.ref, entry.title, entry.play_seconds, entry.owned});
+  // Held through the write so a sign-out can't land between the check and it.
+  std::lock_guard lock(mutex_);
+  if (generations_[source.Name()] != generation) return std::nullopt;
   const Result<bool> changed = games.Metadata().WriteCatalog(source.Name(), rows);
   if (!changed) {
     log::Warn("could not store the {} catalog: {}", source.Name(), changed.error().message);
     return true;
   }
   return *changed;
+}
+
+void CatalogCache::SignedOut(const std::string& source) {
+  std::lock_guard lock(mutex_);
+  ++generations_[source];
 }
 
 Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& config, store::GameStore& games,

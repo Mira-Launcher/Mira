@@ -6,7 +6,6 @@
 #include <fstream>
 
 #include "core/Command.h"
-#include "core/Paths.h"
 #include "runner/Exec.h"
 
 namespace mira::steam {
@@ -19,10 +18,6 @@ bool SteamRunning(const std::filesystem::path& pid_file) {
 }
 
 }  // namespace
-
-std::filesystem::path DefaultPidFile() {
-  return paths::Home() / ".steam" / "steam.pid";
-}
 
 Result<void> SetFriendsStatus(std::string_view status, const std::filesystem::path& pid_file,
                               std::vector<std::string> steam) {
@@ -37,7 +32,7 @@ Result<void> SetFriendsStatus(std::string_view status, const std::filesystem::pa
   Command command;
   command.argv = std::move(steam);
   command.argv.push_back(std::format("steam://friends/status/{}", status));
-  if (auto spawned = runner::SpawnDetached(command); !spawned)
+  if (auto spawned = runner::SpawnReaped(command); !spawned)
     return std::unexpected(spawned.error());
   return {};
 }

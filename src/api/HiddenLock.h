@@ -34,6 +34,7 @@ public:
 private:
   store::GameStore& games_;
   mutable std::mutex mutex_;
+  std::mutex set_mutex_;
   std::string hash_;
   bool unlocked_ = false;
   std::chrono::steady_clock::time_point active_ = std::chrono::steady_clock::now();

@@ -34,6 +34,12 @@ QLabel* MakeGroupHeading(QWidget* parent, const QString& text) {
   return MakeLabel(parent, text, "group_heading", /*wrap=*/false);
 }
 
+void KeepSpaceWhenHidden(QWidget* widget, bool keep) {
+  QSizePolicy policy = widget->sizePolicy();
+  policy.setRetainSizeWhenHidden(keep);
+  widget->setSizePolicy(policy);
+}
+
 QWidget* MakeDivider(QWidget* parent, Qt::Orientation orientation, int length) {
   auto* divider = new QWidget(parent);
   // Painted from base.qss, so a theme change recolors it with everything else.

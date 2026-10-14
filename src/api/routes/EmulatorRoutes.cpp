@@ -55,7 +55,23 @@ std::vector<fs::path> PathsOf(const Request& req, Response& res) {
     SendError(res, 400, "no_paths", "paths must list at least one file");
     return {};
   }
-  return {paths->begin(), paths->end()};
+  std::vector<fs::path> normal;
+  for (const std::string& path : *paths) {
+    if (!fs::path(path).is_absolute()) {
+      SendError(res, 400, "invalid_body", "paths must be absolute");
+      return {};
+    }
+    std::error_code ec;
+    const fs::path source = fs::path(path).lexically_normal();
+    if (!fs::is_regular_file(source, ec) && !fs::is_directory(source, ec)) {
+      SendError(res, 400, "invalid_body", "paths must name existing files or folders");
+      return {};
+    }
+    // "/x/Game/" names the folder Game: with no filename it would land on the ROM folder itself.
+    const fs::path p(path);
+    normal.push_back(p.has_filename() ? p : p.parent_path());
+  }
+  return normal;
 }
 
 void SourceAdded(Services& s, const emulators::Emulator& emulator, bool has_games) {
@@ -126,8 +142,10 @@ void RegisterEmulatorRoutes(Router& http, Services& s) {
     if (firmware == emulator->firmware.end()) return SendError(res, 404, "firmware_not_found", "no such firmware");
     const std::vector<fs::path> files = PathsOf(req, res);
     if (files.empty()) return;
-    if (auto added = emulators::AddFirmware(s.config, *emulator, *firmware, files); !added)
-      return SendError(res, 422, added.error());
+    const json body = json::parse(req.body, nullptr, false);
+    const bool replace = body.is_object() && body.value("replace", json(false)) == json(true);
+    if (auto added = emulators::AddFirmware(s.config, *emulator, *firmware, files, replace); !added)
+      return SendError(res, added.error().code == "already_there" ? 409 : 422, added.error());
     SendJson(res, ToJson(s.config, *emulator));
   });
 
@@ -139,7 +157,7 @@ void RegisterEmulatorRoutes(Router& http, Services& s) {
     Command command = runner::EmulatorCommand(
         emulator->open_binary.empty() ? binary : binary.parent_path() / emulator->open_binary, *emulator);
     std::ranges::copy(emulator->open_args, std::back_inserter(command.argv));
-    if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
+    if (auto spawned = runner::SpawnReaped(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });
 
@@ -187,11 +205,18 @@ void RegisterEmulatorRoutes(Router& http, Services& s) {
     if (!body) return;
     const emulators::Emulator* to = emulators::Find(body->value("emulator", std::string()));
     if (!to) return SendError(res, 404, "emulator_not_found", "no such emulator");
-    const auto moved = emulators::MoveGame(s.config, s.games, *game, *to);
+    const auto folders_lock = s.games.LockFolders();
+    // No launch, move or delete while its files move.
+    const auto claim = s.Claim(game->id, "moved");
+    if (!claim) return SendError(res, 409, claim.error());
+    const auto current = s.games.Find(game->id);  // as it is now that it's claimed
+    if (!current) return SendError(res, 404, "game_not_found", "no such game");
+    const auto moved = emulators::MoveGame(s.config, s.games, *current, *to);
     if (!moved) return SendError(res, 409, moved.error());
-    s.events.Publish("game.updated", model::ToJson(*moved));
+    const json record = s.Record(*moved);
+    s.events.Publish("game.updated", record);
     SourceAdded(s, *to, true);
-    SendJson(res, model::ToJson(*moved));
+    SendJson(res, record);
   });
 }
 

@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "../app/Notify.h"
+#include "../app/Shortcuts.h"
 #include "../client/api/Artwork.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
@@ -57,9 +58,9 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     QMenu* run_with = menu.addMenu("Move to emulator");
     run_with->setEnabled(false);
     api::GetGameEmulatorsAsync(run_with, id, [this, run_with, id, name](EmulatorChoicesResult result) {
-      if (!result.ok) return;
       // Say why there's nothing to pick rather than leave the entry greyed out.
-      if (result.emulators.empty()) run_with->addAction("No other installed emulator plays this")->setEnabled(false);
+      if (!result.ok) run_with->addAction("Couldn't list the emulators")->setEnabled(false);
+      else if (result.emulators.empty()) run_with->addAction("No other installed emulator plays this")->setEnabled(false);
       for (const EmulatorChoice& choice : result.emulators) {
         const QString emulator = QString::fromStdString(choice.name);
         run_with->addAction(emulator, this, [this, id, name, emulator, to = choice.id] {
@@ -84,7 +85,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QAction* install = menu.addAction(installing ? "Installing…" : "Install…");
   install->setEnabled((status == "needs_install" || status == "broken") && !installing);
   install->setToolTip("Run this game's installer, or pick a different one");
-  QAction* run_in_prefix = menu.addAction("Run in prefix…");
+  QAction* run_in_prefix = menu.addAction(game.platform == "native" ? "Run a program…" : "Run in prefix…");
   QAction* finish_install = menu.addAction("Mark as installed");
   finish_install->setEnabled(status == "needs_install");
   finish_install->setToolTip(status == "needs_install"
@@ -111,7 +112,10 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   auto desktop_entry_enabled = std::make_shared<bool>(true);
   api::GetGameConfigAsync(
       &menu, id, [desktop_entry, desktop_entry_enabled](GameConfigResult result) {
-        if (!result.ok) return;
+        if (!result.ok) {
+          desktop_entry->setText("Desktop entry (couldn't read the setting)");
+          return;
+        }
         const auto entry = std::ranges::find(result.entries, std::string("desktop_entries.enabled"),
                                              &GameConfigEntry::key);
         if (entry == result.entries.end()) return;
@@ -124,8 +128,8 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   const bool hidden = IsHidden(game);
   QAction* toggle_hidden = menu.addAction(hidden ? "Unhide" : "Hide");
   toggle_hidden->setToolTip(hidden ? "Show this game in the library again"
-                                   : "Keep this game out of the library until you ask for it "
-                                     "(Ctrl+H shows hidden games)");
+                                   : "Keep this game out of the library until you ask for it " +
+                                         shortcuts::HiddenGamesHint());
   const bool app = IsApp(game);
   QAction* toggle_app = menu.addAction(app ? "Mark as game" : "Mark as app");
   toggle_app->setToolTip(
@@ -201,8 +205,7 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
   QAction* hide =
       hidden < count ? menu.addAction(QString("Hide (%1)").arg(count - hidden)) : nullptr;
   if (hide != nullptr) {
-    hide->setToolTip(
-        "Keep these games out of the library until you ask for them (Ctrl+H shows hidden games)");
+    hide->setToolTip("Keep these games out of the library until you ask for them " + shortcuts::HiddenGamesHint());
   }
   QAction* unhide = hidden > 0 ? menu.addAction(QString("Unhide (%1)").arg(hidden)) : nullptr;
   QAction* mark_app =

@@ -12,6 +12,7 @@
 #include <set>
 #include <string>
 
+#include "core/Log.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
 
@@ -159,9 +160,9 @@ Result<void> ExtractAndRemove(const fs::path& archive, const fs::path& dest_dir)
     return Err("move_failed", ec.message());
   }
 
+  // The game is in place now, so a volume left behind is only logged: failing would extract it again.
   for (const fs::path& volume : VolumesOf(archive)) {
-    fs::remove(volume, ec);
-    if (ec) return Err("archive_cleanup_failed", ec.message());
+    if (!fs::remove(volume, ec) && ec) log::Warn("couldn't remove {}: {}", volume.string(), ec.message());
   }
   return {};
 }

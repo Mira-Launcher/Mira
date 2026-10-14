@@ -3,7 +3,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
-#include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStyleOptionViewItem>
 
@@ -154,8 +153,24 @@ TilePreview::TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, 
     item->setData(QString::fromStdString(games[i].source), Role::SourceRole);
     model_->appendRow(item);
   }
+  Recolor();
   setFixedSize(sizeHint());
   connect(artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
+    Recolor();
+    update();
+  });
+}
+
+void TilePreview::Recolor() {
+  if (!samples_) return;
+  // A ready cover, so the delegate asks the artwork store for nothing.
+  const std::array<QColor, 4> colors = theme::SampleArt(theme::Current());
+  for (int row = 0; row < model_->rowCount(); ++row) {
+    QPixmap cover(kPreviewTile);
+    cover.fill(colors[row]);
+    model_->setData(model_->index(row, 0), cover, Qt::DecorationRole);
+  }
 }
 
 void TilePreview::SetShown(bool status, bool source) {
@@ -169,16 +184,7 @@ QSize TilePreview::sizeHint() const { return {kPreviewTile.width() * 2, kPreview
 void TilePreview::paintEvent(QPaintEvent*) {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
-  const std::array<QColor, 4> colors = theme::SampleArt(theme::Current());
   for (int row = 0; row < model_->rowCount(); ++row) {
-    if (samples_) {
-      // A ready cover, so the delegate asks the artwork store for nothing.
-      // Colored here rather than once, to follow a theme change.
-      QPixmap cover(kPreviewTile);
-      cover.fill(colors[row]);
-      const QSignalBlocker block(model_);
-      model_->setData(model_->index(row, 0), cover, Qt::DecorationRole);
-    }
     QStyleOptionViewItem option;
     option.initFrom(this);
     option.state &= ~(QStyle::State_MouseOver | QStyle::State_HasFocus);

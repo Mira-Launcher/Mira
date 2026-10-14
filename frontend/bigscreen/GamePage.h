@@ -23,6 +23,7 @@ public:
   // `from` is where Back returns to.
   void Open(const Item& item, Page* from);
   Page* from() const { return from_; }
+  const QString& key() const { return item_.key; }
 
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
@@ -50,6 +51,7 @@ private:
   QNetworkAccessManager* network_ = nullptr;
   QString description_;
   QString proton_tier_;  // lowercase, e.g. "gold"
+  QString runner_name_;  // the game's runner's name, once the runner list arrives
   std::string controller_;  // "full", "partial" or empty
   bool metadata_loaded_ = false;
   std::optional<GameSession> last_session_;

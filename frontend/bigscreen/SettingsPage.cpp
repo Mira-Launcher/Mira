@@ -53,6 +53,13 @@ void SettingsPage::Shown() {
   update();
 }
 
+// Left by Home or a minimize mid-test: the test's repaint timer stops with it.
+void SettingsPage::hideEvent(QHideEvent* event) {
+  testing_ = false;
+  test_refresh_.stop();
+  Page::hideEvent(event);
+}
+
 void SettingsPage::Build() {
   BigScreenWindow* w = window_;
   // Changes one pref and saves it.

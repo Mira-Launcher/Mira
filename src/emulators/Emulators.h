@@ -116,9 +116,9 @@ struct FirmwareState {
 };
 std::vector<FirmwareState> FirmwareStatus(const Emulator& emulator);
 // Puts `files` where the emulator looks: a zip of Switch firmware is unpacked, PS3 and Vita firmware installed by
-// the emulator.
+// the emulator. A file of the same name already there is refused (already_there) unless `replace`.
 Result<void> AddFirmware(const config::Config& config, const Emulator& emulator, const Firmware& firmware,
-                         const std::vector<std::filesystem::path>& files);
+                         const std::vector<std::filesystem::path>& files, bool replace);
 
 // A ROM's name without its extension and dump tags: "Metroid Fusion (USA) [!].gba" reads "Metroid Fusion".
 std::string CleanName(std::string_view file_name);

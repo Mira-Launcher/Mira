@@ -16,6 +16,7 @@
 #include <QVBoxLayout>
 
 #include "../app/Appearance.h"
+#include "../app/Notify.h"
 #include "../client/api/Config.h"
 #include "../library/GameLibraryModel.h"
 #include "../sources/Sources.h"
@@ -170,7 +171,11 @@ void SaveSetupPrefs(const SetupContext& context, const FrontendPrefs& change) {
     if (key == "tile_spacing") prefs.tile_spacing.reset();
   }
   ApplyAppearance(prefs);
-  api::SaveFrontendPrefsAsync(qApp, change, [](PatchConfigResult) {});
+  // Reported over the main window, which outlives this one.
+  QPointer<QWidget> window = context.work ? qobject_cast<QWidget*>(context.work->parent()) : nullptr;
+  api::SaveFrontendPrefsAsync(qApp, change, [window](PatchConfigResult result) {
+    if (!result.ok && window) notify::FailedRequest(window, "Could not save the appearance.", result.error);
+  });
 }
 
 SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const FrontendPrefs& prefs,
@@ -198,9 +203,7 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   top->addStretch(1);
   running_ = new QLabel(this);
   running_->setObjectName("setup_running");
-  QSizePolicy keep = running_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  running_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(running_);
   top->addWidget(running_);
   layout->addLayout(top);
 

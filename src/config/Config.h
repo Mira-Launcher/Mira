@@ -16,6 +16,8 @@
 
 namespace mira::config {
 
+struct Entry;
+
 // Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not frontend.toml.
 inline constexpr std::array<std::string_view, 11> kUiStateKeys = {
     "window_width", "window_height",  "window_maximized", "sidebar_width", "details_width", "tile_width",
@@ -80,6 +82,9 @@ public:
 
 private:
   nlohmann::json GetLocked(std::string_view key) const;
+  // Resets each invalid value in `whole` to fallback(entry) and logs it with `note`.
+  static void ResetInvalid(nlohmann::json& whole, const std::function<nlohmann::json(const Entry&)>& fallback,
+                           std::string_view note);
   Result<std::vector<std::string>> SyncLocked();
   // Every app change: picks up hand edits first, so only the keys the app set change.
   Result<void> ChangeAndSave(const std::function<void()>& change);

@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <map>
-#include <thread>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -115,10 +114,11 @@ void ApplyShaderCache(Command& command, const config::Resolver& resolver, const 
 }
 
 // Used by the Steam handoff; otherwise mira-run runs the script.
-Result<void> RunPreScriptInline(const std::string& pre_script) {
+Result<void> RunPreScriptInline(const std::string& pre_script, int timeout_s) {
   if (pre_script.empty()) return {};
   Command script;
   script.argv = {"sh", "-c", pre_script};
+  script.timeout_s = timeout_s;  // a stuck script mustn't hold the request forever
   const Result<runner::ExecResult> ran = runner::RunAndWait(script);
   if (!ran || ran->exit_code != 0) {
     return Err("pre_launch_failed",
@@ -215,7 +215,9 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
     const bool windows_path = program->exe_path.size() > 1 && program->exe_path[1] == ':';
     const std::filesystem::path full = std::filesystem::path(game.install_path) / program->exe_path;
     if (std::error_code ec; !windows_path && !std::filesystem::is_regular_file(full, ec)) {
-      return Err("program_missing", std::format("\"{}\" doesn't exist", full.string()),
+      const bool exists = std::filesystem::exists(full, ec);
+      return Err("program_missing",
+                 std::format("\"{}\" {}", full.string(), exists ? "isn't a file" : "doesn't exist"),
                  "Check the file is still there, or pick it again.");
     }
     target.exe_path = program->exe_path;
@@ -267,11 +269,10 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
   const std::filesystem::path log = proc::GameLogPath(s.games.Dir(), game.id);
   std::error_code ec;
   std::filesystem::create_directories(log.parent_path(), ec);
-  const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
-  auto spawned = runner::SpawnDetached(*command, log_fd);
+  const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+  auto spawned = runner::SpawnReaped(*command, log_fd);
   if (log_fd >= 0) ::close(log_fd);
   if (!spawned) return std::unexpected(spawned.error());
-  std::thread([pid = *spawned] { ::waitpid(pid, nullptr, 0); }).detach();
   return {};
 }
 
@@ -457,6 +458,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       }
     }
     const std::string post_script = resolver.GetString("launch.post_script");
+    const std::int64_t post_timeout_s = resolver.GetInt("launch.post_timeout_s");
 
     // A play option replaces how the game starts, whatever its source, and is tracked as the game.
     if (option) {
@@ -483,7 +485,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         std::ranges::replace(file, '/', '\\');
         command->argv.push_back("Z:" + file);
       }
-      if (auto ran = RunPreScriptInline(pre_script); !ran) {
+      if (auto ran = RunPreScriptInline(pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s"))); !ran) {
         return SendError(res, 409, ran.error());
       }
       const bool game_mangohud = command->env.contains("MANGOHUD");
@@ -494,18 +496,18 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       const std::filesystem::path launch_log = proc::GameLogPath(s.games.Dir(), game->id);
       std::error_code log_ec;
       std::filesystem::create_directories(launch_log.parent_path(), log_ec);
-      const int log_fd = ::open(launch_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-      auto spawned = runner::SpawnDetached(*command, log_fd);
+      const int log_fd = ::open(launch_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+      // Tracked by path, not waited on: reaped, or its zombie keeps it looking alive.
+      auto spawned = runner::SpawnReaped(*command, log_fd);
       if (log_fd >= 0) ::close(log_fd);
       if (!spawned) return SendError(res, 500, spawned.error());
-      // Tracked by path, not waited on: reaped here, or its zombie keeps it looking alive.
-      std::thread([pid = *spawned] { ::waitpid(pid, nullptr, 0); }).detach();
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
       if (!reservation) return SendJson(res, {{"status", "opened_in_running_app"}, {"tracked", false}});
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
       if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::TrackedPath(*game),
-                                                         s.config.GetInt("launchers.detect_timeout_s"), post_script);
+                                                         s.config.GetInt("launchers.detect_timeout_s"), post_script,
+                                                         post_timeout_s);
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
       }
@@ -517,7 +519,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     // Mira can't waitpid() that process; steam.track_process finds it in /proc instead.
     if (game->runner_ref.starts_with("steam:")) {
       if (resolver.GetString("steam.launch_mode") == "steam") {
-        if (auto ran = RunPreScriptInline(pre_script); !ran) {
+        if (auto ran = RunPreScriptInline(pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s"))); !ran) {
           return SendError(res, 409, ran.error());
         }
         const std::string appid = game->runner_ref.substr(std::string_view("steam:").size());
@@ -527,7 +529,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         command.argv = steam::SteamCommand(s.config);
         if (resolver.GetBool("steam.launch_silent")) command.argv.push_back("-silent");
         command.argv.insert(command.argv.end(), {"-applaunch", appid});
-        if (auto spawned = runner::SpawnDetached(command); !spawned) {
+        if (auto spawned = runner::SpawnReaped(command); !spawned) {
           return SendError(res, 500, spawned.error());
         }
         [[maybe_unused]] auto _ =
@@ -536,7 +538,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         s.events.Publish("game.launched",
                         {{"id", game->id}, {"via", "steam"}, {"tracked", track}});
         if (track) {
-          if (auto started = s.supervisor.TrackSteamLaunch(*game, appid, post_script); !started) {
+          if (auto started = s.supervisor.TrackSteamLaunch(*game, appid, post_script, post_timeout_s); !started) {
             log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
           }
           StartAlongside(s, *game);
@@ -616,7 +618,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
           g.last_error.clear();
         }
       });
-      if (!saved) return SendError(res, 404, saved.error());
+      if (!saved) return SendStoreError(res, saved.error());
       game = *saved;
       if (game->status == model::GameStatus::Broken) {
         return SendError(res, 409,
@@ -708,6 +710,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                       Fix::Game(game->id, "exe")});
     };
     // Optionally adopting what the game's installer put in its prefix (game.install_detected).
+    bool adopted = false;
     if (!req.body.empty()) {
       const auto body = BodyObject(req, res, R"({"install_path"?: "...", "exe_path"?: "..."})");
       if (!body) return;
@@ -722,6 +725,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         game->working_dir.clear();
         game->candidates = detected.candidates;
         game->confidence = detected.confidence;
+        adopted = true;
       }
       if (const std::string exe_path = core::JsonString(*body, "exe_path"); !exe_path.empty()) {
         game->exe_path = exe_path;
@@ -738,14 +742,18 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return needs_exe("the game's executable isn't in its install folder");
     }
     const bool moved = s.games.Find(game->id).value_or(*game).install_path != game->install_path;
+    // Only what this request set, so a rename or move made during detection stays.
     auto result = s.games.Update(game->id, [&](model::Game& g) {
-      g.install_path = game->install_path;
-      g.installer_dir = game->installer_dir;
-      g.name = game->name;
-      g.working_dir = game->working_dir;
+      if (adopted) {
+        g.install_path = game->install_path;
+        g.installer_dir = game->installer_dir;
+        g.name = game->name;
+        g.working_dir = game->working_dir;
+        g.candidates = game->candidates;
+        g.confidence = game->confidence;
+      }
       g.exe_path = game->exe_path;
-      g.candidates = game->candidates;
-      g.confidence = game->confidence;
+      for (model::Candidate& candidate : g.candidates) candidate.chosen = candidate.rel_path == g.exe_path;
       g.status = model::GameStatus::Ready;
       g.last_error.clear();
     });

@@ -69,8 +69,10 @@ Result<void> SaveFolders(Services& s, const std::vector<std::string>& folders) {
 
 // After games' tags changed: one games.updated for them, then their folders follow, unless the
 // folder tags changed too, which sorts every game anyway (Services::SettingsChanged).
+// `folders_saved`: whether tags.folders, saved after the games, made it; the games' change is
+// announced either way.
 void Changed(Services& s, const std::vector<model::Game>& updated, bool folders_changed,
-             Response& res) {
+             Response& res, const Result<void>& folders_saved = {}) {
   json games = json::array();
   std::vector<std::string> ids;
   const Services::RecordSettings settings = s.CurrentRecordSettings();
@@ -79,6 +81,7 @@ void Changed(Services& s, const std::vector<model::Game>& updated, bool folders_
     ids.push_back(game.id);
   }
   if (!updated.empty()) s.events.Publish("games.updated", {{"games", games}});
+  if (!folders_saved) return SendError(res, 500, folders_saved.error());
   SendJson(res, {{"games", std::move(games)}});
   if (folders_changed) {
     s.SettingsChanged({"tags.folders"});
@@ -200,10 +203,7 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    if (folders) {
-      if (auto saved = SaveFolders(s, *folders); !saved) return SendError(res, 500, saved.error());
-    }
-    Changed(s, *updated, folders.has_value(), res);
+    Changed(s, *updated, folders.has_value(), res, folders ? SaveFolders(s, *folders) : Result<void>{});
   });
 
   // Every spelling of `from` becomes `to`, in place, on every game and in tags.folders.
@@ -250,10 +250,7 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    if (folder_renamed) {
-      if (auto saved = SaveFolders(s, folders); !saved) return SendError(res, 500, saved.error());
-    }
-    Changed(s, *updated, folder_renamed, res);
+    Changed(s, *updated, folder_renamed, res, folder_renamed ? SaveFolders(s, folders) : Result<void>{});
   });
 
   // Takes `name` off every game, and out of tags.folders.
@@ -280,10 +277,7 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    if (folders) {
-      if (auto saved = SaveFolders(s, *folders); !saved) return SendError(res, 500, saved.error());
-    }
-    Changed(s, *updated, folders.has_value(), res);
+    Changed(s, *updated, folders.has_value(), res, folders ? SaveFolders(s, *folders) : Result<void>{});
   });
 
   // Which games would move if tags.folders and tags.sorted_roots were these, and games had these

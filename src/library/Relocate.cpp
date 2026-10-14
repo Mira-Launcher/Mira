@@ -18,7 +18,10 @@ namespace fs = std::filesystem;
 
 Result<void> MovePath(const fs::path& from, const fs::path& to, bool allow_copy) {
   std::error_code ec;
-  if (!fs::exists(from, ec)) return Err("source_missing", std::format("{} doesn't exist", from.string()));
+  if (!fs::exists(from, ec)) {
+    if (ec) return Err("io_error", std::format("couldn't check {}: {}", from.string(), ec.message()));
+    return Err("source_missing", std::format("{} doesn't exist", from.string()));
+  }
 
   fs::create_directories(to.parent_path(), ec);
   fs::rename(from, to, ec);
@@ -143,7 +146,10 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game, con
       target = NamedDir(config, game, PlacedParent(config, library_roots.front(), game),
                         game.install_path);
     }
-    if (target.empty()) return Err("no_library_roots", "no library_roots configured to relocate into");
+    if (target.empty()) {
+      return Err("no_library_roots", "there's no library folder to move it into", "Add a library folder.",
+                 Fix::Setting("library_roots"));
+    }
     if (!paths::IsWithin(target, library_roots)) {
       return Err("path_outside_root",
                  std::format("\"{}\" is not inside a configured library root", target.string()),

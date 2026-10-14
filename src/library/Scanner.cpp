@@ -339,7 +339,10 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       return true;
     }
     const model::Game moved = matches.front();
-    if (!Follow(moved, found, loose, root, rules)) return false;
+    if (!Follow(moved, found, loose, root, rules)) {
+      unclear_ids.insert(moved.id);  // kept as it is, not removed as missing; tried again next scan
+      return true;  // not added as a second game
+    }
     left_folders.push_back(SortingFolderOf(rules, moved));
     std::erase_if(moved_away, [&](const model::Game& game) { return game.id == moved.id; });
     ++summary.moved;
@@ -555,8 +558,9 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     if (remove_missing && std::ranges::contains(moved_away, game.id, &model::Game::id)) {
       if (!other_roots) other_roots = ListOtherRoots(rules, root);  // listed once, if ever needed
     }
-    if (remove_missing && !(std::ranges::contains(moved_away, game.id, &model::Game::id) &&
-                            MovedToAnotherRoot(rules, *other_roots, game))) {
+    if (remove_missing && !(is_running_ && is_running_(game.id)) &&
+        !(std::ranges::contains(moved_away, game.id, &model::Game::id) &&
+          MovedToAnotherRoot(rules, *other_roots, game))) {
       auto removed = games_.Remove(game.id);
       if (!removed) {
         log::Error("failed to remove missing game {}: {}", game.id, removed.error().message);
@@ -633,13 +637,23 @@ bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games,
 
 }  // namespace
 
+namespace {
+
+void SyncMenu(config::Config& config, store::GameStore& games) {
+  if (auto synced = desktop::DesktopEntries(config, games.Metadata()).Sync(games.All()); !synced) {
+    log::Warn("could not update application menu entries: {}", synced.error().message);
+  }
+}
+
+}  // namespace
+
 int RetryBrokenProvisioning(config::Config& config, store::GameStore& games, api::EventBus& events) {
   const runner::RunnerRegistry runners(config);
   int fixed = 0;
   for (const model::Game& game : games.All()) {
     if (Reprovision(runners, games, events, game)) ++fixed;
   }
-  if (fixed > 0) (void)desktop::DesktopEntries(config, games.Metadata()).Sync(games.All());
+  if (fixed > 0) SyncMenu(config, games);
   return fixed;
 }
 
@@ -647,7 +661,7 @@ bool RetryBrokenProvisioning(config::Config& config, store::GameStore& games, ap
                              const std::string& id) {
   const std::optional<model::Game> game = games.Find(id);
   if (!game || !Reprovision(runner::RunnerRegistry(config), games, events, *game)) return false;
-  (void)desktop::DesktopEntries(config, games.Metadata()).Sync(games.All());
+  SyncMenu(config, games);
   return true;
 }
 

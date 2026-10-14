@@ -22,6 +22,7 @@
 #include "core/Result.h"
 #include "library/Catalog.h"
 #include "library/FolderTags.h"
+#include "library/ImportSummary.h"
 #include "library/Scanner.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
@@ -146,6 +147,8 @@ public:
   library::ScanSummary Scan();
   // What every import and scan ends with: menu entries, then metadata for what it added.
   void AfterImport(const std::vector<model::Game>& added);
+  // A source's import job's end: marks it added, announces that, then AfterImport. The job's {added, updated}.
+  nlohmann::json FinishImport(const std::string& source, const library::ImportSummary& summary);
 
   // Closes out any session a previous mirad left behind and tells clients those games are idle.
   void ReconcileSessions();

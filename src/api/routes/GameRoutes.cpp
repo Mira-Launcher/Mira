@@ -289,7 +289,9 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (auto deleted = s.DeleteGameData(*game, s.games.All(), flag("delete_files"),
                                         flag("delete_prefix"), flag("delete_metadata"));
         !deleted) {
-      return SendError(res, 400, deleted.error());
+      const std::string& code = deleted.error().code;
+      const bool refused = code == "shared_prefix" || code == "shared_folder" || code == "path_outside_root";
+      return SendError(res, refused ? 409 : 500, deleted.error());
     }
 
     auto result = s.games.Remove(req.matches[1]);
@@ -407,12 +409,13 @@ void RegisterGameRoutes(Router& http, Services& s) {
     // An AppImage is the program itself, so it names the game rather than the folder it sits in.
     const std::string default_name = appimage ? std::filesystem::path(exe_path).stem().string()
                                               : install_path.filename().string();
-    game.name = b.value("name", strings::CleanGameName(default_name));
+    // Adding a known game again keeps its name and args unless the body sets them.
+    game.name = b.value("name", existing ? game.name : strings::CleanGameName(default_name));
     game.id = existing ? game.id : s.games.NextId(game.name);
     game.source = "manual";
     game.install_path = install_path.string();
     game.exe_path = exe_path;
-    game.args = b.value("args", std::string());
+    game.args = b.value("args", game.args);
     game.platform = platform;
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;

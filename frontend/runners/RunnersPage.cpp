@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QToolButton>
@@ -287,9 +288,12 @@ void RunnersPage::RefreshInstalled() {
   });
   api::ListRunnersAsync(this, [this](RunnersResult result) {
     if (!result.ok) {
-      SetStatus(error_help::Describe(result.error), true);
+      SetStatus("Could not list runners: " + error_help::Describe(result.error), true);
+      installed_error_ = true;
       return;
     }
+    if (installed_error_) SetStatus(QString());
+    installed_error_ = false;
     runners_ = result.runners;
     RebuildInstalled();
   });
@@ -370,9 +374,7 @@ void RunnersPage::RebuildInstalled() {
     more->setAutoRaise(true);
     icons::Follow(more, icons::Glyph::More);
     more->setToolTip("More");
-    QSizePolicy keep = more->sizePolicy();
-    keep.setRetainSizeWhenHidden(true);
-    more->setSizePolicy(keep);
+    KeepSpaceWhenHidden(more);
     more->setVisible(!is_default || runner.removable);
     connect(more, &QToolButton::clicked, this, [this, more, runner, is_default] {
       QMenu menu(this);
@@ -442,7 +444,7 @@ void RunnersPage::RebuildCatalog() {
       install->setFixedWidth(90);
       connect(install, &QPushButton::clicked, this, [this, install, tag = release.tag] {
         install->setEnabled(false);  // until the tracker hears it started
-        Download(tag);
+        Download(tag, install);
       });
       row->AddControl(install);
     }
@@ -524,12 +526,14 @@ void RunnersPage::Remove(const RunnerInfo& runner) {
   });
 }
 
-void RunnersPage::Download(const std::string& tag) {
+void RunnersPage::Download(const std::string& tag, QPushButton* button) {
   const std::string kind = CurrentKind();
   const std::string source = source_->currentData().toString().toStdString();
-  api::DownloadRunnerAsync(this, kind, tag, source, [this](RunnerDownloadResult result) {
+  api::DownloadRunnerAsync(this, kind, tag, source, [this, button = QPointer(button)](RunnerDownloadResult result) {
     // The tracker hears the rest on the event stream.
-    if (!result.ok) SetStatus("Could not start the download: " + error_help::Describe(result.error), true);
+    if (result.ok) return;
+    if (button) button->setEnabled(true);
+    SetStatus("Could not start the download: " + error_help::Describe(result.error), true);
   });
 }
 

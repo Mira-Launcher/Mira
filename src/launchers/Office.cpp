@@ -274,18 +274,20 @@ Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegi
   std::lock_guard lock(mutex);
   const auto now = std::chrono::steady_clock::now();
   if (last != std::chrono::steady_clock::time_point{} && now - last < std::chrono::hours(6)) return {};
-  last = now;
 
   const fs::path marker = fs::path(host.data_dir) / kShimsMarker;
   const fs::path downloads = paths::UserDir() / "downloads";
   std::string version;
   auto dir = ShimsDir(config, downloads, &version);
-  if (!dir) return std::unexpected(dir.error());
-  if (!version.empty() && version == ReadLine(marker)) return {};
-  if (version.empty() && fs::exists(marker)) return {};  // shims_dir: Prepare installed them
+  if (!dir) return std::unexpected(dir.error());  // asked again next launch
+  if ((!version.empty() && version == ReadLine(marker)) || (version.empty() && fs::exists(marker))) {
+    last = now;  // without a version, shims_dir: Prepare installed them
+    return {};
+  }
   log::Info("updating the Microsoft 365 shims to {}", version.empty() ? "the local build" : version);
   if (auto shims = InstallShims(config, runners, host, downloads, &version); !shims) return shims;
   std::ofstream(marker) << version << "\n";
+  last = now;
   return {};
 }
 

@@ -68,9 +68,8 @@ public:
 signals:
   // The record loaded, or a save landed.
   void Loaded(QString name);
-  void LoadFailed(QString error);
+  void LoadFailed(QString error, bool first);
   void SaveFinished(bool ok, QString error);
-  void AdvancedChanged(bool open);
   // Any field edited, or put back.
   void Changed();
   // A tag chip was clicked: show the library's games with this tag.
@@ -108,6 +107,8 @@ private:
   mira_gui::GamePatch original_patch_;
   std::string original_pick_;  // the game's folder tag pick as saved
   bool populating_ = false;
+  bool loaded_ = false;  // Populate() has run once
+  bool stale_ = false;  // the game changed elsewhere while there were edits; Discard loads it again
 
   QLabel* last_error_label_ = nullptr;
   QLabel* source_note_label_ = nullptr;

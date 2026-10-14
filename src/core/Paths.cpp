@@ -51,6 +51,8 @@ std::filesystem::path Expand(std::string_view raw) {
         out += value;
       } else if (name == "XDG_RUNTIME_DIR") {
         out += RuntimeDir().string();
+      } else {
+        out += raw.substr(i, end - i);  // unset stays as written, rather than shortening the path
       }
       i = end - 1;
     } else {

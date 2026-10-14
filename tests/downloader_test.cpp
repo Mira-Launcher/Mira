@@ -94,6 +94,11 @@ TEST_CASE("InstallToolBinary finds a binary nested inside a zip, alongside sibli
 
   const auto perms = fs::status(*installed).permissions();
   CHECK((perms & fs::perms::owner_exec) != fs::perms::none);
+
+  // An update replaces the files in place, leaving nothing set aside.
+  REQUIRE(runner::InstallToolBinary(config, "itch", asset, "butler"));
+  CHECK(fs::exists(*installed));
+  CHECK_FALSE(fs::exists(installed->string() + ".mira-old"));
 }
 
 TEST_CASE("InstallToolBinary reports a clear error when the archive doesn't contain binary_name") {

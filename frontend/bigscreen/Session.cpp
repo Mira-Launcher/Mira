@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDir>
 #include <QFile>
@@ -21,20 +22,25 @@ QString Executable() {
 
 }  // namespace
 
-void ApplyStartOnLogin(bool on) {
+bool ApplyStartOnLogin(bool on) {
   const QString dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/autostart";
   const QString path = dir + "/mira.desktop";
-  if (!on) {
-    QFile::remove(path);
-    return;
-  }
+  if (!on) return !QFile::exists(path) || QFile::remove(path);
   QDir().mkpath(dir);
-  const QByteArray entry = "[Desktop Entry]\nType=Application\nName=Mira\nIcon=mira\nExec=\"" +
-                           Executable().toUtf8() + "\" --login\nX-GNOME-Autostart-enabled=true\n";
+  // Inside Exec's quotes ", `, $ and \ take a backslash, which the key's string escaping doubles.
+  QString exec;
+  for (const QChar c : Executable()) {
+    if (c == '"' || c == '`' || c == '$') exec += "\\\\";
+    if (c == '\\') exec += "\\\\\\";
+    if (c == '%') exec += '%';
+    exec += c;
+  }
+  const QByteArray entry = "[Desktop Entry]\nType=Application\nName=Mira\nIcon=mira\nExec=\"" + exec.toUtf8() +
+                           "\" --login\nX-GNOME-Autostart-enabled=true\n";
   QFile file(path);
-  if (file.open(QIODevice::ReadOnly) && file.readAll() == entry) return;
+  if (file.open(QIODevice::ReadOnly) && file.readAll() == entry) return true;
   file.close();
-  if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) file.write(entry);
+  return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(entry) == entry.size();
 }
 
 void UpdateSteamShortcut(QObject* context) {
@@ -54,14 +60,17 @@ void SleepWatcher::OnPrepareForSleep(bool sleeping) {
   if (!sleeping) emit Woke();
 }
 
-bool Power(const char* action) {
+void Power(QObject* context, const char* action, std::function<void(bool)> done) {
   // Set by test sandboxes, which share the real system bus.
-  if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) return false;
+  if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) return done(false);
   QDBusInterface logind("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
                         QDBusConnection::systemBus());
   // interactive: polkit may ask for a password when another user is logged in.
-  const QDBusMessage reply = logind.call(action, true);
-  return reply.type() != QDBusMessage::ErrorMessage;
+  auto* watcher = new QDBusPendingCallWatcher(logind.asyncCall(action, true), context);
+  QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context, [watcher, done = std::move(done)] {
+    watcher->deleteLater();
+    done(!watcher->isError());
+  });
 }
 
 unsigned InhibitScreenBlanking() {

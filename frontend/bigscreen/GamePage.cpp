@@ -13,6 +13,7 @@
 #include "../client/api/Artwork.h"
 #include "../library/PlayChoices.h"
 #include "../client/api/Games.h"
+#include "../client/api/Runners.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -93,12 +94,26 @@ void GamePage::Open(const Item& item, Page* from) {
   proton_tier_.clear();
   controller_.clear();
   metadata_loaded_ = false;
+  runner_name_.clear();
   last_session_.reset();
   for (QPixmap& shot : shots_) shot = QPixmap();
   own_shots_.clear();
   if (item.game) {
     LoadOwnShots();
     LoadDetails(item.key);
+    const QString key = item.key;
+    const std::string ref = item.game->runner_ref;
+    if (!ref.empty()) {
+      api::ListRunnersAsync(this, [this, key, ref](RunnersResult result) {
+        if (key != item_.key || !result.ok) return;
+        for (const RunnerInfo& runner : result.runners) {
+          if (runner.reference != ref) continue;
+          runner_name_ = QString::fromStdString(runner.name);
+          update();
+          return;
+        }
+      });
+    }
   }
 }
 
@@ -123,6 +138,10 @@ void GamePage::LoadDetails(const QString& key) {
 void GamePage::FetchShots(const QString& key, const std::vector<std::string>& urls) {
   for (size_t i = 0; i < std::min(shots_.size(), urls.size()); ++i) {
     QNetworkReply* reply = network_->get(QNetworkRequest(QUrl(QString::fromStdString(urls[i]))));
+    // Stopped once it's too big, not after the whole body is in memory.
+    connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received, qint64) {
+      if (received > kMaxShotBytes) reply->abort();
+    });
     connect(reply, &QNetworkReply::finished, this, [this, reply, key, i] {
       reply->deleteLater();
       const QByteArray data = reply->readAll();
@@ -298,6 +317,7 @@ void GamePage::paintEvent(QPaintEvent*) {
     facts.append({"Last played", FormatLastPlayed(game.last_played_at)});
     facts.append({"Runs with", game.platform == "native"      ? QString("Linux build")
                                : game.runner_ref.empty() ? QString("Default runner")
+                               : !runner_name_.isEmpty() ? runner_name_
                                                          : QString::fromStdString(game.runner_ref)});
     if (last_session_) facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
     if (!controller_.empty()) {

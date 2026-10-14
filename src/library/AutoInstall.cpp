@@ -3,6 +3,7 @@
 #include <signal.h>
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <map>
 #include <format>
@@ -114,6 +115,7 @@ struct Tracked {
   fs::path data_dir;
   std::vector<std::string> detect_dirs;
   std::set<fs::path> drive_c_before;
+  std::chrono::steady_clock::time_point measured_at;  // when bytes_written was last walked
 };
 
 std::mutex tracked_mutex;
@@ -343,12 +345,20 @@ std::optional<InstallProgress> Progress(const std::string& id) {
     entry = it->second;
   }
   if (entry.progress.state == "queued") return entry.progress;
+  // Walking a big install tree is slow; polls in between get the last count.
+  const auto checked = std::chrono::steady_clock::now();
+  if (checked - entry.measured_at < std::chrono::seconds(2)) return entry.progress;
   const std::uintmax_t now = TreeBytes(entry.install_path);
   std::uintmax_t written = now > entry.baseline_bytes ? now - entry.baseline_bytes : 0;
   for (const fs::path& dir : InstallDirs(entry.detect_dirs, entry.data_dir)) {
     if (!entry.drive_c_before.contains(dir)) written += TreeBytes(dir);
   }
   entry.progress.bytes_written = written;
+  const std::lock_guard lock(tracked_mutex);
+  if (const auto it = tracked.find(id); it != tracked.end()) {
+    it->second.progress.bytes_written = written;
+    it->second.measured_at = checked;
+  }
   return entry.progress;
 }
 

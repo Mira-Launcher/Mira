@@ -34,6 +34,8 @@ private:
   std::string game_id_;
   std::string install_path_;
   std::string installer_;  // empty: the game's own
+  int info_request_ = 0;  // only the latest LoadInfo's reply counts
+  bool silent_ = false;  // the loaded installer can run without its window
   QLabel* file_ = nullptr;
   QLabel* error_ = nullptr;
   QPushButton* shown_ = nullptr;

@@ -102,7 +102,7 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
   auto* process = new QProcess(QCoreApplication::instance());
   process->setProcessChannelMode(QProcess::MergedChannels);
   QObject::connect(process, &QProcess::finished, process,
-                   [process, guard, names, verb, argv, restart, done = std::move(done)](int code,
+                   [process, guard, names, verb, argv, restart, done](int code,
                                                                                           QProcess::ExitStatus status) {
     process->deleteLater();
     if (guard.isNull()) return;  // its widget is gone, and with it what `done` would touch
@@ -120,6 +120,14 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
       return done(false);
     }
     done(true);
+  });
+  // No pkexec at all: finished never comes.
+  QObject::connect(process, &QProcess::errorOccurred, process, [process, guard, names, verb, argv, done](QProcess::ProcessError error) {
+    if (error != QProcess::FailedToStart) return;
+    process->deleteLater();
+    if (guard.isNull()) return;
+    ShowCommand(guard.data(), "Could not " + verb + " " + names, "Run it from a terminal instead.", process->errorString(), argv);
+    done(false);
   });
   process->start("pkexec", argv);
 }

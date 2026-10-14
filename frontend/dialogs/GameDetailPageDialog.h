@@ -5,6 +5,8 @@
 
 #include <string>
 
+class QVBoxLayout;
+
 namespace mira_gui {
 
 // Everything mirad cached about a game that has no room anywhere else in the
@@ -18,7 +20,14 @@ public:
   GameDetailPageDialog(std::string game_id, QString game_name, QWidget* parent = nullptr);
 
 private:
+  void Load();
+  // The empty state, with a button that fetches store info and loads again.
+  void ShowEmpty(const QString& text);
+
   std::string game_id_;
+  QWidget* body_ = nullptr;
+  QVBoxLayout* layout_ = nullptr;
+  bool fetched_ = false;
 };
 
 }  // namespace mira_gui

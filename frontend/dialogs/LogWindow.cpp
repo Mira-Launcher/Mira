@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTimer>
@@ -22,6 +23,7 @@
 #include <map>
 
 #include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
 #include "../client/api/Logs.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -59,6 +61,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowTitle(title_ + " · Log");
   resize(860, 560);
+  new QShortcut(QKeySequence(Qt::Key_Escape), this, this, &QWidget::close);
 
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(18, 14, 18, 12);
@@ -80,7 +83,12 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   filter_->setPlaceholderText("Filter lines…");
   filter_->setClearButtonEnabled(true);
   filter_->setMaximumWidth(260);
-  connect(filter_, &QLineEdit::textChanged, this, &LogWindow::Render);
+  // Each render redraws every kept line, so it waits for a pause in typing.
+  auto* refilter = new QTimer(this);
+  refilter->setSingleShot(true);
+  refilter->setInterval(150);
+  connect(filter_, &QLineEdit::textChanged, refilter, qOverload<>(&QTimer::start));
+  connect(refilter, &QTimer::timeout, this, &LogWindow::Render);
   tools->addWidget(filter_);
   tools->addStretch(1);
   follow_ = new QCheckBox("Follow", this);
@@ -170,7 +178,7 @@ void LogWindow::Add(const std::vector<std::string>& lines) {
   for (const std::string& raw : lines) {
     QString line = QString::fromStdString(raw);
     lines_.push_back(line);
-    if (static_cast<int>(lines_.size()) > kKeepLines) lines_.erase(lines_.begin());
+    if (static_cast<int>(lines_.size()) > kKeepLines) lines_.pop_front();
     if (filter_->text().isEmpty() || line.contains(filter_->text(), Qt::CaseInsensitive)) AppendLine(line);
   }
   if (!lines.empty() && follow_->isChecked() && at_end) bar->setValue(bar->maximum());
@@ -254,8 +262,10 @@ void LogWindow::Save() {
       this, "Save log", QDir::homePath() + "/" + title_.toLower().replace(' ', '-') + ".log", "Log files (*.log *.txt)");
   if (path.isEmpty()) return;
   QFile file(path);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
-  for (const QString& line : lines_) file.write(line.toUtf8() + '\n');
+  QByteArray text;
+  for (const QString& line : lines_) text += line.toUtf8() + '\n';
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(text) != text.size())
+    notify::Info(this, "Could not save the log", file.errorString());
 }
 
 }  // namespace mira_gui

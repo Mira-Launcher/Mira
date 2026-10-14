@@ -9,6 +9,7 @@
 
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
+#include "core/Json.h"
 #include "core/StoreErrors.h"
 #include "itch/ItchImporter.h"
 
@@ -57,9 +58,9 @@ Result<void> ItchInstaller::Run(const std::string& game_id) {
     last_sent = now;
     events_.Publish("library.install.progress", {{"source", "itch"},
                                                  {"ref", game_id},
-                                                 {"progress", params.value("progress", 0.0)},
-                                                 {"eta", params.value("eta", 0.0)},
-                                                 {"bps", params.value("bps", 0.0)}});
+                                                 {"progress", core::JsonDouble(params, "progress")},
+                                                 {"eta", core::JsonDouble(params, "eta")},
+                                                 {"bps", core::JsonDouble(params, "bps")}});
   };
   if (auto performed = CallLong(config_, "Install.Perform", {{"id", install_id}, {"stagingFolder", staging_folder}},
                                 on_notification);

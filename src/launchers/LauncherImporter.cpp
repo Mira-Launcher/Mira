@@ -7,6 +7,7 @@
 
 #include <json.hpp>
 
+#include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
 #include "core/Strings.h"
@@ -180,7 +181,7 @@ std::string LookupUmuId(const std::string& store, const std::string& ref) {
   if (!result || result->exit_code != 0) return "";
   const nlohmann::json parsed = nlohmann::json::parse(result->output, nullptr, false);
   if (!parsed.is_array() || parsed.empty() || !parsed[0].is_object()) return "";
-  return parsed[0].value("umu_id", std::string());
+  return core::JsonString(parsed[0], "umu_id");
 }
 
 }  // namespace

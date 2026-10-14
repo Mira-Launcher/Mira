@@ -66,6 +66,7 @@ void GameLibraryModel::Remove(const std::vector<std::string>& ids) {
   }
   if (rows.empty()) return;
   std::ranges::sort(rows, std::greater{});
+  rows.erase(std::ranges::unique(rows).begin(), rows.end());  // an id twice would remove its neighbour too
   // Each run of rows costs an index rebuild and a re-sort in every proxy, so rows scattered
   // across the library (a store's games removed) go in one reset instead.
   int runs = 0;

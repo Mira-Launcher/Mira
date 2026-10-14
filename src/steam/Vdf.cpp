@@ -9,7 +9,10 @@ class Parser {
 public:
   explicit Parser(std::string_view text) : text_(text) {}
 
-  Result<VdfValue> ParseObjectBody(bool top_level) {
+  // depth 0 is the file itself; deeper nesting than Steam writes would only overflow the stack.
+  Result<VdfValue> ParseObjectBody(int depth) {
+    if (depth > 64) return Err("vdf_too_deep", "objects nested too deep");
+    const bool top_level = depth == 0;
     VdfValue node;
     while (true) {
       SkipTrivia();
@@ -28,7 +31,7 @@ public:
       SkipTrivia();
       if (pos_ < text_.size() && text_[pos_] == '{') {
         ++pos_;
-        auto child = ParseObjectBody(false);
+        auto child = ParseObjectBody(depth + 1);
         if (!child) return std::unexpected(child.error());
         node.children[strings::ToLower(*key)] = std::move(*child);
       } else {
@@ -89,7 +92,7 @@ const VdfValue* VdfValue::Get(std::initializer_list<std::string_view> path) cons
 
 Result<VdfValue> ParseVdf(std::string_view text) {
   Parser parser(text);
-  return parser.ParseObjectBody(/*top_level=*/true);
+  return parser.ParseObjectBody(0);
 }
 
 }  // namespace mira::steam

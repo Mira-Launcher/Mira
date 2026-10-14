@@ -147,7 +147,10 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
             QString("Off keeps %1's %2 out of the library and stops importing. Nothing is deleted.").arg(name, items),
             tile.in_library);
-    connect(tile.in_library, &Switch::toggled, this, [this, id](bool on) { emit EnabledToggled(id, on); });
+    connect(tile.in_library, &Switch::toggled, this, [this, id](bool on) {
+      tiles_[id].note.clear();  // an old import's result no longer describes it
+      emit EnabledToggled(id, on);
+    });
   }
   tile.in_sidebar = new Switch(tile.tile);
   tile.in_sidebar->setAccessibleName(name + " in the sidebar");

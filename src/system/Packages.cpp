@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #include "runner/Exec.h"
@@ -76,8 +77,10 @@ bool Installed(const Tool& tool) {
 
 // The first of `alternatives` (space-separated) the distro has: apt rejects the whole install for one
 // unknown name, and Debian and Ubuntu releases name some differently. Other families take the first.
-std::string Choose(std::string_view alternatives, Family family) {
+// nullopt when apt couldn't answer for some name, so "not found" isn't reported for a slow apt.
+std::optional<std::string> Choose(std::string_view alternatives, Family family) {
   std::istringstream names{std::string(alternatives)};
+  bool unchecked = false;
   for (std::string name; names >> name;) {
     if (family != Family::Debian) return name;
     Command show;
@@ -85,8 +88,11 @@ std::string Choose(std::string_view alternatives, Family family) {
     show.timeout_s = 10;
     const auto shown = runner::RunAndWait(show);
     if (shown && shown->exit_code == 0) return name;
+    // Exit 100 is apt's "no such package".
+    if (!shown || shown->exit_code != 100) unchecked = true;
   }
-  return {};
+  if (unchecked) return std::nullopt;
+  return std::string{};
 }
 
 std::string_view FamilyName(Family family) {
@@ -195,8 +201,8 @@ std::vector<std::string> InstalledPackages(std::string_view feature) {
   std::vector<std::string> packages;
   for (const Tool& tool : ToolsFor(feature)) {
     if (tool.binary.empty() || !Installed(tool)) continue;
-    if (std::string package = Choose(PackageFor(tool, family), family); !package.empty())
-      packages.push_back(std::move(package));
+    if (auto package = Choose(PackageFor(tool, family), family); package && !package->empty())
+      packages.push_back(std::move(*package));
   }
   return packages;
 }
@@ -224,9 +230,10 @@ json Report(std::string_view feature) {
   std::vector<std::string> packages;
   for (const Tool& tool : ToolsFor(feature)) {
     if (Installed(tool)) continue;
-    const std::string package = Choose(PackageFor(tool, distro.family), distro.family);
+    const auto chosen = Choose(PackageFor(tool, distro.family), distro.family);
+    const std::string package = chosen.value_or("");
     if (package.empty()) {
-      unavailable.push_back({{"tool", tool.id}, {"purpose", tool.purpose}});
+      unavailable.push_back({{"tool", tool.id}, {"purpose", tool.purpose}, {"unchecked", !chosen}});
       continue;
     }
     missing.push_back({{"tool", tool.id}, {"package", package}, {"purpose", tool.purpose}});
@@ -242,7 +249,20 @@ json Report(std::string_view feature) {
 
 Result<void> RequireFeature(std::string_view feature, std::string_view what) {
   const json report = Report(feature);
-  if (report["missing"].empty()) return {};
+  if (report["missing"].empty() && report["unavailable"].empty()) return {};
+  if (report["missing"].empty()) {
+    // Missing with no package here: nothing to install, but it still won't run without it.
+    std::vector<std::string> tools;
+    bool unchecked = false;
+    for (const json& item : report["unavailable"]) {
+      tools.push_back(std::format("{} ({})", item["tool"].get<std::string>(), item["purpose"].get<std::string>()));
+      if (item["unchecked"].get<bool>()) unchecked = true;
+    }
+    const std::string hint = unchecked
+        ? "Couldn't check apt for a package. Try again, or install it another way."
+        : std::format("{} has no package for it that Mira knows; install it another way.", report["distro"].get<std::string>());
+    return Err("missing_tools", std::format("{} needs {}, which isn't installed", what, Join(tools, " and ")), hint);
+  }
   std::vector<std::string> packages;
   for (const json& item : report["missing"]) packages.push_back(item["package"].get<std::string>());
   const std::vector<std::string> install = report["install"].get<std::vector<std::string>>();

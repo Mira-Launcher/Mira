@@ -99,8 +99,8 @@ fs::path MetadataStore::ArtworkDir(const std::string& id) const { return dir_ / 
 Result<void> MetadataStore::Open() {
   const fs::path file = dir_ / "cache.db";
   auto opened = db_.Open(file);
-  if (opened && !db_.Sound()) opened = Err("database_damaged", "the cache failed its check");
-  if (!opened) {
+  if (opened) opened = db_.CheckSound();
+  if (!opened && opened.error().code == "database_damaged") {
     // Everything in it can be fetched again.
     log::Warn("the metadata cache {} is damaged ({}); starting it over", file.string(), opened.error().message);
     db_.Close();
@@ -244,10 +244,10 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::v
     auto clear = db_.Prepare("DELETE FROM catalog WHERE source = ?");
     if (!clear) return std::unexpected(clear.error());
     if (auto done = clear->Bind(1, source).Run(); !done) return std::unexpected(done.error());
+    auto add = db_.Prepare(
+        "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, ?, ?)");
+    if (!add) return std::unexpected(add.error());
     for (std::size_t at = 0; at < rows.size(); ++at) {
-      auto add = db_.Prepare(
-          "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, ?, ?)");
-      if (!add) return std::unexpected(add.error());
       const CatalogRow& row = rows[at];
       if (auto done = add->Bind(1, source)
                           .Bind(2, static_cast<std::int64_t>(at))

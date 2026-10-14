@@ -13,6 +13,7 @@ namespace mira_gui::shortcuts {
 struct Entry {
   QString keys;
   QString description;
+  QString id = {};  // the keybindings id, so a rebound key shows as rebound
 };
 
 // The actions every top-level window carries, whether or not it has a menu
@@ -36,5 +37,8 @@ Common Install(QMainWindow* window, const QList<Entry>& window_specific = {});
 
 // Every key this window responds to, in one read-only list.
 void ShowReference(QWidget* parent, const QList<Entry>& window_specific);
+
+// "(Ctrl+H shows hidden games)", with whatever key that is bound to now.
+QString HiddenGamesHint();
 
 }  // namespace mira_gui::shortcuts

@@ -8,10 +8,6 @@
 
 namespace mira::library {
 
-void AddTag(std::vector<std::string>& tags, const std::string& tag) {
-  if (std::ranges::find(tags, tag) == tags.end()) tags.push_back(tag);
-}
-
 void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game, bool existed) {
   if (existed) {
     ++summary.updated;

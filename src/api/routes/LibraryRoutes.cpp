@@ -12,6 +12,7 @@
 #include "emulators/Emulators.h"
 #include "modmanagers/ModManagers.h"
 #include "core/Command.h"
+#include "core/Json.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "library/Catalog.h"
@@ -116,11 +117,13 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     if (!ids) return SendError(res, 400, "invalid_body", R"(expected no body, or {"ids": [...]})");
 
     std::vector<model::Game> games = s.games.All();
+    int skipped = 0;
     if (body.contains("ids")) {
+      skipped = static_cast<int>(std::ranges::count_if(*ids, [&](const std::string& id) { return !s.games.Find(id); }));
       std::erase_if(games, [&](const model::Game& game) { return !std::ranges::contains(*ids, game.id); });
     }
     s.StartJob(req, res, "relocate", "", "Moving games into Mira's folders",
-             [&s, games = std::move(games)](JobRegistry::Progress& progress) -> Result<json> {
+             [&s, games = std::move(games), skipped](JobRegistry::Progress& progress) mutable -> Result<json> {
                int moved = 0;
                std::vector<std::string> moved_ids;
                int done = 0;
@@ -132,7 +135,10 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                  // Read again now: earlier moves take time, and the game may have changed
                  // meanwhile.
                  const auto current = s.games.Find(listed.id);
-                 if (!current) continue;  // removed meanwhile
+                 if (!current) {
+                   ++skipped;
+                   continue;
+                 }
                  const model::Game& game = *current;
                  // Held for the whole move, so the game can't launch from half-moved files.
                  const auto claim = s.Claim(game.id, "moved");
@@ -172,7 +178,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                // A game sorted by a link needs its link pointed at its new folder.
                s.SortByTags(std::move(moved_ids));
                const int failed = static_cast<int>(errors.size());
-               return json{{"moved", moved}, {"failed", failed}, {"errors", std::move(errors)}};
+               return json{{"moved", moved}, {"failed", failed}, {"skipped", skipped}, {"errors", std::move(errors)}};
              });
   });
 
@@ -182,12 +188,15 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     constexpr std::string_view kShape = R"({"path": "/absolute/path"})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
-    const std::string path = body->contains("path") && (*body)["path"].is_string() ? (*body)["path"].get<std::string>() : "";
+    const std::string path = core::JsonString(*body, "path");
     if (!std::filesystem::path(path).is_absolute()) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) return SendError(res, 404, "not_found", path + " doesn't exist");
+    if (!std::filesystem::exists(path, ec)) {
+      if (ec) return SendError(res, 500, "io_error", std::format("couldn't check {}: {}", path, ec.message()));
+      return SendError(res, 404, "not_found", path + " doesn't exist");
+    }
     const library::ImportGuess guess = library::ClassifyImport(path);
     SendJson(res, json{{"kind", std::string(library::ImportKindName(guess.kind))}, {"name", guess.name},
                        {"reason", guess.reason}});
@@ -197,9 +206,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     constexpr std::string_view kShape = R"({"path": "/absolute/path", "kind": "game" or "app"})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
-    const std::string path = body->contains("path") && (*body)["path"].is_string() ? (*body)["path"].get<std::string>() : "";
-    const std::optional<library::ImportKind> kind =
-        body->contains("kind") && (*body)["kind"].is_string() ? library::ParseImportKind((*body)["kind"].get<std::string>()) : std::nullopt;
+    const std::string path = core::JsonString(*body, "path");
+    const std::optional<library::ImportKind> kind = library::ParseImportKind(core::JsonString(*body, "kind"));
     if (!std::filesystem::path(path).is_absolute() || !kind) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
@@ -218,10 +226,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       steam::SteamScanner scanner(s.config, s.games, s.events);
       auto summary = scanner.Scan();
       if (!summary) return std::unexpected(summary.error());
-      s.games.MarkSourceAdded("steam", true);
-      s.events.Publish("sources.changed", json::object());
-      s.AfterImport(summary->added_games);
-      return json{{"added", summary->added}, {"updated", summary->updated}};
+      return s.FinishImport("steam", *summary);
     });
   });
 
@@ -282,14 +287,14 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto change = steam::EnsureShortcut(*root, "Mira", body.value("exe", std::string()),
                                               body.value("launch_options", std::string()));
     if (!change) return SendError(res, 500, change.error());
-    SendJson(res, {{"status", "ok"}, {"added", change->added}, {"updated", change->updated}});
+    SendJson(res, {{"status", "ok"}, {"added", change->added}, {"updated", change->updated}, {"failed", change->failed}});
   });
 
   http.Post("/v1/steam/bigpicture", [&s](const Request&, Response& res) {
     Command command;
     command.argv = steam::SteamCommand(s.config);
     command.argv.push_back("steam://open/bigpicture");
-    if (auto spawned = runner::SpawnDetached(command); !spawned) return SendError(res, 500, spawned.error());
+    if (auto spawned = runner::SpawnReaped(command); !spawned) return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });
 
@@ -305,13 +310,10 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       lutris::LutrisImporter importer(s.config, s.games, s.events);
       auto summary = importer.Import();
       if (!summary) return std::unexpected(summary.error());
-      s.games.MarkSourceAdded("lutris", true);
-      s.events.Publish("sources.changed", json::object());
-      s.AfterImport(summary->added_games);
-      return json{{"added", summary->added},
-                  {"updated", summary->updated},
-                  {"other_runner", summary->other_runner},
-                  {"incomplete", summary->incomplete}};
+      json result = s.FinishImport("lutris", *summary);
+      result["other_runner"] = summary->other_runner;
+      result["incomplete"] = summary->incomplete;
+      return result;
     });
   });
 
@@ -597,8 +599,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     if (!body) return;
     const json& b = *body;
     const json refs = b.value("refs", json());
-    const std::string source =
-        b.contains("source") && b["source"].is_string() ? b["source"].get<std::string>() : "";
+    const std::string source = core::JsonString(b, "source");
     if (library::FindSource(source) == nullptr || !refs.is_array() || !b.contains("hidden") ||
         !b["hidden"].is_boolean() || !std::ranges::all_of(refs, [](const json& ref) {
           return ref.is_string() && IsSafeRef(ref.get<std::string>());
@@ -622,9 +623,9 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       return true;
     });
     if (!changed) return SendError(res, 500, changed.error());
+    for (const model::Game& game : *changed) s.events.Publish("game.updated", s.Record(game));
     if (auto kept = s.games.SetTitlesHidden(titles, hide); !kept)
       return SendError(res, 500, kept.error());
-    for (const model::Game& game : *changed) s.events.Publish("game.updated", s.Record(game));
     const json payload = {{"source", source}, {"refs", refs}, {"hidden", hide}};
     s.events.Publish("library.hidden_changed", payload);
     SendJson(res, payload);

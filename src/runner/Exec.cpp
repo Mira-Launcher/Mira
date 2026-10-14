@@ -71,25 +71,30 @@ std::vector<std::string> SessionEnv() {
   static std::mutex mutex;
   static std::vector<std::string> cached;
   static std::chrono::steady_clock::time_point read_at;
-  const std::lock_guard lock(mutex);
   const auto now = std::chrono::steady_clock::now();
-  if (read_at != std::chrono::steady_clock::time_point() && now - read_at < std::chrono::minutes(1)) return cached;
-  read_at = now;
-  cached.clear();
+  {
+    const std::lock_guard lock(mutex);
+    if (read_at != std::chrono::steady_clock::time_point() && now - read_at < std::chrono::minutes(1)) return cached;
+  }
+  // Outside the lock: a hung user bus holds up this launch, not every other one.
+  std::vector<std::string> found;
   FILE* pipe = popen("systemctl --user show-environment 2>/dev/null", "r");
-  if (pipe == nullptr) return cached;
+  if (pipe == nullptr) return found;
   char line[4096];
   while (std::fgets(line, sizeof(line), pipe) != nullptr) {
     std::string entry(line);
     if (!entry.empty() && entry.back() == '\n') entry.pop_back();
     for (const char* key : {"DISPLAY=", "WAYLAND_DISPLAY=", "XAUTHORITY=", "XDG_SESSION_TYPE=", "XDG_CURRENT_DESKTOP="}) {
       if (entry.starts_with(key) && std::getenv(std::string(key, std::strlen(key) - 1).c_str()) == nullptr) {
-        cached.push_back(entry);
+        found.push_back(entry);
       }
     }
   }
-  pclose(pipe);
-  return cached;
+  if (pclose(pipe) != 0) return found;  // not kept, so the next launch asks again
+  const std::lock_guard lock(mutex);
+  cached = found;
+  read_at = now;
+  return found;
 }
 
 // Inherited from whatever started Mira and not meant for what it starts: KWin's activation
@@ -218,6 +223,13 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
   return Err("exec_failed", std::format("couldn't start \"{}\": {}", command.argv.front(), std::strerror(failure[1])));
 }
 
+Result<void> SpawnReaped(const Command& command, int output_fd) {
+  auto pid = SpawnDetached(command, output_fd);
+  if (!pid) return std::unexpected(pid.error());
+  std::thread([pid = *pid] { ::waitpid(pid, nullptr, 0); }).detach();
+  return {};
+}
+
 Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_fd) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
   PreparedCommand prepared = Prepare(command);
@@ -236,6 +248,14 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
     dup2(pipe_fds[1], 3);
     close(pipe_fds[0]);
     if (pipe_fds[1] != 3) close(pipe_fds[1]);
+    // Never mirad's own stdio, as in SpawnDetached.
+    const int null_fd = open("/dev/null", O_RDWR);
+    if (null_fd >= 0) {
+      dup2(null_fd, 0);
+      dup2(null_fd, 1);
+      dup2(null_fd, 2);
+      if (null_fd > 3) close(null_fd);
+    }
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
     execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);
@@ -277,37 +297,45 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
   bool stopped = false;
   ExecResult result;
   char buffer[4096];
+  int status = 0;
+  bool reaped = false;
   for (;;) {
-    if (command.timeout_s > 0 || stop.stop_possible()) {
-      if (stop.stop_requested()) {
-        stopped = true;
+    if (stop.stop_requested()) {
+      stopped = true;
+      break;
+    }
+    long long wait_ms = 250;
+    if (command.timeout_s > 0) {
+      const auto left =
+          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+      if (left <= 0) {
+        timed_out = true;
         break;
       }
-      long long wait_ms = 250;
-      if (command.timeout_s > 0) {
-        const auto left =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
-        if (left <= 0) {
-          timed_out = true;
-          break;
-        }
-        if (!stop.stop_possible() || left < wait_ms) wait_ms = left;
-      }
-      pollfd ready{.fd = pipe_fds[0], .events = POLLIN, .revents = 0};
-      const int polled = poll(&ready, 1, static_cast<int>(wait_ms));
-      if (polled < 0 && errno != EINTR) break;
-      if (polled <= 0) continue;
+      wait_ms = std::min<long long>(wait_ms, left);
+    }
+    pollfd ready{.fd = pipe_fds[0], .events = POLLIN, .revents = 0};
+    const int polled = poll(&ready, 1, static_cast<int>(wait_ms));
+    if (polled < 0 && errno != EINTR) break;
+    if (polled <= 0) {
+      // A quiet pipe after the child exited: whatever still holds it open (a wineserver) isn't waited for.
+      if (reaped) break;
+      reaped = waitpid(pid, &status, WNOHANG) == pid;
+      continue;
     }
     const ssize_t n = read(pipe_fds[0], buffer, sizeof(buffer));
     if (n < 0 && errno == EINTR) continue;
-    if (n <= 0) break;
+    if (n <= 0) {
+      // Output closed but the child may live on: it's still waited for under the deadline and stop.
+      if (reaped || (reaped = waitpid(pid, &status, WNOHANG) == pid)) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      continue;
+    }
     result.output.append(buffer, static_cast<size_t>(n));
     if (on_output) on_output(std::string_view(buffer, static_cast<size_t>(n)));
   }
   close(pipe_fds[0]);
-  int status = 0;
-  bool reaped = false;
-  if (timed_out || stopped) {
+  if (timed_out || stopped) {  // the group too, even with the child itself gone
     // SIGTERM first so a store tool can save where it got to, then SIGKILL.
     kill(-pid, SIGTERM);
     for (int i = 0; i < 30 && !reaped; ++i) {

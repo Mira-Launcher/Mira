@@ -39,6 +39,7 @@ struct ExternalMatch {
   std::string data_dir;
   std::string win_dir;
   std::int64_t detect_timeout_s = 60;
+  std::int64_t post_timeout_s = 0;  // the post script's; 0 waits for it
 };
 
 // Tracks the games currently running. One watcher thread per running game,
@@ -77,11 +78,12 @@ public:
   // code/signal. Gives up quietly if nothing matches within a startup
   // window: Steam may still be launching, or the player cancelled.
   Result<void> TrackSteamLaunch(const model::Game& game, const std::string& appid,
-                                std::string post_script = "");
+                                std::string post_script = "", std::int64_t post_timeout_s = 0);
 
   // Same, for a game a store launcher (Battle.net, Ubisoft, EA) starts.
   Result<void> TrackLauncherLaunch(const model::Game& game, const std::string& win_dir,
-                                   std::int64_t detect_timeout_s, std::string post_script = "");
+                                   std::int64_t detect_timeout_s, std::string post_script = "",
+                                   std::int64_t post_timeout_s = 0);
 
   // SIGTERM to the running game's whole process group, if any. Returns as
   // soon as the signal is sent; if the game ignores it, the watcher escalates

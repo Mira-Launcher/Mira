@@ -54,8 +54,9 @@ void SearchPage::Search() {
   for (const StoreTitle& title : services.owned_titles->Titles()) {
     if (title.owned && !title.installed && window_->Browsable(title)) all.push_back(window_->ItemFor(title));
   }
+  // By name: scanned and manual games are both "Local".
   for (const Item& item : all) {
-    if (!sources.contains(item.source)) sources << item.source;
+    if (!sources.contains(SourceName(item.source))) sources << SourceName(item.source);
   }
   std::ranges::sort(sources);
   const QString chosen = filters_.value(filter_, "All");
@@ -69,7 +70,7 @@ void SearchPage::Search() {
   for (Item& item : all) {
     if (!query.isEmpty() && !item.name.contains(query, Qt::CaseInsensitive) && !TagMatches(item, query)) continue;
     if (filter == "Installed" && !item.installed()) continue;
-    if (filter != "All" && filter != "Installed" && item.source != filter) continue;
+    if (filter != "All" && filter != "Installed" && SourceName(item.source) != filter) continue;
     results_.push_back(std::move(item));
   }
   std::ranges::sort(results_, [](const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
@@ -255,7 +256,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
   double x = right;
   painter.setFont(Font(u, 0.95, QFont::DemiBold));
   for (int i = 0; i < filters_.size(); ++i) {
-    const QString name = i < 2 ? filters_[i] : SourceName(filters_[i]);
+    const QString& name = filters_[i];
     const double w = painter.fontMetrics().horizontalAdvance(name) + u * 2;
     const QRectF chip(x, kTop * u, w, u * 2.3);
     const bool focused = zone_ == Zone::Filters && i == filter_;

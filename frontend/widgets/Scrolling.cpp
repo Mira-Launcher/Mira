@@ -3,10 +3,12 @@
 #include <QAbstractScrollArea>
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QComboBox>
 #include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QScrollBar>
+#include <QSlider>
 #include <QTextEdit>
 #include <algorithm>
 
@@ -14,6 +16,14 @@ namespace mira_gui {
 namespace {
 
 constexpr int kNotchPixels = 120;
+
+// The scroll area nearest `widget`, so a control in a nested area is that area's alone.
+QAbstractScrollArea* InnerArea(QWidget* widget) {
+  for (QWidget* at = widget->parentWidget(); at != nullptr; at = at->parentWidget()) {
+    if (auto* area = qobject_cast<QAbstractScrollArea*>(at)) return area;
+  }
+  return nullptr;
+}
 
 // One per area, owned by it, watching the whole app: a key goes to the focused
 // widget first, so that's the only point that sees it whatever has focus.
@@ -24,7 +34,25 @@ class PageKeys : public QObject {
   }
 
   bool eventFilter(QObject* watched, QEvent* event) override {
-    if (event->type() != QEvent::KeyPress || area_.isNull() || scope_.isNull()) return false;
+    if (area_.isNull() || scope_.isNull()) return false;
+    // The wheel scrolls the area; a dropdown, number box or slider in it only takes
+    // the wheel once focused, so passing over one doesn't change it.
+    if (event->type() == QEvent::Wheel || event->type() == QEvent::Polish) {
+      auto* control = qobject_cast<QWidget*>(watched);
+      if (control == nullptr || InnerArea(control) != area_ ||
+          !(qobject_cast<QComboBox*>(control) || qobject_cast<QAbstractSpinBox*>(control) ||
+            qobject_cast<QSlider*>(control))) {
+        return false;
+      }
+      if (event->type() == QEvent::Polish) {
+        control->setFocusPolicy(Qt::StrongFocus);  // the wheel must not focus it on the way past
+        return false;
+      }
+      if (control->hasFocus()) return false;
+      QCoreApplication::sendEvent(area_->verticalScrollBar(), event);
+      return true;
+    }
+    if (event->type() != QEvent::KeyPress) return false;
     auto* key = static_cast<QKeyEvent*>(event);
     if (key->modifiers() & ~Qt::KeypadModifier) return false;
     QWidget* focus = QApplication::focusWidget();

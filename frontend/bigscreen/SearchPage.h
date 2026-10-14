@@ -34,7 +34,7 @@ private:
   void SaveRecent();
 
   QString query_;
-  QStringList filters_;  // "All", "Installed", then source ids
+  QStringList filters_;  // "All", "Installed", then source names
   std::vector<Item> results_;
   Zone zone_ = Zone::Field;
   int key_ = 0;

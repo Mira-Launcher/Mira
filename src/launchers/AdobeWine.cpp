@@ -45,8 +45,12 @@ Result<void> Download(const runner::ReleaseAsset& release, const std::string& na
   }
   fs::remove_all(staging, ec);
   fs::create_directories(staging, ec);
-  if (auto extracted = runner::Extract(archive, staging); !extracted) return extracted;
-  fs::remove(archive, ec);
+  const Result<void> extracted = runner::Extract(archive, staging);
+  fs::remove(archive, ec);  // a broken one is downloaded again, not kept
+  if (!extracted) {
+    fs::remove_all(staging, ec);
+    return extracted;
+  }
   const fs::path root = staging / "opt" / "adobewine";
   if (!fs::exists(root / "runtime" / "bin" / "wine", ec)) {
     fs::remove_all(staging, ec);
@@ -128,9 +132,20 @@ Result<void> Prepare(const runner::RunnerRegistry& runners, const model::Game& h
   const fs::path system32 = fs::path(host.data_dir) / "drive_c" / "windows" / "system32";
   if (fs::is_regular_file(shim, ec) && fs::is_regular_file(system32 / "d3d12.dll", ec) &&
       !fs::exists(system32 / "d3d12_vkd3d.dll", ec)) {
-    fs::rename(system32 / "d3d12.dll", system32 / "d3d12_vkd3d.dll", ec);
-    if (!ec) fs::copy_file(shim, system32 / "d3d12.dll", ec);
-    if (ec) return Err("copy_failed", std::format("couldn't install AdobeWine's Direct3D 12 shim: {}", ec.message()));
+    // Copied beside it first, so a failure never leaves the prefix without a d3d12.dll.
+    const fs::path fresh = system32 / "d3d12.dll.mira-new";
+    fs::copy_file(shim, fresh, fs::copy_options::overwrite_existing, ec);
+    if (!ec) fs::rename(system32 / "d3d12.dll", system32 / "d3d12_vkd3d.dll", ec);
+    if (!ec) {
+      fs::rename(fresh, system32 / "d3d12.dll", ec);
+      std::error_code ignored;
+      if (ec) fs::rename(system32 / "d3d12_vkd3d.dll", system32 / "d3d12.dll", ignored);
+    }
+    if (ec) {
+      std::error_code ignored;
+      fs::remove(fresh, ignored);
+      return Err("copy_failed", std::format("couldn't install AdobeWine's Direct3D 12 shim: {}", ec.message()));
+    }
   }
   return {};
 }

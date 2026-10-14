@@ -188,7 +188,6 @@ private:
   Previews previews_;
   SettingsNavWidget* nav_ = nullptr;
   ChangeBar* change_bar_ = nullptr;
-  bool loaded_ = false;  // Refresh ignores the edits loading itself makes
 
   // Interface
   QButtonGroup* themes_ = nullptr;

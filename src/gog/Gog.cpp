@@ -104,29 +104,35 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
   if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     return Err("login_failed", "gogdl didn't accept that code. It may be wrong, expired, or already used");
   }
+  // The access token must not be world-readable.
+  std::error_code perm_ec;
+  fs::permissions(AuthConfigPath(config), fs::perms::owner_read | fs::perms::owner_write, perm_ec);
+  if (perm_ec) log::Warn("couldn't make {} owner-only: {}", AuthConfigPath(config).string(), perm_ec.message());
   return {};
 }
 
 Result<void> Logout(const config::Config& config) {
   std::error_code ec;
   fs::remove(AuthConfigPath(config), ec);
+  if (ec) return Err("logout_failed", std::format("couldn't remove {}: {}", AuthConfigPath(config).string(), ec.message()));
   return {};
 }
 
 Result<std::string> AccessToken(const config::Config& config) {
-  auto stored = ReadAuthConfig(config);
-  bool expired = true;
-  if (stored && stored->contains("loginTime") && (*stored)["loginTime"].is_number() && stored->contains("expires_in") &&
-      (*stored)["expires_in"].is_number()) {
+  const auto expired = [](const std::optional<json>& stored) {
+    if (!stored || !stored->contains("loginTime") || !(*stored)["loginTime"].is_number() ||
+        !stored->contains("expires_in") || !(*stored)["expires_in"].is_number()) {
+      return true;
+    }
     const double login_time = (*stored)["loginTime"].get<double>();
     const double expires_in = (*stored)["expires_in"].get<double>();
     const double now = static_cast<double>(std::chrono::duration_cast<std::chrono::seconds>(
                                               std::chrono::system_clock::now().time_since_epoch())
                                               .count());
-    expired = now >= login_time + expires_in;
-  }
-
-  if (!stored || expired) {
+    return now >= login_time + expires_in;
+  };
+  auto stored = ReadAuthConfig(config);
+  if (expired(stored)) {
     // gogdl's own load path refreshes an expired token using its stored
     // refresh_token as a side effect of loading --auth-config-path at all
     // (confirmed in heroic-gogdl's auth.py: is_credential_expired/
@@ -135,9 +141,19 @@ Result<std::string> AccessToken(const config::Config& config) {
     // do.
     if (auto refreshed = RunGogdl(config, {"auth"}); !refreshed) return std::unexpected(refreshed.error());
     stored = ReadAuthConfig(config);
+    // gogdl exits 0 even when the refresh fails: a token still dated expired means signing in again.
+    if (stored && stored->contains("loginTime") && expired(stored)) return StoreNotSignedIn("gog", "GOG");
   }
 
-  if (!stored || !stored->contains("access_token") || !(*stored)["access_token"].is_string()) {
+  if (!stored) {
+    // Missing file means signed out; a file that exists but won't parse is unreadable.
+    std::error_code ec;
+    if (fs::exists(AuthConfigPath(config), ec)) {
+      return Err("store_auth_unreadable", std::format("couldn't read {}", AuthConfigPath(config).string()));
+    }
+    return StoreNotSignedIn("gog", "GOG");
+  }
+  if (!stored->contains("access_token") || !(*stored)["access_token"].is_string()) {
     return StoreNotSignedIn("gog", "GOG");
   }
   return (*stored)["access_token"].get<std::string>();

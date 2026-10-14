@@ -32,6 +32,7 @@ protected:
 private:
   struct Row {
     QString label;
+    QString id;  // stable key for focus and scroll memory
     std::vector<Item> items;
     int focus = 0;
     double scroll = 0;  // shown, eased toward the focused tile's target

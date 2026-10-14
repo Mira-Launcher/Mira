@@ -127,7 +127,6 @@ class SidebarPage : public SetupStep {
   QWidget* games_rows_ = nullptr;
   Switch* when_ = nullptr;
   Switch* covers_ = nullptr;
-  QLabel* lead_ = nullptr;
   QLabel* hint_ = nullptr;
   QWidget* preview_ = nullptr;
 };

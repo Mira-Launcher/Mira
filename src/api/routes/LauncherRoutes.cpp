@@ -130,10 +130,7 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
              [&s, launcher](JobRegistry::Progress&) -> Result<json> {
                const auto summary = launchers::Import(s.config, s.games, s.events, *launcher);
                if (!summary) return std::unexpected(summary.error());
-               s.games.MarkSourceAdded(launcher->id, true);
-               s.events.Publish("sources.changed", json::object());
-               s.AfterImport(summary->added_games);
-               return json{{"added", summary->added}, {"updated", summary->updated}};
+               return s.FinishImport(launcher->id, *summary);
              });
   });
 
@@ -155,7 +152,7 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
     }
     auto command = launchers::BuildCommand(s.config, s.games, target, action);
     if (!command) return SendError(res, 409, command.error());
-    if (auto spawned = runner::SpawnDetached(*command); !spawned) {
+    if (auto spawned = runner::SpawnReaped(*command); !spawned) {
       return SendError(res, 500, spawned.error());
     }
     SendJson(res, {{"status", "opened"}});

@@ -1,5 +1,6 @@
 #include "config/Config.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <sstream>
@@ -24,6 +25,18 @@ Config::Config(std::filesystem::path file)
   document_ = Schema::Instance().Defaults();
 }
 
+void Config::ResetInvalid(json& whole, const std::function<json(const Entry&)>& fallback, std::string_view note) {
+  const Schema& schema = Schema::Instance();
+  for (const Entry& entry : schema.Entries()) {
+    const auto pointer = Schema::Pointer(entry.key);
+    if (!whole.contains(pointer)) continue;
+    if (auto problem = schema.Validate(entry.key, whole[pointer])) {
+      log::Warn("settings: {}: {} {}", entry.key, *problem, note);
+      whole[pointer] = fallback(entry);
+    }
+  }
+}
+
 void Config::Load(const std::string& fallback) {
   const Schema& schema = Schema::Instance();
   std::lock_guard lock(mutex_);
@@ -38,7 +51,9 @@ void Config::Load(const std::string& fallback) {
   const auto write_text = [&](const auto& text) {
     std::ostringstream out;
     out << text;
-    (void)WriteFileAtomic(file_, out.str(), "config_write_failed", false, kSettingsMode);
+    if (auto written = WriteFileAtomic(file_, out.str(), "config_write_failed", true, kSettingsMode); !written) {
+      log::Warn("couldn't write {}: {}", file_.string(), written.error().message);
+    }
   };
   const auto apply = [&](const toml::table& table, const std::string& text) {
     json whole = tomljson::ToJson(table);
@@ -46,14 +61,8 @@ void Config::Load(const std::string& fallback) {
     // An individual bad value falls back to its default rather than
     // rejecting the whole file, so one typo cannot leave the user with a
     // daemon that refuses to start.
-    for (const std::string& problem : schema.ValidateDocument(whole)) {
-      log::Warn("settings: {} (using the default)", problem);
-    }
-    for (const Entry& entry : schema.Entries()) {
-      const auto pointer = Schema::Pointer(entry.key);
-      if (!whole.contains(pointer)) continue;
-      if (schema.Validate(entry.key, whole[pointer])) whole[pointer] = entry.default_value;
-    }
+    ResetInvalid(
+        whole, [](const Entry& entry) { return entry.default_value; }, "(using the default)");
 
     document_.merge_patch(whole);
     loaded_text_ = text;
@@ -66,9 +75,14 @@ void Config::Load(const std::string& fallback) {
     // A file from before saves were owner-only.
     std::filesystem::permissions(file_, std::filesystem::perms::group_all | std::filesystem::perms::others_all,
                                  std::filesystem::perm_options::remove, ec);
-    const std::string text = files::ReadFile(file_).value_or("");
+    const auto read = files::ReadFile(file_);
+    const std::string text = read.value_or("");
     toml::parse_result parsed = toml::parse(text, file_.string());
-    if (parsed) {
+    if (!read && std::filesystem::exists(file_, ec)) {
+      // Unreadable is not empty: defaults saved over it would lose every setting.
+      keep_file_ = true;
+      log::Error("could not read the settings at {}; continuing with defaults and not saving", file_.string());
+    } else if (parsed) {
       apply(parsed.table(), text);
     } else if (const auto broken = SetAside(file_)) {
       toml::parse_result last_good = toml::parse(fallback);
@@ -151,9 +165,16 @@ void Config::OnValidText(std::function<void(const std::string&)> callback) {
 Result<std::vector<std::string>> Config::SyncLocked() {
   const Schema& schema = Schema::Instance();
   const auto read = files::ReadFile(file_);
-  if (!read) return std::vector<std::string>{};
+  if (!read) {
+    std::error_code ec;
+    if (std::filesystem::exists(file_, ec)) keep_file_ = true;  // unreadable, so not saved over
+    return std::vector<std::string>{};
+  }
   const std::string& text = *read;
-  if (text == loaded_text_) return std::vector<std::string>{};
+  if (text == loaded_text_) {
+    keep_file_ = false;  // readable again, as last loaded
+    return std::vector<std::string>{};
+  }
 
   toml::parse_result parsed = toml::parse(text, file_.string());
   if (!parsed) {
@@ -163,14 +184,8 @@ Result<std::vector<std::string>> Config::SyncLocked() {
                "Fix the line, or change the setting in Mira. Until then the settings before the edit stay in use.");
   }
   json whole = tomljson::ToJson(parsed.table());
-  for (const Entry& entry : schema.Entries()) {
-    const auto pointer = Schema::Pointer(entry.key);
-    if (!whole.contains(pointer)) continue;
-    if (auto problem = schema.Validate(entry.key, whole[pointer])) {
-      log::Warn("settings: {}: {} (keeping the current value)", entry.key, *problem);
-      whole[pointer] = GetLocked(entry.key);
-    }
-  }
+  ResetInvalid(
+      whole, [this](const Entry& entry) { return GetLocked(entry.key); }, "(keeping the current value)");
   json next = schema.Defaults();
   next.merge_patch(whole);
 
@@ -207,7 +222,7 @@ Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
   ++revision_;  // every change to the settings saves
   if (keep_file_) return KeptFileError(file_);
   const std::string text = tomljson::ToTomlText(document_);
-  if (auto written = WriteFileAtomic(file_, text, "config_write_failed", false, kSettingsMode); !written) return written;
+  if (auto written = WriteFileAtomic(file_, text, "config_write_failed", true, kSettingsMode); !written) return written;
   loaded_text_ = text;
   if (on_valid_text_) on_valid_text_(text);
   return {};
@@ -260,6 +275,19 @@ Result<void> Config::Patch(const json& patch) {
       problems.push_back(std::format("{}: {}", entry.key, *problem));
     }
   }
+  // A key the schema doesn't know (a typo) would be saved unchecked. A setting's value may nest (a list, a map).
+  // A removal (null) sets nothing; an empty object or list flattens to null too, so look at the real value.
+  const json flat = patch.flatten();  // named: items() would outlive a temporary
+  for (const auto& item : flat.items()) {
+    const std::string& pointer = item.key();
+    if (pointer.empty() || patch[json::json_pointer(pointer)].is_null()) continue;
+    if (pointer == "/frontend" || pointer.starts_with("/frontend/")) continue;
+    std::string key = pointer.substr(1);
+    std::ranges::replace(key, '/', '.');
+    const std::string dotted = key;
+    while (schema.Find(key) == nullptr && key.rfind('.') != std::string::npos) key.resize(key.rfind('.'));
+    if (schema.Find(key) == nullptr) problems.push_back(std::format("{}: unknown setting", dotted));
+  }
   if (!problems.empty()) {
     std::string joined;
     for (const std::string& problem : problems) {
@@ -270,6 +298,9 @@ Result<void> Config::Patch(const json& patch) {
   }
 
   json backend_patch = patch;
+  if (backend_patch.contains("frontend") && !backend_patch["frontend"].is_object() && !backend_patch["frontend"].is_null()) {
+    return Err("invalid_setting", "frontend: expected an object");
+  }
   if (backend_patch.contains("frontend")) {
     if (backend_patch["frontend"].is_object()) {
       json frontend_patch = backend_patch["frontend"];

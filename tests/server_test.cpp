@@ -1006,18 +1006,26 @@ TEST_CASE("DELETE /v1/games/{id}?delete_files=true removes a store game from Mir
   CHECK(server.games().Find("celeste").has_value());
 
   // Nor is a prefix two games run in, as a launcher's games share its.
+  // Refused before its files go too, so the game is left whole.
   const fs::path prefix = server.config().GetPath("prefix_root") / "battle-net";
   test::Touch(prefix / "system.reg", "reg");
+  test::Touch(library_root / "Hearthstone" / "Hearthstone.exe");
   for (const char* id : {"battlenet-wtcg", "battlenet-pro"}) {
     model::Game shared;
     shared.id = id;
     shared.name = id;
     shared.data_dir = prefix.string();
+    if (id == std::string("battlenet-wtcg")) {
+      shared.install_path = (library_root / "Hearthstone").string();
+      shared.exe_path = "Hearthstone.exe";
+    }
     REQUIRE(server.games().Upsert(shared).has_value());
   }
-  const auto kept = AwaitJob(client, client.Delete("/v1/games/battlenet-wtcg?delete_prefix=true"));
+  const auto kept =
+      AwaitJob(client, client.Delete("/v1/games/battlenet-wtcg?delete_files=true&delete_prefix=true"));
   CHECK(kept["error"]["code"] == "shared_prefix");
   CHECK(fs::exists(prefix / "system.reg"));
+  CHECK(fs::exists(library_root / "Hearthstone" / "Hearthstone.exe"));
 }
 
 TEST_CASE("POST /v1/games/delete removes many games, deletes files only where allowed, and keeps a failed one") {
@@ -1810,10 +1818,11 @@ TEST_CASE("The event stream replays history, marks where news starts, and resume
   });
   const auto live = std::ranges::find(first, "stream.live", &Frame::event);
   REQUIRE(live != first.end());
-  CHECK(live->id.empty());
   // History first, as state; the change made while connected comes after the marker.
   const auto replayed = std::ranges::find(first.begin(), live, "game.updated", &Frame::event);
   REQUIRE(replayed != live);
+  // The marker carries the last replayed id, so a reconnect before any news resumes from there.
+  CHECK(live->id == std::prev(live)->id);
   CHECK(replayed->data["name"] == "Celeste Classic");
   CHECK(std::stoll(first.back().id) > std::stoll(replayed->id));
 
@@ -1833,4 +1842,21 @@ TEST_CASE("The event stream replays history, marks where news starts, and resume
   const auto quitting = std::chrono::steady_clock::now();
   owned.reset();
   CHECK(std::chrono::steady_clock::now() - quitting < std::chrono::seconds(1));
+}
+
+TEST_CASE("A client that saw only the live marker resumes from it without a gap") {
+  LiveServer server(TempDir("server-events-empty"));
+  httplib::Client client = server.Client();
+  const auto first =
+      ReadEvents(client, {}, [](const std::vector<Frame>& frames) { return frames.back().event == "stream.live"; });
+  REQUIRE(!first.back().id.empty());
+
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  server.events().Publish("game.added", {{"id", "celeste"}});
+  const auto resumed = ReadEvents(client, {{"Last-Event-ID", first.back().id}},
+                                  [](const std::vector<Frame>& frames) { return frames.back().event == "game.added"; });
+  CHECK(std::ranges::none_of(resumed, [](const Frame& frame) { return frame.event == "stream.gap"; }));
 }

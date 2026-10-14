@@ -125,6 +125,7 @@ public:
       const qreal dpr = painter->device()->devicePixelRatioF();
       const QSize target = (box.size() * dpr).toSize();
       QPixmap* scaled = scaled_.object(pixmap.cacheKey());
+      QPixmap shown;
       if (scaled == nullptr || scaled->size() != target) {
         if (fit) {
           scaled = new QPixmap(target);
@@ -139,12 +140,15 @@ public:
                                            (filled.height() - target.height()) / 2, target.width(),
                                            target.height()));
         }
+        // insert() can delete the pixmap at once when it costs more than maxCost.
+        shown = *scaled;
         scaled_.insert(pixmap.cacheKey(), scaled,
                        std::max(1, target.width() * target.height() * 4 / 1024));
       }
+      if (shown.isNull()) shown = *scaled;
       if (fit) painter->fillPath(path, tokens.surface_alt);
       painter->setClipPath(path);
-      painter->drawPixmap(box, *scaled, QRectF(scaled->rect()));
+      painter->drawPixmap(box, shown, QRectF(shown.rect()));
       painter->setClipping(false);
     } else {
       QColor fill = tokens.surface_alt;
@@ -218,7 +222,6 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
     if (HasChange()) emit Previewed(QString::fromStdString(slot_), QPixmap());
     Open(slot.toStdString());
     emit PickChanged(false);
-    emit SlotChanged(slot);
   });
   bar_layout->addWidget(slots_);
   bar_layout->addSpacing(6);
@@ -334,6 +337,12 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
           [this](const std::string& type, const std::string& data, bool live) {
             if (live) HandleEvent(type, data);
           });
+  // A page's ready event may have been missed while disconnected: ask for it again.
+  connect(EventHub::Instance(), &EventHub::ConnectionChanged, this, [this](bool connected) {
+    if (!connected || !page_loading_) return;
+    page_loading_ = false;
+    RequestPage();
+  });
 }
 
 void ArtPickerPanel::Open(const std::string& slot) {
@@ -464,7 +473,10 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
       const auto candidate = std::ranges::find(candidates_, id, &ArtCandidate::id);
       if (candidate == candidates_.end() || candidate->source != "steamgriddb") continue;
       if (active_id_ == id && !live.contains(id)) continue;
-      if (pick_ == id && !live.contains(id)) pick_ = active_id_;
+      if (pick_ == id && !live.contains(id)) {
+        pick_ = active_id_;  // and highlighted, or taking the item moves the highlight to a neighbour unseen
+        grid_->setCurrentItem(active_id_ ? ItemFor(*active_id_) : nullptr);
+      }
       candidates_.erase(candidate);
       delete grid_->takeItem(i);
     }

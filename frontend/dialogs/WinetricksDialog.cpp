@@ -69,6 +69,13 @@ WinetricksDialog::WinetricksDialog(std::string game_id, QString game_name, QWidg
           [this](const std::string& type, const std::string& data, bool live) {
             if (live) HandleEvent(type, data);
           });
+  // Its finish event may have been missed while disconnected: unlock rather than wait forever.
+  connect(EventHub::Instance(), &EventHub::ConnectionChanged, this, [this](bool connected) {
+    if (connected || verb_->isEnabled()) return;
+    verb_->setEnabled(true);
+    run_->setEnabled(!verb_->currentText().trimmed().isEmpty());
+    SetStatus("Lost contact with mirad while it ran. Check the game before running it again.", /*error=*/true);
+  });
 }
 
 void WinetricksDialog::SetStatus(const QString& text, bool error) {
@@ -93,7 +100,7 @@ void WinetricksDialog::Run() {
                 /*error=*/true);
       return;
     }
-    SetStatus(QString("Running %1…").arg(QString::fromStdString(verb)));
+    if (!verb_->isEnabled()) SetStatus(QString("Running %1…").arg(QString::fromStdString(verb)));  // not finished already
   });
 }
 

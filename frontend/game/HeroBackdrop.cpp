@@ -28,6 +28,7 @@ void HeroBackdrop::ShowGame(const GameSummary& game) {
   game_ = game;
   hero_ = QPixmap();
   rendered_ = QPixmap();
+  placeholder_ = QPixmap();
   if (artwork_ != nullptr) artwork_->EnsureRequested(game.id);
   if (!game.art || game.art->contains("hero")) LoadHero();
   update();
@@ -72,7 +73,9 @@ QPixmap HeroBackdrop::Source() const {
   if (artwork_ != nullptr && artwork_->HasArtwork(game_.id))
     return artwork_->SmallArtwork(game_.id);
   // The same generated art as its tile, so the card still carries its colors.
-  return PlaceholderCover(QString::fromStdString(game_.name), QString::fromStdString(game_.id), QSize(200, 300), 1);
+  if (placeholder_.isNull())
+    placeholder_ = PlaceholderCover(QString::fromStdString(game_.name), QString::fromStdString(game_.id), QSize(200, 300), 1);
+  return placeholder_;
 }
 
 void HeroBackdrop::resizeEvent(QResizeEvent* event) {
@@ -103,7 +106,8 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
   if (!source.isNull()) {
     const QRect band(0, 0, width(), qRound(height() * kBandShare));
     const qreal dpr = devicePixelRatioF();
-    const qint64 key = source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height();
+    const qint64 key =
+        source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height() ^ (qint64(qRound(dpr * 100)) << 48);
     if (rendered_.isNull() || rendered_key_ != key) {
       // While the card is being resized, a quick scale per step; the smooth one once it stops.
       const Qt::TransformationMode mode =

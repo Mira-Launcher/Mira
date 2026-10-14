@@ -51,6 +51,8 @@ void DesktopEntryImportDialog::Load() {
   api::GetDesktopEntryCandidatesAsync(this, [this](DesktopEntryCandidatesResult result) {
     list_->clear();
     if (!result.ok) {
+      auto* failed = new QListWidgetItem("Could not list desktop entries.", list_);
+      failed->setFlags(Qt::NoItemFlags);
       notify::FailedRequest(this, "Could not list desktop entries.", result.error);
       return;
     }

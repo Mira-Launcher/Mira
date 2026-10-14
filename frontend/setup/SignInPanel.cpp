@@ -198,9 +198,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
                      .arg(theme::Current().accent.name()),
                  foot_);
   watching_->setVisible(false);
-  QSizePolicy keep = watching_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  watching_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(watching_);
   foot->addWidget(watching_);
   foot->addStretch(1);
   paste_ = new QLineEdit(foot_);
@@ -484,13 +482,22 @@ void SignInPanel::SaveSteamKey(const QString& key) {
 }
 
 void SignInPanel::Install() {
+  // A second click before the first gets going would start a second install.
+  if (starting_ || installing_) return;
+  starting_ = true;
   error_->setVisible(false);
   api::GetLaunchersAsync(this, [this](LaunchersResult result) {
+    // Without the list, the packages it needs aren't known: installing anyway would fail midway.
+    if (!result.ok) {
+      starting_ = false;
+      return ShowFailure("Could not start installing.", result.error);
+    }
     std::string packages;
     for (const LauncherInfo& launcher : result.launchers) {
       if (QString::fromStdString(launcher.id) == id_) packages = launcher.packages;
     }
     const auto start = [this] {
+      starting_ = false;
       installing_ = true;
       install_progress_ = -1;
       ShowSteps();
@@ -506,8 +513,9 @@ void SignInPanel::Install() {
       });
     };
     if (packages.empty()) return start();
-    system::EnsurePackages(this, packages, FindSourceInfo(id_)->name, [start](bool ready) {
-      if (ready) start();
+    system::EnsurePackages(this, packages, FindSourceInfo(id_)->name, [this, start](bool ready) {
+      if (ready) return start();
+      starting_ = false;
     });
   });
 }

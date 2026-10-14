@@ -86,8 +86,8 @@ void GameTileDelegate::ShowNote(QAbstractItemView* view, const QString& id, cons
   delegate->note_id_ = id;
   delegate->note_ = text;
   view->viewport()->update();
-  QTimer::singleShot(3000, view, [view, delegate, id] {
-    if (delegate->note_id_ != id) return;  // a newer note replaced it
+  QTimer::singleShot(3000, view, [view, delegate, id, text] {
+    if (delegate->note_id_ != id || delegate->note_ != text) return;  // a newer note replaced it
     delegate->note_.clear();
     delegate->note_id_.clear();
     view->viewport()->update();

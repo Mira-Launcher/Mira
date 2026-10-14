@@ -12,6 +12,7 @@
 #include "../client/JsonMapping.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
+#include "../app/Shortcuts.h"
 #include "../settings/SettingEditor.h"
 #include "../settings/SettingsCard.h"
 #include "../widgets/KeyValueEdit.h"
@@ -99,7 +100,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   // --- Launch
   auto* launch = new SettingsCard("Launch", cards_page);
-  exe_combo_ = EditableCombo(launch, QString());
+  exe_combo_ = EditableCombo(launch, "Choose the program to run");
   connect(exe_combo_, &QComboBox::activated, this, &GameEditForm::OnExeComboActivated);
   auto* browse = new QPushButton("Browse…", launch);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
@@ -177,7 +178,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   advanced_line_layout->setContentsMargins(0, 0, 0, 0);
   advanced_line_layout->addWidget(advanced);
   advanced_line_layout->addStretch(1);
-  auto* advanced_row = new SettingRow("Environment, runner options and scripts", QString(), runner);
+  auto* advanced_row = new SettingRow("Environment and scripts", "Environment variables, runner options and scripts.", runner);
   advanced_row->SetBelow(advanced_line);
   runner->AddRow(advanced_row);
 
@@ -192,9 +193,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   connect(tags_edit_, &TagEdit::TagClicked, this, &GameEditForm::TagFilterRequested);
   tags_row_ = new SettingRow("Tags",
                              "Labels of your choice. The \"hidden\" tag keeps this game out of the "
-                             "library until you ask for it "
-                             "(Ctrl+H shows hidden games). In a library folder sorted by tag, the "
-                             "outlined tag is the folder "
+                             "library until you ask for it " + shortcuts::HiddenGamesHint() +
+                                 ". In a library folder sorted by tag, the outlined tag is the folder "
                              "the game is in; drag another folder tag ahead of it to move the "
                              "game. Folder tags are chosen on the "
                              "Tags page.",
@@ -321,13 +321,11 @@ void GameEditForm::SetBottomRoom(int height) {
 void GameEditForm::OpenAdvanced() {
   pages_->setCurrentIndex(1);
   overrides_->ShowFromTop();  // the runner's card may have come or gone since last time
-  emit AdvancedChanged(true);
 }
 
 void GameEditForm::CloseAdvanced() {
   pages_->setCurrentIndex(0);
   ResetScroll();
-  emit AdvancedChanged(false);
 }
 
 bool GameEditForm::AdvancedOpen() const { return pages_->currentIndex() == 1; }
@@ -337,16 +335,25 @@ void GameEditForm::ResetScroll() {
 }
 
 void GameEditForm::Reload() {
-  if (!IsDirty()) Load();
+  if (IsDirty()) {
+    stale_ = true;
+  } else {
+    Load();
+  }
 }
 
 void GameEditForm::Load() {
+  stale_ = false;
   mira_gui::api::ListRunnersAsync(this, [this](mira_gui::RunnersResult result) {
     PopulateRunnerCombo(result);
   });
   mira_gui::api::GetGameAsync(this, id_, [this](mira_gui::GameDetailResult result) {
     if (!result.ok) {
-      emit LoadFailed(error_help::Describe(result.error));
+      emit LoadFailed(error_help::Describe(result.error), !loaded_);
+      return;
+    }
+    if (loaded_ && IsDirty()) {  // keep the typing; Discard loads it again
+      stale_ = true;
       return;
     }
     setEnabled(true);
@@ -356,6 +363,7 @@ void GameEditForm::Load() {
 }
 
 void GameEditForm::Populate(const mira_gui::GameDetail& game) {
+  loaded_ = true;
   emit Loaded(QString::fromStdString(game.name));
 
   install_path_ = game.install_path;
@@ -465,9 +473,10 @@ void GameEditForm::ShowRunnerOptions() {
     return;
   }
   api::GetRunnerSchemaAsync(this, kind, [this, kind](RunnerSchemaResult result) {
-    // An unknown kind (a typed-in reference) simply has no options to show.
-    runner_schemas_[kind] = result.ok ? result.options : std::vector<RunnerOption>();
-    if (kind == options_kind_) BuildRunnerFields(runner_schemas_[kind]);
+    // An unknown kind (a typed-in reference) simply has no options to show. Only an answer is
+    // kept, so a failed request is made again next time.
+    if (result.ok) runner_schemas_[kind] = result.options;
+    if (kind == options_kind_) BuildRunnerFields(result.ok ? result.options : std::vector<RunnerOption>());
   });
 }
 
@@ -696,6 +705,7 @@ void GameEditForm::DiscardChanges() {
   populating_ = false;
   overrides_->DiscardChanges();
   UpdateModified();
+  if (stale_) Load();
 }
 
 mira_gui::GamesPatch GameEditForm::TagsPatch(const std::optional<std::vector<std::string>>& now) const {

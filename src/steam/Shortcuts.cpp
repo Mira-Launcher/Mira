@@ -1,11 +1,15 @@
 #include "steam/Shortcuts.h"
 
+#include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <format>
 #include <fstream>
 #include <optional>
 #include <sstream>
+
+#include "core/AtomicFile.h"
 
 namespace mira::steam {
 namespace {
@@ -47,8 +51,9 @@ struct Reader {
     return text;
   }
 
-  // Reads children up to kEnd into `parent`.
-  bool Object(Node& parent) {
+  // Reads children up to kEnd into `parent`, refusing nesting deeper than Steam writes.
+  bool Object(Node& parent, int depth = 0) {
+    if (depth > 64) return false;
     while (at < data.size()) {
       const auto type = static_cast<Type>(data[at++]);
       if (type == kEnd) return true;
@@ -59,7 +64,7 @@ struct Reader {
       size_t width = 0;
       switch (type) {
         case kObject:
-          if (!Object(node)) return false;
+          if (!Object(node, depth + 1)) return false;
           break;
         case kString: {
           auto text = CString();
@@ -132,16 +137,20 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
                                       const std::string& exe, const std::string& launch_options) {
   namespace fs = std::filesystem;
   ShortcutChange change;
+  std::optional<Error> failure;
+  std::size_t accounts = 0;
   std::error_code ec;
   const fs::path userdata = steam_root / "userdata";
   for (const fs::directory_entry& account : fs::directory_iterator(userdata, ec)) {
     const std::string id = account.path().filename().string();
     // "0" is Steam's placeholder before anyone signs in.
     if (id == "0" || !fs::is_directory(account.path() / "config", ec)) continue;
+    ++accounts;
     const fs::path file = account.path() / "config" / "shortcuts.vdf";
 
     Node root{kObject, "shortcuts"};
-    if (fs::exists(file, ec)) {
+    // An empty file holds no shortcuts, so it's rewritten like a missing one.
+    if (fs::exists(file, ec) && fs::file_size(file, ec) != 0) {
       std::ifstream in(file, std::ios::binary);
       std::stringstream buffer;
       buffer << in.rdbuf();
@@ -154,7 +163,9 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
       }
       // A file this can't read is left alone rather than rewritten without the user's shortcuts.
       if (parsed == nullptr) {
-        return Err("shortcuts_unreadable", std::format("couldn't read {}", file.string()));
+        failure = Err("shortcuts_unreadable", std::format("couldn't read {}", file.string())).error();
+        change.failed.push_back(id);
+        continue;
       }
       root = std::move(*parsed);
     }
@@ -166,7 +177,14 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
     }
     const bool adding = entry == nullptr;
     if (adding) {
-      root.children.push_back({kObject, std::to_string(root.children.size())});
+      // After the highest index, not at the count: another tool may have left gaps.
+      std::int64_t next = 0;
+      for (const Node& child : root.children) {
+        std::int64_t index = -1;
+        const auto [end, ec] = std::from_chars(child.name.data(), child.name.data() + child.name.size(), index);
+        if (ec == std::errc() && end == child.name.data() + child.name.size()) next = std::max(next, index + 1);
+      }
+      root.children.push_back({kObject, std::to_string(next)});
       entry = &root.children.back();
     }
     bool changed = adding;
@@ -188,16 +206,14 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
     std::string out;
     Write(out, root);
     out += char(kEnd);
-    const fs::path temp = fs::path(file).concat(".mira-tmp");
-    {
-      std::ofstream stream(temp, std::ios::binary | std::ios::trunc);
-      stream.write(out.data(), std::streamsize(out.size()));
-      if (!stream) return Err("io_error", std::format("couldn't write {}", temp.string()));
+    if (auto ok = WriteFileAtomic(file, out, "io_error", true); !ok) {
+      failure = ok.error();
+      change.failed.push_back(id);
+      continue;
     }
-    fs::rename(temp, file, ec);
-    if (ec) return Err("io_error", std::format("couldn't replace {}: {}", file.string(), ec.message()));
     (adding ? change.added : change.updated).push_back(id);
   }
+  if (failure && change.failed.size() == accounts) return std::unexpected(*failure);
   return change;
 }
 
