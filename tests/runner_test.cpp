@@ -390,15 +390,17 @@ TEST_CASE("NativeRunner runs an absolute exe_path as-is, in its own folder, what
   CHECK(command->cwd == "/usr/bin");
 }
 
-TEST_CASE("RunAndWait kills a timed-out command and what it spawned") {
-  mira::Command command;
-  command.argv = {"sh", "-c", "sleep 30 & sleep 30"};
-  command.timeout_s = 1;
-  const auto started = std::chrono::steady_clock::now();
-  const auto result = mira::runner::RunAndWait(command);
-  REQUIRE_FALSE(result.has_value());
-  CHECK(result.error().code == "exec_timeout");
-  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(5));
+TEST_CASE("RunAndWait kills a timed-out command and what it spawned, output closed or not") {
+  for (const char* script : {"sleep 30 & sleep 30", "exec >/dev/null 2>&1; sleep 30"}) {
+    mira::Command command;
+    command.argv = {"sh", "-c", script};
+    command.timeout_s = 1;
+    const auto started = std::chrono::steady_clock::now();
+    const auto result = mira::runner::RunAndWait(command);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().code == "exec_timeout");
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(5));
+  }
 }
 
 TEST_CASE("SpawnDetached gives the child /dev/null, not mirad's own pipes, which may have no reader left") {

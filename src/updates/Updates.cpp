@@ -1,10 +1,13 @@
 #include "updates/Updates.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <future>
 #include <optional>
+#include <sstream>
 
 #include "core/Log.h"
 #include "emulators/Emulators.h"
@@ -23,6 +26,18 @@ namespace {
 namespace fs = std::filesystem;
 
 std::string WithoutV(const std::string& tag) { return tag.starts_with('v') ? tag.substr(1) : tag; }
+
+// Whether `output` contains `version` as a whole token, not as part of a longer version.
+bool MentionsVersion(const std::string& output, const std::string& version) {
+  std::string spaced = output;
+  std::ranges::replace_if(
+      spaced, [](unsigned char c) { return !std::isalnum(c) && c != '.' && c != '-' && c != '_' && c != '+'; }, ' ');
+  std::istringstream tokens(spaced);
+  for (std::string token; tokens >> token;) {
+    if (WithoutV(token) == version) return true;
+  }
+  return false;
+}
 
 // A moving tag (DuckStation's "latest") is compared by when it was published.
 bool Behind(const runner::InstalledTool& installed, const runner::ReleaseAsset& latest) {
@@ -76,7 +91,7 @@ std::optional<Update> ToolUpdate(const config::Config& config, const std::string
     installed = record->tag;
   } else {
     installed = runner::ToolVersion(path);
-    if (installed.empty() || installed.contains(WithoutV(latest.tag))) return std::nullopt;
+    if (installed.empty() || MentionsVersion(installed, WithoutV(latest.tag))) return std::nullopt;
   }
   return Update{.kind = "tool", .id = id, .name = name, .installed = installed, .latest = latest.tag, .url = ""};
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -13,11 +14,11 @@ namespace mira::runner {
 // The curl command CurlDownload runs: it retries through a dropped connection or a timeout (every kind of
 // error, for up to ten minutes) instead of failing on the first, and only a transfer that stalls (under 1 KB/s for
 // a minute) ends early.
-Command CurlDownloadCommand(const std::string& url, const std::filesystem::path& dest);
+Command CurlDownloadCommand(const std::string& url, const std::filesystem::path& dest, std::uintmax_t max_bytes = 0);
 
 // Downloads `url` to `dest`, removing it on failure. A large file takes as long as it needs, and a network that
-// drops and comes back is waited out.
-Result<void> CurlDownload(const std::string& url, const std::filesystem::path& dest);
+// drops and comes back is waited out. A file over `max_bytes` (0 = no cap) fails.
+Result<void> CurlDownload(const std::string& url, const std::filesystem::path& dest, std::uintmax_t max_bytes = 0);
 
 // Fetches `url` and parses it as JSON, giving up after `max_time_s`. Err("fetch_failed") with what came
 // back when it isn't JSON.

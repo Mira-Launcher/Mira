@@ -144,9 +144,9 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
 
   http.Post(R"(/v1/runners/tools/(umu|winetricks)/setup)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    s.events.Publish(id + ".setup.started", json::object());
     s.StartJob(req, res, "setup", id, "Setting up " + id,
                [&s, id](JobRegistry::Progress&) -> Result<json> {
+                 s.events.Publish(id + ".setup.started", json::object());  // only once a job runs
                  Result<void> installed;
                  if (id == "umu") {
                    const auto releases = runner::ListReleases(s.config, "umu");
@@ -193,7 +193,22 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
       return SendError(res, 400, "not_a_build", std::format("\"{}\" has no separate installed builds", kind));
     }
 
-    if (auto deleted = DeleteUnderRoot(runner::BuildDir(*resolved->build).string(), runner::RunnerRoots(s.config, kind)); !deleted) {
+    // Not from under a running game. Its runner is resolved again here, as the launch did.
+    const std::filesystem::path build_dir = runner::BuildDir(*resolved->build);
+    std::string users;
+    for (const model::Game& game : s.games.All()) {
+      if (!s.supervisor.IsRunning(game.id)) continue;
+      const auto used = registry.Resolve(registry.ResolveRef(game));
+      if (!used || !used->build || runner::BuildDir(*used->build) != build_dir) continue;
+      users += (users.empty() ? "" : ", ") + game.name;
+    }
+    if (!users.empty()) {
+      return SendError(res, 409, "runner_in_use", std::format("{} is in use by {}, which is running", name, users));
+    }
+
+    if (auto deleted = DeleteUnderRoot(build_dir.string(), runner::RunnerRoots(s.config, kind)); !deleted) {
+      // A partly deleted build is still listed, so lists re-read what is left.
+      s.events.Publish("runners.removed", {{"kind", kind}, {"name", name}});
       return SendError(res, 400, deleted.error());
     }
     s.events.Publish("runners.removed", {{"kind", kind}, {"name", name}});

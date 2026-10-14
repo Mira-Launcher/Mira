@@ -177,7 +177,14 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
       fs::remove(checksum_file, ec);
       return Err("checksum_missing", std::format("the checksum file doesn't list {}", asset.asset_name));
     }
-    std::ofstream(checksum_file, std::ios::trunc) << mine << "\n";
+    std::ofstream out(checksum_file, std::ios::trunc);
+    out << mine << "\n";
+    out.close();  // so a failed flush counts too
+    if (!out) {
+      fs::remove(target, ec);
+      fs::remove(checksum_file, ec);
+      return Err("download_failed", std::format("couldn't write {}", checksum_file.string()));
+    }
   }
 
   Command verify;
@@ -185,7 +192,11 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
   verify.cwd = target.parent_path();
   const Result<ExecResult> verified = RunAndWait(verify);
   fs::remove(checksum_file, ec);
-  if (!verified || verified->exit_code != 0) {
+  if (!verified || verified->exit_code == 127) {  // 127: the tool couldn't be run
+    fs::remove(target, ec);
+    return Err("checksum_unchecked", std::format("couldn't run {} to check the download", verify.argv[0]));
+  }
+  if (verified->exit_code != 0) {
     fs::remove(target, ec);
     return Err("checksum_mismatch",
               "downloaded file's checksum didn't match, so it was discarded instead of installing a "
@@ -437,9 +448,12 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
   const Result<json> release = CurlJson(url);
   if (!release) return Err("release_api_error", std::format("couldn't read {}: {}", url, release.error().message),
                            kConnectionHint);
-  // GitHub and Forgejo answer a missing repository or release with {"message": "Not Found"}.
-  if (release->is_object() && release->value("message", std::string()) == "Not Found")
-    return Err("release_not_found", std::format("there's no release at {}", url));
+  // GitHub and Forgejo answer a missing release with {"message": "Not Found"}, and a refusal
+  // (such as a rate limit) with its reason.
+  if (const std::string message = release->is_object() ? core::JsonString(*release, "message") : ""; !message.empty()) {
+    if (message == "Not Found") return Err("release_not_found", std::format("there's no release at {}", url));
+    return Err("release_api_error", std::format("{} answered: {}", url, message), kConnectionHint);
+  }
   auto asset = AssetOf(*release, pattern, exclude);
   if (!asset) return Err("no_release_asset", std::format("the latest release at {} has no file matching {}", url, pattern));
   return *asset;
@@ -452,9 +466,11 @@ fs::path ToolDir(const config::Config& config, const std::string& tool_name) {
 }
 
 // .version: the release tag, the binary's path in the tool's folder, and when it was published.
-fs::path Recorded(const fs::path& tool_dir, const ReleaseAsset& asset, const fs::path& binary) {
-  std::ofstream(tool_dir / ".version", std::ios::trunc)
-      << asset.tag << "\n" << binary.lexically_relative(tool_dir).string() << "\n" << asset.published_at << "\n";
+Result<fs::path> Recorded(const fs::path& tool_dir, const ReleaseAsset& asset, const fs::path& binary) {
+  std::ofstream out(tool_dir / ".version", std::ios::trunc);
+  out << asset.tag << "\n" << binary.lexically_relative(tool_dir).string() << "\n" << asset.published_at << "\n";
+  out.close();  // so a failed flush counts too
+  if (!out) return Err("download_failed", std::format("couldn't write {}", (tool_dir / ".version").string()));
   return binary;
 }
 
@@ -472,6 +488,23 @@ std::optional<InstalledTool> InstalledToolOf(const config::Config& config, const
 
 Result<fs::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
                                    const ReleaseAsset& asset, const std::string& binary_name) {
+  // Two setups of one tool would share .downloading and remove each other's files.
+  static std::mutex in_flight_mutex;
+  static std::set<std::string> in_flight;
+  {
+    const std::lock_guard lock(in_flight_mutex);
+    if (!in_flight.insert(tool_name).second) {
+      return Err("already_installing", std::format("{} is already being installed", tool_name));
+    }
+  }
+  const struct Release {
+    const std::string& key;
+    ~Release() {
+      const std::lock_guard lock(in_flight_mutex);
+      in_flight.erase(key);
+    }
+  } release{tool_name};
+
   const fs::path tool_dir = ToolDir(config, tool_name);
   std::error_code ec;
   fs::create_directories(tool_dir, ec);
@@ -505,9 +538,23 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
       return Err("binary_not_found",
                 std::format("{} didn't contain a file named \"{}\"", asset.asset_name, binary_name));
     }
-    for (const fs::path& entry : paths::ListDir(staging))
-      fs::remove_all(tool_dir / entry.filename(), ec);
+    // The old files go aside rather than away, so a failed move puts them back.
+    std::vector<fs::path> set_aside;
+    for (const fs::path& entry : paths::ListDir(staging)) {
+      const fs::path old = tool_dir / entry.filename();
+      if (!fs::exists(fs::symlink_status(old, ec))) continue;
+      fs::rename(old, old.string() + ".mira-old", ec);
+      if (!ec) set_aside.push_back(old);
+    }
     const Result<void> moved = MoveAllInto(staging, tool_dir);
+    for (const fs::path& old : set_aside) {
+      const fs::path aside = old.string() + ".mira-old";
+      if (moved) {
+        fs::remove_all(aside, ec);
+      } else {
+        fs::rename(aside, old, ec);
+      }
+    }
     fs::remove_all(staging, ec);
     if (!moved) return std::unexpected(moved.error());
     const fs::path binary = tool_dir / found->lexically_relative(staging);
