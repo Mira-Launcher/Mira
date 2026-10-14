@@ -134,7 +134,7 @@ TEST_CASE("hidden store titles survive a reload, and only store games leave one 
   CHECK(reloaded.HiddenTitles() == std::set<std::string>{"epic-abc", "gog-12"});
 }
 
-TEST_CASE("a finished session is counted once and goes with its game") {
+TEST_CASE("a finished session is counted once and outlives its game") {
   store::GameStore store(TempFile("games-sessions.db"));
   store.Load();
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
@@ -144,8 +144,10 @@ TEST_CASE("a finished session is counted once and goes with its game") {
   }
   CHECK(store.Sessions("celeste", 10).size() == 1);
   REQUIRE(store.Remove("celeste").has_value());
+  CHECK(store.NextId("Celeste") == "celeste-2");  // a new game doesn't take its history
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
-  CHECK(store.Sessions("celeste", 10).empty());
+  CHECK(store.Sessions("celeste", 10).size() == 1);
+  CHECK(store.Find("celeste")->play_seconds == 60);
 }
 
 TEST_CASE("a damaged database is set aside and the library comes back from its backup") {

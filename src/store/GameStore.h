@@ -72,7 +72,7 @@ public:
 
   // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
   nlohmann::json UiState();
-  void KeepUiState(const nlohmann::json& state);
+  Result<void> KeepUiState(const nlohmann::json& state);
 
   // Stored source rows, by position. A source without a row has SourceState's defaults.
   std::vector<SourceState> Sources() const;
@@ -99,8 +99,8 @@ public:
   // Whether a game's install_path is inside `dir` (a game whose program sits in a subfolder).
   bool HasInstallUnder(const std::string& dir) const;
 
-  // Derives an id from the game's name, disambiguating against existing ids
-  // ("celeste", "celeste-2", ...) so ids stay readable.
+  // Derives an id from the game's name, disambiguating against existing ids and removed games'
+  // history ("celeste", "celeste-2", ...) so ids stay readable.
   std::string NextId(const std::string& name) const;
 
   // Inserts or replaces a game wholesale, then saves.
@@ -157,9 +157,11 @@ private:
   Result<void> Open();
   Result<void> Write(const model::Game& game);
   Result<void> Delete(const std::string& id);
+  // A new game with a removed game's id (a store game added again) takes its play totals back.
+  Result<void> Reattach(model::Game& game);
   // Runs `write` in a transaction of its own.
   Result<void> Transact(const std::function<Result<void>()>& write);
-  void ReadAll();
+  Result<void> ReadAll();
   Result<void> WriteTitleHidden(const std::string& key, bool hidden);
   // A new game for a hidden title: tags it hidden and returns true, so its row can go.
   bool AdoptHiddenTitle(model::Game& game) const;

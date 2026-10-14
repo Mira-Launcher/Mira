@@ -5,38 +5,51 @@
 #include <sqlite3.h>
 
 namespace mira::store {
+namespace {
+
+// "database_damaged" only for a file SQLite can't read as a database, so a busy or failing disk
+// isn't mistaken for one.
+std::string ErrorCode(sqlite3* db) {
+  const int code = db ? sqlite3_errcode(db) : SQLITE_NOMEM;
+  return code == SQLITE_CORRUPT || code == SQLITE_NOTADB ? "database_damaged" : "database_error";
+}
+
+}  // namespace
 
 Statement::~Statement() { sqlite3_finalize(stmt_); }
 
 Statement& Statement::Bind(int index, std::string_view text) {
-  sqlite3_bind_text(stmt_, index, text.data(), static_cast<int>(text.size()), SQLITE_TRANSIENT);
+  NoteBind(sqlite3_bind_text(stmt_, index, text.data(), static_cast<int>(text.size()), SQLITE_TRANSIENT));
   return *this;
 }
 
 Statement& Statement::Bind(int index, std::int64_t value) {
-  sqlite3_bind_int64(stmt_, index, value);
+  NoteBind(sqlite3_bind_int64(stmt_, index, value));
   return *this;
 }
 
 Statement& Statement::Bind(int index, double value) {
-  sqlite3_bind_double(stmt_, index, value);
+  NoteBind(sqlite3_bind_double(stmt_, index, value));
   return *this;
 }
 
 Statement& Statement::BindNull(int index) {
-  sqlite3_bind_null(stmt_, index);
+  NoteBind(sqlite3_bind_null(stmt_, index));
   return *this;
 }
 
 Result<bool> Statement::Step() {
-  const int code = sqlite3_step(stmt_);
+  const int code = bind_rc_ != 0 ? bind_rc_ : sqlite3_step(stmt_);
   if (code == SQLITE_ROW) return true;
   if (code == SQLITE_DONE) return false;
-  return Err("database_error", std::format("database: {}", sqlite3_errmsg(sqlite3_db_handle(stmt_))), kDiskHint);
+  sqlite3* db = sqlite3_db_handle(stmt_);
+  return Err(ErrorCode(db), std::format("database: {}", sqlite3_errmsg(db)), kDiskHint);
 }
 
 Result<void> Statement::Run() {
   auto stepped = Step();
+  sqlite3_reset(stmt_);  // so it can be bound and run again
+  bind_rc_ = 0;
   if (!stepped) return std::unexpected(stepped.error());
   return {};
 }
@@ -72,7 +85,7 @@ void Database::Close() {
 }
 
 Error Database::LastError(std::string_view what) const {
-  return {"database_error", std::format("{}: {}", what, db_ ? sqlite3_errmsg(db_) : "out of memory"), kDiskHint};
+  return {ErrorCode(db_), std::format("{}: {}", what, db_ ? sqlite3_errmsg(db_) : "out of memory"), kDiskHint};
 }
 
 Result<void> Database::Exec(std::string_view sql) {
@@ -92,10 +105,14 @@ Result<Statement> Database::Prepare(std::string_view sql) {
 }
 
 Result<void> Database::Migrate(std::span<const std::string_view> steps) {
-  auto version = Prepare("PRAGMA user_version");
-  if (!version) return std::unexpected(version.error());
-  if (auto row = version->Step(); !row) return std::unexpected(row.error());
-  const auto applied = static_cast<std::size_t>(version->Int(0));
+  std::size_t applied = 0;
+  {
+    // Finished before the steps run: an open statement keeps a step from dropping a table.
+    auto version = Prepare("PRAGMA user_version");
+    if (!version) return std::unexpected(version.error());
+    if (auto row = version->Step(); !row) return std::unexpected(row.error());
+    applied = static_cast<std::size_t>(version->Int(0));
+  }
   if (applied > steps.size()) {
     return Err("database_too_new",
                std::format("the library database is from a newer Mira (version {}, this one knows {})", applied,
@@ -112,11 +129,13 @@ Result<void> Database::Migrate(std::span<const std::string_view> steps) {
   return {};
 }
 
-bool Database::Sound() {
+Result<void> Database::CheckSound() {
   auto check = Prepare("PRAGMA quick_check");
-  if (!check) return false;
+  if (!check) return std::unexpected(check.error());
   auto row = check->Step();
-  return row && *row && check->Text(0) == "ok";
+  if (!row) return std::unexpected(row.error());
+  if (!*row || check->Text(0) != "ok") return Err("database_damaged", "the database failed its check");
+  return {};
 }
 
 Result<void> Database::BackUp(const std::filesystem::path& file) {

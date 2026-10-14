@@ -31,7 +31,7 @@ public:
 
   // True while there is a row to read.
   Result<bool> Step();
-  Result<void> Run();  // Step for a statement that returns no rows
+  Result<void> Run();  // Step for a statement that returns no rows; it can then be run again
 
   std::string Text(int column) const;
   std::int64_t Int(int column) const;
@@ -39,7 +39,13 @@ public:
   bool IsNull(int column) const;
 
 private:
+  // Keeps the first failed bind; Step reports it instead of running with a missing value.
+  void NoteBind(int rc) {
+    if (bind_rc_ == 0) bind_rc_ = rc;
+  }
+
   sqlite3_stmt* stmt_;
+  int bind_rc_ = 0;  // SQLITE_OK
 };
 
 class Database {
@@ -56,8 +62,9 @@ public:
   Result<Statement> Prepare(std::string_view sql);
   // Applies the steps past PRAGMA user_version, each in a transaction of its own.
   Result<void> Migrate(std::span<const std::string_view> steps);
-  // Whether PRAGMA quick_check finds the file sound.
-  bool Sound();
+  // PRAGMA quick_check. "database_damaged" when it finds damage; any other error means the check
+  // couldn't run (a busy or failing disk), which says nothing about the file.
+  Result<void> CheckSound();
   // A consistent copy of the whole database, written beside `file` and renamed over it.
   Result<void> BackUp(const std::filesystem::path& file);
 
