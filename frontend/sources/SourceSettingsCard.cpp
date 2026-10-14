@@ -118,6 +118,9 @@ void SourceSettingsCard::Save() {
   saving_ = true;
   save_error_.clear();
   UpdateButtons();
+  // What was sent: an edit typed while the save runs is still unsaved after it.
+  std::vector<std::string> sent(settings_.size());
+  for (size_t i = 0; i < settings_.size(); ++i) sent[i] = settings_[i].Text();
 
   // Settings first, then the runner; a failed setting stops there.
   saves_pending_ = (edits.empty() ? 0 : 1) + static_cast<int>(resets.size());
@@ -125,9 +128,9 @@ void SourceSettingsCard::Save() {
     SaveRunner();
     return;
   }
-  const auto done = [this](bool ok, const std::string& error, const std::vector<size_t>& indices) {
+  const auto done = [this, sent](bool ok, const std::string& error, const std::vector<size_t>& indices) {
     if (ok) {
-      for (const size_t i : indices) settings_[i].original = settings_[i].Text();
+      for (const size_t i : indices) settings_[i].original = sent[i];
     } else if (save_error_.isEmpty()) {
       save_error_ = error_help::Describe(error);
     }
@@ -229,6 +232,7 @@ void SourceSettingsCard::BuildRunnerRow() {
   runner_apply_ = new QPushButton(note);
   runner_apply_->setVisible(false);
   connect(runner_apply_, &QPushButton::clicked, this, [this] {
+    ++runner_serial_;
     runner_apply_->setEnabled(false);
     api::SetSourceRunnerAsync(this, id_, runner_ref_.toStdString(), /*apply_to_games=*/true,
                                       [this](SourceRunnerResult result) {
@@ -249,7 +253,9 @@ void SourceSettingsCard::BuildRunnerRow() {
 
 void SourceSettingsCard::LoadRunner() {
   if (runner_ == nullptr) return;
-  api::GetSourceRunnerAsync(this, id_, [this](SourceRunnerResult runner) { ShowRunner(runner); });
+  api::GetSourceRunnerAsync(this, id_, [this, serial = runner_serial_](SourceRunnerResult runner) {
+    if (serial == runner_serial_) ShowRunner(runner);
+  });
 }
 
 void SourceSettingsCard::SelectRunner(const QString& runner_ref) {
@@ -376,7 +382,9 @@ void SourceSettingsCard::LoadSettings() {
       }
       for (SettingEditor& editor : settings_) {
         const auto it = config.values.find(editor.entry.key);
+        const bool typed = editor.Changed();  // kept, not overwritten by a refresh
         editor.original = it != config.values.end() ? it->second : editor.entry.default_display;
+        if (typed) continue;
         editor.SetText(editor.original);
         editor.original = editor.Text();
       }

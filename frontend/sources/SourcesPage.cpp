@@ -170,7 +170,7 @@ void SourcesPage::CloseSetup() {
 // Installs a newly added emulator that isn't yet, over `window`: the install outlives this page.
 void SourcesPage::InstallEmulator(QWidget* window, const QString& id) {
   api::GetEmulatorsAsync(window, [window, id](EmulatorsResult result) {
-    if (!result.ok) return;
+    if (!result.ok) return notify::FailedRequest(window, "Could not install the emulator.", result.error);
     const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
     if (it == result.emulators.end() || it->installed) return;
     // A package emulator comes from the system; asks for it the same way its page does.

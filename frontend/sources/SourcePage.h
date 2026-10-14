@@ -168,6 +168,7 @@ private:
   std::string launcher_prefix_;
   EmulatorInfo emulator_;
   ModManagerInfo manager_;
+  bool manager_unknown_ = false;  // its last status request failed
   std::string account_;
   int library_count_ = 0;
   QSize tile_;

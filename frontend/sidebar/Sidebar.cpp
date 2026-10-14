@@ -511,8 +511,10 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void Sidebar::RefreshSources() {
-  api::ListSourcesAsync(this, [this](SourcesResult result) {
-    if (!result.ok) return;
+  // Only the newest answer: an older one could bring back a source just removed.
+  const int request = ++sources_request_;
+  api::ListSourcesAsync(this, [this, request](SourcesResult result) {
+    if (request != sources_request_ || !result.ok) return;
     added_sources_.clear();
     disabled_sources_.clear();
     hidden_sources_.clear();

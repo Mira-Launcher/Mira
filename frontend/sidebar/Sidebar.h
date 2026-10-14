@@ -177,6 +177,7 @@ class Sidebar : public QWidget {
   QHash<QString, bool> source_ready_;
   QHash<QString, QString> source_account_;     // signed-in account, where a store says
   QHash<QString, qint64> source_imported_at_;  // last import, unix seconds
+  int sources_request_ = 0;  // RefreshSources keeps only the newest answer
   bool show_source_counts_ = true;
   bool show_source_covers_ = true;
   QSet<QString> source_cover_ids_;  // the games source rows show covers of

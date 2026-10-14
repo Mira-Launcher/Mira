@@ -448,11 +448,11 @@ void SourcePage::UpdateTool() {
   tool_updating_ = true;
   UpdateStatusLine();
   api::SetupStoreToolAsync(this, id_, [this](StoreActionResult result) {
-    tool_updating_ = false;
-    if (result.ok) {
+    if (result.ok) {  // the job runs on; its setup event clears tool_updating_
       RefreshStatus();
       return;
     }
+    tool_updating_ = false;
     UpdateStatusLine();
     setup_card_->ShowError("Could not update " + CopyFor(id_).tool + ".", result.error);
   });
@@ -552,9 +552,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   header->addStretch(1);
   clear_filters_ = new QPushButton("Clear filters", owned_section_);
   clear_filters_->setObjectName("text_button");
-  QSizePolicy keep = clear_filters_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  clear_filters_->setSizePolicy(keep);
+  KeepSpaceWhenHidden(clear_filters_);
   clear_filters_->setVisible(false);
   header->addWidget(clear_filters_);
   owned_refresh_ = new QPushButton("Refresh", owned_section_);
@@ -573,9 +571,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   // Always there, so nothing below moves when it starts or stops.
   owned_rail_ = new ProgressRail(owned_section_);
   owned_rail_->setFixedHeight(3);
-  QSizePolicy keep_rail = owned_rail_->sizePolicy();
-  keep_rail.setRetainSizeWhenHidden(true);
-  owned_rail_->setSizePolicy(keep_rail);
+  KeepSpaceWhenHidden(owned_rail_);
   owned_rail_->SetProgress(0);
   owned_rail_->setVisible(false);
   layout->addWidget(owned_rail_);
@@ -611,20 +607,14 @@ QWidget* SourcePage::BuildOwnedSection() {
     steam_settings_->setVisible(false);
     connect(steam_settings_, &QPushButton::clicked, this,
             [this] { emit OpenSettingsRequested("steam.web_api_key"); });
-    auto* row = new QHBoxLayout();
-    row->addWidget(steam_settings_);
-    row->addStretch(1);
-    layout->addLayout(row);
+    layout->addWidget(steam_settings_, 0, Qt::AlignLeft);
   }
   if (id_ != "humble") {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
     icons::Follow(art_key_, icons::Glyph::Image);
     art_key_->setVisible(false);
     connect(art_key_, &QPushButton::clicked, this, [this] { emit OpenSettingsRequested(art_key_setting_); });
-    auto* row = new QHBoxLayout();
-    row->addWidget(art_key_);
-    row->addStretch(1);
-    layout->addLayout(row);
+    layout->addWidget(art_key_, 0, Qt::AlignLeft);
   }
 
   if (!ListsOwned()) {
@@ -766,7 +756,11 @@ void SourcePage::RefreshStatus() {
     });
   } else if (IsModManager()) {
     api::GetModManagersAsync(this, [this](ModManagersResult result) {
-      if (!result.ok) return setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
+      manager_unknown_ = !result.ok;
+      if (!result.ok) {
+        UpdateStatusLine();
+        return setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
+      }
       for (const ModManagerInfo& manager : result.managers) {
         if (manager.id == id_) manager_ = manager;
       }
@@ -936,8 +930,9 @@ void SourcePage::UpdateStatusLine() {
   } else if (IsEmulator()) {
     parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed" : StatusDot(tokens.warning) + "Not installed");
   } else if (IsModManager()) {
-    parts << (manager_.installed ? StatusDot(tokens.success) + "Installed"
-                                 : StatusDot(tokens.info) + "Installing…");
+    parts << (manager_unknown_     ? StatusDot(tokens.warning) + "Could not check"
+              : manager_.installed ? StatusDot(tokens.success) + "Installed"
+                                   : StatusDot(tokens.info) + "Installing…");
   }
   if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
@@ -1360,7 +1355,7 @@ void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   // An emulator installed or firmware added elsewhere (its install job, a second window).
-  if ((IsEmulator() || IsModManager()) && type == "sources.changed") return RefreshStatus();
+  if ((IsEmulator() || IsModManager() || IsStore()) && type == "sources.changed") return RefreshStatus();
   if (StoreEvent art; events::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
     if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&
