@@ -1,7 +1,7 @@
 #!/bin/bash
 # Benchmarks this checkout against a base (default main). Both builds run this checkout's scenarios at the
 # same moment, so load on the machine hits both alike, each on its own copy of the fixture made by the
-# base's mirad. The GUI check runs beside the callgrind pass, which load doesn't skew.
+# base's mirad. The GUI scenarios run after the callgrind pass, whose load would skew their times.
 # Usage: tools/bench/run.sh [BASE_REF] [TIME_RUNS]. Locally it runs in the mira-bench container, offline;
 # MIRA_BENCH_NATIVE=1 runs on the machine itself (CI, where the runner is set up like the container).
 # MIRA_BENCH_BASE_BIN and MIRA_BENCH_BRANCH_BIN name folders of built binaries (an extracted AppImage's
@@ -31,9 +31,8 @@ fi
 b=$root/build/bench
 tools=$root/tools/bench
 # A HOME per run that can overlap: the callgrind pass is split in two per side (callgrind runs one thread
-# at a time, so this uses the cores), and the GUI check runs beside it.
-declare -A home=([base]=/tmp/mira-bench-a [branch]=/tmp/mira-bench-b [base-2]=/tmp/mira-bench-c [branch-2]=/tmp/mira-bench-d
-                 [base-gui]=/tmp/mira-bench-e [branch-gui]=/tmp/mira-bench-f)
+# at a time, so this uses the cores).
+declare -A home=([base]=/tmp/mira-bench-a [branch]=/tmp/mira-bench-b [base-2]=/tmp/mira-bench-c [branch-2]=/tmp/mira-bench-d)
 
 declare -A bin
 if [ -n "${MIRA_BENCH_BASE_BIN:-}" ]; then
@@ -74,10 +73,14 @@ for i in "${!names[@]}"; do
 done
 both instr-1 "" --mode instr --only "${first[@]}"
 both instr-2 -2 --mode instr --only "${second[@]}"
-both gui -gui --gui
 wait
+# The GUI's measures are times, so after callgrind's load and as often as the timed runs.
+for i in $(seq "$runs"); do
+  both "gui-$i" "" --gui
+  wait
+done
 
 # mirad's scenarios first, then the GUI's, which is the order the report lists them in.
-python3 tools/bench/compare.py --base "$out"/base-{time-*,instr-*,gui}.json --branch "$out"/branch-{time-*,instr-*,gui}.json \
+python3 tools/bench/compare.py --base "$out"/base-{time-*,instr-*,gui-*}.json --branch "$out"/branch-{time-*,instr-*,gui-*}.json \
   --fixture "$out/fixture-base.json" --base-name "${MIRA_BENCH_BASE_NAME:-$base}" \
   --summary "$out/summary.md" --full "$out/full.md"
