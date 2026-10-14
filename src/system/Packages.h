@@ -51,7 +51,7 @@ std::vector<std::string> InstalledPackages(std::string_view feature);
 std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages);
 
 // The tools of `feature` not installed: {"distro", "family", "missing": [{tool, package, purpose}],
-// "unavailable": [{tool, purpose}], "install": [argv...], "restart": bool}. `unavailable` has no
+// "unavailable": [{tool, purpose, unchecked}], "install": [argv...], "restart": bool}. `unavailable` has no
 // package on this distro; `install` is empty when nothing's missing or Mira can't install them.
 nlohmann::json Report(std::string_view feature = {});
 

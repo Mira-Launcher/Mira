@@ -2,8 +2,6 @@
 
 #include <cstdlib>
 #include <format>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include "core/AtomicFile.h"
@@ -53,10 +51,12 @@ exec 9>"$CACHE_DIR/.lock"
 if command -v flock >/dev/null 2>&1; then flock 9; fi
 if [ ! -f "$STAMP" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$CURRENT_MTIME" ]; then
   WORK_DIR=$(mktemp -d "$CACHE_DIR/extract.XXXXXX")
+  trap 'rm -rf "$WORK_DIR"' EXIT  # a failed extract leaves nothing behind
   ( cd "$WORK_DIR" && "$APPIMAGE" --appimage-extract >/dev/null )
   rm -rf "$CACHE_DIR/squashfs-root"
   mv "$WORK_DIR/squashfs-root" "$CACHE_DIR/squashfs-root"
   rm -rf "$WORK_DIR"
+  trap - EXIT
   echo "$CURRENT_MTIME" > "$STAMP"
 fi
 exec 9>&-
@@ -111,6 +111,14 @@ Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& a
   if (fs::exists(fs::symlink_status(wrapper, ec)) && !IsOurs(wrapper)) {
     return Err("setup_conflict", std::format("{} exists and wasn't written by mira setup", wrapper.string()));
   }
+  // Checked before writing anything, so a conflict leaves nothing half set up.
+  for (const char* name : kLinks) {
+    const fs::path link = paths.bin_dir / name;
+    const fs::file_status status = fs::symlink_status(link, ec);
+    if (fs::exists(status) && !fs::is_symlink(status)) {
+      return Err("setup_conflict", std::format("{} exists and isn't a symlink", link.string()));
+    }
+  }
 
   std::vector<fs::path> written;
   if (auto ok = WriteFile(wrapper, Wrapper(fs::absolute(appimage))); !ok) return std::unexpected(ok.error());
@@ -120,10 +128,6 @@ Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& a
 
   for (const char* name : kLinks) {
     const fs::path link = paths.bin_dir / name;
-    const fs::file_status status = fs::symlink_status(link, ec);
-    if (fs::exists(status) && !fs::is_symlink(status)) {
-      return Err("setup_conflict", std::format("{} exists and isn't a symlink", link.string()));
-    }
     fs::remove(link, ec);
     fs::create_symlink("mira", link, ec);
     if (ec) return Err("setup_write_failed", std::format("couldn't link {}: {}", link.string(), ec.message()));
