@@ -25,6 +25,7 @@ public:
 
 protected:
   void paintEvent(QPaintEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
 
 private:
   struct Row {

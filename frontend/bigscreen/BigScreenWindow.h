@@ -195,6 +195,7 @@ private:
   QTimer clock_timer_;
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
+  int launch_serial_ = 0;  // bumped by each Play, so an older attempt's replies are ignored
   QString cancelled_;  // a launch cancelled before its game was running, stopped once it is
   QTimer window_poll_;  // looks for the launching game's window
   QString playing_;
@@ -204,6 +205,7 @@ private:
   QProcess* update_ = nullptr;
   QString update_status_;
   QString update_output_;
+  bool update_accepted_ = false;  // the update printed something, so the password went through
   QTimer launch_timeout_;
 };
 

@@ -75,10 +75,10 @@ bool Wide(Nav nav) {
 
 // The small button left of center: Xbox's View (two overlapping squares) or PlayStation's Create
 // (a pill with three rays). Nintendo's minus is plain text.
-void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps) {
+void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps, const QColor& color) {
   const QPointF c = rect.center();
   const double s = unit * 0.36;
-  painter.setPen(QPen(theme::Current().text, std::max(1.0, unit * 0.08)));
+  painter.setPen(QPen(color, std::max(1.0, unit * 0.08)));
   painter.setBrush(Qt::NoBrush);
   if (ps) {
     painter.drawRoundedRect(QRectF(c.x() - s * 0.45, c.y() - s * 0.2, s * 0.9, s * 1.2), s * 0.3, s * 0.3);
@@ -112,7 +112,7 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
   painter.setPen(QPen(QColor(255, 255, 255, 60), std::max(1.0, unit * 0.05)));
   painter.setBrush(QColor("#2a2e36"));
   painter.drawRoundedRect(rect, shoulder ? unit * 0.35 : h / 2, shoulder ? unit * 0.35 : h / 2);
-  QColor color = theme::Current().text;
+  QColor color("#e8eaee");  // the chip is dark in every theme
   if (kind == "xbox" || kind.isEmpty()) {
     if (nav == Nav::Accept) color = QColor("#6cc04a");
     if (nav == Nav::Back) color = QColor("#ff5c5c");
@@ -125,7 +125,7 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
     if (nav == Nav::Search) color = QColor("#4fd1a5");
   }
   if (nav == Nav::Sort && kind != "nin" && kind != "keys") {
-    DrawSortIcon(painter, rect, unit, kind == "ps");
+    DrawSortIcon(painter, rect, unit, kind == "ps", color);
   } else {
     painter.setPen(color);
     painter.drawText(rect, Qt::AlignCenter, text);

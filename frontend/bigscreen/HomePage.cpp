@@ -66,21 +66,21 @@ void HomePage::Rebuild() {
   // Keep each row's focused game where it was.
   std::map<QString, QString> focused;
   for (const Row& row : rows_) {
-    if (!row.items.empty()) focused[row.label] = row.items[size_t(row.focus)].key;
+    if (!row.items.empty()) focused[row.id] = row.items[size_t(row.focus)].key;
   }
-  const QString focused_row = rows_.empty() ? QString() : rows_[size_t(row_)].label;
+  const QString focused_row = rows_.empty() ? QString() : rows_[size_t(row_)].id;
 
   const LibraryServices& services = window_->services();
   std::vector<Row> rows;
-  Row recent{"Continue playing"};
+  Row recent{"Continue playing", "recent"};
   for (const GameSummary* game : services.library->RecentlyPlayed(12)) {
     if (window_->Browsable(*game) && (game->last_played_at || game->running)) recent.items.push_back(window_->ItemFor(*game));
   }
-  Row installed{"Installed"};
-  Row pinned{"Pinned"};
+  Row installed{"Installed", "installed"};
+  Row pinned{"Pinned", "pinned"};
   // Media apps get their own row; other apps (when shown) go last.
-  Row media{"Media"};
-  Row apps{"Apps"};
+  Row media{"Media", "media"};
+  Row apps{"Apps", "apps"};
   // A row per source, then per tag, sorted by name.
   std::map<QString, Row> by_source, by_tag;
   for (const GameSummary& game : services.library->Games()) {
@@ -97,11 +97,11 @@ void HomePage::Rebuild() {
     }
     installed.items.push_back(item);
     const QString source = SourceName(QString::fromStdString(game.source));
-    by_source.try_emplace(source, Row{source}).first->second.items.push_back(item);
+    by_source.try_emplace(source, Row{source, "source:" + source}).first->second.items.push_back(item);
     for (const std::string& tag : game.tags) {
       if (IsMeaningTag(tag) || tag == "media") continue;
       const QString name = QString::fromStdString(tag);
-      by_tag.try_emplace(name, Row{name}).first->second.items.push_back(item);
+      by_tag.try_emplace(name, Row{name, "tag:" + name}).first->second.items.push_back(item);
     }
   }
   // Owned games that aren't installed are on the Downloads tab, not here.
@@ -116,26 +116,26 @@ void HomePage::Rebuild() {
   for (Row* row : order) SortRow(*row);
   for (Row* row : order) {
     if (row->items.empty()) continue;
-    if (const auto found = focused.find(row->label); found != focused.end()) {
+    if (const auto found = focused.find(row->id); found != focused.end()) {
       const auto at = std::ranges::find(row->items, found->second, &Item::key);
       if (at != row->items.end()) row->focus = int(at - row->items.begin());
     }
     for (const Row& old : rows_) {
-      if (old.label == row->label) row->scroll = old.scroll;
+      if (old.id == row->id) row->scroll = old.scroll;
     }
     rows.push_back(std::move(*row));
   }
   rows_ = std::move(rows);
   row_ = 0;
   for (size_t i = 0; i < rows_.size(); ++i) {
-    if (rows_[i].label == focused_row) row_ = int(i);
+    if (rows_[i].id == focused_row) row_ = int(i);
   }
   FocusChanged();
 }
 
 HomePage::Order HomePage::OrderOf(const Row& row) const {
   // Continue playing is most recent first unless changed; the rest go by name.
-  return orders_.value(row.label, row.label == "Continue playing" ? Order::Recent : Order::Name);
+  return orders_.value(row.id, row.id == "recent" ? Order::Recent : Order::Name);
 }
 
 void HomePage::SortRow(Row& row) const {
@@ -228,7 +228,7 @@ bool HomePage::Navigate(Nav nav) {
     }
     case Nav::Sort: {
       const QString key = row.items[size_t(row.focus)].key;
-      orders_[row.label] = Order((int(OrderOf(row)) + 1) % int(Order::kCount));
+      orders_[row.id] = Order((int(OrderOf(row)) + 1) % int(Order::kCount));
       SortRow(row);
       // The same game stays focused, wherever it moved to.
       const auto at = std::ranges::find(row.items, key, &Item::key);

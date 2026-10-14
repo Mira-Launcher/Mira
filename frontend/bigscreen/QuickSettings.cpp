@@ -37,6 +37,8 @@ void LoadQuickSettings(QObject* context, const std::string& id, std::function<vo
     // A MANGOHUD the game's env sets by hand shows it too.
     settings.overlay = mangohud && !hidden && settings.fps_limit == 0;
     api::GetGameConfigAsync(context, id, [settings, done](GameConfigResult config) mutable {
+      // Without the config, a save would write gamemode and the overlay as off.
+      if (!config.ok) return done(false, {});
       for (const GameConfigEntry& entry : config.entries) {
         if (entry.key == "launch.gamemode") settings.gamemode = entry.value_display == "true";
         if (entry.key == "launch.mangohud" && entry.value_display == "true") settings.overlay = true;
