@@ -213,18 +213,23 @@ std::string ListText(const std::vector<std::string>& items) { return json(items)
 json TypedValueFromText(const std::string& type, const std::string& value) {
   if (type == "a boolean") return value == "true";
   if (type == "an integer") {
+    // The whole text, or it goes as written for the schema to refuse ("8080x" isn't 8080).
     try {
-      return static_cast<std::int64_t>(std::stoll(value));
+      std::size_t used = 0;
+      const auto number = static_cast<std::int64_t>(std::stoll(value, &used));
+      if (used == value.size()) return number;
     } catch (...) {
-      return value;
     }
+    return value;
   }
   if (type == "a number") {
     try {
-      return std::stod(value);
+      std::size_t used = 0;
+      const double number = std::stod(value, &used);
+      if (used == value.size()) return number;
     } catch (...) {
-      return value;
     }
+    return value;
   }
   if (type == "an array of strings") return ParseListText(value);
   return value;

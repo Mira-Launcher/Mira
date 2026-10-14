@@ -112,6 +112,7 @@ private:
   void ResolveNames(const QString& source);
 
   std::vector<Entry> entries_;
+  QSet<QString> progress_pending_;  // games with a GetInstallProgress call in flight
   QHash<QString, QString> titles_;  // "<source>:<ref>" -> title
   QSet<QString> asked_sources_;     // title lists already fetched to name entries
   std::map<QString, QString> job_by_target_;  // running jobs with their own rows: target -> job id

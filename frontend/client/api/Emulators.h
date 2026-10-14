@@ -18,7 +18,8 @@ void AddEmulatorFilesAsync(QObject* context, const std::string& id, const std::v
                            std::function<void(StoreImportResult)> callback);
 void ImportEmulatorAsync(QObject* context, const std::string& id, std::function<void(StoreImportResult)> callback);
 void AddEmulatorFirmwareAsync(QObject* context, const std::string& id, const std::string& firmware,
-                              const std::vector<std::string>& paths, std::function<void(StoreActionResult)> callback);
+                              const std::vector<std::string>& paths, bool replace,
+                              std::function<void(StoreActionResult)> callback);
 void OpenEmulatorAsync(QObject* context, const std::string& id, std::function<void(StoreActionResult)> callback);
 
 void GetExistingEmulatorGamesAsync(QObject* context, const std::string& id,

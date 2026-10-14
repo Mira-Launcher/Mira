@@ -80,9 +80,11 @@ void ImportEmulatorAsync(QObject* context, const std::string& id, std::function<
 }
 
 void AddEmulatorFirmwareAsync(QObject* context, const std::string& id, const std::string& firmware,
-                              const std::vector<std::string>& paths, std::function<void(StoreActionResult)> callback) {
+                              const std::vector<std::string>& paths, bool replace,
+                              std::function<void(StoreActionResult)> callback) {
   const std::string path = EmulatorPath(id, "firmware/" + PercentEncode(firmware));
-  async::Run(context, [path, paths] { return PostAction(path, {{"paths", paths}}); }, std::move(callback));
+  async::Run(context, [path, paths, replace] { return PostAction(path, {{"paths", paths}, {"replace", replace}}); },
+             std::move(callback));
 }
 
 void GetExistingEmulatorGamesAsync(QObject* context, const std::string& id,

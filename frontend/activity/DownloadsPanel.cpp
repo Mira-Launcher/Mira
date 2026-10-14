@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScreen>
@@ -304,8 +305,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       connect(pause, &QPushButton::clicked, this,
               [this, pause, source = entry.source.toStdString(), ref = entry.ref.toStdString()] {
                 pause->setEnabled(false);
-                api::PauseStoreInstallAsync(this, source, ref, [this](StoreActionResult result) {
-                  if (!result.ok) notify::FailedRequest(this, "Could not pause it.", result.error);
+                api::PauseStoreInstallAsync(this, source, ref, [this, pause = QPointer(pause)](StoreActionResult result) {
+                  if (result.ok) return;
+                  if (pause) pause->setEnabled(true);
+                  notify::FailedRequest(this, "Could not pause it.", result.error);
                 });
               });
       actions->addWidget(pause);
@@ -314,8 +317,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
     cancel->setObjectName("download_cancel");
     connect(cancel, &QPushButton::clicked, this, [this, cancel, job] {
       cancel->setEnabled(false);  // the row goes once mirad says it's cancelled
-      jobs::Cancel(this, job.toStdString(), [this](ApiError error) {
-        if (!error.message.empty()) notify::FailedRequest(this, "Could not cancel it.", error);
+      jobs::Cancel(this, job.toStdString(), [this, cancel = QPointer(cancel)](ApiError error) {
+        if (error.message.empty()) return;
+        if (cancel) cancel->setEnabled(true);
+        notify::FailedRequest(this, "Could not cancel it.", error);
       });
     });
     actions->addWidget(cancel);
@@ -326,8 +331,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
     resume->setObjectName("download_resume");
     connect(resume, &QPushButton::clicked, this, [this, resume, source, ref, update = entry.update] {
       resume->setEnabled(false);
-      api::InstallStoreTitleAsync(this, source, ref, update, [this](StoreActionResult result) {
-        if (!result.ok) notify::FailedRequest(this, "Could not resume it.", result.error);
+      api::InstallStoreTitleAsync(this, source, ref, update, [this, resume = QPointer(resume)](StoreActionResult result) {
+        if (result.ok) return;
+        if (resume) resume->setEnabled(true);
+        notify::FailedRequest(this, "Could not resume it.", result.error);
       });
     });
     actions->addWidget(resume);
@@ -335,8 +342,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
     discard->setObjectName("download_cancel");
     connect(discard, &QPushButton::clicked, this, [this, discard, source, ref] {
       discard->setEnabled(false);
-      api::DiscardPausedInstallAsync(this, source, ref, [this](StoreActionResult result) {
-        if (!result.ok) notify::FailedRequest(this, "Could not cancel it.", result.error);
+      api::DiscardPausedInstallAsync(this, source, ref, [this, discard = QPointer(discard)](StoreActionResult result) {
+        if (result.ok) return;
+        if (discard) discard->setEnabled(true);
+        notify::FailedRequest(this, "Could not cancel it.", result.error);
       });
     });
     actions->addWidget(discard);
