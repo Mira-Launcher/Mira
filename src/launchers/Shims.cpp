@@ -2,6 +2,7 @@
 
 #include <format>
 #include <fstream>
+#include <vector>
 
 #include "core/Paths.h"
 #include "core/StoreErrors.h"
@@ -119,7 +120,8 @@ Result<void> Install(const config::Config& config, const runner::RunnerRegistry&
 
   std::error_code ec;
   for (const Shim& shim : list) {
-    const std::string dll = std::format("{}.dll", shim.name);
+    const std::string dll =
+        shim.name.contains('.') ? std::string(shim.name) : std::format("{}.dll", shim.name);
     if (!shim.wine_copy.empty()) {
       fs::path original = wine_dlls / dll;
       // A newer distro Wine has Direct2D fixes Office's start screen needs.
@@ -140,17 +142,27 @@ Result<void> Install(const config::Config& config, const runner::RunnerRegistry&
   return {};
 }
 
-Result<void> InstallPowerShellHost(const config::Config& config, const model::Game& host,
+Result<void> InstallPowerShellHost(const config::Config& config,
+                                   const runner::RunnerRegistry& runners, const model::Game& host,
                                    const fs::path& downloads) {
   const auto shims = Dir(config, downloads);
   if (!shims) return std::unexpected(shims.error());
-  const fs::path gac = fs::path(host.data_dir) /
-                       "drive_c/windows/Microsoft.NET/assembly/GAC_MSIL/"
-                       "System.Management.Automation/v4.0_3.0.0.0__31bf3856ad364e35";
+  const fs::path dll = *shims / "System.Management.Automation.dll";
   std::error_code ec;
-  fs::create_directories(gac, ec);
-  return CopyFile(*shims / "System.Management.Automation.dll",
-                  gac / "System.Management.Automation.dll");
+  if (!fs::is_regular_file(dll, ec))
+    return Err("shims_missing", "the Windows app shims have no PowerShell host");
+  const fs::path dir = fs::path(host.data_dir) / "drive_c/windows/mira-pshost";
+  fs::create_directories(dir, ec);
+  if (auto copied = CopyFile(dll, dir / dll.filename()); !copied) return copied;
+  // The system environment reaches services too, like the one that runs Autodesk's install steps.
+  const auto added = runner::RunWine(
+      runners, host,
+      {"reg", "add", "HKLM\\System\\CurrentControlSet\\Control\\Session Manager\\Environment", "/v",
+       "MONO_PATH", "/t", "REG_SZ", "/d", "C:\\windows\\mira-pshost", "/f"});
+  if (!added) return std::unexpected(added.error());
+  if (added->exit_code != 0)
+    return Err("regedit_failed", "couldn't set MONO_PATH for the PowerShell host");
+  return {};
 }
 
 Result<void> Override(const runner::RunnerRegistry& runners, const model::Game& host,
@@ -164,6 +176,26 @@ Result<void> Override(const runner::RunnerRegistry& runners, const model::Game& 
     if (added->exit_code != 0) {
       return Err("regedit_failed", std::format("couldn't set the {} DLL override", shim.name));
     }
+  }
+  return {};
+}
+
+Result<void> RegisterResProtocol(const runner::RunnerRegistry& runners, const model::Game& host) {
+  constexpr std::string_view kClsid = "{6D1E4C5A-3F0B-4E5C-9A7E-4D2B1C8F0A11}";
+  const std::string server = std::format("HKCR\\CLSID\\{}\\InprocServer32", kClsid);
+  const std::vector<std::vector<std::string>> keys = {
+      {server, "/ve", "/d", "C:\\windows\\system32\\resprotocol.dll"},
+      {server, "/v", "ThreadingModel", "/d", "Both"},
+      {"HKCR\\PROTOCOLS\\Handler\\res", "/v", "CLSID", "/d", std::string(kClsid)},
+  };
+  for (const auto& key : keys) {
+    std::vector<std::string> args = {"reg", "add"};
+    args.insert(args.end(), key.begin(), key.end());
+    args.insert(args.end(), {"/t", "REG_SZ", "/f"});
+    const auto added = runner::RunWine(runners, host, args);
+    if (!added) return std::unexpected(added.error());
+    if (added->exit_code != 0)
+      return Err("regedit_failed", "couldn't register the res protocol shim");
   }
   return {};
 }

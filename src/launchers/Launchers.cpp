@@ -459,12 +459,13 @@ Result<void> InstallAutodesk(config::Config& config, const Launcher& launcher,
   const auto built = [&] { return autodesk::ImageBuilt(game.data_dir) && image().has_value(); };
   if (auto ran = RunInstaller(config, launcher, create, game, {}, built); !ran) return ran;
   const auto setup = image();
-  if (auto prepared = autodesk::PrepareImage(*setup); !prepared) return prepared;
   // wintrust: its packages' certificates have expired and each loads a registry hive, which Wine
   // can't check or load. bcryptprimitives: its crash reporter is a Go service, which needs that
-  // shim to start under Wine.
+  // shim to start under Wine. ncrypt: Revit signs and checks its data with an EC key, which Wine's
+  // ncrypt can't import.
   constexpr std::array kShims = {shims::Shim{"wintrust", "wintrustw"},
-                                 shims::Shim{"bcryptprimitives", "bcryptprimitivesw"}};
+                                 shims::Shim{"bcryptprimitives", "bcryptprimitivesw"},
+                                 shims::Shim{"ncrypt", "ncryptw"}};
   const runner::RunnerRegistry runners(config);
   if (auto installed =
           shims::Install(config, runners, game, paths::UserDir() / "downloads", kShims);
@@ -472,14 +473,25 @@ Result<void> InstallAutodesk(config::Config& config, const Launcher& launcher,
     return installed;
   }
   if (auto overridden = shims::Override(runners, game, kShims); !overridden) return overridden;
-  // Some packages run PS2EXE-wrapped PowerShell steps, which need a PowerShell host Wine lacks.
-  if (auto installed = shims::InstallPowerShellHost(config, game, paths::UserDir() / "downloads");
+  // Wine has neither: tar.exe unpacks Inventor's content zips, resprotocol is the res: URL handler.
+  constexpr std::array kAdded = {shims::Shim{"tar.exe", ""}, shims::Shim{"resprotocol", ""}};
+  if (auto installed =
+          shims::Install(config, runners, game, paths::UserDir() / "downloads", kAdded);
       !installed) {
     return installed;
   }
+  if (auto registered = shims::RegisterResProtocol(runners, game); !registered) return registered;
+  if (auto pshost =
+          shims::InstallPowerShellHost(config, runners, game, paths::UserDir() / "downloads");
+      !pshost) {
+    return pshost;
+  }
+  if (auto prepared = autodesk::PrepareImage(*setup); !prepared) return prepared;
   Setup install;
   install.file = setup->string();
   install.args = {"-q"};
+  // Its services keep the prefix running, and Proton's launch waits for that to end.
+  install.end_session = true;
   install.failed = [watch = std::make_shared<autodesk::FailureWatch>(game.data_dir)] {
     return watch->Failed();
   };

@@ -1,12 +1,14 @@
 #include "runner/WindowsTheme.h"
 
 #include <cctype>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "core/Log.h"
+#include "proc/ProcessSupervisor.h"
 #include "runner/Exec.h"
 #include "runner/Winetricks.h"
 
@@ -66,6 +68,29 @@ std::optional<bool> PrefixPrefersDark(std::string_view user_reg) {
   return std::nullopt;
 }
 
+std::string WithPrefixTheme(std::string_view user_reg, bool dark) {
+  const std::string values = std::format(
+      "\"AppsUseLightTheme\"=dword:0000000{0}\n\"SystemUsesLightTheme\"=dword:0000000{0}\n",
+      dark ? 0 : 1);
+  const size_t section = user_reg.find(kPersonalize);
+  if (section == std::string_view::npos) {
+    return std::format("{}\n[{} 0\n{}", user_reg, kPersonalize, values);
+  }
+  // The section's own lines, minus the two values, which go right after its header.
+  const size_t body = user_reg.find('\n', section) + 1;
+  size_t end = user_reg.find(
+      "\n[", body - 1);  // from the header's own newline: the next line may be a header
+  end = end == std::string_view::npos ? user_reg.size() : end + 1;
+  std::string kept;
+  std::istringstream lines{std::string(user_reg.substr(body, end - body))};
+  for (std::string line; std::getline(lines, line);) {
+    if (!line.starts_with("\"AppsUseLightTheme\"=") &&
+        !line.starts_with("\"SystemUsesLightTheme\"="))
+      kept += line + "\n";
+  }
+  return std::string(user_reg.substr(0, body)) + values + kept + std::string(user_reg.substr(end));
+}
+
 Result<void> SyncWindowsTheme(const RunnerRegistry& runners, const model::Game& game) {
   const auto dark = DesktopPrefersDark();
   if (!dark || game.data_dir.empty()) return {};
@@ -78,6 +103,28 @@ Result<void> SyncWindowsTheme(const RunnerRegistry& runners, const model::Game& 
   if (PrefixPrefersDark(text) == dark) return {};
 
   log::Info("setting {}'s Windows theme to {}", game.id, *dark ? "dark" : "light");
+  // With nothing running, starting Wine to set it would also start the prefix's services, which
+  // keep it running, and Proton's launch then waits for them to end.
+  if (proc::FindPrefixProcesses(game.data_dir).empty()) {
+    file.close();
+    const fs::path target = fs::canonical(user_reg, ec);  // a link to pfx/user.reg stays a link
+    if (ec)
+      return Err("theme_failed",
+                 std::format("couldn't resolve {}: {}", user_reg.string(), ec.message()));
+    const fs::path temp = target.string() + ".mira-tmp";
+    std::ofstream out(temp);
+    out << WithPrefixTheme(text, *dark);
+    out.close();
+    if (!out) {
+      fs::remove(temp, ec);
+      return Err("theme_failed", std::format("couldn't write {}", temp.string()));
+    }
+    fs::rename(temp, target, ec);
+    if (ec)
+      return Err("theme_failed",
+                 std::format("couldn't write {}: {}", target.string(), ec.message()));
+    return {};
+  }
   const std::string light = *dark ? "0" : "1";
   for (const char* value : {"AppsUseLightTheme", "SystemUsesLightTheme"}) {
     const auto ran = RunWine(

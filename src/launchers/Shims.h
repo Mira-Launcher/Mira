@@ -13,8 +13,8 @@
 // mira-winapp-shims: DLLs that stand in for Wine's where Windows apps need more than it has.
 namespace mira::launchers::shims {
 
-// A shim replacing Wine's `name`.dll; it forwards to Wine's own copy, kept as `wine_copy`.dll when
-// not empty.
+// A shim replacing Wine's `name`.dll (or `name` when it has an extension, like tar.exe); it
+// forwards to Wine's own copy, kept as `wine_copy`.dll when not empty.
 struct Shim {
   std::string_view name;
   std::string_view wine_copy;
@@ -32,16 +32,21 @@ Result<void> Install(const config::Config& config, const runner::RunnerRegistry&
                      const model::Game& host, const std::filesystem::path& downloads,
                      std::span<const Shim> list, std::string* version = nullptr);
 
-// Copies the System.Management.Automation shim into the prefix's GAC, where Wine's .NET finds it
-// for any program. It runs PS2EXE-wrapped scripts with PowerShell 7 (the powershell_core winetricks
-// verb).
-Result<void> InstallPowerShellHost(const config::Config& config, const model::Game& host,
+// Puts the System.Management.Automation shim, which runs PS2EXE-wrapped scripts with PowerShell 7
+// (the powershell_core winetricks verb), where wine-mono finds it for every program in the prefix:
+// MONO_PATH.
+Result<void> InstallPowerShellHost(const config::Config& config,
+                                   const runner::RunnerRegistry& runners, const model::Game& host,
                                    const std::filesystem::path& downloads);
 
 // Sets each of `list` to load native first, in the prefix's registry (which Wine's services read
 // too).
 Result<void> Override(const runner::RunnerRegistry& runners, const model::Game& host,
                       std::span<const Shim> list);
+
+// Makes the resprotocol shim (copied by Install) the res: URL handler. Without it Wine finds no
+// zone for res:///name/... URLs and WPF fails on them (AutoCAD's ribbon images).
+Result<void> RegisterResProtocol(const runner::RunnerRegistry& runners, const model::Game& host);
 
 // The file's first line.
 std::string ReadLine(const std::filesystem::path& file);

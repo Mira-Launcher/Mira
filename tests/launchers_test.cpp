@@ -162,6 +162,19 @@ TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark s
       "\"AppsUseLightTheme\"=dword:00000000\n\n[Software\\\\Wine] 1\n";
   CHECK(runner::PrefixPrefersDark(reg) == std::optional(true));
   CHECK_FALSE(runner::PrefixPrefersDark("[Software\\\\Wine] 1\n").has_value());
+
+  const std::string light = runner::WithPrefixTheme(reg, false);
+  CHECK(runner::PrefixPrefersDark(light) == std::optional(false));
+  CHECK(light.contains("\"SystemUsesLightTheme\"=dword:00000001"));
+  CHECK(light.ends_with("[Software\\\\Wine] 1\n"));
+  CHECK(runner::PrefixPrefersDark(runner::WithPrefixTheme("[Software\\\\Wine] 1\n", true)) ==
+        std::optional(true));
+  // An empty section right before another keeps the next one's values.
+  const std::string next =
+      "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize] 1\n"
+      "[Other] 1\n\"AppsUseLightTheme\"=dword:00000001\n";
+  CHECK(runner::WithPrefixTheme(next, true)
+            .ends_with("[Other] 1\n\"AppsUseLightTheme\"=dword:00000001\n"));
 }
 
 TEST_CASE("launchers: Office's install percent comes from Click-to-Run's log, UTF-16 or not") {

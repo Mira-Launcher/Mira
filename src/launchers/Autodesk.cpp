@@ -2,6 +2,7 @@
 
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 #include "core/Strings.h"
