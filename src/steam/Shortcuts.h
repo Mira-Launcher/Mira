@@ -12,6 +12,8 @@ struct ShortcutChange {
   // Steam account folders under userdata/ whose shortcuts.vdf gained or changed the entry.
   std::vector<std::string> added;
   std::vector<std::string> updated;
+  // Accounts whose shortcuts.vdf couldn't be read or written; the others still got their change.
+  std::vector<std::string> failed;
 };
 
 // Makes sure every Steam account's shortcuts.vdf has a non-Steam shortcut

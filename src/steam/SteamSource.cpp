@@ -33,7 +33,7 @@ Result<void> SteamSource::Install(config::Config& config, store::GameStore&, api
   Command command;
   command.argv = SteamCommand(config);
   command.argv.push_back(std::format("steam://install/{}", ref));
-  if (auto spawned = runner::SpawnDetached(command); !spawned) return std::unexpected(spawned.error());
+  if (auto spawned = runner::SpawnReaped(command); !spawned) return std::unexpected(spawned.error());
   return {};
 }
 
