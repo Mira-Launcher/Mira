@@ -7,9 +7,10 @@ namespace mira::steam {
 
 Node* Node::Child(std::string_view key) {
   for (Node& child : children) {
-    if (child.name.size() == key.size() &&
-        std::equal(key.begin(), key.end(), child.name.begin(),
-                   [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); })) {
+    if (child.name.size() == key.size() && std::equal(key.begin(), key.end(), child.name.begin(),
+                                                      [](unsigned char a, unsigned char b) {
+                                                        return std::tolower(a) == std::tolower(b);
+                                                      })) {
       return &child;
     }
   }
