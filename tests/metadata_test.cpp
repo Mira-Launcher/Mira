@@ -600,3 +600,49 @@ TEST_CASE("A store title that isn't installed has its art chosen like a game's")
   REQUIRE(info["art_candidates"]["cover"].size() == 1);
   CHECK(info["art_candidates"]["cover"][0].value("id", 0) == -1);
 }
+
+TEST_CASE("A store's titles and its installed games link to their store pages") {
+  test::LiveServer server(TempDir("metadata-store-page"));
+  REQUIRE(server.games()
+              .Metadata()
+              .WriteCatalog("gog", {{.ref = "7",
+                                     .title = "Hollow Knight",
+                                     .url = "https://www.gog.com/game/hollow_knight"},
+                                    {.ref = "8", .title = "No Page"}})
+              .has_value());
+  model::Game gog;
+  gog.id = "gog-7";
+  gog.name = "Hollow Knight";
+  gog.source = "gog";
+  gog.source_ref = "7";
+  REQUIRE(server.games().Upsert(gog).has_value());
+  model::Game steam;
+  steam.id = "steam-620";
+  steam.name = "Portal 2";
+  steam.source = "steam";
+  steam.runner_ref = "steam:620";
+  REQUIRE(server.games().Upsert(steam).has_value());
+  model::Game own;
+  own.id = "own";
+  own.name = "Own";
+  REQUIRE(server.games().Upsert(own).has_value());
+  httplib::Client client = server.Client();
+
+  const auto listed = client.Get("/v1/library?source=gog");
+  REQUIRE(listed != nullptr);
+  REQUIRE(listed->status == 200);
+  const nlohmann::json titles = nlohmann::json::parse(listed->body);
+  REQUIRE(titles.size() == 2);
+  CHECK(titles[0].value("store_url", std::string()) == "https://www.gog.com/game/hollow_knight");
+  CHECK_FALSE(titles[1].contains("store_url"));
+
+  const auto page = [&](const std::string& id) {
+    const auto got = client.Get("/v1/games/" + id);
+    REQUIRE(got != nullptr);
+    REQUIRE(got->status == 200);
+    return nlohmann::json::parse(got->body).value("store_url", std::string());
+  };
+  CHECK(page("gog-7") == "https://www.gog.com/game/hollow_knight");
+  CHECK(page("steam-620") == "https://store.steampowered.com/app/620");
+  CHECK(page("own").empty());
+}

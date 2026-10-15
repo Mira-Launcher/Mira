@@ -502,6 +502,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                      {"play_seconds", entry.play_seconds},
                      {"owned", entry.owned},
                      {"hidden", hidden}});
+      if (!entry.url.empty()) out.back()["store_url"] = entry.url;
       if (std::string tier = s.games.Metadata().ProtonDbTier(key); !tier.empty()) {
         out.back()["protondb_tier"] = std::move(tier);
       }

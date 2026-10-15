@@ -14,6 +14,22 @@ constexpr std::int64_t kRecheckSeconds = 12 * 60 * 60;
 
 }  // namespace
 
+std::string SteamStorePage(const std::string& appid) {
+  return "https://store.steampowered.com/app/" + appid;
+}
+
+std::string StorePage(store::GameStore& games, const model::Game& game) {
+  if (game.source == "steam") {
+    // A Steam game's appid is in its runner, "steam:<appid>".
+    constexpr std::string_view kPrefix = "steam:";
+    if (!game.runner_ref.starts_with(kPrefix) || game.runner_ref.size() == kPrefix.size())
+      return {};
+    return SteamStorePage(game.runner_ref.substr(kPrefix.size()));
+  }
+  if (game.source.empty() || game.source_ref.empty()) return {};
+  return games.Metadata().CatalogUrl(game.source, game.source_ref);
+}
+
 void MarkTracked(const store::GameStore& games, CatalogEntry& entry) {
   const std::string id = entry.source + "-" + entry.ref;
   if (games.Contains(id)) {
@@ -38,7 +54,7 @@ std::optional<bool> CatalogCache::Check(const config::Config& config, store::Gam
   std::vector<store::MetadataStore::CatalogRow> rows;
   rows.reserve(listed->size());
   for (const CatalogEntry& entry : *listed)
-    rows.push_back({entry.ref, entry.title, entry.play_seconds, entry.owned});
+    rows.push_back({entry.ref, entry.title, entry.play_seconds, entry.owned, entry.url});
   // Held through the write so a sign-out can't land between the check and it.
   std::lock_guard lock(mutex_);
   if (generations_[source.Name()] != generation) return std::nullopt;
@@ -97,6 +113,7 @@ Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& confi
       entry.title = row.title;
       entry.play_seconds = row.play_seconds;
       entry.owned = row.owned;
+      entry.url = row.url;
       MarkTracked(games, entry);
       entries.push_back(std::move(entry));
     }

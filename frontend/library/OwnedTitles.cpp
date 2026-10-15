@@ -52,6 +52,9 @@ std::vector<OwnedMatch> GroupOwned(const std::vector<StoreTitle>& titles, const 
     OwnedMatch& match = matches[found->second];
     match.copies.emplace_back(QString::fromStdString(title.source),
                               QString::fromStdString(title.ref));
+    if (!title.store_url.empty())
+      match.store_urls.emplace_back(QString::fromStdString(title.source),
+                                    QString::fromStdString(title.store_url));
     // The same game's ratings, from whichever copy has them.
     if (match.protondb_tier.empty()) match.protondb_tier = title.protondb_tier;
     if (match.review_summary.empty()) match.review_summary = title.review_summary;

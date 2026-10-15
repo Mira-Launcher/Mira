@@ -1,6 +1,7 @@
 #include "LibraryPage.h"
 
 #include <QCursor>
+#include <QDesktopServices>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
@@ -588,6 +589,14 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
     const auto& [source, ref] = match.copies.front();
     emit TitleCoverRequested(source, ref, match.title);
   });
+  for (const auto& [source, page] : match.store_urls) {
+    const SourceInfo* info = FindSourceInfo(source);
+    const QString label = match.store_urls.size() == 1
+                              ? QString("Open store page")
+                              : "Open store page on " + (info != nullptr ? info->name : source);
+    connect(menu.addAction(label), &QAction::triggered, this,
+            [page] { QDesktopServices::openUrl(QUrl(page)); });
+  }
   const bool hide = !library_->ShowingHidden();
   connect(menu.addAction(hide ? "Hide" : "Unhide"), &QAction::triggered, this, [this, match, hide] {
     for (const auto& [source, ref] : match.copies) {

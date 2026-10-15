@@ -227,6 +227,7 @@ class SourcePage : public QWidget {
   std::vector<std::pair<QString, QString>> owned_;
   QSet<QString> not_owned_;              // refs listed from a collection but not bought
   QHash<QString, QString> tiers_;        // ref -> ProtonDB tier
+  QHash<QString, QString> store_urls_;   // ref -> its store page
   QHash<QString, QStringList> tags_;     // ref -> Steam tags, for the filter
   QHash<QString, QString> reviews_;      // ref -> Steam's review label
   QHash<QString, int> review_percents_;  // ref -> share of positive Steam reviews

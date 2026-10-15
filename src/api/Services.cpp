@@ -348,6 +348,8 @@ void Services::AddRecordFields(json& record, const model::Game& game,
   // So a client can resync after a reconnect.
   record["running"] = supervisor.IsRunning(game.id);
   record["art"] = games.Metadata().ArtVersions(game.id);
+  if (std::string page = library::StorePage(games, game); !page.empty())
+    record["store_url"] = std::move(page);
   AddNeedsCheck(record, settings.threshold);
   AddSorting(record, settings.rules, game);
 }

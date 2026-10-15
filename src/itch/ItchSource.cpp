@@ -39,14 +39,18 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
   if (!profile_id) return std::unexpected(profile_id.error());
 
   std::unordered_set<std::int64_t> seen;
-  const auto add_entry = [&](std::int64_t game_id, const std::string& title, bool owned) {
+  // `game`: butlerd's Game, which may be empty.
+  const auto add_entry = [&](std::int64_t game_id, const json& game, bool owned) {
     if (game_id == 0 || seen.contains(game_id)) return;
     seen.insert(game_id);
     library::CatalogEntry entry;
     entry.source = "itch";
     entry.ref = std::to_string(game_id);
+    const std::string title = game.value("title", std::string());
     entry.title = title.empty() ? entry.ref : title;
     entry.owned = owned;
+    if (std::string url = game.value("url", std::string()); url.starts_with("https://"))
+      entry.url = std::move(url);
     library::MarkTracked(games, entry);
     entries.push_back(std::move(entry));
   };
@@ -59,8 +63,7 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
     // DownloadKey.game is optional per butlerd's own spec -- gameId is the
     // one field that's always there.
     const json& game = key.value("game", json::object());
-    add_entry(key.value("gameId", game.value("id", std::int64_t{0})),
-              game.value("title", std::string()), true);
+    add_entry(key.value("gameId", game.value("id", std::int64_t{0})), game, true);
   }
 
   // Bundle ownership is a separate model entirely (confirmed against
@@ -80,8 +83,7 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
     if (!bundle_games) continue;  // one broken bundle shouldn't hide the rest
     for (const json& bundle_game : *bundle_games) {
       const json& game = bundle_game.value("game", json::object());
-      add_entry(bundle_game.value("gameId", game.value("id", std::int64_t{0})),
-                game.value("title", std::string()), true);
+      add_entry(bundle_game.value("gameId", game.value("id", std::int64_t{0})), game, true);
     }
   }
 
@@ -96,8 +98,8 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
       if (!collection_games) continue;
       for (const json& collection_game : *collection_games) {
         const json& game = collection_game.value("game", json::object());
-        add_entry(collection_game.value("gameId", game.value("id", std::int64_t{0})),
-                  game.value("title", std::string()), game.value("minPrice", std::int64_t{0}) == 0);
+        add_entry(collection_game.value("gameId", game.value("id", std::int64_t{0})), game,
+                  game.value("minPrice", std::int64_t{0}) == 0);
       }
     }
   }

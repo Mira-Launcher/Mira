@@ -74,6 +74,7 @@ struct GameSummary {
   // ... ("launcher" for a store launcher's own install).
   std::string source;
   std::string source_ref;  // the launcher's id, for a launcher's own install
+  std::string store_url;   // its page on the store it's from; empty when there's none
   bool running = false;
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
@@ -1227,6 +1228,7 @@ struct StoreTitle {
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
   std::string review_summary;  // Steam's label ("Very Positive"), empty when none is cached
   int review_percent = -1;     // share of positive Steam reviews, -1 when none is cached
+  std::string store_url;       // its page on the store; empty when the store gives none
 };
 
 // GET /v1/sources/{id}/removal.

@@ -75,7 +75,8 @@ StoreLibraryResult GetStoreLibrarySync(const std::string& source, bool fresh) {
                .protondb_tier = entry.value("protondb_tier", std::string()),
                .steam_tags = std::move(steam_tags),
                .review_summary = reviews.value("score_description", std::string()),
-               .review_percent = reviews.value("percent_positive", -1)});
+               .review_percent = reviews.value("percent_positive", -1),
+               .store_url = entry.value("store_url", std::string())});
         }
       });
 }

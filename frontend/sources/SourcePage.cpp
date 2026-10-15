@@ -1,6 +1,7 @@
 #include "SourcePage.h"
 
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFrame>
@@ -1181,6 +1182,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   owned_.clear();
   not_owned_.clear();
   tiers_.clear();
+  store_urls_.clear();
   tags_.clear();
   reviews_.clear();
   review_percents_.clear();
@@ -1197,6 +1199,10 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
     if (!title.installed && title.hidden == library_->ShowingHidden()) {
       owned_.emplace_back(QString::fromStdString(title.ref), QString::fromStdString(title.title));
       if (!title.owned) not_owned_.insert(QString::fromStdString(title.ref));
+      if (!title.store_url.empty()) {
+        store_urls_.insert(QString::fromStdString(title.ref),
+                           QString::fromStdString(title.store_url));
+      }
       if (!title.protondb_tier.empty()) {
         tiers_.insert(QString::fromStdString(title.ref),
                       QString::fromStdString(title.protondb_tier));
@@ -1461,6 +1467,13 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   if (id_ != "humble") {
     menu.addSeparator();
     if (selected.size() == 1) cover_action = menu.addAction("Change cover…");
+    if (const QString page = selected.size() == 1
+                                 ? store_urls_.value(QString::fromStdString(selected.front()))
+                                 : QString();
+        !page.isEmpty()) {
+      connect(menu.addAction("Open store page"), &QAction::triggered, this,
+              [page] { QDesktopServices::openUrl(QUrl(page)); });
+    }
     hide_action = menu.addAction(counted(hide ? "Hide" : "Unhide", selected.size()));
   }
   QAction* chosen = menu.exec(owned_grid_->viewport()->mapToGlobal(pos));

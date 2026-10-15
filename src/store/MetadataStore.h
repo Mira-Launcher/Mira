@@ -44,6 +44,7 @@ class MetadataStore {
     std::string title;
     std::int64_t play_seconds = 0;
     bool owned = true;
+    std::string url{};  // its store page; empty when the store gives none
     bool operator==(const CatalogRow&) const = default;
   };
   // Null when `source` was never listed (or was signed out of) since; an empty list is a store
@@ -54,6 +55,8 @@ class MetadataStore {
   // Replaces the stored list; true when it differs from the one before.
   Result<bool> WriteCatalog(const std::string& source, const std::vector<CatalogRow>& rows);
   void DropCatalog(const std::string& source);
+  // One stored title's store page; empty when unlisted or the store gives none.
+  std::string CatalogUrl(const std::string& source, const std::string& ref) const;
 
   // Replaces the id's info and its art rows together.
   Result<void> Write(const std::string& id, const nlohmann::json& info);

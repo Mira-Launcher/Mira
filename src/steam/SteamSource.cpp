@@ -23,6 +23,7 @@ Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(
     entry.ref = game.appid;
     entry.title = game.name.empty() ? game.appid : game.name;
     entry.play_seconds = game.play_seconds;
+    entry.url = library::SteamStorePage(game.appid);
     library::MarkTracked(games, entry);
     entries.push_back(std::move(entry));
   }

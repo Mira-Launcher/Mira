@@ -37,7 +37,14 @@ struct CatalogEntry {
   std::string game_id;            // the tracked game's id, if installed
   std::int64_t play_seconds = 0;  // as the source reports it; 0 if it doesn't
   bool owned = true;  // false: listed (e.g. from an itch collection) but not installable
+  std::string url;    // its page on the store; empty when the store gives none
 };
+
+// Steam's store page for an appid.
+std::string SteamStorePage(const std::string& appid);
+// A game's page on the store it's from: Steam's from its appid, any other from its stored
+// listing. Empty when there's none.
+std::string StorePage(store::GameStore& games, const model::Game& game);
 
 // GET /v1/library's listing, from each source's list stored in cache.db with `installed` marked
 // now. A source with no stored list is asked now and its answer stored; every other one is
