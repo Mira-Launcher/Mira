@@ -1,5 +1,7 @@
 #include "SignInGuide.h"
 
+#include "../sources/Sources.h"
+
 namespace mira_gui {
 namespace {
 
@@ -44,6 +46,17 @@ SignInGuide Launcher(const QString& name, const QString& games) {
   guide.steps = {"Install " + name + ". It runs in the background.",
                  "Open " + name + " and sign in there.",
                  "Install games in " + name + ". Mira adds them to your library."};
+  guide.done = "Installed";
+  return guide;
+}
+
+// A Windows app in its own prefix. `install` is the first step: how its installer is had; `then`
+// the next.
+SignInGuide App(const QString& name, const QString& install, const QString& then) {
+  SignInGuide guide;
+  guide.title = name;
+  guide.line = name + ", in its own Wine prefix. You sign in inside it, like on Windows.";
+  guide.steps = {install, then};
   guide.done = "Installed";
   return guide;
 }
@@ -158,6 +171,23 @@ SignInGuide GuideFor(const std::string& id) {
         "browser.",
         "Install apps in Creative Cloud, then press Import apps. Mira adds them under Apps."};
     guide.note = "The first install also downloads AdobeWine, Wine with fixes for Creative Cloud.";
+  } else if (id == "fusion") {
+    guide = App("Autodesk Fusion", "Install Fusion. Mira downloads its installer from Autodesk.",
+                "Open Autodesk Fusion and sign in to your Autodesk account there.");
+  } else if (id == "autocad" || id == "inventor" || id == "3dsmax" || id == "revit") {
+    const QString name = FindSourceInfo(QString::fromStdString(id))->name;
+    guide = App(name,
+                "In your Autodesk account, make a custom install of " + name +
+                    " and download its installer. Then install it here and choose that file.",
+                "Open " + name + " and sign in to your Autodesk account there.");
+    guide.note =
+        "Autodesk only gives its installers to signed-in accounts, so Mira can't download them for "
+        "you.";
+  } else if (id == "quickbooks") {
+    guide = App("QuickBooks Desktop",
+                "Download the installer from your Intuit account, then install it here and "
+                "choose that file.",
+                "Click through its installer and type your licence and product numbers.");
   } else if (id == "office") {
     guide.title = "Microsoft 365";
     guide.line =

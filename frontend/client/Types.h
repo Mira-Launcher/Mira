@@ -1312,6 +1312,8 @@ struct LauncherInfo {
   std::string runner_ref;
   ApiError error;
   std::vector<LauncherApp> apps;  // Microsoft 365's, listed before it's installed too
+  bool app = false;               // an app of its own (Fusion, AutoCAD)
+  std::string installer;  // non-empty: it installs from the user's installer, which this describes
 };
 
 // GET /v1/emulators: one emulator source's state.

@@ -21,6 +21,7 @@
 #include "library/SourceRemoval.h"
 #include "metadata/MetadataFetcher.h"
 #include "proc/ProcessIndex.h"
+#include "runner/ProtonRunner.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
 
@@ -606,6 +607,8 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
                                       bool files, bool prefix, bool metadata) {
   // A desktop-entry import only links to another app's own files.
   if (game.source == "desktop-entry") files = prefix = false;
+  // A launcher's own files are in its prefix.
+  if (game.source == "launcher" && game.install_path.empty()) files = false;
   std::vector<model::Game> others(staying.begin(), staying.end());
   std::erase_if(others, [&](const model::Game& other) { return other.id == game.id; });
   // Refused before anything is deleted, so a refusal leaves the game whole.
@@ -656,77 +659,116 @@ void Services::InstallRunner(const httplib::Request& req, httplib::Response& res
                              const std::string& kind, const std::string& source,
                              const runner::ReleaseAsset& asset, const std::string& replacing) {
   const std::string name = runner::ReleaseName(kind, asset);
+  StartJob(
+      req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
+      [this, kind, source, asset, replacing](JobRegistry::Progress&) {
+        return DownloadRunner(kind, source, asset, replacing);
+      },
+      &operations);
+}
+
+Result<json> Services::DownloadRunner(const std::string& kind, const std::string& source,
+                                      const runner::ReleaseAsset& asset,
+                                      const std::string& replacing) {
+  const std::string name = runner::ReleaseName(kind, asset);
   const json base = {{"kind", kind},
                      {"tag", asset.tag},
                      {"name", name},
                      {"label", runner::BuildLabel(kind, name)},
                      {"source", source}};
   events.Publish("runners.download.started", base);
-  StartJob(
-      req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
-      [this, kind, asset, replacing, base, name](JobRegistry::Progress&) -> Result<json> {
-        // Its own live log, apart from any other download running at the same time.
-        const std::string channel = "runner:" + kind + ":" + name;
-        loghub::Begin(channel);
-        loghub::Append(channel, std::format("Downloading {} {}\n", kind, asset.tag));
-        int reported = -1;
-        const auto on_progress = [this, &base, &channel, &reported](double fraction) {
-          json event = base;
-          event["progress"] = fraction;
-          events.Publish("runners.download.progress", std::move(event));
-          const int tenth = static_cast<int>(fraction * 10);
-          if (tenth > reported) {
-            reported = tenth;
-            loghub::Append(channel, std::format("{}%\n", tenth * 10));
-          }
-        };
-        if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress);
-            !installed) {
-          loghub::Append(channel, "Failed: " + installed.error().message + "\n");
-          loghub::End(channel);
-          log::Error("runner download failed ({} {}): {}", kind, asset.tag,
-                     installed.error().message);
-          events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
-          return std::unexpected(installed.error());
+
+  // Its own live log, apart from any other download running at the same time.
+  const std::string channel = "runner:" + kind + ":" + name;
+  loghub::Begin(channel);
+  loghub::Append(channel, std::format("Downloading {} {}\n", kind, asset.tag));
+  int reported = -1;
+  const auto on_progress = [this, &base, &channel, &reported](double fraction) {
+    json event = base;
+    event["progress"] = fraction;
+    events.Publish("runners.download.progress", std::move(event));
+    const int tenth = static_cast<int>(fraction * 10);
+    if (tenth > reported) {
+      reported = tenth;
+      loghub::Append(channel, std::format("{}%\n", tenth * 10));
+    }
+  };
+  if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress); !installed) {
+    loghub::Append(channel, "Failed: " + installed.error().message + "\n");
+    loghub::End(channel);
+    log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
+    events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
+    return std::unexpected(installed.error());
+  }
+  log::Info("installed {} {}", kind, asset.tag);
+  loghub::Append(channel, "Installed.\n");
+  loghub::End(channel);
+  library::RetryBrokenProvisioning(config, games, events);
+  json finished = base;
+  if (!replacing.empty()) {
+    // Move what used the old build onto the new one.
+    const runner::RunnerRegistry registry(config);
+    const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
+    const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
+      return runner::IsInstalledAs(kind, build.release, runner::BuildDir(build).filename().string(),
+                                   asset);
+    });
+    if (fresh != builds.end()) {
+      const std::string to = fresh->Reference();
+      json moved = json::array();
+      const RecordSettings settings = CurrentRecordSettings();
+      for (const model::Game& game : games.All()) {
+        if (game.runner_ref != replacing) continue;
+        if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
+          moved.push_back(Record(*updated, &settings));
         }
-        log::Info("installed {} {}", kind, asset.tag);
-        loghub::Append(channel, "Installed.\n");
-        loghub::End(channel);
-        library::RetryBrokenProvisioning(config, games, events);
-        json finished = base;
-        if (!replacing.empty()) {
-          // Move what used the old build onto the new one.
-          const runner::RunnerRegistry registry(config);
-          const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
-          const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-            return runner::IsInstalledAs(kind, build.release,
-                                         runner::BuildDir(build).filename().string(), asset);
-          });
-          if (fresh != builds.end()) {
-            const std::string to = fresh->Reference();
-            json moved = json::array();
-            const RecordSettings settings = CurrentRecordSettings();
-            for (const model::Game& game : games.All()) {
-              if (game.runner_ref != replacing) continue;
-              if (auto updated =
-                      games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-                moved.push_back(Record(*updated, &settings));
-              }
-            }
-            if (config.GetString("default_runner.windows") == replacing) {
-              (void)config.Set("default_runner.windows", to);
-            }
-            if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
-            events.Publish(
-                "runners.updated",
-                {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
-            finished["replaced"] = replacing;
-          }
-        }
-        events.Publish("runners.download.finished", finished);
-        return finished;
-      },
-      &operations);
+      }
+      if (config.GetString("default_runner.windows") == replacing) {
+        (void)config.Set("default_runner.windows", to);
+      }
+      if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
+      events.Publish("runners.updated",
+                     {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
+      finished["replaced"] = replacing;
+    }
+  }
+  events.Publish("runners.download.finished", finished);
+  return finished;
+}
+
+void Services::EnsureWindowsRunner() {
+  if (!config.GetBool("runners.download_when_missing")) return;
+  const auto has_runner = [this] {
+    const runner::RunnerRegistry registry(config);
+    return !runner::BuildsOfKind(registry, "proton").empty() ||
+           !runner::BuildsOfKind(registry, "wine").empty();
+  };
+  if (has_runner()) return;
+  // Proton builds only count with umu-run to start them.
+  if (runner::UmuRunPath().empty()) {
+    const auto umu = runner::ListReleases(config, "umu");
+    if (!umu || umu->empty()) {
+      log::Warn("no Wine or Proton runner is installed, and umu-launcher couldn't be found");
+      return;
+    }
+    log::Info("no Wine or Proton runner is installed: downloading umu-launcher {}",
+              umu->front().tag);
+    if (auto path = runner::InstallToolBinary(config, "umu", umu->front(), "umu-run"); !path) {
+      log::Error("umu-launcher download failed: {}", path.error().message);
+      return;
+    }
+    if (has_runner()) return;
+  }
+  const auto family = runner::FamilyFor(config, "proton", "");
+  const auto releases =
+      family ? runner::ListFamilyReleases(*family) : Result<std::vector<runner::ReleaseAsset>>();
+  if (!family || !releases || releases->empty()) {
+    log::Warn("no Wine or Proton runner is installed, and the newest {} couldn't be found",
+              family ? family->label : "Proton");
+    return;
+  }
+  log::Info("no Wine or Proton runner is installed: downloading {}", releases->front().tag);
+  (void)DownloadRunner("proton", family->id, releases->front(), "");
 }
 
 }  // namespace mira::api

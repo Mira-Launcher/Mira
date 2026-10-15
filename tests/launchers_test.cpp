@@ -7,6 +7,8 @@
 #include <fstream>
 
 #include "config/Config.h"
+#include "launchers/Autodesk.h"
+#include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
@@ -160,6 +162,19 @@ TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark s
       "\"AppsUseLightTheme\"=dword:00000000\n\n[Software\\\\Wine] 1\n";
   CHECK(runner::PrefixPrefersDark(reg) == std::optional(true));
   CHECK_FALSE(runner::PrefixPrefersDark("[Software\\\\Wine] 1\n").has_value());
+
+  const std::string light = runner::WithPrefixTheme(reg, false);
+  CHECK(runner::PrefixPrefersDark(light) == std::optional(false));
+  CHECK(light.contains("\"SystemUsesLightTheme\"=dword:00000001"));
+  CHECK(light.ends_with("[Software\\\\Wine] 1\n"));
+  CHECK(runner::PrefixPrefersDark(runner::WithPrefixTheme("[Software\\\\Wine] 1\n", true)) ==
+        std::optional(true));
+  // An empty section right before another keeps the next one's values.
+  const std::string next =
+      "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize] 1\n"
+      "[Other] 1\n\"AppsUseLightTheme\"=dword:00000001\n";
+  CHECK(runner::WithPrefixTheme(next, true)
+            .ends_with("[Other] 1\n\"AppsUseLightTheme\"=dword:00000001\n"));
 }
 
 TEST_CASE("launchers: Office's install percent comes from Click-to-Run's log, UTF-16 or not") {
@@ -230,4 +245,40 @@ TEST_CASE(
         "System.NullReferenceException: something that is wrong\n"
         "done\n");
   CHECK(launchers::WithoutNoise("") == "");
+}
+
+TEST_CASE(
+    "launchers: an Autodesk install has failed once its log rolls back, and an earlier install's "
+    "lines don't count") {
+  const fs::path prefix = test::TempDir("autodesk-failed");
+  const fs::path log = prefix / "drive_c/users/steamuser/AppData/Local/Autodesk/ODIS/Install.log";
+  fs::create_directories(log.parent_path());
+  std::ofstream(log)
+      << "T1 Received Request On IPC channel:  {\"command\":\"ROLLBACK_PACKAGES\"}\n";
+  launchers::autodesk::FailureWatch watch(prefix);
+  CHECK_FALSE(watch.Failed());
+  std::ofstream(log, std::ios::app)
+      << "T2 [ InstallManager::HandleInstallFailure ]   Failed to install Package (upi2:  {C8} "
+         "name: Revit 2027 )  Error Code:  1603\n";
+  CHECK_FALSE(watch.Failed());
+  std::ofstream(log, std::ios::app)
+      << "T3 Received Request On IPC channel:  {\"command\":\"ROLLBACK_PACKAGES\"}\n";
+  const auto failed = watch.Failed();
+  REQUIRE(failed);
+  CHECK(failed->contains("failed on Revit 2027 and undid"));
+}
+
+TEST_CASE(
+    "launchers: a prefix's registered command opens a sign-in link, with the link in place of %1") {
+  const std::string reg =
+      "[Software\\\\Classes\\\\adskidmgr] 1792004047\n\"URL Protocol\"=\"\"\n\n"
+      "[Software\\\\Classes\\\\adskidmgr\\\\shell\\\\open\\\\command] 1792004047\n"
+      "@=\"\\\"C:\\\\Program Files\\\\Autodesk\\\\Idm.exe\\\" \\\"%1\\\"\"\n\n"
+      "[Software\\\\Classes\\\\other\\\\shell\\\\open\\\\command] 1\n@=\"x.exe\"\n";
+  CHECK(launchers::UrlCommand(reg, "adskidmgr", "adskidmgr:/login?code=a&state=b") ==
+        std::vector<std::string>{"C:\\Program Files\\Autodesk\\Idm.exe",
+                                 "adskidmgr:/login?code=a&state=b"});
+  CHECK(launchers::UrlCommand(reg, "other", "other:x") ==
+        std::vector<std::string>{"x.exe", "other:x"});
+  CHECK(launchers::UrlCommand(reg, "adsk.idmgr", "adsk.idmgr:/login").empty());
 }

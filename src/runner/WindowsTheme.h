@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "core/Result.h"
@@ -21,6 +22,9 @@ std::optional<bool> ParseColorScheme(std::string_view output);
 
 // Whether a prefix's user.reg sets apps to dark; nullopt when unset.
 std::optional<bool> PrefixPrefersDark(std::string_view user_reg);
+
+// `user_reg` with AppsUseLightTheme and SystemUsesLightTheme set for dark or light.
+std::string WithPrefixTheme(std::string_view user_reg, bool dark);
 
 // Sets the prefix's AppsUseLightTheme and SystemUsesLightTheme to the
 // desktop's preference when they differ. A no-op when the desktop has none.

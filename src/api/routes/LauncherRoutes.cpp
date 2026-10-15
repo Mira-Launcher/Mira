@@ -45,7 +45,9 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
                     {"packages", launcher.tricks.empty() ? "" : "winetricks"},
                     {"prefix", game ? game->data_dir : ""},
                     {"runner_ref", game ? game->runner_ref : ""},
-                    {"error", game ? game->last_error : ""}};
+                    {"error", game ? game->last_error : ""},
+                    {"app", launcher.app},
+                    {"installer", launcher.installer}};
       // What it can add, so they can be picked before it's installed.
       if (launcher.id == "office") {
         entry["apps"] = json::array();
@@ -61,6 +63,20 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
   http.Post(R"(/v1/launchers/([^/]+)/install)", [&s](const Request& req, Response& res) {
     const launchers::Launcher* launcher = launchers::Find(req.matches[1].str());
     if (!launcher) return SendError(res, 404, "launcher_not_found", "no such launcher");
+    // An app that installs from the user's own installer takes its path.
+    std::string installer;
+    if (!launcher->installer.empty()) {
+      const auto body = BodyObject(req, res, R"({"installer": "/path/to/installer.exe"})");
+      if (!body) return;
+      installer = body->value("installer", "");
+      if (installer.empty()) {
+        return SendError(res, 400,
+                         Err("installer_needed",
+                             std::format("{} installs from your own installer", launcher->name),
+                             launcher->installer)
+                             .error());
+      }
+    }
     if (!launchers::BeginInstall(*launcher)) {
       return SendError(res, 409, "install_running",
                        std::format("{} is already installing", launcher->name));
@@ -68,12 +84,14 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
     s.events.Publish("launcher.install.started", {{"id", launcher->id}});
     s.StartJob(
         req, res, "install", launcher->id, "Installing " + launcher->name,
-        [&s, launcher](JobRegistry::Progress&) -> Result<json> {
-          const auto done =
-              launchers::Install(s.config, s.games, *launcher, [&s, launcher](double fraction) {
+        [&s, launcher, installer](JobRegistry::Progress&) -> Result<json> {
+          const auto done = launchers::Install(
+              s.config, s.games, *launcher,
+              [&s, launcher](double fraction) {
                 s.events.Publish("launcher.install.progress",
                                  {{"id", launcher->id}, {"progress", fraction}});
-              });
+              },
+              installer);
           if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
             s.events.Publish("game.updated", s.Record(*stored));
           }

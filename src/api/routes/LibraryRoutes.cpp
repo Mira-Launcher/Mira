@@ -14,6 +14,7 @@
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "emulators/Emulators.h"
+#include "launchers/Launchers.h"
 #include "library/Catalog.h"
 #include "library/FolderTags.h"
 #include "library/Import.h"
@@ -37,9 +38,9 @@ using httplib::Request;
 
 // Known sources, in default order.
 const std::vector<std::string> kSourceIds = [] {
-  std::vector<std::string> ids = {"local",  "steam",  "epic",      "gog",     "itch",
-                                  "amazon", "humble", "battlenet", "ubisoft", "ea",
-                                  "office", "adobe",  "lutris"};
+  std::vector<std::string> ids = {"local", "steam", "epic", "gog", "itch", "amazon", "humble"};
+  for (const launchers::Launcher& launcher : launchers::All()) ids.push_back(launcher.id);
+  ids.push_back("lutris");
   for (const emulators::Emulator& emulator : emulators::All()) ids.push_back(emulator.id);
   for (const modmanagers::ModManager& manager : modmanagers::All()) ids.push_back(manager.id);
   return ids;

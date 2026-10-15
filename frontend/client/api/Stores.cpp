@@ -294,7 +294,9 @@ LaunchersResult GetLaunchersSync() {
                .prefix = entry.value("prefix", std::string()),
                .runner_ref = entry.value("runner_ref", std::string()),
                .error = entry.value("error", std::string()),
-               .apps = std::move(apps)});
+               .apps = std::move(apps),
+               .app = entry.value("app", false),
+               .installer = entry.value("installer", std::string())});
         }
       });
 }
@@ -305,8 +307,11 @@ StoreActionResult AddOfficeAppsSync(const std::vector<std::string>& refs) {
   return {reply.ok, reply.error};
 }
 
-StoreActionResult InstallLauncherSync(const std::string& id) {
-  const transport::Reply reply = transport::Post("/v1/launchers/" + PercentEncode(id) + "/install");
+StoreActionResult InstallLauncherSync(const std::string& id, const std::string& installer) {
+  const std::string path = "/v1/launchers/" + PercentEncode(id) + "/install";
+  const transport::Reply reply = installer.empty()
+                                     ? transport::Post(path)
+                                     : transport::PostJson(path, json{{"installer", installer}});
   return {reply.ok, reply.error};
 }
 
@@ -561,8 +566,10 @@ void GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> ca
 }
 
 void InstallLauncherAsync(QObject* context, const std::string& id,
-                          std::function<void(StoreActionResult)> callback) {
-  async::Run(context, [id] { return InstallLauncherSync(id); }, std::move(callback));
+                          std::function<void(StoreActionResult)> callback,
+                          const std::string& installer) {
+  async::Run(
+      context, [id, installer] { return InstallLauncherSync(id, installer); }, std::move(callback));
 }
 
 void AddOfficeAppsAsync(QObject* context, const std::vector<std::string>& refs,

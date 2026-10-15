@@ -15,6 +15,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Resolver.h"
+#include "core/Files.h"
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
@@ -499,6 +500,14 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                        std::format("\"{}\" is already running", game->id));
     }
 
+    if (const launchers::Launcher* launcher = launchers::ForGame(*game);
+        reservation && launcher && launcher->services_outlive_app && !game->data_dir.empty() &&
+        std::ranges::none_of(s.games.All(), [&](const model::Game& other) {
+          return other.data_dir == game->data_dir && s.supervisor.IsRunning(other.id);
+        })) {
+      launchers::EndPrefixSession(game->data_dir, true);
+    }
+
     const config::Resolver resolver(s.config, game->overrides);
     const std::string pre_script = resolver.GetString("launch.pre_script");
     if (game->platform == model::Platform::Windows &&
@@ -653,6 +662,61 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendError(res, 409, stopped.error());
     }
     SendJson(res, {{"status", "stopping"}});
+  });
+
+  // A link the desktop hands Mira, such as an Autodesk sign-in's adskidmgr:, opened in the prefix
+  // of an app whose launcher takes its scheme: a running one first, else the last played.
+  http.Post(R"(/v1/open-url)", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"url": "scheme:..."})");
+    if (!body) return;
+    const std::string url = body->contains("url") && (*body)["url"].is_string()
+                                ? (*body)["url"].get<std::string>()
+                                : "";
+    const size_t colon = url.find(':');
+    if (colon == std::string::npos || colon == 0)
+      return SendError(res, 400, "invalid_body", R"(expected {"url": "scheme:..."})");
+    const std::string scheme = strings::ToLower(url.substr(0, colon));
+
+    const auto rank = [&](const model::Game& game) {
+      return std::pair{s.supervisor.IsRunning(game.id), game.last_played_at.value_or(0)};
+    };
+    std::optional<model::Game> chosen;
+    for (const model::Game& game : s.games.All()) {
+      const launchers::Launcher* launcher = launchers::ForGame(game);
+      if (!launcher || !std::ranges::contains(launcher->url_schemes, scheme) ||
+          game.data_dir.empty() || game.status != model::GameStatus::Ready) {
+        continue;
+      }
+      // Not in a prefix being moved or deleted.
+      if (const std::string busy = s.supervisor.ReservedFor(game.id);
+          !busy.empty() && busy != "launched")
+        continue;
+      if (!chosen || rank(game) > rank(*chosen)) chosen = game;
+    }
+    if (!chosen)
+      return SendError(res, 404, "no_app_for_url",
+                       std::format("no installed app opens {}: links", scheme));
+
+    std::vector<std::string> argv;
+    const std::filesystem::path dir = chosen->data_dir;
+    for (const auto& reg : {dir / "user.reg", dir / "system.reg", dir / "pfx" / "user.reg",
+                            dir / "pfx" / "system.reg"}) {
+      if (argv = launchers::UrlCommand(files::ReadFile(reg).value_or(""), scheme, url);
+          !argv.empty())
+        break;
+    }
+    if (argv.empty()) {
+      return SendError(
+          res, 404, "no_url_handler",
+          std::format("{} has nothing registered for {}: links", chosen->name, scheme));
+    }
+    // It may run as long as the program it starts.
+    std::thread([&config = s.config, game = *chosen, argv] {
+      if (auto ran = runner::RunWine(runner::RunnerRegistry(config), game, argv); !ran) {
+        log::Warn("couldn't open a link in {}: {}", game.id, ran.error().message);
+      }
+    }).detach();
+    SendJson(res, {{"status", "opened"}, {"game_id", chosen->id}});
   });
 
   http.Post(R"(/v1/games/([^/]+)/run)", [&s](const Request& req, Response& res) {

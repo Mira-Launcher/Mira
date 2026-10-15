@@ -483,6 +483,20 @@ int CmdLaunch(int argc, char** argv) {
   return 0;
 }
 
+int CmdOpenUrl(int argc, char** argv) {
+  if (argc < 1) {
+    std::fprintf(stderr, "usage: mira open-url <url>\n");
+    return 2;
+  }
+  auto client = Connect();
+  auto res = client.Post("/v1/open-url", json{{"url", argv[0]}}.dump(), "application/json");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  return 0;
+}
+
 int CmdStop(int argc, char** argv) {
   if (argc < 1) {
     std::fprintf(stderr, "usage: mira stop <id>\n");
@@ -1880,6 +1894,7 @@ void PrintUsage() {
       "  launch <id>            launch a game (or hand it to Steam for a\n"
       "                         Steam game, depending on steam.launch_mode)\n"
       "  stop <id>              stop a running game\n"
+      "  open-url <url>         open a sign-in link in the app it belongs to\n"
       "  run <id> --exe PATH [--args ARGS]        run an arbitrary exe in this\n"
       "                         game's prefix, which is how you run a needs_install game's\n"
       "                         installer\n"
@@ -1937,6 +1952,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "runners") return CmdRunners(rest_argc, rest);
   if (command == "launch") return CmdLaunch(rest_argc, rest);
   if (command == "stop") return CmdStop(rest_argc, rest);
+  if (command == "open-url") return CmdOpenUrl(rest_argc, rest);
   if (command == "run") return CmdRun(rest_argc, rest);
   if (command == "install") return CmdInstall(rest_argc, rest);
   if (command == "finish-install") return CmdFinishInstall(rest_argc, rest);

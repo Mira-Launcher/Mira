@@ -119,9 +119,11 @@ void GetSteamInstalledAsync(QObject* context, std::function<void(SteamInstalledR
 
 void GetLaunchersAsync(QObject* context, std::function<void(LaunchersResult)> callback);
 
-// Detached; a StoreEvent with kind "setup" and the launcher's id follows.
+// Detached; a StoreEvent with kind "setup" and the launcher's id follows. `installer` is the user's
+// own installer, for an app that needs one.
 void InstallLauncherAsync(QObject* context, const std::string& id,
-                          std::function<void(StoreActionResult)> callback);
+                          std::function<void(StoreActionResult)> callback,
+                          const std::string& installer = {});
 
 // POST /v1/launchers/office/apps: adds these Microsoft 365 apps, now or once its running install
 // ends. Detached; a launcher.install.failed event says when adding them failed.

@@ -45,6 +45,11 @@ struct Setup {
   // Click-to-Run service and Wine server) is stopped, since a later launch of an app waits on that
   // session instead of starting.
   bool end_session = false;
+  // It waits on the user once done (Autodesk's "Run Installer" dialog): finished as soon as `done`
+  // says so, and its session is ended.
+  bool stops_when_done = false;
+  // Why it failed, once it has, for an installer that doesn't exit when it fails (Autodesk's).
+  std::function<std::optional<std::string>()> failed{};
 };
 
 struct Launcher {
@@ -62,6 +67,19 @@ struct Launcher {
   // Stopping it ends everything in its prefix: closed, Creative Cloud only goes to its tray, and
   // its services stay.
   bool stop_ends_session = false;
+  // A Windows app of the Apps source (Fusion, AutoCAD), which installs from an installer the user
+  // brings when `installer` names it: what to download and from where.
+  bool app = false;
+  std::string installer;
+  // Autodesk's product code in its Create Installer's file name (Create_Installer_ACD_2027_...):
+  // that installer builds an install image, which then installs the app.
+  std::string autodesk_code;
+  // Its services stay in the prefix after it closes, and Proton's next launch waits on them: a
+  // launch with nothing of Mira's running in the prefix ends them first.
+  bool services_outlive_app = false;
+  // Link schemes its apps sign in through (Autodesk's adskidmgr:): the desktop hands them to `mira
+  // open-url`, which opens them in its prefix.
+  std::vector<std::string> url_schemes;
 };
 
 const std::vector<Launcher>& All();
@@ -95,10 +113,12 @@ Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api:
 // False if this launcher is already installing.
 bool BeginInstall(const Launcher& launcher);
 std::string InstallState(const Launcher& launcher);  // idle, running, finished, failed
-// `on_progress` gets the install's progress, 0..1, when the installer reports it.
+// `on_progress` gets the install's progress, 0..1, when the installer reports it. `installer` is
+// the user's own installer, for an app that needs one.
 Result<model::Game> Install(config::Config& config, store::GameStore& games,
                             const Launcher& launcher,
-                            const std::function<void(double)>& on_progress = {});
+                            const std::function<void(double)>& on_progress = {},
+                            const std::string& installer = {});
 
 // Runs the launcher, asking it to start `game` unless it is the launcher's
 // own entry. `action` is launch or install.
@@ -113,8 +133,16 @@ std::string WindowsDir(const model::Game& game);
 // its own exe, since Microsoft 365's share one folder.
 std::string TrackedPath(const model::Game& game);
 
-// Stops everything running in `prefix`, in the background: asks, then insists.
-void EndPrefixSession(const std::string& prefix);
+// The command `reg` (a prefix's user.reg or system.reg) opens `scheme:` links with, split into
+// arguments with `url` in place of %1; empty if it registers none.
+std::vector<std::string> UrlCommand(std::string_view reg, std::string_view scheme,
+                                    std::string_view url);
+
+// Every launcher's url_schemes.
+std::vector<std::string> UrlSchemes();
+
+// Stops everything running in `prefix`: asks, then insists. In the background unless `wait`.
+void EndPrefixSession(const std::string& prefix, bool wait = false);
 
 // Host path of a Windows path inside `prefix`.
 std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_view windows_path);

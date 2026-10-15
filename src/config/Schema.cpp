@@ -667,6 +667,12 @@ Schema::Schema() {
   s.Group("Where to find runners");
   s.ResetTogether();
 
+  s.Add({.key = "runners.download_when_missing",
+         .label = "Download a runner when none is installed",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "When Mira starts with no Wine or Proton runner, download the newest GE-Proton."});
+
   s.Add({.key = "runner_scan_common_dirs",
          .label = "Scan common runner folders",
          .type = Type::Bool,
@@ -1008,6 +1014,16 @@ Schema::Schema() {
          .constraint = OptionalRunnerRef(),
          .is_runner_ref = true});
 
+  s.Add({.key = "launchers.app_runner",
+         .label = "Windows app runner",
+         .type = Type::String,
+         .default_value = "proton:GE-Proton11-7",
+         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks), downloaded "
+                "when it isn't "
+                "installed. Empty uses the launcher runner.",
+         .constraint = OptionalRunnerRef(),
+         .is_runner_ref = true});
+
   s.Add({.key = "launchers.detect_timeout_s",
          .label = "Launcher game start timeout (seconds)",
          .type = Type::Int,
@@ -1066,16 +1082,18 @@ Schema::Schema() {
                 "for Apps for enterprise.",
          .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
 
-  s.Add({.key = "launchers.office.shims_url",
-         .label = "Office shims download",
+  s.Add({.key = "launchers.shims_url",
+         .label = "Windows app shims download",
          .type = Type::String,
          .default_value =
-             "https://github.com/Mira-Launcher/mira-winapp-shims/releases/latest/download/"
+             "https://github.com/Mira-Launcher/Mira-winapp-shims/releases/latest/download/"
              "mira-winapp-shims.tar.gz",
-         .doc = "Where Mira downloads the mira-winapp-shims DLLs Office needs under Wine."});
+         .doc = "Where Mira downloads the mira-winapp-shims DLLs that Microsoft 365 and Autodesk's "
+                "apps need "
+                "under Wine."});
 
-  s.Add({.key = "launchers.office.shims_dir",
-         .label = "Office shims folder",
+  s.Add({.key = "launchers.shims_dir",
+         .label = "Windows app shims folder",
          .type = Type::String,
          .default_value = "",
          .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as "
