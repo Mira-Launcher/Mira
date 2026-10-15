@@ -377,6 +377,19 @@ void FetchGriddbCandidates(const config::Config& config, const std::string& api_
   const std::int64_t griddb_id = chosen_id != 0 ? chosen_id : FindGriddbId(auth_header, name);
   if (griddb_id == 0) return;
   info["steamgriddb_id"] = griddb_id;
+  // SteamGridDB's top pick from an earlier fetch of the same match stays: its order changes as art
+  // is added and voted on, and a refetch mustn't swap the art for that.
+  if (const json old = info.value("previous", json::object());
+      Value(old, "steamgriddb_id", std::int64_t{0}) == griddb_id) {
+    for (const char* key : {"artwork", "hero", "logo", "icon"}) {
+      if (info.contains(key) || !old.contains(key) || !old[key].is_object() ||
+          Value(old[key], "source", std::string()) != "steamgriddb")
+        continue;
+      std::error_code ec;
+      const std::string file = Value(old[key], "file", std::string());
+      if (!file.empty() && fs::exists(ArtworkDir(config, game_id) / file, ec)) info[key] = old[key];
+    }
+  }
 
   // Every candidate for every slot goes into info["art_candidates"][slot]
   // (see FetchGriddbSlot) so a caller can offer a choice instead of only
@@ -1157,7 +1170,13 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
   json info = {{"fetched_at", model::NowSeconds()},
                {"details_fetched", model::NowSeconds()},
                {"details_version", kDetailsVersion}};
-  CarryChosenSlots(cache.Read(game.id), info);
+  const json previous = cache.Read(game.id);
+  CarryChosenSlots(previous, info);
+  // For FetchGriddbCandidates only; never written.
+  info["previous"] = {{"steamgriddb_id", previous.value("steamgriddb_id", json())}};
+  for (const char* key : {"artwork", "hero", "logo", "icon"}) {
+    if (previous.contains(key)) info["previous"][key] = previous[key];
+  }
   const std::int64_t griddb_id =
       config::Resolver(config, game.overrides).GetInt("metadata.steamgriddb_id");
 
@@ -1211,6 +1230,7 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
     }
   }
 
+  info.erase("previous");
   // A pick made while this fetch ran stays.
   const std::lock_guard lock(MetadataFileMutex());
   CarryChosenSlots(cache.Read(game.id), info);

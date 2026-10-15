@@ -119,6 +119,33 @@ TEST_CASE("The tag list counts your tags and suggests the Steam tags you don't h
   CHECK(GetTags(client)["steam_missing"] == 0);
 }
 
+TEST_CASE("A new game gets the user's tags that Steam gives it, as the library spells them") {
+  LiveServer server(TempDir("tags-new-state"));
+  config::Config& config = server.MutableConfig();
+  REQUIRE(config.Set("tags.steam", true).has_value());
+  REQUIRE(config.Set("tags.folders", json::array({"Platformer"})).has_value());
+  const fs::path games = TempDir("tags-new-games");
+  AddGame(server.games(), "old", games / "Old", {"roguelike", "favorite"});
+  AddGame(server.games(), "new", games / "New", {"Mine"});
+  WriteMetadata(server.games().Metadata(), "new",
+                std::vector<std::string>{"Roguelike", "Indie", "Platformer", "Favorite"});
+
+  server.services().TagFromSteam("new");
+  const auto tagged = server.games().Find("new");
+  REQUIRE(tagged.has_value());
+  // Indie isn't one of the user's tags, and favorite has its own action.
+  CHECK(tagged->tags == std::vector<std::string>{"Mine", "roguelike", "Platformer"});
+  const auto updated = test::WaitForEvent(server.events(), "game.updated");
+  REQUIRE(updated.has_value());
+  CHECK(updated->payload.value("id", std::string()) == "new");
+
+  REQUIRE(config.Set("tags.steam_new_games", false).has_value());
+  AddGame(server.games(), "off", games / "Off");
+  WriteMetadata(server.games().Metadata(), "off", std::vector<std::string>{"Roguelike"});
+  server.services().TagFromSteam("off");
+  CHECK(server.games().Find("off")->tags.empty());
+}
+
 TEST_CASE("Setting, renaming and removing a tag across the library, with its folder") {
   LiveServer server(TempDir("tags-set-state"));
   config::Config& config = server.MutableConfig();

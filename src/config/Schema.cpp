@@ -308,7 +308,15 @@ Schema::Schema() {
          .default_value = true,
          .doc =
              "Fetch each game's Steam tags with its other store info, to suggest tags on the Tags "
-             "page. They're never added to a game on their own. Needs no key."});
+             "page. Needs no key."});
+
+  s.Add({.key = "tags.steam_new_games",
+         .label = "Give new games your tags that Steam gives them",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "When a game is added, it gets each of your tags that it has on Steam. Steam tags "
+                "you haven't added yourself are never added, and existing games are not "
+                "retagged."});
 
   s.Add({.key = "scan.tag_by_root",
          .label = "Tag new games by library folder",
@@ -1267,6 +1275,13 @@ Schema::Schema() {
          .doc = "Add each ready game to your application menu, so you can launch it like any "
                 "other app. Turn this off to keep Mira's games out of your menu.",
          .game_doc = "Add this game to your application menu."});
+
+  s.Add({.key = "desktop_entries.hidden_games",
+         .label = "Add hidden games to the menu",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Give hidden games menu entries too. Off, a hidden game gets none: hiding a game "
+                "removes its entry and showing it again adds it back."});
 
   s.Add({.key = "desktop_entries.directory",
          .label = "Desktop entries folder",

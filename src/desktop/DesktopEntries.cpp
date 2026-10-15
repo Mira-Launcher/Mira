@@ -20,6 +20,7 @@
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
 #include "setup/Setup.h"
+#include "store/GameStore.h"
 
 namespace mira::desktop {
 namespace {
@@ -130,6 +131,8 @@ bool DesktopEntries::IsWanted(const model::Game& game) const {
   if (game.exe_path.empty()) return false;
   // Microsoft 365 itself has nothing to open; its apps have entries of their own.
   if (game.source == "launcher" && game.source_ref == "office") return false;
+  // A menu entry would show a hidden game to anyone at the desktop.
+  if (store::IsHidden(game) && !config_.GetBool("desktop_entries.hidden_games")) return false;
 
   const config::Resolver resolver(config_, game.overrides);
   return resolver.GetBool("desktop_entries.enabled");

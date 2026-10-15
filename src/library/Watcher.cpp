@@ -360,7 +360,7 @@ void Watcher::HandleInotify() {
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games)
-        metadata_fetches_->Enqueue(config_, events_, game);
+        metadata_fetches_->EnqueueNew(config_, events_, game);
     }
   }
   RearmTimer();
@@ -420,7 +420,7 @@ void Watcher::HandleDebounceTick() {
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games)
-        metadata_fetches_->Enqueue(config_, events_, game);
+        metadata_fetches_->EnqueueNew(config_, events_, game);
     }
     if (!roms.empty()) ImportRoms(roms);
   }
@@ -435,7 +435,7 @@ void Watcher::ImportRoms(const std::set<std::string>& ids) {
     const auto summary = emulators::Import(config_, games_, events_, *emulator);
     if (!summary) continue;
     for (const model::Game& game : summary->added_games)
-      metadata_fetches_->Enqueue(config_, events_, game);
+      metadata_fetches_->EnqueueNew(config_, events_, game);
   }
 }
 

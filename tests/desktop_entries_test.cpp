@@ -1,4 +1,5 @@
 #include <doctest.h>
+#include <httplib.h>
 
 #include <chrono>
 #include <filesystem>
@@ -10,6 +11,7 @@
 #include "desktop/DesktopEntries.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/MetadataStore.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -201,4 +203,53 @@ TEST_CASE("DesktopEntries: uses cached artwork as Icon= when present, falls back
   std::string without_art_contents((std::istreambuf_iterator<char>(without_art_in)),
                                    std::istreambuf_iterator<char>());
   CHECK(without_art_contents.find("Icon=applications-games") != std::string::npos);
+}
+
+TEST_CASE("Hidden games get menu entries only when desktop_entries.hidden_games says so") {
+  test::LiveServer server(TempDir("desktop-entries-hidden-state"));
+  config::Config& config = server.MutableConfig();
+  REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
+  const fs::path applications = config.GetPath("desktop_entries.directory");
+
+  model::Game shown;
+  shown.id = "celeste";
+  shown.name = "Celeste";
+  shown.source = "manual";
+  shown.status = model::GameStatus::Ready;
+  shown.exe_path = "Celeste";
+  model::Game hidden = shown;
+  hidden.id = "desert";
+  hidden.name = "Desert";
+  hidden.tags = {"hidden"};
+  REQUIRE(server.games().Upsert(shown).has_value());
+  REQUIRE(server.games().Upsert(hidden).has_value());
+  const fs::path shown_entry = applications / "mira-celeste.desktop";
+  const fs::path hidden_entry = applications / "mira-desert.desktop";
+
+  REQUIRE(config.Set("desktop_entries.hidden_games", true).has_value());
+  server.services().SyncDesktopEntries();
+  CHECK(fs::exists(shown_entry));
+  CHECK(fs::exists(hidden_entry));
+
+  httplib::Client client = server.Client();
+  const auto tag = [&](const char* id, const char* change) {
+    const auto res =
+        client.Patch("/v1/games", nlohmann::json{{"ids", {id}}, {change, {"hidden"}}}.dump(),
+                     "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  tag("celeste", "add_tags");
+  CHECK(fs::exists(shown_entry));
+
+  REQUIRE(config.Set("desktop_entries.hidden_games", false).has_value());
+  server.services().SyncDesktopEntries();
+  CHECK_FALSE(fs::exists(shown_entry));
+  CHECK_FALSE(fs::exists(hidden_entry));
+
+  // Off, showing a game adds its entry at once and hiding it removes it.
+  tag("desert", "remove_tags");
+  CHECK(fs::exists(hidden_entry));
+  tag("desert", "add_tags");
+  CHECK_FALSE(fs::exists(hidden_entry));
 }

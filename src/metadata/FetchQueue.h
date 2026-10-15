@@ -38,6 +38,12 @@ class FetchQueue {
   using Done = std::function<void(bool ok)>;
   void Enqueue(const config::Config& config, api::EventBus& events, model::Game game,
                bool force = false, bool announce = false, Done done = nullptr);
+  // Enqueue for a game just added to the library: once its fetch works, the hook set with
+  // OnNewGameFetched runs with its id (on a worker).
+  void EnqueueNew(const config::Config& config, api::EventBus& events, model::Game game);
+  void OnNewGameFetched(std::function<void(const std::string& id)> hook) {
+    new_game_hook_ = std::move(hook);
+  }
 
   // Store titles not installed yet: details and a small cover (FetchTitle), Steam's in batches
   // (FetchSteamTitles). Each game is
@@ -81,6 +87,7 @@ class FetchQueue {
   bool Run(const config::Config& config, api::EventBus& events, const Job& job);
 
   store::MetadataStore& cache_;
+  std::function<void(const std::string& id)> new_game_hook_;  // set before any fetch
   std::mutex mutex_;
   std::condition_variable idle_;
   std::deque<Job> games_;   // tracked games, first
