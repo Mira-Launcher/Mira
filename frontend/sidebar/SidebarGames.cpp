@@ -6,7 +6,6 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
-
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -34,8 +33,10 @@ QPixmap RoundedCrop(const QPixmap& source, QSize size, qreal radius, qreal dpr) 
   clip.addRoundedRect(QRectF(QPointF(0, 0), QSizeF(size)), radius, radius);
   painter.setClipPath(clip);
   const QSizeF filled = QSizeF(source.size()).scaled(QSizeF(size), Qt::KeepAspectRatioByExpanding);
-  painter.drawPixmap(QRectF(QPointF((size.width() - filled.width()) / 2, (size.height() - filled.height()) / 2), filled),
-                     source, QRectF(source.rect()));
+  painter.drawPixmap(
+      QRectF(QPointF((size.width() - filled.width()) / 2, (size.height() - filled.height()) / 2),
+             filled),
+      source, QRectF(source.rect()));
   return out;
 }
 
@@ -65,7 +66,8 @@ QString Rgba(QColor color, double alpha) {
 void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text, int pixel_size) {
   if (text.isEmpty()) return;
   painter->save();
-  const QRectF foot(cover.left(), cover.bottom() - cover.height() * 0.4, cover.width(), cover.height() * 0.4);
+  const QRectF foot(cover.left(), cover.bottom() - cover.height() * 0.4, cover.width(),
+                    cover.height() * 0.4);
   QLinearGradient fade(foot.topLeft(), foot.bottomLeft());
   fade.setColorAt(0.0, QColor(0, 0, 0, 0));
   fade.setColorAt(1.0, QColor(0, 0, 0, 210));
@@ -74,7 +76,8 @@ void DrawCoverLabel(QPainter* painter, const QRectF& cover, const QString& text,
   font.setPixelSize(pixel_size);
   font.setWeight(QFont::DemiBold);
   painter->setFont(font);
-  // White even for "Playing": green on bright art is unreadable, and the cover's ring already says so.
+  // White even for "Playing": green on bright art is unreadable, and the cover's ring already says
+  // so.
   painter->setPen(QColor(255, 255, 255, 235));
   const QRectF line = foot.adjusted(3, 0, -3, -3);
   painter->drawText(line, Qt::AlignHCenter | Qt::AlignBottom,
@@ -116,13 +119,13 @@ QPixmap CoverDeck(const std::vector<const GameSummary*>& games, ArtworkStore* ar
   const QPointF centre(kDeckSize.width() / 2.0, kDeckSize.height() / 2.0);
   const QRectF face(QPointF(-card.width() / 2.0, -card.height() / 2.0), QSizeF(card));
   // Games without art yet (homebrew, often) still show the source's logo.
-  const bool any_art = std::ranges::any_of(games, [&](const GameSummary* game) {
-    return artwork->HasArtwork(game->id);
-  });
+  const bool any_art = std::ranges::any_of(
+      games, [&](const GameSummary* game) { return artwork->HasArtwork(game->id); });
   if (!any_art && !logo.isNull()) {
     for (const GameSummary* game : games) artwork->EnsureRequested(game->id);
     const QSizeF size = logo.deviceIndependentSize();
-    painter.drawPixmap(QPointF(centre.x() - size.width() / 2, centre.y() - size.height() / 2), logo);
+    painter.drawPixmap(QPointF(centre.x() - size.width() / 2, centre.y() - size.height() / 2),
+                       logo);
     return out;
   }
   if (games.empty()) {
@@ -196,7 +199,8 @@ const char* StyleKey(Style style) {
 namespace {
 
 // `art` cropped to fill `target`, corners rounded; the placeholder's color without art.
-void DrawArt(QPainter* painter, const QRectF& target, const QPixmap& art, const std::string& id, qreal radius) {
+void DrawArt(QPainter* painter, const QRectF& target, const QPixmap& art, const std::string& id,
+             qreal radius) {
   painter->save();
   QPainterPath clip;
   clip.addRoundedRect(target, radius, radius);
@@ -205,7 +209,8 @@ void DrawArt(QPainter* painter, const QRectF& target, const QPixmap& art, const 
     painter->fillRect(target, PlaceholderBase(QString::fromStdString(id)));
   } else {
     const QSizeF shown = target.size().scaled(QSizeF(art.size()), Qt::KeepAspectRatio);
-    const QRectF source(QPointF((art.width() - shown.width()) / 2, (art.height() - shown.height()) / 2), shown);
+    const QRectF source(
+        QPointF((art.width() - shown.width()) / 2, (art.height() - shown.height()) / 2), shown);
     painter->drawPixmap(target, art, source);
   }
   painter->restore();
@@ -217,8 +222,8 @@ QPixmap CoverArtOf(const std::string& id, ArtworkStore* artwork) {
   return art;
 }
 
-void PaintRealPreview(QPainter* painter, const QRect& rect, Style style, const std::vector<PreviewGame>& games,
-                      ArtworkStore* artwork) {
+void PaintRealPreview(QPainter* painter, const QRect& rect, Style style,
+                      const std::vector<PreviewGame>& games, ArtworkStore* artwork) {
   const theme::Tokens& tokens = theme::Current();
   QFont name_font = painter->font();
   name_font.setPixelSize(11);
@@ -232,19 +237,22 @@ void PaintRealPreview(QPainter* painter, const QRect& rect, Style style, const s
         const PreviewGame& game = games[i];
         const QRect line(rect.left(), rect.top() + i * row, rect.width(), row);
         const int thumb_height = row - 4;
-        DrawArt(painter, QRectF(line.left() + 2, line.top() + 2, thumb_height * 2 / 3, thumb_height),
+        DrawArt(painter,
+                QRectF(line.left() + 2, line.top() + 2, thumb_height * 2 / 3, thumb_height),
                 CoverArtOf(game.id, artwork), game.id, 2);
         QRect text = line.adjusted(thumb_height * 2 / 3 + 8, 0, -2, 0);
         if (!game.trailing.isEmpty()) {
           painter->setFont(trailing_font);
           painter->setPen(game.trailing == "Playing" ? tokens.running : tokens.text_muted);
           painter->drawText(text, Qt::AlignRight | Qt::AlignVCenter, game.trailing);
-          text.setRight(text.right() - QFontMetrics(trailing_font).horizontalAdvance(game.trailing) - 5);
+          text.setRight(text.right() -
+                        QFontMetrics(trailing_font).horizontalAdvance(game.trailing) - 5);
         }
         painter->setFont(name_font);
         painter->setPen(tokens.text);
-        painter->drawText(text, Qt::AlignLeft | Qt::AlignVCenter,
-                          QFontMetrics(name_font).elidedText(game.name, Qt::ElideRight, text.width()));
+        painter->drawText(
+            text, Qt::AlignLeft | Qt::AlignVCenter,
+            QFontMetrics(name_font).elidedText(game.name, Qt::ElideRight, text.width()));
       }
       break;
     case Style::Hero:
@@ -267,12 +275,14 @@ void PaintRealPreview(QPainter* painter, const QRect& rect, Style style, const s
           painter->setFont(trailing_font);
           painter->setPen(game.trailing == "Playing" ? tokens.running : QColor(255, 255, 255, 215));
           painter->drawText(text, Qt::AlignRight | Qt::AlignVCenter, game.trailing);
-          text.setRight(text.right() - QFontMetrics(trailing_font).horizontalAdvance(game.trailing) - 5);
+          text.setRight(text.right() -
+                        QFontMetrics(trailing_font).horizontalAdvance(game.trailing) - 5);
         }
         painter->setFont(name_font);
         painter->setPen(QColor(255, 255, 255, 240));
-        painter->drawText(text, Qt::AlignLeft | Qt::AlignVCenter,
-                          QFontMetrics(name_font).elidedText(game.name, Qt::ElideRight, text.width()));
+        painter->drawText(
+            text, Qt::AlignLeft | Qt::AlignVCenter,
+            QFontMetrics(name_font).elidedText(game.name, Qt::ElideRight, text.width()));
       }
       break;
     case Style::Shelf: {
@@ -305,8 +315,8 @@ void PaintRealPreview(QPainter* painter, const QRect& rect, Style style, const s
 
 }  // namespace
 
-void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const std::vector<PreviewGame>& games,
-                       ArtworkStore* artwork) {
+void PaintStylePreview(QPainter* painter, const QRect& rect, Style style,
+                       const std::vector<PreviewGame>& games, ArtworkStore* artwork) {
   if (!games.empty() && artwork != nullptr) {
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
@@ -330,7 +340,8 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
         painter->setBrush(art[i]);
         painter->drawRoundedRect(QRectF(rect.left() + 4, y + 2, row * 2 / 3 - 1, row - 4), 2, 2);
         painter->setBrush(line);
-        painter->drawRoundedRect(QRectF(rect.left() + 4 + row * 2 / 3 + 6, y + row / 2 - 2, rect.width() * (0.55 - 0.08 * i), 4),
+        painter->drawRoundedRect(QRectF(rect.left() + 4 + row * 2 / 3 + 6, y + row / 2 - 2,
+                                        rect.width() * (0.55 - 0.08 * i), 4),
                                  2, 2);
       }
       break;
@@ -345,7 +356,8 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
         painter->setBrush(fill);
         painter->drawRoundedRect(banner, 3, 3);
         painter->setBrush(QColor(255, 255, 255, 220));
-        painter->drawRoundedRect(QRectF(banner.left() + 7, banner.center().y() - 2, banner.width() * (0.42 - 0.06 * i), 4),
+        painter->drawRoundedRect(QRectF(banner.left() + 7, banner.center().y() - 2,
+                                        banner.width() * (0.42 - 0.06 * i), 4),
                                  2, 2);
       }
       break;
@@ -356,8 +368,9 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
       const qreal height = std::min<qreal>(width * 1.5, rect.height());
       for (int i = 0; i < 4; ++i) {
         painter->setBrush(art[i]);
-        painter->drawRoundedRect(
-            QRectF(rect.left() + i * (width + gap), rect.top() + (rect.height() - height) / 2, width, height), 3, 3);
+        painter->drawRoundedRect(QRectF(rect.left() + i * (width + gap),
+                                        rect.top() + (rect.height() - height) / 2, width, height),
+                                 3, 3);
       }
       break;
     }
@@ -365,7 +378,8 @@ void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const 
   painter->restore();
 }
 
-QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing, QWidget* parent) {
+QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing,
+                          QWidget* parent) {
   // The button only draws the background; the cover, name and trailing text
   // are labels, so a long name elides short of the trailing text.
   const QString name = QString::fromStdString(game.name);
@@ -375,9 +389,10 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   row->setMinimumHeight(kThumb.height() + 8);
   // Only hover and press take the cover's color; at rest the rows stay plain.
   const QColor color = artwork->CoverColor(QString::fromStdString(game.id));
-  row->setStyleSheet(QString("QPushButton:hover { background: %1; } QPushButton:pressed { background: %2; } "
-                             "QPushButton[selected=\"true\"] { background: %3; }")
-                         .arg(Rgba(color, 0.3), Rgba(color, 0.45), Rgba(theme::Current().accent, 0.3)));
+  row->setStyleSheet(
+      QString("QPushButton:hover { background: %1; } QPushButton:pressed { background: %2; } "
+              "QPushButton[selected=\"true\"] { background: %3; }")
+          .arg(Rgba(color, 0.3), Rgba(color, 0.45), Rgba(theme::Current().accent, 0.3)));
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(8, 0, 10, 0);
   layout->setSpacing(10);
@@ -398,11 +413,13 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
     label->setStyleSheet(style);
     layout->addWidget(label);
   }
-  for (QLabel* label : row->findChildren<QLabel*>()) label->setAttribute(Qt::WA_TransparentForMouseEvents);
+  for (QLabel* label : row->findChildren<QLabel*>())
+    label->setAttribute(Qt::WA_TransparentForMouseEvents);
   return row;
 }
 
-HeroRow::HeroRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing, QWidget* parent)
+HeroRow::HeroRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing,
+                 QWidget* parent)
     : QPushButton(QString::fromStdString(game.name), parent),
       id_(game.id),
       running_(game.running),
@@ -414,7 +431,9 @@ HeroRow::HeroRow(const GameSummary& game, ArtworkStore* artwork, const QString& 
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
 
-QSize HeroRow::sizeHint() const { return QSize(QPushButton::sizeHint().width(), kHeroHeight); }
+QSize HeroRow::sizeHint() const {
+  return QSize(QPushButton::sizeHint().width(), kHeroHeight);
+}
 
 void HeroRow::paintEvent(QPaintEvent*) {
   const theme::Tokens& tokens = theme::Current();
@@ -467,11 +486,13 @@ void HeroRow::paintEvent(QPaintEvent*) {
   if (running_ || selected) {
     painter.setClipping(false);
     painter.setPen(QPen(selected ? tokens.accent : tokens.running, 2));
-    painter.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), tokens.radius_control, tokens.radius_control);
+    painter.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), tokens.radius_control,
+                            tokens.radius_control);
   }
 }
 
-ShelfCover::ShelfCover(const GameSummary& game, ArtworkStore* artwork, const QString& trailing, QWidget* parent)
+ShelfCover::ShelfCover(const GameSummary& game, ArtworkStore* artwork, const QString& trailing,
+                       QWidget* parent)
     : QPushButton(parent),
       id_(QString::fromStdString(game.id)),
       name_(QString::fromStdString(game.name)),
@@ -496,7 +517,9 @@ void ShelfCover::paintEvent(QPaintEvent*) {
   painter.setClipping(false);
   const bool selected = property("selected").toBool();
   if (running_ || selected || underMouse()) {
-    const QColor edge = selected ? tokens.accent : running_ ? tokens.running : QColor(255, 255, 255, 110);
+    const QColor edge = selected   ? tokens.accent
+                        : running_ ? tokens.running
+                                   : QColor(255, 255, 255, 110);
     painter.setPen(QPen(edge, 2));
     painter.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), radius, radius);
   }
@@ -563,11 +586,17 @@ void Shelf::Add(QWidget* cover) {
   updateGeometry();
 }
 
-int ShelfColumns(int count) { return std::clamp(count, 2, 4); }
+int ShelfColumns(int count) {
+  return std::clamp(count, 2, 4);
+}
 
-int Shelf::Columns() const { return ShelfColumns(static_cast<int>(covers_.size())); }
+int Shelf::Columns() const {
+  return ShelfColumns(static_cast<int>(covers_.size()));
+}
 
-int Shelf::CellWidth(int width) const { return std::max(1, (width - (Columns() - 1) * kGap) / Columns()); }
+int Shelf::CellWidth(int width) const {
+  return std::max(1, (width - (Columns() - 1) * kGap) / Columns());
+}
 
 int Shelf::heightForWidth(int width) const {
   const int rows = (static_cast<int>(covers_.size()) + Columns() - 1) / Columns();
@@ -575,25 +604,35 @@ int Shelf::heightForWidth(int width) const {
   return rows * (CellWidth(width) * 3 / 2) + (rows - 1) * kGap + 4;
 }
 
-QSize Shelf::sizeHint() const { return QSize(200, heightForWidth(width() > 0 ? width() : 200)); }
+QSize Shelf::sizeHint() const {
+  return QSize(200, heightForWidth(width() > 0 ? width() : 200));
+}
 
 void Shelf::resizeEvent(QResizeEvent*) {
   const int cell = CellWidth(width());
   for (int i = 0; i < static_cast<int>(covers_.size()); ++i) {
     const int column = i % Columns();
     const int row = i / Columns();
-    covers_[i]->setGeometry(column * (cell + kGap), 2 + row * (cell * 3 / 2 + kGap), cell, cell * 3 / 2);
+    covers_[i]->setGeometry(column * (cell + kGap), 2 + row * (cell * 3 / 2 + kGap), cell,
+                            cell * 3 / 2);
   }
 }
 
 QString ArtSignature(const GameSummary& game, Style style, ArtworkStore* artwork) {
-  // Each image's cacheKey, so a replaced cover or hero, or a sidebar copy just fetched, rebuilds the row.
-  const QString cover = QString("%1 %2").arg(artwork->SmallArtwork(game.id).cacheKey()).arg(artwork->RawArtwork(game.id).cacheKey());
+  // Each image's cacheKey, so a replaced cover or hero, or a sidebar copy just fetched, rebuilds
+  // the row.
+  const QString cover = QString("%1 %2")
+                            .arg(artwork->SmallArtwork(game.id).cacheKey())
+                            .arg(artwork->RawArtwork(game.id).cacheKey());
   switch (style) {
     case Style::Covers:
-      return QString("%1 %2").arg(artwork->CoverColor(QString::fromStdString(game.id)).name()).arg(cover);
-    case Style::Hero: return QString("%1 %2").arg(artwork->SlotArt(game.id, "hero").cacheKey()).arg(cover);
-    case Style::Shelf: return cover;
+      return QString("%1 %2")
+          .arg(artwork->CoverColor(QString::fromStdString(game.id)).name())
+          .arg(cover);
+    case Style::Hero:
+      return QString("%1 %2").arg(artwork->SlotArt(game.id, "hero").cacheKey()).arg(cover);
+    case Style::Shelf:
+      return cover;
   }
   return QString();
 }

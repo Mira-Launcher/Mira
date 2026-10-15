@@ -20,7 +20,8 @@ constexpr const char* kLinks[] = {"mira-run"};
 
 bool IsOurs(const fs::path& path) {
   const std::string content = files::ReadFile(path).value_or("");
-  return content.find(kMarker) != std::string::npos || content.find(kLegacyMarker) != std::string::npos;
+  return content.find(kMarker) != std::string::npos ||
+         content.find(kLegacyMarker) != std::string::npos;
 }
 
 Result<void> WriteFile(const fs::path& path, const std::string& content) {
@@ -87,8 +88,12 @@ Exec={0} setup --uninstall
                      strings::DesktopExecArg(appimage.string()), kMarker);
 }
 
-fs::path IconPath(const SetupPaths& paths) { return paths.icons_dir / "hicolor/256x256/apps/mira.png"; }
-fs::path DesktopPath(const SetupPaths& paths) { return paths.applications_dir / "mira.desktop"; }
+fs::path IconPath(const SetupPaths& paths) {
+  return paths.icons_dir / "hicolor/256x256/apps/mira.png";
+}
+fs::path DesktopPath(const SetupPaths& paths) {
+  return paths.applications_dir / "mira.desktop";
+}
 
 }  // namespace
 
@@ -102,14 +107,16 @@ SetupPaths DefaultPaths() {
   };
 }
 
-Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& appimage, const fs::path& icon) {
+Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& appimage,
+                                      const fs::path& icon) {
   std::error_code ec;
   if (!fs::is_regular_file(appimage, ec)) {
     return Err("appimage_missing", std::format("no AppImage at {}", appimage.string()));
   }
   const fs::path wrapper = paths.bin_dir / "mira";
   if (fs::exists(fs::symlink_status(wrapper, ec)) && !IsOurs(wrapper)) {
-    return Err("setup_conflict", std::format("{} exists and wasn't written by mira setup", wrapper.string()));
+    return Err("setup_conflict",
+               std::format("{} exists and wasn't written by mira setup", wrapper.string()));
   }
   // Checked before writing anything, so a conflict leaves nothing half set up.
   for (const char* name : kLinks) {
@@ -121,16 +128,21 @@ Result<std::vector<fs::path>> Install(const SetupPaths& paths, const fs::path& a
   }
 
   std::vector<fs::path> written;
-  if (auto ok = WriteFile(wrapper, Wrapper(fs::absolute(appimage))); !ok) return std::unexpected(ok.error());
-  fs::permissions(wrapper, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
-                               fs::perms::others_read | fs::perms::others_exec, ec);
+  if (auto ok = WriteFile(wrapper, Wrapper(fs::absolute(appimage))); !ok)
+    return std::unexpected(ok.error());
+  fs::permissions(wrapper,
+                  fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
+                      fs::perms::others_read | fs::perms::others_exec,
+                  ec);
   written.push_back(wrapper);
 
   for (const char* name : kLinks) {
     const fs::path link = paths.bin_dir / name;
     fs::remove(link, ec);
     fs::create_symlink("mira", link, ec);
-    if (ec) return Err("setup_write_failed", std::format("couldn't link {}: {}", link.string(), ec.message()));
+    if (ec)
+      return Err("setup_write_failed",
+                 std::format("couldn't link {}: {}", link.string(), ec.message()));
     written.push_back(link);
   }
 
@@ -159,7 +171,8 @@ Result<std::vector<fs::path>> Remove(const SetupPaths& paths) {
   const bool wrapper_ours = fs::exists(wrapper, ec) && IsOurs(wrapper);
   for (const char* name : kLinks) {
     const fs::path link = paths.bin_dir / name;
-    remove_if(link, wrapper_ours && fs::is_symlink(fs::symlink_status(link, ec)) && fs::read_symlink(link, ec) == "mira");
+    remove_if(link, wrapper_ours && fs::is_symlink(fs::symlink_status(link, ec)) &&
+                        fs::read_symlink(link, ec) == "mira");
   }
   remove_if(wrapper, wrapper_ours);
   remove_if(DesktopPath(paths), fs::exists(DesktopPath(paths), ec) && IsOurs(DesktopPath(paths)));
@@ -168,7 +181,8 @@ Result<std::vector<fs::path>> Remove(const SetupPaths& paths) {
   for (const auto& entry : fs::directory_iterator(paths.applications_dir, ec)) {
     const std::string name = entry.path().filename().string();
     if (!name.starts_with("mira-") || !name.ends_with(".desktop")) continue;
-    remove_if(entry.path(), files::ReadFile(entry.path()).value_or("").contains("\nX-Mira-Game-Id="));
+    remove_if(entry.path(),
+              files::ReadFile(entry.path()).value_or("").contains("\nX-Mira-Game-Id="));
   }
   return removed;
 }

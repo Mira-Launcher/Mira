@@ -26,8 +26,8 @@ void Notice::Show(const QString& title, const QString& detail) {
   const QRect screen = screen_of_->screen()->geometry();
   const double u = screen.height() / 49.0;
   const QSize size(qRound(u * 22), qRound(u * (detail.isEmpty() ? 3.6 : 5.4)));
-  setGeometry(screen.right() - size.width() - qRound(u * 1.5), screen.top() + qRound(u * 1.5), size.width(),
-              size.height());
+  setGeometry(screen.right() - size.width() - qRound(u * 1.5), screen.top() + qRound(u * 1.5),
+              size.width(), size.height());
   show();
   raise();
   update();
@@ -47,7 +47,8 @@ void Notice::paintEvent(QPaintEvent*) {
   const QRectF inner = QRectF(rect()).adjusted(u * 1.2, u * 0.9, -u * 1.2, -u * 0.9);
   painter.setPen(tokens.text);
   painter.setFont(Font(u, 1.05, QFont::Bold));
-  painter.drawText(inner, Qt::AlignTop | Qt::AlignLeft, painter.fontMetrics().elidedText(title_, Qt::ElideRight, int(inner.width())));
+  painter.drawText(inner, Qt::AlignTop | Qt::AlignLeft,
+                   painter.fontMetrics().elidedText(title_, Qt::ElideRight, int(inner.width())));
   if (detail_.isEmpty()) return;
   painter.setPen(tokens.text_muted);
   painter.setFont(Font(u, 0.9));

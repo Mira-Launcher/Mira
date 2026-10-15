@@ -5,7 +5,6 @@
 #include <format>
 #include <map>
 #include <set>
-
 #include <toml.hpp>
 
 #include "core/AtomicFile.h"
@@ -154,12 +153,14 @@ std::string TitleKey(const model::Game& game) {
 }
 
 constexpr std::array<std::string_view, 16> kTextColumns = {
-    "id",       "install_path", "name",      "status",   "platform",   "source",        "exe_path",
-    "args",     "working_dir",  "runner_ref", "source_ref", "data_dir", "installer_dir", "last_error",
-    "library_link", "folder_tag"};
+    "id",         "install_path", "name",          "status",      "platform",
+    "source",     "exe_path",     "args",          "working_dir", "runner_ref",
+    "source_ref", "data_dir",     "installer_dir", "last_error",  "library_link",
+    "folder_tag"};
 constexpr std::array<std::string_view, 4> kIntColumns = {"created_at", "updated_at", "play_seconds",
                                                          "last_session_at"};
-constexpr std::array<std::string_view, 5> kJsonColumns = {"runner_config", "overrides", "env", "candidates", "launch"};
+constexpr std::array<std::string_view, 5> kJsonColumns = {"runner_config", "overrides", "env",
+                                                          "candidates", "launch"};
 
 // Every column, in the order Write binds and ReadAll reads them.
 std::vector<std::string_view> Columns() {
@@ -201,7 +202,8 @@ bool IsHidden(const model::Game& game) {
   return std::ranges::contains(game.tags, std::string("hidden"));
 }
 
-GameStore::GameStore(std::filesystem::path file) : file_(std::move(file)), metadata_(file_.parent_path()) {}
+GameStore::GameStore(std::filesystem::path file)
+    : file_(std::move(file)), metadata_(file_.parent_path()) {}
 
 Result<void> GameStore::Open() {
   fs::path backup = file_;
@@ -242,7 +244,8 @@ Result<void> GameStore::Open() {
 Result<void> GameStore::ReadAll() {
   games_.clear();
   const std::vector<std::string_view> columns = Columns();
-  auto select = db_.Prepare(std::format("SELECT {} FROM games ORDER BY rowid", Joined(columns, "{}")));
+  auto select =
+      db_.Prepare(std::format("SELECT {} FROM games ORDER BY rowid", Joined(columns, "{}")));
   if (!select) return std::unexpected(select.error());
   auto row = select->Step();
   for (; row && *row; row = select->Step()) {
@@ -382,16 +385,19 @@ void GameStore::Load() {
 
 Result<void> GameStore::Write(const model::Game& game) {
   const std::vector<std::string_view> columns = Columns();
-  std::string sql = std::format(
-      "INSERT INTO games({}) VALUES({}) ON CONFLICT(id) DO UPDATE SET {}", Joined(columns, "{}"),
-      Joined(std::vector<std::string_view>(columns.size(), "?"), "{}"), Joined(columns, "{0} = excluded.{0}"));
+  std::string sql = std::format("INSERT INTO games({}) VALUES({}) ON CONFLICT(id) DO UPDATE SET {}",
+                                Joined(columns, "{}"),
+                                Joined(std::vector<std::string_view>(columns.size(), "?"), "{}"),
+                                Joined(columns, "{0} = excluded.{0}"));
   auto insert = db_.Prepare(sql);
   if (!insert) return std::unexpected(insert.error());
 
   const json document = model::ToJson(game);
   int index = 1;
-  for (const std::string_view name : kTextColumns) insert->Bind(index++, document[name].get<std::string>());
-  for (const std::string_view name : kIntColumns) insert->Bind(index++, document[name].get<std::int64_t>());
+  for (const std::string_view name : kTextColumns)
+    insert->Bind(index++, document[name].get<std::string>());
+  for (const std::string_view name : kIntColumns)
+    insert->Bind(index++, document[name].get<std::int64_t>());
   for (const std::string_view name : kJsonColumns) insert->Bind(index++, document[name].dump());
   insert->Bind(index++, game.confidence);
   insert->Bind(index++, std::int64_t{game.reviewed});
@@ -409,7 +415,8 @@ Result<void> GameStore::Write(const model::Game& game) {
   if (!add) return std::unexpected(add.error());
   std::int64_t position = 0;
   for (const std::string& tag : game.tags) {
-    if (auto done = add->Bind(1, game.id).Bind(2, position++).Bind(3, tag).Run(); !done) return done;
+    if (auto done = add->Bind(1, game.id).Bind(2, position++).Bind(3, tag).Run(); !done)
+      return done;
   }
   return {};
 }
@@ -427,7 +434,8 @@ Result<void> GameStore::Delete(const std::string& id) {
 Result<void> GameStore::Transact(const std::function<Result<void>()>& write) {
   ++revision_;
   if (read_only_) {
-    return Err("games_read_only", std::format("the library at {} couldn't be opened or imported", file_.string()),
+    return Err("games_read_only",
+               std::format("the library at {} couldn't be opened or imported", file_.string()),
                "See mirad's log for why, then restart mirad.");
   }
   Transaction transaction(db_);
@@ -448,7 +456,8 @@ std::string GameStore::SettingsSnapshot() {
 void GameStore::KeepSettingsSnapshot(const std::string& toml) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return;
-  auto keep = db_.Prepare("INSERT OR REPLACE INTO settings_snapshot(id, saved_at, toml) VALUES(1, ?, ?)");
+  auto keep =
+      db_.Prepare("INSERT OR REPLACE INTO settings_snapshot(id, saved_at, toml) VALUES(1, ?, ?)");
   if (!keep) return;
   if (auto done = keep->Bind(1, model::NowSeconds()).Bind(2, toml).Run(); !done) {
     log::Warn("could not keep a copy of the settings: {}", done.error().message);
@@ -492,7 +501,9 @@ std::vector<SourceState> GameStore::Sources() const {
   std::lock_guard lock(mutex_);
   std::vector<SourceState> sources;
   if (!db_.IsOpen()) return sources;
-  auto select = db_.Prepare("SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources ORDER BY position, id");
+  auto select = db_.Prepare(
+      "SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources ORDER BY "
+      "position, id");
   if (!select) return sources;
   auto row = select->Step();
   for (; row && *row; row = select->Step()) sources.push_back(ReadSource(*select));
@@ -504,7 +515,8 @@ SourceState GameStore::Source(const std::string& id) const {
   std::lock_guard lock(mutex_);
   SourceState state{.id = id};
   if (!db_.IsOpen()) return state;
-  auto select = db_.Prepare("SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources WHERE id = ?");
+  auto select = db_.Prepare(
+      "SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources WHERE id = ?");
   if (!select) return state;
   auto row = select->Bind(1, id).Step();
   if (row && *row) state = ReadSource(*select);
@@ -515,7 +527,9 @@ SourceState GameStore::Source(const std::string& id) const {
 void GameStore::SaveSource(const SourceState& state) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return;
-  auto keep = db_.Prepare("INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) VALUES(?, ?, ?, ?, ?, ?)");
+  auto keep = db_.Prepare(
+      "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) "
+      "VALUES(?, ?, ?, ?, ?, ?)");
   if (!keep) return;
   if (auto done = keep->Bind(1, state.id)
                       .Bind(2, std::int64_t{state.added})
@@ -558,8 +572,12 @@ void GameStore::MarkSourceAdded(const std::string& id, bool imported) {
     return;
   }
   // Newly added: on too. SET reads the old row, so `added` here is before this update.
-  auto update = imported ? db_.Prepare("UPDATE sources SET enabled = enabled OR NOT added, added = 1, imported_at = ? WHERE id = ?")
-                         : db_.Prepare("UPDATE sources SET enabled = enabled OR NOT added, added = 1 WHERE id = ?");
+  auto update =
+      imported ? db_.Prepare(
+                     "UPDATE sources SET enabled = enabled OR NOT added, added = 1, imported_at = "
+                     "? WHERE id = ?")
+               : db_.Prepare(
+                     "UPDATE sources SET enabled = enabled OR NOT added, added = 1 WHERE id = ?");
   if (!update) return;
   auto& bound = imported ? update->Bind(1, model::NowSeconds()).Bind(2, id) : update->Bind(1, id);
   if (auto done = bound.Run(); !done) {
@@ -652,7 +670,8 @@ Result<void> GameStore::Upsert(model::Game game) {
 
 Result<void> GameStore::Reattach(model::Game& game) {
   auto select = db_.Prepare(
-      "SELECT SUM(duration_seconds), MAX(ended_at), MAX(started_at) FROM sessions WHERE game_id = ? AND finished = 1");
+      "SELECT SUM(duration_seconds), MAX(ended_at), MAX(started_at) FROM sessions WHERE game_id = "
+      "? AND finished = 1");
   if (!select) return std::unexpected(select.error());
   auto row = select->Bind(1, game.id).Step();
   if (!row) return std::unexpected(row.error());
@@ -678,12 +697,14 @@ Result<void> GameStore::Merge(const std::optional<model::Game>& base, model::Gam
     }
     merged = model::GameFromJson(live);
     for (const std::string& tag : game.tags) {
-      if (std::ranges::find(base->tags, tag) == base->tags.end() && std::ranges::find(merged.tags, tag) == merged.tags.end()) {
+      if (std::ranges::find(base->tags, tag) == base->tags.end() &&
+          std::ranges::find(merged.tags, tag) == merged.tags.end()) {
         merged.tags.push_back(tag);
       }
     }
     std::erase_if(merged.tags, [&](const std::string& tag) {
-      return std::ranges::find(base->tags, tag) != base->tags.end() && std::ranges::find(game.tags, tag) == game.tags.end();
+      return std::ranges::find(base->tags, tag) != base->tags.end() &&
+             std::ranges::find(game.tags, tag) == game.tags.end();
     });
   }
   const bool adopted = AdoptHiddenTitle(merged);
@@ -706,33 +727,37 @@ Result<void> GameStore::Merge(const std::optional<model::Game>& base, model::Gam
 }
 
 Result<model::Game> GameStore::Update(const std::string& id,
-                                       std::function<void(model::Game&)> mutator) {
+                                      std::function<void(model::Game&)> mutator) {
   std::lock_guard lock(mutex_);
   auto it = std::ranges::find(games_, id, &model::Game::id);
   if (it == games_.end()) return Err("game_not_found", std::format("no game with id \"{}\"", id));
   model::Game updated = *it;
   mutator(updated);
   updated.updated_at = model::NowSeconds();
-  if (auto written = Transact([&] { return Write(updated); }); !written) return std::unexpected(written.error());
+  if (auto written = Transact([&] { return Write(updated); }); !written)
+    return std::unexpected(written.error());
   *it = updated;
   return updated;
 }
 
 Result<model::Game> GameStore::FinishSession(const PlaySession& session,
-                                              std::function<void(model::Game&)> mutator) {
+                                             std::function<void(model::Game&)> mutator) {
   std::lock_guard lock(mutex_);
   auto it = std::ranges::find(games_, session.game_id, &model::Game::id);
-  if (it == games_.end()) return Err("game_not_found", std::format("no game with id \"{}\"", session.game_id));
+  if (it == games_.end())
+    return Err("game_not_found", std::format("no game with id \"{}\"", session.game_id));
   model::Game updated = *it;
   mutator(updated);
   updated.updated_at = model::NowSeconds();
   const auto written = Transact([&]() -> Result<void> {
     if (auto done = Write(updated); !done) return done;
     auto insert = db_.Prepare(
-        "INSERT INTO sessions(game_id, started_at, ended_at, duration_seconds, exit_code, signal, incomplete, "
+        "INSERT INTO sessions(game_id, started_at, ended_at, duration_seconds, exit_code, signal, "
+        "incomplete, "
         "finished, counted) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 1) "
         "ON CONFLICT(game_id, started_at) DO UPDATE SET ended_at = excluded.ended_at, "
-        "duration_seconds = excluded.duration_seconds, exit_code = excluded.exit_code, signal = excluded.signal, "
+        "duration_seconds = excluded.duration_seconds, exit_code = excluded.exit_code, signal = "
+        "excluded.signal, "
         "incomplete = excluded.incomplete, finished = 1, counted = 1");
     if (!insert) return std::unexpected(insert.error());
     return insert->Bind(1, session.game_id)
@@ -792,7 +817,8 @@ Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::st
     return {};
   });
   if (!written) return std::unexpected(written.error());
-  for (const model::Game& game : updated) *std::ranges::find(games_, game.id, &model::Game::id) = game;
+  for (const model::Game& game : updated)
+    *std::ranges::find(games_, game.id, &model::Game::id) = game;
   return updated;
 }
 
@@ -816,7 +842,9 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
     return {};
   });
   if (!deleted) return std::unexpected(deleted.error());
-  std::erase_if(games_, [&](const model::Game& game) { return std::ranges::find(removed, game.id) != removed.end(); });
+  std::erase_if(games_, [&](const model::Game& game) {
+    return std::ranges::find(removed, game.id) != removed.end();
+  });
   hidden_titles_.insert(still_hidden.begin(), still_hidden.end());
   return removed;
 }
@@ -829,7 +857,8 @@ Result<void> GameStore::Remove(const std::string& id) {
 }
 
 std::string SourceIdOf(const std::string& game_source) {
-  if (game_source == "scan" || game_source == "manual" || game_source == "desktop-entry" || game_source == "local") {
+  if (game_source == "scan" || game_source == "manual" || game_source == "desktop-entry" ||
+      game_source == "local") {
     return "local";
   }
   if (game_source == "launcher") return "";

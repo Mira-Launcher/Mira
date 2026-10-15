@@ -25,7 +25,8 @@ void ApplyAppearance(const FrontendPrefs& prefs) {
                            current.radius_panel == overrides.radius_panel &&
                            current.radius_control == overrides.radius_control;
   if (name != theme::CurrentName() || !same_shapes) theme::Configure(name, overrides);
-  keybindings::LoadOverrides(prefs.shortcut_overrides.value_or(std::map<std::string, std::string>{}));
+  keybindings::LoadOverrides(
+      prefs.shortcut_overrides.value_or(std::map<std::string, std::string>{}));
 }
 
 }  // namespace mira_gui

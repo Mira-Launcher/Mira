@@ -20,7 +20,8 @@ struct ShortcutChange {
 // named `name` running `exe` with `launch_options`, so Steam's Big Picture
 // can switch to it. An entry by that name is updated, not duplicated; other
 // entries are written back unchanged. Steam reads the file when it starts.
-Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, const std::string& name,
-                                      const std::string& exe, const std::string& launch_options);
+Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root,
+                                      const std::string& name, const std::string& exe,
+                                      const std::string& launch_options);
 
 }  // namespace mira::steam

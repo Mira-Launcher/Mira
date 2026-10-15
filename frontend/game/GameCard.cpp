@@ -13,14 +13,14 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
+#include "../library/PlayChoices.h"
 #include "../settings/SettingsCard.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../library/GameActions.h"
-#include "../library/PlayChoices.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
 
@@ -137,12 +137,11 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
     const theme::Tokens& current = theme::Current();
     QColor panel_color = current.window;
     panel_color.setAlphaF(0.82);
-    panel->setStyleSheet(
-        QString("QWidget#game_edit_panel { background: %1; border: 1px solid "
-                "%2; border-radius: %3px; }")
-            .arg(theme::ColorToQss(panel_color))
-            .arg(current.border.name())
-            .arg(current.radius_panel));
+    panel->setStyleSheet(QString("QWidget#game_edit_panel { background: %1; border: 1px solid "
+                                 "%2; border-radius: %3px; }")
+                             .arg(theme::ColorToQss(panel_color))
+                             .arg(current.border.name())
+                             .arg(current.radius_panel));
   };
   style_panel();
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, panel, style_panel);
@@ -231,7 +230,8 @@ void GameCard::RequestClose() {
     close_after_save_ = true;
     return;
   }
-  if (!IsDirty() || notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved.").arg(Noun()), [this] {
+  if (!IsDirty() ||
+      notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved.").arg(Noun()), [this] {
         close_after_save_ = true;
         Save();
       })) {
@@ -264,9 +264,13 @@ void GameCard::OpenArtPicker() {
     connect(picker_, &ArtPickerPanel::PickChanged, this, [this](bool has_change) {
       if (!ArtPickerOpen()) return;
       const std::string& slot = picker_->slot();
-      const QString noun = slot == "hero" ? "hero" : slot == "logo" ? "logo" : slot == "icon" ? "icon" : "cover";
-      bar_->SetText(has_change ? QString("New %1 picked").arg(slot == "hero" ? "hero art" : noun) : QString(),
-                    "Use this " + noun, "Cancel");
+      const QString noun = slot == "hero"   ? "hero"
+                           : slot == "logo" ? "logo"
+                           : slot == "icon" ? "icon"
+                                            : "cover";
+      bar_->SetText(
+          has_change ? QString("New %1 picked").arg(slot == "hero" ? "hero art" : noun) : QString(),
+          "Use this " + noun, "Cancel");
     });
     connect(picker_, &ArtPickerPanel::PickActivated, this, [this] {
       if (!ArtPickerOpen()) return;
@@ -316,7 +320,8 @@ void GameCard::UpdatePlay() {
   play_->setText(game == nullptr ? "Play" : game->running ? "Stop" : RunVerb(*game));
   play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
 
-  const std::vector<PlayChoice> tools = game != nullptr ? ToolChoices(*game) : std::vector<PlayChoice>();
+  const std::vector<PlayChoice> tools =
+      game != nullptr ? ToolChoices(*game) : std::vector<PlayChoice>();
   std::vector<std::string> ids;
   for (const PlayChoice& tool : tools) ids.push_back(tool.option + '\n' + tool.label.toStdString());
   if (ids == tool_ids_) return;
@@ -328,7 +333,8 @@ void GameCard::UpdatePlay() {
   for (const PlayChoice& tool : tools) {
     auto* button = new QPushButton(tool.label, this);
     button->setToolTip("Open " + tool.label + " for this " + Noun());
-    connect(button, &QPushButton::clicked, this, [this, option = tool.option] { actions::Launch(this, id_, option, {}); });
+    connect(button, &QPushButton::clicked, this,
+            [this, option = tool.option] { actions::Launch(this, id_, option, {}); });
     tools_->addWidget(button, 0, Qt::AlignBottom);
   }
 }
@@ -345,9 +351,11 @@ void GameCard::UpdateIdentity() {
   QStringList facts;
   if (!source.isEmpty()) facts << source;
   if (!game->platform.empty()) facts << StatusLabel(game->platform);
-  if (game->play_seconds > 0 && !IsApp(*game)) facts << FormatPlaytime(game->play_seconds) + " played";
+  if (game->play_seconds > 0 && !IsApp(*game))
+    facts << FormatPlaytime(game->play_seconds) + " played";
   status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
-                       .arg(status_color.name(), running ? RunningLabel(*game) : StatusLabel(game->status),
+                       .arg(status_color.name(),
+                            running ? RunningLabel(*game) : StatusLabel(game->status),
                             facts.join(" · ").toHtmlEscaped()));
 }
 

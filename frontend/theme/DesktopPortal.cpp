@@ -8,7 +8,6 @@
 #include <QMap>
 #include <QObject>
 #include <QVariantMap>
-
 #include <optional>
 
 #include "Theme.h"
@@ -69,7 +68,7 @@ void Take(const QString& key, const QVariant& raw) {
 class Listener : public QObject {
   Q_OBJECT
 
-public slots:
+ public slots:
   void SettingChanged(const QString& space, const QString& key, const QDBusVariant& value) {
     if (space != kNamespace) return;
     Take(key, value.variant());

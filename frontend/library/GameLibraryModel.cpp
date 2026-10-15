@@ -2,7 +2,6 @@
 
 #include <QDateTime>
 #include <QTimer>
-
 #include <algorithm>
 
 #include "../sources/Sources.h"
@@ -31,7 +30,8 @@ void GameLibraryModel::Replace(const std::vector<GameSummary>& games) {
 
 void GameLibraryModel::Upsert(const std::vector<GameSummary>& games) {
   std::vector<const GameSummary*> added;
-  std::unordered_map<std::string, std::size_t> added_at;  // an id repeated in one batch keeps its last copy
+  std::unordered_map<std::string, std::size_t>
+      added_at;  // an id repeated in one batch keeps its last copy
   for (const GameSummary& game : games) {
     const auto found = rows_.find(game.id);
     if (found == rows_.end()) {
@@ -66,7 +66,8 @@ void GameLibraryModel::Remove(const std::vector<std::string>& ids) {
   }
   if (rows.empty()) return;
   std::ranges::sort(rows, std::greater{});
-  rows.erase(std::ranges::unique(rows).begin(), rows.end());  // an id twice would remove its neighbour too
+  rows.erase(std::ranges::unique(rows).begin(),
+             rows.end());  // an id twice would remove its neighbour too
   // Each run of rows costs an index rebuild and a re-sort in every proxy, so rows scattered
   // across the library (a store's games removed) go in one reset instead.
   int runs = 0;
@@ -188,11 +189,15 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
   if (!index.isValid() || index.row() >= static_cast<int>(games_.size())) return {};
   const GameSummary& game = games_[index.row()];
   switch (role) {
-    case GameTileDelegate::IdRole: return QString::fromStdString(game.id);
+    case GameTileDelegate::IdRole:
+      return QString::fromStdString(game.id);
     case Qt::DisplayRole:
-    case GameTileDelegate::NameRole: return QString::fromStdString(game.name);
-    case GameTileDelegate::StatusRole: return QString::fromStdString(game.status);
-    case GameTileDelegate::RunningRole: return game.running;
+    case GameTileDelegate::NameRole:
+      return QString::fromStdString(game.name);
+    case GameTileDelegate::StatusRole:
+      return QString::fromStdString(game.status);
+    case GameTileDelegate::RunningRole:
+      return game.running;
     case GameTileDelegate::StatusTextRole:
     case GameTileDelegate::ProgressRole:
     case GameTileDelegate::ProgressDetailRole: {
@@ -207,10 +212,14 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
       if (role == GameTileDelegate::ProgressDetailRole) return installing->detail;
       return installing->fraction;
     }
-    case GameTileDelegate::SourceRole: return QString::fromStdString(game.source);
-    case GameTileDelegate::NeedsCheckRole: return game.needs_check;
-    case GameTileDelegate::AppRole: return IsApp(game);
-    default: return {};
+    case GameTileDelegate::SourceRole:
+      return QString::fromStdString(game.source);
+    case GameTileDelegate::NeedsCheckRole:
+      return game.needs_check;
+    case GameTileDelegate::AppRole:
+      return IsApp(game);
+    default:
+      return {};
   }
 }
 
@@ -238,7 +247,8 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
 }
 
 bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, AppsIn apps) {
-  // Store launchers (Battle.net, ...) live on their source pages, not here; Creative Cloud is an app.
+  // Store launchers (Battle.net, ...) live on their source pages, not here; Creative Cloud is an
+  // app.
   if (game.source == "launcher" && !IsApp(game)) return false;
   if (apps == AppsIn::Search && IsApp(game)) return false;
   if (key == "all") return apps == AppsIn::All || !IsApp(game);
@@ -247,13 +257,13 @@ bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, Ap
   if (key == "apps") return IsApp(game);
   if (key == "never") return !game.last_played_at.has_value() && !IsApp(game);
   if (key == "attention") {
-    return game.status == "needs_install" || game.status == "broken" || game.status == "missing" || game.needs_check;
+    return game.status == "needs_install" || game.status == "broken" || game.status == "missing" ||
+           game.needs_check;
   }
   return key == QLatin1StringView(game.status.data(), static_cast<qsizetype>(game.status.size()));
 }
 
 namespace {
-
 
 bool AnyTagStartsWith(const GameSummary& game, const QString& prefix) {
   return std::ranges::any_of(game.tags, [&](const std::string& tag) {
@@ -282,7 +292,8 @@ std::vector<std::string> TagOrder(const std::vector<GameSummary>& games) {
   for (const GameSummary& game : games) {
     for (const std::string& tag : game.tags) {
       if (IsMeaningTag(tag) || known(folders, tag)) continue;
-      auto found = std::ranges::find_if(others, [&](const Tally& t) { return SameTag(t.name, tag); });
+      auto found =
+          std::ranges::find_if(others, [&](const Tally& t) { return SameTag(t.name, tag); });
       if (found == others.end()) {
         others.push_back({tag, 0});
         found = others.end() - 1;
@@ -307,11 +318,13 @@ std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const Q
     });
   };
   std::vector<LibraryTag> tags;
-  for (const std::string& tag : TagOrder(games)) tags.push_back({QString::fromStdString(tag), 0, is_folder(tag)});
+  for (const std::string& tag : TagOrder(games))
+    tags.push_back({QString::fromStdString(tag), 0, is_folder(tag)});
   for (const GameSummary& game : games) {
     if (IsHidden(game) != hidden || !GameFilterProxy::MatchesKey(game, key, apps)) continue;
     for (LibraryTag& tag : tags) {
-      if (std::ranges::any_of(game.tags, [&](const std::string& t) { return SameTag(t, tag.tag.toStdString()); }))
+      if (std::ranges::any_of(
+              game.tags, [&](const std::string& t) { return SameTag(t, tag.tag.toStdString()); }))
         ++tag.count;
     }
   }

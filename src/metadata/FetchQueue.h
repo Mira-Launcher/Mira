@@ -11,9 +11,9 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
-#include "store/MetadataStore.h"
 #include "core/Lane.h"
 #include "model/Types.h"
+#include "store/MetadataStore.h"
 
 namespace mira::metadata {
 
@@ -23,7 +23,7 @@ namespace mira::metadata {
 // Tracked games go ahead of store titles, which a store page queues by the
 // hundred. A game already waiting isn't queued twice.
 class FetchQueue {
-public:
+ public:
   explicit FetchQueue(store::MetadataStore& cache) : cache_(cache) {}
   ~FetchQueue();
 
@@ -36,24 +36,26 @@ public:
   // a worker once this game's fetch ends, with whether it worked; a fetch
   // dropped at shutdown never calls it.
   using Done = std::function<void(bool ok)>;
-  void Enqueue(const config::Config& config, api::EventBus& events, model::Game game, bool force = false,
-               bool announce = false, Done done = nullptr);
+  void Enqueue(const config::Config& config, api::EventBus& events, model::Game game,
+               bool force = false, bool announce = false, Done done = nullptr);
 
   // Store titles not installed yet: details and a small cover (FetchTitle), Steam's in batches
   // (FetchSteamTitles). Each game is
   // synthetic: id "<source>-<ref>", the id it gets once installed. Publishes
   // library.artwork_ready/_failed ({source, ref}). Returns how many were
   // queued.
-  int EnqueueTitles(const config::Config& config, api::EventBus& events, std::vector<model::Game> titles);
+  int EnqueueTitles(const config::Config& config, api::EventBus& events,
+                    std::vector<model::Game> titles);
 
   // Tracked games whose details are older than metadata.refresh_days: details only
   // (RefreshDetails), queued behind everything else. Publishes game.metadata_ready on success.
-  int EnqueueStale(const config::Config& config, api::EventBus& events, std::vector<model::Game> games);
+  int EnqueueStale(const config::Config& config, api::EventBus& events,
+                   std::vector<model::Game> games);
 
   // Blocks until nothing is queued or running. For tests.
   void WaitIdle();
 
-private:
+ private:
   enum class Kind { Full, Title, Details, SteamTitles };
   struct Job {
     model::Game game;
@@ -70,7 +72,8 @@ private:
   static std::vector<std::string> Ids(const Job& job);
   // Whether a low-priority job has `id`. Needs mutex_.
   bool Queued(const std::string& id) const;
-  int EnqueueLow(const config::Config& config, api::EventBus& events, std::vector<model::Game> games, Kind kind);
+  int EnqueueLow(const config::Config& config, api::EventBus& events,
+                 std::vector<model::Game> games, Kind kind);
   // Starts workers up to kWorkers while there's work for them. Needs mutex_.
   void StartWorkers(const config::Config& config, api::EventBus& events);
   void Work(const config::Config& config, api::EventBus& events);

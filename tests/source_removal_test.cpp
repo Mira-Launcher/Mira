@@ -30,7 +30,8 @@ TEST_CASE("DeleteInside leaves a folder above or beside a deeper root alone") {
   CHECK(fs::exists(root / "a" / "b" / "c" / "file"));
 }
 
-TEST_CASE("Removing a launcher plans no deletion of its apps: their folder goes with the launcher's") {
+TEST_CASE(
+    "Removing a launcher plans no deletion of its apps: their folder goes with the launcher's") {
   test::TestEnv env("remove-launcher-apps");
   const fs::path prefix = env.dir / "prefix";
   const fs::path program = prefix / "drive_c" / "Program Files" / "Microsoft Office";
@@ -56,7 +57,8 @@ TEST_CASE("Removing a launcher plans no deletion of its apps: their folder goes 
   const auto plan = library::PlanRemoval(env.config, env.games, "office");
   REQUIRE(plan.has_value());
   REQUIRE(plan->games.size() == 1);
-  CHECK(plan->games.front().deletes.empty());  // not "its folder", which is the launcher's to delete
+  CHECK(
+      plan->games.front().deletes.empty());  // not "its folder", which is the launcher's to delete
 
   const auto removed = library::RemoveSource(env.config, env.games, env.events, "office");
   REQUIRE(removed.has_value());
@@ -64,7 +66,8 @@ TEST_CASE("Removing a launcher plans no deletion of its apps: their folder goes 
   CHECK_FALSE(fs::exists(program));
 }
 
-TEST_CASE("Removing an emulator deletes Mira's download, and its settings and saves only when asked") {
+TEST_CASE(
+    "Removing an emulator deletes Mira's download, and its settings and saves only when asked") {
   test::TestEnv env("remove-emulator");
   const fs::path home = env.dir / "home";
   const std::string old_home = std::getenv("HOME");
@@ -85,10 +88,13 @@ TEST_CASE("Removing an emulator deletes Mira's download, and its settings and sa
   REQUIRE(library::RemoveSource(env.config, env.games, env.events, "mgba").has_value());
   CHECK_FALSE(fs::exists(tool));
   CHECK(fs::exists(home / ".config" / "mgba" / "config.ini"));
-  REQUIRE(library::RemoveSource(env.config, env.games, env.events, "mgba", /*delete_data=*/true).has_value());
+  REQUIRE(library::RemoveSource(env.config, env.games, env.events, "mgba", /*delete_data=*/true)
+              .has_value());
   CHECK_FALSE(fs::exists(home / ".config" / "mgba"));
 
   setenv("HOME", old_home.c_str(), 1);
-  if (old_config != nullptr) setenv("XDG_CONFIG_HOME", old_config_home.c_str(), 1);
-  else unsetenv("XDG_CONFIG_HOME");
+  if (old_config != nullptr)
+    setenv("XDG_CONFIG_HOME", old_config_home.c_str(), 1);
+  else
+    unsetenv("XDG_CONFIG_HOME");
 }

@@ -9,30 +9,42 @@ using nlohmann::json;
 
 std::string_view ToString(Platform platform) {
   switch (platform) {
-    case Platform::Windows: return "windows";
-    case Platform::Native:  return "native";
-    case Platform::Unknown: return "unknown";
+    case Platform::Windows:
+      return "windows";
+    case Platform::Native:
+      return "native";
+    case Platform::Unknown:
+      return "unknown";
   }
   return "unknown";
 }
 
 std::string_view ToString(GameStatus status) {
   switch (status) {
-    case GameStatus::SettingUp:    return "setting_up";
-    case GameStatus::Ready:        return "ready";
-    case GameStatus::Broken:       return "broken";
-    case GameStatus::Missing:      return "missing";
-    case GameStatus::NeedsInstall: return "needs_install";
+    case GameStatus::SettingUp:
+      return "setting_up";
+    case GameStatus::Ready:
+      return "ready";
+    case GameStatus::Broken:
+      return "broken";
+    case GameStatus::Missing:
+      return "missing";
+    case GameStatus::NeedsInstall:
+      return "needs_install";
   }
   return "broken";
 }
 
 std::string_view ToString(NotifyLevel level) {
   switch (level) {
-    case NotifyLevel::Success: return "success";
-    case NotifyLevel::Warning: return "warning";
-    case NotifyLevel::Error:   return "error";
-    case NotifyLevel::Info:    break;
+    case NotifyLevel::Success:
+      return "success";
+    case NotifyLevel::Warning:
+      return "warning";
+    case NotifyLevel::Error:
+      return "error";
+    case NotifyLevel::Info:
+      break;
   }
   return "info";
 }
@@ -107,12 +119,8 @@ json ToJson(const Game& game) {
 
 json ToJson(const RunnerBuild& runner) {
   return {
-      {"kind", runner.kind},
-      {"name", runner.name},
-      {"path", runner.path},
-      {"version", runner.version},
-      {"release", runner.release},
-      {"reference", runner.Reference()},
+      {"kind", runner.kind},       {"name", runner.name},       {"path", runner.path},
+      {"version", runner.version}, {"release", runner.release}, {"reference", runner.Reference()},
   };
 }
 
@@ -148,7 +156,8 @@ Game GameFromJson(const json& document) {
   if (document.contains("overrides") && document["overrides"].is_object()) {
     game.overrides = document["overrides"];
   }
-  if (document.contains("launch") && document["launch"].is_object()) game.launch = document["launch"];
+  if (document.contains("launch") && document["launch"].is_object())
+    game.launch = document["launch"];
   game.last_error = document.value("last_error", std::string());
   game.created_at = document.value("created_at", std::int64_t{0});
   game.updated_at = document.value("updated_at", std::int64_t{0});

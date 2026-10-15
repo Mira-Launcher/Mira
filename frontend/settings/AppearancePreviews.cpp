@@ -5,7 +5,6 @@
 #include <QPixmap>
 #include <QStandardItemModel>
 #include <QStyleOptionViewItem>
-
 #include <algorithm>
 #include <array>
 #include <utility>
@@ -34,7 +33,8 @@ void PaintMiniWindow(QPainter* painter, const QRectF& rect, const theme::Tokens&
   painter->setPen(Qt::NoPen);
   for (int i = 0; i < 4; ++i) {
     painter->setBrush(i == 0 ? colors.accent : colors.border);
-    painter->drawRoundedRect(QRectF(sidebar.left() + 5, sidebar.top() + 7 + i * 9, sidebar.width() - 10, 5), 2, 2);
+    painter->drawRoundedRect(
+        QRectF(sidebar.left() + 5, sidebar.top() + 7 + i * 9, sidebar.width() - 10, 5), 2, 2);
   }
 
   const QRectF grid = rect.adjusted(sidebar.width() + 9, 8, -8, -8);
@@ -60,7 +60,11 @@ void PaintMiniWindow(QPainter* painter, const QRectF& rect, const theme::Tokens&
 
 ThemeChoice::ThemeChoice(const QString& theme, const QString& label, std::vector<GameSummary> games,
                          ArtworkStore* artwork, QWidget* parent)
-    : QAbstractButton(parent), theme_(theme), label_(label), games_(std::move(games)), artwork_(artwork) {
+    : QAbstractButton(parent),
+      theme_(theme),
+      label_(label),
+      games_(std::move(games)),
+      artwork_(artwork) {
   setCheckable(true);
   setAttribute(Qt::WA_Hover);
   setCursor(Qt::PointingHandCursor);
@@ -91,7 +95,8 @@ void ThemeChoice::paintEvent(QPaintEvent*) {
   if (hasFocus()) {
     painter.setPen(QPen(tokens.accent, 1, Qt::DotLine));
     painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(frame.adjusted(3, 3, -3, -3), tokens.radius_control, tokens.radius_control);
+    painter.drawRoundedRect(frame.adjusted(3, 3, -3, -3), tokens.radius_control,
+                            tokens.radius_control);
   }
 
   const QRectF preview(12, 12, width() - 24, 86);
@@ -102,7 +107,8 @@ void ThemeChoice::paintEvent(QPaintEvent*) {
       painter.save();
       QPainterPath half;
       if (light) {
-        half.addPolygon(QPolygonF({preview.topRight(), preview.bottomRight(), preview.bottomLeft()}));
+        half.addPolygon(
+            QPolygonF({preview.topRight(), preview.bottomRight(), preview.bottomLeft()}));
       } else {
         half.addPolygon(QPolygonF({preview.topLeft(), preview.topRight(), preview.bottomLeft()}));
       }
@@ -130,7 +136,9 @@ constexpr QSize kPreviewTile(104, 156);
 }
 
 TilePreview::TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, QWidget* parent)
-    : QWidget(parent), model_(new QStandardItemModel(this)), delegate_(new GameTileDelegate(this, kPreviewTile, artwork)) {
+    : QWidget(parent),
+      model_(new QStandardItemModel(this)),
+      delegate_(new GameTileDelegate(this, kPreviewTile, artwork)) {
   using Role = GameTileDelegate::Role;
   // No games yet: two sample tiles, the second from a store so its source shows.
   samples_ = games.empty();
@@ -179,7 +187,9 @@ void TilePreview::SetShown(bool status, bool source) {
   update();
 }
 
-QSize TilePreview::sizeHint() const { return {kPreviewTile.width() * 2, kPreviewTile.height()}; }
+QSize TilePreview::sizeHint() const {
+  return {kPreviewTile.width() * 2, kPreviewTile.height()};
+}
 
 void TilePreview::paintEvent(QPaintEvent*) {
   QPainter painter(this);
@@ -207,7 +217,9 @@ void LayoutPreview::SetShape(const Shape& shape) {
   update();
 }
 
-QSize LayoutPreview::sizeHint() const { return {520, 128}; }
+QSize LayoutPreview::sizeHint() const {
+  return {520, 128};
+}
 
 void LayoutPreview::paintEvent(QPaintEvent*) {
   const theme::Tokens& tokens = theme::Current();
@@ -226,7 +238,8 @@ void LayoutPreview::paintEvent(QPaintEvent*) {
   painter.setPen(Qt::NoPen);
   painter.setBrush(tokens.accent);
   painter.drawRoundedRect(play, shape_.control_radius, shape_.control_radius);
-  icons::For(icons::Glyph::Play, tokens.on_accent).paint(&painter, QRect(play.left() + 10, play.center().y() - 7, 14, 14));
+  icons::For(icons::Glyph::Play, tokens.on_accent)
+      .paint(&painter, QRect(play.left() + 10, play.center().y() - 7, 14, 14));
   painter.setPen(tokens.on_accent);
   painter.drawText(play.adjusted(28, 0, -8, 0), Qt::AlignVCenter | Qt::AlignLeft, "Play");
 

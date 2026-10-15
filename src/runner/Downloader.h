@@ -20,7 +20,7 @@ struct ReleaseAsset {
   std::string tag;
   std::string asset_name;
   std::string download_url;
-  std::string checksum_url;  // empty if the release had no matching .sha512sum asset
+  std::string checksum_url;         // empty if the release had no matching .sha512sum asset
   bool checksum_is_sha256 = false;  // else sha512
   bool checksum_is_list = false;    // checksum_url is a sha256sums.txt covering every asset
   std::int64_t size_bytes = 0;
@@ -67,11 +67,12 @@ std::string BuildLabel(const std::string& kind, const std::string& name);
 Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family);
 
 // Lists releases of `kind` ("proton", "wine", or a tool such as "legendary",
-// "gog" or "umu") from its GitHub source, newest first. Shells out to curl for the GitHub API request rather than linking
-// libcurl, consistent with how umu-run/wine are already run as
+// "gog" or "umu") from its GitHub source, newest first. Shells out to curl for the GitHub API
+// request rather than linking libcurl, consistent with how umu-run/wine are already run as
 // subprocesses, and this is occasional, human-triggered traffic, not a hot
 // path.
-Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config, const std::string& kind);
+Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config,
+                                               const std::string& kind);
 
 // Downloads `asset` (verifying its checksum first, if it has one) and
 // extracts it into the right search path for `kind`:
@@ -81,9 +82,11 @@ Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config, con
 // reason as ListReleases. `on_progress` gets the downloaded fraction (0..1)
 // as it changes, when the release's size is known.
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
-                                const ReleaseAsset& asset, const std::function<void(double)>& on_progress = {});
+                                const ReleaseAsset& asset,
+                                const std::function<void(double)>& on_progress = {});
 
-// The asset matching `pattern` of the release a GitHub, Forgejo or GitLab API url gives (".../releases/latest").
+// The asset matching `pattern` of the release a GitHub, Forgejo or GitLab API url gives
+// (".../releases/latest").
 Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pattern,
                                    const std::vector<std::string>& exclude = {});
 
@@ -98,15 +101,19 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
 // the bare file directly, renamed to `binary_name`. Verifies
 // asset.checksum_url first if the release has one, same as
 // DownloadAndInstall.
-Result<std::filesystem::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
-                                               const ReleaseAsset& asset, const std::string& binary_name);
+Result<std::filesystem::path> InstallToolBinary(const config::Config& config,
+                                                const std::string& tool_name,
+                                                const ReleaseAsset& asset,
+                                                const std::string& binary_name);
 
 struct InstalledTool {
   std::string tag;
   std::filesystem::path binary;
   std::string published_at;
 };
-// What InstallToolBinary last put in the tool's folder; nullopt for none, or a download from before it kept a record.
-std::optional<InstalledTool> InstalledToolOf(const config::Config& config, const std::string& tool_name);
+// What InstallToolBinary last put in the tool's folder; nullopt for none, or a download from before
+// it kept a record.
+std::optional<InstalledTool> InstalledToolOf(const config::Config& config,
+                                             const std::string& tool_name);
 
 }  // namespace mira::runner

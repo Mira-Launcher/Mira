@@ -32,12 +32,12 @@ struct LutrisImportSummary : library::ImportSummary {
 // works on it. Manual (POST /v1/lutris/import), not inotify-driven: Lutris
 // owns this data, Mira only reads a snapshot of it on request.
 class LutrisImporter {
-public:
+ public:
   LutrisImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<LutrisImportSummary> Import();
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

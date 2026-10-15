@@ -21,12 +21,13 @@ TEST_CASE("amazon: installed games launch from their fuel.json") {
   ::setenv("NILE_CONFIG_PATH", dir.c_str(), 1);
 
   std::ofstream(dir / "nile/installed.json")
-      << R"([{"id": "amzn1.adg.product.abc", "version": "1", "path": ")" << (dir / "games/Some Game").string()
-      << R"("}])";
+      << R"([{"id": "amzn1.adg.product.abc", "version": "1", "path": ")"
+      << (dir / "games/Some Game").string() << R"("}])";
   std::ofstream(dir / "nile/library.json")
       << R"([{"id": "ent-1", "product": {"id": "amzn1.adg.product.abc", "title": "Some Game", "sku": "SKU1"}}])";
   std::ofstream(dir / "games/Some Game/fuel.json")
-      << "{ // json5 comment\n \"SchemaVersion\": \"2\", \"Main\": {\"Command\": \"bin\\\\Game.exe\", "
+      << "{ // json5 comment\n \"SchemaVersion\": \"2\", \"Main\": {\"Command\": "
+         "\"bin\\\\Game.exe\", "
          "\"Args\": [\"-fuel\"], \"WorkingSubdirOverride\": \"bin\"}}";
 
   amazon::AmazonImporter importer(env.config, env.games, env.events);

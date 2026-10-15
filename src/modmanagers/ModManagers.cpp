@@ -35,7 +35,8 @@ Result<void> ExtractFresh(const fs::path& archive, const fs::path& dir) {
   std::error_code ec;
   fs::remove_all(dir, ec);
   fs::create_directories(dir, ec);
-  if (ec) return Err("install_failed", std::format("couldn't make {}: {}", dir.string(), ec.message()));
+  if (ec)
+    return Err("install_failed", std::format("couldn't make {}: {}", dir.string(), ec.message()));
   return runner::Extract(archive, dir);
 }
 
@@ -66,7 +67,9 @@ const ModManager* Find(std::string_view id) {
   return it == All().end() ? nullptr : &*it;
 }
 
-fs::path Dir(const ModManager& manager) { return paths::UserDir() / "tools" / manager.id; }
+fs::path Dir(const ModManager& manager) {
+  return paths::UserDir() / "tools" / manager.id;
+}
 
 bool Installed(const ModManager& manager) {
   std::error_code ec;
@@ -126,17 +129,20 @@ Result<void> Install(const ModManager& manager) {
   if (unpacked && !manager.inner.empty()) {
     const fs::path inner = download / "inner";
     fs::rename(staging / manager.inner, inner, ec);
-    unpacked = ec ? Err("install_failed", std::format("{}'s download has no {}", manager.name, manager.inner))
+    unpacked = ec ? Err("install_failed",
+                        std::format("{}'s download has no {}", manager.name, manager.inner))
                   : ExtractFresh(inner, staging);
   }
   if (unpacked && !fs::is_regular_file(staging / manager.binary, ec)) {
-    unpacked = Err("install_failed", std::format("{}'s download has no {}", manager.name, manager.binary));
+    unpacked =
+        Err("install_failed", std::format("{}'s download has no {}", manager.name, manager.binary));
   }
   if (!unpacked) {
     cleanup();
     return unpacked;
   }
-  if (auto written = WriteFileAtomic(staging / kVersionFile, asset->tag + '\n', "install_failed"); !written) {
+  if (auto written = WriteFileAtomic(staging / kVersionFile, asset->tag + '\n', "install_failed");
+      !written) {
     cleanup();
     return written;
   }
@@ -168,12 +174,14 @@ bool OnGame(const model::Game& game, const ModManager& manager) {
   });
 }
 
-Result<model::Game> AddToGame(config::Config& config, store::GameStore& games, const ModManager& manager,
-                              const std::string& game_id) {
+Result<model::Game> AddToGame(config::Config& config, store::GameStore& games,
+                              const ModManager& manager, const std::string& game_id) {
   const auto game = games.Find(game_id);
   if (!game) return Err("game_not_found", "no such game");
   if (!CanAdd(*game)) {
-    return Err("not_windows_game", std::format("{} runs in a Windows game's prefix, and {} has none", manager.name, game->name));
+    return Err("not_windows_game",
+               std::format("{} runs in a Windows game's prefix, and {} has none", manager.name,
+                           game->name));
   }
   if (!Installed(manager)) {
     return Err("mod_manager_missing", std::format("{} isn't installed", manager.name),
@@ -181,30 +189,41 @@ Result<model::Game> AddToGame(config::Config& config, store::GameStore& games, c
   }
   const runner::RunnerRegistry runners(config);
   for (const std::string& verb : manager.tricks) {
-    if (auto ran = runner::RunTricksVerb(runners, *game, verb); !ran) return std::unexpected(ran.error());
+    if (auto ran = runner::RunTricksVerb(runners, *game, verb); !ran)
+      return std::unexpected(ran.error());
   }
   return games.Update(game_id, [&](model::Game& g) {
     json options = Without(g.launch, manager.id);
-    options.push_back({{"id", manager.id}, {"name", manager.name}, {"mode", "tool"},
-                       {"exe", (Dir(manager) / manager.binary).string()}, {"args", ""}, {"native", false}});
+    options.push_back({{"id", manager.id},
+                       {"name", manager.name},
+                       {"mode", "tool"},
+                       {"exe", (Dir(manager) / manager.binary).string()},
+                       {"args", ""},
+                       {"native", false}});
     g.launch["options"] = std::move(options);
   });
 }
 
-Result<model::Game> RemoveFromGame(store::GameStore& games, const ModManager& manager, const std::string& game_id) {
-  return games.Update(game_id, [&](model::Game& g) { g.launch["options"] = Without(g.launch, manager.id); });
+Result<model::Game> RemoveFromGame(store::GameStore& games, const ModManager& manager,
+                                   const std::string& game_id) {
+  return games.Update(game_id,
+                      [&](model::Game& g) { g.launch["options"] = Without(g.launch, manager.id); });
 }
 
 Result<void> Uninstall(store::GameStore& games, const ModManager& manager) {
-  if (!ClaimJob(manager.id)) return Err("busy", std::format("{} is busy with another install or uninstall", manager.name));
+  if (!ClaimJob(manager.id))
+    return Err("busy", std::format("{} is busy with another install or uninstall", manager.name));
   const JobSlot job{manager.id};
   for (const model::Game& game : games.All()) {
     if (!OnGame(game, manager)) continue;
-    if (auto removed = RemoveFromGame(games, manager, game.id); !removed) return std::unexpected(removed.error());
+    if (auto removed = RemoveFromGame(games, manager, game.id); !removed)
+      return std::unexpected(removed.error());
   }
   std::error_code ec;
   fs::remove_all(Dir(manager), ec);
-  if (ec) return Err("uninstall_failed", std::format("couldn't delete {}: {}", Dir(manager).string(), ec.message()));
+  if (ec)
+    return Err("uninstall_failed",
+               std::format("couldn't delete {}: {}", Dir(manager).string(), ec.message()));
   return {};
 }
 

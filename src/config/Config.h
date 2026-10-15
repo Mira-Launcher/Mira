@@ -5,12 +5,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <json.hpp>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Result.h"
 
@@ -18,10 +17,12 @@ namespace mira::config {
 
 struct Entry;
 
-// Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not frontend.toml.
+// Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not
+// frontend.toml.
 inline constexpr std::array<std::string_view, 11> kUiStateKeys = {
-    "window_width", "window_height",  "window_maximized", "sidebar_width", "details_width", "tile_width",
-    "source_tile_widths", "library_filter", "sort_by", "sort_descending", "onboarded"};
+    "window_width",  "window_height",   "window_maximized",   "sidebar_width",
+    "details_width", "tile_width",      "source_tile_widths", "library_filter",
+    "sort_by",       "sort_descending", "onboarded"};
 
 // The on-disk settings.toml, merged with schema defaults so every declared
 // key always resolves. In memory everything is JSON; only Load()/Save()
@@ -31,7 +32,7 @@ inline constexpr std::array<std::string_view, 11> kUiStateKeys = {
 // settings.toml against the schema, but stores/returns frontend.toml
 // verbatim so the frontend can evolve its own settings shape freely.
 class Config {
-public:
+ public:
   explicit Config(std::filesystem::path file);
 
   // Never fails: a missing file is created from defaults and an unparseable
@@ -59,7 +60,8 @@ public:
 
   // Where the GUI's window state (kUiStateKeys) is kept instead of frontend.toml,
   // which holds only what a person would set. Before Load().
-  void UseUiStateStore(std::function<nlohmann::json()> read, std::function<void(const nlohmann::json&)> write);
+  void UseUiStateStore(std::function<nlohmann::json()> read,
+                       std::function<void(const nlohmann::json&)> write);
 
   // The opaque [frontend] table, read and written without validation: frontend.toml
   // with the window state merged in.
@@ -80,10 +82,11 @@ public:
   // Changes whenever a setting does, so a caller can keep what it derived from them until then.
   std::uint64_t Revision() const { return revision_.load(); }
 
-private:
+ private:
   nlohmann::json GetLocked(std::string_view key) const;
   // Resets each invalid value in `whole` to fallback(entry) and logs it with `note`.
-  static void ResetInvalid(nlohmann::json& whole, const std::function<nlohmann::json(const Entry&)>& fallback,
+  static void ResetInvalid(nlohmann::json& whole,
+                           const std::function<nlohmann::json(const Entry&)>& fallback,
                            std::string_view note);
   Result<std::vector<std::string>> SyncLocked();
   // Every app change: picks up hand edits first, so only the keys the app set change.

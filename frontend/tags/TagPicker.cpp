@@ -28,7 +28,7 @@ namespace mira_gui {
 
 // One game's cover, ticked or not; a click toggles it.
 class PickTile : public QAbstractButton {
-public:
+ public:
   static constexpr int kName = 20;
 
   PickTile(const GameSummary& game, ArtworkStore* artwork, int width, QWidget* parent)
@@ -50,7 +50,7 @@ public:
   QSize CoverSize() const { return {width_, width_ * 3 / 2}; }
   QSize sizeHint() const override { return {width_, CoverSize().height() + 4 + kName}; }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     const theme::Tokens& tokens = theme::Current();
     QPainter painter(this);
@@ -74,8 +74,9 @@ protected:
       painter.setBrush(tokens.accent);
       painter.drawRoundedRect(box, 5, 5);
       painter.setPen(QPen(tokens.on_accent, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-      painter.drawPolyline(QPolygonF({box.topLeft() + QPointF(5, 10), box.topLeft() + QPointF(8.5, 13.5),
-                                      box.topLeft() + QPointF(15, 6.5)}));
+      painter.drawPolyline(
+          QPolygonF({box.topLeft() + QPointF(5, 10), box.topLeft() + QPointF(8.5, 13.5),
+                     box.topLeft() + QPointF(15, 6.5)}));
     } else {
       QColor shade = tokens.window;
       shade.setAlphaF(0.6);
@@ -96,7 +97,7 @@ protected:
         fontMetrics().elidedText(QString::fromStdString(game_.name), Qt::ElideRight, width_));
   }
 
-private:
+ private:
   GameSummary game_;
   ArtworkStore* artwork_;
   int width_;
@@ -219,7 +220,8 @@ void TagPicker::SetShowingHidden(bool showing) {
 }
 
 void TagPicker::Open(const QString& name, bool existing, std::vector<Section> sections,
-                     const std::vector<GameSummary>& games, bool folder, std::vector<TagSummary> known) {
+                     const std::vector<GameSummary>& games, bool folder,
+                     std::vector<TagSummary> known) {
   name_ = name;
   existing_ = existing;
   folder_was_ = folder;
@@ -232,8 +234,9 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
     ticked.insert(ticked.end(), section.ids.begin(), section.ids.end());
     if (existing) had_.insert(had_.end(), section.ids.begin(), section.ids.end());
   }
-  title_->setText(name.isEmpty() ? QString("New tag") : existing ? QString("Choose games for %1").arg(name)
-                                                                 : QString("Add %1").arg(name));
+  title_->setText(name.isEmpty() ? QString("New tag")
+                  : existing     ? QString("Choose games for %1").arg(name)
+                                 : QString("Add %1").arg(name));
   name_edit_->setVisible(name.isEmpty());
   name_edit_->clear();
   search_->clear();
@@ -252,7 +255,8 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
     sorted.push_back(&game);
   }
   std::ranges::sort(sorted, [](const GameSummary* a, const GameSummary* b) {
-    return QString::fromStdString(a->name).compare(QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
+    return QString::fromStdString(a->name).compare(QString::fromStdString(b->name),
+                                                   Qt::CaseInsensitive) < 0;
   });
   std::vector<const GameSummary*> hidden;
   std::erase_if(sorted, [&](const GameSummary* game) {
@@ -264,14 +268,16 @@ void TagPicker::Open(const QString& name, bool existing, std::vector<Section> se
   for (const Section& section : sections) {
     std::vector<const GameSummary*> in;
     for (const GameSummary* game : sorted) {
-      if (std::ranges::contains(section.ids, game->id) && !std::ranges::contains(placed, game->id)) {
+      if (std::ranges::contains(section.ids, game->id) &&
+          !std::ranges::contains(placed, game->id)) {
         in.push_back(game);
         placed.push_back(game->id);
       }
     }
     // Its hidden games wait in the Hidden section, but count here, as on the Tags page.
-    const auto hidden_in = std::ranges::count_if(
-        hidden, [&](const GameSummary* game) { return std::ranges::contains(section.ids, game->id); });
+    const auto hidden_in = std::ranges::count_if(hidden, [&](const GameSummary* game) {
+      return std::ranges::contains(section.ids, game->id);
+    });
     if (!in.empty()) {
       const QString count = hidden_in > 0 ? QString("%1 + %2 hidden").arg(in.size()).arg(hidden_in)
                                           : QString::number(in.size());
@@ -327,7 +333,8 @@ QWidget* TagPicker::AddSection(const QString& heading, const std::vector<const G
 void TagPicker::Filter() {
   const QString text = search_->text().trimmed();
   for (PickTile* tile : tiles_) {
-    tile->setVisible(text.isEmpty() || QString::fromStdString(tile->Game().name).contains(text, Qt::CaseInsensitive));
+    tile->setVisible(text.isEmpty() ||
+                     QString::fromStdString(tile->Game().name).contains(text, Qt::CaseInsensitive));
   }
   // A section whose every cover is filtered out hides with its heading. Hidden mode shows only the
   // hidden games' section, and only it hides it.
@@ -382,15 +389,17 @@ void TagPicker::Apply() {
   std::vector<std::string> ids = Chosen();
   // A new name that's already a tag adds to it rather than taking it off the games that have it.
   if (!existing_) {
-    const auto known = std::ranges::find_if(known_, [&](const TagSummary& t) { return SameTag(t.name, name); });
+    const auto known =
+        std::ranges::find_if(known_, [&](const TagSummary& t) { return SameTag(t.name, name); });
     if (known != known_.end()) {
       for (const std::string& id : known->ids) {
         if (!std::ranges::contains(ids, id)) ids.push_back(id);
       }
     }
   }
-  const std::optional<bool> folder =
-      folder_->isChecked() != folder_was_ ? std::optional<bool>(folder_->isChecked()) : std::nullopt;
+  const std::optional<bool> folder = folder_->isChecked() != folder_was_
+                                         ? std::optional<bool>(folder_->isChecked())
+                                         : std::nullopt;
   apply_->setEnabled(false);
   api::SetTagAsync(this, name, ids, folder, [this](PatchGamesResult result) {
     if (!result.ok) {

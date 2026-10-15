@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QString>
-
 #include <functional>
 
 namespace mira_gui::notify {

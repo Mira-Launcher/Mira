@@ -20,7 +20,7 @@ namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
 
-constexpr std::array kSuffixes = {std::string_view{".tar.gz"}, std::string_view{".tar.xz"},
+constexpr std::array kSuffixes = {std::string_view{".tar.gz"},  std::string_view{".tar.xz"},
                                   std::string_view{".tar.bz2"}, std::string_view{".tgz"},
                                   std::string_view{".tar"},     std::string_view{".zip"},
                                   std::string_view{".rar"},     std::string_view{".7z"},
@@ -58,18 +58,21 @@ std::optional<Volume> VolumeOf(const fs::path& path) {
   return std::nullopt;
 }
 
-// `dest`, or the first of "<dest> (2)", "<dest> (3)"... that's free: an archive never replaces a folder already
-// there, such as a game with its saves.
+// `dest`, or the first of "<dest> (2)", "<dest> (3)"... that's free: an archive never replaces a
+// folder already there, such as a game with its saves.
 fs::path FreeName(const fs::path& dest) {
   std::error_code ec;
   fs::path name = dest;
-  for (int n = 2; fs::exists(name, ec); ++n) name = dest.parent_path() / std::format("{} ({})", dest.filename().string(), n);
+  for (int n = 2; fs::exists(name, ec); ++n)
+    name = dest.parent_path() / std::format("{} ({})", dest.filename().string(), n);
   return name;
 }
 
 }  // namespace
 
-bool LooksLikeArchive(const fs::path& path) { return !SuffixOf(path).empty() && !IsLaterVolume(path); }
+bool LooksLikeArchive(const fs::path& path) {
+  return !SuffixOf(path).empty() && !IsLaterVolume(path);
+}
 
 bool IsLaterVolume(const fs::path& path) {
   const std::optional<Volume> volume = VolumeOf(path);
@@ -140,9 +143,11 @@ fs::path StemWithoutArchiveExtension(const fs::path& archive) {
 
 Result<void> ExtractAndRemove(const fs::path& archive, const fs::path& dest_dir) {
   const std::string_view suffix = SuffixOf(archive);
-  if (suffix.empty() || IsLaterVolume(archive)) return Err("not_an_archive", "unrecognized archive extension");
+  if (suffix.empty() || IsLaterVolume(archive))
+    return Err("not_an_archive", "unrecognized archive extension");
 
-  const fs::path work_dir = dest_dir.parent_path() / std::format("{}{}", kExtractingPrefix, dest_dir.filename().string());
+  const fs::path work_dir =
+      dest_dir.parent_path() / std::format("{}{}", kExtractingPrefix, dest_dir.filename().string());
   std::error_code ec;
   fs::remove_all(work_dir, ec);
   fs::create_directories(work_dir, ec);
@@ -160,9 +165,11 @@ Result<void> ExtractAndRemove(const fs::path& archive, const fs::path& dest_dir)
     return Err("move_failed", ec.message());
   }
 
-  // The game is in place now, so a volume left behind is only logged: failing would extract it again.
+  // The game is in place now, so a volume left behind is only logged: failing would extract it
+  // again.
   for (const fs::path& volume : VolumesOf(archive)) {
-    if (!fs::remove(volume, ec) && ec) log::Warn("couldn't remove {}: {}", volume.string(), ec.message());
+    if (!fs::remove(volume, ec) && ec)
+      log::Warn("couldn't remove {}: {}", volume.string(), ec.message());
   }
   return {};
 }

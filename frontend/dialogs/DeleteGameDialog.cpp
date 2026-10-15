@@ -40,8 +40,7 @@ QCheckBox* AddPathOption(QVBoxLayout* layout, QWidget* parent, const QString& la
 DeleteChoice FinishDeleteDialog(QDialog& dialog, QVBoxLayout* layout, QCheckBox* files_check,
                                 QCheckBox* prefix_check) {
   auto* metadata_check = new QCheckBox("Also delete cached metadata && cover art", &dialog);
-  metadata_check->setToolTip(
-      "Otherwise the cached data stays on disk, unused.");
+  metadata_check->setToolTip("Otherwise the cached data stays on disk, unused.");
   layout->addWidget(metadata_check);
 
   auto* warning = new QLabel(
@@ -92,11 +91,11 @@ DeleteChoice FinishDeleteDialog(QDialog& dialog, QVBoxLayout* layout, QCheckBox*
 
 // A Microsoft 365 app is uninstalled by Office's installer; its folder and prefix are shared.
 DeleteChoice AskUninstallOfficeApp(QWidget* parent, const QString& name) {
-  QMessageBox box(QMessageBox::Question, "Uninstall " + name,
-                  QString("Uninstall %1?").arg(name),
+  QMessageBox box(QMessageBox::Question, "Uninstall " + name, QString("Uninstall %1?").arg(name),
                   QMessageBox::Cancel, parent);
-  box.setInformativeText("Microsoft 365's installer removes it. Your other apps and your sign-in stay, and it "
-                         "can be installed again from Microsoft 365's page.");
+  box.setInformativeText(
+      "Microsoft 365's installer removes it. Your other apps and your sign-in stay, and it "
+      "can be installed again from Microsoft 365's page.");
   QPushButton* uninstall = box.addButton("Uninstall", QMessageBox::DestructiveRole);
   box.setDefaultButton(QMessageBox::Cancel);
   box.exec();
@@ -136,17 +135,19 @@ DeleteChoice AskDeleteGame(QWidget* parent, const QString& name, const QString& 
   // them would delete someone else's install.
   const bool linked_only = source == "desktop-entry";
   // A store launcher's games and apps share its prefix: it goes when the launcher is removed.
-  const bool shared_prefix =
-      source == "battlenet" || source == "ubisoft" || source == "ea" || source == "office" || source == "adobe";
+  const bool shared_prefix = source == "battlenet" || source == "ubisoft" || source == "ea" ||
+                             source == "office" || source == "adobe";
   QCheckBox* files_check = AddPathOption(
       layout, &dialog, "Also delete the game's files", linked_only ? QString() : install_path,
       linked_only ? "This game links to another app's own files, which Mira doesn't own."
                   : "This game has no install path on record.");
   QCheckBox* prefix_check = AddPathOption(
-      layout, &dialog, "Also delete its Wine/Proton prefix", linked_only || shared_prefix ? QString() : data_dir,
-      linked_only    ? "This game links to another app's own files, which Mira doesn't own."
-      : shared_prefix ? "Its prefix is shared with its launcher and everything else installed through it."
-                      : "This game has no prefix (native games don't need one).");
+      layout, &dialog, "Also delete its Wine/Proton prefix",
+      linked_only || shared_prefix ? QString() : data_dir,
+      linked_only ? "This game links to another app's own files, which Mira doesn't own."
+      : shared_prefix
+          ? "Its prefix is shared with its launcher and everything else installed through it."
+          : "This game has no prefix (native games don't need one).");
 
   return FinishDeleteDialog(dialog, layout, files_check, prefix_check);
 }

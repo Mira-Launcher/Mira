@@ -12,14 +12,13 @@
 #include <QScrollArea>
 #include <QToolButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
+#include "../activity/DownloadTracker.h"
+#include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
-#include "../activity/DownloadTracker.h"
-#include "../app/Notify.h"
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -35,14 +34,14 @@ constexpr const char* kDefaultKey = "default_runner.windows";
 QString FormatSize(std::int64_t bytes) {
   if (bytes <= 0) return QString();
   const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
-  return mib >= 1024.0 ? QString("%1 GiB").arg(mib / 1024.0, 0, 'f', 1) : QString("%1 MiB").arg(mib, 0, 'f', 0);
+  return mib >= 1024.0 ? QString("%1 GiB").arg(mib / 1024.0, 0, 'f', 1)
+                       : QString("%1 MiB").arg(mib, 0, 'f', 0);
 }
 
 QString FormatDate(const std::string& iso) {
   const QDateTime when = QDateTime::fromString(QString::fromStdString(iso), Qt::ISODate);
   return when.isValid() ? QLocale().toString(when.date(), "MMM d, yyyy") : QString();
 }
-
 
 // A row's facts after its name, in one line that shrinks before the controls do.
 ElidedLabel* Facts(const QString& text, SettingRow* row) {
@@ -86,7 +85,8 @@ void SetProgress(QWidget* holder, double fraction) {
 
 }  // namespace
 
-RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(parent), downloads_(downloads) {
+RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent)
+    : QWidget(parent), downloads_(downloads) {
   setObjectName("runners_page");
   auto* outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
@@ -192,11 +192,11 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent) : QWidget(
   // Removed here, from the CLI or by another window.
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string&, bool live) {
-    if (!live || type != "runners.removed") return;
-    RefreshInstalled();
-    RefreshUpdates();
-    RefreshCatalog();
-  });
+            if (!live || type != "runners.removed") return;
+            RefreshInstalled();
+            RefreshUpdates();
+            RefreshCatalog();
+          });
   Refresh();
 }
 
@@ -351,10 +351,12 @@ void RunnersPage::RebuildInstalled() {
 
     const auto update = std::ranges::find(updates_, runner.reference, &RunnerUpdate::reference);
     if (update != updates_.end()) {
-      const DownloadTracker::Entry* entry = downloads_->Find(DownloadTracker::KeyFor(
-          DownloadTracker::Kind::Runner, QString::fromStdString(kind), QString::fromStdString(update->name)));
+      const DownloadTracker::Entry* entry = downloads_->Find(
+          DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
+                                  QString::fromStdString(update->name)));
       if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
-        auto* updating = new QLabel("Updating to " + QString::fromStdString(update->label) + "…", row);
+        auto* updating =
+            new QLabel("Updating to " + QString::fromStdString(update->label) + "…", row);
         updating->setProperty("role", "subtle");
         row->AddControl(updating);
       } else {
@@ -362,10 +364,11 @@ void RunnersPage::RebuildInstalled() {
         auto* update_button = new QPushButton("Update", row);
         update_button->setToolTip("Update to " + QString::fromStdString(update->label));
         update_button->setDefault(true);
-        connect(update_button, &QPushButton::clicked, this, [this, update_button, runner, u = *update] {
-          update_button->setEnabled(false);
-          Update(runner, u);
-        });
+        connect(update_button, &QPushButton::clicked, this,
+                [this, update_button, runner, u = *update] {
+                  update_button->setEnabled(false);
+                  Update(runner, u);
+                });
         row->AddControl(update_button);
       }
     }
@@ -379,7 +382,8 @@ void RunnersPage::RebuildInstalled() {
     connect(more, &QToolButton::clicked, this, [this, more, runner, is_default] {
       QMenu menu(this);
       if (!is_default) {
-        menu.addAction("Make default", this, [this, reference = runner.reference] { SetDefault(reference); });
+        menu.addAction("Make default", this,
+                       [this, reference = runner.reference] { SetDefault(reference); });
       }
       if (runner.removable) {
         if (!is_default) menu.addSeparator();
@@ -391,18 +395,20 @@ void RunnersPage::RebuildInstalled() {
     installed_->AddRow(row);
   }
   if (shown == 0) {
-    installed_->AddRow(NoteRow(kind == "proton" ? "No Proton builds yet. Install one from Get more."
-                                                : "No Wine builds yet. Install one from Get more."));
+    installed_->AddRow(NoteRow(kind == "proton"
+                                   ? "No Proton builds yet. Install one from Get more."
+                                   : "No Wine builds yet. Install one from Get more."));
   }
 
   const bool automatic = default_windows_.empty() || default_windows_ == "auto";
   // "proton:GE-Proton11-7" reads as "GE-Proton11-7".
   const QString chosen = QString::fromStdString(default_windows_).section(':', 1);
   default_note_->setText(
-      automatic ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
-                : QString("Windows games set to Auto use %1. <a href=\"auto\" style=\"color:%2\">Pick "
-                          "automatically instead</a>")
-                      .arg(chosen.toHtmlEscaped(), tokens.accent.name()));
+      automatic
+          ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
+          : QString("Windows games set to Auto use %1. <a href=\"auto\" style=\"color:%2\">Pick "
+                    "automatically instead</a>")
+                .arg(chosen.toHtmlEscaped(), tokens.accent.name()));
 }
 
 void RunnersPage::RebuildCatalog() {
@@ -421,13 +427,16 @@ void RunnersPage::RebuildCatalog() {
     facts << (release.has_checksum ? "verified" : "no checksum");
     ElidedLabel* details = Facts(facts.join(" · "), row);
     if (!release.has_checksum) {
-      const auto warn = [details] { details->setStyleSheet(QString("color: %1;").arg(theme::Current().warning.name())); };
+      const auto warn = [details] {
+        details->setStyleSheet(QString("color: %1;").arg(theme::Current().warning.name()));
+      };
       warn();
       connect(theme::Notifier::Instance(), &theme::Notifier::Changed, details, warn);
     }
 
-    const QString key = DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
-                                                QString::fromStdString(release.name));
+    const QString key =
+        DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
+                                QString::fromStdString(release.name));
     const DownloadTracker::Entry* entry = downloads_->Find(key);
     const bool downloading = entry != nullptr && entry->state == DownloadTracker::State::Running;
     if (downloading) {
@@ -459,9 +468,10 @@ void RunnersPage::RebuildTools() {
     if (tool.installed) continue;
     // umu only matters to Proton, winetricks to both.
     if (tool.id == "umu" && CurrentKind() != "proton") continue;
-    auto* row = new SettingRow(QString::fromStdString(tool.label), QString::fromStdString(tool.doc));
-    const DownloadTracker::Entry* entry = downloads_->Find(
-        DownloadTracker::KeyFor(DownloadTracker::Kind::Tool, QString::fromStdString(tool.id), QString()));
+    auto* row =
+        new SettingRow(QString::fromStdString(tool.label), QString::fromStdString(tool.doc));
+    const DownloadTracker::Entry* entry = downloads_->Find(DownloadTracker::KeyFor(
+        DownloadTracker::Kind::Tool, QString::fromStdString(tool.id), QString()));
     if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
       row->AddControl(Progress(row, entry->progress));
     } else {
@@ -480,19 +490,21 @@ void RunnersPage::RebuildTools() {
 
 void RunnersPage::Update(const RunnerInfo& runner, const RunnerUpdate& update) {
   replacing_[update.name] = runner.reference;
-  api::UpdateRunnerAsync(this, runner.reference, [this, name = update.name](RunnerDownloadResult result) {
-    if (!result.ok) {
-      replacing_.erase(name);
-      SetStatus("Could not start the update: " + error_help::Describe(result.error), true);
-      RebuildInstalled();
-    }
-  });
+  api::UpdateRunnerAsync(
+      this, runner.reference, [this, name = update.name](RunnerDownloadResult result) {
+        if (!result.ok) {
+          replacing_.erase(name);
+          SetStatus("Could not start the update: " + error_help::Describe(result.error), true);
+          RebuildInstalled();
+        }
+      });
 }
 
 void RunnersPage::SetupTool(const RunnerTool& tool) {
   api::SetupRunnerToolAsync(this, tool.id, [this, label = tool.label](RunnerDownloadResult result) {
     if (!result.ok) {
-      SetStatus(QString("Could not install %1: %2").arg(QString::fromStdString(label), error_help::Describe(result.error)),
+      SetStatus(QString("Could not install %1: %2")
+                    .arg(QString::fromStdString(label), error_help::Describe(result.error)),
                 true);
       RefreshTools();
     }
@@ -500,21 +512,20 @@ void RunnersPage::SetupTool(const RunnerTool& tool) {
 }
 
 void RunnersPage::SetDefault(const std::string& reference) {
-  api::PatchConfigAsync(this, {ConfigEdit{kDefaultKey, "a string", reference}},
-                                [this](PatchConfigResult result) {
-                                  if (!result.ok) {
-                                    SetStatus("Could not set the default: " +
-                                                  error_help::Describe(result.error),
-                                              true);
-                                    return;
-                                  }
-                                  RefreshInstalled();
-                                });
+  api::PatchConfigAsync(
+      this, {ConfigEdit{kDefaultKey, "a string", reference}}, [this](PatchConfigResult result) {
+        if (!result.ok) {
+          SetStatus("Could not set the default: " + error_help::Describe(result.error), true);
+          return;
+        }
+        RefreshInstalled();
+      });
 }
 
 void RunnersPage::Remove(const RunnerInfo& runner) {
   const QString name = QString::fromStdString(runner.label);
-  if (!notify::Confirm(this, "Remove runner", QString("Remove %1? This deletes its files.").arg(name), "Remove",
+  if (!notify::Confirm(this, "Remove runner",
+                       QString("Remove %1? This deletes its files.").arg(name), "Remove",
                        /*destructive=*/true)) {
     return;
   }
@@ -529,19 +540,22 @@ void RunnersPage::Remove(const RunnerInfo& runner) {
 void RunnersPage::Download(const std::string& tag, QPushButton* button) {
   const std::string kind = CurrentKind();
   const std::string source = source_->currentData().toString().toStdString();
-  api::DownloadRunnerAsync(this, kind, tag, source, [this, button = QPointer(button)](RunnerDownloadResult result) {
-    // The tracker hears the rest on the event stream.
-    if (result.ok) return;
-    if (button) button->setEnabled(true);
-    SetStatus("Could not start the download: " + error_help::Describe(result.error), true);
-  });
+  api::DownloadRunnerAsync(
+      this, kind, tag, source, [this, button = QPointer(button)](RunnerDownloadResult result) {
+        // The tracker hears the rest on the event stream.
+        if (result.ok) return;
+        if (button) button->setEnabled(true);
+        SetStatus("Could not start the download: " + error_help::Describe(result.error), true);
+      });
 }
 
 void RunnersPage::DownloadChanged(const QString& key) {
   if (key.startsWith("tool:")) {
     const DownloadTracker::Entry* entry = downloads_->Find(key);
     if (entry != nullptr && entry->state == DownloadTracker::State::Failed) {
-      SetStatus(QString("Installing %1 failed: %2").arg(entry->source, error_help::Describe(entry->error)), true);
+      SetStatus(QString("Installing %1 failed: %2")
+                    .arg(entry->source, error_help::Describe(entry->error)),
+                true);
     }
     if (entry != nullptr && entry->state != DownloadTracker::State::Running) {
       RefreshTools();
@@ -564,7 +578,8 @@ void RunnersPage::DownloadChanged(const QString& key) {
   }
   if (entry->state == DownloadTracker::State::Failed) {
     const QString name = downloads_->NameFor(*entry);
-    SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)), true);
+    SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)),
+              true);
     replacing_.erase(entry->ref.toStdString());
   }
   if (entry->state == DownloadTracker::State::Finished) {
@@ -589,7 +604,9 @@ void RunnersPage::DownloadChanged(const QString& key) {
                               .arg(QString::fromStdString(old->label), downloads_->NameFor(*entry)),
                           "Remove", /*destructive=*/true)) {
         api::DeleteRunnerAsync(this, kind, name, [this](RunnerRemoveResult result) {
-          if (!result.ok) SetStatus("Could not remove the old build: " + error_help::Describe(result.error), true);
+          if (!result.ok)
+            SetStatus("Could not remove the old build: " + error_help::Describe(result.error),
+                      true);
         });
       }
     }

@@ -83,7 +83,8 @@ void KeyValueEdit::AddRow(const QString& name, const QString& value, bool edit) 
   };
   auto* name_edit = field(name, "kv_name", "NAME", "Variable name");
   auto* value_edit = field(value, "kv_value", "value", "Value");
-  for (QLineEdit* line : {name_edit, value_edit}) connect(line, &QLineEdit::textEdited, this, &KeyValueEdit::Changed);
+  for (QLineEdit* line : {name_edit, value_edit})
+    connect(line, &QLineEdit::textEdited, this, &KeyValueEdit::Changed);
   layout->addWidget(name_edit, /*stretch=*/2);
   auto* equals = new QLabel("=", row);
   equals->setProperty("role", "subtle");
@@ -105,6 +106,8 @@ void KeyValueEdit::AddRow(const QString& name, const QString& value, bool edit) 
   if (edit) name_edit->setFocus();
 }
 
-void KeyValueEdit::UpdateEmpty() { empty_->setVisible(rows_->count() == 0); }
+void KeyValueEdit::UpdateEmpty() {
+  empty_->setVisible(rows_->count() == 0);
+}
 
 }  // namespace mira_gui

@@ -1,12 +1,11 @@
 #pragma once
 
 #include <functional>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 namespace mira::config {
 
@@ -29,8 +28,8 @@ using Validator = std::function<std::optional<std::string>(const nlohmann::json&
 // Constructible from a plain Validator when there's no shape to describe.
 struct Constraint {
   Validator validate = {};
-  std::vector<std::string> one_of;      // empty unless this is an enum
-  std::optional<double> minimum;        // unset unless this is ranged
+  std::vector<std::string> one_of;  // empty unless this is an enum
+  std::optional<double> minimum;    // unset unless this is ranged
   std::optional<double> maximum;
 
   Constraint() = default;
@@ -47,14 +46,14 @@ struct Entry {
   nlohmann::json default_value;
   Scope scope = Scope::Global;
   std::string doc;
-  std::string game_doc = {};  // help shown instead of `doc` in a game's own settings; optional
+  std::string game_doc = {};   // help shown instead of `doc` in a game's own settings; optional
   Constraint constraint = {};  // optional
 
   bool is_secret = false;      // a credential: mask it
   bool is_runner_ref = false;  // a runner reference: offer a runner picker
   std::string link = {};       // where to get the value, e.g. an API key page
   PathKind path = PathKind::None;
-  std::string keywords = {};   // extra search terms a settings screen matches, e.g. "sgdb"
+  std::string keywords = {};  // extra search terms a settings screen matches, e.g. "sgdb"
 
   // Set by the section the entry is declared under, never per entry.
   std::string category = {};
@@ -71,7 +70,7 @@ struct Entry {
 // frontend builds its settings UI from, and `mira config describe`. A new
 // setting is one declaration and it exists in all four places.
 class Schema {
-public:
+ public:
   static const Schema& Instance();
 
   const std::vector<Entry>& Entries() const { return entries_; }
@@ -86,7 +85,7 @@ public:
   // "scan.debounce_ms" -> "/scan/debounce_ms"
   static nlohmann::json::json_pointer Pointer(std::string_view dotted_key);
 
-private:
+ private:
   Schema();
   std::vector<Entry> entries_;
 };

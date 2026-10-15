@@ -1,7 +1,5 @@
 #include "TabRow.h"
 
-#include <algorithm>
-
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLineEdit>
@@ -9,6 +7,7 @@
 #include <QPainter>
 #include <QTimer>
 #include <QToolButton>
+#include <algorithm>
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -17,15 +16,17 @@ namespace mira_gui {
 
 DropdownButton::DropdownButton(QMenu* menu, QWidget* parent) : QPushButton(parent), menu_(menu) {
   setProperty("dropdown", true);  // base.qss leaves room on the right for the chevron
-  connect(this, &QPushButton::clicked, this, [this] { menu_->popup(mapToGlobal(QPoint(0, height()))); });
+  connect(this, &QPushButton::clicked, this,
+          [this] { menu_->popup(mapToGlobal(QPoint(0, height()))); });
 }
 
 void DropdownButton::paintEvent(QPaintEvent* event) {
   QPushButton::paintEvent(event);
   constexpr int kSize = 12;
   QPainter painter(this);
-  painter.drawPixmap(width() - 10 - kSize, (height() - kSize) / 2,
-                     icons::For(icons::Glyph::ChevronDown, theme::Current().text_muted).pixmap(kSize, kSize));
+  painter.drawPixmap(
+      width() - 10 - kSize, (height() - kSize) / 2,
+      icons::For(icons::Glyph::ChevronDown, theme::Current().text_muted).pixmap(kSize, kSize));
 }
 
 namespace {
@@ -35,7 +36,8 @@ constexpr int kSearchMin = 160;
 constexpr int kStretchMin = 12;  // gap kept between the tabs and the actions
 
 int WidthOf(const QWidget* widget) {
-  return widget->minimumWidth() == widget->maximumWidth() ? widget->minimumWidth() : widget->sizeHint().width();
+  return widget->minimumWidth() == widget->maximumWidth() ? widget->minimumWidth()
+                                                          : widget->sizeHint().width();
 }
 
 }  // namespace
@@ -60,7 +62,8 @@ TabRow::TabRow(QWidget* parent) : QWidget(parent) {
     for (const QString& key : Offered()) {
       const Tab& tab = by_key_[key];
       if (!tab.button->isHidden()) continue;
-      connect(more_menu_->addAction(tab.button->text()), &QAction::triggered, this, [this, key] { Select(key); });
+      connect(more_menu_->addAction(tab.button->text()), &QAction::triggered, this,
+              [this, key] { Select(key); });
     }
   });
   more_->hide();
@@ -81,8 +84,10 @@ void TabRow::AddTab(const QString& key, const QString& label) {
 
 void TabRow::SetTabOffered(const QString& key, bool offered) {
   if (offered == !left_out_.contains(key)) return;
-  if (offered) left_out_.removeAll(key);
-  else left_out_.append(key);
+  if (offered)
+    left_out_.removeAll(key);
+  else
+    left_out_.append(key);
   updateGeometry();
   Fit();
 }
@@ -115,12 +120,15 @@ void TabRow::SetCount(const QString& key, int count) {
 
 void TabRow::SetCurrent(const QString& key) {
   current_ = by_key_.contains(key) ? key : QString();
-  for (auto it = by_key_.begin(); it != by_key_.end(); ++it) it->button->setChecked(it.key() == current_);
+  for (auto it = by_key_.begin(); it != by_key_.end(); ++it)
+    it->button->setChecked(it.key() == current_);
   updateGeometry();
   Fit();  // the current tab is bold, so wider, and always stays in the row
 }
 
-QString TabRow::Current() const { return current_; }
+QString TabRow::Current() const {
+  return current_;
+}
 
 void TabRow::SetTabsVisible(bool visible) {
   tabs_visible_ = visible;
@@ -129,7 +137,8 @@ void TabRow::SetTabsVisible(bool visible) {
 }
 
 void TabRow::SetTrailing(QWidget* widget) {
-  layout_->insertWidget(search_button_ != nullptr ? layout_->indexOf(search_button_) : layout_->count(), widget);
+  layout_->insertWidget(
+      search_button_ != nullptr ? layout_->indexOf(search_button_) : layout_->count(), widget);
   trailing_.append(widget);
   updateGeometry();
   Fit();

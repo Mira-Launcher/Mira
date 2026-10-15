@@ -5,14 +5,13 @@
 #include <filesystem>
 #include <functional>
 #include <future>
+#include <json.hpp>
 #include <map>
 #include <mutex>
 #include <set>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <json.hpp>
 
 #include "api/EventBus.h"
 #include "api/HiddenLock.h"
@@ -42,7 +41,7 @@ namespace mira::api {
 // by the Server, the scanner and the watcher, so each of them finishes an
 // import or a scan the same way.
 class Services {
-public:
+ public:
   Services(config::Config& config, store::GameStore& games, EventBus& events);
   ~Services();
   Services(const Services&) = delete;
@@ -64,7 +63,7 @@ public:
   nlohmann::json HiddenState() const;
   void PublishHiddenState();
 
-private:
+ private:
   // Prefix program folders as each running Windows game launched, for CheckForInstall.
   // Before `supervisor`, whose watcher threads use it.
   std::mutex install_watch_mutex_;
@@ -72,7 +71,7 @@ private:
   std::shared_future<library::ScanSummary> scan_;  // the running scan's, guarded by scan_mutex_
   std::map<std::string, std::set<std::filesystem::path>> install_watch_;
 
-public:
+ public:
   proc::ProcessSupervisor supervisor;
   metadata::FetchQueue fetches{games.Metadata()};
   Lane tricks{"tricks", 1};  // one at a time: winetricks runs overlap badly in one prefix
@@ -90,7 +89,7 @@ public:
   // Store installs stopped by POST /v1/library/install/pause, by "<source>-<ref>". Their files
   // stay and installing again continues them. Kept in memory only.
   class PausedInstalls {
-  public:
+   public:
     void Add(const std::string& target, nlohmann::json install) {
       std::lock_guard lock(mutex_);
       installs_[target] = std::move(install);
@@ -110,7 +109,7 @@ public:
       return out;
     }
 
-  private:
+   private:
     mutable std::mutex mutex_;
     std::map<std::string, nlohmann::json> installs_;
   } paused_installs;
@@ -118,7 +117,8 @@ public:
   // Called after a request changes library_roots, so the watcher can follow.
   std::function<void()> on_roots_changed;
   std::atomic<bool> stopping{false};  // checked by open event streams and long work
-  // Sets `stopping` and wakes whatever waits on it, so shutdown doesn't wait out a poll or a stream.
+  // Sets `stopping` and wakes whatever waits on it, so shutdown doesn't wait out a poll or a
+  // stream.
   void BeginStopping();
 
   // The settings a record is built from, read once by a caller building many records at once.
@@ -132,22 +132,25 @@ public:
   nlohmann::json Record(const model::Game& game, const RecordSettings* settings = nullptr);
   // Adds those fields to a model::ToJson record.
   void Decorate(nlohmann::json& record);
-  void AddRecordFields(nlohmann::json& record, const model::Game& game, const RecordSettings& settings);
+  void AddRecordFields(nlohmann::json& record, const model::Game& game,
+                       const RecordSettings& settings);
 
   // Rewrites the application menu entries to match the library.
   void SyncDesktopEntries();
-  // After settings.toml is saved: applies a hand edit and tells clients, or notifies that it doesn't parse.
+  // After settings.toml is saved: applies a hand edit and tells clients, or notifies that it
+  // doesn't parse.
   void ReloadSettings();
   // The same for one game, after a change to just that game (also once it is deleted).
   void SyncDesktopEntry(const std::string& game_id);
   // Fetches metadata and art for games added outside a request.
   void QueueMetadata(const std::vector<model::Game>& games);
-  // A full library scan, metadata queued for what it added. One asked for while another runs waits for that
-  // one's summary instead of scanning again.
+  // A full library scan, metadata queued for what it added. One asked for while another runs waits
+  // for that one's summary instead of scanning again.
   library::ScanSummary Scan();
   // What every import and scan ends with: menu entries, then metadata for what it added.
   void AfterImport(const std::vector<model::Game>& added);
-  // A source's import job's end: marks it added, announces that, then AfterImport. The job's {added, updated}.
+  // A source's import job's end: marks it added, announces that, then AfterImport. The job's
+  // {added, updated}.
   nlohmann::json FinishImport(const std::string& source, const library::ImportSummary& summary);
 
   // Closes out any session a previous mirad left behind and tells clients those games are idle.
@@ -160,10 +163,12 @@ public:
   // names the job, so its client can listen for it before this reply lands.
   // `lane` is where the work runs; the jobs' own lane when null.
   void StartJob(const httplib::Request& req, httplib::Response& res, const std::string& kind,
-                const std::string& target, const std::string& label, JobRegistry::Work work, Lane* lane = nullptr);
+                const std::string& target, const std::string& label, JobRegistry::Work work,
+                Lane* lane = nullptr);
   // Queues a full metadata fetch for each game and reports as each finishes,
   // for a job: {refreshed, failed} once all have.
-  Result<nlohmann::json> RefreshMetadata(std::vector<model::Game> games, JobRegistry::Progress& progress);
+  Result<nlohmann::json> RefreshMetadata(std::vector<model::Game> games,
+                                         JobRegistry::Progress& progress);
   // Sets up a Windows game's prefix as a job: it can take minutes (umu fetches its runtime the
   // first time). The caller stores the game `setting_up` first; game.updated says how it went.
   void ProvisionLater(const model::Game& game);
@@ -179,7 +184,8 @@ public:
   // Installs a runner build as a job, publishing runners.download.* as well.
   // With `replacing` ("kind:name"), games and the default using it move over.
   void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
-                     const std::string& source, const runner::ReleaseAsset& asset, const std::string& replacing);
+                     const std::string& source, const runner::ReleaseAsset& asset,
+                     const std::string& replacing);
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
@@ -197,10 +203,11 @@ public:
   // One games.updated with every record, after a setting that changes what records say.
   void PublishAllGames();
 
-  // Picks up games started outside Mira (the Steam client, a running launcher) so they show as playing.
+  // Picks up games started outside Mira (the Steam client, a running launcher) so they show as
+  // playing.
   void StartExternalWatch();
 
-private:
+ private:
   void WatchExternalGames();
   // Locks hidden games once hidden.lock_after_minutes pass with no one using Mira and no game
   // running.

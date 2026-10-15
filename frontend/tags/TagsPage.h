@@ -34,13 +34,13 @@ class TagPicker;
 // The library window's Tags page: the library's tags with how many games have each, folder tags
 // first in the order that picks a game's folder, the Steam tags on its games to add as tags, and
 // the tag settings. Your tags and the settings share a column only as wide as they need, Steam's
-// tags fill the rest in as many columns as fit. The cards scroll inside, so the settings stay in view. Rows
-// are updated in place as the tags change. Adding or choosing games opens a picker in place of
-// the cards. Changes that move folders say how many first, in a bar at the bottom.
+// tags fill the rest in as many columns as fit. The cards scroll inside, so the settings stay in
+// view. Rows are updated in place as the tags change. Adding or choosing games opens a picker in
+// place of the cards. Changes that move folders say how many first, in a bar at the bottom.
 class TagsPage : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit TagsPage(ArtworkStore* artwork, QWidget* parent = nullptr);
   ~TagsPage() override;
 
@@ -59,17 +59,17 @@ public:
   // question in the bar are all dropped, as Esc or Cancel would.
   void Leave();
 
-signals:
+ signals:
   // Records a request changed, for the window to apply without waiting for their events.
   void GamesChanged(const std::vector<GameSummary>& games);
   // Ctrl+wheel over the picker's covers, one step per notch; the window owns the zoom.
   void ZoomRequested(int steps);
   void PickerToggled();
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   struct Settings {
     std::vector<std::string> roots;  // library_roots as written
     std::vector<std::string> sorted_roots;
@@ -113,9 +113,11 @@ private:
   // applies at once when none would, unless `always_ask` (a change that can't be undone).
   // `question` takes the count; `tags` are games' tags as the change would leave them.
   void AskThenApply(std::optional<std::vector<std::string>> folders,
-                    std::optional<std::vector<std::string>> sorted_roots, std::function<QString(int)> question,
-                    const QString& apply_label, std::function<void()> apply,
-                    const std::map<std::string, std::vector<std::string>>& tags = {}, bool always_ask = false);
+                    std::optional<std::vector<std::string>> sorted_roots,
+                    std::function<QString(int)> question, const QString& apply_label,
+                    std::function<void()> apply,
+                    const std::map<std::string, std::vector<std::string>>& tags = {},
+                    bool always_ask = false);
   void SetFolder(const std::string& name, bool folder);
   void SetSorted(const std::string& root, bool sorted);
   void PatchSetting(const std::string& key, const std::string& type, const std::string& value);
@@ -160,10 +162,10 @@ private:
   QLineEdit* steam_search_ = nullptr;
   TagPicker* picker_ = nullptr;
   ChangeBar* bar_ = nullptr;
-  std::function<void()> bar_apply_;  // what the bar's primary button does while it asks
+  std::function<void()> bar_apply_;   // what the bar's primary button does while it asks
   std::function<void()> end_rename_;  // ends the open rename's edit, if one is still open
-  int asked_ = 0;                    // so a slow preview never answers a newer question
-  int refresh_serial_ = 0;           // so an older refresh reply never overwrites a newer one
+  int asked_ = 0;                     // so a slow preview never answers a newer question
+  int refresh_serial_ = 0;            // so an older refresh reply never overwrites a newer one
   QTimer* refresh_timer_ = nullptr;
 };
 

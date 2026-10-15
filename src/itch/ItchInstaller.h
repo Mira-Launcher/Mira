@@ -14,13 +14,13 @@ namespace mira::itch {
 // model::Game and provision a Wine/Proton prefix for it if the upload
 // isn't a native Linux build.
 class ItchInstaller {
-public:
+ public:
   ItchInstaller(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<void> Install(const std::string& game_id);
   Result<void> Update(const std::string& game_id);
 
-private:
+ private:
   Result<void> Run(const std::string& game_id);
 
   config::Config& config_;

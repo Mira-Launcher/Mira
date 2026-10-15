@@ -2,7 +2,6 @@
 
 #include <QBuffer>
 #include <QImageReader>
-
 #include <cctype>
 #include <chrono>
 #include <json.hpp>
@@ -28,7 +27,8 @@ QImage DecodeImage(const std::string& bytes, QSize max = {}) {
   QBuffer buffer(&data);
   QImageReader reader(&buffer);
   if (const QSize size = reader.size();
-      !max.isEmpty() && size.isValid() && (size.width() > max.width() || size.height() > max.height())) {
+      !max.isEmpty() && size.isValid() &&
+      (size.width() > max.width() || size.height() > max.height())) {
     reader.setScaledSize(size.scaled(max, Qt::KeepAspectRatio));
   }
   QImage image;
@@ -108,7 +108,8 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     out.review_summary = reviews.value("score_description", std::string());
     out.review_total = reviews.value("total_reviews", 0);
     if (out.review_total > 0) {
-      out.review_percent = (reviews.value("total_positive", 0) * 100 + out.review_total / 2) / out.review_total;
+      out.review_percent =
+          (reviews.value("total_positive", 0) * 100 + out.review_total / 2) / out.review_total;
     }
   }
   if (body.contains("protondb") && body["protondb"].is_object()) {
@@ -118,7 +119,9 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
     out.steam_tags = strings(body["steam_tags"].value("tags", json::array()));
   }
   // A store title's details have no genres; its top Steam tags say as much.
-  if (out.genres.empty()) out.genres.assign(out.steam_tags.begin(), out.steam_tags.begin() + std::min<std::size_t>(3, out.steam_tags.size()));
+  if (out.genres.empty())
+    out.genres.assign(out.steam_tags.begin(),
+                      out.steam_tags.begin() + std::min<std::size_t>(3, out.steam_tags.size()));
   // "artwork" is the cover slot under its pre-`hero` name; see docs/api.md.
   for (const char* key : {"artwork", "hero", "logo", "icon"}) {
     if (!body.contains(key) || !body[key].is_object()) continue;
@@ -128,7 +131,8 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
   for (const char* slot : {"cover", "hero", "logo", "icon"}) {
     if (body.contains("art_candidates") && body["art_candidates"].is_object() &&
         body["art_candidates"].contains(slot) && body["art_candidates"][slot].is_array()) {
-      for (const json& item : body["art_candidates"][slot]) out.candidates[slot].push_back(mapping::ToArtCandidate(item));
+      for (const json& item : body["art_candidates"][slot])
+        out.candidates[slot].push_back(mapping::ToArtCandidate(item));
     }
     const char* key = std::string_view(slot) == "cover" ? "artwork" : slot;
     if (body.contains(key) && body[key].is_object() && body[key].contains("candidate_id")) {
@@ -167,9 +171,11 @@ ArtworkSelectResult SelectArtworkSync(const std::string& id, const std::string& 
   return {reply.ok, reply.error};
 }
 
-ArtworkSelectResult UploadArtworkSync(const std::string& id, const std::string& slot, const std::string& bytes) {
+ArtworkSelectResult UploadArtworkSync(const std::string& id, const std::string& slot,
+                                      const std::string& bytes) {
   const std::string type = bytes.starts_with("\x89PNG") ? "image/png" : "image/jpeg";
-  const transport::Reply reply = transport::Put("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot, bytes, type);
+  const transport::Reply reply =
+      transport::Put("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot, bytes, type);
   return {reply.ok, reply.error};
 }
 
@@ -276,21 +282,23 @@ void GetTitleMetadataAsync(QObject* context, const std::string& source, const st
   async::Run(
       context,
       [source, ref] {
-        const transport::Reply reply =
-            transport::Get("/v1/library/metadata?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
+        const transport::Reply reply = transport::Get(
+            "/v1/library/metadata?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
         if (reply.status == 404) {
           GameMetadataResult result;
           result.missing = true;
           return result;
         }
-        return ReadReply<GameMetadataResult>(reply, "GET /v1/library/metadata", Shape::Object, FillMetadata);
+        return ReadReply<GameMetadataResult>(reply, "GET /v1/library/metadata", Shape::Object,
+                                             FillMetadata);
       },
       std::move(callback));
 }
 
 void ClearGameArtThumbsAsync(QObject* context, const std::string& id) {
   async::Run<bool>(
-      context, [id] { return transport::Delete("/v1/games/" + PercentEncode(id) + "/artwork/thumbs").ok; },
+      context,
+      [id] { return transport::Delete("/v1/games/" + PercentEncode(id) + "/artwork/thumbs").ok; },
       [](bool) {});
 }
 
@@ -319,8 +327,8 @@ void SelectArtworkAsync(QObject* context, const std::string& id, const std::stri
       std::move(callback));
 }
 
-void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot, std::string bytes,
-                        std::function<void(ArtworkSelectResult)> callback) {
+void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
+                        std::string bytes, std::function<void(ArtworkSelectResult)> callback) {
   async::Run(
       context, [id, slot, bytes = std::move(bytes)] { return UploadArtworkSync(id, slot, bytes); },
       std::move(callback));

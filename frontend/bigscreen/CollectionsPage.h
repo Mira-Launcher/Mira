@@ -10,17 +10,17 @@ namespace mira_gui::bigscreen {
 class CollectionsPage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit CollectionsPage(BigScreenWindow* window);
 
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
   void Shown() override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   struct Collection {
     QString tag;
     std::vector<Item> items;
@@ -28,7 +28,8 @@ private:
   void Rebuild();
   const Collection& Current() const;
   int Columns() const;
-  void DrawCard(QPainter& painter, const QRectF& box, const Collection& collection, bool focused) const;
+  void DrawCard(QPainter& painter, const QRectF& box, const Collection& collection,
+                bool focused) const;
 
   std::vector<Collection> collections_;
   bool open_ = false;  // showing one tag's games

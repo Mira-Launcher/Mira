@@ -19,10 +19,18 @@ long long old_strtoll(const char*, char**, int) __asm__("strtoll");
 unsigned long old_strtoul(const char*, char**, int) __asm__("strtoul");
 unsigned long long old_strtoull(const char*, char**, int) __asm__("strtoull");
 
-long __isoc23_strtol(const char* s, char** end, int base) { return old_strtol(s, end, base); }
-long long __isoc23_strtoll(const char* s, char** end, int base) { return old_strtoll(s, end, base); }
-unsigned long __isoc23_strtoul(const char* s, char** end, int base) { return old_strtoul(s, end, base); }
-unsigned long long __isoc23_strtoull(const char* s, char** end, int base) { return old_strtoull(s, end, base); }
+long __isoc23_strtol(const char* s, char** end, int base) {
+  return old_strtol(s, end, base);
+}
+long long __isoc23_strtoll(const char* s, char** end, int base) {
+  return old_strtoll(s, end, base);
+}
+unsigned long __isoc23_strtoul(const char* s, char** end, int base) {
+  return old_strtoul(s, end, base);
+}
+unsigned long long __isoc23_strtoull(const char* s, char** end, int base) {
+  return old_strtoull(s, end, base);
+}
 
 std::uint32_t arc4random(void) {
   std::uint32_t value = 0;

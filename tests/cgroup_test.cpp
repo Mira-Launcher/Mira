@@ -1,14 +1,15 @@
+#include "proc/Cgroup.h"
+
 #include <doctest.h>
 #include <unistd.h>
 
 #include <filesystem>
 
 #include "core/Command.h"
-#include "proc/Cgroup.h"
+#include "model/Types.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "store/GameStore.h"
-#include "model/Types.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -50,9 +51,23 @@ TEST_CASE("mira-run keeps its session open while the game's background child run
   REQUIRE(games.Upsert(game).has_value());
 
   Command cmd;
-  cmd.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", mira_run.string(),
-              "--game-id", "cgroup-test", "--database", db.string(), "--log-file", (state / "game.log").string(),
-              "--", "sh", "-c", "sleep 2 & exit 0"};
+  cmd.argv = {"systemd-run",
+              "--user",
+              "--scope",
+              "--quiet",
+              "--collect",
+              "--",
+              mira_run.string(),
+              "--game-id",
+              "cgroup-test",
+              "--database",
+              db.string(),
+              "--log-file",
+              (state / "game.log").string(),
+              "--",
+              "sh",
+              "-c",
+              "sleep 2 & exit 0"};
   auto ran = runner::RunAndWait(cmd);
   REQUIRE(ran.has_value());
   const auto sessions = proc::UncountedSessions(db);

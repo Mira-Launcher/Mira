@@ -10,7 +10,6 @@
 #include <QPainter>
 #include <QPointer>
 #include <QScreen>
-
 #include <algorithm>
 #include <optional>
 
@@ -31,7 +30,7 @@ constexpr int kAlignInset = 6;
 constexpr int kAlignDrop = -2;
 
 class TipCard : public QWidget {
-public:
+ public:
   TipCard() : QWidget(nullptr, Qt::ToolTip | Qt::FramelessWindowHint) {
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
@@ -62,15 +61,16 @@ public:
     show();
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     card::Paint(this);
     QPainter painter(this);
     painter.setPen(theme::Current().text);
-    painter.drawText(QRect(QPoint(card::kPaddingX, kPaddingY), text_size_), Qt::TextWordWrap, text_);
+    painter.drawText(QRect(QPoint(card::kPaddingX, kPaddingY), text_size_), Qt::TextWordWrap,
+                     text_);
   }
 
-private:
+ private:
   // A line of text needs less than a card's worth of padding.
   static constexpr int kPaddingY = card::kPaddingY - 3;
   QString text_;
@@ -95,7 +95,7 @@ QRect GlobalRect(const QWidget* widget, const QRect& local) {
 }
 
 class ToolTipFilter : public QObject {
-public:
+ public:
   explicit ToolTipFilter(QObject* parent) : QObject(parent) {
     // Deleted before QApplication is, like any other top-level widget.
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
@@ -104,7 +104,7 @@ public:
     });
   }
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override {
     switch (event->type()) {
       case QEvent::ToolTip:
@@ -128,7 +128,7 @@ protected:
     return false;
   }
 
-private:
+ private:
   bool ShowFor(QObject* watched, QHelpEvent* help) {
     auto* widget = qobject_cast<QWidget*>(watched);
     if (widget == nullptr) return false;
@@ -184,7 +184,9 @@ private:
 
 }  // namespace
 
-void Install() { qApp->installEventFilter(new ToolTipFilter(qApp)); }
+void Install() {
+  qApp->installEventFilter(new ToolTipFilter(qApp));
+}
 
 void AlignLeftWith(QWidget* widget, QWidget* edge) {
   widget->setProperty(kAlignProperty, QVariant::fromValue<QObject*>(edge));

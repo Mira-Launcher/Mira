@@ -1,7 +1,6 @@
 #pragma once
 
 #include <json.hpp>
-
 #include <map>
 #include <string>
 #include <vector>
@@ -49,7 +48,8 @@ std::string ToDisplayString(const nlohmann::json& value);
 void FlattenConfig(const nlohmann::json& node, const std::string& prefix,
                    std::map<std::string, std::string>& out);
 
-// The flat JSON merge patch that turns object `before` into `after`: changed keys, and null for removed ones.
+// The flat JSON merge patch that turns object `before` into `after`: changed keys, and null for
+// removed ones.
 nlohmann::json MergePatchBetween(const nlohmann::json& before, const nlohmann::json& after);
 
 // A list setting's text (ToDisplayString of an array) as its items, and back.

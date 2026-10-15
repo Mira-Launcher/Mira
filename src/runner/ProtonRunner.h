@@ -19,7 +19,7 @@ std::string UmuRunPath();
 std::filesystem::path BundledUmuRun();
 
 class ProtonRunner final : public IRunner {
-public:
+ public:
   std::string kind() const override { return "proton"; }
   std::vector<model::RunnerBuild> Discover(const config::Config& config) const override;
   Result<void> Provision(const model::Game& game,

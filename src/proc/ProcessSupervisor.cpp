@@ -17,8 +17,8 @@
 
 #include "core/Log.h"
 #include "core/Strings.h"
-#include "proc/ExitReason.h"
 #include "proc/Cgroup.h"
+#include "proc/ExitReason.h"
 #include "proc/ProcessIndex.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
@@ -37,7 +37,8 @@ constexpr auto kPollInterval = std::chrono::milliseconds(1000);
 constexpr std::int64_t kCheckpointSeconds = 60;
 
 // A game.state's exit fields, and for a crash its code, hint and a fix that opens the log.
-void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info, const std::string& game_id, bool windows) {
+void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info,
+             const std::string& game_id, bool windows) {
   event["state"] = outcome.crashed ? "crashed" : "exited";
   event["exit_code"] = info.exit_code;
   event["signal"] = info.signal;
@@ -50,8 +51,10 @@ void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info, cons
   } else if (outcome.code == "start_failed") {
     event["hint"] = "The game's log says what couldn't be found.";
   } else {
-    event["hint"] = windows ? "The game's log usually says why. Another runner in the game's settings often helps."
-                            : "The game's log usually says why.";
+    event["hint"] =
+        windows
+            ? "The game's log usually says why. Another runner in the game's settings often helps."
+            : "The game's log usually says why.";
   }
   event["fix"] = {{"kind", "game"}, {"target", game_id}, {"step", "log"}};
 }
@@ -63,7 +66,7 @@ void RunScript(const std::string& script, const std::string& game_id, std::int64
   command.timeout_s = static_cast<int>(timeout_s);
   if (auto result = runner::RunAndWait(command); !result || result->exit_code != 0) {
     log::Warn("launch.post_script for {} failed: {}", game_id,
-             !result ? result.error().message : std::format("exited {}", result->exit_code));
+              !result ? result.error().message : std::format("exited {}", result->exit_code));
   }
 }
 
@@ -91,7 +94,8 @@ std::set<pid_t> FindSteamProcesses(const std::string& appid) {
     // environ is NUL-separated, not newline-separated -- a plain substring
     // search still works since neither marker can span a NUL boundary by
     // construction (both are single "KEY=VALUE" entries).
-    if (environ.find(marker_app) != std::string::npos || environ.find(marker_game) != std::string::npos) {
+    if (environ.find(marker_app) != std::string::npos ||
+        environ.find(marker_game) != std::string::npos) {
       found.insert(pid);
     }
   }
@@ -99,14 +103,14 @@ std::set<pid_t> FindSteamProcesses(const std::string& appid) {
   return found;
 }
 
-
 // The cgroup mira-run put the game in (its scope's "game" child); nullopt once mira-run is gone.
 std::optional<std::filesystem::path> WrappedGroup(pid_t wrapper_pid) {
   const auto scope = cgroup::Of(wrapper_pid);
   if (!scope) return std::nullopt;
   std::filesystem::path group = cgroup::GameGroup(*scope);
   std::error_code ec;
-  if (!std::filesystem::is_directory(group, ec)) return std::nullopt;  // not a mira-run scope (gone, or a reused pid)
+  if (!std::filesystem::is_directory(group, ec))
+    return std::nullopt;  // not a mira-run scope (gone, or a reused pid)
   return group;
 }
 
@@ -119,7 +123,8 @@ bool AnyAlive(const std::set<pid_t>& pids) {
 
 // Every process of the game, for signalling it.
 std::set<pid_t> FindExternal(const ExternalMatch& match) {
-  return match.appid.empty() ? FindDirProcesses(match.data_dir, match.win_dir) : FindSteamProcesses(match.appid);
+  return match.appid.empty() ? FindDirProcesses(match.data_dir, match.win_dir)
+                             : FindSteamProcesses(match.appid);
 }
 
 // Whether the game is running, from a cached index: a Steam game by the
@@ -127,9 +132,9 @@ std::set<pid_t> FindExternal(const ExternalMatch& match) {
 std::set<pid_t> MatchExternal(const ProcessIndex& index, const ExternalMatch& match) {
   std::set<pid_t> found;
   for (const auto& [pid, info] : index.Processes()) {
-    const bool hit = match.appid.empty()
-                         ? InPrefix(info.prefix, match.data_dir) && UnderWindowsPath(info.argv0, match.win_dir)
-                         : info.steam_launch == match.appid;
+    const bool hit = match.appid.empty() ? InPrefix(info.prefix, match.data_dir) &&
+                                               UnderWindowsPath(info.argv0, match.win_dir)
+                                         : info.steam_launch == match.appid;
     if (hit) found.insert(pid);
   }
   return found;
@@ -197,7 +202,8 @@ bool ProcessSupervisor::PollWaitStopping() {
   return stop_wake_.wait_for(lock, kPollInterval, stopped);
 }
 
-// A record still unfinished once its mira-run is gone (killed with the game) has only its start; close it out with the elapsed time.
+// A record still unfinished once its mira-run is gone (killed with the game) has only its start;
+// close it out with the elapsed time.
 static void CloseOutUnfinished(SessionRecord& record) {
   if (record.finished) return;
   const std::int64_t now = model::NowSeconds();
@@ -241,7 +247,8 @@ Result<void> ProcessSupervisor::LaunchWrapped(const model::Game& game, pid_t wra
   }
 
   const std::int64_t started_at = model::NowSeconds();
-  auto stamped = games_.Update(game.id, [&](model::Game& stored) { stored.last_played_at = started_at; });
+  auto stamped =
+      games_.Update(game.id, [&](model::Game& stored) { stored.last_played_at = started_at; });
   if (!stamped) {
     log::Error("failed to record launch time for {}: {}", game.id, stamped.error().message);
   }
@@ -272,9 +279,10 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id, std::int64_t ti
   // ...)/kill(-0, ...) both mean "signal every process in the caller's own
   // group" per POSIX, which would hit mirad itself. A real pid is always > 0.
   if (pid <= 0) {
-    return Err("not_yet_confirmed",
-              std::format("\"{}\" was launched but its process isn't confirmed yet. Try again shortly",
-                          game_id));
+    return Err(
+        "not_yet_confirmed",
+        std::format("\"{}\" was launched but its process isn't confirmed yet. Try again shortly",
+                    game_id));
   }
   if (match) {
     // Group (see runner::SpawnDetached's setpgid note) plus every pid FindSteamProcesses
@@ -284,7 +292,10 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id, std::int64_t ti
     // WatchExternal recorded.
     const std::set<pid_t> in_steam_tree = FindExternal(*match);
     bool signalled = ::kill(-pid, SIGTERM) == 0 || ::kill(pid, SIGTERM) == 0;
-    for (pid_t found : in_steam_tree) { ::kill(found, SIGTERM); signalled = true; }
+    for (pid_t found : in_steam_tree) {
+      ::kill(found, SIGTERM);
+      signalled = true;
+    }
     if (!signalled) {
       return Err("stop_failed", std::format("could not signal pid {}", pid));
     }
@@ -296,9 +307,11 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id, std::int64_t ti
   }
   {
     std::lock_guard lock(mutex_);
-    // Skipped if the game exited meanwhile: its watcher already cleaned up, and these would outlive it.
+    // Skipped if the game exited meanwhile: its watcher already cleaned up, and these would outlive
+    // it.
     if (running_.contains(game_id)) {
-      kill_deadlines_[game_id] = model::NowSeconds() + (timeout_s > 0 ? timeout_s : stop_timeout_s_);
+      kill_deadlines_[game_id] =
+          model::NowSeconds() + (timeout_s > 0 ? timeout_s : stop_timeout_s_);
       stop_requested_.insert(game_id);
     }
   }
@@ -329,7 +342,9 @@ void ProcessSupervisor::Release(const std::string& game_id) {
 
 namespace {
 
-std::string CompanionPrefix(const std::string& game_id) { return "mira-with-" + strings::Slugify(game_id) + "."; }
+std::string CompanionPrefix(const std::string& game_id) {
+  return "mira-with-" + strings::Slugify(game_id) + ".";
+}
 
 void StopUnits(const std::string& pattern) {
   Command command;
@@ -341,7 +356,8 @@ void StopUnits(const std::string& pattern) {
 
 }  // namespace
 
-std::string ProcessSupervisor::CompanionUnit(const std::string& game_id, const std::string& option_id) const {
+std::string ProcessSupervisor::CompanionUnit(const std::string& game_id,
+                                             const std::string& option_id) const {
   {
     std::lock_guard lock(mutex_);
     if (!running_.contains(game_id) && !external_.contains(game_id)) return {};
@@ -374,7 +390,8 @@ void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_
   if (const auto group = WrappedGroup(wrapper_pid)) cgroup::Kill(*group);
 }
 
-void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
+void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
+                                     std::int64_t started_at) {
   // WNOHANG, not a blocking wait: no playtime checkpointing needed (the
   // session record already survives mirad dying), but Stop()'s SIGKILL
   // escalation via kill_deadlines_ still needs servicing, which a blocking
@@ -398,7 +415,8 @@ void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid, std
     // mira-run vanished without writing a record (killed before it could
     // fork, or before its first write) -- writes are temp-file-then-rename,
     // so a reader never sees a partial file.
-    log::Warn("mira-run for {} exited with no session record ({})", game_id, record.error().message);
+    log::Warn("mira-run for {} exited with no session record ({})", game_id,
+              record.error().message);
     return;
   }
   CloseOutUnfinished(*record);
@@ -420,7 +438,8 @@ bool ProcessSupervisor::Forget(const std::string& game_id) {
 
 // Shared by WatchWrapped and Reconcile/WatchReconciledLive: classify the
 // record, update the store (which marks it counted), publish the event.
-void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
+void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id,
+                                               const proc::SessionRecord& record,
                                                bool requested_stop) {
   const ExitInfo info{.exit_code = record.exit_code,
                       .signal = record.signal,
@@ -432,8 +451,10 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   // finishing) is left un-crashed rather than guessed at.
   const ExitOutcome outcome =
       record.incomplete
-          ? ExitOutcome{.crashed = false, .code = {}, .error = "Mira restarted during this session, so how it ended is unknown"}
-                        : ClassifyExit(info);
+          ? ExitOutcome{.crashed = false,
+                        .code = {},
+                        .error = "Mira restarted during this session, so how it ended is unknown"}
+          : ClassifyExit(info);
 
   const store::PlaySession session{.game_id = game_id,
                                    .started_at = record.started_at,
@@ -457,7 +478,8 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   if (outcome.crashed) {
     log::Warn("{}: {}", game_id, outcome.error);
   } else {
-    log::Info("{} exited (code {}, signal {}) after {}s", game_id, info.exit_code, info.signal, info.played_seconds);
+    log::Info("{} exited (code {}, signal {}) after {}s", game_id, info.exit_code, info.signal,
+              info.played_seconds);
   }
 
   json event = updated ? model::ToJson(*updated) : json{{"id", game_id}};
@@ -466,7 +488,8 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id, const
   if (exit_hook_) exit_hook_(game_id);
 }
 
-void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at) {
+void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid,
+                                            std::int64_t started_at) {
   // Not this mirad's child, so waitpid() can't work -- poll liveness instead.
   while (!stopping_.load(std::memory_order_relaxed) && ::kill(wrapper_pid, 0) == 0) {
     KillIfOverdue(game_id, wrapper_pid);
@@ -478,7 +501,7 @@ void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_p
   const bool requested_stop = Forget(game_id);
   if (!record) {
     log::Warn("re-adopted mira-run for {} exited with no readable session record ({})", game_id,
-             record.error().message);
+              record.error().message);
     return;
   }
   CloseOutUnfinished(*record);
@@ -496,7 +519,8 @@ void ProcessSupervisor::Reconcile() {
 
     const bool wrapper_alive = record.wrapper_pid > 0 && ::kill(record.wrapper_pid, 0) == 0;
     if (wrapper_alive) {
-      log::Info("re-adopting live session for {} (mira-run pid {})", record.game_id, record.wrapper_pid);
+      log::Info("re-adopting live session for {} (mira-run pid {})", record.game_id,
+                record.wrapper_pid);
       std::lock_guard lock(mutex_);
       running_[record.game_id] = record.wrapper_pid;
       AdoptWatcher(record.game_id, [this, id = record.game_id, wrapper_pid = record.wrapper_pid,
@@ -504,9 +528,11 @@ void ProcessSupervisor::Reconcile() {
         WatchReconciledLive(id, wrapper_pid, started_at);
       });
     } else {
-      log::Warn("session for {} was left behind by a mira-run (pid {}) that's no longer running; closing it out "
-               "as incomplete",
-               record.game_id, record.wrapper_pid);
+      log::Warn(
+          "session for {} was left behind by a mira-run (pid {}) that's no longer running; closing "
+          "it out "
+          "as incomplete",
+          record.game_id, record.wrapper_pid);
       record.incomplete = true;
       CloseOutUnfinished(record);
       FinalizeWrappedSession(record.game_id, record, /*requested_stop=*/false);
@@ -515,7 +541,8 @@ void ProcessSupervisor::Reconcile() {
 }
 
 Result<void> ProcessSupervisor::TrackSteamLaunch(const model::Game& game, const std::string& appid,
-                                                 std::string post_script, std::int64_t post_timeout_s) {
+                                                 std::string post_script,
+                                                 std::int64_t post_timeout_s) {
   // Steam has real startup latency (client wakeup, update checks, Proton's
   // own prefix work) before the game process exists at all.
   ExternalMatch match;
@@ -525,8 +552,10 @@ Result<void> ProcessSupervisor::TrackSteamLaunch(const model::Game& game, const 
   return TrackExternal(game, std::move(match), std::move(post_script));
 }
 
-Result<void> ProcessSupervisor::TrackLauncherLaunch(const model::Game& game, const std::string& win_dir,
-                                                    std::int64_t detect_timeout_s, std::string post_script,
+Result<void> ProcessSupervisor::TrackLauncherLaunch(const model::Game& game,
+                                                    const std::string& win_dir,
+                                                    std::int64_t detect_timeout_s,
+                                                    std::string post_script,
                                                     std::int64_t post_timeout_s) {
   ExternalMatch match;
   match.data_dir = game.data_dir;
@@ -551,16 +580,17 @@ Result<void> ProcessSupervisor::TrackExternal(const model::Game& game, ExternalM
     // Stop()'s guard below) so it's unambiguous as "not confirmed yet".
     running_[game.id] = 0;
     external_[game.id] = match;  // for Stop()/WatchExternal()'s kill escalation
-    AdoptWatcher(game.id, [this, id = game.id, match = std::move(match), requested_at = model::NowSeconds(),
-                           post_script = std::move(post_script)] {
-      WatchExternal(id, match, requested_at, post_script);
-    });
+    AdoptWatcher(game.id,
+                 [this, id = game.id, match = std::move(match), requested_at = model::NowSeconds(),
+                  post_script = std::move(post_script)] {
+                   WatchExternal(id, match, requested_at, post_script);
+                 });
   }
   return {};
 }
 
-void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, std::int64_t requested_at,
-                                      std::string post_script) {
+void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match,
+                                      std::int64_t requested_at, std::string post_script) {
   std::set<pid_t> matched;
   std::int64_t started_at = 0;
   ProcessIndex index;  // after the first refresh, each tick only lists /proc
@@ -571,7 +601,8 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
     matched = MatchExternal(index, match);
     if (!matched.empty()) break;
     if (model::NowSeconds() - requested_at >= match.detect_timeout_s) {
-      log::Warn("never detected a process for {} after {}s -- giving up", game_id, match.detect_timeout_s);
+      log::Warn("never detected a process for {} after {}s -- giving up", game_id,
+                match.detect_timeout_s);
       Forget(game_id);
       return;
     }
@@ -584,8 +615,10 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
     std::lock_guard lock(mutex_);
     running_[game_id] = *matched.begin();
   }
-  auto stamped = games_.Update(game_id, [&](model::Game& stored) { stored.last_played_at = started_at; });
-  if (!stamped) log::Error("failed to record launch time for {}: {}", game_id, stamped.error().message);
+  auto stamped =
+      games_.Update(game_id, [&](model::Game& stored) { stored.last_played_at = started_at; });
+  if (!stamped)
+    log::Error("failed to record launch time for {}: {}", game_id, stamped.error().message);
   log::Info("detected {} running ({} process(es))", game_id, matched.size());
   json running_event = stamped ? model::ToJson(*stamped) : json{{"id", game_id}};
   running_event["state"] = "running";
@@ -617,7 +650,8 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
     const std::int64_t elapsed = model::NowSeconds() - started_at;
     if (elapsed - credited >= kCheckpointSeconds) {
       const std::int64_t delta = elapsed - credited;
-      auto checkpoint = games_.Update(game_id, [&](model::Game& game) { game.play_seconds += delta; });
+      auto checkpoint =
+          games_.Update(game_id, [&](model::Game& game) { game.play_seconds += delta; });
       if (checkpoint) credited = elapsed;
     }
     if (PollWaitStopping()) break;
@@ -634,7 +668,8 @@ void ProcessSupervisor::WatchExternal(std::string game_id, ExternalMatch match, 
   // last_error is left alone rather than guessed at.
   auto updated =
       games_.Update(game_id, [&](model::Game& game) { game.play_seconds += played - credited; });
-  if (!updated) log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
+  if (!updated)
+    log::Error("failed to record playtime for {}: {}", game_id, updated.error().message);
 
   log::Info("{} (launched externally) exited after {}s", game_id, played);
   // The full updated record rides along so a listener can patch its one row instead of relisting.

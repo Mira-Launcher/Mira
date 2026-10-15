@@ -1,9 +1,8 @@
 #include "itch/ItchSource.h"
 
+#include <json.hpp>
 #include <unordered_map>
 #include <unordered_set>
-
-#include <json.hpp>
 
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
@@ -16,7 +15,8 @@ using nlohmann::json;
 // Loops a paginated Fetch.* call (cursor -> nextCursor) until it stops
 // returning one, accumulating every "items" array along the way -- some
 // bundles run into the hundreds of games, so a single page isn't enough.
-Result<std::vector<json>> FetchAllPages(const config::Config& config, const std::string& method, json params) {
+Result<std::vector<json>> FetchAllPages(const config::Config& config, const std::string& method,
+                                        json params) {
   std::vector<json> items;
   while (true) {
     const Result<json> page = Call(config, method, params);
@@ -30,8 +30,8 @@ Result<std::vector<json>> FetchAllPages(const config::Config& config, const std:
 
 }  // namespace
 
-Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(const config::Config& config,
-                                                               const store::GameStore& games) const {
+Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
+    const config::Config& config, const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
   if (!games.SourceEnabled("itch")) return entries;
 
@@ -52,35 +52,36 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(const config::Con
   };
 
   // Individually purchased/redeemed titles.
-  const Result<std::vector<json>> keys =
-    FetchAllPages(config, "Fetch.ProfileOwnedKeys", {{"profileId", *profile_id}, {"fresh", true}});
+  const Result<std::vector<json>> keys = FetchAllPages(
+      config, "Fetch.ProfileOwnedKeys", {{"profileId", *profile_id}, {"fresh", true}});
   if (!keys) return std::unexpected(keys.error());
   for (const json& key : *keys) {
     // DownloadKey.game is optional per butlerd's own spec -- gameId is the
     // one field that's always there.
     const json& game = key.value("game", json::object());
-    add_entry(key.value("gameId", game.value("id", std::int64_t{0})), game.value("title", std::string()), true);
+    add_entry(key.value("gameId", game.value("id", std::int64_t{0})),
+              game.value("title", std::string()), true);
   }
 
   // Bundle ownership is a separate model entirely (confirmed against
   // butlerd's own spec) -- a game bought only as part of a bundle never
   // shows up as a DownloadKey until something "materializes" it (e.g. an
   // install), so the bundles themselves have to be walked too.
-  const Result<std::vector<json>> bundle_keys =
-    FetchAllPages(config, "Fetch.ProfileOwnedBundles", {{"profileId", *profile_id}, {"fresh", true}});
+  const Result<std::vector<json>> bundle_keys = FetchAllPages(
+      config, "Fetch.ProfileOwnedBundles", {{"profileId", *profile_id}, {"fresh", true}});
   if (!bundle_keys) return std::unexpected(bundle_keys.error());
 
   for (const json& bundle_key : *bundle_keys) {
     const std::int64_t bundle_id = bundle_key.value("bundleId", std::int64_t{0});
     if (bundle_id == 0) continue;
     const Result<std::vector<json>> bundle_games =
-      FetchAllPages(config, "Fetch.BundleGames",
-                   {{"profileId", *profile_id}, {"bundleId", bundle_id}, {"fresh", true}});
+        FetchAllPages(config, "Fetch.BundleGames",
+                      {{"profileId", *profile_id}, {"bundleId", bundle_id}, {"fresh", true}});
     if (!bundle_games) continue;  // one broken bundle shouldn't hide the rest
     for (const json& bundle_game : *bundle_games) {
       const json& game = bundle_game.value("game", json::object());
-      add_entry(bundle_game.value("gameId", game.value("id", std::int64_t{0})), game.value("title", std::string()),
-                true);
+      add_entry(bundle_game.value("gameId", game.value("id", std::int64_t{0})),
+                game.value("title", std::string()), true);
     }
   }
 
@@ -89,9 +90,9 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(const config::Con
   // listed but not owned. Best effort.
   if (const Result<std::vector<ItchCollection>> collections = ListCollections(config)) {
     for (const ItchCollection& collection : *collections) {
-      const Result<std::vector<json>> collection_games =
-        FetchAllPages(config, "Fetch.Collection.Games",
-                      {{"profileId", *profile_id}, {"collectionId", collection.id}, {"fresh", true}});
+      const Result<std::vector<json>> collection_games = FetchAllPages(
+          config, "Fetch.Collection.Games",
+          {{"profileId", *profile_id}, {"collectionId", collection.id}, {"fresh", true}});
       if (!collection_games) continue;
       for (const json& collection_game : *collection_games) {
         const json& game = collection_game.value("game", json::object());
@@ -104,14 +105,14 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(const config::Con
   return entries;
 }
 
-Result<void> ItchSource::Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                                const std::string& ref) {
+Result<void> ItchSource::Install(config::Config& config, store::GameStore& games,
+                                 api::EventBus& events, const std::string& ref) {
   ItchInstaller installer(config, games, events);
   return installer.Install(ref);
 }
 
-Result<void> ItchSource::Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                               const std::string& ref) {
+Result<void> ItchSource::Update(config::Config& config, store::GameStore& games,
+                                api::EventBus& events, const std::string& ref) {
   ItchInstaller installer(config, games, events);
   return installer.Update(ref);
 }

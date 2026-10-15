@@ -1,7 +1,5 @@
 #include "SettingEditor.h"
 
-#include <cmath>
-
 #include <QAction>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -12,6 +10,7 @@
 #include <QLineEdit>
 #include <QToolButton>
 #include <QUrl>
+#include <cmath>
 
 #include "../client/JsonMapping.h"
 #include "../theme/Icons.h"
@@ -35,7 +34,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     for (const std::string& option : entry.one_of) combo->addItem(QString::fromStdString(option));
     combo->setMinimumWidth(200);
     row->AddControl(combo);
-  } else if (entry.minimum && entry.maximum && (entry.type == "an integer" || entry.type == "a number")) {
+  } else if (entry.minimum && entry.maximum &&
+             (entry.type == "an integer" || entry.type == "a number")) {
     spin = new QDoubleSpinBox(row);
     spin->setDecimals(entry.type == "an integer" ? 0 : 2);
     spin->setRange(*entry.minimum, *entry.maximum);
@@ -53,8 +53,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     row->AddControl(combo);
   } else if (entry.type == "an array of strings") {
     const bool folders = entry.path == "folder";
-    list = new ListEdit(folders ? ListEdit::Kind::Folder : ListEdit::Kind::Text, folders ? "Add folder…" : "Add…",
-                        row);
+    list = new ListEdit(folders ? ListEdit::Kind::Folder : ListEdit::Kind::Text,
+                        folders ? "Add folder…" : "Add…", row);
     row->SetBelow(list);
   } else {
     line = new QLineEdit(row);
@@ -83,8 +83,9 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
         const QString home = QDir::homePath();
         QString start = line->text().isEmpty() ? home : line->text();
         if (start.startsWith("~")) start = home + start.mid(1);
-        const QString chosen = folder ? QFileDialog::getExistingDirectory(line, "Choose a folder", start)
-                                      : QFileDialog::getOpenFileName(line, "Choose a file", start);
+        const QString chosen =
+            folder ? QFileDialog::getExistingDirectory(line, "Choose a folder", start)
+                   : QFileDialog::getOpenFileName(line, "Choose a file", start);
         return chosen.startsWith(home + "/") ? "~" + chosen.mid(home.size()) : chosen;
       }));
     }
@@ -109,8 +110,8 @@ QString SettingEditor::Doc() const {
 }
 
 QString SettingEditor::SearchText() const {
-  return QString::fromStdString(entry.key + ' ' + entry.label + ' ' + entry.category + ' ' + entry.group_label +
-                                ' ' + entry.doc + ' ' + entry.keywords);
+  return QString::fromStdString(entry.key + ' ' + entry.label + ' ' + entry.category + ' ' +
+                                entry.group_label + ' ' + entry.doc + ' ' + entry.keywords);
 }
 
 QWidget* SettingEditor::Input() const {
@@ -149,7 +150,8 @@ void SettingEditor::SetText(const std::string& text) {
   }
   if (list) {
     QStringList items;
-    for (const std::string& item : mapping::ParseListText(text)) items << QString::fromStdString(item);
+    for (const std::string& item : mapping::ParseListText(text))
+      items << QString::fromStdString(item);
     list->SetItems(items);
     return;
   }
@@ -205,8 +207,8 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners) {
   combo->addItem("Auto (best available)", "auto");
   if (runners.ok) {
     for (const RunnerInfo& runner : runners.runners) {
-      const QString label =
-          QString("%1 (%2)").arg(QString::fromStdString(runner.name), QString::fromStdString(runner.kind));
+      const QString label = QString("%1 (%2)").arg(QString::fromStdString(runner.name),
+                                                   QString::fromStdString(runner.kind));
       combo->addItem(label, QString::fromStdString(runner.reference));
     }
   }

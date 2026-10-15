@@ -1,7 +1,7 @@
 #include "gog/GogInstaller.h"
 
-#include "gog/Gog.h"
 #include "core/StoreErrors.h"
+#include "gog/Gog.h"
 #include "gog/GogImporter.h"
 #include "library/StoreProgress.h"
 
@@ -22,20 +22,27 @@ Result<void> GogInstaller::Run(const std::string& id) {
   }
   library::StoreProgress progress(events_, "gog", id);
   const char* dlcs = config_.GetBool("gog.install_dlc") ? "--with-dlcs" : "--skip-dlcs";
-  if (auto output = RunGogdl(config_, {"download", id, "--path", root.string(), "--platform", "windows", dlcs},
-                             [&progress](std::string_view chunk) { progress.Feed(chunk); });
+  if (auto output = RunGogdl(
+          config_, {"download", id, "--path", root.string(), "--platform", "windows", dlcs},
+          [&progress](std::string_view chunk) { progress.Feed(chunk); });
       !output) {
     return std::unexpected(output.error());
   }
   const std::filesystem::path install_dir = FindGameDir(config_, id);
-  if (install_dir.empty()) return Err("install_dir_missing", "gogdl finished but no goggame-" + id + ".info was found");
+  if (install_dir.empty())
+    return Err("install_dir_missing", "gogdl finished but no goggame-" + id + ".info was found");
 
   GogImporter importer(config_, games_, events_);
-  if (auto imported = importer.ImportPath(id, install_dir); !imported) return std::unexpected(imported.error());
+  if (auto imported = importer.ImportPath(id, install_dir); !imported)
+    return std::unexpected(imported.error());
   return {};
 }
 
-Result<void> GogInstaller::Install(const std::string& id) { return Run(id); }
-Result<void> GogInstaller::Update(const std::string& id) { return Run(id); }
+Result<void> GogInstaller::Install(const std::string& id) {
+  return Run(id);
+}
+Result<void> GogInstaller::Update(const std::string& id) {
+  return Run(id);
+}
 
 }  // namespace mira::gog

@@ -57,7 +57,9 @@ QWidget* MakeDivider(QWidget* parent, Qt::Orientation orientation, int length) {
 
 ElidedLabel::ElidedLabel(const QString& text, QWidget* parent) : QLabel(text, parent) {}
 
-QSize ElidedLabel::minimumSizeHint() const { return QSize(20, QLabel::minimumSizeHint().height()); }
+QSize ElidedLabel::minimumSizeHint() const {
+  return QSize(20, QLabel::minimumSizeHint().height());
+}
 
 void ElidedLabel::paintEvent(QPaintEvent*) {
   const QString shown = fontMetrics().elidedText(text(), Qt::ElideRight, width());

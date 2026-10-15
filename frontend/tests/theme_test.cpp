@@ -1,20 +1,19 @@
+#include "theme/Theme.h"
+
 #include <doctest.h>
 
 #include <QFile>
 #include <QTemporaryDir>
-
 #include <cstdlib>
 #include <optional>
 #include <string>
-
-#include "theme/Theme.h"
 
 using namespace mira_gui;
 
 namespace {
 // Points XDG_CONFIG_HOME at a scratch folder for the test's lifetime.
 class ScratchConfig {
-public:
+ public:
   ScratchConfig() {
     if (const char* old = std::getenv("XDG_CONFIG_HOME")) old_ = old;
     ::setenv("XDG_CONFIG_HOME", dir_.path().toLocal8Bit().constData(), 1);
@@ -28,7 +27,7 @@ public:
   }
   QString Themes() const { return dir_.path() + "/mira/themes"; }
 
-private:
+ private:
   QTemporaryDir dir_;
   std::optional<std::string> old_;
 };

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QString>
-
 #include <vector>
 
 #include "../settings/SettingEditor.h"
@@ -20,7 +19,7 @@ namespace mira_gui {
 class SourceSettingsCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   SourceSettingsCard(const SourceInfo& source, QWidget* parent = nullptr);
 
   // Reloads everything from mirad, e.g. after the launcher was installed.
@@ -31,12 +30,12 @@ public:
   void Save();
   void Discard();
 
-signals:
+ signals:
   // "All settings…": the full settings screen at `focus_key`.
   void OpenSettingsRequested(QString focus_key);
   void SaveFinished(bool ok);
 
-private:
+ private:
   bool HasRunner() const;
   bool RunnerDirty() const;
   void BuildEmulatorRow();
@@ -62,8 +61,8 @@ private:
   QLabel* runner_note_ = nullptr;
   QPushButton* runner_apply_ = nullptr;
   bool runner_can_apply_ = false;  // some games use another runner
-  QString runner_ref_;  // what mirad last confirmed
-  int runner_serial_ = 0;  // bumped by Apply; older GET replies are dropped
+  QString runner_ref_;             // what mirad last confirmed
+  int runner_serial_ = 0;          // bumped by Apply; older GET replies are dropped
 
   std::vector<SettingEditor> settings_;
   QWidget* footer_ = nullptr;

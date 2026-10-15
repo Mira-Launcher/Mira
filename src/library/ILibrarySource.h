@@ -23,7 +23,7 @@ namespace mira::library {
 // (tool installed, authenticated, ...) -- the caller never special-cases
 // one source.
 class ILibrarySource {
-public:
+ public:
   virtual ~ILibrarySource() = default;
 
   virtual std::string Name() const = 0;
@@ -33,13 +33,13 @@ public:
   virtual Result<std::vector<CatalogEntry>> Catalog(const config::Config& config,
                                                     const store::GameStore& games) const = 0;
 
-  virtual Result<void> Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                              const std::string& ref) = 0;
+  virtual Result<void> Install(config::Config& config, store::GameStore& games,
+                               api::EventBus& events, const std::string& ref) = 0;
 
   // Default: not supported. Steam overrides this to report so explicitly
   // (Steam updates its own games); every other source overrides for real.
-  virtual Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                             const std::string& ref);
+  virtual Result<void> Update(config::Config& config, store::GameStore& games,
+                              api::EventBus& events, const std::string& ref);
 
   // Whether an install stopped partway continues where it left off when run again.
   virtual bool CanPause() const { return false; }

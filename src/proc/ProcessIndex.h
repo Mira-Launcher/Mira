@@ -14,20 +14,20 @@ namespace mira::proc {
 // up. A refresh then costs one /proc listing, not a read of every process.
 struct ProcessInfo {
   std::string steam_launch;  // AppId of a Steam "reaper SteamLaunch" process
-  std::string prefix;       // WINEPREFIX or STEAM_COMPAT_DATA_PATH
-  std::string argv0;        // lowercase, forward slashes
+  std::string prefix;        // WINEPREFIX or STEAM_COMPAT_DATA_PATH
+  std::string argv0;         // lowercase, forward slashes
   std::int64_t first_seen = 0;
 };
 
 class ProcessIndex {
-public:
+ public:
   // Drops exited processes and reads new ones. A process is re-read for a
   // few seconds after it appears, since it may still exec into the game.
   void Refresh();
 
   const std::unordered_map<pid_t, ProcessInfo>& Processes() const { return processes_; }
 
-private:
+ private:
   std::unordered_map<pid_t, ProcessInfo> processes_;
 };
 

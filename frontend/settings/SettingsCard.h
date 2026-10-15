@@ -19,14 +19,14 @@ namespace mira_gui {
 class Switch : public QAbstractButton {
   Q_OBJECT
 
-public:
+ public:
   explicit Switch(QWidget* parent = nullptr);
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   qreal position_ = 0;  // 0 is off, 1 is on; animated between the two
   QVariantAnimation* slide_ = nullptr;
 };
@@ -37,7 +37,7 @@ private:
 class SettingRow : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   SettingRow(const QString& label, const QString& doc, QWidget* parent = nullptr);
 
   // Right-aligned, in the order added.
@@ -58,21 +58,21 @@ public:
   // Shows the dot and the undo button. The owner connects RevertClicked.
   void SetModified(bool modified);
 
-signals:
+ signals:
   void RevertClicked();
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   QWidget* dot_ = nullptr;
   QWidget* grip_ = nullptr;
   QLabel* label_ = nullptr;
   QTimer* doc_delay_ = nullptr;  // the label's tooltip shows sooner than Qt's own
   QToolButton* revert_ = nullptr;
-  QHBoxLayout* line_ = nullptr;      // dot, label, extras, stretch, revert, controls
+  QHBoxLayout* line_ = nullptr;  // dot, label, extras, stretch, revert, controls
   QVBoxLayout* outer_ = nullptr;
-  int label_end_ = 0;                // where AddAfterLabel inserts
+  int label_end_ = 0;  // where AddAfterLabel inserts
 };
 
 // A titled group of rows on a raised surface, with a line between rows. Can
@@ -80,7 +80,7 @@ private:
 class SettingsCard : public QFrame {
   Q_OBJECT
 
-public:
+ public:
   explicit SettingsCard(const QString& title, QWidget* parent = nullptr);
 
   void AddRow(QWidget* row);
@@ -115,16 +115,16 @@ public:
   // A "Reset to defaults" button in the header, shown while `resettable`.
   void SetResettable(bool resettable);
 
-signals:
- // A row with a grip (SettingRow::ShowGrip) was dragged, or moved with Alt+Up/Down. It only trades
- // places with other rows that have one.
- void RowsReordered();
- void ResetClicked();
+ signals:
+  // A row with a grip (SettingRow::ShowGrip) was dragged, or moved with Alt+Up/Down. It only trades
+  // places with other rows that have one.
+  void RowsReordered();
+  void ResetClicked();
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   bool HandleGrip(QWidget* grip, QEvent* event);
 
   QWidget* dragging_ = nullptr;  // the row being dragged by its grip
@@ -146,7 +146,7 @@ private:
 class SettingsPage : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit SettingsPage(const QString& title, QWidget* parent = nullptr);
 
   SettingsCard* AddCard(const QString& title);
@@ -158,7 +158,7 @@ public:
   // Splits the cards into columns again from their current heights.
   void Rearrange();
 
-private:
+ private:
   QLabel* title_ = nullptr;
   QWidget* cards_ = nullptr;
 };
@@ -169,23 +169,24 @@ private:
 class ChangeBar : public QFrame {
   Q_OBJECT
 
-public:
+ public:
   explicit ChangeBar(QWidget* over);
   void SetCount(int count);
   // Another message and button labels, e.g. for a picked cover. Empty `text` hides the bar.
-  void SetText(const QString& text, const QString& save = "Save", const QString& discard = "Discard");
+  void SetText(const QString& text, const QString& save = "Save",
+               const QString& discard = "Discard");
   void SetBusy(bool busy);  // while a save runs
   // The space it takes at the bottom of `over`, gap included.
   int RoomNeeded() const;
 
-signals:
+ signals:
   void DiscardClicked();
   void SaveClicked();
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   void Place();
 
   QLabel* text_ = nullptr;

@@ -1,14 +1,13 @@
-#include "core/Json.h"
 #include "gog/GogSource.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <json.hpp>
 #include <unordered_map>
 #include <unordered_set>
 
-#include <json.hpp>
-
+#include "core/Json.h"
 #include "gog/Gog.h"
 #include "gog/GogInstaller.h"
 #include "runner/Exec.h"
@@ -19,7 +18,8 @@ using nlohmann::json;
 
 Result<json> GetJson(const std::string& url, const std::string& bearer_token) {
   const Result<runner::ExecResult> result = runner::RunCurlWithSecrets(
-      {"-sSL", "--max-time", "10", url}, runner::CurlConfigLine("header", "Authorization: Bearer " + bearer_token));
+      {"-sSL", "--max-time", "10", url},
+      runner::CurlConfigLine("header", "Authorization: Bearer " + bearer_token));
   if (!result) return std::unexpected(result.error());
   const json parsed = json::parse(result->output, nullptr, false);
   if (parsed.is_discarded()) return Err("gog_api_error", "GOG's API didn't return valid JSON");
@@ -63,13 +63,15 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
     }
     // Retried once: a failed batch would list its DLC as games.
     for (int attempt = 0; attempt < 2; ++attempt) {
-      const Result<json> products = GetJson(std::format("https://api.gog.com/products?ids={}", joined), *token);
+      const Result<json> products =
+          GetJson(std::format("https://api.gog.com/products?ids={}", joined), *token);
       if (!products || !products->is_array()) continue;
       for (const json& product : *products) {
         const std::string id = std::to_string(core::JsonInt(product, "id"));
         titles[id] = core::JsonString(product, "title");
         const std::string type = core::JsonString(product, "game_type");
-        if ((!type.empty() && type != "game") || !core::JsonBool(product, "is_installable", true)) not_games.insert(id);
+        if ((!type.empty() && type != "game") || !core::JsonBool(product, "is_installable", true))
+          not_games.insert(id);
       }
       break;
     }
@@ -88,14 +90,14 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
   return entries;
 }
 
-Result<void> GogSource::Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                               const std::string& ref) {
+Result<void> GogSource::Install(config::Config& config, store::GameStore& games,
+                                api::EventBus& events, const std::string& ref) {
   GogInstaller installer(config, games, events);
   return installer.Install(ref);
 }
 
-Result<void> GogSource::Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                              const std::string& ref) {
+Result<void> GogSource::Update(config::Config& config, store::GameStore& games,
+                               api::EventBus& events, const std::string& ref) {
   GogInstaller installer(config, games, events);
   return installer.Update(ref);
 }

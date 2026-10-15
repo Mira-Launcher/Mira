@@ -18,7 +18,9 @@
 namespace mira::humble {
 namespace {
 
-std::filesystem::path KeyFile() { return paths::Home() / ".humble-cli-key"; }
+std::filesystem::path KeyFile() {
+  return paths::Home() / ".humble-cli-key";
+}
 namespace fs = std::filesystem;
 
 // humble-cli's --field output is plain CSV, not a padded
@@ -59,16 +61,21 @@ std::vector<std::string> ParseCsvLine(const std::string& line) {
 }  // namespace
 
 std::filesystem::path ManagedHumbleCliPath(const config::Config& config) {
-  return config.File().parent_path() / "tools" / "humble" / std::string(config::runner_sources::kHumbleCliBinaryName);
+  return config.File().parent_path() / "tools" / "humble" /
+         std::string(config::runner_sources::kHumbleCliBinaryName);
 }
 
-const runner::StoreTool kTool = {"humble", "Humble Bundle", "humble-cli", "humble.humble_cli_bin", ManagedHumbleCliPath};
+const runner::StoreTool kTool = {"humble", "Humble Bundle", "humble-cli", "humble.humble_cli_bin",
+                                 ManagedHumbleCliPath};
 
-runner::ToolStatus DetectHumbleCli(const config::Config& config) { return runner::DetectTool(config, kTool); }
+runner::ToolStatus DetectHumbleCli(const config::Config& config) {
+  return runner::DetectTool(config, kTool);
+}
 
-Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
-  auto installed =
-    runner::InstallToolBinary(config, "humble", asset, std::string(config::runner_sources::kHumbleCliBinaryName));
+Result<void> InstallHumbleCliBinary(const config::Config& config,
+                                    const runner::ReleaseAsset& asset) {
+  auto installed = runner::InstallToolBinary(
+      config, "humble", asset, std::string(config::runner_sources::kHumbleCliBinaryName));
   if (!installed) return std::unexpected(installed.error());
   return {};
 }
@@ -99,17 +106,21 @@ std::optional<std::string> FindSessionKey(std::string_view text) {
 }
 
 Result<void> Login(const config::Config& config, const std::string& session_key) {
-  // What `humble-cli auth <key>` writes, without the key in a process's arguments for anyone to read.
+  // What `humble-cli auth <key>` writes, without the key in a process's arguments for anyone to
+  // read.
   const std::filesystem::path key_file = KeyFile();
   const std::optional<std::string> previous = files::ReadFile(key_file);
-  if (auto written = WriteFileAtomic(key_file, strings::Trim(session_key), "login_failed", true, 0600); !written) {
+  if (auto written =
+          WriteFileAtomic(key_file, strings::Trim(session_key), "login_failed", true, 0600);
+      !written) {
     return written;
   }
   if (const runner::AuthStatus status = Status(config); !status.authenticated) {
     // A rejected key doesn't log out a working one.
     std::error_code ec;
     if (previous) {
-      if (auto restored = WriteFileAtomic(key_file, *previous, "login_failed", true, 0600); !restored) {
+      if (auto restored = WriteFileAtomic(key_file, *previous, "login_failed", true, 0600);
+          !restored) {
         log::Error("couldn't put the previous Humble key back: {}", restored.error().message);
       }
     } else {
@@ -123,13 +134,15 @@ Result<void> Login(const config::Config& config, const std::string& session_key)
 Result<void> Logout(const config::Config&) {
   std::error_code ec;
   std::filesystem::remove(KeyFile(), ec);
-  if (ec) return Err("logout_failed", std::format("couldn't remove {}: {}", KeyFile().string(), ec.message()));
+  if (ec)
+    return Err("logout_failed",
+               std::format("couldn't remove {}: {}", KeyFile().string(), ec.message()));
   return {};
 }
 
 Result<std::vector<BundleSummary>> ListBundles(const config::Config& config) {
-  const Result<std::string> output = RunHumbleCli(config, {"list", "--field", "key", "--field", "name",
-                                                          "--field", "claimed"});
+  const Result<std::string> output =
+      RunHumbleCli(config, {"list", "--field", "key", "--field", "name", "--field", "claimed"});
   if (!output) return std::unexpected(output.error());
 
   std::vector<BundleSummary> bundles;
@@ -137,9 +150,12 @@ Result<std::vector<BundleSummary>> ListBundles(const config::Config& config) {
   bool skipped_header = false;
   while (pos <= output->size()) {
     const size_t newline = output->find('\n', pos);
-    const std::string line = output->substr(pos, newline == std::string::npos ? std::string::npos : newline - pos);
-    if (newline == std::string::npos) pos = output->size() + 1;
-    else pos = newline + 1;
+    const std::string line =
+        output->substr(pos, newline == std::string::npos ? std::string::npos : newline - pos);
+    if (newline == std::string::npos)
+      pos = output->size() + 1;
+    else
+      pos = newline + 1;
 
     const std::string trimmed = strings::Trim(line);
     if (trimmed.empty()) continue;
@@ -171,7 +187,8 @@ std::filesystem::path DownloadDir(const config::Config& config, const std::strin
   return config.GetPath("humble.download_root") / bundle_key;
 }
 
-Result<bool> Download(const config::Config& config, const std::string& bundle_key, const std::string& item_numbers) {
+Result<bool> Download(const config::Config& config, const std::string& bundle_key,
+                      const std::string& item_numbers) {
   const fs::path dir = DownloadDir(config, bundle_key);
   std::error_code ec;
   fs::create_directories(dir, ec);
@@ -190,7 +207,8 @@ Result<bool> Download(const config::Config& config, const std::string& bundle_ke
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result) return std::unexpected(result.error());
   if (result->exit_code != 0) {
-    return Err("download_failed", std::format("humble-cli exited {}: {}", result->exit_code, result->output));
+    return Err("download_failed",
+               std::format("humble-cli exited {}: {}", result->exit_code, result->output));
   }
   // A purchase that's a redeemed Steam key with no
   // Humble-hosted files (`humble-cli details` shows "No items to show",

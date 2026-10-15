@@ -7,16 +7,31 @@
 namespace mira_gui::bigscreen {
 
 // What a controller or the keyboard asks big screen to do.
-enum class Nav { Up, Down, Left, Right, Accept, Back, Action, Search, PrevTab, NextTab, Guide, Sort,
-                 // Triggers: the previous or next letter in a list sorted by name.
-                 PrevLetter, NextLetter,
-                 // B held down: straight to Home.
-                 Home, kCount };
+enum class Nav {
+  Up,
+  Down,
+  Left,
+  Right,
+  Accept,
+  Back,
+  Action,
+  Search,
+  PrevTab,
+  NextTab,
+  Guide,
+  Sort,
+  // Triggers: the previous or next letter in a list sorted by name.
+  PrevLetter,
+  NextLetter,
+  // B held down: straight to Home.
+  Home,
+  kCount
+};
 
 // Turns sampled button states into presses: one on the way down, and for
 // directions, repeats while held (a pause first, then steadily).
 class NavRepeater {
-public:
+ public:
   static constexpr std::int64_t kFirstRepeatMs = 380;
   static constexpr std::int64_t kRepeatMs = 90;
 
@@ -48,7 +63,7 @@ public:
 
   static bool IsDirection(Nav nav) { return nav <= Nav::Right; }
 
-private:
+ private:
   std::int64_t first_ms_ = kFirstRepeatMs;
   std::int64_t repeat_ms_ = kRepeatMs;
   std::array<bool, size_t(Nav::kCount)> held_{};

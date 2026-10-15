@@ -1,12 +1,12 @@
+#include "store/GameStore.h"
+
 #include <doctest.h>
 
 #include <atomic>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 #include <vector>
-
-#include "store/GameStore.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
@@ -138,9 +138,11 @@ TEST_CASE("a finished session is counted once and outlives its game") {
   store::GameStore store(TempFile("games-sessions.db"));
   store.Load();
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
-  const store::PlaySession session{.game_id = "celeste", .started_at = 100, .ended_at = 160, .duration_seconds = 60};
+  const store::PlaySession session{
+      .game_id = "celeste", .started_at = 100, .ended_at = 160, .duration_seconds = 60};
   for (int i = 0; i < 2; ++i) {
-    REQUIRE(store.FinishSession(session, [](model::Game& game) { game.play_seconds += 60; }).has_value());
+    REQUIRE(store.FinishSession(session, [](model::Game& game) { game.play_seconds += 60; })
+                .has_value());
   }
   CHECK(store.Sessions("celeste", 10).size() == 1);
   REQUIRE(store.Remove("celeste").has_value());
@@ -185,7 +187,8 @@ TEST_CASE("concurrent updates all save, and the file ends with every change") {
   for (int i = 0; i < kGames; ++i) {
     threads.emplace_back([&store, &failures, i] {
       for (int round = 0; round < 10; ++round) {
-        auto result = store.Update("g" + std::to_string(i), [](model::Game& game) { game.tags = {"favorite"}; });
+        auto result = store.Update("g" + std::to_string(i),
+                                   [](model::Game& game) { game.tags = {"favorite"}; });
         if (!result) ++failures;
       }
     });

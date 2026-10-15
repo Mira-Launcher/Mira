@@ -6,14 +6,13 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
-
 #include <utility>
 
-#include "../client/Events.h"
-#include "../client/api/Games.h"
-#include "../client/EventHub.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
+#include "../client/EventHub.h"
+#include "../client/Events.h"
+#include "../client/api/Games.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
@@ -74,7 +73,8 @@ WinetricksDialog::WinetricksDialog(std::string game_id, QString game_name, QWidg
     if (connected || verb_->isEnabled()) return;
     verb_->setEnabled(true);
     run_->setEnabled(!verb_->currentText().trimmed().isEmpty());
-    SetStatus("Lost contact with mirad while it ran. Check the game before running it again.", /*error=*/true);
+    SetStatus("Lost contact with mirad while it ran. Check the game before running it again.",
+              /*error=*/true);
   });
 }
 
@@ -100,7 +100,8 @@ void WinetricksDialog::Run() {
                 /*error=*/true);
       return;
     }
-    if (!verb_->isEnabled()) SetStatus(QString("Running %1…").arg(QString::fromStdString(verb)));  // not finished already
+    if (!verb_->isEnabled())
+      SetStatus(QString("Running %1…").arg(QString::fromStdString(verb)));  // not finished already
   });
 }
 

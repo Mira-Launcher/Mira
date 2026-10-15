@@ -5,7 +5,6 @@
 #include <QList>
 #include <QPointer>
 #include <QString>
-
 #include <map>
 #include <optional>
 #include <string>
@@ -33,7 +32,8 @@ struct Binding {
 // override if set, else `default_keys`. Caller still builds and installs
 // the full QList<QKeySequence> (this plus `extra_aliases`) itself.
 QKeySequence Register(QAction* action, const QString& id, const QString& label,
-                      const QKeySequence& default_keys, const QList<QKeySequence>& extra_aliases = {});
+                      const QKeySequence& default_keys,
+                      const QList<QKeySequence>& extra_aliases = {});
 
 // Every distinct id registered so far, in registration order, which is what the
 // Settings screen's Shortcuts category lists.
@@ -55,8 +55,8 @@ std::map<std::string, std::string> Current();
 // before or after the ids in question are Register()ed.
 void LoadOverrides(const std::map<std::string, std::string>& saved);
 
-// `id`'s keys as the user sees them once overridden; `fallback` (the default's own wording) otherwise.
-// Empty when overridden to no shortcut.
+// `id`'s keys as the user sees them once overridden; `fallback` (the default's own wording)
+// otherwise. Empty when overridden to no shortcut.
 QString KeysText(const QString& id, const QString& fallback);
 
 // Sets (or, with an empty QKeySequence, deliberately clears) `id`'s override

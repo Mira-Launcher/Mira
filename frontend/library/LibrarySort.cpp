@@ -44,7 +44,9 @@ bool GameLess(const GameSummary& a, const GameSummary& b, const std::string& key
   // `descending` inverts the primary key only; the name tiebreak always
   // reads A to Z. Reversing the whole result instead would flip the
   // tiebreak too, so games sharing a timestamp would come out Z to A.
-  const auto ordered = [descending](auto left, auto right) { return descending ? right < left : left < right; };
+  const auto ordered = [descending](auto left, auto right) {
+    return descending ? right < left : left < right;
+  };
   if (key == "last_played") {
     const std::int64_t ra = LastPlayedRank(a);
     const std::int64_t rb = LastPlayedRank(b);

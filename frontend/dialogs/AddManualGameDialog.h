@@ -14,13 +14,13 @@ namespace mira_gui {
 class AddManualGameDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   explicit AddManualGameDialog(QWidget* parent = nullptr);
 
   // Starts from a known folder and name, such as a finished Humble download.
   void Prefill(const QString& install_path, const QString& name);
 
-private:
+ private:
   void Submit();
 
   QLineEdit* install_path_ = nullptr;

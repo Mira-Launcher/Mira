@@ -30,7 +30,6 @@ json Sorting(const fs::path& root, const std::vector<std::string>& folders) {
   return {{"tags", {{"folders", folders}, {"sorted_roots", json::array({root.string()})}}}};
 }
 
-
 model::Game AddGame(store::GameStore& games, const std::string& id, const fs::path& install_path,
                     std::vector<std::string> tags = {}, const std::string& source = "manual") {
   Touch(install_path / "run.sh", "#!/bin/sh\n", /*executable=*/true);
@@ -76,8 +75,7 @@ TEST_CASE("A game's folder follows its tags in a library folder sorted by tag") 
   config::Config& config = server.MutableConfig();
   REQUIRE(config.Set("library_roots", json::array({games_root.string(), apps_root.string()}))
               .has_value());
-  REQUIRE(
-      config.Patch(Sorting(games_root, {"RPG", "Strategy"})).has_value());
+  REQUIRE(config.Patch(Sorting(games_root, {"RPG", "Strategy"})).has_value());
   AddGame(server.games(), "quest", games_root / "Quest");
   AddGame(server.games(), "editor", apps_root / "Editor");
   AddGame(server.games(), "steam-game", games_root / "SteamGame", {}, "steam");
@@ -534,9 +532,8 @@ TEST_CASE("A game installed in its prefix is sorted by a link the scanner never 
   // Turning sorting on links it at the root level; nothing appears before that, and turning it
   // off (null, as a merge-patch) takes the link away again.
   CHECK_FALSE(fs::exists(root / "Quest"));
-  const auto patched = client.Patch(
-      "/v1/config", Sorting(root, {"RPG"}).dump(),
-      "application/json");
+  const auto patched =
+      client.Patch("/v1/config", Sorting(root, {"RPG"}).dump(), "application/json");
   REQUIRE(patched != nullptr);
   REQUIRE(patched->status == 200);
   CHECK(WaitUntil([&] { return fs::is_symlink(root / "Quest"); }));
@@ -633,14 +630,15 @@ TEST_CASE("Records say how their game is sorted") {
   CHECK(quest["sort_root"] == root.string());
   CHECK(quest["folder_tags"].is_null());  // not sorted yet
   // Turning sorting on tells clients every record changed, not only the games that move.
-  const auto patched = client.Patch("/v1/config", Sorting(root, {"RPG"}).dump(),
-                                    "application/json");
+  const auto patched =
+      client.Patch("/v1/config", Sorting(root, {"RPG"}).dump(), "application/json");
   REQUIRE(patched != nullptr);
   REQUIRE(patched->status == 200);
   const auto announced = test::WaitForEvent(server.events(), "games.updated");
   REQUIRE(announced.has_value());
   const json& records = announced->payload["games"];
-  const auto plain = std::ranges::find_if(records, [](const json& game) { return game["id"] == "plain"; });
+  const auto plain =
+      std::ranges::find_if(records, [](const json& game) { return game["id"] == "plain"; });
   REQUIRE(plain != records.end());
   CHECK((*plain)["folder_tags"] == json::array({"RPG"}));
   CHECK(json::parse(client.Get("/v1/games/quest")->body)["folder_tags"] == json::array({"RPG"}));

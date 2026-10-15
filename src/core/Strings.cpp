@@ -10,11 +10,11 @@ namespace {
 // Tokens that appear in repack and store directory names but never in the
 // game's actual title. Matched case-insensitively as whole tokens.
 constexpr std::string_view kNoiseTokens[] = {
-    "repack",   "gog",      "goty",   "codex",    "plaza",   "skidrow",  "fitgirl",
-    "dodi",     "elamigos", "rune",   "empress",  "tenoke",  "razor1911", "flt",
-    "ankergames", "steamrip", "multi", "proper",  "incl",    "dlc",      "update",
-    "crack",    "cracked",  "portable", "win64",  "win32",   "x64",      "x86",
-    "edition",  "deluxe",   "complete", "remastered", "definitive",
+    "repack",     "gog",      "goty",     "codex",      "plaza",      "skidrow",   "fitgirl",
+    "dodi",       "elamigos", "rune",     "empress",    "tenoke",     "razor1911", "flt",
+    "ankergames", "steamrip", "multi",    "proper",     "incl",       "dlc",       "update",
+    "crack",      "cracked",  "portable", "win64",      "win32",      "x64",       "x86",
+    "edition",    "deluxe",   "complete", "remastered", "definitive",
 };
 
 bool IsNoiseToken(std::string_view token) {
@@ -73,7 +73,8 @@ std::vector<std::string> SplitArgs(std::string_view text) {
     if (quote != 0) {
       if (c == quote) {
         quote = 0;
-      } else if (c == '\\' && quote == '"' && i + 1 < text.size() && (text[i + 1] == '"' || text[i + 1] == '\\')) {
+      } else if (c == '\\' && quote == '"' && i + 1 < text.size() &&
+                 (text[i + 1] == '"' || text[i + 1] == '\\')) {
         current += text[++i];
       } else {
         current += c;
@@ -120,7 +121,8 @@ std::string ShellQuote(std::string_view arg) {
 }
 
 std::string DesktopExecArg(std::string_view arg) {
-  // Inside quotes ", `, $ and \ take a backslash, which the key's own string escaping doubles; % is a field code.
+  // Inside quotes ", `, $ and \ take a backslash, which the key's own string escaping doubles; % is
+  // a field code.
   std::string out = "\"";
   for (const char c : arg) {
     if (c == '"' || c == '`' || c == '$') out += "\\\\";
@@ -210,7 +212,8 @@ std::string CleanGameName(std::string_view directory_name) {
   if (std::ranges::none_of(out, [](unsigned char c) { return std::isupper(c); })) {
     bool word_start = true;
     for (char& c : out) {
-      if (word_start && std::isalpha(static_cast<unsigned char>(c))) c = static_cast<char>(std::toupper(c));
+      if (word_start && std::isalpha(static_cast<unsigned char>(c)))
+        c = static_cast<char>(std::toupper(c));
       word_start = c == ' ';
     }
   }
@@ -237,7 +240,8 @@ double Similarity(std::string_view a, std::string_view b) {
 }
 
 std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_view url) {
-  static const std::regex kUrl(R"(https://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?(?:/releases/tag/([^/?#\s]+))?)");
+  static const std::regex kUrl(
+      R"(https://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?(?:/releases/tag/([^/?#\s]+))?)");
   if (url.size() > 512) return std::nullopt;  // std::regex recurses per character
   std::match_results<std::string_view::const_iterator> match;
   if (!std::regex_match(url.begin(), url.end(), match, kUrl)) return std::nullopt;

@@ -1,18 +1,18 @@
-#include "core/Json.h"
 #include "epic/EpicSource.h"
 
 #include <json.hpp>
 
+#include "core/Json.h"
+#include "core/StoreErrors.h"
 #include "epic/EpicImporter.h"
 #include "epic/EpicInstaller.h"
-#include "core/StoreErrors.h"
 #include "epic/Legendary.h"
 
 namespace mira::epic {
 using nlohmann::json;
 
-Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(const config::Config& config,
-                                                              const store::GameStore& games) const {
+Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(
+    const config::Config& config, const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
   if (!games.SourceEnabled("epic")) return entries;
 
@@ -35,15 +35,15 @@ Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(const config::Con
   return entries;
 }
 
-Result<void> EpicSource::Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                                const std::string& ref) {
+Result<void> EpicSource::Install(config::Config& config, store::GameStore& games,
+                                 api::EventBus& events, const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;
   EpicInstaller installer(config, games, events);
   return installer.Install(ref);
 }
 
-Result<void> EpicSource::Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                               const std::string& ref) {
+Result<void> EpicSource::Update(config::Config& config, store::GameStore& games,
+                                api::EventBus& events, const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;
   EpicInstaller installer(config, games, events);
   return installer.Update(ref);

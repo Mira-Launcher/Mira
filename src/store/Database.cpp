@@ -1,8 +1,8 @@
 #include "store/Database.h"
 
-#include <format>
-
 #include <sqlite3.h>
+
+#include <format>
 
 namespace mira::store {
 namespace {
@@ -16,10 +16,13 @@ std::string ErrorCode(sqlite3* db) {
 
 }  // namespace
 
-Statement::~Statement() { sqlite3_finalize(stmt_); }
+Statement::~Statement() {
+  sqlite3_finalize(stmt_);
+}
 
 Statement& Statement::Bind(int index, std::string_view text) {
-  NoteBind(sqlite3_bind_text(stmt_, index, text.data(), static_cast<int>(text.size()), SQLITE_TRANSIENT));
+  NoteBind(sqlite3_bind_text(stmt_, index, text.data(), static_cast<int>(text.size()),
+                             SQLITE_TRANSIENT));
   return *this;
 }
 
@@ -59,17 +62,26 @@ std::string Statement::Text(int column) const {
   return text ? std::string(text, sqlite3_column_bytes(stmt_, column)) : std::string();
 }
 
-std::int64_t Statement::Int(int column) const { return sqlite3_column_int64(stmt_, column); }
-double Statement::Real(int column) const { return sqlite3_column_double(stmt_, column); }
-bool Statement::IsNull(int column) const { return sqlite3_column_type(stmt_, column) == SQLITE_NULL; }
+std::int64_t Statement::Int(int column) const {
+  return sqlite3_column_int64(stmt_, column);
+}
+double Statement::Real(int column) const {
+  return sqlite3_column_double(stmt_, column);
+}
+bool Statement::IsNull(int column) const {
+  return sqlite3_column_type(stmt_, column) == SQLITE_NULL;
+}
 
-Database::~Database() { Close(); }
+Database::~Database() {
+  Close();
+}
 
 Result<void> Database::Open(const std::filesystem::path& file) {
   Close();
   std::error_code ec;
   std::filesystem::create_directories(file.parent_path(), ec);
-  if (sqlite3_open_v2(file.c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+  if (sqlite3_open_v2(file.c_str(), &db_,
+                      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
                       nullptr) != SQLITE_OK) {
     const Error error = LastError(std::format("could not open {}", file.string()));
     Close();
@@ -85,7 +97,8 @@ void Database::Close() {
 }
 
 Error Database::LastError(std::string_view what) const {
-  return {ErrorCode(db_), std::format("{}: {}", what, db_ ? sqlite3_errmsg(db_) : "out of memory"), kDiskHint};
+  return {ErrorCode(db_), std::format("{}: {}", what, db_ ? sqlite3_errmsg(db_) : "out of memory"),
+          kDiskHint};
 }
 
 Result<void> Database::Exec(std::string_view sql) {
@@ -98,7 +111,8 @@ Result<void> Database::Exec(std::string_view sql) {
 
 Result<Statement> Database::Prepare(std::string_view sql) {
   sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()), &stmt, nullptr) != SQLITE_OK) {
+  if (sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()), &stmt, nullptr) !=
+      SQLITE_OK) {
     return std::unexpected(LastError("database"));
   }
   return Statement(stmt);
@@ -114,10 +128,11 @@ Result<void> Database::Migrate(std::span<const std::string_view> steps) {
     applied = static_cast<std::size_t>(version->Int(0));
   }
   if (applied > steps.size()) {
-    return Err("database_too_new",
-               std::format("the library database is from a newer Mira (version {}, this one knows {})", applied,
-                           steps.size()),
-               "Update Mira, or start it with a copy of the library from before.");
+    return Err(
+        "database_too_new",
+        std::format("the library database is from a newer Mira (version {}, this one knows {})",
+                    applied, steps.size()),
+        "Update Mira, or start it with a copy of the library from before.");
   }
   for (std::size_t i = applied; i < steps.size(); ++i) {
     Transaction transaction(*this);
@@ -134,7 +149,8 @@ Result<void> Database::CheckSound() {
   if (!check) return std::unexpected(check.error());
   auto row = check->Step();
   if (!row) return std::unexpected(row.error());
-  if (!*row || check->Text(0) != "ok") return Err("database_damaged", "the database failed its check");
+  if (!*row || check->Text(0) != "ok")
+    return Err("database_damaged", "the database failed its check");
   return {};
 }
 
@@ -150,7 +166,9 @@ Result<void> Database::BackUp(const std::filesystem::path& file) {
     return done;
   }
   std::filesystem::rename(temp, file, ec);
-  if (ec) return Err("database_error", std::format("could not write {}: {}", file.string(), ec.message()), kDiskHint);
+  if (ec)
+    return Err("database_error", std::format("could not write {}: {}", file.string(), ec.message()),
+               kDiskHint);
   return {};
 }
 

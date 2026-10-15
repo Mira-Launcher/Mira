@@ -17,9 +17,10 @@ struct SetupPaths {
 SetupPaths DefaultPaths();
 
 // Writes a `mira` wrapper (with a `mira-run` symlink) that runs the
-// binaries bundled in `appimage`, a desktop entry and the icon. Refuses to replace a `mira` in bin_dir it didn't write.
-// Returns the paths written.
-Result<std::vector<std::filesystem::path>> Install(const SetupPaths& paths, const std::filesystem::path& appimage,
+// binaries bundled in `appimage`, a desktop entry and the icon. Refuses to replace a `mira` in
+// bin_dir it didn't write. Returns the paths written.
+Result<std::vector<std::filesystem::path>> Install(const SetupPaths& paths,
+                                                   const std::filesystem::path& appimage,
                                                    const std::filesystem::path& icon);
 
 // Removes what Install wrote. Returns the paths removed.

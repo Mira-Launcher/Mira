@@ -6,7 +6,7 @@ namespace mira::steam {
 namespace {
 
 class Parser {
-public:
+ public:
   explicit Parser(std::string_view text) : text_(text) {}
 
   // depth 0 is the file itself; deeper nesting than Steam writes would only overflow the stack.
@@ -44,7 +44,7 @@ public:
     }
   }
 
-private:
+ private:
   void SkipTrivia() {
     while (pos_ < text_.size()) {
       const char c = text_[pos_];

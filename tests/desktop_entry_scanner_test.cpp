@@ -4,10 +4,9 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <json.hpp>
 #include <map>
 #include <optional>
-
-#include <json.hpp>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -58,7 +57,8 @@ struct Fixture {
       test::Touch(bin_dir / command, "#!/bin/sh\n", /*executable=*/true);
     }
     config.Load();
-    REQUIRE(config.Set("desktop_import.extra_dirs", nlohmann::json::array({apps_dir.string()})).has_value());
+    REQUIRE(config.Set("desktop_import.extra_dirs", nlohmann::json::array({apps_dir.string()}))
+                .has_value());
     games.Load();
   }
 
@@ -75,8 +75,9 @@ struct Fixture {
 
 }  // namespace
 
-TEST_CASE("DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain native entry, "
-          "skips Mira's own, Steam's, NoDisplay, and non-Application entries") {
+TEST_CASE(
+    "DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain native entry, "
+    "skips Mira's own, Steam's, NoDisplay, and non-Application entries") {
   Fixture fx("desktop-scan-candidates");
 
   test::Touch(fx.apps_dir / "com.example.App.desktop",
@@ -149,7 +150,8 @@ TEST_CASE("DesktopEntryScanner: ListCandidates finds a Flatpak entry and a plain
   CHECK(found_native);
 }
 
-TEST_CASE("DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<app-id> convention") {
+TEST_CASE(
+    "DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<app-id> convention") {
   Fixture fx("desktop-scan-import-flatpak");
 
   test::Touch(fx.apps_dir / "com.example.App.desktop",
@@ -174,7 +176,9 @@ TEST_CASE("DesktopEntryScanner: Import adds a Flatpak-style entry with the run-<
   CHECK(game.status == model::GameStatus::Ready);
 }
 
-TEST_CASE("DesktopEntryScanner: Import adds a plain native entry, and re-importing updates rather than duplicates") {
+TEST_CASE(
+    "DesktopEntryScanner: Import adds a plain native entry, and re-importing updates rather than "
+    "duplicates") {
   Fixture fx("desktop-scan-import-native");
   const fs::path exe_dir = TempDir("desktop-scan-import-native-exe");
   test::Touch(exe_dir / "game", "#!/bin/sh\n", /*executable=*/true);
@@ -200,7 +204,9 @@ TEST_CASE("DesktopEntryScanner: Import adds a plain native entry, and re-importi
   CHECK(fx.games.All().size() == 1);
 }
 
-TEST_CASE("DesktopEntryScanner: two bare-command entries import as two games and stay listed until imported") {
+TEST_CASE(
+    "DesktopEntryScanner: two bare-command entries import as two games and stay listed until "
+    "imported") {
   Fixture fx("desktop-scan-import-bare");
   test::Touch(fx.apps_dir / "first.desktop",
               "[Desktop Entry]\nType=Application\nName=First\nExec=first-game\n");
@@ -234,10 +240,13 @@ TEST_CASE("DesktopEntryScanner: an entry whose command isn't installed isn't off
   desktop::DesktopEntryScanner scanner(fx.config, fx.games, fx.events);
   auto candidates = scanner.ListCandidates();
   REQUIRE(candidates.has_value());
-  CHECK_FALSE(std::ranges::contains(*candidates, std::string("gone"), &desktop::DesktopEntryCandidate::id));
+  CHECK_FALSE(
+      std::ranges::contains(*candidates, std::string("gone"), &desktop::DesktopEntryCandidate::id));
 }
 
-TEST_CASE("DesktopEntryScanner: re-importing an app imported with a bare command updates it to an absolute one") {
+TEST_CASE(
+    "DesktopEntryScanner: re-importing an app imported with a bare command updates it to an "
+    "absolute one") {
   Fixture fx("desktop-scan-import-legacy");
   test::Touch(
       fx.apps_dir / "com.example.App.desktop",
@@ -258,7 +267,9 @@ TEST_CASE("DesktopEntryScanner: re-importing an app imported with a bare command
   CHECK(fx.games.All()[0].exe_path == (fx.bin_dir / "flatpak").string());
 }
 
-TEST_CASE("DesktopEntryScanner: an imported app gets no Mira menu entry by default, and keeps a user's choice") {
+TEST_CASE(
+    "DesktopEntryScanner: an imported app gets no Mira menu entry by default, and keeps a user's "
+    "choice") {
   Fixture fx("desktop-scan-import-menu");
   test::Touch(fx.apps_dir / "app.desktop",
               "[Desktop Entry]\nType=Application\nName=App\nExec=app-game\n");
@@ -270,7 +281,8 @@ TEST_CASE("DesktopEntryScanner: an imported app gets no Mira menu entry by defau
   CHECK(added->added_games[0].overrides["desktop_entries.enabled"] == false);
 
   const std::string id = added->added_games[0].id;
-  REQUIRE(fx.games.Update(id, [](model::Game& game) { game.overrides["desktop_entries.enabled"] = true; }));
+  REQUIRE(fx.games.Update(
+      id, [](model::Game& game) { game.overrides["desktop_entries.enabled"] = true; }));
   REQUIRE(scanner.Import({"app"}).has_value());
   CHECK(fx.games.Find(id)->overrides["desktop_entries.enabled"] == true);
 }

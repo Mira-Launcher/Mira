@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QString>
-
 #include <functional>
 #include <string>
 #include <utility>
@@ -30,9 +29,10 @@ namespace mira_gui::actions {
 void Launch(QWidget* parent, const std::string& id, const std::string& option,
             std::function<void(bool tracked)> on_launched, std::function<void()> on_failed = {});
 
-// Starts what Play starts through `launch`, or with more than one choice or Ctrl held, asks with a menu at
-// the cursor first. A tool picked there opens untracked.
-void ChoosePlay(QWidget* parent, const GameSummary& game, const std::function<void(const std::string& option)>& launch);
+// Starts what Play starts through `launch`, or with more than one choice or Ctrl held, asks with a
+// menu at the cursor first. A tool picked there opens untracked.
+void ChoosePlay(QWidget* parent, const GameSummary& game,
+                const std::function<void(const std::string& option)>& launch);
 
 // POST /v1/games/{id}/stop. Nothing to do on success: the `game.state` event
 // that follows is what actually updates the view.

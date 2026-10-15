@@ -14,8 +14,9 @@ namespace {
 using nlohmann::json;
 
 // The sources that had an on/off key in settings.toml.
-constexpr std::string_view kToggled[] = {"steam",   "epic",   "gog",     "itch",      "humble", "amazon",
-                                         "lutris", "battlenet", "ubisoft", "ea", "office"};
+constexpr std::string_view kToggled[] = {"steam",   "epic",   "gog",    "itch",
+                                         "humble",  "amazon", "lutris", "battlenet",
+                                         "ubisoft", "ea",     "office"};
 
 }  // namespace
 
@@ -65,8 +66,9 @@ void ImportSourceState(const config::Config& config, store::GameStore& games) {
     }
     // As the GUI read it: a source the order doesn't name goes right after its neighbour in the
     // default order, so Local, first there, leads.
-    const std::vector<std::string> all = {"local",  "steam",     "epic",    "gog", "itch",   "amazon",
-                                          "humble", "battlenet", "ubisoft", "ea",  "office", "lutris"};
+    const std::vector<std::string> all = {"local",   "steam",  "epic",   "gog",
+                                          "itch",    "amazon", "humble", "battlenet",
+                                          "ubisoft", "ea",     "office", "lutris"};
     for (auto source = all.begin(); source != all.end(); ++source) {
       if (std::ranges::find(order, *source) != order.end()) continue;
       auto at = order.begin();

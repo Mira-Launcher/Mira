@@ -1,11 +1,11 @@
 #include "core/Log.h"
 
-#include "core/LogHub.h"
-
 #include <atomic>
 #include <cstdio>
 #include <mutex>
 #include <string>
+
+#include "core/LogHub.h"
 
 namespace mira::log {
 namespace {
@@ -15,17 +15,23 @@ std::mutex g_mutex;
 
 constexpr std::string_view Name(Level level) {
   switch (level) {
-    case Level::Debug: return "DEBUG";
-    case Level::Info:  return "INFO";
-    case Level::Warn:  return "WARN";
-    case Level::Error: return "ERROR";
+    case Level::Debug:
+      return "DEBUG";
+    case Level::Info:
+      return "INFO";
+    case Level::Warn:
+      return "WARN";
+    case Level::Error:
+      return "ERROR";
   }
   return "?";
 }
 
 }  // namespace
 
-void SetLevel(Level level) { g_level.store(level, std::memory_order_relaxed); }
+void SetLevel(Level level) {
+  g_level.store(level, std::memory_order_relaxed);
+}
 
 void Write(Level level, std::string_view message) {
   if (level < g_level.load(std::memory_order_relaxed)) return;

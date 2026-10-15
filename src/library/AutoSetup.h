@@ -14,16 +14,17 @@ namespace mira::library {
 // provision anything: a Windows game is stored `setting_up` for the scanner
 // to provision, and a native game is stored `ready`.
 class AutoSetup {
-public:
+ public:
   AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events);
 
-  model::Game CreateGame(const std::filesystem::path& install_path, const Detector::Result& detected);
+  model::Game CreateGame(const std::filesystem::path& install_path,
+                         const Detector::Result& detected);
   // A game that is one AppImage file loose in `folder` (a library root or a sorting folder in one),
   // named after the file.
   model::Game CreateAppImageGame(const std::filesystem::path& folder,
                                  const std::filesystem::path& appimage);
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

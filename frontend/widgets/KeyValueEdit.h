@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <map>
 #include <string>
 
@@ -14,17 +13,17 @@ namespace mira_gui {
 class KeyValueEdit : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit KeyValueEdit(const QString& add_text, QWidget* parent = nullptr);
 
   // Rows with an empty name are left out; a later row wins over an earlier one with the same name.
   std::map<std::string, std::string> Values() const;
   void SetValues(const std::map<std::string, std::string>& values);
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   void AddRow(const QString& name, const QString& value, bool edit);
   void UpdateEmpty();
 

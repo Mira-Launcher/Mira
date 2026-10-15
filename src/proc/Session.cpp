@@ -8,16 +8,17 @@ namespace mira::proc {
 namespace {
 using nlohmann::json;
 
-
 }  // namespace
 
-std::filesystem::path GameLogPath(const std::filesystem::path& state_dir, const std::string& game_id) {
+std::filesystem::path GameLogPath(const std::filesystem::path& state_dir,
+                                  const std::string& game_id) {
   return state_dir / "logs" / std::format("{}.log", game_id);
 }
 
 namespace {
 constexpr std::string_view kColumns =
-    "game_id, wrapper_pid, game_pid, started_at, finished, ended_at, duration_seconds, exit_code, signal, "
+    "game_id, wrapper_pid, game_pid, started_at, finished, ended_at, duration_seconds, exit_code, "
+    "signal, "
     "launch_error, post_exit_code, post_timed_out, incomplete";
 
 SessionRecord RowToRecord(const store::Statement& row) {
@@ -39,14 +40,16 @@ SessionRecord RowToRecord(const store::Statement& row) {
 }
 }  // namespace
 
-Result<void> WriteSessionRecord(const std::filesystem::path& database, const SessionRecord& record) {
+Result<void> WriteSessionRecord(const std::filesystem::path& database,
+                                const SessionRecord& record) {
   store::Database db;
   if (auto opened = db.Open(database); !opened) return opened;
   auto upsert = db.Prepare(std::format(
       "INSERT INTO sessions({}, counted) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0) "
       "ON CONFLICT(game_id, started_at) DO UPDATE SET wrapper_pid = excluded.wrapper_pid, "
       "game_pid = excluded.game_pid, finished = excluded.finished, ended_at = excluded.ended_at, "
-      "duration_seconds = excluded.duration_seconds, exit_code = excluded.exit_code, signal = excluded.signal, "
+      "duration_seconds = excluded.duration_seconds, exit_code = excluded.exit_code, signal = "
+      "excluded.signal, "
       "launch_error = excluded.launch_error, post_exit_code = excluded.post_exit_code, "
       "post_timed_out = excluded.post_timed_out, incomplete = excluded.incomplete",
       kColumns));
@@ -71,16 +74,19 @@ Result<void> WriteSessionRecord(const std::filesystem::path& database, const Ses
   return upsert->Run();
 }
 
-Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database, const std::string& game_id,
-                                        std::int64_t started_at) {
+Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database,
+                                        const std::string& game_id, std::int64_t started_at) {
   store::Database db;
   if (auto opened = db.Open(database); !opened) return std::unexpected(opened.error());
-  auto select = db.Prepare(std::format("SELECT {} FROM sessions WHERE game_id = ? AND started_at = ?", kColumns));
+  auto select = db.Prepare(
+      std::format("SELECT {} FROM sessions WHERE game_id = ? AND started_at = ?", kColumns));
   if (!select) return std::unexpected(select.error());
   select->Bind(1, game_id).Bind(2, started_at);
   auto row = select->Step();
   if (!row) return std::unexpected(row.error());
-  if (!*row) return Err("session_not_found", std::format("no session record for {} at {}", game_id, started_at));
+  if (!*row)
+    return Err("session_not_found",
+               std::format("no session record for {} at {}", game_id, started_at));
   return RowToRecord(*select);
 }
 
@@ -88,11 +94,12 @@ std::vector<SessionRecord> UncountedSessions(const std::filesystem::path& databa
   std::vector<SessionRecord> records;
   store::Database db;
   if (!db.Open(database)) return records;
-  auto select = db.Prepare(std::format("SELECT {} FROM sessions WHERE counted = 0 ORDER BY started_at", kColumns));
+  auto select = db.Prepare(
+      std::format("SELECT {} FROM sessions WHERE counted = 0 ORDER BY started_at", kColumns));
   if (!select) return records;
-  for (auto row = select->Step(); row && *row; row = select->Step()) records.push_back(RowToRecord(*select));
+  for (auto row = select->Step(); row && *row; row = select->Step())
+    records.push_back(RowToRecord(*select));
   return records;
 }
-
 
 }  // namespace mira::proc

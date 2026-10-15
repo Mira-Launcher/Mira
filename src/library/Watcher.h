@@ -32,7 +32,7 @@ void CreateMissingRoots(const config::Config& config);
 // Runs on its own thread (Run() blocks); Stop() unblocks it via an eventfd,
 // safe to call from any other thread.
 class Watcher {
-public:
+ public:
   Watcher(config::Config& config, store::GameStore& games, api::EventBus& events);
   ~Watcher();
   Watcher(const Watcher&) = delete;
@@ -47,8 +47,8 @@ public:
   // ReloadRoots(). A change made after it rises is seen.
   int RootsWatched() const { return roots_watched_; }
 
-  // Fetch through `queue` instead of a queue of its own, so one set of workers and one dedupe serve everything.
-  // Before Run().
+  // Fetch through `queue` instead of a queue of its own, so one set of workers and one dedupe serve
+  // everything. Before Run().
   void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
   // Runs on the watcher's thread when settings.toml is saved, by hand or by Mira. Before Run().
   void OnSettingsSaved(std::function<void()> callback) { on_settings_saved_ = std::move(callback); }
@@ -57,7 +57,7 @@ public:
   // Where its scans keep the unclear moves they find. Before Run().
   void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
 
-private:
+ private:
   struct Pending {
     std::filesystem::path root;
     std::uintmax_t last_size = 0;
@@ -68,13 +68,13 @@ private:
 
   void HandleInotify();
   void HandleDebounceTick();
-  void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path, bool is_archive,
-                     const std::string& emulator = {});
+  void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path,
+                     bool is_archive, const std::string& emulator = {});
   // Imports into each emulator and fetches art for what it added.
   void ImportRoms(const std::set<std::string>& emulators);
   void RearmTimer();
-  // Drops every root watch and adds library_roots and each added emulator's games folder afresh. Run()'s
-  // thread only.
+  // Drops every root watch and adds library_roots and each added emulator's games folder afresh.
+  // Run()'s thread only.
   void WatchRoots();
   // Watches `dir` for changes in `root`, and the sorting folders inside it (FolderTags.h).
   void WatchFolder(const std::filesystem::path& root, const std::filesystem::path& dir);
@@ -106,7 +106,7 @@ private:
   };
   std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
   std::atomic<int> roots_watched_{0};
-  std::map<std::string, Pending> pending_;               // absolute dir path -> debounce state
+  std::map<std::string, Pending> pending_;  // absolute dir path -> debounce state
 };
 
 }  // namespace mira::library

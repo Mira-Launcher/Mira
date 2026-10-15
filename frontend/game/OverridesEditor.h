@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <string>
 #include <vector>
 
@@ -28,7 +27,7 @@ class SettingsPage;
 class OverridesEditor : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit OverridesEditor(std::string game_id, QWidget* parent = nullptr);
 
   // Fetches the schema, builds a row per key, then fills in this game's
@@ -53,10 +52,10 @@ public:
   // Re-splits the pages after the host's cards changed, and starts at the top.
   void ShowFromTop();
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   // One row: an overridable schema key with the same editor the settings
   // screen gives it and the layer the shown value came from.
   struct Field : SettingEditor {

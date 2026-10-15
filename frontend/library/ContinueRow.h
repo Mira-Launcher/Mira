@@ -3,7 +3,6 @@
 #include <QPoint>
 #include <QString>
 #include <QWidget>
-
 #include <map>
 #include <string>
 #include <vector>
@@ -22,18 +21,18 @@ class ArtworkStore;
 class ContinueRow : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   ContinueRow(ArtworkStore* artwork, QWidget* parent = nullptr);
 
   void SetGames(const std::vector<const GameSummary*>& games);
   // Redraws `id`'s cover if it has a card.
   void RefreshCover(const std::string& id);
 
-signals:
+ signals:
   void PlayToggled(QString id);
   void MenuRequested(QString id, QPoint global_pos);
 
-private:
+ private:
   QWidget* MakeCard(const GameSummary& game, bool running);
 
   ArtworkStore* artwork_ = nullptr;

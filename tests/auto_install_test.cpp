@@ -100,8 +100,10 @@ TEST_CASE("MSI installers are detected by extension and run through msiexec") {
   Write(text, "Inno Setup", "", 0);
   CHECK(library::DetectInstallerFormat(text) == library::InstallerFormat::kUnknown);
 
-  CHECK(runner::WindowsProgram("/g/setup.msi") == std::vector<std::string>{"msiexec", "/i", "/g/setup.msi"});
-  CHECK(runner::WindowsProgram("/g/start.BAT") == std::vector<std::string>{"cmd", "/c", "/g/start.BAT"});
+  CHECK(runner::WindowsProgram("/g/setup.msi") ==
+        std::vector<std::string>{"msiexec", "/i", "/g/setup.msi"});
+  CHECK(runner::WindowsProgram("/g/start.BAT") ==
+        std::vector<std::string>{"cmd", "/c", "/g/start.BAT"});
   CHECK(runner::WindowsProgram("/g/game.exe") == std::vector<std::string>{"/g/game.exe"});
 }
 

@@ -12,9 +12,9 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
-#include <condition_variable>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -44,8 +44,9 @@ struct Pending {
 // thread hands each reply back by id. butlerd runs with --keep-alive so it
 // would take more connections, and --destiny-pid so it exits with mirad.
 struct Connection {
-  std::mutex connect_mutex;  // one startup at a time; held without `mutex`, so calls on a live connection never wait on it
-  std::mutex mutex;  // everything below except writes
+  std::mutex connect_mutex;  // one startup at a time; held without `mutex`, so calls on a live
+                             // connection never wait on it
+  std::mutex mutex;          // everything below except writes
   std::condition_variable replied;
   bool connected = false;
   int socket_fd = -1;
@@ -72,8 +73,8 @@ Connection& GlobalConnection() {
 
 // Forks `argv`, redirecting only the child's stdout to a pipe (stderr goes
 // to mirad's own, same posture as runner::SpawnDetached) -- the caller
-// gets that pipe's read end and owns closing it, and the pid to stop it. Not built on runner::SpawnDetached*,
-// which don't offer a way to read a long-lived child's stdout while it
+// gets that pipe's read end and owns closing it, and the pid to stop it. Not built on
+// runner::SpawnDetached*, which don't offer a way to read a long-lived child's stdout while it
 // keeps running -- this is the one place in this codebase that needs
 // that shape (see Butlerd.h's class comment).
 struct Spawned {
@@ -113,10 +114,10 @@ Result<Spawned> SpawnCapturingStdout(const std::vector<std::string>& argv) {
   return Spawned{pid, pipe_fds[0]};
 }
 
-// Reads lines off `fd`, a block at a time. poll() enforces the deadline; a bare read() would block forever
-// on a reply that never comes. Bytes past a line stay buffered for the next call.
+// Reads lines off `fd`, a block at a time. poll() enforces the deadline; a bare read() would block
+// forever on a reply that never comes. Bytes past a line stay buffered for the next call.
 class LineReader {
-public:
+ public:
   explicit LineReader(int fd) : fd_(fd) {}
 
   Result<std::string> Read(std::chrono::steady_clock::time_point deadline) {
@@ -126,11 +127,12 @@ public:
         buffer_.erase(0, newline + 1);
         return line;
       }
-      const auto left =
-          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
       if (left.count() <= 0) return Err("timeout", "no response within the deadline");
       pollfd ready{.fd = fd_, .events = POLLIN, .revents = 0};
-      const int polled = poll(&ready, 1, static_cast<int>(std::min<std::int64_t>(left.count(), 60'000)));
+      const int polled =
+          poll(&ready, 1, static_cast<int>(std::min<std::int64_t>(left.count(), 60'000)));
       if (polled < 0 && errno != EINTR) return Err("read_failed", std::strerror(errno));
       if (polled <= 0) continue;
       char chunk[4096];
@@ -144,7 +146,7 @@ public:
     }
   }
 
-private:
+ private:
   int fd_;
   std::string buffer_;
 };
@@ -154,7 +156,8 @@ Result<void> ConnectSocket(int& out_fd, const std::string& host, int port) {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   addrinfo* result = nullptr;
-  if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result) != 0 || result == nullptr) {
+  if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result) != 0 ||
+      result == nullptr) {
     return Err("resolve_failed", "couldn't resolve butlerd's own listen address " + host);
   }
   const int fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
@@ -227,52 +230,54 @@ void AnswerServerRequest(int fd, const json& request, std::mutex* write_mutex = 
 // call, notifications to every call that wants them, and butlerd's own
 // requests get answered. When the connection drops, every waiting call fails.
 void ReadLoop(Connection& connection, int fd, LineReader reader) {
-  // A throw (odd JSON, a handler) ends up as a disconnect, so waiting callers still fail instead of the daemon terminating.
+  // A throw (odd JSON, a handler) ends up as a disconnect, so waiting callers still fail instead of
+  // the daemon terminating.
   try {
-  while (true) {
-    const Result<std::string> line = reader.Read(std::chrono::steady_clock::now() + kIdleStop);
-    if (!line && line.error().code == "timeout") {
-      // Quiet with nothing waiting: butlerd goes until the next call starts it again.
-      const std::lock_guard<std::mutex> lock(connection.mutex);
-      if (!connection.pending.empty()) continue;
-      if (connection.socket_fd == fd) {
-        connection.connected = false;
-        connection.socket_fd = -1;
-        StopDaemon(connection.daemon_pid);
+    while (true) {
+      const Result<std::string> line = reader.Read(std::chrono::steady_clock::now() + kIdleStop);
+      if (!line && line.error().code == "timeout") {
+        // Quiet with nothing waiting: butlerd goes until the next call starts it again.
+        const std::lock_guard<std::mutex> lock(connection.mutex);
+        if (!connection.pending.empty()) continue;
+        if (connection.socket_fd == fd) {
+          connection.connected = false;
+          connection.socket_fd = -1;
+          StopDaemon(connection.daemon_pid);
+        }
+        break;
       }
-      break;
-    }
-    if (!line) break;
-    const json parsed = json::parse(*line, nullptr, false);
-    if (parsed.is_discarded() || !parsed.is_object()) continue;
-    if (parsed.contains("method")) {
-      if (parsed.contains("id")) {
-        AnswerServerRequest(fd, parsed, &connection.write_mutex);
+      if (!line) break;
+      const json parsed = json::parse(*line, nullptr, false);
+      if (parsed.is_discarded() || !parsed.is_object()) continue;
+      if (parsed.contains("method")) {
+        if (parsed.contains("id")) {
+          AnswerServerRequest(fd, parsed, &connection.write_mutex);
+          continue;
+        }
+        std::vector<NotificationHandler> handlers;
+        {
+          const std::lock_guard<std::mutex> lock(connection.mutex);
+          for (const auto& [id, call] : connection.pending) {
+            if (call->on_notification) handlers.push_back(call->on_notification);
+          }
+        }
+        const std::string method = core::JsonString(parsed, "method");
+        const json params = parsed.contains("params") ? parsed["params"] : json::object();
+        for (const NotificationHandler& handler : handlers) handler(method, params);
         continue;
       }
-      std::vector<NotificationHandler> handlers;
-      {
-        const std::lock_guard<std::mutex> lock(connection.mutex);
-        for (const auto& [id, call] : connection.pending) {
-          if (call->on_notification) handlers.push_back(call->on_notification);
-        }
+      if (!parsed.contains("id") || !parsed["id"].is_number_integer()) continue;
+      const std::lock_guard<std::mutex> lock(connection.mutex);
+      const auto found = connection.pending.find(parsed["id"].get<int>());
+      if (found == connection.pending.end()) continue;  // its caller gave up
+      if (parsed.contains("error")) {
+        found->second->reply = Err(
+            "butlerd_error", core::JsonString(parsed["error"], "message", "butlerd call failed"));
+      } else {
+        found->second->reply = core::JsonObject(parsed, "result");
       }
-      const std::string method = core::JsonString(parsed, "method");
-      const json params = parsed.contains("params") ? parsed["params"] : json::object();
-      for (const NotificationHandler& handler : handlers) handler(method, params);
-      continue;
+      connection.replied.notify_all();
     }
-    if (!parsed.contains("id") || !parsed["id"].is_number_integer()) continue;
-    const std::lock_guard<std::mutex> lock(connection.mutex);
-    const auto found = connection.pending.find(parsed["id"].get<int>());
-    if (found == connection.pending.end()) continue;  // its caller gave up
-    if (parsed.contains("error")) {
-      found->second->reply = Err("butlerd_error", core::JsonString(parsed["error"], "message", "butlerd call failed"));
-    } else {
-      found->second->reply = core::JsonObject(parsed, "result");
-    }
-    connection.replied.notify_all();
-  }
   } catch (const std::exception& error) {
     log::Warn("butlerd reader stopped: {}", error.what());
   }
@@ -315,7 +320,8 @@ Result<json> ReadResponse(int fd, LineReader& reader, int request_id,
     if (parsed.contains("id") && parsed["id"].is_number_integer() &&
         parsed["id"].get<int>() == request_id) {
       if (parsed.contains("error")) {
-        return Err("butlerd_error", core::JsonString(parsed["error"], "message", "butlerd call failed"));
+        return Err("butlerd_error",
+                   core::JsonString(parsed["error"], "message", "butlerd call failed"));
       }
       return core::JsonObject(parsed, "result");
     }
@@ -324,8 +330,8 @@ Result<json> ReadResponse(int fd, LineReader& reader, int request_id,
   }
 }
 
-// Starts butler (if not already connected) and performs Meta.Authenticate. Waits on butlerd holding only
-// `connect_mutex`, so calls on a live connection are never held up by a startup.
+// Starts butler (if not already connected) and performs Meta.Authenticate. Waits on butlerd holding
+// only `connect_mutex`, so calls on a live connection are never held up by a startup.
 Result<void> EnsureConnected(const config::Config& config, Connection& connection) {
   const std::lock_guard connect_lock(connection.connect_mutex);
   {
@@ -343,8 +349,8 @@ Result<void> EnsureConnected(const config::Config& config, Connection& connectio
   fs::create_directories(db_path.parent_path(), ec);
 
   const Result<Spawned> spawned =
-    SpawnCapturingStdout({status.path, "daemon", "--json", "--dbpath", db_path.string(), "--keep-alive",
-                          "--destiny-pid", std::to_string(getpid())});
+      SpawnCapturingStdout({status.path, "daemon", "--json", "--dbpath", db_path.string(),
+                            "--keep-alive", "--destiny-pid", std::to_string(getpid())});
   if (!spawned) return std::unexpected(spawned.error());
   pid_t pid = spawned->pid;
   const int stdout_fd = spawned->stdout_fd;
@@ -361,7 +367,8 @@ Result<void> EnsureConnected(const config::Config& config, Connection& connectio
     if (!line) {
       close(stdout_fd);
       StopDaemon(pid);
-      return Err("butlerd_start_failed", "butlerd didn't print its listen address in time: " + line.error().message);
+      return Err("butlerd_start_failed",
+                 "butlerd didn't print its listen address in time: " + line.error().message);
     }
     const json parsed = json::parse(*line, nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object()) continue;
@@ -400,7 +407,9 @@ Result<void> EnsureConnected(const config::Config& config, Connection& connectio
     const std::lock_guard lock(connection.mutex);
     auth_id = connection.next_id++;
   }
-  if (auto sent = SendLine(socket_fd, {{"jsonrpc", "2.0"}, {"id", auth_id}, {"method", "Meta.Authenticate"},
+  if (auto sent = SendLine(socket_fd, {{"jsonrpc", "2.0"},
+                                       {"id", auth_id},
+                                       {"method", "Meta.Authenticate"},
                                        {"params", {{"secret", secret}}}});
       !sent) {
     close(socket_fd);
@@ -431,14 +440,16 @@ Result<void> EnsureConnected(const config::Config& config, Connection& connectio
 namespace {
 
 Result<json> Send(const config::Config& config, const std::string& method, const json& params,
-                  std::chrono::steady_clock::duration timeout, const NotificationHandler& on_notification) {
+                  std::chrono::steady_clock::duration timeout,
+                  const NotificationHandler& on_notification) {
   Connection& connection = GlobalConnection();
   Pending call{.reply = std::nullopt, .on_notification = on_notification};
   int id = 0;
   int fd = -1;
   // Twice: the connection can drop between connecting and registering the call.
   for (int attempt = 0; attempt < 2 && fd < 0; ++attempt) {
-    if (auto ready = EnsureConnected(config, connection); !ready) return std::unexpected(ready.error());
+    if (auto ready = EnsureConnected(config, connection); !ready)
+      return std::unexpected(ready.error());
     const std::lock_guard<std::mutex> lock(connection.mutex);
     if (!connection.connected) continue;
     id = connection.next_id++;
@@ -454,7 +465,8 @@ Result<json> Send(const config::Config& config, const std::string& method, const
       const std::lock_guard<std::mutex> lock(connection.mutex);
       open = connection.socket_fd == fd;
     }
-    sent = open ? SendLine(fd, {{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", params}})
+    sent = open ? SendLine(fd,
+                           {{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", params}})
                 : Err("butlerd_disconnected", "lost the connection to butlerd");
   }
   std::unique_lock<std::mutex> lock(connection.mutex);
@@ -462,7 +474,8 @@ Result<json> Send(const config::Config& config, const std::string& method, const
     connection.pending.erase(id);
     return std::unexpected(sent.error());
   }
-  const bool answered = connection.replied.wait_for(lock, timeout, [&call] { return call.reply.has_value(); });
+  const bool answered =
+      connection.replied.wait_for(lock, timeout, [&call] { return call.reply.has_value(); });
   connection.pending.erase(id);
   if (!answered) return Err("timeout", "butlerd didn't answer " + method + " in time");
   return *call.reply;

@@ -32,7 +32,8 @@ std::filesystem::path StemWithoutArchiveExtension(const std::filesystem::path& a
 // leaves a partial game behind. Every volume is deleted on success; on
 // failure the archive is kept. A folder already at `dest_dir` is kept too: the archive goes in
 // "<dest_dir> (2)".
-Result<void> ExtractAndRemove(const std::filesystem::path& archive, const std::filesystem::path& dest_dir);
+Result<void> ExtractAndRemove(const std::filesystem::path& archive,
+                              const std::filesystem::path& dest_dir);
 
 // Name prefix of the hidden folders ExtractAndRemove works in.
 inline constexpr std::string_view kExtractingPrefix = ".mira-extracting-";

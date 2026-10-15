@@ -3,13 +3,12 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <json.hpp>
 #include <map>
 #include <mutex>
-#include <stop_token>
 #include <optional>
+#include <stop_token>
 #include <string>
-
-#include <json.hpp>
 
 #include "api/EventBus.h"
 #include "core/Lane.h"
@@ -27,14 +26,14 @@ namespace mira::api {
 // job.failed {id, kind, target, error: {code, message, hint?, fix?}}, whose
 // code is "cancelled" after Cancel().
 class JobRegistry {
-public:
+ public:
   // What a job's work gets: a way to say how far along it is.
   class Progress {
-  public:
+   public:
     Progress(JobRegistry& registry, std::string id) : registry_(registry), id_(std::move(id)) {}
     void Report(int done, int total, const std::string& message = std::string());
 
-  private:
+   private:
     JobRegistry& registry_;
     std::string id_;
   };
@@ -47,10 +46,10 @@ public:
 
   // Starts `work` in the background and returns its id: `requested` when the
   // client picked one (so it can listen before this reply lands), else a new
-  // one. `label` is a human name for it ("Scanning your library"). Runs on `lane` when given, so work that
-  // must not overlap (winetricks in one prefix) shares one, else on the registry's own.
-  std::string Start(const std::string& kind, const std::string& target, const std::string& label, Work work,
-                    const std::string& requested = std::string(), Lane* lane = nullptr);
+  // one. `label` is a human name for it ("Scanning your library"). Runs on `lane` when given, so
+  // work that must not overlap (winetricks in one prefix) shares one, else on the registry's own.
+  std::string Start(const std::string& kind, const std::string& target, const std::string& label,
+                    Work work, const std::string& requested = std::string(), Lane* lane = nullptr);
 
   // The job as GET /v1/jobs/{id} shows it, while running and for a while after.
   std::optional<nlohmann::json> Find(const std::string& id) const;
@@ -61,7 +60,7 @@ public:
   // The id of the job still running for `target`, if any.
   std::optional<std::string> RunningFor(const std::string& target) const;
 
-private:
+ private:
   void Update(const std::string& id, const std::function<void(nlohmann::json&)>& change);
   std::map<std::string, std::stop_source> cancels_;  // running jobs, under mutex_
 

@@ -2,8 +2,8 @@
 
 #include <json.hpp>
 
-#include "client/JsonMapping.h"
 #include "client/Events.h"
+#include "client/JsonMapping.h"
 #include "library/PlayChoices.h"
 
 using nlohmann::json;
@@ -35,7 +35,8 @@ TEST_CASE("ToGameSummary reads the fields a library row shows") {
 }
 
 TEST_CASE("A record's art tells a game with no art apart from one that didn't say") {
-  const GameSummary with = mapping::ToGameSummary(json::parse(R"({"id": "x", "art": {"cover": "a1-2", "hero": 3}})"));
+  const GameSummary with =
+      mapping::ToGameSummary(json::parse(R"({"id": "x", "art": {"cover": "a1-2", "hero": 3}})"));
   REQUIRE(with.art.has_value());
   CHECK(with.art->at("cover") == "a1-2");
   CHECK_FALSE(with.art->contains("hero"));  // not a version
@@ -151,7 +152,8 @@ TEST_CASE("TypedValueFromText converts by schema type, not by looks") {
   CHECK(mapping::TypedValueFromText("an integer", "1500") == json(1500));
   CHECK(mapping::TypedValueFromText("a number", "0.5") == json(0.5));
   CHECK(mapping::TypedValueFromText("a string", "5") == json("5"));
-  CHECK(mapping::TypedValueFromText("an array of strings", R"(["a","b"])") == json::parse(R"(["a","b"])"));
+  CHECK(mapping::TypedValueFromText("an array of strings", R"(["a","b"])") ==
+        json::parse(R"(["a","b"])"));
 }
 
 TEST_CASE("TypedValueFromText sends a malformed number as text") {
@@ -233,13 +235,15 @@ TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {
   CHECK(event.fix.step == "exe");
 
   // Both are optional.
-  const ApiError bare = mapping::ToApiError(json::parse(R"({"code": "x", "message": "y", "fix": "junk"})"));
+  const ApiError bare =
+      mapping::ToApiError(json::parse(R"({"code": "x", "message": "y", "fix": "junk"})"));
   CHECK(bare.hint.empty());
   CHECK(bare.fix.kind.empty());
 }
 
 TEST_CASE("Play offers the default launch option first, and only it when asked") {
-  GameSummary game = mapping::ToGameSummary(json::parse(R"({"id": "celeste", "launch": {"default": "olympus",
+  GameSummary game =
+      mapping::ToGameSummary(json::parse(R"({"id": "celeste", "launch": {"default": "olympus",
     "options": [{"id": "olympus", "name": "Olympus", "mode": "play", "exe": "/o"},
                 {"id": "vortex", "name": "Vortex", "mode": "tool", "exe": "/v"}]}})"));
   REQUIRE(game.launch.options.size() == 2);

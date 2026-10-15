@@ -5,7 +5,6 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
-
 #include <algorithm>
 #include <array>
 
@@ -18,12 +17,13 @@ namespace {
 
 // Picking several values shouldn't close the dropdown after each one.
 class StayOpenMenu : public QMenu {
-public:
+ public:
   using QMenu::QMenu;
 
-protected:
+ protected:
   void mouseReleaseEvent(QMouseEvent* event) override {
-    if (QAction* action = actionAt(event->position().toPoint()); action != nullptr && action->isCheckable()) {
+    if (QAction* action = actionAt(event->position().toPoint());
+        action != nullptr && action->isCheckable()) {
       action->trigger();
       return;
     }
@@ -52,11 +52,15 @@ QString Picked(const Set& picked, const QString& several, Name name) {
 
 // Indexed by TitleFilterBar::Sort: the menu's label and the pref's key.
 constexpr std::array<std::pair<const char*, const char*>, 4> kSorts = {
-    {{"Store order", "store"}, {"Name", "name"}, {"Best reviewed", "reviews"}, {"Best on ProtonDB", "protondb"}}};
+    {{"Store order", "store"},
+     {"Name", "name"},
+     {"Best reviewed", "reviews"},
+     {"Best on ProtonDB", "protondb"}}};
 
 int TierRank(const std::string& tier) {
   const std::string filter_tier = ProtonDbFilterTier(tier);
-  const auto* found = std::ranges::find_if(kProtonDbFilterTiers, [&](const char* t) { return filter_tier == t; });
+  const auto* found =
+      std::ranges::find_if(kProtonDbFilterTiers, [&](const char* t) { return filter_tier == t; });
   return static_cast<int>(found - kProtonDbFilterTiers.begin());
 }
 
@@ -76,7 +80,10 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
     QAction* action = tier_menu->addAction(ProtonDbTierName(tier));
     action->setCheckable(true);
     connect(action, &QAction::toggled, this, [this, value = std::string(tier)](bool on) {
-      if (on) filter_.tiers.insert(value); else filter_.tiers.erase(value);
+      if (on)
+        filter_.tiers.insert(value);
+      else
+        filter_.tiers.erase(value);
       Update();
     });
   }
@@ -89,13 +96,17 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
     QAction* action = review_menu->addAction(ReviewBucketName(bucket));
     action->setCheckable(true);
     connect(action, &QAction::toggled, this, [this, bucket](bool on) {
-      if (on) filter_.reviews.insert(bucket); else filter_.reviews.erase(bucket);
+      if (on)
+        filter_.reviews.insert(bucket);
+      else
+        filter_.reviews.erase(bucket);
       Update();
     });
   }
   review_ = Dropdown(this, review_menu);
-  review_->setToolTip("Steam's user reviews. Games from other stores use the Steam game of the same name while "
-                      "matching by name is on.");
+  review_->setToolTip(
+      "Steam's user reviews. Games from other stores use the Steam game of the same name while "
+      "matching by name is on.");
   layout->addWidget(review_);
 
   auto* sort_menu = new QMenu(this);
@@ -131,7 +142,8 @@ void TitleFilterBar::SetStores(const std::vector<QString>& stores) {
   // titles at all (still loading), which would drop every pick.
   if (!stores_.empty()) {
     std::erase_if(filter_.stores, [&](const std::string& store) {
-      return std::ranges::none_of(stores_, [&](const QString& s) { return s.toStdString() == store; });
+      return std::ranges::none_of(stores_,
+                                  [&](const QString& s) { return s.toStdString() == store; });
     });
   }
   store_menu_->clear();
@@ -140,7 +152,10 @@ void TitleFilterBar::SetStores(const std::vector<QString>& stores) {
     action->setCheckable(true);
     action->setChecked(filter_.stores.contains(store.toStdString()));
     connect(action, &QAction::toggled, this, [this, value = store.toStdString()](bool on) {
-      if (on) filter_.stores.insert(value); else filter_.stores.erase(value);
+      if (on)
+        filter_.stores.insert(value);
+      else
+        filter_.stores.erase(value);
       Update();
     });
   }
@@ -167,7 +182,8 @@ void TitleFilterBar::SortMatches(std::vector<OwnedMatch>& matches) const {
       std::ranges::stable_sort(matches, std::greater<>(), &OwnedMatch::review_percent);
       return;
     case Sort::ProtonDb:
-      std::ranges::stable_sort(matches, {}, [](const OwnedMatch& match) { return TierRank(match.protondb_tier); });
+      std::ranges::stable_sort(
+          matches, {}, [](const OwnedMatch& match) { return TierRank(match.protondb_tier); });
       return;
   }
 }
@@ -177,7 +193,8 @@ std::string TitleFilterBar::SortKey() const {
 }
 
 void TitleFilterBar::SetSortKey(const std::string& key) {
-  const auto* found = std::ranges::find(kSorts, key, [](const auto& sort) { return std::string(sort.second); });
+  const auto* found =
+      std::ranges::find(kSorts, key, [](const auto& sort) { return std::string(sort.second); });
   sort_ = found == kSorts.end() ? Sort::StoreOrder : static_cast<Sort>(found - kSorts.begin());
   sort_actions_[static_cast<size_t>(sort_)]->setChecked(true);
   Update();
@@ -196,8 +213,8 @@ void TitleFilterBar::Clear() {
 
 void TitleFilterBar::Update() {
   store_->setText("Store: " + Picked(filter_.stores, "stores", [](const std::string& id) {
-    return StoreName(QString::fromStdString(id));
-  }));
+                    return StoreName(QString::fromStdString(id));
+                  }));
   tier_->setText("ProtonDB: " + Picked(filter_.tiers, "tiers", ProtonDbTierName));
   review_->setText("Steam reviews: " + Picked(filter_.reviews, "labels", ReviewBucketName));
   sort_button_->setText(QString("Sort: ") + kSorts[static_cast<size_t>(sort_)].first);

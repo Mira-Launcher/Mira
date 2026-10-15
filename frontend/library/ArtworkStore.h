@@ -42,7 +42,7 @@ namespace mira_gui {
 class ArtworkStore : public QObject {
   Q_OBJECT
 
-public:
+ public:
   explicit ArtworkStore(QObject* parent = nullptr);
 
   // The cover to draw for this game at this tile size. Never empty: a game
@@ -83,7 +83,8 @@ public:
   }
 
   // A store title's cover drawn ahead at this size, for a tile about to scroll into view.
-  void PrefetchTitle(const QString& source, const QString& ref, QSize tile, qreal device_pixel_ratio);
+  void PrefetchTitle(const QString& source, const QString& ref, QSize tile,
+                     qreal device_pixel_ratio);
   // A cover already held (a game's or a store title's id) drawn ahead at this size, for a zoom on
   // its way there, so it ends on sharp covers.
   void PrefetchCover(const QString& id, QSize tile, qreal device_pixel_ratio);
@@ -123,11 +124,13 @@ public:
   // Drops the covers drawn at this tile width, once the grid no longer uses it.
   void ForgetWidth(int width);
 
-  // With the window in the tray: everything but the small copies goes. Restore fetches the sidebar's
-  // copies again, and a cover drawn again is fetched for its size, its placeholder shown meanwhile.
+  // With the window in the tray: everything but the small copies goes. Restore fetches the
+  // sidebar's copies again, and a cover drawn again is fetched for its size, its placeholder shown
+  // meanwhile.
   void Release();
   void Restore();
-  // Drops the covers not drawn since `mark` (a Clock() reading), once another page has taken the grid's place.
+  // Drops the covers not drawn since `mark` (a Clock() reading), once another page has taken the
+  // grid's place.
   void ForgetDrawnBefore(qint64 mark);
   qint64 Clock() const { return clock_.elapsed(); }
 
@@ -137,10 +140,11 @@ public:
   void CoverChanged(const QString& id);
   // The same for a SlotArt slot.
   void SlotArtChanged(const QString& id);
-  // Requests for tiles no longer drawn were dropped: a view repaints, asking again for any still shown.
+  // Requests for tiles no longer drawn were dropped: a view repaints, asking again for any still
+  // shown.
   void RequestsDropped();
 
-private:
+ private:
   // `ahead` waits behind everything asked for by a draw.
   void Request(const QString& id, bool ahead = false);
   // The next request off `queue`, dropping store titles that scrolled away before their turn.
@@ -167,8 +171,8 @@ private:
   static constexpr int kMaxInFlight = 8;
 
   // Keys are a cover's id or a slot's "id#slot" (which also key answered_/queued_/pending_).
-  QHash<QString, QPixmap> sidebar_;  // at up to kSidebarArt, for kept_ games only
-  QSet<QString> kept_;              // game ids
+  QHash<QString, QPixmap> sidebar_;             // at up to kSidebarArt, for kept_ games only
+  QSet<QString> kept_;                          // game ids
   std::optional<QSet<QString>> released_kept_;  // kept_ while Released
   QSet<QString> library_;           // ids drawn as library games, whose small copies always stay
   QHash<QString, QPixmap> thumbs_;  // a small copy of every image held
@@ -180,8 +184,8 @@ private:
   QHash<QString, QPixmap> loading_;
   // Sizes asked for while only the small copy was held, drawn when the full image is back.
   QHash<QString, QList<std::pair<QSize, qreal>>> wanted_;
-  QSet<QString> refetching_;         // asked again for a size, not because the art changed
-  QHash<QString, QColor> colors_;    // CoverColor's, by id
+  QSet<QString> refetching_;               // asked again for a size, not because the art changed
+  QHash<QString, QColor> colors_;          // CoverColor's, by id
   std::tuple<int, int, int> drawn_with_;   // the theme values ThemeChanged compares
   QHash<QString, QString> slot_versions_;  // from NoteArt; empty for none
   bool quick_ = false;
@@ -190,7 +194,7 @@ private:
   QSet<QString> ask_again_;           // in flight when mirad said it has art now
   QHash<QString, QString> versions_;  // cover version by id, from NoteArt; empty for none
   QQueue<QString> pending_;
-  QQueue<QString> ahead_;  // PrefetchTitle's
+  QQueue<QString> ahead_;                                       // PrefetchTitle's
   QHash<QString, std::pair<std::string, std::string>> titles_;  // id -> {source, ref}
   QHash<QString, qint64> drawn_;  // covers drawn at tile size, by when last drawn (clock_ ms)
   QElapsedTimer clock_;

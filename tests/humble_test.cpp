@@ -1,3 +1,5 @@
+#include "humble/Humble.h"
+
 #include <doctest.h>
 
 #include <filesystem>
@@ -5,7 +7,6 @@
 
 #include "config/Config.h"
 #include "core/Files.h"
-#include "humble/Humble.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -28,7 +29,8 @@ void WriteFakeHumbleCli(const fs::path& path, bool authenticated, const std::str
   if (authenticated) {
     out << "    printf '%b' \"" << list_output << "\"\n";
   } else {
-    out << "    echo 'Error: config file not found. Use '\"'\"'humble-cli auth <SESSION-KEY>'\"'\"' to set it' >&2\n"
+    out << "    echo 'Error: config file not found. Use '\"'\"'humble-cli auth "
+           "<SESSION-KEY>'\"'\"' to set it' >&2\n"
         << "    exit 1\n";
   }
   out << "    ;;\n"
@@ -47,7 +49,9 @@ struct Fixture {
   fs::path dir;
   config::Config config;
 
-  explicit Fixture(const char* name) : dir(TempDir(name)), config(dir / "settings.toml") { config.Load(); }
+  explicit Fixture(const char* name) : dir(TempDir(name)), config(dir / "settings.toml") {
+    config.Load();
+  }
 
   void UseFakeHumbleCli(bool authenticated, const std::string& list_output = kCsv) {
     const fs::path bin = dir / "humble-cli";
@@ -67,7 +71,9 @@ TEST_CASE("DetectHumbleCli honours the humble.humble_cli_bin override") {
   CHECK(status.source == "override");
 }
 
-TEST_CASE("Status reports unauthenticated when humble-cli has no session key yet, and a rejected key keeps the old one") {
+TEST_CASE(
+    "Status reports unauthenticated when humble-cli has no session key yet, and a rejected key "
+    "keeps the old one") {
   Fixture fixture("humble-status-unauth");
   fixture.UseFakeHumbleCli(false);
 

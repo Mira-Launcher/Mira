@@ -17,7 +17,7 @@ namespace mira_gui {
 class SidebarStyleChoices : public QObject {
   Q_OBJECT
 
-public:
+ public:
   struct Choices {
     sidebar::Style pinned = sidebar::Style::Covers;
     sidebar::Style recent = sidebar::Style::Covers;
@@ -29,17 +29,18 @@ public:
 
   // `pinned` and `recent` are what the sections would list (`recent` as for the
   // count's maximum), so each tile previews the user's own games.
-  SidebarStyleChoices(const Choices& choices, std::vector<GameSummary> pinned, std::vector<GameSummary> recent,
-                      ArtworkStore* artwork, QObject* parent = nullptr);
+  SidebarStyleChoices(const Choices& choices, std::vector<GameSummary> pinned,
+                      std::vector<GameSummary> recent, ArtworkStore* artwork,
+                      QObject* parent = nullptr);
 
   const Choices& Current() const { return choices_; }
   void SetChoices(const Choices& choices);
   QList<SettingRow*> Rows() const;
 
-signals:
+ signals:
   void Changed(const mira_gui::SidebarStyleChoices::Choices& choices);
 
-private:
+ private:
   SettingRow* MakeStyleRow(const QString& label, bool recent);
   std::vector<sidebar::PreviewGame> PreviewGames(bool recent, sidebar::Style style) const;
   void Edited();
@@ -65,12 +66,13 @@ private:
 class SidebarStyleCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   using Choices = SidebarStyleChoices::Choices;
-  SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned, std::vector<GameSummary> recent,
-                   ArtworkStore* artwork, QWidget* parent = nullptr);
+  SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
+                   std::vector<GameSummary> recent, ArtworkStore* artwork,
+                   QWidget* parent = nullptr);
 
-signals:
+ signals:
   void Changed(const mira_gui::SidebarStyleChoices::Choices& choices);
   void CloseRequested();
 };

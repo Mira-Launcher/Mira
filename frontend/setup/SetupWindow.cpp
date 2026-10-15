@@ -53,9 +53,10 @@ class StepDots : public QWidget {
     for (int i = 0; i < count_; ++i) {
       const bool on = i == current_;
       QColor color = on ? tokens.accent : tokens.border;
-      if (i < current_) color = QColor::fromRgbF((tokens.accent.redF() + tokens.border.redF()) / 2,
-                                                 (tokens.accent.greenF() + tokens.border.greenF()) / 2,
-                                                 (tokens.accent.blueF() + tokens.border.blueF()) / 2);
+      if (i < current_)
+        color = QColor::fromRgbF((tokens.accent.redF() + tokens.border.redF()) / 2,
+                                 (tokens.accent.greenF() + tokens.border.greenF()) / 2,
+                                 (tokens.accent.blueF() + tokens.border.blueF()) / 2);
       painter.setBrush(color);
       const qreal w = on ? 20 : 7;
       painter.drawRoundedRect(QRectF(x, (height() - 7) / 2.0, w, 7), 3.5, 3.5);
@@ -172,9 +173,11 @@ void SaveSetupPrefs(const SetupContext& context, const FrontendPrefs& change) {
   }
   ApplyAppearance(prefs);
   // Reported over the main window, which outlives this one.
-  QPointer<QWidget> window = context.work ? qobject_cast<QWidget*>(context.work->parent()) : nullptr;
+  QPointer<QWidget> window =
+      context.work ? qobject_cast<QWidget*>(context.work->parent()) : nullptr;
   api::SaveFrontendPrefsAsync(qApp, change, [window](PatchConfigResult result) {
-    if (!result.ok && window) notify::FailedRequest(window, "Could not save the appearance.", result.error);
+    if (!result.ok && window)
+      notify::FailedRequest(window, "Could not save the appearance.", result.error);
   });
 }
 
@@ -251,16 +254,26 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
 SetupStep* SetupWindow::PageFor(const QString& key) {
   if (SetupStep* page = pages_.value(key)) return page;
   SetupStep* page = nullptr;
-  if (key == "welcome") page = new WelcomePage(context_);
-  else if (key == "use") page = new UsePage(context_);
-  else if (key == "found") page = new FoundPage(context_);
-  else if (key == "stores") page = new StoresPage(context_);
-  else if (key == "apps") page = new AppsPage(context_);
-  else if (key.startsWith("sign:")) page = new StorePage(context_, key.mid(5));
-  else if (key == "office") page = new OfficeSetupPage(context_);
-  else if (key == "look") page = new LookPage(context_);
-  else if (key == "sidebar") page = new SidebarPage(context_);
-  else page = new DonePage(context_);
+  if (key == "welcome")
+    page = new WelcomePage(context_);
+  else if (key == "use")
+    page = new UsePage(context_);
+  else if (key == "found")
+    page = new FoundPage(context_);
+  else if (key == "stores")
+    page = new StoresPage(context_);
+  else if (key == "apps")
+    page = new AppsPage(context_);
+  else if (key.startsWith("sign:"))
+    page = new StorePage(context_, key.mid(5));
+  else if (key == "office")
+    page = new OfficeSetupPage(context_);
+  else if (key == "look")
+    page = new LookPage(context_);
+  else if (key == "sidebar")
+    page = new SidebarPage(context_);
+  else
+    page = new DonePage(context_);
   connect(page, &SetupStep::Finished, this, [this, page] {
     if (stack_->currentWidget() != nullptr &&
         static_cast<QScrollArea*>(stack_->currentWidget())->widget() == page)
@@ -294,9 +307,9 @@ void SetupWindow::Go(int index) {
   static_cast<QScrollArea*>(stack_->currentWidget())->verticalScrollBar()->setValue(0);
   back_->setVisible(current_ > 0);
   skip_->setVisible(key != "done");
-  skip_->setText(key == "welcome"                           ? "Skip setup"
+  skip_->setText(key == "welcome"                             ? "Skip setup"
                  : key.startsWith("sign:") || key == "office" ? "Set up later"
-                                                               : "Skip");
+                                                              : "Skip");
   next_->setText(key == "done" ? "Open Mira" : key == "welcome" ? "Get started" : "Next");
   dots_->Set(static_cast<int>(flow_.size()), current_);
   next_->setFocus();
@@ -371,7 +384,8 @@ void SetupWindow::showEvent(QShowEvent* event) {
 }
 
 void SetupWindow::keyPressEvent(QKeyEvent* event) {
-  // Enter wherever it isn't taken (a paste field signs in) moves on; Escape doesn't close by accident.
+  // Enter wherever it isn't taken (a paste field signs in) moves on; Escape doesn't close by
+  // accident.
   if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
       qobject_cast<QLineEdit*>(focusWidget()) == nullptr)
     return Next();
@@ -385,8 +399,8 @@ void SetupWindow::FitHeight() {
   int tallest = 0;
   for (SetupStep* page : pages_) {
     page->ensurePolished();
-    const int height = page->hasHeightForWidth() ? page->heightForWidth(kWidth)
-                                                 : page->sizeHint().height();
+    const int height =
+        page->hasHeightForWidth() ? page->heightForWidth(kWidth) : page->sizeHint().height();
     tallest = std::max(tallest, height);
   }
   int height = tallest + layout()->itemAt(0)->sizeHint().height() +
@@ -400,8 +414,9 @@ void SetupWindow::FitHeight() {
 void SetupWindow::ShowRunning() {
   const QStringList running = context_.work->Running();
   running_->setVisible(!running.isEmpty() && flow_.value(current_) != "done");
-  running_->setText(QString("<span style='color:%1'>●</span>&nbsp; %2")
-                        .arg(theme::Current().accent.name(), running.join("  ·  ").toHtmlEscaped()));
+  running_->setText(
+      QString("<span style='color:%1'>●</span>&nbsp; %2")
+          .arg(theme::Current().accent.name(), running.join("  ·  ").toHtmlEscaped()));
 }
 
 }  // namespace mira_gui

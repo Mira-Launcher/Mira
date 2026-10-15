@@ -1,8 +1,7 @@
-#include "api/Routes.h"
-
 #include <httplib.h>
 
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "modmanagers/ModManagers.h"
 
@@ -40,7 +39,8 @@ void Changed(Services& s, const Result<model::Game>& game) {
 void RegisterModManagerRoutes(Router& http, Services& s) {
   http.Get("/v1/mod-managers", [&s](const Request&, Response& res) {
     json list = json::array();
-    for (const modmanagers::ModManager& manager : modmanagers::All()) list.push_back(ToJson(s, manager));
+    for (const modmanagers::ModManager& manager : modmanagers::All())
+      list.push_back(ToJson(s, manager));
     SendJson(res, list);
   });
 
@@ -49,7 +49,8 @@ void RegisterModManagerRoutes(Router& http, Services& s) {
     if (!manager) return;
     s.StartJob(req, res, "install", manager->id, "Installing " + manager->name,
                [&s, manager](JobRegistry::Progress&) -> Result<json> {
-                 if (auto installed = modmanagers::Install(*manager); !installed) return std::unexpected(installed.error());
+                 if (auto installed = modmanagers::Install(*manager); !installed)
+                   return std::unexpected(installed.error());
                  s.games.MarkSourceAdded(manager->id, false);
                  s.events.Publish("sources.changed", json::object());
                  return ToJson(s, *manager);
@@ -64,20 +65,22 @@ void RegisterModManagerRoutes(Router& http, Services& s) {
     const auto game = s.games.Find(id);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     if (!modmanagers::CanAdd(*game)) {
-      return SendError(res, 409, "not_windows_game", manager->name + " runs in a Windows game's prefix, and this game has none");
+      return SendError(res, 409, "not_windows_game",
+                       manager->name + " runs in a Windows game's prefix, and this game has none");
     }
     // No move or delete while the tricks run.
     auto claim = s.Claim(id, "adding a mod manager");
     if (!claim) return SendError(res, 409, claim.error());
     const auto held = std::make_shared<proc::ProcessSupervisor::Reservation>(std::move(*claim));
-    s.StartJob(req, res, "mod_manager", id, "Adding " + manager->name + " to " + game->name,
-               [&s, id, manager, held](JobRegistry::Progress&) -> Result<json> {
-                 const auto added = modmanagers::AddToGame(s.config, s.games, *manager, id);
-                 if (!added) return std::unexpected(added.error());
-                 Changed(s, added);
-                 return s.Record(*added);
-               },
-               &s.tricks);
+    s.StartJob(
+        req, res, "mod_manager", id, "Adding " + manager->name + " to " + game->name,
+        [&s, id, manager, held](JobRegistry::Progress&) -> Result<json> {
+          const auto added = modmanagers::AddToGame(s.config, s.games, *manager, id);
+          if (!added) return std::unexpected(added.error());
+          Changed(s, added);
+          return s.Record(*added);
+        },
+        &s.tricks);
   });
 
   http.Delete(R"(/v1/games/([^/]+)/mod-managers/([^/]+))", [&s](const Request& req, Response& res) {

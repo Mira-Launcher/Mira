@@ -21,29 +21,36 @@ constexpr const char* kOtherFolder = "39734274";
 
 void InstallApp(const fs::path& steam, const std::string& appid, const std::string& name) {
   Touch(steam / "steamapps" / std::format("appmanifest_{}.acf", appid),
-        std::format(R"("AppState" {{ "appid" "{0}" "name" "{1}" "installdir" "{1}" }})", appid, name));
+        std::format(R"("AppState" {{ "appid" "{0}" "name" "{1}" "installdir" "{1}" }})", appid,
+                    name));
   Touch(steam / "steamapps" / "common" / name / "game", "", /*executable=*/true);
 }
 
 void WriteActivity(const fs::path& steam, const char* folder, const std::string& apps) {
-  Touch(steam / "userdata" / folder / "config" / "localconfig.vdf",
-        std::format(R"("UserLocalConfigStore" {{ "Software" {{ "Valve" {{ "Steam" {{ "apps" {{ {} }} }} }} }} }})",
-                    apps));
+  Touch(
+      steam / "userdata" / folder / "config" / "localconfig.vdf",
+      std::format(
+          R"("UserLocalConfigStore" {{ "Software" {{ "Valve" {{ "Steam" {{ "apps" {{ {} }} }} }} }} }})",
+          apps));
 }
 
 }  // namespace
 
-TEST_CASE("A Steam scan takes the later last played and the larger playtime from Steam's own records") {
+TEST_CASE(
+    "A Steam scan takes the later last played and the larger playtime from Steam's own records") {
   test::TestEnv env("steam-activity");
   REQUIRE(env.config.Set("steam.import_playtime", true).has_value());
   const fs::path steam = env.config.GetPath("steam.root");
   InstallApp(steam, "400", "Portal");
   InstallApp(steam, "620", "Portal 2");
-  Touch(steam / "config" / "loginusers.vdf",
-        std::format(R"("users" {{ "{}" {{ "MostRecent" "1" "Timestamp" "100" }} "{}" {{ "Timestamp" "200" }} }})",
-                    kRecentUser, kOtherUser));
-  WriteActivity(steam, kRecentFolder,
-                R"("400" { "LastPlayed" "1700000000" "Playtime" "90" } "620" { "LastPlayed" "1600000000" })");
+  Touch(
+      steam / "config" / "loginusers.vdf",
+      std::format(
+          R"("users" {{ "{}" {{ "MostRecent" "1" "Timestamp" "100" }} "{}" {{ "Timestamp" "200" }} }})",
+          kRecentUser, kOtherUser));
+  WriteActivity(
+      steam, kRecentFolder,
+      R"("400" { "LastPlayed" "1700000000" "Playtime" "90" } "620" { "LastPlayed" "1600000000" })");
   WriteActivity(steam, kOtherFolder, R"("400" { "LastPlayed" "1800000000" "Playtime" "9000" })");
 
   // Played later in Mira than Steam remembers.

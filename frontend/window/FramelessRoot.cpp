@@ -20,7 +20,9 @@ Qt::Edges EdgesAt(const QSize& size, const QPoint& pos) {
 
 }  // namespace
 
-FramelessRoot::FramelessRoot(QMainWindow* window) : window_(window) { setMouseTracking(true); }
+FramelessRoot::FramelessRoot(QMainWindow* window) : window_(window) {
+  setMouseTracking(true);
+}
 
 void FramelessRoot::mousePressEvent(QMouseEvent* event) {
   QWindow* handle = window_->windowHandle();
@@ -84,13 +86,15 @@ Qt::Edges FramelessRoot::ResizableEdgesAt(const QPoint& pos) const {
 bool FocusDropper::eventFilter(QObject* watched, QEvent* event) {
   if (event->type() != QEvent::MouseButtonPress) return false;
   auto* target = qobject_cast<QWidget*>(watched);
-  if (target == nullptr || target->window() != window_ || target->focusPolicy() & Qt::ClickFocus) return false;
+  if (target == nullptr || target->window() != window_ || target->focusPolicy() & Qt::ClickFocus)
+    return false;
   // A viewport forwards to its view, which takes focus on its own.
   if (qobject_cast<QAbstractScrollArea*>(target->parentWidget()) != nullptr &&
       target->parentWidget()->focusPolicy() & Qt::ClickFocus) {
     return false;
   }
-  if (QWidget* focused = QApplication::focusWidget(); focused != nullptr && focused->window() == window_) {
+  if (QWidget* focused = QApplication::focusWidget();
+      focused != nullptr && focused->window() == window_) {
     focused->clearFocus();
   }
   return false;

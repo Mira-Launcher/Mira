@@ -1,20 +1,19 @@
 #pragma once
 
 #include <QElapsedTimer>
-#include <QVariantAnimation>
 #include <QHash>
 #include <QList>
 #include <QPixmap>
 #include <QSet>
 #include <QTimer>
+#include <QVariantAnimation>
 #include <QWidget>
-
 #include <functional>
 
 #include "../activity/DownloadTracker.h"
+#include "../system/Distro.h"
 #include "../window/LibraryWindow.h"
 #include "Paint.h"
-#include "../system/Distro.h"
 
 class QProcess;
 class QStackedWidget;
@@ -38,7 +37,7 @@ class Sounds;
 class BigScreenWindow : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit BigScreenWindow(LibraryServices services, QWidget* parent = nullptr);
   ~BigScreenWindow() override;
 
@@ -92,7 +91,8 @@ public:
   void QuickAction(const Item& item);
 
   // A list of choices over the page; picking one runs it.
-  void ShowMenu(const QString& title, std::vector<std::pair<QString, std::function<void()>>> entries);
+  void ShowMenu(const QString& title,
+                std::vector<std::pair<QString, std::function<void()>>> entries);
   void Exit();
   void OpenSteamBigPicture();
   // "Suspend", "Reboot" or "PowerOff".
@@ -104,19 +104,19 @@ public:
   // Hitting the end of a list: a dull sound and a small knock.
   void Bump();
 
-signals:
+ signals:
   void Closed();
   // F5 or Ctrl+R: the library scanned and every store asked again, as on the desktop.
   void RefreshRequested();
 
-protected:
+ protected:
   void closeEvent(QCloseEvent* event) override;
   bool event(QEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
   void changeEvent(QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   friend class Chrome;
   // The Guide button's menu over a running game.
   struct Menu {
@@ -149,7 +149,8 @@ private:
   // The Guide menu's per-game settings: frame limit, overlay, GameMode.
   void OpenQuickSettings(const std::string& id, const QString& name);
   void ShowQuickSettings(const std::string& id, const QString& name, const QuickSettings& settings);
-  // An app rather than a game is in front (launched from here), so the controller drives it with keys.
+  // An app rather than a game is in front (launched from here), so the controller drives it with
+  // keys.
   bool AppInFront() const;
   void AppControl(Nav nav);
   void ApplyInputOptions();
@@ -177,8 +178,8 @@ private:
   int tab_ = 0;
   std::optional<Dialog> dialog_;
   std::optional<Menu> menu_;
-  bool keys_ = false;  // the keyboard was used last
-  QElapsedTimer escape_armed_;  // the first Esc on Home
+  bool keys_ = false;             // the keyboard was used last
+  QElapsedTimer escape_armed_;    // the first Esc on Home
   QVariantAnimation hints_fade_;  // 0 shown, 1 hidden
   Sounds* sounds_ = nullptr;
   GameKeyboard* keyboard_ = nullptr;
@@ -196,8 +197,8 @@ private:
   // The game being started (shown over everything until it runs), and the one running from here.
   Item launching_;
   int launch_serial_ = 0;  // bumped by each Play, so an older attempt's replies are ignored
-  QString cancelled_;  // a launch cancelled before its game was running, stopped once it is
-  QTimer window_poll_;  // looks for the launching game's window
+  QString cancelled_;      // a launch cancelled before its game was running, stopped once it is
+  QTimer window_poll_;     // looks for the launching game's window
   QString playing_;
   // A game was handed to Steam, so nothing says when it runs or ends: stay
   // behind until the player comes back.

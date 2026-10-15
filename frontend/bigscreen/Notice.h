@@ -9,15 +9,15 @@ namespace mira_gui::bigscreen {
 class Notice : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit Notice(QWidget* screen_of);
 
   void Show(const QString& title, const QString& detail = {});
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   QWidget* screen_of_;
   QString title_;
   QString detail_;

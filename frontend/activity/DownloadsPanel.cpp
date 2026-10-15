@@ -6,8 +6,8 @@
 #include <QLocale>
 #include <QPointer>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QScreen>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "../app/ErrorHelp.h"
@@ -41,8 +41,10 @@ QString RunningText(const DownloadTracker::Entry& entry) {
       const QString progress = DownloadTracker::ProgressText(entry);
       return progress.isEmpty() ? verb : verb + " " + progress;
     }
-    case Kind::Launcher: return "Installing…";
-    case Kind::Job: return entry.message.isEmpty() ? QString("Working…") : entry.message;
+    case Kind::Launcher:
+      return "Installing…";
+    case Kind::Job:
+      return entry.message.isEmpty() ? QString("Working…") : entry.message;
     default: {
       const QString progress = DownloadTracker::ProgressText(entry);
       return progress.isEmpty() ? QString("Downloading…") : "Downloading… " + progress;
@@ -53,12 +55,15 @@ QString RunningText(const DownloadTracker::Entry& entry) {
 QString FinishedText(const DownloadTracker::Entry& entry) {
   switch (entry.kind) {
     case Kind::Game:
-    case Kind::Launcher: return "Installed";
+    case Kind::Launcher:
+      return "Installed";
     case Kind::Title:
       if (entry.update) return "Updated";
       return entry.source == "steam" ? "Sent to Steam" : "Installed";
-    case Kind::Job: return "Done";
-    default: return "Downloaded";
+    case Kind::Job:
+      return "Done";
+    default:
+      return "Downloaded";
   }
 }
 
@@ -67,10 +72,15 @@ QString FinishedText(const DownloadTracker::Entry& entry) {
 QString Origin(const DownloadTracker& tracker, const DownloadTracker::Entry& entry) {
   switch (entry.kind) {
     case Kind::Game:
-    case Kind::Job: return QString();
-    case Kind::Runner: return entry.source.isEmpty() ? QString() : entry.source.left(1).toUpper() + entry.source.mid(1);
-    case Kind::Tool: return tracker.source_name ? tracker.source_name(entry.source) + " helper" : QString();
-    default: return tracker.source_name ? tracker.source_name(entry.source) : entry.source;
+    case Kind::Job:
+      return QString();
+    case Kind::Runner:
+      return entry.source.isEmpty() ? QString()
+                                    : entry.source.left(1).toUpper() + entry.source.mid(1);
+    case Kind::Tool:
+      return tracker.source_name ? tracker.source_name(entry.source) + " helper" : QString();
+    default:
+      return tracker.source_name ? tracker.source_name(entry.source) : entry.source;
   }
 }
 
@@ -174,11 +184,14 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
     if (row == nullptr || row->property("download_key").toString() != key) continue;
     if (!row->property("download_running").toBool()) return false;
     // Its job became known after the row was built: rebuilt with Cancel.
-    if ((row->findChild<QPushButton*>("download_cancel") == nullptr) != tracker_->JobFor(*entry).isEmpty()) return false;
+    if ((row->findChild<QPushButton*>("download_cancel") == nullptr) !=
+        tracker_->JobFor(*entry).isEmpty())
+      return false;
     const QString origin = Origin(*tracker_, *entry);
     const QString state = RunningText(*entry);
     row->findChild<QLabel*>("download_title")->setText(tracker_->NameFor(*entry));
-    row->findChild<QLabel*>("download_status")->setText(origin.isEmpty() ? state : origin + "  ·  " + state);
+    row->findChild<QLabel*>("download_status")
+        ->setText(origin.isEmpty() ? state : origin + "  ·  " + state);
     row->findChild<ProgressRail*>()->SetProgress(entry->progress);
     return true;
   }
@@ -259,7 +272,8 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   if (entry.state == State::Running) {
     state = RunningText(entry);
   } else if (entry.state == State::Paused) {
-    state = entry.progress >= 0 ? QString("Paused at %1%").arg(qRound(entry.progress * 100)) : QString("Paused");
+    state = entry.progress >= 0 ? QString("Paused at %1%").arg(qRound(entry.progress * 100))
+                                : QString("Paused");
   } else if (entry.state == State::Finished) {
     state = FinishedText(entry);
   } else {
@@ -287,9 +301,10 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   auto* log = new QPushButton("Log", row);
   log->setObjectName("text_button");
   log->setToolTip("Open its live log in a window");
-  connect(log, &QPushButton::clicked, this, [this, channel = DownloadTracker::LogChannelFor(entry), name] {
-    emit LogRequested(channel, name);
-  });
+  connect(log, &QPushButton::clicked, this,
+          [this, channel = DownloadTracker::LogChannelFor(entry), name] {
+            emit LogRequested(channel, name);
+          });
   layout->addWidget(log, 0, Qt::AlignVCenter);
 
   // Stacked, so Pause or Resume sits over Cancel at the same width.
@@ -305,11 +320,12 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       connect(pause, &QPushButton::clicked, this,
               [this, pause, source = entry.source.toStdString(), ref = entry.ref.toStdString()] {
                 pause->setEnabled(false);
-                api::PauseStoreInstallAsync(this, source, ref, [this, pause = QPointer(pause)](StoreActionResult result) {
-                  if (result.ok) return;
-                  if (pause) pause->setEnabled(true);
-                  notify::FailedRequest(this, "Could not pause it.", result.error);
-                });
+                api::PauseStoreInstallAsync(
+                    this, source, ref, [this, pause = QPointer(pause)](StoreActionResult result) {
+                      if (result.ok) return;
+                      if (pause) pause->setEnabled(true);
+                      notify::FailedRequest(this, "Could not pause it.", result.error);
+                    });
               });
       actions->addWidget(pause);
     }
@@ -329,24 +345,28 @@ QWidget* DownloadsPanel::BuildRow(int index) {
     const std::string ref = entry.ref.toStdString();
     auto* resume = new QPushButton("Resume", row);
     resume->setObjectName("download_resume");
-    connect(resume, &QPushButton::clicked, this, [this, resume, source, ref, update = entry.update] {
-      resume->setEnabled(false);
-      api::InstallStoreTitleAsync(this, source, ref, update, [this, resume = QPointer(resume)](StoreActionResult result) {
-        if (result.ok) return;
-        if (resume) resume->setEnabled(true);
-        notify::FailedRequest(this, "Could not resume it.", result.error);
-      });
-    });
+    connect(resume, &QPushButton::clicked, this,
+            [this, resume, source, ref, update = entry.update] {
+              resume->setEnabled(false);
+              api::InstallStoreTitleAsync(
+                  this, source, ref, update,
+                  [this, resume = QPointer(resume)](StoreActionResult result) {
+                    if (result.ok) return;
+                    if (resume) resume->setEnabled(true);
+                    notify::FailedRequest(this, "Could not resume it.", result.error);
+                  });
+            });
     actions->addWidget(resume);
     auto* discard = new QPushButton("Cancel", row);
     discard->setObjectName("download_cancel");
     connect(discard, &QPushButton::clicked, this, [this, discard, source, ref] {
       discard->setEnabled(false);
-      api::DiscardPausedInstallAsync(this, source, ref, [this, discard = QPointer(discard)](StoreActionResult result) {
-        if (result.ok) return;
-        if (discard) discard->setEnabled(true);
-        notify::FailedRequest(this, "Could not cancel it.", result.error);
-      });
+      api::DiscardPausedInstallAsync(
+          this, source, ref, [this, discard = QPointer(discard)](StoreActionResult result) {
+            if (result.ok) return;
+            if (discard) discard->setEnabled(true);
+            notify::FailedRequest(this, "Could not cancel it.", result.error);
+          });
     });
     actions->addWidget(discard);
   } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {

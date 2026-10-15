@@ -1,10 +1,9 @@
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <format>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "core/Log.h"
 #include "launchers/Launchers.h"
@@ -17,7 +16,8 @@ using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
 
-// Adds Microsoft 365's apps, announcing the run as the launcher's own install so its progress shows.
+// Adds Microsoft 365's apps, announcing the run as the launcher's own install so its progress
+// shows.
 Result<void> AddOfficeApps(Services& s, std::vector<std::string> apps) {
   const auto added = launchers::AddOfficeApps(s.config, s.games, s.events, std::move(apps));
   if (added) {
@@ -62,36 +62,41 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
     const launchers::Launcher* launcher = launchers::Find(req.matches[1].str());
     if (!launcher) return SendError(res, 404, "launcher_not_found", "no such launcher");
     if (!launchers::BeginInstall(*launcher)) {
-      return SendError(res, 409, "install_running", std::format("{} is already installing", launcher->name));
+      return SendError(res, 409, "install_running",
+                       std::format("{} is already installing", launcher->name));
     }
     s.events.Publish("launcher.install.started", {{"id", launcher->id}});
-    s.StartJob(req, res, "install", launcher->id, "Installing " + launcher->name,
-               [&s, launcher](JobRegistry::Progress&) -> Result<json> {
-                 const auto done = launchers::Install(s.config, s.games, *launcher, [&s, launcher](double fraction) {
-                   s.events.Publish("launcher.install.progress", {{"id", launcher->id}, {"progress", fraction}});
-                 });
-                 if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
-                   s.events.Publish("game.updated", s.Record(*stored));
-                 }
-                 if (!done) {
-                   if (launcher->id == "office") launchers::DropQueuedOfficeApps();
-                   s.events.Publish("launcher.install.failed", FailedEvent({{"id", launcher->id}}, done.error()));
-                   return std::unexpected(done.error());
-                 }
-                 s.games.MarkSourceAdded(launcher->id, false);
-                 s.events.Publish("sources.changed", json::object());
-                 if (const auto imported = launchers::Import(s.config, s.games, s.events, *launcher)) {
-                   s.AfterImport(imported->added_games);
-                 } else {
-                   s.SyncDesktopEntries();
-                 }
-                 s.events.Publish("launcher.install.finished", {{"id", launcher->id}});
-                 // Apps picked while the prefix was being set up. Their failure is announced on its own:
-                 // the prefix itself is ready.
-                 if (launcher->id == "office") (void)AddOfficeApps(s, {});
-                 return json{{"id", launcher->id}};
-               },
-               &s.operations);
+    s.StartJob(
+        req, res, "install", launcher->id, "Installing " + launcher->name,
+        [&s, launcher](JobRegistry::Progress&) -> Result<json> {
+          const auto done =
+              launchers::Install(s.config, s.games, *launcher, [&s, launcher](double fraction) {
+                s.events.Publish("launcher.install.progress",
+                                 {{"id", launcher->id}, {"progress", fraction}});
+              });
+          if (const auto stored = s.games.Find(launchers::GameId(*launcher))) {
+            s.events.Publish("game.updated", s.Record(*stored));
+          }
+          if (!done) {
+            if (launcher->id == "office") launchers::DropQueuedOfficeApps();
+            s.events.Publish("launcher.install.failed",
+                             FailedEvent({{"id", launcher->id}}, done.error()));
+            return std::unexpected(done.error());
+          }
+          s.games.MarkSourceAdded(launcher->id, false);
+          s.events.Publish("sources.changed", json::object());
+          if (const auto imported = launchers::Import(s.config, s.games, s.events, *launcher)) {
+            s.AfterImport(imported->added_games);
+          } else {
+            s.SyncDesktopEntries();
+          }
+          s.events.Publish("launcher.install.finished", {{"id", launcher->id}});
+          // Apps picked while the prefix was being set up. Their failure is announced on its own:
+          // the prefix itself is ready.
+          if (launcher->id == "office") (void)AddOfficeApps(s, {});
+          return json{{"id", launcher->id}};
+        },
+        &s.operations);
   });
 
   http.Post("/v1/launchers/office/apps", [&s](const Request& req, Response& res) {
@@ -103,8 +108,10 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
     }
     std::vector<std::string> apps;
     for (const json& app : (*body)["apps"]) {
-      if (!app.is_string()) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
-      if (!std::ranges::contains(launchers::office::Apps(), app.get<std::string>(), &launchers::office::App::ref)) {
+      if (!app.is_string())
+        return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+      if (!std::ranges::contains(launchers::office::Apps(), app.get<std::string>(),
+                                 &launchers::office::App::ref)) {
         return SendError(res, 400, "unknown_app",
                          std::format("Microsoft 365 has no app \"{}\"", app.get<std::string>()));
       }
@@ -115,30 +122,32 @@ void RegisterLauncherRoutes(Router& http, Services& s) {
     if (!launchers::Installed(s.games, office)) {
       return SendError(res, 409, "launcher_not_installed", "Microsoft 365 isn't installed yet");
     }
-    s.StartJob(req, res, "install", "office", "Adding Microsoft 365 apps",
-               [&s, apps](JobRegistry::Progress&) -> Result<json> {
-                 if (auto added = AddOfficeApps(s, apps); !added) return std::unexpected(added.error());
-                 return json{{"apps", apps}};
-               },
-               &s.operations);
+    s.StartJob(
+        req, res, "install", "office", "Adding Microsoft 365 apps",
+        [&s, apps](JobRegistry::Progress&) -> Result<json> {
+          if (auto added = AddOfficeApps(s, apps); !added) return std::unexpected(added.error());
+          return json{{"apps", apps}};
+        },
+        &s.operations);
   });
 
   http.Post(R"(/v1/launchers/([^/]+)/import)", [&s](const Request& req, Response& res) {
     const launchers::Launcher* launcher = launchers::Find(req.matches[1].str());
     if (!launcher) return SendError(res, 404, "launcher_not_found", "no such launcher");
     s.StartJob(req, res, "import", launcher->id, "Importing from " + launcher->name,
-             [&s, launcher](JobRegistry::Progress&) -> Result<json> {
-               const auto summary = launchers::Import(s.config, s.games, s.events, *launcher);
-               if (!summary) return std::unexpected(summary.error());
-               return s.FinishImport(launcher->id, *summary);
-             });
+               [&s, launcher](JobRegistry::Progress&) -> Result<json> {
+                 const auto summary = launchers::Import(s.config, s.games, s.events, *launcher);
+                 if (!summary) return std::unexpected(summary.error());
+                 return s.FinishImport(launcher->id, *summary);
+               });
   });
 
   http.Post(R"(/v1/launchers/([^/]+)/open)", [&s](const Request& req, Response& res) {
     const launchers::Launcher* launcher = launchers::Find(req.matches[1].str());
     if (!launcher) return SendError(res, 404, "launcher_not_found", "no such launcher");
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) return SendError(res, 400, "invalid_body", "expected a JSON object");
+    if (body.is_discarded() || !body.is_object())
+      return SendError(res, 400, "invalid_body", "expected a JSON object");
     const std::string action = body.value("action", std::string("launch"));
     if (action != "launch" && action != "install") {
       return SendError(res, 400, "invalid_action", "action must be launch or install");

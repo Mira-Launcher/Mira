@@ -26,13 +26,15 @@ std::string WinetricksPath();
 Result<void> InstallWinetricks();
 
 // The wine binary a game's runner uses (Proton's bundled one for Proton).
-Result<std::filesystem::path> ResolveWineBinary(const RunnerRegistry& runners, const model::Game& game);
+Result<std::filesystem::path> ResolveWineBinary(const RunnerRegistry& runners,
+                                                const model::Game& game);
 
 // Runs `wine <args>` in the game's prefix and waits for it, for setup steps
 // such as regedit.
-Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& game, const std::vector<std::string>& args);
+Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& game,
+                           const std::vector<std::string>& args);
 
-Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game, const std::string& verb,
-                           const OutputFn& on_output = {});
+Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game,
+                           const std::string& verb, const OutputFn& on_output = {});
 
 }  // namespace mira::runner

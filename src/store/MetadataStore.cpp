@@ -66,7 +66,9 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 6> kSlots = 
     {"header", "header"},
 }};
 
-bool InArtVersions(std::string_view slot) { return slot != "capsule" && slot != "header"; }
+bool InArtVersions(std::string_view slot) {
+  return slot != "capsule" && slot != "header";
+}
 
 std::string_view InfoKey(std::string_view slot) {
   for (const auto& [name, key] : kSlots) {
@@ -82,7 +84,8 @@ std::string FileVersion(const fs::path& file) {
   if (ec) return {};
   const auto size = fs::file_size(file, ec);
   if (ec) return {};
-  return std::format("{:x}-{:x}", static_cast<std::uint64_t>(written.time_since_epoch().count()), size);
+  return std::format("{:x}-{:x}", static_cast<std::uint64_t>(written.time_since_epoch().count()),
+                     size);
 }
 
 std::string FileName(const json& slot) {
@@ -94,7 +97,9 @@ std::string FileName(const json& slot) {
 
 MetadataStore::MetadataStore(fs::path dir) : dir_(std::move(dir)) {}
 
-fs::path MetadataStore::ArtworkDir(const std::string& id) const { return dir_ / "artwork" / id; }
+fs::path MetadataStore::ArtworkDir(const std::string& id) const {
+  return dir_ / "artwork" / id;
+}
 
 Result<void> MetadataStore::Open() {
   const fs::path file = dir_ / "cache.db";
@@ -102,7 +107,8 @@ Result<void> MetadataStore::Open() {
   if (opened) opened = db_.CheckSound();
   if (!opened && opened.error().code == "database_damaged") {
     // Everything in it can be fetched again.
-    log::Warn("the metadata cache {} is damaged ({}); starting it over", file.string(), opened.error().message);
+    log::Warn("the metadata cache {} is damaged ({}); starting it over", file.string(),
+              opened.error().message);
     db_.Close();
     std::error_code ec;
     for (const char* suffix : {"", "-wal", "-shm"}) fs::remove(file.string() + suffix, ec);
@@ -131,12 +137,14 @@ void MetadataStore::Load() {
   }
 
   tiers_.clear();
-  auto tiers = db_.Prepare("SELECT id, info->>'$.protondb.tier' FROM metadata WHERE info->>'$.protondb.tier' != ''");
+  auto tiers = db_.Prepare(
+      "SELECT id, info->>'$.protondb.tier' FROM metadata WHERE info->>'$.protondb.tier' != ''");
   if (!tiers) {
     log::Error("could not read the ProtonDB tiers: {}", tiers.error().message);
     return;
   }
-  for (auto row = tiers->Step(); row && *row; row = tiers->Step()) tiers_[tiers->Text(0)] = tiers->Text(1);
+  for (auto row = tiers->Step(); row && *row; row = tiers->Step())
+    tiers_[tiers->Text(0)] = tiers->Text(1);
 }
 
 json MetadataStore::Read(const std::string& id) const {
@@ -171,7 +179,8 @@ std::unordered_map<std::string, json> MetadataStore::Field(std::string_view key)
   if (!select) return out;
   select->Bind(1, std::string(key));
   for (auto row = select->Step(); row && *row; row = select->Step()) {
-    out[select->Text(0)] = select->IsNull(1) ? json() : json::parse(select->Text(1), nullptr, false);
+    out[select->Text(0)] =
+        select->IsNull(1) ? json() : json::parse(select->Text(1), nullptr, false);
   }
   return out;
 }
@@ -201,7 +210,8 @@ Result<void> MetadataStore::WriteList(const std::string& name, const json& value
       .Run();
 }
 
-std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog(const std::string& source) const {
+std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog(
+    const std::string& source) const {
   std::lock_guard lock(mutex_);
   return ReadCatalogLocked(source);
 }
@@ -223,7 +233,8 @@ std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog
   checked->Bind(1, source);
   if (auto row = checked->Step(); !row || !*row) return std::nullopt;
 
-  auto select = db_.Prepare("SELECT ref, title, play_seconds, owned FROM catalog WHERE source = ? ORDER BY position");
+  auto select = db_.Prepare(
+      "SELECT ref, title, play_seconds, owned FROM catalog WHERE source = ? ORDER BY position");
   if (!select) return std::nullopt;
   select->Bind(1, source);
   std::vector<CatalogRow> rows;
@@ -233,7 +244,8 @@ std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog
   return rows;
 }
 
-Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::vector<CatalogRow>& rows) {
+Result<bool> MetadataStore::WriteCatalog(const std::string& source,
+                                         const std::vector<CatalogRow>& rows) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
   const auto before = ReadCatalogLocked(source);
@@ -245,7 +257,8 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::v
     if (!clear) return std::unexpected(clear.error());
     if (auto done = clear->Bind(1, source).Run(); !done) return std::unexpected(done.error());
     auto add = db_.Prepare(
-        "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, ?, ?)");
+        "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, "
+        "?, ?)");
     if (!add) return std::unexpected(add.error());
     for (std::size_t at = 0; at < rows.size(); ++at) {
       const CatalogRow& row = rows[at];
@@ -265,7 +278,8 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::v
       "INSERT INTO catalog_checked(source, checked_at) VALUES(?, ?) "
       "ON CONFLICT(source) DO UPDATE SET checked_at = excluded.checked_at");
   if (!stamp) return std::unexpected(stamp.error());
-  if (auto done = stamp->Bind(1, source).Bind(2, model::NowSeconds()).Run(); !done) return std::unexpected(done.error());
+  if (auto done = stamp->Bind(1, source).Bind(2, model::NowSeconds()).Run(); !done)
+    return std::unexpected(done.error());
   if (auto committed = transaction.Commit(); !committed) return std::unexpected(committed.error());
   return changed;
 }
@@ -273,7 +287,8 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source, const std::v
 void MetadataStore::DropCatalog(const std::string& source) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return;
-  for (const char* sql : {"DELETE FROM catalog WHERE source = ?", "DELETE FROM catalog_checked WHERE source = ?"}) {
+  for (const char* sql :
+       {"DELETE FROM catalog WHERE source = ?", "DELETE FROM catalog_checked WHERE source = ?"}) {
     auto remove = db_.Prepare(sql);
     if (!remove) continue;
     if (auto done = remove->Bind(1, source).Run(); !done) {
@@ -288,7 +303,8 @@ Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info)
       "ON CONFLICT(id) DO UPDATE SET info = excluded.info, updated_at = excluded.updated_at");
   if (!upsert) return std::unexpected(upsert.error());
   const std::string text = info.dump(-1, ' ', false, json::error_handler_t::replace);
-  if (auto done = upsert->Bind(1, id).Bind(2, text).Bind(3, model::NowSeconds()).Run(); !done) return done;
+  if (auto done = upsert->Bind(1, id).Bind(2, text).Bind(3, model::NowSeconds()).Run(); !done)
+    return done;
 
   auto clear = db_.Prepare("DELETE FROM artwork WHERE id = ?");
   if (!clear) return std::unexpected(clear.error());
@@ -300,10 +316,17 @@ Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info)
     if (name.empty()) continue;
     const std::string version = FileVersion(ArtworkDir(id) / name);
     if (version.empty()) continue;  // no file, no art
-    auto add = db_.Prepare("INSERT INTO artwork(id, slot, file, content_type, version) VALUES(?, ?, ?, ?, ?)");
+    auto add = db_.Prepare(
+        "INSERT INTO artwork(id, slot, file, content_type, version) VALUES(?, ?, ?, ?, ?)");
     if (!add) return std::unexpected(add.error());
     const std::string content_type = info[key].value("content_type", std::string("image/jpeg"));
-    if (auto done = add->Bind(1, id).Bind(2, slot).Bind(3, name).Bind(4, content_type).Bind(5, version).Run(); !done) {
+    if (auto done = add->Bind(1, id)
+                        .Bind(2, slot)
+                        .Bind(3, name)
+                        .Bind(4, content_type)
+                        .Bind(5, version)
+                        .Run();
+        !done) {
       return done;
     }
     if (InArtVersions(slot)) versions[slot] = version;
@@ -319,17 +342,26 @@ Result<void> MetadataStore::Write(const std::string& id, const json& info) {
   if (auto begun = transaction.Begin(); !begun) return begun;
   const json before = versions_.contains(id) ? versions_[id] : json();
   if (auto written = WriteLocked(id, info); !written) {
-    if (before.is_null()) versions_.erase(id); else versions_[id] = before;
+    if (before.is_null())
+      versions_.erase(id);
+    else
+      versions_[id] = before;
     return written;
   }
   if (auto committed = transaction.Commit(); !committed) {
-    if (before.is_null()) versions_.erase(id); else versions_[id] = before;
+    if (before.is_null())
+      versions_.erase(id);
+    else
+      versions_[id] = before;
     return committed;
   }
   const std::string tier = info.contains("protondb") && info["protondb"].is_object()
                                ? info["protondb"].value("tier", std::string())
                                : std::string();
-  if (tier.empty()) tiers_.erase(id); else tiers_[id] = tier;
+  if (tier.empty())
+    tiers_.erase(id);
+  else
+    tiers_[id] = tier;
   return {};
 }
 
@@ -350,7 +382,8 @@ void MetadataStore::Remove(const std::string& id) {
   fs::remove_all(ArtworkDir(id), ec);
 }
 
-std::optional<MetadataStore::Art> MetadataStore::ArtFor(const std::string& id, std::string_view slot) const {
+std::optional<MetadataStore::Art> MetadataStore::ArtFor(const std::string& id,
+                                                        std::string_view slot) const {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen() || InfoKey(slot).empty()) return std::nullopt;
   auto select = db_.Prepare("SELECT file, content_type FROM artwork WHERE id = ? AND slot = ?");
@@ -389,7 +422,8 @@ std::vector<std::string> MetadataStore::PendingFits() const {
 void MetadataStore::FitDone(const std::string& id) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return;
-  if (auto remove = db_.Prepare("DELETE FROM fit_pending WHERE id = ?"); remove && !remove->Bind(1, id).Run()) {
+  if (auto remove = db_.Prepare("DELETE FROM fit_pending WHERE id = ?");
+      remove && !remove->Bind(1, id).Run()) {
     log::Warn("could not mark {}'s art fitted", id);
   }
 }

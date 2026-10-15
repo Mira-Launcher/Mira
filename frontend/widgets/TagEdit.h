@@ -2,7 +2,6 @@
 
 #include <QStringList>
 #include <QWidget>
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,7 +22,7 @@ namespace mira_gui {
 class TagEdit : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit TagEdit(QWidget* parent = nullptr);
 
   void SetTags(const std::vector<std::string>& tags);
@@ -38,15 +37,15 @@ public:
   void SetFolderPick(const std::string& pick);
   const std::string& FolderPick() const { return pick_; }
 
-signals:
+ signals:
   void Changed();
   // A chip's menu asked to show the games with this tag.
   void TagClicked(const QString& tag);
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   void Rebuild();
   void StartAdding();
   void FinishAdding();

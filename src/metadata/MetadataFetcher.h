@@ -23,25 +23,30 @@ namespace mira::metadata {
 // fails with no_steamgriddb_key). Shells out to curl rather than linking
 // libcurl, same as runner/Downloader.cpp. Synchronous; see
 // metadata/FetchQueue.h for the background-safe wrapper.
-Result<void> Fetch(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
+Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
+                   const model::Game& game);
 
 // A store title not installed yet: its details (store info, ProtonDB tier) and a small cover, each
 // only while missing. The store's own cover where there is one, else SteamGridDB's. Installing
 // runs Fetch.
-Result<void> FetchTitle(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
+Result<void> FetchTitle(const config::Config& config, store::MetadataStore& cache,
+                        const model::Game& game);
 
 // A tracked game's details (store info, reviews, ProtonDB tier) fetched again into its cached
 // record, art untouched. For details older than metadata.refresh_days.
-Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& cache, const model::Game& game);
+Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& cache,
+                            const model::Game& game);
 
 // FetchTitle for Steam titles (runner_ref "steam:<appid>"), up to about 50: one store request for
 // all their info, reviews and cover addresses. Results line up with `titles`.
-std::vector<Result<void>> FetchSteamTitles(const config::Config& config, store::MetadataStore& cache,
+std::vector<Result<void>> FetchSteamTitles(const config::Config& config,
+                                           store::MetadataStore& cache,
                                            const std::vector<model::Game>& titles);
 
 // Whether a store title is missing its cover, or its details are missing or older than
 // metadata.refresh_days.
-bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache, const std::string& id);
+bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache,
+                     const std::string& id);
 
 // Whether `info`'s details were fetched within metadata.refresh_days, by a Mira new enough for a
 // game, or with `title` for a store title.
@@ -64,20 +69,23 @@ Result<nlohmann::json> SearchSteamGridDb(const config::Config& config, const std
 // Re-downloads one SteamGridDB candidate (by the id it was listed with in
 // info["art_candidates"][slot], from a prior Fetch()) and makes it the
 // active image for `slot`, leaving every other cached slot untouched.
-Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
-                           const std::string& slot, std::int64_t candidate_id);
+Result<void> SelectArtwork(const config::Config& config, store::MetadataStore& cache,
+                           const std::string& game_id, const std::string& slot,
+                           std::int64_t candidate_id);
 
 // Makes a PNG or JPEG the user supplied `slot`'s image, fitted like any art and kept, like a
 // pick, through refreshes.
-Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& cache, const std::string& game_id,
-                           const std::string& slot, std::string_view bytes);
+Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& cache,
+                           const std::string& game_id, const std::string& slot,
+                           std::string_view bytes);
 
 // One page (50) of SteamGridDB's art for a game's slot, asked for now, so the
 // current steamgriddb.nsfw applies and results past the first 50 a metadata
 // fetch cached are reachable: {"page", "total", "candidates": [...]}, each
 // candidate shaped like art_candidates' and added to that cached list.
 Result<nlohmann::json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache,
-                                          const std::string& game_id, const std::string& slot, int page);
+                                          const std::string& game_id, const std::string& slot,
+                                          int page);
 
 // Which candidates of one FetchCandidateThumbs batch have a preview on disk.
 struct ThumbBatch {
@@ -88,7 +96,8 @@ struct ThumbBatch {
 // Downloads the preview of each listed art_candidates[slot] entry not cached
 // yet, all at once: SteamGridDB's small `thumb`, else the image itself.
 // Looked up by id, like SelectArtwork, so no caller-supplied URL is fetched.
-Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config, const store::MetadataStore& cache,
+Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config,
+                                        const store::MetadataStore& cache,
                                         const std::string& game_id, const std::string& slot,
                                         const std::vector<std::int64_t>& candidate_ids);
 
@@ -113,13 +122,15 @@ bool WantsSteamTags(const config::Config& config, const model::Game& game);
 // Fetches the Steam tags of those of `games` that want them and have a metadata record (a game
 // without one gets them with its own fetch), batched, into those records.
 // Returns how many records got an answer (a game with no Steam match counts, with no tags).
-int FetchSteamTags(const config::Config& config, store::MetadataStore& cache, std::span<const model::Game> games);
+int FetchSteamTags(const config::Config& config, store::MetadataStore& cache,
+                   std::span<const model::Game> games);
 
 // Where a game's art is downloaded: beside settings.toml, the same folder
 // store::MetadataStore::ArtworkDir names.
 std::filesystem::path ArtworkDir(const config::Config& config, const std::string& game_id);
 
-// Whether Steam lists an app named exactly `name` as software (true) or a game (false); nullopt when no exact match.
+// Whether Steam lists an app named exactly `name` as software (true) or a game (false); nullopt
+// when no exact match.
 std::optional<bool> SteamSaysSoftware(const std::string& name);
 
 }  // namespace mira::metadata

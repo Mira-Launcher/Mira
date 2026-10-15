@@ -32,10 +32,12 @@ struct ImportSummary {
 };
 
 // Counts a game as added or updated and publishes its event.
-void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game, bool existed);
+void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game,
+                    bool existed);
 
 // Provisions a new or failed game's prefix, else marks it Ready.
-void ProvisionOnImport(model::Game& game, const std::optional<model::Game>& existing, const config::Config& config,
-                       const store::GameStore& games, const runner::RunnerRegistry& provisioner);
+void ProvisionOnImport(model::Game& game, const std::optional<model::Game>& existing,
+                       const config::Config& config, const store::GameStore& games,
+                       const runner::RunnerRegistry& provisioner);
 
 }  // namespace mira::library

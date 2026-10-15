@@ -23,9 +23,11 @@ std::vector<std::string> Strings(const json& entry, const char* key) {
 
 // The games a tag change touched, as POST /v1/tags/* reply with them.
 PatchGamesResult GamesReply(const transport::Reply& reply, const std::string& endpoint) {
-  return ReadReply<PatchGamesResult>(reply, endpoint, Shape::Object, [](PatchGamesResult& result, const json& body) {
-    for (const json& entry : body.value("games", json::array())) result.games.push_back(mapping::ToGameSummary(entry));
-  });
+  return ReadReply<PatchGamesResult>(reply, endpoint, Shape::Object,
+                                     [](PatchGamesResult& result, const json& body) {
+                                       for (const json& entry : body.value("games", json::array()))
+                                         result.games.push_back(mapping::ToGameSummary(entry));
+                                     });
 }
 
 }  // namespace
@@ -35,7 +37,8 @@ void GetTagsAsync(QObject* context, std::function<void(TagsResult)> callback) {
       context,
       [] {
         return ReadReply<TagsResult>(
-            transport::Get("/v1/tags"), "GET /v1/tags", Shape::Object, [](TagsResult& result, const json& body) {
+            transport::Get("/v1/tags"), "GET /v1/tags", Shape::Object,
+            [](TagsResult& result, const json& body) {
               for (const json& entry : body.value("tags", json::array())) {
                 result.tags.push_back({entry.value("name", std::string()), Strings(entry, "ids"),
                                        entry.value("folder", false), Strings(entry, "steam_ids")});
@@ -51,8 +54,11 @@ void GetTagsAsync(QObject* context, std::function<void(TagsResult)> callback) {
 
 void FetchSteamTagsAsync(QObject* context, std::function<void(SteamTagsFetchResult)> callback) {
   RunJob<SteamTagsFetchResult>(
-      context, "tags", [](const std::string& query) { return transport::Post("/v1/tags/fetch" + query); },
-      [](SteamTagsFetchResult& result, const json& body) { result.fetched = body.value("fetched", 0); },
+      context, "tags",
+      [](const std::string& query) { return transport::Post("/v1/tags/fetch" + query); },
+      [](SteamTagsFetchResult& result, const json& body) {
+        result.fetched = body.value("fetched", 0);
+      },
       std::move(callback));
 }
 
@@ -79,10 +85,14 @@ void RenameTagAsync(QObject* context, const std::string& from, const std::string
       std::move(callback));
 }
 
-void RemoveTagAsync(QObject* context, const std::string& name, std::function<void(PatchGamesResult)> callback) {
+void RemoveTagAsync(QObject* context, const std::string& name,
+                    std::function<void(PatchGamesResult)> callback) {
   async::Run(
       context,
-      [name] { return GamesReply(transport::PostJson("/v1/tags/remove", {{"name", name}}), "POST /v1/tags/remove"); },
+      [name] {
+        return GamesReply(transport::PostJson("/v1/tags/remove", {{"name", name}}),
+                          "POST /v1/tags/remove");
+      },
       std::move(callback));
 }
 
@@ -101,9 +111,10 @@ void PreviewTagsAsync(QObject* context, std::optional<std::vector<std::string>> 
             transport::PostJson("/v1/tags/preview", body), "POST /v1/tags/preview", Shape::Object,
             [](FolderTagsPreviewResult& result, const json& reply) {
               for (const json& move : reply.value("moving", json::array())) {
-                result.moving.push_back({move.value("id", std::string()), move.value("name", std::string()),
-                                         move.contains("to") && move["to"].is_string() ? move["to"].get<std::string>()
-                                                                                       : std::string()});
+                result.moving.push_back(
+                    {move.value("id", std::string()), move.value("name", std::string()),
+                     move.contains("to") && move["to"].is_string() ? move["to"].get<std::string>()
+                                                                   : std::string()});
               }
             });
       },

@@ -14,7 +14,8 @@ namespace mira::runner {
 namespace {
 namespace fs = std::filesystem;
 
-constexpr std::string_view kPersonalize = "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize]";
+constexpr std::string_view kPersonalize =
+    "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize]";
 
 std::optional<std::string> Read(std::vector<std::string> argv) {
   Command command;
@@ -33,19 +34,24 @@ std::optional<bool> ParseColorScheme(std::string_view output) {
   if (end == std::string_view::npos) return std::nullopt;
   if (end > 0 && std::isdigit(static_cast<unsigned char>(output[end - 1]))) return std::nullopt;
   switch (output[end]) {
-    case '1': return true;   // prefer dark
-    case '2': return false;  // prefer light
-    default: return std::nullopt;
+    case '1':
+      return true;  // prefer dark
+    case '2':
+      return false;  // prefer light
+    default:
+      return std::nullopt;
   }
 }
 
 std::optional<bool> DesktopPrefersDark() {
-  auto output = Read({"busctl", "--user", "call", "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-                      "org.freedesktop.portal.Settings", "ReadOne", "ss", "org.freedesktop.appearance", "color-scheme"});
+  auto output = Read({"busctl", "--user", "call", "org.freedesktop.portal.Desktop",
+                      "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings",
+                      "ReadOne", "ss", "org.freedesktop.appearance", "color-scheme"});
   if (!output) {
-    output = Read({"gdbus", "call", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path",
-                   "/org/freedesktop/portal/desktop", "--method", "org.freedesktop.portal.Settings.ReadOne",
-                   "org.freedesktop.appearance", "color-scheme"});
+    output = Read({"gdbus", "call", "--session", "--dest", "org.freedesktop.portal.Desktop",
+                   "--object-path", "/org/freedesktop/portal/desktop", "--method",
+                   "org.freedesktop.portal.Settings.ReadOne", "org.freedesktop.appearance",
+                   "color-scheme"});
   }
   return output ? ParseColorScheme(*output) : std::nullopt;
 }
@@ -74,9 +80,10 @@ Result<void> SyncWindowsTheme(const RunnerRegistry& runners, const model::Game& 
   log::Info("setting {}'s Windows theme to {}", game.id, *dark ? "dark" : "light");
   const std::string light = *dark ? "0" : "1";
   for (const char* value : {"AppsUseLightTheme", "SystemUsesLightTheme"}) {
-    const auto ran = RunWine(runners, game,
-                             {"reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                              "/v", value, "/t", "REG_DWORD", "/d", light, "/f"});
+    const auto ran = RunWine(
+        runners, game,
+        {"reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+         "/v", value, "/t", "REG_DWORD", "/d", light, "/f"});
     if (!ran) return std::unexpected(ran.error());
   }
   return {};

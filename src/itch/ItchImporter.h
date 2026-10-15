@@ -17,12 +17,12 @@ namespace mira::itch {
 // epic::EpicImporter. Manual (POST /v1/itch/import), not automatic:
 // butler owns this data, Mira only reads a snapshot of it on request.
 class ItchImporter {
-public:
+ public:
   ItchImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<library::ImportSummary> Import();
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

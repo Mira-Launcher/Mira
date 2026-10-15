@@ -3,7 +3,6 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QTimer>
-
 #include <vector>
 
 #include "Page.h"
@@ -11,12 +10,12 @@
 namespace mira_gui::bigscreen {
 
 // Rows of covers (Continue playing, Pinned, Media, each tag, each source, Installed, Apps)
-// under the focused game's name and status. View cycles a row's order. The focused row stays put and
-// rows above it slide out of view.
+// under the focused game's name and status. View cycles a row's order. The focused row stays put
+// and rows above it slide out of view.
 class HomePage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit HomePage(BigScreenWindow* window);
 
   bool Navigate(Nav nav) override;
@@ -26,10 +25,10 @@ public:
   // Rows ease down while the hero is showcased, and back after.
   void ShowcaseChanged() { animation_.start(); }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   struct Row {
     QString label;
     QString id;  // stable key for focus and scroll memory
@@ -53,9 +52,9 @@ private:
   std::vector<Row> rows_;
   int row_ = 0;
   double row_scroll_ = 0;  // shown, in rows
-  double lift_ = 1;  // the focused tile's rise, 0 to 1
-  double drop_ = 0;  // how far the rows have moved down for a trailer, 0 to 1
-  double info_ = 1;  // the focused game's name and details sliding in, 0 to 1
+  double lift_ = 1;        // the focused tile's rise, 0 to 1
+  double drop_ = 0;        // how far the rows have moved down for a trailer, 0 to 1
+  double info_ = 1;        // the focused game's name and details sliding in, 0 to 1
   QString info_key_;
   // The knock at the end of a row or the list: progress 0 to 1, and its direction.
   double bump_ = 1;

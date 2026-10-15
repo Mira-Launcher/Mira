@@ -1,3 +1,5 @@
+#include "runner/Winetricks.h"
+
 #include <doctest.h>
 
 #include <algorithm>
@@ -8,14 +10,15 @@
 #include "model/Types.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
-#include "runner/Winetricks.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
 
 namespace {
-fs::path TempFile(const char* name) { return fs::temp_directory_path() / "mira-tests" / name; }
+fs::path TempFile(const char* name) {
+  return fs::temp_directory_path() / "mira-tests" / name;
+}
 }  // namespace
 
 TEST_CASE("RunTricksVerb rejects a native runner outright") {

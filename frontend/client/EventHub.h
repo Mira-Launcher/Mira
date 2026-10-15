@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QObject>
-
 #include <string>
 
 #include "EventStream.h"
@@ -14,13 +13,13 @@ namespace mira_gui {
 class EventHub : public QObject {
   Q_OBJECT
 
-public:
+ public:
   static EventHub* Instance();
 
   // Connects on the first call; later calls do nothing.
   void Start();
 
-signals:
+ signals:
   // Every event, replayed history included. `live` is false for history.
   void Received(const std::string& type, const std::string& data, bool live);
   // A (re)connect or a drop. A reconnect's events resume where the drop left off.
@@ -28,7 +27,7 @@ signals:
   // A runner build was installed or removed, live: runner pickers list them again.
   void RunnersChanged();
 
-private:
+ private:
   explicit EventHub(QObject* parent);
 
   EventStream stream_;

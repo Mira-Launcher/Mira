@@ -3,7 +3,6 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QUuid>
-
 #include <map>
 #include <utility>
 
@@ -42,7 +41,8 @@ Outcome FromRecord(const json& record, bool failed) {
   Outcome outcome;
   outcome.ok = !failed;
   if (failed) {
-    outcome.error = mapping::ToApiError(record.contains("error") ? record["error"] : json::object());
+    outcome.error =
+        mapping::ToApiError(record.contains("error") ? record["error"] : json::object());
   } else {
     outcome.result = record.contains("result") ? record["result"] : json::object();
   }
@@ -53,7 +53,8 @@ void Recheck() {
   std::erase_if(Pending(), [](const auto& entry) { return entry.second.context.isNull(); });
   for (const auto& [token, waiter] : Pending()) {
     if (!waiter.started) continue;
-    Check(QCoreApplication::instance(), token, [token](Outcome outcome) { Resolve(token, std::move(outcome)); });
+    Check(QCoreApplication::instance(), token,
+          [token](Outcome outcome) { Resolve(token, std::move(outcome)); });
   }
 }
 
@@ -62,12 +63,13 @@ void Listen() {
   if (listening) return;
   listening = true;
   EventHub* hub = EventHub::Instance();
-  QObject::connect(hub, &EventHub::Received, hub, [](const std::string& type, const std::string& data, bool) {
-    if (type != "job.finished" && type != "job.failed") return;
-    const json event = json::parse(data, nullptr, false);
-    if (!event.is_object()) return;
-    Resolve(mapping::Str(event, "id"), FromRecord(event, type == "job.failed"));
-  });
+  QObject::connect(hub, &EventHub::Received, hub,
+                   [](const std::string& type, const std::string& data, bool) {
+                     if (type != "job.finished" && type != "job.failed") return;
+                     const json event = json::parse(data, nullptr, false);
+                     if (!event.is_object()) return;
+                     Resolve(mapping::Str(event, "id"), FromRecord(event, type == "job.failed"));
+                   });
   QObject::connect(hub, &EventHub::ConnectionChanged, hub, [](bool connected) {
     if (connected) Recheck();
   });
@@ -86,32 +88,39 @@ void Await(QObject* context, const std::string& token, std::function<void(Outcom
 }
 
 void Started(const std::string& token) {
-  if (const auto found = Pending().find(token); found != Pending().end()) found->second.started = true;
+  if (const auto found = Pending().find(token); found != Pending().end())
+    found->second.started = true;
 }
 
 void Check(QObject* context, const std::string& token, std::function<void(Outcome)> ended) {
-  async::Run(context, [token] { return transport::Get("/v1/jobs/" + token); },
-             std::function<void(transport::Reply)>([token, ended](transport::Reply reply) {
-               if (reply.status == 404) {
-                 Outcome lost;
-                 lost.error = ApiError("mirad restarted before this finished.");
-                 ended(std::move(lost));
-                 return;
-               }
-               if (!reply.ok || !reply.body.is_object()) return;  // still unreachable: the next reconnect asks again
-               const std::string state = mapping::Str(reply.body, "state");
-               if (state == "finished" || state == "failed") ended(FromRecord(reply.body, state == "failed"));
-             }));
+  async::Run(
+      context, [token] { return transport::Get("/v1/jobs/" + token); },
+      std::function<void(transport::Reply)>([token, ended](transport::Reply reply) {
+        if (reply.status == 404) {
+          Outcome lost;
+          lost.error = ApiError("mirad restarted before this finished.");
+          ended(std::move(lost));
+          return;
+        }
+        if (!reply.ok || !reply.body.is_object())
+          return;  // still unreachable: the next reconnect asks again
+        const std::string state = mapping::Str(reply.body, "state");
+        if (state == "finished" || state == "failed")
+          ended(FromRecord(reply.body, state == "failed"));
+      }));
 }
 
-bool Forget(const std::string& token) { return Pending().erase(token) > 0; }
+bool Forget(const std::string& token) {
+  return Pending().erase(token) > 0;
+}
 
 void Cancel(QObject* context, const std::string& token, std::function<void(ApiError)> done) {
-  async::Run(context, [token] { return transport::Post("/v1/jobs/" + token + "/cancel"); },
-             std::function<void(transport::Reply)>([done](transport::Reply reply) {
-               // Already over: nothing left to cancel.
-               done(reply.ok || reply.status == 409 ? ApiError() : reply.error);
-             }));
+  async::Run(
+      context, [token] { return transport::Post("/v1/jobs/" + token + "/cancel"); },
+      std::function<void(transport::Reply)>([done](transport::Reply reply) {
+        // Already over: nothing left to cancel.
+        done(reply.ok || reply.status == 409 ? ApiError() : reply.error);
+      }));
 }
 
 }  // namespace mira_gui::jobs

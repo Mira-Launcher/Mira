@@ -2,7 +2,6 @@
 
 #include <QItemSelection>
 #include <QListView>
-
 #include <functional>
 
 #include "../library/HoverCard.h"
@@ -24,7 +23,7 @@ int RoomBesideScrollbar(const QWidget* widget, int width);
 // because Qt's own drag-select state survives a swallowed release and then
 // draws a second, dead rubber band on the next plain hover.
 class TileView : public QListView {
-public:
+ public:
   explicit TileView(QWidget* parent = nullptr);
 
   // An index after the cursor rests on it, an invalid one once it moves off.
@@ -37,7 +36,7 @@ public:
   // Stops by itself once no paint asks again.
   void KeepAnimating();
 
-protected:
+ protected:
   void mousePressEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
@@ -48,7 +47,7 @@ protected:
   // The tile is about to scroll out from under its card.
   void StopHover() { hover_.Track(QModelIndex()); }
 
-private:
+ private:
   // Within this far of the top/bottom edge (or past it), a drag scrolls.
   static constexpr int kAutoScrollEdge = 40;
 
@@ -61,8 +60,8 @@ private:
 
   bool drag_select_enabled_ = true;
   bool tracking_drag_ = false;
-  QPoint drag_origin_;  // content coordinates
-  QPoint drag_pos_;     // viewport coordinates, last seen
+  QPoint drag_origin_;                    // content coordinates
+  QPoint drag_pos_;                       // viewport coordinates, last seen
   Qt::KeyboardModifiers drag_modifiers_;  // at the press
   QRubberBand* rubber_band_ = nullptr;
   QTimer* autoscroll_timer_ = nullptr;

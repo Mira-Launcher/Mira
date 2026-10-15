@@ -1,9 +1,8 @@
 #pragma once
 
+#include <QFrame>
 #include <QString>
 #include <QStringList>
-#include <QFrame>
-
 #include <vector>
 
 #include "AddedSources.h"
@@ -27,7 +26,7 @@ class SourceSetupCard;
 class SourcesPage : public QFrame {
   Q_OBJECT
 
-public:
+ public:
   explicit SourcesPage(QWidget* parent = nullptr);
 
   // Every source, in sidebar order, as Sidebar::SourceEntries gives them.
@@ -39,7 +38,7 @@ public:
   bool SetupOpen() const;
   void CloseSetup();
 
-signals:
+ signals:
   void OpenRequested(QString id);
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
@@ -48,7 +47,7 @@ signals:
   void Removed(QString id);
   void CloseRequested();
 
-private:
+ private:
   QButtonGroup* views_ = nullptr;
   QLabel* hint_ = nullptr;
   QLineEdit* search_ = nullptr;
@@ -66,7 +65,7 @@ private:
   void FitSetup();
   void ShowView(int view);
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 };

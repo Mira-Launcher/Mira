@@ -17,18 +17,18 @@ struct GameSummary;
 class InstallPromptCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   // `exe_path` is relative to `install_path`; empty when no program was found.
-  InstallPromptCard(const GameSummary& game, const std::string& install_path, const std::string& exe_path,
-                    ArtworkStore* artwork, QWidget* parent = nullptr);
+  InstallPromptCard(const GameSummary& game, const std::string& install_path,
+                    const std::string& exe_path, ArtworkStore* artwork, QWidget* parent = nullptr);
 
-signals:
+ signals:
   // Use `exe_path` (relative to the install folder) instead of the installer.
   void Accepted(std::string exe_path, bool is_app);
   // Keep the entry as it is.
   void CloseRequested();
 
-private:
+ private:
   void ShowProgram();
   void Choose();
 

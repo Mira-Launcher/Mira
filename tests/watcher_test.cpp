@@ -1,3 +1,5 @@
+#include "library/Watcher.h"
+
 #include <doctest.h>
 
 #include <chrono>
@@ -6,7 +8,6 @@
 #include <thread>
 
 #include "config/Config.h"
-#include "library/Watcher.h"
 #include "store/GameStore.h"
 #include "support/TestEnv.h"
 
@@ -117,7 +118,8 @@ TEST_CASE("Watcher never rediscovers its own prefix directory as a game") {
 
   fs::create_directories(root / "prefix" / "celeste" / "drive_c");
   Touch(root / "prefix" / "celeste" / "system.reg");
-  std::this_thread::sleep_for(std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(800));  // past debounce, nothing should fire
 
   watcher.Stop();
   watcher_thread.join();
@@ -149,7 +151,9 @@ TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting fo
   fs::create_directories(staging / "Celeste");
   Touch(staging / "Celeste" / "Celeste", "", /*executable=*/true);
   const fs::path archive = root / "Celeste.tar.gz";
-  REQUIRE(std::system(("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) == 0);
+  REQUIRE(std::system(
+              ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
+          0);
 
   CHECK(WaitForGameAdded(events, std::chrono::seconds(5)));
   CHECK(test::WaitUntil([&] { return !fs::exists(archive); }));  // the archive itself is gone
@@ -184,9 +188,12 @@ TEST_CASE("Watcher leaves a dropped archive alone when auto_extract_archives is 
   fs::create_directories(staging / "Celeste");
   Touch(staging / "Celeste" / "Celeste", "", /*executable=*/true);
   const fs::path archive = root / "Celeste.tar.gz";
-  REQUIRE(std::system(("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) == 0);
+  REQUIRE(std::system(
+              ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
+          0);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(800));  // past debounce, nothing should fire
 
   watcher.Stop();
   watcher_thread.join();
@@ -195,8 +202,9 @@ TEST_CASE("Watcher leaves a dropped archive alone when auto_extract_archives is 
   CHECK(games.All().empty());
 }
 
-TEST_CASE("Watcher never extracts or scans anything under a configured runner_search_paths root, "
-         "even if it overlaps a library root") {
+TEST_CASE(
+    "Watcher never extracts or scans anything under a configured runner_search_paths root, "
+    "even if it overlaps a library root") {
   // A runner build being downloaded (runner/Downloader.cpp, its own
   // separate tar) into runner_search_paths must never also be treated as a
   // droppable archive or a new game folder here -- see Watcher.cpp's
@@ -228,19 +236,24 @@ TEST_CASE("Watcher never extracts or scans anything under a configured runner_se
   fs::create_directories(staging / "Celeste");
   Touch(staging / "Celeste" / "Celeste", "", /*executable=*/true);
   const fs::path archive = root / "Celeste.tar.gz";
-  REQUIRE(std::system(("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) == 0);
+  REQUIRE(std::system(
+              ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
+          0);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(800));  // past debounce, nothing should fire
 
   watcher.Stop();
   watcher_thread.join();
 
-  CHECK(fs::exists(archive));  // untouched, not extracted
+  CHECK(fs::exists(archive));                            // untouched, not extracted
   CHECK(fs::exists(root / "Fake-Proton-1" / "proton"));  // untouched, not treated as a game
   CHECK(games.All().empty());
 }
 
-TEST_CASE("CreateMissingRoots creates a missing root under home, parents included, but not one outside it") {
+TEST_CASE(
+    "CreateMissingRoots creates a missing root under home, parents included, but not one outside "
+    "it") {
   test::TestEnv env("watcher-create-roots");
   const fs::path home = env.dir / "home";
   const fs::path outside = env.dir / "outside";
@@ -248,7 +261,7 @@ TEST_CASE("CreateMissingRoots creates a missing root under home, parents include
   fs::create_directories(outside);
   REQUIRE(env.config
               .Set("library_roots", nlohmann::json::array({(home / "Mira" / "Games").string(),
-                                                            (outside / "Games").string()}))
+                                                           (outside / "Games").string()}))
               .has_value());
 
   const std::string old_home = std::getenv("HOME") != nullptr ? std::getenv("HOME") : "";

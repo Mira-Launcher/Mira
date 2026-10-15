@@ -1,17 +1,14 @@
 #include "RunInPrefixDialog.h"
 
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
-
-#include "../app/Notify.h"
 #include <QPushButton>
 #include <QVBoxLayout>
-
 #include <utility>
 
-#include <QFileDialog>
-
+#include "../app/Notify.h"
 #include "../client/api/Games.h"
 #include "../widgets/PathField.h"
 #include "../widgets/PopupDialog.h"
@@ -46,10 +43,10 @@ RunInPrefixDialog::RunInPrefixDialog(std::string game_id, const std::string& ins
   connect(exe_, &QLineEdit::textChanged, this,
           [this](const QString& text) { run_->setEnabled(!text.trimmed().isEmpty()); });
   form->addRow("Executable", PathRow(exe_, [this] {
-    const QString selected = QFileDialog::getOpenFileName(
-        this, "Select executable", QString::fromStdString(install_path_));
-    return selected.isEmpty() ? selected : RelativeIfInside(selected, install_path_);
-  }));
+                 const QString selected = QFileDialog::getOpenFileName(
+                     this, "Select executable", QString::fromStdString(install_path_));
+                 return selected.isEmpty() ? selected : RelativeIfInside(selected, install_path_);
+               }));
 
   args_ = new QLineEdit(this);
   args_->setPlaceholderText("Optional, e.g. /S for a silent install");
@@ -74,16 +71,16 @@ void RunInPrefixDialog::Run() {
   // so the dialog says what it's doing rather than appearing frozen.
   setEnabled(false);
   run_->setText("Starting…");
-  api::RunInPrefixAsync(this, game_id_, exe, args_->text().toStdString(),
-                                [this](RunInPrefixResult result) {
-                                  setEnabled(true);
-                                  run_->setText("Run");
-                                  if (!result.ok) {
-                                    mira_gui::notify::FailedRequest(this, "Could not run that.", result.error);
-                                    return;
-                                  }
-                                  accept();
-                                });
+  api::RunInPrefixAsync(
+      this, game_id_, exe, args_->text().toStdString(), [this](RunInPrefixResult result) {
+        setEnabled(true);
+        run_->setText("Run");
+        if (!result.ok) {
+          mira_gui::notify::FailedRequest(this, "Could not run that.", result.error);
+          return;
+        }
+        accept();
+      });
 }
 
 }  // namespace mira_gui

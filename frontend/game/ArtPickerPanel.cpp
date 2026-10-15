@@ -1,21 +1,21 @@
 #include "ArtPickerPanel.h"
 
+#include <QBuffer>
 #include <QButtonGroup>
 #include <QCache>
-#include <QBuffer>
 #include <QComboBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QImageReader>
-#include <QMimeData>
 #include <QHBoxLayout>
 #include <QHash>
+#include <QImageReader>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -25,18 +25,17 @@
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
 #include <QTimer>
-#include <QVariantAnimation>
 #include <QVBoxLayout>
-
+#include <QVariantAnimation>
 #include <algorithm>
 #include <functional>
 #include <set>
 
+#include "../app/ErrorHelp.h"
 #include "../client/Async.h"
+#include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
-#include "../app/ErrorHelp.h"
-#include "../client/EventHub.h"
 #include "../theme/Theme.h"
 #include "../widgets/TabRow.h"
 
@@ -60,7 +59,10 @@ constexpr std::int64_t kUploadId = -1;
 
 // "covers", "hero art", ... for messages about a slot.
 QString SlotNoun(const std::string& slot) {
-  return slot == "hero" ? "hero art" : slot == "logo" ? "logos" : slot == "icon" ? "icons" : "covers";
+  return slot == "hero"   ? "hero art"
+         : slot == "logo" ? "logos"
+         : slot == "icon" ? "icons"
+                          : "covers";
 }
 
 // A local image file, if it's one Qt can read.
@@ -81,18 +83,19 @@ QString StyleLabel(const ArtCandidate& candidate) {
 }
 
 class ThumbGrid : public QListWidget {
-public:
+ public:
   using QListWidget::QListWidget;
   std::function<void()> on_resize;
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override {
     QListWidget::resizeEvent(event);
     if (on_resize) on_resize();
   }
   // A click between previews drops the pick back to the art in use.
   void mousePressEvent(QMouseEvent* event) override {
-    if (event->button() == Qt::LeftButton && itemAt(event->pos()) == nullptr) setCurrentItem(nullptr);
+    if (event->button() == Qt::LeftButton && itemAt(event->pos()) == nullptr)
+      setCurrentItem(nullptr);
     QListWidget::mousePressEvent(event);
   }
 };
@@ -100,8 +103,9 @@ protected:
 }  // namespace
 
 class ThumbDelegate : public QStyledItemDelegate {
-public:
-  ThumbDelegate(QVariantAnimation* pulse, QObject* parent) : QStyledItemDelegate(parent), pulse_(pulse) {}
+ public:
+  ThumbDelegate(QVariantAnimation* pulse, QObject* parent)
+      : QStyledItemDelegate(parent), pulse_(pulse) {}
 
   // Logos and icons are shown whole on a backing; covers and heroes fill their cell.
   bool fit = false;
@@ -111,7 +115,8 @@ public:
     return view != nullptr ? view->gridSize() : QSize(120, 180);
   }
 
-  void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+  void paint(QPainter* painter, const QStyleOptionViewItem& option,
+             const QModelIndex& index) const override {
     const theme::Tokens& tokens = theme::Current();
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
@@ -130,12 +135,15 @@ public:
         if (fit) {
           scaled = new QPixmap(target);
           scaled->fill(Qt::transparent);
-          const QPixmap whole = pixmap.scaled(target * 0.86, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+          const QPixmap whole =
+              pixmap.scaled(target * 0.86, Qt::KeepAspectRatio, Qt::SmoothTransformation);
           QPainter inner(scaled);
-          inner.drawPixmap((target.width() - whole.width()) / 2, (target.height() - whole.height()) / 2, whole);
+          inner.drawPixmap((target.width() - whole.width()) / 2,
+                           (target.height() - whole.height()) / 2, whole);
         } else {
           // Fills the box, cropping the overflow, like a library tile.
-          const QPixmap filled = pixmap.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+          const QPixmap filled =
+              pixmap.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
           scaled = new QPixmap(filled.copy((filled.width() - target.width()) / 2,
                                            (filled.height() - target.height()) / 2, target.width(),
                                            target.height()));
@@ -152,7 +160,8 @@ public:
       painter->setClipping(false);
     } else {
       QColor fill = tokens.surface_alt;
-      if (state == kLoading && pulse_ != nullptr) fill.setAlphaF(0.45 + 0.4 * pulse_->currentValue().toReal());
+      if (state == kLoading && pulse_ != nullptr)
+        fill.setAlphaF(0.45 + 0.4 * pulse_->currentValue().toReal());
       painter->fillPath(path, fill);
       if (state == kFailed) {
         painter->setPen(tokens.text_muted);
@@ -178,7 +187,8 @@ public:
     // A small label in a corner of the preview.
     auto badge = [&](const QString& text, bool right, const QColor& back, const QColor& fore) {
       const qreal width = metrics.horizontalAdvance(text) + 12;
-      const QRectF rect(right ? box.right() - 5 - width : box.left() + 5, box.top() + 5, width, metrics.height() + 4);
+      const QRectF rect(right ? box.right() - 5 - width : box.left() + 5, box.top() + 5, width,
+                        metrics.height() + 4);
       painter->setPen(Qt::NoPen);
       painter->setBrush(back);
       painter->drawRoundedRect(rect, 4, 4);
@@ -194,14 +204,15 @@ public:
     painter->restore();
   }
 
-private:
+ private:
   QVariantAnimation* pulse_;
   // Each preview scaled to the current cell, keyed by its source's cacheKey; costs in KiB.
   // Bounded, since every candidate list browsed brings new sources.
   mutable QCache<qint64, QPixmap> scaled_{32 * 1024};
 };
 
-ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(parent), id_(std::move(game_id)) {
+ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent)
+    : QWidget(parent), id_(std::move(game_id)) {
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
@@ -302,8 +313,10 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent) : QWidget(p
     UpdateGridSize();
     QTimer::singleShot(0, this, &ArtPickerPanel::RequestVisible);
   };
-  connect(pulse_, &QVariantAnimation::valueChanged, grid_->viewport(), [this] { grid_->viewport()->update(); });
-  connect(grid_->verticalScrollBar(), &QScrollBar::valueChanged, this, &ArtPickerPanel::RequestVisible);
+  connect(pulse_, &QVariantAnimation::valueChanged, grid_->viewport(),
+          [this] { grid_->viewport()->update(); });
+  connect(grid_->verticalScrollBar(), &QScrollBar::valueChanged, this,
+          &ArtPickerPanel::RequestVisible);
   connect(grid_, &QListWidget::currentItemChanged, this,
           [this](QListWidgetItem* current, QListWidgetItem*) { Pick(current); });
   connect(grid_, &QListWidget::itemActivated, this, [this] {
@@ -365,7 +378,8 @@ void ArtPickerPanel::Populate(const GameMetadataResult& result) {
   candidates_.clear();
   active_id_.reset();
   if (result.ok) {
-    if (const auto found = result.metadata.candidates.find(slot_); found != result.metadata.candidates.end()) {
+    if (const auto found = result.metadata.candidates.find(slot_);
+        found != result.metadata.candidates.end()) {
       candidates_ = found->second;
     }
     if (const auto found = result.metadata.active_candidate_ids.find(slot_);
@@ -433,8 +447,9 @@ void ArtPickerPanel::UpdateTitle() {
   // The store's own art plus however many SteamGridDB has, once known.
   int count = static_cast<int>(candidates_.size());
   if (griddb_total_ >= 0) {
-    count = griddb_total_ + static_cast<int>(std::ranges::count_if(
-                                candidates_, [](const ArtCandidate& c) { return c.source != "steamgriddb"; }));
+    count = griddb_total_ +
+            static_cast<int>(std::ranges::count_if(
+                candidates_, [](const ArtCandidate& c) { return c.source != "steamgriddb"; }));
   }
   slots_->SetCount(QString::fromStdString(slot_), count);
 }
@@ -444,12 +459,14 @@ void ArtPickerPanel::RequestPage() {
   page_loading_ = true;
   const std::string slot = slot_;
   page_request_ = std::to_string(QRandomGenerator::global()->generate64());
-  api::FetchArtCandidatesAsync(this, id_, slot, next_page_, page_request_, [this, slot](GameActionResult result) {
-    if (result.ok || slot != slot_) return;  // game.artwork_candidates_ready follows
-    page_loading_ = false;
-    more_pages_ = false;
-    if (candidates_.empty()) ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot)), true);
-  });
+  api::FetchArtCandidatesAsync(
+      this, id_, slot, next_page_, page_request_, [this, slot](GameActionResult result) {
+        if (result.ok || slot != slot_) return;  // game.artwork_candidates_ready follows
+        page_loading_ = false;
+        more_pages_ = false;
+        if (candidates_.empty())
+          ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot)), true);
+      });
 }
 
 void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
@@ -474,7 +491,8 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
       if (candidate == candidates_.end() || candidate->source != "steamgriddb") continue;
       if (active_id_ == id && !live.contains(id)) continue;
       if (pick_ == id && !live.contains(id)) {
-        pick_ = active_id_;  // and highlighted, or taking the item moves the highlight to a neighbour unseen
+        pick_ = active_id_;  // and highlighted, or taking the item moves the highlight to a
+                             // neighbour unseen
         grid_->setCurrentItem(active_id_ ? ItemFor(*active_id_) : nullptr);
       }
       candidates_.erase(candidate);
@@ -482,7 +500,8 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
     }
   }
   for (const ArtCandidate& candidate : event.candidates) {
-    if (std::ranges::find(candidates_, candidate.id, &ArtCandidate::id) != candidates_.end()) continue;
+    if (std::ranges::find(candidates_, candidate.id, &ArtCandidate::id) != candidates_.end())
+      continue;
     candidates_.push_back(candidate);
     QListWidgetItem* item = AddItem(candidate);
     if (pick_ == candidate.id) grid_->setCurrentItem(item);
@@ -490,7 +509,8 @@ void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {
   grid_->blockSignals(false);
   griddb_total_ = event.total;
   next_page_ = event.page + 1;
-  const auto loaded = std::ranges::count_if(candidates_, [](const ArtCandidate& c) { return c.source == "steamgriddb"; });
+  const auto loaded = std::ranges::count_if(
+      candidates_, [](const ArtCandidate& c) { return c.source == "steamgriddb"; });
   more_pages_ = !event.candidates.empty() && loaded < event.total;
   UpdateTitle();
   RebuildChips();
@@ -521,7 +541,8 @@ void ArtPickerPanel::RebuildChips() {
   if (styles.size() < 2) return;
   styles.insert(styles.begin(), {QString(), static_cast<int>(candidates_.size())});
   for (const auto& [label, count] : styles) {
-    auto* chip = new QPushButton(QString("%1  %2").arg(label.isEmpty() ? "All" : label).arg(count), this);
+    auto* chip =
+        new QPushButton(QString("%1  %2").arg(label.isEmpty() ? "All" : label).arg(count), this);
     chip->setObjectName("chip");
     chip->setCheckable(true);
     chip->setChecked(label == filter_);
@@ -570,7 +591,8 @@ void ArtPickerPanel::RequestVisible() {
   });
 }
 
-void ArtPickerPanel::ShowThumbs(const std::string& slot, const std::vector<std::pair<std::int64_t, QImage>>& images) {
+void ArtPickerPanel::ShowThumbs(const std::string& slot,
+                                const std::vector<std::pair<std::int64_t, QImage>>& images) {
   for (const auto& [candidate_id, image] : images) {
     const QPixmap pixmap = QPixmap::fromImage(image);
     thumbs_[{slot, candidate_id}] = pixmap;
@@ -585,7 +607,8 @@ void ArtPickerPanel::ShowThumbs(const std::string& slot, const std::vector<std::
 
 void ArtPickerPanel::MarkFailed(const std::vector<std::int64_t>& ids) {
   for (const std::int64_t candidate_id : ids) {
-    if (QListWidgetItem* item = ItemFor(candidate_id); item != nullptr && item->data(kStateRole).toInt() != kReady) {
+    if (QListWidgetItem* item = ItemFor(candidate_id);
+        item != nullptr && item->data(kStateRole).toInt() != kReady) {
       item->setData(kStateRole, kFailed);
     }
   }
@@ -616,10 +639,13 @@ void ArtPickerPanel::EmitPreview() {
     return;
   }
   // Not loaded yet: ShowThumbs calls back here when it is.
-  if (const auto found = thumbs_.find({slot_, *pick_}); found != thumbs_.end()) emit Previewed(slot, found->second);
+  if (const auto found = thumbs_.find({slot_, *pick_}); found != thumbs_.end())
+    emit Previewed(slot, found->second);
 }
 
-bool ArtPickerPanel::HasChange() const { return pick_.has_value() && pick_ != active_id_; }
+bool ArtPickerPanel::HasChange() const {
+  return pick_.has_value() && pick_ != active_id_;
+}
 
 void ArtPickerPanel::ResetPick() {
   QListWidgetItem* active = active_id_ ? ItemFor(*active_id_) : nullptr;
@@ -652,8 +678,8 @@ void ArtPickerPanel::Apply() {
 }
 
 void ArtPickerPanel::ChooseFile() {
-  const QString path = QFileDialog::getOpenFileName(this, "Choose an image", QString(),
-                                                    "Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)");
+  const QString path = QFileDialog::getOpenFileName(
+      this, "Choose an image", QString(), "Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)");
   if (!path.isEmpty()) UseFile(path);
 }
 
@@ -684,7 +710,8 @@ void ArtPickerPanel::UseFile(const QString& path) {
   // Read, decoded and re-encoded off the UI thread: a big image takes a moment.
   auto load = [path]() -> LoadedFile {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return {.error = "Could not open " + path + ": " + file.errorString()};
+    if (!file.open(QIODevice::ReadOnly))
+      return {.error = "Could not open " + path + ": " + file.errorString()};
     const QByteArray bytes = file.readAll();
     QImageReader reader(path);
     reader.setAutoTransform(true);
@@ -731,7 +758,8 @@ void ArtPickerPanel::ShowUpload(const QString& path, const QPixmap& pixmap, QSiz
   item->setData(Qt::DecorationRole, pixmap);
   item->setData(kStateRole, kReady);
   item->setData(kCurrentRole, false);
-  item->setToolTip(QFileInfo(path).fileName() + QString(" · %1×%2").arg(size.width()).arg(size.height()));
+  item->setToolTip(QFileInfo(path).fileName() +
+                   QString(" · %1×%2").arg(size.width()).arg(size.height()));
   item->setHidden(false);
   stack_->setCurrentWidget(grid_);
   grid_->setCurrentItem(item);  // picks it, through currentItemChanged
@@ -751,13 +779,18 @@ void ArtPickerPanel::UpdateGridSize() {
   const int columns = std::max(2, width / (hero ? 230 : logo ? 200 : icon ? 96 : 118));
   const int cell = std::max(40, width / columns);
   const int art = cell - 2 * kInset;
-  const int height = qRound(art * (hero ? 31.0 / 96.0 : logo ? 0.5 : icon ? 1.0 : 1.5)) + 2 * kInset;
+  const int height = qRound(art * (hero   ? 31.0 / 96.0
+                                   : logo ? 0.5
+                                   : icon ? 1.0
+                                          : 1.5)) +
+                     2 * kInset;
   grid_->setGridSize(QSize(cell, height));
 }
 
 void ArtPickerPanel::UpdatePulse() {
   bool loading = false;
-  for (int i = 0; i < grid_->count() && !loading; ++i) loading = grid_->item(i)->data(kStateRole).toInt() == kLoading;
+  for (int i = 0; i < grid_->count() && !loading; ++i)
+    loading = grid_->item(i)->data(kStateRole).toInt() == kLoading;
   if (loading && pulse_->state() != QAbstractAnimation::Running) pulse_->start();
   if (!loading) pulse_->stop();
 }
@@ -770,35 +803,38 @@ void ArtPickerPanel::ShowMessage(const QString& text, bool offer_fetch) {
 
 void ArtPickerPanel::LoadMatches(const QString& query) {
   match_->setEnabled(false);
-  api::GetGriddbMatchesAsync(this, id_, query.toStdString(), [this, query](GriddbMatchesResult result) {
-    match_->setEnabled(true);
-    match_search_->hide();
-    match_->show();
-    // No key, or SteamGridDB unreachable: nothing to choose between.
-    if (!result.ok) {
-      if (!query.isEmpty()) ShowMessage("Could not search SteamGridDB: " + error_help::Describe(result.error), false);
-      return;
-    }
-    match_row_->show();
-    match_->clear();
-    for (const GriddbMatch& match : result.matches) {
-      QString label = QString::fromStdString(match.name);
-      if (match.year > 0) label += QString(" (%1)").arg(match.year);
-      match_->addItem(label, QVariant::fromValue<qlonglong>(match.id));
-      if (match.id == result.chosen) match_->setCurrentIndex(match_->count() - 1);
-    }
-    if (result.matches.empty()) {
-      match_->addItem("No matches for \"" + QString::fromStdString(result.query) + "\"");
-    }
-    match_->insertSeparator(match_->count());
-    match_->addItem("Search another name…");
-    // A search's results aren't in use until one is picked.
-    if (!query.isEmpty() && !result.matches.empty()) {
-      match_->setCurrentIndex(-1);
-      match_->setPlaceholderText("Pick the right game…");
-      match_->showPopup();
-    }
-  });
+  api::GetGriddbMatchesAsync(
+      this, id_, query.toStdString(), [this, query](GriddbMatchesResult result) {
+        match_->setEnabled(true);
+        match_search_->hide();
+        match_->show();
+        // No key, or SteamGridDB unreachable: nothing to choose between.
+        if (!result.ok) {
+          if (!query.isEmpty())
+            ShowMessage("Could not search SteamGridDB: " + error_help::Describe(result.error),
+                        false);
+          return;
+        }
+        match_row_->show();
+        match_->clear();
+        for (const GriddbMatch& match : result.matches) {
+          QString label = QString::fromStdString(match.name);
+          if (match.year > 0) label += QString(" (%1)").arg(match.year);
+          match_->addItem(label, QVariant::fromValue<qlonglong>(match.id));
+          if (match.id == result.chosen) match_->setCurrentIndex(match_->count() - 1);
+        }
+        if (result.matches.empty()) {
+          match_->addItem("No matches for \"" + QString::fromStdString(result.query) + "\"");
+        }
+        match_->insertSeparator(match_->count());
+        match_->addItem("Search another name…");
+        // A search's results aren't in use until one is picked.
+        if (!query.isEmpty() && !result.matches.empty()) {
+          match_->setCurrentIndex(-1);
+          match_->setPlaceholderText("Pick the right game…");
+          match_->showPopup();
+        }
+      });
 }
 
 void ArtPickerPanel::ChooseMatch(int index) {
@@ -822,28 +858,33 @@ void ArtPickerPanel::ChooseMatch(int index) {
 void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& data) {
   if (type == "game.artwork_candidates_ready") {
     ArtCandidatesEvent event;
-    if (!events::ParseArtCandidatesEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
-    if (!page_loading_ || event.request != page_request_) return;  // an earlier Open()'s, or a replay
+    if (!events::ParseArtCandidatesEvent(data, &event) || event.id != id_ || event.slot != slot_)
+      return;
+    if (!page_loading_ || event.request != page_request_)
+      return;  // an earlier Open()'s, or a replay
     ShowPage(event);
     return;
   }
 
   if (type == "game.artwork_thumbs_ready") {
     ArtThumbsEvent event;
-    if (!events::ParseArtThumbsEvent(data, &event) || event.id != id_ || event.slot != slot_) return;
+    if (!events::ParseArtThumbsEvent(data, &event) || event.id != id_ || event.slot != slot_)
+      return;
     MarkFailed(event.failed);
     if (event.ready.empty()) return;
     const std::string slot = event.slot;
     const std::vector<std::int64_t> ready = event.ready;
-    api::GetArtThumbsAsync(this, id_, slot, ready, [this, slot, ready](std::vector<std::pair<std::int64_t, QImage>> images) {
-      ShowThumbs(slot, images);
-      if (slot != slot_) return;
-      std::vector<std::int64_t> missing;
-      for (const std::int64_t candidate_id : ready) {
-        if (!thumbs_.contains({slot, candidate_id})) missing.push_back(candidate_id);
-      }
-      MarkFailed(missing);
-    });
+    api::GetArtThumbsAsync(
+        this, id_, slot, ready,
+        [this, slot, ready](std::vector<std::pair<std::int64_t, QImage>> images) {
+          ShowThumbs(slot, images);
+          if (slot != slot_) return;
+          std::vector<std::int64_t> missing;
+          for (const std::int64_t candidate_id : ready) {
+            if (!thumbs_.contains({slot, candidate_id})) missing.push_back(candidate_id);
+          }
+          MarkFailed(missing);
+        });
     return;
   }
 

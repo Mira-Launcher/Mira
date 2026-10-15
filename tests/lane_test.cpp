@@ -1,12 +1,12 @@
+#include "core/Lane.h"
+
 #include <doctest.h>
 
 #include <atomic>
+#include <chrono>
 #include <stdexcept>
 #include <string>
-#include <chrono>
 #include <thread>
-
-#include "core/Lane.h"
 
 using namespace mira;
 
@@ -34,7 +34,8 @@ TEST_CASE("a lane runs tasks in order on one worker and never exceeds its worker
   CHECK(peak <= 2);
 }
 
-TEST_CASE("stopping a lane signals the running task, drops the queue and survives a throwing task") {
+TEST_CASE(
+    "stopping a lane signals the running task, drops the queue and survives a throwing task") {
   std::atomic<bool> saw_stop = false;
   std::atomic<bool> started = false;
   std::atomic<int> ran_after = 0;
@@ -43,7 +44,8 @@ TEST_CASE("stopping a lane signals the running task, drops the queue and survive
     lane.Post([] { throw std::runtime_error("boom"); });
     lane.Post([&] {
       started = true;
-      while (!ThisTaskStop().stop_requested()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      while (!ThisTaskStop().stop_requested())
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
       saw_stop = true;
     });
     lane.Post([&] { ++ran_after; });

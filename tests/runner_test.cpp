@@ -41,7 +41,8 @@ TEST_CASE("NativeRunner builds argv from install_path/exe_path and splits args")
   runner::NativeRunner native;
   auto command = native.BuildCommand(game, std::nullopt);
   REQUIRE(command.has_value());
-  CHECK(command->argv == std::vector<std::string>{"/games/Celeste/Celeste", "-fullscreen", "-novideo"});
+  CHECK(command->argv ==
+        std::vector<std::string>{"/games/Celeste/Celeste", "-fullscreen", "-novideo"});
   CHECK(command->cwd == "/games/Celeste");
   CHECK(command->env.at("FOO") == "bar");
 }
@@ -116,7 +117,8 @@ TEST_CASE("NativeRunner auto-chmods an AppImage missing its execute bit instead 
   fs::create_directories(dir);
   const fs::path exe = dir / "Game.AppImage";
   std::ofstream(exe) << "not a real appimage, doesn't matter here";
-  fs::permissions(exe, fs::perms::owner_read | fs::perms::owner_write);  // no +x -- as a browser download leaves it
+  fs::permissions(exe, fs::perms::owner_read |
+                           fs::perms::owner_write);  // no +x -- as a browser download leaves it
 
   model::Game game;
   game.install_path = dir.string();
@@ -163,10 +165,11 @@ TEST_CASE("DeduplicateBuilds keeps the first of one build found twice") {
 
   // Different directories with the same "kind:name": that is all a game
   // stores, so no client could pick between them.
-  CHECK(runner::DeduplicateBuilds({
-                                      {"proton", "GE-Proton11-7", "/a/GE-Proton11-7", "2", "GE-Proton11-7"},
-                                      {"proton", "GE-Proton11-7", "/b/GE-Proton11-7", "2", "GE-Proton11-7"},
-                                  })
+  CHECK(runner::DeduplicateBuilds(
+            {
+                {"proton", "GE-Proton11-7", "/a/GE-Proton11-7", "2", "GE-Proton11-7"},
+                {"proton", "GE-Proton11-7", "/b/GE-Proton11-7", "2", "GE-Proton11-7"},
+            })
             .size() == 1);
 }
 
@@ -256,13 +259,20 @@ TEST_CASE("ResolveRef expands \"auto\" to a real installed windows runner, not n
   CHECK((ref == "proton:auto" || ref == "wine:auto"));
 
   // auto prefers a distro package, then the preferred source, then the newest.
-  const model::RunnerBuild packaged{
-      .kind = "wine", .name = "system", .path = "/usr/bin/wine", .version = "wine-9.0", .release = "system"};
-  const model::RunnerBuild tkg{.kind = "wine", .name = "wine-11.17-staging-tkg-amd64",
-                               .path = "/home/u/w/wine-11.17-staging-tkg-amd64/bin/wine", .version = "wine-11.17",
+  const model::RunnerBuild packaged{.kind = "wine",
+                                    .name = "system",
+                                    .path = "/usr/bin/wine",
+                                    .version = "wine-9.0",
+                                    .release = "system"};
+  const model::RunnerBuild tkg{.kind = "wine",
+                               .name = "wine-11.17-staging-tkg-amd64",
+                               .path = "/home/u/w/wine-11.17-staging-tkg-amd64/bin/wine",
+                               .version = "wine-11.17",
                                .release = "wine-11.17-staging-tkg-amd64"};
-  const model::RunnerBuild vanilla{.kind = "wine", .name = "wine-11.18-amd64",
-                                   .path = "/home/u/w/wine-11.18-amd64/bin/wine", .version = "wine-11.18",
+  const model::RunnerBuild vanilla{.kind = "wine",
+                                   .name = "wine-11.18-amd64",
+                                   .path = "/home/u/w/wine-11.18-amd64/bin/wine",
+                                   .version = "wine-11.18",
                                    .release = "wine-11.18-amd64"};
   CHECK(runner::PickAuto(config, {tkg, packaged, vanilla}).name == "system");
   CHECK(runner::PickAuto(config, {vanilla, tkg}).name == tkg.name);
@@ -289,13 +299,16 @@ TEST_CASE("the old proton_umu: runner_ref spelling still resolves after the rena
   CHECK(legacy->runner->kind() == "proton");
 }
 
-TEST_CASE("A Proton build Steam updates in place keeps its reference across updates, and old ones move to it") {
+TEST_CASE(
+    "A Proton build Steam updates in place keeps its reference across updates, and old ones move "
+    "to it") {
   test::TestEnv env("in-place-runner");
   REQUIRE(env.config.Set("runner_scan_common_dirs", false));
   // Steam's own Proton lives in steamapps/common and is replaced by each update.
   const fs::path common = env.dir / "steamapps" / "common";
   const fs::path tools = env.dir / "compatibilitytools.d";
-  REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({common.string(), tools.string()})));
+  REQUIRE(env.config.Set("runner_search_paths",
+                         nlohmann::json::array({common.string(), tools.string()})));
   const auto install = [](const fs::path& dir, const std::string& release) {
     fs::create_directories(dir);
     std::ofstream(dir / "proton").close();
@@ -335,8 +348,8 @@ TEST_CASE("Steam's Proton is found in a library on another drive") {
   const fs::path root = env.dir / "steam";
   const fs::path library = env.dir / "games-drive";
   test::Touch(root / "steamapps" / "libraryfolders.vdf",
-              "\"libraryfolders\"\n{\n \"0\" { \"path\" \"" + root.string() + "\" }\n \"1\" { \"path\" \"" +
-                  library.string() + "\" }\n}\n");
+              "\"libraryfolders\"\n{\n \"0\" { \"path\" \"" + root.string() +
+                  "\" }\n \"1\" { \"path\" \"" + library.string() + "\" }\n}\n");
   const fs::path proton = library / "steamapps" / "common" / "Proton 9.0";
   test::Touch(proton / "proton");
   test::Touch(proton / "toolmanifest.vdf");
@@ -368,7 +381,7 @@ TEST_CASE("An old Proton reference moves only to the build of its own version") 
   install(common / "Proton 9.0", "proton-9.0-3-x86_64");
   install(common / "proton-cachyos-slr", "cachyos-11.0-20261005-slr");
   game("nine", "proton:proton-9.0-2-x86_64");
-  game("seven", "proton:proton-7.0-6-x86_64");               // Proton 7.0 is gone
+  game("seven", "proton:proton-7.0-6-x86_64");          // Proton 7.0 is gone
   game("cachyos", "proton:cachyos-10.0-20260703-slr");  // the package moved to 11
 
   runner::MigrateInPlaceRefs(env.config, env.games);
@@ -377,7 +390,8 @@ TEST_CASE("An old Proton reference moves only to the build of its own version") 
   CHECK(env.games.Find("cachyos")->runner_ref == "proton:proton-cachyos-slr");
 }
 
-TEST_CASE("NativeRunner runs an absolute exe_path as-is, in its own folder, whatever install_path is") {
+TEST_CASE(
+    "NativeRunner runs an absolute exe_path as-is, in its own folder, whatever install_path is") {
   model::Game game;
   game.install_path = "/nonexistent/.var/app/com.example.App";
   game.exe_path = "/usr/bin/flatpak";
@@ -403,9 +417,11 @@ TEST_CASE("RunAndWait kills a timed-out command and what it spawned, output clos
   }
 }
 
-TEST_CASE("SpawnDetached gives the child /dev/null, not mirad's own pipes, which may have no reader left") {
-  // Mirad can outlive the window that started it, leaving its stdout and stderr as pipes nobody reads. A launch that
-  // inherited them died on its first write.
+TEST_CASE(
+    "SpawnDetached gives the child /dev/null, not mirad's own pipes, which may have no reader "
+    "left") {
+  // Mirad can outlive the window that started it, leaving its stdout and stderr as pipes nobody
+  // reads. A launch that inherited them died on its first write.
   int broken[2];
   REQUIRE(::pipe(broken) == 0);
   ::close(broken[0]);  // nobody reads
@@ -433,10 +449,13 @@ TEST_CASE("SpawnDetached gives the child /dev/null, not mirad's own pipes, which
 }
 
 TEST_CASE("CurlDownload retries through a dropped network instead of failing on the first error") {
-  const Command command = runner::CurlDownloadCommand("https://example.invalid/file", "/tmp/mira-tests/file");
-  const auto has = [&](const char* flag) { return std::ranges::find(command.argv, flag) != command.argv.end(); };
+  const Command command =
+      runner::CurlDownloadCommand("https://example.invalid/file", "/tmp/mira-tests/file");
+  const auto has = [&](const char* flag) {
+    return std::ranges::find(command.argv, flag) != command.argv.end();
+  };
   CHECK(has("--retry"));
   CHECK(has("--retry-all-errors"));  // a dropped network is a timeout, a reset or a DNS failure
   CHECK(has("--retry-max-time"));    // but not forever
-  CHECK(has("-sSLf"));  // never saves an HTTP error page as the file
+  CHECK(has("-sSLf"));               // never saves an HTTP error page as the file
 }

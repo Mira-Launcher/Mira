@@ -1,9 +1,10 @@
+#include "library/Import.h"
+
 #include <doctest.h>
 
 #include <filesystem>
 #include <json.hpp>
 
-#include "library/Import.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -15,7 +16,8 @@ TEST_CASE("import moves a dropped path into the right library root") {
   TestEnv env("import");
   const fs::path games = env.dir / "Games";
   const fs::path apps = env.dir / "Applications";
-  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({games.string(), apps.string()})).has_value());
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({games.string(), apps.string()}))
+              .has_value());
 
   const fs::path folder = env.dir / "dropped" / "Some Game";
   fs::create_directories(folder);

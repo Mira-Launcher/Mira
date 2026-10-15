@@ -6,12 +6,11 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <json.hpp>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Result.h"
 #include "model/Types.h"
@@ -24,7 +23,7 @@ namespace mira::api {
 // survive the *frontend* restarting, not the daemon, so there is nothing to
 // gain from writing every event to disk.
 class EventBus {
-public:
+ public:
   // Ids start from the clock, not 1, so a client resuming with an id from
   // before a mirad restart still receives the new daemon's events.
   explicit EventBus(size_t capacity = 500);
@@ -37,7 +36,7 @@ public:
   // system notification, with the message already decided here rather than
   // reconstructed from other events client-side.
   model::Event PublishNotification(model::NotifyLevel level, std::string message,
-                                    nlohmann::json extra = nlohmann::json::object());
+                                   nlohmann::json extra = nlohmann::json::object());
 
   // Blocks until an event past `after_id` exists or `timeout` elapses,
   // whichever comes first. The SSE handler's entire read loop is one call to
@@ -81,7 +80,7 @@ public:
   // stays in place as a "concealed" event with no payload, so ids stay consecutive.
   void Refilter();
 
-private:
+ private:
   // Applies the two hooks above to `payload`.
   void DecorateGames(const std::string& type, nlohmann::json& payload);
 

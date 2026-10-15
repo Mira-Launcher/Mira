@@ -12,17 +12,17 @@ namespace mira_gui {
 class HiddenUnlockCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   explicit HiddenUnlockCard(QWidget* parent = nullptr);
 
-signals:
+ signals:
   void Unlocked();
   void CloseRequested();
 
-protected:
+ protected:
   void showEvent(QShowEvent* event) override;
 
-private:
+ private:
   void Unlock();
 
   QLineEdit* password_ = nullptr;
@@ -35,10 +35,10 @@ private:
 class HiddenPasswordRow : public SettingRow {
   Q_OBJECT
 
-public:
+ public:
   explicit HiddenPasswordRow(QWidget* parent = nullptr);
 
-private:
+ private:
   enum class Form { None, Set, Change, Remove };
   void ShowState(bool password);
   void Open(Form form);

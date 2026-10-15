@@ -11,14 +11,14 @@
 #include "core/Log.h"
 #include "core/Strings.h"
 #include "desktop/DesktopEntries.h"
+#include "emulators/Emulators.h"
+#include "launchers/Launchers.h"
+#include "library/ArchiveExtractor.h"
 #include "library/AutoInstall.h"
 #include "library/AutoSetup.h"
-#include "library/ArchiveExtractor.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/WinePrefix.h"
-#include "emulators/Emulators.h"
-#include "launchers/Launchers.h"
 #include "runner/RunnerRegistry.h"
 
 namespace mira::library {
@@ -82,7 +82,8 @@ void QueueAutoInstall(const model::Game& game, config::Config& config, store::Ga
                       api::EventBus& events, metadata::FetchQueue* fetches, Lane* lane) {
   if (lane == nullptr || !AutoInstalls(config, game) || !BeginInstall(game.id)) return;
   lane->Post([id = game.id, &config, &games, &events, fetches] {
-    [[maybe_unused]] const auto installed = RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
+    [[maybe_unused]] const auto installed =
+        RunInstall(config, games, events, fetches, id, InstallMode::kSilentOnly, std::nullopt);
   });
 }
 
@@ -224,7 +225,8 @@ Result<model::Game> Scanner::Settle(const fs::path& folder, const std::optional<
     if (const auto move = unclear_moves_->Find(folder)) {
       for (const std::string& other : move->ids) {
         const auto game = other == settled.id ? std::nullopt : games_.Find(other);
-        if (game && !RootOf(rules, game->install_path).empty()) rescan.insert(RootOf(rules, game->install_path));
+        if (game && !RootOf(rules, game->install_path).empty())
+          rescan.insert(RootOf(rules, game->install_path));
       }
     }
     unclear_moves_->Settle(folder);
@@ -273,7 +275,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   // Sources with their own structured tracking (gog-<id>/itch-<id> rows,
   // via GogImporter/ItchImporter) shouldn't also get double-detected here
   // as one big bogus game named after the wrapper folder itself.
-  const std::vector<fs::path> excluded_roots = {prefix_root, config_.GetPath("epic.install_root"),
+  const std::vector<fs::path> excluded_roots = {prefix_root,
+                                                config_.GetPath("epic.install_root"),
                                                 config_.GetPath("gog.install_root"),
                                                 config_.GetPath("itch.install_root"),
                                                 config_.GetPath("amazon.install_root"),
@@ -299,7 +302,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   std::map<fs::path, model::Game> linked_by_target;
   for (const model::Game& game : games_.All()) {
     if (!game.installer_dir.empty()) installer_dirs.insert(game.installer_dir);
-    if (SortsByLink(rules, game)) linked_by_target.emplace(fs::path(game.install_path).lexically_normal(), game);
+    if (SortsByLink(rules, game))
+      linked_by_target.emplace(fs::path(game.install_path).lexically_normal(), game);
     if (IsLooseFile(game))
       loose_programs.emplace(std::pair{fs::path(game.install_path), game.exe_path}, game);
     // A game in a root that isn't there (an unplugged drive) hasn't moved anywhere.
@@ -341,7 +345,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     const model::Game moved = matches.front();
     if (!Follow(moved, found, loose, root, rules)) {
       unclear_ids.insert(moved.id);  // kept as it is, not removed as missing; tried again next scan
-      return true;  // not added as a second game
+      return true;                   // not added as a second game
     }
     left_folders.push_back(SortingFolderOf(rules, moved));
     std::erase_if(moved_away, [&](const model::Game& game) { return game.id == moved.id; });
@@ -411,7 +415,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     }
     listed.insert(folder);
     for (const fs::directory_entry& entry : entries) {
-      if (entry.is_symlink(ec) && entry.is_directory(ec) && follow_link(entry.path(), folder)) continue;
+      if (entry.is_symlink(ec) && entry.is_directory(ec) && follow_link(entry.path(), folder))
+        continue;
       if (entry.is_regular_file(ec) &&
           strings::ToLower(entry.path().extension().string()) == ".appimage") {
         const std::string file = entry.path().filename().string();
@@ -554,7 +559,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     // disappears, leaving anything already sitting at Missing stuck there
     // forever, which is surprising, since the whole point of flipping it on is to
     // clean up what's already gone.
-    // Moved by hand into another root: only marked, so that root's scan follows it with its history.
+    // Moved by hand into another root: only marked, so that root's scan follows it with its
+    // history.
     if (remove_missing && std::ranges::contains(moved_away, game.id, &model::Game::id)) {
       if (!other_roots) other_roots = ListOtherRoots(rules, root);  // listed once, if ever needed
     }
@@ -568,12 +574,14 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       }
       events_.Publish("game.removed", {{"id", game.id}});
       ++summary.missing;
-      log::Info("game folder disappeared, removing (library.remove_missing): {}", game.install_path);
+      log::Info("game folder disappeared, removing (library.remove_missing): {}",
+                game.install_path);
       continue;
     }
 
     if (game.status == model::GameStatus::Missing) continue;
-    auto result = games_.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; });
+    auto result =
+        games_.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; });
     if (!result) {
       log::Error("failed to mark {} missing: {}", game.id, result.error().message);
     } else {
@@ -592,8 +600,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   if (!list_ec && unclear_moves_ != nullptr) unclear_moves_->Replace(root, unclear, games_);
   summary.unclear = std::move(unclear);
 
-  // Provisioning can take minutes (umu downloads its runtime on first use), so scans, the watcher, relocation
-  // and source removal don't wait for it.
+  // Provisioning can take minutes (umu downloads its runtime on first use), so scans, the watcher,
+  // relocation and source removal don't wait for it.
   folders_lock.unlock();
   const runner::RunnerRegistry runners(config_);
   for (const std::string& id : to_set_up) {
@@ -606,7 +614,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
   // The application menu follows the library: a game that just became
   // launchable gains an entry, one that vanished loses it.
-  if (auto synced = desktop::DesktopEntries(config_, games_.Metadata()).Sync(games_.All()); !synced) {
+  if (auto synced = desktop::DesktopEntries(config_, games_.Metadata()).Sync(games_.All());
+      !synced) {
     log::Warn("could not update application menu entries: {}", synced.error().message);
   }
 
@@ -616,12 +625,15 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 namespace {
 
 // Provisions a broken Windows game again if a runner now resolves for it.
-bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games, api::EventBus& events,
-                 const model::Game& game) {
-  if (game.status != model::GameStatus::Broken || game.platform != model::Platform::Windows) return false;
+bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games,
+                 api::EventBus& events, const model::Game& game) {
+  if (game.status != model::GameStatus::Broken || game.platform != model::Platform::Windows)
+    return false;
   // A broken game with no executable on disk broke for another reason.
   std::error_code ec;
-  if (game.exe_path.empty() || !fs::is_regular_file(fs::path(game.install_path) / game.exe_path, ec)) return false;
+  if (game.exe_path.empty() ||
+      !fs::is_regular_file(fs::path(game.install_path) / game.exe_path, ec))
+    return false;
   if (!runners.Resolve(runners.ResolveRef(game))) return false;
 
   const model::Game provisioned = runners.ProvisionGame(game);
@@ -647,7 +659,8 @@ void SyncMenu(config::Config& config, store::GameStore& games) {
 
 }  // namespace
 
-int RetryBrokenProvisioning(config::Config& config, store::GameStore& games, api::EventBus& events) {
+int RetryBrokenProvisioning(config::Config& config, store::GameStore& games,
+                            api::EventBus& events) {
   const runner::RunnerRegistry runners(config);
   int fixed = 0;
   for (const model::Game& game : games.All()) {

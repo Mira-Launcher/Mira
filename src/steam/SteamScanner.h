@@ -19,12 +19,12 @@ namespace mira::steam {
 // under a watched library_root, and appearing/vanishing games there is
 // nowhere near as frequent as it is for a game folder.
 class SteamScanner {
-public:
+ public:
   SteamScanner(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<library::ImportSummary> Scan();
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

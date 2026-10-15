@@ -14,7 +14,7 @@ class BigScreenWindow;
 class GameKeyboard : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit GameKeyboard(BigScreenWindow* window);
   ~GameKeyboard() override;
 
@@ -25,10 +25,10 @@ public:
   // False when uinput isn't available.
   bool Press(int code, QString* error, int modifier = 0);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   struct Key {
     QString label;
     int code;

@@ -3,7 +3,6 @@
 #include <QDateTime>
 #include <QObject>
 #include <QString>
-
 #include <utility>
 #include <vector>
 
@@ -16,8 +15,8 @@ namespace mira_gui {
 struct OwnedMatch {
   QString title;
   std::vector<std::pair<QString, QString>> copies;  // (source, ref), in store order
-  std::string protondb_tier;   // from the first copy that has one
-  std::string review_summary;  // Steam's review label, likewise
+  std::string protondb_tier;                        // from the first copy that has one
+  std::string review_summary;                       // Steam's review label, likewise
   int review_percent = -1;
 };
 
@@ -33,7 +32,7 @@ std::vector<OwnedMatch> GroupOwned(const std::vector<StoreTitle>& titles, const 
 class OwnedTitles : public QObject {
   Q_OBJECT
 
-public:
+ public:
   explicit OwnedTitles(QObject* parent = nullptr);
 
   // Fetches again; one already running is left to finish. `fresh` waits for every store's own
@@ -47,10 +46,10 @@ public:
   // The last fetch failed.
   bool Failed() const { return failed_; }
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   std::vector<StoreTitle> titles_;
   QDateTime fetched_;
   bool loading_ = false;

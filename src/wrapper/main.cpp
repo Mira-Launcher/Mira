@@ -9,8 +9,8 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -156,7 +156,8 @@ ScriptResult RunScriptWithTimeout(const std::string& script, int timeout_s) {
   char buffer[4096];
   while (std::chrono::steady_clock::now() < deadline) {
     ssize_t n;
-    while ((n = ::read(pipe_fds[0], buffer, sizeof(buffer))) > 0) result.output.append(buffer, static_cast<std::size_t>(n));
+    while ((n = ::read(pipe_fds[0], buffer, sizeof(buffer))) > 0)
+      result.output.append(buffer, static_cast<std::size_t>(n));
     if (::waitpid(pid, &status, WNOHANG) == pid) {
       exited = true;
       break;
@@ -169,7 +170,8 @@ ScriptResult RunScriptWithTimeout(const std::string& script, int timeout_s) {
     ::waitpid(pid, &status, 0);
   }
   ssize_t n;
-  while ((n = ::read(pipe_fds[0], buffer, sizeof(buffer))) > 0) result.output.append(buffer, static_cast<std::size_t>(n));
+  while ((n = ::read(pipe_fds[0], buffer, sizeof(buffer))) > 0)
+    result.output.append(buffer, static_cast<std::size_t>(n));
   ::close(pipe_fds[0]);
 
   result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
@@ -229,7 +231,8 @@ int main(int argc, char** argv) {
   }
   const Args& args = *parsed;
   SetProcessTitle(argc, argv, "mira-run: " + args.game_id);
-  // Otherwise a pre-script that backgrounds something inherits the pipe and holds mirad waiting for EOF.
+  // Otherwise a pre-script that backgrounds something inherits the pipe and holds mirad waiting for
+  // EOF.
   if (args.status_fd >= 0) ::fcntl(args.status_fd, F_SETFD, FD_CLOEXEC);
 
   // Computed before --pre runs so it can ride along on the "ok" status
@@ -245,9 +248,11 @@ int main(int argc, char** argv) {
     std::error_code ec;
     std::filesystem::create_directories(args.log_file.parent_path(), ec);
     RotateLog(args.log_file, args.log_max_mb);
-    log_fd = ::open(args.log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0600);
+    log_fd =
+        ::open(args.log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0600);
     if (log_fd < 0) {
-      std::cerr << "mira-run: could not open log file " << args.log_file << ": " << std::strerror(errno) << "\n";
+      std::cerr << "mira-run: could not open log file " << args.log_file << ": "
+                << std::strerror(errno) << "\n";
     } else {
       WriteLogLine(log_fd, std::format("[mira-run] session start, game_id={}\n", args.game_id));
     }
@@ -256,7 +261,8 @@ int main(int argc, char** argv) {
   // The game gets its own child group of mira-run's scope, so WaitEmpty
   // sees every process it leaves behind.
   const auto scope = proc::cgroup::Of(::getpid());
-  const std::filesystem::path game_group = scope ? proc::cgroup::GameGroup(*scope) : std::filesystem::path{};
+  const std::filesystem::path game_group =
+      scope ? proc::cgroup::GameGroup(*scope) : std::filesystem::path{};
   if (!scope || !proc::cgroup::Create(game_group)) {
     const std::string message = "game tracking needs a systemd user session (cgroup v2)";
     WriteStatus(args.status_fd, std::format("no_cgroup\n{}\n", message));
@@ -270,7 +276,8 @@ int main(int argc, char** argv) {
   if (!args.pre.empty()) {
     const ScriptResult pre = RunScriptWithTimeout(args.pre, args.pre_timeout_s);
     if (log_fd >= 0) {
-      WriteLogLine(log_fd, std::format("[mira-run] pre_script (exit {}):\n{}\n", pre.exit_code, pre.output));
+      WriteLogLine(
+          log_fd, std::format("[mira-run] pre_script (exit {}):\n{}\n", pre.exit_code, pre.output));
     }
     if (pre.timed_out) {
       WriteStatus(args.status_fd, "pre_timeout\n");
@@ -339,7 +346,8 @@ int main(int argc, char** argv) {
   ::close(report[0]);
   if (got == static_cast<ssize_t>(sizeof(exec_errno))) {
     ::waitpid(game_pid, nullptr, 0);
-    const std::string message = std::format("couldn't start \"{}\": {}", args.game_argv.front(), std::strerror(exec_errno));
+    const std::string message =
+        std::format("couldn't start \"{}\": {}", args.game_argv.front(), std::strerror(exec_errno));
     WriteLogLine(log_fd, "[mira-run] " + message + "\n");
     WriteStatus(args.status_fd, std::format("exec_failed\n{}\n", message));
     return 1;
@@ -355,7 +363,7 @@ int main(int argc, char** argv) {
   if (args.gamemode) gamemode::RegisterGame(game_pid);
 
   // A stray signal must not lose the session record.
-  struct sigaction sa {};
+  struct sigaction sa{};
   sa.sa_handler = SIG_IGN;
   ::sigemptyset(&sa.sa_mask);
   ::sigaction(SIGTERM, &sa, nullptr);
@@ -368,9 +376,9 @@ int main(int argc, char** argv) {
   } while (waited < 0 && errno == EINTR);
 
   if (proc::cgroup::Populated(game_group)) {
-    // A game that exited on its own may have handed off to another process (a launcher starting the real
-    // game), so wait for it. One that was killed leaves only helpers that ignore SIGTERM (Wine's
-    // services.exe, explorer.exe, ...): give them a moment, then end them.
+    // A game that exited on its own may have handed off to another process (a launcher starting the
+    // real game), so wait for it. One that was killed leaves only helpers that ignore SIGTERM
+    // (Wine's services.exe, explorer.exe, ...): give them a moment, then end them.
     if (WIFSIGNALED(status) && !proc::cgroup::WaitEmpty(game_group, std::chrono::seconds(2))) {
       WriteLogLine(log_fd, "[mira-run] game was killed; ending the processes it left\n");
       proc::cgroup::Kill(game_group);
@@ -385,8 +393,9 @@ int main(int argc, char** argv) {
   record.finished = true;
   record.ended_at = model::NowSeconds();
   // Monotonic, not wall-clock: immune to a clock jump mid-session.
-  record.duration_seconds =
-      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - monotonic_start).count();
+  record.duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                                std::chrono::steady_clock::now() - monotonic_start)
+                                .count();
   if (WIFEXITED(status)) {
     record.exit_code = WEXITSTATUS(status);
     if (record.exit_code == 127) {
@@ -397,8 +406,9 @@ int main(int argc, char** argv) {
   }
 
   if (log_fd >= 0) {
-    WriteLogLine(log_fd, std::format("[mira-run] game exited: exit_code={} signal={} duration={}s\n",
-                                     record.exit_code, record.signal, record.duration_seconds));
+    WriteLogLine(log_fd,
+                 std::format("[mira-run] game exited: exit_code={} signal={} duration={}s\n",
+                             record.exit_code, record.signal, record.duration_seconds));
   }
 
   if (!args.post.empty()) {
@@ -406,14 +416,16 @@ int main(int argc, char** argv) {
     record.post_exit_code = post.exit_code;
     record.post_timed_out = post.timed_out;
     if (log_fd >= 0) {
-      WriteLogLine(log_fd, std::format("[mira-run] post_script (exit {}):\n{}\n", post.exit_code, post.output));
+      WriteLogLine(log_fd, std::format("[mira-run] post_script (exit {}):\n{}\n", post.exit_code,
+                                       post.output));
     }
   }
 
   std::error_code ec;
   std::filesystem::remove(game_group, ec);  // best effort: an empty cgroup is a plain rmdir
   if (auto written = proc::WriteSessionRecord(args.database, record); !written && log_fd >= 0) {
-    WriteLogLine(log_fd, "[mira-run] couldn't record the session: " + written.error().message + "\n");
+    WriteLogLine(log_fd,
+                 "[mira-run] couldn't record the session: " + written.error().message + "\n");
   }
   if (log_fd >= 0) ::close(log_fd);
   return 0;

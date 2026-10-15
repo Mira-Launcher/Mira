@@ -6,7 +6,6 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
-
 #include <memory>
 
 namespace mira_gui::bigscreen {
@@ -76,8 +75,8 @@ void TakeScreenshot(QObject* context, const QString& game_name,
 
   QObject::connect(process, &QProcess::finished, process,
                    [process, path, report](int code, QProcess::ExitStatus status) {
-                     const bool ok = status == QProcess::NormalExit && code == 0 &&
-                                     QFileInfo(path).size() > 0;
+                     const bool ok =
+                         status == QProcess::NormalExit && code == 0 && QFileInfo(path).size() > 0;
                      report(ok ? path : QString(),
                             ok ? QString() : QStringLiteral("The screenshot tool failed."));
                      process->deleteLater();
@@ -90,18 +89,19 @@ void TakeScreenshot(QObject* context, const QString& game_name,
   });
 
   // A tool that can't start never sends finished.
-  QObject::connect(process, &QProcess::errorOccurred, process, [process, report](QProcess::ProcessError error) {
-    if (error != QProcess::FailedToStart) return;
-    report({}, "The screenshot tool couldn't start.");
-    process->deleteLater();
-  });
+  QObject::connect(process, &QProcess::errorOccurred, process,
+                   [process, report](QProcess::ProcessError error) {
+                     if (error != QProcess::FailedToStart) return;
+                     report({}, "The screenshot tool couldn't start.");
+                     process->deleteLater();
+                   });
   process->start(tool.program, tool.args);
 }
 
 QStringList ScreenshotsFor(const QString& game_name) {
   QDir dir(ScreenshotDir(game_name));
-  const QFileInfoList files = dir.entryInfoList({"*.png", "*.jpg", "*.jpeg"}, QDir::Files,
-                                                QDir::Time);
+  const QFileInfoList files =
+      dir.entryInfoList({"*.png", "*.jpg", "*.jpeg"}, QDir::Files, QDir::Time);
   QStringList paths;
   for (const QFileInfo& file : files) paths << file.absoluteFilePath();
   return paths;

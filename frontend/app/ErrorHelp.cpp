@@ -10,14 +10,18 @@ Navigator& Nav() {
 
 }  // namespace
 
-void SetNavigator(Navigator navigator) { Nav() = std::move(navigator); }
+void SetNavigator(Navigator navigator) {
+  Nav() = std::move(navigator);
+}
 
 std::optional<Action> ActionFor(const ApiError& error) {
   const Navigator& nav = Nav();
   const ErrorFix& fix = error.fix;
-  if (error.code == ApiError::kUnreachable && nav.start_daemon) return Action{"Start mirad", nav.start_daemon};
+  if (error.code == ApiError::kUnreachable && nav.start_daemon)
+    return Action{"Start mirad", nav.start_daemon};
   if (fix.kind == "setting" && nav.open_setting) {
-    return Action{"Open settings", [key = QString::fromStdString(fix.target)] { Nav().open_setting(key); }};
+    return Action{"Open settings",
+                  [key = QString::fromStdString(fix.target)] { Nav().open_setting(key); }};
   }
   if (fix.kind == "packages" && nav.install_packages) {
     return Action{"Install packages", [feature = fix.target] { Nav().install_packages(feature); }};
@@ -42,7 +46,8 @@ std::optional<Action> ActionFor(const ApiError& error) {
 
 QString HintFor(const ApiError& error) {
   if (error.code == ApiError::kUnreachable) {
-    return "Mira's background service (mirad) isn't running. If it keeps stopping, run \"journalctl --user "
+    return "Mira's background service (mirad) isn't running. If it keeps stopping, run "
+           "\"journalctl --user "
            "-u mirad\" or start \"mirad\" in a terminal to see why.";
   }
   return QString::fromStdString(error.hint);

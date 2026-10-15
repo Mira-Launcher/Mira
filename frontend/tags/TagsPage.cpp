@@ -3,9 +3,9 @@
 #include <QDir>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
-#include <QKeyEvent>
 #include <QMenu>
 #include <QPainter>
 #include <QPointer>
@@ -88,7 +88,9 @@ SettingRow* HeadingsRow(QWidget* parent) {
   return row;
 }
 
-QString FolderName(const std::string& root) { return QDir(QString::fromStdString(root)).dirName(); }
+QString FolderName(const std::string& root) {
+  return QDir(QString::fromStdString(root)).dirName();
+}
 
 // The same folder however a setting spells it: "~/Mira/Games", "/home/me/Mira/Games/".
 bool SameFolder(const std::string& a, const std::string& b) {
@@ -110,7 +112,7 @@ std::vector<std::string> With(std::vector<std::string> list, const std::string& 
 
 // Rows in as many equal columns as fit, read across, with lines between them like a card's.
 class RowColumns : public QWidget {
-public:
+ public:
   explicit RowColumns(QWidget* parent) : QWidget(parent) {}
 
   // Takes `row`, or moves it, to `index` in the reading order. Relayout places it.
@@ -136,10 +138,12 @@ public:
     const int columns = Columns(width);
     return (shown + columns - 1) / columns * RowHeight();
   }
-  QSize sizeHint() const override { return {kMinColumn, heightForWidth(width() > 0 ? width() : kMinColumn)}; }
+  QSize sizeHint() const override {
+    return {kMinColumn, heightForWidth(width() > 0 ? width() : kMinColumn)};
+  }
   QSize minimumSizeHint() const override { return {kMinColumn, 0}; }
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override {
     QWidget::resizeEvent(event);
     Lay();
@@ -153,14 +157,15 @@ protected:
     painter.setPen(line);
     const int columns = Columns(width());
     const int lines = (static_cast<int>(shown.size()) + columns - 1) / columns;
-    for (int i = 1; i < lines; ++i) painter.drawLine(1, i * RowHeight(), width() - 2, i * RowHeight());
+    for (int i = 1; i < lines; ++i)
+      painter.drawLine(1, i * RowHeight(), width() - 2, i * RowHeight());
     for (int c = 1; c < columns && c < shown.size(); ++c) {
       const int x = shown[c]->x();
       painter.drawLine(x, 6, x, lines * RowHeight() - 6);
     }
   }
 
-private:
+ private:
   static constexpr int kMinColumn = 250;
 
   QList<QWidget*> Shown() const {
@@ -197,15 +202,19 @@ namespace {
 // `most`, from 0 to 1, on a log scale so the many small counts spread out.
 double Share(std::size_t games, std::size_t most) {
   if (most <= 2) return 1.0;
-  const double t = std::log(static_cast<double>(games) / 2) / std::log(static_cast<double>(most) / 2);
+  const double t =
+      std::log(static_cast<double>(games) / 2) / std::log(static_cast<double>(most) / 2);
   return std::clamp(t, 0.0, 1.0);
 }
 
 // WCAG's contrast ratio between two opaque colors.
 double Contrast(const QColor& a, const QColor& b) {
   const auto luminance = [](const QColor& color) {
-    const auto channel = [](double c) { return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); };
-    return 0.2126 * channel(color.redF()) + 0.7152 * channel(color.greenF()) + 0.0722 * channel(color.blueF());
+    const auto channel = [](double c) {
+      return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(color.redF()) + 0.7152 * channel(color.greenF()) +
+           0.0722 * channel(color.blueF());
   };
   const double la = luminance(a);
   const double lb = luminance(b);
@@ -216,7 +225,7 @@ double Contrast(const QColor& a, const QColor& b) {
 
 // A Steam tag's count, in an accent pill that's stronger the more games have the tag.
 class CountPill : public QWidget {
-public:
+ public:
   explicit CountPill(QWidget* parent) : QWidget(parent) {}
 
   void Set(std::size_t games, std::size_t most) {
@@ -229,10 +238,11 @@ public:
 
   QSize sizeHint() const override {
     const QFontMetrics metrics(Font());
-    return {std::max(24, metrics.horizontalAdvance(QString::number(games_)) + 14), metrics.height() + 2};
+    return {std::max(24, metrics.horizontalAdvance(QString::number(games_)) + 14),
+            metrics.height() + 2};
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -244,7 +254,8 @@ protected:
     const auto mix = [&](int surface, int accent) {
       return static_cast<int>(std::lround(surface + (accent - surface) * strength));
     };
-    const QColor fill(mix(t.surface.red(), t.accent.red()), mix(t.surface.green(), t.accent.green()),
+    const QColor fill(mix(t.surface.red(), t.accent.red()),
+                      mix(t.surface.green(), t.accent.green()),
                       mix(t.surface.blue(), t.accent.blue()));
     painter.setPen(Qt::NoPen);
     painter.setBrush(fill);
@@ -254,7 +265,7 @@ protected:
     painter.drawText(box, Qt::AlignCenter, QString::number(games_));
   }
 
-private:
+ private:
   QFont Font() const {
     QFont small = font();
     small.setPointSizeF(small.pointSizeF() * 0.88);
@@ -268,10 +279,10 @@ private:
 
 // One of From Steam's rows; its plus button fills while the pointer is anywhere on it.
 class SteamTagRow : public QWidget {
-public:
+ public:
   explicit SteamTagRow(QWidget* parent) : QWidget(parent) { setAttribute(Qt::WA_Hover, true); }
 
-protected:
+ protected:
   void enterEvent(QEnterEvent* event) override {
     QWidget::enterEvent(event);
     update();
@@ -286,16 +297,17 @@ namespace {
 
 // A round plus, filled with the accent while its row is under the pointer.
 class PlusButton : public QAbstractButton {
-public:
+ public:
   explicit PlusButton(QWidget* parent) : QAbstractButton(parent) {
     setCursor(Qt::PointingHandCursor);
     setFixedSize(24, 24);
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     const theme::Tokens& t = theme::Current();
-    const bool lit = isDown() || (parentWidget() != nullptr && parentWidget()->underMouse()) || hasFocus();
+    const bool lit =
+        isDown() || (parentWidget() != nullptr && parentWidget()->underMouse()) || hasFocus();
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(lit ? t.accent : t.border);
@@ -309,13 +321,13 @@ protected:
   }
 };
 
-
 // Esc in a field calls `cancel` instead of reaching the window's own Esc.
 class EscapeCancels : public QObject {
-public:
-  EscapeCancels(QObject* parent, std::function<void()> cancel) : QObject(parent), cancel_(std::move(cancel)) {}
+ public:
+  EscapeCancels(QObject* parent, std::function<void()> cancel)
+      : QObject(parent), cancel_(std::move(cancel)) {}
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override {
     if ((event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress) ||
         static_cast<QKeyEvent*>(event)->key() != Qt::Key_Escape) {
@@ -326,7 +338,7 @@ protected:
     return true;
   }
 
-private:
+ private:
   std::function<void()> cancel_;
 };
 
@@ -445,9 +457,10 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   refresh_timer_->setSingleShot(true);
   refresh_timer_->setInterval(300);
   connect(refresh_timer_, &QTimer::timeout, this, &TagsPage::Refresh);
-  connect(EventHub::Instance(), &EventHub::Received, this, [this](const std::string& type, const std::string&, bool live) {
-    if (live && ChangesTags(type)) RefreshSoon();
-  });
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string&, bool live) {
+            if (live && ChangesTags(type)) RefreshSoon();
+          });
   Refresh();
 }
 
@@ -535,12 +548,14 @@ void TagsPage::FitLeft() {
   // A little wider than the widest row needs, so the switches keep some room from the names.
   constexpr int kSpare = 48;
   const bool wide = grid_->itemAtPosition(0, 1) != nullptr;
-  const int needed = std::max(mine_->sizeHint().width(), settings_card_->sizeHint().width()) + kSpare;
+  const int needed =
+      std::max(mine_->sizeHint().width(), settings_card_->sizeHint().width()) + kSpare;
   left_->setMinimumWidth(wide ? needed : 0);
   left_->setMaximumWidth(wide ? needed : QWIDGETSIZE_MAX);
   // Never so short that only a few rows show, as when the page stacks under 1000 px.
   const QScrollArea* scroll = mine_->Scroll();
-  const int rows_height = mine_->sizeHint().height() - scroll->sizeHint().height() + scroll->widget()->sizeHint().height();
+  const int rows_height = mine_->sizeHint().height() - scroll->sizeHint().height() +
+                          scroll->widget()->sizeHint().height();
   mine_->setMinimumHeight(std::min(rows_height, 240));
 }
 
@@ -664,7 +679,8 @@ void TagsPage::SyncMine() {
   mine_->MoveRow(mine_note_, 0);
   // With no folder tag, no row leaves room for a grip and folder icon.
   const bool any_folder = std::ranges::any_of(order, [&](const TagSummary* tag) {
-    return std::ranges::any_of(settings_.folders, [&](const std::string& f) { return SameTag(f, tag->name); });
+    return std::ranges::any_of(settings_.folders,
+                               [&](const std::string& f) { return SameTag(f, tag->name); });
   });
   for (std::size_t i = 0; i < order.size(); ++i) {
     const TagSummary& tag = *order[i];
@@ -843,10 +859,10 @@ void TagsPage::OpenPicker(const QString& name, bool existing) {
     sections.push_back({QString("Tagged %1").arg(name), tag->ids, true});
     sections.push_back({QString("Steam also tags these %1").arg(name), steam_only, false});
   } else if (!name.isEmpty()) {
-    const auto tag = std::ranges::find_if(tags_.steam, [&](const SteamTagSuggestion& t) {
-      return t.name == name.toStdString();
-    });
-    if (tag != tags_.steam.end()) sections.push_back({QString("Tagged %1 on Steam").arg(name), tag->ids, true});
+    const auto tag = std::ranges::find_if(
+        tags_.steam, [&](const SteamTagSuggestion& t) { return t.name == name.toStdString(); });
+    if (tag != tags_.steam.end())
+      sections.push_back({QString("Tagged %1 on Steam").arg(name), tag->ids, true});
   }
   picker_->Open(name, existing, std::move(sections), games_, folder, tags_.tags);
   stack_->setCurrentWidget(picker_);
@@ -928,12 +944,14 @@ void TagsPage::Rename(const std::string& from, const std::string& to) {
     }
     std::vector<std::string> unique;
     for (const std::string& tag : list) {
-      if (std::ranges::none_of(unique, [&](const std::string& u) { return SameTag(u, tag); })) unique.push_back(tag);
+      if (std::ranges::none_of(unique, [&](const std::string& u) { return SameTag(u, tag); }))
+        unique.push_back(tag);
     }
     return unique;
   };
   std::optional<std::vector<std::string>> folders;
-  if (std::ranges::any_of(settings_.folders, [&](const std::string& f) { return SameTag(f, from); }))
+  if (std::ranges::any_of(settings_.folders,
+                          [&](const std::string& f) { return SameTag(f, from); }))
     folders = renamed(settings_.folders);
   // The games with it, as the rename leaves them, so the preview counts their folders' moves.
   std::map<std::string, std::vector<std::string>> after;
@@ -944,12 +962,14 @@ void TagsPage::Rename(const std::string& from, const std::string& to) {
     }
   }
   const QString from_label = QString::fromStdString(from);
-  const QString to_label = merge ? QString::fromStdString(existing->name) : QString::fromStdString(to);
+  const QString to_label =
+      merge ? QString::fromStdString(existing->name) : QString::fromStdString(to);
   AskThenApply(
       folders, std::nullopt,
       [merge, from_label, to_label](int moving) {
         const QString moves = moving > 0 ? QString(" %1.").arg(FoldersMove(moving)) : QString();
-        return merge ? QString("Merge %1 into %2? This can't be undone.%3").arg(from_label, to_label, moves)
+        return merge ? QString("Merge %1 into %2? This can't be undone.%3")
+                           .arg(from_label, to_label, moves)
                      : QString("Rename %1 to %2?%3").arg(from_label, to_label, moves);
       },
       merge ? "Merge" : "Rename",
@@ -985,23 +1005,26 @@ void TagsPage::FoldersReordered() {
 }
 
 void TagsPage::AskThenApply(std::optional<std::vector<std::string>> folders,
-                            std::optional<std::vector<std::string>> sorted_roots, std::function<QString(int)> question,
-                            const QString& apply_label, std::function<void()> apply,
-                            const std::map<std::string, std::vector<std::string>>& tags, bool always_ask) {
+                            std::optional<std::vector<std::string>> sorted_roots,
+                            std::function<QString(int)> question, const QString& apply_label,
+                            std::function<void()> apply,
+                            const std::map<std::string, std::vector<std::string>>& tags,
+                            bool always_ask) {
   const int asked = ++asked_;
-  api::PreviewTagsAsync(this, std::move(folders), std::move(sorted_roots), tags,
-                        [this, asked, question, apply_label, apply, always_ask](FolderTagsPreviewResult result) {
-                          if (asked != asked_) return;
-                          if (!result.ok) {
-                            Sync();
-                            return Failed("Could not check what would move.", result.error);
-                          }
-                          const int moving = static_cast<int>(result.moving.size());
-                          // Nothing on disk changes, so nothing to ask.
-                          if (moving == 0 && !always_ask) return apply();
-                          bar_apply_ = apply;
-                          bar_->SetText(question(moving), apply_label, "Cancel");
-                        });
+  api::PreviewTagsAsync(
+      this, std::move(folders), std::move(sorted_roots), tags,
+      [this, asked, question, apply_label, apply, always_ask](FolderTagsPreviewResult result) {
+        if (asked != asked_) return;
+        if (!result.ok) {
+          Sync();
+          return Failed("Could not check what would move.", result.error);
+        }
+        const int moving = static_cast<int>(result.moving.size());
+        // Nothing on disk changes, so nothing to ask.
+        if (moving == 0 && !always_ask) return apply();
+        bar_apply_ = apply;
+        bar_->SetText(question(moving), apply_label, "Cancel");
+      });
 }
 
 void TagsPage::SetFolder(const std::string& name, bool folder) {
@@ -1035,14 +1058,18 @@ void TagsPage::SetSorted(const std::string& root, bool sorted) {
   AskThenApply(
       std::nullopt, roots,
       [name, sorted](int moving) {
-        return sorted ? QString("Sort %1 into folders by tag? %2, hidden ones into .hidden.").arg(name, FoldersMove(moving))
+        return sorted ? QString("Sort %1 into folders by tag? %2, hidden ones into .hidden.")
+                            .arg(name, FoldersMove(moving))
                       : QString("Stop sorting %1 by tag? %2 back.").arg(name, FoldersMove(moving));
       },
       sorted ? "Sort by tag" : "Stop sorting",
-      [this, roots] { PatchSetting("tags.sorted_roots", "an array of strings", mapping::ListText(roots)); });
+      [this, roots] {
+        PatchSetting("tags.sorted_roots", "an array of strings", mapping::ListText(roots));
+      });
 }
 
-void TagsPage::PatchSetting(const std::string& key, const std::string& type, const std::string& value) {
+void TagsPage::PatchSetting(const std::string& key, const std::string& type,
+                            const std::string& value) {
   api::PatchConfigAsync(this, {{key, type, value}}, [this](PatchConfigResult result) {
     if (!result.ok) {
       Sync();
@@ -1053,6 +1080,8 @@ void TagsPage::PatchSetting(const std::string& key, const std::string& type, con
   });
 }
 
-void TagsPage::Failed(const QString& what, const ApiError& error) { notify::FailedRequest(window(), what, error); }
+void TagsPage::Failed(const QString& what, const ApiError& error) {
+  notify::FailedRequest(window(), what, error);
+}
 
 }  // namespace mira_gui

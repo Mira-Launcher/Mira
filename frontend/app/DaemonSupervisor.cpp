@@ -22,7 +22,9 @@ DaemonSupervisor::DaemonSupervisor(QObject* parent) : QObject(parent) {
   connect(qApp, &QCoreApplication::aboutToQuit, this, &DaemonSupervisor::StopIfSelfStarted);
 }
 
-DaemonSupervisor::~DaemonSupervisor() { StopIfSelfStarted(); }
+DaemonSupervisor::~DaemonSupervisor() {
+  StopIfSelfStarted();
+}
 
 void DaemonSupervisor::EnsureRunning() {
   api::CheckHealthAsync(this, [this](HealthStatus status) {
@@ -48,11 +50,12 @@ void DaemonSupervisor::EnsureRunning() {
       self_started_ = true;
       PollHealth(kPollAttempts);
     });
-    connect(process_, &QProcess::errorOccurred, this,
-            [this, mirad_path, process = process_](QProcess::ProcessError error) {
-              if (error != QProcess::FailedToStart) return;
-              emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process->errorString()));
-            });
+    connect(
+        process_, &QProcess::errorOccurred, this,
+        [this, mirad_path, process = process_](QProcess::ProcessError error) {
+          if (error != QProcess::FailedToStart) return;
+          emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process->errorString()));
+        });
     process_->start(mirad_path, {"--socket", QString::fromStdString(api::ResolveSocketPath())});
   });
 }
@@ -67,7 +70,8 @@ void DaemonSupervisor::PollHealth(int attempts_left) {
       emit Failed("mirad did not become reachable after starting it");
       return;
     }
-    QTimer::singleShot(kPollIntervalMs, this, [this, attempts_left] { PollHealth(attempts_left - 1); });
+    QTimer::singleShot(kPollIntervalMs, this,
+                       [this, attempts_left] { PollHealth(attempts_left - 1); });
   });
 }
 

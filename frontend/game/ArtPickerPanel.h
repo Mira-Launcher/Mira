@@ -3,7 +3,6 @@
 #include <QPixmap>
 #include <QString>
 #include <QWidget>
-
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -38,7 +37,7 @@ class TabRow;
 class ArtPickerPanel : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit ArtPickerPanel(std::string game_id, QWidget* parent = nullptr);
 
   // Loads `slot`'s candidates and starts on the one in use.
@@ -53,7 +52,7 @@ public:
   // ApplyFailed on failure.
   void Apply();
 
-signals:
+ signals:
   // The pick's preview, for the host to show in place of the slot's art.
   // Null when the pick is the one in use.
   void Previewed(QString slot, QPixmap preview);
@@ -62,11 +61,11 @@ signals:
   void PickActivated();
   void ApplyFailed(QString slot, QString error);
 
-protected:
+ protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
 
-private:
+ private:
   void ChooseFile();
   // Reads `path` and adds it to the front of the grid as the pick.
   void UseFile(const QString& path);
@@ -81,7 +80,8 @@ private:
   void RebuildChips();
   void ApplyFilter(const QString& style);
   void RequestVisible();
-  void ShowThumbs(const std::string& slot, const std::vector<std::pair<std::int64_t, QImage>>& images);
+  void ShowThumbs(const std::string& slot,
+                  const std::vector<std::pair<std::int64_t, QImage>>& images);
   void MarkFailed(const std::vector<std::int64_t>& ids);
   QListWidgetItem* ItemFor(std::int64_t id) const;
   void Pick(QListWidgetItem* item);

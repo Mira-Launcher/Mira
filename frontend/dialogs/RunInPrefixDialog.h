@@ -2,7 +2,6 @@
 
 #include <QDialog>
 #include <QString>
-
 #include <string>
 
 class QLineEdit;
@@ -23,11 +22,11 @@ namespace mira_gui {
 class RunInPrefixDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   RunInPrefixDialog(std::string game_id, const std::string& install_path, const QString& name,
                     QWidget* parent = nullptr);
 
-private:
+ private:
   void Run();
 
   std::string game_id_;

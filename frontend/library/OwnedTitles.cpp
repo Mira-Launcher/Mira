@@ -50,30 +50,37 @@ std::vector<OwnedMatch> GroupOwned(const std::vector<StoreTitle>& titles, const 
     auto [found, added] = by_key.try_emplace(key, matches.size());
     if (added) matches.emplace_back().title = name;
     OwnedMatch& match = matches[found->second];
-    match.copies.emplace_back(QString::fromStdString(title.source), QString::fromStdString(title.ref));
+    match.copies.emplace_back(QString::fromStdString(title.source),
+                              QString::fromStdString(title.ref));
     // The same game's ratings, from whichever copy has them.
     if (match.protondb_tier.empty()) match.protondb_tier = title.protondb_tier;
     if (match.review_summary.empty()) match.review_summary = title.review_summary;
     if (match.review_percent < 0) match.review_percent = title.review_percent;
   }
-  std::erase_if(matches, [&](const OwnedMatch& match) { return installed.contains(SameGameKey(match.title)); });
+  std::erase_if(matches, [&](const OwnedMatch& match) {
+    return installed.contains(SameGameKey(match.title));
+  });
   return matches;
 }
 
 OwnedTitles::OwnedTitles(QObject* parent) : QObject(parent) {
   // A store's list changed behind the stored one mirad answered with.
-  connect(EventHub::Instance(), &EventHub::Received, this, [this](const std::string& type, const std::string& data, bool live) {
-    if (CatalogCheckEvent check; live && fetched_.isValid() && events::ParseCatalogCheck(type, data, &check) && check.changed) {
-      Refresh();
-    }
-    if (std::string source; live && fetched_.isValid() && events::ParseHiddenChanged(type, data, &source)) {
-      Refresh();
-    }
-    if (events::HiddenStateEvent state;
-        live && fetched_.isValid() && events::ParseHiddenState(type, data, &state)) {
-      Refresh();
-    }
-  });
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string& data, bool live) {
+            if (CatalogCheckEvent check; live && fetched_.isValid() &&
+                                         events::ParseCatalogCheck(type, data, &check) &&
+                                         check.changed) {
+              Refresh();
+            }
+            if (std::string source;
+                live && fetched_.isValid() && events::ParseHiddenChanged(type, data, &source)) {
+              Refresh();
+            }
+            if (events::HiddenStateEvent state;
+                live && fetched_.isValid() && events::ParseHiddenState(type, data, &state)) {
+              Refresh();
+            }
+          });
 }
 
 void OwnedTitles::Refresh(bool fresh) {
@@ -88,7 +95,8 @@ void OwnedTitles::Refresh(bool fresh) {
     if (std::exchange(again_, false)) Refresh(std::exchange(again_fresh_, false));
     failed_ = !result.ok;
     if (failed_) {
-      // The last list stays; a store that's down isn't worth a notice, but a first list that never came is.
+      // The last list stays; a store that's down isn't worth a notice, but a first list that never
+      // came is.
       if (!Listed()) emit Changed();
       return;
     }
@@ -99,7 +107,8 @@ void OwnedTitles::Refresh(bool fresh) {
 }
 
 void OwnedTitles::RefreshIfStale() {
-  if (!fetched_.isValid() || fetched_.secsTo(QDateTime::currentDateTimeUtc()) > kStaleSeconds) Refresh();
+  if (!fetched_.isValid() || fetched_.secsTo(QDateTime::currentDateTimeUtc()) > kStaleSeconds)
+    Refresh();
 }
 
 }  // namespace mira_gui

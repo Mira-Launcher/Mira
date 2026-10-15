@@ -1,5 +1,4 @@
 #include <doctest.h>
-
 #include <signal.h>
 
 #include "proc/ExitReason.h"
@@ -11,11 +10,21 @@ using proc::ExitInfo;
 namespace {
 
 ExitInfo Exit(int code, std::int64_t played = 600) {
-  return {.exit_code = code, .signal = 0, .requested_stop = false, .launch_error = {}, .played_seconds = played, .log_tail = {}};
+  return {.exit_code = code,
+          .signal = 0,
+          .requested_stop = false,
+          .launch_error = {},
+          .played_seconds = played,
+          .log_tail = {}};
 }
 
 ExitInfo Killed(int signal_number, std::int64_t played = 600) {
-  return {.exit_code = -1, .signal = signal_number, .requested_stop = false, .launch_error = {}, .played_seconds = played, .log_tail = {}};
+  return {.exit_code = -1,
+          .signal = signal_number,
+          .requested_stop = false,
+          .launch_error = {},
+          .played_seconds = played,
+          .log_tail = {}};
 }
 
 }  // namespace
@@ -75,14 +84,20 @@ TEST_CASE("A program that couldn't start says why") {
 
 TEST_CASE("Wine's unhandled-exception report names what went wrong") {
   ExitInfo info = Exit(5, 90);
-  info.log_tail = "wine: Unhandled exception 0xe06d7363 in thread 24 at address 00006FFFFF4A1234 (thread 0024), "
-                  "starting debugger...\n";
+  info.log_tail =
+      "wine: Unhandled exception 0xe06d7363 in thread 24 at address 00006FFFFF4A1234 (thread "
+      "0024), "
+      "starting debugger...\n";
   CHECK(ClassifyExit(info).error == "Crashed after 1 minute with an unhandled C++ exception");
 
-  info.log_tail = "0024:err:seh:NtRaiseException Unhandled exception code c0000409 flags 1 addr 0x14000\n";
-  CHECK(ClassifyExit(info).error == "Crashed after 1 minute with an unhandled stack buffer overrun");
+  info.log_tail =
+      "0024:err:seh:NtRaiseException Unhandled exception code c0000409 flags 1 addr 0x14000\n";
+  CHECK(ClassifyExit(info).error ==
+        "Crashed after 1 minute with an unhandled stack buffer overrun");
 
-  info.log_tail = "wine: Unhandled illegal instruction at address 0000000140001000 (thread 0024), starting debugger...\n";
+  info.log_tail =
+      "wine: Unhandled illegal instruction at address 0000000140001000 (thread 0024), starting "
+      "debugger...\n";
   CHECK(ClassifyExit(info).error == "Crashed after 1 minute with an unhandled illegal instruction");
 }
 

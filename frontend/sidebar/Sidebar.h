@@ -100,6 +100,7 @@ class Sidebar : public QWidget {
   void SourcesChanged();
   // Removed from its row's menu.
   void SourceRemoved(const QString& id);
+
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -177,11 +178,11 @@ class Sidebar : public QWidget {
   QHash<QString, bool> source_ready_;
   QHash<QString, QString> source_account_;     // signed-in account, where a store says
   QHash<QString, qint64> source_imported_at_;  // last import, unix seconds
-  int sources_request_ = 0;  // RefreshSources keeps only the newest answer
+  int sources_request_ = 0;                    // RefreshSources keeps only the newest answer
   bool show_source_counts_ = true;
   bool show_source_covers_ = true;
-  QSet<QString> source_cover_ids_;  // the games source rows show covers of
-  QSet<QString> empty_decks_;       // sources whose rows have no covers to show
+  QSet<QString> source_cover_ids_;           // the games source rows show covers of
+  QSet<QString> empty_decks_;                // sources whose rows have no covers to show
   QWidget* source_nav_container_ = nullptr;  // accepts source row drops
   QWidget* source_drop_line_ = nullptr;
   QPushButton* source_drag_row_ = nullptr;

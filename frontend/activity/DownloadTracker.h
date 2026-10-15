@@ -5,7 +5,6 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
-
 #include <functional>
 #include <map>
 #include <string>
@@ -30,7 +29,7 @@ namespace mira_gui {
 class DownloadTracker : public QObject {
   Q_OBJECT
 
-public:
+ public:
   enum class Kind { Game, Title, Launcher, Tool, Runner, Job };
   enum class State { Running, Paused, Finished, Failed };
 
@@ -41,11 +40,11 @@ public:
     QString ref;     // game id, title ref, bundle key, launcher id, runner tag or job id
     bool update = false;
     State state = State::Running;
-    qint64 bytes = 0;  // Game only
+    qint64 bytes = 0;      // Game only
     double progress = -1;  // 0..1 when the source reports it (store installs, jobs with steps)
     qint64 eta_seconds = -1;
     double bytes_per_second = -1;
-    QString message;       // a Job's current step
+    QString message;  // a Job's current step
     ApiError error;
     QDateTime changed;
   };
@@ -53,7 +52,8 @@ public:
   explicit DownloadTracker(QObject* parent = nullptr);
 
   static QString KeyFor(Kind kind, const QString& source, const QString& ref);
-  // The live log of the work an entry stands for (GET /v1/logs/<channel>); work with no log of its own reads the daemon's.
+  // The live log of the work an entry stands for (GET /v1/logs/<channel>); work with no log of its
+  // own reads the daemon's.
   static QString LogChannelFor(const Entry& entry);
   // "42% · 12.5 MB/s · 3 min left", as much as the source reported; empty
   // when it reported nothing. `short_form` leaves out the speed.
@@ -99,11 +99,11 @@ public:
   // Set by the owner: a source's display name.
   std::function<QString(const QString& source)> source_name;
 
-signals:
+ signals:
   // One entry was added or changed; empty when several were (ClearFinished).
   void Changed(const QString& key);
 
-private:
+ private:
   Entry& Upsert(Kind kind, const QString& source, const QString& ref);
   // A cancelled entry's row goes away rather than reading as a failure. True if it was one.
   bool DropIfCancelled(const Entry& entry);
@@ -112,9 +112,9 @@ private:
   void ResolveNames(const QString& source);
 
   std::vector<Entry> entries_;
-  QSet<QString> progress_pending_;  // games with a GetInstallProgress call in flight
-  QHash<QString, QString> titles_;  // "<source>:<ref>" -> title
-  QSet<QString> asked_sources_;     // title lists already fetched to name entries
+  QSet<QString> progress_pending_;            // games with a GetInstallProgress call in flight
+  QHash<QString, QString> titles_;            // "<source>:<ref>" -> title
+  QSet<QString> asked_sources_;               // title lists already fetched to name entries
   std::map<QString, QString> job_by_target_;  // running jobs with their own rows: target -> job id
   QTimer* poll_ = nullptr;
 };

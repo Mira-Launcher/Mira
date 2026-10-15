@@ -1,12 +1,11 @@
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <atomic>
 #include <chrono>
 #include <format>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 
 namespace mira::api {
@@ -59,18 +58,23 @@ void RegisterEventRoutes(Router& http, Services& s) {
           if (s.stopping.load(std::memory_order_relaxed)) return false;
           if (!live_sent && after_id >= replay_end) {
             live_sent = true;
-            // With the id it's caught up to, so a client reconnecting before any news resumes instead of
-            // getting the history again as if it were new.
-            const std::string live = std::format("id: {}\nevent: stream.live\ndata: {{}}\n\n", after_id);
+            // With the id it's caught up to, so a client reconnecting before any news resumes
+            // instead of getting the history again as if it were new.
+            const std::string live =
+                std::format("id: {}\nevent: stream.live\ndata: {{}}\n\n", after_id);
             return sink.write(live.data(), live.size());
           }
           auto event = s.events.WaitNext(after_id, s.stopping, std::chrono::milliseconds(20000));
           if (!event) return sink.is_writable() && !s.stopping.load(std::memory_order_relaxed);
-          // `replace`: a payload with bytes that aren't UTF-8 (a game's name, a tool's output) must not throw here.
-          std::string frame = std::format("id: {}\nevent: {}\ndata: {}\n\n", event->id, event->type,
-                                          event->payload.dump(-1, ' ', false, json::error_handler_t::replace));
+          // `replace`: a payload with bytes that aren't UTF-8 (a game's name, a tool's output) must
+          // not throw here.
+          std::string frame =
+              std::format("id: {}\nevent: {}\ndata: {}\n\n", event->id, event->type,
+                          event->payload.dump(-1, ' ', false, json::error_handler_t::replace));
           if (synced && event->id > after_id + 1) {
-            frame = std::format("event: stream.gap\ndata: {{\"missed\": {}}}\n\n", event->id - after_id - 1) + frame;
+            frame = std::format("event: stream.gap\ndata: {{\"missed\": {}}}\n\n",
+                                event->id - after_id - 1) +
+                    frame;
           }
           synced = true;
           after_id = event->id;

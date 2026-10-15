@@ -18,7 +18,8 @@ QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role = nullp
 // A small caps-style group heading ("PINNED", "SORT") in the muted color.
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text);
 
-// A small outlined pill beside a name: "Beta", "Not checked". `tone` colors it: "accent", "warning", or muted.
+// A small outlined pill beside a name: "Beta", "Not checked". `tone` colors it: "accent",
+// "warning", or muted.
 QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr);
 
 // "a, b and c".
@@ -39,11 +40,11 @@ void KeepSpaceWhenHidden(QWidget* widget, bool keep = true);
 class ElidedLabel : public QLabel {
   Q_OBJECT
 
-public:
+ public:
   explicit ElidedLabel(const QString& text = {}, QWidget* parent = nullptr);
   QSize minimumSizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 };
 

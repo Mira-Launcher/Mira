@@ -101,8 +101,8 @@ StoreActionResult PauseStoreInstallSync(const std::string& source, const std::st
 }
 
 StoreActionResult DiscardPausedInstallSync(const std::string& source, const std::string& ref) {
-  const transport::Reply reply = transport::Delete("/v1/library/install/paused?source=" +
-                                                   PercentEncode(source) + "&ref=" + PercentEncode(ref));
+  const transport::Reply reply = transport::Delete(
+      "/v1/library/install/paused?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref));
   return {reply.ok, reply.error};
 }
 
@@ -154,7 +154,8 @@ RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
                                   .deletes = game.value("deletes", std::string())});
         }
         result.program_dir = body.value("program_dir", std::string());
-        for (auto [key, list] : {std::pair{"packages", &result.packages}, {"uninstall", &result.uninstall},
+        for (auto [key, list] : {std::pair{"packages", &result.packages},
+                                 {"uninstall", &result.uninstall},
                                  {"data", &result.data}}) {
           for (const json& part : body.value(key, json::array())) {
             if (part.is_string()) list->push_back(part.get<std::string>());
@@ -325,7 +326,8 @@ SourcesResult ListSourcesSync() {
                                       source.enabled = item.value("enabled", true);
                                       source.in_sidebar = item.value("in_sidebar", true);
                                       source.position = item.value("position", 0);
-                                      source.imported_at = item.value("imported_at", std::int64_t(0));
+                                      source.imported_at =
+                                          item.value("imported_at", std::int64_t(0));
                                       source.games = item.value("games", 0);
                                       result.sources.push_back(std::move(source));
                                     }
@@ -342,13 +344,15 @@ PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> ena
 }
 
 PatchConfigResult AddSourceSync(const std::string& id) {
-  const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), json{{"added", true}});
+  const transport::Reply reply =
+      transport::Patch("/v1/sources/" + PercentEncode(id), json{{"added", true}});
   return {reply.ok, reply.error};
 }
 
 PatchConfigResult SetSourceOrderSync(const std::vector<std::string>& ids) {
   const json body = {{"order", ids}};
-  const transport::Reply reply = transport::Put("/v1/sources/order", body.dump(), "application/json");
+  const transport::Reply reply =
+      transport::Put("/v1/sources/order", body.dump(), "application/json");
   return {reply.ok, reply.error};
 }
 
@@ -359,13 +363,15 @@ void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callb
 }
 
 void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
-                      std::optional<bool> in_sidebar, std::function<void(PatchConfigResult)> callback) {
+                      std::optional<bool> in_sidebar,
+                      std::function<void(PatchConfigResult)> callback) {
   async::Run(
       context, [id, enabled, in_sidebar] { return PatchSourceSync(id, enabled, in_sidebar); },
       std::move(callback));
 }
 
-void AddSourceAsync(QObject* context, const std::string& id, std::function<void(PatchConfigResult)> callback) {
+void AddSourceAsync(QObject* context, const std::string& id,
+                    std::function<void(PatchConfigResult)> callback) {
   async::Run(context, [id] { return AddSourceSync(id); }, std::move(callback));
 }
 
@@ -373,7 +379,6 @@ void SetSourceOrderAsync(QObject* context, const std::vector<std::string>& ids,
                          std::function<void(PatchConfigResult)> callback) {
   async::Run(context, [ids] { return SetSourceOrderSync(ids); }, std::move(callback));
 }
-
 
 void GetStoreStatusAsync(QObject* context, const std::string& source,
                          std::function<void(StoreStatusResult)> callback) {
@@ -448,7 +453,8 @@ void PauseStoreInstallAsync(QObject* context, const std::string& source, const s
 void DiscardPausedInstallAsync(QObject* context, const std::string& source, const std::string& ref,
                                std::function<void(StoreActionResult)> callback) {
   async::Run(
-      context, [source, ref] { return DiscardPausedInstallSync(source, ref); }, std::move(callback));
+      context, [source, ref] { return DiscardPausedInstallSync(source, ref); },
+      std::move(callback));
 }
 
 void ListPausedInstallsAsync(QObject* context, std::function<void(PausedInstallsResult)> callback) {
@@ -537,7 +543,9 @@ void BeginStoreLoginAsync(QObject* context, const std::string& source,
 
 void FindStoreCredentialAsync(QObject* context, const std::string& source, const std::string& text,
                               std::function<void(FoundCredentialResult)> callback) {
-  async::Run(context, [source, text] { return FindStoreCredentialSync(source, text); }, std::move(callback));
+  async::Run(
+      context, [source, text] { return FindStoreCredentialSync(source, text); },
+      std::move(callback));
 }
 
 void GetSteamAccountsAsync(QObject* context, std::function<void(SteamAccountsResult)> callback) {

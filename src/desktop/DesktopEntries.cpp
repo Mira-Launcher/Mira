@@ -1,18 +1,17 @@
-#include "core/Json.h"
 #include "desktop/DesktopEntries.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <format>
+#include <json.hpp>
 #include <optional>
 #include <set>
-
-#include <json.hpp>
 
 #include "config/Resolver.h"
 #include "core/AtomicFile.h"
 #include "core/Files.h"
+#include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
@@ -43,13 +42,15 @@ std::string Sanitize(std::string_view value) {
 // a .desktop file's Icon= accepts an absolute path just as well as a themed
 // icon name, per spec, so a game with real artwork doesn't have to settle
 // for the generic fallback.
-std::optional<fs::path> CachedArtwork(const store::MetadataStore& cache, const std::string& game_id) {
+std::optional<fs::path> CachedArtwork(const store::MetadataStore& cache,
+                                      const std::string& game_id) {
   const auto art = cache.ArtFor(game_id, "cover");
   return art ? std::make_optional(art->file) : std::nullopt;
 }
 
-// `mira` or `mira-gui` by full path, since a desktop session's PATH often lacks ~/.local/bin: from an
-// AppImage, the wrapper `mira setup` writes and the AppImage itself; from a package, the one on PATH
+// `mira` or `mira-gui` by full path, since a desktop session's PATH often lacks ~/.local/bin: from
+// an AppImage, the wrapper `mira setup` writes and the AppImage itself; from a package, the one on
+// PATH
 // (/usr/bin's scripts set up its environment); otherwise the one next to mirad.
 std::string Binary(std::string_view name) {
   std::error_code ec;
@@ -74,8 +75,8 @@ std::string_view MimeTypes(const model::Game& game) {
   return {};
 }
 
-// The file types a Microsoft 365 app opens, and the desktop's launch feedback while it starts: its window's
-// class is Proton's for the GAMEID ProtonRunner gives it ("steam_app_mira_officeword").
+// The file types a Microsoft 365 app opens, and the desktop's launch feedback while it starts: its
+// window's class is Proton's for the GAMEID ProtonRunner gives it ("steam_app_mira_officeword").
 std::string OfficeAppKeys(const model::Game& game, std::string_view mime) {
   std::string window_class = "steam_app_mira_";
   for (const char ch : game.id) {
@@ -88,7 +89,8 @@ std::string OfficeAppKeys(const model::Game& game, std::string_view mime) {
 void UpdateMimeCache(const fs::path& dir) {
   Command command;
   command.argv = {"update-desktop-database", dir.string()};
-  if (auto ran = runner::RunAndWait(command); !ran || ran->exit_code != 0) log::Info("update-desktop-database didn't run");
+  if (auto ran = runner::RunAndWait(command); !ran || ran->exit_code != 0)
+    log::Info("update-desktop-database didn't run");
 }
 
 }  // namespace
@@ -123,11 +125,15 @@ std::string DesktopEntries::Render(const model::Game& game) const {
   const std::string_view mime = MimeTypes(game);
   // `mira launch` opens Mira in the tray first when it isn't running. An app that opens files is
   // handed them.
-  const std::string exec = std::format("{} launch {}{}", strings::DesktopExecArg(Binary("mira")), game.id, mime.empty() ? "" : " %F");
+  const std::string exec = std::format("{} launch {}{}", strings::DesktopExecArg(Binary("mira")),
+                                       game.id, mime.empty() ? "" : " %F");
   const std::optional<fs::path> artwork = CachedArtwork(cache_, game.id);
   const bool app = std::ranges::contains(game.tags, "app");
-  const std::string icon = artwork ? artwork->string() : app ? "application-x-executable" : "applications-games";
-  const std::string categories = app ? "Utility;" : resolver.GetString("desktop_entries.categories");
+  const std::string icon = artwork ? artwork->string()
+                           : app   ? "application-x-executable"
+                                   : "applications-games";
+  const std::string categories =
+      app ? "Utility;" : resolver.GetString("desktop_entries.categories");
 
   return std::format(
       "[Desktop Entry]\n"
@@ -140,11 +146,12 @@ std::string DesktopEntries::Render(const model::Game& game) const {
       "Terminal=false\n"
       "X-Mira-Game-Id={}\n"
       "{}",
-      Sanitize(game.name), Sanitize(game.name), exec, icon,
-      Sanitize(categories), game.id, mime.empty() ? "" : OfficeAppKeys(game, mime));
+      Sanitize(game.name), Sanitize(game.name), exec, icon, Sanitize(categories), game.id,
+      mime.empty() ? "" : OfficeAppKeys(game, mime));
 }
 
-Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::optional<model::Game>& game) {
+Result<void> DesktopEntries::SyncOne(const std::string& game_id,
+                                     const std::optional<model::Game>& game) {
   const fs::path path = EntryPath(game_id);
   if (!game || !config_.GetBool("desktop_entries.enabled") || !IsWanted(*game)) {
     std::error_code ec;
@@ -152,8 +159,10 @@ Result<void> DesktopEntries::SyncOne(const std::string& game_id, const std::opti
     return {};
   }
   const std::string content = Render(*game);
-  if (files::ReadFile(path) == content) return {};  // every write makes the desktop re-index its menu
-  if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written) return written;
+  if (files::ReadFile(path) == content)
+    return {};  // every write makes the desktop re-index its menu
+  if (auto written = WriteFileAtomic(path, content, "desktop_write_failed"); !written)
+    return written;
   if (!MimeTypes(*game).empty()) UpdateMimeCache(path.parent_path());
   return {};
 }
@@ -203,7 +212,8 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
   for (const fs::path& entry : paths::ListDir(dir)) {
     const std::string name = entry.filename().string();
     if (!name.starts_with(kPrefix) || !name.ends_with(kSuffix)) continue;
-    const std::string id = name.substr(kPrefix.size(), name.size() - kPrefix.size() - kSuffix.size());
+    const std::string id =
+        name.substr(kPrefix.size(), name.size() - kPrefix.size() - kSuffix.size());
     if (wanted.contains(id)) continue;
     fs::remove(entry, ec);
   }

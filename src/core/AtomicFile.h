@@ -12,10 +12,10 @@ namespace mira {
 // Writes `content` beside `path` and renames it over, so a failed write (a full
 // disk included) never replaces a working file with a truncated one. Creates
 // the parent folder. `code` names the error on failure.
-// Writes through a temp file and rename. `durable` fsyncs before the rename. `mode` is the new file's,
-// less the umask; 0600 for a file holding secrets.
-Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view content, std::string code,
-                             bool durable = false, mode_t mode = 0644);
+// Writes through a temp file and rename. `durable` fsyncs before the rename. `mode` is the new
+// file's, less the umask; 0600 for a file holding secrets.
+Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view content,
+                             std::string code, bool durable = false, mode_t mode = 0644);
 
 // Renames an unreadable `path` to the first free <path>.bad, <path>.bad.2, ... so an earlier
 // set-aside copy is never overwritten. Returns the new name.

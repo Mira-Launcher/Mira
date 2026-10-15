@@ -1,7 +1,6 @@
 #include "Sounds.h"
 
 #include <QLibrary>
-
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -42,7 +41,8 @@ struct Sounds::Sdl {
   QLibrary lib;
   bool (*Init)(std::uint32_t) = nullptr;
   void (*QuitSubSystem)(std::uint32_t) = nullptr;
-  SDL_AudioStream* (*OpenAudioDeviceStream)(std::uint32_t, const AudioSpec*, void*, void*) = nullptr;
+  SDL_AudioStream* (*OpenAudioDeviceStream)(std::uint32_t, const AudioSpec*, void*,
+                                            void*) = nullptr;
   bool (*ResumeAudioStreamDevice)(SDL_AudioStream*) = nullptr;
   bool (*PauseAudioStreamDevice)(SDL_AudioStream*) = nullptr;
   bool (*PutAudioStreamData)(SDL_AudioStream*, const void*, int) = nullptr;

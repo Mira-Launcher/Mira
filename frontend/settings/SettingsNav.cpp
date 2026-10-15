@@ -1,7 +1,5 @@
 #include "SettingsNav.h"
 
-#include <algorithm>
-
 #include <QButtonGroup>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -13,19 +11,21 @@
 #include <QScrollBar>
 #include <QStackedWidget>
 #include <QTimer>
-#include <QVariantAnimation>
 #include <QVBoxLayout>
+#include <QVariantAnimation>
+#include <algorithm>
 
-#include "SettingsCard.h"
-#include "SettingsSearch.h"
 #include "../theme/Theme.h"
 #include "../widgets/Scrolling.h"
+#include "SettingsCard.h"
+#include "SettingsSearch.h"
 
 namespace mira_gui {
 
 QString CategoryNavGroup(const QString& category) {
   static const QStringList kLookAndFeel = {"Interface", "Sidebar", "Shortcuts"};
-  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Updates", "Advanced"};
+  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Updates",
+                                      "Advanced"};
   if (kLookAndFeel.contains(category)) return "Look and feel";
   if (kSystem.contains(category)) return "System";
   return "Games";
@@ -34,11 +34,13 @@ QString CategoryNavGroup(const QString& category) {
 icons::Glyph CategoryGlyph(const QString& category) {
   using icons::Glyph;
   static const QHash<QString, Glyph> kGlyphs = {
-      {"Interface", Glyph::Monitor},     {"Sidebar", Glyph::Sidebar},       {"Shortcuts", Glyph::Keyboard},
-      {"Library", Glyph::Folder},        {"Metadata", Glyph::Image},        {"Sources", Glyph::Layers},
-      {"Runners", Glyph::Wrench},        {"Launching", Glyph::Play},        {"Installers", Glyph::Download},
-      {"Store launchers", Glyph::Store}, {"Detection", Glyph::Target},      {"Scanning", Glyph::Refresh},
-      {"Desktop entries", Glyph::Grid},  {"Advanced", Glyph::Sliders},
+      {"Interface", Glyph::Monitor},    {"Sidebar", Glyph::Sidebar},
+      {"Shortcuts", Glyph::Keyboard},   {"Library", Glyph::Folder},
+      {"Metadata", Glyph::Image},       {"Sources", Glyph::Layers},
+      {"Runners", Glyph::Wrench},       {"Launching", Glyph::Play},
+      {"Installers", Glyph::Download},  {"Store launchers", Glyph::Store},
+      {"Detection", Glyph::Target},     {"Scanning", Glyph::Refresh},
+      {"Desktop entries", Glyph::Grid}, {"Advanced", Glyph::Sliders},
   };
   return kGlyphs.value(category, Glyph::Settings);
 }
@@ -119,7 +121,8 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   SetUpScrolling(scroll_, this);  // the nav column and search box beside it page the settings too
   canvas_->installEventFilter(this);
   scroll_->viewport()->installEventFilter(this);
-  connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this, &SettingsNavWidget::SyncToScroll);
+  connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this,
+          &SettingsNavWidget::SyncToScroll);
 
   sticky_ = new QLabel(scroll_->viewport());
   sticky_->setObjectName("settings_sticky");
@@ -145,11 +148,13 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   content_stack_->addWidget(empty_state_);
   outer->addWidget(content_stack_, /*stretch=*/1);
 
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &SettingsNavWidget::RefreshIcons);
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this,
+          &SettingsNavWidget::RefreshIcons);
 }
 
 bool SettingsNavWidget::eventFilter(QObject* watched, QEvent* event) {
-  if ((watched == canvas_ || watched == scroll_->viewport()) && event->type() == QEvent::Resize) SyncToScroll();
+  if ((watched == canvas_ || watched == scroll_->viewport()) && event->type() == QEvent::Resize)
+    SyncToScroll();
   return QWidget::eventFilter(watched, event);
 }
 
@@ -187,8 +192,10 @@ void SettingsNavWidget::SyncToScroll() {
 
   // Enough room under the last page for a jump to bring its title to the top.
   if (last != nullptr) {
-    const int below_title = last->page->y() + last->page->height() - (TitleTop(*last) - kTitleClearance);
-    const int bottom = std::max(kPagePadBottom + bottom_room_, scroll_->viewport()->height() - below_title);
+    const int below_title =
+        last->page->y() + last->page->height() - (TitleTop(*last) - kTitleClearance);
+    const int bottom =
+        std::max(kPagePadBottom + bottom_room_, scroll_->viewport()->height() - below_title);
     if (sections_->contentsMargins().bottom() != bottom) {
       sections_->setContentsMargins(kPagePadX, kTitleClearance, kPagePadX, bottom);
     }
@@ -212,21 +219,28 @@ void SettingsNavWidget::SyncToScroll() {
     sticky_->setText(in->page->Title());
     sticky_->resize(scroll_->viewport()->width(), sticky_->sizeHint().height());
     int y = 0;
-    if (next != nullptr) y = std::min(0, next->page->y() - kTitleClearance - value - sticky_->height());
+    if (next != nullptr)
+      y = std::min(0, next->page->y() - kTitleClearance - value - sticky_->height());
     sticky_->move(0, y);
     sticky_->setVisible(y > -sticky_->height());
     sticky_->raise();
   }
 
   const int current = jumping_to_ >= 0 ? jumping_to_ : CurrentIndex();
-  if (current >= 0 && !categories_[current].button->isChecked()) categories_[current].button->setChecked(true);
+  if (current >= 0 && !categories_[current].button->isChecked())
+    categories_[current].button->setChecked(true);
 }
 
-void SettingsNavWidget::SetNavWidth(int width) { left_->setFixedWidth(width); }
+void SettingsNavWidget::SetNavWidth(int width) {
+  left_->setFixedWidth(width);
+}
 
-QWidget* SettingsNavWidget::ContentArea() const { return content_stack_; }
+QWidget* SettingsNavWidget::ContentArea() const {
+  return content_stack_;
+}
 
-SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph glyph, const QString& nav_group) {
+SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph glyph,
+                                             const QString& nav_group) {
   if (nav_group != current_group_) {
     current_group_ = nav_group;
     current_heading_ = nullptr;
@@ -238,8 +252,9 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   }
 
   auto* page = new SettingsPage(title, canvas_);
-  if (current_heading_ != nullptr &&
-      std::ranges::none_of(categories_, [this](const Category& c) { return c.group_heading == current_heading_; })) {
+  if (current_heading_ != nullptr && std::ranges::none_of(categories_, [this](const Category& c) {
+        return c.group_heading == current_heading_;
+      })) {
     page->SetGroupHeading(current_group_);
   }
   sections_->insertWidget(sections_->count() - 1, page);
@@ -348,7 +363,8 @@ void SettingsNavWidget::ApplyFilter() {
       card->setVisible(card_visible.value(card) > 0);
       if (!card->Collapsible()) continue;
       if (searching && card_visible.value(card) > 0) {
-        if (!folded_before_search_.contains(card)) folded_before_search_.insert(card, !card->Expanded());
+        if (!folded_before_search_.contains(card))
+          folded_before_search_.insert(card, !card->Expanded());
         card->SetExpanded(true);
       } else if (!searching && folded_before_search_.contains(card)) {
         card->SetExpanded(!folded_before_search_.take(card));
@@ -362,20 +378,25 @@ void SettingsNavWidget::ApplyFilter() {
   QHash<QLabel*, bool> heading_visible;
   for (size_t i = 0; i < categories_.size(); ++i) {
     const Category& category = categories_[i];
-    const bool gated_out = category.total_rows > 0 && std::ranges::none_of(rows_, [&](const RowEntry& row) {
-      return row.category_index == static_cast<int>(i) && row.gate_visible;
-    });
+    const bool gated_out =
+        category.total_rows > 0 && std::ranges::none_of(rows_, [&](const RowEntry& row) {
+          return row.category_index == static_cast<int>(i) && row.gate_visible;
+        });
     const bool show = category.total_rows == 0 ? !searching : visible_count[i] > 0;
     category.page->setVisible(show);
     category.button->setVisible(!gated_out);
     category.button->setEnabled(show);
-    category.count->setText(searching && show && category.total_rows > 0 ? QString::number(visible_count[i]) : QString());
+    category.count->setText(searching && show && category.total_rows > 0
+                                ? QString::number(visible_count[i])
+                                : QString());
     if (category.group_heading != nullptr) heading_visible[category.group_heading] |= !gated_out;
     any_visible = any_visible || show;
   }
-  for (auto it = heading_visible.cbegin(); it != heading_visible.cend(); ++it) it.key()->setVisible(it.value());
+  for (auto it = heading_visible.cbegin(); it != heading_visible.cend(); ++it)
+    it.key()->setVisible(it.value());
 
-  content_stack_->setCurrentWidget(searching && !any_visible ? static_cast<QWidget*>(empty_state_) : scroll_);
+  content_stack_->setCurrentWidget(searching && !any_visible ? static_cast<QWidget*>(empty_state_)
+                                                             : scroll_);
   canvas_->layout()->activate();
   SyncToScroll();
 }

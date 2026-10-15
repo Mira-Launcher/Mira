@@ -10,7 +10,7 @@ namespace mira::steam {
 // library::AllSources() instead of a hand-written "if source == steam"
 // branch.
 class SteamSource : public library::ILibrarySource {
-public:
+ public:
   std::string Name() const override { return "steam"; }
 
   Result<std::vector<library::CatalogEntry>> Catalog(const config::Config& config,
@@ -19,7 +19,7 @@ public:
   // Fires steam://install/<ref> and returns -- Steam's own client owns the
   // download from here, same posture as steam.launch_mode "steam".
   Result<void> Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                      const std::string& ref) override;
+                       const std::string& ref) override;
 
   // Steam updates its own games; nothing for Mira to do. Falls through to
   // ILibrarySource's default "unsupported" body.

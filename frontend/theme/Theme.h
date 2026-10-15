@@ -6,7 +6,6 @@
 #include <QPalette>
 #include <QString>
 #include <QStringList>
-
 #include <array>
 #include <optional>
 
@@ -22,16 +21,16 @@ namespace mira_gui::theme {
 // Each field's initialiser is the fallback for a theme that omits it, which is
 // what keeps a half-written file from producing an unusable window.
 struct Tokens {
-  QColor window{"#1b1d22"};        // the window's own backdrop
-  QColor surface{"#23262d"};       // panels, top bar, inputs
-  QColor surface_alt{"#2b2f37"};   // hover, alternating rows, tooltips
+  QColor window{"#1b1d22"};       // the window's own backdrop
+  QColor surface{"#23262d"};      // panels, top bar, inputs
+  QColor surface_alt{"#2b2f37"};  // hover, alternating rows, tooltips
   QColor border{"#363b45"};
   QColor text{"#e6e8ec"};
   QColor text_muted{"#9aa0ab"};
-  QColor accent{"#5c7cfa"};        // selection, focus, the active tab
+  QColor accent{"#5c7cfa"};  // selection, focus, the active tab
   QColor on_accent{"#ffffff"};
   QColor accent_hidden{"#9b6cf5"};  // the accent in hidden mode, which also tints the top bar
-  QColor running{"#43a047"};       // a game that is playing right now
+  QColor running{"#43a047"};        // a game that is playing right now
   QColor success{"#43a047"};
   QColor warning{"#ef6c00"};
   QColor error{"#e5484d"};
@@ -91,7 +90,8 @@ void SetDesktopAppearance(std::optional<QColor> accent, std::optional<Qt::ColorS
 QFont Larger(QFont font, qreal points = 1);
 // The desktop's font, which tile titles keep. Everything else is a point larger (EnlargeAppFont).
 QFont DesktopFont();
-// Sets the application's font a point above the desktop's, so text reads at a glance. Once, at start.
+// Sets the application's font a point above the desktop's, so text reads at a glance. Once, at
+// start.
 void EnlargeAppFont();
 
 // What everything currently draws with. Valid before Apply() is ever called,
@@ -163,10 +163,10 @@ void SetStyleProperty(QWidget* widget, const char* name, const QString& value);
 class Notifier : public QObject {
   Q_OBJECT
 
-public:
+ public:
   static Notifier* Instance();
 
-signals:
+ signals:
   // Before the stylesheet is set, which re-polishes every widget there is: the moment to let go of
   // what isn't shown.
   void AboutToRestyle();

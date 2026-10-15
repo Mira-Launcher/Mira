@@ -13,7 +13,7 @@ namespace mira::runner {
 // Steam-owned prefix. launch_mode == "steam" (the default) never reaches
 // this class, because that mode hands off to steam -applaunch <appid> instead.
 class SteamRunner : public IRunner {
-public:
+ public:
   std::string kind() const override { return "steam"; }
 
   std::vector<model::RunnerBuild> Discover(const config::Config& config) const override;

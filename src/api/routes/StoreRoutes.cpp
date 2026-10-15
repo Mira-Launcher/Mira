@@ -1,5 +1,4 @@
-#include "core/LogHub.h"
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <algorithm>
 #include <charconv>
@@ -7,12 +6,12 @@
 #include <map>
 #include <mutex>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/LogHub.h"
 #include "humble/Humble.h"
 #include "itch/Itch.h"
 #include "library/Stores.h"
@@ -74,44 +73,49 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     if (store) SendJson(res, StatusJson(*store, store->status(s.config)));
   });
 
-  // Downloads the newest release of the store's command-line tool. Running it again is how it updates.
+  // Downloads the newest release of the store's command-line tool. Running it again is how it
+  // updates.
   http.Post(R"(/v1/stores/([a-z0-9-]+)/setup)", [&s](const Request& req, Response& res) {
     const library::Store* store = FindStoreOr404(req, res);
     if (!store) return;
-    s.StartJob(req, res, "setup", store->id, std::format("Setting up {}", store->tool),
-               [&s, store](JobRegistry::Progress&) -> Result<json> {
-                 // One setup per store at a time. One asked for while another ran (set up early, then
-                 // again from its sign-in page) finds the tool there and stops.
-                 std::unique_lock turn(SetupMutex(store->id), std::try_to_lock);
-                 if (!turn.owns_lock()) {
-                   turn.lock();
-                   const runner::ToolStatus tool = store->status(s.config).tool;
-                   if (tool.installed) return json{{"tag", tool.version}};
-                 }
-                 const std::string channel = std::string("setup:") + store->id;
-                 loghub::Begin(channel);
-                 const auto say = [&channel](const std::string& line) { loghub::Append(channel, line + "\n"); };
-                 const auto fail = [&](const Error& error) -> Result<json> {
-                   say("Failed: " + error.message);
-                   loghub::End(channel);
-                   return std::unexpected(error);
-                 };
-                 say(std::format("Looking up the newest {} release", store->tool));
-                 const auto releases = runner::ListReleases(s.config, store->release_kind);
-                 if (!releases) return fail(releases.error());
-                 if (releases->empty()) {
-                   return fail(Error{.code = "no_release_found",
-                                     .message = std::format("no matching {} release found", store->tool),
-                                     .hint = {}});
-                 }
-                 const runner::ReleaseAsset& asset = releases->front();  // newest first
-                 say(std::format("Downloading {} {}", store->tool, asset.tag));
-                 if (auto installed = store->install_tool(s.config, asset); !installed) return fail(installed.error());
-                 log::Info("installed {} {}", store->tool, asset.tag);
-                 say(std::format("Installed {} {}", store->tool, asset.tag));
-                 loghub::End(channel);
-                 return json{{"tag", asset.tag}};
-               });
+    s.StartJob(
+        req, res, "setup", store->id, std::format("Setting up {}", store->tool),
+        [&s, store](JobRegistry::Progress&) -> Result<json> {
+          // One setup per store at a time. One asked for while another ran (set up early, then
+          // again from its sign-in page) finds the tool there and stops.
+          std::unique_lock turn(SetupMutex(store->id), std::try_to_lock);
+          if (!turn.owns_lock()) {
+            turn.lock();
+            const runner::ToolStatus tool = store->status(s.config).tool;
+            if (tool.installed) return json{{"tag", tool.version}};
+          }
+          const std::string channel = std::string("setup:") + store->id;
+          loghub::Begin(channel);
+          const auto say = [&channel](const std::string& line) {
+            loghub::Append(channel, line + "\n");
+          };
+          const auto fail = [&](const Error& error) -> Result<json> {
+            say("Failed: " + error.message);
+            loghub::End(channel);
+            return std::unexpected(error);
+          };
+          say(std::format("Looking up the newest {} release", store->tool));
+          const auto releases = runner::ListReleases(s.config, store->release_kind);
+          if (!releases) return fail(releases.error());
+          if (releases->empty()) {
+            return fail(Error{.code = "no_release_found",
+                              .message = std::format("no matching {} release found", store->tool),
+                              .hint = {}});
+          }
+          const runner::ReleaseAsset& asset = releases->front();  // newest first
+          say(std::format("Downloading {} {}", store->tool, asset.tag));
+          if (auto installed = store->install_tool(s.config, asset); !installed)
+            return fail(installed.error());
+          log::Info("installed {} {}", store->tool, asset.tag);
+          say(std::format("Installed {} {}", store->tool, asset.tag));
+          loghub::End(channel);
+          return json{{"tag", asset.tag}};
+        });
   });
 
   // The page to sign in at. Amazon makes a fresh one each time.
@@ -123,7 +127,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     SendJson(res, {{"url", *url}});
   });
 
-  // Completes sign-in with what the user pasted: a code, an API key, a session key or a redirect URL.
+  // Completes sign-in with what the user pasted: a code, an API key, a session key or a redirect
+  // URL.
   http.Post(R"(/v1/stores/([a-z0-9-]+)/login)", [&s](const Request& req, Response& res) {
     const library::Store* store = FindStoreOr404(req, res);
     if (!store) return;
@@ -132,7 +137,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     if (!body->contains("credential") || !(*body)["credential"].is_string()) {
       return SendError(res, 400, "invalid_body", R"(expected {"credential": "..."})");
     }
-    if (auto logged_in = store->login(s.config, (*body)["credential"].get<std::string>()); !logged_in) {
+    if (auto logged_in = store->login(s.config, (*body)["credential"].get<std::string>());
+        !logged_in) {
       return SendError(res, 400, logged_in.error());
     }
     // A different account may have been signed in before; its titles go.
@@ -160,7 +166,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     const library::Store* store = FindStoreOr404(req, res);
     if (!store) return;
     if (store->logout == nullptr) {
-      return SendError(res, 400, "logout_unsupported", std::format("{} keeps its own sign-in", store->tool));
+      return SendError(res, 400, "logout_unsupported",
+                       std::format("{} keeps its own sign-in", store->tool));
     }
     const Result<void> done = store->logout(s.config);
     // Another account may sign in next.
@@ -178,7 +185,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     const library::Store* store = FindStoreOr404(req, res);
     if (!store) return;
     if (store->import == nullptr) {
-      return SendError(res, 400, "import_unsupported", std::format("{} has no installed games to import", store->name));
+      return SendError(res, 400, "import_unsupported",
+                       std::format("{} has no installed games to import", store->name));
     }
     s.StartJob(req, res, "import", store->id, std::format("Importing from {}", store->name),
                [&s, store](JobRegistry::Progress&) -> Result<json> {
@@ -194,7 +202,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     auto collections = itch::ListCollections(s.config);
     if (!collections) return SendError(res, 400, collections.error());
     json out = json::array();
-    for (const itch::ItchCollection& collection : *collections) out.push_back(CollectionJson(collection));
+    for (const itch::ItchCollection& collection : *collections)
+      out.push_back(CollectionJson(collection));
     SendJson(res, std::move(out));
   });
 
@@ -202,7 +211,8 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, R"({"link": "https://itch.io/c/<id>/..."})");
     if (!body) return;
     if (!body->contains("link") || !(*body)["link"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"link": "https://itch.io/c/<id>/..."})");
+      return SendError(res, 400, "invalid_body",
+                       R"(expected {"link": "https://itch.io/c/<id>/..."})");
     }
     auto added = itch::AddCollection(s.config, (*body)["link"].get<std::string>());
     if (!added) return SendError(res, 400, added.error());
@@ -234,31 +244,40 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, R"({"bundle_key": "...", "item_numbers": "..."})");
     if (!body) return;
     if (!body->contains("bundle_key") || !(*body)["bundle_key"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"bundle_key": "...", "item_numbers": "..."})");
+      return SendError(res, 400, "invalid_body",
+                       R"(expected {"bundle_key": "...", "item_numbers": "..."})");
     }
     // A malformed item list mustn't fall back to the whole bundle.
     if (body->contains("item_numbers") && !(*body)["item_numbers"].is_string()) {
-      return SendError(res, 400, "invalid_body", R"(expected {"bundle_key": "...", "item_numbers": "..."})");
+      return SendError(res, 400, "invalid_body",
+                       R"(expected {"bundle_key": "...", "item_numbers": "..."})");
     }
     const std::string bundle_key = (*body)["bundle_key"];
     const std::string item_numbers = core::JsonString(*body, "item_numbers");
     // The key becomes a folder name and a humble-cli argument.
-    if (bundle_key.empty() || !std::ranges::all_of(bundle_key, [](unsigned char c) { return std::isalnum(c); }) ||
-        !std::ranges::all_of(item_numbers, [](unsigned char c) { return std::isdigit(c) || c == ',' || c == ' ' || c == '-'; })) {
-      return SendError(res, 400, "invalid_body", "bundle_key must be letters and digits, and item_numbers digits, commas and dashes");
+    if (bundle_key.empty() ||
+        !std::ranges::all_of(bundle_key, [](unsigned char c) { return std::isalnum(c); }) ||
+        !std::ranges::all_of(item_numbers, [](unsigned char c) {
+          return std::isdigit(c) || c == ',' || c == ' ' || c == '-';
+        })) {
+      return SendError(
+          res, 400, "invalid_body",
+          "bundle_key must be letters and digits, and item_numbers digits, commas and dashes");
     }
-    s.StartJob(req, res, "download", bundle_key, "Downloading a Humble bundle",
-               [&s, bundle_key, item_numbers](JobRegistry::Progress&) -> Result<json> {
-                 const Result<bool> downloaded = humble::Download(s.config, bundle_key, item_numbers);
-                 if (!downloaded) return std::unexpected(downloaded.error());
-                 if (!*downloaded) {
-                   // A redeemed key with no Humble-hosted files, most likely.
-                   return Err("nothing_to_download", "this bundle has nothing to download from Humble",
-                              "It may be a key to redeem in another store.");
-                 }
-                 log::Info("humble download finished: {}", bundle_key);
-                 return json{{"bundle_key", bundle_key}, {"path", humble::DownloadDir(s.config, bundle_key).string()}};
-               });
+    s.StartJob(
+        req, res, "download", bundle_key, "Downloading a Humble bundle",
+        [&s, bundle_key, item_numbers](JobRegistry::Progress&) -> Result<json> {
+          const Result<bool> downloaded = humble::Download(s.config, bundle_key, item_numbers);
+          if (!downloaded) return std::unexpected(downloaded.error());
+          if (!*downloaded) {
+            // A redeemed key with no Humble-hosted files, most likely.
+            return Err("nothing_to_download", "this bundle has nothing to download from Humble",
+                       "It may be a key to redeem in another store.");
+          }
+          log::Info("humble download finished: {}", bundle_key);
+          return json{{"bundle_key", bundle_key},
+                      {"path", humble::DownloadDir(s.config, bundle_key).string()}};
+        });
   });
 }
 

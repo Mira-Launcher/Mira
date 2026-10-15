@@ -135,11 +135,14 @@ void SetSteamStatusAsync(QObject* context, const std::string& status,
       std::move(callback));
 }
 
-void UpdateSteamShortcutAsync(QObject* context, const std::string& exe, const std::string& launch_options) {
+void UpdateSteamShortcutAsync(QObject* context, const std::string& exe,
+                              const std::string& launch_options) {
   async::Run(
       context,
       [exe, launch_options] {
-        return transport::PostJson("/v1/steam/shortcut", json{{"exe", exe}, {"launch_options", launch_options}}).ok;
+        return transport::PostJson("/v1/steam/shortcut",
+                                   json{{"exe", exe}, {"launch_options", launch_options}})
+            .ok;
       },
       std::function<void(bool)>([](bool) {}));
 }
@@ -158,10 +161,11 @@ void GetLutrisAsync(QObject* context, std::function<void(LutrisStatusResult)> ca
   async::Run(
       context,
       [] {
-        return ReadReply<LutrisStatusResult>(transport::Get("/v1/lutris"), "GET /v1/lutris", Shape::Object,
-                                             [](LutrisStatusResult& result, const nlohmann::json& body) {
-                                               result.found = body.value("found", false);
-                                             });
+        return ReadReply<LutrisStatusResult>(
+            transport::Get("/v1/lutris"), "GET /v1/lutris", Shape::Object,
+            [](LutrisStatusResult& result, const nlohmann::json& body) {
+              result.found = body.value("found", false);
+            });
       },
       std::move(callback));
 }
@@ -219,8 +223,9 @@ void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const s
       [folder, id] {
         json body = {{"folder", folder}};
         if (!id.empty()) body["id"] = id;
-        return ReadReply<SettleMoveResult>(transport::PostJson("/v1/library/unclear", body), "POST /v1/library/unclear",
-                                           Shape::Object, [](SettleMoveResult& result, const json& reply) {
+        return ReadReply<SettleMoveResult>(transport::PostJson("/v1/library/unclear", body),
+                                           "POST /v1/library/unclear", Shape::Object,
+                                           [](SettleMoveResult& result, const json& reply) {
                                              result.game = mapping::ToGameSummary(reply);
                                            });
       },
@@ -249,7 +254,8 @@ void ImportPathAsync(QObject* context, const std::string& path, const std::strin
   RunJob<ImportPathResult>(
       context, "import_path",
       [path, kind](const std::string& query) {
-        return transport::PostJson("/v1/library/import" + query, json{{"path", path}, {"kind", kind}});
+        return transport::PostJson("/v1/library/import" + query,
+                                   json{{"path", path}, {"kind", kind}});
       },
       FillImportPath, std::move(callback));
 }

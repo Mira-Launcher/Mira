@@ -20,7 +20,8 @@ constexpr qreal kBandShare = 0.6;
 
 }  // namespace
 
-HeroBackdrop::HeroBackdrop(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), artwork_(artwork) {
+HeroBackdrop::HeroBackdrop(ArtworkStore* artwork, QWidget* parent)
+    : QWidget(parent), artwork_(artwork) {
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] { update(); });
 }
 
@@ -74,7 +75,8 @@ QPixmap HeroBackdrop::Source() const {
     return artwork_->SmallArtwork(game_.id);
   // The same generated art as its tile, so the card still carries its colors.
   if (placeholder_.isNull())
-    placeholder_ = PlaceholderCover(QString::fromStdString(game_.name), QString::fromStdString(game_.id), QSize(200, 300), 1);
+    placeholder_ = PlaceholderCover(QString::fromStdString(game_.name),
+                                    QString::fromStdString(game_.id), QSize(200, 300), 1);
   return placeholder_;
 }
 
@@ -99,15 +101,16 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
   QPainterPath card;
-  card.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel, tokens.radius_panel);
+  card.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel,
+                      tokens.radius_panel);
   painter.fillPath(card, tokens.surface);
 
   const QPixmap source = Source();
   if (!source.isNull()) {
     const QRect band(0, 0, width(), qRound(height() * kBandShare));
     const qreal dpr = devicePixelRatioF();
-    const qint64 key =
-        source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height() ^ (qint64(qRound(dpr * 100)) << 48);
+    const qint64 key = source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height() ^
+                       (qint64(qRound(dpr * 100)) << 48);
     if (rendered_.isNull() || rendered_key_ != key) {
       // While the card is being resized, a quick scale per step; the smooth one once it stops.
       const Qt::TransformationMode mode =
@@ -128,8 +131,8 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
     painter.save();
     painter.setClipPath(card);
     painter.setClipRect(band, Qt::IntersectClip);
-    painter.drawPixmap(QPointF((band.width() - size.width()) / 2, (band.height() - size.height()) / 2),
-                       rendered_);
+    painter.drawPixmap(
+        QPointF((band.width() - size.width()) / 2, (band.height() - size.height()) / 2), rendered_);
     // Fades into the surface, so text laid over it keeps the theme's colors.
     QLinearGradient fade(0, 0, 0, band.height());
     QColor surface = tokens.surface;
@@ -186,14 +189,14 @@ void CoverChip::paintEvent(QPaintEvent*) {
   painter.setClipPath(path);
   if (!preview_.isNull()) {
     if (preview_filled_.isNull() || preview_dpr_ != devicePixelRatioF()) {
-      preview_filled_ =
-          preview_.scaled(size() * devicePixelRatioF(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+      preview_filled_ = preview_.scaled(size() * devicePixelRatioF(),
+                                        Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
       preview_dpr_ = devicePixelRatioF();
     }
     const QPixmap& filled = preview_filled_;
     const QRectF source((filled.width() - width() * devicePixelRatioF()) / 2,
-                        (filled.height() - height() * devicePixelRatioF()) / 2, width() * devicePixelRatioF(),
-                        height() * devicePixelRatioF());
+                        (filled.height() - height() * devicePixelRatioF()) / 2,
+                        width() * devicePixelRatioF(), height() * devicePixelRatioF());
     painter.drawPixmap(QRectF(rect()), filled, source);
   } else if (artwork_ != nullptr && !game_.id.empty()) {
     painter.drawPixmap(rect(), artwork_->Cover(game_, size(), devicePixelRatioF()));

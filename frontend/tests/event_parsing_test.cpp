@@ -43,7 +43,8 @@ TEST_CASE("ParseGameSummary rejects a payload from a different event") {
 TEST_CASE("ParseGameSummaries reads every game a batch changed, skipping entries without an id") {
   std::vector<GameSummary> games;
   REQUIRE(events::ParseGameSummaries(
-      R"({"games": [{"id": "a", "tags": ["hidden"]}, {"name": "no id"}, {"id": "b", "tags": []}]})", &games));
+      R"({"games": [{"id": "a", "tags": ["hidden"]}, {"name": "no id"}, {"id": "b", "tags": []}]})",
+      &games));
   REQUIRE(games.size() == 2);
   CHECK(games[0].id == "a");
   CHECK(games[0].tags == std::vector<std::string>{"hidden"});
@@ -81,7 +82,8 @@ TEST_CASE("ParseArtCandidatesEvent reads a page of candidates, or why there isn'
   CHECK(event.candidates[0].source == "steamgriddb");
 
   REQUIRE(events::ParseArtCandidatesEvent(
-      R"({"id": "ripples", "type": "cover", "page": 0, "code": "no_steamgriddb_key", "error": "set it"})", &event));
+      R"({"id": "ripples", "type": "cover", "page": 0, "code": "no_steamgriddb_key", "error": "set it"})",
+      &event));
   CHECK(event.code == "no_steamgriddb_key");
   CHECK(event.candidates.empty());
 }
@@ -122,7 +124,8 @@ TEST_CASE("ParseCatalogCheck tells a store's re-check starting from one that cha
   REQUIRE(events::ParseCatalogCheck("library.catalog_checking", R"({"source": "gog"})", &check));
   CHECK(check.source == "gog");
   CHECK(check.checking);
-  REQUIRE(events::ParseCatalogCheck("library.catalog_checked", R"({"source": "gog", "changed": true})", &check));
+  REQUIRE(events::ParseCatalogCheck("library.catalog_checked",
+                                    R"({"source": "gog", "changed": true})", &check));
   CHECK_FALSE(check.checking);
   CHECK(check.changed);
   CHECK_FALSE(events::ParseCatalogCheck("library.install.started", R"({"source": "gog"})", &check));
@@ -157,8 +160,8 @@ TEST_CASE("ParseRunnerDownload reads the state from the event type and ignores u
   // stream, so the type check is what keeps a game.updated from being read
   // as a download.
   RunnerDownloadEvent event;
-  REQUIRE(events::ParseRunnerDownload(
-      "runners.download.finished", R"({"kind": "proton", "tag": "GE-Proton11-7"})", &event));
+  REQUIRE(events::ParseRunnerDownload("runners.download.finished",
+                                      R"({"kind": "proton", "tag": "GE-Proton11-7"})", &event));
   CHECK(event.state == "finished");
   CHECK(event.kind == "proton");
   CHECK(event.tag == "GE-Proton11-7");
@@ -187,16 +190,16 @@ TEST_CASE("ParseTricksEvent ignores unrelated event types") {
 
 TEST_CASE("ParseTricksEvent extracts id, verb, state and error") {
   TricksEvent event;
-  REQUIRE(events::ParseTricksEvent("tricks.failed",
-                                        R"({"id": "x", "verb": "corefonts", "error": "winetricks not found"})",
-                                        &event));
+  REQUIRE(events::ParseTricksEvent(
+      "tricks.failed", R"({"id": "x", "verb": "corefonts", "error": "winetricks not found"})",
+      &event));
   CHECK(event.id == "x");
   CHECK(event.verb == "corefonts");
   CHECK(event.state == "failed");
   CHECK(event.error == "winetricks not found");
 
-  REQUIRE(events::ParseTricksEvent("tricks.finished", R"({"id": "x", "verb": "corefonts"})",
-                                        &event));
+  REQUIRE(
+      events::ParseTricksEvent("tricks.finished", R"({"id": "x", "verb": "corefonts"})", &event));
   CHECK(event.state == "finished");
   CHECK(event.error.empty());
 }

@@ -1,22 +1,21 @@
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <algorithm>
-#include <filesystem>
 #include <charconv>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <map>
 #include <optional>
 #include <set>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
-#include "library/GamePatch.h"
 #include "config/Resolver.h"
 #include "core/Strings.h"
 #include "library/FolderTags.h"
+#include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
@@ -83,7 +82,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     int limit = 50;
     if (auto it = req.params.find("limit"); it != req.params.end()) {
       const std::string& raw = it->second;
-      if (std::from_chars(raw.data(), raw.data() + raw.size(), limit).ec != std::errc() || limit < 1) {
+      if (std::from_chars(raw.data(), raw.data() + raw.size(), limit).ec != std::errc() ||
+          limit < 1) {
         return SendError(res, 400, "invalid_param", "?limit= must be a whole number, 1 or more");
       }
     }
@@ -107,7 +107,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     int requested_lines = 200;
     if (auto it = req.params.find("lines"); it != req.params.end()) {
       const std::string& raw = it->second;
-      if (std::from_chars(raw.data(), raw.data() + raw.size(), requested_lines).ec != std::errc() || requested_lines < 1) {
+      if (std::from_chars(raw.data(), raw.data() + raw.size(), requested_lines).ec != std::errc() ||
+          requested_lines < 1) {
         return SendError(res, 400, "invalid_param", "?lines= must be a whole number, 1 or more");
       }
     }
@@ -121,13 +122,15 @@ void RegisterGameRoutes(Router& http, Services& s) {
     in.seekg(0, std::ios::end);
     const std::streamoff size = in.tellg();
     in.seekg(size > kMaxTailBytes ? size - kMaxTailBytes : 0);
-    const std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
 
     std::vector<std::string> all_lines = strings::Split(content, '\n');
     if (!all_lines.empty() && all_lines.back().empty()) all_lines.pop_back();  // trailing newline
     const std::size_t take = std::min(all_lines.size(), static_cast<std::size_t>(requested_lines));
     json out = json::array();
-    for (std::size_t i = all_lines.size() - take; i < all_lines.size(); ++i) out.push_back(all_lines[i]);
+    for (std::size_t i = all_lines.size() - take; i < all_lines.size(); ++i)
+      out.push_back(all_lines[i]);
     SendJson(res, {{"lines", out}});
   });
 
@@ -136,7 +139,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, "a JSON object");
     if (!body) return;
     const json& b = *body;
-    if (const auto problem = library::GamePatchProblem(b)) return SendError(res, 400, "invalid_body", *problem);
+    if (const auto problem = library::GamePatchProblem(b))
+      return SendError(res, 400, "invalid_body", *problem);
 
     const auto before = s.games.Find(id);
     // Turned into a Windows game without a prefix folder: it gets one, as POST /v1/games/manual
@@ -188,13 +192,16 @@ void RegisterGameRoutes(Router& http, Services& s) {
         !(folder_tag.is_null() || folder_tag.is_string())) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    if (auto problem = library::ValidateOverridesPatch(config)) return SendError(res, 400, "invalid_setting", *problem);
+    if (auto problem = library::ValidateOverridesPatch(config))
+      return SendError(res, 400, "invalid_setting", *problem);
 
     auto updated = s.games.UpdateMany(*ids, [&](model::Game& game) {
       const std::vector<std::string> old_tags = game.tags;
       const std::string old_pick = game.folder_tag;
       const json old_overrides = game.overrides;
-      std::erase_if(game.tags, [&](const std::string& tag) { return std::ranges::contains(*remove_tags, tag); });
+      std::erase_if(game.tags, [&](const std::string& tag) {
+        return std::ranges::contains(*remove_tags, tag);
+      });
       for (const std::string& tag : *add_tags) {
         if (!std::ranges::contains(game.tags, tag)) game.tags.push_back(tag);
       }
@@ -254,9 +261,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
 
     const bool purge = BoolParam(req, "purge");
-    const auto flag = [&](const char* name) {
-      return purge || BoolParam(req, name);
-    };
+    const auto flag = [&](const char* name) { return purge || BoolParam(req, name); };
     // Deleting files or a prefix can take minutes (a store's uninstaller, a big folder), so it's
     // a job rather than a request holding one of the server's threads.
     if (flag("delete_files") || flag("delete_prefix")) {
@@ -290,7 +295,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
                                         flag("delete_prefix"), flag("delete_metadata"));
         !deleted) {
       const std::string& code = deleted.error().code;
-      const bool refused = code == "shared_prefix" || code == "shared_folder" || code == "path_outside_root";
+      const bool refused =
+          code == "shared_prefix" || code == "shared_folder" || code == "path_outside_root";
       return SendError(res, refused ? 409 : 500, deleted.error());
     }
 
@@ -304,72 +310,74 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
   http.Post("/v1/games/delete", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})";
+    constexpr std::string_view kShape =
+        R"({"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const auto ids = StringList(*body, "ids");
     if (!ids) {
-      return SendError(res, 400, "invalid_body",
-                       std::format("expected {}", kShape));
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const bool purge = body->value("purge", false);
     const bool files = purge || body->value("delete_files", false);
     const bool prefix = purge || body->value("delete_prefix", false);
     const bool metadata = purge || body->value("delete_metadata", false);
 
-    s.StartJob(req, res, "delete", "", "Removing games", [&s, ids = *ids, files, prefix, metadata](
-                                                            JobRegistry::Progress& progress) -> Result<json> {
-      std::vector<std::string> deletable;
-      json failed = json::array();
-      auto folders_lock = s.games.LockFolders();
-      // Every game claimed first, so none can launch mid-delete. Games that share a folder and are
-      // removed together don't keep it from each other; one that couldn't be claimed (running,
-      // being moved) stays, and keeps its folder.
-      std::map<std::string, proc::ProcessSupervisor::Reservation> claims;
-      for (const std::string& id : ids) {
-        if (!s.games.Contains(id) || claims.contains(id)) continue;
-        if (auto claim = s.Claim(id, "deleted")) {
-          claims.emplace(id, std::move(*claim));
-        } else {
-          failed.push_back(BatchFailure(id, claim.error()));
-        }
-      }
-      std::vector<model::Game> staying = s.games.All();
-      std::erase_if(staying, [&](const model::Game& game) { return claims.contains(game.id); });
-      int done = 0;
-      for (const std::string& id : ids) {
-        progress.Report(done++, static_cast<int>(ids.size()));
-        if (!claims.contains(id)) continue;
-        const auto game = s.games.Find(id);
-        if (!game) continue;
-        if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata); !deleted) {
-          failed.push_back(BatchFailure(id, deleted.error()));
-          continue;
-        }
-        deletable.push_back(id);
-      }
-      auto removed = s.games.RemoveMany(deletable);
-      folders_lock.unlock();
-      if (!removed) return std::unexpected(removed.error());
-      if (!removed->empty()) {
-        for (const std::string& removed_id : *removed) s.SyncDesktopEntry(removed_id);
-        s.events.Publish("games.removed", {{"ids", *removed}});
-      }
-      return json{{"removed", *removed}, {"failed", std::move(failed)}};
-    });
+    s.StartJob(
+        req, res, "delete", "", "Removing games",
+        [&s, ids = *ids, files, prefix, metadata](JobRegistry::Progress& progress) -> Result<json> {
+          std::vector<std::string> deletable;
+          json failed = json::array();
+          auto folders_lock = s.games.LockFolders();
+          // Every game claimed first, so none can launch mid-delete. Games that share a folder and
+          // are removed together don't keep it from each other; one that couldn't be claimed
+          // (running, being moved) stays, and keeps its folder.
+          std::map<std::string, proc::ProcessSupervisor::Reservation> claims;
+          for (const std::string& id : ids) {
+            if (!s.games.Contains(id) || claims.contains(id)) continue;
+            if (auto claim = s.Claim(id, "deleted")) {
+              claims.emplace(id, std::move(*claim));
+            } else {
+              failed.push_back(BatchFailure(id, claim.error()));
+            }
+          }
+          std::vector<model::Game> staying = s.games.All();
+          std::erase_if(staying, [&](const model::Game& game) { return claims.contains(game.id); });
+          int done = 0;
+          for (const std::string& id : ids) {
+            progress.Report(done++, static_cast<int>(ids.size()));
+            if (!claims.contains(id)) continue;
+            const auto game = s.games.Find(id);
+            if (!game) continue;
+            if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata);
+                !deleted) {
+              failed.push_back(BatchFailure(id, deleted.error()));
+              continue;
+            }
+            deletable.push_back(id);
+          }
+          auto removed = s.games.RemoveMany(deletable);
+          folders_lock.unlock();
+          if (!removed) return std::unexpected(removed.error());
+          if (!removed->empty()) {
+            for (const std::string& removed_id : *removed) s.SyncDesktopEntry(removed_id);
+            s.events.Publish("games.removed", {{"ids", *removed}});
+          }
+          return json{{"removed", *removed}, {"failed", std::move(failed)}};
+        });
   });
 
   // --- manual add -----------------------------------------------------------
 
   http.Post("/v1/games/manual", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})";
+    constexpr std::string_view kShape =
+        R"({"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
-    if (!b.contains("install_path") || !b["install_path"].is_string() ||
-        !b.contains("exe_path") || !b["exe_path"].is_string()) {
-      return SendError(res, 400, "invalid_body",
-                       std::format("expected {}", kShape));
+    if (!b.contains("install_path") || !b["install_path"].is_string() || !b.contains("exe_path") ||
+        !b["exe_path"].is_string()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const std::filesystem::path install_path = b["install_path"].get<std::string>();
     const std::string exe_path = library::StoredExePath(install_path.string(), b["exe_path"]);
@@ -382,7 +390,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (b.contains("platform")) {
       platform = model::PlatformFromString(b["platform"].get<std::string>());
     } else {
-      const std::string ext = strings::ToLower(std::filesystem::path(exe_path).extension().string());
+      const std::string ext =
+          strings::ToLower(std::filesystem::path(exe_path).extension().string());
       const bool windows = ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd";
       platform = windows ? model::Platform::Windows : model::Platform::Native;
     }

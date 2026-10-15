@@ -8,8 +8,8 @@ using namespace mira;
 
 namespace {
 
-model::Game MakeGame(const std::string& id, const std::string& source, const std::string& runner_ref,
-                     const std::string& data_dir = "",
+model::Game MakeGame(const std::string& id, const std::string& source,
+                     const std::string& runner_ref, const std::string& data_dir = "",
                      model::Platform platform = model::Platform::Windows) {
   model::Game game;
   game.id = id;
@@ -41,7 +41,8 @@ TEST_CASE("a store's runner is its default, and games follow only when asked") {
   // An unpinned game resolves through the store's default.
   const runner::RunnerRegistry registry(env.config);
   CHECK(registry.ResolveRef(*env.games.Find("epic-a")) == "native:native");
-  CHECK(registry.ResolveRef(*env.games.Find("gog-a")) == "native:native");  // default_runner.windows
+  CHECK(registry.ResolveRef(*env.games.Find("gog-a")) ==
+        "native:native");  // default_runner.windows
 
   state = library::SetSourceRunner(env.config, env.games, "epic", "native:native", true);
   REQUIRE(state);
@@ -79,7 +80,8 @@ TEST_CASE("a launcher's runner moves the launcher and the games in its prefix") 
 TEST_CASE("setting a source's runner refuses what it can't use") {
   test::TestEnv env("source-runner-refused");
   CHECK(library::GetSourceRunner(env.config, env.games, "steam").error().code == "no_runner");
-  CHECK(library::GetSourceRunner(env.config, env.games, "ea").error().code == "launcher_not_installed");
+  CHECK(library::GetSourceRunner(env.config, env.games, "ea").error().code ==
+        "launcher_not_installed");
   CHECK(library::SetSourceRunner(env.config, env.games, "gog", "nonsense", false).error().code ==
         "invalid_runner");
   CHECK_FALSE(library::SetSourceRunner(env.config, env.games, "gog", "wine:not-installed", false));

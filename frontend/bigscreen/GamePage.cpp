@@ -7,17 +7,16 @@
 #include <QPainterPath>
 #include <QTextDocumentFragment>
 #include <QTextLayout>
-
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
-#include "../library/PlayChoices.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
 #include "../library/OwnedTitles.h"
+#include "../library/PlayChoices.h"
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
 #include "Screenshots.h"
@@ -32,8 +31,10 @@ constexpr qsizetype kMaxOwnShots = 6;
 constexpr int kOwnShotPx = 640;
 
 std::optional<QColor> ProtonColor(const QString& tier) {
-  static const QHash<QString, QString> colors = {{"platinum", "#b4c7dc"}, {"gold", "#cfb53b"},
-                                                 {"silver", "#a6a6a6"},   {"bronze", "#cd7f32"},
+  static const QHash<QString, QString> colors = {{"platinum", "#b4c7dc"},
+                                                 {"gold", "#cfb53b"},
+                                                 {"silver", "#a6a6a6"},
+                                                 {"bronze", "#cd7f32"},
                                                  {"borked", "#ff4d4d"}};
   const auto it = colors.constFind(tier);
   if (it == colors.constEnd()) return std::nullopt;
@@ -41,7 +42,8 @@ std::optional<QColor> ProtonColor(const QString& tier) {
 }
 
 // Word-wraps `text` to at most `max_lines`, eliding the last one. Returns its height.
-double DrawParagraph(QPainter& painter, QPointF top_left, double width, const QString& text, int max_lines) {
+double DrawParagraph(QPainter& painter, QPointF top_left, double width, const QString& text,
+                     int max_lines) {
   const QFontMetricsF metrics(painter.font());
   QTextLayout layout(text, painter.font());
   layout.beginLayout();
@@ -57,8 +59,10 @@ double DrawParagraph(QPainter& painter, QPointF top_left, double width, const QS
   for (int i = 0; i < count; ++i) {
     const int end = i + 1 < int(starts.size()) ? starts[i + 1] : text.size();
     QString line = text.mid(starts[i], end - starts[i]).trimmed();
-    if (more && i == count - 1) line = metrics.elidedText(text.mid(starts[i]), Qt::ElideRight, width);
-    painter.drawText(QPointF(top_left.x(), top_left.y() + i * metrics.height() + metrics.ascent()), line);
+    if (more && i == count - 1)
+      line = metrics.elidedText(text.mid(starts[i]), Qt::ElideRight, width);
+    painter.drawText(QPointF(top_left.x(), top_left.y() + i * metrics.height() + metrics.ascent()),
+                     line);
   }
   return count * metrics.height();
 }
@@ -69,7 +73,8 @@ void DrawShot(QPainter& painter, const QRectF& rect, const QPixmap& shot, double
   QPainterPath clip;
   clip.addRoundedRect(rect, unit * 0.4, unit * 0.4);
   painter.setClipPath(clip);
-  QRectF target(QPointF(0, 0), QSizeF(shot.size()).scaled(rect.size(), Qt::KeepAspectRatioByExpanding));
+  QRectF target(QPointF(0, 0),
+                QSizeF(shot.size()).scaled(rect.size(), Qt::KeepAspectRatioByExpanding));
   target.moveCenter(rect.center());
   painter.drawPixmap(target, shot, QRectF(shot.rect()));
   painter.restore();
@@ -77,7 +82,8 @@ void DrawShot(QPainter& painter, const QRectF& rect, const QPixmap& shot, double
 
 }  // namespace
 
-GamePage::GamePage(BigScreenWindow* window) : Page(window), network_(new QNetworkAccessManager(this)) {
+GamePage::GamePage(BigScreenWindow* window)
+    : Page(window), network_(new QNetworkAccessManager(this)) {
   const LibraryServices& services = window->services();
   connect(services.library, &GameLibraryModel::Changed, this, &GamePage::Refresh);
   connect(services.owned_titles, &OwnedTitles::Changed, this, &GamePage::Refresh);
@@ -123,7 +129,9 @@ void GamePage::LoadDetails(const QString& key) {
     const GameMetadata& meta = result.metadata;
     metadata_loaded_ = true;
     controller_ = meta.controller_support;
-    description_ = QTextDocumentFragment::fromHtml(QString::fromStdString(meta.description)).toPlainText().simplified();
+    description_ = QTextDocumentFragment::fromHtml(QString::fromStdString(meta.description))
+                       .toPlainText()
+                       .simplified();
     proton_tier_ = QString::fromStdString(meta.protondb_tier).toLower();
     FetchShots(key, meta.screenshots);
     update();
@@ -145,7 +153,9 @@ void GamePage::FetchShots(const QString& key, const std::vector<std::string>& ur
     connect(reply, &QNetworkReply::finished, this, [this, reply, key, i] {
       reply->deleteLater();
       const QByteArray data = reply->readAll();
-      if (reply->error() != QNetworkReply::NoError || key != item_.key || data.size() > kMaxShotBytes) return;
+      if (reply->error() != QNetworkReply::NoError || key != item_.key ||
+          data.size() > kMaxShotBytes)
+        return;
       QPixmap pixmap;
       if (!pixmap.loadFromData(data)) return;
       shots_[i] = pixmap;
@@ -196,12 +206,14 @@ std::vector<GamePage::Button> GamePage::Buttons() const {
   } else {
     const std::vector<PlayChoice> choices = PlayChoices(*item_.game, /*all=*/false);
     for (const PlayChoice& choice : choices) {
-      buttons.push_back({Action::Play, buttons.empty() ? QString("Play") : choice.label, choice.option});
+      buttons.push_back(
+          {Action::Play, buttons.empty() ? QString("Play") : choice.label, choice.option});
     }
   }
   if (item_.game) {
     buttons.push_back({Action::Pin, IsPinned(*item_.game) ? "Unpin" : "Pin"});
-    if (download == nullptr && !item_.game->running) buttons.push_back({Action::Uninstall, "Uninstall"});
+    if (download == nullptr && !item_.game->running)
+      buttons.push_back({Action::Uninstall, "Uninstall"});
   }
   return buttons;
 }
@@ -215,25 +227,48 @@ bool GamePage::Navigate(Nav nav) {
       update();
       return true;
     case Nav::Up:
-    case Nav::Down: return true;
-    case Nav::Action: window_->QuickAction(item_); return true;
-    case Nav::Accept: break;
-    default: return false;
+    case Nav::Down:
+      return true;
+    case Nav::Action:
+      window_->QuickAction(item_);
+      return true;
+    case Nav::Accept:
+      break;
+    default:
+      return false;
   }
   switch (buttons[size_t(focus_)].action) {
-    case Action::Play: window_->Play(item_, buttons[size_t(focus_)].option); break;
-    case Action::Stop: window_->Stop(item_); break;
-    case Action::Install: window_->Install(item_); break;
-    case Action::Pause: window_->Pause(item_); break;
-    case Action::Resume: window_->Resume(item_); break;
-    case Action::Cancel: window_->CancelInstall(item_); break;
-    case Action::Pin: window_->TogglePin(item_); break;
-    case Action::Uninstall: window_->Uninstall(item_); break;
+    case Action::Play:
+      window_->Play(item_, buttons[size_t(focus_)].option);
+      break;
+    case Action::Stop:
+      window_->Stop(item_);
+      break;
+    case Action::Install:
+      window_->Install(item_);
+      break;
+    case Action::Pause:
+      window_->Pause(item_);
+      break;
+    case Action::Resume:
+      window_->Resume(item_);
+      break;
+    case Action::Cancel:
+      window_->CancelInstall(item_);
+      break;
+    case Action::Pin:
+      window_->TogglePin(item_);
+      break;
+    case Action::Uninstall:
+      window_->Uninstall(item_);
+      break;
   }
   return true;
 }
 
-QList<Hint> GamePage::Hints() const { return {{Nav::Accept, "Select"}, {Nav::Back, "Back"}}; }
+QList<Hint> GamePage::Hints() const {
+  return {{Nav::Accept, "Select"}, {Nav::Back, "Back"}};
+}
 
 void GamePage::paintEvent(QPaintEvent*) {
   QPainter painter(this);
@@ -243,8 +278,8 @@ void GamePage::paintEvent(QPaintEvent*) {
   const double u = window_->unit();
   const QSize cover_size(qRound(kCoverW * u), qRound(kCoverH * u));
   const double progress = window_->Progress(item_);
-  DrawCover(painter, QRectF(QPointF(kMargin * u, kTop * u), cover_size), window_->Cover(item_, cover_size), u, false,
-            false, -1);
+  DrawCover(painter, QRectF(QPointF(kMargin * u, kTop * u), cover_size),
+            window_->Cover(item_, cover_size), u, false, false, -1);
 
   const double left = (kMargin + kCoverW + kMargin) * u;
   const double w = width() - left - kMargin * u;
@@ -256,7 +291,8 @@ void GamePage::paintEvent(QPaintEvent*) {
     title_used = DrawTitle(painter, title_box, u, 3.0, item_.name);
   } else {
     const QSizeF logo_size = QSizeF(logo.size()).scaled(QSizeF(w, kLogoH * u), Qt::KeepAspectRatio);
-    const QRectF logo_rect(QPointF(left, kTop * u + (kLogoH * u - logo_size.height()) / 2), logo_size);
+    const QRectF logo_rect(QPointF(left, kTop * u + (kLogoH * u - logo_size.height()) / 2),
+                           logo_size);
     painter.save();
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.drawPixmap(logo_rect, logo, QRectF(logo.rect()));
@@ -267,7 +303,9 @@ void GamePage::paintEvent(QPaintEvent*) {
   const DownloadTracker::Entry* download = window_->Download(item_);
   const bool paused = download && download->state == DownloadTracker::State::Paused;
   double x = left;
-  x += DrawPill(painter, {x, y}, u, StatusText(item_, progress, paused), StatusColor(item_, progress)) + u * 0.5;
+  x += DrawPill(painter, {x, y}, u, StatusText(item_, progress, paused),
+                StatusColor(item_, progress)) +
+       u * 0.5;
   x += DrawPill(painter, {x, y}, u, SourceName(item_.source)) + u * 0.5;
   if (!proton_tier_.isEmpty()) {
     const QString label = "ProtonDB " + proton_tier_.left(1).toUpper() + proton_tier_.mid(1);
@@ -281,14 +319,19 @@ void GamePage::paintEvent(QPaintEvent*) {
   const std::vector<Button> buttons = Buttons();
   for (size_t i = 0; i < buttons.size(); ++i) {
     const bool primary = i == 0, focused = int(i) == focus_;
-    const bool danger = buttons[i].action == Action::Uninstall || buttons[i].action == Action::Cancel;
+    const bool danger =
+        buttons[i].action == Action::Uninstall || buttons[i].action == Action::Cancel;
     const double bw = painter.fontMetrics().horizontalAdvance(buttons[i].label) + u * 2.8;
     QRectF box(x, y, bw, u * 2.8);
     if (focused) box = QRectF(box.center() - QPointF(bw, box.height()) * 0.525, box.size() * 1.05);
     painter.setPen(focused ? QPen(tokens.text, u * 0.12) : Qt::NoPen);
-    painter.setBrush(focused && danger ? tokens.error : primary ? Accent() : QColor(255, 255, 255, 26));
+    painter.setBrush(focused && danger ? tokens.error
+                     : primary         ? Accent()
+                                       : QColor(255, 255, 255, 26));
     painter.drawRoundedRect(box, u * 0.45, u * 0.45);
-    painter.setPen(primary ? tokens.on_accent : danger && !focused ? tokens.error.lighter(140) : tokens.text);
+    painter.setPen(primary              ? tokens.on_accent
+                   : danger && !focused ? tokens.error.lighter(140)
+                                        : tokens.text);
     painter.drawText(box, Qt::AlignCenter, buttons[i].label);
     x += bw + u * 0.8;
   }
@@ -297,15 +340,17 @@ void GamePage::paintEvent(QPaintEvent*) {
   if (download != nullptr) {
     painter.setFont(Font(u, 0.9));
     painter.setPen(tokens.text_muted);
-    const QString text = paused ? StatusText(item_, progress, true) : DownloadTracker::ProgressText(*download);
+    const QString text =
+        paused ? StatusText(item_, progress, true) : DownloadTracker::ProgressText(*download);
     painter.drawText(QPointF(left, y), text);
     const QRectF bar(left, y + u * 0.7, std::min(w, 34 * u), u * 0.45);
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(255, 255, 255, 28));
     painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
     painter.setBrush(paused ? tokens.status_missing : Accent());
-    painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, progress), bar.height())),
-                            bar.height() / 2, bar.height() / 2);
+    painter.drawRoundedRect(
+        QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, progress), bar.height())),
+        bar.height() / 2, bar.height() / 2);
     y += u * 3;
   }
 
@@ -313,15 +358,19 @@ void GamePage::paintEvent(QPaintEvent*) {
   QList<std::pair<QString, QString>> facts;
   if (item_.game) {
     const GameSummary& game = *item_.game;
-    facts.append({"Played", game.play_seconds > 0 ? FormatPlaytime(game.play_seconds) : QString("—")});
+    facts.append(
+        {"Played", game.play_seconds > 0 ? FormatPlaytime(game.play_seconds) : QString("—")});
     facts.append({"Last played", FormatLastPlayed(game.last_played_at)});
-    facts.append({"Runs with", game.platform == "native"      ? QString("Linux build")
+    facts.append({"Runs with", game.platform == "native" ? QString("Linux build")
                                : game.runner_ref.empty() ? QString("Default runner")
-                               : !runner_name_.isEmpty() ? runner_name_
-                                                         : QString::fromStdString(game.runner_ref)});
-    if (last_session_) facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
+                               : !runner_name_.isEmpty()
+                                   ? runner_name_
+                                   : QString::fromStdString(game.runner_ref)});
+    if (last_session_)
+      facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
     if (!controller_.empty()) {
-      facts.append({"Controller", controller_ == "full" ? QString("Full support") : QString("Partial support")});
+      facts.append({"Controller",
+                    controller_ == "full" ? QString("Full support") : QString("Partial support")});
     } else if (metadata_loaded_ && item_.source == "steam") {
       facts.append({"Controller", QString("Keyboard and mouse")});
     }

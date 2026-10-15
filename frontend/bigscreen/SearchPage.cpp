@@ -1,7 +1,6 @@
 #include "SearchPage.h"
 
 #include <QPainter>
-
 #include <algorithm>
 
 #include "../library/ArtworkStore.h"
@@ -52,7 +51,8 @@ void SearchPage::Search() {
     all.push_back(window_->ItemFor(game));
   }
   for (const StoreTitle& title : services.owned_titles->Titles()) {
-    if (title.owned && !title.installed && window_->Browsable(title)) all.push_back(window_->ItemFor(title));
+    if (title.owned && !title.installed && window_->Browsable(title))
+      all.push_back(window_->ItemFor(title));
   }
   // By name: scanned and manual games are both "Local".
   for (const Item& item : all) {
@@ -68,12 +68,16 @@ void SearchPage::Search() {
   results_.clear();
   const QString query = query_.simplified();
   for (Item& item : all) {
-    if (!query.isEmpty() && !item.name.contains(query, Qt::CaseInsensitive) && !TagMatches(item, query)) continue;
+    if (!query.isEmpty() && !item.name.contains(query, Qt::CaseInsensitive) &&
+        !TagMatches(item, query))
+      continue;
     if (filter == "Installed" && !item.installed()) continue;
     if (filter != "All" && filter != "Installed" && SourceName(item.source) != filter) continue;
     results_.push_back(std::move(item));
   }
-  std::ranges::sort(results_, [](const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
+  std::ranges::sort(results_, [](const Item& a, const Item& b) {
+    return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+  });
   result_ = std::clamp(result_, 0, std::max(0, Entries() - 1));
   if (zone_ == Zone::Results && Entries() == 0) zone_ = Zone::Keys;
   if (zone_ == Zone::Results && !ShowRecents()) window_->ShowHero(results_[size_t(result_)], this);
@@ -82,7 +86,8 @@ void SearchPage::Search() {
 }
 
 QStringList SearchPage::Recents() const {
-  const std::vector<std::string> saved = window_->prefs().big_screen_recent_searches.value_or(std::vector<std::string>{});
+  const std::vector<std::string> saved =
+      window_->prefs().big_screen_recent_searches.value_or(std::vector<std::string>{});
   QStringList recents;
   for (const std::string& text : saved) {
     if (recents.size() < kRecentSearches) recents << QString::fromStdString(text);
@@ -90,16 +95,23 @@ QStringList SearchPage::Recents() const {
   return recents;
 }
 
-bool SearchPage::ShowRecents() const { return query_.simplified().isEmpty() && !Recents().isEmpty(); }
+bool SearchPage::ShowRecents() const {
+  return query_.simplified().isEmpty() && !Recents().isEmpty();
+}
 
-int SearchPage::Entries() const { return ShowRecents() ? int(Recents().size()) : int(results_.size()); }
+int SearchPage::Entries() const {
+  return ShowRecents() ? int(Recents().size()) : int(results_.size());
+}
 
 void SearchPage::SaveRecent() {
   const QString query = query_.simplified();
   if (query.isEmpty()) return;
   FrontendPrefs prefs = window_->prefs();
-  std::vector<std::string> recent = prefs.big_screen_recent_searches.value_or(std::vector<std::string>{});
-  std::erase_if(recent, [&](const std::string& text) { return QString::fromStdString(text).compare(query, Qt::CaseInsensitive) == 0; });
+  std::vector<std::string> recent =
+      prefs.big_screen_recent_searches.value_or(std::vector<std::string>{});
+  std::erase_if(recent, [&](const std::string& text) {
+    return QString::fromStdString(text).compare(query, Qt::CaseInsensitive) == 0;
+  });
   recent.insert(recent.begin(), query.toStdString());
   if (int(recent.size()) > kRecentSearches) recent.resize(size_t(kRecentSearches));
   prefs.big_screen_recent_searches = recent;
@@ -147,7 +159,8 @@ bool SearchPage::Navigate(Nav nav) {
       }
       if (nav == Nav::Left && col > 0) --key_;
       if (nav == Nav::Right && col < kKeyColumns - 1) ++key_;
-      if (nav == Nav::Right && col == kKeyColumns - 1 && results > 0) zone_ = Zone::Results, result_ = 0;
+      if (nav == Nav::Right && col == kKeyColumns - 1 && results > 0)
+        zone_ = Zone::Results, result_ = 0;
       if (nav == Nav::Up) row > 0 ? void(key_ -= kKeyColumns) : void(zone_ = Zone::Field);
       if (nav == Nav::Down && key_ + kKeyColumns < int(kKeys.size())) key_ += kKeyColumns;
       break;
@@ -174,7 +187,8 @@ bool SearchPage::Navigate(Nav nav) {
           Search();
           return true;
         }
-        if (nav == Nav::Left) result_ > 0 ? void(--result_) : void((zone_ = Zone::Keys, key_ = kKeyColumns - 1));
+        if (nav == Nav::Left)
+          result_ > 0 ? void(--result_) : void((zone_ = Zone::Keys, key_ = kKeyColumns - 1));
         if (nav == Nav::Right && result_ + 1 < results) ++result_;
         if (nav == Nav::Up) zone_ = Zone::Filters;
         break;
@@ -190,9 +204,11 @@ bool SearchPage::Navigate(Nav nav) {
         window_->QuickAction(results_[size_t(result_)]);
         return true;
       }
-      if (nav == Nav::Left) col > 0 ? void(--result_) : void((zone_ = Zone::Keys, key_ = kKeyColumns - 1));
+      if (nav == Nav::Left)
+        col > 0 ? void(--result_) : void((zone_ = Zone::Keys, key_ = kKeyColumns - 1));
       if (nav == Nav::Right && col < kResultColumns - 1 && result_ + 1 < results) ++result_;
-      if (nav == Nav::Up) result_ >= kResultColumns ? void(result_ -= kResultColumns) : void(zone_ = Zone::Filters);
+      if (nav == Nav::Up)
+        result_ >= kResultColumns ? void(result_ -= kResultColumns) : void(zone_ = Zone::Filters);
       if (nav == Nav::Down && result_ + kResultColumns < results) result_ += kResultColumns;
       break;
     }
@@ -206,10 +222,15 @@ bool SearchPage::Navigate(Nav nav) {
 
 QList<Hint> SearchPage::Hints() const {
   switch (zone_) {
-    case Zone::Field: return {{Nav::Accept, "Type"}, {Nav::Back, "Back"}};
+    case Zone::Field:
+      return {{Nav::Accept, "Type"}, {Nav::Back, "Back"}};
     case Zone::Keys:
-      return {{Nav::Accept, "Type"}, {Nav::Action, "Delete"}, {Nav::Search, "Space"}, {Nav::Back, "Back"}};
-    case Zone::Filters: return {{Nav::Accept, "Filter"}, {Nav::Back, "Back"}};
+      return {{Nav::Accept, "Type"},
+              {Nav::Action, "Delete"},
+              {Nav::Search, "Space"},
+              {Nav::Back, "Back"}};
+    case Zone::Filters:
+      return {{Nav::Accept, "Filter"}, {Nav::Back, "Back"}};
     case Zone::Results:
       if (ShowRecents()) return {{Nav::Accept, "Search"}, {Nav::Back, "Back"}};
       return {{Nav::Accept, "Details"}, {Nav::Back, "Back"}};
@@ -223,7 +244,8 @@ void SearchPage::paintEvent(QPaintEvent*) {
   painter.setRenderHint(QPainter::TextAntialiasing);
   const theme::Tokens& tokens = theme::Current();
   const double u = window_->unit();
-  painter.fillRect(rect(), QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 150));
+  painter.fillRect(rect(),
+                   QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 150));
 
   // Query field and keyboard.
   const QRectF field(kMargin * u, kTop * u, kKeysW * u, 3.4 * u);
@@ -233,16 +255,21 @@ void SearchPage::paintEvent(QPaintEvent*) {
   painter.setFont(Font(u, 1.25));
   painter.setPen(query_.isEmpty() ? tokens.text_muted : tokens.text);
   const QRectF text_box = field.adjusted(u * 1.1, 0, -u * 1.1, 0);
-  painter.drawText(text_box, Qt::AlignVCenter | Qt::AlignLeft, query_.isEmpty() ? "Search your games" : query_);
-  const double caret_x = text_box.left() + (query_.isEmpty() ? 0 : painter.fontMetrics().horizontalAdvance(query_) + u * 0.1);
-  if (zone_ == Zone::Keys) painter.fillRect(QRectF(caret_x, field.center().y() - u * 0.7, u * 0.1, u * 1.4), Accent());
+  painter.drawText(text_box, Qt::AlignVCenter | Qt::AlignLeft,
+                   query_.isEmpty() ? "Search your games" : query_);
+  const double caret_x =
+      text_box.left() +
+      (query_.isEmpty() ? 0 : painter.fontMetrics().horizontalAdvance(query_) + u * 0.1);
+  if (zone_ == Zone::Keys)
+    painter.fillRect(QRectF(caret_x, field.center().y() - u * 0.7, u * 0.1, u * 1.4), Accent());
 
   const double gap = u * 0.45;
   const double key_w = (kKeysW * u - gap * (kKeyColumns - 1)) / kKeyColumns;
   painter.setFont(Font(u, 1.1, QFont::Bold));
   for (int i = 0; i < int(kKeys.size()); ++i) {
-    const QRectF key(kMargin * u + (i % kKeyColumns) * (key_w + gap), field.bottom() + u * 1.1 + (i / kKeyColumns) * (u * 3.1 + gap),
-                     key_w, u * 3.1);
+    const QRectF key(kMargin * u + (i % kKeyColumns) * (key_w + gap),
+                     field.bottom() + u * 1.1 + (i / kKeyColumns) * (u * 3.1 + gap), key_w,
+                     u * 3.1);
     const bool focused = zone_ == Zone::Keys && i == key_;
     painter.setPen(Qt::NoPen);
     painter.setBrush(focused ? Accent() : tokens.surface);
@@ -291,20 +318,26 @@ void SearchPage::paintEvent(QPaintEvent*) {
     return;
   }
   if (results_.empty()) {
-    painter.drawText(QPointF(right, results_top + u), query_.isEmpty() ? "No games here." : "No games match “" + query_ + "”.");
+    painter.drawText(QPointF(right, results_top + u),
+                     query_.isEmpty() ? "No games here." : "No games match “" + query_ + "”.");
     return;
   }
-  painter.drawText(QPointF(right, results_top + u), QString("%1 %2").arg(results_.size()).arg(results_.size() == 1 ? "game" : "games"));
-  const QRectF area(right, results_top + u * 2.4, width() - right - kMargin * u, height() - results_top - u * (2.4 + 4.5));
-  const CoverGrid grid(area, kResultColumns, u * 1.3, zone_ == Zone::Results ? result_ / kResultColumns : 0);
-  painter.setClipRect(QRectF(right - u, results_top + u * 1.6, width(), area.bottom() + u - (results_top + u * 1.6)));
+  painter.drawText(
+      QPointF(right, results_top + u),
+      QString("%1 %2").arg(results_.size()).arg(results_.size() == 1 ? "game" : "games"));
+  const QRectF area(right, results_top + u * 2.4, width() - right - kMargin * u,
+                    height() - results_top - u * (2.4 + 4.5));
+  const CoverGrid grid(area, kResultColumns, u * 1.3,
+                       zone_ == Zone::Results ? result_ / kResultColumns : 0);
+  painter.setClipRect(QRectF(right - u, results_top + u * 1.6, width(),
+                             area.bottom() + u - (results_top + u * 1.6)));
   for (int i = 0; i < int(results_.size()); ++i) {
     const QRectF box = grid.Box(i);
     if (box.bottom() < area.top()) continue;
     if (box.top() > height()) break;
     const bool focused = zone_ == Zone::Results && i == result_;
-    DrawCover(painter, box, window_->Cover(results_[size_t(i)], grid.Tile()), u, focused, !results_[size_t(i)].installed(),
-              window_->Progress(results_[size_t(i)]));
+    DrawCover(painter, box, window_->Cover(results_[size_t(i)], grid.Tile()), u, focused,
+              !results_[size_t(i)].installed(), window_->Progress(results_[size_t(i)]));
   }
 }
 

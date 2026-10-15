@@ -16,12 +16,15 @@ namespace mira::runner {
 std::filesystem::path BuildDir(const model::RunnerBuild& build);
 
 // The folders Mira installs builds of `kind` into, and may delete them from.
-std::vector<std::filesystem::path> RunnerRoots(const config::Config& config, const std::string& kind);
+std::vector<std::filesystem::path> RunnerRoots(const config::Config& config,
+                                               const std::string& kind);
 
 // `source`, or the kind's preferred source when empty.
-Result<RunnerFamily> FamilyFor(const config::Config& config, const std::string& kind, const std::string& source);
+Result<RunnerFamily> FamilyFor(const config::Config& config, const std::string& kind,
+                               const std::string& source);
 
-std::vector<model::RunnerBuild> BuildsOfKind(const RunnerRegistry& registry, const std::string& kind);
+std::vector<model::RunnerBuild> BuildsOfKind(const RunnerRegistry& registry,
+                                             const std::string& kind);
 
 bool HasInstalled(const std::vector<model::RunnerBuild>& builds, const ReleaseAsset& release);
 
@@ -32,6 +35,7 @@ struct RunnerUpdate {
 };
 
 // Removable builds whose source's newest release isn't installed yet.
-std::vector<RunnerUpdate> FindRunnerUpdates(const config::Config& config, const RunnerRegistry& registry);
+std::vector<RunnerUpdate> FindRunnerUpdates(const config::Config& config,
+                                            const RunnerRegistry& registry);
 
 }  // namespace mira::runner

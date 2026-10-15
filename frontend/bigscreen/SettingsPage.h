@@ -2,7 +2,6 @@
 
 #include <QElapsedTimer>
 #include <QTimer>
-
 #include <functional>
 #include <vector>
 
@@ -15,7 +14,7 @@ namespace mira_gui::bigscreen {
 class SettingsPage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit SettingsPage(BigScreenWindow* window);
 
   bool Navigate(Nav nav) override;
@@ -23,11 +22,11 @@ public:
   void Shown() override;
   void PrefsChanged() override { update(); }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void hideEvent(QHideEvent* event) override;
 
-private:
+ private:
   struct Row {
     QString section;
     QString label;
@@ -50,7 +49,9 @@ private:
 
   void Open(int page);
   void Close();
-  const std::vector<Row>& rows() const { return page_ < 0 ? main_rows_ : pages_[size_t(page_)].rows; }
+  const std::vector<Row>& rows() const {
+    return page_ < 0 ? main_rows_ : pages_[size_t(page_)].rows;
+  }
 
   std::vector<Row> main_rows_;
   std::vector<SubPage> pages_;

@@ -1,7 +1,6 @@
 #include <doctest.h>
 
 #include <json.hpp>
-
 #include <string>
 #include <vector>
 
@@ -30,7 +29,8 @@ GameSummary Game(const std::string& id, std::vector<std::string> tags,
 }  // namespace
 
 TEST_CASE("The folder mark follows the folder tags' order, or the game's own pick") {
-  const std::optional<std::vector<std::string>> folders = std::vector<std::string>{"RPG", "Roguelike"};
+  const std::optional<std::vector<std::string>> folders =
+      std::vector<std::string>{"RPG", "Roguelike"};
   CHECK(FolderTagIndex({"Indie", "roguelike", "rpg"}, folders) == 2);  // ignoring case
   CHECK(FolderTagIndex({"Indie", "roguelike", "RPG"}, folders, "Roguelike") == 1);
   CHECK(FolderTagIndex({"Indie", "RPG"}, folders, "Roguelike") == 1);  // a pick it lacks is ignored
@@ -70,7 +70,8 @@ TEST_CASE("The Tags list puts folder tags first, then the tags most games have")
   CHECK(all[3].tag == "Action");
 
   const std::vector<LibraryTag> hidden = TagsUnder(games, "all", AppsIn::All, /*hidden=*/true);
-  const auto zany = std::ranges::find_if(hidden, [](const LibraryTag& t) { return t.tag == "Zany"; });
+  const auto zany =
+      std::ranges::find_if(hidden, [](const LibraryTag& t) { return t.tag == "Zany"; });
   REQUIRE(zany != hidden.end());
   CHECK(zany->count == 1);
   CHECK(std::ranges::find_if(hidden, [](const LibraryTag& t) { return t.tag == "Indie"; }) ==
@@ -93,10 +94,12 @@ TEST_CASE("Records carry how their game is sorted") {
 TEST_CASE("An unclear move's event names the folder and the games it could be") {
   UnclearMove move;
   REQUIRE(events::ParseUnclearMove(
-      R"({"folder": "/g/Copied", "games": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]})", &move));
+      R"({"folder": "/g/Copied", "games": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}]})",
+      &move));
   CHECK(move.folder == "/g/Copied");
   REQUIRE(move.games.size() == 2);
   CHECK(move.games[1] == std::pair<std::string, std::string>{"b", "Beta"});
-  CHECK_FALSE(events::ParseUnclearMove(R"({"folder": "/g/Copied", "games": [{"id": "a"}]})", &move));
+  CHECK_FALSE(
+      events::ParseUnclearMove(R"({"folder": "/g/Copied", "games": [{"id": "a"}]})", &move));
   CHECK_FALSE(events::ParseUnclearMove("not json", &move));
 }

@@ -18,17 +18,25 @@ namespace {
 
 // Signals a process only gets by crashing (or being force-killed), so a shell
 // reporting 128 + one of them as its exit code is reporting a crashed child.
-constexpr std::array kCrashSignals = {SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, SIGTRAP, SIGSYS, SIGKILL};
+constexpr std::array kCrashSignals = {SIGSEGV, SIGABRT, SIGBUS, SIGILL,
+                                      SIGFPE,  SIGTRAP, SIGSYS, SIGKILL};
 
 std::string SignalReason(int signal_number) {
   switch (signal_number) {
-    case SIGSEGV: return "invalid memory access (segmentation fault)";
-    case SIGABRT: return "the game aborted itself (SIGABRT)";
-    case SIGBUS: return "bus error (SIGBUS)";
-    case SIGILL: return "illegal instruction, the CPU may lack a feature the game needs (SIGILL)";
-    case SIGFPE: return "arithmetic error (SIGFPE)";
-    case SIGTRAP: return "stopped at a breakpoint or trap (SIGTRAP)";
-    case SIGSYS: return "bad system call (SIGSYS)";
+    case SIGSEGV:
+      return "invalid memory access (segmentation fault)";
+    case SIGABRT:
+      return "the game aborted itself (SIGABRT)";
+    case SIGBUS:
+      return "bus error (SIGBUS)";
+    case SIGILL:
+      return "illegal instruction, the CPU may lack a feature the game needs (SIGILL)";
+    case SIGFPE:
+      return "arithmetic error (SIGFPE)";
+    case SIGTRAP:
+      return "stopped at a breakpoint or trap (SIGTRAP)";
+    case SIGSYS:
+      return "bad system call (SIGSYS)";
     default: {
       const char* name = ::sigabbrev_np(signal_number);
       return name != nullptr ? std::format("signal {} (SIG{})", signal_number, name)
@@ -41,7 +49,8 @@ std::string_view LastLineWith(std::string_view text, std::string_view marker) {
   const std::size_t at = text.rfind(marker);
   if (at == std::string_view::npos) return {};
   const std::size_t end = text.find('\n', at);
-  return text.substr(at + marker.size(), end == std::string_view::npos ? std::string_view::npos : end - at - marker.size());
+  return text.substr(at + marker.size(), end == std::string_view::npos ? std::string_view::npos
+                                                                       : end - at - marker.size());
 }
 
 // What Wine says went unhandled, e.g. "page fault on read access" or "C++
@@ -51,16 +60,19 @@ std::optional<std::string> WineUnhandled(std::string_view log) {
   if (what.empty()) what = LastLineWith(log, "Unhandled exception code ");
   if (what.empty()) return std::nullopt;
   for (std::string_view cut : {" at address", " in thread", " (thread", ", starting", " flags "}) {
-    if (const std::size_t at = what.find(cut); at != std::string_view::npos) what = what.substr(0, at);
+    if (const std::size_t at = what.find(cut); at != std::string_view::npos)
+      what = what.substr(0, at);
   }
   // "page fault on read access to 0000000000000000": the address says nothing to a player.
-  if (const std::size_t at = what.find(" to 0"); at != std::string_view::npos) what = what.substr(0, at);
+  if (const std::size_t at = what.find(" to 0"); at != std::string_view::npos)
+    what = what.substr(0, at);
 
-  const std::string code = strings::ToLower(what.starts_with("exception 0x") ? what.substr(12) : what);
+  const std::string code =
+      strings::ToLower(what.starts_with("exception 0x") ? what.substr(12) : what);
   static constexpr std::pair<std::string_view, std::string_view> kKnown[] = {
-      {"c0000005", "access violation"},   {"c0000409", "stack buffer overrun"},
-      {"c00000fd", "stack overflow"},     {"c0000374", "heap corruption"},
-      {"e06d7363", "C++ exception"},      {"80000003", "breakpoint"},
+      {"c0000005", "access violation"}, {"c0000409", "stack buffer overrun"},
+      {"c00000fd", "stack overflow"},   {"c0000374", "heap corruption"},
+      {"e06d7363", "C++ exception"},    {"80000003", "breakpoint"},
   };
   for (const auto& [hex, name] : kKnown) {
     if (code.starts_with(hex)) return std::string(name);
@@ -86,7 +98,8 @@ ExitOutcome ClassifyExit(const ExitInfo& info) {
   if (info.requested_stop) return {};
 
   const auto start_failed = [](std::string why) {
-    return ExitOutcome{.crashed = true, .code = "start_failed", .error = "Couldn't start: " + std::move(why)};
+    return ExitOutcome{
+        .crashed = true, .code = "start_failed", .error = "Couldn't start: " + std::move(why)};
   };
   if (info.exit_code == 127) return start_failed("the program or a library it needs is missing");
   if (info.exit_code == 126) return start_failed("the program isn't executable");
@@ -99,14 +112,17 @@ ExitOutcome ClassifyExit(const ExitInfo& info) {
     if (std::ranges::contains(kCrashSignals, reported)) signal_number = reported;
   }
   if (signal_number == SIGKILL) {
-    return {.crashed = true,
-            .code = "killed",
-            .error = std::format("Killed after {}, often because the system ran out of memory", after)};
+    return {
+        .crashed = true,
+        .code = "killed",
+        .error = std::format("Killed after {}, often because the system ran out of memory", after)};
   }
   // Closed by the desktop, a terminal or another program: an ordinary end.
   if (signal_number == SIGTERM || signal_number == SIGINT || signal_number == SIGHUP) return {};
   if (signal_number != 0) {
-    return {.crashed = true, .code = "crashed", .error = std::format("Crashed after {}: {}", after, SignalReason(signal_number))};
+    return {.crashed = true,
+            .code = "crashed",
+            .error = std::format("Crashed after {}: {}", after, SignalReason(signal_number))};
   }
 
   if (info.exit_code > 0) {
@@ -128,7 +144,9 @@ std::string ReadLogTail(const std::filesystem::path& log, std::size_t max_bytes)
   if (!file) return {};
   const std::streamoff size = file.tellg();
   if (size < 0) return {};
-  const std::streamoff start = size > static_cast<std::streamoff>(max_bytes) ? size - static_cast<std::streamoff>(max_bytes) : 0;
+  const std::streamoff start = size > static_cast<std::streamoff>(max_bytes)
+                                   ? size - static_cast<std::streamoff>(max_bytes)
+                                   : 0;
   file.seekg(start);
   std::string tail(static_cast<std::size_t>(size - start), '\0');
   file.read(tail.data(), static_cast<std::streamsize>(tail.size()));

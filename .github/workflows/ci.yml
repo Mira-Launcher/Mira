@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pinned: other clang-format versions format some code differently.
+  format:
+    runs-on: ubuntu-24.04
+    env:
+      CLANG_FORMAT_VERSION: 23.1.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: clang-format
+        run: |
+          pip install --user "clang-format==$CLANG_FORMAT_VERSION"
+          if ! git ls-files -z '*.cpp' '*.h' '*.hpp' '*.cc' | xargs -0 clang-format --dry-run -Werror; then
+            echo "::error::CI checks formatting with clang-format $CLANG_FORMAT_VERSION. If yours is another version, run: pipx run --spec clang-format==$CLANG_FORMAT_VERSION clang-format -i <files>. To move CI to a newer version instead, change CLANG_FORMAT_VERSION in .github/workflows/ci.yml and reformat every file with that version in the same PR."
+            exit 1
+          fi
+
   test:
     runs-on: ubuntu-24.04
     env:

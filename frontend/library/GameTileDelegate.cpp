@@ -1,24 +1,23 @@
 #include "GameTileDelegate.h"
 
-#include <algorithm>
-
 #include <QAbstractItemView>
 #include <QFontMetrics>
-#include <QTimer>
 #include <QLinearGradient>
 #include <QListView>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
 #include <QStandardItem>
+#include <QTimer>
+#include <algorithm>
 
-#include "ArtworkStore.h"
-#include "GamePresentation.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/TileView.h"
+#include "ArtworkStore.h"
+#include "GamePresentation.h"
 
 namespace mira_gui {
 namespace {
@@ -33,7 +32,9 @@ QFont TierFont(const QFont& font) {
   return tier_font;
 }
 
-QString TierLabel(const QString& tier) { return tier.left(1).toUpper() + tier.mid(1); }
+QString TierLabel(const QString& tier) {
+  return tier.left(1).toUpper() + tier.mid(1);
+}
 
 }  // namespace
 
@@ -62,12 +63,13 @@ void GameTileDelegate::PrefetchShown(QListView* view, ArtworkStore* artwork, QSi
 QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index) {
   if (index.data(ActionRole).toString().isEmpty()) return {};
   const int inset = theme::Current().tile_spacing;
-  return QRect(cell.right() - inset - 6 - kActionHeight + 1, cell.top() + inset + 6, kActionHeight, kActionHeight);
+  return QRect(cell.right() - inset - 6 - kActionHeight + 1, cell.top() + inset + 6, kActionHeight,
+               kActionHeight);
 }
 
-void GameTileDelegate::SetTileProgress(QStandardItem& item,
-                                       const std::optional<DownloadTracker::TileProgress>& installing,
-                                       const QString& idle_action) {
+void GameTileDelegate::SetTileProgress(
+    QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,
+    const QString& idle_action) {
   item.setData(installing ? QString() : idle_action, ActionRole);
   item.setData(!installing, ActionEnabledRole);
   item.setData(installing ? QVariant(installing->fraction) : QVariant(), ProgressRole);
@@ -78,7 +80,9 @@ void GameTileDelegate::SetTileProgress(QStandardItem& item,
 GameTileDelegate::GameTileDelegate(QObject* parent, QSize tile, ArtworkStore* artwork)
     : QStyledItemDelegate(parent), tile_(tile), artwork_(artwork) {}
 
-void GameTileDelegate::SetTileSize(QSize tile) { tile_ = tile; }
+void GameTileDelegate::SetTileSize(QSize tile) {
+  tile_ = tile;
+}
 
 void GameTileDelegate::ShowNote(QAbstractItemView* view, const QString& id, const QString& text) {
   auto* delegate = dynamic_cast<GameTileDelegate*>(view->itemDelegate());
@@ -112,7 +116,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // crosses into the next cell.
   const int inset = tokens.tile_spacing;
   const int grow = hovered ? qMin(inset, 2) : 0;
-  const QRect rect = option.rect.adjusted(inset - grow, inset - grow, -(inset - grow), -(inset - grow));
+  const QRect rect =
+      option.rect.adjusted(inset - grow, inset - grow, -(inset - grow), -(inset - grow));
   if (rect.isEmpty()) return;
 
   const QString name = index.data(NameRole).toString();
@@ -172,7 +177,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // pixel short of the tile's actual bottom edge.
   const QVariant progress = index.data(ProgressRole);
   // Taller under an install's two lines.
-  const int scrim_height = qMin(rect.height(), progress.isValid() ? kScrimHeight + 28 : kScrimHeight);
+  const int scrim_height =
+      qMin(rect.height(), progress.isValid() ? kScrimHeight + 28 : kScrimHeight);
   const QRect scrim(rect.left(), rect.bottom() - scrim_height + 1, rect.width(), scrim_height);
   QLinearGradient gradient(scrim.bottomLeft(), scrim.topLeft());
   gradient.setColorAt(0.0, QColor(0, 0, 0, tokens.scrim_alpha));
@@ -181,10 +187,11 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
 
   // Between the title and the status line, which says how far along it is.
   if (progress.isValid()) {
-    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 40, rect.width() - 16, 4), progress.toDouble(),
-              tokens.accent, QColor(255, 255, 255, 40));
+    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 40, rect.width() - 16, 4),
+              progress.toDouble(), tokens.accent, QColor(255, 255, 255, 40));
     if (progress.toDouble() < 0) {
-      if (auto* view = dynamic_cast<TileView*>(const_cast<QWidget*>(option.widget))) view->KeepAnimating();
+      if (auto* view = dynamic_cast<TileView*>(const_cast<QWidget*>(option.widget)))
+        view->KeepAnimating();
     }
   }
   painter->restore();
@@ -192,11 +199,13 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   painter->save();
   painter->setRenderHint(QPainter::Antialiasing);
 
-  QFont title_font = theme::DesktopFont();  // the rest of the window is a point larger; titles fit as they were
+  QFont title_font =
+      theme::DesktopFont();  // the rest of the window is a point larger; titles fit as they were
   title_font.setWeight(QFont::DemiBold);
   painter->setFont(title_font);
   painter->setPen(QColor(255, 255, 255, 235));
-  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 60 : 36), rect.width() - 16, 18);
+  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 60 : 36),
+                         rect.width() - 16, 18);
   painter->drawText(title_rect, Qt::AlignLeft | Qt::AlignVCenter,
                     QFontMetrics(title_font).elidedText(name, Qt::ElideRight, title_rect.width()));
 
@@ -209,23 +218,28 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const QRect status_rect(rect.left() + 8, rect.bottom() - 34, rect.width() - 16, 15);
     painter->setPen(QColor(255, 255, 255, 235));
     painter->drawText(status_rect, Qt::AlignLeft | Qt::AlignVCenter,
-                      metrics.elidedText(index.data(StatusTextRole).toString(), Qt::ElideRight, status_rect.width()));
+                      metrics.elidedText(index.data(StatusTextRole).toString(), Qt::ElideRight,
+                                         status_rect.width()));
     const QRect detail_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
     painter->setPen(QColor(255, 255, 255, 160));
     painter->drawText(detail_rect, Qt::AlignLeft | Qt::AlignVCenter,
-                      metrics.elidedText(index.data(ProgressDetailRole).toString(), Qt::ElideRight, detail_rect.width()));
+                      metrics.elidedText(index.data(ProgressDetailRole).toString(), Qt::ElideRight,
+                                         detail_rect.width()));
   }
 
   // "Ready" says nothing worth a line on every tile, only a state that
   // needs attention (or Playing) earns one.
   const QString status_text = index.data(StatusTextRole).toString();
   // Only when nothing more pressing is on the line.
-  const bool unchecked = !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
+  const bool unchecked =
+      !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
   // The source shares the status line: after the status, or alone and quieter without one.
-  const SourceInfo* source = show_source_ ? FindSourceInfo(index.data(SourceRole).toString()) : nullptr;
+  const SourceInfo* source =
+      show_source_ ? FindSourceInfo(index.data(SourceRole).toString()) : nullptr;
   const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
   const QFontMetrics small_metrics(small_font);
-  if (!progress.isValid() && show_status_ && (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
+  if (!progress.isValid() && show_status_ &&
+      (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
     painter->setFont(small_font);
     QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
     if (unchecked) dot = tokens.warning;
@@ -234,14 +248,15 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->drawEllipse(QPoint(status_rect.left() + 3, status_rect.center().y()), 3, 3);
     painter->setPen(QColor(255, 255, 255, 170));
     QString line = !status_text.isEmpty() ? status_text
-                   : running              ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
-                   : unchecked            ? QString("Not checked")
-                                          : StatusLabel(status);
+                   : running   ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
+                   : unchecked ? QString("Not checked")
+                               : StatusLabel(status);
     if (source != nullptr) line += " · " + source->name;
     const QRect text_rect = status_rect.adjusted(12, 0, 0, 0);
     painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
                       small_metrics.elidedText(line, Qt::ElideRight, text_rect.width()));
-  } else if (const QVariant review = index.data(ReviewRole); !progress.isValid() && (source != nullptr || review.isValid())) {
+  } else if (const QVariant review = index.data(ReviewRole);
+             !progress.isValid() && (source != nullptr || review.isValid())) {
     // "Steam", "97% positive", or "Epic Games · 97%" with the share in Steam's blue.
     painter->setFont(small_font);
     const QColor muted(255, 255, 255, 128);
@@ -264,7 +279,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const QFont tier_font = TierFont(option.font);
     painter->setFont(tier_font);
     const QString label = TierLabel(tier);
-    const QRect badge(rect.left() + 6, rect.top() + 6, QFontMetrics(tier_font).horizontalAdvance(label) + 12, 18);
+    const QRect badge(rect.left() + 6, rect.top() + 6,
+                      QFontMetrics(tier_font).horizontalAdvance(label) + 12, 18);
     const QColor color = ProtonDbTierColor(tier.toStdString());
     painter->setPen(Qt::NoPen);
     painter->setBrush(color);
@@ -283,7 +299,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
     QRect glyph(0, 0, kGlyph, kGlyph);
     glyph.moveCenter(pill.center());
-    painter->drawPixmap(glyph, icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
+    painter->drawPixmap(glyph,
+                        icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
   }
 
   if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {
@@ -294,8 +311,9 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     // Wraps on a narrow tile rather than cutting the words off.
     const QRect text = metrics.boundingRect(QRect(0, 0, rect.width() - 32, rect.height()),
                                             Qt::AlignCenter | Qt::TextWordWrap, note_);
-    const QRect pill(rect.center().x() - (text.width() + 20) / 2, rect.center().y() - (text.height() + 12) / 2,
-                     text.width() + 20, text.height() + 12);
+    const QRect pill(rect.center().x() - (text.width() + 20) / 2,
+                     rect.center().y() - (text.height() + 12) / 2, text.width() + 20,
+                     text.height() + 12);
     painter->setPen(Qt::NoPen);
     painter->setBrush(QColor(0, 0, 0, 200));
     painter->drawRoundedRect(pill, 12, 12);

@@ -29,7 +29,8 @@ std::string NameOf(const fs::path& path) {
   return stem.string();
 }
 
-// The Categories line of the AppImage's own desktop entry; nullopt when it can't be extracted or has none.
+// The Categories line of the AppImage's own desktop entry; nullopt when it can't be extracted or
+// has none.
 std::optional<std::string> AppImageCategories(const fs::path& path) {
   std::string templ = (fs::temp_directory_path() / "mira-import-XXXXXX").string();
   if (!::mkdtemp(templ.data())) return std::nullopt;
@@ -95,11 +96,13 @@ ImportGuess ClassifyImport(const fs::path& dropped) {
   return guess;
 }
 
-Result<fs::path> ImportInto(const config::Config& config, const fs::path& dropped, ImportKind kind) {
+Result<fs::path> ImportInto(const config::Config& config, const fs::path& dropped,
+                            ImportKind kind) {
   const fs::path path = dropped.has_filename() ? dropped : dropped.parent_path();
   std::error_code ec;
   if (!fs::exists(path, ec)) {
-    if (ec) return Err("io_error", std::format("couldn't check {}: {}", path.string(), ec.message()));
+    if (ec)
+      return Err("io_error", std::format("couldn't check {}: {}", path.string(), ec.message()));
     return Err("source_missing", std::format("{} doesn't exist", path.string()));
   }
   if (kind != ImportKind::kGame && kind != ImportKind::kApp) {
@@ -108,33 +111,42 @@ Result<fs::path> ImportInto(const config::Config& config, const fs::path& droppe
 
   const std::vector<fs::path> roots = config.GetPathArray("library_roots");
   const bool apps = kind == ImportKind::kApp;
-  const auto root = std::ranges::find_if(roots, [&](const fs::path& r) { return IsApplicationsRoot(r) == apps; });
+  const auto root =
+      std::ranges::find_if(roots, [&](const fs::path& r) { return IsApplicationsRoot(r) == apps; });
   if (root == roots.end()) {
-    return Err("no_library_root", apps ? "No Applications folder in library_roots" : "No games folder in library_roots");
+    return Err("no_library_root", apps ? "No Applications folder in library_roots"
+                                       : "No games folder in library_roots");
   }
   if (paths::IsWithin(path, roots)) {
     return Err("already_in_library", std::format("{} is already in the library", path.string()));
   }
 
   const fs::path target = *root / path.filename();
-  if (fs::exists(target, ec)) return Err("target_exists", std::format("{} already exists", target.string()));
+  if (fs::exists(target, ec))
+    return Err("target_exists", std::format("{} already exists", target.string()));
   // From another drive it's copied beside the root first, so the watcher never sees half of it.
   const fs::path staging = root->parent_path() / ".mira-import" / path.filename();
   fs::remove_all(staging, ec);
-  if (auto moved = MovePath(path, staging, /*allow_copy=*/true); !moved) return std::unexpected(moved.error());
+  if (auto moved = MovePath(path, staging, /*allow_copy=*/true); !moved)
+    return std::unexpected(moved.error());
   fs::create_directories(*root, ec);
   fs::rename(staging, target, ec);
-  if (ec) return Err("move_failed", std::format("{} is in {}, but couldn't go into the library: {}", path.filename().string(),
-                                                staging.parent_path().string(), ec.message()));
+  if (ec)
+    return Err("move_failed",
+               std::format("{} is in {}, but couldn't go into the library: {}",
+                           path.filename().string(), staging.parent_path().string(), ec.message()));
   fs::remove(staging.parent_path(), ec);
   return target;
 }
 
 std::string_view ImportKindName(ImportKind kind) {
   switch (kind) {
-    case ImportKind::kGame: return "game";
-    case ImportKind::kApp: return "app";
-    case ImportKind::kUnknown: return "unknown";
+    case ImportKind::kGame:
+      return "game";
+    case ImportKind::kApp:
+      return "app";
+    case ImportKind::kUnknown:
+      return "unknown";
   }
   return "unknown";
 }

@@ -13,7 +13,6 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QWindow>
-
 #include <algorithm>
 
 #include "../client/Jobs.h"
@@ -27,8 +26,8 @@
 #include "../library/GameMenus.h"
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
-#include "DownloadsPage.h"
 #include "CollectionsPage.h"
+#include "DownloadsPage.h"
 #include "GameKeyboard.h"
 #include "GamePage.h"
 #include "GameWindow.h"
@@ -52,12 +51,12 @@ Page::Page(BigScreenWindow* window) : QWidget(window), window_(window) {
 // The top strip (tabs, downloads, clock), the button hints, the toast and a
 // confirm dialog, painted over every page.
 class Chrome : public QWidget {
-public:
+ public:
   explicit Chrome(BigScreenWindow* window) : QWidget(window), window_(window) {
     setAttribute(Qt::WA_TransparentForMouseEvents);
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -70,7 +69,7 @@ protected:
     PaintMenu(painter);
   }
 
-private:
+ private:
   void PaintTop(QPainter& painter) {
     const theme::Tokens& tokens = theme::Current();
     const double u = window_->unit();
@@ -120,7 +119,7 @@ private:
     painter.setFont(Font(u, 0.85));
     painter.setPen(tokens.text_muted);
     const GamepadInput& input = window_->input();
-    QString pad = !input.available()        ? "Keyboard · controllers need SDL3"
+    QString pad = !input.available()           ? "Keyboard · controllers need SDL3"
                   : input.pad_name().isEmpty() ? "No controller"
                                                : input.pad_name();
     if (!input.pads().empty()) {
@@ -149,8 +148,8 @@ private:
       painter.setBrush(QColor(255, 255, 255, 34));
       painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
       painter.setBrush(Accent());
-      painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * progress, bar.height())), bar.height() / 2,
-                              bar.height() / 2);
+      painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * progress, bar.height())),
+                              bar.height() / 2, bar.height() / 2);
       painter.setPen(tokens.text);
       const QString percent = QString("%1%").arg(qRound(progress * 100));
       const double w = painter.fontMetrics().horizontalAdvance(percent);
@@ -221,23 +220,27 @@ private:
     const double u = window_->unit();
     painter.fillRect(rect(), QColor(0, 0, 0, 170));
     const double row_h = u * 3.4;
-    const QRectF box((width() - u * 30) / 2, (height() - row_h * double(menu.entries.size()) - u * 6) / 2, u * 30,
+    const QRectF box((width() - u * 30) / 2,
+                     (height() - row_h * double(menu.entries.size()) - u * 6) / 2, u * 30,
                      row_h * double(menu.entries.size()) + u * 6);
     painter.setPen(QPen(tokens.border, 1));
     painter.setBrush(tokens.surface);
     painter.drawRoundedRect(box, u * 0.7, u * 0.7);
     painter.setPen(tokens.text_muted);
     painter.setFont(Font(u, 1.0, QFont::DemiBold));
-    painter.drawText(box.adjusted(u * 2, u * 1.4, -u * 2, 0), Qt::AlignTop | Qt::AlignLeft, menu.title);
+    painter.drawText(box.adjusted(u * 2, u * 1.4, -u * 2, 0), Qt::AlignTop | Qt::AlignLeft,
+                     menu.title);
     painter.setFont(Font(u, 1.2, QFont::Bold));
     for (size_t i = 0; i < menu.entries.size(); ++i) {
-      const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i) * row_h, box.width() - u * 2.4, row_h - u * 0.4);
+      const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i) * row_h,
+                       box.width() - u * 2.4, row_h - u * 0.4);
       const bool focused = int(i) == menu.focus;
       painter.setPen(focused ? QPen(Accent(), u * 0.12) : Qt::NoPen);
       painter.setBrush(focused ? tokens.surface_alt : Qt::transparent);
       painter.drawRoundedRect(row, u * 0.45, u * 0.45);
       painter.setPen(tokens.text);
-      painter.drawText(row.adjusted(u * 1.2, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, menu.entries[i].first);
+      painter.drawText(row.adjusted(u * 1.2, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                       menu.entries[i].first);
     }
   }
 
@@ -257,7 +260,8 @@ private:
     painter.drawText(inner, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, dialog.title);
     painter.setFont(Font(u, 1.0));
     painter.setPen(tokens.text_muted);
-    painter.drawText(inner.adjusted(0, u * 2.8, 0, 0), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, dialog.body);
+    painter.drawText(inner.adjusted(0, u * 2.8, 0, 0),
+                     Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, dialog.body);
     // Buttons, right-aligned: confirm then cancel.
     painter.setFont(Font(u, 1.05, QFont::Bold));
     const QStringList labels = {dialog.confirm_label, "Cancel"};
@@ -285,7 +289,8 @@ private:
     const double u = window_->unit();
     painter.fillRect(QRectF(0, u * 4.2, width(), height() - u * 7.6), QColor(0, 0, 0, 200));
     const QSize cover(qRound(12 * u), qRound(18 * u));
-    const QRectF box((width() - cover.width()) / 2.0, height() / 2.0 - u * 14, cover.width(), cover.height());
+    const QRectF box((width() - cover.width()) / 2.0, height() / 2.0 - u * 14, cover.width(),
+                     cover.height());
     DrawCover(painter, box, window_->Cover(item, cover), u, false, false, -1);
     painter.setPen(tokens.text);
     painter.setFont(Font(u, 2.0, QFont::Bold));
@@ -295,17 +300,20 @@ private:
     painter.setFont(Font(u, 1.05));
     // Nothing reports a prefix being set up, but a Windows game's first start is when it happens.
     const bool first_run = item.game && !item.game->last_played_at && item.game->play_seconds == 0;
-    const QString detail = item.game && item.game->source == "steam" ? "Steam is starting it. This can take a moment."
-                           : first_run ? "Its first start sets things up, which can take a minute or two."
-                                       : "This can take a moment.";
+    const QString detail =
+        item.game && item.game->source == "steam" ? "Steam is starting it. This can take a moment."
+        : first_run ? "Its first start sets things up, which can take a minute or two."
+                    : "This can take a moment.";
     painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
     painter.drawText(title.translated(0, u * 4.6), Qt::AlignHCenter | Qt::AlignTop,
                      "This screen closes once the game's window opens.");
     // How to get back to Mira once the game is up. Steam games get Steam's own overlay instead.
     if (item.game && item.game->source != "steam") {
       const QString kind = window_->GlyphKind();
-      const QString button = kind == "ps" ? "PS button" : kind == "nin" ? "Home button" : kind == "xbox" ? "Xbox button"
-                                                                                                   : "controller's Guide button";
+      const QString button = kind == "ps"     ? "PS button"
+                             : kind == "nin"  ? "Home button"
+                             : kind == "xbox" ? "Xbox button"
+                                              : "controller's Guide button";
       painter.setPen(tokens.text);
       painter.setFont(Font(u, 0.95));
       painter.drawText(title.translated(0, u * 7.2), Qt::AlignHCenter | Qt::AlignTop,
@@ -326,8 +334,8 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   hero_ = new HeroBackground(this);
   stack_ = new QStackedWidget(this);
   stack_->setAttribute(Qt::WA_TranslucentBackground);
-  tabs_ = {new HomePage(this), new CollectionsPage(this), new SearchPage(this), new DownloadsPage(this),
-           new SettingsPage(this)};
+  tabs_ = {new HomePage(this), new CollectionsPage(this), new SearchPage(this),
+           new DownloadsPage(this), new SettingsPage(this)};
   tab_names_ = {"Home", "Collections", "Search", "Downloads", "Settings"};
   for (Page* page : tabs_) stack_->addWidget(page);
   game_page_ = new GamePage(this);
@@ -376,7 +384,8 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     // Only with a time chosen in settings; "Never" must never suspend.
     if (prefs_.big_screen_idle_suspend.value_or(0) <= 0) return;
     // Only from a quiet Home: nothing playing, nothing installing.
-    const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || update_ != nullptr || !isActiveWindow();
+    const bool busy = RunningGame() != nullptr || !installing_.isEmpty() || update_ != nullptr ||
+                      !isActiveWindow();
     if (!busy) PowerAction("Suspend");
   });
   auto* sleep = new SleepWatcher(this);
@@ -384,14 +393,16 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     if (RunningGame() == nullptr) RaiseFromGame();
     RestartIdle();
   });
-  connect(hero_, &HeroBackground::ShowcaseChanged, static_cast<HomePage*>(tabs_[0]), &HomePage::ShowcaseChanged);
+  connect(hero_, &HeroBackground::ShowcaseChanged, static_cast<HomePage*>(tabs_[0]),
+          &HomePage::ShowcaseChanged);
   // Home's button hints fade away while it showcases a game, and come back when focus moves.
   hints_fade_.setDuration(500);
   hints_fade_.setStartValue(0.0);
   hints_fade_.setEndValue(1.0);
   connect(&hints_fade_, &QVariantAnimation::valueChanged, chrome_, qOverload<>(&QWidget::update));
   connect(hero_, &HeroBackground::ShowcaseChanged, this, [this] {
-    hints_fade_.setDirection(hero_->Showcasing() ? QAbstractAnimation::Forward : QAbstractAnimation::Backward);
+    hints_fade_.setDirection(hero_->Showcasing() ? QAbstractAnimation::Forward
+                                                 : QAbstractAnimation::Backward);
     if (hints_fade_.state() != QAbstractAnimation::Running) hints_fade_.start();
   });
   connect(hero_, &HeroBackground::ArtChanged, this, [this] {
@@ -415,7 +426,9 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   window_poll_.setInterval(500);
   connect(&window_poll_, &QTimer::timeout, this, [this] {
     if (launching_.key.isEmpty() || playing_ != launching_.key) return window_poll_.stop();
-    if (FocusGameWindow(launching_.key.toStdString(), prefs_.big_screen_fullscreen_games.value_or(true))) EndLaunch();
+    if (FocusGameWindow(launching_.key.toStdString(),
+                        prefs_.big_screen_fullscreen_games.value_or(true)))
+      EndLaunch();
   });
   clock_timer_.setInterval(10'000);
   connect(&clock_timer_, &QTimer::timeout, chrome_, qOverload<>(&QWidget::update));
@@ -463,7 +476,8 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   saved.big_screen_idle_suspend = prefs.big_screen_idle_suspend;
   saved.big_screen_recent_searches = prefs.big_screen_recent_searches;
   ApplyInputOptions();
-  if (!ApplyStartOnLogin(prefs.start_on_login.value_or(false))) Toast("Couldn't change start on login");
+  if (!ApplyStartOnLogin(prefs.start_on_login.value_or(false)))
+    Toast("Couldn't change start on login");
   api::SaveFrontendPrefsAsync(this, saved, [](PatchConfigResult) {});
   RefreshPages();
   update();
@@ -471,7 +485,9 @@ void BigScreenWindow::SetPrefs(const FrontendPrefs& prefs) {
   chrome_->update();
 }
 
-double BigScreenWindow::unit() const { return Unit(height(), prefs_.big_screen_large_text.value_or(false)); }
+double BigScreenWindow::unit() const {
+  return Unit(height(), prefs_.big_screen_large_text.value_or(false));
+}
 
 QString BigScreenWindow::GlyphKind() const {
   // Keys while the keyboard was used last, or no controller is connected.
@@ -489,7 +505,10 @@ void BigScreenWindow::UseKeys(bool keys) {
 }
 
 Item BigScreenWindow::ItemFor(const GameSummary& game) const {
-  return {QString::fromStdString(game.id), QString::fromStdString(game.name), QString::fromStdString(game.source), {},
+  return {QString::fromStdString(game.id),
+          QString::fromStdString(game.name),
+          QString::fromStdString(game.source),
+          {},
           game};
 }
 
@@ -518,13 +537,16 @@ bool BigScreenWindow::Browsable(const StoreTitle& title) const {
   return title.source != "office" || prefs_.big_screen_show_apps.value_or(false);
 }
 
-QPixmap BigScreenWindow::Logo(const Item& item) const { return hero_->Logo(item.key); }
+QPixmap BigScreenWindow::Logo(const Item& item) const {
+  return hero_->Logo(item.key);
+}
 
 QPixmap BigScreenWindow::Cover(const Item& item, QSize size) const {
   const qreal dpr = devicePixelRatioF();
   QPixmap cover;
   if (item.game) cover = services_.artwork->Cover(*item.game, size, dpr);
-  if (!item.game && !item.ref.isEmpty()) cover = services_.artwork->TitleCover(item.source, item.ref, item.name, size, dpr);
+  if (!item.game && !item.ref.isEmpty())
+    cover = services_.artwork->TitleCover(item.source, item.ref, item.name, size, dpr);
   return cover;
 }
 
@@ -532,12 +554,17 @@ const DownloadTracker::Entry* BigScreenWindow::Download(const Item& item) const 
   using Kind = DownloadTracker::Kind;
   // A store game ("<source>-<ref>") updates as its store title.
   QString ref = item.ref;
-  if (ref.isEmpty() && item.key.startsWith(item.source + "-")) ref = item.key.mid(item.source.size() + 1);
+  if (ref.isEmpty() && item.key.startsWith(item.source + "-"))
+    ref = item.key.mid(item.source.size() + 1);
   const DownloadTracker::Entry* entry =
-      ref.isEmpty() ? nullptr : services_.downloads->Find(DownloadTracker::KeyFor(Kind::Title, item.source, ref));
-  if (entry == nullptr) entry = services_.downloads->Find(DownloadTracker::KeyFor(Kind::Game, {}, item.key));
+      ref.isEmpty()
+          ? nullptr
+          : services_.downloads->Find(DownloadTracker::KeyFor(Kind::Title, item.source, ref));
+  if (entry == nullptr)
+    entry = services_.downloads->Find(DownloadTracker::KeyFor(Kind::Game, {}, item.key));
   if (entry == nullptr) return nullptr;
-  const bool live = entry->state == DownloadTracker::State::Running || entry->state == DownloadTracker::State::Paused;
+  const bool live = entry->state == DownloadTracker::State::Running ||
+                    entry->state == DownloadTracker::State::Paused;
   return live ? entry : nullptr;
 }
 
@@ -551,7 +578,9 @@ void BigScreenWindow::ShowHero(const Item& item, const Page* from) {
   if (from == stack_->currentWidget()) hero_->Show(item);
 }
 
-bool BigScreenWindow::Showcasing() const { return hero_->Showcasing(); }
+bool BigScreenWindow::Showcasing() const {
+  return hero_->Showcasing();
+}
 
 void BigScreenWindow::OpenGame(const Item& item) {
   game_page_->Open(item, qobject_cast<Page*>(stack_->currentWidget()));
@@ -564,8 +593,8 @@ void BigScreenWindow::Toast(const QString& text) {
   chrome_->update();
 }
 
-void BigScreenWindow::Confirm(const QString& title, const QString& body, const QString& confirm_label,
-                              std::function<void()> on_confirm) {
+void BigScreenWindow::Confirm(const QString& title, const QString& body,
+                              const QString& confirm_label, std::function<void()> on_confirm) {
   dialog_ = Dialog{title, body, confirm_label, std::move(on_confirm)};
   chrome_->update();
 }
@@ -647,7 +676,8 @@ void BigScreenWindow::Install(const Item& item) {
     api::InstallStoreTitleAsync(this, item.source.toStdString(), item.ref.toStdString(), false,
                                 [done](StoreActionResult result) { done(result.error); });
   } else if (item.game && item.game->status == "needs_install") {
-    api::InstallGameAsync(this, item.game->id, false, {}, [done](GameActionResult result) { done(result.error); });
+    api::InstallGameAsync(this, item.game->id, false, {},
+                          [done](GameActionResult result) { done(result.error); });
   }
 }
 
@@ -663,8 +693,8 @@ void BigScreenWindow::Pause(const Item& item) {
 void BigScreenWindow::Resume(const Item& item) {
   const DownloadTracker::Entry* entry = Download(item);
   if (entry == nullptr) return;
-  api::InstallStoreTitleAsync(this, entry->source.toStdString(), entry->ref.toStdString(), entry->update,
-                              [this, name = item.name](StoreActionResult result) {
+  api::InstallStoreTitleAsync(this, entry->source.toStdString(), entry->ref.toStdString(),
+                              entry->update, [this, name = item.name](StoreActionResult result) {
                                 if (!result.ok) Toast("Could not resume " + name);
                               });
 }
@@ -675,7 +705,8 @@ void BigScreenWindow::CancelInstall(const Item& item) {
   const DownloadTracker::Entry* entry = Download(item);
   if (entry == nullptr) return;
   if (entry->state == DownloadTracker::State::Paused) {
-    api::DiscardPausedInstallAsync(this, entry->source.toStdString(), entry->ref.toStdString(), [](StoreActionResult) {});
+    api::DiscardPausedInstallAsync(this, entry->source.toStdString(), entry->ref.toStdString(),
+                                   [](StoreActionResult) {});
   } else if (const QString job = services_.downloads->JobFor(*entry); !job.isEmpty()) {
     jobs::Cancel(this, job.toStdString(), [](ApiError) {});
   }
@@ -684,15 +715,19 @@ void BigScreenWindow::CancelInstall(const Item& item) {
 
 void BigScreenWindow::Uninstall(const Item& item) {
   if (!item.game) return;
-  Confirm("Uninstall " + item.name + "?",
-          "This deletes the game's files. Its Wine prefix, with saves and settings, is kept.", "Uninstall",
-          [this, item] {
-            api::DeleteGameAsync(this, item.game->id, true, false, false, [this, item](DeleteResult result) {
+  Confirm(
+      "Uninstall " + item.name + "?",
+      "This deletes the game's files. Its Wine prefix, with saves and settings, is kept.",
+      "Uninstall", [this, item] {
+        api::DeleteGameAsync(
+            this, item.game->id, true, false, false, [this, item](DeleteResult result) {
               Toast(result.ok ? item.name + " uninstalled" : "Could not uninstall " + item.name);
               // Its page would offer Play for a game that's gone.
-              if (result.ok && stack_->currentWidget() == game_page_ && game_page_->key() == item.key) Back();
+              if (result.ok && stack_->currentWidget() == game_page_ &&
+                  game_page_->key() == item.key)
+                Back();
             });
-          });
+      });
 }
 
 void BigScreenWindow::TogglePin(const Item& item) {
@@ -713,9 +748,12 @@ void BigScreenWindow::QuickAction(const Item& item) {
   if (label == "Install") Install(item);
 }
 
-void BigScreenWindow::Exit() { close(); }
+void BigScreenWindow::Exit() {
+  close();
+}
 
-void BigScreenWindow::ShowMenu(const QString& title, std::vector<std::pair<QString, std::function<void()>>> entries) {
+void BigScreenWindow::ShowMenu(const QString& title,
+                               std::vector<std::pair<QString, std::function<void()>>> entries) {
   menu_ = Menu{title, std::move(entries)};
   chrome_->update();
 }
@@ -738,7 +776,9 @@ bool BigScreenWindow::event(QEvent* event) {
     // Something like Steam's own window came over big screen while no game
     // runs: come back on top.
     QTimer::singleShot(300, this, [this] {
-      if (isActiveWindow() || QApplication::activeWindow() != nullptr || handed_off_ || !launching_.key.isEmpty()) return;
+      if (isActiveWindow() || QApplication::activeWindow() != nullptr || handed_off_ ||
+          !launching_.key.isEmpty())
+        return;
       const auto& games = services_.library->Games();
       if (std::ranges::any_of(games, &GameSummary::running)) return;
       RaiseFromGame();
@@ -761,7 +801,8 @@ void BigScreenWindow::Navigate(Nav nav) {
   }
   if (menu_) {
     const int count = int(menu_->entries.size());
-    if (nav == Nav::Up || nav == Nav::Down) menu_->focus = (menu_->focus + (nav == Nav::Down ? 1 : count - 1)) % count;
+    if (nav == Nav::Up || nav == Nav::Down)
+      menu_->focus = (menu_->focus + (nav == Nav::Down ? 1 : count - 1)) % count;
     if (nav == Nav::Back) menu_.reset();
     if (nav == Nav::Accept) {
       auto action = std::move(menu_->entries[size_t(menu_->focus)].second);
@@ -770,7 +811,8 @@ void BigScreenWindow::Navigate(Nav nav) {
       menu_.reset();
       action();
       // An entry that reopens its own menu (a toggle) keeps focus on itself.
-      if (menu_ && menu_->title == title) menu_->focus = std::min(focus, int(menu_->entries.size()) - 1);
+      if (menu_ && menu_->title == title)
+        menu_->focus = std::min(focus, int(menu_->entries.size()) - 1);
     }
     chrome_->update();
     return;
@@ -805,11 +847,16 @@ void BigScreenWindow::Navigate(Nav nav) {
   auto* page = qobject_cast<Page*>(stack_->currentWidget());
   if (page != nullptr && page->Navigate(nav)) return;
   switch (nav) {
-    case Nav::PrevTab: return SelectTab((tab_ + int(tabs_.size()) - 1) % int(tabs_.size()));
-    case Nav::NextTab: return SelectTab((tab_ + 1) % int(tabs_.size()));
-    case Nav::Search: return SelectTab(kSearchTab);
-    case Nav::Back: return Back();
-    default: return;
+    case Nav::PrevTab:
+      return SelectTab((tab_ + int(tabs_.size()) - 1) % int(tabs_.size()));
+    case Nav::NextTab:
+      return SelectTab((tab_ + 1) % int(tabs_.size()));
+    case Nav::Search:
+      return SelectTab(kSearchTab);
+    case Nav::Back:
+      return Back();
+    default:
+      return;
   }
 }
 
@@ -837,21 +884,24 @@ void BigScreenWindow::ShowPage(Page* page) {
 }
 
 void BigScreenWindow::Back() {
-  if (stack_->currentWidget() == game_page_) return ShowPage(game_page_->from() ? game_page_->from() : tabs_[tab_]);
+  if (stack_->currentWidget() == game_page_)
+    return ShowPage(game_page_->from() ? game_page_->from() : tabs_[tab_]);
   if (tab_ != 0) SelectTab(0);
 }
 
 void BigScreenWindow::Feedback(Nav nav) {
-  const bool directions = nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right;
+  const bool directions =
+      nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right;
   if (prefs_.big_screen_sounds.value_or(true)) {
     const bool tabs = nav == Nav::PrevTab || nav == Nav::NextTab;
-    sounds_->Play(directions        ? Sounds::Cue::Move
+    sounds_->Play(directions         ? Sounds::Cue::Move
                   : tabs             ? Sounds::Cue::Tab
                   : nav == Nav::Back ? Sounds::Cue::Back
                                      : Sounds::Cue::Accept);
   }
   const std::string rumble = prefs_.big_screen_rumble.value_or("light");
-  if (rumble != "off" && nav == Nav::Accept) input_->Rumble(rumble == "strong" ? 0.4 : 0.15, rumble == "strong" ? 0.8 : 0.35, 45);
+  if (rumble != "off" && nav == Nav::Accept)
+    input_->Rumble(rumble == "strong" ? 0.4 : 0.15, rumble == "strong" ? 0.8 : 0.35, 45);
 }
 
 void BigScreenWindow::Bump() {
@@ -949,7 +999,8 @@ void BigScreenWindow::TogglePerformanceOverlay(const std::string& id) {
       ReturnToGame();
       QTimer::singleShot(400, this, [this] {
         QString error;
-        if (!keyboard_->Press(KEY_F12, &error, KEY_RIGHTSHIFT)) Tell("Couldn't toggle the overlay", error);
+        if (!keyboard_->Press(KEY_F12, &error, KEY_RIGHTSHIFT))
+          Tell("Couldn't toggle the overlay", error);
       });
       return;
     }
@@ -967,7 +1018,8 @@ void BigScreenWindow::OpenQuickSettings(const std::string& id, const QString& na
   });
 }
 
-void BigScreenWindow::ShowQuickSettings(const std::string& id, const QString& name, const QuickSettings& settings) {
+void BigScreenWindow::ShowQuickSettings(const std::string& id, const QString& name,
+                                        const QuickSettings& settings) {
   Menu menu{name + " · from its next start"};
   const auto change = [this, id, name](QuickSettings next) {
     ShowQuickSettings(id, name, next);
@@ -977,23 +1029,26 @@ void BigScreenWindow::ShowQuickSettings(const std::string& id, const QString& na
   };
   static const int kLimits[] = {0, 30, 40, 60, 90, 120};
   menu.entries.emplace_back(
-      "Frame limit: " + (settings.fps_limit > 0 ? QString::number(settings.fps_limit) + " fps" : QString("Off")),
+      "Frame limit: " +
+          (settings.fps_limit > 0 ? QString::number(settings.fps_limit) + " fps" : QString("Off")),
       [settings, change] {
         QuickSettings next = settings;
         const auto at = std::ranges::find(kLimits, settings.fps_limit);
         next.fps_limit = at == std::end(kLimits) || at + 1 == std::end(kLimits) ? 0 : *(at + 1);
         change(next);
       });
-  menu.entries.emplace_back(QString("Performance overlay: ") + (settings.overlay ? "On" : "Off"), [settings, change] {
-    QuickSettings next = settings;
-    next.overlay = !next.overlay;
-    change(next);
-  });
-  menu.entries.emplace_back(QString("GameMode: ") + (settings.gamemode ? "On" : "Off"), [settings, change] {
-    QuickSettings next = settings;
-    next.gamemode = !next.gamemode;
-    change(next);
-  });
+  menu.entries.emplace_back(QString("Performance overlay: ") + (settings.overlay ? "On" : "Off"),
+                            [settings, change] {
+                              QuickSettings next = settings;
+                              next.overlay = !next.overlay;
+                              change(next);
+                            });
+  menu.entries.emplace_back(QString("GameMode: ") + (settings.gamemode ? "On" : "Off"),
+                            [settings, change] {
+                              QuickSettings next = settings;
+                              next.gamemode = !next.gamemode;
+                              change(next);
+                            });
   menu.entries.emplace_back("Done", [] {});
   menu_ = std::move(menu);
   chrome_->update();
@@ -1007,8 +1062,9 @@ bool BigScreenWindow::AppInFront() const {
 void BigScreenWindow::AppControl(Nav nav) {
   // TV-style apps (Stremio, a streaming site) take arrows, Enter, Escape and Space.
   static const std::map<Nav, int> kKeys = {
-      {Nav::Up, KEY_UP},         {Nav::Down, KEY_DOWN}, {Nav::Left, KEY_LEFT},    {Nav::Right, KEY_RIGHT},
-      {Nav::Accept, KEY_ENTER},  {Nav::Back, KEY_ESC},  {Nav::Action, KEY_SPACE},
+      {Nav::Up, KEY_UP},        {Nav::Down, KEY_DOWN},    {Nav::Left, KEY_LEFT},
+      {Nav::Right, KEY_RIGHT},  {Nav::Accept, KEY_ENTER}, {Nav::Back, KEY_ESC},
+      {Nav::Action, KEY_SPACE},
   };
   if (nav == Nav::Search) return OpenGameKeyboard();
   const auto found = kKeys.find(nav);
@@ -1049,14 +1105,17 @@ void BigScreenWindow::UpdateSystem() {
   const QStringList command = system::UpgradeCommand(distro);
   const QString name = distro.name.isEmpty() ? QString("this system") : distro.name;
   if (command.isEmpty()) return Toast("Mira doesn't know how to update " + name + ".");
-  if (QStandardPaths::findExecutable("pkexec").isEmpty()) return Toast("Updating needs pkexec (polkit), which isn't installed.");
-  Confirm("Update " + name + "?", "Your password is asked for next, with the on-screen keyboard to type it.", "Update",
+  if (QStandardPaths::findExecutable("pkexec").isEmpty())
+    return Toast("Updating needs pkexec (polkit), which isn't installed.");
+  Confirm("Update " + name + "?",
+          "Your password is asked for next, with the on-screen keyboard to type it.", "Update",
           [this, distro, command] { StartUpdate(distro, command); });
 }
 
 void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringList& command) {
   // Test sandboxes share the real system.
-  if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) return Toast("Updating is off here (MIRA_NO_POWER).");
+  if (qEnvironmentVariableIsSet("MIRA_NO_POWER"))
+    return Toast("Updating is off here (MIRA_NO_POWER).");
   update_ = new QProcess(this);
   update_->setProcessChannelMode(QProcess::MergedChannels);
   update_output_.clear();
@@ -1066,13 +1125,14 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
   ReturnToGame();
   QTimer::singleShot(400, this, [this] {
     QString error;
-    if (update_ != nullptr && !update_accepted_ && !keyboard_->Open(&error)) Tell("Type your password", error);
+    if (update_ != nullptr && !update_accepted_ && !keyboard_->Open(&error))
+      Tell("Type your password", error);
   });
   connect(update_, &QProcess::readyRead, this, [this] {
     if (update_ == nullptr) return;
     const QString text = QString::fromUtf8(update_->readAll());
-    // The command's own output means the password was accepted: back to big screen to show progress.
-    // pkexec's own errors ("...: Request dismissed") don't count.
+    // The command's own output means the password was accepted: back to big screen to show
+    // progress. pkexec's own errors ("...: Request dismissed") don't count.
     if (!update_accepted_ && !text.contains("Error executing command as another user")) {
       update_accepted_ = true;
       keyboard_->hide();
@@ -1095,24 +1155,28 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
     end();
     Tell("The update failed", "pkexec couldn't be started.");
   });
-  connect(update_, &QProcess::finished, this, [this, distro, end](int code, QProcess::ExitStatus status) {
-    end();
-    // pkexec's own codes: the prompt was dismissed or the password refused.
-    if (status == QProcess::NormalExit && (code == 126 || code == 127) && !update_accepted_) {
-      return Toast("Update canceled.");
-    }
-    // steamos-update exits 7 when there's nothing new.
-    const bool steamos_current = distro.family == system::Distro::Family::SteamOS && code == 7;
-    if (status != QProcess::NormalExit || (code != 0 && !steamos_current)) {
-      const QStringList lines = update_output_.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
-      return Tell("The update failed", lines.isEmpty() ? QString() : lines.last().trimmed());
-    }
-    if (!steamos_current && system::NeedsRestart(distro, update_output_)) {
-      return Confirm("Restart to finish updating?", "Some of the update only takes effect after a restart.", "Restart",
-                     [this] { PowerAction("Reboot"); });
-    }
-    Toast("The system is up to date.");
-  });
+  connect(
+      update_, &QProcess::finished, this,
+      [this, distro, end](int code, QProcess::ExitStatus status) {
+        end();
+        // pkexec's own codes: the prompt was dismissed or the password refused.
+        if (status == QProcess::NormalExit && (code == 126 || code == 127) && !update_accepted_) {
+          return Toast("Update canceled.");
+        }
+        // steamos-update exits 7 when there's nothing new.
+        const bool steamos_current = distro.family == system::Distro::Family::SteamOS && code == 7;
+        if (status != QProcess::NormalExit || (code != 0 && !steamos_current)) {
+          const QStringList lines =
+              update_output_.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
+          return Tell("The update failed", lines.isEmpty() ? QString() : lines.last().trimmed());
+        }
+        if (!steamos_current && system::NeedsRestart(distro, update_output_)) {
+          return Confirm("Restart to finish updating?",
+                         "Some of the update only takes effect after a restart.", "Restart",
+                         [this] { PowerAction("Reboot"); });
+        }
+        Toast("The system is up to date.");
+      });
   update_->start("pkexec", command);
 }
 
@@ -1131,7 +1195,8 @@ void BigScreenWindow::RaiseFromGame() {
 void BigScreenWindow::changeEvent(QEvent* event) {
   QWidget::changeEvent(event);
   if (event->type() != QEvent::WindowStateChange) return;
-  // Minimized for a game: its RAM is worth more than art nobody sees; back, covers are fetched again.
+  // Minimized for a game: its RAM is worth more than art nobody sees; back, covers are fetched
+  // again.
   if (isMinimized()) {
     services_.artwork->Release();
     hero_->Release();
@@ -1142,27 +1207,42 @@ void BigScreenWindow::changeEvent(QEvent* event) {
 
 void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
   static const std::map<int, Nav> kKeys = {
-      {Qt::Key_Up, Nav::Up},          {Qt::Key_Down, Nav::Down},       {Qt::Key_Left, Nav::Left},
-      {Qt::Key_Right, Nav::Right},    {Qt::Key_Return, Nav::Accept},   {Qt::Key_Enter, Nav::Accept},
-      {Qt::Key_Space, Nav::Accept},   {Qt::Key_Escape, Nav::Back},     {Qt::Key_Backspace, Nav::Back},
-      {Qt::Key_X, Nav::Action},       {Qt::Key_Y, Nav::Search},        {Qt::Key_Q, Nav::PrevTab},
-      {Qt::Key_E, Nav::NextTab},      {Qt::Key_PageUp, Nav::PrevTab},  {Qt::Key_PageDown, Nav::NextTab},
-      {Qt::Key_S, Nav::Sort},         {Qt::Key_Home, Nav::Guide},      {Qt::Key_BracketLeft, Nav::PrevLetter},
+      {Qt::Key_Up, Nav::Up},
+      {Qt::Key_Down, Nav::Down},
+      {Qt::Key_Left, Nav::Left},
+      {Qt::Key_Right, Nav::Right},
+      {Qt::Key_Return, Nav::Accept},
+      {Qt::Key_Enter, Nav::Accept},
+      {Qt::Key_Space, Nav::Accept},
+      {Qt::Key_Escape, Nav::Back},
+      {Qt::Key_Backspace, Nav::Back},
+      {Qt::Key_X, Nav::Action},
+      {Qt::Key_Y, Nav::Search},
+      {Qt::Key_Q, Nav::PrevTab},
+      {Qt::Key_E, Nav::NextTab},
+      {Qt::Key_PageUp, Nav::PrevTab},
+      {Qt::Key_PageDown, Nav::NextTab},
+      {Qt::Key_S, Nav::Sort},
+      {Qt::Key_Home, Nav::Guide},
+      {Qt::Key_BracketLeft, Nav::PrevLetter},
       {Qt::Key_BracketRight, Nav::NextLetter},
   };
-  const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+  const bool plain =
+      !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
   UseKeys(true);
-  if (event->key() == Qt::Key_F5 || (event->key() == Qt::Key_R && event->modifiers() == Qt::ControlModifier)) {
+  if (event->key() == Qt::Key_F5 ||
+      (event->key() == Qt::Key_R && event->modifiers() == Qt::ControlModifier)) {
     Toast("Refreshing your library");
     emit RefreshRequested();
     return;
   }
   // Letters go to a page that takes typing (Search) before they count as buttons.
-  if (auto* page = qobject_cast<Page*>(stack_->currentWidget()); page != nullptr && plain && !dialog_ && !menu_) {
+  if (auto* page = qobject_cast<Page*>(stack_->currentWidget());
+      page != nullptr && plain && !dialog_ && !menu_) {
     const QString text = event->text();
-    const bool typed = event->key() == Qt::Key_Backspace ? page->Typed({})
+    const bool typed = event->key() == Qt::Key_Backspace      ? page->Typed({})
                        : !text.isEmpty() && text[0].isPrint() ? page->Typed(text)
-                                                                    : false;
+                                                              : false;
     if (typed) {
       RestartIdle();
       return;
@@ -1173,14 +1253,14 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
     return QWidget::keyPressEvent(event);
   }
   // A held key repeats only directions; held Esc or Enter is one press.
-  const bool direction = found->second == Nav::Up || found->second == Nav::Down || found->second == Nav::Left ||
-                         found->second == Nav::Right;
+  const bool direction = found->second == Nav::Up || found->second == Nav::Down ||
+                         found->second == Nav::Left || found->second == Nav::Right;
   if (event->isAutoRepeat() && !direction) return;
   RestartIdle();
   if (found->second == Nav::Guide) return Guide();
   // Escape twice on Home leaves big screen; anywhere else it goes back.
-  if (event->key() == Qt::Key_Escape && !dialog_ && !menu_ && launching_.key.isEmpty() && tab_ == 0 &&
-      stack_->currentWidget() == tabs_[0]) {
+  if (event->key() == Qt::Key_Escape && !dialog_ && !menu_ && launching_.key.isEmpty() &&
+      tab_ == 0 && stack_->currentWidget() == tabs_[0]) {
     if (escape_armed_.isValid() && escape_armed_.elapsed() < 2000) return Exit();
     escape_armed_.start();
     return Toast("Press Esc again to exit big screen");
@@ -1189,7 +1269,8 @@ void BigScreenWindow::keyPressEvent(QKeyEvent* event) {
 }
 
 void BigScreenWindow::resizeEvent(QResizeEvent*) {
-  for (QWidget* child : {static_cast<QWidget*>(hero_), static_cast<QWidget*>(stack_), static_cast<QWidget*>(chrome_)}) {
+  for (QWidget* child : {static_cast<QWidget*>(hero_), static_cast<QWidget*>(stack_),
+                         static_cast<QWidget*>(chrome_)}) {
     child->setGeometry(rect());
   }
 }

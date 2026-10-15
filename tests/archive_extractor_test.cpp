@@ -10,8 +10,9 @@ using namespace mira;
 namespace fs = std::filesystem;
 
 TEST_CASE("archive names: supported formats, split volumes and stems") {
-  for (const char* name : {"Game.zip", "Game.tar.gz", "Game.tar.xz", "Game.tar.bz2", "Game.tgz", "Game.tar",
-                           "Game.rar", "Game.7z", "GAME.ZIP", "Game.part1.rar", "Game.part01.rar", "Game.7z.001"}) {
+  for (const char* name :
+       {"Game.zip", "Game.tar.gz", "Game.tar.xz", "Game.tar.bz2", "Game.tgz", "Game.tar",
+        "Game.rar", "Game.7z", "GAME.ZIP", "Game.part1.rar", "Game.part01.rar", "Game.7z.001"}) {
     CHECK_MESSAGE(library::LooksLikeArchive(name), name);
   }
   for (const char* name : {"Game.exe", "Game", "Game.part2.rar", "Game.r00", "Game.7z.002"}) {
@@ -21,13 +22,15 @@ TEST_CASE("archive names: supported formats, split volumes and stems") {
   CHECK(library::IsLaterVolume("Game.r01"));
   CHECK_FALSE(library::IsLaterVolume("Game.part1.rar"));
 
-  CHECK(library::StemWithoutArchiveExtension("My.Game.Deluxe.Edition.zip") == "My.Game.Deluxe.Edition");
+  CHECK(library::StemWithoutArchiveExtension("My.Game.Deluxe.Edition.zip") ==
+        "My.Game.Deluxe.Edition");
   CHECK(library::StemWithoutArchiveExtension("My.Game.tar.gz") == "My.Game");
   CHECK(library::StemWithoutArchiveExtension("Game.part01.rar") == "Game");
   CHECK(library::StemWithoutArchiveExtension("Game.7z.001") == "Game");
 
   const fs::path dir = test::TempDir("archive-volumes");
-  for (const char* name : {"Game.part1.rar", "Game.part2.rar", "Game.part3.rar", "Other.part2.rar"}) test::Touch(dir / name);
+  for (const char* name : {"Game.part1.rar", "Game.part2.rar", "Game.part3.rar", "Other.part2.rar"})
+    test::Touch(dir / name);
   CHECK(library::VolumesOf(dir / "Game.part1.rar").size() == 3);
   CHECK(library::FirstVolumeOf(dir / "Game.part3.rar") == dir / "Game.part1.rar");
   CHECK_FALSE(library::FirstVolumeOf(dir / "Other.part2.rar").has_value());
@@ -43,11 +46,14 @@ TEST_CASE("AnyOpenForWriting sees a file still being written") {
   CHECK_FALSE(library::AnyOpenForWriting({file}));
 }
 
-TEST_CASE("ExtractAndRemove only moves a fully extracted archive into place, and never over a folder") {
+TEST_CASE(
+    "ExtractAndRemove only moves a fully extracted archive into place, and never over a folder") {
   const fs::path dir = test::TempDir("archive-extract");
   test::Touch(dir / "src" / "Game.exe", std::string(200000, 'x'));
   const fs::path archive = dir / "Game.tar.gz";
-  REQUIRE(std::system(("tar -C " + (dir / "src").string() + " -czf " + archive.string() + " Game.exe").c_str()) == 0);
+  REQUIRE(
+      std::system(("tar -C " + (dir / "src").string() + " -czf " + archive.string() + " Game.exe")
+                      .c_str()) == 0);
 
   // A truncated copy fails, leaves no folder behind and keeps the archive.
   const fs::path truncated = dir / "Broken.tar.gz";

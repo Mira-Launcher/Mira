@@ -12,10 +12,10 @@ namespace mira_gui {
 class AboutPanel : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit AboutPanel(QWidget* parent = nullptr);
 
-private:
+ private:
   void ApplyLogo();
 
   QLabel* logo_ = nullptr;

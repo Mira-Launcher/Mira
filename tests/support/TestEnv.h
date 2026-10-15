@@ -18,7 +18,8 @@ namespace mira::test {
 std::filesystem::path TempDir(std::string_view name);
 
 // Creates `path` (and its parents) with `content`.
-void Touch(const std::filesystem::path& path, std::string_view content = "", bool executable = false);
+void Touch(const std::filesystem::path& path, std::string_view content = "",
+           bool executable = false);
 
 // Polls `done` until it holds or `timeout` passes: what a test waits on instead of a fixed sleep.
 bool WaitUntil(const std::function<bool()>& done,
@@ -33,13 +34,13 @@ void Isolate(config::Config& config);
 
 // Puts `dir` first on PATH for its lifetime, so stand-ins there shadow real tools.
 class PathPrepend {
-public:
+ public:
   explicit PathPrepend(const std::filesystem::path& dir);
   ~PathPrepend();
   PathPrepend(const PathPrepend&) = delete;
   PathPrepend& operator=(const PathPrepend&) = delete;
 
-private:
+ private:
   std::string old_;
 };
 

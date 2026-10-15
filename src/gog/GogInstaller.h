@@ -15,13 +15,13 @@ namespace mira::gog {
 // Wine/Proton prefix for it. gogdl never creates one, the same posture as
 // EpicInstaller re: Legendary.
 class GogInstaller {
-public:
+ public:
   GogInstaller(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<void> Install(const std::string& id);
   Result<void> Update(const std::string& id);
 
-private:
+ private:
   Result<void> Run(const std::string& id);
 
   config::Config& config_;

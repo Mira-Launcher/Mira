@@ -247,18 +247,27 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.start_on_login) table["start_on_login"] = *prefs.start_on_login;
   if (prefs.big_screen_sounds) table["big_screen_sounds"] = *prefs.big_screen_sounds;
   if (prefs.big_screen_rumble) table["big_screen_rumble"] = *prefs.big_screen_rumble;
-  if (prefs.big_screen_swap_confirm) table["big_screen_swap_confirm"] = *prefs.big_screen_swap_confirm;
+  if (prefs.big_screen_swap_confirm)
+    table["big_screen_swap_confirm"] = *prefs.big_screen_swap_confirm;
   if (prefs.big_screen_stick) table["big_screen_stick"] = *prefs.big_screen_stick;
   if (prefs.big_screen_repeat) table["big_screen_repeat"] = *prefs.big_screen_repeat;
   if (prefs.big_screen_trailers) table["big_screen_trailers"] = *prefs.big_screen_trailers;
-  if (prefs.big_screen_trailer_delay_ms) table["big_screen_trailer_delay_ms"] = *prefs.big_screen_trailer_delay_ms;
-  if (prefs.big_screen_trailer_skip_ms) table["big_screen_trailer_skip_ms"] = *prefs.big_screen_trailer_skip_ms;
-  if (prefs.big_screen_trailer_hd_only) table["big_screen_trailer_hd_only"] = *prefs.big_screen_trailer_hd_only;
-  if (prefs.big_screen_fullscreen_games) table["big_screen_fullscreen_games"] = *prefs.big_screen_fullscreen_games;
-  if (prefs.big_screen_trailer_sound) table["big_screen_trailer_sound"] = *prefs.big_screen_trailer_sound;
-  if (prefs.big_screen_trailer_volume) table["big_screen_trailer_volume"] = *prefs.big_screen_trailer_volume;
-  if (prefs.big_screen_idle_suspend) table["big_screen_idle_suspend"] = *prefs.big_screen_idle_suspend;
-  if (prefs.big_screen_recent_searches) table["big_screen_recent_searches"] = *prefs.big_screen_recent_searches;
+  if (prefs.big_screen_trailer_delay_ms)
+    table["big_screen_trailer_delay_ms"] = *prefs.big_screen_trailer_delay_ms;
+  if (prefs.big_screen_trailer_skip_ms)
+    table["big_screen_trailer_skip_ms"] = *prefs.big_screen_trailer_skip_ms;
+  if (prefs.big_screen_trailer_hd_only)
+    table["big_screen_trailer_hd_only"] = *prefs.big_screen_trailer_hd_only;
+  if (prefs.big_screen_fullscreen_games)
+    table["big_screen_fullscreen_games"] = *prefs.big_screen_fullscreen_games;
+  if (prefs.big_screen_trailer_sound)
+    table["big_screen_trailer_sound"] = *prefs.big_screen_trailer_sound;
+  if (prefs.big_screen_trailer_volume)
+    table["big_screen_trailer_volume"] = *prefs.big_screen_trailer_volume;
+  if (prefs.big_screen_idle_suspend)
+    table["big_screen_idle_suspend"] = *prefs.big_screen_idle_suspend;
+  if (prefs.big_screen_recent_searches)
+    table["big_screen_recent_searches"] = *prefs.big_screen_recent_searches;
   if (prefs.big_screen_show_apps) table["big_screen_show_apps"] = *prefs.big_screen_show_apps;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;
@@ -283,8 +292,8 @@ GameModeStatusResult GetGameModeStatusSync() {
 
 SystemPackagesResult GetSystemPackagesSync(const std::string& feature) {
   return ReadReply<SystemPackagesResult>(
-      transport::Get("/v1/system/packages?for=" + feature), "GET /v1/system/packages", Shape::Object,
-      [](SystemPackagesResult& result, const json& body) {
+      transport::Get("/v1/system/packages?for=" + feature), "GET /v1/system/packages",
+      Shape::Object, [](SystemPackagesResult& result, const json& body) {
         result.distro = body.value("distro", std::string());
         result.family = body.value("family", std::string());
         for (const json& item : body.value("missing", json::array())) {
@@ -304,13 +313,14 @@ SystemPackagesResult GetSystemPackagesSync(const std::string& feature) {
 
 std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
   const json body = json::parse(payload, nullptr, false);
-  if (!body.is_object() || !body.contains("frontend") || !body["frontend"].is_object()) return std::nullopt;
+  if (!body.is_object() || !body.contains("frontend") || !body["frontend"].is_object())
+    return std::nullopt;
   FrontendPrefsResult result;
   FillFrontendPrefs(result, body);
   json table = body["frontend"];
-  for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width", "sidebar_width",
-                          "library_filter", "sort_by", "sort_descending", "not_installed_sort",
-                          "source_tile_widths"}) {
+  for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width",
+                          "sidebar_width", "library_filter", "sort_by", "sort_descending",
+                          "not_installed_sort", "source_tile_widths"}) {
     table.erase(key);
   }
   return ChangedPrefs{std::move(result.prefs), table.dump()};

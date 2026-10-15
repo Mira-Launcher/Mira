@@ -19,7 +19,6 @@
 #include <QTextCursor>
 #include <QTimer>
 #include <QVBoxLayout>
-
 #include <map>
 
 #include "../app/ErrorHelp.h"
@@ -43,12 +42,14 @@ std::map<QString, QPointer<LogWindow>>& Windows() {
 
 void LogWindow::Open(QWidget* parent, const QString& channel, const QString& title) {
   QPointer<LogWindow>& existing = Windows()[channel];
-  if (existing == nullptr) existing = new LogWindow(parent != nullptr ? parent->window() : nullptr, channel, title);
+  if (existing == nullptr)
+    existing = new LogWindow(parent != nullptr ? parent->window() : nullptr, channel, title);
   if (!existing->isVisible() && parent != nullptr) {
     // Beside the window it came from, offset a little per log so several don't sit on each other.
     const QRect from = parent->window()->frameGeometry();
     const int stagger = static_cast<int>(Windows().size() - 1) * 28;
-    existing->move(from.center() - QPoint(existing->width() / 2, existing->height() / 2) + QPoint(stagger, stagger));
+    existing->move(from.center() - QPoint(existing->width() / 2, existing->height() / 2) +
+                   QPoint(stagger, stagger));
   }
   existing->show();
   existing->setWindowState(existing->windowState() & ~Qt::WindowMinimized);
@@ -96,8 +97,9 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   follow_->setToolTip("Keep the newest line in view");
   tools->addWidget(follow_);
   wrap_ = new QCheckBox("Wrap lines", this);
-  connect(wrap_, &QCheckBox::toggled, this,
-          [this](bool on) { view_->setLineWrapMode(on ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap); });
+  connect(wrap_, &QCheckBox::toggled, this, [this](bool on) {
+    view_->setLineWrapMode(on ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
+  });
   tools->addWidget(wrap_);
   pause_ = new QPushButton("Pause", this);
   connect(pause_, &QPushButton::clicked, this, [this] {
@@ -179,7 +181,8 @@ void LogWindow::Add(const std::vector<std::string>& lines) {
     QString line = QString::fromStdString(raw);
     lines_.push_back(line);
     if (static_cast<int>(lines_.size()) > kKeepLines) lines_.pop_front();
-    if (filter_->text().isEmpty() || line.contains(filter_->text(), Qt::CaseInsensitive)) AppendLine(line);
+    if (filter_->text().isEmpty() || line.contains(filter_->text(), Qt::CaseInsensitive))
+      AppendLine(line);
   }
   if (!lines.empty() && follow_->isChecked() && at_end) bar->setValue(bar->maximum());
   count_->setText(QString("%1 lines").arg(lines_.size()));
@@ -217,7 +220,9 @@ void LogWindow::RemoveLive() {
 
 void LogWindow::ShowLive(const QString& text) {
   live_ = text;
-  if (text.isEmpty() || (!filter_->text().isEmpty() && !text.contains(filter_->text(), Qt::CaseInsensitive))) return;
+  if (text.isEmpty() ||
+      (!filter_->text().isEmpty() && !text.contains(filter_->text(), Qt::CaseInsensitive)))
+    return;
   QScrollBar* bar = view_->verticalScrollBar();
   const bool at_end = bar->value() >= bar->maximum() - 4;
   AppendLine(text);
@@ -259,7 +264,8 @@ void LogWindow::UpdateStatus() {
 
 void LogWindow::Save() {
   const QString path = QFileDialog::getSaveFileName(
-      this, "Save log", QDir::homePath() + "/" + title_.toLower().replace(' ', '-') + ".log", "Log files (*.log *.txt)");
+      this, "Save log", QDir::homePath() + "/" + title_.toLower().replace(' ', '-') + ".log",
+      "Log files (*.log *.txt)");
   if (path.isEmpty()) return;
   QFile file(path);
   QByteArray text;

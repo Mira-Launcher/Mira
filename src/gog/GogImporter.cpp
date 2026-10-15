@@ -1,9 +1,8 @@
 #include "gog/GogImporter.h"
 
 #include <algorithm>
-#include <optional>
-
 #include <json.hpp>
+#include <optional>
 
 #include "core/Json.h"
 #include "core/Log.h"
@@ -18,7 +17,9 @@ namespace {
 namespace fs = std::filesystem;
 using nlohmann::json;
 
-std::filesystem::path InstallRoot(const config::Config& config) { return config.GetPath("gog.install_root"); }
+std::filesystem::path InstallRoot(const config::Config& config) {
+  return config.GetPath("gog.install_root");
+}
 
 // GOG's product id, from the goggame-<id>.info every gogdl install carries.
 std::optional<std::string> GogIdIn(const fs::path& dir) {
@@ -26,7 +27,8 @@ std::optional<std::string> GogIdIn(const fs::path& dir) {
     const std::string name = entry.filename().string();
     if (!name.starts_with("goggame-") || !name.ends_with(".info")) continue;
     const std::string id = name.substr(8, name.size() - 8 - 5);
-    if (!id.empty() && std::ranges::all_of(id, [](char c) { return c >= '0' && c <= '9'; })) return id;
+    if (!id.empty() && std::ranges::all_of(id, [](char c) { return c >= '0' && c <= '9'; }))
+      return id;
   }
   return std::nullopt;
 }
@@ -61,7 +63,8 @@ std::filesystem::path FindGameDir(const config::Config& config, const std::strin
 GogImporter::GogImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
-Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::filesystem::path& path, bool refresh) {
+Result<model::Game> GogImporter::ImportPath(const std::string& id,
+                                            const std::filesystem::path& path, bool refresh) {
   const std::string game_id = "gog-" + id;
   const auto existing = games_.Find(game_id);
   const fs::path game_dir = ResolveGameDir(path);
@@ -75,16 +78,18 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id, const std::fi
   // no heuristic detection needed the way EpicImporter/ItchImporter use.
   std::string title;
   std::string exe_path;
-  const bool known = existing && !existing->exe_path.empty() && existing->install_path == game_dir.string();
+  const bool known =
+      existing && !existing->exe_path.empty() && existing->install_path == game_dir.string();
   if (!refresh && known) {
     title = existing->name;
-  } else if (const Result<std::string> imported = RunGogdl(config_, {"import", game_dir.string()}); imported) {
+  } else if (const Result<std::string> imported = RunGogdl(config_, {"import", game_dir.string()});
+             imported) {
     const json parsed = core::ParseJsonTail(*imported);
     if (!parsed.is_discarded() && parsed.is_object()) {
       title = core::JsonString(parsed, "title");
       for (const json& task : core::JsonArray(parsed, "tasks")) {
-        if (core::JsonString(task, "category") == "game" && core::JsonString(task, "type") == "FileTask" &&
-            core::JsonBool(task, "isPrimary")) {
+        if (core::JsonString(task, "category") == "game" &&
+            core::JsonString(task, "type") == "FileTask" && core::JsonBool(task, "isPrimary")) {
           exe_path = core::JsonString(task, "path");
           break;
         }
@@ -134,7 +139,8 @@ Result<library::ImportSummary> GogImporter::Import() {
     // No goggame-*.info yet: gogdl is still downloading it, unless it's the
     // legacy <install_root>/<id>/ layout.
     const std::string folder = entry.filename().string();
-    const bool legacy_id = !folder.empty() && std::ranges::all_of(folder, [](char c) { return c >= '0' && c <= '9'; });
+    const bool legacy_id =
+        !folder.empty() && std::ranges::all_of(folder, [](char c) { return c >= '0' && c <= '9'; });
     const std::optional<std::string> found = GogIdIn(ResolveGameDir(entry));
     if (!found && !legacy_id) continue;
     const std::string id = found.value_or(folder);

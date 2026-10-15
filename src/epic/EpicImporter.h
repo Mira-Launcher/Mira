@@ -25,12 +25,12 @@ namespace mira::epic {
 // already-installed title is upserted Ready with an empty data_dir, and
 // gets provisioned lazily the same way a plain scan-detected game does.
 class EpicImporter {
-public:
+ public:
   EpicImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<library::ImportSummary> Import();
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

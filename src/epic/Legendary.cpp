@@ -29,7 +29,8 @@ std::filesystem::path ManagedLegendaryPath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "legendary" / "legendary";
 }
 
-const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin", ManagedLegendaryPath};
+const runner::StoreTool kTool = {"epic", "Epic Games", "legendary", "epic.legendary_bin",
+                                 ManagedLegendaryPath};
 
 std::filesystem::path LegendaryConfigDir() {
   if (const char* own = std::getenv("LEGENDARY_CONFIG_PATH"); own && *own) return own;
@@ -49,7 +50,8 @@ std::filesystem::path LegendaryMetadataFile(const std::string& app_name) {
 }
 
 namespace {
-// The pre-folder layout kept the binary as a plain file at tools/legendary: moves it into the folder.
+// The pre-folder layout kept the binary as a plain file at tools/legendary: moves it into the
+// folder.
 Result<void> MoveOldLayout(const config::Config& config) {
   const fs::path old_file = config.File().parent_path() / "tools" / "legendary";
   std::error_code ec;
@@ -58,7 +60,9 @@ Result<void> MoveOldLayout(const config::Config& config) {
   fs::rename(old_file, moving, ec);
   if (!ec) fs::create_directories(old_file, ec);
   if (!ec) fs::rename(moving, ManagedLegendaryPath(config), ec);
-  if (ec) return Err("install_dir_failed", std::format("couldn't move the old Legendary into {}: {}", old_file.string(), ec.message()));
+  if (ec)
+    return Err("install_dir_failed", std::format("couldn't move the old Legendary into {}: {}",
+                                                 old_file.string(), ec.message()));
   return {};
 }
 }  // namespace
@@ -68,14 +72,16 @@ runner::ToolStatus DetectLegendary(const config::Config& config) {
   return runner::DetectTool(config, kTool);
 }
 
-Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
+Result<void> InstallLegendaryBinary(const config::Config& config,
+                                    const runner::ReleaseAsset& asset) {
   if (auto moved = MoveOldLayout(config); !moved) return moved;
   auto installed = runner::InstallToolBinary(config, "legendary", asset, "legendary");
   if (!installed) return std::unexpected(installed.error());
   return {};
 }
 
-Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args,
+                                 const runner::OutputFn& on_output) {
   return runner::RunTool(config, kTool, args, on_output);
 }
 
@@ -85,7 +91,8 @@ Result<json> RunLegendaryJson(const config::Config& config, std::vector<std::str
   if (!output) return std::unexpected(output.error());
 
   const json parsed = core::ParseJsonTail(*output);
-  if (parsed.is_discarded()) return Err("legendary_json_error", "legendary's output wasn't valid JSON");
+  if (parsed.is_discarded())
+    return Err("legendary_json_error", "legendary's output wasn't valid JSON");
   return parsed;
 }
 
@@ -102,7 +109,8 @@ runner::AuthStatus Status(const config::Config& config) {
   const std::string account = user.value("displayName", std::string());
   // ISO 8601 in UTC, so the text order is the time order. Past it legendary has to sign in again.
   const std::string expires = user.value("refresh_expires_at", std::string());
-  const std::string now = std::format("{:%FT%T}", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+  const std::string now = std::format(
+      "{:%FT%T}", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
   if (!account.empty() && (expires.empty() || expires > now)) {
     status.authenticated = true;
     status.account = account;
@@ -127,7 +135,8 @@ std::optional<std::string> FindCode(std::string_view text) {
 
 Result<void> Login(const config::Config& config, const std::string& pasted) {
   std::string code = FindCode(pasted).value_or(strings::Trim(pasted));
-  if (code.starts_with('{')) return Err("invalid_code", "that looks like JSON but has no \"authorizationCode\" field");
+  if (code.starts_with('{'))
+    return Err("invalid_code", "that looks like JSON but has no \"authorizationCode\" field");
   if (code.empty()) return Err("invalid_code", "no code entered");
   // legendary's own exit code is not trustworthy here: `auth --code` with an
   // invalid or expired code still exits 0, only reporting the failure as an
@@ -137,7 +146,8 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
     return std::unexpected(output.error());
   }
   if (const runner::AuthStatus status = Status(config); !status.authenticated) {
-    return Err("login_failed", "legendary didn't accept that code. It may be wrong, expired, or already used");
+    return Err("login_failed",
+               "legendary didn't accept that code. It may be wrong, expired, or already used");
   }
   return {};
 }

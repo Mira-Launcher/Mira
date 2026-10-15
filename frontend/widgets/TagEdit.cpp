@@ -14,7 +14,6 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QToolButton>
-
 #include <algorithm>
 
 #include "../client/Types.h"
@@ -93,7 +92,8 @@ void TagEdit::SetFolderTags(std::optional<std::vector<std::string>> folder_tags)
 }
 
 bool TagEdit::IsFolderTag(const std::string& tag) const {
-  return folder_tags_ && std::ranges::any_of(*folder_tags_, [&](const std::string& f) { return SameTag(f, tag); });
+  return folder_tags_ &&
+         std::ranges::any_of(*folder_tags_, [&](const std::string& f) { return SameTag(f, tag); });
 }
 
 void TagEdit::Rebuild() {
@@ -127,7 +127,8 @@ void TagEdit::Rebuild() {
     chip_layout->setSpacing(4);
     if (is_folder || other_folder) {
       auto* icon = new QLabel(chip);
-      icons::Follow(icon, icons::Glyph::Folder, 12, is_folder ? &theme::Tokens::accent : &theme::Tokens::text_muted);
+      icons::Follow(icon, icons::Glyph::Folder, 12,
+                    is_folder ? &theme::Tokens::accent : &theme::Tokens::text_muted);
       chip_layout->addWidget(icon);
     }
     chip_layout->addWidget(new QLabel(QString::fromStdString(tag), chip));
@@ -148,14 +149,16 @@ void TagEdit::Rebuild() {
 void TagEdit::ShowMenu(const std::string& tag, const QPoint& global) {
   QMenu menu(this);
   const QString name = QString::fromStdString(tag);
-  menu.addAction(QString("Show games tagged %1").arg(name), this, [this, name] { emit TagClicked(name); });
+  menu.addAction(QString("Show games tagged %1").arg(name), this,
+                 [this, name] { emit TagClicked(name); });
   const bool is_folder = tag == FolderTag();
   if (IsFolderTag(tag) && !is_folder) {
-    menu.addAction(icons::For(icons::Glyph::Folder), "Use as this game's folder", this, [this, tag] {
-      PickFolder(tag);
-      Rebuild();
-      emit Changed();
-    });
+    menu.addAction(icons::For(icons::Glyph::Folder), "Use as this game's folder", this,
+                   [this, tag] {
+                     PickFolder(tag);
+                     Rebuild();
+                     emit Changed();
+                   });
   } else if (is_folder && !pick_.empty()) {
     menu.addAction("Follow the folder tags' order", this, [this] {
       pick_.clear();
@@ -192,8 +195,10 @@ bool TagEdit::eventFilter(QObject* watched, QEvent* event) {
       case QEvent::MouseButtonRelease:
         if (pressed_ != chip) break;
         pressed_ = nullptr;
-        if (!chip->rect().contains(static_cast<QMouseEvent*>(event)->position().toPoint())) return true;
-        // Only a folder pick: a click that filtered the library would read as the same kind of switch.
+        if (!chip->rect().contains(static_cast<QMouseEvent*>(event)->position().toPoint()))
+          return true;
+        // Only a folder pick: a click that filtered the library would read as the same kind of
+        // switch.
         if (IsFolderTag(tag) && tag != FolderTag()) {
           PickFolder(tag);
           Rebuild();
@@ -208,13 +213,16 @@ bool TagEdit::eventFilter(QObject* watched, QEvent* event) {
   if (event->type() == QEvent::MouseButtonPress && input_->isVisible()) {
     auto* target = qobject_cast<QWidget*>(watched);
     const QWidget* popup = input_->completer() != nullptr ? input_->completer()->popup() : nullptr;
-    const bool inside = target != nullptr && (target == input_ || input_->isAncestorOf(target) ||
-                                              (popup != nullptr && (target == popup || popup->isAncestorOf(target))));
+    const bool inside = target != nullptr &&
+                        (target == input_ || input_->isAncestorOf(target) ||
+                         (popup != nullptr && (target == popup || popup->isAncestorOf(target))));
     if (target != nullptr && !inside) FinishAdding();
     return false;
   }
-  // Esc drops the new tag instead of reaching the window's Esc shortcut, which would close the card.
-  if (watched != input_ || (event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress) ||
+  // Esc drops the new tag instead of reaching the window's Esc shortcut, which would close the
+  // card.
+  if (watched != input_ ||
+      (event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress) ||
       static_cast<QKeyEvent*>(event)->key() != Qt::Key_Escape) {
     return QWidget::eventFilter(watched, event);
   }

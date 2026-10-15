@@ -3,7 +3,6 @@
 #include <QColor>
 #include <QRect>
 #include <QWidget>
-
 #include <functional>
 
 namespace mira_gui {
@@ -12,7 +11,7 @@ namespace mira_gui {
 // (never on the card itself, which is a child widget and consumes its own
 // clicks first) closes the card, same as clicking outside any other modal.
 class ModalOverlay : public QWidget {
-public:
+ public:
   explicit ModalOverlay(QWidget* parent);
 
   std::function<void()> on_backdrop_clicked;
@@ -21,7 +20,7 @@ public:
   QColor scrim;
   std::function<QRect()> clear;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
 };

@@ -6,16 +6,15 @@
 #include <QString>
 #include <QStringList>
 #include <QWidget>
-
 #include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "../client/Types.h"
+#include "../sidebar/SidebarStyleCard.h"
 #include "AppearancePreviews.h"
 #include "SettingEditor.h"
-#include "../sidebar/SidebarStyleCard.h"
 
 class QButtonGroup;
 class QLabel;
@@ -44,7 +43,7 @@ class TilePreview;
 class SettingsPanel : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   // What the previews draw: the user's own games and their art.
   struct Previews {
     ArtworkStore* artwork = nullptr;
@@ -73,8 +72,9 @@ public:
 
   // A button row at the end of `category`'s card titled `card`, for a one-off
   // action that belongs next to those settings. Added once the schema loads.
-  void AddSectionAction(const QString& category, const QString& card, const QString& label, const QString& doc,
-                        const QString& button_text, std::function<void()> activated);
+  void AddSectionAction(const QString& category, const QString& card, const QString& label,
+                        const QString& doc, const QString& button_text,
+                        std::function<void()> activated);
 
   // True if anything differs from what was loaded or last saved.
   bool IsDirty() const { return ChangeCount() > 0; }
@@ -83,7 +83,7 @@ public:
   // before Save, so there is nothing else to undo.
   void DiscardChanges();
 
-signals:
+ signals:
   // Settings and display prefs have both loaded, so the panel can be shown complete.
   void Ready();
   void LoadFailed(QString error);
@@ -93,22 +93,22 @@ signals:
   // The Settings > Sidebar "Open Sources" button was pressed.
   void SourcesPageRequested();
 
-private:
+ private:
   // A frontend.toml control, however it is drawn: whether it differs from what
   // was saved and from its default, and how to put it back to either.
   struct PrefField {
     SettingRow* row = nullptr;
     std::function<bool()> changed;
     std::function<bool()> is_default;
-    std::function<void()> revert;    // to the saved value
-    std::function<void()> reset;     // to the default
+    std::function<void()> revert;  // to the saved value
+    std::function<void()> reset;   // to the default
     std::function<void()> mark_saved;
   };
 
   // A frontend.toml switch bound to its FrontendPrefs field.
   struct PrefToggle {
     Switch* toggle = nullptr;
-    std::optional<bool> FrontendPrefs::*member = nullptr;
+    std::optional<bool> FrontendPrefs::* member = nullptr;
     bool fallback = false;  // when frontend.toml doesn't set it
     bool saved = false;
   };
@@ -116,7 +116,7 @@ private:
   // A number of seconds kept in milliseconds.
   struct PrefSeconds {
     QDoubleSpinBox* spin = nullptr;
-    std::optional<int> FrontendPrefs::*member = nullptr;  // milliseconds
+    std::optional<int> FrontendPrefs::* member = nullptr;  // milliseconds
     int fallback = 0;
     int saved = 0;
   };
@@ -125,7 +125,7 @@ private:
   struct ShapeField {
     QSlider* slider = nullptr;
     QLabel* value = nullptr;
-    std::optional<int> FrontendPrefs::*member = nullptr;
+    std::optional<int> FrontendPrefs::* member = nullptr;
     int theme_default = 0;  // what unset resolves to in the current theme
     std::optional<int> current;
     std::optional<int> saved;
@@ -153,11 +153,13 @@ private:
   // A Sources-style category: one folding card per source, its on switch in the header.
   void BuildSourceCards(SettingsPage* page, const std::vector<size_t>& rows);
   SettingRow* AddSchemaRow(SettingsCard* card, size_t index);
-  Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
-                    std::optional<bool> FrontendPrefs::*member, bool fallback);
+  Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc,
+                    const QString& search, std::optional<bool> FrontendPrefs::* member,
+                    bool fallback);
   // A number of seconds kept in milliseconds; `maximum` in seconds.
-  QDoubleSpinBox* AddSeconds(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
-                             std::optional<int> FrontendPrefs::*member, int fallback_ms, double maximum);
+  QDoubleSpinBox* AddSeconds(SettingsCard* card, const QString& label, const QString& doc,
+                             const QString& search, std::optional<int> FrontendPrefs::* member,
+                             int fallback_ms, double maximum);
   // Returns the field's index in pref_fields_.
   size_t AddPrefField(PrefField field);
   // A card's "Reset to defaults" over these pref_fields_ and fields_ indices.

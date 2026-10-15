@@ -67,23 +67,28 @@ void WriteFakeLegendary(const fs::path& path, const std::string& stderr_noise,
     fs::remove(user);
   } else {
     fs::create_directories(user.parent_path());
-    std::ofstream(user) << nlohmann::json{{"displayName", account}, {"refresh_expires_at", "2999-01-01T00:00:00.000Z"}};
+    std::ofstream(user) << nlohmann::json{{"displayName", account},
+                                          {"refresh_expires_at", "2999-01-01T00:00:00.000Z"}};
   }
 }
 
-constexpr const char* kLoggedIn = R"({"account": "Tester", "games_available": 2, "games_installed": 1})";
-constexpr const char* kLoggedOut = R"({"account": "<not logged in>", "games_available": 0, "games_installed": 0})";
+constexpr const char* kLoggedIn =
+    R"({"account": "Tester", "games_available": 2, "games_installed": 1})";
+constexpr const char* kLoggedOut =
+    R"({"account": "<not logged in>", "games_available": 0, "games_installed": 0})";
 
 // Real legendary log lines, tags and all -- "[Core]" starts with a literal
 // '[' that a naive "find the first bracket" JSON scan mistakes for the
 // opening of a top-level array.
-constexpr const char* kNoise = "[Core] INFO: Trying to re-use existing login session...\\n[cli] INFO: Getting game list...\\n";
+constexpr const char* kNoise =
+    "[Core] INFO: Trying to re-use existing login session...\\n[cli] INFO: Getting game list...\\n";
 
 struct Fixture : test::TestEnv {
   explicit Fixture(const char* name) : TestEnv(name) {}
 
   void UseFakeLegendary(const std::string& noise, const std::string& status_body,
-                        const std::string& installed_body = "[]", const std::string& list_body = "[]") {
+                        const std::string& installed_body = "[]",
+                        const std::string& list_body = "[]") {
     const fs::path bin = dir / "legendary";
     WriteFakeLegendary(bin, noise, status_body, installed_body, list_body);
     REQUIRE(config.Set("epic.legendary_bin", bin.string()));
@@ -252,7 +257,8 @@ TEST_CASE("The library listing answers from the stored list and re-checks the st
   // Never listed: asked at once.
   CHECK(titles() == std::vector<std::string>{"A Game"});
 
-  fake(R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Another"}])");
+  fake(
+      R"([{"app_name": "abc", "app_title": "A Game"}, {"app_name": "xyz", "app_title": "Another"}])");
   std::int64_t before = last_event();
   CHECK(titles() == std::vector<std::string>{"A Game"});
   CHECK(checked(before) == true);
@@ -261,18 +267,20 @@ TEST_CASE("The library listing answers from the stored list and re-checks the st
   CHECK(checked(before) == false);
 
   // Steam's reviews of a title come with it, as a share of positive ones.
-  REQUIRE(server.games().Metadata().Write(
-      "epic-xyz", {{"steam_reviews",
-                    {{"score_description", "Very Positive"}, {"total_positive", 87}, {"total_negative", 13},
-                     {"total_reviews", 100}}}}));
+  REQUIRE(server.games().Metadata().Write("epic-xyz", {{"steam_reviews",
+                                                        {{"score_description", "Very Positive"},
+                                                         {"total_positive", 87},
+                                                         {"total_negative", 13},
+                                                         {"total_reviews", 100}}}}));
   before = last_event();
   auto listed = client.Get("/v1/library?source=epic");
   REQUIRE(listed != nullptr);
   const auto entries = nlohmann::json::parse(listed->body);
   REQUIRE(entries.size() == 2);
   CHECK_FALSE(entries[0].contains("steam_reviews"));
-  CHECK(entries[1]["steam_reviews"] ==
-        nlohmann::json{{"score_description", "Very Positive"}, {"percent_positive", 87}, {"total_reviews", 100}});
+  CHECK(entries[1]["steam_reviews"] == nlohmann::json{{"score_description", "Very Positive"},
+                                                      {"percent_positive", 87},
+                                                      {"total_reviews", 100}});
   REQUIRE(checked(before).has_value());
 
   // `fresh` asks now.
@@ -322,7 +330,8 @@ TEST_CASE("Installing an owned Epic title reports progress, then tracks it as in
   std::ifstream args_file(state / "legendary.args");
   std::string args;
   std::getline(args_file, args);
-  CHECK(args.find("--base-path " + server.config().GetPath("epic.install_root").string()) != std::string::npos);
+  CHECK(args.find("--base-path " + server.config().GetPath("epic.install_root").string()) !=
+        std::string::npos);
   CHECK(library()[0]["game_id"] == "epic-abc");
 
   auto bad = install("../x");
@@ -403,19 +412,21 @@ TEST_CASE("Pausing an Epic install stops legendary gracefully and installing aga
   const fs::path game_dir = state / "Games" / "AGame";
   test::Touch(game_dir / "A.exe");
   test::LiveServer server(state);
-  WriteFakeLegendary(state / "legendary", kNoise, kLoggedIn, "[]", R"([{"app_name": "abc", "app_title": "A Game"}])",
-                     R"([{"app_name": "abc", "title": "A Game", "install_path": ")" + game_dir.string() +
-                         R"(", "executable": "A.exe"}])");
+  WriteFakeLegendary(state / "legendary", kNoise, kLoggedIn, "[]",
+                     R"([{"app_name": "abc", "app_title": "A Game"}])",
+                     R"([{"app_name": "abc", "title": "A Game", "install_path": ")" +
+                         game_dir.string() + R"(", "executable": "A.exe"}])");
   // The first install stalls until stopped and notes the SIGTERM; the second one finishes.
   const fs::path slow = state / "legendary-slow";
-  std::ofstream(slow) << "#!/bin/sh\n"
-                      << "if [ \"$1\" = install ] && [ ! -f \"$0.started\" ]; then\n"
-                      << "  touch \"$0.started\"\n"
-                      << "  trap 'touch \"$0.term\"; exit 1' TERM\n"
-                      << "  printf '%s\\n' '[DLManager] INFO: = Progress: 10.00% (1/10), ETA: 00:01:30' >&2\n"
-                      << "  sleep 30 & wait\n"
-                      << "fi\n"
-                      << "exec \"" << (state / "legendary").string() << "\" \"$@\"\n";
+  std::ofstream(slow)
+      << "#!/bin/sh\n"
+      << "if [ \"$1\" = install ] && [ ! -f \"$0.started\" ]; then\n"
+      << "  touch \"$0.started\"\n"
+      << "  trap 'touch \"$0.term\"; exit 1' TERM\n"
+      << "  printf '%s\\n' '[DLManager] INFO: = Progress: 10.00% (1/10), ETA: 00:01:30' >&2\n"
+      << "  sleep 30 & wait\n"
+      << "fi\n"
+      << "exec \"" << (state / "legendary").string() << "\" \"$@\"\n";
   fs::permissions(slow, fs::perms::owner_all);
   REQUIRE(server.MutableConfig().Set("epic.legendary_bin", slow.string()));
   httplib::Client client = server.Client();
@@ -444,8 +455,8 @@ TEST_CASE("An Epic install while signed out fails with a way to sign in") {
   REQUIRE(server.MutableConfig().Set("epic.legendary_bin", (state / "legendary").string()));
   httplib::Client client = server.Client();
 
-  auto started = client.Post("/v1/library/install", R"({"source": "epic", "ref": "abc"})",
-                             "application/json");
+  auto started =
+      client.Post("/v1/library/install", R"({"source": "epic", "ref": "abc"})", "application/json");
   REQUIRE(started != nullptr);
   const auto failed = test::WaitForEvent(server.events(), "library.install.failed");
   REQUIRE(failed);
@@ -461,11 +472,14 @@ TEST_CASE("An Epic install while signed out fails with a way to sign in") {
 TEST_CASE("ParseProgressLine reads legendary and gogdl download lines") {
   library::DownloadProgress progress;
   CHECK(library::ParseProgressLine(
-      "[DLManager] INFO: = Progress: 42.50% (425/1000), Running for 00:01:00, ETA: 00:02:05", progress));
+      "[DLManager] INFO: = Progress: 42.50% (425/1000), Running for 00:01:00, ETA: 00:02:05",
+      progress));
   CHECK(progress.fraction == doctest::Approx(0.425));
   CHECK(progress.eta_seconds == 125);
-  CHECK_FALSE(library::ParseProgressLine("[DLManager] INFO:  + Download\t- 12.50 MiB/s (raw)", progress));
+  CHECK_FALSE(
+      library::ParseProgressLine("[DLManager] INFO:  + Download\t- 12.50 MiB/s (raw)", progress));
   CHECK(progress.bytes_per_second == doctest::Approx(12.5 * 1024 * 1024));
-  CHECK(library::ParseProgressLine("= Progress: 7.00 70/1000, Running for: 00:00:10, ETA: 00:02:10", progress));
+  CHECK(library::ParseProgressLine("= Progress: 7.00 70/1000, Running for: 00:00:10, ETA: 00:02:10",
+                                   progress));
   CHECK(progress.fraction == doctest::Approx(0.07));
 }

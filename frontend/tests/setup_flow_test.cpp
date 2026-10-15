@@ -13,16 +13,18 @@ TEST_CASE("Set up Mira asks only about what was picked, and skipped picks bring 
 
   Choices both{.games = true, .apps = true};
   both.stores = {"gog", "steam", "epic"};
-  CHECK(Flow(both) == QStringList{"welcome", "use", "found", "stores", "apps", "sign:steam", "sign:epic",
-                                  "sign:gog", "office", "look", "sidebar", "done"});
+  CHECK(Flow(both) == QStringList{"welcome", "use", "found", "stores", "apps", "sign:steam",
+                                  "sign:epic", "sign:gog", "office", "look", "sidebar", "done"});
 
   Choices apps_only{.apps = true};
-  CHECK(Flow(apps_only) == QStringList{"welcome", "use", "apps", "office", "look", "sidebar", "done"});
+  CHECK(Flow(apps_only) ==
+        QStringList{"welcome", "use", "apps", "office", "look", "sidebar", "done"});
 
   Choices skipped = both;
   skipped.stores_skipped = true;
   skipped.apps_skipped = true;
-  CHECK(Flow(skipped) == QStringList{"welcome", "use", "found", "stores", "apps", "look", "sidebar", "done"});
+  CHECK(Flow(skipped) ==
+        QStringList{"welcome", "use", "found", "stores", "apps", "look", "sidebar", "done"});
 
   Choices no_office = both;
   no_office.office = false;
@@ -48,7 +50,7 @@ TEST_CASE("Only the sources picked in setup stay on") {
 TEST_CASE("A Steam Deck is told by its panel and a TV by its size") {
   CHECK(ScreenKind({1280, 800}, {150, 94}) == Screen::SteamDeck);
   CHECK(ScreenKind({800, 1280}, {94, 150}) == Screen::SteamDeck);
-  CHECK(ScreenKind({3840, 2160}, {1210, 680}) == Screen::Tv);  // 55 inches
+  CHECK(ScreenKind({3840, 2160}, {1210, 680}) == Screen::Tv);      // 55 inches
   CHECK(ScreenKind({2560, 1440}, {597, 336}) == Screen::Desktop);  // 27 inches
-  CHECK(ScreenKind({1920, 1080}, {}) == Screen::Desktop);  // a display that doesn't say
+  CHECK(ScreenKind({1920, 1080}, {}) == Screen::Desktop);          // a display that doesn't say
 }

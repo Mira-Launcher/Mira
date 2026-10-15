@@ -1,8 +1,7 @@
 #include <doctest.h>
 
-#include <fstream>
 #include <filesystem>
-
+#include <fstream>
 #include <json.hpp>
 
 #include "config/Config.h"
@@ -75,7 +74,8 @@ TEST_CASE("Config materialises defaults when no file exists") {
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());
 }
 
-TEST_CASE("Config round-trips a value and preserves frontend settings; settings.toml stays owner-only") {
+TEST_CASE(
+    "Config round-trips a value and preserves frontend settings; settings.toml stays owner-only") {
   const fs::path file = TempFile("settings-roundtrip.toml");
   fs::remove(file);
   Config config(file);
@@ -84,7 +84,8 @@ TEST_CASE("Config round-trips a value and preserves frontend settings; settings.
   fs::permissions(file, fs::perms::all);  // a save puts it back
   CHECK(config.Set("scan.debounce_ms", 9000).has_value());
   CHECK(fs::status(file).permissions() == owner_only);
-  fs::permissions(file, fs::perms::owner_read | fs::perms::owner_write | fs::perms::others_read);  // and so does loading
+  fs::permissions(file, fs::perms::owner_read | fs::perms::owner_write |
+                            fs::perms::others_read);  // and so does loading
   Config(file).Load();
   CHECK(fs::status(file).permissions() == owner_only);
   config.SetFrontendSettings({{"theme", "dark"}});
@@ -103,11 +104,13 @@ TEST_CASE("frontend settings live in their own file, never leaking into settings
 
   Config config(file);
   config.Load();
-  REQUIRE(config.Patch({{"frontend", {{"theme", "dark"}}}, {"scan", {{"debounce_ms", 9000}}}}).has_value());
+  REQUIRE(config.Patch({{"frontend", {{"theme", "dark"}}}, {"scan", {{"debounce_ms", 9000}}}})
+              .has_value());
 
   CHECK(fs::exists(frontend_file));
   std::ifstream backend(file);
-  std::string backend_text((std::istreambuf_iterator<char>(backend)), std::istreambuf_iterator<char>());
+  std::string backend_text((std::istreambuf_iterator<char>(backend)),
+                           std::istreambuf_iterator<char>());
   CHECK(backend_text.find("frontend") == std::string::npos);
 
   Config reloaded(file);
@@ -116,7 +119,9 @@ TEST_CASE("frontend settings live in their own file, never leaking into settings
   CHECK(reloaded.FrontendSettings().value("theme", "") == "dark");
 }
 
-TEST_CASE("Config rejects an invalid value or an unknown key and changes nothing, and takes valid patches") {
+TEST_CASE(
+    "Config rejects an invalid value or an unknown key and changes nothing, and takes valid "
+    "patches") {
   const fs::path file = TempFile("settings-invalid.toml");
   fs::remove(file);
   Config config(file);
@@ -126,7 +131,8 @@ TEST_CASE("Config rejects an invalid value or an unknown key and changes nothing
   CHECK_FALSE(result.has_value());
   CHECK_FALSE(config.Patch({{"scan", {{"debounce_ms", 9000}, {"debounce_mss", 1}}}}).has_value());
   CHECK(config.GetInt("scan.debounce_ms") == before);
-  CHECK(config.Patch({{"scan", {{"debounce_ms", 9000}}}, {"library_roots", {"/a", "/b"}}}).has_value());
+  CHECK(config.Patch({{"scan", {{"debounce_ms", 9000}}}, {"library_roots", {"/a", "/b"}}})
+            .has_value());
   CHECK(config.Patch(nlohmann::json::object()).has_value());
 }
 
@@ -137,7 +143,7 @@ TEST_CASE("an unparseable settings file is quarantined, not fatal") {
     out << "this is not [ valid toml";
   }
   Config config(file);
-  config.Load();  // must not throw or crash
+  config.Load();                                                  // must not throw or crash
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());  // falls back to defaults
   CHECK(fs::exists(file.string() + ".bad"));
   fs::remove(file.string() + ".bad");
@@ -181,7 +187,9 @@ TEST_CASE("a hand edit is picked up, survives an app change, and a broken one ch
   const fs::path file = TempFile("settings-hand-edit.toml");
   Config config(file);
   config.Load();
-  const auto write = [&file](const std::string& text) { std::ofstream(file, std::ios::trunc) << text; };
+  const auto write = [&file](const std::string& text) {
+    std::ofstream(file, std::ios::trunc) << text;
+  };
 
   write("[scan]\ndebounce_ms = 1234\n");
   auto changed = config.Reload();
@@ -211,13 +219,15 @@ TEST_CASE("window state lives in its store, and frontend.toml keeps only what a 
   std::ofstream(frontend, std::ios::trunc) << "theme = 'dark'\n";
   nlohmann::json stored = {{"window_width", 900}};
   Config config(file);
-  config.UseUiStateStore([&stored] { return stored; }, [&stored](const nlohmann::json& state) { stored = state; });
+  config.UseUiStateStore([&stored] { return stored; },
+                         [&stored](const nlohmann::json& state) { stored = state; });
   config.Load();
 
   CHECK(config.FrontendSettings().value("theme", "") == "dark");
   CHECK(config.FrontendSettings().value("window_width", 0) == 900);
 
-  REQUIRE(config.Patch(nlohmann::json{{"frontend", {{"window_width", 1200}, {"tile_radius", 8}}}}).has_value());
+  REQUIRE(config.Patch(nlohmann::json{{"frontend", {{"window_width", 1200}, {"tile_radius", 8}}}})
+              .has_value());
   CHECK(stored.value("window_width", 0) == 1200);
   std::ifstream in(frontend);
   const std::string text{std::istreambuf_iterator<char>(in), {}};

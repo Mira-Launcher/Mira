@@ -1,10 +1,8 @@
 #pragma once
 
 #include <QObject>
-
-#include <json.hpp>
-
 #include <functional>
+#include <json.hpp>
 #include <string>
 
 #include "ApiError.h"

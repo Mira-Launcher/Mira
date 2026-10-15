@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <set>
-#include <utility>
 #include <string>
+#include <utility>
 
 namespace mira_gui::mapping {
 
@@ -24,8 +24,9 @@ std::vector<std::string> ReadTags(const json& entry) {
 // `sort_root` and `folder_tags`, each null when it doesn't apply, and the game's `folder_tag` pick.
 void ReadSorting(const json& entry, std::string& sort_root,
                  std::optional<std::vector<std::string>>& folder_tags, std::string& folder_tag) {
-  sort_root = entry.contains("sort_root") && entry["sort_root"].is_string() ? entry["sort_root"].get<std::string>()
-                                                                             : std::string();
+  sort_root = entry.contains("sort_root") && entry["sort_root"].is_string()
+                  ? entry["sort_root"].get<std::string>()
+                  : std::string();
   const json pick = entry.value("folder_tag", json());
   folder_tag = pick.is_string() ? pick.get<std::string>() : std::string();
   folder_tags.reset();
@@ -92,8 +93,12 @@ GameLaunch ToGameLaunch(const json& entry) {
 json ToJson(const GameLaunch& launch) {
   json options = json::array();
   for (const LaunchOption& option : launch.options) {
-    options.push_back({{"id", option.id}, {"name", option.name}, {"mode", option.mode}, {"exe", option.exe},
-                       {"args", option.args}, {"native", option.native}});
+    options.push_back({{"id", option.id},
+                       {"name", option.name},
+                       {"mode", option.mode},
+                       {"exe", option.exe},
+                       {"args", option.args},
+                       {"native", option.native}});
   }
   return {{"options", std::move(options)}, {"default", launch.default_id}, {"only", launch.only}};
 }
@@ -108,7 +113,8 @@ UnclearMove ToUnclearMove(const json& entry) {
 }
 
 std::optional<ArtVersions> ToArtVersions(const json& entry) {
-  if (!entry.is_object() || !entry.contains("art") || !entry["art"].is_object()) return std::nullopt;
+  if (!entry.is_object() || !entry.contains("art") || !entry["art"].is_object())
+    return std::nullopt;
   ArtVersions art;
   for (const auto& [slot, version] : entry["art"].items()) {
     if (version.is_string()) art[slot] = version.get<std::string>();
@@ -208,7 +214,9 @@ std::vector<std::string> ParseListText(const std::string& text) {
   return items;
 }
 
-std::string ListText(const std::vector<std::string>& items) { return json(items).dump(); }
+std::string ListText(const std::vector<std::string>& items) {
+  return json(items).dump();
+}
 
 json TypedValueFromText(const std::string& type, const std::string& value) {
   if (type == "a boolean") return value == "true";
@@ -268,7 +276,8 @@ std::vector<GameFailure> ToGameFailures(const json& reply, const char* key) {
   if (!reply.is_object() || !reply.contains(key) || !reply[key].is_array()) return out;
   for (const json& entry : reply[key]) {
     if (!entry.is_object()) continue;
-    out.push_back({entry.value("id", std::string()), ToApiError(entry.value("error", json::object()))});
+    out.push_back(
+        {entry.value("id", std::string()), ToApiError(entry.value("error", json::object()))});
   }
   return out;
 }

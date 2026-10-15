@@ -4,7 +4,6 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QString>
-
 #include <deque>
 #include <functional>
 #include <map>
@@ -69,17 +68,19 @@ struct LibraryServices {
 class LibraryWindow : public QMainWindow {
   Q_OBJECT
 
-public:
+ public:
   // `prefs` is frontend.toml as read at startup; the theme is already applied.
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
-  mira_gui::LibraryServices services() const { return {library_, artwork_, downloads_, owned_titles_, menus_}; }
+  mira_gui::LibraryServices services() const {
+    return {library_, artwork_, downloads_, owned_titles_, menus_};
+  }
   // Opens big screen mode (or raises it), hiding this window until it closes.
   void OpenBigScreen();
   // Opens Set up Mira's window, on first launch. `prefs` is frontend.toml as it stands. The
   // window's slow work belongs to this window, so it carries on after the setup window closes.
   mira_gui::SetupWindow* OpenSetup(const mira_gui::FrontendPrefs& prefs);
 
-private:
+ private:
   mira_gui::Sidebar* BuildSidebar(const mira_gui::FrontendPrefs& prefs);
   mira_gui::LibraryPage* BuildLibraryPage(const mira_gui::FrontendPrefs& prefs, int tile_width);
   QWidget* BuildSettingsPage();
@@ -268,7 +269,7 @@ private:
   bool hidden_password_ = false;      // as mirad last said
   bool hidden_locked_ = false;
   QElapsedTimer activity_reported_;  // see eventFilter
-  QLabel* drop_overlay_ = nullptr;  // "Drop to add to Mira", shown while a drag is over the window
+  QLabel* drop_overlay_ = nullptr;   // "Drop to add to Mira", shown while a drag is over the window
   QSlider* zoom_ = nullptr;
   QVariantAnimation* zoom_animation_ = nullptr;  // eases tiles to a snapped size
   mira_gui::Sidebar* sidebar_ = nullptr;
@@ -321,7 +322,8 @@ private:
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list
   // Bumped per RefreshGames, so an older reply landing late can't undo a newer one.
   int games_request_ = 0;
-  std::vector<std::function<void()>> refresh_done_;  // RefreshGames callbacks waiting on the latest reply
+  std::vector<std::function<void()>>
+      refresh_done_;                    // RefreshGames callbacks waiting on the latest reply
   QTimer* save_prefs_timer_ = nullptr;  // see ScheduleSavePrefs
   bool zoom_sync_queued_ = false;       // see SyncZoomSoon
   mira_gui::DownloadsPanel* downloads_panel_ = nullptr;
@@ -343,7 +345,8 @@ private:
   static constexpr int kMaxTileWidth = 260;
   static constexpr int kDefaultSourceTileWidth = 150;  // smaller: a source page holds two grids
   bool scan_on_startup_ = true;
-  std::string applied_prefs_;  // the frontend table (minus window layout) last applied from config.changed
+  std::string
+      applied_prefs_;  // the frontend table (minus window layout) last applied from config.changed
   // Keyed by "<id>@<tile width>". A generated cover is cheap but not free,
   // and a filter or search change redraws every visible tile.
   mira_gui::ArtworkStore* artwork_ = nullptr;

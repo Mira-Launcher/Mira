@@ -3,7 +3,6 @@
 #include <QGuiApplication>
 #include <QPainter>
 #include <QScreen>
-
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -30,7 +29,9 @@ constexpr double kTrailerRowShown = 9;
 constexpr double kRowHeight = 18.6;
 constexpr double kTileW = 10, kTileH = 15, kTileGap = 1.1;
 
-bool ByName(const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; }
+bool ByName(const Item& a, const Item& b) {
+  return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+}
 
 }  // namespace
 
@@ -74,7 +75,8 @@ void HomePage::Rebuild() {
   std::vector<Row> rows;
   Row recent{"Continue playing", "recent"};
   for (const GameSummary* game : services.library->RecentlyPlayed(12)) {
-    if (window_->Browsable(*game) && (game->last_played_at || game->running)) recent.items.push_back(window_->ItemFor(*game));
+    if (window_->Browsable(*game) && (game->last_played_at || game->running))
+      recent.items.push_back(window_->ItemFor(*game));
   }
   Row installed{"Installed", "installed"};
   Row pinned{"Pinned", "pinned"};
@@ -97,7 +99,8 @@ void HomePage::Rebuild() {
     }
     installed.items.push_back(item);
     const QString source = SourceName(QString::fromStdString(game.source));
-    by_source.try_emplace(source, Row{source, "source:" + source}).first->second.items.push_back(item);
+    by_source.try_emplace(source, Row{source, "source:" + source})
+        .first->second.items.push_back(item);
     for (const std::string& tag : game.tags) {
       if (IsMeaningTag(tag) || tag == "media") continue;
       const QString name = QString::fromStdString(tag);
@@ -141,12 +144,21 @@ HomePage::Order HomePage::OrderOf(const Row& row) const {
 void HomePage::SortRow(Row& row) const {
   const Order order = OrderOf(row);
   const auto played = [](const Item& item) { return item.game ? item.game->play_seconds : 0; };
-  const auto last = [](const Item& item) { return item.game ? item.game->last_played_at.value_or(0) : 0; };
+  const auto last = [](const Item& item) {
+    return item.game ? item.game->last_played_at.value_or(0) : 0;
+  };
   switch (order) {
-    case Order::Name: std::ranges::stable_sort(row.items, ByName); break;
-    case Order::Recent: std::ranges::stable_sort(row.items, std::greater{}, last); break;
-    case Order::MostPlayed: std::ranges::stable_sort(row.items, std::greater{}, played); break;
-    default: break;
+    case Order::Name:
+      std::ranges::stable_sort(row.items, ByName);
+      break;
+    case Order::Recent:
+      std::ranges::stable_sort(row.items, std::greater{}, last);
+      break;
+    case Order::MostPlayed:
+      std::ranges::stable_sort(row.items, std::greater{}, played);
+      break;
+    default:
+      break;
   }
 }
 
@@ -175,7 +187,8 @@ bool HomePage::Navigate(Nav nav) {
   switch (nav) {
     case Nav::Left:
     case Nav::Right: {
-      const int next = std::clamp(row.focus + (nav == Nav::Right ? 1 : -1), 0, int(row.items.size()) - 1);
+      const int next =
+          std::clamp(row.focus + (nav == Nav::Right ? 1 : -1), 0, int(row.items.size()) - 1);
       if (next == row.focus) {
         StartBump(nav == Nav::Right ? 1 : -1, 0);
         return true;
@@ -195,10 +208,14 @@ bool HomePage::Navigate(Nav nav) {
     }
     case Nav::Accept:
       // Mid-download there's nothing to play, so A opens the game instead.
-      if (window_->QuickActionLabel(*Focused()).isEmpty()) window_->OpenGame(*Focused());
-      else window_->QuickAction(*Focused());
+      if (window_->QuickActionLabel(*Focused()).isEmpty())
+        window_->OpenGame(*Focused());
+      else
+        window_->QuickAction(*Focused());
       return true;
-    case Nav::Action: window_->OpenGame(*Focused()); return true;
+    case Nav::Action:
+      window_->OpenGame(*Focused());
+      return true;
     case Nav::PrevLetter:
     case Nav::NextLetter: {
       // The first game of the next (or this, then previous) letter.
@@ -235,7 +252,8 @@ bool HomePage::Navigate(Nav nav) {
       row.focus = at == row.items.end() ? 0 : int(at - row.items.begin());
       break;
     }
-    default: return false;
+    default:
+      return false;
   }
   FocusChanged();
   return true;
@@ -246,7 +264,9 @@ QList<Hint> HomePage::Hints() const {
   if (const Item* item = Focused()) {
     QString quick = window_->QuickActionLabel(*item);
     // The last game played, first thing on Home.
-    if (quick == "Play" && row_ == 0 && rows_.front().label == "Continue playing" && rows_.front().focus == 0) quick = "Continue";
+    if (quick == "Play" && row_ == 0 && rows_.front().label == "Continue playing" &&
+        rows_.front().focus == 0)
+      quick = "Continue";
     hints.append({Nav::Accept, quick.isEmpty() ? "Details" : quick});
     hints.append({Nav::Action, "Details"});
     static const char* const kOrderNames[] = {"A–Z", "Recent", "Most played"};
@@ -277,10 +297,13 @@ void HomePage::StartBump(int x, int y) {
 
 void HomePage::Animate() {
   // `rate` is the share of the way covered per 60 Hz frame, scaled to the time that really passed.
-  const double frames = std::clamp(double(frame_clock_.isValid() ? frame_clock_.restart() : 16), 1.0, 50.0) / (1000.0 / 60);
+  const double frames =
+      std::clamp(double(frame_clock_.isValid() ? frame_clock_.restart() : 16), 1.0, 50.0) /
+      (1000.0 / 60);
   if (!frame_clock_.isValid()) frame_clock_.start();
   bool moving = false;
-  const auto ease = [&moving, frames](double& value, double target, double snap, double rate = 0.25) {
+  const auto ease = [&moving, frames](double& value, double target, double snap,
+                                      double rate = 0.25) {
     if (std::abs(target - value) < snap) {
       value = target;
     } else {
@@ -333,7 +356,9 @@ void HomePage::paintEvent(QPaintEvent*) {
   const DownloadTracker::Entry* download = window_->Download(*focused);
   const bool paused = download && download->state == DownloadTracker::State::Paused;
   QPointF at(kMargin * u, title_used.bottom() + u * 0.9);
-  at.rx() += DrawPill(painter, at, u, StatusText(*focused, progress, paused), StatusColor(*focused, progress)) + u * 0.5;
+  at.rx() += DrawPill(painter, at, u, StatusText(*focused, progress, paused),
+                      StatusColor(*focused, progress)) +
+             u * 0.5;
   at.rx() += DrawPill(painter, at, u, SourceName(focused->source)) + u * 0.9;
   painter.setFont(Font(u, 0.95));
   painter.setPen(tokens.text_muted);
@@ -349,9 +374,12 @@ void HomePage::paintEvent(QPaintEvent*) {
   const double knock = std::sin(bump_ * std::numbers::pi) * u * 0.7;
 
   // The rows, the focused one at kRowsTop, lower while a trailer plays.
-  const double rows_top = kRowsTop + drop_ * std::max(0.0, height() / u - kTrailerRowShown - kRowsTop);
+  const double rows_top =
+      kRowsTop + drop_ * std::max(0.0, height() / u - kTrailerRowShown - kRowsTop);
   // How see-through something `distance` tiles from the focused game is while a trailer plays.
-  const auto faded = [this](double distance) { return drop_ * std::min(0.85, 0.2 + 0.12 * distance); };
+  const auto faded = [this](double distance) {
+    return drop_ * std::min(0.85, 0.2 + 0.12 * distance);
+  };
   const double step = (kTileW + kTileGap) * u;
   const Row& focus_row = rows_[size_t(row_)];
   const double focus_x = kMargin * u + double(focus_row.focus) * step - focus_row.scroll;
@@ -371,10 +399,12 @@ void HomePage::paintEvent(QPaintEvent*) {
     const double label_w = painter.fontMetrics().horizontalAdvance(row.label);
     painter.setFont(Font(u, 0.9));
     painter.setPen(tokens.text_muted);
-    painter.drawText(QPointF(kMargin * u + label_w + u * 0.6, top + u * 1.0), QString::number(row.items.size()));
+    painter.drawText(QPointF(kMargin * u + label_w + u * 0.6, top + u * 1.0),
+                     QString::number(row.items.size()));
     const double tiles_top = top + u * 2.3;
     for (size_t i = 0; i < row.items.size(); ++i) {
-      const double x = kMargin * u + double(i) * (kTileW + kTileGap) * u - row.scroll + (active ? bump_x_ * knock : 0);
+      const double x = kMargin * u + double(i) * (kTileW + kTileGap) * u - row.scroll +
+                       (active ? bump_x_ * knock : 0);
       if (x > width() || x + tile.width() < 0) continue;
       const Item& item = row.items[i];
       const bool focus = active && int(i) == row.focus;
@@ -382,12 +412,14 @@ void HomePage::paintEvent(QPaintEvent*) {
       // The focused tile lifts as focus lands on it.
       if (focus) {
         const double scale = 1 + 0.08 * lift_;
-        box = QRectF(box.center() - QPointF(box.width(), box.height()) * scale / 2, box.size() * scale);
+        box = QRectF(box.center() - QPointF(box.width(), box.height()) * scale / 2,
+                     box.size() * scale);
       }
       const double distance = std::hypot((x - focus_x) / step, offset * 1.2);
       painter.setOpacity(focus ? row_opacity : row_opacity * (1 - faded(distance)));
       if (focus) DrawGlow(painter, box, u);
-      DrawCover(painter, box, window_->Cover(item, tile), u, focus, !item.installed(), window_->Progress(item));
+      DrawCover(painter, box, window_->Cover(item, tile), u, focus, !item.installed(),
+                window_->Progress(item));
     }
   }
 }

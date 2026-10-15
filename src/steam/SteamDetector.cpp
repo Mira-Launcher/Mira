@@ -47,7 +47,9 @@ bool LooksLikeSteamTooling(const fs::path& install_dir) {
 // Flathub's Steam keeps its whole tree in its app data folder.
 constexpr std::string_view kFlatpakApp = "com.valvesoftware.Steam";
 
-fs::path FlatpakDir() { return paths::Home() / ".var/app" / kFlatpakApp; }
+fs::path FlatpakDir() {
+  return paths::Home() / ".var/app" / kFlatpakApp;
+}
 
 bool IsFlatpak(const fs::path& root) {
   const fs::path relative = root.lexically_normal().lexically_relative(FlatpakDir());
@@ -74,7 +76,8 @@ std::optional<fs::path> FindSteamRoot(const config::Config& config) {
 
 std::vector<std::string> SteamCommand(const config::Config& config) {
   const auto root = FindSteamRoot(config);
-  if (root && IsFlatpak(*root) && runner::FindOnPath("flatpak")) return {"flatpak", "run", std::string(kFlatpakApp)};
+  if (root && IsFlatpak(*root) && runner::FindOnPath("flatpak"))
+    return {"flatpak", "run", std::string(kFlatpakApp)};
   return {"steam"};
 }
 
@@ -95,8 +98,10 @@ std::vector<SteamAccount> Accounts(const fs::path& steam_root) {
       const VdfValue* value = user.Get({key});
       return value != nullptr && value->scalar ? *value->scalar : std::string();
     };
-    SteamAccount account{id, field("AccountName"), field("PersonaName"), field("MostRecent") == "1"};
-    found.emplace_back(account.most_recent ? INT64_MAX : ParseInt64(user.Get({"Timestamp"})), std::move(account));
+    SteamAccount account{id, field("AccountName"), field("PersonaName"),
+                         field("MostRecent") == "1"};
+    found.emplace_back(account.most_recent ? INT64_MAX : ParseInt64(user.Get({"Timestamp"})),
+                       std::move(account));
   }
   std::ranges::stable_sort(found, std::greater<>(), &decltype(found)::value_type::first);
   std::vector<SteamAccount> accounts;
@@ -178,7 +183,8 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
     std::error_code ec;
     if (!fs::is_directory(steamapps, ec)) continue;
 
-    for (const auto& entry : fs::directory_iterator(steamapps, fs::directory_options::skip_permission_denied, ec)) {
+    for (const auto& entry :
+         fs::directory_iterator(steamapps, fs::directory_options::skip_permission_denied, ec)) {
       const std::string filename = entry.path().filename().string();
       if (!filename.starts_with("appmanifest_") || !filename.ends_with(".acf")) continue;
 
@@ -192,11 +198,14 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       const VdfValue* appid = state->Get({"appid"});
       const VdfValue* name = state->Get({"name"});
       const VdfValue* installdir = state->Get({"installdir"});
-      if (appid == nullptr || !appid->scalar || installdir == nullptr || !installdir->scalar) continue;
+      if (appid == nullptr || !appid->scalar || installdir == nullptr || !installdir->scalar)
+        continue;
       if (*appid->scalar == kRedistAppId) continue;
       if (name && name->scalar && name->scalar->starts_with("Steam Linux Runtime")) continue;
       const fs::path install_rel = fs::path(*installdir->scalar).lexically_normal();
-      if (install_rel.is_absolute() || install_rel.empty() || install_rel == "." || *install_rel.begin() == "..") continue;
+      if (install_rel.is_absolute() || install_rel.empty() || install_rel == "." ||
+          *install_rel.begin() == "..")
+        continue;
 
       SteamApp app;
       app.appid = *appid->scalar;
@@ -205,7 +214,8 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       app.steam_root = steam_root;
       app.library_root = library;
 
-      if (!fs::is_directory(app.install_dir, ec)) continue;  // manifest with no actual content on disk
+      if (!fs::is_directory(app.install_dir, ec))
+        continue;  // manifest with no actual content on disk
       if (LooksLikeSteamTooling(app.install_dir)) continue;
 
       app.compat_data_dir = steamapps / "compatdata" / app.appid;
@@ -223,27 +233,31 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
   return apps;
 }
 
-std::map<std::string, AppActivity> ReadAppActivity(const fs::path& steam_root, std::string_view steamid64) {
+std::map<std::string, AppActivity> ReadAppActivity(const fs::path& steam_root,
+                                                   std::string_view steamid64) {
   std::map<std::string, AppActivity> activity;
   const std::string account = steamid64.empty() ? LastSignedIn(steam_root) : std::string(steamid64);
-  // userdata/ is keyed by the 32-bit account id, the SteamID64 minus its fixed individual-account base.
+  // userdata/ is keyed by the 32-bit account id, the SteamID64 minus its fixed individual-account
+  // base.
   constexpr std::uint64_t kSteamId64Base = 76561197960265728ULL;
   std::uint64_t id64 = 0;
   if (std::from_chars(account.data(), account.data() + account.size(), id64).ec != std::errc() ||
       id64 <= kSteamId64Base) {
     return activity;
   }
-  const fs::path local_config =
-      steam_root / "userdata" / std::to_string(id64 - kSteamId64Base) / "config" / "localconfig.vdf";
+  const fs::path local_config = steam_root / "userdata" / std::to_string(id64 - kSteamId64Base) /
+                                "config" / "localconfig.vdf";
   const auto text = files::ReadFile(local_config);
   if (!text) return activity;
   const auto parsed = ParseVdf(*text);
   if (!parsed) return activity;
-  const VdfValue* apps = parsed->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps"});
+  const VdfValue* apps =
+      parsed->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps"});
   if (apps == nullptr) return activity;
   for (const auto& [appid, app] : apps->children) {
-    const AppActivity entry{.last_played_at = ParseInt64(app.Get({"LastPlayed"})),
-                            .play_seconds = ParseInt64(app.Get({"Playtime"})) * 60};  // Steam stores minutes
+    const AppActivity entry{
+        .last_played_at = ParseInt64(app.Get({"LastPlayed"})),
+        .play_seconds = ParseInt64(app.Get({"Playtime"})) * 60};  // Steam stores minutes
     if (entry.last_played_at > 0 || entry.play_seconds > 0) activity[appid] = entry;
   }
   return activity;

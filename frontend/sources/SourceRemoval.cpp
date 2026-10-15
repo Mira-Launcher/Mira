@@ -28,7 +28,10 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     const auto uninstalled =
         std::ranges::count_if(plan.games, [](const auto& g) { return !g.deletes.empty(); });
     if (uninstalled > 0)
-      lines << QString("Uninstalls %1 %2%3:").arg(uninstalled).arg(item).arg(uninstalled == 1 ? "" : "s");
+      lines << QString("Uninstalls %1 %2%3:")
+                   .arg(uninstalled)
+                   .arg(item)
+                   .arg(uninstalled == 1 ? "" : "s");
     for (const auto& game : plan.games) {
       if (!game.deletes.empty()) lines << "  • " + QString::fromStdString(game.name);
     }
@@ -43,11 +46,13 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     if (!plan.uninstall.empty()) {
       lines << "Uninstalls " + name + " from your system (asks for your password).";
     } else if (!plan.packages.empty()) {
-      lines << "Leaves " + system::Names(plan.packages) + " installed: remove it with your system's package manager.";
+      lines << "Leaves " + system::Names(plan.packages) +
+                   " installed: remove it with your system's package manager.";
     }
     if (plan.signs_out) lines << "Signs you out of " + name + ".";
-    if (!plan.kept.empty()) lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)."
-                                              : "Keeps game data and saves (prefixes stay on disk).");
+    if (!plan.kept.empty())
+      lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)."
+                              : "Keeps game data and saves (prefixes stay on disk).");
     lines << name + " goes back to Add source, to set up again any time.";
     PopupDialog dialog(parent, notify::Level::Warning, "Remove " + name);
     dialog.SetMessage(lines.join("\n"));
@@ -57,32 +62,39 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
       QStringList folders;
       for (const std::string& path : plan.data) {
         const QString shown = QString::fromStdString(path);
-        folders << "  • " + (shown.startsWith(QDir::homePath()) ? "~" + shown.mid(QDir::homePath().size()) : shown);
+        folders << "  • " + (shown.startsWith(QDir::homePath())
+                                 ? "~" + shown.mid(QDir::homePath().size())
+                                 : shown);
       }
       delete_data = new QCheckBox("Also delete " + name + "'s settings and saves", &dialog);
       dialog.AddWidget(delete_data);
-      dialog.SetDetail("Your saves for its games are in these folders, and can't be recovered once deleted:\n" +
-                       folders.join("\n"));
+      dialog.SetDetail(
+          "Your saves for its games are in these folders, and can't be recovered once deleted:\n" +
+          folders.join("\n"));
     }
     dialog.AddButton("Remove", /*accept=*/true);
     dialog.AddButton("Cancel", /*accept=*/false, /*default_button=*/true);
     if (dialog.exec() != QDialog::Accepted) return;
     const std::vector<std::string> uninstall = plan.uninstall;
-    api::RemoveSourceAsync(parent, id, delete_data != nullptr && delete_data->isChecked(),
-                           [parent, name, uninstall, on_removed](RemoveSourceResult r) {
-      if (!r.ok) {
-        notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);
-        return;
-      }
-      if (!r.problems.empty()) {
-        QStringList problems;
-        for (const std::string& problem : r.problems) problems << QString::fromStdString(problem);
-        notify::Failed(parent, name + " was removed, but some steps failed.", problems.join("\n"));
-      }
-      // Over the window: on_removed can close the page.
-      if (!uninstall.empty()) system::UninstallPackages(parent->window(), uninstall, name, [](bool) {});
-      on_removed();
-    });
+    api::RemoveSourceAsync(
+        parent, id, delete_data != nullptr && delete_data->isChecked(),
+        [parent, name, uninstall, on_removed](RemoveSourceResult r) {
+          if (!r.ok) {
+            notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);
+            return;
+          }
+          if (!r.problems.empty()) {
+            QStringList problems;
+            for (const std::string& problem : r.problems)
+              problems << QString::fromStdString(problem);
+            notify::Failed(parent, name + " was removed, but some steps failed.",
+                           problems.join("\n"));
+          }
+          // Over the window: on_removed can close the page.
+          if (!uninstall.empty())
+            system::UninstallPackages(parent->window(), uninstall, name, [](bool) {});
+          on_removed();
+        });
   });
 }
 

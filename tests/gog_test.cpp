@@ -1,3 +1,5 @@
+#include "gog/Gog.h"
+
 #include <doctest.h>
 
 #include <algorithm>
@@ -7,7 +9,6 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "core/Paths.h"
-#include "gog/Gog.h"
 #include "gog/GogImporter.h"
 #include "store/GameStore.h"
 #include "support/LiveServer.h"
@@ -24,7 +25,8 @@ namespace {
 // itself owns writing its --auth-config-path token file -- the fake here
 // does the same, so gog::AccessToken's read-back path is exercised for
 // real, not assumed.
-void WriteFakeGogdl(const fs::path& path, const std::string& auth_success_body, const std::string& import_body) {
+void WriteFakeGogdl(const fs::path& path, const std::string& auth_success_body,
+                    const std::string& import_body) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   out << "#!/bin/sh\n"
@@ -114,11 +116,12 @@ TEST_CASE("Login pulls the code out of a pasted redirect URL") {
 
   // The fake rejects exactly "bad-code", so a failure proves the bare code
   // (and not the whole URL) reached gogdl.
-  const Result<void> result =
-      gog::Login(fixture.config, "  https://embed.gog.com/on_login_success?origin=client&code=bad-code&x=1\n");
+  const Result<void> result = gog::Login(
+      fixture.config, "  https://embed.gog.com/on_login_success?origin=client&code=bad-code&x=1\n");
   REQUIRE_FALSE(result);
   CHECK(result.error().code == "login_failed");
-  CHECK(gog::Login(fixture.config, "https://embed.gog.com/on_login_success?origin=client&code=good-code"));
+  CHECK(gog::Login(fixture.config,
+                   "https://embed.gog.com/on_login_success?origin=client&code=good-code"));
 }
 
 TEST_CASE("AccessToken refreshes an expired token by re-invoking gogdl auth") {
@@ -143,7 +146,8 @@ TEST_CASE("GogImporter::ImportPath tags and provisions a title") {
   fixture.UseFakeGogdl();
 
   gog::GogImporter importer(fixture.config, fixture.games, fixture.events);
-  const Result<model::Game> imported = importer.ImportPath("123", fixture.dir / "installed" / "123");
+  const Result<model::Game> imported =
+      importer.ImportPath("123", fixture.dir / "installed" / "123");
   REQUIRE(imported);
   CHECK(imported->name == "A GOG Game");
   CHECK(imported->source == "gog");
@@ -202,8 +206,8 @@ TEST_CASE("GOG sign-in through mirad refuses a bad code and keeps a good one unt
     return nlohmann::json::parse(res->body);
   };
   const auto sign_in = [&](const std::string& code) {
-    auto res =
-        client.Post("/v1/stores/gog/login", nlohmann::json{{"credential", code}}.dump(), "application/json");
+    auto res = client.Post("/v1/stores/gog/login", nlohmann::json{{"credential", code}}.dump(),
+                           "application/json");
     REQUIRE(res != nullptr);
     return res->status;
   };

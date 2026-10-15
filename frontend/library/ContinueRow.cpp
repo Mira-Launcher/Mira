@@ -5,12 +5,11 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
+#include "../theme/Icons.h"
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
-#include "../theme/Icons.h"
 
 namespace mira_gui {
 namespace {
@@ -19,7 +18,8 @@ const QSize kCover(80, 120);
 
 }  // namespace
 
-ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), artwork_(artwork) {
+ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent)
+    : QWidget(parent), artwork_(artwork) {
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
@@ -32,7 +32,9 @@ ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent) : QWidget(paren
 }
 
 void ContinueRow::SetGames(const std::vector<const GameSummary*>& games) {
-  if (std::ranges::equal(games, shown_, [](const GameSummary* a, const GameSummary& b) { return *a == b; })) return;
+  if (std::ranges::equal(games, shown_,
+                         [](const GameSummary* a, const GameSummary& b) { return *a == b; }))
+    return;
   // deleteLater: a card's own button may be what got us here.
   while (QLayoutItem* item = cards_->takeAt(0)) {
     if (item->widget() != nullptr) item->widget()->deleteLater();
@@ -80,8 +82,10 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   name->setProperty("role", "section");
   name->setWordWrap(true);
   text->addWidget(name);
-  const QString when = running ? QString(RunningLabel(game)) + " now" : FormatPlayedAgo(game.last_played_at);
-  auto* meta = new QLabel(IsApp(game) ? when : QString("%1 · %2").arg(when, FormatPlaytime(game.play_seconds)), card);
+  const QString when =
+      running ? QString(RunningLabel(game)) + " now" : FormatPlayedAgo(game.last_played_at);
+  auto* meta = new QLabel(
+      IsApp(game) ? when : QString("%1 · %2").arg(when, FormatPlaytime(game.play_seconds)), card);
   meta->setProperty("role", "muted");
   text->addWidget(meta);
   text->addStretch(1);

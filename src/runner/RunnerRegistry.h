@@ -25,16 +25,18 @@ std::vector<model::RunnerBuild> DeduplicateBuilds(std::vector<model::RunnerBuild
 // What "<kind>:auto" picks from `builds` (non-empty): a distro-packaged build
 // first, then the preferred download source (GE-Proton, Wine staging-tkg),
 // then the newest.
-const model::RunnerBuild& PickAuto(const config::Config& config, const std::vector<model::RunnerBuild>& builds);
+const model::RunnerBuild& PickAuto(const config::Config& config,
+                                   const std::vector<model::RunnerBuild>& builds);
 
 // Owns every IRunner and resolves a "kind:name" reference (name may be
 // "auto"/"latest" for the newest discovered build) to a concrete runner +
 // build. The one place a game's runner_ref gets turned into actual work.
-// Held while something provisions or runs winetricks in a prefix, so two never touch one prefix at once.
+// Held while something provisions or runs winetricks in a prefix, so two never touch one prefix at
+// once.
 std::unique_lock<std::mutex> LockPrefix(const std::string& data_dir);
 
 class RunnerRegistry {
-public:
+ public:
   explicit RunnerRegistry(config::Config& config);
 
   std::vector<model::RunnerBuild> DiscoverAll() const;
@@ -66,7 +68,7 @@ public:
   // Doesn't persist anything; the caller saves the result via GameStore.
   model::Game ProvisionGame(model::Game game) const;
 
-private:
+ private:
   // Discovered builds for one kind, computed once per registry instance.
   const std::vector<model::RunnerBuild>& BuildsFor(const std::string& kind) const;
 

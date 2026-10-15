@@ -17,7 +17,7 @@ namespace mira::store {
 
 // One prepared statement. Bind with 1-based indexes, Step until it returns false.
 class Statement {
-public:
+ public:
   explicit Statement(sqlite3_stmt* stmt) : stmt_(stmt) {}
   Statement(Statement&& other) noexcept : stmt_(std::exchange(other.stmt_, nullptr)) {}
   Statement& operator=(Statement&&) = delete;
@@ -38,7 +38,7 @@ public:
   double Real(int column) const;
   bool IsNull(int column) const;
 
-private:
+ private:
   // Keeps the first failed bind; Step reports it instead of running with a missing value.
   void NoteBind(int rc) {
     if (bind_rc_ == 0) bind_rc_ = rc;
@@ -49,7 +49,7 @@ private:
 };
 
 class Database {
-public:
+ public:
   Database() = default;
   Database(const Database&) = delete;
   ~Database();
@@ -68,7 +68,7 @@ public:
   // A consistent copy of the whole database, written beside `file` and renamed over it.
   Result<void> BackUp(const std::filesystem::path& file);
 
-private:
+ private:
   Error LastError(std::string_view what) const;
 
   sqlite3* db_ = nullptr;
@@ -76,7 +76,7 @@ private:
 
 // Rolls back unless committed. Not nestable: a caller already inside one doesn't open another.
 class Transaction {
-public:
+ public:
   explicit Transaction(Database& db);
   ~Transaction();
   Transaction(const Transaction&) = delete;
@@ -84,7 +84,7 @@ public:
   Result<void> Begin();
   Result<void> Commit();
 
-private:
+ private:
   Database& db_;
   bool open_ = false;
 };

@@ -2,15 +2,13 @@
 
 #include <charconv>
 #include <chrono>
-
 #include <filesystem>
-
 #include <json.hpp>
 
-#include "itch/Butlerd.h"
-#include "itch/Itch.h"
 #include "core/Json.h"
 #include "core/StoreErrors.h"
+#include "itch/Butlerd.h"
+#include "itch/Itch.h"
 #include "itch/ItchImporter.h"
 
 namespace mira::itch {
@@ -25,22 +23,23 @@ ItchInstaller::ItchInstaller(config::Config& config, store::GameStore& games, ap
 Result<void> ItchInstaller::Run(const std::string& game_id) {
   if (auto ready = CheckReady(config_); !ready) return ready;
   std::int64_t numeric_id = 0;
-  const auto [end, parsed] = std::from_chars(game_id.data(), game_id.data() + game_id.size(), numeric_id);
+  const auto [end, parsed] =
+      std::from_chars(game_id.data(), game_id.data() + game_id.size(), numeric_id);
   if (parsed != std::errc() || end != game_id.data() + game_id.size() || numeric_id <= 0) {
     return Err("invalid_ref", "an itch.io game id is a number");
   }
 
   const Result<std::int64_t> profile_id = CurrentProfileId(config_);
   if (!profile_id) return std::unexpected(profile_id.error());
-  if (auto location = EnsureInstallLocation(config_); !location) return std::unexpected(location.error());
+  if (auto location = EnsureInstallLocation(config_); !location)
+    return std::unexpected(location.error());
 
   // Per butlerd's spec, Install.Queue
   // picks an upload and returns {id, stagingFolder}; Install.Perform
   // fetches it using exactly those two values back.
-  const Result<json> queued = Call(config_, "Install.Queue",
-                                  {{"game", {{"id", numeric_id}}},
-                                   {"profileId", *profile_id},
-                                   {"installLocationId", "mira"}});
+  const Result<json> queued = Call(
+      config_, "Install.Queue",
+      {{"game", {{"id", numeric_id}}}, {"profileId", *profile_id}, {"installLocationId", "mira"}});
   if (!queued) return std::unexpected(queued.error());
 
   const std::string install_id = queued->value("id", std::string());
@@ -62,8 +61,9 @@ Result<void> ItchInstaller::Run(const std::string& game_id) {
                                                  {"eta", core::JsonDouble(params, "eta")},
                                                  {"bps", core::JsonDouble(params, "bps")}});
   };
-  if (auto performed = CallLong(config_, "Install.Perform", {{"id", install_id}, {"stagingFolder", staging_folder}},
-                                on_notification);
+  if (auto performed =
+          CallLong(config_, "Install.Perform",
+                   {{"id", install_id}, {"stagingFolder", staging_folder}}, on_notification);
       !performed) {
     return std::unexpected(performed.error());
   }
@@ -73,7 +73,11 @@ Result<void> ItchInstaller::Run(const std::string& game_id) {
   return {};
 }
 
-Result<void> ItchInstaller::Install(const std::string& game_id) { return Run(game_id); }
-Result<void> ItchInstaller::Update(const std::string& game_id) { return Run(game_id); }
+Result<void> ItchInstaller::Install(const std::string& game_id) {
+  return Run(game_id);
+}
+Result<void> ItchInstaller::Update(const std::string& game_id) {
+  return Run(game_id);
+}
 
 }  // namespace mira::itch

@@ -7,19 +7,18 @@
 #include <QStringList>
 #include <QUrl>
 #include <QWidget>
-
 #include <map>
 #include <memory>
 #include <utility>
 
+#include "../app/Notify.h"
 #include "../client/api/Games.h"
-#include "PlayChoices.h"
 #include "../client/api/Library.h"
 #include "../dialogs/DeleteGameDialog.h"
 #include "../dialogs/LogWindow.h"
 #include "../dialogs/RunInPrefixDialog.h"
 #include "../dialogs/WinetricksDialog.h"
-#include "../app/Notify.h"
+#include "PlayChoices.h"
 
 namespace mira_gui::actions {
 namespace {
@@ -32,7 +31,9 @@ std::vector<std::string> Ids(const NamedGames& games) {
   return ids;
 }
 
-std::map<std::string, QString> NamesById(const NamedGames& games) { return {games.begin(), games.end()}; }
+std::map<std::string, QString> NamesById(const NamedGames& games) {
+  return {games.begin(), games.end()};
+}
 
 // One notice naming every failed game, with the first failure's reason, hint and fix.
 void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
@@ -43,24 +44,27 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
     const auto it = names.find(failure.id);
     failed << (it != names.end() ? it->second : QString::fromStdString(failure.id));
   }
-  notify::FailedRequest(parent, QString("%1 %2.").arg(verb, failed.join(", ")), failures.front().error);
+  notify::FailedRequest(parent, QString("%1 %2.").arg(verb, failed.join(", ")),
+                        failures.front().error);
 }
 
 }  // namespace
 
 void Launch(QWidget* parent, const std::string& id, const std::string& option,
             std::function<void(bool tracked)> on_launched, std::function<void()> on_failed) {
-  api::LaunchGameAsync(parent, id, option, [parent, id, on_launched, on_failed](LaunchResult result) {
-    if (!result.ok) {
-      if (on_failed) on_failed();
-      notify::FailedRequest(parent, "Could not launch the game.", result.error);
-      return;
-    }
-    if (on_launched) on_launched(result.tracked);
-  });
+  api::LaunchGameAsync(
+      parent, id, option, [parent, id, on_launched, on_failed](LaunchResult result) {
+        if (!result.ok) {
+          if (on_failed) on_failed();
+          notify::FailedRequest(parent, "Could not launch the game.", result.error);
+          return;
+        }
+        if (on_launched) on_launched(result.tracked);
+      });
 }
 
-void ChoosePlay(QWidget* parent, const GameSummary& game, const std::function<void(const std::string& option)>& launch) {
+void ChoosePlay(QWidget* parent, const GameSummary& game,
+                const std::function<void(const std::string& option)>& launch) {
   const bool all = QGuiApplication::keyboardModifiers().testFlag(Qt::ControlModifier);
   const std::vector<PlayChoice> choices = PlayChoices(game, all);
   const std::vector<PlayChoice> tools = all ? ToolChoices(game) : std::vector<PlayChoice>();
@@ -71,7 +75,9 @@ void ChoosePlay(QWidget* parent, const GameSummary& game, const std::function<vo
   }
   if (!tools.empty()) menu.addSection("Tools");
   for (const PlayChoice& tool : tools) {
-    menu.addAction(tool.label, [parent, id = game.id, option = tool.option] { Launch(parent, id, option, {}); });
+    menu.addAction(tool.label, [parent, id = game.id, option = tool.option] {
+      Launch(parent, id, option, {});
+    });
   }
   menu.exec(QCursor::pos());
 }
@@ -98,15 +104,16 @@ void Delete(QWidget* parent, const std::string& id, const QString& name,
     const DeleteChoice choice = AskDeleteGame(parent, name, install_path, data_dir, source);
     if (!choice.confirmed) return;
 
-    api::DeleteGameAsync(
-        parent, id, choice.delete_files, choice.delete_prefix, choice.delete_metadata,
-        [parent, name, on_deleted](DeleteResult result) {
-          if (!result.ok) {
-            notify::FailedRequest(parent, QString("Could not remove \"%1\".").arg(name), result.error);
-            return;
-          }
-          if (on_deleted) on_deleted();
-        });
+    api::DeleteGameAsync(parent, id, choice.delete_files, choice.delete_prefix,
+                         choice.delete_metadata, [parent, name, on_deleted](DeleteResult result) {
+                           if (!result.ok) {
+                             notify::FailedRequest(parent,
+                                                   QString("Could not remove \"%1\".").arg(name),
+                                                   result.error);
+                             return;
+                           }
+                           if (on_deleted) on_deleted();
+                         });
   });
 }
 
@@ -137,7 +144,8 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path) {
 }
 
 void ViewLog(QWidget* parent, const std::string& id, const QString& name) {
-  LogWindow::Open(parent, "game:" + QString::fromStdString(id), name.isEmpty() ? QString::fromStdString(id) : name);
+  LogWindow::Open(parent, "game:" + QString::fromStdString(id),
+                  name.isEmpty() ? QString::fromStdString(id) : name);
 }
 
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) {
@@ -193,7 +201,6 @@ void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QStri
       });
 }
 
-
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done) {
   if (games.empty()) return;
@@ -201,29 +208,37 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
       games.size() == 1
           ? QString("Move %1 into your games folder, and its prefix into the prefixes folder?")
                 .arg(games.front().second)
-          : QString("Move these %1 games into your games folder, and their prefixes into the "
-                    "prefixes folder?")
+          : QString(
+                "Move these %1 games into your games folder, and their prefixes into the "
+                "prefixes folder?")
                 .arg(games.size());
   if (!notify::Confirm(parent, "Move to Mira's folders",
-                       question + " Folders are named after the game. Games installed by a store "
-                                  "(Steam, Epic, GOG, itch.io, Amazon) keep their install folder; only "
-                                  "the prefix moves. Games from Lutris move completely and become Mira's "
-                                  "own, since Lutris can't start them from there.",
+                       question +
+                           " Folders are named after the game. Games installed by a store "
+                           "(Steam, Epic, GOG, itch.io, Amazon) keep their install folder; only "
+                           "the prefix moves. Games from Lutris move completely and become Mira's "
+                           "own, since Lutris can't start them from there.",
                        "Move")) {
     return;
   }
 
   api::RelocateGamesAsync(
-      parent, Ids(games), [parent, names = NamesById(games), on_done](RelocateLibraryResult result) {
+      parent, Ids(games),
+      [parent, names = NamesById(games), on_done](RelocateLibraryResult result) {
         if (!result.ok) {
           notify::FailedRequest(parent, "Could not move the games.", result.error);
         } else {
           // Nothing on screen shows a path, so success gets a notice.
           if (result.moved > 0) {
-            notify::Notice(parent, QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+            notify::Notice(
+                parent,
+                QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
           } else if (result.skipped > 0) {
-            notify::Notice(parent, result.skipped == 1 ? QString("That game was removed meanwhile.")
-                                                       : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
+            notify::Notice(
+                parent,
+                result.skipped == 1
+                    ? QString("That game was removed meanwhile.")
+                    : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
           } else if (result.errors.empty()) {
             notify::Notice(parent, "Already in Mira's folders.");
           }
@@ -243,7 +258,8 @@ void BatchSetDesktopEntry(QWidget* parent, const std::vector<std::string>& ids, 
       notify::FailedRequest(parent, "Could not update the application menu.", result.error);
       return;
     }
-    notify::Notice(parent, enabled ? "Added to the application menu." : "Removed from the application menu.");
+    notify::Notice(
+        parent, enabled ? "Added to the application menu." : "Removed from the application menu.");
   });
 }
 

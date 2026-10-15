@@ -17,20 +17,28 @@ ReviewBucket ReviewBucketOf(const std::string& score_description) {
 
 QString ReviewBucketName(ReviewBucket bucket) {
   switch (bucket) {
-    case ReviewBucket::OverwhelminglyPositive: return "Overwhelmingly Positive";
-    case ReviewBucket::VeryPositive: return "Very Positive";
-    case ReviewBucket::Positive: return "Positive";
-    case ReviewBucket::MostlyPositive: return "Mostly Positive";
-    case ReviewBucket::Mixed: return "Mixed";
-    case ReviewBucket::Negative: return "Negative";
-    case ReviewBucket::NotRated: return "Not rated";
+    case ReviewBucket::OverwhelminglyPositive:
+      return "Overwhelmingly Positive";
+    case ReviewBucket::VeryPositive:
+      return "Very Positive";
+    case ReviewBucket::Positive:
+      return "Positive";
+    case ReviewBucket::MostlyPositive:
+      return "Mostly Positive";
+    case ReviewBucket::Mixed:
+      return "Mixed";
+    case ReviewBucket::Negative:
+      return "Negative";
+    case ReviewBucket::NotRated:
+      return "Not rated";
   }
   return {};
 }
 
 std::string ProtonDbFilterTier(const std::string& tier) {
   if (tier == "garbage") return "borked";
-  const bool listed = std::ranges::any_of(kProtonDbFilterTiers, [&tier](const char* known) { return tier == known; });
+  const bool listed = std::ranges::any_of(kProtonDbFilterTiers,
+                                          [&tier](const char* known) { return tier == known; });
   return listed ? tier : std::string();
 }
 

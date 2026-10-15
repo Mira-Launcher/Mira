@@ -4,7 +4,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QThreadPool>
-
 #include <exception>
 #include <functional>
 #include <string>
@@ -60,9 +59,11 @@ void Deliver(const QPointer<QObject>& guard, Fn fn) {
 // deduced from the callback, so a caller writes only the request it
 // actually wants to make. An empty callback just runs the request.
 template <typename Result, typename Work>
-void Run(QObject* context, Work work, std::function<void(Result)> callback, Lane lane = Lane::Quick) {
+void Run(QObject* context, Work work, std::function<void(Result)> callback,
+         Lane lane = Lane::Quick) {
   QPointer<QObject> guard(context);
-  std::function<void()> job = [guard, work = std::move(work), callback = std::move(callback)]() mutable {
+  std::function<void()> job = [guard, work = std::move(work),
+                               callback = std::move(callback)]() mutable {
     // Its page closed while it waited in the queue: nobody wants the answer.
     if (guard.isNull()) return;
     // An exception escaping this thread would abort the whole app. One from
@@ -74,7 +75,8 @@ void Run(QObject* context, Work work, std::function<void(Result)> callback, Lane
       if constexpr (requires { result.error = std::string(); }) result.error = e.what();
     }
     if (!callback) return;  // fire and forget: nobody waits on the answer
-    Deliver(guard, [callback, result = std::move(result)]() mutable { callback(std::move(result)); });
+    Deliver(guard,
+            [callback, result = std::move(result)]() mutable { callback(std::move(result)); });
   };
   if (lane == Lane::Slow) {
     std::thread(std::move(job)).detach();

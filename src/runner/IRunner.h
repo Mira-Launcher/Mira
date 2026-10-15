@@ -1,11 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Command.h"
 #include "core/Result.h"
@@ -34,7 +33,7 @@ void ApplyGameLaunch(Command& command, const model::Game& game, const std::files
 // One way to run a game: native, Proton, Wine or Steam. Every umu/Proton
 // detail lives inside ProtonRunner; this interface knows none of it.
 class IRunner {
-public:
+ public:
   virtual ~IRunner() = default;
 
   virtual std::string kind() const = 0;

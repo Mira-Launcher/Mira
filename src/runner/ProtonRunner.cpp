@@ -1,12 +1,11 @@
 #include "runner/ProtonRunner.h"
 
-#include <cctype>
-
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
-#include <iterator>
 #include <format>
 #include <fstream>
+#include <iterator>
 
 #include "config/Config.h"
 #include "core/Paths.h"
@@ -22,7 +21,8 @@ namespace fs = std::filesystem;
 // their windows the same class (steam_app_default) and desktops group them
 // as one app. umu only accepts letters, digits and underscores after "umu-".
 void ApplyGameId(Command& command, const model::Game& game) {
-  if (auto it = game.runner_config.find("gameid"); it != game.runner_config.end() && it->is_string()) {
+  if (auto it = game.runner_config.find("gameid");
+      it != game.runner_config.end() && it->is_string()) {
     command.env["GAMEID"] = it->get<std::string>();
   } else {
     std::string id = "umu-mira_";
@@ -31,7 +31,8 @@ void ApplyGameId(Command& command, const model::Game& game) {
     }
     command.env["GAMEID"] = id;
   }
-  if (auto it = game.runner_config.find("store"); it != game.runner_config.end() && it->is_string()) {
+  if (auto it = game.runner_config.find("store");
+      it != game.runner_config.end() && it->is_string()) {
     command.env["STORE"] = it->get<std::string>();
   }
 }
@@ -40,23 +41,23 @@ void ApplyGameId(Command& command, const model::Game& game) {
 // off), so builds from the distro, Steam, Heroic or ProtonPlus show up even
 // with an old saved config.
 constexpr const char* kKnownProtonDirs[] = {
-    "~/.steam/root/compatibilitytools.d",
-    "~/.local/share/Steam/compatibilitytools.d",
-    "~/.local/share/Steam/steamapps/common",
-    "/usr/share/steam/compatibilitytools.d",
-    "/usr/local/share/steam/compatibilitytools.d",
-    "~/.config/heroic/tools/proton",
+    "~/.steam/root/compatibilitytools.d",          "~/.local/share/Steam/compatibilitytools.d",
+    "~/.local/share/Steam/steamapps/common",       "/usr/share/steam/compatibilitytools.d",
+    "/usr/local/share/steam/compatibilitytools.d", "~/.config/heroic/tools/proton",
 };
 
 // A distro package (/usr, /opt) or Steam's own Proton (steamapps/common).
 bool UpdatedInPlace(const fs::path& dir) {
   const std::string path = dir.string();
-  return path.starts_with("/usr/") || path.starts_with("/opt/") || dir.parent_path().filename() == "common";
+  return path.starts_with("/usr/") || path.starts_with("/opt/") ||
+         dir.parent_path().filename() == "common";
 }
 
 }  // namespace
 
-fs::path BundledUmuRun() { return paths::UserDir() / "tools" / "umu" / "umu" / "umu-run"; }
+fs::path BundledUmuRun() {
+  return paths::UserDir() / "tools" / "umu" / "umu" / "umu-run";
+}
 
 std::string UmuRunPath() {
   if (auto found = FindOnPath("umu-run")) return *found;
@@ -78,13 +79,15 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
     // Steam's own Proton in every library, on any drive, and steam.root's tools.
     if (const auto root = steam::FindSteamRoot(config)) {
       search_dirs.push_back(*root / "compatibilitytools.d");
-      for (const fs::path& library : steam::LibraryFolders(*root)) search_dirs.push_back(library / "steamapps" / "common");
+      for (const fs::path& library : steam::LibraryFolders(*root))
+        search_dirs.push_back(library / "steamapps" / "common");
     }
   }
 
   for (const fs::path& search_dir : search_dirs) {
     if (!fs::is_directory(search_dir, ec)) continue;
-    for (const auto& entry : fs::directory_iterator(search_dir, fs::directory_options::skip_permission_denied, ec)) {
+    for (const auto& entry :
+         fs::directory_iterator(search_dir, fs::directory_options::skip_permission_denied, ec)) {
       if (!entry.is_directory(ec)) continue;
       const fs::path& dir = entry.path();
       if (!fs::exists(dir / "proton", ec) || !fs::exists(dir / "toolmanifest.vdf", ec)) continue;
@@ -116,7 +119,7 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
 }
 
 Result<void> ProtonRunner::Provision(const model::Game& game,
-                                  const std::optional<model::RunnerBuild>& build) const {
+                                     const std::optional<model::RunnerBuild>& build) const {
   if (!build) return NoBuild("Proton");
   if (game.data_dir.empty()) return NoPrefix(game);
 
@@ -140,15 +143,16 @@ Result<void> ProtonRunner::Provision(const model::Game& game,
   // deliberately gave it nothing to launch. The only reliable success
   // signal is whether the prefix actually appeared on disk.
   if (!fs::exists(fs::path(game.data_dir) / "drive_c", ec)) {
-    return Err("provision_failed",
-              std::format("umu-run produced no prefix (exit {}): {}", result->exit_code, result->output),
-              "The Proton build may be broken. Try a different one.", Fix::Runners());
+    return Err(
+        "provision_failed",
+        std::format("umu-run produced no prefix (exit {}): {}", result->exit_code, result->output),
+        "The Proton build may be broken. Try a different one.", Fix::Runners());
   }
   return {};
 }
 
 Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
-                                        const std::optional<model::RunnerBuild>& build) const {
+                                           const std::optional<model::RunnerBuild>& build) const {
   if (!build) return NoBuild("Proton");
   if (game.exe_path.empty()) return NoExecutable(game);
   if (game.data_dir.empty()) return NoPrefix(game);
@@ -171,14 +175,16 @@ nlohmann::json ProtonRunner::SettingsSchema() const {
       {{"key", "gameid"},
        {"label", "Steam game ID"},
        {"type", "string"},
-       {"doc", "Steam AppID umu reports through the GAMEID environment variable. It decides which "
-               "protonfixes entry Proton applies. Optional: without it umu uses a generic "
-               "default (\"umu-default\")."}},
+       {"doc",
+        "Steam AppID umu reports through the GAMEID environment variable. It decides which "
+        "protonfixes entry Proton applies. Optional: without it umu uses a generic "
+        "default (\"umu-default\")."}},
       {{"key", "store"},
        {"label", "Store"},
        {"type", "string"},
-       {"doc", "Store umu should report via the STORE env var (e.g. \"ubisoft\", \"battlenet\", \"ea\"), "
-               "so store-specific protonfixes apply. Set automatically for store launcher games."}},
+       {"doc",
+        "Store umu should report via the STORE env var (e.g. \"ubisoft\", \"battlenet\", \"ea\"), "
+        "so store-specific protonfixes apply. Set automatically for store launcher games."}},
   });
 }
 

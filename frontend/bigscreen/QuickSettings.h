@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-
 #include <functional>
 #include <string>
 
@@ -16,7 +15,8 @@ struct QuickSettings {
   bool gamemode = false;
 };
 
-void LoadQuickSettings(QObject* context, const std::string& id, std::function<void(bool ok, QuickSettings)> done);
+void LoadQuickSettings(QObject* context, const std::string& id,
+                       std::function<void(bool ok, QuickSettings)> done);
 void SaveQuickSettings(QObject* context, const std::string& id, const QuickSettings& settings,
                        std::function<void(QString error)> done);
 

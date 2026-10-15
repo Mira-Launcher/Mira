@@ -1,10 +1,11 @@
+#include "api/EventBus.h"
+
 #include <doctest.h>
 
 #include <atomic>
 #include <thread>
 #include <vector>
 
-#include "api/EventBus.h"
 #include "api/Jobs.h"
 
 using namespace mira;
@@ -94,18 +95,23 @@ TEST_CASE("many publishers and many subscribers race safely") {
   CHECK(delivered.load() > 0);
 }
 
-TEST_CASE("Every game record an event carries gets the record hook, and a state change its own running") {
+TEST_CASE(
+    "Every game record an event carries gets the record hook, and a state change its own running") {
   api::EventBus bus;
-  bus.SetGameRecordHook([](nlohmann::json& game) { game["running"] = game.value("id", "") == "celeste"; });
+  bus.SetGameRecordHook(
+      [](nlohmann::json& game) { game["running"] = game.value("id", "") == "celeste"; });
 
   CHECK(bus.Publish("game.updated", {{"id", "celeste"}}).payload.value("running", false));
   CHECK_FALSE(bus.Publish("game.added", {{"id", "hades"}}).payload.value("running", true));
-  const auto many = bus.Publish("games.updated", {{"games", {{{"id", "celeste"}}, {{"id", "hades"}}}}}).payload;
+  const auto many =
+      bus.Publish("games.updated", {{"games", {{{"id", "celeste"}}, {{"id", "hades"}}}}}).payload;
   CHECK(many["games"][0].value("running", false));
   CHECK_FALSE(many["games"][1].value("running", true));
   // The state says it, whatever the hook would.
-  CHECK_FALSE(bus.Publish("game.state", {{"id", "celeste"}, {"state", "exited"}}).payload.value("running", true));
-  CHECK(bus.Publish("game.state", {{"id", "hades"}, {"state", "running"}}).payload.value("running", false));
+  CHECK_FALSE(bus.Publish("game.state", {{"id", "celeste"}, {"state", "exited"}})
+                  .payload.value("running", true));
+  CHECK(bus.Publish("game.state", {{"id", "hades"}, {"state", "running"}})
+            .payload.value("running", false));
   // Not a game record.
   CHECK_FALSE(bus.Publish("game.removed", {{"id", "celeste"}}).payload.contains("running"));
 }
@@ -114,7 +120,8 @@ TEST_CASE("Art events carry the game's current art") {
   api::EventBus bus;
   bus.SetArtHook([](const std::string& id) { return nlohmann::json{{"cover", id + "-v2"}}; });
 
-  for (const char* type : {"game.metadata_ready", "game.metadata_failed", "game.artwork_selected"}) {
+  for (const char* type :
+       {"game.metadata_ready", "game.metadata_failed", "game.artwork_selected"}) {
     CHECK(bus.Publish(type, {{"id", "celeste"}}).payload["art"]["cover"] == "celeste-v2");
   }
   CHECK_FALSE(bus.Publish("game.removed", {{"id", "celeste"}}).payload.contains("art"));
@@ -127,15 +134,15 @@ TEST_CASE("A job that throws still fails, and a running job outlives the cap on 
   std::string slow;
   {
     api::JobRegistry jobs(bus);
-    thrower = jobs.Start("scan", "", "Scanning", [](auto&) -> Result<nlohmann::json> {
-      throw std::runtime_error("boom");
-    });
+    thrower = jobs.Start("scan", "", "Scanning",
+                         [](auto&) -> Result<nlohmann::json> { throw std::runtime_error("boom"); });
     slow = jobs.Start("import", "", "Importing", [&release](auto&) -> Result<nlohmann::json> {
       while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));
       return nlohmann::json::object();
     });
     for (int i = 0; i < 150; ++i) {
-      jobs.Start("scan", "", "Scanning", [](auto&) -> Result<nlohmann::json> { return nlohmann::json::object(); });
+      jobs.Start("scan", "", "Scanning",
+                 [](auto&) -> Result<nlohmann::json> { return nlohmann::json::object(); });
     }
     CHECK(jobs.Find(slow).has_value());
     release = true;

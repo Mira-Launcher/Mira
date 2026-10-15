@@ -5,7 +5,7 @@
 namespace mira::amazon {
 
 class AmazonSource : public library::ILibrarySource {
-public:
+ public:
   std::string Name() const override { return "amazon"; }
   bool CanPause() const override { return true; }
 
@@ -13,9 +13,9 @@ public:
                                                      const store::GameStore& games) const override;
 
   Result<void> Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                      const std::string& ref) override;
+                       const std::string& ref) override;
   Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                     const std::string& ref) override;
+                      const std::string& ref) override;
 };
 
 }  // namespace mira::amazon

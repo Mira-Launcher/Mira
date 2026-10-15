@@ -21,7 +21,7 @@ struct SteamApp {
   bool is_native = false;                 // no compatdata dir -> a native Linux Steam game
   std::filesystem::path compat_data_dir;  // <library>/steamapps/compatdata/<appid>; empty if native
   std::filesystem::path proton_path;      // the "proton" script Steam actually used for this app;
-                                          // empty if it couldn't be resolved (e.g. never launched yet)
+                                      // empty if it couldn't be resolved (e.g. never launched yet)
   std::filesystem::path client_install_path;  // STEAM_COMPAT_CLIENT_INSTALL_PATH Steam itself used
   std::filesystem::path steam_root;
   std::filesystem::path library_root;
@@ -41,8 +41,8 @@ struct ProtonCompatInfo {
 // otherwise the two real locations in use across distros, then Flathub's Steam.
 std::optional<std::filesystem::path> FindSteamRoot(const config::Config& config);
 
-// What starts the Steam client FindSteamRoot found: `steam`, or `flatpak run com.valvesoftware.Steam`
-// for Flathub's.
+// What starts the Steam client FindSteamRoot found: `steam`, or `flatpak run
+// com.valvesoftware.Steam` for Flathub's.
 std::vector<std::string> SteamCommand(const config::Config& config);
 
 // Where that client writes its pid while it runs.
@@ -76,7 +76,8 @@ std::vector<SteamApp> ListApps(const std::filesystem::path& steam_root);
 // so it's exactly the build (and client path) that already provisioned the
 // prefix. Returns nullopt if compat_data_dir has no config_info yet (the
 // app has never actually been launched through Steam).
-std::optional<ProtonCompatInfo> ResolveProtonCompatInfo(const std::filesystem::path& compat_data_dir);
+std::optional<ProtonCompatInfo> ResolveProtonCompatInfo(
+    const std::filesystem::path& compat_data_dir);
 
 // What Steam recorded for one app on the account, however it was launched.
 struct AppActivity {

@@ -1,8 +1,5 @@
 #include "PopupDialog.h"
 
-#include "../theme/Icons.h"
-#include "../theme/Theme.h"
-
 #include <QBoxLayout>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -18,6 +15,9 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {
@@ -74,7 +74,9 @@ PopupDialog::PopupDialog(QWidget* parent, notify::Level level, const QString& ti
   outer->addLayout(buttons_);
 }
 
-void PopupDialog::SetMessage(const QString& text) { message_->setText(text); }
+void PopupDialog::SetMessage(const QString& text) {
+  message_->setText(text);
+}
 
 void PopupDialog::SetDetail(const QString& text) {
   if (detail_ == nullptr) {
@@ -87,7 +89,9 @@ void PopupDialog::SetDetail(const QString& text) {
   detail_->setText(text);
 }
 
-void PopupDialog::AddWidget(QWidget* widget) { body_->addWidget(widget); }
+void PopupDialog::AddWidget(QWidget* widget) {
+  body_->addWidget(widget);
+}
 
 void PopupDialog::SetAction(const QString& label, const QString& url) {
   SetAction(label, [url] { QDesktopServices::openUrl(QUrl(url)); });

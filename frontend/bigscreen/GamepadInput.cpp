@@ -1,7 +1,6 @@
 #include "GamepadInput.h"
 
 #include <QLibrary>
-
 #include <algorithm>
 #include <cstdint>
 
@@ -13,11 +12,38 @@ namespace {
 struct SDL_Gamepad;
 using SDL_JoystickID = std::uint32_t;
 constexpr std::uint32_t kInitGamepad = 0x00002000u;
-enum Button { kSouth, kEast, kWest, kNorth, kBack, kGuide, kStart, kLeftStick, kRightStick,
-              kLeftShoulder, kRightShoulder, kDpadUp, kDpadDown, kDpadLeft, kDpadRight };
+enum Button {
+  kSouth,
+  kEast,
+  kWest,
+  kNorth,
+  kBack,
+  kGuide,
+  kStart,
+  kLeftStick,
+  kRightStick,
+  kLeftShoulder,
+  kRightShoulder,
+  kDpadUp,
+  kDpadDown,
+  kDpadLeft,
+  kDpadRight
+};
 enum Axis { kLeftX, kLeftY, kRightX, kRightY, kLeftTrigger, kRightTrigger };
-enum Type { kTypeUnknown, kTypeStandard, kTypeXbox360, kTypeXboxOne, kTypePs3, kTypePs4, kTypePs5,
-            kTypeSwitchPro, kTypeJoyconLeft, kTypeJoyconRight, kTypeJoyconPair, kTypeGamecube };
+enum Type {
+  kTypeUnknown,
+  kTypeStandard,
+  kTypeXbox360,
+  kTypeXboxOne,
+  kTypePs3,
+  kTypePs4,
+  kTypePs5,
+  kTypeSwitchPro,
+  kTypeJoyconLeft,
+  kTypeJoyconRight,
+  kTypeJoyconPair,
+  kTypeGamecube
+};
 enum PowerState { kPowerOnBattery = 1, kPowerNoBattery, kPowerCharging, kPowerCharged };
 constexpr int kConnectionWireless = 2;
 constexpr std::int16_t kTriggerThreshold = 16000;
@@ -142,13 +168,14 @@ void GamepadInput::Scan() {
     int count = 0;
     SDL_JoystickID* ids = sdl.GetGamepads(&count);
     for (int i = 0; ids != nullptr && i < count; ++i) {
-      const bool known = std::ranges::any_of(sdl.open, [&](const Sdl::Open& pad) { return sdl.GetGamepadID(pad.pad) == ids[i]; });
+      const bool known = std::ranges::any_of(
+          sdl.open, [&](const Sdl::Open& pad) { return sdl.GetGamepadID(pad.pad) == ids[i]; });
       if (known) continue;
       SDL_Gamepad* pad = sdl.OpenGamepad(ids[i]);
       if (pad == nullptr) continue;
       const int type = sdl.GetGamepadType(pad);
       Pad info;
-      info.kind = type >= kTypePs3 && type <= kTypePs5                ? "ps"
+      info.kind = type >= kTypePs3 && type <= kTypePs5              ? "ps"
                   : type >= kTypeSwitchPro && type <= kTypeGamecube ? "nin"
                                                                     : "xbox";
       info.name = QString::fromUtf8(sdl.GetGamepadName(pad));
@@ -166,10 +193,13 @@ void GamepadInput::Scan() {
       int percent = -1;
       const int state = sdl.GetGamepadPowerInfo(sdl.open[i].pad, &percent);
       Pad& pad = pads_[i];
-      const int battery = state == kPowerOnBattery || state == kPowerCharging || state == kPowerCharged ? percent : -1;
+      const int battery =
+          state == kPowerOnBattery || state == kPowerCharging || state == kPowerCharged ? percent
+                                                                                        : -1;
       const bool charging = state == kPowerCharging || state == kPowerCharged;
       const bool wireless = sdl.GetGamepadConnectionState(sdl.open[i].pad) == kConnectionWireless;
-      if (battery != pad.battery || charging != pad.charging || wireless != pad.wireless) changed = true;
+      if (battery != pad.battery || charging != pad.charging || wireless != pad.wireless)
+        changed = true;
       pad.battery = battery;
       pad.charging = charging;
       pad.wireless = wireless;

@@ -36,8 +36,10 @@ ProcessInfo Read(const std::string& pid) {
   std::ifstream environ_file("/proc/" + pid + "/environ", std::ios::binary);
   std::string item;
   while (std::getline(environ_file, item, '\0')) {
-    if (item.starts_with("WINEPREFIX=")) info.prefix = item.substr(11);
-    else if (item.starts_with("STEAM_COMPAT_DATA_PATH=") && info.prefix.empty()) info.prefix = item.substr(23);
+    if (item.starts_with("WINEPREFIX="))
+      info.prefix = item.substr(11);
+    else if (item.starts_with("STEAM_COMPAT_DATA_PATH=") && info.prefix.empty())
+      info.prefix = item.substr(23);
   }
   std::ifstream cmdline_file("/proc/" + pid + "/cmdline", std::ios::binary);
   std::getline(cmdline_file, info.argv0, '\0');
@@ -46,10 +48,12 @@ ProcessInfo Read(const std::string& pid) {
     info.argv0.clear();  // only Wine processes are matched by path; keep the index small
     info.argv0.shrink_to_fit();
   }
-  // Started by its host path, as Mira starts an app's exe, Wine keeps that path: matched as Windows sees it.
+  // Started by its host path, as Mira starts an app's exe, Wine keeps that path: matched as Windows
+  // sees it.
   std::string prefix = info.prefix;
   while (prefix.ends_with('/')) prefix.pop_back();
-  if (const std::string drive_c = prefix + "/drive_c/"; !prefix.empty() && info.argv0.starts_with(drive_c)) {
+  if (const std::string drive_c = prefix + "/drive_c/";
+      !prefix.empty() && info.argv0.starts_with(drive_c)) {
     info.argv0 = "c:/" + info.argv0.substr(drive_c.size());
   }
   std::ranges::replace(info.argv0, '\\', '/');
@@ -80,13 +84,15 @@ void ProcessIndex::Refresh() {
 }
 
 bool UnderWindowsPath(std::string_view argv0, std::string_view win_path) {
-  return argv0.starts_with(win_path) && (argv0.size() == win_path.size() || argv0[win_path.size()] == '/');
+  return argv0.starts_with(win_path) &&
+         (argv0.size() == win_path.size() || argv0[win_path.size()] == '/');
 }
 
 bool InPrefix(std::string_view value, std::string_view data_dir) {
   if (data_dir.empty()) return false;
   if (value == data_dir) return true;
-  return value.size() > data_dir.size() && value.starts_with(data_dir) && value[data_dir.size()] == '/';
+  return value.size() > data_dir.size() && value.starts_with(data_dir) &&
+         value[data_dir.size()] == '/';
 }
 
 }  // namespace mira::proc

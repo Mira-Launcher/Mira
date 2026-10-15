@@ -253,8 +253,10 @@ bool ParseStoreEvent(const std::string& event_type, const std::string& data, Sto
   return true;
 }
 
-bool ParseCatalogCheck(const std::string& event_type, const std::string& data, CatalogCheckEvent* out) {
-  if (event_type != "library.catalog_checking" && event_type != "library.catalog_checked") return false;
+bool ParseCatalogCheck(const std::string& event_type, const std::string& data,
+                       CatalogCheckEvent* out) {
+  if (event_type != "library.catalog_checking" && event_type != "library.catalog_checked")
+    return false;
   const json entry = json::parse(data, nullptr, false);
   if (entry.is_discarded() || !entry.is_object()) return false;
   out->source = entry.value("source", std::string());

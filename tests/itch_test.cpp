@@ -1,3 +1,5 @@
+#include "itch/Itch.h"
+
 #include <doctest.h>
 
 #include <filesystem>
@@ -5,7 +7,6 @@
 
 #include "config/Config.h"
 #include "itch/Butlerd.h"
-#include "itch/Itch.h"
 #include "itch/ItchImporter.h"
 #include "support/TestEnv.h"
 
@@ -121,7 +122,8 @@ TEST_CASE("Call connects, authenticates the transport, and returns a real result
   Fixture fixture("itch-call");
   fixture.UseFakeButler();
 
-  const Result<nlohmann::json> result = itch::Call(fixture.config, "Fetch.ProfileOwnedKeys", {{"fresh", true}});
+  const Result<nlohmann::json> result =
+      itch::Call(fixture.config, "Fetch.ProfileOwnedKeys", {{"fresh", true}});
   REQUIRE(result);
   REQUIRE(result->contains("items"));
   REQUIRE((*result)["items"].size() == 1);
@@ -132,7 +134,8 @@ TEST_CASE("Call skips a notification pushed ahead of the real response") {
   Fixture fixture("itch-call-notification");
   fixture.UseFakeButler();
 
-  const Result<nlohmann::json> result = itch::Call(fixture.config, "Test.WithNotificationFirst", {});
+  const Result<nlohmann::json> result =
+      itch::Call(fixture.config, "Test.WithNotificationFirst", {});
   REQUIRE(result);
   CHECK(result->value("ok", false));
 }
@@ -176,8 +179,8 @@ TEST_CASE("An itch.io import tracks installed games, finds what to run, and keep
                           {"upload", {{"platforms", {{platform, "all"}}}}}};
   };
   test::Touch(fixture.dir.parent_path() / "itch-caves.json",
-              nlohmann::json::array({cave(101, "Moss Moss", moss, "linux"),
-                                     cave(202, "Ripples", ripples, "windows")})
+              nlohmann::json::array(
+                  {cave(101, "Moss Moss", moss, "linux"), cave(202, "Ripples", ripples, "windows")})
                   .dump());
 
   itch::ItchImporter importer(fixture.config, fixture.games, fixture.events);

@@ -30,7 +30,8 @@ void SetSteamStatusAsync(QObject* context, const std::string& status,
                          std::function<void(StoreActionResult)> callback);
 
 // POST /v1/steam/shortcut: keeps Steam's "Mira" shortcut running `exe` with `launch_options`.
-void UpdateSteamShortcutAsync(QObject* context, const std::string& exe, const std::string& launch_options);
+void UpdateSteamShortcutAsync(QObject* context, const std::string& exe,
+                              const std::string& launch_options);
 
 // POST /v1/steam/bigpicture.
 void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionResult)> callback);

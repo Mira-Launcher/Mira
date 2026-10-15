@@ -18,14 +18,14 @@ namespace mira_gui {
 class DropdownButton : public QPushButton {
   Q_OBJECT
 
-public:
+ public:
   DropdownButton(QMenu* menu, QWidget* parent = nullptr);
   QMenu* Menu() const { return menu_; }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   QMenu* menu_ = nullptr;
 };
 
@@ -39,7 +39,7 @@ private:
 class TabRow : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   // The height of a search box or the filter pill beside the tabs.
   static constexpr int kControlHeight = 30;
 
@@ -63,15 +63,15 @@ public:
   // into More right now, so a layout that sizes the row to its hint can unfold it.
   QSize sizeHint() const override;
 
-signals:
+ signals:
   void CurrentChanged(QString key);
 
-protected:
+ protected:
   bool event(QEvent* event) override;
   bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   struct Tab {
     QPushButton* button = nullptr;
     QString label;
