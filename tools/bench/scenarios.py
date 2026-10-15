@@ -163,6 +163,9 @@ def reads(ctx, meta):
     def tags():
         status, body = ctx.client.get("/v1/tags")
         check(status == 200 and len(body["tags"]) >= 5, "GET /v1/tags")
+        # Not all: a tag only hidden games have isn't listed.
+        check(len(body["steam"]) >= meta.get("steam_tags", 0) // 2,
+              f"GET /v1/tags suggested {len(body['steam'])} of {meta.get('steam_tags')} Steam tags")
     ctx.repeat("GET /v1/tags", 10, tags)
 
 
@@ -549,6 +552,24 @@ def gui_hidden_mode_tags(ctx, meta):
     hidden_mode(ctx, "GUI hidden mode on Tags", page_keys="ctrl+shift+F9")
 
 
+@scenario("gui-pages", gui=True)
+def gui_pages(ctx, meta):
+    """Opening Settings, Runners and Tags from the library, each until it has settled."""
+    def visit(pid):
+        display = Display(pid)
+        # Tags first, from the library: its cards look much like Runners'.
+        for name, keys, back in (("Tags", "ctrl+shift+F9", None), ("Settings", "ctrl+comma", "Escape"),
+                                 ("Runners", "ctrl+shift+F10", None)):
+            shown = display.snapshot()
+            wall, cpu = respond(pid, lambda: display.key(keys))
+            check(changed(shown, display.snapshot()) > 0.05, f"{keys} didn't open {name}")
+            ctx.results[f"open {name}"] = round(wall, 1)
+            ctx.results[f"open {name}, CPU until done"] = round(cpu, 1)
+            if back:
+                respond(pid, lambda: display.key(back))
+    open_gui(ctx, "GUI pages", then=visit)
+
+
 @scenario("gui-zoom", gui=True)
 def gui_zoom(ctx, meta):
     """Zooming the library's tiles from smallest to largest and back."""
@@ -566,9 +587,10 @@ def main():
     parser.add_argument("--only", nargs="*")
     parser.add_argument("--gui", action="store_true", help="run the GUI scenarios instead of mirad's")
     parser.add_argument("--list", action="store_true", help="print mirad's scenarios and stop")
+    parser.add_argument("--list-gui", action="store_true", help="print the GUI's scenarios and stop")
     args = parser.parse_args()
-    if args.list:
-        print(" ".join(name for name, _, _, is_gui in SCENARIOS if not is_gui))
+    if args.list or args.list_gui:
+        print(" ".join(name for name, _, _, is_gui in SCENARIOS if is_gui == args.list_gui))
         return
     meta = json.loads(Path(args.fixture).with_suffix(".json").read_text())
     binary = Path(args.build) / "mirad"

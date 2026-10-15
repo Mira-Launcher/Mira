@@ -54,9 +54,10 @@ FRONTEND = """onboarded = true
 window_width = 1600
 window_height = 1000
 
-# The Tags page has no default key, and the GUI scenarios reach it by keyboard.
+# The Tags and Runners pages have no default keys, and the GUI scenarios reach them by keyboard.
 [shortcuts]
 open_tags = "Ctrl+Shift+F9"
+open_runners = "Ctrl+Shift+F10"
 """
 
 
@@ -169,6 +170,26 @@ def seed_tags_and_history(config_dir, rng, ids, titles):
     return len(hidden), hidden_titles
 
 
+def seed_steam_tags(config_dir, rng, ids, count=400, per_game=20):
+    """Steam's tags on every game, as a metadata fetch stores them: `per_game` each out of `count`, a few on
+    most games and most on only a few, as on Steam. Returns how many different tags the games have."""
+    names = sorted({f"{a.title()} {b.title()}" for a in WORDS for b in WORDS if a != b})
+    names = rng.sample(names, count)
+    weights = [1 / (rank + 1) for rank in range(count)]
+    used = set()
+    with closing(sqlite3.connect(config_dir / "cache.db")) as db, db:
+        for game_id in ids:
+            picked = set()
+            while len(picked) < per_game:
+                picked.add(rng.choices(range(count), weights)[0])
+            tags = json.dumps({"appid": "1", "tags": [names[i] for i in sorted(picked)]})
+            used |= picked
+            db.execute("INSERT INTO metadata(id, info, updated_at) VALUES(?, json_object('steam_tags', json(?)), 1) "
+                       "ON CONFLICT(id) DO UPDATE SET info = json_set(info, '$.steam_tags', json(?))",
+                       (game_id, tags, tags))
+    return len(used)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mirad", required=True)
@@ -217,6 +238,7 @@ def main():
     mirad.stop()
 
     hidden, hidden_titles = seed_tags_and_history(config_dir, rng, ids, args.titles)
+    steam_tags = seed_steam_tags(config_dir, rng, ids)
     for leftover in ("run", "tmp", "mirad.log"):
         path = home / leftover
         shutil.rmtree(path) if path.is_dir() else path.unlink(missing_ok=True)
@@ -225,7 +247,8 @@ def main():
     shutil.rmtree(home)
     titles = sum(int(args.titles * share) for _, share in CATALOGS)
     Path(args.out).with_suffix(".json").write_text(json.dumps({"games": len(ids), "titles": titles, "sources": sources,
-                                                                 "hidden": hidden, "hidden_titles": hidden_titles}))
+                                                                 "hidden": hidden, "hidden_titles": hidden_titles,
+                                                                 "steam_tags": steam_tags}))
     print(f"fixture: {len(ids)} games -> {args.out}", file=sys.stderr)
 
 

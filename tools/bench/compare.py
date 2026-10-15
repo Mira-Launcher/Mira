@@ -211,7 +211,8 @@ def main():
     lines = [f"## Benchmark against {args.base_name}", ""]
     if args.fixture:
         meta = json.loads(Path(args.fixture).read_text())
-        time_runs = sum(1 for r in branch_runs if r["mode"] == "time" and "startup" in r["results"])
+        time_runs = sum(1 for r in branch_runs
+                        if r["mode"] == "time" and any(not s.startswith("gui") for s in {**r["results"], **r["failures"]}))
         once = " The GUI's values are from that one run, not a median." if gui_runs == 1 else ""
         lines += [f"{meta['games']} games over {len(meta['sources'])} sources, {meta['titles']:,} store titles; "
                   f"{time_runs} timed runs of mirad's scenarios and {gui_runs} of the GUI's, plus one callgrind run "
