@@ -79,13 +79,24 @@ Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& c
                            const std::string& game_id, const std::string& slot,
                            std::string_view bytes);
 
+// Leaves `slot` with no image, kept through refreshes like a pick, so the game shows its
+// placeholder: {"source": "none", "chosen": true}, with no file.
+Result<void> RemoveArtwork(const config::Config& config, store::MetadataStore& cache,
+                           const std::string& game_id, const std::string& slot);
+
 // One page (50) of SteamGridDB's art for a game's slot, asked for now, so the
 // current steamgriddb.nsfw applies and results past the first 50 a metadata
 // fetch cached are reachable: {"page", "total", "candidates": [...]}, each
-// candidate shaped like art_candidates' and added to that cached list.
+// candidate shaped like art_candidates' and added to that cached list. A record with no
+// SteamGridDB match yet (a store title whose cover came from its store) is matched by `name`.
 Result<nlohmann::json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache,
                                           const std::string& game_id, const std::string& slot,
-                                          int page);
+                                          int page, const std::string& name = {});
+
+// Points a store title's record at another SteamGridDB game (0: the top match for its name
+// again), dropping the SteamGridDB candidates listed for the old one. A title has no overrides
+// to keep metadata.steamgriddb_id in.
+Result<void> MatchTitle(store::MetadataStore& cache, const std::string& id, std::int64_t griddb_id);
 
 // Which candidates of one FetchCandidateThumbs batch have a preview on disk.
 struct ThumbBatch {

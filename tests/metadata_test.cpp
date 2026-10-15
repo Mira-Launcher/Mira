@@ -1,4 +1,5 @@
 #include <doctest.h>
+#include <httplib.h>
 #include <stb_image.h>
 #include <stb_image_write.h>
 
@@ -16,6 +17,7 @@
 #include "metadata/MetadataFetcher.h"
 #include "model/Types.h"
 #include "store/MetadataStore.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -495,4 +497,95 @@ TEST_CASE("PruneOrphanArt removes old art folders with no cached record and keep
   CHECK_FALSE(fs::exists(orphan));
   CHECK(fs::exists(fresh));
   CHECK(fs::exists(kept));
+}
+
+TEST_CASE("A removed cover leaves the placeholder and stays removed through a refresh") {
+  const fs::path dir = TempDir("metadata-remove");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+  test::Isolate(config);  // keeps Fetch offline
+
+  const fs::path image = dir / "picked.png";
+  std::ofstream(image, std::ios::binary) << "\x89PNG picked";
+  REQUIRE(cache
+              .Write("celeste",
+                     nlohmann::json{
+                         {"art_candidates",
+                          {{"cover", nlohmann::json::array(
+                                         {{{"id", 5}, {"url", "file://" + image.string()}}})}}},
+                     })
+              .has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
+  REQUIRE(cache.ArtFor("celeste", "cover").has_value());
+  CHECK_FALSE(metadata::RemoveArtwork(config, cache, "celeste", "banner").has_value());
+
+  REQUIRE(metadata::RemoveArtwork(config, cache, "celeste", "cover").has_value());
+  CHECK_FALSE(cache.ArtFor("celeste", "cover").has_value());
+  CHECK_FALSE(cache.ArtVersions("celeste").contains("cover"));
+  // A store title without a cover would be fetched again; one removed by hand isn't.
+  REQUIRE(config.Set("metadata.title_details", false).has_value());
+  CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "celeste"));
+
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(metadata::Fetch(config, cache, game).has_value());
+  CHECK_FALSE(cache.ArtFor("celeste", "cover").has_value());
+  CHECK(cache.Read("celeste")["artwork"].value("source", std::string()) == "none");
+}
+
+TEST_CASE("A store title that isn't installed has its art chosen like a game's") {
+  test::LiveServer server(TempDir("metadata-title-art"));
+  store::MetadataStore& cache = server.games().Metadata();
+  REQUIRE(cache.WriteCatalog("gog", {{.ref = "7", .title = "Hollow Knight"}}).has_value());
+  const fs::path image = TempDir("metadata-title-art-files") / "pick.png";
+  std::ofstream(image, std::ios::binary) << "\x89PNG pick";
+  REQUIRE(cache
+              .Write("gog-7",
+                     nlohmann::json{
+                         {"art_candidates",
+                          {{"cover", nlohmann::json::array({{{"id", 3},
+                                                             {"url", "file://" + image.string()},
+                                                             {"source", "steamgriddb"}},
+                                                            {{"id", -1},
+                                                             {"url", "https://example.invalid/c"},
+                                                             {"source", "gog_gamesdb"}}})}}}})
+              .has_value());
+  httplib::Client client = server.Client();
+
+  const auto metadata = client.Get("/v1/games/gog-7/metadata");
+  REQUIRE(metadata != nullptr);
+  CHECK(metadata->status == 200);
+  // Not in the store's list: no such title.
+  const auto unknown = client.Get("/v1/games/gog-8/metadata");
+  REQUIRE(unknown != nullptr);
+  CHECK(unknown->status == 404);
+
+  const nlohmann::json picked = test::AwaitJob(
+      client, client.Post("/v1/games/gog-7/artwork?type=cover",
+                          nlohmann::json{{"candidate_id", 3}}.dump(), "application/json"));
+  CHECK(picked.value("state", std::string()) == "finished");
+  CHECK(cache.ArtFor("gog-7", "cover").has_value());
+  CHECK(test::WaitForEvent(server.events(), "game.artwork_selected").has_value());
+
+  const nlohmann::json removed =
+      test::AwaitJob(client, client.Delete("/v1/games/gog-7/artwork?type=cover"));
+  CHECK(removed.value("state", std::string()) == "finished");
+  CHECK_FALSE(cache.ArtFor("gog-7", "cover").has_value());
+  const auto served = client.Get("/v1/library/artwork?source=gog&ref=7");
+  REQUIRE(served != nullptr);
+  CHECK(served->status == 404);
+
+  // Another SteamGridDB match keeps the store's own art to pick from, and drops SteamGridDB's.
+  const auto matched =
+      client.Post("/v1/games/gog-7/metadata/match", nlohmann::json{{"steamgriddb_id", 42}}.dump(),
+                  "application/json");
+  REQUIRE(matched != nullptr);
+  CHECK(matched->status == 200);
+  const nlohmann::json info = cache.Read("gog-7");
+  CHECK(info.value("steamgriddb_id", 0) == 42);
+  REQUIRE(info["art_candidates"]["cover"].size() == 1);
+  CHECK(info["art_candidates"]["cover"][0].value("id", 0) == -1);
 }

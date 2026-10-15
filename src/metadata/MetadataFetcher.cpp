@@ -1158,6 +1158,12 @@ std::filesystem::path ArtworkDir(const config::Config& config, const std::string
   return config.File().parent_path() / "artwork" / game_id;
 }
 
+// A cover the user picked, uploaded or removed (RemoveArtwork leaves no file).
+bool CoverPicked(const json& info) {
+  return info.contains("artwork") && info["artwork"].is_object() &&
+         Value(info["artwork"], "chosen", false);
+}
+
 // Slots the user picked by hand carry over; FetchArtworkInto then leaves them be.
 void CarryChosenSlots(const json& old, json& info) {
   for (const auto& [key, value] : old.items()) {
@@ -1259,7 +1265,8 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
   }
 
   const std::string api_key = config.GetString("steamgriddb.api_key");
-  if (!cache.ArtFor(game.id, "cover")) {
+  const bool picked = CoverPicked(cached);
+  if (!picked && !cache.ArtFor(game.id, "cover")) {
     if (!FetchStoreCover(config, game, info, steam_item) && !api_key.empty()) {
       const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
       if (const std::int64_t griddb_id = FindGriddbId(auth_header, game.name); griddb_id != 0) {
@@ -1287,7 +1294,7 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
     }
     if (auto written = cache.Write(game.id, merged); !written) return written;
   }
-  if (!cache.ArtFor(game.id, "cover")) {
+  if (!picked && !cache.ArtFor(game.id, "cover")) {
     if (api_key.empty())
       return NoGriddbKey("no cover found for this game without a SteamGridDB API key");
     return Err("no_artwork", "no cover found for \"" + game.name + "\"");
@@ -1347,7 +1354,7 @@ Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& 
 
 bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache,
                      const std::string& id) {
-  if (!cache.ArtVersions(id).contains("cover")) return true;
+  if (!cache.ArtVersions(id).contains("cover") && !CoverPicked(cache.Read(id))) return true;
   return config.GetBool("metadata.title_details") &&
          !DetailsFresh(config, cache.Read(id), /*title=*/true);
 }
@@ -1548,8 +1555,50 @@ Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& c
   return cache.Write(game_id, info);
 }
 
+Result<void> RemoveArtwork(const config::Config& config, store::MetadataStore& cache,
+                           const std::string& game_id, const std::string& slot) {
+  if (slot != "cover" && slot != "hero" && slot != "logo" && slot != "icon") {
+    return Err("invalid_type", "unknown art slot");
+  }
+  const std::lock_guard pick_lock(PickMutex());
+  const std::lock_guard lock(MetadataFileMutex());
+  json info = cache.Read(game_id);
+  info[slot == "cover" ? "artwork" : slot] = {{"source", "none"}, {"chosen", true}};
+  if (auto written = cache.Write(game_id, info); !written) return written;
+  // The slot's own picks and uploads; the automatic image stays for SteamGridDB's candidates.
+  std::error_code ec;
+  for (const fs::path& file : paths::ListDir(ArtworkDir(config, game_id))) {
+    if (file.filename().string().starts_with(slot + ".chosen")) fs::remove(file, ec);
+  }
+  return {};
+}
+
+Result<void> MatchTitle(store::MetadataStore& cache, const std::string& id,
+                        std::int64_t griddb_id) {
+  const std::lock_guard lock(MetadataFileMutex());
+  json info = cache.Read(id);
+  if (griddb_id == 0) {
+    info.erase("steamgriddb_id");
+  } else {
+    info["steamgriddb_id"] = griddb_id;
+  }
+  if (info.contains("art_candidates") && info["art_candidates"].is_object()) {
+    for (auto& [slot, list] : info["art_candidates"].items()) {
+      if (!list.is_array()) continue;
+      json kept = json::array();
+      for (const json& candidate : list) {
+        if (Value(candidate, "source", std::string("steamgriddb")) != "steamgriddb")
+          kept.push_back(candidate);
+      }
+      list = std::move(kept);
+    }
+  }
+  return cache.Write(id, info);
+}
+
 Result<json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache,
-                                const std::string& game_id, const std::string& slot, int page) {
+                                const std::string& game_id, const std::string& slot, int page,
+                                const std::string& name) {
   const std::string_view endpoint = slot == "cover"  ? "grids"
                                     : slot == "hero" ? "heroes"
                                     : slot == "logo" ? "logos"
@@ -1559,11 +1608,22 @@ Result<json> FetchCandidatePage(const config::Config& config, store::MetadataSto
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (api_key.empty()) return NoGriddbKey("browsing SteamGridDB's art needs an API key");
 
-  const std::int64_t griddb_id = Value(cache.Read(game_id), "steamgriddb_id", std::int64_t{0});
+  const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
+  std::int64_t griddb_id = Value(cache.Read(game_id), "steamgriddb_id", std::int64_t{0});
+  if (griddb_id == 0 && !name.empty()) {
+    griddb_id = FindGriddbId(auth_header, name);
+    if (griddb_id != 0) {
+      const std::lock_guard lock(MetadataFileMutex());
+      if (cache.Has(game_id)) {
+        json info = cache.Read(game_id);
+        info["steamgriddb_id"] = griddb_id;
+        [[maybe_unused]] auto written = cache.Write(game_id, info);
+      }
+    }
+  }
   if (griddb_id == 0) return Err("no_steamgriddb_match", "this game has no SteamGridDB match yet");
 
-  const json response = FetchGriddbPage(config, std::format("Authorization: Bearer {}", api_key),
-                                        endpoint, griddb_id, page);
+  const json response = FetchGriddbPage(config, auth_header, endpoint, griddb_id, page);
   if (response.is_discarded() || !Value(response, "success", false)) {
     return Err("steamgriddb_unreachable", "couldn't reach SteamGridDB",
                "Check the internet connection. SteamGridDB also limits requests, so waiting a "

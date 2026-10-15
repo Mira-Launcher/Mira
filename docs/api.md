@@ -674,6 +674,8 @@ Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover withi
 
 New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 
+The routes below that take a game's `{id}` (metadata, artwork, candidates, thumbs, matches and match) also take a store title that isn't installed, by the id it gets once installed (`<source>-<ref>`), as long as that source's stored list (`GET /v1/library`) has it; `404 game_not_found` otherwise. A title's art is picked, uploaded and removed like a game's. With no SteamGridDB match recorded yet (its cover came from its store), its candidates are looked up by its title.
+
 ### `GET /v1/games/{id}/metadata`
 The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. A refetch keeps the art SteamGridDB's top result gave a slot while the match (`steamgriddb_id`) stays the same, since that order changes as art is added and voted on. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
 
@@ -685,6 +687,9 @@ Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a 
 
 ### `PUT /v1/games/{id}/artwork?type=`
 The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
+
+### `DELETE /v1/games/{id}/artwork?type=`
+Leaves the slot with no image, so clients draw their placeholder: the slot becomes `{"source": "none", "chosen": true}` with no file and is kept through refreshes like a pick, and a store title without a cover isn't fetched again for it. Picking or uploading again replaces it. A job (kind `artwork`) with the same events as picking a candidate.
 
 ### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
 Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.
@@ -711,7 +716,7 @@ SteamGridDB's matches for the name (or `q`): `{query, chosen, matches: [{id, nam
 Moves to the next SteamGridDB match, saves it as `metadata.steamgriddb_id` and fetches again. `202 {status, match}`, or `409 no_more_matches`.
 
 ### `POST /v1/games/{id}/metadata/match`
-Body `{"steamgriddb_id": N}`. Uses that SteamGridDB game from now on; `0` goes back to the top match.
+Body `{"steamgriddb_id": N}`. Uses that SteamGridDB game from now on; `0` goes back to the top match. A game is fetched again (`202`). A store title has no overrides, so its record keeps the match as `steamgriddb_id`; its SteamGridDB candidates are dropped, its current art stays, and `game.metadata_ready` follows at once (`200 {status: "matched"}`).
 
 ### `POST /v1/games/metadata/refresh`
 Body `{"ids": [...]}`. Fetches each of these games again, like `POST /v1/games/{id}/metadata/refresh` without `announce`. Unknown ids are skipped. A job (see [Jobs](#jobs)) of kind `metadata`: `job.progress` counts games as their fetches end, and the result is `{"refreshed", "failed"}`. Each game still sends its own `game.metadata_ready`/`metadata_failed`.
