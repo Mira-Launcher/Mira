@@ -111,8 +111,12 @@ Result<fs::path> ImportInto(const config::Config& config, const fs::path& droppe
 
   const std::vector<fs::path> roots = config.GetPathArray("library_roots");
   const bool apps = kind == ImportKind::kApp;
-  const auto root =
-      std::ranges::find_if(roots, [&](const fs::path& r) { return IsApplicationsRoot(r) == apps; });
+  const auto fits = [&](const fs::path& r) { return IsApplicationsRoot(r) == apps; };
+  // Dropped into a Mira folder: that folder's own Games or Applications.
+  auto root = std::ranges::find_if(roots, [&](const fs::path& r) {
+    return fits(r) && (r.has_filename() ? r : r.parent_path()).parent_path() == path.parent_path();
+  });
+  if (root == roots.end()) root = std::ranges::find_if(roots, fits);
   if (root == roots.end()) {
     return Err("no_library_root", apps ? "No Applications folder in library_roots"
                                        : "No games folder in library_roots");

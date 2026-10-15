@@ -260,6 +260,15 @@ The unclear moves scans found: `{"moves": [{"folder", "games": [{"id", "name"}]}
 ### `POST /v1/library/unclear`
 Body `{"folder": "...", "id"?: "..."}`. Settles an unclear move: with `id` (one of its games) the folder becomes that game's, with its tags following the new place; without, it's added as a new game. The library folders of the other games it could have been are scanned again before it returns, so each is marked missing or followed to where it went. Returns the game; publishes `library.move_settled {folder}`, which is also published when an unclear folder disappears on its own. `404 move_not_found` for a folder that isn't one.
 
+### Mira folders and drops
+`mira_folders` lists the Mira folders, `~/Mira` by default, one per disk; each holds the usual Games, Applications and other folders, and adding one is a PATCH of `mira_folders` with its Games and Applications in `library_roots`. The watcher watches the top of each Mira folder. Something new there (a file or folder other than the folders settings name or hold, Games and the rest, or a dot-name) is sorted once its size settles: an archive is extracted beside it (with `scan.auto_extract_archives`) and the result sorted; a program, or a folder holding one, goes into that Mira folder's Games or Applications by the same guess as `/v1/library/import/classify`; anything else that one added emulator runs goes to it (moved). When the guess is unknown, or more than one emulator runs it, Mira publishes `library.drop_unclear {path, name, reason, choices: [{id, label}]}` (a choice's `id` is `game`, `app` or an emulator's id) and leaves it where it is. Anything else stays where it is. What's there when mirad starts is sorted the same way.
+
+### `GET /v1/library/drops`
+`{"drops": [{path, name, reason, choices}]}`: the unclear drops waiting for an answer.
+
+### `POST /v1/library/drops`
+Body `{"path": "...", "choice": "..."}`. Moves an unclear drop where `choice` (one of its choices) says, as a [job](#jobs) of kind `sort_drop`, and publishes `library.drop_settled {path}`, which is also published when it disappears on its own. The job fails with `drop_not_found`, `invalid_choice`, or the error of the import or emulator add.
+
 ### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office][&fresh=1]`
 What each account owns, whether or not it's installed:
 

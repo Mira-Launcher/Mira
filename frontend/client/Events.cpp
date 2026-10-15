@@ -74,6 +74,19 @@ std::string ParseSettledFolder(const std::string& data) {
   return entry.value("folder", std::string());
 }
 
+bool ParseUnclearDrop(const std::string& data, UnclearDrop* out) {
+  const json entry = json::parse(data, nullptr, false);
+  if (entry.is_discarded() || !entry.is_object()) return false;
+  *out = mapping::ToUnclearDrop(entry);
+  return !out->path.empty() && !out->choices.empty();
+}
+
+std::string ParseSettledDropPath(const std::string& data) {
+  const json entry = json::parse(data, nullptr, false);
+  if (entry.is_discarded() || !entry.is_object()) return {};
+  return entry.value("path", std::string());
+}
+
 std::string ParseRemovedId(const std::string& data) {
   const json entry = json::parse(data, nullptr, false);
   if (entry.is_discarded() || !entry.is_object()) return {};

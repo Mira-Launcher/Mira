@@ -216,7 +216,8 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
   SyncDesktopEntries();
   // Sorting folders are watched like the roots, and games move to match the new folders.
   if (std::ranges::any_of(keys, [](const std::string& key) {
-        return key == "library_roots" || key == "tags.folders" || key == "tags.sorted_roots";
+        return key == "library_roots" || key == "mira_folders" || key == "tags.folders" ||
+               key == "tags.sorted_roots";
       })) {
     SortingChanged();
   }

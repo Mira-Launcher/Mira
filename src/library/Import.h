@@ -22,8 +22,8 @@ struct ImportGuess {
 // What a dropped file or folder is. May run an AppImage's own extractor and ask Steam's store.
 ImportGuess ClassifyImport(const std::filesystem::path& path);
 
-// Moves `path` into the Applications root (kApp) or the first other library root (kGame). Returns
-// the new path.
+// Moves `path` into the Applications root (kApp) or the first other library root (kGame), the one
+// beside it when it's in a Mira folder. Returns the new path.
 Result<std::filesystem::path> ImportInto(const config::Config& config,
                                          const std::filesystem::path& path, ImportKind kind);
 

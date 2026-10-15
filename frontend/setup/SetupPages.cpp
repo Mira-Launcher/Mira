@@ -406,6 +406,7 @@ void WelcomePage::ChooseFolder(const QString& folder) {
     if (dir.exists() && !dir.isEmpty() && !roots.contains(old)) roots << old;
   }
   const std::vector<ConfigEdit> edits = {
+      {"mira_folders", "an array of strings", Json(QStringList{folder}).toStdString()},
       {"library_roots", "an array of strings", Json(roots).toStdString()},
       {"prefix_root", "a string", (folder + "/prefixes").toStdString()},
       {"epic.install_root", "a string", (folder + "/Epic Games").toStdString()},

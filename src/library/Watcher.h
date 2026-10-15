@@ -9,6 +9,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
+#include "library/Drops.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
 #include "store/GameStore.h"
@@ -56,6 +57,8 @@ class Watcher {
   void UseInstallLane(Lane& lane) { installs_ = &lane; }
   // Where its scans keep the unclear moves they find. Before Run().
   void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
+  // What sorts things dropped into a Mira folder. Before Run(); without it they're left be.
+  void UseDrops(Drops& drops) { drops_ = &drops; }
 
  private:
   struct Pending {
@@ -64,16 +67,20 @@ class Watcher {
     std::int64_t stable_since_ms = 0;
     bool is_archive = false;  // extract-and-remove on settle, instead of scanning it as a folder
     std::string emulator;     // in this emulator's games folder: imported into it on settle
+    bool drop = false;        // dropped into a Mira folder: sorted on settle
   };
 
   void HandleInotify();
   void HandleDebounceTick();
   void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path,
-                     bool is_archive, const std::string& emulator = {});
+                     bool is_archive, const std::string& emulator = {}, bool drop = false);
+  // A new entry at the top of a Mira folder: checked for sorting once it settles.
+  void ScheduleDrop(const std::filesystem::path& folder, const std::filesystem::path& path);
   // Imports into each emulator and fetches art for what it added.
   void ImportRoms(const std::set<std::string>& emulators);
   void RearmTimer();
-  // Drops every root watch and adds library_roots and each added emulator's games folder afresh.
+  // Drops every root watch and adds library_roots, each added emulator's games folder and each
+  // Mira folder afresh.
   // Run()'s thread only.
   void WatchRoots();
   // Watches `dir` for changes in `root`, and the sorting folders inside it (FolderTags.h).
@@ -90,6 +97,7 @@ class Watcher {
   metadata::FetchQueue* metadata_fetches_ = &own_fetches_;
   Lane* installs_ = nullptr;
   UnclearMoves* unclear_moves_ = nullptr;
+  Drops* drops_ = nullptr;
 
   int inotify_fd_ = -1;
   int epoll_fd_ = -1;
@@ -103,6 +111,7 @@ class Watcher {
     std::filesystem::path root;
     std::filesystem::path dir;  // the root, or a sorting folder in it
     std::string emulator = {};  // an emulator's games folder, not a library root
+    bool mira_folder = false;   // a Mira folder's top, whose new entries are sorted
   };
   std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
   std::atomic<int> roots_watched_{0};

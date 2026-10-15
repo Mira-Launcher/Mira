@@ -33,6 +33,8 @@ GameLaunch ToGameLaunch(const nlohmann::json& entry);  // from a game record's `
 nlohmann::json ToJson(const GameLaunch& launch);
 // One of GET /v1/library/unclear's moves, or a library.move_unclear event's payload.
 UnclearMove ToUnclearMove(const nlohmann::json& entry);
+// One of GET /v1/library/drops' drops, or a library.drop_unclear event's payload.
+UnclearDrop ToUnclearDrop(const nlohmann::json& entry);
 // A record's or art event's `art`; unset when it has none.
 std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);

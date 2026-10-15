@@ -73,6 +73,13 @@ void ListUnclearMovesAsync(QObject* context, std::function<void(UnclearMovesResu
 void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const std::string& id,
                             std::function<void(SettleMoveResult)> callback);
 
+// GET /v1/library/drops: things dropped into a folder that Mira couldn't sort.
+void ListUnclearDropsAsync(QObject* context, std::function<void(UnclearDropsResult)> callback);
+
+// POST /v1/library/drops: sorts the dropped `path` by the chosen `choice` id, as a job.
+void SortDropAsync(QObject* context, const std::string& path, const std::string& choice,
+                   std::function<void(ImportPathResult)> callback);
+
 // What a dropped path is: kind "game", "app" or "unknown".
 void ClassifyImportAsync(QObject* context, const std::string& path,
                          std::function<void(ImportGuessResult)> callback);

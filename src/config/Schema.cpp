@@ -191,6 +191,16 @@ Schema::Schema() {
   // --- Library ---------------------------------------------------------------
   s.Section("Library", "Folders");
 
+  s.Add({.key = "mira_folders",
+         .label = "Mira folders",
+         .type = Type::StringArray,
+         .default_value = json::array({"~/Mira"}),
+         .doc =
+             "Folders holding Mira's Games, Applications and other folders, one per disk. A game, "
+             "app, ROM or archive dropped straight into one is sorted into place, and Mira asks "
+             "when it can't tell where it goes.",
+         .path = PathKind::Folder});
+
   s.Add({.key = "library_roots",
          .label = "Library folders",
          .type = Type::StringArray,

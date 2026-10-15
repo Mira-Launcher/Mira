@@ -147,6 +147,10 @@ std::vector<std::filesystem::path> GameFiles(const config::Config& config, const
 // Whether games added to it are moved rather than copied: emulators.<id>.add_mode, else
 // emulators.move_added.
 bool MovesAdded(const config::Config& config, const Emulator& emulator);
+// Whether AddFiles would take `path`: a file it runs, or a folder holding its game.
+bool Takes(const Emulator& emulator, const std::filesystem::path& path);
+// What AddFiles moves for `path`: the path itself, or the folder of a homebrew's EBOOT.PBP.
+std::filesystem::path AddedSource(const Emulator& emulator, const std::filesystem::path& path);
 // Copies (or moves) `files` into the emulator's folder with the files they name, then imports it.
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games,
                                         api::EventBus& events, const Emulator& emulator,
