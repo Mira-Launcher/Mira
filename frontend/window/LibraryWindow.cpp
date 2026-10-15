@@ -39,6 +39,7 @@
 #include "../activity/DownloadsPanel.h"
 #include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
+#include "../app/Display.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
 #include "../app/Tray.h"
@@ -2249,6 +2250,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
 }
 
 void LibraryWindow::OpenBigScreen() {
+  if (mira_gui::display::RestartFor(/*big_screen=*/true)) return;
   if (big_screen_ == nullptr) {
     // A child, so it never outlives the library state it reads.
     big_screen_ = new mira_gui::bigscreen::BigScreenWindow(services(), this);
@@ -2256,6 +2258,7 @@ void LibraryWindow::OpenBigScreen() {
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::RefreshRequested, this,
             &LibraryWindow::RefreshLibrary);
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::Closed, this, [this] {
+      if (mira_gui::display::RestartFor(/*big_screen=*/false)) return;
       show();
       raise();
       activateWindow();

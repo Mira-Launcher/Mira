@@ -1,8 +1,13 @@
 #include "DaemonSupervisor.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QThread>
 #include <QTimer>
+#include <csignal>
+#include <utility>
 
 #include "../client/api/Config.h"
 
@@ -10,7 +15,8 @@ namespace mira_gui {
 
 namespace {
 constexpr int kPollIntervalMs = 150;
-constexpr int kPollAttempts = 30;  // ~4.5s total
+constexpr int kPollAttempts = 30;                            // ~4.5s total
+constexpr const char* kHandOffVariable = "MIRA_DAEMON_PID";  // set by display::Restart
 }  // namespace
 
 QString ResolveMiradPath(const QString& own_binary_dir) {
@@ -29,6 +35,11 @@ DaemonSupervisor::~DaemonSupervisor() {
 void DaemonSupervisor::EnsureRunning() {
   api::CheckHealthAsync(this, [this](HealthStatus status) {
     if (status.reachable) {
+      // Handed over by the frontend this one replaced.
+      if (const qint64 pid = qEnvironmentVariable(kHandOffVariable).toLongLong(); pid > 0) {
+        pid_ = pid;
+        qunsetenv(kHandOffVariable);
+      }
       if (status.api != kExpectedApiVersion) {
         emit Outdated(status.api);
         return;
@@ -38,25 +49,18 @@ void DaemonSupervisor::EnsureRunning() {
     }
 
     const QString mirad_path = ResolveMiradPath(QCoreApplication::applicationDirPath());
-    if (process_ != nullptr) process_->deleteLater();  // a previous mirad that has since died
-    process_ = new QProcess(this);
-    // The process that has output, not process_: a restarted mirad replaces it while an old one may
-    // still speak.
-    connect(process_, &QProcess::readyReadStandardError, process_, [process = process_] {
-      qWarning("mirad: %s", process->readAllStandardError().constData());
-    });
+    // Detached, so a restart of this frontend (display::Restart) can hand it to the next one.
     // The socket this frontend talks to: mirad ignores $MIRA_SOCKET, which can move it.
-    connect(process_, &QProcess::started, this, [this] {
-      self_started_ = true;
-      PollHealth(kPollAttempts);
-    });
-    connect(
-        process_, &QProcess::errorOccurred, this,
-        [this, mirad_path, process = process_](QProcess::ProcessError error) {
-          if (error != QProcess::FailedToStart) return;
-          emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process->errorString()));
-        });
-    process_->start(mirad_path, {"--socket", QString::fromStdString(api::ResolveSocketPath())});
+    QProcess process;
+    process.setProgram(mirad_path);
+    process.setArguments({"--socket", QString::fromStdString(api::ResolveSocketPath())});
+    qint64 pid = 0;
+    if (!process.startDetached(&pid)) {
+      emit Failed(QString("could not start %1 (%2)").arg(mirad_path, process.errorString()));
+      return;
+    }
+    pid_ = pid;
+    PollHealth(kPollAttempts);
   });
 }
 
@@ -75,11 +79,20 @@ void DaemonSupervisor::PollHealth(int attempts_left) {
   });
 }
 
+void DaemonSupervisor::HandOff() {
+  pid_ = 0;
+}
+
 void DaemonSupervisor::StopIfSelfStarted() {
-  if (!self_started_ || !process_) return;
-  self_started_ = false;
-  process_->terminate();
-  if (!process_->waitForFinished(2000)) process_->kill();
+  const qint64 pid = std::exchange(pid_, 0);
+  // Nothing watches a detached mirad, so its pid may have gone to another process since.
+  const auto running = [pid] {
+    QFile comm(QString("/proc/%1/comm").arg(pid));
+    return comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "mirad";
+  };
+  if (pid <= 0 || !running() || ::kill(pid_t(pid), SIGTERM) != 0) return;
+  for (int i = 0; i < 20 && running(); ++i) QThread::msleep(100);
+  if (running()) ::kill(pid_t(pid), SIGKILL);
 }
 
 }  // namespace mira_gui

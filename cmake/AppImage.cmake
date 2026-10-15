@@ -105,12 +105,7 @@ fi
   file(CHMOD "${MIRA_QMAKE_WRAPPER}" PERMISSIONS
        OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 
-  # linuxdeploy-plugin-qt only ever bundles the xcb platform plugin, not
-  # wayland (confirmed by reading its deploy log; no patchelf here to fix
-  # up a manually-added Wayland plugin's rpath either). mira-gui runs fine
-  # through XWayland, so this makes that the deliberate, quiet default
-  # instead of a logged "Could not find the Qt platform plugin wayland".
-  # Overridable by anyone who sets QT_QPA_PLATFORM themselves.
+  # The platform (Wayland or X11) is mira-gui's own choice (frontend/app/Display.cpp).
   #
   # Written before linuxdeploy runs: it only generates its own AppRun when
   # none exists yet.
@@ -144,7 +139,6 @@ fi
   file(WRITE "${MIRA_APPRUN}" "\
 #!/bin/sh
 HERE=\"$(dirname \"$(readlink -f \"$0\")\")\"
-export QT_QPA_PLATFORM=\"\${QT_QPA_PLATFORM:-xcb}\"
 if [ \"\$1\" = setup ]; then exec \"\$HERE/usr/bin/mira\" \"$@\"; fi
 exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
 ")
@@ -187,6 +181,10 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
     COMMAND "${CMAKE_COMMAND}" -E copy
             "${MIRA_QT_FILTERED_PLUGINS_DIR}/platformthemes/libqgtk3.so"
             "${MIRA_APPDIR}/usr/plugins/platformthemes/libqgtk3.so"
+    # Wayland's EGL client, for OpenGL and video under Wayland; the Qt plugin skips it.
+    COMMAND "${CMAKE_COMMAND}" -E copy
+            "${MIRA_QT_FILTERED_PLUGINS_DIR}/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
+            "${MIRA_APPDIR}/usr/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
     # NO_STRIP: linuxdeploy bundles its own `strip`, which on at least one
     # real machine (very new binutils/ld defaults, e.g. RELR relative
     # relocations) can't parse some system libraries it's asked to strip
@@ -198,7 +196,11 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
             "QMAKE=${MIRA_QMAKE_WRAPPER}"
             "LINUXDEPLOY_PLUGIN_QT=${MIRA_LINUXDEPLOY_QT}"
             "NO_STRIP=1"
+            # Next to xcb, which it always bundles; brings the wayland-* plugin folders too.
+            "EXTRA_PLATFORM_PLUGINS=libqwayland.so"
             "LINUXDEPLOY_EXCLUDED_LIBRARIES=${MIRA_EXCLUDED_LIBRARIES}"
+            # So --deploy-deps-only finds Qt's libraries, which only the Qt plugin knows of.
+            "LD_LIBRARY_PATH=${MIRA_QT_LIBS_DIR}"
             "${MIRA_LINUXDEPLOY}"
               --appdir "${MIRA_APPDIR}"
               --executable "${MIRA_APPDIR}/usr/bin/mirad"
@@ -207,6 +209,7 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
               --executable "${MIRA_APPDIR}/usr/bin/mira-gui"
               --desktop-file "${MIRA_APPDIR}/usr/share/applications/mira.desktop"
               --icon-file "${MIRA_APPDIR}/usr/share/icons/hicolor/256x256/apps/mira.png"
+              --deploy-deps-only "${MIRA_APPDIR}/usr/plugins/wayland-graphics-integration-client"
               ${MIRA_BUNDLED_RUNTIME_ARGS}
               --plugin qt
               --output appimage
