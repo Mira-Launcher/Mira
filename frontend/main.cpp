@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <algorithm>
 #include <string_view>
+#include <vector>
 
 #include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
@@ -33,7 +34,10 @@ int main(int argc, char** argv) {
   mallopt(M_ARENA_MAX, 1);
   mira_gui::display::Prepare(std::find(argv, argv + argc, std::string_view("--big-screen")) !=
                              argv + argc);
+  // QApplication takes out the arguments it handles.
+  std::vector<char*> arguments(argv, argv + argc + 1);
   QApplication app(argc, argv);
+  mira_gui::display::FixX11Scale(arguments.data());
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
   mira_gui::theme::EnlargeAppFont();

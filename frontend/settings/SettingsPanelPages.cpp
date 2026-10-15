@@ -206,11 +206,18 @@ void SettingsPanel::AddDisplayRows(SettingsCard* card) {
 
   SettingRow* server = add_combo(
       "Display server",
-      "Wayland keeps Mira sharp on every screen when they use different scales. Auto uses X11 "
-      "for now. Big screen always uses X11.",
+      "Wayland keeps Mira sharp on every screen when they use different scales. Big screen "
+      "always uses X11.",
       "wayland x11 xwayland xcb blurry sharp platform",
-      {{"Auto", "auto"}, {"Wayland", "wayland"}, {"X11", "x11"}}, display::Server(), "auto",
+      {{QString("Same as desktop (%1)")
+            .arg(display::SystemServer() == "wayland" ? "Wayland" : "X11"),
+        "desktop"},
+       {"Wayland", "wayland"},
+       {"X11", "x11"}},
+      display::Server(), "desktop",
       [](const QVariant& value) { display::SetServer(value.toString()); });
+  // Wayland needs a Wayland session.
+  server->setEnabled(display::SystemServer() == "wayland");
   if (const QString hint = display::StretchHint(); !hint.isEmpty()) {
     auto* label = new QLabel(hint, server);
     label->setWordWrap(true);

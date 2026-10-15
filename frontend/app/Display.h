@@ -12,7 +12,9 @@ class QLockFile;
 // which only mirad can read.
 namespace mira_gui::display {
 
-// "auto", "wayland" or "x11". Auto is X11 for now.
+// The desktop session's: "wayland" or "x11".
+QString SystemServer();
+// "desktop" (the session's), "wayland" or "x11".
 QString Server();
 void SetServer(const QString& server);
 // A factor on top of the desktop's own scale; 1 leaves it as is.
@@ -22,6 +24,9 @@ void SetScale(double scale);
 // Sets QT_QPA_PLATFORM and QT_SCALE_FACTOR before QApplication, unless the user set them.
 // Big screen runs on X11: its toast and keyboard are X11 windows that place themselves.
 void Prepare(bool big_screen);
+// On X11, starts this process over with QT_SCREEN_SCALE_FACTORS when a screen's scale is off,
+// for when the desktop gives X11 no scale or one for all screens. Call right after QApplication.
+void FixX11Scale(char** argv);
 
 // Restarting gives up the single-instance lock and activation socket, and hands over a mirad this
 // process started.
