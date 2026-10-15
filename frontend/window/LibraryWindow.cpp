@@ -193,8 +193,6 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   // Connected before the views are built, so it runs before they repaint.
   connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, this,
           [this] { artwork_->ThemeChanged(); });
-  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::AboutToRestyle, this,
-          &LibraryWindow::DropTagsPageUnseen);
 
   splitter_ = new QSplitter(Qt::Horizontal, this);
   sidebar_ = BuildSidebar(prefs);
@@ -726,7 +724,6 @@ bool LibraryWindow::TagsShown() const {
 }
 
 void LibraryWindow::BuildTagsPage() {
-  if (tags_page_ != nullptr) return;
   tags_page_ = new mira_gui::TagsPage(artwork_, this);
   tags_page_->SetGames(library_->Games());
   tags_page_->SetShowingHidden(library_->ShowingHidden());
@@ -740,36 +737,41 @@ void LibraryWindow::BuildTagsPage() {
   main_stack_->addWidget(tags_page_);
 }
 
-void LibraryWindow::DropTagsPageUnseen() {
-  if (tags_page_ == nullptr || TagsShown()) return;
-  main_stack_->removeWidget(tags_page_);
-  delete tags_page_;  // now, not deleteLater: it would still be there to polish
-  tags_page_ = nullptr;
-  QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
-}
-
 void LibraryWindow::OpenTags() {
   if (!LeaveOverlays()) return;
-  if (TagsShown()) {
+  if (TagsShown() || tags_page_ != nullptr) {  // shown, or loading to show
     UpdateLibraryNavActive();
     return;
   }
-  if (source_page_ != nullptr && !CloseSource([this] { OpenTags(); })) return;
-  CloseRunners();
-  CloseSourcesPage();
+  if (!ConfirmLeaveSource([this] { OpenTags(); })) return;
   BuildTagsPage();
-  main_stack_->setCurrentWidget(tags_page_);
-  mira_gui::FocusPage(tags_page_);
-  SetSourceControlsEnabled(false);
-  UpdateLibraryNavActive();
+  // Shown once loaded, where the page it replaces closes: before that its cards are empty.
+  connect(
+      tags_page_, &mira_gui::TagsPage::Ready, this,
+      [this] {
+        if (source_page_ != nullptr && !CloseSource([this] { OpenTags(); })) return CloseTags();
+        CloseRunners();
+        CloseSourcesPage();
+        main_stack_->setCurrentWidget(tags_page_);
+        mira_gui::FocusPage(tags_page_);
+        SetSourceControlsEnabled(false);
+        UpdateLibraryNavActive();
+      },
+      Qt::SingleShotConnection);
+  connect(tags_page_, &mira_gui::TagsPage::LoadFailed, this, &LibraryWindow::CloseTags);
 }
 
 void LibraryWindow::CloseTags() {
-  if (!TagsShown()) return;
-  // Kept for next time, back on its tags with nothing half asked.
-  tags_page_->Leave();
-  main_stack_->setCurrentWidget(grid_page_);
-  SetSourceControlsEnabled(true);
+  if (tags_page_ == nullptr) return;
+  const bool shown = TagsShown();
+  if (shown) {
+    tags_page_->Leave();
+    main_stack_->setCurrentWidget(grid_page_);
+  }
+  main_stack_->removeWidget(tags_page_);
+  tags_page_->deleteLater();
+  tags_page_ = nullptr;
+  if (shown) SetSourceControlsEnabled(true);
   UpdateLibraryNavActive();
 }
 
@@ -1175,8 +1177,6 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   // At once: mirad answers from its stored lists and re-checks the stores behind them, so the
   // sidebar's and the Not installed tab's counts show with the library.
   owned_titles_->RefreshIfStale();
-  // Built and listed ahead, so the Tags page opens at once; it follows the library from then on.
-  QTimer::singleShot(1500, this, &LibraryWindow::BuildTagsPage);
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
@@ -1986,6 +1986,7 @@ void LibraryWindow::RowClicked(const std::string& id) {
 
 void LibraryWindow::ShowLibrary() {
   if (settings_loading_) CloseSettings();
+  if (tags_page_ != nullptr && !TagsShown()) CloseTags();  // asked for, not shown yet
   if (SettingsOpen()) {
     RequestCloseSettings();
   } else if (GameEditOpen()) {

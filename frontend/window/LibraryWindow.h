@@ -227,12 +227,10 @@ class LibraryWindow : public QMainWindow {
   // The Runners page, in the grid's place like a source page.
   void OpenRunners();
   void CloseRunners();
-  // The Tags page is made ahead of its first open and kept, except through a restyle.
+  // The Tags page, built on each open off screen and shown once loaded, like Settings.
   void BuildTagsPage();
-  // A restyle polishes every widget, shown or not: the Tags page goes first unless it's showing,
-  // and is built again once the restyle has painted.
-  void DropTagsPageUnseen();
   void OpenTags();
+  // Deletes the page, shown or still loading.
   void CloseTags();
   void OpenAbout();
   void OpenGameDetailPage(const std::string& id);

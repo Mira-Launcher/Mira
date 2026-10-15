@@ -373,7 +373,6 @@ void Restyle() {
   if (g_hidden_mode) g_tokens.accent = g_tokens.accent_hidden;
 
   UseFusion();
-  emit Notifier::Instance() -> AboutToRestyle();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
   emit Notifier::Instance() -> Changed();
