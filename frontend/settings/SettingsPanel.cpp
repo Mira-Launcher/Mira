@@ -14,12 +14,15 @@
 #include <optional>
 #include <utility>
 
+#include "../app/Display.h"
 #include "../app/ErrorHelp.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
+#include "../bigscreen/Session.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
+#include "../client/api/Stores.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -223,6 +226,7 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
     const QString id = QString::fromStdString(source_id);
     const SourceInfo* source = FindSourceInfo(id);
     auto* card = new SettingsCard(source != nullptr ? source->name : id);
+    source_cards_[id] = card;
     page->AddWidget(card);
     if (source != nullptr) card->SetLeading(MakeSourceBadge(*source, 24, card));
     for (const size_t i : rows) {
@@ -230,6 +234,15 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
       AddSchemaRow(card, i);
     }
   }
+  // Sources not set up yet are added from the sidebar, so their cards stay hidden.
+  api::ListSourcesAsync(this, [this](SourcesResult result) {
+    if (!result.ok) return;
+    QSet<QString> added{"local"};
+    for (const SourceState& source : result.sources) {
+      if (source.added) added.insert(QString::fromStdString(source.id));
+    }
+    for (const auto& [id, card] : source_cards_) card->setVisible(added.contains(id));
+  });
 }
 
 SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
@@ -473,10 +486,15 @@ void SettingsPanel::Save() {
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
   if (prefs_to_save) {
-    api::SaveFrontendPrefsAsync(this, *prefs_to_save, [done](PatchConfigResult result) {
-      done(result.ok,
-           result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
-    });
+    const bool start_on_login = prefs_to_save->start_on_login.value_or(false);
+    api::SaveFrontendPrefsAsync(
+        this, *prefs_to_save, [this, done, start_on_login](PatchConfigResult result) {
+          if (result.ok && !bigscreen::ApplyStartOnLogin(start_on_login)) {
+            notify::Warn(this, "Could not change Mira's login entry in ~/.config/autostart.");
+          }
+          done(result.ok,
+               result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
+        });
   }
   if (!edits.empty()) {
     api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
@@ -494,6 +512,12 @@ void SettingsPanel::FinishSave(bool ok, const QString& error) {
   change_bar_->SetBusy(false);
   Refresh();
   emit SaveFinished(ok, error);
+  // Once everything is saved: display settings take a restart.
+  if (std::exchange(restart_prompt_, false) &&
+      notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens.",
+                      "Restart now")) {
+    display::Restart({});
+  }
 }
 
 }  // namespace mira_gui

@@ -1,6 +1,7 @@
 // SettingsPanel's own pages, the ones not built from mirad's schema:
 // Interface, Sidebar and Shortcuts, and the pref fields they register.
 #include <QButtonGroup>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -11,6 +12,7 @@
 #include <optional>
 #include <utility>
 
+#include "../app/Display.h"
 #include "../app/KeyBindings.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -159,6 +161,64 @@ QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& lab
   return spin;
 }
 
+// Both take a restart: Qt reads them before it opens a window.
+void SettingsPanel::AddDisplayRows(SettingsCard* card) {
+  const auto add_combo = [this, card](const QString& label, const QString& doc,
+                                      const QString& search,
+                                      const std::vector<std::pair<QString, QVariant>>& choices,
+                                      const QVariant& current, const QVariant& fallback,
+                                      std::function<void(const QVariant&)> store) {
+    auto* row = new SettingRow(label, doc);
+    auto* combo = new QComboBox(row);
+    for (const auto& [text, value] : choices) combo->addItem(text, value);
+    if (combo->findData(current) < 0) combo->addItem(current.toString(), current);  // hand-edited
+    combo->setCurrentIndex(combo->findData(current));
+    row->AddControl(combo);
+    card->AddRow(row);
+    nav_->RegisterRow(row, label + ' ' + search);
+    connect(combo, &QComboBox::currentIndexChanged, this, &SettingsPanel::Refresh);
+    auto saved = std::make_shared<QVariant>(combo->currentData());
+    AddPrefField({.row = row,
+                  .changed = [combo, saved] { return combo->currentData() != *saved; },
+                  .is_default = [combo, fallback] { return combo->currentData() == fallback; },
+                  .revert = [combo, saved] { combo->setCurrentIndex(combo->findData(*saved)); },
+                  .reset = [combo, fallback] { combo->setCurrentIndex(combo->findData(fallback)); },
+                  .mark_saved =
+                      [this, combo, saved, store] {
+                        if (combo->currentData() == *saved) return;
+                        *saved = combo->currentData();
+                        store(*saved);
+                        restart_prompt_ = true;
+                      }});
+    return row;
+  };
+
+  std::vector<std::pair<QString, QVariant>> sizes;
+  for (const double scale : {0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0}) {
+    sizes.emplace_back(
+        scale == 1.0 ? QString("100% (desktop's size)") : QString("%1%").arg(qRound(scale * 100)),
+        scale);
+  }
+  add_combo("Interface size",
+            "Makes everything in Mira larger or smaller than the desktop's own scale.",
+            "scale zoom dpi gui ui size 4k tv", sizes, display::Scale(), 1.0,
+            [](const QVariant& value) { display::SetScale(value.toDouble()); });
+
+  SettingRow* server = add_combo(
+      "Display server",
+      "Wayland keeps Mira sharp on every screen when they use different scales. Auto uses X11 "
+      "for now. Big screen always uses X11.",
+      "wayland x11 xwayland xcb blurry sharp platform",
+      {{"Auto", "auto"}, {"Wayland", "wayland"}, {"X11", "x11"}}, display::Server(), "auto",
+      [](const QVariant& value) { display::SetServer(value.toString()); });
+  if (const QString hint = display::StretchHint(); !hint.isEmpty()) {
+    auto* label = new QLabel(hint, server);
+    label->setWordWrap(true);
+    theme::SetStyleProperty(label, "role", "error");
+    server->SetBelow(label);
+  }
+}
+
 void SettingsPanel::BuildInterfacePage() {
   SettingsPage* page =
       nav_->AddCategory("Interface", CategoryGlyph("Interface"), CategoryNavGroup("Interface"));
@@ -197,7 +257,13 @@ void SettingsPanel::BuildInterfacePage() {
                 .reset = [this] { SelectTheme("auto"); },
                 .mark_saved = [this] { theme_saved_ = SelectedTheme(); }});
 
+  AddDisplayRows(appearance);
+
   SettingsCard* general = page->AddCard("General");
+  AddToggle(general, "Start Mira when you log in",
+            "Opens Mira in the tray when you log in, or in big screen if that's set to open at "
+            "start.",
+            "autostart login boot startup", &FrontendPrefs::start_on_login, false);
   AddToggle(general, "Scan the library on startup",
             "Scan the library each time Mira opens. The daemon already watches your folders while "
             "it runs, so "

@@ -137,16 +137,21 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   pinned_layout_->setSpacing(2);
   nav_layout->addLayout(pinned_layout_);
 
-  auto* sources_heading = new QWidget(nav_content);
-  auto* sources_heading_layout = new QHBoxLayout(sources_heading);
+  sources_heading_ = new QWidget(nav_content);
+  auto* sources_heading_layout = new QHBoxLayout(sources_heading_);
   sources_heading_layout->setContentsMargins(kHeadingMargins);
-  sources_heading_layout->addWidget(RowHeading(sources_heading, "SOURCES"), /*stretch=*/1);
-  manage_sources_button_ = new QToolButton(sources_heading);
+  sources_heading_layout->addWidget(RowHeading(sources_heading_, "SOURCES"), /*stretch=*/1);
+  manage_sources_button_ = new QToolButton(sources_heading_);
   manage_sources_button_->setAutoRaise(true);
   manage_sources_button_->setToolTip("Manage sources");
   connect(manage_sources_button_, &QToolButton::clicked, this, &Sidebar::ManageSourcesRequested);
   sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignVCenter);
-  nav_layout->addWidget(sources_heading);
+  nav_layout->addWidget(sources_heading_);
+  add_source_button_ = new QPushButton("Add source", nav_content);
+  add_source_button_->setObjectName("add_source");
+  add_source_button_->setFlat(true);
+  connect(add_source_button_, &QPushButton::clicked, this, &Sidebar::ManageSourcesRequested);
+  nav_layout->addWidget(add_source_button_);
 
   source_nav_layout_ = new QVBoxLayout();
   source_nav_layout_->setSpacing(4);
@@ -397,6 +402,7 @@ void Sidebar::ApplyIcons() {
   using icons::Glyph;
   const theme::Tokens& tokens = theme::Current();
   settings_button_->setIcon(icons::For(Glyph::Settings));
+  add_source_button_->setIcon(icons::For(Glyph::Plus));
   add_games_->setIcon(icons::For(Glyph::Plus, tokens.on_accent));
   fetch_art_button_->setIcon(icons::For(Glyph::Image));
   for (QToolButton* button : {manage_sources_button_, pinned_customize_, recent_customize_}) {
@@ -585,12 +591,18 @@ void Sidebar::UpdateSources() {
   constexpr size_t kCovers = 3;
   source_cover_ids_.clear();
 
+  // Until another source is added, the sidebar shows only Add source (once mirad has said so).
+  const bool sources_shown =
+      source_order_.empty() ||
+      std::ranges::any_of(added_sources_, [](const QString& id) { return id != "local"; });
+  sources_heading_->setVisible(sources_shown);
+  add_source_button_->setVisible(!sources_shown);
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
     const QString& id = sources[i].id;
     // Listed once set up; the Sources page adds the rest.
-    const bool listed =
-        (id == "local" || added_sources_.contains(id)) && !hidden_sources_.contains(id);
+    const bool listed = sources_shown && (id == "local" || added_sources_.contains(id)) &&
+                        !hidden_sources_.contains(id);
     if (!listed) {
       if (source_rows_[i].nav != nullptr) source_rows_[i].nav->hide();
       continue;
@@ -665,9 +677,10 @@ void Sidebar::UpdateSources() {
                                           : QString());
   }
   // isHidden, not isVisible: this also runs while the sidebar itself is off screen.
-  sources_empty_->setVisible(std::ranges::all_of(source_rows_, [](const SourceRow& row) {
-    return row.nav == nullptr || row.nav->isHidden();
-  }));
+  sources_empty_->setVisible(sources_shown &&
+                             std::ranges::all_of(source_rows_, [](const SourceRow& row) {
+                               return row.nav == nullptr || row.nav->isHidden();
+                             }));
   int row = 0;
   for (const QString& id : SourceOrder()) {
     for (int i = 0; i < static_cast<int>(sources.size()); ++i) {

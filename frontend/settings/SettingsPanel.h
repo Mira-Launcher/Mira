@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QWidget>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -147,6 +148,7 @@ class SettingsPanel : public QWidget {
   void Load();
   void LoadFrontendPrefs();
   void BuildInterfacePage();
+  void AddDisplayRows(SettingsCard* card);
   void BuildSidebarPage();
   void BuildShortcutsPage();
   void BuildSchemaPages();
@@ -216,6 +218,8 @@ class SettingsPanel : public QWidget {
   SidebarStyleChoices* sidebar_style_ = nullptr;
   SidebarStyleChoices::Choices sidebar_style_saved_;
   SettingsCard* sources_card_ = nullptr;
+  std::map<QString, SettingsCard*> source_cards_;  // by source id
+  bool restart_prompt_ = false;                    // a saved display setting takes a restart
 
   std::vector<ShortcutField> shortcuts_;
   std::vector<PrefField> pref_fields_;
