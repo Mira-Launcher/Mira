@@ -7,14 +7,13 @@
 #include <QLocale>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QUrl>
 #include <QStringList>
+#include <QUrl>
 #include <QVBoxLayout>
-
 #include <utility>
 
-#include "../client/api/Artwork.h"
 #include "../app/ErrorHelp.h"
+#include "../client/api/Artwork.h"
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 
@@ -32,15 +31,18 @@ QLabel* BodyLabel(QWidget* parent) {
   return label;
 }
 
-// A link to a store-provided URL, or nullptr when it isn't http(s), so a store can't hand us a file:// or
-// another scheme to open.
+// A link to a store-provided URL, or nullptr when it isn't http(s), so a store can't hand us a
+// file:// or another scheme to open.
 QLabel* LinkLabel(QWidget* parent, const std::string& url, const QString& text) {
   const QUrl parsed(QString::fromStdString(url));
-  if (!parsed.isValid() || (parsed.scheme() != "https" && parsed.scheme() != "http")) return nullptr;
+  if (!parsed.isValid() || (parsed.scheme() != "https" && parsed.scheme() != "http"))
+    return nullptr;
   auto* label = BodyLabel(parent);
   label->setTextFormat(Qt::RichText);
   label->setOpenExternalLinks(true);
-  label->setText(QString("<a href=\"%1\">%2</a>").arg(parsed.toString(QUrl::FullyEncoded).toHtmlEscaped(), text.toHtmlEscaped()));
+  label->setText(
+      QString("<a href=\"%1\">%2</a>")
+          .arg(parsed.toString(QUrl::FullyEncoded).toHtmlEscaped(), text.toHtmlEscaped()));
   return label;
 }
 
@@ -86,17 +88,18 @@ void GameDetailPageDialog::ShowEmpty(const QString& text) {
   connect(fetch, &QPushButton::clicked, this, [this, empty, label, fetch] {
     fetch->setEnabled(false);
     fetch->setText("Fetching…");
-    api::RefreshMetadataManyAsync(this, {game_id_}, [this, empty, label, fetch](MetadataBatchResult result) {
-      if (!result.ok) {
-        label->setText(error_help::Describe(result.error));
-        fetch->setEnabled(true);
-        fetch->setText("Fetch store info");
-        return;
-      }
-      fetched_ = true;
-      delete empty;
-      Load();
-    });
+    api::RefreshMetadataManyAsync(this, {game_id_},
+                                  [this, empty, label, fetch](MetadataBatchResult result) {
+                                    if (!result.ok) {
+                                      label->setText(error_help::Describe(result.error));
+                                      fetch->setEnabled(true);
+                                      fetch->setText("Fetch store info");
+                                      return;
+                                    }
+                                    fetched_ = true;
+                                    delete empty;
+                                    Load();
+                                  });
   });
 }
 
@@ -121,7 +124,8 @@ void GameDetailPageDialog::Load() {
         layout->insertWidget(0, error);
         return;
       }
-      ShowEmpty(fetched_ ? "No store info found for this game." : "No store info cached for this game yet.");
+      ShowEmpty(fetched_ ? "No store info found for this game."
+                         : "No store info cached for this game yet.");
       return;
     }
 
@@ -135,7 +139,8 @@ void GameDetailPageDialog::Load() {
 
     // The overview: whatever of it the source had.
     QStringList facts;
-    if (!metadata.release_date.empty()) facts << "Released " + QString::fromStdString(metadata.release_date);
+    if (!metadata.release_date.empty())
+      facts << "Released " + QString::fromStdString(metadata.release_date);
     if (!metadata.developers.empty()) facts << "By " + join(metadata.developers);
     if (!metadata.genres.empty()) facts << join(metadata.genres);
     if (!metadata.price.empty()) facts << QString::fromStdString(metadata.price);
@@ -145,13 +150,15 @@ void GameDetailPageDialog::Load() {
                      .arg(QString::fromStdString(metadata.review_summary))
                      .arg(QLocale().toString(metadata.review_total));
     }
-    if (metadata.metacritic_score > 0) ratings << QString("Metacritic: %1").arg(metadata.metacritic_score);
+    if (metadata.metacritic_score > 0)
+      ratings << QString("Metacritic: %1").arg(metadata.metacritic_score);
     if (!metadata.protondb_tier.empty()) {
       QString tier = QString::fromStdString(metadata.protondb_tier);
       tier[0] = tier[0].toUpper();
       ratings << "ProtonDB: " + tier;
     }
-    if (!metadata.description.empty() || !facts.isEmpty() || !ratings.isEmpty() || !metadata.website.empty()) {
+    if (!metadata.description.empty() || !facts.isEmpty() || !ratings.isEmpty() ||
+        !metadata.website.empty()) {
       layout->insertWidget(row++, SectionLabel("About", body));
       if (!facts.isEmpty()) {
         auto* facts_label = BodyLabel(body);
@@ -171,7 +178,8 @@ void GameDetailPageDialog::Load() {
         ratings_label->setText(ratings.join("\n"));
         layout->insertWidget(row++, ratings_label);
       }
-      if (auto* website = LinkLabel(body, metadata.website, QString::fromStdString(metadata.website))) {
+      if (auto* website =
+              LinkLabel(body, metadata.website, QString::fromStdString(metadata.website))) {
         layout->insertWidget(row++, website);
       }
     }
@@ -239,7 +247,8 @@ void GameDetailPageDialog::Load() {
 
     if (row == 0) {
       // Art-only sources (SteamGridDB) cache none of these.
-      ShowEmpty(fetched_ ? "No store info found for this game." : "No store info cached for this game.");
+      ShowEmpty(fetched_ ? "No store info found for this game."
+                         : "No store info cached for this game.");
     }
   });
 }

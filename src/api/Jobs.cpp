@@ -25,27 +25,35 @@ bool JobRegistry::IsValidId(const std::string& id) {
 }
 
 void JobRegistry::Progress::Report(int done, int total, const std::string& message) {
-  registry_.Update(id_, [&](json& job) { job["progress"] = {{"done", done}, {"total", total}, {"message", message}}; });
-  registry_.events_.Publish("job.progress", {{"id", id_}, {"done", done}, {"total", total}, {"message", message}});
+  registry_.Update(id_, [&](json& job) {
+    job["progress"] = {{"done", done}, {"total", total}, {"message", message}};
+  });
+  registry_.events_.Publish("job.progress",
+                            {{"id", id_}, {"done", done}, {"total", total}, {"message", message}});
 }
 
-std::string JobRegistry::Start(const std::string& kind, const std::string& target, const std::string& label,
-                               Work work, const std::string& requested, Lane* lane) {
+std::string JobRegistry::Start(const std::string& kind, const std::string& target,
+                               const std::string& label, Work work, const std::string& requested,
+                               Lane* lane) {
   std::string id;
   {
     std::lock_guard lock(mutex_);
-    const bool taken = std::ranges::any_of(jobs_, [&](const json& job) { return job.value("id", "") == requested; });
-    id = (IsValidId(requested) && !taken) ? requested
-                              : std::format("{}-{}-{}", kind,
-                                            std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                std::chrono::system_clock::now().time_since_epoch())
-                                                .count(),
-                                            next_++);
-    jobs_.push_back({{"id", id}, {"kind", kind}, {"target", target}, {"label", label}, {"state", "running"}});
+    const bool taken = std::ranges::any_of(
+        jobs_, [&](const json& job) { return job.value("id", "") == requested; });
+    id = (IsValidId(requested) && !taken)
+             ? requested
+             : std::format("{}-{}-{}", kind,
+                           std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count(),
+                           next_++);
+    jobs_.push_back(
+        {{"id", id}, {"kind", kind}, {"target", target}, {"label", label}, {"state", "running"}});
     cancels_[id] = std::stop_source();
     // Oldest ended job first: a running one must stay findable.
     while (jobs_.size() > kKeptJobs) {
-      const auto ended = std::ranges::find_if(jobs_, [](const json& job) { return job.value("state", "") != "running"; });
+      const auto ended = std::ranges::find_if(
+          jobs_, [](const json& job) { return job.value("state", "") != "running"; });
       if (ended == jobs_.end()) break;
       jobs_.erase(ended);
     }
@@ -76,7 +84,8 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
       cancels_.erase(id);
     }
     // However the work reported it, a cancelled job ends as one.
-    if (cancel.stop_requested() && !result) result = std::unexpected(Error{"cancelled", "Cancelled", "", {}});
+    if (cancel.stop_requested() && !result)
+      result = std::unexpected(Error{"cancelled", "Cancelled", "", {}});
     json event = identity;
     if (result) {
       event["result"] = *result;
@@ -86,7 +95,8 @@ std::string JobRegistry::Start(const std::string& kind, const std::string& targe
       });
       events_.Publish("job.finished", std::move(event));
     } else {
-      log::Warn("{} {} failed: {}", identity.value("kind", ""), identity.value("target", ""), result.error().message);
+      log::Warn("{} {} failed: {}", identity.value("kind", ""), identity.value("target", ""),
+                result.error().message);
       event["error"] = ErrorJson(result.error());
       Update(id, [&](json& job) {
         job["state"] = "failed";
@@ -104,28 +114,33 @@ Result<void> JobRegistry::Cancel(const std::string& id) {
     found->second.request_stop();
     return {};
   }
-  const bool known = std::ranges::any_of(jobs_, [&](const json& job) { return job.value("id", "") == id; });
-  return known ? Err("not_running", "the job has already ended") : Err("job_not_found", "no such job");
+  const bool known =
+      std::ranges::any_of(jobs_, [&](const json& job) { return job.value("id", "") == id; });
+  return known ? Err("not_running", "the job has already ended")
+               : Err("job_not_found", "no such job");
 }
 
 std::optional<std::string> JobRegistry::RunningFor(const std::string& target) const {
   std::lock_guard lock(mutex_);
   for (const json& job : jobs_) {
-    if (job.value("target", "") == target && job.value("state", "") == "running") return job.value("id", "");
+    if (job.value("target", "") == target && job.value("state", "") == "running")
+      return job.value("id", "");
   }
   return std::nullopt;
 }
 
 std::optional<json> JobRegistry::Find(const std::string& id) const {
   std::lock_guard lock(mutex_);
-  const auto found = std::ranges::find_if(jobs_, [&](const json& job) { return job.value("id", "") == id; });
+  const auto found =
+      std::ranges::find_if(jobs_, [&](const json& job) { return job.value("id", "") == id; });
   if (found == jobs_.end()) return std::nullopt;
   return *found;
 }
 
 void JobRegistry::Update(const std::string& id, const std::function<void(json&)>& change) {
   std::lock_guard lock(mutex_);
-  const auto found = std::ranges::find_if(jobs_, [&](const json& job) { return job.value("id", "") == id; });
+  const auto found =
+      std::ranges::find_if(jobs_, [&](const json& job) { return job.value("id", "") == id; });
   if (found != jobs_.end()) change(*found);
 }
 

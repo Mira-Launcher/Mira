@@ -14,7 +14,7 @@ class BigScreenWindow;
 class Page : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit Page(BigScreenWindow* window);
 
   // Returns false for what the window should handle (Back, tabs, Search).
@@ -22,15 +22,16 @@ public:
   virtual QList<Hint> Hints() const = 0;
   // Called when the page comes to the front.
   virtual void Shown() {}
-  // Called when the prefs load or change; refreshes the page without moving its focus where that matters.
+  // Called when the prefs load or change; refreshes the page without moving its focus where that
+  // matters.
   virtual void PrefsChanged() { Shown(); }
   // Typing on a real keyboard: `text`, or a backspace when empty. False leaves the key to Navigate.
   virtual bool Typed(const QString& /*text*/) { return false; }
 
-signals:
+ signals:
   void HintsChanged();
 
-protected:
+ protected:
   BigScreenWindow* window_;
 };
 

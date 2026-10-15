@@ -31,8 +31,8 @@ namespace {
 
 QString OfficeAppName(const QString& ref) {
   static const QHash<QString, QString> kNames = {
-      {"word", "Word"},       {"excel", "Excel"},   {"powerpoint", "PowerPoint"},
-      {"outlook", "Outlook"}, {"onenote", "OneNote"}, {"access", "Access"},
+      {"word", "Word"},           {"excel", "Excel"},     {"powerpoint", "PowerPoint"},
+      {"outlook", "Outlook"},     {"onenote", "OneNote"}, {"access", "Access"},
       {"publisher", "Publisher"},
   };
   return kNames.value(ref, ref);
@@ -52,9 +52,10 @@ void DrawArt(QPainter& painter, const QRectF& rect, const Picture& picture, qrea
     const qreal scale = std::max(rect.width() / size.width(), rect.height() / size.height());
     const QSizeF drawn = size * scale;
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    painter.drawPixmap(QRectF(rect.center().x() - drawn.width() / 2,
-                              rect.center().y() - drawn.height() / 2, drawn.width(), drawn.height()),
-                       art, QRectF(QPointF(0, 0), art.size()));
+    painter.drawPixmap(
+        QRectF(rect.center().x() - drawn.width() / 2, rect.center().y() - drawn.height() / 2,
+               drawn.width(), drawn.height()),
+        art, QRectF(QPointF(0, 0), art.size()));
   } else {
     QLinearGradient fill(rect.topLeft(), rect.bottomRight());
     fill.setColorAt(0, picture.color);
@@ -62,7 +63,8 @@ void DrawArt(QPainter& painter, const QRectF& rect, const Picture& picture, qrea
     painter.fillRect(rect, fill);
     if (!picture.letter.isEmpty()) {
       QFont font = painter.font();
-      font.setPixelSize(std::max(9, static_cast<int>(std::min(rect.width(), rect.height()) * 0.42)));
+      font.setPixelSize(
+          std::max(9, static_cast<int>(std::min(rect.width(), rect.height()) * 0.42)));
       font.setWeight(QFont::Bold);
       painter.setFont(font);
       painter.setPen(QColor(255, 255, 255, 225));
@@ -272,7 +274,8 @@ class LibraryPreview : public QWidget {
         if (shown_.status) line = context_.work->OfficeStarted() ? "Installing" : "Not installed";
       } else if (shown_.status && i == 1) {
         // A game playing shows how the status line looks.
-        line = shown_.source && !picture.source.isEmpty() ? "Playing" + dot + picture.source : "Playing";
+        line = shown_.source && !picture.source.isEmpty() ? "Playing" + dot + picture.source
+                                                          : "Playing";
         color = tokens.running.lighter(150);
       } else if (shown_.source) {
         line = picture.source;
@@ -357,7 +360,8 @@ class SidebarPreview : public QWidget {
       font.setPixelSize(12);
       painter.setFont(font);
       painter.setPen(tokens.text);
-      const QRectF top = below.isEmpty() ? at : QRectF(at.left(), at.top(), at.width(), at.height() / 2 + 2);
+      const QRectF top =
+          below.isEmpty() ? at : QRectF(at.left(), at.top(), at.width(), at.height() / 2 + 2);
       painter.drawText(top, Qt::AlignLeft | (below.isEmpty() ? Qt::AlignVCenter : Qt::AlignBottom),
                        QFontMetrics(font).elidedText(name, Qt::ElideRight, qRound(at.width())));
       if (below.isEmpty()) return;
@@ -407,7 +411,8 @@ class SidebarPreview : public QWidget {
           y += 48;
         } else {
           DrawArt(painter, QRectF(left + 4, y + 3, 26, 39), picture, 3);
-          text(QRectF(left + 39, y + 3, inner - 43, 39), picture.name, when ? picture.when : QString());
+          text(QRectF(left + 39, y + 3, inner - 43, 39), picture.name,
+               when ? picture.when : QString());
           y += 45;
         }
       }
@@ -467,7 +472,8 @@ class SidebarPreview : public QWidget {
   std::vector<Source> Sources() const {
     if (shown_.apps) {
       const std::vector<Picture> apps = PreviewApps(context_);
-      return {{"Microsoft 365", QString("%1 apps").arg(apps.size()),
+      return {{"Microsoft 365",
+               QString("%1 apps").arg(apps.size()),
                {apps.begin(), apps.begin() + std::min<std::size_t>(3, apps.size())},
                FindSourceInfo("office")->color}};
     }
@@ -629,9 +635,9 @@ std::vector<Picture> PreviewApps(const SetupContext& context) {
 
 QColor OfficeAppColor(const QString& ref) {
   static const QHash<QString, QColor> kColors = {
-      {"word", QColor("#2b579a")},    {"excel", QColor("#217346")},
+      {"word", QColor("#2b579a")},       {"excel", QColor("#217346")},
       {"powerpoint", QColor("#b7472a")}, {"outlook", QColor("#0078d4")},
-      {"onenote", QColor("#7719aa")}, {"access", QColor("#a4373a")},
+      {"onenote", QColor("#7719aa")},    {"access", QColor("#a4373a")},
       {"publisher", QColor("#077568")},
   };
   return kColors.value(ref, QColor("#5c7cfa"));
@@ -648,7 +654,9 @@ CoverFan::CoverFan(const SetupContext& context, std::function<std::vector<Pictur
           qOverload<>(&QWidget::update));
 }
 
-QSize CoverFan::sizeHint() const { return {card_.width() + 2 * step_ + 16, card_.height() + 12}; }
+QSize CoverFan::sizeHint() const {
+  return {card_.width() + 2 * step_ + 16, card_.height() + 12};
+}
 
 void CoverFan::paintEvent(QPaintEvent*) {
   const std::vector<Picture> pictures = pictures_();
@@ -680,8 +688,9 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   auto* themes = new QHBoxLayout();
   themes->setSpacing(10);
   themes_ = new QButtonGroup(this);
-  for (const auto& [name, label] : {std::pair{"auto", "Follow the system"},
-                                    std::pair{"mira-dark", "Dark"}, std::pair{"mira-light", "Light"}}) {
+  for (const auto& [name, label] :
+       {std::pair{"auto", "Follow the system"}, std::pair{"mira-dark", "Dark"},
+        std::pair{"mira-light", "Light"}}) {
     auto* tile = new ThemeTile(name, label, this);
     themes_->addButton(tile);
     themes->addWidget(tile, /*stretch=*/1);
@@ -698,14 +707,16 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   grid->setContentsMargins(14, 4, 14, 4);
   grid->setHorizontalSpacing(14);
   grid->setVerticalSpacing(0);
-  grid->addWidget(SetupRow(card, "Corners", "How round covers, cards and buttons are.",
-                      Segmented(card, {{"square", "Square"}, {"default", "Default"}, {"round", "Round"}},
-                                corners_)),
-                  0, 0);
-  grid->addWidget(SetupRow(card, "Spacing", "Space between covers.",
-                      Segmented(card, {{"compact", "Compact"}, {"default", "Default"}, {"roomy", "Roomy"}},
-                                spacing_)),
-                  0, 1);
+  grid->addWidget(
+      SetupRow(card, "Corners", "How round covers, cards and buttons are.",
+               Segmented(card, {{"square", "Square"}, {"default", "Default"}, {"round", "Round"}},
+                         corners_)),
+      0, 0);
+  grid->addWidget(
+      SetupRow(card, "Spacing", "Space between covers.",
+               Segmented(card, {{"compact", "Compact"}, {"default", "Default"}, {"roomy", "Roomy"}},
+                         spacing_)),
+      0, 1);
   grid->addWidget(MakeDivider(card, Qt::Horizontal), 1, 0, 1, 2);
   connect(corners_, &QButtonGroup::buttonClicked, this, [this] {
     const QString corners = Picked(corners_);
@@ -740,17 +751,19 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   status_ = new Switch(games_switches_);
   source_ = new Switch(games_switches_);
   const auto separator = [](QWidget* parent) { return MakeDivider(parent, Qt::Vertical, 28); };
-  games->addWidget(SetupRow(games_switches_, "Continue playing",
-                       "Large cards for running and recently played games above the grid.", continue_),
-                   1);
+  games->addWidget(
+      SetupRow(games_switches_, "Continue playing",
+               "Large cards for running and recently played games above the grid.", continue_),
+      1);
   games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
   games->addWidget(SetupRow(games_switches_, "Status on tiles",
-                       "Show Needs install, Broken, Playing and the like on a tile.", status_),
+                            "Show Needs install, Broken, Playing and the like on a tile.", status_),
                    1);
   games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
-  games->addWidget(SetupRow(games_switches_, "Source on tiles",
-                       "Name the store or launcher a game came from under its title.", source_),
-                   1);
+  games->addWidget(
+      SetupRow(games_switches_, "Source on tiles",
+               "Name the store or launcher a game came from under its title.", source_),
+      1);
   grid->addWidget(games_switches_, 2, 0, 1, 2);
   apps_switches_ = new QWidget(card);
   auto* apps = new QHBoxLayout(apps_switches_);
@@ -759,11 +772,11 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   recent_apps_ = new Switch(apps_switches_);
   app_status_ = new Switch(apps_switches_);
   apps->addWidget(SetupRow(apps_switches_, "Recently used apps",
-                      "Large cards for the apps you used last, above the grid.", recent_apps_),
+                           "Large cards for the apps you used last, above the grid.", recent_apps_),
                   1);
   apps->addWidget(separator(apps_switches_), 0, Qt::AlignVCenter);
   apps->addWidget(SetupRow(apps_switches_, "Status on tiles",
-                      "Show Installing, Broken, Running and the like on a tile.", app_status_),
+                           "Show Installing, Broken, Running and the like on a tile.", app_status_),
                   1);
   grid->addWidget(apps_switches_, 2, 0, 1, 2);
   grid->setColumnStretch(0, 1);
@@ -812,9 +825,15 @@ void LookPage::Enter() {
     button->setChecked(static_cast<ThemeTile*>(button)->Theme() == theme);
   }
   const int radius = prefs.tile_radius.value_or(-1);
-  Pick(corners_, radius < 0 ? "default" : radius <= 3 ? "square" : radius >= 10 ? "round" : "default");
+  Pick(corners_, radius < 0     ? "default"
+                 : radius <= 3  ? "square"
+                 : radius >= 10 ? "round"
+                                : "default");
   const int spacing = prefs.tile_spacing.value_or(-1);
-  Pick(spacing_, spacing < 0 ? "default" : spacing <= 3 ? "compact" : spacing >= 8 ? "roomy" : "default");
+  Pick(spacing_, spacing < 0    ? "default"
+                 : spacing <= 3 ? "compact"
+                 : spacing >= 8 ? "roomy"
+                                : "default");
   games_switches_->setVisible(!apps);
   apps_switches_->setVisible(apps);
   continue_->setChecked(prefs.library_continue_row.value_or(true));
@@ -846,23 +865,24 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   rows->setSpacing(0);
   const std::vector<std::pair<QString, QString>> styles = {
       {"covers", "Covers"}, {"hero", "Banners"}, {"shelf", "Shelf"}};
-  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw.", Segmented(card, styles, pinned_),
-                      /*below=*/true));
+  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw.",
+                           Segmented(card, styles, pinned_),
+                           /*below=*/true));
   games_rows_ = new QWidget(card);
   auto* game_rows = new QVBoxLayout(games_rows_);
   game_rows->setContentsMargins(0, 0, 0, 0);
   game_rows->setSpacing(0);
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
   game_rows->addWidget(SetupRow(games_rows_, "Recently played", "How recently played games draw.",
-                           Segmented(games_rows_, styles, recent_), /*below=*/true));
+                                Segmented(games_rows_, styles, recent_), /*below=*/true));
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
   when_ = new Switch(games_rows_);
   game_rows->addWidget(SetupRow(games_rows_, "Say when", "When each game was last played.", when_));
   rows->addWidget(games_rows_);
   rows->addWidget(MakeDivider(card, Qt::Horizontal));
   covers_ = new Switch(card);
-  rows->addWidget(SetupRow(card, "Covers on sources", "A few of each source's games beside its name.",
-                      covers_));
+  rows->addWidget(SetupRow(card, "Covers on sources",
+                           "A few of each source's games beside its name.", covers_));
   left->addWidget(card);
   hint_ = MakeLabel(this, QString(), "muted");
   left->addWidget(hint_);

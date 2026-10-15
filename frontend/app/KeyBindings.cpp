@@ -2,7 +2,6 @@
 
 #include <QAction>
 #include <QStringList>
-
 #include <algorithm>
 #include <ranges>
 
@@ -87,10 +86,12 @@ void LoadOverrides(const std::map<std::string, std::string>& saved) {
     if (!saved.contains(id.toStdString())) ResetOverride(id);
   }
   for (const auto& [id, keys] : saved) {
-    const QKeySequence parsed = QKeySequence::fromString(QString::fromStdString(keys), QKeySequence::PortableText);
+    const QKeySequence parsed =
+        QKeySequence::fromString(QString::fromStdString(keys), QKeySequence::PortableText);
     // Unreadable (Qt parses an unknown key as Key_unknown): keep the default, not "no shortcut".
-    const bool unknown = std::ranges::any_of(std::views::iota(0, parsed.count()),
-                                             [&](int i) { return parsed[i].key() == Qt::Key_unknown; });
+    const bool unknown = std::ranges::any_of(std::views::iota(0, parsed.count()), [&](int i) {
+      return parsed[i].key() == Qt::Key_unknown;
+    });
     if (!keys.empty() && (parsed.isEmpty() || unknown)) continue;
     SetOverride(QString::fromStdString(id), parsed);
   }
@@ -101,7 +102,8 @@ QString KeysText(const QString& id, const QString& fallback) {
   if (!overrides.contains(id)) return fallback;
   QStringList parts;
   if (!overrides[id].isEmpty()) parts << overrides[id].toString(QKeySequence::NativeText);
-  for (const QKeySequence& alias : Registry().value(id).extra_aliases) parts << alias.toString(QKeySequence::NativeText);
+  for (const QKeySequence& alias : Registry().value(id).extra_aliases)
+    parts << alias.toString(QKeySequence::NativeText);
   return parts.join(", ");
 }
 

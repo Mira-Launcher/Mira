@@ -1,10 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <json.hpp>
 #include <string>
 #include <vector>
-
-#include <json.hpp>
 
 #include "config/Config.h"
 #include "core/Result.h"
@@ -35,18 +34,21 @@ struct StoreTool {
   const char* store_name;    // "GOG"
   const char* binary;        // "gogdl": the executable's name on $PATH, and in messages
   const char* override_key;  // "gog.gogdl_bin": the setting that points at a copy of the tool
-  std::filesystem::path (*managed_path)(const config::Config& config);  // where Mira's own download lives
+  std::filesystem::path (*managed_path)(
+      const config::Config& config);  // where Mira's own download lives
 };
 
 // The override setting first, then Mira's own download, then $PATH. Doesn't need the tool to work.
 ToolStatus DetectTool(const config::Config& config, const StoreTool& tool);
 
-// Ok when the tool is installed and the account signed in, else the error that tells the user what to fix.
+// Ok when the tool is installed and the account signed in, else the error that tells the user what
+// to fix.
 Result<void> CheckStoreReady(const StoreTool& tool, const AuthStatus& status);
 
-// Runs the tool with `leading` then `args` and returns its combined output: Err("<binary>_missing") when it
-// isn't there and Err("<binary>_failed") on a nonzero exit.
-Result<std::string> RunTool(const config::Config& config, const StoreTool& tool, const std::vector<std::string>& args,
-                            const OutputFn& on_output = {}, const std::vector<std::string>& leading = {});
+// Runs the tool with `leading` then `args` and returns its combined output: Err("<binary>_missing")
+// when it isn't there and Err("<binary>_failed") on a nonzero exit.
+Result<std::string> RunTool(const config::Config& config, const StoreTool& tool,
+                            const std::vector<std::string>& args, const OutputFn& on_output = {},
+                            const std::vector<std::string>& leading = {});
 
 }  // namespace mira::runner

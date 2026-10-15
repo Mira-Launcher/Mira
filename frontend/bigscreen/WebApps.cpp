@@ -11,7 +11,9 @@ namespace mira_gui::bigscreen {
 
 namespace {
 
-QString Quote(QString arg) { return "'" + arg.replace("'", "'\\''") + "'"; }
+QString Quote(QString arg) {
+  return "'" + arg.replace("'", "'\\''") + "'";
+}
 
 }  // namespace
 
@@ -27,9 +29,11 @@ const std::vector<WebApp>& StreamingApps() {
 }
 
 QString KioskBrowser() {
-  // Chrome, Brave, Edge and Vivaldi ship Widevine, which Netflix and others need; plain Chromium often doesn't.
-  for (const char* name : {"google-chrome-stable", "google-chrome", "brave", "brave-browser", "microsoft-edge-stable",
-                           "vivaldi-stable", "chromium", "chromium-browser"}) {
+  // Chrome, Brave, Edge and Vivaldi ship Widevine, which Netflix and others need; plain Chromium
+  // often doesn't.
+  for (const char* name :
+       {"google-chrome-stable", "google-chrome", "brave", "brave-browser", "microsoft-edge-stable",
+        "vivaldi-stable", "chromium", "chromium-browser"}) {
     const QString path = QStandardPaths::findExecutable(name);
     if (!path.isEmpty()) return path;
   }
@@ -43,34 +47,48 @@ QString KioskBrowser() {
 
 void AddWebApp(QObject* context, const WebApp& app, std::function<void(QString)> done) {
   const QString browser = KioskBrowser();
-  if (browser.isEmpty()) return done("Streaming apps need a web browser: Chrome, Brave, Edge, Vivaldi, Chromium or Firefox.");
-  const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/mira/webapps/" + app.id;
+  if (browser.isEmpty())
+    return done(
+        "Streaming apps need a web browser: Chrome, Brave, Edge, Vivaldi, Chromium or Firefox.");
+  const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+                      "/mira/webapps/" + app.id;
   QDir().mkpath(dir + "/profile");
   // YouTube's TV layout only answers a TV browser.
-  const QString tv_agent = "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1";
-  const bool firefox = !QFileInfo(browser).fileName().contains("chrom") && !QFileInfo(browser).fileName().contains("brave") &&
-                       !QFileInfo(browser).fileName().contains("edge") && !QFileInfo(browser).fileName().contains("vivaldi");
+  const QString tv_agent =
+      "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 "
+      "TV Safari/538.1";
+  const bool firefox = !QFileInfo(browser).fileName().contains("chrom") &&
+                       !QFileInfo(browser).fileName().contains("brave") &&
+                       !QFileInfo(browser).fileName().contains("edge") &&
+                       !QFileInfo(browser).fileName().contains("vivaldi");
   QString command;
   if (firefox) {
-    // Firefox reads its settings from the profile: DRM on, no first-run pages, and the TV agent for YouTube.
-    QString prefs = "user_pref(\"media.eme.enabled\", true);\n"
-                    "user_pref(\"media.gmp-widevinecdm.enabled\", true);\n"
-                    "user_pref(\"media.gmp-widevinecdm.visible\", true);\n"
-                    "user_pref(\"browser.shell.checkDefaultBrowser\", false);\n"
-                    "user_pref(\"browser.aboutwelcome.enabled\", false);\n"
-                    "user_pref(\"datareporting.policy.dataSubmissionPolicyBypassNotification\", true);\n";
-    if (app.id == "youtube") prefs += "user_pref(\"general.useragent.override\", \"" + tv_agent + "\");\n";
+    // Firefox reads its settings from the profile: DRM on, no first-run pages, and the TV agent for
+    // YouTube.
+    QString prefs =
+        "user_pref(\"media.eme.enabled\", true);\n"
+        "user_pref(\"media.gmp-widevinecdm.enabled\", true);\n"
+        "user_pref(\"media.gmp-widevinecdm.visible\", true);\n"
+        "user_pref(\"browser.shell.checkDefaultBrowser\", false);\n"
+        "user_pref(\"browser.aboutwelcome.enabled\", false);\n"
+        "user_pref(\"datareporting.policy.dataSubmissionPolicyBypassNotification\", true);\n";
+    if (app.id == "youtube")
+      prefs += "user_pref(\"general.useragent.override\", \"" + tv_agent + "\");\n";
     QFile user_js(dir + "/profile/user.js");
     if (user_js.open(QIODevice::WriteOnly | QIODevice::Truncate)) user_js.write(prefs.toUtf8());
-    command = "exec " + Quote(browser) + " --kiosk --new-instance --profile " + Quote(dir + "/profile") + " " + Quote(app.url);
+    command = "exec " + Quote(browser) + " --kiosk --new-instance --profile " +
+              Quote(dir + "/profile") + " " + Quote(app.url);
   } else {
     const QString agent = app.id == "youtube" ? " --user-agent=" + Quote(tv_agent) : QString();
-    command = "exec " + Quote(browser) + " --kiosk --app=" + Quote(app.url) + " --user-data-dir=" + Quote(dir + "/profile") +
+    command = "exec " + Quote(browser) + " --kiosk --app=" + Quote(app.url) +
+              " --user-data-dir=" + Quote(dir + "/profile") +
               " --no-first-run --class=" + Quote("mira-" + app.id) + agent;
   }
-  const QByteArray script = ("#!/bin/sh\n# Added by Mira's big screen.\n" + command + "\n").toUtf8();
+  const QByteArray script =
+      ("#!/bin/sh\n# Added by Mira's big screen.\n" + command + "\n").toUtf8();
   QFile file(dir + "/launch.sh");
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(script) != script.size()) {
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+      file.write(script) != script.size()) {
     return done("Couldn't write " + file.fileName());
   }
   file.setPermissions(file.permissions() | QFileDevice::ExeOwner | QFileDevice::ExeUser);

@@ -13,9 +13,9 @@ namespace mira::paths {
 // files serves that better than state scattered across three directories.
 std::filesystem::path UserDir();
 
-// Where the socket's folder goes: $XDG_RUNTIME_DIR, or without one the user's cache folder, never /tmp,
-// where another user could make the folder first and take the socket's place. Expand gives it for an
-// unset $XDG_RUNTIME_DIR.
+// Where the socket's folder goes: $XDG_RUNTIME_DIR, or without one the user's cache folder, never
+// /tmp, where another user could make the folder first and take the socket's place. Expand gives it
+// for an unset $XDG_RUNTIME_DIR.
 std::filesystem::path RuntimeDir();
 
 std::filesystem::path Home();

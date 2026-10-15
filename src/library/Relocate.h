@@ -13,7 +13,7 @@ namespace mira::library {
 
 struct RelocateRequest {
   std::optional<std::filesystem::path> install_path;  // explicit target, else canonical
-  std::optional<std::filesystem::path> data_dir;       // explicit target, else canonical
+  std::optional<std::filesystem::path> data_dir;      // explicit target, else canonical
   bool only_given = false;  // leave a half without a target where it is, instead of canonical
 };
 
@@ -37,7 +37,8 @@ inline constexpr std::string_view kClaimedLutrisPrefix = "lutris:";
 // Why `game`'s install folder isn't the game's alone: it is or holds a
 // library root, or holds another game in `library` (e.g. an AppImage sitting
 // loose in a games folder). Empty when it's the game's alone.
-std::string SharedFolder(const config::Config& config, const model::Game& game, std::span<const model::Game> library);
+std::string SharedFolder(const config::Config& config, const model::Game& game,
+                         std::span<const model::Game> library);
 
 // The game is one AppImage file, which carries everything it needs: it moves
 // and is deleted as that file alone, never with the folder it sits in.
@@ -52,10 +53,12 @@ bool RunsExternalProgram(const model::Game& game);
 // game), the outer one moves and the inner follows, unless the inner has
 // its own target. An install folder that also holds another game in
 // `library`, or a library root, is refused rather than moved.
-Result<model::Game> Relocate(const config::Config& config, model::Game game, const RelocateRequest& request = {},
+Result<model::Game> Relocate(const config::Config& config, model::Game game,
+                             const RelocateRequest& request = {},
                              std::span<const model::Game> library = {});
 
 // Renames `from` to `to`; across filesystems, with allow_copy, copies then removes the original.
-Result<void> MovePath(const std::filesystem::path& from, const std::filesystem::path& to, bool allow_copy);
+Result<void> MovePath(const std::filesystem::path& from, const std::filesystem::path& to,
+                      bool allow_copy);
 
 }  // namespace mira::library

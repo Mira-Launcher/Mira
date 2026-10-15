@@ -1,8 +1,9 @@
+#include "proc/Session.h"
+
 #include <doctest.h>
 
 #include <filesystem>
 
-#include "proc/Session.h"
 #include "store/GameStore.h"
 #include "support/TestEnv.h"
 
@@ -45,9 +46,11 @@ TEST_CASE("a session record round-trips through mira.db and is uncounted until m
   CHECK(read->post_exit_code == 0);
   CHECK(proc::UncountedSessions(games.File()).size() == 1);
 
-  REQUIRE(games.FinishSession({.game_id = "celeste", .started_at = 1700000000, .duration_seconds = 42},
-                              [](model::Game&) {})
-              .has_value());
+  REQUIRE(
+      games
+          .FinishSession({.game_id = "celeste", .started_at = 1700000000, .duration_seconds = 42},
+                         [](model::Game&) {})
+          .has_value());
   CHECK(proc::UncountedSessions(games.File()).empty());
   CHECK_FALSE(proc::ReadSessionRecord(games.File(), "celeste", 1).has_value());
 }

@@ -22,22 +22,25 @@ constexpr char kObjectPath[] = "/com/feralinteractive/GameMode";
 struct DBusCall {
   std::string dest;
   std::string object_path;
-  std::string method;        // "interface.Method"
-  std::string gdbus_arg;     // GVariant text-format literal, e.g. "42" or the bare bus name; empty for none
-  std::string dbus_send_arg; // dbus-send's typed syntax, e.g. "int32:42" or "string:..."; empty for none
+  std::string method;  // "interface.Method"
+  std::string
+      gdbus_arg;  // GVariant text-format literal, e.g. "42" or the bare bus name; empty for none
+  std::string
+      dbus_send_arg;  // dbus-send's typed syntax, e.g. "int32:42" or "string:..."; empty for none
 };
 
 Result<runner::ExecResult> Run(const DBusCall& call) {
   if (const auto gdbus = runner::FindOnPath("gdbus")) {
     Command command;
-    command.argv = {*gdbus,     "call",           "--session", "--dest",  call.dest,
+    command.argv = {*gdbus,          "call",           "--session", "--dest",   call.dest,
                     "--object-path", call.object_path, "--method",  call.method};
     if (!call.gdbus_arg.empty()) command.argv.push_back(call.gdbus_arg);
     return runner::RunAndWait(command);
   }
   if (const auto dbus_send = runner::FindOnPath("dbus-send")) {
     Command command;
-    command.argv = {*dbus_send, "--session", "--print-reply", "--dest=" + call.dest, call.object_path, call.method};
+    command.argv = {*dbus_send,       "--session", "--print-reply", "--dest=" + call.dest,
+                    call.object_path, call.method};
     if (!call.dbus_send_arg.empty()) command.argv.push_back(call.dbus_send_arg);
     return runner::RunAndWait(command);
   }
@@ -46,7 +49,9 @@ Result<runner::ExecResult> Run(const DBusCall& call) {
 
 }  // namespace
 
-bool IsInstalled() { return runner::FindOnPath("gamemoded") || runner::FindOnPath("gamemoderun"); }
+bool IsInstalled() {
+  return runner::FindOnPath("gamemoded") || runner::FindOnPath("gamemoderun");
+}
 
 bool IsDaemonRunning() {
   // The desktop-bus-standard NameHasOwner call, not anything GameMode-
@@ -71,7 +76,7 @@ void RegisterGame(pid_t pid) {
     // Never a launch failure -- GameMode not being reachable is exactly as
     // harmless as the game requesting it directly and getting no answer.
     log::Warn("GameMode registration for pid {} failed (daemon not running?): {}", pid,
-             !result ? result.error().message : result->output);
+              !result ? result.error().message : result->output);
   }
 }
 
@@ -83,7 +88,7 @@ void UnregisterGame(pid_t pid) {
                            .dbus_send_arg = "int32:" + std::to_string(pid)});
   if (!result || result->exit_code != 0) {
     log::Warn("GameMode unregistration for pid {} failed: {}", pid,
-             !result ? result.error().message : result->output);
+              !result ? result.error().message : result->output);
   }
 }
 

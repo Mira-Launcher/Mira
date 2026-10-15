@@ -9,12 +9,11 @@
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "api/Services.h"
-#include "emulators/Emulators.h"
-#include "modmanagers/ModManagers.h"
 #include "core/Command.h"
 #include "core/Json.h"
 #include "core/Log.h"
 #include "desktop/DesktopEntryScanner.h"
+#include "emulators/Emulators.h"
 #include "library/Catalog.h"
 #include "library/FolderTags.h"
 #include "library/Import.h"
@@ -25,8 +24,9 @@
 #include "library/SourceRunner.h"
 #include "lutris/LutrisImporter.h"
 #include "metadata/MetadataFetcher.h"
-#include "steam/FriendsStatus.h"
+#include "modmanagers/ModManagers.h"
 #include "runner/Exec.h"
+#include "steam/FriendsStatus.h"
 #include "steam/Shortcuts.h"
 #include "steam/SteamDetector.h"
 #include "steam/SteamScanner.h"
@@ -37,8 +37,9 @@ using httplib::Request;
 
 // Known sources, in default order.
 const std::vector<std::string> kSourceIds = [] {
-  std::vector<std::string> ids = {"local", "steam",  "epic",    "gog",   "itch", "amazon",
-                                  "humble", "battlenet", "ubisoft", "ea", "office", "adobe", "lutris"};
+  std::vector<std::string> ids = {"local",  "steam",  "epic",      "gog",     "itch",
+                                  "amazon", "humble", "battlenet", "ubisoft", "ea",
+                                  "office", "adobe",  "lutris"};
   for (const emulators::Emulator& emulator : emulators::All()) ids.push_back(emulator.id);
   for (const modmanagers::ModManager& manager : modmanagers::All()) ids.push_back(manager.id);
   return ids;
@@ -53,13 +54,14 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   // --- library ------------------------------------------------------------
 
   http.Post("/v1/library/scan", [&s](const Request& req, Response& res) {
-    s.StartJob(req, res, "scan", "", "Scanning your library", [&s](JobRegistry::Progress&) -> Result<json> {
-      const library::ScanSummary summary = s.Scan();
-      return json{{"added", summary.added},
-                  {"missing", summary.missing},
-                  {"restored", summary.restored},
-                  {"moved", summary.moved}};
-    });
+    s.StartJob(req, res, "scan", "", "Scanning your library",
+               [&s](JobRegistry::Progress&) -> Result<json> {
+                 const library::ScanSummary summary = s.Scan();
+                 return json{{"added", summary.added},
+                             {"missing", summary.missing},
+                             {"restored", summary.restored},
+                             {"moved", summary.moved}};
+               });
   });
 
   http.Get("/v1/library/unclear", [&s](const Request&, Response& res) {
@@ -119,67 +121,74 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     std::vector<model::Game> games = s.games.All();
     int skipped = 0;
     if (body.contains("ids")) {
-      skipped = static_cast<int>(std::ranges::count_if(*ids, [&](const std::string& id) { return !s.games.Find(id); }));
-      std::erase_if(games, [&](const model::Game& game) { return !std::ranges::contains(*ids, game.id); });
+      skipped = static_cast<int>(
+          std::ranges::count_if(*ids, [&](const std::string& id) { return !s.games.Find(id); }));
+      std::erase_if(games,
+                    [&](const model::Game& game) { return !std::ranges::contains(*ids, game.id); });
     }
     s.StartJob(req, res, "relocate", "", "Moving games into Mira's folders",
-             [&s, games = std::move(games), skipped](JobRegistry::Progress& progress) mutable -> Result<json> {
-               int moved = 0;
-               std::vector<std::string> moved_ids;
-               int done = 0;
-               json errors = json::array();
-               for (const model::Game& listed : games) {
-                 progress.Report(done++, static_cast<int>(games.size()), listed.name);
-                 // Per game, so scans can run between moves.
-                 auto folders_lock = s.games.LockFolders();
-                 // Read again now: earlier moves take time, and the game may have changed
-                 // meanwhile.
-                 const auto current = s.games.Find(listed.id);
-                 if (!current) {
-                   ++skipped;
-                   continue;
+               [&s, games = std::move(games),
+                skipped](JobRegistry::Progress& progress) mutable -> Result<json> {
+                 int moved = 0;
+                 std::vector<std::string> moved_ids;
+                 int done = 0;
+                 json errors = json::array();
+                 for (const model::Game& listed : games) {
+                   progress.Report(done++, static_cast<int>(games.size()), listed.name);
+                   // Per game, so scans can run between moves.
+                   auto folders_lock = s.games.LockFolders();
+                   // Read again now: earlier moves take time, and the game may have changed
+                   // meanwhile.
+                   const auto current = s.games.Find(listed.id);
+                   if (!current) {
+                     ++skipped;
+                     continue;
+                   }
+                   const model::Game& game = *current;
+                   // Held for the whole move, so the game can't launch from half-moved files.
+                   const auto claim = s.Claim(game.id, "moved");
+                   if (!claim) {
+                     errors.push_back(BatchFailure(game.id, claim.error()));
+                     continue;
+                   }
+                   auto relocated = library::Relocate(s.config, game, {}, s.games.All());
+                   if (!relocated) {
+                     log::Warn("relocate failed for {}: {}", game.id, relocated.error().message);
+                     errors.push_back(BatchFailure(game.id, relocated.error()));
+                     continue;
+                   }
+                   if (relocated->install_path == game.install_path &&
+                       relocated->data_dir == game.data_dir &&
+                       relocated->exe_path == game.exe_path) {
+                     continue;
+                   }
+                   auto saved = s.games.Update(game.id, [&](model::Game& g) {
+                     g.install_path = relocated->install_path;
+                     g.exe_path = relocated->exe_path;
+                     g.data_dir = relocated->data_dir;
+                     g.source = relocated->source;
+                     g.source_ref = relocated->source_ref;
+                     g.updated_at = model::NowSeconds();
+                   });
+                   if (!saved) {
+                     errors.push_back(BatchFailure(game.id, saved.error()));
+                     continue;
+                   }
+                   library::PruneEmptyContainers(s.config, library::SortingFolderOf(s.config, game),
+                                                 s.games.All());
+                   s.events.Publish("game.updated", s.Record(*saved));
+                   moved_ids.push_back(game.id);
+                   ++moved;
                  }
-                 const model::Game& game = *current;
-                 // Held for the whole move, so the game can't launch from half-moved files.
-                 const auto claim = s.Claim(game.id, "moved");
-                 if (!claim) {
-                   errors.push_back(BatchFailure(game.id, claim.error()));
-                   continue;
-                 }
-                 auto relocated = library::Relocate(s.config, game, {}, s.games.All());
-                 if (!relocated) {
-                   log::Warn("relocate failed for {}: {}", game.id, relocated.error().message);
-                   errors.push_back(BatchFailure(game.id, relocated.error()));
-                   continue;
-                 }
-                 if (relocated->install_path == game.install_path && relocated->data_dir == game.data_dir &&
-                     relocated->exe_path == game.exe_path) {
-                   continue;
-                 }
-                 auto saved = s.games.Update(game.id, [&](model::Game& g) {
-                   g.install_path = relocated->install_path;
-                   g.exe_path = relocated->exe_path;
-                   g.data_dir = relocated->data_dir;
-                   g.source = relocated->source;
-                   g.source_ref = relocated->source_ref;
-                   g.updated_at = model::NowSeconds();
-                 });
-                 if (!saved) {
-                   errors.push_back(BatchFailure(game.id, saved.error()));
-                   continue;
-                 }
-                 library::PruneEmptyContainers(s.config, library::SortingFolderOf(s.config, game),
-                                               s.games.All());
-                 s.events.Publish("game.updated", s.Record(*saved));
-                 moved_ids.push_back(game.id);
-                 ++moved;
-               }
-               s.SyncDesktopEntries();
-               // A game sorted by a link needs its link pointed at its new folder.
-               s.SortByTags(std::move(moved_ids));
-               const int failed = static_cast<int>(errors.size());
-               return json{{"moved", moved}, {"failed", failed}, {"skipped", skipped}, {"errors", std::move(errors)}};
-             });
+                 s.SyncDesktopEntries();
+                 // A game sorted by a link needs its link pointed at its new folder.
+                 s.SortByTags(std::move(moved_ids));
+                 const int failed = static_cast<int>(errors.size());
+                 return json{{"moved", moved},
+                             {"failed", failed},
+                             {"skipped", skipped},
+                             {"errors", std::move(errors)}};
+               });
   });
 
   // --- import ------------------------------------------------------------
@@ -194,11 +203,14 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     }
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
-      if (ec) return SendError(res, 500, "io_error", std::format("couldn't check {}: {}", path, ec.message()));
+      if (ec)
+        return SendError(res, 500, "io_error",
+                         std::format("couldn't check {}: {}", path, ec.message()));
       return SendError(res, 404, "not_found", path + " doesn't exist");
     }
     const library::ImportGuess guess = library::ClassifyImport(path);
-    SendJson(res, json{{"kind", std::string(library::ImportKindName(guess.kind))}, {"name", guess.name},
+    SendJson(res, json{{"kind", std::string(library::ImportKindName(guess.kind))},
+                       {"name", guess.name},
                        {"reason", guess.reason}});
   });
 
@@ -207,27 +219,30 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const std::string path = core::JsonString(*body, "path");
-    const std::optional<library::ImportKind> kind = library::ParseImportKind(core::JsonString(*body, "kind"));
+    const std::optional<library::ImportKind> kind =
+        library::ParseImportKind(core::JsonString(*body, "kind"));
     if (!std::filesystem::path(path).is_absolute() || !kind) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    s.StartJob(req, res, "import_path", path, "Adding " + std::filesystem::path(path).filename().string(),
-               [&s, path, kind = *kind](JobRegistry::Progress&) -> Result<json> {
-                 const Result<std::filesystem::path> target = library::ImportInto(s.config, path, kind);
-                 if (!target) return std::unexpected(target.error());
-                 return json{{"path", target->string()}};
-               });
+    s.StartJob(
+        req, res, "import_path", path, "Adding " + std::filesystem::path(path).filename().string(),
+        [&s, path, kind = *kind](JobRegistry::Progress&) -> Result<json> {
+          const Result<std::filesystem::path> target = library::ImportInto(s.config, path, kind);
+          if (!target) return std::unexpected(target.error());
+          return json{{"path", target->string()}};
+        });
   });
 
   // --- steam ------------------------------------------------------------
 
   http.Post("/v1/steam/scan", [&s](const Request& req, Response& res) {
-    s.StartJob(req, res, "import", "steam", "Importing from Steam", [&s](JobRegistry::Progress&) -> Result<json> {
-      steam::SteamScanner scanner(s.config, s.games, s.events);
-      auto summary = scanner.Scan();
-      if (!summary) return std::unexpected(summary.error());
-      return s.FinishImport("steam", *summary);
-    });
+    s.StartJob(req, res, "import", "steam", "Importing from Steam",
+               [&s](JobRegistry::Progress&) -> Result<json> {
+                 steam::SteamScanner scanner(s.config, s.games, s.events);
+                 auto summary = scanner.Scan();
+                 if (!summary) return std::unexpected(summary.error());
+                 return s.FinishImport("steam", *summary);
+               });
   });
 
   http.Get("/v1/steam/accounts", [&s](const Request&, Response& res) {
@@ -271,8 +286,9 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
     if (body.is_discarded() || !body.is_object())
       return SendError(res, 400, "invalid_body", "expected a JSON object");
-    const auto set = steam::SetFriendsStatus(body.value("status", std::string()), steam::SteamPidFile(s.config),
-                                             steam::SteamCommand(s.config));
+    const auto set =
+        steam::SetFriendsStatus(body.value("status", std::string()), steam::SteamPidFile(s.config),
+                                steam::SteamCommand(s.config));
     if (!set) return SendError(res, set.error().code == "invalid_status" ? 400 : 409, set.error());
     SendJson(res, {{"status", body.value("status", std::string())}});
   });
@@ -287,14 +303,18 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto change = steam::EnsureShortcut(*root, "Mira", body.value("exe", std::string()),
                                               body.value("launch_options", std::string()));
     if (!change) return SendError(res, 500, change.error());
-    SendJson(res, {{"status", "ok"}, {"added", change->added}, {"updated", change->updated}, {"failed", change->failed}});
+    SendJson(res, {{"status", "ok"},
+                   {"added", change->added},
+                   {"updated", change->updated},
+                   {"failed", change->failed}});
   });
 
   http.Post("/v1/steam/bigpicture", [&s](const Request&, Response& res) {
     Command command;
     command.argv = steam::SteamCommand(s.config);
     command.argv.push_back("steam://open/bigpicture");
-    if (auto spawned = runner::SpawnReaped(command); !spawned) return SendError(res, 500, spawned.error());
+    if (auto spawned = runner::SpawnReaped(command); !spawned)
+      return SendError(res, 500, spawned.error());
     SendJson(res, {{"status", "opened"}});
   });
 
@@ -306,15 +326,16 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   });
 
   http.Post("/v1/lutris/import", [&s](const Request& req, Response& res) {
-    s.StartJob(req, res, "import", "lutris", "Importing from Lutris", [&s](JobRegistry::Progress&) -> Result<json> {
-      lutris::LutrisImporter importer(s.config, s.games, s.events);
-      auto summary = importer.Import();
-      if (!summary) return std::unexpected(summary.error());
-      json result = s.FinishImport("lutris", *summary);
-      result["other_runner"] = summary->other_runner;
-      result["incomplete"] = summary->incomplete;
-      return result;
-    });
+    s.StartJob(req, res, "import", "lutris", "Importing from Lutris",
+               [&s](JobRegistry::Progress&) -> Result<json> {
+                 lutris::LutrisImporter importer(s.config, s.games, s.events);
+                 auto summary = importer.Import();
+                 if (!summary) return std::unexpected(summary.error());
+                 json result = s.FinishImport("lutris", *summary);
+                 result["other_runner"] = summary->other_runner;
+                 result["incomplete"] = summary->incomplete;
+                 return result;
+               });
   });
 
   // --- sources --------------------------------------------------------------
@@ -339,20 +360,23 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   http.Post(R"(/v1/sources/([a-z0-9-]+)/remove)", [&s](const Request& req, Response& res) {
     const std::string source = req.matches[1].str();
     // Checked now, so an unknown source is a 404 rather than a failed job.
-    if (auto plan = library::PlanRemoval(s.config, s.games, source); !plan) return SendError(res, 404, plan.error());
+    if (auto plan = library::PlanRemoval(s.config, s.games, source); !plan)
+      return SendError(res, 404, plan.error());
     const json body = json::parse(req.body, nullptr, false);
     const bool delete_data = body.is_object() && body.value("delete_data", false);
     s.StartJob(req, res, "remove_source", source, "Removing " + source,
-             [&s, source, delete_data](JobRegistry::Progress&) -> Result<json> {
-               auto removed = library::RemoveSource(s.config, s.games, s.events, source, delete_data);
-               if (!removed) return std::unexpected(removed.error());
-               s.SyncDesktopEntries();
-               s.events.Publish("sources.changed", json::object());
-               return json{{"removed", removed->removed}, {"problems", removed->problems}};
-             });
+               [&s, source, delete_data](JobRegistry::Progress&) -> Result<json> {
+                 auto removed =
+                     library::RemoveSource(s.config, s.games, s.events, source, delete_data);
+                 if (!removed) return std::unexpected(removed.error());
+                 s.SyncDesktopEntries();
+                 s.events.Publish("sources.changed", json::object());
+                 return json{{"removed", removed->removed}, {"problems", removed->problems}};
+               });
   });
 
-  const auto source_json = [](const std::map<std::string, int>& counts, const store::SourceState& state) {
+  const auto source_json = [](const std::map<std::string, int>& counts,
+                              const store::SourceState& state) {
     const auto found = counts.find(state.id);
     return json{{"id", state.id},
                 {"added", state.added || state.id == "local"},
@@ -394,7 +418,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     };
     const bool was_added = state.added;
     flag("added", state.added);
-    if (state.added && !was_added) state.enabled = true;  // setting a source up means wanting its games
+    if (state.added && !was_added)
+      state.enabled = true;  // setting a source up means wanting its games
     flag("enabled", state.enabled);
     flag("in_sidebar", state.in_sidebar);
     s.games.SaveSource(state);
@@ -406,7 +431,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, R"({"order": ["steam", "..."]})");
     if (!body) return;
     const auto order = StringList(*body, "order");
-    if (!order || !body->contains("order")) return SendError(res, 400, "invalid_body", R"(expected {"order": [...]})");
+    if (!order || !body->contains("order"))
+      return SendError(res, 400, "invalid_body", R"(expected {"order": [...]})");
     std::vector<std::string> ids;
     for (const std::string& id : *order) {
       if (std::ranges::find(kSourceIds, id) != kSourceIds.end()) ids.push_back(id);
@@ -421,14 +447,18 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       const int status = runner.error().code == "launcher_not_installed" ? 409 : 400;
       return SendError(res, status, runner.error());
     }
-    SendJson(res, {{"runner_ref", runner->runner_ref}, {"games", runner->games}, {"differing", runner->differing}});
+    SendJson(res, {{"runner_ref", runner->runner_ref},
+                   {"games", runner->games},
+                   {"differing", runner->differing}});
   };
 
-  http.Get(R"(/v1/sources/([a-z0-9-]+)/runner)", [&s, send_source_runner](const Request& req, Response& res) {
+  http.Get(R"(/v1/sources/([a-z0-9-]+)/runner)", [&s, send_source_runner](const Request& req,
+                                                                          Response& res) {
     send_source_runner(res, library::GetSourceRunner(s.config, s.games, req.matches[1].str()));
   });
 
-  http.Post(R"(/v1/sources/([a-z0-9-]+)/runner)", [&s, send_source_runner](const Request& req, Response& res) {
+  http.Post(R"(/v1/sources/([a-z0-9-]+)/runner)", [&s, send_source_runner](const Request& req,
+                                                                           Response& res) {
     constexpr std::string_view kShape = R"({"runner_ref": "kind:name", "apply_to_games"?: bool})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
@@ -451,7 +481,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
 
   http.Get("/v1/library", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
-    auto entries = s.catalogs.List(s.config, s.games, s.events, s.catalog_checks, source, BoolParam(req, "fresh"));
+    auto entries = s.catalogs.List(s.config, s.games, s.events, s.catalog_checks, source,
+                                   BoolParam(req, "fresh"));
     if (!entries) return SendError(res, 400, entries.error());
     const auto steam_tags = metadata::StoredSteamTags(s.games.Metadata());
     const auto reviews = s.games.Metadata().Field("steam_reviews");
@@ -483,9 +514,10 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
         const std::int64_t total = r.value("total_reviews", std::int64_t{0});
         if (total > 0) {
           const std::int64_t positive = r.value("total_positive", std::int64_t{0});
-          out.back()["steam_reviews"] = {{"score_description", r.value("score_description", std::string())},
-                                         {"percent_positive", (positive * 100 + total / 2) / total},
-                                         {"total_reviews", total}};
+          out.back()["steam_reviews"] = {
+              {"score_description", r.value("score_description", std::string())},
+              {"percent_positive", (positive * 100 + total / 2) / total},
+              {"total_reviews", total}};
         }
       }
     }
@@ -495,12 +527,13 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   // Keyed by {source, ref}, since the title isn't tracked yet. "update" in the
   // event payload tells an update from an install.
   auto library_install_or_update = [&s](const Request& req, Response& res, bool is_update) {
-    constexpr std::string_view kShape = R"({"source": "epic"|"steam"|"gog"|"itch"|"amazon", "ref": "..."})";
+    constexpr std::string_view kShape =
+        R"({"source": "epic"|"steam"|"gog"|"itch"|"amazon", "ref": "..."})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
-    if (!b.contains("source") || !b["source"].is_string() ||
-        !b.contains("ref") || !b["ref"].is_string()) {
+    if (!b.contains("source") || !b["source"].is_string() || !b.contains("ref") ||
+        !b["ref"].is_string()) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const std::string source = b["source"];
@@ -508,36 +541,44 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
 
     library::ILibrarySource* src = library::FindSource(source);
     if (src == nullptr) {
-      return SendError(res, 400, "unknown_source", std::format("no installable source named \"{}\"", source));
+      return SendError(res, 400, "unknown_source",
+                       std::format("no installable source named \"{}\"", source));
     }
     if (!IsSafeRef(ref)) return SendError(res, 400, "invalid_ref", "that ref isn't a store id");
 
     s.paused_installs.Remove(source + "-" + ref);  // installing again resumes it
-    s.events.Publish("library.install.started", {{"source", source}, {"ref", ref}, {"update", is_update}});
-    s.StartJob(req, res, is_update ? "update" : "install", source + "-" + ref, (is_update ? "Updating " : "Installing ") + ref,
-               [&s, src, source, ref, is_update](JobRegistry::Progress&) -> Result<json> {
-                 const Result<void> result = is_update ? src->Update(s.config, s.games, s.events, ref)
-                                                       : src->Install(s.config, s.games, s.events, ref);
-                 if (!result && s.paused_installs.Contains(source + "-" + ref)) {
-                   log::Info("{} {} paused: {}", source, is_update ? "update" : "install", ref);
-                   s.events.Publish("library.install.paused", {{"source", source}, {"ref", ref}, {"update", is_update}});
-                   return std::unexpected(result.error());
-                 }
-                 if (!result) {
-                   log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref,
-                              result.error().message);
-                   s.events.Publish("library.install.failed",
-                                    FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}}, result.error()));
-                   return std::unexpected(result.error());
-                 }
-                 s.paused_installs.Remove(source + "-" + ref);  // finished before a pause took hold
-                 log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
-                 s.SyncDesktopEntry(source + "-" + ref);
-                 if (const auto game = s.games.Find(source + "-" + ref)) s.fetches.Enqueue(s.config, s.events, *game);
-                 s.events.Publish("library.install.finished", {{"source", source}, {"ref", ref}, {"update", is_update}});
-                 return json{{"source", source}, {"ref", ref}};
-               },
-               &s.operations);
+    s.events.Publish("library.install.started",
+                     {{"source", source}, {"ref", ref}, {"update", is_update}});
+    s.StartJob(
+        req, res, is_update ? "update" : "install", source + "-" + ref,
+        (is_update ? "Updating " : "Installing ") + ref,
+        [&s, src, source, ref, is_update](JobRegistry::Progress&) -> Result<json> {
+          const Result<void> result = is_update ? src->Update(s.config, s.games, s.events, ref)
+                                                : src->Install(s.config, s.games, s.events, ref);
+          if (!result && s.paused_installs.Contains(source + "-" + ref)) {
+            log::Info("{} {} paused: {}", source, is_update ? "update" : "install", ref);
+            s.events.Publish("library.install.paused",
+                             {{"source", source}, {"ref", ref}, {"update", is_update}});
+            return std::unexpected(result.error());
+          }
+          if (!result) {
+            log::Error("{} {} failed ({}): {}", source, is_update ? "update" : "install", ref,
+                       result.error().message);
+            s.events.Publish("library.install.failed",
+                             FailedEvent({{"source", source}, {"ref", ref}, {"update", is_update}},
+                                         result.error()));
+            return std::unexpected(result.error());
+          }
+          s.paused_installs.Remove(source + "-" + ref);  // finished before a pause took hold
+          log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
+          s.SyncDesktopEntry(source + "-" + ref);
+          if (const auto game = s.games.Find(source + "-" + ref))
+            s.fetches.Enqueue(s.config, s.events, *game);
+          s.events.Publish("library.install.finished",
+                           {{"source", source}, {"ref", ref}, {"update", is_update}});
+          return json{{"source", source}, {"ref", ref}};
+        },
+        &s.operations);
   };
   http.Get("/v1/library/artwork", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
@@ -561,18 +602,20 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   });
 
   http.Post("/v1/library/artwork", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"source": "...", "titles": [{"ref": "...", "title": "..."}]})";
+    constexpr std::string_view kShape =
+        R"({"source": "...", "titles": [{"ref": "...", "title": "..."}]})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
     const auto text = [](const json& object, const char* key) {
       const auto found = object.find(key);
-      return found != object.end() && found->is_string() ? found->get<std::string>() : std::string();
+      return found != object.end() && found->is_string() ? found->get<std::string>()
+                                                         : std::string();
     };
     const std::string source = text(b, "source");
-    if (library::FindSource(source) == nullptr || !b.contains("titles") || !b["titles"].is_array()) {
-      return SendError(res, 400, "invalid_body",
-                       std::format("expected {}", kShape));
+    if (library::FindSource(source) == nullptr || !b.contains("titles") ||
+        !b["titles"].is_array()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     if (!s.config.GetBool("metadata.enabled")) return SendJson(res, {{"queued", 0}});
 
@@ -584,12 +627,15 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       title.source_ref = text(entry, "ref");
       title.name = text(entry, "title");
       title.id = source + "-" + title.source_ref;
-      if (!IsSafeRef(title.source_ref) || title.name.empty() || !metadata::TitleNeedsFetch(s.config, s.games.Metadata(), title.id)) continue;
+      if (!IsSafeRef(title.source_ref) || title.name.empty() ||
+          !metadata::TitleNeedsFetch(s.config, s.games.Metadata(), title.id))
+        continue;
       // How Fetch tells a Steam game apart.
       if (source == "steam") title.runner_ref = "steam:" + title.source_ref;
       titles.push_back(std::move(title));
     }
-    SendJson(res, {{"queued", s.fetches.EnqueueTitles(s.config, s.events, std::move(titles))}}, 202);
+    SendJson(res, {{"queued", s.fetches.EnqueueTitles(s.config, s.events, std::move(titles))}},
+             202);
   });
 
   // An installed title's game takes or drops the tag; the rest are kept as hidden titles.
@@ -642,17 +688,20 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
-    if (!b.contains("source") || !b["source"].is_string() || !b.contains("ref") || !b["ref"].is_string()) {
+    if (!b.contains("source") || !b["source"].is_string() || !b.contains("ref") ||
+        !b["ref"].is_string()) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const std::string source = b["source"];
     const std::string ref = b["ref"];
     const library::ILibrarySource* src = library::FindSource(source);
     if (src == nullptr) {
-      return SendError(res, 400, "unknown_source", std::format("no installable source named \"{}\"", source));
+      return SendError(res, 400, "unknown_source",
+                       std::format("no installable source named \"{}\"", source));
     }
     if (!src->CanPause()) {
-      return SendError(res, 409, "pause_unsupported", std::format("{} installs can't be paused, only cancelled", source));
+      return SendError(res, 409, "pause_unsupported",
+                       std::format("{} installs can't be paused, only cancelled", source));
     }
     const std::string target = source + "-" + ref;
     const auto job = s.jobs.RunningFor(target);
@@ -693,7 +742,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     auto candidates = scanner.ListCandidates();
     if (!candidates) return SendError(res, 404, candidates.error());
     json out = json::array();
-    for (const auto& c : *candidates) out.push_back({{"id", c.id}, {"name", c.name}, {"icon", c.icon}});
+    for (const auto& c : *candidates)
+      out.push_back({{"id", c.id}, {"name", c.name}, {"icon", c.icon}});
     SendJson(res, std::move(out));
   });
 

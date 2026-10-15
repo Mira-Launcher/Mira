@@ -3,20 +3,18 @@
 #include <QLabel>
 #include <QToolButton>
 #include <QVBoxLayout>
-
-#include "../app/Notify.h"
-#include "../settings/SettingsCard.h"
-#include "../settings/SettingsNav.h"
-#include "../theme/Icons.h"
-#include "../theme/Theme.h"
-
 #include <algorithm>
 #include <utility>
 
+#include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
+#include "../settings/SettingsCard.h"
+#include "../settings/SettingsNav.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 
@@ -44,8 +42,10 @@ void OverridesEditor::Load() {
 
 void OverridesEditor::Reload() {
   api::GetGameConfigAsync(this, game_id_, [this](GameConfigResult config) {
-    if (config.ok) ApplyValues(config);
-    else resetting_key_.clear();
+    if (config.ok)
+      ApplyValues(config);
+    else
+      resetting_key_.clear();
   });
 }
 
@@ -108,7 +108,8 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
   const auto list_runners = [this] {
     api::ListRunnersAsync(this, [this](RunnersResult runners) {
       for (Field& field : fields_) {
-        if (field.combo != nullptr && field.entry.is_runner_ref) FillRunnerCombo(field.combo, runners);
+        if (field.combo != nullptr && field.entry.is_runner_ref)
+          FillRunnerCombo(field.combo, runners);
       }
     });
   };
@@ -121,8 +122,8 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
   // response says which are overridable, so daemon-only keys are hidden here
   // rather than never built.
   for (const GameConfigEntry& entry : config.entries) {
-    const auto it = std::ranges::find(fields_, entry.key,
-                                      [](const Field& f) { return f.entry.key; });
+    const auto it =
+        std::ranges::find(fields_, entry.key, [](const Field& f) { return f.entry.key; });
     if (it == fields_.end()) continue;
     Field& field = *it;
 
@@ -130,7 +131,8 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
     if (!entry.overridable) continue;
 
     // A reload after resetting one override keeps unsaved edits to the others.
-    const bool pending = !field.layer.empty() && field.Text() != field.original && field.entry.key != resetting_key_;
+    const bool pending =
+        !field.layer.empty() && field.Text() != field.original && field.entry.key != resetting_key_;
     const std::string kept = field.Text();
     field.layer = entry.layer;
     field.layer_label->setText(entry.layer == "game"     ? QString("This game")

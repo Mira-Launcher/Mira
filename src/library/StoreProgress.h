@@ -10,7 +10,7 @@
 namespace mira::library {
 
 struct DownloadProgress {
-  double fraction = 0;          // 0..1
+  double fraction = 0;            // 0..1
   std::int64_t eta_seconds = -1;  // -1: not reported
   double bytes_per_second = -1;
 };
@@ -24,7 +24,7 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress);
 // Turns a store tool's output into library.install.progress events, at most
 // one a second.
 class StoreProgress {
-public:
+ public:
   StoreProgress(api::EventBus& events, std::string source, std::string ref);
   ~StoreProgress();
   StoreProgress(const StoreProgress&) = delete;
@@ -32,7 +32,7 @@ public:
 
   void Feed(std::string_view chunk);
 
-private:
+ private:
   // The log of this install: "install:<source>:<ref>".
   std::string channel() const { return "install:" + source_ + ":" + ref_; }
 

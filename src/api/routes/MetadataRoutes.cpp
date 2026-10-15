@@ -1,4 +1,4 @@
-#include "api/Routes.h"
+#include <httplib.h>
 
 #include <algorithm>
 #include <charconv>
@@ -6,12 +6,11 @@
 #include <fstream>
 #include <sstream>
 
-#include <httplib.h>
-
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
-#include "library/GamePatch.h"
 #include "config/Resolver.h"
+#include "library/GamePatch.h"
 #include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
 
@@ -26,8 +25,8 @@ constexpr std::size_t kMaxUpload = 32 << 20;
 }  // namespace
 
 // Serves one cached art slot for `id`, or 404s.
-void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id, const std::string& type,
-                       Response& res) {
+void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id,
+                       const std::string& type, Response& res) {
   const auto art = cache.ArtFor(id, type);
   if (!art) return SendError(res, 404, "artwork_not_found", "no artwork cached for this game yet");
   std::ifstream in(art->file, std::ios::binary | std::ios::ate);
@@ -45,7 +44,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   // --- metadata ---------------------------------------------------------
 
   http.Get(R"(/v1/games/([^/]+)/metadata)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1]))
+      return SendError(res, 404, "game_not_found", "no such game");
     if (!s.games.Metadata().Has(req.matches[1])) {
       return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
     }
@@ -53,7 +53,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   });
 
   http.Get(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1]))
+      return SendError(res, 404, "game_not_found", "no such game");
     SendCachedArtwork(s.games.Metadata(), req.matches[1], Param(req, "type", "cover"), res);
   });
 
@@ -71,17 +72,20 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
       return SendError(res, 400, "invalid_json", "body must be {\"candidate_id\": <id>}");
     }
     const std::int64_t candidate_id = b["candidate_id"].get<std::int64_t>();
-    s.StartJob(req, res, "artwork", id, "Choosing artwork",
-               [&s, id, slot, candidate_id](JobRegistry::Progress&) -> Result<json> {
-                 if (auto selected = metadata::SelectArtwork(s.config, s.games.Metadata(), id, slot, candidate_id); !selected) {
-                   s.events.Publish("game.artwork_select_failed",
-                                    FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
-                   return std::unexpected(selected.error());
-                 }
-                 s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
-                 return json{{"id", id}, {"type", slot}};
-               },
-               &s.artwork_selects);
+    s.StartJob(
+        req, res, "artwork", id, "Choosing artwork",
+        [&s, id, slot, candidate_id](JobRegistry::Progress&) -> Result<json> {
+          if (auto selected =
+                  metadata::SelectArtwork(s.config, s.games.Metadata(), id, slot, candidate_id);
+              !selected) {
+            s.events.Publish("game.artwork_select_failed",
+                             FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
+            return std::unexpected(selected.error());
+          }
+          s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+          return json{{"id", id}, {"type", slot}};
+        },
+        &s.artwork_selects);
   });
 
   // The body is the image itself, PNG or JPEG.
@@ -89,19 +93,23 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const std::string id = req.matches[1];
     if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
-    if (req.body.size() > kMaxUpload) return SendError(res, 413, "image_too_large", "the image is over 32 MB");
+    if (req.body.size() > kMaxUpload)
+      return SendError(res, 413, "image_too_large", "the image is over 32 MB");
     const std::string slot = req.get_param_value("type");
-    s.StartJob(req, res, "artwork", id, "Using your image",
-               [&s, id, slot, bytes = req.body](JobRegistry::Progress&) -> Result<json> {
-                 if (auto uploaded = metadata::UploadArtwork(s.config, s.games.Metadata(), id, slot, bytes); !uploaded) {
-                   s.events.Publish("game.artwork_select_failed",
-                                    FailedEvent({{"id", id}, {"type", slot}}, uploaded.error()));
-                   return std::unexpected(uploaded.error());
-                 }
-                 s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
-                 return json{{"id", id}, {"type", slot}};
-               },
-               &s.artwork_selects);
+    s.StartJob(
+        req, res, "artwork", id, "Using your image",
+        [&s, id, slot, bytes = req.body](JobRegistry::Progress&) -> Result<json> {
+          if (auto uploaded =
+                  metadata::UploadArtwork(s.config, s.games.Metadata(), id, slot, bytes);
+              !uploaded) {
+            s.events.Publish("game.artwork_select_failed",
+                             FailedEvent({{"id", id}, {"type", slot}}, uploaded.error()));
+            return std::unexpected(uploaded.error());
+          }
+          s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+          return json{{"id", id}, {"type", slot}};
+        },
+        &s.artwork_selects);
   });
 
   http.Post(R"(/v1/games/([^/]+)/artwork/candidates)", [&s](const Request& req, Response& res) {
@@ -118,7 +126,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const std::string request = Param(req, "request");
     s.artwork_thumbs.Post([&s, id, slot, page, request] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
-      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page); fetched) {
+      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page);
+          fetched) {
         event.update(*fetched);
       } else {
         event = FailedEvent(std::move(event), fetched.error());
@@ -139,12 +148,15 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const json ids = body->value("candidate_ids", json());
     if (!ids.is_array() || ids.empty() || ids.size() > 64 ||
         !std::ranges::all_of(ids, [](const json& value) { return value.is_number_integer(); })) {
-      return SendError(res, 400, "invalid_json", "body must be {\"candidate_ids\": [<id>, ...]}, 1 to 64 ids");
+      return SendError(res, 400, "invalid_json",
+                       "body must be {\"candidate_ids\": [<id>, ...]}, 1 to 64 ids");
     }
     const std::vector<std::int64_t> candidate_ids = ids.get<std::vector<std::int64_t>>();
     s.artwork_thumbs.Post([&s, id, slot, candidate_ids] {
       json event = {{"id", id}, {"type", slot}};
-      if (auto batch = metadata::FetchCandidateThumbs(s.config, s.games.Metadata(), id, slot, candidate_ids); batch) {
+      if (auto batch =
+              metadata::FetchCandidateThumbs(s.config, s.games.Metadata(), id, slot, candidate_ids);
+          batch) {
         event["ready"] = batch->ready;
         event["failed"] = batch->failed;
       } else {
@@ -163,12 +175,15 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const std::string slot = Param(req, "type", "cover");
     std::int64_t candidate_id = 0;
     const std::string raw = Param(req, "candidate_id");
-    if (std::from_chars(raw.data(), raw.data() + raw.size(), candidate_id).ec != std::errc() || raw.empty()) {
+    if (std::from_chars(raw.data(), raw.data() + raw.size(), candidate_id).ec != std::errc() ||
+        raw.empty()) {
       return SendError(res, 400, "missing_candidate_id", "?candidate_id= is required");
     }
-    const std::filesystem::path file = metadata::CandidateThumbFile(s.config, id, slot, candidate_id);
+    const std::filesystem::path file =
+        metadata::CandidateThumbFile(s.config, id, slot, candidate_id);
     std::ifstream in(file, std::ios::binary);
-    if (file.empty() || !in) return SendError(res, 404, "thumb_not_cached", "no preview cached for that candidate");
+    if (file.empty() || !in)
+      return SendError(res, 404, "thumb_not_cached", "no preview cached for that candidate");
     std::ostringstream buffer;
     buffer << in.rdbuf();
     res.set_content(buffer.str(), metadata::ImageContentType(buffer.str()));
@@ -181,7 +196,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
 
   // As a game's settings close: the previews fetched while they were open.
   http.Delete(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1])) return SendError(res, 404, "game_not_found", "no such game");
+    if (!s.games.Contains(req.matches[1]))
+      return SendError(res, 404, "game_not_found", "no such game");
     metadata::ClearCandidateThumbs(s.config, req.matches[1]);
     res.status = 204;
   });
@@ -202,7 +218,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     const std::string query = Param(req, "q", game->name);
     auto matches = metadata::SearchSteamGridDb(s.config, query);
     if (!matches) return SendError(res, 502, matches.error());
-    const std::int64_t chosen = config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id");
+    const std::int64_t chosen =
+        config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id");
     SendJson(res, {{"query", query}, {"chosen", chosen}, {"matches", *matches}});
   });
 
@@ -211,18 +228,21 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     auto matches = metadata::SearchSteamGridDb(s.config, game->name);
     if (!matches) return SendError(res, 502, matches.error());
-    const std::int64_t current = config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id");
+    const std::int64_t current =
+        config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id");
     std::size_t next = 1;  // no choice yet: the top match was in use
     for (std::size_t i = 0; i < matches->size(); ++i) {
       if ((*matches)[i].value("id", std::int64_t{0}) == current) next = i + 1;
     }
     if (next >= matches->size()) {
-      return SendError(res, 409, "no_more_matches",
-                       "no other SteamGridDB match for this name -- pick one with ?q= on .../metadata/matches");
+      return SendError(
+          res, 409, "no_more_matches",
+          "no other SteamGridDB match for this name -- pick one with ?q= on .../metadata/matches");
     }
     const json& match = (*matches)[next];
     const json patch = {{"metadata.steamgriddb_id", match.value("id", std::int64_t{0})}};
-    auto updated = s.games.Update(game->id, [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
+    auto updated =
+        s.games.Update(game->id, [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
     if (!updated) return SendError(res, 500, updated.error());
     s.fetches.Enqueue(s.config, s.events, *updated, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"match", match}}, 202);
@@ -239,7 +259,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     }
     const std::int64_t id = b["steamgriddb_id"];
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
-    auto game = s.games.Update(req.matches[1], [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
+    auto game = s.games.Update(req.matches[1],
+                               [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
     if (!game) return SendStoreError(res, game.error());
     s.fetches.Enqueue(s.config, s.events, *game, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"steamgriddb_id", id}}, 202);
@@ -254,16 +275,19 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     std::vector<model::Game> games;
     json unknown = json::array();
     for (const std::string& id : *ids) {
-      if (auto game = s.games.Find(id)) games.push_back(std::move(*game));
-      else unknown.push_back(id);
+      if (auto game = s.games.Find(id))
+        games.push_back(std::move(*game));
+      else
+        unknown.push_back(id);
     }
     if (games.empty()) return SendError(res, 404, "game_not_found", "no such game");
     s.StartJob(req, res, "metadata", "", "Refreshing metadata",
-             [&s, games = std::move(games), unknown = std::move(unknown)](JobRegistry::Progress& progress) {
-               auto result = s.RefreshMetadata(games, progress);
-               if (result && !unknown.empty()) (*result)["unknown"] = unknown;
-               return result;
-             });
+               [&s, games = std::move(games),
+                unknown = std::move(unknown)](JobRegistry::Progress& progress) {
+                 auto result = s.RefreshMetadata(games, progress);
+                 if (result && !unknown.empty()) (*result)["unknown"] = unknown;
+                 return result;
+               });
   });
 
   http.Post("/v1/games/metadata/refresh-missing", [&s](const Request& req, Response& res) {
@@ -272,7 +296,9 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
       if (!s.games.Metadata().ArtVersions(game.id).contains("cover")) games.push_back(game);
     }
     s.StartJob(req, res, "metadata", "", "Fetching missing cover art",
-             [&s, games = std::move(games)](JobRegistry::Progress& progress) { return s.RefreshMetadata(games, progress); });
+               [&s, games = std::move(games)](JobRegistry::Progress& progress) {
+                 return s.RefreshMetadata(games, progress);
+               });
   });
 }
 

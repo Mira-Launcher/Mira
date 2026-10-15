@@ -68,7 +68,8 @@ PatchConfigResult SaveFrontendPrefsBlocking(const FrontendPrefs& prefs);
 // it at its real size.
 FrontendPrefsResult GetFrontendPrefsBlocking();
 
-// GET /v1/system/packages?for=: the system packages `feature` ("winetricks", ...) needs that aren't installed.
+// GET /v1/system/packages?for=: the system packages `feature` ("winetricks", ...) needs that aren't
+// installed.
 void GetSystemPackagesAsync(QObject* context, const std::string& feature,
                             std::function<void(SystemPackagesResult)> callback);
 

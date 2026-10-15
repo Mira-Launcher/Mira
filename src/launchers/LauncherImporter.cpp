@@ -1,11 +1,10 @@
 #include <algorithm>
 #include <cctype>
-#include <functional>
 #include <format>
 #include <fstream>
-#include <sstream>
-
+#include <functional>
 #include <json.hpp>
+#include <sstream>
 
 #include "core/Json.h"
 #include "core/Log.h"
@@ -21,7 +20,7 @@ namespace {
 namespace fs = std::filesystem;
 
 struct Found {
-  std::string ref;   // what the launcher's own launch command takes
+  std::string ref;  // what the launcher's own launch command takes
   std::string name;
   fs::path dir;
   std::string exe = {};  // known up front (Microsoft 365); else detected
@@ -65,7 +64,8 @@ std::vector<Found> FindBattleNet(const fs::path& prefix) {
 std::vector<Found> FindUbisoft(const fs::path& prefix) {
   std::vector<Found> found;
   std::error_code ec;
-  for (const char* key : {"Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs", "Software\\Ubisoft\\Launcher\\Installs"}) {
+  for (const char* key : {"Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs",
+                          "Software\\Ubisoft\\Launcher\\Installs"}) {
     for (const auto& [id, values] : ReadRegSubkeys(prefix / "system.reg", key)) {
       const auto install_dir = values.find("InstallDir");
       if (install_dir == values.end()) continue;
@@ -108,7 +108,8 @@ std::vector<Found> FindEa(const fs::path& prefix) {
     const std::vector<std::string> titles = TagValues(xml.str(), "gameTitle");
     std::string joined;
     for (const std::string& id : ids) joined += (joined.empty() ? "" : ",") + id;
-    found.push_back({joined, titles.empty() ? entry.path().filename().string() : titles.front(), entry.path()});
+    found.push_back(
+        {joined, titles.empty() ? entry.path().filename().string() : titles.front(), entry.path()});
   }
   return found;
 }
@@ -124,7 +125,8 @@ std::vector<Found> FindOffice(const fs::path& prefix) {
   return found;
 }
 
-// Creative Cloud apps by folder ("Adobe Photoshop 2026", a year after the name or none) and exe in it.
+// Creative Cloud apps by folder ("Adobe Photoshop 2026", a year after the name or none) and exe in
+// it.
 struct AdobeApp {
   std::string_view ref;
   std::string_view name;
@@ -133,7 +135,8 @@ struct AdobeApp {
 };
 constexpr AdobeApp kAdobeApps[] = {
     {"photoshop", "Photoshop", "Adobe Photoshop", "Photoshop.exe"},
-    {"illustrator", "Illustrator", "Adobe Illustrator", "Support Files/Contents/Windows/Illustrator.exe"},
+    {"illustrator", "Illustrator", "Adobe Illustrator",
+     "Support Files/Contents/Windows/Illustrator.exe"},
     {"premiere-pro", "Premiere Pro", "Adobe Premiere Pro", "Adobe Premiere Pro.exe"},
     {"after-effects", "After Effects", "Adobe After Effects", "Support Files/AfterFX.exe"},
     {"indesign", "InDesign", "Adobe InDesign", "InDesign.exe"},
@@ -150,21 +153,26 @@ constexpr AdobeApp kAdobeApps[] = {
 bool IsAppFolder(std::string_view folder, std::string_view name) {
   if (!folder.starts_with(name)) return false;
   const std::string_view year = folder.substr(name.size());
-  return year.empty() || (year.size() > 1 && year[0] == ' ' &&
-                          std::ranges::all_of(year.substr(1), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); }));
+  return year.empty() ||
+         (year.size() > 1 && year[0] == ' ' && std::ranges::all_of(year.substr(1), [](char c) {
+            return std::isdigit(static_cast<unsigned char>(c));
+          }));
 }
 
 std::vector<Found> FindAdobe(const fs::path& prefix) {
   const fs::path adobe = prefix / "drive_c/Program Files/Adobe";
   std::error_code ec;
   std::vector<std::string> folders;
-  for (const auto& entry : fs::directory_iterator(adobe, ec)) folders.push_back(entry.path().filename().string());
+  for (const auto& entry : fs::directory_iterator(adobe, ec))
+    folders.push_back(entry.path().filename().string());
   std::ranges::sort(folders, std::greater{});  // the newest year first
   std::vector<Found> found;
   for (const AdobeApp& app : kAdobeApps) {
     for (const std::string& folder : folders) {
-      if (!IsAppFolder(folder, app.folder) || !fs::is_regular_file(adobe / folder / app.exe, ec)) continue;
-      found.push_back({std::string(app.ref), std::string(app.name), adobe / folder, std::string(app.exe)});
+      if (!IsAppFolder(folder, app.folder) || !fs::is_regular_file(adobe / folder / app.exe, ec))
+        continue;
+      found.push_back(
+          {std::string(app.ref), std::string(app.name), adobe / folder, std::string(app.exe)});
       break;
     }
   }
@@ -175,8 +183,16 @@ std::vector<Found> FindAdobe(const fs::path& prefix) {
 std::string LookupUmuId(const std::string& store, const std::string& ref) {
   const std::string codename = ref.substr(0, ref.find(','));
   Command command;
-  command.argv = {"curl", "-sSf", "--max-time", "5", "--get", "--data-urlencode", "codename=" + codename,
-                  "--data-urlencode", "store=" + store, "https://umu.openwinecomponents.org/umu_api.php"};
+  command.argv = {"curl",
+                  "-sSf",
+                  "--max-time",
+                  "5",
+                  "--get",
+                  "--data-urlencode",
+                  "codename=" + codename,
+                  "--data-urlencode",
+                  "store=" + store,
+                  "https://umu.openwinecomponents.org/umu_api.php"};
   const auto result = runner::RunAndWait(command);
   if (!result || result->exit_code != 0) return "";
   const nlohmann::json parsed = nlohmann::json::parse(result->output, nullptr, false);
@@ -186,8 +202,8 @@ std::string LookupUmuId(const std::string& store, const std::string& ref) {
 
 }  // namespace
 
-Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
-                             const Launcher& launcher) {
+Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games,
+                                      api::EventBus& events, const Launcher& launcher) {
   const auto host = games.Find(GameId(launcher));
   if (!host || host->status != model::GameStatus::Ready) {
     return LauncherNotInstalled(launcher.id, launcher.name);
@@ -209,7 +225,8 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
   library::ImportSummary summary;
   const library::Detector detector(library::SettingsFromConfig(config));
   for (const Found& item : found) {
-    const std::string slug = strings::Slugify(launcher.id == "ea" ? item.dir.filename().string() : item.ref);
+    const std::string slug =
+        strings::Slugify(launcher.id == "ea" ? item.dir.filename().string() : item.ref);
     const std::string id = std::format("{}-{}", launcher.id, slug);
     const auto existing = games.Find(id);
 
@@ -236,10 +253,12 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     if (game.exe_path.empty()) {
       const library::Detector::Result detected = detector.Detect(item.dir);
       game.candidates = detected.candidates;
-      const auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
+      const auto exe =
+          std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
       if (exe != detected.candidates.end()) game.exe_path = exe->rel_path;
     }
-    if (launcher.kind == "apps" && std::ranges::find(game.tags, "app") == game.tags.end()) game.tags.push_back("app");
+    if (launcher.kind == "apps" && std::ranges::find(game.tags, "app") == game.tags.end())
+      game.tags.push_back("app");
     game.status = model::GameStatus::Ready;
     game.last_error.clear();
     if (existing && model::ToJson(game) == model::ToJson(*existing)) continue;  // nothing new
@@ -263,14 +282,16 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
       if (games.Remove(game.id)) events.Publish("game.removed", {{"id", game.id}});
       continue;
     }
-    if (auto missing = games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
+    if (auto missing =
+            games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
       events.Publish("game.updated", model::ToJson(*missing));
     }
   }
   return summary;
 }
 
-library::ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events) {
+library::ImportSummary ImportAll(config::Config& config, store::GameStore& games,
+                                 api::EventBus& events) {
   library::ImportSummary total;
   for (const Launcher& launcher : All()) {
     if (!Installed(games, launcher) || !games.SourceEnabled(launcher.id)) continue;

@@ -102,8 +102,12 @@ inline constexpr const char* kApp = "app";
 inline bool HasTag(const GameSummary& game, std::string_view tag) {
   return std::ranges::find(game.tags, tag) != game.tags.end();
 }
-inline bool IsApp(const GameSummary& game) { return HasTag(game, tags::kApp); }
-inline bool IsHidden(const GameSummary& game) { return HasTag(game, tags::kHidden); }
+inline bool IsApp(const GameSummary& game) {
+  return HasTag(game, tags::kApp);
+}
+inline bool IsHidden(const GameSummary& game) {
+  return HasTag(game, tags::kHidden);
+}
 inline bool IsMeaningTag(std::string_view tag) {
   return tag == tags::kPinned || tag == tags::kHidden || tag == tags::kApp;
 }
@@ -111,7 +115,9 @@ inline bool IsMeaningTag(std::string_view tag) {
 // Tags compared as mirad compares folder tags with them: ignoring ASCII case.
 inline bool SameTag(std::string_view a, std::string_view b) {
   return std::ranges::equal(a, b, [](char x, char y) {
-    const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    const auto lower = [](char c) {
+      return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    };
     return lower(x) == lower(y);
   });
 }
@@ -141,23 +147,36 @@ inline int FolderTagIndex(const std::vector<std::string>& tags,
 
 // A game's `tags` as `order` (the library's TagOrder) lists them; tags it doesn't list keep their
 // own order after those, and the tags Mira gives a meaning to come last.
-inline std::vector<std::string> InTagOrder(std::vector<std::string> tags, const std::vector<std::string>& order) {
+inline std::vector<std::string> InTagOrder(std::vector<std::string> tags,
+                                           const std::vector<std::string>& order) {
   const auto rank = [&](const std::string& tag) {
     if (IsMeaningTag(tag)) return order.size() + 1;
-    const auto at = std::ranges::find_if(order, [&](const std::string& o) { return SameTag(o, tag); });
+    const auto at =
+        std::ranges::find_if(order, [&](const std::string& o) { return SameTag(o, tag); });
     return static_cast<std::size_t>(at - order.begin());
   };
   std::ranges::stable_sort(tags, {}, rank);
   return tags;
 }
 // An app is opened and runs; a game is played.
-inline const char* RunVerb(const GameSummary& game) { return IsApp(game) ? "Open" : "Play"; }
-inline const char* RunningLabel(const GameSummary& game) { return IsApp(game) ? "Running" : "Playing"; }
-inline const char* Noun(const GameSummary& game) { return IsApp(game) ? "app" : "game"; }
-inline bool IsPinned(const GameSummary& game) { return HasTag(game, tags::kPinned); }
+inline const char* RunVerb(const GameSummary& game) {
+  return IsApp(game) ? "Open" : "Play";
+}
+inline const char* RunningLabel(const GameSummary& game) {
+  return IsApp(game) ? "Running" : "Playing";
+}
+inline const char* Noun(const GameSummary& game) {
+  return IsApp(game) ? "app" : "game";
+}
+inline bool IsPinned(const GameSummary& game) {
+  return HasTag(game, tags::kPinned);
+}
 
-// Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a 409.
-inline bool CanPlayOrStop(const GameSummary& game) { return game.running || game.status == "ready"; }
+// Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a
+// 409.
+inline bool CanPlayOrStop(const GameSummary& game) {
+  return game.running || game.status == "ready";
+}
 
 struct GamesResult {
   bool ok = false;
@@ -315,7 +334,7 @@ struct GameMetadata {
   std::vector<std::int64_t> dlc_ids;
   std::vector<std::string> content_descriptors;
   int achievements_total = 0;
-  std::string controller_support;  // "full", "partial" or empty (Steam store)
+  std::string controller_support;        // "full", "partial" or empty (Steam store)
   std::vector<std::string> screenshots;  // URLs, opened externally
   std::vector<std::string> trailers;     // Steam trailer streams (HLS)
 };
@@ -502,19 +521,19 @@ struct ConfigSchemaEntry {
   std::vector<std::string> one_of;
   std::optional<double> minimum;
   std::optional<double> maximum;
-  std::string category;        // UI grouping; always present
-  int group = 0;               // settings sharing this number within a category form one card
-  std::string group_label;     // that card's title
-  bool group_collapsed = false;  // the card starts folded
+  std::string category;           // UI grouping; always present
+  int group = 0;                  // settings sharing this number within a category form one card
+  std::string group_label;        // that card's title
+  bool group_collapsed = false;   // the card starts folded
   bool group_resettable = false;  // the card offers one reset to its defaults
-  std::string source;          // e.g. "steam" when the setting belongs to one source; else empty
-  std::string path;            // "folder" or "file" when the value is a path on this computer
-  bool per_game = false;       // overridable per game (scope "per_game" or "game_only")
-  bool game_only = false;      // only exists per game; not listed in the global settings
-  bool is_secret = false;      // mask this value's field
-  bool is_runner_ref = false;  // offer a runner picker (GET /v1/runners) instead of free text
-  std::string link;            // web page where the user gets the value; empty if none
-  std::string keywords;        // extra search terms, space-separated
+  std::string source;             // e.g. "steam" when the setting belongs to one source; else empty
+  std::string path;               // "folder" or "file" when the value is a path on this computer
+  bool per_game = false;          // overridable per game (scope "per_game" or "game_only")
+  bool game_only = false;         // only exists per game; not listed in the global settings
+  bool is_secret = false;         // mask this value's field
+  bool is_runner_ref = false;     // offer a runner picker (GET /v1/runners) instead of free text
+  std::string link;               // web page where the user gets the value; empty if none
+  std::string keywords;           // extra search terms, space-separated
 };
 
 struct ConfigSchemaResult {
@@ -774,9 +793,9 @@ struct RunnerDownloadEvent {
   std::string label;
   std::string source;
   std::string replaced;  // on "finished" after an update: the "kind:name" it replaced
-  std::string state;  // "started" | "progress" | "finished" | "failed"
+  std::string state;     // "started" | "progress" | "finished" | "failed"
   double progress = -1;  // 0..1, only on "progress"
-  ApiError error;     // only on "failed"
+  ApiError error;        // only on "failed"
 };
 
 // POST /v1/steam/scan.
@@ -834,7 +853,7 @@ struct FrontendPrefs {
   std::optional<int> window_width;
   std::optional<int> window_height;
   std::optional<bool> window_maximized;
-  std::optional<int> tile_width;  // the library grid's
+  std::optional<int> tile_width;              // the library grid's
   std::optional<std::string> library_filter;  // a filter key
   std::optional<int> sidebar_width;
   std::optional<std::string> sort_by;  // "name" | "last_played" | "playtime" | "status"
@@ -852,7 +871,8 @@ struct FrontendPrefs {
   std::optional<bool> drag_select;
   // On (default): double-clicking a game in a grid plays it, or stops it while it runs.
   std::optional<bool> double_click_play;
-  // Off (default): installing or removing a system package asks for the password; on shows the command instead.
+  // Off (default): installing or removing a system package asks for the password; on shows the
+  // command instead.
   std::optional<bool> copy_commands;
   // Shape adjustments layered over whatever the theme sets, in pixels; see
   // theme::Overrides. Unset means "leave it to the theme".
@@ -884,7 +904,7 @@ struct FrontendPrefs {
   std::optional<int> library_continue_count;
   std::optional<bool> library_continue_apps;  // apps in the Continue row; off by default
   std::optional<bool> library_apps_in_all;    // apps under the All tab; on by default
-  std::optional<bool> library_apps;           // apps in the library at all, not only in sources and search
+  std::optional<bool> library_apps;  // apps in the library at all, not only in sources and search
   // What a tile draws over its cover besides the title.
   std::optional<bool> tile_status;
   std::optional<bool> tile_source_mark;  // the source's name on the status line
@@ -943,7 +963,7 @@ struct InstallerInfoResult {
   ApiError error;
   std::string path;
   std::int64_t size_bytes = 0;
-  std::string format;  // "inno" | "nsis" | "msi" | "unknown"
+  std::string format;   // "inno" | "nsis" | "msi" | "unknown"
   bool silent = false;  // Mira knows how to run it without its window
 };
 
@@ -1033,7 +1053,8 @@ struct GameLogResult {
   std::vector<std::string> lines;
 };
 
-// GET /v1/logs/<channel>. `next` is the cursor for the following read; `active` is whether the task is still going.
+// GET /v1/logs/<channel>. `next` is the cursor for the following read; `active` is whether the task
+// is still going.
 struct LogResult {
   bool ok = false;
   ApiError error;
@@ -1045,17 +1066,19 @@ struct LogResult {
 
 // GET /v1/gamemode/status: is Feral GameMode's daemon installed/reachable.
 // Purely informational; `launch.gamemode` (a plain config key) is the toggle.
-// GET /v1/system/packages: what a feature needs that isn't installed, and the command that installs it.
+// GET /v1/system/packages: what a feature needs that isn't installed, and the command that installs
+// it.
 struct SystemPackagesResult {
   bool ok = false;
   ApiError error;
   std::string distro;
   std::string family;  // "arch", "debian", "fedora", "suse", "ostree", "steamos", "unknown"
-  std::vector<std::string> missing;   // package names
-  std::vector<std::string> purposes;  // what each of `missing` is for
+  std::vector<std::string> missing;      // package names
+  std::vector<std::string> purposes;     // what each of `missing` is for
   std::vector<std::string> unavailable;  // purposes of tools with no package on this distro
-  std::vector<std::string> install;  // argv to run as root, ending with `missing`; empty when Mira can't
-  bool restart = false;              // layered with rpm-ostree: only after a restart
+  std::vector<std::string>
+      install;           // argv to run as root, ending with `missing`; empty when Mira can't
+  bool restart = false;  // layered with rpm-ostree: only after a restart
 };
 
 struct GameModeStatusResult {
@@ -1191,9 +1214,9 @@ struct StoreTitle {
   std::string ref;
   std::string title;
   bool installed = false;
-  bool owned = true;  // false: listed from an itch collection, but paid and not bought
-  bool hidden = false;  // its game's tag once installed, else POST /v1/library/hidden's
-  std::string source;  // the store it's from
+  bool owned = true;          // false: listed from an itch collection, but paid and not bought
+  bool hidden = false;        // its game's tag once installed, else POST /v1/library/hidden's
+  std::string source;         // the store it's from
   std::string protondb_tier;  // empty when none is cached
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
   std::string review_summary;  // Steam's label ("Very Positive"), empty when none is cached
@@ -1211,9 +1234,10 @@ struct RemovalPlanResult {
   };
   std::vector<Game> games;
   std::string program_dir;
-  std::vector<std::string> packages;   // a package emulator's installed packages
-  std::vector<std::string> uninstall;  // the command removing them as root; empty on a distro Mira can't
-  std::vector<std::string> data;       // an emulator's settings, saves and caches
+  std::vector<std::string> packages;  // a package emulator's installed packages
+  std::vector<std::string>
+      uninstall;                  // the command removing them as root; empty on a distro Mira can't
+  std::vector<std::string> data;  // an emulator's settings, saves and caches
   std::vector<std::string> kept;
   bool signs_out = false;
 };
@@ -1282,7 +1306,8 @@ struct LauncherInfo {
   bool installed = false;
   std::string install_state;  // "idle" | "running" | "finished" | "failed"
   bool interactive_install = false;
-  std::string packages;  // the feature whose system packages installing it needs; see GetSystemPackagesAsync
+  std::string packages;  // the feature whose system packages installing it needs; see
+                         // GetSystemPackagesAsync
   std::string prefix;
   std::string runner_ref;
   ApiError error;
@@ -1305,7 +1330,8 @@ struct EmulatorInfo {
   bool installed = false;
   std::string path;
   std::string version;  // the release Mira downloaded, empty for a package or a chosen program
-  std::string package;  // the system packages feature that installs it, empty when Mira downloads it
+  std::string
+      package;  // the system packages feature that installs it, empty when Mira downloads it
   std::string rom_dir;
   std::vector<EmulatorFirmware> firmware;
 };
@@ -1341,8 +1367,9 @@ struct EmulatorChoice {
 struct ExistingEmulatorGamesResult {
   bool ok = false;
   ApiError error;
-  std::vector<std::pair<std::string, int>> dirs;  // folders its settings list, and how many games each holds
-  std::vector<std::string> shortcuts;             // names of desktop entries in the library that run one
+  std::vector<std::pair<std::string, int>>
+      dirs;                            // folders its settings list, and how many games each holds
+  std::vector<std::string> shortcuts;  // names of desktop entries in the library that run one
 };
 
 struct EmulatorChoicesResult {
@@ -1380,7 +1407,7 @@ struct SteamAccount {
 struct SteamAccountsResult {
   bool ok = false;
   ApiError error;
-  bool found = false;  // Steam is installed
+  bool found = false;                  // Steam is installed
   std::vector<SteamAccount> accounts;  // most recent first
   std::string selected;                // the steamid64 owned games are read for
 };
@@ -1400,18 +1427,19 @@ struct SteamInstalledResult {
 // A store helper's setup, a library install/update, a Humble download or a
 // launcher install moving along, from the event stream.
 struct StoreEvent {
-  std::string source;  // "epic" | "gog" | "itch" | "humble" | "amazon" | "steam" | a launcher id
-  std::string kind;    // "setup" | "install" | "download"
-  std::string state;   // "started" | "finished" | "failed"
-  std::string ref;     // install: the title's ref; download: the bundle key
-  ApiError error;      // only on "failed"
-  bool update = false;  // install: an update rather than a first install
+  std::string source;    // "epic" | "gog" | "itch" | "humble" | "amazon" | "steam" | a launcher id
+  std::string kind;      // "setup" | "install" | "download"
+  std::string state;     // "started" | "finished" | "failed"
+  std::string ref;       // install: the title's ref; download: the bundle key
+  ApiError error;        // only on "failed"
+  bool update = false;   // install: an update rather than a first install
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
 };
 
-// library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account owns.
+// library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account
+// owns.
 struct CatalogCheckEvent {
   std::string source;
   bool checking = false;  // started, else finished

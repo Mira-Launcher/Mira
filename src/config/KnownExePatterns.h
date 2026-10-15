@@ -15,20 +15,45 @@ namespace mira::config::known_exe_patterns {
 inline constexpr std::array kDeny = {
     // prerequisite installers: redistributables commonly dropped next to a
     // game's own exe by InstallShield/Inno Setup packaging
-    "unins*", "setup*", "vcredist*", "vc_redist*", "dxsetup*", "dxwebsetup*", "dotnet*", "ndp*",
-    "directx*", "*redist*", "touchup*", "oalinst*", "physxinstaller*", "*physx_setup*",
-    "gfwlivesetup*", "xnafx*", "*prereqsetup*", "*prerequisites*",
+    "unins*",
+    "setup*",
+    "vcredist*",
+    "vc_redist*",
+    "dxsetup*",
+    "dxwebsetup*",
+    "dotnet*",
+    "ndp*",
+    "directx*",
+    "*redist*",
+    "touchup*",
+    "oalinst*",
+    "physxinstaller*",
+    "*physx_setup*",
+    "gfwlivesetup*",
+    "xnafx*",
+    "*prereqsetup*",
+    "*prerequisites*",
     // Unreal Engine helpers
-    "*crashreport*", "*cefsubprocess*", "*crashpad*",
+    "*crashreport*",
+    "*cefsubprocess*",
+    "*crashpad*",
     // Unity helper: UnityCrashHandler*.exe getting auto-picked over the
     // real game exe (github.com/lutris/lutris/issues/6881)
     "*crashhandler*",
     // other common crash reporters (BugTrap/BugSplat, and legacy Dr. Watson)
-    "*bugsplat*", "bssndrpt*", "crashsender*", "drwtsn32*",
+    "*bugsplat*",
+    "bssndrpt*",
+    "crashsender*",
+    "drwtsn32*",
     // launcher / DRM / anti-cheat helpers bundled alongside a game. These
     // ship as their own subfolder+exe in nearly every game that uses them
     // (e.g. EasyAntiCheat/EasyAntiCheat.exe, BattlEye/BEService.exe)
-    "*launcher_installer*", "*webhelper*", "upc.exe", "*anticheat*", "battleye*", "beservice*",
+    "*launcher_installer*",
+    "*webhelper*",
+    "upc.exe",
+    "*anticheat*",
+    "battleye*",
+    "beservice*",
     "pnkbstr*",
 };
 

@@ -20,7 +20,9 @@ std::filesystem::path Home() {
   return "/tmp";
 }
 
-std::filesystem::path UserDir() { return EnvOr("XDG_CONFIG_HOME", Home() / ".config") / "mira"; }
+std::filesystem::path UserDir() {
+  return EnvOr("XDG_CONFIG_HOME", Home() / ".config") / "mira";
+}
 
 std::filesystem::path RuntimeDir() {
   return EnvOr("XDG_RUNTIME_DIR", EnvOr("XDG_CACHE_HOME", Home() / ".cache"));
@@ -30,8 +32,12 @@ std::filesystem::path ShaderCacheDir(const std::string& game_id) {
   return EnvOr("XDG_CACHE_HOME", Home() / ".cache") / "mira" / "shaders" / game_id;
 }
 
-std::filesystem::path SettingsFile() { return UserDir() / "settings.toml"; }
-std::filesystem::path DatabaseFile() { return UserDir() / "mira.db"; }
+std::filesystem::path SettingsFile() {
+  return UserDir() / "settings.toml";
+}
+std::filesystem::path DatabaseFile() {
+  return UserDir() / "mira.db";
+}
 
 std::filesystem::path Expand(std::string_view raw) {
   std::string out;

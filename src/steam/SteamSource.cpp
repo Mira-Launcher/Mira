@@ -9,8 +9,8 @@
 
 namespace mira::steam {
 
-Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(const config::Config& config,
-                                                                const store::GameStore& games) const {
+Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(
+    const config::Config& config, const store::GameStore& games) const {
   std::vector<library::CatalogEntry> entries;
   if (!games.SourceEnabled("steam")) return entries;
 
@@ -29,11 +29,13 @@ Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(const config::Co
   return entries;
 }
 
-Result<void> SteamSource::Install(config::Config& config, store::GameStore&, api::EventBus&, const std::string& ref) {
+Result<void> SteamSource::Install(config::Config& config, store::GameStore&, api::EventBus&,
+                                  const std::string& ref) {
   Command command;
   command.argv = SteamCommand(config);
   command.argv.push_back(std::format("steam://install/{}", ref));
-  if (auto spawned = runner::SpawnReaped(command); !spawned) return std::unexpected(spawned.error());
+  if (auto spawned = runner::SpawnReaped(command); !spawned)
+    return std::unexpected(spawned.error());
   return {};
 }
 

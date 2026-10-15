@@ -1,5 +1,6 @@
-#include "core/LogHub.h"
 #include "api/Services.h"
+
+#include <httplib.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -7,11 +8,10 @@
 #include <memory>
 #include <mutex>
 
-#include <httplib.h>
-
 #include "api/Http.h"
 #include "config/Resolver.h"
 #include "core/Log.h"
+#include "core/LogHub.h"
 #include "core/Paths.h"
 #include "desktop/DesktopEntries.h"
 #include "launchers/Launchers.h"
@@ -31,8 +31,8 @@ using nlohmann::json;
 // `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
 void AddNeedsCheck(json& game, double threshold) {
   const json candidates = game.value("candidates", json::array());
-  game["needs_check"] = candidates.is_array() && !candidates.empty() && !game.value("reviewed", false) &&
-                        game.value("confidence", 1.0) < threshold;
+  game["needs_check"] = candidates.is_array() && !candidates.empty() &&
+                        !game.value("reviewed", false) && game.value("confidence", 1.0) < threshold;
 }
 
 // `sort_root`: the library folder (as library_roots spells it) the game is sorted in, or null when
@@ -55,7 +55,8 @@ void AddSorting(json& record, const library::SortRules& rules, const model::Game
 }
 
 // Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
-Result<void> DeleteUnderRoot(const std::string& target, const std::vector<std::filesystem::path>& roots) {
+Result<void> DeleteUnderRoot(const std::string& target,
+                             const std::vector<std::filesystem::path>& roots) {
   return library::DeleteInside(target, roots);
 }
 
@@ -88,7 +89,8 @@ Services::~Services() {
   BeginStopping();
   if (external_watch_.joinable()) external_watch_.join();
   // Their tasks report to `jobs`, which is destroyed before the lanes are.
-  for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs}) lane->Stop();
+  for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs})
+    lane->Stop();
 }
 
 bool Services::Conceals(const model::Game& game) const {
@@ -191,14 +193,17 @@ void Services::BeginStopping() {
   events.WakeWaiters();  // open event streams
 }
 
-void Services::StartExternalWatch() { external_watch_ = std::thread(&Services::WatchExternalGames, this); }
+void Services::StartExternalWatch() {
+  external_watch_ = std::thread(&Services::WatchExternalGames, this);
+}
 
 void Services::ReloadSettings() {
   auto changed = config.Reload();
   if (!changed) {
     log::Warn("{}", changed.error().message);
-    events.PublishNotification(model::NotifyLevel::Error,
-                               std::format("{}. {}", changed.error().message, changed.error().hint));
+    events.PublishNotification(
+        model::NotifyLevel::Error,
+        std::format("{}. {}", changed.error().message, changed.error().hint));
     return;
   }
   if (changed->empty()) return;  // Mira's own save, or an edit that changed no setting
@@ -224,8 +229,11 @@ void Services::SyncDesktopEntries() {
 }
 
 void Services::SyncDesktopEntry(const std::string& game_id) {
-  if (auto synced = desktop::DesktopEntries(config, games.Metadata()).SyncOne(game_id, games.Find(game_id)); !synced) {
-    log::Warn("could not update the application menu entry of {}: {}", game_id, synced.error().message);
+  if (auto synced =
+          desktop::DesktopEntries(config, games.Metadata()).SyncOne(game_id, games.Find(game_id));
+      !synced) {
+    log::Warn("could not update the application menu entry of {}: {}", game_id,
+              synced.error().message);
   }
 }
 
@@ -234,16 +242,19 @@ void Services::AfterImport(const std::vector<model::Game>& added) {
   QueueMetadata(added);
 }
 
-nlohmann::json Services::FinishImport(const std::string& source, const library::ImportSummary& summary) {
+nlohmann::json Services::FinishImport(const std::string& source,
+                                      const library::ImportSummary& summary) {
   // A store lists only what's installed, so a game uninstalled in its own client would stay Ready.
   for (const model::Game& game : games.All()) {
-    if (game.source != source || game.status != model::GameStatus::Ready || game.install_path.empty() ||
-        game.exe_path.empty() || supervisor.IsRunning(game.id)) {
+    if (game.source != source || game.status != model::GameStatus::Ready ||
+        game.install_path.empty() || game.exe_path.empty() || supervisor.IsRunning(game.id)) {
       continue;
     }
     std::error_code ec;
-    if (std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec) || ec) continue;
-    if (auto missing = games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
+    if (std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec) || ec)
+      continue;
+    if (auto missing =
+            games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
       events.Publish("game.updated", model::ToJson(*missing));
     }
   }
@@ -253,7 +264,8 @@ nlohmann::json Services::FinishImport(const std::string& source, const library::
   return {{"added", summary.added}, {"updated", summary.updated}};
 }
 
-void Services::WatchForInstall(const std::string& game_id, std::set<std::filesystem::path> folders) {
+void Services::WatchForInstall(const std::string& game_id,
+                               std::set<std::filesystem::path> folders) {
   const std::lock_guard lock(install_watch_mutex_);
   install_watch_[game_id] = std::move(folders);
 }
@@ -271,12 +283,14 @@ void Services::CheckForInstall(const std::string& game_id) {
   const auto installed = library::NewInstall(config, game->data_dir, before);
   if (!installed) return;
   log::Info("{} installed {} when run; asking whether to use it", game_id, installed->dir.string());
-  events.Publish("game.install_detected",
-                  {{"id", game_id}, {"install_path", installed->dir.string()}, {"exe_path", installed->exe_path}});
+  events.Publish("game.install_detected", {{"id", game_id},
+                                           {"install_path", installed->dir.string()},
+                                           {"exe_path", installed->exe_path}});
 }
 
 Services::RecordSettings Services::CurrentRecordSettings() const {
-  return {.threshold = config.GetDouble("detect.low_confidence_threshold"), .rules = library::SortRules(config)};
+  return {.threshold = config.GetDouble("detect.low_confidence_threshold"),
+          .rules = library::SortRules(config)};
 }
 
 json Services::Record(const model::Game& game, const RecordSettings* settings) {
@@ -289,7 +303,8 @@ void Services::Decorate(json& record) {
   AddRecordFields(record, model::GameFromJson(record), CurrentRecordSettings());
 }
 
-void Services::AddRecordFields(json& record, const model::Game& game, const RecordSettings& settings) {
+void Services::AddRecordFields(json& record, const model::Game& game,
+                               const RecordSettings& settings) {
   // So a client can resync after a reconnect.
   record["running"] = supervisor.IsRunning(game.id);
   record["art"] = games.Metadata().ArtVersions(game.id);
@@ -301,7 +316,8 @@ void Services::AddRecordFields(json& record, const model::Game& game, const Reco
 // they show as playing and count playtime.
 void Services::WatchExternalGames() {
   constexpr auto kScanEvery = std::chrono::seconds(3);
-  constexpr auto kIdleScanEvery = std::chrono::seconds(15);  // no Steam or launcher games to look for
+  constexpr auto kIdleScanEvery =
+      std::chrono::seconds(15);  // no Steam or launcher games to look for
   proc::ProcessIndex index;
   auto wait = kScanEvery;
   struct Candidate {
@@ -354,8 +370,10 @@ void Services::WatchExternalGames() {
       if (!candidate.appid.empty()) {
         if (!steam_running.contains(candidate.appid)) continue;
         if (supervisor.TrackSteamLaunch(candidate.game, candidate.appid,
-                                        post_script(candidate.game), post_timeout(candidate.game))) {
-          events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "steam"}, {"tracked", true}});
+                                        post_script(candidate.game),
+                                        post_timeout(candidate.game))) {
+          events.Publish("game.launched",
+                         {{"id", candidate.game.id}, {"via", "steam"}, {"tracked", true}});
         }
         continue;
       }
@@ -364,8 +382,10 @@ void Services::WatchExternalGames() {
                proc::UnderWindowsPath(item.second.argv0, candidate.win_dir);
       });
       if (running && supervisor.TrackLauncherLaunch(candidate.game, candidate.win_dir, 10,
-                                                    post_script(candidate.game), post_timeout(candidate.game))) {
-        events.Publish("game.launched", {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});
+                                                    post_script(candidate.game),
+                                                    post_timeout(candidate.game))) {
+        events.Publish("game.launched",
+                       {{"id", candidate.game.id}, {"via", "launcher"}, {"tracked", true}});
       }
     }
   }
@@ -420,13 +440,16 @@ void Services::ReconcileSessions() {
   if (!idle.empty()) events.Publish("games.updated", {{"games", std::move(idle)}});
 }
 
-void Services::StartJob(const httplib::Request& req, httplib::Response& res, const std::string& kind, const std::string& target,
-                      const std::string& label, JobRegistry::Work work, Lane* lane) {
-  const std::string id = jobs.Start(kind, target, label, std::move(work), req.get_param_value("job"), lane);
+void Services::StartJob(const httplib::Request& req, httplib::Response& res,
+                        const std::string& kind, const std::string& target,
+                        const std::string& label, JobRegistry::Work work, Lane* lane) {
+  const std::string id =
+      jobs.Start(kind, target, label, std::move(work), req.get_param_value("job"), lane);
   SendJson(res, {{"status", "running"}, {"job", id}}, 202);
 }
 
-Result<json> Services::RefreshMetadata(std::vector<model::Game> games, JobRegistry::Progress& progress) {
+Result<json> Services::RefreshMetadata(std::vector<model::Game> games,
+                                       JobRegistry::Progress& progress) {
   struct Tally {
     std::mutex mutex;
     std::condition_variable changed;
@@ -438,12 +461,12 @@ Result<json> Services::RefreshMetadata(std::vector<model::Game> games, JobRegist
   progress.Report(0, total);
   for (model::Game& game : games) {
     fetches.Enqueue(config, events, std::move(game), /*force=*/true, /*announce=*/false,
-                              [tally](bool ok) {
-                                std::lock_guard lock(tally->mutex);
-                                ++tally->done;
-                                if (!ok) ++tally->failed;
-                                tally->changed.notify_all();
-                              });
+                    [tally](bool ok) {
+                      std::lock_guard lock(tally->mutex);
+                      ++tally->done;
+                      if (!ok) ++tally->failed;
+                      tally->changed.notify_all();
+                    });
   }
   std::unique_lock lock(tally->mutex);
   int reported = 0;
@@ -537,7 +560,8 @@ void Services::SortByTags(std::vector<std::string> ids) {
                      std::error_code ec;
                      const bool loose = fs::is_directory(game->install_path, ec);
                      const fs::path exe = loose ? fs::path(game->exe_path) : fs::path();
-                     fs::rename(fs::path(placed->install_path) / exe, fs::path(game->install_path) / exe, ec);
+                     fs::rename(fs::path(placed->install_path) / exe,
+                                fs::path(game->install_path) / exe, ec);
                      if (ec) log::Error("couldn't move {} back: {}", id, ec.message());
                    }
                    failed.push_back(BatchFailure(id, saved.error()));
@@ -545,8 +569,10 @@ void Services::SortByTags(std::vector<std::string> ids) {
                    continue;
                  }
                  // The snapshot as saved, rather than a second copy of the library.
-                 std::ranges::replace_if(library, [&](const model::Game& g) { return g.id == id; }, *saved);
-                 library::PruneEmptyContainers(config, library::SortingFolderOf(config, *game), library);
+                 std::ranges::replace_if(
+                     library, [&](const model::Game& g) { return g.id == id; }, *saved);
+                 library::PruneEmptyContainers(config, library::SortingFolderOf(config, *game),
+                                               library);
                  folders_lock.unlock();
                  events.Publish("game.updated", Record(*saved));
                  moved.push_back(id);
@@ -586,8 +612,10 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if (prefix && !game.data_dir.empty()) {
     const auto sharer = std::ranges::find(others, game.data_dir, &model::Game::data_dir);
     if (sharer != others.end()) {
-      return Err("shared_prefix", std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
-                 "Remove the launcher it came with to delete its prefix.");
+      return Err(
+          "shared_prefix",
+          std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
+          "Remove the launcher it came with to delete its prefix.");
     }
   }
   // Its link in a library folder goes with it, whatever else is kept.
@@ -601,14 +629,16 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     if (const auto host = games.Find(launchers::GameId(*launchers::Find("office")))) {
       std::vector<std::string> apps = launchers::InstalledOfficeApps(*host);
       std::erase(apps, game.source_ref);
-      if (auto removed = launchers::SetOfficeApps(config, games, events, std::move(apps)); !removed) return removed;
+      if (auto removed = launchers::SetOfficeApps(config, games, events, std::move(apps)); !removed)
+        return removed;
     }
   } else if (files) {
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
   if (prefix && !game.data_dir.empty()) {
-    if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted) return deleted;
+    if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted)
+      return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.
   if ((files || prefix) && !game.id.empty()) {
@@ -622,72 +652,81 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   return {};
 }
 
-void Services::InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
-                             const std::string& source, const runner::ReleaseAsset& asset,
-                             const std::string& replacing) {
+void Services::InstallRunner(const httplib::Request& req, httplib::Response& res,
+                             const std::string& kind, const std::string& source,
+                             const runner::ReleaseAsset& asset, const std::string& replacing) {
   const std::string name = runner::ReleaseName(kind, asset);
-  const json base = {{"kind", kind}, {"tag", asset.tag}, {"name", name},
-                     {"label", runner::BuildLabel(kind, name)}, {"source", source}};
+  const json base = {{"kind", kind},
+                     {"tag", asset.tag},
+                     {"name", name},
+                     {"label", runner::BuildLabel(kind, name)},
+                     {"source", source}};
   events.Publish("runners.download.started", base);
-  StartJob(req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
-           [this, kind, asset, replacing, base, name](JobRegistry::Progress&) -> Result<json> {
-             // Its own live log, apart from any other download running at the same time.
-             const std::string channel = "runner:" + kind + ":" + name;
-             loghub::Begin(channel);
-             loghub::Append(channel, std::format("Downloading {} {}\n", kind, asset.tag));
-             int reported = -1;
-             const auto on_progress = [this, &base, &channel, &reported](double fraction) {
-               json event = base;
-               event["progress"] = fraction;
-               events.Publish("runners.download.progress", std::move(event));
-               const int tenth = static_cast<int>(fraction * 10);
-               if (tenth > reported) {
-                 reported = tenth;
-                 loghub::Append(channel, std::format("{}%\n", tenth * 10));
-               }
-             };
-             if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress); !installed) {
-               loghub::Append(channel, "Failed: " + installed.error().message + "\n");
-               loghub::End(channel);
-               log::Error("runner download failed ({} {}): {}", kind, asset.tag, installed.error().message);
-               events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
-               return std::unexpected(installed.error());
-             }
-             log::Info("installed {} {}", kind, asset.tag);
-             loghub::Append(channel, "Installed.\n");
-             loghub::End(channel);
-             library::RetryBrokenProvisioning(config, games, events);
-             json finished = base;
-             if (!replacing.empty()) {
-               // Move what used the old build onto the new one.
-               const runner::RunnerRegistry registry(config);
-               const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
-               const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
-                 return runner::IsInstalledAs(kind, build.release, runner::BuildDir(build).filename().string(), asset);
-               });
-               if (fresh != builds.end()) {
-                 const std::string to = fresh->Reference();
-                 json moved = json::array();
-                 const RecordSettings settings = CurrentRecordSettings();
-                 for (const model::Game& game : games.All()) {
-                   if (game.runner_ref != replacing) continue;
-                   if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-                     moved.push_back(Record(*updated, &settings));
-                   }
-                 }
-                 if (config.GetString("default_runner.windows") == replacing) {
-                   (void)config.Set("default_runner.windows", to);
-                 }
-                 if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
-                 events.Publish("runners.updated",
-                                {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
-                 finished["replaced"] = replacing;
-               }
-             }
-             events.Publish("runners.download.finished", finished);
-             return finished;
-           },
-           &operations);
+  StartJob(
+      req, res, "runner", kind + ":" + name, "Downloading " + runner::BuildLabel(kind, name),
+      [this, kind, asset, replacing, base, name](JobRegistry::Progress&) -> Result<json> {
+        // Its own live log, apart from any other download running at the same time.
+        const std::string channel = "runner:" + kind + ":" + name;
+        loghub::Begin(channel);
+        loghub::Append(channel, std::format("Downloading {} {}\n", kind, asset.tag));
+        int reported = -1;
+        const auto on_progress = [this, &base, &channel, &reported](double fraction) {
+          json event = base;
+          event["progress"] = fraction;
+          events.Publish("runners.download.progress", std::move(event));
+          const int tenth = static_cast<int>(fraction * 10);
+          if (tenth > reported) {
+            reported = tenth;
+            loghub::Append(channel, std::format("{}%\n", tenth * 10));
+          }
+        };
+        if (auto installed = runner::DownloadAndInstall(config, kind, asset, on_progress);
+            !installed) {
+          loghub::Append(channel, "Failed: " + installed.error().message + "\n");
+          loghub::End(channel);
+          log::Error("runner download failed ({} {}): {}", kind, asset.tag,
+                     installed.error().message);
+          events.Publish("runners.download.failed", FailedEvent(base, installed.error()));
+          return std::unexpected(installed.error());
+        }
+        log::Info("installed {} {}", kind, asset.tag);
+        loghub::Append(channel, "Installed.\n");
+        loghub::End(channel);
+        library::RetryBrokenProvisioning(config, games, events);
+        json finished = base;
+        if (!replacing.empty()) {
+          // Move what used the old build onto the new one.
+          const runner::RunnerRegistry registry(config);
+          const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
+          const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
+            return runner::IsInstalledAs(kind, build.release,
+                                         runner::BuildDir(build).filename().string(), asset);
+          });
+          if (fresh != builds.end()) {
+            const std::string to = fresh->Reference();
+            json moved = json::array();
+            const RecordSettings settings = CurrentRecordSettings();
+            for (const model::Game& game : games.All()) {
+              if (game.runner_ref != replacing) continue;
+              if (auto updated =
+                      games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
+                moved.push_back(Record(*updated, &settings));
+              }
+            }
+            if (config.GetString("default_runner.windows") == replacing) {
+              (void)config.Set("default_runner.windows", to);
+            }
+            if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
+            events.Publish(
+                "runners.updated",
+                {{"kind", kind}, {"from", replacing}, {"to", to}, {"games", moved.size()}});
+            finished["replaced"] = replacing;
+          }
+        }
+        events.Publish("runners.download.finished", finished);
+        return finished;
+      },
+      &operations);
 }
 
 }  // namespace mira::api

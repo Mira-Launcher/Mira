@@ -13,17 +13,17 @@ namespace mira_gui {
 class ListEdit : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   enum class Kind { Text, Folder };
   ListEdit(Kind kind, const QString& add_text, QWidget* parent = nullptr);
 
   QStringList Items() const;
   void SetItems(const QStringList& items);
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   void AddRow(const QString& text, bool edit);
   void UpdateEmpty();
 

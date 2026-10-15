@@ -4,8 +4,8 @@
 
 namespace mira::runner {
 
-// A FUSE-less system needs "--appimage-extract-and-run" as an AppImage's own first argument: /dev/fuse
-// absent, or neither fusermount nor fusermount3 on PATH, both mean no FUSE.
+// A FUSE-less system needs "--appimage-extract-and-run" as an AppImage's own first argument:
+// /dev/fuse absent, or neither fusermount nor fusermount3 on PATH, both mean no FUSE.
 bool HasFuse();
 
 // Runs a native Linux binary directly. No prefix, no versions to choose
@@ -15,13 +15,15 @@ bool HasFuse();
 // "native" as a choice, with no way to correct a game that detected as the
 // wrong platform (e.g. an .exe picked over the .sh actually meant to run).
 class NativeRunner final : public IRunner {
-public:
+ public:
   std::string kind() const override { return "native"; }
   bool UsesBuilds() const override { return false; }
   std::vector<model::RunnerBuild> Discover(const config::Config&) const override {
-    return {model::RunnerBuild{.kind = "native", .name = "native", .path = "", .version = "", .release = "native"}};
+    return {model::RunnerBuild{
+        .kind = "native", .name = "native", .path = "", .version = "", .release = "native"}};
   }
-  Result<void> Provision(const model::Game&, const std::optional<model::RunnerBuild>&) const override {
+  Result<void> Provision(const model::Game&,
+                         const std::optional<model::RunnerBuild>&) const override {
     return {};
   }
   Result<Command> BuildCommand(const model::Game& game,

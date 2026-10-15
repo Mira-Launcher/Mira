@@ -35,7 +35,7 @@ struct InstallerInfo {
   std::filesystem::path path;
   std::uintmax_t size_bytes = 0;
   InstallerFormat format = InstallerFormat::kUnknown;
-  bool silent = false;       // a known format Mira can run unattended
+  bool silent = false;      // a known format Mira can run unattended
   std::string silent_args;  // empty unless silent
 };
 
@@ -53,7 +53,8 @@ struct InstallProgress {
 
 // Top-level folders under install.detect_dirs in `prefix`'s drive_c: taken
 // before a launch, so NewInstall can tell what the run installed.
-std::set<std::filesystem::path> InstallFolders(const config::Config& config, const std::filesystem::path& prefix);
+std::set<std::filesystem::path> InstallFolders(const config::Config& config,
+                                               const std::filesystem::path& prefix);
 
 struct InstalledApp {
   std::filesystem::path dir;
@@ -61,7 +62,8 @@ struct InstalledApp {
 };
 
 // A folder added to `prefix` since `before`, preferring one with a program in it.
-std::optional<InstalledApp> NewInstall(const config::Config& config, const std::filesystem::path& prefix,
+std::optional<InstalledApp> NewInstall(const config::Config& config,
+                                       const std::filesystem::path& prefix,
                                        const std::set<std::filesystem::path>& before);
 
 // The latest install for `id` since mirad started, if any.
@@ -81,7 +83,8 @@ bool BeginInstall(const std::string& id);
 // `installer` overrides exe_path and is saved as the game's installer.
 // Saves the result: Ready on success, last_error on failure.
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,
-                            InstallMode mode, const std::optional<std::filesystem::path>& installer);
+                            InstallMode mode,
+                            const std::optional<std::filesystem::path>& installer);
 
 // Install, reported: game.install.started, game.updated, then game.install.finished or
 // .failed (with the error's hint and fix). On success it updates the menu entries and,

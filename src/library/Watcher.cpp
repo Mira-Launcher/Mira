@@ -39,9 +39,10 @@ std::int64_t NowMs() {
 std::uintmax_t TotalSize(const fs::path& dir) {
   std::uintmax_t total = 0;
   std::error_code ec;
-  if (fs::is_regular_file(dir, ec)) return fs::file_size(dir, ec);  // a game in one file, an AppImage
-  for (const auto& entry : fs::recursive_directory_iterator(
-           dir, fs::directory_options::skip_permission_denied, ec)) {
+  if (fs::is_regular_file(dir, ec))
+    return fs::file_size(dir, ec);  // a game in one file, an AppImage
+  for (const auto& entry :
+       fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
     std::error_code size_ec;
     if (entry.is_regular_file(size_ec)) total += entry.file_size(size_ec);
   }
@@ -73,7 +74,8 @@ Watcher::Watcher(config::Config& config, store::GameStore& games, api::EventBus&
   if (stop_fd_ < 0) log::Error("Watcher: failed to create stop eventfd: {}", std::strerror(errno));
   // Same reasoning as stop_fd_.
   reload_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (reload_fd_ < 0) log::Error("Watcher: failed to create reload eventfd: {}", std::strerror(errno));
+  if (reload_fd_ < 0)
+    log::Error("Watcher: failed to create reload eventfd: {}", std::strerror(errno));
 }
 
 Watcher::~Watcher() {
@@ -127,7 +129,8 @@ void Watcher::WatchRoots() {
   for (const fs::path& root : config_.GetPathArray("library_roots")) {
     std::error_code ec;
     if (!fs::is_directory(root, ec)) {
-      log::Warn("Watcher: library root {} does not exist yet, so it is not watched until it does", root.string());
+      log::Warn("Watcher: library root {} does not exist yet, so it is not watched until it does",
+                root.string());
       continue;
     }
     WatchFolder(root, root);
@@ -142,7 +145,8 @@ void Watcher::WatchRoots() {
         log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
         continue;
       }
-      if (watches_.contains(wd)) continue;  // already a library root's: its games aren't the emulator's alone
+      if (watches_.contains(wd))
+        continue;  // already a library root's: its games aren't the emulator's alone
       watches_[wd] = {.root = dir, .dir = dir, .emulator = emulator.id};
     }
   }
@@ -195,7 +199,8 @@ void Watcher::RearmTimer() {
   timerfd_settime(timer_fd_, 0, &spec, nullptr);
 }
 
-void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive, const std::string& emulator) {
+void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive,
+                            const std::string& emulator) {
   Pending entry;
   entry.root = root;
   entry.is_archive = is_archive;
@@ -216,8 +221,10 @@ void Watcher::Run() {
   }
 
   WatchRoots();
-  // Editors save by writing a new file and renaming it over, so the folder is watched, not the file.
-  settings_wd_ = inotify_add_watch(inotify_fd_, config_.File().parent_path().c_str(), IN_CLOSE_WRITE | IN_MOVED_TO);
+  // Editors save by writing a new file and renaming it over, so the folder is watched, not the
+  // file.
+  settings_wd_ = inotify_add_watch(inotify_fd_, config_.File().parent_path().c_str(),
+                                   IN_CLOSE_WRITE | IN_MOVED_TO);
 
   epoll_event ev{};
   ev.events = EPOLLIN;
@@ -263,7 +270,7 @@ void Watcher::HandleInotify() {
   // is variable-length (name follows the struct), so this is read in a loop
   // rather than assumed to be one event per read.
   alignas(inotify_event) char buffer[4096];
-  std::set<fs::path> deleted_from;  // roots to rescan once the queue is drained
+  std::set<fs::path> deleted_from;     // roots to rescan once the queue is drained
   std::set<std::string> roms_deleted;  // emulators to import into once it is
   bool settings_saved = false;
 
@@ -288,7 +295,8 @@ void Watcher::HandleInotify() {
       }
 
       if (event->mask & IN_Q_OVERFLOW) {  // events were dropped: rescan every root
-        for (const fs::path& root : config_.GetPathArray("library_roots")) deleted_from.insert(root);
+        for (const fs::path& root : config_.GetPathArray("library_roots"))
+          deleted_from.insert(root);
         continue;
       }
       const auto watched = watches_.find(event->wd);
@@ -351,7 +359,8 @@ void Watcher::HandleInotify() {
     if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
-      for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
+      for (const model::Game& game : summary.added_games)
+        metadata_fetches_->Enqueue(config_, events_, game);
     }
   }
   RearmTimer();
@@ -369,7 +378,8 @@ void Watcher::HandleDebounceTick() {
     const std::uintmax_t current_size = entry.is_archive ? ArchiveSize(path) : TotalSize(path);
     // A downloader that preallocates the file keeps its size fixed, so an
     // archive also waits until nothing has it open for writing.
-    if (current_size != entry.last_size || (entry.is_archive && AnyOpenForWriting(VolumesOf(path)))) {
+    if (current_size != entry.last_size ||
+        (entry.is_archive && AnyOpenForWriting(VolumesOf(path)))) {
       entry.last_size = current_size;
       entry.stable_since_ms = now;
       continue;
@@ -378,7 +388,8 @@ void Watcher::HandleDebounceTick() {
   }
 
   if (!settled.empty()) {
-    // Extractions run one by one; each root is scanned once afterwards, however many paths settled in it.
+    // Extractions run one by one; each root is scanned once afterwards, however many paths settled
+    // in it.
     std::set<fs::path> to_scan;
     std::set<std::string> roms;
     for (const std::string& path : settled) {
@@ -408,7 +419,8 @@ void Watcher::HandleDebounceTick() {
     if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
-      for (const model::Game& game : summary.added_games) metadata_fetches_->Enqueue(config_, events_, game);
+      for (const model::Game& game : summary.added_games)
+        metadata_fetches_->Enqueue(config_, events_, game);
     }
     if (!roms.empty()) ImportRoms(roms);
   }
@@ -422,7 +434,8 @@ void Watcher::ImportRoms(const std::set<std::string>& ids) {
     log::Info("{}'s games folder changed, importing", emulator->name);
     const auto summary = emulators::Import(config_, games_, events_, *emulator);
     if (!summary) continue;
-    for (const model::Game& game : summary->added_games) metadata_fetches_->Enqueue(config_, events_, game);
+    for (const model::Game& game : summary->added_games)
+      metadata_fetches_->Enqueue(config_, events_, game);
   }
 }
 

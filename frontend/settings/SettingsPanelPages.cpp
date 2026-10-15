@@ -1,7 +1,5 @@
 // SettingsPanel's own pages, the ones not built from mirad's schema:
 // Interface, Sidebar and Shortcuts, and the pref fields they register.
-#include "SettingsPanel.h"
-
 #include <QButtonGroup>
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
@@ -9,7 +7,6 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
-
 #include <algorithm>
 #include <optional>
 #include <utility>
@@ -21,6 +18,7 @@
 #include "AppearancePreviews.h"
 #include "SettingsCard.h"
 #include "SettingsNav.h"
+#include "SettingsPanel.h"
 
 namespace mira_gui {
 namespace {
@@ -28,9 +26,15 @@ namespace {
 // The card each shortcut sits in on the Shortcuts page.
 QString ShortcutGroup(const QString& id) {
   static const QHash<QString, QString> kGroups = {
-      {"focus_search", "Library"},       {"clear_or_deselect", "Library"},    {"toggle_hidden", "Library"},
-      {"refresh", "Library"},            {"zoom_in", "Tiles"},                {"zoom_out", "Tiles"},
-      {"reset_zoom", "Tiles"},           {"play_stop", "Selected game"},      {"details_settings", "Selected game"},
+      {"focus_search", "Library"},
+      {"clear_or_deselect", "Library"},
+      {"toggle_hidden", "Library"},
+      {"refresh", "Library"},
+      {"zoom_in", "Tiles"},
+      {"zoom_out", "Tiles"},
+      {"reset_zoom", "Tiles"},
+      {"play_stop", "Selected game"},
+      {"details_settings", "Selected game"},
       {"delete_game", "Selected game"},
   };
   return kGroups.value(id, "Window");
@@ -54,9 +58,10 @@ std::vector<GameSummary> TilePreviewGames(const std::vector<GameSummary>& games)
   std::vector<GameSummary> picked;
   if (games.empty()) return picked;
   picked.push_back(games.front());
-  const auto from_source = std::ranges::find_if(games.begin() + 1, games.end(), [](const GameSummary& game) {
-    return FindSourceInfo(QString::fromStdString(game.source)) != nullptr;
-  });
+  const auto from_source =
+      std::ranges::find_if(games.begin() + 1, games.end(), [](const GameSummary& game) {
+        return FindSourceInfo(QString::fromStdString(game.source)) != nullptr;
+      });
   if (from_source != games.end()) {
     picked.push_back(*from_source);
   } else if (games.size() > 1) {
@@ -88,8 +93,9 @@ void SettingsPanel::AddCardReset(SettingsCard* card, std::vector<size_t> prefs,
   card_resets_.push_back({card, std::move(prefs), std::move(schema)});
 }
 
-Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const QString& doc, const QString& search,
-                                 std::optional<bool> FrontendPrefs::*member, bool fallback) {
+Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const QString& doc,
+                                 const QString& search, std::optional<bool> FrontendPrefs::* member,
+                                 bool fallback) {
   auto* row = new SettingRow(label, doc);
   auto* toggle = new Switch(row);
   toggle->setAccessibleName(label);
@@ -100,17 +106,24 @@ Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const
   toggles_.push_back({toggle, member, fallback, fallback});
   const size_t index = toggles_.size() - 1;
   connect(toggle, &Switch::toggled, this, &SettingsPanel::Refresh);
-  AddPrefField({.row = row,
-                .changed = [this, index] { return toggles_[index].toggle->isChecked() != toggles_[index].saved; },
-                .is_default = [this, index] { return toggles_[index].toggle->isChecked() == toggles_[index].fallback; },
-                .revert = [this, index] { toggles_[index].toggle->setChecked(toggles_[index].saved); },
-                .reset = [this, index] { toggles_[index].toggle->setChecked(toggles_[index].fallback); },
-                .mark_saved = [this, index] { toggles_[index].saved = toggles_[index].toggle->isChecked(); }});
+  AddPrefField(
+      {.row = row,
+       .changed = [this,
+                   index] { return toggles_[index].toggle->isChecked() != toggles_[index].saved; },
+       .is_default =
+           [this, index] {
+             return toggles_[index].toggle->isChecked() == toggles_[index].fallback;
+           },
+       .revert = [this, index] { toggles_[index].toggle->setChecked(toggles_[index].saved); },
+       .reset = [this, index] { toggles_[index].toggle->setChecked(toggles_[index].fallback); },
+       .mark_saved = [this,
+                      index] { toggles_[index].saved = toggles_[index].toggle->isChecked(); }});
   return toggle;
 }
 
-QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& label, const QString& doc,
-                                          const QString& search, std::optional<int> FrontendPrefs::*member,
+QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& label,
+                                          const QString& doc, const QString& search,
+                                          std::optional<int> FrontendPrefs::* member,
                                           int fallback_ms, double maximum) {
   auto* row = new SettingRow(label, doc);
   auto* spin = new QDoubleSpinBox(row);
@@ -126,17 +139,29 @@ QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& lab
   seconds_.push_back({spin, member, fallback_ms, fallback_ms});
   const size_t index = seconds_.size() - 1;
   connect(spin, &QDoubleSpinBox::valueChanged, this, &SettingsPanel::Refresh);
-  AddPrefField({.row = row,
-                .changed = [this, index] { return qRound(seconds_[index].spin->value() * 1000) != seconds_[index].saved; },
-                .is_default = [this, index] { return qRound(seconds_[index].spin->value() * 1000) == seconds_[index].fallback; },
-                .revert = [this, index] { seconds_[index].spin->setValue(seconds_[index].saved / 1000.0); },
-                .reset = [this, index] { seconds_[index].spin->setValue(seconds_[index].fallback / 1000.0); },
-                .mark_saved = [this, index] { seconds_[index].saved = qRound(seconds_[index].spin->value() * 1000); }});
+  AddPrefField(
+      {.row = row,
+       .changed =
+           [this, index] {
+             return qRound(seconds_[index].spin->value() * 1000) != seconds_[index].saved;
+           },
+       .is_default =
+           [this, index] {
+             return qRound(seconds_[index].spin->value() * 1000) == seconds_[index].fallback;
+           },
+       .revert = [this, index] { seconds_[index].spin->setValue(seconds_[index].saved / 1000.0); },
+       .reset = [this,
+                 index] { seconds_[index].spin->setValue(seconds_[index].fallback / 1000.0); },
+       .mark_saved =
+           [this, index] {
+             seconds_[index].saved = qRound(seconds_[index].spin->value() * 1000);
+           }});
   return spin;
 }
 
 void SettingsPanel::BuildInterfacePage() {
-  SettingsPage* page = nav_->AddCategory("Interface", CategoryGlyph("Interface"), CategoryNavGroup("Interface"));
+  SettingsPage* page =
+      nav_->AddCategory("Interface", CategoryGlyph("Interface"), CategoryNavGroup("Interface"));
   pages_["Interface"] = page;
   const std::vector<GameSummary> games = PreviewGames(previews_);
 
@@ -155,8 +180,8 @@ void SettingsPanel::BuildInterfacePage() {
   QStringList names{"auto"};
   names << theme::Available();
   for (const QString& name : names) {
-    auto* choice = new ThemeChoice(name, name == "auto" ? QString("Follow the desktop") : name, games,
-                                   previews_.artwork, tiles);
+    auto* choice = new ThemeChoice(name, name == "auto" ? QString("Follow the desktop") : name,
+                                   games, previews_.artwork, tiles);
     themes_->addButton(choice);
     tiles_layout->addWidget(choice);
   }
@@ -174,18 +199,23 @@ void SettingsPanel::BuildInterfacePage() {
 
   SettingsCard* general = page->AddCard("General");
   AddToggle(general, "Scan the library on startup",
-            "Scan the library each time Mira opens. The daemon already watches your folders while it runs, so "
+            "Scan the library each time Mira opens. The daemon already watches your folders while "
+            "it runs, so "
             "this only catches changes made while it was stopped.",
             "scan startup", &FrontendPrefs::scan_on_startup, true);
-  AddToggle(general, "Drag to select games", "Drag across the library to select several games at once.",
-            "rubber band multiple", &FrontendPrefs::drag_select, true);
+  AddToggle(general, "Drag to select games",
+            "Drag across the library to select several games at once.", "rubber band multiple",
+            &FrontendPrefs::drag_select, true);
   AddToggle(general, "Double-click a game to play it",
-            "Double-clicking a game in the library or on a source page starts it, or stops it while it runs.",
+            "Double-clicking a game in the library or on a source page starts it, or stops it "
+            "while it runs.",
             "double click launch start play", &FrontendPrefs::double_click_play, true);
   AddToggle(general, "Show commands instead of asking for your password",
-            "When Mira needs to install or remove a system package, it shows the command to run in a terminal "
+            "When Mira needs to install or remove a system package, it shows the command to run in "
+            "a terminal "
             "instead of the system's password prompt.",
-            "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands, false);
+            "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands,
+            false);
 
   SettingsCard* library = page->AddCard("Library");
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);
@@ -195,12 +225,15 @@ void SettingsPanel::BuildInterfacePage() {
   preview_layout->addWidget(tile_preview_);
   preview_layout->addStretch(1);
   library->AddRow(preview_holder);
-  AddToggle(library, "Filter tabs", "Tabs above the grid for All, Games, Apps, Installed and the other filters.",
+  AddToggle(library, "Filter tabs",
+            "Tabs above the grid for All, Games, Apps, Installed and the other filters.",
             "library chips", &FrontendPrefs::library_filter_tabs, true);
-  continue_row_ = AddToggle(library, "Continue playing",
-                            "Large cards for running and recently played games above the grid.",
-                            "library cards recently played recent", &FrontendPrefs::library_continue_row, true);
-  continue_count_row_ = new SettingRow("Cards to show", "How many cards the Continue playing row shows.");
+  continue_row_ =
+      AddToggle(library, "Continue playing",
+                "Large cards for running and recently played games above the grid.",
+                "library cards recently played recent", &FrontendPrefs::library_continue_row, true);
+  continue_count_row_ =
+      new SettingRow("Cards to show", "How many cards the Continue playing row shows.");
   continue_count_ = new QSpinBox(continue_count_row_);
   continue_count_->setRange(1, 6);
   continue_count_->setValue(3);
@@ -222,8 +255,10 @@ void SettingsPanel::BuildInterfacePage() {
             "library apps all tab filter", &FrontendPrefs::library_apps_in_all, true);
   AddToggle(library, "Apps in Continue playing",
             "Show recently used apps in the Continue playing row, not only games.",
-            "library cards recently played recent apps", &FrontendPrefs::library_continue_apps, false);
-  tile_status_ = AddToggle(library, "Status on tiles", "Show Needs install, Broken, Playing and the like on a tile.",
+            "library cards recently played recent apps", &FrontendPrefs::library_continue_apps,
+            false);
+  tile_status_ = AddToggle(library, "Status on tiles",
+                           "Show Needs install, Broken, Playing and the like on a tile.",
                            "tile badge", &FrontendPrefs::tile_status, true);
   tile_source_ = AddToggle(library, "Source on tiles",
                            "Name the store or launcher a game came from under its title.",
@@ -236,14 +271,21 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(trailers, "Trailers", "In big screen, a trailer plays behind the game you rest on.",
             "big screen trailer video", &FrontendPrefs::big_screen_trailers, true);
   AddSeconds(trailers, "Start after", "How long to rest on a game before its trailer starts.",
-             "big screen trailer delay wait", &FrontendPrefs::big_screen_trailer_delay_ms, 3000, 10);
-  AddSeconds(trailers, "Skip the opening", "Starts trailers this far in, past rating cards and logos. Trailers under 20 seconds always start at the beginning.",
-             "big screen trailer skip intro rating", &FrontendPrefs::big_screen_trailer_skip_ms, 3000, 15);
-  AddToggle(trailers, "HD trailers only", "Skips trailers below 720p instead of showing them blurry.",
-            "big screen trailer quality low resolution", &FrontendPrefs::big_screen_trailer_hd_only, false);
+             "big screen trailer delay wait", &FrontendPrefs::big_screen_trailer_delay_ms, 3000,
+             10);
+  AddSeconds(trailers, "Skip the opening",
+             "Starts trailers this far in, past rating cards and logos. Trailers under 20 seconds "
+             "always start at the beginning.",
+             "big screen trailer skip intro rating", &FrontendPrefs::big_screen_trailer_skip_ms,
+             3000, 15);
+  AddToggle(trailers, "HD trailers only",
+            "Skips trailers below 720p instead of showing them blurry.",
+            "big screen trailer quality low resolution", &FrontendPrefs::big_screen_trailer_hd_only,
+            false);
   AddToggle(trailers, "Trailer sound", "Plays a trailer's sound, not only its picture.",
             "big screen trailer audio sound mute", &FrontendPrefs::big_screen_trailer_sound, false);
-  auto* volume_row = new SettingRow("Trailer volume", "How loud a trailer plays when its sound is on.");
+  auto* volume_row =
+      new SettingRow("Trailer volume", "How loud a trailer plays when its sound is on.");
   trailer_volume_ = new QSpinBox(volume_row);
   trailer_volume_->setRange(10, 100);
   trailer_volume_->setSingleStep(10);
@@ -269,35 +311,46 @@ void SettingsPanel::BuildInterfacePage() {
   layout_holder_layout->addWidget(layout_preview_);
   layout->AddRow(layout_holder);
   std::vector<size_t> layout_fields;
-  const auto shape_row = [&](ShapeField& field, const QString& label, const QString& doc, int maximum,
-                             std::optional<int> FrontendPrefs::*member) {
+  const auto shape_row = [&](ShapeField& field, const QString& label, const QString& doc,
+                             int maximum, std::optional<int> FrontendPrefs::* member) {
     field.member = member;
     auto* row = new SettingRow(label, doc);
     row->AddControl(MakeSlider(field, maximum));
     layout->AddRow(row);
     nav_->RegisterRow(row, label + " layout corner radius spacing");
     ShapeField* shape = &field;
-    layout_fields.push_back(AddPrefField({.row = row,
-                  .changed = [shape] { return shape->current != shape->saved; },
-                  .is_default = [shape] { return !shape->current.has_value(); },
-                  .revert = [this, shape] { shape->current = shape->saved; RefreshShape(*shape); },
-                  .reset = [this, shape] { shape->current.reset(); RefreshShape(*shape); },
-                  .mark_saved = [shape] { shape->saved = shape->current; }}));
+    layout_fields.push_back(
+        AddPrefField({.row = row,
+                      .changed = [shape] { return shape->current != shape->saved; },
+                      .is_default = [shape] { return !shape->current.has_value(); },
+                      .revert =
+                          [this, shape] {
+                            shape->current = shape->saved;
+                            RefreshShape(*shape);
+                          },
+                      .reset =
+                          [this, shape] {
+                            shape->current.reset();
+                            RefreshShape(*shape);
+                          },
+                      .mark_saved = [shape] { shape->saved = shape->current; }}));
   };
   shape_row(tile_spacing_, "Tile gap",
-            "Empty space around each tile. The zoom slider in the top bar changes the tile size.", 40,
-            &FrontendPrefs::tile_spacing);
-  shape_row(grid_margin_, "Grid padding", "Space between the grid and the window edges and side panels.", 60,
+            "Empty space around each tile. The zoom slider in the top bar changes the tile size.",
+            40, &FrontendPrefs::tile_spacing);
+  shape_row(grid_margin_, "Grid padding",
+            "Space between the grid and the window edges and side panels.", 60,
             &FrontendPrefs::grid_margin);
   shape_row(tile_radius_, "Cover rounding", "Corner radius of game covers. 0 is square.", 40,
             &FrontendPrefs::tile_radius);
   shape_row(panel_radius_, "Panel rounding", "Corner radius of panels, cards and notices.", 24,
             &FrontendPrefs::panel_radius);
-  shape_row(control_radius_, "Control rounding", "Corner radius of buttons, fields and dropdowns.", 20,
-            &FrontendPrefs::control_radius);
+  shape_row(control_radius_, "Control rounding", "Corner radius of buttons, fields and dropdowns.",
+            20, &FrontendPrefs::control_radius);
   AddCardReset(layout, std::move(layout_fields), {});
   RefreshShapeDefaults();
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &SettingsPanel::RefreshShapeDefaults);
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this,
+          &SettingsPanel::RefreshShapeDefaults);
   UpdatePreviews();
 }
 
@@ -329,7 +382,8 @@ void SettingsPanel::RefreshShape(ShapeField& field) {
     const QSignalBlocker block(field.slider);
     field.slider->setValue(value);
   }
-  field.value->setText(field.current ? QString("%1 px").arg(value) : QString("%1 px, theme default").arg(value));
+  field.value->setText(field.current ? QString("%1 px").arg(value)
+                                     : QString("%1 px, theme default").arg(value));
   UpdatePreviews();
 }
 
@@ -340,7 +394,8 @@ void SettingsPanel::RefreshShapeDefaults() {
   tile_radius_.theme_default = defaults.radius_tile;
   panel_radius_.theme_default = defaults.radius_panel;
   control_radius_.theme_default = defaults.radius_control;
-  for (ShapeField* field : {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
+  for (ShapeField* field :
+       {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
     RefreshShape(*field);
   }
 }
@@ -373,15 +428,18 @@ void SettingsPanel::SelectTheme(const QString& name) {
 }
 
 void SettingsPanel::BuildSidebarPage() {
-  SettingsPage* page = nav_->AddCategory("Sidebar", CategoryGlyph("Sidebar"), CategoryNavGroup("Sidebar"));
+  SettingsPage* page =
+      nav_->AddCategory("Sidebar", CategoryGlyph("Sidebar"), CategoryNavGroup("Sidebar"));
   pages_["Sidebar"] = page;
 
   SettingsCard* style = page->AddCard("Pinned and recently played");
-  sidebar_style_ = new SidebarStyleChoices({}, previews_.pinned, previews_.recent, previews_.artwork, this);
-  const QStringList searches = {"sidebar pinned style look covers hero banners shelf",
-                                "sidebar recently played recent style look covers hero banners shelf",
-                                "sidebar recently played when last played date time ago",
-                                "sidebar recently played recent games count"};
+  sidebar_style_ =
+      new SidebarStyleChoices({}, previews_.pinned, previews_.recent, previews_.artwork, this);
+  const QStringList searches = {
+      "sidebar pinned style look covers hero banners shelf",
+      "sidebar recently played recent style look covers hero banners shelf",
+      "sidebar recently played when last played date time ago",
+      "sidebar recently played recent games count"};
   const QList<SettingRow*> rows = sidebar_style_->Rows();
   for (int i = 0; i < rows.size(); ++i) {
     style->AddRow(rows[i]);
@@ -393,8 +451,12 @@ void SettingsPanel::BuildSidebarPage() {
   const auto choice_field = [this](SettingRow* row, auto member) {
     PrefField field;
     field.row = row;
-    field.changed = [this, member] { return sidebar_style_->Current().*member != sidebar_style_saved_.*member; };
-    field.is_default = [this, member] { return sidebar_style_->Current().*member == Choices{}.*member; };
+    field.changed = [this, member] {
+      return sidebar_style_->Current().*member != sidebar_style_saved_.*member;
+    };
+    field.is_default = [this, member] {
+      return sidebar_style_->Current().*member == Choices{}.*member;
+    };
     field.revert = [this, member] {
       Choices choices = sidebar_style_->Current();
       choices.*member = sidebar_style_saved_.*member;
@@ -405,7 +467,9 @@ void SettingsPanel::BuildSidebarPage() {
       choices.*member = Choices{}.*member;
       sidebar_style_->SetChoices(choices);
     };
-    field.mark_saved = [this, member] { sidebar_style_saved_.*member = sidebar_style_->Current().*member; };
+    field.mark_saved = [this, member] {
+      sidebar_style_saved_.*member = sidebar_style_->Current().*member;
+    };
     AddPrefField(std::move(field));
   };
   choice_field(rows[0], &Choices::pinned);
@@ -415,12 +479,14 @@ void SettingsPanel::BuildSidebarPage() {
 
   // Moved onto the Sources page once the schema loads (BuildSchemaPages).
   sources_card_ = page->AddCard("In the sidebar");
-  AddToggle(sources_card_, "Show game counts", "Show how many games each source has next to its name.",
-            "sidebar source numbers", &FrontendPrefs::sidebar_source_counts, true);
+  AddToggle(sources_card_, "Show game counts",
+            "Show how many games each source has next to its name.", "sidebar source numbers",
+            &FrontendPrefs::sidebar_source_counts, true);
   AddToggle(sources_card_, "Covers on source rows",
             "Show a few of each source's games next to its name. Off shows a colored dot instead.",
             "sidebar source covers colors icons", &FrontendPrefs::sidebar_source_covers, true);
-  auto* sources_row = new SettingRow("Sources", "Which sources show, their order, and adding more.");
+  auto* sources_row =
+      new SettingRow("Sources", "Which sources show, their order, and adding more.");
   auto* open = new QPushButton("Open Sources", sources_row);
   connect(open, &QPushButton::clicked, this, &SettingsPanel::SourcesPageRequested);
   sources_row->AddControl(open);
@@ -431,7 +497,8 @@ void SettingsPanel::BuildSidebarPage() {
 void SettingsPanel::BuildShortcutsPage() {
   // The owning window registered every shortcut and loaded its overrides
   // before this screen could open, so the registry already holds current state.
-  SettingsPage* page = nav_->AddCategory("Shortcuts", CategoryGlyph("Shortcuts"), CategoryNavGroup("Shortcuts"));
+  SettingsPage* page =
+      nav_->AddCategory("Shortcuts", CategoryGlyph("Shortcuts"), CategoryNavGroup("Shortcuts"));
   pages_["Shortcuts"] = page;
   std::vector<std::pair<SettingsCard*, std::vector<size_t>>> cards;  // in the order first seen
   for (const keybindings::Binding& binding : keybindings::All()) {
@@ -448,7 +515,8 @@ void SettingsPanel::BuildShortcutsPage() {
     auto* row = new SettingRow(binding.label, {});
     if (!binding.extra_aliases.isEmpty()) {
       QStringList aliases;
-      for (const QKeySequence& alias : binding.extra_aliases) aliases << alias.toString(QKeySequence::NativeText);
+      for (const QKeySequence& alias : binding.extra_aliases)
+        aliases << alias.toString(QKeySequence::NativeText);
       auto* also = new QLabel("also " + aliases.join(", "), row);
       also->setProperty("role", "subtle");
       also->setToolTip("Always works too and can't be changed.");
@@ -463,23 +531,19 @@ void SettingsPanel::BuildShortcutsPage() {
     shortcuts_.push_back({binding.id, edit, current, binding.default_keys});
     const size_t index = shortcuts_.size() - 1;
     connect(edit, &ShortcutEdit::Changed, this, &SettingsPanel::Refresh);
-    in_card->second.push_back(
-        AddPrefField({.row = row,
-                      .changed = [this, index] {
-                        return shortcuts_[index].edit->Keys() != shortcuts_[index].saved;
-                      },
-                      .is_default = [this, index] {
-                        return shortcuts_[index].edit->Keys() == shortcuts_[index].default_keys;
-                      },
-                      .revert = [this, index] {
-                        shortcuts_[index].edit->SetKeys(shortcuts_[index].saved);
-                      },
-                      .reset = [this, index] {
-                        shortcuts_[index].edit->SetKeys(shortcuts_[index].default_keys);
-                      },
-                      .mark_saved = [this, index] {
-                        shortcuts_[index].saved = shortcuts_[index].edit->Keys();
-                      }}));
+    in_card->second.push_back(AddPrefField(
+        {.row = row,
+         .changed = [this,
+                     index] { return shortcuts_[index].edit->Keys() != shortcuts_[index].saved; },
+         .is_default =
+             [this, index] {
+               return shortcuts_[index].edit->Keys() == shortcuts_[index].default_keys;
+             },
+         .revert = [this, index] { shortcuts_[index].edit->SetKeys(shortcuts_[index].saved); },
+         .reset = [this,
+                   index] { shortcuts_[index].edit->SetKeys(shortcuts_[index].default_keys); },
+         .mark_saved = [this,
+                        index] { shortcuts_[index].saved = shortcuts_[index].edit->Keys(); }}));
   }
   for (auto& [card, fields] : cards) AddCardReset(card, std::move(fields), {});
 }

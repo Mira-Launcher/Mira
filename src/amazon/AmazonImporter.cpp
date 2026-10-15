@@ -1,16 +1,15 @@
-#include "core/Json.h"
-#include "core/Strings.h"
 #include "amazon/AmazonImporter.h"
 
 #include <algorithm>
 #include <format>
 #include <fstream>
+#include <json.hpp>
 #include <map>
 
-#include <json.hpp>
-
 #include "amazon/Nile.h"
+#include "core/Json.h"
 #include "core/Log.h"
+#include "core/Strings.h"
 #include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
@@ -27,7 +26,8 @@ std::string ForwardSlashes(std::string path) {
 
 }  // namespace
 
-AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
+AmazonImporter::AmazonImporter(config::Config& config, store::GameStore& games,
+                               api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
 Result<library::ImportSummary> AmazonImporter::Import() {
@@ -83,7 +83,8 @@ Result<library::ImportSummary> AmazonImporter::Import() {
       }
       // Follows Nile's args unless the user changed them.
       const std::string nile_args = strings::JoinArgs(list);
-      if (game.args.empty() || game.args == core::JsonString(game.runner_config, "nile_args")) game.args = nile_args;
+      if (game.args.empty() || game.args == core::JsonString(game.runner_config, "nile_args"))
+        game.args = nile_args;
       game.runner_config["nile_args"] = nile_args;
     }
     if (main.contains("WorkingSubdirOverride") && main["WorkingSubdirOverride"].is_string()) {

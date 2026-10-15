@@ -12,7 +12,8 @@
 
 namespace mira_gui {
 
-ItchCollectionsCard::ItchCollectionsCard(QWidget* parent) : SettingsCard("itch.io collections", parent) {
+ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
+    : SettingsCard("itch.io collections", parent) {
   auto* intro = new QLabel(
       "Games in these collections show on the itch page. Free ones can be installed; paid ones "
       "install once you own them.",
@@ -41,7 +42,8 @@ ItchCollectionsCard::ItchCollectionsCard(QWidget* parent) : SettingsCard("itch.i
 
 void ItchCollectionsCard::Refresh() {
   SetStatus("Loading…");
-  api::GetItchCollectionsAsync(this, [this](ItchCollectionsResult result) { ShowCollections(result); });
+  api::GetItchCollectionsAsync(this,
+                               [this](ItchCollectionsResult result) { ShowCollections(result); });
 }
 
 void ItchCollectionsCard::SetStatus(const QString& text, bool error) {
@@ -60,7 +62,10 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
   SetStatus(result.collections.empty() ? "No collections yet." : QString());
   for (const ItchCollection& collection : result.collections) {
     auto* row = new SettingRow(QString::fromStdString(collection.title), QString(), this);
-    auto* count = new QLabel(QString("%1 game%2").arg(collection.games_count).arg(collection.games_count == 1 ? "" : "s"), row);
+    auto* count = new QLabel(QString("%1 game%2")
+                                 .arg(collection.games_count)
+                                 .arg(collection.games_count == 1 ? "" : "s"),
+                             row);
     count->setProperty("role", "muted");
     row->AddControl(count);
     if (collection.own) {
@@ -72,14 +77,15 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
       const std::int64_t id = collection.id;
       connect(remove, &QPushButton::clicked, this, [this, id, remove] {
         remove->setEnabled(false);
-        api::RemoveItchCollectionAsync(this, id, [this, button = QPointer<QPushButton>(remove)](StoreActionResult r) {
-          if (!r.ok) {
-            if (button) button->setEnabled(true);
-            return SetStatus("Could not remove it: " + error_help::Describe(r.error), true);
-          }
-          emit Changed();
-          Refresh();
-        });
+        api::RemoveItchCollectionAsync(
+            this, id, [this, button = QPointer<QPushButton>(remove)](StoreActionResult r) {
+              if (!r.ok) {
+                if (button) button->setEnabled(true);
+                return SetStatus("Could not remove it: " + error_help::Describe(r.error), true);
+              }
+              emit Changed();
+              Refresh();
+            });
       });
       row->AddControl(remove);
     }

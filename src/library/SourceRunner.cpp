@@ -11,7 +11,9 @@
 namespace mira::library {
 namespace {
 
-std::string StoreKey(std::string_view source) { return std::format("{}.runner", source); }
+std::string StoreKey(std::string_view source) {
+  return std::format("{}.runner", source);
+}
 
 bool HasStoreKey(std::string_view source) {
   return config::Schema::Instance().Find(StoreKey(source)) != nullptr;
@@ -71,12 +73,14 @@ Result<SourceRunner> SetSourceRunner(config::Config& config, store::GameStore& g
   }
   if (!runner_ref.empty() && runner_ref != "auto") {
     const runner::RunnerRegistry registry(config);
-    if (auto resolved = registry.Resolve(runner_ref); !resolved) return std::unexpected(resolved.error());
+    if (auto resolved = registry.Resolve(runner_ref); !resolved)
+      return std::unexpected(resolved.error());
   }
 
   std::function<bool(const model::Game&)> moves;
   if (HasStoreKey(source)) {
-    if (auto set = config.Set(StoreKey(source), runner_ref); !set) return std::unexpected(set.error());
+    if (auto set = config.Set(StoreKey(source), runner_ref); !set)
+      return std::unexpected(set.error());
     moves = [&](const model::Game& game) { return apply_to_games && IsSourceGame(game, source); };
   } else {
     const Result<model::Game> host = LauncherHost(games, source);
@@ -87,7 +91,8 @@ Result<SourceRunner> SetSourceRunner(config::Config& config, store::GameStore& g
   std::vector<std::string> changed;
   for (const model::Game& game : games.All()) {
     if (!moves(game) || game.runner_ref == runner_ref) continue;
-    if (games.Update(game.id, [&](model::Game& g) { g.runner_ref = runner_ref; })) changed.push_back(game.id);
+    if (games.Update(game.id, [&](model::Game& g) { g.runner_ref = runner_ref; }))
+      changed.push_back(game.id);
   }
   auto out = GetSourceRunner(config, games, source);
   if (out) out->changed = std::move(changed);

@@ -4,10 +4,10 @@
 #include <QButtonGroup>
 #include <QGridLayout>
 #include <QHBoxLayout>
-#include <QPainter>
 #include <QLabel>
 #include <QListWidget>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -64,8 +64,9 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
 // One tag in the Tags section: its name and how many games have it, picked or not.
 // The grid gives every toggle the same width; a long name is cut short with an ellipsis.
 class TagToggle : public QAbstractButton {
-public:
-  TagToggle(const FilterSortPill::TagCount& tag, QWidget* parent) : QAbstractButton(parent), tag_(tag) {
+ public:
+  TagToggle(const FilterSortPill::TagCount& tag, QWidget* parent)
+      : QAbstractButton(parent), tag_(tag) {
     setCheckable(true);
     setCursor(Qt::PointingHandCursor);
     setAttribute(Qt::WA_Hover, true);
@@ -76,11 +77,12 @@ public:
 
   QSize sizeHint() const override {
     const QFontMetrics metrics(font());
-    return {kPad + metrics.horizontalAdvance(tag_.tag) + kGap + Small().horizontalAdvance(Count()) + kPad,
+    return {kPad + metrics.horizontalAdvance(tag_.tag) + kGap + Small().horizontalAdvance(Count()) +
+                kPad,
             metrics.height() + 8};
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     const theme::Tokens& t = theme::Current();
     QPainter painter(this);
@@ -103,7 +105,7 @@ protected:
                      fontMetrics().elidedText(tag_.tag, Qt::ElideRight, name_box.width()));
   }
 
-private:
+ private:
   static constexpr int kPad = 10;
   static constexpr int kGap = 6;
 
@@ -149,7 +151,9 @@ FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending
           &FilterSortPill::ApplyIcons);
 }
 
-FilterSortPill::~FilterSortPill() { delete popover_; }  // parentless; see BuildPopover
+FilterSortPill::~FilterSortPill() {
+  delete popover_;
+}  // parentless; see BuildPopover
 
 QWidget* FilterSortPill::BuildPopover() {
   // No parent: as the pill's child it would sit inside the tab row, whose
@@ -320,7 +324,8 @@ void FilterSortPill::RebuildTags() {
   }
   QList<TagCount> shown = tags_;
   for (const QString& tag : picked_) {
-    if (std::ranges::none_of(shown, [&](const TagCount& t) { return t.tag == tag; })) shown.append({tag, 0});
+    if (std::ranges::none_of(shown, [&](const TagCount& t) { return t.tag == tag; }))
+      shown.append({tag, 0});
   }
   for (int i = 0; i < shown.size(); ++i) {
     const TagCount& tag = shown[i];
@@ -357,7 +362,8 @@ void FilterSortPill::mousePressEvent(QMouseEvent* event) {
     widest = qMax(widest, toggle->sizeHint().width());
   }
   const QMargins margins = popover_->layout()->contentsMargins();
-  const int fits_tags = 2 * widest + static_cast<QGridLayout*>(tags_box_->layout())->horizontalSpacing() +
+  const int fits_tags = 2 * widest +
+                        static_cast<QGridLayout*>(tags_box_->layout())->horizontalSpacing() +
                         margins.left() + margins.right();
   popover_->setFixedWidth(qMax(qMax(240, width()), qMin(fits_tags, kMaxWidth)));
   popover_->move(mapToGlobal(QPoint(0, height() + 4)));
@@ -366,8 +372,9 @@ void FilterSortPill::mousePressEvent(QMouseEvent* event) {
 
 void FilterSortPill::UpdateSummary() {
   const int row = filters_->currentRow();
-  QString filter = row >= 0 && row < static_cast<int>(std::size(kFilters)) ? QString(kFilters[row].label)
-                                                                           : QString("All games");
+  QString filter = row >= 0 && row < static_cast<int>(std::size(kFilters))
+                       ? QString(kFilters[row].label)
+                       : QString("All games");
   // Picked tags show after the filter, so a narrowed library never reads as all of it.
   if (!picked_.isEmpty()) {
     filter += QString::fromUtf8(" \xc2\xb7 ") + picked_.mid(0, 2).join(", ");

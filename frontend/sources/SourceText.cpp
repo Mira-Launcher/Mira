@@ -10,9 +10,10 @@ namespace mira_gui {
 
 SourceCopy CopyFor(const std::string& id) {
   if (id == "local") {
-    return {"Games from no store or launcher: found in your library folders, added by hand, or from "
-            "desktop entries.",
-            "", "Scan library folders"};
+    return {
+        "Games from no store or launcher: found in your library folders, added by hand, or from "
+        "desktop entries.",
+        "", "Scan library folders"};
   }
   if (id == "steam") {
     return {"Your installed Steam games. Steam itself still installs and updates them.", "",
@@ -45,28 +46,34 @@ SourceCopy CopyFor(const std::string& id) {
             "", "Import games"};
   }
   if (id == "office") {
-    return {"Word, Excel, PowerPoint and the other Microsoft 365 apps, in their own Wine prefix. They "
-            "show up under Apps. Sign in to your Microsoft account in any app; it needs a Microsoft "
-            "365 subscription.",
-            "", "Import apps", "app"};
+    return {
+        "Word, Excel, PowerPoint and the other Microsoft 365 apps, in their own Wine prefix. They "
+        "show up under Apps. Sign in to your Microsoft account in any app; it needs a Microsoft "
+        "365 subscription.",
+        "", "Import apps", "app"};
   }
   if (id == "adobe") {
-    return {"Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on AdobeWine by le-birnes. "
-            "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
-            "", "Import apps", "app"};
+    return {
+        "Photoshop, Illustrator and the other Creative Cloud apps, in their own Wine prefix on "
+        "AdobeWine by le-birnes. "
+        "Install them from Creative Cloud and they show up under Apps. It needs an Adobe account.",
+        "", "Import apps", "app"};
   }
   if (const SourceInfo* source = FindSourceInfo(QString::fromStdString(id));
       source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
-    return {QString("Plays %1 games you add: pick them or drop them here, or put them in its games folder. Mira "
+    return {QString("Plays %1 games you add: pick them or drop them here, or put them in its games "
+                    "folder. Mira "
                     "sets %2 up for you.")
                 .arg(PlaysText(*source), source->name),
             "", "Add games"};
   }
   if (id == "vortex" || id == "mo2") {
     const QString name = id == "vortex" ? "Vortex" : "Mod Organizer 2";
-    return {"Mods your Windows games. Mira downloads " + name + " and runs it in each game's own prefix, where it "
+    return {
+        "Mods your Windows games. Mira downloads " + name +
+            " and runs it in each game's own prefix, where it "
             "sees the game as the game does. Add it to a game, then open it from that game's page.",
-            "", "Add to a game"};
+        "", "Add to a game"};
   }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",

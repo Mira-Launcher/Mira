@@ -2,10 +2,9 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <json.hpp>
 #include <thread>
 #include <utility>
-
-#include <json.hpp>
 
 namespace mira::test {
 namespace fs = std::filesystem;
@@ -37,11 +36,14 @@ PathPrepend::PathPrepend(const fs::path& dir)
   setenv("PATH", (dir.string() + ":" + old_).c_str(), 1);
 }
 
-PathPrepend::~PathPrepend() { setenv("PATH", old_.c_str(), 1); }
+PathPrepend::~PathPrepend() {
+  setenv("PATH", old_.c_str(), 1);
+}
 
 void Isolate(config::Config& config) {
-  for (const char* key : {"metadata.enabled", "metadata.steam_art_by_name", "metadata.steam_by_name",
-                          "launchers.umu_lookup", "steam.import_playtime", "runner_scan_common_dirs", "tags.steam"}) {
+  for (const char* key :
+       {"metadata.enabled", "metadata.steam_art_by_name", "metadata.steam_by_name",
+        "launchers.umu_lookup", "steam.import_playtime", "runner_scan_common_dirs", "tags.steam"}) {
     [[maybe_unused]] auto off = config.Set(key, false);
   }
   // Every folder Mira reads or writes, moved next to the settings file.

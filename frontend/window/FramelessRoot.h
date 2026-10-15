@@ -15,15 +15,15 @@ inline constexpr int kResizeMargin = 5;
 // titlebar. QWindow::startSystemResize hands the drag to the compositor,
 // which is what makes this work under Wayland.
 class FramelessRoot : public QWidget {
-public:
+ public:
   explicit FramelessRoot(QMainWindow* window);
 
-protected:
+ protected:
   void mousePressEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
 
-private:
+ private:
   // Edges under `pos` that resize. The top edge only resizes at its
   // corners; the rest of it moves the window, since a drag up there (often
   // toward the top of the screen, e.g. out of a tiled corner) is meant to
@@ -38,13 +38,13 @@ private:
 // label) drops keyboard focus from a text box or button, the way a browser
 // does, so Enter and Delete go back to the window's own shortcuts.
 class FocusDropper : public QObject {
-public:
+ public:
   explicit FocusDropper(QWidget* window) : QObject(window), window_(window) {}
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   QWidget* window_;
 };
 

@@ -25,7 +25,8 @@ struct Node {
   std::vector<Node> children;
 
   Node() = default;
-  Node(Type t, std::string n = {}, std::string b = {}) : type(t), name(std::move(n)), bytes(std::move(b)) {}
+  Node(Type t, std::string n = {}, std::string b = {})
+      : type(t), name(std::move(n)), bytes(std::move(b)) {}
 
   Node* Child(std::string_view key) {
     for (Node& child : children) {
@@ -73,9 +74,14 @@ struct Reader {
           break;
         }
         case kInt:
-        case kFloat: width = 4; break;
-        case kUint64: width = 8; break;
-        default: return false;
+        case kFloat:
+          width = 4;
+          break;
+        case kUint64:
+          width = 8;
+          break;
+        default:
+          return false;
       }
       if (width > 0) {
         if (at + width > data.size()) return false;
@@ -101,7 +107,9 @@ void Write(std::string& out, const Node& node) {
   }
 }
 
-Node Str(std::string name, std::string text) { return {kString, std::move(name), std::move(text)}; }
+Node Str(std::string name, std::string text) {
+  return {kString, std::move(name), std::move(text)};
+}
 
 Node Int(std::string name, std::uint32_t value) {
   std::string bytes(4, '\0');
@@ -118,7 +126,9 @@ std::uint32_t Crc32(std::string_view text) {
   return ~crc;
 }
 
-std::string Quoted(const std::string& path) { return "\"" + path + "\""; }
+std::string Quoted(const std::string& path) {
+  return "\"" + path + "\"";
+}
 
 // Sets `key` to `want`, adding it if missing; true when that changed anything.
 bool Set(Node& entry, Node want) {
@@ -133,8 +143,9 @@ bool Set(Node& entry, Node want) {
 
 }  // namespace
 
-Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, const std::string& name,
-                                      const std::string& exe, const std::string& launch_options) {
+Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root,
+                                      const std::string& name, const std::string& exe,
+                                      const std::string& launch_options) {
   namespace fs = std::filesystem;
   ShortcutChange change;
   std::optional<Error> failure;
@@ -163,7 +174,8 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
       }
       // A file this can't read is left alone rather than rewritten without the user's shortcuts.
       if (parsed == nullptr) {
-        failure = Err("shortcuts_unreadable", std::format("couldn't read {}", file.string())).error();
+        failure =
+            Err("shortcuts_unreadable", std::format("couldn't read {}", file.string())).error();
         change.failed.push_back(id);
         continue;
       }
@@ -181,8 +193,10 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
       std::int64_t next = 0;
       for (const Node& child : root.children) {
         std::int64_t index = -1;
-        const auto [end, ec] = std::from_chars(child.name.data(), child.name.data() + child.name.size(), index);
-        if (ec == std::errc() && end == child.name.data() + child.name.size()) next = std::max(next, index + 1);
+        const auto [end, ec] =
+            std::from_chars(child.name.data(), child.name.data() + child.name.size(), index);
+        if (ec == std::errc() && end == child.name.data() + child.name.size())
+          next = std::max(next, index + 1);
       }
       root.children.push_back({kObject, std::to_string(next)});
       entry = &root.children.back();
@@ -194,9 +208,10 @@ Result<ShortcutChange> EnsureShortcut(const std::filesystem::path& steam_root, c
     changed |= Set(*entry, Str("StartDir", Quoted(fs::path(exe).parent_path().string())));
     changed |= Set(*entry, Str("LaunchOptions", launch_options));
     if (adding) {
-      for (Node node : {Str("icon", ""), Str("ShortcutPath", ""), Int("IsHidden", 0), Int("AllowDesktopConfig", 1),
-                        Int("AllowOverlay", 1), Int("OpenVR", 0), Int("Devkit", 0), Str("DevkitGameID", ""),
-                        Int("DevkitOverrideAppID", 0), Int("LastPlayTime", 0), Str("FlatpakAppID", "")}) {
+      for (Node node : {Str("icon", ""), Str("ShortcutPath", ""), Int("IsHidden", 0),
+                        Int("AllowDesktopConfig", 1), Int("AllowOverlay", 1), Int("OpenVR", 0),
+                        Int("Devkit", 0), Str("DevkitGameID", ""), Int("DevkitOverrideAppID", 0),
+                        Int("LastPlayTime", 0), Str("FlatpakAppID", "")}) {
         entry->children.push_back(std::move(node));
       }
       entry->children.push_back({kObject, "tags"});

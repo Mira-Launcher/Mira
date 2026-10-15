@@ -4,7 +4,6 @@
 #include <QRect>
 #include <QTimer>
 #include <QWidget>
-
 #include <functional>
 #include <string>
 
@@ -35,11 +34,11 @@ QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area);
 // invalid one at once when it moves to another index or off the grid. Held
 // as a persistent index, so a row that moves or goes away can't dangle.
 class HoverDwell {
-public:
+ public:
   explicit HoverDwell(std::function<void(const QModelIndex&)> on_hover);
   void Track(const QModelIndex& hovered);
 
-private:
+ private:
   std::function<void(const QModelIndex&)> on_hover_;
   QTimer timer_;
   QPersistentModelIndex last_;
@@ -53,7 +52,7 @@ private:
 class HoverCard : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit HoverCard(QWidget* parent = nullptr);
 
   // Fills in what's already known (no round trip), then fetches the rest
@@ -64,15 +63,15 @@ public:
   void ShowGame(const GameSummary& game, bool running, const QString& hint = QString());
   // A store title that isn't in the library yet, with its cached details
   // (GET /v1/library/metadata) once they arrive.
-  void ShowTitle(const QString& source, const QString& ref, const QString& title, const QString& status,
-                 const QString& detail);
+  void ShowTitle(const QString& source, const QString& ref, const QString& title,
+                 const QString& status, const QString& detail);
   // Shows the card beside `anchor` (global), and keeps it there as it grows.
   void PopUpBeside(const QRect& anchor);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   void ShowMetadata(const GameMetadata& metadata);
   void Reset();
   void Reposition();

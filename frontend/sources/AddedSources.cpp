@@ -33,7 +33,9 @@ QString Ago(std::int64_t unix_seconds) {
   return QString("%1 days ago").arg(seconds / 86400);
 }
 
-QString Counted(int n, const QString& item) { return QString("%1 %2%3").arg(n).arg(item).arg(n == 1 ? "" : "s"); }
+QString Counted(int n, const QString& item) {
+  return QString("%1 %2%3").arg(n).arg(item).arg(n == 1 ? "" : "s");
+}
 
 QString Status(const SourceEntry& entry) {
   const QString items = Counted(entry.games, CopyFor(entry.source.id.toStdString()).item);
@@ -75,8 +77,9 @@ AddedSources::AddedSources(QWidget* parent) : QWidget(parent) {
   apps_grid_ = Grid(this);
   empty_ = MakeLabel(this, QString(), "subtle");
   empty_->hide();
-  for (QWidget* widget : {static_cast<QWidget*>(games_heading_), games_grid_, static_cast<QWidget*>(apps_heading_),
-                          apps_grid_, static_cast<QWidget*>(empty_)}) {
+  for (QWidget* widget :
+       {static_cast<QWidget*>(games_heading_), games_grid_, static_cast<QWidget*>(apps_heading_),
+        apps_grid_, static_cast<QWidget*>(empty_)}) {
     layout->addWidget(widget);
   }
   layout->addStretch(1);
@@ -101,7 +104,8 @@ void AddedSources::SetEntries(const std::vector<SourceEntry>& entries) {
     order << tile.tile;
   }
   // The sidebar can be dragged while this is open, so the order follows it.
-  for (QWidget* grid : {games_grid_, apps_grid_}) static_cast<TileGridLayout*>(grid->layout())->Reorder(order);
+  for (QWidget* grid : {games_grid_, apps_grid_})
+    static_cast<TileGridLayout*>(grid->layout())->Reorder(order);
   ApplyFilter();
 }
 
@@ -140,12 +144,14 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   const QString items = app ? "apps" : "games";
   if (id == "local") {
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
-            "Games from no store or launcher are always in the library.", MakeLabel(tile.tile, "Always", "subtle", false));
+            "Games from no store or launcher are always in the library.",
+            MakeLabel(tile.tile, "Always", "subtle", false));
   } else {
     tile.in_library = new Switch(tile.tile);
     tile.in_library->setAccessibleName(QString("%1's %2 in the library").arg(name, items));
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
-            QString("Off keeps %1's %2 out of the library and stops importing. Nothing is deleted.").arg(name, items),
+            QString("Off keeps %1's %2 out of the library and stops importing. Nothing is deleted.")
+                .arg(name, items),
             tile.in_library);
     connect(tile.in_library, &Switch::toggled, this, [this, id](bool on) {
       tiles_[id].note.clear();  // an old import's result no longer describes it
@@ -154,8 +160,10 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   }
   tile.in_sidebar = new Switch(tile.tile);
   tile.in_sidebar->setAccessibleName(name + " in the sidebar");
-  AddLine(tile.tile, "Shown in sidebar", QString("Lists %1 under Sources in the sidebar.").arg(name), tile.in_sidebar);
-  connect(tile.in_sidebar, &Switch::toggled, this, [this, id](bool shown) { emit SidebarToggled(id, shown); });
+  AddLine(tile.tile, "Shown in sidebar",
+          QString("Lists %1 under Sources in the sidebar.").arg(name), tile.in_sidebar);
+  connect(tile.in_sidebar, &Switch::toggled, this,
+          [this, id](bool shown) { emit SidebarToggled(id, shown); });
 
   grid->layout()->addWidget(tile.tile);
   return tile;
@@ -165,7 +173,8 @@ void AddedSources::Update(Tile& tile) {
   const SourceEntry& entry = tile.entry;
   tile.tile->SetDim(!entry.enabled);
   if (!tile.importing && tile.note.isEmpty()) tile.tile->Line()->setText(Status(entry));
-  for (auto [toggle, on] : {std::pair{tile.in_library, entry.enabled}, std::pair{tile.in_sidebar, entry.in_sidebar}}) {
+  for (auto [toggle, on] :
+       {std::pair{tile.in_library, entry.enabled}, std::pair{tile.in_sidebar, entry.in_sidebar}}) {
     if (toggle == nullptr) continue;
     toggle->blockSignals(true);
     toggle->setChecked(on);
@@ -179,7 +188,8 @@ void AddedSources::ApplyFilter() {
   for (const auto& [id, tile] : tiles_) {
     const SourceInfo& source = tile.entry.source;
     const bool shown = filter_.isEmpty() || source.name.toLower().contains(filter_) ||
-                       KindLabel(source.kind).toLower().contains(filter_) || PlaysSearchText(source).contains(filter_);
+                       KindLabel(source.kind).toLower().contains(filter_) ||
+                       PlaysSearchText(source).contains(filter_);
     tile.tile->setVisible(shown);
     (tile.tile->parentWidget() == apps_grid_ ? apps_shown : games_shown) |= shown;
   }
@@ -202,7 +212,9 @@ void AddedSources::ShowMenu(const QString& id) {
     const QString item = CopyFor(id.toStdString()).item;
     QAction* import = menu.addAction("Import " + item + "s now", this, [this, id] { Import(id); });
     import->setEnabled(entry.enabled && !tile.importing);
-    if (!entry.enabled) import->setToolTip(QString("Turn on ") + item[0].toUpper() + item.mid(1) + "s in library first.");
+    if (!entry.enabled)
+      import->setToolTip(QString("Turn on ") + item[0].toUpper() + item.mid(1) +
+                         "s in library first.");
   }
   // Local is where games from no source go, so it can't be removed.
   if (id != "local") {
@@ -232,15 +244,20 @@ void AddedSources::Import(const QString& id) {
   };
   const std::string source = id.toStdString();
   if (source == "steam") {
-    api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ScanSteamAsync(this,
+                        [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (source == "lutris") {
-    api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLutrisAsync(
+        this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (tile.entry.source.kind == SourceInfo::Kind::Launcher) {
-    api::ImportLauncherAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLauncherAsync(
+        this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (tile.entry.source.kind == SourceInfo::Kind::Emulator) {
-    api::ImportEmulatorAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportEmulatorAsync(
+        this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else {
-    api::ImportStoreAsync(this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportStoreAsync(this, source,
+                          [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   }
 }
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QRectF>
-
 #include <utility>
 #include <vector>
 
@@ -15,17 +14,17 @@ namespace mira_gui::bigscreen {
 class DownloadsPage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit DownloadsPage(BigScreenWindow* window);
 
   bool Navigate(Nav nav) override;
   QList<Hint> Hints() const override;
   void Shown() override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   struct Layout {
     // Each item's box, before scrolling, in the order of items_.
     std::vector<QRectF> boxes;
@@ -36,7 +35,8 @@ private:
   void Refresh();
   void FocusChanged();
   Layout Arrange() const;
-  void PaintInstall(QPainter& painter, const QRectF& box, const Item& item, bool hero, bool focused) const;
+  void PaintInstall(QPainter& painter, const QRectF& box, const Item& item, bool hero,
+                    bool focused) const;
 
   // Installs first, then `ready` games to install.
   std::vector<Item> items_;

@@ -6,7 +6,6 @@ namespace mira::tomljson {
 namespace {
 using nlohmann::json;
 
-
 json ArrayToJson(const toml::array& array) {
   json out = json::array();
   array.for_each([&](auto&& element) { out.push_back(ToJson(element)); });
@@ -15,7 +14,8 @@ json ArrayToJson(const toml::array& array) {
 
 json TableToJson(const toml::table& table) {
   json out = json::object();
-  table.for_each([&](const toml::key& key, auto&& value) { out[std::string(key.str())] = ToJson(value); });
+  table.for_each(
+      [&](const toml::key& key, auto&& value) { out[std::string(key.str())] = ToJson(value); });
   return out;
 }
 

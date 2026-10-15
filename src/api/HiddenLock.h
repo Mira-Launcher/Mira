@@ -13,7 +13,7 @@ namespace mira::api {
 // store titles weren't there (Services::Conceals). With no password set it's never locked. mirad
 // starts locked, and only a slow hash of the password is kept (in mira.db).
 class HiddenLock {
-public:
+ public:
   explicit HiddenLock(store::GameStore& games);
 
   bool HasPassword() const;
@@ -31,7 +31,7 @@ public:
   void Touch();
   std::chrono::steady_clock::duration Idle() const;
 
-private:
+ private:
   store::GameStore& games_;
   mutable std::mutex mutex_;
   std::mutex set_mutex_;

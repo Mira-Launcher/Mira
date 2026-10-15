@@ -1,10 +1,9 @@
 #pragma once
 
+#include <json.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Result.h"
 
@@ -28,15 +27,17 @@ Distro ParseOsRelease(std::string_view text, bool ostree_booted);
 // One program (or library) a feature uses, and the package that has it on each family.
 struct Tool {
   std::string_view id;
-  std::string_view binary;  // on PATH; alternatives separated by spaces ("7z 7zz"); empty for a library
-  std::string_view library;  // a shared library loaded at runtime ("libSDL3.so.0"), checked with dlopen
+  std::string_view
+      binary;  // on PATH; alternatives separated by spaces ("7z 7zz"); empty for a library
+  std::string_view
+      library;  // a shared library loaded at runtime ("libSDL3.so.0"), checked with dlopen
   std::string_view purpose;
   std::string_view arch, debian, fedora, suse;
 };
 
-// Every tool Mira knows but an emulator's, or those `feature` needs ("core", "wine", "winetricks", "adobe",
-// "archives", "performance", "controllers", or an emulator's id).
-// Empty for an unknown feature.
+// Every tool Mira knows but an emulator's, or those `feature` needs ("core", "wine", "winetricks",
+// "adobe", "archives", "performance", "controllers", or an emulator's id). Empty for an unknown
+// feature.
 std::vector<Tool> ToolsFor(std::string_view feature = {});
 
 // The package for `tool` on `family`, alternatives separated by spaces; Ostree layers Fedora's.
@@ -45,14 +46,16 @@ std::string_view PackageFor(const Tool& tool, Family family);
 // The command that installs `packages` as root, or empty where Mira can't (SteamOS, unknown).
 std::vector<std::string> InstallCommand(Family family, const std::vector<std::string>& packages);
 
-// The packages of `feature`'s installed programs (not the libraries they use), named for this distro.
+// The packages of `feature`'s installed programs (not the libraries they use), named for this
+// distro.
 std::vector<std::string> InstalledPackages(std::string_view feature);
 // The command that removes `packages` as root, or empty where Mira can't (SteamOS, unknown).
 std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages);
 
 // The tools of `feature` not installed: {"distro", "family", "missing": [{tool, package, purpose}],
-// "unavailable": [{tool, purpose, unchecked}], "install": [argv...], "restart": bool}. `unavailable` has no
-// package on this distro; `install` is empty when nothing's missing or Mira can't install them.
+// "unavailable": [{tool, purpose, unchecked}], "install": [argv...], "restart": bool}.
+// `unavailable` has no package on this distro; `install` is empty when nothing's missing or Mira
+// can't install them.
 nlohmann::json Report(std::string_view feature = {});
 
 // An error naming what's missing for `feature` and the command that installs it, with a fix a

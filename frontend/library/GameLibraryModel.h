@@ -4,7 +4,6 @@
 #include <QSortFilterProxyModel>
 #include <QString>
 #include <QTimer>
-
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,7 +25,7 @@ namespace mira_gui {
 class GameLibraryModel : public QAbstractListModel {
   Q_OBJECT
 
-public:
+ public:
   explicit GameLibraryModel(QObject* parent = nullptr);
 
   // A fresh GET /v1/games: becomes the library, as updates, inserts and
@@ -38,7 +37,8 @@ public:
   void RemoveSource(const std::string& source);
   // Ahead of mirad's own game.state, e.g. right after a launch it accepted.
   void SetRunning(const std::string& id, bool running);
-  // "Launching" on its tile from the click until its window has had time to show, or until it stops.
+  // "Launching" on its tile from the click until its window has had time to show, or until it
+  // stops.
   void SetLaunching(const std::string& id, bool launching);
   // Repaints one game's row: its cover arrived, or its install moved along.
   void Touch(const std::string& id);
@@ -60,17 +60,18 @@ public:
   QModelIndex IndexOf(const std::string& id) const;
 
   // A game mid-install: its rail, status line and detail line; nullopt otherwise.
-  std::function<std::optional<DownloadTracker::TileProgress>(const std::string& id)> install_progress;
+  std::function<std::optional<DownloadTracker::TileProgress>(const std::string& id)>
+      install_progress;
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   QVariant data(const QModelIndex& index, int role) const override;
 
-signals:
+ signals:
   // Once per burst of changes (a scan, mirad's replay), after the rows moved.
   void Changed();
   void ShowingHiddenChanged(bool showing);
 
-private:
+ private:
   void RebuildIndex();
   void NoteChanged();
 
@@ -86,7 +87,7 @@ private:
   bool change_pending_ = false;
   bool showing_hidden_ = false;
   std::unordered_map<std::string, qint64> launching_;  // id -> when it was launched, in ms
-  QTimer* launch_tick_ = nullptr;  // animates the launching tiles' dots
+  QTimer* launch_tick_ = nullptr;                      // animates the launching tiles' dots
 };
 
 // A user tag across the library: its first spelling, how many games under a filter have it
@@ -115,7 +116,7 @@ std::vector<LibraryTag> TagsUnder(const std::vector<GameSummary>& games, const Q
 class GameFilterProxy : public QSortFilterProxyModel {
   Q_OBJECT
 
-public:
+ public:
   explicit GameFilterProxy(GameLibraryModel* library, QObject* parent = nullptr);
 
   // Whether `game` belongs under filter `key`, whether hidden or not. Shared with the filter
@@ -140,11 +141,11 @@ public:
 
   const GameSummary* GameAt(const QModelIndex& index) const;
 
-protected:
+ protected:
   bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;
   bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
 
-private:
+ private:
   // Applies `change` to the filter's inputs and refilters the rows.
   void ChangeFilter(const std::function<void()>& change);
 

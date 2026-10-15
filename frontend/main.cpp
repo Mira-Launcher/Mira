@@ -7,18 +7,17 @@
 #include <QLockFile>
 #include <QStandardPaths>
 #include <QStringList>
-
 #include <cstdlib>
 #include <filesystem>
 
-#include "bigscreen/Session.h"
-#include "client/api/Config.h"
 #include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
 #include "app/SystemNotifier.h"
 #include "app/Tray.h"
+#include "bigscreen/Session.h"
+#include "client/api/Config.h"
 #include "setup/SetupWindow.h"
 #include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
@@ -34,7 +33,8 @@ void DefaultToBundledPlatform() {
   if (std::getenv("QT_QPA_PLATFORM") != nullptr) return;
   std::error_code ec;
   const std::filesystem::path platforms =
-      std::filesystem::read_symlink("/proc/self/exe", ec).parent_path().parent_path() / "plugins" / "platforms";
+      std::filesystem::read_symlink("/proc/self/exe", ec).parent_path().parent_path() / "plugins" /
+      "platforms";
   if (ec || !std::filesystem::is_directory(platforms, ec)) return;
   for (const auto& entry : std::filesystem::directory_iterator(platforms, ec)) {
     if (entry.path().filename().string().starts_with("libqwayland")) return;
@@ -57,7 +57,8 @@ int main(int argc, char** argv) {
   // not open a second window against the same daemon; it should just no-op.
   // QLockFile detects and clears a lock left by a crashed instance on its
   // own (it checks whether the PID that holds it is still alive).
-  const QString runtime_dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/mira";
+  const QString runtime_dir =
+      QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/mira";
   QDir().mkpath(runtime_dir);
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
   // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
@@ -175,7 +176,9 @@ int main(int argc, char** argv) {
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Outdated, &app, [](int api) {
     mira_gui::notify::FailedWithHint(
         nullptr, "The running mirad doesn't match this version of Mira.",
-        QString("It speaks API %1; this app needs API %2.").arg(api).arg(mira_gui::kExpectedApiVersion),
+        QString("It speaks API %1; this app needs API %2.")
+            .arg(api)
+            .arg(mira_gui::kExpectedApiVersion),
         "Quit Mira from the tray, or stop the mirad process, and start Mira again.");
     QApplication::quit();
   });

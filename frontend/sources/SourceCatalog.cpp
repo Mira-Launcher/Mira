@@ -15,7 +15,8 @@ namespace mira_gui {
 namespace {
 
 constexpr int kTileWidth = 280;
-const QStringList kGroups = {"Stores", "Launchers", "Apps", "Emulators", "Mod managers", "On this computer"};
+const QStringList kGroups = {"Stores",    "Launchers",    "Apps",
+                             "Emulators", "Mod managers", "On this computer"};
 
 int GroupOf(const SourceInfo& source) {
   if (CopyFor(source.id.toStdString()).item == "app") return 2;
@@ -81,7 +82,8 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
   }
   all_->setChecked(true);
   // Connected once checked, so the filter never runs before the tiles exist.
-  for (QPushButton* chip : buttons) connect(chip, &QPushButton::toggled, this, &SourceCatalog::ApplyFilter);
+  for (QPushButton* chip : buttons)
+    connect(chip, &QPushButton::toggled, this, &SourceCatalog::ApplyFilter);
   chips->addStretch(1);
   layout->addLayout(chips);
 
@@ -120,8 +122,9 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     auto* button = new QPushButton(imports ? "Import games" : "Set up…", tile);
     button->setDefault(true);
     button->setAccessibleName((imports ? "Import games from " : "Set up ") + source.name);
-    button->setToolTip(imports ? QString("Adds %1's games now. They stay playable in %1.").arg(source.name)
-                               : QString("Walks you through adding %1.").arg(source.name));
+    button->setToolTip(
+        imports ? QString("Adds %1's games now. They stay playable in %1.").arg(source.name)
+                : QString("Walks you through adding %1.").arg(source.name));
     connect(button, &QPushButton::clicked, this, [this, id] { emit SetUpRequested(id); });
     auto* footer = new QHBoxLayout();
     footer->addStretch(1);
@@ -130,7 +133,10 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     groups_[group].grid->layout()->addWidget(tile);
     tiles_[id] = tile;
     group_of_[id] = group;
-    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb, copy.tool, PlaysSearchText(source)}.join(' ').toLower();
+    haystack_[id] = QStringList{source.name, KindLabel(source.kind), kGroups[group], copy.blurb,
+                                copy.tool,   PlaysSearchText(source)}
+                        .join(' ')
+                        .toLower();
   }
   int total = 0;
   for (size_t i = 0; i < groups_.size(); ++i) {
@@ -139,7 +145,9 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     total += counts[i];
   }
   all_->setText(QString("All  %1").arg(total));
-  if (!all_->isChecked() && std::ranges::none_of(groups_, [](const Group& g) { return g.chip->isChecked() && g.chip->isVisible(); })) {
+  if (!all_->isChecked() && std::ranges::none_of(groups_, [](const Group& g) {
+        return g.chip->isChecked() && g.chip->isVisible();
+      })) {
     all_->setChecked(true);
   }
   ApplyFilter();

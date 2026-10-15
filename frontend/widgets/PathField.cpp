@@ -3,7 +3,6 @@
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
-
 #include <system_error>
 
 namespace mira_gui {

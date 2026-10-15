@@ -8,9 +8,12 @@ using nlohmann::json;
 
 std::string_view ToString(Layer layer) {
   switch (layer) {
-    case Layer::Default:    return "default";
-    case Layer::ConfigFile: return "config";
-    case Layer::Game:       return "game";
+    case Layer::Default:
+      return "default";
+    case Layer::ConfigFile:
+      return "config";
+    case Layer::Game:
+      return "game";
   }
   return "default";
 }

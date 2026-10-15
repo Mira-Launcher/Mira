@@ -14,7 +14,8 @@ constexpr int kCapGap = 4;
 
 }  // namespace
 
-ShortcutEdit::ShortcutEdit(const QKeySequence& keys, QWidget* parent) : QWidget(parent), keys_(keys) {
+ShortcutEdit::ShortcutEdit(const QKeySequence& keys, QWidget* parent)
+    : QWidget(parent), keys_(keys) {
   setFocusPolicy(Qt::StrongFocus);
   setCursor(Qt::PointingHandCursor);
   setToolTip("Click, then press the new shortcut");
@@ -49,7 +50,8 @@ QSize ShortcutEdit::sizeHint() const {
   const QStringList caps = Caps();
   if (caps.isEmpty()) return {metrics.horizontalAdvance("None") + 20, kCapHeight + 8};
   int width = 8;
-  for (const QString& cap : caps) width += metrics.horizontalAdvance(cap) + 2 * kCapPadding + kCapGap;
+  for (const QString& cap : caps)
+    width += metrics.horizontalAdvance(cap) + 2 * kCapPadding + kCapGap;
   return {width + 4, kCapHeight + 8};
 }
 
@@ -77,7 +79,8 @@ void ShortcutEdit::paintEvent(QPaintEvent*) {
   const QFontMetrics metrics(font());
   // Right-aligned, like every other control in a row.
   int width = -kCapGap;
-  for (const QString& cap : caps) width += metrics.horizontalAdvance(cap) + 2 * kCapPadding + kCapGap;
+  for (const QString& cap : caps)
+    width += metrics.horizontalAdvance(cap) + 2 * kCapPadding + kCapGap;
   qreal x = this->width() - 4 - width;
   const qreal top = (height() - kCapHeight) / 2.0;
   for (const QString& cap : caps) {
@@ -87,7 +90,8 @@ void ShortcutEdit::paintEvent(QPaintEvent*) {
     painter.setBrush(tokens.surface_alt);
     painter.drawRoundedRect(key.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
     // The thicker lower edge that makes it read as a key.
-    painter.drawLine(QPointF(key.left() + 3, key.bottom() - 0.5), QPointF(key.right() - 3, key.bottom() - 0.5));
+    painter.drawLine(QPointF(key.left() + 3, key.bottom() - 0.5),
+                     QPointF(key.right() - 3, key.bottom() - 0.5));
     painter.setPen(tokens.text);
     painter.drawText(key, Qt::AlignCenter, cap);
     x += cap_width + kCapGap;
@@ -113,7 +117,8 @@ bool ShortcutEdit::event(QEvent* event) {
 
 void ShortcutEdit::keyPressEvent(QKeyEvent* event) {
   if (!recording_) {
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter ||
+        event->key() == Qt::Key_Space) {
       SetRecording(true);
       return;
     }

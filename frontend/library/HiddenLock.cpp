@@ -132,7 +132,8 @@ HiddenPasswordRow::HiddenPasswordRow(QWidget* parent)
   SetBelow(fields_);
 
   api::GetHiddenStateAsync(this, [this](api::HiddenState state) {
-    if (!state.ok) return notify::FailedRequest(this, "Could not check the hidden-games password.", state.error);
+    if (!state.ok)
+      return notify::FailedRequest(this, "Could not check the hidden-games password.", state.error);
     ShowState(state.password);
   });
 }

@@ -9,7 +9,6 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QVariantMap>
-
 #include <unordered_map>
 #include <utility>
 
@@ -33,7 +32,7 @@ QDBusInterface& Interface() {
 class ActionRouter : public QObject {
   Q_OBJECT
 
-public:
+ public:
   // Parented to the app, not a function-local static: it has to go before
   // the D-Bus connection does at shutdown.
   static ActionRouter& Instance() {
@@ -43,7 +42,7 @@ public:
 
   void Track(uint id, std::function<void()> on_action) { pending_[id] = std::move(on_action); }
 
-public slots:
+ public slots:
   void OnActionInvoked(uint id, const QString& /*key*/) {
     const auto it = pending_.find(id);
     if (it == pending_.end()) return;
@@ -54,7 +53,7 @@ public slots:
 
   void OnClosed(uint id, uint /*reason*/) { pending_.erase(id); }
 
-private:
+ private:
   explicit ActionRouter(QObject* parent) : QObject(parent) {
     QDBusConnection bus = QDBusConnection::sessionBus();
     bus.connect(kService, kPath, kService, "ActionInvoked", this,
@@ -104,8 +103,8 @@ bool Send(Urgency urgency, const QString& summary, const QString& body, const QS
 
   // expire_timeout: 0 never expires, -1 is the desktop's own default.
   const QDBusReply<uint> reply =
-      Interface().call("Notify", QString("Mira"), 0U, QString(kDesktopEntry), summary, body, actions,
-                       hints, persistent ? 0 : -1);
+      Interface().call("Notify", QString("Mira"), 0U, QString(kDesktopEntry), summary, body,
+                       actions, hints, persistent ? 0 : -1);
   if (!reply.isValid()) return false;
   if (has_action) ActionRouter::Instance().Track(reply.value(), std::move(on_action));
   return true;

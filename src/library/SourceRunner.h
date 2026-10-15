@@ -13,9 +13,9 @@
 namespace mira::library {
 
 struct SourceRunner {
-  std::string runner_ref;  // empty: fall back to the default
-  int games = 0;           // the source's Windows games
-  int differing = 0;       // of those, the ones on another runner
+  std::string runner_ref;            // empty: fall back to the default
+  int games = 0;                     // the source's Windows games
+  int differing = 0;                 // of those, the ones on another runner
   std::vector<std::string> changed;  // SetSourceRunner only: ids of the games it moved
 };
 

@@ -6,7 +6,6 @@
 #include <QScreen>
 #include <QUrl>
 #include <QVideoFrame>
-
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -43,7 +42,8 @@ QColor ArtAccent(const QPixmap& art) {
   }
   if (total < 1.0) return {};
   const double hue = std::fmod(std::atan2(y, x) / (2 * std::numbers::pi) + 1, 1.0);
-  return QColor::fromHsvF(hue, std::clamp(sat / total, 0.45, 0.85), std::clamp(val / total, 0.75, 0.95));
+  return QColor::fromHsvF(hue, std::clamp(sat / total, 0.45, 0.85),
+                          std::clamp(val / total, 0.75, 0.95));
 }
 
 }  // namespace
@@ -110,8 +110,8 @@ HeroBackground::HeroBackground(BigScreenWindow* window) : QWidget(window), windo
   connect(&trailer_reveal_, &QTimer::timeout, this, [this] {
     reveal_ = true;
     emit ShowcaseChanged();
-    if (player_ != nullptr && trailer_key_ == key_ && player_->playbackState() == QMediaPlayer::PausedState &&
-        window_->isActiveWindow()) {
+    if (player_ != nullptr && trailer_key_ == key_ &&
+        player_->playbackState() == QMediaPlayer::PausedState && window_->isActiveWindow()) {
       player_->play();
     }
   });
@@ -151,7 +151,8 @@ void HeroBackground::StopTrailer() {
   trailer_delay_.stop();
   playing_key_.clear();  // its frames are dropped from here on
   // A trailer with sound fades out; a silent one just stops.
-  if (player_ != nullptr && player_->playbackState() == QMediaPlayer::PlayingState && !audio_->isMuted()) {
+  if (player_ != nullptr && player_->playbackState() == QMediaPlayer::PlayingState &&
+      !audio_->isMuted()) {
     volume_fade_.stop();
     volume_fade_.setStartValue(double(audio_->volume()));
     volume_fade_.start();
@@ -238,7 +239,8 @@ void HeroBackground::CreatePlayer() {
       return;
     }
     const bool first = frame_.isNull();
-    if (first && window_->prefs().big_screen_trailer_hd_only.value_or(false) && frame.height() < 720) {
+    if (first && window_->prefs().big_screen_trailer_hd_only.value_or(false) &&
+        frame.height() < 720) {
       player_->stop();
       trailer_key_.clear();
       return;
@@ -248,8 +250,9 @@ void HeroBackground::CreatePlayer() {
     if (first) {
       audio_->setMuted(!window_->prefs().big_screen_trailer_sound.value_or(false));
       // Blurred from a small copy, so it costs next to nothing.
-      frame_blur_ = BlurredCover(QPixmap::fromImage(image.scaled(320, 180, Qt::KeepAspectRatio, Qt::FastTransformation)),
-                                 QSize(480, 270));
+      frame_blur_ = BlurredCover(
+          QPixmap::fromImage(image.scaled(320, 180, Qt::KeepAspectRatio, Qt::FastTransformation)),
+          QSize(480, 270));
     }
     frame_ = std::move(image);
     if (first) {
@@ -258,13 +261,15 @@ void HeroBackground::CreatePlayer() {
     }
     update();
   });
-  connect(player_, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
-    if (status == QMediaPlayer::LoadedMedia && player_->duration() <= kSkipFromMs) {
-      skip_us_ = 0;
-      player_->setPlaybackRate(1.0);
-    }
-    if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia) EndTrailer();
-  });
+  connect(player_, &QMediaPlayer::mediaStatusChanged, this,
+          [this](QMediaPlayer::MediaStatus status) {
+            if (status == QMediaPlayer::LoadedMedia && player_->duration() <= kSkipFromMs) {
+              skip_us_ = 0;
+              player_->setPlaybackRate(1.0);
+            }
+            if (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia)
+              EndTrailer();
+          });
   connect(player_, &QMediaPlayer::errorOccurred, this, [this] { EndTrailer(); });
   // Trailers play only while the window has focus.
   connect(qApp, &QGuiApplication::focusWindowChanged, this, [this] {
@@ -293,7 +298,9 @@ void HeroBackground::Release() {
   previous_ = QPixmap();
 }
 
-QPixmap HeroBackground::Logo(const QString& key) const { return logos_.value(key); }
+QPixmap HeroBackground::Logo(const QString& key) const {
+  return logos_.value(key);
+}
 
 QPixmap HeroBackground::Blurred(const Item& item) const {
   if (item.key.isEmpty()) return {};
@@ -318,9 +325,11 @@ void HeroBackground::paintEvent(QPaintEvent*) {
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     const QRectF to = fill(art.size());
     const QSizeF scaled = to.size() * scale;
-    painter.drawPixmap(QRectF(to.center() - QPointF(scaled.width(), scaled.height()) / 2, scaled), art, QRectF(art.rect()));
+    painter.drawPixmap(QRectF(to.center() - QPointF(scaled.width(), scaled.height()) / 2, scaled),
+                       art, QRectF(art.rect()));
   };
-  const double t = fade_.state() == QAbstractAnimation::Running ? fade_.currentValue().toDouble() : 1.0;
+  const double t =
+      fade_.state() == QAbstractAnimation::Running ? fade_.currentValue().toDouble() : 1.0;
   draw(previous_, 1.0 - t);
   // The new hero settles in from slightly closer as it fades up.
   draw(current_, t, 1.0 + 0.035 * (1.0 - t) * (1.0 - t));
@@ -346,7 +355,8 @@ void HeroBackground::paintEvent(QPaintEvent*) {
   left.setColorAt(0.75, clear);
   painter.fillRect(rect(), left);
   // Lower while a trailer shows, so more of it is seen.
-  const double k = frame_.isNull() ? 0.0 : std::clamp(trailer_fade_.currentValue().toDouble(), 0.0, 1.0);
+  const double k =
+      frame_.isNull() ? 0.0 : std::clamp(trailer_fade_.currentValue().toDouble(), 0.0, 1.0);
   const auto ease = [k](double from, double to) { return from + (to - from) * k; };
   QLinearGradient bottom(0, height(), 0, 0);
   QColor dense = base;

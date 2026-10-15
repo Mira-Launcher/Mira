@@ -6,11 +6,10 @@
 #include <QPushButton>
 #include <QToolButton>
 #include <QVBoxLayout>
-
 #include <filesystem>
 
-#include "../client/Types.h"
 #include "../app/Notify.h"
+#include "../client/Types.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -30,7 +29,8 @@ QString WindowsPath(const std::string& path) {
 }  // namespace
 
 InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string& install_path,
-                                     const std::string& exe_path, ArtworkStore* artwork, QWidget* parent)
+                                     const std::string& exe_path, ArtworkStore* artwork,
+                                     QWidget* parent)
     : SettingsCard(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
   setFixedWidth(560);
 
@@ -40,9 +40,10 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
     cover->setPixmap(artwork->Cover(game, kCover, devicePixelRatioF()));
   };
   show_cover();
-  connect(artwork, &ArtworkStore::CoverChanged, cover, [show_cover, id = QString::fromStdString(game.id)](const QString& changed) {
-    if (changed == id) show_cover();
-  });
+  connect(artwork, &ArtworkStore::CoverChanged, cover,
+          [show_cover, id = QString::fromStdString(game.id)](const QString& changed) {
+            if (changed == id) show_cover();
+          });
   SetLeading(cover);
 
   auto* heading = new QWidget(this);
@@ -52,7 +53,8 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   auto* title = new QLabel(QString::fromStdString(game.name) + " installed a program", heading);
   title->setProperty("role", "heading");
   heading_layout->addWidget(title);
-  auto* question = new QLabel("It ran as an installer. Use the program it installed instead?", heading);
+  auto* question =
+      new QLabel("It ran as an installer. Use the program it installed instead?", heading);
   question->setProperty("role", "subtle");
   question->setWordWrap(true);
   heading_layout->addWidget(question);
@@ -91,7 +93,8 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   buttons_layout->addWidget(keep);
   use_ = new QPushButton("Use this program", buttons);
   use_->setDefault(true);
-  connect(use_, &QPushButton::clicked, this, [this] { emit Accepted(exe_path_, app_->isChecked()); });
+  connect(use_, &QPushButton::clicked, this,
+          [this] { emit Accepted(exe_path_, app_->isChecked()); });
   buttons_layout->addWidget(use_);
   AddRow(buttons);
 
@@ -112,9 +115,11 @@ void InstallPromptCard::Choose() {
                                                         "Programs (*.exe);;All files (*)");
   if (selected.isEmpty()) return;
   std::error_code ec;
-  const std::filesystem::path relative = std::filesystem::relative(selected.toStdString(), install_path_, ec);
+  const std::filesystem::path relative =
+      std::filesystem::relative(selected.toStdString(), install_path_, ec);
   if (ec || relative.empty() || relative.native().starts_with("..")) {
-    notify::Notice(this, "Pick a program inside " + WindowsPath(install_path_) + ".", notify::Level::Warning);
+    notify::Notice(this, "Pick a program inside " + WindowsPath(install_path_) + ".",
+                   notify::Level::Warning);
     return;
   }
   exe_path_ = relative.string();

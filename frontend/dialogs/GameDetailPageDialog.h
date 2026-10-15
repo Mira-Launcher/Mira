@@ -2,7 +2,6 @@
 
 #include <QDialog>
 #include <QString>
-
 #include <string>
 
 class QVBoxLayout;
@@ -16,10 +15,10 @@ namespace mira_gui {
 class GameDetailPageDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   GameDetailPageDialog(std::string game_id, QString game_name, QWidget* parent = nullptr);
 
-private:
+ private:
   void Load();
   // The empty state, with a button that fetches store info and loads again.
   void ShowEmpty(const QString& text);

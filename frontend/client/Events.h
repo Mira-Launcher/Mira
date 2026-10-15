@@ -79,7 +79,8 @@ bool ParseInstallEvent(const std::string& event_type, const std::string& data, I
 
 bool ParseStoreEvent(const std::string& event_type, const std::string& data, StoreEvent* out);
 
-bool ParseCatalogCheck(const std::string& event_type, const std::string& data, CatalogCheckEvent* out);
+bool ParseCatalogCheck(const std::string& event_type, const std::string& data,
+                       CatalogCheckEvent* out);
 
 // library.hidden_changed: owned titles of `source` were hidden or shown.
 bool ParseHiddenChanged(const std::string& event_type, const std::string& data,

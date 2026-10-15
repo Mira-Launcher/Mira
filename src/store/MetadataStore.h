@@ -3,14 +3,13 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <json.hpp>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Result.h"
 #include "store/Database.h"
@@ -22,7 +21,7 @@ namespace mira::store {
 // slot's and its version. Kept for any id, tracked game or store title. All of
 // it can be fetched again, so a damaged cache.db is replaced by an empty one.
 class MetadataStore {
-public:
+ public:
   explicit MetadataStore(std::filesystem::path dir);
 
   // Opens cache.db.
@@ -79,7 +78,7 @@ public:
   std::vector<std::string> PendingFits() const;
   void FitDone(const std::string& id);
 
-private:
+ private:
   Result<void> Open();
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
   std::optional<std::vector<CatalogRow>> ReadCatalogLocked(const std::string& source) const;

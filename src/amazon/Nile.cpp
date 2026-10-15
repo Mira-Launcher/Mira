@@ -23,14 +23,17 @@ fs::path ManagedNilePath(const config::Config& config) {
   return config.File().parent_path() / "tools" / "amazon" / "nile";
 }
 
-const runner::StoreTool kTool = {"amazon", "Amazon Games", "nile", "amazon.nile_bin", ManagedNilePath};
+const runner::StoreTool kTool = {"amazon", "Amazon Games", "nile", "amazon.nile_bin",
+                                 ManagedNilePath};
 
 std::mutex pending_mutex;
 std::optional<json> pending_login;  // client_id, code_verifier, serial
 
 }  // namespace
 
-runner::ToolStatus DetectNile(const config::Config& config) { return runner::DetectTool(config, kTool); }
+runner::ToolStatus DetectNile(const config::Config& config) {
+  return runner::DetectTool(config, kTool);
+}
 
 Result<void> InstallNileBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   auto installed = runner::InstallToolBinary(config, "amazon", asset, "nile");
@@ -53,7 +56,8 @@ json ReadNileFile(const std::string& name) {
   return parsed.is_discarded() ? json(nullptr) : parsed;
 }
 
-Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
+Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args,
+                            const runner::OutputFn& on_output) {
   return runner::RunTool(config, kTool, args, on_output);
 }
 
@@ -77,8 +81,9 @@ Result<std::string> BeginLogin(const config::Config& config) {
   if (!output) return std::unexpected(output.error());
   const json parsed = core::ParseJsonTail(*output);
   if (!parsed.is_object() || !parsed.contains("url")) {
-    return Status(config).authenticated ? Err("already_authenticated", "already logged in to Amazon")
-                                        : Err("nile_json_error", "nile didn't return a login URL");
+    return Status(config).authenticated
+               ? Err("already_authenticated", "already logged in to Amazon")
+               : Err("nile_json_error", "nile didn't return a login URL");
   }
   const std::lock_guard lock(pending_mutex);
   pending_login = parsed;
@@ -97,30 +102,34 @@ Result<void> FinishLogin(const config::Config& config, const std::string& redire
   {
     const std::lock_guard lock(pending_mutex);
     if (!pending_login) {
-      return Err("no_login_pending", "no Amazon Games sign-in is in progress", "Start signing in again.",
-                 Fix::Source("amazon", "login"));
+      return Err("no_login_pending", "no Amazon Games sign-in is in progress",
+                 "Start signing in again.", Fix::Source("amazon", "login"));
     }
     pending = *pending_login;
   }
   const std::string code = FindCode(redirect).value_or(redirect);
-  if (auto registered = RunNile(config, {"register", "--code", code, "--client-id", core::JsonString(pending, "client_id"),
-                                         "--code-verifier", core::JsonString(pending, "code_verifier"), "--serial",
+  if (auto registered = RunNile(config, {"register", "--code", code, "--client-id",
+                                         core::JsonString(pending, "client_id"), "--code-verifier",
+                                         core::JsonString(pending, "code_verifier"), "--serial",
                                          core::JsonString(pending, "serial")});
       !registered) {
-    return Err("login_failed", "nile couldn't register this device. The code may be wrong or expired");
+    return Err("login_failed",
+               "nile couldn't register this device. The code may be wrong or expired");
   }
   {
     const std::lock_guard lock(pending_mutex);
     pending_login.reset();
   }
   if (!Status(config).authenticated) {
-    return Err("login_failed", "nile didn't accept that code. It may be wrong, expired, or already used");
+    return Err("login_failed",
+               "nile didn't accept that code. It may be wrong, expired, or already used");
   }
   return {};
 }
 
 Result<void> Logout(const config::Config& config) {
-  if (auto output = RunNile(config, {"auth", "--logout"}); !output) return std::unexpected(output.error());
+  if (auto output = RunNile(config, {"auth", "--logout"}); !output)
+    return std::unexpected(output.error());
   return {};
 }
 

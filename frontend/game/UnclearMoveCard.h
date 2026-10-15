@@ -15,18 +15,18 @@ class GameLibraryModel;
 class UnclearMoveCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   UnclearMoveCard(const UnclearMove& move, const GameLibraryModel* library, ArtworkStore* artwork,
                   QWidget* parent = nullptr);
   const std::string& Folder() const { return folder_; }
 
-signals:
+ signals:
   // The folder is game `id`'s; empty for a new game.
   void Chosen(std::string folder, std::string id);
   // Asked again later.
   void CloseRequested();
 
-private:
+ private:
   std::string folder_;
 };
 

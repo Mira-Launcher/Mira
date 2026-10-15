@@ -35,7 +35,8 @@ std::vector<fs::path> SplitPathList(const std::string& value) {
 // was started.
 std::vector<fs::path> SearchDirs(const config::Config& config) {
   std::vector<fs::path> dirs;
-  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "applications");
+  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") /
+                 "applications");
 
   const char* data_dirs = std::getenv("XDG_DATA_DIRS");
   const std::vector<fs::path> base_dirs =
@@ -44,8 +45,8 @@ std::vector<fs::path> SearchDirs(const config::Config& config) {
   for (const fs::path& base : base_dirs) dirs.push_back(base / "applications");
 
   dirs.push_back("/var/lib/flatpak/exports/share/applications");
-  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") /
-                  "flatpak" / "exports" / "share" / "applications");
+  dirs.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "flatpak" /
+                 "exports" / "share" / "applications");
 
   for (const std::string& extra : config.GetStringArray("desktop_import.extra_dirs")) {
     dirs.push_back(paths::Expand(extra));
@@ -149,7 +150,8 @@ std::vector<std::string> TokenizeExec(const std::string& exec) {
 
   auto flush = [&] {
     const std::string kept = StripFieldCodes(current);
-    if (have_token && !IsFieldCodeOrForwardBracket(current) && !kept.empty()) tokens.push_back(kept);
+    if (have_token && !IsFieldCodeOrForwardBracket(current) && !kept.empty())
+      tokens.push_back(kept);
     current.clear();
     have_token = false;
   };
@@ -203,7 +205,8 @@ struct Resolved {
 std::optional<fs::path> AbsoluteCommand(const std::string& command) {
   if (fs::path(command).is_absolute()) {
     std::error_code ec;
-    if (!fs::is_regular_file(command, ec) || ::access(command.c_str(), X_OK) != 0) return std::nullopt;
+    if (!fs::is_regular_file(command, ec) || ::access(command.c_str(), X_OK) != 0)
+      return std::nullopt;
     return fs::path(command);
   }
   if (command.find('/') != std::string::npos) return std::nullopt;
@@ -271,15 +274,17 @@ std::vector<ScannedEntry> ScanAll(const config::Config& config) {
       const auto file = ParseDesktopFile(entry.path());
       if (!file || !file->has_desktop_entry_section) continue;
       if (!seen_ids.insert(DesktopFileId(dir, entry.path())).second) continue;
-      if (const std::string type = file->Get("Type"); !type.empty() && type != "Application") continue;
+      if (const std::string type = file->Get("Type"); !type.empty() && type != "Application")
+        continue;
       if (file->Get("NoDisplay") == "true" || file->Get("Hidden") == "true") continue;
-      if (file->Has("X-Mira-Game-Id")) continue;  // our own entry -- never re-import it
+      if (file->Has("X-Mira-Game-Id")) continue;      // our own entry -- never re-import it
       if (IsSteamStyle(file->Get("Exec"))) continue;  // SteamScanner already covers this, better
 
       const auto resolved = ResolveCandidate(*file);
       if (!resolved) continue;
 
-      out.push_back(ScannedEntry{.id = DesktopFileId(dir, entry.path()), .file = *file, .resolved = *resolved});
+      out.push_back(ScannedEntry{
+          .id = DesktopFileId(dir, entry.path()), .file = *file, .resolved = *resolved});
     }
   }
   return out;
@@ -288,7 +293,8 @@ std::vector<ScannedEntry> ScanAll(const config::Config& config) {
 // The game imported from this entry, by desktop file id. Imports from before
 // source_ref was set stored a bare or relative command, so they're matched by
 // command name and args instead.
-std::optional<model::Game> FindImported(const std::vector<model::Game>& library, const ScannedEntry& entry) {
+std::optional<model::Game> FindImported(const std::vector<model::Game>& library,
+                                        const ScannedEntry& entry) {
   const std::string command = fs::path(entry.resolved.exe_path).filename().string();
   for (const model::Game& game : library) {
     if (game.source != "desktop-entry") continue;
@@ -303,7 +309,8 @@ std::optional<model::Game> FindImported(const std::vector<model::Game>& library,
 
 }  // namespace
 
-DesktopEntryScanner::DesktopEntryScanner(config::Config& config, store::GameStore& games, api::EventBus& events)
+DesktopEntryScanner::DesktopEntryScanner(config::Config& config, store::GameStore& games,
+                                         api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
 Result<std::vector<DesktopEntryCandidate>> DesktopEntryScanner::ListCandidates() const {
@@ -343,7 +350,8 @@ Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std
     game.source_ref = entry.id;
     // The app already has its own menu entry; a Mira one would duplicate it.
     // Still an override, so the user can turn it back on for this game.
-    if (!game.overrides.contains("desktop_entries.enabled")) game.overrides["desktop_entries.enabled"] = false;
+    if (!game.overrides.contains("desktop_entries.enabled"))
+      game.overrides["desktop_entries.enabled"] = false;
     game.name = entry.file.Get("Name");
     game.install_path = entry.resolved.install_path;
     game.exe_path = entry.resolved.exe_path;

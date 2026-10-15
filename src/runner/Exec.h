@@ -40,7 +40,8 @@ std::string CurlConfigLine(std::string_view name, std::string_view value);
 
 // Runs curl with `args`, passing `secret_config` (curl -K lines) through a
 // private temp file so keys and tokens stay off the process list.
-Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std::string_view secret_config);
+Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args,
+                                      std::string_view secret_config);
 
 // `output_fd` (if not -1) becomes the child's stdout and stderr.
 Result<pid_t> SpawnDetached(const Command& command, int output_fd = -1);
@@ -69,6 +70,7 @@ std::optional<std::string> FindOnPath(std::string_view name);
 // back to $PATH. A pure function so it's testable without touching
 // /proc/self/exe -- the caller resolves its own directory and passes it in,
 // same split as frontend/app/DaemonSupervisor.cpp's ResolveMiradPath.
-std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir, std::string_view name);
+std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir,
+                                                std::string_view name);
 
 }  // namespace mira::runner

@@ -8,7 +8,7 @@ namespace mira_gui::settings_columns {
 
 namespace {
 
-constexpr int kNearEven = 24;          // px of extra spread traded for keeping reading order
+constexpr int kNearEven = 24;            // px of extra spread traded for keeping reading order
 constexpr long kMaxCandidates = 200000;  // past this, split in reading order instead
 
 int ColumnHeight(const std::vector<int>& heights, const std::vector<int>& cards) {

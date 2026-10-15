@@ -1,12 +1,12 @@
 #include "CoverArt.h"
 
-#include "../theme/Theme.h"
-
 #include <QFont>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QRegularExpression>
 #include <QStringList>
+
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 
@@ -30,10 +30,12 @@ QString CoverInitials(const QString& name) {
 
 void DrawFitted(QPainter* painter, const QPointF& centre, qreal side, const QPixmap& pixmap) {
   const QSizeF fit = pixmap.deviceIndependentSize().scaled(side, side, Qt::KeepAspectRatio);
-  painter->drawPixmap(QRectF(centre - QPointF(fit.width() / 2, fit.height() / 2), fit), pixmap, pixmap.rect());
+  painter->drawPixmap(QRectF(centre - QPointF(fit.width() / 2, fit.height() / 2), fit), pixmap,
+                      pixmap.rect());
 }
 
-QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr, const QPixmap& logo) {
+QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, qreal dpr,
+                         const QPixmap& logo) {
   if (size.isEmpty()) return QPixmap();
 
   QPixmap pixmap(size * dpr);

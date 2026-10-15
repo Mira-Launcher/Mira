@@ -3,7 +3,6 @@
 #include <QPointer>
 #include <QString>
 #include <QWidget>
-
 #include <cstdint>
 #include <deque>
 #include <optional>
@@ -25,14 +24,15 @@ namespace mira_gui {
 class LogWindow : public QWidget {
   Q_OBJECT
 
-public:
-  // `title` names the task ("Microsoft 365 setup"). The window belongs to `parent`'s window but is its own.
+ public:
+  // `title` names the task ("Microsoft 365 setup"). The window belongs to `parent`'s window but is
+  // its own.
   static void Open(QWidget* parent, const QString& channel, const QString& title);
 
-protected:
+ protected:
   void closeEvent(QCloseEvent* event) override;
 
-private:
+ private:
   LogWindow(QWidget* parent, QString channel, QString title);
 
   void Poll();
@@ -40,7 +40,8 @@ private:
   void Clear();
   void Render();
   void AppendLine(const QString& line);
-  // The line being redrawn (a download's progress) sits last and is replaced in place, never repeated.
+  // The line being redrawn (a download's progress) sits last and is replaced in place, never
+  // repeated.
   void RemoveLive();
   void ShowLive(const QString& text);
   void UpdateStatus();

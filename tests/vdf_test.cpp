@@ -1,6 +1,6 @@
-#include <doctest.h>
-
 #include "steam/Vdf.h"
+
+#include <doctest.h>
 
 using namespace mira;
 
@@ -73,7 +73,8 @@ TEST_CASE("ParseVdf handles the real localconfig.vdf Playtime/LastPlayed shape")
 )";
   auto root = steam::ParseVdf(text);
   REQUIRE(root.has_value());
-  const auto* app = root->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "480"});
+  const auto* app =
+      root->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "480"});
   REQUIRE(app != nullptr);
   CHECK(app->Get({"Playtime"})->scalar == "332");
   CHECK(app->Get({"LastPlayed"})->scalar == "1759204559");

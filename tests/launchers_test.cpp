@@ -1,3 +1,5 @@
+#include "launchers/Launchers.h"
+
 #include <doctest.h>
 
 #include <chrono>
@@ -5,7 +7,6 @@
 #include <fstream>
 
 #include "config/Config.h"
-#include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
@@ -20,12 +21,14 @@ TEST_CASE("launchers: Ubisoft installs are read from system.reg") {
   std::ofstream(prefix / "system.reg")
       << "WINE REGISTRY Version 2\n\n"
          "[Software\\\\Wow6432Node\\\\Ubisoft\\\\Launcher\\\\Installs\\\\5595] 1700000000\n"
-         "\"InstallDir\"=\"C:/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/Trackmania/\"\n\n"
-         "[Software\\\\Wow6432Node\\\\Ubisoft\\\\Launcher\\\\Installs\\\\5595\\\\Nested] 1700000000\n"
+         "\"InstallDir\"=\"C:/Program Files (x86)/Ubisoft/Ubisoft Game "
+         "Launcher/games/Trackmania/\"\n\n"
+         "[Software\\\\Wow6432Node\\\\Ubisoft\\\\Launcher\\\\Installs\\\\5595\\\\Nested] "
+         "1700000000\n"
          "\"InstallDir\"=\"C:\\\\nope\"\n";
 
-  const auto installs =
-      launchers::ReadRegSubkeys(prefix / "system.reg", "Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs");
+  const auto installs = launchers::ReadRegSubkeys(
+      prefix / "system.reg", "Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs");
   REQUIRE(installs.size() == 1);
   const std::string dir = installs.at("5595").at("InstallDir");
   CHECK(launchers::HostPath(prefix, dir) ==
@@ -95,10 +98,12 @@ TEST_CASE("launchers: games are matched by their folder as Wine shows it") {
   CHECK(launchers::WindowsDir(game) == "z:/mnt/games/trackmania");
 }
 
-TEST_CASE("launchers: Microsoft 365 and Creative Cloud apps are imported as apps with their own exe") {
+TEST_CASE(
+    "launchers: Microsoft 365 and Creative Cloud apps are imported as apps with their own exe") {
   test::TestEnv env("launcher-office");
   const fs::path prefix = env.dir / "prefixes" / "microsoft-365";
-  const fs::path office16 = prefix / "drive_c" / "Program Files" / "Microsoft Office" / "root" / "Office16";
+  const fs::path office16 =
+      prefix / "drive_c" / "Program Files" / "Microsoft Office" / "root" / "Office16";
   test::Touch(office16 / "EXCEL.EXE");
   test::Touch(office16 / "WINWORD.EXE");
 
@@ -110,7 +115,8 @@ TEST_CASE("launchers: Microsoft 365 and Creative Cloud apps are imported as apps
   host.status = model::GameStatus::Ready;
   REQUIRE(env.games.Upsert(host));
 
-  const auto imported = launchers::Import(env.config, env.games, env.events, *launchers::Find("office"));
+  const auto imported =
+      launchers::Import(env.config, env.games, env.events, *launchers::Find("office"));
   REQUIRE(imported);
   CHECK(imported->added == 2);
   const auto excel = env.games.Find("office-excel");
@@ -121,7 +127,8 @@ TEST_CASE("launchers: Microsoft 365 and Creative Cloud apps are imported as apps
   CHECK_FALSE(env.games.Find("office-powerpoint"));
 
   // Creative Cloud: the newest year's folder, and Lightroom Classic isn't Lightroom.
-  const fs::path adobe = env.dir / "prefixes" / "creative-cloud" / "drive_c" / "Program Files" / "Adobe";
+  const fs::path adobe =
+      env.dir / "prefixes" / "creative-cloud" / "drive_c" / "Program Files" / "Adobe";
   test::Touch(adobe / "Adobe Photoshop 2025" / "Photoshop.exe");
   test::Touch(adobe / "Adobe Photoshop 2026" / "Photoshop.exe");
   test::Touch(adobe / "Adobe Lightroom Classic" / "Lightroom.exe");
@@ -129,7 +136,8 @@ TEST_CASE("launchers: Microsoft 365 and Creative Cloud apps are imported as apps
   host.source_ref = "adobe";
   host.data_dir = (env.dir / "prefixes" / "creative-cloud").string();
   REQUIRE(env.games.Upsert(host));
-  const auto from_adobe = launchers::Import(env.config, env.games, env.events, *launchers::Find("adobe"));
+  const auto from_adobe =
+      launchers::Import(env.config, env.games, env.events, *launchers::Find("adobe"));
   REQUIRE(from_adobe);
   CHECK(from_adobe->added == 2);
   const auto photoshop = env.games.Find("adobe-photoshop");
@@ -147,7 +155,8 @@ TEST_CASE("Windows theme: the desktop's color scheme and a prefix's light/dark s
   CHECK_FALSE(runner::ParseColorScheme("v u 0\n").has_value());
 
   const std::string reg =
-      "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize] 1791\n#time=1\n"
+      "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Themes\\\\Personalize] "
+      "1791\n#time=1\n"
       "\"AppsUseLightTheme\"=dword:00000000\n\n[Software\\\\Wine] 1\n";
   CHECK(runner::PrefixPrefersDark(reg) == std::optional(true));
   CHECK_FALSE(runner::PrefixPrefersDark("[Software\\\\Wine] 1\n").has_value());
@@ -180,7 +189,8 @@ TEST_CASE("launchers: Office's install percent comes from Click-to-Run's log, UT
   CHECK_FALSE(launchers::office::InstallPercent(prefix, since + std::chrono::hours(1)).has_value());
 }
 
-TEST_CASE("launchers: Office's configuration installs exactly the apps given, and none removes it") {
+TEST_CASE(
+    "launchers: Office's configuration installs exactly the apps given, and none removes it") {
   const fs::path state = test::TempDir("office-apps");
   config::Config config(state / "settings.toml");
   config.Load();
@@ -192,20 +202,25 @@ TEST_CASE("launchers: Office's configuration installs exactly the apps given, an
   for (const char* app : {"PowerPoint", "Outlook", "OneNote", "Access", "Publisher"}) {
     CHECK(some.find(std::string("<ExcludeApp ID=\"") + app + "\"/>") != std::string::npos);
   }
-  CHECK(launchers::office::Configuration(config, {}).find("<Remove All=\"TRUE\"/>") != std::string::npos);
+  CHECK(launchers::office::Configuration(config, {}).find("<Remove All=\"TRUE\"/>") !=
+        std::string::npos);
 }
 
-TEST_CASE("launchers: setup output drops the lines that only look like trouble, and keeps real ones") {
+TEST_CASE(
+    "launchers: setup output drops the lines that only look like trouble, and keeps real ones") {
   const std::string noisy =
       "Proton: Error: unable to use parent for game drive, path /home\n"
       "Running office-setup.exe\n"
       "Unhandled Exception:\n"
-      "System.IO.FileNotFoundException: Could not load file or assembly 'Windows, Version=255.255.255.255, Culture=neutral'\n"
+      "System.IO.FileNotFoundException: Could not load file or assembly 'Windows, "
+      "Version=255.255.255.255, Culture=neutral'\n"
       "File name: 'Windows, Version=255.255.255.255, Culture=neutral, PublicKeyToken=null'\n"
       "  at Microsoft.Office.C2R.InspectorOfficeGadget.Main (System.String[] args) [0x00133]\n"
-      "[ERROR] FATAL UNHANDLED EXCEPTION: System.IO.FileNotFoundException: 'Windows, Version=255.255.255.255\n"
+      "[ERROR] FATAL UNHANDLED EXCEPTION: System.IO.FileNotFoundException: 'Windows, "
+      "Version=255.255.255.255\n"
       "Unhandled Exception:\n"
-      "System.TypeLoadException: Could not load type of field 'xpdAgent.Log:telemetryService' (5) due to: x\n"
+      "System.TypeLoadException: Could not load type of field 'xpdAgent.Log:telemetryService' (5) "
+      "due to: x\n"
       "Unhandled Exception:\n"
       "System.NullReferenceException: something that is wrong\n"
       "done\n";

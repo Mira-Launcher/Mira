@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,7 +29,7 @@ class Switch;
 class TagPicker : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   struct Section {
     QString heading;
     std::vector<std::string> ids;
@@ -42,8 +41,8 @@ public:
   // `name` empty asks for one. `existing` is true for a tag the library has: then Save sends the
   // ticked set as is, and the folder switch reads "A folder". `known` is the library's tags, so a
   // typed name that's already a tag keeps the games that have it.
-  void Open(const QString& name, bool existing, std::vector<Section> sections, const std::vector<GameSummary>& games,
-            bool folder, std::vector<TagSummary> known);
+  void Open(const QString& name, bool existing, std::vector<Section> sections,
+            const std::vector<GameSummary>& games, bool folder, std::vector<TagSummary> known);
   // Lets go of the covers once closed, so a restyle doesn't polish a tile per game out of view.
   void Clear();
   void SetTileWidth(int width);
@@ -59,11 +58,11 @@ public:
   // Ctrl+wheel over the covers, one step per notch.
   void ZoomRequested(int steps);
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override;
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   static constexpr int kTileGap = 10;
   // `ticked` says which of `games` start ticked.
   QWidget* AddSection(const QString& heading, const std::vector<const GameSummary*>& games,

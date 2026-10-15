@@ -1,8 +1,8 @@
 #include "SourceSetupCard.h"
 
 #include <QLabel>
-#include <algorithm>
 #include <QVBoxLayout>
+#include <algorithm>
 
 #include "../setup/EmulatorPanel.h"
 #include "../setup/OfficePanel.h"
@@ -61,9 +61,10 @@ void SourceSetupCard::ShowEmulator(const EmulatorInfo& emulator) {
   // Made again each time: its rows follow what mirad says is there.
   if (panel_ != nullptr) RemoveRow(panel_);
   panel_ = nullptr;
-  const bool needed = !emulator.installed || std::ranges::any_of(emulator.firmware, [](const EmulatorFirmware& f) {
-                        return f.required && !f.present;
-                      });
+  const bool needed =
+      !emulator.installed || std::ranges::any_of(emulator.firmware, [](const EmulatorFirmware& f) {
+        return f.required && !f.present;
+      });
   setVisible(needed);
   if (!needed) return;
   error_->setVisible(false);
@@ -76,15 +77,19 @@ void SourceSetupCard::ShowEmulator(const EmulatorInfo& emulator) {
 
 void SourceSetupCard::ShowError(const QString& what, const ApiError& error) {
   setVisible(true);
-  if (auto* panel = qobject_cast<SignInPanel*>(panel_.data())) return panel->ShowFailure(what, error);
-  if (auto* panel = qobject_cast<OfficePanel*>(panel_.data())) return panel->ShowFailure(what, error);
-  if (auto* panel = qobject_cast<EmulatorPanel*>(panel_.data())) return panel->ShowFailure(what, error);
+  if (auto* panel = qobject_cast<SignInPanel*>(panel_.data()))
+    return panel->ShowFailure(what, error);
+  if (auto* panel = qobject_cast<OfficePanel*>(panel_.data()))
+    return panel->ShowFailure(what, error);
+  if (auto* panel = qobject_cast<EmulatorPanel*>(panel_.data()))
+    return panel->ShowFailure(what, error);
   mira_gui::ShowError(error_, what, error);
 }
 
 void SourceSetupCard::ShowSetupFailed(const ApiError& error, bool tool_installed) {
   // A first install's failure is the panel's to show; an update happens once it's gone.
-  if (tool_installed) ShowError("Updating " + CopyFor(source_.id.toStdString()).tool + " failed.", error);
+  if (tool_installed)
+    ShowError("Updating " + CopyFor(source_.id.toStdString()).tool + " failed.", error);
 }
 
 }  // namespace mira_gui

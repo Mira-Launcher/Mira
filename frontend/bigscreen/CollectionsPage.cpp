@@ -2,7 +2,6 @@
 
 #include <QPainter>
 #include <QPainterPath>
-
 #include <algorithm>
 #include <vector>
 
@@ -17,17 +16,28 @@ namespace {
 constexpr double kMargin = 2.6, kTop = 6.4, kCardTop = 9.6, kCardW = 20, kCardGap = 1.2;
 constexpr int kCards = 4, kResultColumns = 5;
 
-bool IsDirection(Nav nav) { return nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right; }
+bool IsDirection(Nav nav) {
+  return nav == Nav::Up || nav == Nav::Down || nav == Nav::Left || nav == Nav::Right;
+}
 
 // Moves `index` one step through a grid `columns` wide; false at an edge.
 bool Move(int& index, Nav nav, int columns, int count) {
   int next = index;
   switch (nav) {
-    case Nav::Left: next = index % columns > 0 ? index - 1 : -1; break;
-    case Nav::Right: next = index % columns < columns - 1 ? index + 1 : count; break;
-    case Nav::Up: next = index - columns; break;
-    case Nav::Down: next = index + columns; break;
-    default: return false;
+    case Nav::Left:
+      next = index % columns > 0 ? index - 1 : -1;
+      break;
+    case Nav::Right:
+      next = index % columns < columns - 1 ? index + 1 : count;
+      break;
+    case Nav::Up:
+      next = index - columns;
+      break;
+    case Nav::Down:
+      next = index + columns;
+      break;
+    default:
+      return false;
   }
   if (next < 0 || next >= count) return false;
   index = next;
@@ -43,12 +53,16 @@ CollectionsPage::CollectionsPage(BigScreenWindow* window) : Page(window) {
   connect(services.artwork, &ArtworkStore::RequestsDropped, this, qOverload<>(&QWidget::update));
 }
 
-void CollectionsPage::Shown() { Rebuild(); }
+void CollectionsPage::Shown() {
+  Rebuild();
+}
 
 void CollectionsPage::Rebuild() {
   // Keep the focus on the same tag and game across the rebuild.
   const QString tag = collections_.empty() ? QString() : Current().tag;
-  const QString key = collections_.empty() || game_ >= int(Current().items.size()) ? QString() : Current().items[size_t(game_)].key;
+  const QString key = collections_.empty() || game_ >= int(Current().items.size())
+                          ? QString()
+                          : Current().items[size_t(game_)].key;
 
   collections_.clear();
   for (const GameSummary& game : window_->services().library->Games()) {
@@ -57,17 +71,27 @@ void CollectionsPage::Rebuild() {
     for (const std::string& tag_name : game.tags) {
       if (IsMeaningTag(tag_name)) continue;
       const QString name = QString::fromStdString(tag_name);
-      auto found = std::ranges::find_if(collections_, [&](const Collection& c) { return c.tag.compare(name, Qt::CaseInsensitive) == 0; });
-      if (found == collections_.end()) found = collections_.insert(collections_.end(), Collection{name, {}});
-      if (std::ranges::none_of(found->items, [&](const Item& i) { return i.key == item.key; })) found->items.push_back(item);
+      auto found = std::ranges::find_if(collections_, [&](const Collection& c) {
+        return c.tag.compare(name, Qt::CaseInsensitive) == 0;
+      });
+      if (found == collections_.end())
+        found = collections_.insert(collections_.end(), Collection{name, {}});
+      if (std::ranges::none_of(found->items, [&](const Item& i) { return i.key == item.key; }))
+        found->items.push_back(item);
     }
   }
-  std::ranges::sort(collections_, [](const Collection& a, const Collection& b) { return a.tag.compare(b.tag, Qt::CaseInsensitive) < 0; });
+  std::ranges::sort(collections_, [](const Collection& a, const Collection& b) {
+    return a.tag.compare(b.tag, Qt::CaseInsensitive) < 0;
+  });
   for (Collection& collection : collections_) {
-    std::ranges::sort(collection.items, [](const Item& a, const Item& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
+    std::ranges::sort(collection.items, [](const Item& a, const Item& b) {
+      return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+    });
   }
 
-  const auto found = std::ranges::find_if(collections_, [&](const Collection& c) { return c.tag.compare(tag, Qt::CaseInsensitive) == 0; });
+  const auto found = std::ranges::find_if(collections_, [&](const Collection& c) {
+    return c.tag.compare(tag, Qt::CaseInsensitive) == 0;
+  });
   collection_ = found == collections_.end() ? 0 : int(found - collections_.begin());
   if (found == collections_.end()) open_ = false;
   game_ = 0;
@@ -81,7 +105,9 @@ void CollectionsPage::Rebuild() {
   emit HintsChanged();
 }
 
-const CollectionsPage::Collection& CollectionsPage::Current() const { return collections_[size_t(collection_)]; }
+const CollectionsPage::Collection& CollectionsPage::Current() const {
+  return collections_[size_t(collection_)];
+}
 
 int CollectionsPage::Columns() const {
   const double u = window_->unit();
@@ -126,10 +152,13 @@ QList<Hint> CollectionsPage::Hints() const {
   if (collections_.empty()) return {};
   if (!open_) return {{Nav::Accept, "Open"}};
   const QString label = window_->QuickActionLabel(Current().items[size_t(game_)]);
-  return {{Nav::Accept, label.isEmpty() ? QString("Details") : label}, {Nav::Action, "Details"}, {Nav::Back, "Collections"}};
+  return {{Nav::Accept, label.isEmpty() ? QString("Details") : label},
+          {Nav::Action, "Details"},
+          {Nav::Back, "Collections"}};
 }
 
-void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Collection& collection, bool focused) const {
+void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Collection& collection,
+                               bool focused) const {
   const theme::Tokens& tokens = theme::Current();
   const double u = window_->unit();
   painter.save();
@@ -156,19 +185,29 @@ void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Colle
   const double x = collage.left(), y = collage.top(), w = collage.width(), h = collage.height();
   std::vector<QRectF> cells;
   switch (shown) {
-    case 1: cells = {collage}; break;
-    case 2: cells = {{x, y, w / 2, h}, {x + w / 2, y, w / 2, h}}; break;
-    case 3: cells = {{x, y, w / 2, h}, {x + w / 2, y, w / 2, h / 2}, {x + w / 2, y + h / 2, w / 2, h / 2}}; break;
+    case 1:
+      cells = {collage};
+      break;
+    case 2:
+      cells = {{x, y, w / 2, h}, {x + w / 2, y, w / 2, h}};
+      break;
+    case 3:
+      cells = {
+          {x, y, w / 2, h}, {x + w / 2, y, w / 2, h / 2}, {x + w / 2, y + h / 2, w / 2, h / 2}};
+      break;
     default:
-      for (int i = 0; i < shown; ++i) cells.emplace_back(x + (i % 2) * w / 2, y + (i / 2) * h / 2, w / 2, h / 2);
+      for (int i = 0; i < shown; ++i)
+        cells.emplace_back(x + (i % 2) * w / 2, y + (i / 2) * h / 2, w / 2, h / 2);
   }
   for (int i = 0; i < shown; ++i) {
     const QRectF cell = cells[size_t(i)];
     const QSize size = cell.size().toSize();
     const QPixmap cover = window_->Cover(collection.items[size_t(i)], size);
     if (cover.isNull()) continue;
-    const QPixmap scaled = cover.scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    const QPointF crop((scaled.width() - size.width()) / 2.0, (scaled.height() - size.height()) / 2.0);
+    const QPixmap scaled =
+        cover.scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    const QPointF crop((scaled.width() - size.width()) / 2.0,
+                       (scaled.height() - size.height()) / 2.0);
     painter.drawPixmap(cell, scaled, QRectF(crop, cell.size()));
   }
 
@@ -176,12 +215,14 @@ void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Colle
   const double text_w = box.width() - u * 1.8;
   painter.setPen(tokens.text);
   painter.setFont(Font(u, 1.1, QFont::Bold));
-  painter.drawText(QPointF(text_x, collage.bottom() + u * 1.9),
-                   painter.fontMetrics().elidedText(collection.tag, Qt::ElideRight, qRound(text_w)));
+  painter.drawText(
+      QPointF(text_x, collage.bottom() + u * 1.9),
+      painter.fontMetrics().elidedText(collection.tag, Qt::ElideRight, qRound(text_w)));
   const int count = int(collection.items.size());
   painter.setFont(Font(u, 0.9));
   painter.setPen(tokens.text_muted);
-  painter.drawText(QPointF(text_x, collage.bottom() + u * 3.2), QString("%1 %2").arg(count).arg(count == 1 ? "game" : "games"));
+  painter.drawText(QPointF(text_x, collage.bottom() + u * 3.2),
+                   QString("%1 %2").arg(count).arg(count == 1 ? "game" : "games"));
   painter.restore();
 }
 
@@ -191,14 +232,16 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
   painter.setRenderHint(QPainter::TextAntialiasing);
   const theme::Tokens& tokens = theme::Current();
   const double u = window_->unit();
-  painter.fillRect(rect(), QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 170));
+  painter.fillRect(rect(),
+                   QColor(tokens.window.red(), tokens.window.green(), tokens.window.blue(), 170));
   painter.setFont(Font(u, 2.0, QFont::ExtraBold));
   painter.setPen(tokens.text);
   if (collections_.empty()) {
     painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), "Collections");
     painter.setFont(Font(u, 1.05));
     painter.setPen(tokens.text_muted);
-    painter.drawText(QRectF(kMargin * u, (kTop + 3.2) * u, width() - kMargin * u * 2, 6 * u), Qt::AlignCenter | Qt::TextWordWrap,
+    painter.drawText(QRectF(kMargin * u, (kTop + 3.2) * u, width() - kMargin * u * 2, 6 * u),
+                     Qt::AlignCenter | Qt::TextWordWrap,
                      "No collections yet. Tag games in the desktop window and they show up here.");
     return;
   }
@@ -214,7 +257,8 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
     for (size_t i = 0; i < collections_.size(); ++i) {
       const int row = int(i) / columns - first_row;
       if (row < 0) continue;
-      const QRectF box(kMargin * u + double(int(i) % columns) * (card_w + gap), kCardTop * u + row * (card_h + gap), card_w, card_h);
+      const QRectF box(kMargin * u + double(int(i) % columns) * (card_w + gap),
+                       kCardTop * u + row * (card_h + gap), card_w, card_h);
       if (box.top() > height()) break;
       DrawCard(painter, box, collections_[i], int(i) == collection_);
     }
@@ -223,9 +267,11 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
 
   // A tag's games as a cover grid, like the search results.
   const int count = int(current.items.size());
-  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u), QString("%1 (%2)").arg(current.tag).arg(count));
+  painter.drawText(QPointF(kMargin * u, (kTop + 1.6) * u),
+                   QString("%1 (%2)").arg(current.tag).arg(count));
   // Above the hints at the bottom.
-  const QRectF area(kMargin * u, (kTop + 3.6) * u, width() - kMargin * u * 2, height() - (kTop + 3.6 + 4.5) * u);
+  const QRectF area(kMargin * u, (kTop + 3.6) * u, width() - kMargin * u * 2,
+                    height() - (kTop + 3.6 + 4.5) * u);
   const CoverGrid grid(area, kResultColumns, u * 1.3, game_ / kResultColumns);
   // Ends above the hints; the focus ring may spill into the margin.
   painter.setClipRect(QRectF(0, area.top() - u * 0.5, width(), area.height() + u));
@@ -234,7 +280,8 @@ void CollectionsPage::paintEvent(QPaintEvent*) {
     if (box.bottom() < area.top()) continue;
     if (box.top() > height()) break;
     const Item& item = current.items[size_t(i)];
-    DrawCover(painter, box, window_->Cover(item, grid.Tile()), u, i == game_, !item.installed(), window_->Progress(item));
+    DrawCover(painter, box, window_->Cover(item, grid.Tile()), u, i == game_, !item.installed(),
+              window_->Progress(item));
   }
 }
 

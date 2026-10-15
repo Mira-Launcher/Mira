@@ -1,10 +1,11 @@
+#include "api/Jobs.h"
+
 #include <doctest.h>
 
 #include <chrono>
 #include <thread>
 
 #include "api/EventBus.h"
-#include "api/Jobs.h"
 #include "runner/Exec.h"
 
 using namespace mira;
@@ -26,14 +27,15 @@ TEST_CASE("Cancelling a job kills what it runs and ends it as cancelled") {
   api::EventBus events;
   api::JobRegistry jobs(events);
   nlohmann::json failure;
-  const std::string id = jobs.Start("install", "gog-1", "Installing", [&](api::JobRegistry::Progress&) -> Result<nlohmann::json> {
-    Command command;
-    command.argv = {"sleep", "30"};
-    auto ran = runner::RunAndWait(command);
-    failure = api::FailedEvent({{"source", "gog"}}, ran ? Error{} : ran.error());
-    if (!ran) return std::unexpected(ran.error());
-    return nlohmann::json::object();
-  });
+  const std::string id = jobs.Start(
+      "install", "gog-1", "Installing", [&](api::JobRegistry::Progress&) -> Result<nlohmann::json> {
+        Command command;
+        command.argv = {"sleep", "30"};
+        auto ran = runner::RunAndWait(command);
+        failure = api::FailedEvent({{"source", "gog"}}, ran ? Error{} : ran.error());
+        if (!ran) return std::unexpected(ran.error());
+        return nlohmann::json::object();
+      });
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   const auto started = std::chrono::steady_clock::now();

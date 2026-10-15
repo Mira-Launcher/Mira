@@ -8,7 +8,8 @@
 namespace mira::library {
 namespace {
 
-// How old a stored list gets before listing every store asks them again; one store's own list is asked each time.
+// How old a stored list gets before listing every store asks them again; one store's own list is
+// asked each time.
 constexpr std::int64_t kRecheckSeconds = 12 * 60 * 60;
 
 }  // namespace
@@ -21,7 +22,8 @@ void MarkTracked(const store::GameStore& games, CatalogEntry& entry) {
   }
 }
 
-std::optional<bool> CatalogCache::Check(const config::Config& config, store::GameStore& games, ILibrarySource& source) {
+std::optional<bool> CatalogCache::Check(const config::Config& config, store::GameStore& games,
+                                        ILibrarySource& source) {
   std::uint64_t generation = 0;
   {
     std::lock_guard lock(mutex_);
@@ -35,7 +37,8 @@ std::optional<bool> CatalogCache::Check(const config::Config& config, store::Gam
   }
   std::vector<store::MetadataStore::CatalogRow> rows;
   rows.reserve(listed->size());
-  for (const CatalogEntry& entry : *listed) rows.push_back({entry.ref, entry.title, entry.play_seconds, entry.owned});
+  for (const CatalogEntry& entry : *listed)
+    rows.push_back({entry.ref, entry.title, entry.play_seconds, entry.owned});
   // Held through the write so a sign-out can't land between the check and it.
   std::lock_guard lock(mutex_);
   if (generations_[source.Name()] != generation) return std::nullopt;
@@ -52,8 +55,9 @@ void CatalogCache::SignedOut(const std::string& source) {
   ++generations_[source];
 }
 
-Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& config, store::GameStore& games,
-                                                     api::EventBus& events, Lane& lane, const std::string& source,
+Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& config,
+                                                     store::GameStore& games, api::EventBus& events,
+                                                     Lane& lane, const std::string& source,
                                                      bool fresh) {
   if (!source.empty() && FindSource(source) == nullptr) {
     return Err("unknown_source", "no catalog source named \"" + source + "\"");
@@ -70,7 +74,8 @@ Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& confi
       }
       rows = games.Metadata().ReadCatalog(name);
       if (!rows) continue;
-    } else if (!source.empty() || model::NowSeconds() - games.Metadata().CatalogCheckedAt(name) >= kRecheckSeconds) {
+    } else if (!source.empty() ||
+               model::NowSeconds() - games.Metadata().CatalogCheckedAt(name) >= kRecheckSeconds) {
       std::lock_guard lock(mutex_);
       if (checking_.insert(name).second) {
         events.Publish("library.catalog_checking", {{"source", name}});
@@ -80,7 +85,8 @@ Result<std::vector<CatalogEntry>> CatalogCache::List(const config::Config& confi
             std::lock_guard lock(mutex_);
             checking_.erase(name);
           }
-          events.Publish("library.catalog_checked", {{"source", name}, {"changed", changed.value_or(false)}});
+          events.Publish("library.catalog_checked",
+                         {{"source", name}, {"changed", changed.value_or(false)}});
         });
       }
     }

@@ -38,7 +38,8 @@ bool RollingFolder(const model::RunnerBuild& build) {
 
 // The one build `matches` picks out of `builds`, or nothing when none or several do.
 template <typename Pred>
-const model::RunnerBuild* OnlyOne(const std::vector<const model::RunnerBuild*>& builds, Pred matches) {
+const model::RunnerBuild* OnlyOne(const std::vector<const model::RunnerBuild*>& builds,
+                                  Pred matches) {
   const model::RunnerBuild* found = nullptr;
   for (const model::RunnerBuild* build : builds) {
     if (!matches(*build)) continue;
@@ -65,7 +66,9 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
     const std::string kind = ref.substr(0, colon);
     const std::string name = ref.substr(colon + 1);
     const std::string current_kind = kind == "proton_umu" ? "proton" : kind;  // the old spelling
-    if (std::ranges::any_of(all, [&](const model::RunnerBuild& b) { return b.kind == current_kind && b.name == name; })) {
+    if (std::ranges::any_of(all, [&](const model::RunnerBuild& b) {
+          return b.kind == current_kind && b.name == name;
+        })) {
       return std::nullopt;  // still there
     }
     std::vector<const model::RunnerBuild*> same_stem;
@@ -76,13 +79,16 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
     }
     // Only the same major version, unless the folder isn't versioned; ambiguity migrates nothing.
     std::vector<const model::RunnerBuild*> same_major;
-    std::ranges::copy_if(same_stem, std::back_inserter(same_major),
-                         [&](const model::RunnerBuild* b) { return Major(b->release) == Major(name); });
+    std::ranges::copy_if(
+        same_stem, std::back_inserter(same_major),
+        [&](const model::RunnerBuild* b) { return Major(b->release) == Major(name); });
     const model::RunnerBuild* match = nullptr;
     if (same_major.size() == 1) {
       match = same_major.front();
     } else if (same_major.size() > 1) {
-      match = OnlyOne(same_major, [&](const model::RunnerBuild& b) { return Masked(b.release) == Masked(name); });
+      match = OnlyOne(same_major, [&](const model::RunnerBuild& b) {
+        return Masked(b.release) == Masked(name);
+      });
     } else {
       match = OnlyOne(same_stem, RollingFolder);
     }

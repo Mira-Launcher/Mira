@@ -1,8 +1,8 @@
 #pragma once
 
 #include <QImage>
-#include <QSize>
 #include <QObject>
+#include <QSize>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -19,9 +19,9 @@ namespace mira_gui::api {
 // aren't worth keeping on disk. Blocking for the same reason as above.
 void ClearArtThumbsBlocking();
 
-// One named art slot: "cover", "hero", "logo", "icon". Which ones exist depends on the source; GetMetadataAsync's
-// art_slots says which were cached. Decoded off the UI thread; a null
-// image when missing or undecodable. A non-empty `max` decodes it no bigger than that.
+// One named art slot: "cover", "hero", "logo", "icon". Which ones exist depends on the source;
+// GetMetadataAsync's art_slots says which were cached. Decoded off the UI thread; a null image when
+// missing or undecodable. A non-empty `max` decodes it no bigger than that.
 void GetArtworkImageAsync(QObject* context, const std::string& id, const std::string& slot,
                           std::function<void(QImage)> callback, QSize max = {});
 
@@ -58,8 +58,8 @@ void SelectArtworkAsync(QObject* context, const std::string& id, const std::stri
 
 // PUT /v1/games/{id}/artwork?type=: `bytes`, a PNG or JPEG, becomes the
 // slot's image. Events as for SelectArtworkAsync.
-void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot, std::string bytes,
-                        std::function<void(ArtworkSelectResult)> callback);
+void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
+                        std::string bytes, std::function<void(ArtworkSelectResult)> callback);
 
 // POST /v1/games/{id}/artwork/candidates?type=&page=: one page of
 // SteamGridDB's art, asked for now; game.artwork_candidates_ready follows,

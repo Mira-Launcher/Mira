@@ -1,12 +1,11 @@
 #include "TileView.h"
 
+#include <QAbstractScrollArea>
 #include <QApplication>
 #include <QMouseEvent>
 #include <QRubberBand>
-#include <QAbstractScrollArea>
 #include <QScrollBar>
 #include <QTimer>
-
 #include <algorithm>
 
 namespace mira_gui {

@@ -1,18 +1,17 @@
 #pragma once
 
 #include <filesystem>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include <json.hpp>
-
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
-#include "runner/StoreTool.h"
 #include "runner/Exec.h"
+#include "runner/StoreTool.h"
 
 // Amazon Games (Prime Gaming) support: wraps nile, Heroic's Amazon CLI
 // client, for login, library and downloads. Installed games run through
@@ -31,7 +30,7 @@ std::filesystem::path NileConfigDir();
 nlohmann::json ReadNileFile(const std::string& name);
 
 Result<std::string> RunNile(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output = {});
+                            const runner::OutputFn& on_output = {});
 
 runner::AuthStatus Status(const config::Config& config);
 

@@ -1,14 +1,12 @@
 #pragma once
 
-#include <QWidget>
 #include <QString>
-
+#include <QWidget>
+#include <json.hpp>
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <json.hpp>
 
 #include "../client/Types.h"
 
@@ -19,7 +17,7 @@ class OverridesEditor;
 class SettingRow;
 class SettingsCard;
 class TagEdit;
-}
+}  // namespace mira_gui
 
 class QComboBox;
 class QLabel;
@@ -36,7 +34,7 @@ namespace mira_gui {
 class GameEditForm : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit GameEditForm(std::string id, QWidget* parent = nullptr);
 
   const std::string& id() const { return id_; }
@@ -65,7 +63,7 @@ public:
   // How many fields and overrides differ, for the change bar.
   int ChangeCount() const;
 
-signals:
+ signals:
   // The record loaded, or a save landed.
   void Loaded(QString name);
   void LoadFailed(QString error, bool first);
@@ -75,7 +73,7 @@ signals:
   // A tag chip was clicked: show the library's games with this tag.
   void TagFilterRequested(QString tag);
 
-private:
+ private:
   // The batch PATCH /v1/games that turns the saved tags into `now`.
   mira_gui::GamesPatch TagsPatch(const std::optional<std::vector<std::string>>& now) const;
   void Load();
@@ -152,7 +150,8 @@ private:
   SettingRow* tags_row_ = nullptr;
   SettingRow* runner_row_ = nullptr;
   SettingRow* emulator_row_ = nullptr;  // in place of the runner for an emulator's game
-  QComboBox* emulator_combo_ = nullptr;  // its emulator, then the others that play it: picking one moves it
+  QComboBox* emulator_combo_ =
+      nullptr;  // its emulator, then the others that play it: picking one moves it
   SettingRow* data_dir_row_ = nullptr;
   SettingRow* env_row_ = nullptr;
 

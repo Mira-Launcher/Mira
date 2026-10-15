@@ -5,9 +5,8 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
-#include <QTransform>
 #include <QPixmap>
-
+#include <QTransform>
 #include <cmath>
 
 #include "Theme.h"
@@ -80,8 +79,7 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawLine(QPointF(12.0, 4.0), QPointF(4.0, 12.0));
       return;
     case Glyph::Home:
-      painter.drawPolyline(
-          QPolygonF({QPointF(2.5, 8.0), QPointF(8.0, 3.5), QPointF(13.5, 8.0)}));
+      painter.drawPolyline(QPolygonF({QPointF(2.5, 8.0), QPointF(8.0, 3.5), QPointF(13.5, 8.0)}));
       painter.drawPolyline(QPolygonF(
           {QPointF(4.0, 7.2), QPointF(4.0, 13.0), QPointF(12.0, 13.0), QPointF(12.0, 7.2)}));
       painter.drawRect(QRectF(6.5, 9.0, 3.0, 4.0));
@@ -104,8 +102,7 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       return;
     case Glyph::SortArrows:
       painter.drawLine(QPointF(5.3, 3.3), QPointF(5.3, 12.7));
-      painter.drawPolyline(
-          QPolygonF({QPointF(3.3, 5.3), QPointF(5.3, 3.3), QPointF(7.3, 5.3)}));
+      painter.drawPolyline(QPolygonF({QPointF(3.3, 5.3), QPointF(5.3, 3.3), QPointF(7.3, 5.3)}));
       painter.drawLine(QPointF(10.7, 3.3), QPointF(10.7, 12.7));
       painter.drawPolyline(
           QPolygonF({QPointF(8.7, 10.7), QPointF(10.7, 12.7), QPointF(12.7, 10.7)}));
@@ -116,18 +113,15 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
     case Glyph::Play:
       painter.setPen(Qt::NoPen);
       painter.setBrush(color);
-      painter.drawPolygon(
-          QPolygonF({QPointF(5.5, 4.3), QPointF(5.5, 11.7), QPointF(12.2, 8.0)}));
+      painter.drawPolygon(QPolygonF({QPointF(5.5, 4.3), QPointF(5.5, 11.7), QPointF(12.2, 8.0)}));
       return;
     case Glyph::CheckCircle:
       painter.drawEllipse(QPointF(8.0, 8.0), 5.5, 5.5);
-      painter.drawPolyline(
-          QPolygonF({QPointF(5.7, 8.3), QPointF(7.3, 10.0), QPointF(10.7, 6.2)}));
+      painter.drawPolyline(QPolygonF({QPointF(5.7, 8.3), QPointF(7.3, 10.0), QPointF(10.7, 6.2)}));
       return;
     case Glyph::Download:
       painter.drawLine(QPointF(8.0, 3.0), QPointF(8.0, 10.3));
-      painter.drawPolyline(
-          QPolygonF({QPointF(5.2, 8.5), QPointF(8.0, 11.3), QPointF(10.8, 8.5)}));
+      painter.drawPolyline(QPolygonF({QPointF(5.2, 8.5), QPointF(8.0, 11.3), QPointF(10.8, 8.5)}));
       painter.drawLine(QPointF(4.0, 13.0), QPointF(12.0, 13.0));
       return;
     case Glyph::Sliders:
@@ -169,8 +163,7 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawLine(QPointF(8.0, 8.0), QPointF(10.3, 9.3));
       return;
     case Glyph::Warning:
-      painter.drawPolygon(
-          QPolygonF({QPointF(8.0, 3.3), QPointF(14.0, 13.5), QPointF(2.0, 13.5)}));
+      painter.drawPolygon(QPolygonF({QPointF(8.0, 3.3), QPointF(14.0, 13.5), QPointF(2.0, 13.5)}));
       painter.drawLine(QPointF(8.0, 7.2), QPointF(8.0, 10.2));
       painter.setPen(Qt::NoPen);
       painter.setBrush(color);
@@ -212,8 +205,8 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       return;
     case Glyph::Trash:
       painter.drawLine(QPointF(3.5, 5.0), QPointF(12.5, 5.0));
-      painter.drawPolyline(QPolygonF({QPointF(6.3, 5.0), QPointF(6.3, 3.7), QPointF(9.7, 3.7),
-                                      QPointF(9.7, 5.0)}));
+      painter.drawPolyline(
+          QPolygonF({QPointF(6.3, 5.0), QPointF(6.3, 3.7), QPointF(9.7, 3.7), QPointF(9.7, 5.0)}));
       painter.drawRoundedRect(QRectF(4.7, 5.0, 6.6, 8.0), 1.0, 1.0);
       return;
     case Glyph::Refresh: {
@@ -222,14 +215,12 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       top.arcMoveTo(bounds, 55.0);
       top.arcTo(bounds, 55.0, 200.0);
       painter.drawPath(top);
-      painter.drawPolyline(
-          QPolygonF({QPointF(11.6, 2.9), QPointF(13.3, 5.3), QPointF(10.6, 5.9)}));
+      painter.drawPolyline(QPolygonF({QPointF(11.6, 2.9), QPointF(13.3, 5.3), QPointF(10.6, 5.9)}));
       QPainterPath bottom;
       bottom.arcMoveTo(bounds, 235.0);
       bottom.arcTo(bounds, 235.0, 200.0);
       painter.drawPath(bottom);
-      painter.drawPolyline(
-          QPolygonF({QPointF(4.4, 13.1), QPointF(2.7, 10.7), QPointF(5.4, 10.1)}));
+      painter.drawPolyline(QPolygonF({QPointF(4.4, 13.1), QPointF(2.7, 10.7), QPointF(5.4, 10.1)}));
       return;
     }
     case Glyph::Keyboard:
@@ -256,16 +247,17 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawLine(QPointF(6.0, 3.0), QPointF(6.0, 13.0));
       return;
     case Glyph::Folder:
-      painter.drawPolygon(QPolygonF({QPointF(2.0, 4.0), QPointF(6.0, 4.0), QPointF(7.5, 5.5), QPointF(14.0, 5.5),
-                                     QPointF(14.0, 12.5), QPointF(2.0, 12.5)}));
+      painter.drawPolygon(QPolygonF({QPointF(2.0, 4.0), QPointF(6.0, 4.0), QPointF(7.5, 5.5),
+                                     QPointF(14.0, 5.5), QPointF(14.0, 12.5), QPointF(2.0, 12.5)}));
       return;
     case Glyph::Tag:
-      painter.drawPolygon(QPolygonF({QPointF(2.5, 2.5), QPointF(8.0, 2.5), QPointF(13.5, 8.0), QPointF(8.0, 13.5),
-                                     QPointF(2.5, 8.0)}));
+      painter.drawPolygon(QPolygonF({QPointF(2.5, 2.5), QPointF(8.0, 2.5), QPointF(13.5, 8.0),
+                                     QPointF(8.0, 13.5), QPointF(2.5, 8.0)}));
       painter.drawEllipse(QPointF(5.5, 5.5), 1.0, 1.0);
       return;
     case Glyph::Layers:
-      painter.drawPolygon(QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
+      painter.drawPolygon(
+          QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
       painter.drawPolyline(QPolygonF({QPointF(2.0, 9.0), QPointF(8.0, 12.3), QPointF(14.0, 9.0)}));
       return;
     case Glyph::Target:
@@ -295,8 +287,8 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawEllipse(QPointF(8.0, 8.0), 1.6, 1.6);
       return;
     case Glyph::External:
-      painter.drawPolyline(QPolygonF({QPointF(7.0, 3.5), QPointF(3.5, 3.5), QPointF(3.5, 12.5), QPointF(12.5, 12.5),
-                                      QPointF(12.5, 9.0)}));
+      painter.drawPolyline(QPolygonF({QPointF(7.0, 3.5), QPointF(3.5, 3.5), QPointF(3.5, 12.5),
+                                      QPointF(12.5, 12.5), QPointF(12.5, 9.0)}));
       painter.drawLine(QPointF(8.0, 8.0), QPointF(13.0, 3.0));
       painter.drawPolyline(QPolygonF({QPointF(9.5, 3.0), QPointF(13.0, 3.0), QPointF(13.0, 6.5)}));
       return;
@@ -330,7 +322,9 @@ QPixmap Render(Glyph glyph, int size, const QColor& color) {
 
 }  // namespace
 
-QIcon For(Glyph glyph) { return For(glyph, theme::Current().text); }
+QIcon For(Glyph glyph) {
+  return For(glyph, theme::Current().text);
+}
 
 QIcon For(Glyph glyph, const QColor& color) {
   QIcon icon;

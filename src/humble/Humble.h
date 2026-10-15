@@ -24,7 +24,8 @@ std::filesystem::path ManagedHumbleCliPath(const config::Config& config);
 
 runner::ToolStatus DetectHumbleCli(const config::Config& config);
 
-Result<void> InstallHumbleCliBinary(const config::Config& config, const runner::ReleaseAsset& asset);
+Result<void> InstallHumbleCliBinary(const config::Config& config,
+                                    const runner::ReleaseAsset& asset);
 
 Result<std::string> RunHumbleCli(const config::Config& config, std::vector<std::string> args);
 
@@ -70,6 +71,7 @@ std::filesystem::path DownloadDir(const config::Config& config, const std::strin
 // Returns whether anything actually landed on disk: a redeemed
 // Steam-key-only entry has no Humble-hosted files at all, and humble-cli
 // exits 0 printing "Nothing to download" for those rather than failing.
-Result<bool> Download(const config::Config& config, const std::string& bundle_key, const std::string& item_numbers);
+Result<bool> Download(const config::Config& config, const std::string& bundle_key,
+                      const std::string& item_numbers);
 
 }  // namespace mira::humble

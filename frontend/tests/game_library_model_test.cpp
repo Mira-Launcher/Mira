@@ -2,7 +2,6 @@
 
 #include <QAbstractItemModelTester>
 #include <QPersistentModelIndex>
-
 #include <string>
 #include <vector>
 
@@ -103,7 +102,9 @@ TEST_CASE("Hidden mode shows only hidden games under every filter, and launchers
   CHECK(Shown(proxy) == std::vector<std::string>{"a"});
 }
 
-TEST_CASE("Apps and games get their own filters, apps can leave All or the library, and apps never count as unplayed") {
+TEST_CASE(
+    "Apps and games get their own filters, apps can leave All or the library, and apps never count "
+    "as unplayed") {
   GameLibraryModel library;
   library.Replace({Game("g", "Game"), Game("w", "Writer", {"app"})});
   GameFilterProxy proxy(&library);
@@ -139,7 +140,8 @@ TEST_CASE("Needs attention lists games mirad wants checked beside broken ones") 
 
 TEST_CASE("A source's view lists only that source's games, hidden ones only in hidden mode") {
   GameLibraryModel library;
-  library.Replace({Game("a", "Alpha"), Game("e1", "Epic One", {}, "epic"), Game("e2", "Epic Two", {"hidden"}, "epic")});
+  library.Replace({Game("a", "Alpha"), Game("e1", "Epic One", {}, "epic"),
+                   Game("e2", "Epic Two", {"hidden"}, "epic")});
   GameFilterProxy proxy(&library);
   proxy.SetSource("epic");
   CHECK(Shown(proxy) == std::vector<std::string>{"e1"});
@@ -148,8 +150,9 @@ TEST_CASE("A source's view lists only that source's games, hidden ones only in h
   library.SetShowingHidden(false);
 
   // Local is every game from no source, never a store's game or its launcher.
-  library.Replace({Game("a", "Alpha"), Game("m", "Manual", {}, "manual"), Game("d", "Desktop", {}, "desktop-entry"),
-                   Game("s", "Steam One", {}, "steam"), Game("l", "Launcher", {}, "launcher")});
+  library.Replace({Game("a", "Alpha"), Game("m", "Manual", {}, "manual"),
+                   Game("d", "Desktop", {}, "desktop-entry"), Game("s", "Steam One", {}, "steam"),
+                   Game("l", "Launcher", {}, "launcher")});
   proxy.SetSource("local");
   CHECK(Shown(proxy) == std::vector<std::string>{"a", "d", "m"});
 }
@@ -216,7 +219,8 @@ TEST_CASE("Search, the sidebar sort, and running all follow the model's changes"
   CHECK(Shown(proxy).empty());
 }
 
-TEST_CASE("Recently played lists running games first and keeps to its count; apps only while they run") {
+TEST_CASE(
+    "Recently played lists running games first and keeps to its count; apps only while they run") {
   const auto played = [](const std::string& id, std::int64_t at,
                          std::vector<std::string> tags = {}) {
     GameSummary game = Game(id, id, std::move(tags));

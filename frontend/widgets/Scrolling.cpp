@@ -65,16 +65,21 @@ class PageKeys : public QObject {
     }
     QScrollBar* bar = area_->verticalScrollBar();
     switch (key->key()) {
-      case Qt::Key_PageDown: bar->triggerAction(QAbstractSlider::SliderPageStepAdd); return true;
-      case Qt::Key_PageUp: bar->triggerAction(QAbstractSlider::SliderPageStepSub); return true;
+      case Qt::Key_PageDown:
+        bar->triggerAction(QAbstractSlider::SliderPageStepAdd);
+        return true;
+      case Qt::Key_PageUp:
+        bar->triggerAction(QAbstractSlider::SliderPageStepSub);
+        return true;
       // Home and End stay a line edit's, for its cursor.
       case Qt::Key_Home:
       case Qt::Key_End:
         if (focus->inherits("QLineEdit")) return false;
         bar->triggerAction(key->key() == Qt::Key_Home ? QAbstractSlider::SliderToMinimum
-                                                       : QAbstractSlider::SliderToMaximum);
+                                                      : QAbstractSlider::SliderToMaximum);
         return true;
-      default: return false;
+      default:
+        return false;
     }
   }
 
@@ -89,7 +94,8 @@ class PageKeys : public QObject {
 }  // namespace
 
 void SetUpScrolling(QAbstractScrollArea* area, QWidget* scope) {
-  area->verticalScrollBar()->setSingleStep(std::max(1, kNotchPixels / std::max(1, QApplication::wheelScrollLines())));
+  area->verticalScrollBar()->setSingleStep(
+      std::max(1, kNotchPixels / std::max(1, QApplication::wheelScrollLines())));
   new PageKeys(area, scope != nullptr ? scope : area);
 }
 

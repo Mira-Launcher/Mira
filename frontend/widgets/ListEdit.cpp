@@ -14,7 +14,8 @@
 
 namespace mira_gui {
 
-ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent) : QWidget(parent), kind_(kind) {
+ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent)
+    : QWidget(parent), kind_(kind) {
   setObjectName("list_edit");
   setAttribute(Qt::WA_StyledBackground);
   auto* layout = new QVBoxLayout(this);
@@ -36,11 +37,13 @@ ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent) : QWidge
   add->setCursor(Qt::PointingHandCursor);
   connect(add, &QPushButton::clicked, this, [this] {
     if (kind_ == Kind::Folder) {
-      const QString folder = QFileDialog::getExistingDirectory(this, "Choose a folder", QDir::homePath());
+      const QString folder =
+          QFileDialog::getExistingDirectory(this, "Choose a folder", QDir::homePath());
       if (folder.isEmpty()) return;
       // Shown and stored the way the defaults are written, relative to home.
       const QString home = QDir::homePath();
-      AddRow(folder.startsWith(home + "/") ? "~" + folder.mid(home.size()) : folder, /*edit=*/false);
+      AddRow(folder.startsWith(home + "/") ? "~" + folder.mid(home.size()) : folder,
+             /*edit=*/false);
       emit Changed();
       return;
     }
@@ -54,7 +57,8 @@ QStringList ListEdit::Items() const {
   QStringList items;
   for (int i = 0; i < rows_->count(); ++i) {
     if (const QWidget* row = rows_->itemAt(i)->widget()) {
-      if (const auto* line = row->findChild<QLineEdit*>(); line != nullptr && !line->text().trimmed().isEmpty()) {
+      if (const auto* line = row->findChild<QLineEdit*>();
+          line != nullptr && !line->text().trimmed().isEmpty()) {
         items << line->text().trimmed();
       }
     }
@@ -104,6 +108,8 @@ void ListEdit::AddRow(const QString& text, bool edit) {
   if (edit) line->setFocus();
 }
 
-void ListEdit::UpdateEmpty() { empty_->setVisible(rows_->count() == 0); }
+void ListEdit::UpdateEmpty() {
+  empty_->setVisible(rows_->count() == 0);
+}
 
 }  // namespace mira_gui

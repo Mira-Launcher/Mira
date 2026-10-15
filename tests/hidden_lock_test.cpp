@@ -11,9 +11,9 @@
 #include "support/TestEnv.h"
 
 using namespace mira;
+using nlohmann::json;
 using test::LiveServer;
 using test::TempDir;
-using nlohmann::json;
 
 namespace {
 

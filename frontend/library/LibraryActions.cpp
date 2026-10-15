@@ -45,12 +45,15 @@ void ImportLutris(QWidget* parent, std::function<void()> on_imported) {
     on_imported();
     QStringList skipped;
     if (result.other_runner > 0) {
-      skipped << QString("%1 use a runner Mira leaves to Lutris (Steam, DOSBox, …)").arg(result.other_runner);
+      skipped << QString("%1 use a runner Mira leaves to Lutris (Steam, DOSBox, …)")
+                     .arg(result.other_runner);
     }
-    if (result.incomplete > 0) skipped << QString("%1 have a setup Mira can't import").arg(result.incomplete);
-    QString text = result.added == 0
-                       ? QString("No new Lutris games found.")
-                       : QString("Added %1 Lutris game%2.").arg(result.added).arg(result.added == 1 ? "" : "s");
+    if (result.incomplete > 0)
+      skipped << QString("%1 have a setup Mira can't import").arg(result.incomplete);
+    QString text = result.added == 0 ? QString("No new Lutris games found.")
+                                     : QString("Added %1 Lutris game%2.")
+                                           .arg(result.added)
+                                           .arg(result.added == 1 ? "" : "s");
     if (!skipped.isEmpty()) text += " Skipped: " + skipped.join("; ") + ".";
     if (result.added == 0 || !skipped.isEmpty()) notify::Notice(parent, text);
   });
@@ -94,12 +97,13 @@ void RemoveAllDesktopEntries(QWidget* parent) {
 }
 
 void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& id)> game_name) {
-  if (!notify::Confirm(parent, "Move every game to Mira's folders",
-                       "Move every game's files into your games folder, and each prefix into the prefixes "
-                       "folder, named after the game? Games installed by a store (Steam, Epic, GOG, itch.io) "
-                       "keep their install folder; only the prefix moves. Games on another drive are copied "
-                       "then deleted, which can take a while.",
-                       "Move games")) {
+  if (!notify::Confirm(
+          parent, "Move every game to Mira's folders",
+          "Move every game's files into your games folder, and each prefix into the prefixes "
+          "folder, named after the game? Games installed by a store (Steam, Epic, GOG, itch.io) "
+          "keep their install folder; only the prefix moves. Games on another drive are copied "
+          "then deleted, which can take a while.",
+          "Move games")) {
     return;
   }
   notify::Notice(parent, "Moving games into Mira's folders…");
@@ -110,9 +114,11 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
     }
     // The moved games arrive as game.updated events.
     if (result.moved > 0 || result.errors.empty()) {
-      notify::Notice(parent, result.moved == 0
-                                 ? QString("Every game was already in place.")
-                                 : QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+      notify::Notice(
+          parent,
+          result.moved == 0
+              ? QString("Every game was already in place.")
+              : QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
     }
     if (!result.errors.empty()) {
       QStringList failed;
@@ -120,7 +126,8 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
         const QString name = game_name(failure.id);
         failed << (name.isEmpty() ? QString::fromStdString(failure.id) : name);
       }
-      notify::FailedRequest(parent, QString("Could not move %1.").arg(failed.join(", ")), result.errors.front().error);
+      notify::FailedRequest(parent, QString("Could not move %1.").arg(failed.join(", ")),
+                            result.errors.front().error);
     }
   });
 }

@@ -10,28 +10,28 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QVBoxLayout>
-
 #include <algorithm>
 #include <optional>
 #include <utility>
 
-#include "../client/EventHub.h"
-#include "../client/api/Config.h"
-#include "../client/api/Runners.h"
-#include "AppearancePreviews.h"
 #include "../app/ErrorHelp.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
+#include "../client/EventHub.h"
+#include "../client/api/Config.h"
+#include "../client/api/Runners.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
 #include "../widgets/ShortcutEdit.h"
+#include "AppearancePreviews.h"
 #include "SettingsCard.h"
 #include "SettingsNav.h"
 
 namespace mira_gui {
 
-SettingsPanel::SettingsPanel(Previews previews, QWidget* parent) : QWidget(parent), previews_(std::move(previews)) {
+SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
+    : QWidget(parent), previews_(std::move(previews)) {
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
@@ -52,9 +52,13 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent) : QWidget(paren
   Load();
 }
 
-void SettingsPanel::SetHeader(QWidget* header) { nav_->SetHeaderWidget(header); }
+void SettingsPanel::SetHeader(QWidget* header) {
+  nav_->SetHeaderWidget(header);
+}
 
-void SettingsPanel::SetNavWidth(int width) { nav_->SetNavWidth(width); }
+void SettingsPanel::SetNavWidth(int width) {
+  nav_->SetNavWidth(width);
+}
 
 void SettingsPanel::LoadFrontendPrefs() {
   theme_saved_ = theme::CurrentName();
@@ -82,7 +86,8 @@ void SettingsPanel::LoadFrontendPrefs() {
     continue_count_saved_ = continue_count_->value();  // after the clamp
     trailer_volume_->setValue(prefs.big_screen_trailer_volume.value_or(50));
     trailer_volume_saved_ = trailer_volume_->value();
-    for (ShapeField* field : {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
+    for (ShapeField* field :
+         {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
       field->saved = field->current = prefs.*(field->member);
       RefreshShape(*field);
     }
@@ -138,7 +143,8 @@ void SettingsPanel::Load() {
         field.SetText(field.original);
         field.original = field.Text();  // as the editor holds it (a clamped number, a joined list)
       }
-      nav_->RearrangePages();  // lists and paths now hold their rows, so cards have their real heights
+      nav_->RearrangePages();  // lists and paths now hold their rows, so cards have their real
+                               // heights
       setEnabled(true);
       Refresh();
       LoadDone();
@@ -152,9 +158,11 @@ void SettingsPanel::BuildSchemaPages() {
   for (const SettingEditor& field : fields_) categories.push_back(field.entry.category);
 
   for (const auto& [category, rows] : GroupByCategory(categories)) {
-    SettingsPage* page = nav_->AddCategory(category, CategoryGlyph(category), CategoryNavGroup(category));
+    SettingsPage* page =
+        nav_->AddCategory(category, CategoryGlyph(category), CategoryNavGroup(category));
     pages_[category] = page;
-    const bool by_source = std::ranges::all_of(rows, [this](size_t i) { return !fields_[i].entry.source.empty(); });
+    const bool by_source =
+        std::ranges::all_of(rows, [this](size_t i) { return !fields_[i].entry.source.empty(); });
     if (by_source) {
       // Which sources the sidebar shows, and in what order, sits with the sources themselves.
       if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
@@ -208,7 +216,8 @@ void SettingsPanel::BuildSchemaPages() {
 void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_t>& rows) {
   std::vector<std::string> sources;
   for (const size_t i : rows) {
-    if (std::ranges::find(sources, fields_[i].entry.source) == sources.end()) sources.push_back(fields_[i].entry.source);
+    if (std::ranges::find(sources, fields_[i].entry.source) == sources.end())
+      sources.push_back(fields_[i].entry.source);
   }
   for (const std::string& source_id : sources) {
     const QString id = QString::fromStdString(source_id);
@@ -250,7 +259,8 @@ void SettingsPanel::FocusKey(const QString& key) {
     return;
   }
   const std::string wanted = key.toStdString();
-  const auto it = std::ranges::find(fields_, wanted, [](const SettingEditor& f) { return f.entry.key; });
+  const auto it =
+      std::ranges::find(fields_, wanted, [](const SettingEditor& f) { return f.entry.key; });
   if (it == fields_.end() || it->row == nullptr) {
     pending_focus_key_ = key;  // the schema hasn't loaded yet, most likely
     return;
@@ -262,8 +272,9 @@ void SettingsPanel::FocusKey(const QString& key) {
   if (auto* line = qobject_cast<QLineEdit*>(input)) line->selectAll();
 }
 
-void SettingsPanel::AddSectionAction(const QString& category, const QString& card, const QString& label,
-                                     const QString& doc, const QString& button_text, std::function<void()> activated) {
+void SettingsPanel::AddSectionAction(const QString& category, const QString& card,
+                                     const QString& label, const QString& doc,
+                                     const QString& button_text, std::function<void()> activated) {
   section_actions_.push_back({category, card, label, doc, button_text, std::move(activated)});
   if (rows_built_) AppendSectionAction(section_actions_.back());
 }
@@ -316,7 +327,8 @@ void SettingsPanel::PopulateRunnerCombos(const RunnersResult& result) {
 int SettingsPanel::ChangeCount() const {
   int count = 0;
   for (const PrefField& field : pref_fields_) count += field.changed() ? 1 : 0;
-  for (const SettingEditor& field : fields_) count += field.row != nullptr && field.Changed() ? 1 : 0;
+  for (const SettingEditor& field : fields_)
+    count += field.row != nullptr && field.Changed() ? 1 : 0;
   return count;
 }
 
@@ -360,7 +372,8 @@ void SettingsPanel::Save() {
     for (std::size_t j = i + 1; j < shortcuts_.size() && !keys.isEmpty(); ++j) {
       if (shortcuts_[j].edit->Keys() != keys) continue;
       notify::Failed(this, "Couldn't save shortcuts",
-                     keys.toString(QKeySequence::NativeText) + " is used by two shortcuts. Change one of them.");
+                     keys.toString(QKeySequence::NativeText) +
+                         " is used by two shortcuts. Change one of them.");
       return;
     }
   }
@@ -371,7 +384,8 @@ void SettingsPanel::Save() {
   if (PrefsDirty()) {
     FrontendPrefs prefs;
     for (const PrefToggle& toggle : toggles_) prefs.*toggle.member = toggle.toggle->isChecked();
-    for (const PrefSeconds& seconds : seconds_) prefs.*seconds.member = qRound(seconds.spin->value() * 1000);
+    for (const PrefSeconds& seconds : seconds_)
+      prefs.*seconds.member = qRound(seconds.spin->value() * 1000);
     prefs.library_continue_count = continue_count_->value();
     prefs.big_screen_trailer_volume = trailer_volume_->value();
     const QString theme_name = SelectedTheme();
@@ -398,7 +412,8 @@ void SettingsPanel::Save() {
     overrides.radius_tile = tile_radius_.current;
     overrides.radius_panel = panel_radius_.current;
     overrides.radius_control = control_radius_.current;
-    if (shapes_changed || theme_name != theme_saved_) theme::Configure(theme_name, overrides);  // one restyle
+    if (shapes_changed || theme_name != theme_saved_)
+      theme::Configure(theme_name, overrides);  // one restyle
 
     bool shortcuts_changed = false;
     for (const ShortcutField& field : shortcuts_) {
@@ -439,7 +454,8 @@ void SettingsPanel::Save() {
     }
   }
   // The display settings count too, so Save doesn't report done (and close) before they fail.
-  saves_pending_ = (edits.empty() ? 0 : 1) + static_cast<int>(resets.size()) + (prefs_to_save ? 1 : 0);
+  saves_pending_ =
+      (edits.empty() ? 0 : 1) + static_cast<int>(resets.size()) + (prefs_to_save ? 1 : 0);
   if (saves_pending_ == 0) {
     FinishSave(true, {});
     return;
@@ -447,7 +463,8 @@ void SettingsPanel::Save() {
   // What was sent: an edit typed while the save runs is still unsaved after it.
   std::vector<std::string> sent(fields_.size());
   for (size_t i = 0; i < fields_.size(); ++i) sent[i] = fields_[i].Text();
-  const auto done = [this, sent](bool ok, const std::string& error, const std::vector<size_t>& indices) {
+  const auto done = [this, sent](bool ok, const std::string& error,
+                                 const std::vector<size_t>& indices) {
     if (ok) {
       for (const size_t i : indices) fields_[i].original = sent[i];
     } else if (save_error_.isEmpty()) {
@@ -457,7 +474,8 @@ void SettingsPanel::Save() {
   };
   if (prefs_to_save) {
     api::SaveFrontendPrefsAsync(this, *prefs_to_save, [done](PatchConfigResult result) {
-      done(result.ok, result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
+      done(result.ok,
+           result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
     });
   }
   if (!edits.empty()) {

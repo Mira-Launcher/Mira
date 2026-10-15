@@ -23,10 +23,10 @@ class FetchQueue;
 namespace mira::library {
 
 struct ScanSummary {
-  int added = 0;    // new games detected and auto-configured
-  int missing = 0;  // previously-known games whose folder is now gone
-  int restored = 0; // a previously-missing game's folder reappeared
-  int moved = 0;    // a known game's folder was moved by hand and followed
+  int added = 0;     // new games detected and auto-configured
+  int missing = 0;   // previously-known games whose folder is now gone
+  int restored = 0;  // a previously-missing game's folder reappeared
+  int moved = 0;     // a known game's folder was moved by hand and followed
 
   // The games behind `added`, for callers that want to react per-game (e.g.
   // triggering a metadata fetch), deliberately not done inside Scanner
@@ -48,7 +48,7 @@ struct ScanSummary {
 // re-detected, so a scan never overwrites a user's changes. Scan only adds
 // new games, reconciles missing/restored ones and retries provisioning.
 class Scanner {
-public:
+ public:
   Scanner(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   ScanSummary ScanAll();
@@ -62,13 +62,15 @@ public:
   // Where the unclear moves it finds are kept for clients to settle.
   void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
   // Games it must not remove (library.remove_missing) because they're running.
-  void UseRunningCheck(std::function<bool(const std::string&)> is_running) { is_running_ = std::move(is_running); }
+  void UseRunningCheck(std::function<bool(const std::string&)> is_running) {
+    is_running_ = std::move(is_running);
+  }
 
   // Settles an unclear move: `folder` is game `id`'s, moved by hand, or a new game without one.
   Result<model::Game> Settle(const std::filesystem::path& folder,
                              const std::optional<std::string>& id);
 
-private:
+ private:
   // Points `moved` at `found`, with its tags following the new place under `root`.
   Result<model::Game> Follow(const model::Game& moved, const std::filesystem::path& found,
                              bool loose, const std::filesystem::path& root, const SortRules& rules);

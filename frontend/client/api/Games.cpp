@@ -46,7 +46,8 @@ DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delet
 
 LaunchResult LaunchGameSync(const std::string& id, const std::string& option) {
   const std::string path = "/v1/games/" + PercentEncode(id) + "/launch";
-  const transport::Reply reply = option.empty() ? transport::Post(path) : transport::PostJson(path, {{"option", option}});
+  const transport::Reply reply =
+      option.empty() ? transport::Post(path) : transport::PostJson(path, {{"option", option}});
   // `tracked` (docs/api.md): whether game.state events are coming for this
   // launch. An older mirad only says `status`; with neither, assume so.
   bool tracked = true;

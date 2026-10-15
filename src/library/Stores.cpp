@@ -14,29 +14,30 @@ namespace mira::library {
 namespace {
 
 template <typename Importer>
-Result<ImportSummary> ImportWith(config::Config& config, store::GameStore& games, api::EventBus& events) {
+Result<ImportSummary> ImportWith(config::Config& config, store::GameStore& games,
+                                 api::EventBus& events) {
   Importer importer(config, games, events);
   return importer.Import();
 }
 
 std::vector<Store> BuildStores() {
   return {
-      {"epic", "Epic Games", "legendary", "legendary", epic::InstallLegendaryBinary,
-       epic::Status, [](const config::Config&) -> Result<std::string> { return std::string(epic::kLoginUrl); },
+      {"epic", "Epic Games", "legendary", "legendary", epic::InstallLegendaryBinary, epic::Status,
+       [](const config::Config&) -> Result<std::string> { return std::string(epic::kLoginUrl); },
        epic::Login, epic::FindCode, epic::Logout, ImportWith<epic::EpicImporter>},
       {"gog", "GOG", "gogdl", "gog", gog::InstallGogBinary, gog::Status,
-       [](const config::Config&) -> Result<std::string> { return std::string(gog::kLoginUrl); }, gog::Login,
-       gog::FindCode, gog::Logout, ImportWith<gog::GogImporter>},
+       [](const config::Config&) -> Result<std::string> { return std::string(gog::kLoginUrl); },
+       gog::Login, gog::FindCode, gog::Logout, ImportWith<gog::GogImporter>},
       {"amazon", "Amazon Games", "nile", "amazon", amazon::InstallNileBinary, amazon::Status,
        amazon::BeginLogin, amazon::FinishLogin, amazon::FindCode, amazon::Logout,
        ImportWith<amazon::AmazonImporter>},
       {"itch", "itch.io", "butler", "itch", itch::InstallButlerBinary, itch::Status,
-       [](const config::Config&) -> Result<std::string> { return std::string(itch::kApiKeysUrl); }, itch::Login,
-       itch::FindKey, itch::Logout, ImportWith<itch::ItchImporter>},
+       [](const config::Config&) -> Result<std::string> { return std::string(itch::kApiKeysUrl); },
+       itch::Login, itch::FindKey, itch::Logout, ImportWith<itch::ItchImporter>},
       {"humble", "Humble Bundle", "humble-cli", "humble", humble::InstallHumbleCliBinary,
        humble::Status,
-       [](const config::Config&) -> Result<std::string> { return std::string(humble::kLoginUrl); }, humble::Login,
-       humble::FindSessionKey, humble::Logout, nullptr},
+       [](const config::Config&) -> Result<std::string> { return std::string(humble::kLoginUrl); },
+       humble::Login, humble::FindSessionKey, humble::Logout, nullptr},
   };
 }
 

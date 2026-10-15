@@ -31,18 +31,20 @@ void MakeExecutable(const fs::path& path) {
   std::error_code ec;
   const auto current = fs::status(path, ec).permissions();
   if (ec) return;
-  fs::permissions(path, current | fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, ec);
+  fs::permissions(
+      path, current | fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, ec);
 }
 
 }  // namespace
 
 bool HasFuse() {
   std::error_code ec;
-  return std::filesystem::exists("/dev/fuse", ec) && (FindOnPath("fusermount") || FindOnPath("fusermount3"));
+  return std::filesystem::exists("/dev/fuse", ec) &&
+         (FindOnPath("fusermount") || FindOnPath("fusermount3"));
 }
 
 Result<Command> NativeRunner::BuildCommand(const model::Game& game,
-                                            const std::optional<model::RunnerBuild>&) const {
+                                           const std::optional<model::RunnerBuild>&) const {
   if (game.exe_path.empty()) return NoExecutable(game);
 
   const std::filesystem::path exe = std::filesystem::path(game.install_path) / game.exe_path;
@@ -62,17 +64,19 @@ Result<Command> NativeRunner::BuildCommand(const model::Game& game,
     // required regardless of which branch below runs.
     if (MissingExecuteBit(exe)) MakeExecutable(exe);
     if (MissingExecuteBit(exe)) {
-      return Err("not_executable",
-                std::format("\"{}\" isn't allowed to run, and Mira couldn't change that", exe.string()),
-                "Make the file executable (chmod +x), or check the folder isn't read-only.");
+      return Err(
+          "not_executable",
+          std::format("\"{}\" isn't allowed to run, and Mira couldn't change that", exe.string()),
+          "Make the file executable (chmod +x), or check the folder isn't read-only.");
     }
     command.argv = HasFuse() ? std::vector<std::string>{exe.string()}
                              : std::vector<std::string>{exe.string(), "--appimage-extract-and-run"};
   } else {
     if (MissingExecuteBit(exe)) {
-      return Err("not_executable", std::format("\"{}\" isn't marked as a program that can run", exe.string()),
-                "Make it executable (chmod +x), or choose the game's real launcher instead.",
-                Fix::Game(game.id, "exe"));
+      return Err("not_executable",
+                 std::format("\"{}\" isn't marked as a program that can run", exe.string()),
+                 "Make it executable (chmod +x), or choose the game's real launcher instead.",
+                 Fix::Game(game.id, "exe"));
     }
     command.argv.push_back(exe.string());
   }

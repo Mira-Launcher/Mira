@@ -11,10 +11,10 @@ namespace mira_gui {
 
 // What differs per source, in words. Endpoints live in client/api/Stores.
 struct SourceCopy {
-  QString blurb;  // one line under the page title
-  QString tool;   // stores: the helper mirad drives
+  QString blurb;          // one line under the page title
+  QString tool;           // stores: the helper mirad drives
   QString import_button;  // empty: no import
-  QString item = "game";   // what it imports, singular
+  QString item = "game";  // what it imports, singular
 };
 
 SourceCopy CopyFor(const std::string& id);

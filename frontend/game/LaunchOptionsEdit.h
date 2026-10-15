@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <string>
 
 #include "../client/Types.h"
@@ -12,22 +11,22 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
-// A game's launch options as rows with Edit and Remove, an Add row, which one Play starts, and whether
-// that's the only choice offered.
+// A game's launch options as rows with Edit and Remove, an Add row, which one Play starts, and
+// whether that's the only choice offered.
 class LaunchOptionsEdit : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit LaunchOptionsEdit(QWidget* parent = nullptr);
 
   // `windows`: its options can run in its prefix; `install_path` is where the file picker opens.
   void SetLaunch(const GameLaunch& launch, bool windows, const std::string& install_path);
   GameLaunch Launch() const;
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   void Rebuild();
   // Edits `option` in a dialog; false if cancelled.
   bool Edit(LaunchOption& option);

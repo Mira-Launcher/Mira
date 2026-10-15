@@ -1,10 +1,9 @@
 #pragma once
 
+#include <json.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "config/Config.h"
 
@@ -26,7 +25,7 @@ struct Resolved {
 // Resolves settings through default < config file < per-game override.
 // Overrides are a flat JSON object of dotted keys, stored on the game row.
 class Resolver {
-public:
+ public:
   Resolver(const Config& config, nlohmann::json game_overrides);
 
   Resolved Resolve(std::string_view key) const;
@@ -43,7 +42,7 @@ public:
 
   static bool IsOverridable(std::string_view key);
 
-private:
+ private:
   const Config& config_;
   nlohmann::json overrides_;
 };

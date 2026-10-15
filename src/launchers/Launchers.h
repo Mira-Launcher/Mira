@@ -1,13 +1,13 @@
 #pragma once
 
-#include <filesystem>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <optional>
-#include <utility>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "api/EventBus.h"
@@ -29,32 +29,38 @@ struct Setup {
   std::string url;
   std::string file;               // saved under Mira's downloads folder
   std::vector<std::string> args;  // "{downloads}" is the downloads folder as Wine sees it
-  std::string done;               // relative to drive_c, there once it finished; empty: the launcher's exe
-  // How far along it is, 0-100, when the installer says so somewhere other than its output. Given the
-  // prefix and the time the installer started.
-  std::function<std::optional<int>(const std::filesystem::path&, std::filesystem::file_time_type)> progress;
+  std::string done;  // relative to drive_c, there once it finished; empty: the launcher's exe
+  // How far along it is, 0-100, when the installer says so somewhere other than its output. Given
+  // the prefix and the time the installer started.
+  std::function<std::optional<int>(const std::filesystem::path&, std::filesystem::file_time_type)>
+      progress;
   // Bytes the installer has put on disk so far: sampled for the speed in the progress line.
   std::function<std::uint64_t(const std::filesystem::path&)> bytes{};
-  // (done, total) bytes of the downloads the installer has started, for a bar while it says nothing.
-  std::function<std::optional<std::pair<std::uint64_t, std::uint64_t>>(const std::filesystem::path&)> download{};
-  // The installer's Wine session ends with it: what it left running in the prefix (Office's Click-to-Run service and
-  // Wine server) is stopped, since a later launch of an app waits on that session instead of starting.
+  // (done, total) bytes of the downloads the installer has started, for a bar while it says
+  // nothing.
+  std::function<std::optional<std::pair<std::uint64_t, std::uint64_t>>(
+      const std::filesystem::path&)>
+      download{};
+  // The installer's Wine session ends with it: what it left running in the prefix (Office's
+  // Click-to-Run service and Wine server) is stopped, since a later launch of an app waits on that
+  // session instead of starting.
   bool end_session = false;
 };
 
 struct Launcher {
-  std::string id;    // also the imported games' source
+  std::string id;  // also the imported games' source
   std::string name;
-  std::string umu_store;  // umu's STORE, so protonfixes apply; empty if umu has none
-  std::string exe;   // relative to drive_c
-  std::vector<Setup> setups;              // run in order; none: the last winetricks verb installs it
-  std::vector<std::string> tricks;        // winetricks verbs run before the installer
-  bool interactive = false;               // the installer needs clicking through
-  std::string kind = "games";             // what it brings: "games", or "apps" (Microsoft 365, Creative Cloud)
+  std::string umu_store;            // umu's STORE, so protonfixes apply; empty if umu has none
+  std::string exe;                  // relative to drive_c
+  std::vector<Setup> setups;        // run in order; none: the last winetricks verb installs it
+  std::vector<std::string> tricks;  // winetricks verbs run before the installer
+  bool interactive = false;         // the installer needs clicking through
+  std::string kind = "games";  // what it brings: "games", or "apps" (Microsoft 365, Creative Cloud)
   std::map<std::string, std::string> env;
   // Registers mshtml, which prefixes are made without: its installer shows pages through it.
   bool needs_mshtml = false;
-  // Stopping it ends everything in its prefix: closed, Creative Cloud only goes to its tray, and its services stay.
+  // Stopping it ends everything in its prefix: closed, Creative Cloud only goes to its tray, and
+  // its services stay.
   bool stop_ends_session = false;
 };
 
@@ -72,7 +78,8 @@ bool Installed(const store::GameStore& games, const Launcher& launcher);
 
 // Microsoft 365's apps (office::App refs) installed in its prefix.
 std::vector<std::string> InstalledOfficeApps(const model::Game& host);
-// Runs Office's installer in Microsoft 365's prefix so exactly `apps` are installed, then imports them.
+// Runs Office's installer in Microsoft 365's prefix so exactly `apps` are installed, then imports
+// them.
 Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
                            std::vector<std::string> apps);
 // Keeps `apps` for AddOfficeApps to add once Microsoft 365's running install ends. False when it
@@ -80,8 +87,8 @@ Result<void> SetOfficeApps(config::Config& config, store::GameStore& games, api:
 bool QueueOfficeApps(const std::vector<std::string>& apps);
 // Forgets the queued apps, e.g. after Microsoft 365's install failed.
 void DropQueuedOfficeApps();
-// Adds `apps` and any queued ones to the installed apps, one installer run per batch, until none are
-// left. Stops at the first failure, dropping what's queued.
+// Adds `apps` and any queued ones to the installed apps, one installer run per batch, until none
+// are left. Stops at the first failure, dropping what's queued.
 Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api::EventBus& events,
                            std::vector<std::string> apps);
 
@@ -89,13 +96,14 @@ Result<void> AddOfficeApps(config::Config& config, store::GameStore& games, api:
 bool BeginInstall(const Launcher& launcher);
 std::string InstallState(const Launcher& launcher);  // idle, running, finished, failed
 // `on_progress` gets the install's progress, 0..1, when the installer reports it.
-Result<model::Game> Install(config::Config& config, store::GameStore& games, const Launcher& launcher,
+Result<model::Game> Install(config::Config& config, store::GameStore& games,
+                            const Launcher& launcher,
                             const std::function<void(double)>& on_progress = {});
 
 // Runs the launcher, asking it to start `game` unless it is the launcher's
 // own entry. `action` is launch or install.
-Result<Command> BuildCommand(config::Config& config, const store::GameStore& games, const model::Game& game,
-                             std::string_view action = "launch");
+Result<Command> BuildCommand(config::Config& config, const store::GameStore& games,
+                             const model::Game& game, std::string_view action = "launch");
 
 // install_path as Wine shows it in a process's command line, for tracking
 // the game once the launcher starts it ("c:/program files (x86)/hearthstone").
@@ -113,12 +121,14 @@ std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_
 
 // Values of every subkey of `parent` in a Wine .reg file, by subkey name.
 using RegValues = std::map<std::string, std::string>;
-std::map<std::string, RegValues> ReadRegSubkeys(const std::filesystem::path& reg_file, std::string_view parent);
+std::map<std::string, RegValues> ReadRegSubkeys(const std::filesystem::path& reg_file,
+                                                std::string_view parent);
 
-Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games, api::EventBus& events,
-                             const Launcher& launcher);
+Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games,
+                                      api::EventBus& events, const Launcher& launcher);
 
 // Imports from every installed launcher; used by scans.
-library::ImportSummary ImportAll(config::Config& config, store::GameStore& games, api::EventBus& events);
+library::ImportSummary ImportAll(config::Config& config, store::GameStore& games,
+                                 api::EventBus& events);
 
 }  // namespace mira::launchers

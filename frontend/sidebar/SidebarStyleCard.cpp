@@ -8,7 +8,6 @@
 #include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 #include <functional>
 #include <utility>
@@ -24,9 +23,10 @@ namespace {
 
 // A tile previewing one style above its name.
 class StyleChoice : public QAbstractButton {
-public:
-  StyleChoice(const sidebar::StyleOption& option, std::function<std::vector<sidebar::PreviewGame>()> games,
-              ArtworkStore* artwork, QWidget* parent)
+ public:
+  StyleChoice(const sidebar::StyleOption& option,
+              std::function<std::vector<sidebar::PreviewGame>()> games, ArtworkStore* artwork,
+              QWidget* parent)
       : QAbstractButton(parent), option_(option), games_(std::move(games)), artwork_(artwork) {
     setCheckable(true);
     setAttribute(Qt::WA_Hover);
@@ -36,7 +36,7 @@ public:
     setFixedSize(176, 132);
   }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     const theme::Tokens& tokens = theme::Current();
     QPainter painter(this);
@@ -48,19 +48,22 @@ protected:
     if (hasFocus()) {
       painter.setPen(QPen(tokens.accent, 1, Qt::DotLine));
       painter.setBrush(Qt::NoBrush);
-      painter.drawRoundedRect(frame.adjusted(3, 3, -3, -3), tokens.radius_control, tokens.radius_control);
+      painter.drawRoundedRect(frame.adjusted(3, 3, -3, -3), tokens.radius_control,
+                              tokens.radius_control);
     }
 
-    sidebar::PaintStylePreview(&painter, QRect(12, 12, width() - 24, 86), option_.style, games_(), artwork_);
+    sidebar::PaintStylePreview(&painter, QRect(12, 12, width() - 24, 86), option_.style, games_(),
+                               artwork_);
 
     QFont label = font();
     label.setWeight(QFont::DemiBold);
     painter.setFont(label);
     painter.setPen(tokens.text);
-    painter.drawText(QRect(12, 106, width() - 24, 18), Qt::AlignLeft | Qt::AlignVCenter, option_.label);
+    painter.drawText(QRect(12, 106, width() - 24, 18), Qt::AlignLeft | Qt::AlignVCenter,
+                     option_.label);
   }
 
-private:
+ private:
   sidebar::StyleOption option_;
   std::function<std::vector<sidebar::PreviewGame>()> games_;
   ArtworkStore* artwork_;
@@ -69,8 +72,13 @@ private:
 }  // namespace
 
 SidebarStyleChoices::SidebarStyleChoices(const Choices& choices, std::vector<GameSummary> pinned,
-                                         std::vector<GameSummary> recent, ArtworkStore* artwork, QObject* parent)
-    : QObject(parent), choices_(choices), pinned_(std::move(pinned)), recent_(std::move(recent)), artwork_(artwork) {
+                                         std::vector<GameSummary> recent, ArtworkStore* artwork,
+                                         QObject* parent)
+    : QObject(parent),
+      choices_(choices),
+      pinned_(std::move(pinned)),
+      recent_(std::move(recent)),
+      artwork_(artwork) {
   pinned_row_ = MakeStyleRow("Pinned", /*recent=*/false);
   recent_row_ = MakeStyleRow("Recently played", /*recent=*/true);
 
@@ -104,7 +112,9 @@ SidebarStyleChoices::SidebarStyleChoices(const Choices& choices, std::vector<Gam
   Sync();
 }
 
-QList<SettingRow*> SidebarStyleChoices::Rows() const { return {pinned_row_, recent_row_, when_row_, count_row_}; }
+QList<SettingRow*> SidebarStyleChoices::Rows() const {
+  return {pinned_row_, recent_row_, when_row_, count_row_};
+}
 
 void SidebarStyleChoices::SetChoices(const Choices& choices) {
   choices_ = choices;
@@ -135,9 +145,11 @@ void SidebarStyleChoices::Sync() {
   }
 }
 
-std::vector<sidebar::PreviewGame> SidebarStyleChoices::PreviewGames(bool recent, sidebar::Style style) const {
+std::vector<sidebar::PreviewGame> SidebarStyleChoices::PreviewGames(bool recent,
+                                                                    sidebar::Style style) const {
   std::vector<sidebar::PreviewGame> games;
-  // Running games always show, the rest up to the count; on a shelf the running ones are part of it.
+  // Running games always show, the rest up to the count; on a shelf the running ones are part of
+  // it.
   int played = 0;
   if (recent && style == sidebar::Style::Shelf) {
     played = static_cast<int>(std::ranges::count(recent_, true, &GameSummary::running));
@@ -169,7 +181,8 @@ SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent)
   std::vector<QAbstractButton*>& list = recent ? recent_tiles_ : pinned_tiles_;
   for (const sidebar::StyleOption& option : sidebar::StyleOptions()) {
     const sidebar::Style style = option.style;
-    auto* choice = new StyleChoice(option, [this, recent, style] { return PreviewGames(recent, style); }, artwork_, box);
+    auto* choice = new StyleChoice(
+        option, [this, recent, style] { return PreviewGames(recent, style); }, artwork_, box);
     connect(choice, &QAbstractButton::clicked, this, [this, recent, style] {
       (recent ? choices_.recent : choices_.pinned) = style;
       Edited();
@@ -184,7 +197,8 @@ SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent)
 }
 
 SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
-                                   std::vector<GameSummary> recent, ArtworkStore* artwork, QWidget* parent)
+                                   std::vector<GameSummary> recent, ArtworkStore* artwork,
+                                   QWidget* parent)
     : SettingsCard("Pinned and recently played", parent) {
   SetProminentTitle();
   auto* close = new QToolButton(this);
@@ -194,7 +208,8 @@ SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSumma
   connect(close, &QToolButton::clicked, this, &SidebarStyleCard::CloseRequested);
   Header()->addWidget(close);
 
-  auto* content = new SidebarStyleChoices(choices, std::move(pinned), std::move(recent), artwork, this);
+  auto* content =
+      new SidebarStyleChoices(choices, std::move(pinned), std::move(recent), artwork, this);
   connect(content, &SidebarStyleChoices::Changed, this, &SidebarStyleCard::Changed);
   for (SettingRow* row : content->Rows()) AddRow(row);
 }

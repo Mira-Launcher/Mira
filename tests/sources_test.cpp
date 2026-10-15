@@ -1,13 +1,13 @@
+#include "migrate/Sources.h"
+
 #include <doctest.h>
 
 #include <algorithm>
 #include <filesystem>
+#include <json.hpp>
 #include <string>
 
-#include <json.hpp>
-
 #include "gog/Gog.h"
-#include "migrate/Sources.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
@@ -206,10 +206,12 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
 TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
   LiveServer server(TempDir("sources-list"));
   httplib::Client client = server.Client();
-  auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})", "application/json");
+  auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})",
+                              "application/json");
   REQUIRE(patched != nullptr);
   CHECK(patched->status == 200);
-  auto ordered = client.Put("/v1/sources/order", R"({"order": ["gog", "local"]})", "application/json");
+  auto ordered =
+      client.Put("/v1/sources/order", R"({"order": ["gog", "local"]})", "application/json");
   REQUIRE(ordered != nullptr);
   CHECK(ordered->status == 200);
 
@@ -240,7 +242,8 @@ TEST_CASE("A switched-off source's games are left out of the library unless incl
     return out;
   };
   CHECK_FALSE(std::ranges::contains(ids(Get(client, "/v1/games")), std::string("steam-570")));
-  CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")), std::string("steam-570")));
+  CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")),
+                              std::string("steam-570")));
 
   // Setting it up again turns it back on.
   client.Patch("/v1/sources/steam", R"({"added": false})", "application/json");
@@ -262,12 +265,14 @@ TEST_CASE("An unknown source can't be planned or removed") {
   CHECK(removed->status == 404);
 }
 
-TEST_CASE("Microsoft 365's apps are asked for by name, and only once Office is being set up or is") {
+TEST_CASE(
+    "Microsoft 365's apps are asked for by name, and only once Office is being set up or is") {
   LiveServer server(TempDir("office-apps"));
   httplib::Client client = server.Client();
   // Listed before Office is installed, so they can be picked first.
   const json launchers = Get(client, "/v1/launchers");
-  const auto office = std::ranges::find(launchers, json("office"), [](const json& l) { return l["id"]; });
+  const auto office =
+      std::ranges::find(launchers, json("office"), [](const json& l) { return l["id"]; });
   REQUIRE(office != launchers.end());
   CHECK((*office)["installed"] == false);
   CHECK(std::ranges::contains((*office)["apps"], json{{"ref", "word"}, {"name", "Word"}}));
@@ -292,46 +297,53 @@ TEST_CASE("Copied text is searched for each store's credential, and other text f
   LiveServer server(TempDir("store-find-credential"));
   httplib::Client client = server.Client();
   const auto find = [&](const std::string& store, const std::string& text) {
-    auto res = client.Post("/v1/stores/" + store + "/login/find", json{{"text", text}}.dump(), "application/json");
+    auto res = client.Post("/v1/stores/" + store + "/login/find", json{{"text", text}}.dump(),
+                           "application/json");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
     return json::parse(res->body)["credential"];
   };
   const std::string epic_code = "7c1e05d8a3f94b6e9d2a41c0b8f3e5a7";
-  CHECK(find("epic", R"({"redirectUrl":"https://localhost","authorizationCode":")" + epic_code + R"(","sid":null})") ==
-        epic_code);
+  CHECK(find("epic", R"({"redirectUrl":"https://localhost","authorizationCode":")" + epic_code +
+                         R"(","sid":null})") == epic_code);
   // Firefox's JSON viewer, all of it selected and copied.
-  CHECK(find("epic", "warning\t\"Do not share this code\"\nauthorizationCode\t\"" + epic_code + "\"\nsid\tnull") ==
-        epic_code);
+  CHECK(find("epic", "warning\t\"Do not share this code\"\nauthorizationCode\t\"" + epic_code +
+                         "\"\nsid\tnull") == epic_code);
   CHECK(find("epic", "  " + epic_code + "\n") == epic_code);
   CHECK(find("epic", "https://www.epicgames.com/id/login").is_null());
 
-  CHECK(find("gog", "https://embed.gog.com/on_login_success?origin=client&code=Kx9pR2vQ8mWZ&x=1") == "Kx9pR2vQ8mWZ");
+  CHECK(find("gog", "https://embed.gog.com/on_login_success?origin=client&code=Kx9pR2vQ8mWZ&x=1") ==
+        "Kx9pR2vQ8mWZ");
   CHECK(find("gog", "Kx9pR2vQ8mWZ").is_null());
 
-  CHECK(find("amazon", "https://www.amazon.com/?openid.oa2.authorization_code=ANbXqzKp&openid.mode=id_res") ==
+  CHECK(find("amazon",
+             "https://www.amazon.com/?openid.oa2.authorization_code=ANbXqzKp&openid.mode=id_res") ==
         "ANbXqzKp");
   CHECK(find("amazon", "https://www.amazon.com/ap/signin").is_null());
 
-  CHECK(find("itch", " a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz ") == "a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz");
+  CHECK(find("itch", " a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz ") ==
+        "a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz");
   CHECK(find("itch", "Generate new API key").is_null());
 
   const std::string cookie = R"("eyJpZCI6IjY4NDE1OTI3NyJ9|1791245011|a3f9c2d4e5")";
   CHECK(find("humble", cookie + "\n") == cookie);
   CHECK(find("humble", "csrf_cookie").is_null());
 
-  auto unknown = client.Post("/v1/stores/nope/login/find", json{{"text", "x"}}.dump(), "application/json");
+  auto unknown =
+      client.Post("/v1/stores/nope/login/find", json{{"text", "x"}}.dump(), "application/json");
   REQUIRE(unknown != nullptr);
   CHECK(unknown->status == 404);
 }
 
-TEST_CASE("Steam accounts on this computer list the most recent first, and the chosen one is selected") {
+TEST_CASE(
+    "Steam accounts on this computer list the most recent first, and the chosen one is selected") {
   LiveServer server(TempDir("steam-accounts"));
   const fs::path steam = server.config().GetPath("steam.root");
   httplib::Client client = server.Client();
   fs::create_directories(steam / "steamapps");
-  Touch(steam / "config" / "loginusers.vdf",
-        R"("users" { "76561198000000001" { "AccountName" "older" "PersonaName" "Old" "Timestamp" "100" }
+  Touch(
+      steam / "config" / "loginusers.vdf",
+      R"("users" { "76561198000000001" { "AccountName" "older" "PersonaName" "Old" "Timestamp" "100" }
                      "76561198000000002" { "AccountName" "newer" "PersonaName" "New" "Timestamp" "300" }
                      "76561198000000003" { "AccountName" "main" "PersonaName" "Main" "MostRecent" "1" "Timestamp" "200" } })");
   const auto accounts = [&] {
@@ -358,7 +370,8 @@ TEST_CASE("Steam's installed games are listed most recently played first without
   LiveServer server(TempDir("steam-installed"));
   const fs::path steam = server.config().GetPath("steam.root");
   httplib::Client client = server.Client();
-  for (const auto& [appid, name] : {std::pair{"400", "Portal"}, {"620", "Portal 2"}, {"70", "Half-Life"}}) {
+  for (const auto& [appid, name] :
+       {std::pair{"400", "Portal"}, {"620", "Portal 2"}, {"70", "Half-Life"}}) {
     WriteManifest(steam, appid, name, name);
     fs::create_directories(steam / "steamapps" / "common" / name);
   }

@@ -8,15 +8,15 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "emulators/Emulators.h"
-#include "modmanagers/ModManagers.h"
 #include "epic/Legendary.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "launchers/Launchers.h"
 #include "library/Relocate.h"
 #include "library/Stores.h"
-#include "system/Packages.h"
 #include "metadata/MetadataFetcher.h"
+#include "modmanagers/ModManagers.h"
+#include "system/Packages.h"
 
 namespace mira::library {
 namespace {
@@ -29,8 +29,8 @@ bool IsStore(std::string_view source) {
 
 // Only the app owns these games' files. An emulator's games are the user's own, kept when it goes.
 bool FilesOwnedElsewhere(std::string_view source) {
-  return source == "steam" || source == "lutris" || source == "humble" || emulators::Find(source) != nullptr ||
-         modmanagers::Find(source) != nullptr;
+  return source == "steam" || source == "lutris" || source == "humble" ||
+         emulators::Find(source) != nullptr || modmanagers::Find(source) != nullptr;
 }
 
 bool Belongs(const model::Game& game, std::string_view source,
@@ -41,7 +41,8 @@ bool Belongs(const model::Game& game, std::string_view source,
 
 std::vector<fs::path> DeleteRoots(const config::Config& config, const std::string& prefix) {
   std::vector<fs::path> roots = config.GetPathArray("library_roots");
-  for (const char* key : {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
+  for (const char* key :
+       {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
     roots.push_back(config.GetPath(key));
   }
   // A launcher game installed inside its prefix.
@@ -105,11 +106,13 @@ fs::path ProgramDir(const launchers::Launcher& launcher) {
   return launcher.id == "ea" ? dir.parent_path() : dir;
 }
 
-// A launcher's own apps (Word and Excel under Microsoft 365) live in its program folder, which goes with the
-// launcher: they have no files of their own to delete, and their folder is no "shared" one.
+// A launcher's own apps (Word and Excel under Microsoft 365) live in its program folder, which goes
+// with the launcher: they have no files of their own to delete, and their folder is no "shared"
+// one.
 bool InLauncherFolder(const model::Game& game, const launchers::Launcher* launcher) {
   if (launcher == nullptr || game.install_path.empty() || game.data_dir.empty()) return false;
-  return paths::IsWithin(fs::path(game.install_path), {fs::path(game.data_dir) / "drive_c" / ProgramDir(*launcher)});
+  return paths::IsWithin(fs::path(game.install_path),
+                         {fs::path(game.data_dir) / "drive_c" / ProgramDir(*launcher)});
 }
 
 // Save folders some launchers keep inside their own program folder.
@@ -142,10 +145,12 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
     return {};
   }
   if (game.source == "amazon" && !game.source_ref.empty()) {
-    if (auto done = amazon::RunNile(config, {"uninstall", game.source_ref}); !done) return std::unexpected(done.error());
+    if (auto done = amazon::RunNile(config, {"uninstall", game.source_ref}); !done)
+      return std::unexpected(done.error());
     return {};
   }
-  if (game.source == "itch" && !game.source_ref.empty()) return UninstallItch(config, game.source_ref);
+  if (game.source == "itch" && !game.source_ref.empty())
+    return UninstallItch(config, game.source_ref);
   if (const emulators::Emulator* emulator = emulators::ForGame(game)) {
     std::vector<fs::path> roots = emulators::GameRoots(config, *emulator);
     roots.push_back(config.GetPath("emulators.roms_root"));
@@ -158,12 +163,14 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
   if (RunsExternalProgram(game)) return {};
   const std::vector<fs::path> roots = DeleteRoots(config, game.data_dir);
   // An AppImage is the whole game, so only that file goes, wherever it sits.
-  if (RunsFromAppImage(game)) return DeleteInside((fs::path(game.install_path) / game.exe_path).string(), roots);
+  if (RunsFromAppImage(game))
+    return DeleteInside((fs::path(game.install_path) / game.exe_path).string(), roots);
   const std::string shared = SharedFolder(config, game, library);
   if (shared.empty()) return DeleteInside(game.install_path, roots);
-  return Err("shared_folder",
-             std::format("\"{}\" also holds {}, so its files weren't deleted", game.install_path, shared),
-             "Delete the files by hand, or move the game to a folder of its own first.");
+  return Err(
+      "shared_folder",
+      std::format("\"{}\" also holds {}, so its files weren't deleted", game.install_path, shared),
+      "Delete the files by hand, or move the game to a folder of its own first.");
 }
 
 Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameStore& games,
@@ -183,7 +190,8 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
     }
     for (const fs::path& path : emulators::DataPaths(*emulator)) plan.data.push_back(path.string());
   }
-  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) plan.program_dir = modmanagers::Dir(*manager).string();
+  if (const modmanagers::ModManager* manager = modmanagers::Find(source))
+    plan.program_dir = modmanagers::Dir(*manager).string();
   for (const model::Game& game : games.All()) {
     if (!Belongs(game, source, launcher)) continue;
     if (!game.data_dir.empty() && !std::ranges::contains(plan.kept, game.data_dir))
@@ -195,15 +203,18 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
       }
       continue;
     }
-    plan.games.push_back(
-        {.id = game.id, .name = game.name,
-         .deletes = InLauncherFolder(game, launcher) ? std::string() : WhatGetsDeleted(game, source)});
+    plan.games.push_back({.id = game.id,
+                          .name = game.name,
+                          .deletes = InLauncherFolder(game, launcher)
+                                         ? std::string()
+                                         : WhatGetsDeleted(game, source)});
   }
   return plan;
 }
 
 Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& games,
-                                   api::EventBus& events, std::string_view source, bool delete_data) {
+                                   api::EventBus& events, std::string_view source,
+                                   bool delete_data) {
   const Result<RemovalPlan> plan = PlanRemoval(config, games, source);
   if (!plan) return std::unexpected(plan.error());
   const launchers::Launcher* launcher = launchers::Find(source);
@@ -253,7 +264,8 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
 
   // Off every game it was added to; its settings and mods stay in their prefixes.
   if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
-    if (auto done = modmanagers::Uninstall(games, *manager); !done) result.problems.push_back(done.error().message);
+    if (auto done = modmanagers::Uninstall(games, *manager); !done)
+      result.problems.push_back(done.error().message);
   }
 
   if (plan->signs_out) {

@@ -6,7 +6,9 @@
 
 namespace mira_gui {
 
-ModalOverlay::ModalOverlay(QWidget* parent) : QWidget(parent) { setAttribute(Qt::WA_StyledBackground, true); }
+ModalOverlay::ModalOverlay(QWidget* parent) : QWidget(parent) {
+  setAttribute(Qt::WA_StyledBackground, true);
+}
 
 void ModalOverlay::paintEvent(QPaintEvent* event) {
   if (!scrim.isValid()) return QWidget::paintEvent(event);

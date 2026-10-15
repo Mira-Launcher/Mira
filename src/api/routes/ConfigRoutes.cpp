@@ -1,8 +1,7 @@
-#include "api/Routes.h"
-
 #include <httplib.h>
 
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Schema.h"
 #include "runner/GameMode.h"
@@ -18,13 +17,15 @@ using nlohmann::json;
 void RegisterConfigRoutes(Router& http, Services& s) {
   http.Get("/v1/jobs/([A-Za-z0-9_-]+)", [&s](const Request& req, Response& res) {
     const auto job = s.jobs.Find(req.matches[1].str());
-    if (!job) return SendError(res, 404, "job_not_found", "no such job, or it finished too long ago");
+    if (!job)
+      return SendError(res, 404, "job_not_found", "no such job, or it finished too long ago");
     SendJson(res, *job);
   });
 
   http.Post("/v1/jobs/([A-Za-z0-9_-]+)/cancel", [&s](const Request& req, Response& res) {
     if (auto cancelled = s.jobs.Cancel(req.matches[1].str()); !cancelled) {
-      return SendError(res, cancelled.error().code == "job_not_found" ? 404 : 409, cancelled.error());
+      return SendError(res, cancelled.error().code == "job_not_found" ? 404 : 409,
+                       cancelled.error());
     }
     SendJson(res, {{"status", "cancelling"}});
   });
@@ -37,13 +38,16 @@ void RegisterConfigRoutes(Router& http, Services& s) {
   http.Get("/v1/system/packages", [](const Request& req, Response& res) {
     const std::string feature = Param(req, "for");
     if (!feature.empty() && system::ToolsFor(feature).empty()) {
-      return SendError(res, 400, "invalid_feature", "?for= must be core, wine, winetricks, archives, performance or controllers");
+      return SendError(
+          res, 400, "invalid_feature",
+          "?for= must be core, wine, winetricks, archives, performance or controllers");
     }
     SendJson(res, system::Report(feature));
   });
 
   http.Get("/v1/gamemode/status", [](const Request&, Response& res) {
-    SendJson(res, {{"installed", gamemode::IsInstalled()}, {"daemon_running", gamemode::IsDaemonRunning()}});
+    SendJson(res, {{"installed", gamemode::IsInstalled()},
+                   {"daemon_running", gamemode::IsDaemonRunning()}});
   });
 
   // --- settings -----------------------------------------------------------
@@ -109,7 +113,8 @@ void RegisterConfigRoutes(Router& http, Services& s) {
       keys.push_back(it->second);
     } else {
       result = s.config.ResetAll();
-      for (const config::Entry& entry : config::Schema::Instance().Entries()) keys.push_back(entry.key);
+      for (const config::Entry& entry : config::Schema::Instance().Entries())
+        keys.push_back(entry.key);
     }
     if (result) s.SettingsChanged(keys);
     SendResult(res, result);

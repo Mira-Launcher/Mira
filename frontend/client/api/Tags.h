@@ -30,7 +30,8 @@ void RenameTagAsync(QObject* context, const std::string& from, const std::string
                     std::function<void(PatchGamesResult)> callback);
 
 // POST /v1/tags/remove: off every game and out of the folder tags.
-void RemoveTagAsync(QObject* context, const std::string& name, std::function<void(PatchGamesResult)> callback);
+void RemoveTagAsync(QObject* context, const std::string& name,
+                    std::function<void(PatchGamesResult)> callback);
 
 // POST /v1/tags/preview: which games would move with these folder tags and sorted library folders
 // (unset: as saved), counting `tags` (by game id) in place of those games' saved tags.

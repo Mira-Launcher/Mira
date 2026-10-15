@@ -1,3 +1,5 @@
+#include "runner/Downloader.h"
+
 #include <doctest.h>
 
 #include <algorithm>
@@ -5,7 +7,6 @@
 #include <fstream>
 
 #include "config/Config.h"
-#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "support/TestEnv.h"
@@ -30,14 +31,14 @@ void RunOrFail(const std::vector<std::string>& argv, const fs::path& cwd = {}) {
 // rather than depending on a `zip` CLI (not guaranteed present).
 void WriteZip(const fs::path& zip_path, const fs::path& source_dir) {
   RunOrFail({"python3", "-c",
-            "import zipfile, os, sys\n"
-            "root = sys.argv[2]\n"
-            "with zipfile.ZipFile(sys.argv[1], 'w') as zf:\n"
-            "    for dirpath, _, files in os.walk(root):\n"
-            "        for name in files:\n"
-            "            full = os.path.join(dirpath, name)\n"
-            "            zf.write(full, os.path.relpath(full, os.path.dirname(root)))\n",
-            zip_path.string(), source_dir.string()});
+             "import zipfile, os, sys\n"
+             "root = sys.argv[2]\n"
+             "with zipfile.ZipFile(sys.argv[1], 'w') as zf:\n"
+             "    for dirpath, _, files in os.walk(root):\n"
+             "        for name in files:\n"
+             "            full = os.path.join(dirpath, name)\n"
+             "            zf.write(full, os.path.relpath(full, os.path.dirname(root)))\n",
+             zip_path.string(), source_dir.string()});
 }
 
 }  // namespace
@@ -131,15 +132,18 @@ TEST_CASE("Installed builds map to their download source, and release names read
     const auto found = runner::FamilyOfBuild(config, kind, name, folder);
     return found ? found->id : std::string();
   };
-  CHECK(family("wine", "wine-11.18-staging-tkg-amd64", "wine-11.18-staging-tkg-amd64") == "wine_staging_tkg");
+  CHECK(family("wine", "wine-11.18-staging-tkg-amd64", "wine-11.18-staging-tkg-amd64") ==
+        "wine_staging_tkg");
   CHECK(family("wine", "wine-11.18-staging-amd64", "wine-11.18-staging-amd64") == "wine_staging");
   CHECK(family("wine", "wine-11.18-amd64", "wine-11.18-amd64") == "wine_vanilla");
   CHECK(family("wine", "lutris-GE-Proton8-26-x86_64", "lutris-GE-Proton8-26-x86_64") == "wine_ge");
   CHECK(family("proton", "cachyos-11.0-20260703-slr", "Proton-CachyOS Latest") == "proton_cachyos");
   CHECK(family("wine", "system", "usr").empty());
 
-  const runner::ReleaseAsset wine_ge{.tag = "GE-Proton8-26", .asset_name = "wine-lutris-GE-Proton8-26-x86_64.tar.xz"};
-  CHECK(runner::IsInstalledAs("wine", "lutris-GE-Proton8-26-x86_64", "lutris-GE-Proton8-26-x86_64", wine_ge));
+  const runner::ReleaseAsset wine_ge{.tag = "GE-Proton8-26",
+                                     .asset_name = "wine-lutris-GE-Proton8-26-x86_64.tar.xz"};
+  CHECK(runner::IsInstalledAs("wine", "lutris-GE-Proton8-26-x86_64", "lutris-GE-Proton8-26-x86_64",
+                              wine_ge));
   CHECK(runner::BuildLabel("wine", runner::ReleaseName("wine", wine_ge)) == "Wine-GE 8-26");
   CHECK(runner::BuildLabel("wine", "wine-11.18-staging-tkg-amd64") == "Wine 11.18 staging-tkg");
 }

@@ -4,7 +4,6 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
-
 #include <memory>
 #include <vector>
 
@@ -19,17 +18,17 @@ namespace mira_gui::bigscreen {
 class GamepadInput : public QObject {
   Q_OBJECT
 
-public:
+ public:
   struct Pad {
     QString name;
-    QString kind;  // "xbox", "ps" or "nin", for button labels
+    QString kind;      // "xbox", "ps" or "nin", for button labels
     int battery = -1;  // percent, or -1 when the controller doesn't say
     bool charging = false;
     bool wireless = false;
   };
   // What the settings change.
   struct Options {
-    bool swap_confirm = false;  // B selects and A goes back, Nintendo style
+    bool swap_confirm = false;    // B selects and A goes back, Nintendo style
     int stick_threshold = 18000;  // of 32767, how far a stick moves before it counts
     int first_repeat_ms = 380;
     int repeat_ms = 90;
@@ -53,7 +52,7 @@ public:
   // Which buttons are down right now on any controller, for the button test.
   const std::array<bool, size_t(Nav::kCount)>& down() const { return down_; }
 
-signals:
+ signals:
   void Pressed(Nav nav);
   void PadChanged();
   // A controller's battery dropped under 15%.
@@ -61,7 +60,7 @@ signals:
   // Any button or stick moved, to count as activity.
   void Activity();
 
-private:
+ private:
   struct Sdl;
   void Poll();
   void Scan();

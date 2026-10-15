@@ -10,7 +10,8 @@
 
 namespace mira_gui {
 
-SourceTile::SourceTile(const SourceInfo& source, QWidget* parent) : QFrame(parent), source_(source) {
+SourceTile::SourceTile(const SourceInfo& source, QWidget* parent)
+    : QFrame(parent), source_(source) {
   setObjectName("source_tile");
   setAttribute(Qt::WA_StyledBackground, true);
   QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -35,8 +36,10 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent) : QFrame(paren
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
     name_row->addWidget(name_, 0);
-    QLabel* tag = source.beta ? MakeTag(this, "Beta", "accent") : MakeTag(this, "Recommended", "success");
-    tag->setToolTip(source.beta ? "Works, but not everything does yet" : "The best pick for its consoles");
+    QLabel* tag =
+        source.beta ? MakeTag(this, "Beta", "accent") : MakeTag(this, "Recommended", "success");
+    tag->setToolTip(source.beta ? "Works, but not everything does yet"
+                                : "The best pick for its consoles");
     name_row->addWidget(tag, 0, Qt::AlignVCenter);
     name_row->addStretch(1);
     names->addLayout(name_row);
@@ -69,7 +72,9 @@ void SourceTile::SetDim(bool dim) {
   name_->style()->polish(name_);
 }
 
-bool SourceTile::hasHeightForWidth() const { return layout()->hasHeightForWidth(); }
+bool SourceTile::hasHeightForWidth() const {
+  return layout()->hasHeightForWidth();
+}
 
 int SourceTile::heightForWidth(int width) const {
   return layout()->hasHeightForWidth() ? layout()->totalHeightForWidth(width) : sizeHint().height();
@@ -83,7 +88,8 @@ void SourceTile::mousePressEvent(QMouseEvent* event) {
 void SourceTile::mouseReleaseEvent(QMouseEvent* event) {
   // A click, not the end of a drag that started on the tile.
   if (clickable_ && event->button() == Qt::LeftButton &&
-      (event->globalPosition().toPoint() - pressed_at_).manhattanLength() < 6 && rect().contains(event->position().toPoint())) {
+      (event->globalPosition().toPoint() - pressed_at_).manhattanLength() < 6 &&
+      rect().contains(event->position().toPoint())) {
     emit Clicked();
   }
   QFrame::mouseReleaseEvent(event);

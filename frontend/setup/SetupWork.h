@@ -53,7 +53,8 @@ class SetupWork : public QObject {
  private:
   void HandleEvent(const std::string& type, const std::string& data);
   void StartOffice();
-  // A window closed mid-request drops its callbacks (system::InstallPackages), so what waited on them ends here.
+  // A window closed mid-request drops its callbacks (system::InstallPackages), so what waited on
+  // them ends here.
   void WindowGone();
 
   DownloadTracker* downloads_ = nullptr;
@@ -62,7 +63,7 @@ class SetupWork : public QObject {
   bool proton_running_ = false;
   bool office_waiting_ = false;  // for the packages
   bool office_started_ = false;
-  bool office_accepted_ = false;  // mirad started the install
+  bool office_accepted_ = false;          // mirad started the install
   std::vector<std::string> office_apps_;  // asked for before that
   bool office_running_ = false;
   bool office_failed_ = false;

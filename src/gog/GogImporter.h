@@ -24,7 +24,7 @@ std::filesystem::path FindGameDir(const config::Config& config, const std::strin
 // a game GogInstaller already put there is picked up on a fresh `mirad`
 // start, and one a user drops in by hand is picked up too.
 class GogImporter {
-public:
+ public:
   GogImporter(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<library::ImportSummary> Import();
@@ -35,9 +35,10 @@ public:
   // for an install living somewhere else. A missing/unparseable title
   // falls back to `id`, same as every other source here. `refresh` false
   // skips gogdl for a game already imported from this folder with an exe.
-  Result<model::Game> ImportPath(const std::string& id, const std::filesystem::path& path, bool refresh = true);
+  Result<model::Game> ImportPath(const std::string& id, const std::filesystem::path& path,
+                                 bool refresh = true);
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

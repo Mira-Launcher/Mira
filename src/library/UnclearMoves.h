@@ -23,7 +23,7 @@ struct UnclearMove {
 // Events: library.move_unclear {folder, games: [{id, name}]} when one appears, and
 // library.move_settled {folder} when it's gone (settled, or no longer on disk).
 class UnclearMoves {
-public:
+ public:
   explicit UnclearMoves(api::EventBus& events) : events_(events) {}
 
   // What a scan of `root` found, replacing what was known under it.
@@ -35,7 +35,7 @@ public:
   // The record a client gets: {folder, games: [{id, name}]}.
   static nlohmann::json ToJson(const UnclearMove& move, const store::GameStore& games);
 
-private:
+ private:
   api::EventBus& events_;
   mutable std::mutex mutex_;
   std::vector<UnclearMove> moves_;

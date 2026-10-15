@@ -35,10 +35,11 @@ struct FixtureRow {
 // real Lutris install): categories.name is UNIQUE, games_categories is a
 // plain join table of game_id/category_id.
 Result<void> BuildFixtureDb(const fs::path& db_path, const std::vector<FixtureRow>& rows) {
-  std::string sql = "CREATE TABLE games (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, runner TEXT, "
-                    "configpath TEXT, lastplayed INTEGER, playtime REAL);"
-                    "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT UNIQUE);"
-                    "CREATE TABLE games_categories (game_id INTEGER, category_id INTEGER);";
+  std::string sql =
+      "CREATE TABLE games (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, runner TEXT, "
+      "configpath TEXT, lastplayed INTEGER, playtime REAL);"
+      "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT UNIQUE);"
+      "CREATE TABLE games_categories (game_id INTEGER, category_id INTEGER);";
   std::map<std::string, int> category_ids;
   int next_category_id = 1;
   int game_id = 1;
@@ -50,11 +51,12 @@ Result<void> BuildFixtureDb(const fs::path& db_path, const std::vector<FixtureRo
     for (const std::string& category : row.categories) {
       const auto [it, inserted] = category_ids.try_emplace(category, next_category_id);
       if (inserted) {
-        sql += std::format("INSERT INTO categories (id, name) VALUES ({}, '{}');", next_category_id, category);
+        sql += std::format("INSERT INTO categories (id, name) VALUES ({}, '{}');", next_category_id,
+                           category);
         ++next_category_id;
       }
-      sql +=
-          std::format("INSERT INTO games_categories (game_id, category_id) VALUES ({}, {});", game_id, it->second);
+      sql += std::format("INSERT INTO games_categories (game_id, category_id) VALUES ({}, {});",
+                         game_id, it->second);
     }
     ++game_id;
   }
@@ -98,16 +100,19 @@ struct Fixture {
 
 }  // namespace
 
-TEST_CASE("LutrisImporter derives install_path from the exe's own directory, data_dir verbatim from prefix") {
+TEST_CASE(
+    "LutrisImporter derives install_path from the exe's own directory, data_dir verbatim from "
+    "prefix") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-combined");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "batman";
   fs::create_directories(game_dir / "Binaries");
 
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
-                        {{"Batman: Arkham Asylum", "batman-arkham-asylum", "wine", "batman-123", {}}})
-             .has_value());
+  REQUIRE(
+      BuildFixtureDb(fx.lutris_dir / "pga.db",
+                     {{"Batman: Arkham Asylum", "batman-arkham-asylum", "wine", "batman-123", {}}})
+          .has_value());
   test::Touch(fx.lutris_dir / "games" / "batman-123.yml",
               std::format(R"(game:
   exe: {}/Binaries/BmLauncher.exe
@@ -138,8 +143,9 @@ TEST_CASE("LutrisImporter keeps a relative exe relative to prefix, per the yaml 
   const fs::path install_dir = prefix_dir / "drive_c" / "Program Files" / "Epic Games" / "Launcher";
   fs::create_directories(install_dir);
 
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Epic Games Store", "epic-games-store", "wine", "egs-1", {}}})
-             .has_value());
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                         {{"Epic Games Store", "epic-games-store", "wine", "egs-1", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "egs-1.yml", std::format(R"(game:
   exe: drive_c/Program Files/Epic Games/Launcher/EpicGamesLauncher.exe
   prefix: {}
@@ -162,7 +168,9 @@ TEST_CASE("LutrisImporter skips a row with no prefix recorded in its yaml") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-no-prefix");
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Celeste", "celeste", "wine", "celeste-456", {}}}).has_value());
+  REQUIRE(
+      BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Celeste", "celeste", "wine", "celeste-456", {}}})
+          .has_value());
   test::Touch(fx.lutris_dir / "games" / "celeste-456.yml",
               "game:\n  exe: /home/exo/Games/Celeste/Celeste.exe\n");
 
@@ -181,9 +189,9 @@ TEST_CASE("LutrisImporter skips non-wine runners and updates known games in plac
   fs::create_directories(game_dir);
 
   REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
-                        {{"Celeste", "celeste", "wine", "celeste-1", {}},
-                         {"Half-Life", "half-life", "steam", "half-life-1", {}}})
-             .has_value());
+                         {{"Celeste", "celeste", "wine", "celeste-1", {}},
+                          {"Half-Life", "half-life", "steam", "half-life-1", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
               std::format(R"(game:
   exe: {}/Celeste.exe
@@ -217,10 +225,12 @@ TEST_CASE("LutrisImporter keeps a game Mira moved into its own folders on re-imp
   const fs::path prefix_dir = fx.lutris_dir.parent_path() / "lutris-moved-prefix";
   test::Touch(game_dir / "BLUE PRINCE.exe", "exe");
   fs::create_directories(prefix_dir / "drive_c");
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Blue Prince", "blue-prince", "wine", "blue-prince-1", {}}})
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                         {{"Blue Prince", "blue-prince", "wine", "blue-prince-1", {}}})
               .has_value());
   test::Touch(fx.lutris_dir / "games" / "blue-prince-1.yml",
-              std::format("game:\n  exe: {}/BLUE PRINCE.exe\n  prefix: {}\n", game_dir.string(), prefix_dir.string()));
+              std::format("game:\n  exe: {}/BLUE PRINCE.exe\n  prefix: {}\n", game_dir.string(),
+                          prefix_dir.string()));
 
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
   REQUIRE(importer.Import().has_value());
@@ -242,7 +252,9 @@ TEST_CASE("LutrisImporter keeps a game Mira moved into its own folders on re-imp
   CHECK(kept->source == "manual");  // Lutris can't run it from there, so it's Mira's own
 }
 
-TEST_CASE("LutrisImporter brings Lutris's playtime and last played until Mira has played the game itself") {
+TEST_CASE(
+    "LutrisImporter brings Lutris's playtime and last played until Mira has played the game "
+    "itself") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-play");
@@ -255,7 +267,8 @@ TEST_CASE("LutrisImporter brings Lutris's playtime and last played until Mira ha
                 .has_value());
   };
   test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
-              std::format("game:\n  exe: {}/Celeste.exe\n  prefix: {}\n", game_dir.string(), game_dir.string()));
+              std::format("game:\n  exe: {}/Celeste.exe\n  prefix: {}\n", game_dir.string(),
+                          game_dir.string()));
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
 
   build(1780112448, 118.5);
@@ -268,11 +281,14 @@ TEST_CASE("LutrisImporter brings Lutris's playtime and last played until Mira ha
   CHECK(fx.games.Find("celeste")->play_seconds == 120 * 3600);
 
   // Once Mira has a session of its own, its record stays.
-  REQUIRE(fx.games.Update("celeste", [](model::Game& g) {
-    g.last_session_at = 1791000000;
-    g.last_played_at = 1791000000;
-    g.play_seconds = 5;
-  }).has_value());
+  REQUIRE(fx.games
+              .Update("celeste",
+                      [](model::Game& g) {
+                        g.last_session_at = 1791000000;
+                        g.last_played_at = 1791000000;
+                        g.play_seconds = 5;
+                      })
+              .has_value());
   build(1792000000, 200);
   REQUIRE(importer.Import().has_value());
   CHECK(fx.games.Find("celeste")->last_played_at == 1791000000);
@@ -286,19 +302,25 @@ TEST_CASE("LutrisImporter offers the folder's executables and keeps the one pick
   const fs::path game_dir = fx.lutris_dir.parent_path() / "lutris-pick-game";
   test::Touch(game_dir / "Launcher.exe", std::string(4096, 'x'));
   test::Touch(game_dir / "bin" / "Game.exe", std::string(8192, 'x'));
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Hades", "hades", "wine", "hades-1", {}}}).has_value());
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Hades", "hades", "wine", "hades-1", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "hades-1.yml",
-              std::format("game:\n  exe: {}/Launcher.exe\n  prefix: {}\n", game_dir.string(), game_dir.string()));
+              std::format("game:\n  exe: {}/Launcher.exe\n  prefix: {}\n", game_dir.string(),
+                          game_dir.string()));
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
   REQUIRE(importer.Import().has_value());
 
   const auto imported = fx.games.Find("hades");
   REQUIRE(imported.has_value());
-  CHECK(std::ranges::any_of(imported->candidates, [](const model::Candidate& c) { return c.rel_path == "bin/Game.exe"; }));
-  CHECK(std::ranges::any_of(imported->candidates,
-                            [](const model::Candidate& c) { return c.rel_path == "Launcher.exe" && c.chosen; }));
+  CHECK(std::ranges::any_of(imported->candidates, [](const model::Candidate& c) {
+    return c.rel_path == "bin/Game.exe";
+  }));
+  CHECK(std::ranges::any_of(imported->candidates, [](const model::Candidate& c) {
+    return c.rel_path == "Launcher.exe" && c.chosen;
+  }));
 
-  REQUIRE(fx.games.Update("hades", [](model::Game& g) { g.exe_path = "bin/Game.exe"; }).has_value());
+  REQUIRE(
+      fx.games.Update("hades", [](model::Game& g) { g.exe_path = "bin/Game.exe"; }).has_value());
   REQUIRE(importer.Import().has_value());
   CHECK(fx.games.Find("hades")->exe_path == "bin/Game.exe");
   CHECK(fx.games.Find("hades")->source == "lutris");
@@ -312,9 +334,12 @@ TEST_CASE("LutrisImporter takes over a game an older Mira moved but left as a Lu
   const fs::path prefix_dir = fx.lutris_dir.parent_path() / "lutris-old-move-prefix";
   test::Touch(game_dir / "Game.exe", "exe");
   fs::create_directories(prefix_dir / "drive_c");
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Jump King", "jump-king", "wine", "jump-king-1", {}}}).has_value());
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                         {{"Jump King", "jump-king", "wine", "jump-king-1", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "jump-king-1.yml",
-              std::format("game:\n  exe: {}/Game.exe\n  prefix: {}\n", game_dir.string(), prefix_dir.string()));
+              std::format("game:\n  exe: {}/Game.exe\n  prefix: {}\n", game_dir.string(),
+                          prefix_dir.string()));
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
   REQUIRE(importer.Import().has_value());
 
@@ -322,7 +347,8 @@ TEST_CASE("LutrisImporter takes over a game an older Mira moved but left as a Lu
   const fs::path moved_prefix = fx.state_dir / "prefixes" / "jump-king";
   fs::create_directories(moved_prefix.parent_path());
   fs::rename(prefix_dir, moved_prefix);
-  REQUIRE(fx.games.Update("jump-king", [&](model::Game& g) { g.data_dir = moved_prefix.string(); }).has_value());
+  REQUIRE(fx.games.Update("jump-king", [&](model::Game& g) { g.data_dir = moved_prefix.string(); })
+              .has_value());
 
   REQUIRE(importer.Import().has_value());
   const auto taken = fx.games.Find("jump-king");
@@ -340,7 +366,9 @@ TEST_CASE("LutrisImporter refuses an install_path that's really the whole shared
   const fs::path prefix_dir = fx.lutris_dir.parent_path() / "battlenet";
   fs::create_directories(prefix_dir / "drive_c");
 
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Hearthstone", "hearthstone", "wine", "hs-1", {}}}).has_value());
+  REQUIRE(
+      BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Hearthstone", "hearthstone", "wine", "hs-1", {}}})
+          .has_value());
   // A launcher script referenced with no subdirectory at all: install_path
   // would resolve to prefix/drive_c, the whole C: drive shared by every
   // other game in this prefix (Battle.net, HDT, ...). Must be refused, not
@@ -359,16 +387,19 @@ TEST_CASE("LutrisImporter refuses an install_path that's really the whole shared
   CHECK(fx.games.All().empty());
 }
 
-TEST_CASE("LutrisImporter maps .hidden to the hidden tag, favorites to favorite, and everything else verbatim") {
+TEST_CASE(
+    "LutrisImporter maps .hidden to the hidden tag, favorites to favorite, and everything else "
+    "verbatim") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-categories");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
   fs::create_directories(game_dir);
 
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
-                        {{"Celeste", "celeste", "wine", "celeste-1", {".hidden", "favorites", "Platformer"}}})
-             .has_value());
+  REQUIRE(BuildFixtureDb(
+              fx.lutris_dir / "pga.db",
+              {{"Celeste", "celeste", "wine", "celeste-1", {".hidden", "favorites", "Platformer"}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
               std::format(R"(game:
   exe: {}/Celeste.exe
@@ -388,16 +419,17 @@ TEST_CASE("LutrisImporter maps .hidden to the hidden tag, favorites to favorite,
   CHECK(std::ranges::find(game->tags, "Platformer") != game->tags.end());
 }
 
-TEST_CASE("LutrisImporter merges Lutris categories with tags the user already added, on re-import") {
+TEST_CASE(
+    "LutrisImporter merges Lutris categories with tags the user already added, on re-import") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-tag-merge");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
   fs::create_directories(game_dir);
 
-  REQUIRE(
-      BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Celeste", "celeste", "wine", "celeste-1", {".hidden"}}})
-          .has_value());
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
+                         {{"Celeste", "celeste", "wine", "celeste-1", {".hidden"}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
               std::format(R"(game:
   exe: {}/Celeste.exe
@@ -429,8 +461,8 @@ TEST_CASE("LutrisImporter imports a native (\"linux\" runner) game with no prefi
   fs::create_directories(game_dir);
 
   REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
-                        {{"My AppImage Game", "my-appimage-game", "linux", "native-1", {}}})
-             .has_value());
+                         {{"My AppImage Game", "my-appimage-game", "linux", "native-1", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "native-1.yml", std::format(R"(game:
   exe: {}/MyGame.AppImage
   args: --fullscreen
@@ -454,12 +486,13 @@ TEST_CASE("LutrisImporter imports a native (\"linux\" runner) game with no prefi
   CHECK(game->status == model::GameStatus::Ready);
 }
 
-TEST_CASE("LutrisImporter skips a \"linux\" row whose exe is relative -- nothing to resolve it against") {
+TEST_CASE(
+    "LutrisImporter skips a \"linux\" row whose exe is relative -- nothing to resolve it against") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-native-relative-exe");
-  REQUIRE(
-      BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Broken", "broken", "linux", "native-2", {}}}).has_value());
+  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db", {{"Broken", "broken", "linux", "native-2", {}}})
+              .has_value());
   test::Touch(fx.lutris_dir / "games" / "native-2.yml", "game:\n  exe: MyGame.AppImage\n");
 
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
@@ -482,8 +515,10 @@ TEST_CASE("LutrisImporter keeps two games whose programs share a folder apart") 
                          {{"One", "one", "wine", "one-1", {}}, {"Two", "two", "wine", "two-2", {}}})
               .has_value());
   for (const auto* name : {"one", "two"}) {
-    test::Touch(fx.lutris_dir / "games" / std::format("{}-{}.yml", name, name == std::string("one") ? 1 : 2),
-                std::format("game:\n  exe: {}/{}.exe\n  prefix: {}\n", bin.string(), name, prefix.string()));
+    test::Touch(fx.lutris_dir / "games" /
+                    std::format("{}-{}.yml", name, name == std::string("one") ? 1 : 2),
+                std::format("game:\n  exe: {}/{}.exe\n  prefix: {}\n", bin.string(), name,
+                            prefix.string()));
   }
 
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);

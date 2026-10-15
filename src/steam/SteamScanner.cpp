@@ -15,7 +15,8 @@ namespace {
 // strictly an enrichment on top of a scan that works fine without it.
 std::map<std::string, std::int64_t> PlaytimeByAppid(const config::Config& config) {
   std::map<std::string, std::int64_t> playtime;
-  if (!config.GetBool("steam.import_playtime") || config.GetString("steam.web_api_key").empty()) return playtime;
+  if (!config.GetBool("steam.import_playtime") || config.GetString("steam.web_api_key").empty())
+    return playtime;
 
   const Result<std::vector<OwnedGame>> owned = ListOwnedGames(config);
   if (!owned) {
@@ -38,13 +39,15 @@ Result<library::ImportSummary> SteamScanner::Scan() {
   const auto root = FindSteamRoot(config_);
   if (!root) {
     return Err("steam_not_found", "Mira couldn't find a Steam installation",
-               "If Steam is installed somewhere unusual, set where it is.", Fix::Setting("steam.root"));
+               "If Steam is installed somewhere unusual, set where it is.",
+               Fix::Setting("steam.root"));
   }
 
   const std::map<std::string, std::int64_t> steam_playtime = PlaytimeByAppid(config_);
-  const std::map<std::string, AppActivity> activity = config_.GetBool("steam.import_playtime")
-                                                          ? ReadAppActivity(*root, config_.GetString("steam.steamid64"))
-                                                          : std::map<std::string, AppActivity>{};
+  const std::map<std::string, AppActivity> activity =
+      config_.GetBool("steam.import_playtime")
+          ? ReadAppActivity(*root, config_.GetString("steam.steamid64"))
+          : std::map<std::string, AppActivity>{};
 
   for (const SteamApp& app : ListApps(*root)) {
     const std::string id = "steam-" + app.appid;

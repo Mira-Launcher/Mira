@@ -19,23 +19,23 @@ struct GameSummary;
 class InstallerCard : public SettingsCard {
   Q_OBJECT
 
-public:
+ public:
   InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWidget* parent = nullptr);
 
-signals:
+ signals:
   // mirad started the install; its progress shows in Activity and on the tile.
   void Started();
   void CloseRequested();
 
-private:
+ private:
   void LoadInfo(const std::string& path);
   void Install(bool interactive);
 
   std::string game_id_;
   std::string install_path_;
   std::string installer_;  // empty: the game's own
-  int info_request_ = 0;  // only the latest LoadInfo's reply counts
-  bool silent_ = false;  // the loaded installer can run without its window
+  int info_request_ = 0;   // only the latest LoadInfo's reply counts
+  bool silent_ = false;    // the loaded installer can run without its window
   QLabel* file_ = nullptr;
   QLabel* error_ = nullptr;
   QPushButton* shown_ = nullptr;
@@ -47,14 +47,14 @@ private:
 class InstallerLeftoverCard : public SettingsCard {
   Q_OBJECT
 
-public:
-  InstallerLeftoverCard(const GameSummary& game, const std::string& installer_dir, std::int64_t bytes,
-                        ArtworkStore* artwork, QWidget* parent = nullptr);
+ public:
+  InstallerLeftoverCard(const GameSummary& game, const std::string& installer_dir,
+                        std::int64_t bytes, ArtworkStore* artwork, QWidget* parent = nullptr);
 
-signals:
+ signals:
   void CloseRequested();
 
-private:
+ private:
   std::string game_id_;
   QLabel* error_ = nullptr;
   QPushButton* delete_ = nullptr;

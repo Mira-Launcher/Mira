@@ -3,14 +3,13 @@
 #include <QLayout>
 #include <QList>
 #include <QWidget>
-
 #include <algorithm>
 
 namespace mira_gui {
 
 // Equal columns, as many as fit `min_width` each; a row is as tall as its tallest item.
 class TileGridLayout : public QLayout {
-public:
+ public:
   explicit TileGridLayout(QWidget* parent, int min_width, int gap = 12)
       : QLayout(parent), min_width_(min_width), gap_(gap) {
     setContentsMargins(0, 0, 0, 0);
@@ -45,7 +44,7 @@ public:
   QSize sizeHint() const override { return {min_width_, heightForWidth(min_width_)}; }
   QSize minimumSize() const override { return {min_width_, 0}; }
 
-private:
+ private:
   int Arrange(const QRect& rect, bool apply) const {
     QList<QLayoutItem*> shown;
     for (QLayoutItem* item : items_) {
@@ -59,7 +58,8 @@ private:
       int height = 0;
       for (int i = first; i < last; ++i) {
         QLayoutItem* item = shown[i];
-        height = std::max(height, item->hasHeightForWidth() ? item->heightForWidth(width) : item->sizeHint().height());
+        height = std::max(height, item->hasHeightForWidth() ? item->heightForWidth(width)
+                                                            : item->sizeHint().height());
       }
       if (apply) {
         for (int i = first; i < last; ++i) {

@@ -3,15 +3,16 @@
 #include <QLayout>
 #include <QList>
 #include <QWidget>
-
 #include <algorithm>
 
 namespace mira_gui {
 
 // Lays its items out left to right, wrapping onto a new line when one won't fit.
 class FlowLayout : public QLayout {
-public:
-  explicit FlowLayout(QWidget* parent, int gap = 6) : QLayout(parent), gap_(gap) { setContentsMargins(0, 0, 0, 0); }
+ public:
+  explicit FlowLayout(QWidget* parent, int gap = 6) : QLayout(parent), gap_(gap) {
+    setContentsMargins(0, 0, 0, 0);
+  }
   ~FlowLayout() override {
     while (QLayoutItem* item = takeAt(0)) delete item;
   }
@@ -29,8 +30,8 @@ public:
     invalidate();
   }
 
-  // Prefers the width that fits every item on one line, rather than one item's. A layout that sizes from
-  // hints for a moment then lays it out on one line, not wrapped one item per line.
+  // Prefers the width that fits every item on one line, rather than one item's. A layout that sizes
+  // from hints for a moment then lays it out on one line, not wrapped one item per line.
   void SetPreferOneLine(bool one_line) {
     one_line_ = one_line;
     invalidate();
@@ -49,7 +50,8 @@ public:
     for (const QLayoutItem* item : items_) {
       if (item->widget() != nullptr && item->widget()->isHidden()) continue;
       const QSize hint = item->sizeHint();
-      size = QSize(size.width() + (size.width() > 0 ? gap_ : 0) + hint.width(), std::max(size.height(), hint.height()));
+      size = QSize(size.width() + (size.width() > 0 ? gap_ : 0) + hint.width(),
+                   std::max(size.height(), hint.height()));
     }
     return size.expandedTo(minimumSize());
   }
@@ -59,7 +61,7 @@ public:
     return size;
   }
 
-private:
+ private:
   int Arrange(const QRect& rect, bool apply) const {
     int x = rect.x();
     int y = rect.y();

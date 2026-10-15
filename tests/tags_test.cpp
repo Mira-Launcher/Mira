@@ -84,14 +84,17 @@ TEST_CASE("The tag list counts your tags and suggests the Steam tags you don't h
   AddGame(server.games(), "b", games / "B", {"RPG", "Indie"});
   AddGame(server.games(), "c", games / "C", {}, "steam:3");
   AddGame(server.games(), "d", games / "D");
-  WriteMetadata(server.games().Metadata(), "a", std::vector<std::string>{"RPG", "Indie", "Singleplayer"});
-  WriteMetadata(server.games().Metadata(), "c", std::vector<std::string>{"Singleplayer", "Roguelike"});
+  WriteMetadata(server.games().Metadata(), "a",
+                std::vector<std::string>{"RPG", "Indie", "Singleplayer"});
+  WriteMetadata(server.games().Metadata(), "c",
+                std::vector<std::string>{"Singleplayer", "Roguelike"});
   WriteMetadata(server.games().Metadata(), "d", std::nullopt);  // fetched before Steam tags were
   // A store's launcher: a Steam game of its name says nothing about it.
   model::Game launcher = AddGame(server.games(), "ea", games / "EA");
   launcher.source = "launcher";
   REQUIRE(server.games().Upsert(launcher).has_value());
-  WriteMetadata(server.games().Metadata(), "ea", std::vector<std::string>{"Singleplayer", "Utilities"});
+  WriteMetadata(server.games().Metadata(), "ea",
+                std::vector<std::string>{"Singleplayer", "Utilities"});
   httplib::Client client = server.Client();
 
   const json listed = GetTags(client);
@@ -199,7 +202,8 @@ TEST_CASE("Fetching Steam tags fills in the games whose metadata has none") {
               .has_value());
   AddGame(server.games(), "unknown", games / "U");
   AddGame(server.games(), "no-metadata", games / "N", {}, "steam:10");
-  for (const char* id : {"steam-10", "hollow", "unknown"}) WriteMetadata(server.games().Metadata(), id, std::nullopt);
+  for (const char* id : {"steam-10", "hollow", "unknown"})
+    WriteMetadata(server.games().Metadata(), id, std::nullopt);
   REQUIRE(server.games()
               .Update("unknown", [](model::Game& game) { game.name = "Nothing Like It"; })
               .has_value());

@@ -32,7 +32,8 @@ Constraint Range(double min, double max) {
 Constraint OneOf(std::vector<std::string> allowed) {
   Constraint constraint;
   constraint.one_of = allowed;
-  constraint.validate = [allowed = std::move(allowed)](const json& value) -> std::optional<std::string> {
+  constraint.validate = [allowed =
+                             std::move(allowed)](const json& value) -> std::optional<std::string> {
     if (!value.is_string()) return "expected a string";
     const std::string text = value.get<std::string>();
     if (std::ranges::find(allowed, text) == allowed.end()) {
@@ -89,7 +90,8 @@ Validator GithubUrl() {
   return [](const json& value) -> std::optional<std::string> {
     if (!value.is_string()) return "expected a string";
     const std::string url = value.get<std::string>();
-    if (!url.empty() && !strings::ParseGithubUrl(url)) return "expected a github.com repository or release link";
+    if (!url.empty() && !strings::ParseGithubUrl(url))
+      return "expected a github.com repository or release link";
     return std::nullopt;
   };
 }
@@ -121,20 +123,22 @@ Validator FolderTags() {
 // The source a key belongs to: "steam.root" and "launchers.ubisoft.disable_overlay" do,
 // "runner_sources.gog.repo" (a download location) and "scan.max_depth" don't.
 std::string SourceOf(std::string_view key) {
-  static constexpr std::string_view kSources[] = {"steam", "epic", "gog", "itch", "humble", "amazon",
-                                                  "lutris", "battlenet", "ubisoft", "ea", "office"};
+  static constexpr std::string_view kSources[] = {"steam",   "epic",   "gog",    "itch",
+                                                  "humble",  "amazon", "lutris", "battlenet",
+                                                  "ubisoft", "ea",     "office"};
   if (key.starts_with("launchers.")) key.remove_prefix(std::string_view("launchers.").size());
   if (key.starts_with("emulators.")) key.remove_prefix(std::string_view("emulators.").size());
   const std::string_view head = key.substr(0, key.find('.'));
   if (head.size() == key.size()) return {};
   if (emulators::Find(head) != nullptr) return std::string(head);
-  return std::ranges::find(kSources, head) != std::end(kSources) ? std::string(head) : std::string();
+  return std::ranges::find(kSources, head) != std::end(kSources) ? std::string(head)
+                                                                 : std::string();
 }
 
 // Stamps each entry with the section and group it was declared under, so
 // neither is repeated on every entry.
 class Sections {
-public:
+ public:
   explicit Sections(std::vector<Entry>& entries) : entries_(entries) {}
 
   enum class Fold { Open, Collapsed };
@@ -164,7 +168,7 @@ public:
     entries_.push_back(std::move(entry));
   }
 
-private:
+ private:
   std::vector<Entry>& entries_;
   std::string category_;
   int group_ = 0;
@@ -191,7 +195,8 @@ Schema::Schema() {
          .label = "Library folders",
          .type = Type::StringArray,
          .default_value = json::array({"~/Mira/Games", "~/Mira/Applications"}),
-         .doc = "Folders Mira watches for new games and apps. Drop a folder into one to add it. A missing "
+         .doc = "Folders Mira watches for new games and apps. Drop a folder into one to add it. A "
+                "missing "
                 "folder in your home folder is created.",
          .path = PathKind::Folder});
 
@@ -199,8 +204,9 @@ Schema::Schema() {
          .label = "Prefix folder",
          .type = Type::String,
          .default_value = "~/Mira/prefixes",
-         .doc = "The folder where each game's Wine or Proton prefix is created. Mira never scans it "
-                "for games.",
+         .doc =
+             "The folder where each game's Wine or Proton prefix is created. Mira never scans it "
+             "for games.",
          .path = PathKind::Folder});
 
   s.Add({.key = "prefix_naming",
@@ -233,9 +239,10 @@ Schema::Schema() {
          .label = "Remove missing games",
          .type = Type::Bool,
          .default_value = false,
-         .doc = "Remove a game from the library when its folder disappears, instead of marking it "
-                "missing. A missing game keeps its settings and playtime in case a drive or network "
-                "share is only offline. Mira never deletes game files either way."});
+         .doc =
+             "Remove a game from the library when its folder disappears, instead of marking it "
+             "missing. A missing game keeps its settings and playtime in case a drive or network "
+             "share is only offline. Mira never deletes game files either way."});
 
   s.Group("Moving games");
 
@@ -325,8 +332,9 @@ Schema::Schema() {
          .label = "SteamGridDB API key",
          .type = Type::String,
          .default_value = "",
-         .doc = "A free key from steamgriddb.com. Games that are not from Steam need it to get cover "
-                "art. Steam games never do.",
+         .doc =
+             "A free key from steamgriddb.com. Games that are not from Steam need it to get cover "
+             "art. Steam games never do.",
          .is_secret = true,
          .link = "https://www.steamgriddb.com/profile/preferences/api",
          .keywords = "sgdb cover art token"});
@@ -397,17 +405,19 @@ Schema::Schema() {
          .label = "Match other games to Steam by name",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Show a ProtonDB rating, Steam's user reviews and Steam tags for games that are not "
-                "from Steam, from the Steam game of their name. Reviews and tags need the exact name "
-                "(case and punctuation are ignored); a game's Steam app ID setting replaces the "
-                "match. The match can be wrong, and each lookup sends the game's name to Steam's "
-                "public search. It does not change how the game launches or its cover art."});
+         .doc =
+             "Show a ProtonDB rating, Steam's user reviews and Steam tags for games that are not "
+             "from Steam, from the Steam game of their name. Reviews and tags need the exact name "
+             "(case and punctuation are ignored); a game's Steam app ID setting replaces the "
+             "match. The match can be wrong, and each lookup sends the game's name to Steam's "
+             "public search. It does not change how the game launches or its cover art."});
 
-  s.Add({.key = "lutris.import_art",
-         .label = "Use Lutris artwork",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
+  s.Add(
+      {.key = "lutris.import_art",
+       .label = "Use Lutris artwork",
+       .type = Type::Bool,
+       .default_value = true,
+       .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
 
   // --- Sources ---------------------------------------------------------------
   s.Section("Sources", "Steam");
@@ -416,7 +426,8 @@ Schema::Schema() {
          .label = "Steam folder",
          .type = Type::String,
          .default_value = "",
-         .doc = "Steam's install folder. Empty looks in ~/.steam/steam, then ~/.local/share/Steam, then Flathub's Steam.",
+         .doc = "Steam's install folder. Empty looks in ~/.steam/steam, then ~/.local/share/Steam, "
+                "then Flathub's Steam.",
          .path = PathKind::Folder});
 
   s.Add({.key = "steam.launch_mode",
@@ -462,19 +473,22 @@ Schema::Schema() {
          .label = "Import Steam playtime and last played",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "When scanning Steam, use Steam's playtime and last played date for a game when "
-                "they are higher or later than what Mira recorded, so games started from Steam "
-                "itself count too. Read from Steam's files for the account signed in last, or the "
-                "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
+         .doc =
+             "When scanning Steam, use Steam's playtime and last played date for a game when "
+             "they are higher or later than what Mira recorded, so games started from Steam "
+             "itself count too. Read from Steam's files for the account signed in last, or the "
+             "Steam ID below. With the Steam Web API key, playtime also includes other computers.",
          .keywords = "recently played last played date"});
 
   s.Add({.key = "steam.web_api_key",
          .label = "Steam Web API key",
          .type = Type::String,
          .default_value = "",
-         .doc = "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
-                "localhost. Steam's local files only list installed games. With this key and your Steam ID, Mira can also list every game "
-                "you own and import your Steam playtime.",
+         .doc =
+             "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
+             "localhost. Steam's local files only list installed games. With this key and your "
+             "Steam ID, Mira can also list every game "
+             "you own and import your Steam playtime.",
          .is_secret = true,
          .link = "https://steamcommunity.com/dev/apikey",
          .keywords = "token owned games"});
@@ -577,9 +591,10 @@ Schema::Schema() {
          .label = "itch.io collections",
          .type = Type::StringArray,
          .default_value = json::array(),
-         .doc = "Extra itch.io collections to show, added by id or by link (https://itch.io/c/...). "
-                "Your own collections always show. You cannot install a paid game you do not "
-                "own."});
+         .doc =
+             "Extra itch.io collections to show, added by id or by link (https://itch.io/c/...). "
+             "Your own collections always show. You cannot install a paid game you do not "
+             "own."});
 
   s.Add({.key = "itch.install_root",
          .label = "itch.io install folder",
@@ -611,10 +626,11 @@ Schema::Schema() {
          .label = "Default Wine/Proton runner",
          .type = Type::String,
          .default_value = "auto",
-         .doc = "The runner for Windows games, written as \"kind:name\", for example "
-                "\"proton:GE-Proton11-7\" or \"wine:system\". A name of \"latest\" picks the newest "
-                "installed build. \"auto\" picks the best installed runner: Proton if any is "
-                "installed, otherwise Wine.",
+         .doc =
+             "The runner for Windows games, written as \"kind:name\", for example "
+             "\"proton:GE-Proton11-7\" or \"wine:system\". A name of \"latest\" picks the newest "
+             "installed build. \"auto\" picks the best installed runner: Proton if any is "
+             "installed, otherwise Wine.",
          .constraint = AutoOrRunnerRef(),
          .is_runner_ref = true});
 
@@ -634,8 +650,9 @@ Schema::Schema() {
 
   s.Group("Per store");
 
-  for (const auto& [id, name] : {std::pair{"epic", "Epic Games"}, std::pair{"gog", "GOG"},
-                                 std::pair{"itch", "itch.io"}, std::pair{"amazon", "Amazon Games"}}) {
+  for (const auto& [id, name] :
+       {std::pair{"epic", "Epic Games"}, std::pair{"gog", "GOG"}, std::pair{"itch", "itch.io"},
+        std::pair{"amazon", "Amazon Games"}}) {
     s.Add({.key = std::format("{}.runner", id),
            .label = std::format("{} runner", name),
            .type = Type::String,
@@ -654,15 +671,16 @@ Schema::Schema() {
          .label = "Scan common runner folders",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Also look for Proton and Wine builds where Steam, your distro, Heroic, Bottles and "
-                "Lutris keep them, in addition to the search paths below."});
+         .doc =
+             "Also look for Proton and Wine builds where Steam, your distro, Heroic, Bottles and "
+             "Lutris keep them, in addition to the search paths below."});
 
   s.Add({.key = "runner_search_paths",
          .label = "Proton search folders",
          .type = Type::StringArray,
          .default_value = json::array({"~/.steam/steam/compatibilitytools.d",
-                          "~/.local/share/Steam/compatibilitytools.d",
-                          "~/.local/share/mira/runners"}),
+                                       "~/.local/share/Steam/compatibilitytools.d",
+                                       "~/.local/share/mira/runners"}),
          .doc = "Folders searched for installed Proton builds. New downloads go into the first.",
          .path = PathKind::Folder});
 
@@ -792,10 +810,11 @@ Schema::Schema() {
          .type = Type::StringArray,
          .default_value = json::array(),
          .scope = Scope::PerGame,
-         .doc = "Programs that wrap the game's launch command, for example \"gamemoderun\" or "
-                "\"gamescope -W 1920 -H 1080\". The first entry is the outermost wrapper. Each entry "
-                "is split on spaces, so quotes do not work. If a wrapper is not installed, the "
-                "launch fails with an error that names it.",
+         .doc =
+             "Programs that wrap the game's launch command, for example \"gamemoderun\" or "
+             "\"gamescope -W 1920 -H 1080\". The first entry is the outermost wrapper. Each entry "
+             "is split on spaces, so quotes do not work. If a wrapper is not installed, the "
+             "launch fails with an error that names it.",
          .game_doc = "Programs that wrap this game's launch command. This list replaces the "
                      "global one for this game. The first entry is the outermost wrapper."});
 
@@ -820,45 +839,53 @@ Schema::Schema() {
                 "without adding gamemoderun as a command wrapper. Does nothing if GameMode is not "
                 "installed or not running."});
 
-  s.Add({.key = "launch.shader_cache",
-         .label = "Large shader cache",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Keep up to 10 GB of the game's compiled shaders instead of the drivers' usual 1 GB, "
-                "so they aren't built again mid-game, which stutters. Wine and native games also get a "
-                "cache folder of their own; Proton keeps its cache in the prefix. Doesn't reach Steam "
-                "games launched through the Steam client."});
+  s.Add(
+      {.key = "launch.shader_cache",
+       .label = "Large shader cache",
+       .type = Type::Bool,
+       .default_value = true,
+       .scope = Scope::PerGame,
+       .doc =
+           "Keep up to 10 GB of the game's compiled shaders instead of the drivers' usual 1 GB, "
+           "so they aren't built again mid-game, which stutters. Wine and native games also get a "
+           "cache folder of their own; Proton keeps its cache in the prefix. Doesn't reach Steam "
+           "games launched through the Steam client."});
 
-  s.Add({.key = "launch.mangohud",
-         .label = "Show MangoHud",
-         .type = Type::Bool,
-         .default_value = false,
-         .scope = Scope::PerGame,
-         .doc = "Show MangoHud's FPS and performance overlay in games; Right Shift + F12 hides it. Off "
-                "for a game also drops MANGOHUD from the launch environment, for a game it breaks. "
-                "Needs MangoHud installed, and doesn't reach Steam games launched through the Steam client."});
+  s.Add(
+      {.key = "launch.mangohud",
+       .label = "Show MangoHud",
+       .type = Type::Bool,
+       .default_value = false,
+       .scope = Scope::PerGame,
+       .doc =
+           "Show MangoHud's FPS and performance overlay in games; Right Shift + F12 hides it. Off "
+           "for a game also drops MANGOHUD from the launch environment, for a game it breaks. "
+           "Needs MangoHud installed, and doesn't reach Steam games launched through the Steam "
+           "client."});
 
   s.Add({.key = "launch.mangohud_layout",
          .label = "MangoHud layout",
          .type = Type::String,
          .default_value = "full",
          .scope = Scope::PerGame,
-         .doc = "What the overlay shows: \"fps\" only the frame rate, \"horizontal\" a one-line bar, "
-                "\"extended\" or \"detailed\" more readings, \"full\" MangoHud's own layout.",
+         .doc =
+             "What the overlay shows: \"fps\" only the frame rate, \"horizontal\" a one-line bar, "
+             "\"extended\" or \"detailed\" more readings, \"full\" MangoHud's own layout.",
          .constraint = OneOf({"full", "fps", "horizontal", "extended", "detailed"})});
 
   s.Group("Scripts");
   s.ResetTogether();
 
-  s.Add({.key = "launch.follow_system_theme",
-         .label = "Follow the system theme",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
-                "match your desktop, so programs such as Microsoft 365 that follow the system theme "
-                "match it too."});
+  s.Add(
+      {.key = "launch.follow_system_theme",
+       .label = "Follow the system theme",
+       .type = Type::Bool,
+       .default_value = true,
+       .scope = Scope::PerGame,
+       .doc =
+           "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
+           "match your desktop, so programs such as Microsoft 365 that follow the system theme "
+           "match it too."});
 
   s.Add({.key = "launch.pre_script",
          .label = "Pre-launch script",
@@ -933,12 +960,13 @@ Schema::Schema() {
   s.Group("Detection and arguments");
   s.ResetTogether();
 
-  s.Add({.key = "install.detect_dirs",
-         .label = "Install detection folders",
-         .type = Type::StringArray,
-         .default_value = json::array({"Program Files", "Program Files (x86)", "GOG Games", "Games"}),
-         .doc = "Folders inside the prefix's drive_c where Mira looks for the installed game, when "
-                "the installer did not use the game folder."});
+  s.Add(
+      {.key = "install.detect_dirs",
+       .label = "Install detection folders",
+       .type = Type::StringArray,
+       .default_value = json::array({"Program Files", "Program Files (x86)", "GOG Games", "Games"}),
+       .doc = "Folders inside the prefix's drive_c where Mira looks for the installed game, when "
+              "the installer did not use the game folder."});
 
   s.Add({.key = "install.inno_args",
          .label = "Inno Setup arguments",
@@ -1008,7 +1036,8 @@ Schema::Schema() {
          .label = "Disable Battle.net hardware acceleration",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Turn off Battle.net's hardware acceleration when installing it; its UI renders blank under "
+         .doc = "Turn off Battle.net's hardware acceleration when installing it; its UI renders "
+                "blank under "
                 "Wine otherwise."});
 
   s.Group("Adobe Creative Cloud");
@@ -1017,8 +1046,10 @@ Schema::Schema() {
          .label = "AdobeWine download",
          .type = Type::String,
          .default_value = "",
-         .doc = "A GitHub link to take AdobeWine from instead of le-birnes/AdobeWine's newest release: a fork's "
-                "repository for its newest release, or one release's page. Used when Creative Cloud is installed; "
+         .doc = "A GitHub link to take AdobeWine from instead of le-birnes/AdobeWine's newest "
+                "release: a fork's "
+                "repository for its newest release, or one release's page. Used when Creative "
+                "Cloud is installed; "
                 "install it again to switch.",
          .constraint = GithubUrl()});
 
@@ -1028,23 +1059,27 @@ Schema::Schema() {
          .label = "Microsoft 365 plan",
          .type = Type::String,
          .default_value = "O365HomePremRetail",
-         .doc = "The Office edition to install, which must match your subscription: O365HomePremRetail for "
-                "Microsoft 365 Personal or Family, O365BusinessRetail for Business plans, O365ProPlusRetail "
+         .doc = "The Office edition to install, which must match your subscription: "
+                "O365HomePremRetail for "
+                "Microsoft 365 Personal or Family, O365BusinessRetail for Business plans, "
+                "O365ProPlusRetail "
                 "for Apps for enterprise.",
          .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
 
   s.Add({.key = "launchers.office.shims_url",
          .label = "Office shims download",
          .type = Type::String,
-         .default_value = "https://github.com/Mira-Launcher/mira-winapp-shims/releases/latest/download/"
-                          "mira-winapp-shims.tar.gz",
+         .default_value =
+             "https://github.com/Mira-Launcher/mira-winapp-shims/releases/latest/download/"
+             "mira-winapp-shims.tar.gz",
          .doc = "Where Mira downloads the mira-winapp-shims DLLs Office needs under Wine."});
 
   s.Add({.key = "launchers.office.shims_dir",
          .label = "Office shims folder",
          .type = Type::String,
          .default_value = "",
-         .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as your own "
+         .doc = "A folder of mira-winapp-shims DLLs to use instead of downloading them, such as "
+                "your own "
                 "build. Empty downloads them.",
          .path = PathKind::Folder});
 
@@ -1068,37 +1103,43 @@ Schema::Schema() {
          .label = "Move added games",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Games you add to an emulator are moved into its folder. Off copies them, leaving the originals."});
+         .doc = "Games you add to an emulator are moved into its folder. Off copies them, leaving "
+                "the originals."});
 
   for (const emulators::Emulator& emulator : emulators::All()) {
     s.Add({.key = std::format("emulators.{}.bin", emulator.id),
            .label = std::format("{} program", emulator.name),
            .type = Type::String,
            .default_value = "",
-           .doc = std::format("The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
-                              emulator.name),
+           .doc = std::format(
+               "The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
+               emulator.name),
            .path = PathKind::File});
     s.Add({.key = std::format("emulators.{}.game_dirs", emulator.id),
            .label = std::format("{} games kept in place", emulator.name),
            .type = Type::StringArray,
            .default_value = json::array(),
-           .doc = std::format("Folders of {} games Mira tracks where they are, besides its own games folder.",
-                              emulator.name),
+           .doc = std::format(
+               "Folders of {} games Mira tracks where they are, besides its own games folder.",
+               emulator.name),
            .path = PathKind::Folder});
-    s.Add({.key = std::format("emulators.{}.add_mode", emulator.id),
-           .label = std::format("Adding {} games", emulator.name),
-           .type = Type::String,
-           .default_value = "default",
-           .doc = "move or copy games added to it into its folder; default follows Move added games.",
-           .constraint = OneOf({"default", "move", "copy"})});
+    s.Add(
+        {.key = std::format("emulators.{}.add_mode", emulator.id),
+         .label = std::format("Adding {} games", emulator.name),
+         .type = Type::String,
+         .default_value = "default",
+         .doc = "move or copy games added to it into its folder; default follows Move added games.",
+         .constraint = OneOf({"default", "move", "copy"})});
     if (!emulators::Downloads(emulator)) continue;
     s.Add({.key = std::format("emulators.{}.repo", emulator.id),
            .label = std::format("{} download source", emulator.name),
            .type = Type::String,
            .default_value = emulators::DefaultSource(emulator),
-           .doc = std::format("Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
-                              "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
-                              "from there.", emulator.name)});
+           .doc = std::format(
+               "Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
+               "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
+               "from there.",
+               emulator.name)});
   }
 
   // --- Detection -------------------------------------------------------------
@@ -1119,12 +1160,13 @@ Schema::Schema() {
          .doc = "Score added when an executable's name is similar to its folder's name.",
          .constraint = Range(0.0, 100.0)});
 
-  s.Add({.key = "detect.depth_penalty",
-         .label = "Depth penalty",
-         .type = Type::Double,
-         .default_value = 0.5,
-         .doc = "Score subtracted for each folder level, so executables near the top are preferred.",
-         .constraint = Range(0.0, 100.0)});
+  s.Add(
+      {.key = "detect.depth_penalty",
+       .label = "Depth penalty",
+       .type = Type::Double,
+       .default_value = 0.5,
+       .doc = "Score subtracted for each folder level, so executables near the top are preferred.",
+       .constraint = Range(0.0, 100.0)});
 
   s.Add({.key = "detect.low_confidence_threshold",
          .label = "Low confidence threshold",
@@ -1156,9 +1198,10 @@ Schema::Schema() {
          .label = "Minimum installer size (MB)",
          .type = Type::Int,
          .default_value = 50,
-         .doc = "Installers built with Inno Setup, NSIS, WiX or InstallShield are recognised at any "
-                "size. For other files, the minimum size, of the file itself or of a file beside it, "
-                "for an installer-like name to count as an installer.",
+         .doc =
+             "Installers built with Inno Setup, NSIS, WiX or InstallShield are recognised at any "
+             "size. For other files, the minimum size, of the file itself or of a file beside it, "
+             "for an installer-like name to count as an installer.",
          .constraint = Range(0, 1'000'000)});
 
   // --- Scanning --------------------------------------------------------------
@@ -1191,7 +1234,8 @@ Schema::Schema() {
   s.Add({.key = "scan.ignore_globs",
          .label = "Ignored paths",
          .type = Type::StringArray,
-         .default_value = json::array({".*", "*/Redist*", "*/DirectX*", "*/_CommonRedist*", "*/DotNet*"}),
+         .default_value =
+             json::array({".*", "*/Redist*", "*/DirectX*", "*/_CommonRedist*", "*/DotNet*"}),
          .doc = "Paths matching these glob patterns are never treated as games."});
 
   // --- Desktop Entries -------------------------------------------------------
@@ -1247,7 +1291,8 @@ Schema::Schema() {
          .label = "Check for updates",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "Mira looks for newer releases of itself and of the emulators, store tools and runners it downloaded."});
+         .doc = "Mira looks for newer releases of itself and of the emulators, store tools and "
+                "runners it downloaded."});
 
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");
@@ -1297,14 +1342,19 @@ std::optional<std::string> Schema::Validate(std::string_view key, const json& va
 
   const bool type_ok = [&] {
     switch (entry->type) {
-      case Type::Bool:        return value.is_boolean();
-      case Type::Int:         return value.is_number_integer();
-      case Type::Double:      return value.is_number();
-      case Type::String:      return value.is_string();
-      case Type::StringArray: return value.is_array() && std::ranges::all_of(value, [](const json& item) {
-                                       return item.is_string();
-                                     });
-      case Type::Object:      return value.is_object();
+      case Type::Bool:
+        return value.is_boolean();
+      case Type::Int:
+        return value.is_number_integer();
+      case Type::Double:
+        return value.is_number();
+      case Type::String:
+        return value.is_string();
+      case Type::StringArray:
+        return value.is_array() &&
+               std::ranges::all_of(value, [](const json& item) { return item.is_string(); });
+      case Type::Object:
+        return value.is_object();
     }
     return false;
   }();
@@ -1316,21 +1366,30 @@ std::optional<std::string> Schema::Validate(std::string_view key, const json& va
 
 std::string_view ToString(Scope scope) {
   switch (scope) {
-    case Scope::Global:  return "global";
-    case Scope::PerGame: return "per_game";
-    case Scope::GameOnly: return "game_only";
+    case Scope::Global:
+      return "global";
+    case Scope::PerGame:
+      return "per_game";
+    case Scope::GameOnly:
+      return "game_only";
   }
   return "global";
 }
 
 std::string_view ToString(Type type) {
   switch (type) {
-    case Type::Bool:        return "a boolean";
-    case Type::Int:         return "an integer";
-    case Type::Double:      return "a number";
-    case Type::String:      return "a string";
-    case Type::StringArray: return "an array of strings";
-    case Type::Object:      return "an object";
+    case Type::Bool:
+      return "a boolean";
+    case Type::Int:
+      return "an integer";
+    case Type::Double:
+      return "a number";
+    case Type::String:
+      return "a string";
+    case Type::StringArray:
+      return "an array of strings";
+    case Type::Object:
+      return "an object";
   }
   return "a value";
 }

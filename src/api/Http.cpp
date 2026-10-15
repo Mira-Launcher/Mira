@@ -1,19 +1,23 @@
 #include "api/Http.h"
 
-#include <format>
-
 #include <httplib.h>
+
+#include <format>
 
 #include "api/EventBus.h"
 
 namespace mira::api {
 using nlohmann::json;
 
-json ErrorBody(const Error& error) { return {{"error", ErrorJson(error)}}; }
+json ErrorBody(const Error& error) {
+  return {{"error", ErrorJson(error)}};
+}
 
-void SendError(httplib::Response& res, int status, std::string_view code, std::string_view message) {
+void SendError(httplib::Response& res, int status, std::string_view code,
+               std::string_view message) {
   res.status = status;
-  res.set_content(ErrorBody(Error{std::string(code), std::string(message), {}, {}}).dump(), "application/json");
+  res.set_content(ErrorBody(Error{std::string(code), std::string(message), {}, {}}).dump(),
+                  "application/json");
 }
 
 void SendError(httplib::Response& res, int status, const Error& error) {
@@ -38,7 +42,8 @@ void SendStoreError(httplib::Response& res, const Error& error) {
   SendError(res, error.code == "game_not_found" ? 404 : 500, error);
 }
 
-std::optional<json> BodyObject(const httplib::Request& req, httplib::Response& res, std::string_view expected) {
+std::optional<json> BodyObject(const httplib::Request& req, httplib::Response& res,
+                               std::string_view expected) {
   json body = json::parse(req.body, nullptr, false);
   if (body.is_discarded()) {
     SendError(res, 400, "invalid_json", "body is not valid JSON");

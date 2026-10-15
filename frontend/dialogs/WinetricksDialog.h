@@ -2,7 +2,6 @@
 
 #include <QDialog>
 #include <QString>
-
 #include <string>
 
 class QComboBox;
@@ -17,10 +16,10 @@ namespace mira_gui {
 class WinetricksDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   WinetricksDialog(std::string game_id, QString game_name, QWidget* parent = nullptr);
 
-private:
+ private:
   void Run();
   void HandleEvent(const std::string& type, const std::string& data);
   void SetStatus(const QString& text, bool error = false);

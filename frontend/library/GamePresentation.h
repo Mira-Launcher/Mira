@@ -4,13 +4,12 @@
 #include <QDateTime>
 #include <QLocale>
 #include <QString>
-
-#include "../client/Types.h"
-#include "../theme/Theme.h"
-
 #include <cstdint>
 #include <optional>
 #include <string>
+
+#include "../client/Types.h"
+#include "../theme/Theme.h"
 
 // Small presentation helpers shared by the grid, the sidebar and a game's
 // card, so a game reads the same way everywhere.
@@ -54,7 +53,9 @@ inline QColor ProtonDbTierColor(const std::string& tier) {
   return QColor("#444444");  // "pending"
 }
 
-inline bool ProtonDbTierIsNative(const std::string& tier) { return tier == "native"; }
+inline bool ProtonDbTierIsNative(const std::string& tier) {
+  return tier == "native";
+}
 
 // Platinum/gold/silver are light enough that white text on them would wash
 // out; the rest are dark enough that black text would.

@@ -46,29 +46,35 @@ bool SystemdUserAvailable() {
 
 // Starts `program` the way the launch routes do: under mira-run in a systemd scope,
 // handed to LaunchWrapped. Returns the wrapper pid, or -1.
-pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game& game, const fs::path& db,
-                         const std::vector<std::string>& mira_run_args, const std::vector<std::string>& program) {
+pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game& game,
+                         const fs::path& db, const std::vector<std::string>& mira_run_args,
+                         const std::vector<std::string>& program) {
   const fs::path mira_run = fs::read_symlink("/proc/self/exe").parent_path() / "mira-run";
   Command cmd;
-  cmd.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "Delegate=yes", "--", mira_run.string(),
-              "--game-id", game.id, "--database", db.string(), "--log-file", (db.parent_path() / "game.log").string()};
+  cmd.argv = {"systemd-run",  "--user",     "--scope",
+              "--quiet",      "--collect",  "-p",
+              "Delegate=yes", "--",         mira_run.string(),
+              "--game-id",    game.id,      "--database",
+              db.string(),    "--log-file", (db.parent_path() / "game.log").string()};
   cmd.argv.insert(cmd.argv.end(), mira_run_args.begin(), mira_run_args.end());
   cmd.argv.push_back("--");
   cmd.argv.insert(cmd.argv.end(), program.begin(), program.end());
   auto pid = runner::SpawnDetached(cmd);
   if (!pid) return -1;
-  if (auto launched = supervisor.LaunchWrapped(game, *pid, model::NowSeconds()); !launched) return -1;
+  if (auto launched = supervisor.LaunchWrapped(game, *pid, model::NowSeconds()); !launched)
+    return -1;
   return *pid;
 }
 
-// The game's cgroup once it has a process in it. systemd-run joins the scope before exec'ing mira-run,
-// so reading the cgroup any earlier finds the test's own.
+// The game's cgroup once it has a process in it. systemd-run joins the scope before exec'ing
+// mira-run, so reading the cgroup any earlier finds the test's own.
 std::optional<fs::path> WaitForGameGroup(pid_t wrapper) {
   std::optional<fs::path> group;
   WaitFor(
       [&] {
         const auto scope = proc::cgroup::Of(wrapper);
-        if (scope && !proc::cgroup::Pids(proc::cgroup::GameGroup(*scope)).empty()) group = proc::cgroup::GameGroup(*scope);
+        if (scope && !proc::cgroup::Pids(proc::cgroup::GameGroup(*scope)).empty())
+          group = proc::cgroup::GameGroup(*scope);
         return group.has_value();
       },
       std::chrono::seconds(5));
@@ -93,8 +99,8 @@ TEST_CASE("LaunchWrapped runs post_script once the game exits cleanly") {
   game.id = "quick-exit";
   REQUIRE(games.Upsert(game).has_value());
 
-  REQUIRE(LaunchUnderMiraRun(supervisor, game, state / "mira.db", {"--post", "touch " + marker.string()},
-                             {"sh", "-c", "exit 0"}) > 0);
+  REQUIRE(LaunchUnderMiraRun(supervisor, game, state / "mira.db",
+                             {"--post", "touch " + marker.string()}, {"sh", "-c", "exit 0"}) > 0);
 
   CHECK(WaitFor([&] { return fs::exists(marker); }, std::chrono::seconds(5)));
   CHECK(WaitFor([&] { return !supervisor.IsRunning("quick-exit"); }, std::chrono::seconds(5)));
@@ -118,7 +124,8 @@ TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") 
   model::Game game;
   game.id = "still-playing";
   REQUIRE(games.Upsert(game).has_value());
-  const pid_t wrapper = LaunchUnderMiraRun(*supervisor, game, state / "mira.db", {}, {"sleep", "30"});
+  const pid_t wrapper =
+      LaunchUnderMiraRun(*supervisor, game, state / "mira.db", {}, {"sleep", "30"});
   REQUIRE(wrapper > 0);
   const auto game_group = WaitForGameGroup(wrapper);
   REQUIRE(game_group.has_value());
@@ -133,7 +140,8 @@ TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") 
   ::waitpid(wrapper, nullptr, 0);
 }
 
-TEST_CASE("ProcessSupervisor::LaunchWrapped rejects a duplicate launch while one is already running") {
+TEST_CASE(
+    "ProcessSupervisor::LaunchWrapped rejects a duplicate launch while one is already running") {
   if (!SystemdUserAvailable()) {
     MESSAGE("no systemd user session; skipped");
     return;
@@ -160,8 +168,9 @@ TEST_CASE("ProcessSupervisor::LaunchWrapped rejects a duplicate launch while one
   CHECK(WaitFor([&] { return !supervisor.IsRunning("long-running"); }, std::chrono::seconds(5)));
 }
 
-TEST_CASE("ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper for the AppId, "
-         "records playtime, and runs post_script on exit") {
+TEST_CASE(
+    "ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper for the AppId, "
+    "records playtime, and runs post_script on exit") {
   const fs::path state = TempDir("proc-steam-track-state");
   const fs::path marker = state / "post-ran";
 
@@ -181,7 +190,8 @@ TEST_CASE("ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper
   const fs::path fake_reaper = state / "reaper";
   fs::create_symlink("/bin/sh", fake_reaper);
   Command fake_steam_process;
-  fake_steam_process.argv = {fake_reaper.string(), "-c", "sleep 2; true", "SteamLaunch", "AppId=999999"};
+  fake_steam_process.argv = {fake_reaper.string(), "-c", "sleep 2; true", "SteamLaunch",
+                             "AppId=999999"};
   auto pid = runner::SpawnDetached(fake_steam_process);
   REQUIRE(pid.has_value());
   std::thread reaper([pid = *pid] { ::waitpid(pid, nullptr, 0); });
@@ -208,8 +218,9 @@ TEST_CASE("ProcessSupervisor::TrackSteamLaunch detects and tracks Steam's reaper
   CHECK(stored->play_seconds >= 1);
 }
 
-TEST_CASE("ProcessSupervisor::Stop refuses a not-yet-confirmed TrackSteamLaunch instead of "
-         "signalling pid 0") {
+TEST_CASE(
+    "ProcessSupervisor::Stop refuses a not-yet-confirmed TrackSteamLaunch instead of "
+    "signalling pid 0") {
   const fs::path state = TempDir("proc-steam-unconfirmed-state");
   store::GameStore games(state / "mira.db");
   games.Load();
@@ -318,7 +329,8 @@ TEST_CASE("Reconcile archives a finished session a previous mirad never got to s
 
   proc::SessionRecord record;
   record.game_id = "celeste";
-  record.wrapper_pid = 999999;  // long dead / never existed, irrelevant since the record is already finished
+  record.wrapper_pid =
+      999999;  // long dead / never existed, irrelevant since the record is already finished
   record.started_at = 1700000000;
   record.finished = true;
   record.ended_at = 1700000042;
@@ -359,17 +371,19 @@ TEST_CASE("A Windows game whose log has Wine's unhandled-exception report counts
     record.exit_code = exit_code;
     REQUIRE(proc::WriteSessionRecord(games.File(), record).has_value());
   };
-  test::Touch(proc::GameLogPath(state, "splodey"),
-              "Proton: Executable is a unix path, launching with 'umu.exe'.\n"
-              "wine: Unhandled page fault on read access to 0000000000000000 at address 0000000140001000 "
-              "(thread 0024), starting debugger...\n"
-              "[mira-run] game exited: exit_code=5 signal=0 duration=250s\n");
+  test::Touch(
+      proc::GameLogPath(state, "splodey"),
+      "Proton: Executable is a unix path, launching with 'umu.exe'.\n"
+      "wine: Unhandled page fault on read access to 0000000000000000 at address 0000000140001000 "
+      "(thread 0024), starting debugger...\n"
+      "[mira-run] game exited: exit_code=5 signal=0 duration=250s\n");
 
   api::EventBus events;
   proc::ProcessSupervisor supervisor(games, events);
   finish(5, 1700000000);
   supervisor.Reconcile();
-  CHECK(games.Find("splodey")->last_error == "Crashed after 4 minutes with an unhandled page fault on read access");
+  CHECK(games.Find("splodey")->last_error ==
+        "Crashed after 4 minutes with an unhandled page fault on read access");
 
   // A helper process crashing while the game itself quits cleanly isn't the game crashing.
   finish(0, 1700000500);
@@ -439,7 +453,8 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   CHECK(WaitFor([&] { return !supervisor.IsRunning("celeste"); }, std::chrono::seconds(5)));
 }
 
-TEST_CASE("FindPrefixProcesses matches umu's rewritten WINEPREFIX and an empty one matches nothing") {
+TEST_CASE(
+    "FindPrefixProcesses matches umu's rewritten WINEPREFIX and an empty one matches nothing") {
   // umu rewrites WINEPREFIX to "<data_dir>/pfx/" before the game runs, so
   // the separator case is the normal case, not an edge one.
   const fs::path data_dir = TempDir("proc-prefix-pfx");
@@ -468,13 +483,17 @@ TEST_CASE("SteamLaunchAppId reads Steam's reaper wrapper and nothing else") {
     std::istringstream in(rest);
     return proc::SteamLaunchAppId(argv0, in);
   };
-  const std::string args = std::string("SteamLaunch\0AppId=2225070\0--\0/x/_v2-entry-point\0AppId=1\0", 55);
+  const std::string args =
+      std::string("SteamLaunch\0AppId=2225070\0--\0/x/_v2-entry-point\0AppId=1\0", 55);
   CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", args) == "2225070");
   CHECK(parse("/usr/bin/python3", args).empty());
-  CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", std::string("--\0AppId=5\0", 11)).empty());
+  CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", std::string("--\0AppId=5\0", 11))
+            .empty());
 }
 
-TEST_CASE("Stop ends a mira-run game's cgroup, including children that left its session and ignore SIGTERM") {
+TEST_CASE(
+    "Stop ends a mira-run game's cgroup, including children that left its session and ignore "
+    "SIGTERM") {
   if (!SystemdUserAvailable()) {
     MESSAGE("no systemd user session; skipped");
     return;
@@ -490,8 +509,9 @@ TEST_CASE("Stop ends a mira-run game's cgroup, including children that left its 
   game.id = "cgroup-stop";
   REQUIRE(games.Upsert(game).has_value());
 
-  const pid_t wrapper = LaunchUnderMiraRun(supervisor, game, state / "mira.db", {},
-                                           {"sh", "-c", "(trap '' TERM; exec setsid sleep 300) & exec sleep 300"});
+  const pid_t wrapper =
+      LaunchUnderMiraRun(supervisor, game, state / "mira.db", {},
+                         {"sh", "-c", "(trap '' TERM; exec setsid sleep 300) & exec sleep 300"});
   REQUIRE(wrapper > 0);
   const auto game_group = WaitForGameGroup(wrapper);
   REQUIRE(game_group.has_value());

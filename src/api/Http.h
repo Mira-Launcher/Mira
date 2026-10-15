@@ -1,11 +1,10 @@
 #pragma once
 
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "core/Result.h"
 
@@ -34,7 +33,8 @@ std::optional<nlohmann::json> BodyObject(const httplib::Request& req, httplib::R
                                          std::string_view expected);
 
 // A query parameter, or `fallback` when absent.
-std::string Param(const httplib::Request& req, const char* name, const std::string& fallback = std::string());
+std::string Param(const httplib::Request& req, const char* name,
+                  const std::string& fallback = std::string());
 // true for 1, true or yes; false when absent or anything else.
 bool BoolParam(const httplib::Request& req, const char* name);
 

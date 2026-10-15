@@ -17,19 +17,19 @@ class DownloadTracker;
 class DownloadsPanel : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, QWidget* parent);
 
   // Shows it with its top-right corner under `anchor`'s bottom-right.
   void ShowBelow(QWidget* anchor);
 
-signals:
+ signals:
   // "Show" on a finished install: the game it became.
   void ShowGameRequested(const QString& id);
   // "Log" on any row: its live log, by channel, with the row's name.
   void LogRequested(const QString& channel, const QString& title);
 
-private:
+ private:
   void Rebuild();
   QWidget* BuildRow(int index);
   // Redraws the covers showing `id`.

@@ -29,14 +29,14 @@
 #include "../dialogs/DesktopEntryImportDialog.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
-#include "../library/OwnedTitles.h"
 #include "../library/GamePresentation.h"
 #include "../library/HoverCard.h"
 #include "../library/LibraryActions.h"
+#include "../library/OwnedTitles.h"
 #include "../settings/SettingsPanel.h"
-#include "../sources/Sources.h"
 #include "../sources/SourceRemoval.h"
 #include "../sources/SourceText.h"
+#include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
@@ -401,7 +401,8 @@ void Sidebar::ApplyIcons() {
   fetch_art_button_->setIcon(icons::For(Glyph::Image));
   for (QToolButton* button : {manage_sources_button_, pinned_customize_, recent_customize_}) {
     button->setIcon(icons::For(Glyph::Sliders, tokens.text_muted));
-  }}
+  }
+}
 
 bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
   if (auto* nav = qobject_cast<QPushButton*>(watched); SourceIndexOf(nav) >= 0) {
@@ -617,26 +618,32 @@ void Sidebar::UpdateSources() {
       };
       std::ranges::partial_sort(covers, covers.begin() + std::min(kCovers, covers.size()), order);
       covers.resize(std::min(kCovers, covers.size()));
-      for (const GameSummary* game : covers) source_cover_ids_.insert(QString::fromStdString(game->id));
+      for (const GameSummary* game : covers)
+        source_cover_ids_.insert(QString::fromStdString(game->id));
       source_row.nav->setFixedHeight(52);
       row->setContentsMargins(6, 3, 10, 3);
       row->setSpacing(10);
       source_row.deck->setFixedSize(sidebar::kDeckSize);
-      if (covers.empty()) empty_decks_.insert(id);
-      else empty_decks_.remove(id);
+      if (covers.empty())
+        empty_decks_.insert(id);
+      else
+        empty_decks_.remove(id);
       const bool active = id == active_source_;
       const qreal dpr = source_row.nav->devicePixelRatioF();
       const QColor color = active ? theme::Current().on_accent : sources[i].color;
       const QPixmap logo = SourceLogo(sources[i], 30, dpr);
       SetDeck(source_row, sidebar::CoverDeckKey(covers, artwork_, dpr, color, logo),
               [&] { return sidebar::CoverDeck(covers, artwork_, dpr, color, logo); });
-      const QString item = CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
+      const QString item =
+          CopyFor(id.toStdString()).item;  // "game", or "app" for Microsoft 365 and Creative Cloud
       QString detail = games == 0 && of == 0 ? "No " + item + "s"
-                       : show_source_counts_ ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
-                                             : QString();
+                       : show_source_counts_
+                           ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
+                           : QString();
       if (off) detail = "Off";
       if (signed_out && !off) {
-        detail = QString("<span style=\"color: %1;\">Signed out</span>").arg(theme::Current().warning.name()) +
+        detail = QString("<span style=\"color: %1;\">Signed out</span>")
+                     .arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
       }
       source_row.detail->setText(detail);
@@ -694,7 +701,9 @@ std::vector<SourceEntry> Sidebar::SourceEntries() const {
   return entries;
 }
 
-void Sidebar::NoteImported(const QString&) { RefreshSources(); }
+void Sidebar::NoteImported(const QString&) {
+  RefreshSources();
+}
 
 void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
   if (enabled) {
@@ -703,14 +712,13 @@ void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
     disabled_sources_.insert(id);
   }
   UpdateSources();
-  api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt,
-                        [this](PatchConfigResult result) {
-                          if (!result.ok) {
-                            notify::FailedRequest(this, "Could not change that source.",
-                                                  result.error);
-                          }
-                          RefreshSources();
-                        });
+  api::PatchSourceAsync(
+      this, id.toStdString(), enabled, std::nullopt, [this](PatchConfigResult result) {
+        if (!result.ok) {
+          notify::FailedRequest(this, "Could not change that source.", result.error);
+        }
+        RefreshSources();
+      });
 }
 
 void Sidebar::ForgetSource(const QString& id) {
@@ -722,7 +730,9 @@ void Sidebar::ForgetSource(const QString& id) {
   RefreshSources();
 }
 
-std::vector<QString> Sidebar::SourceOrder() const { return OrderSources(source_order_); }
+std::vector<QString> Sidebar::SourceOrder() const {
+  return OrderSources(source_order_);
+}
 
 int Sidebar::SourceDropRow(int y) const {
   // The layout row of the first visible source whose middle is below `y`.
@@ -786,14 +796,14 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
     hidden_sources_.remove(id);
   }
   UpdateSources();
-  api::PatchSourceAsync(this, id.toStdString(), std::nullopt, !hidden,
-                        [this](PatchConfigResult result) {
-                          if (!result.ok) {
-                            notify::FailedRequest(
-                                this, "Could not save which sources the sidebar shows.", result.error);
-                          }
-                          RefreshSources();
-                        });
+  api::PatchSourceAsync(
+      this, id.toStdString(), std::nullopt, !hidden, [this](PatchConfigResult result) {
+        if (!result.ok) {
+          notify::FailedRequest(this, "Could not save which sources the sidebar shows.",
+                                result.error);
+        }
+        RefreshSources();
+      });
 }
 
 void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos) {
@@ -818,8 +828,9 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   QAction* remove = nullptr;
   if (source.kind != SourceInfo::Kind::Local) {
     menu.addSeparator();
-    remove = menu.addAction(icons::For(icons::Glyph::Trash, theme::Current().error),
-                            (source.kind == SourceInfo::Kind::Launcher ? "Uninstall " : "Remove ") + source.name + "…");
+    remove = menu.addAction(
+        icons::For(icons::Glyph::Trash, theme::Current().error),
+        (source.kind == SourceInfo::Kind::Launcher ? "Uninstall " : "Remove ") + source.name + "…");
   }
   menu.addSeparator();
   QAction* manage = menu.addAction("Manage sources…");
@@ -861,7 +872,9 @@ void Sidebar::ShowMenu(const QPoint& global_pos) {
   }
 }
 
-int Sidebar::FirstRowHeight() const { return library_nav_->sizeHint().height(); }
+int Sidebar::FirstRowHeight() const {
+  return library_nav_->sizeHint().height();
+}
 
 std::vector<const GameSummary*> Sidebar::PinnedGames() const {
   // By name, matching the grid: hidden pins only in hidden mode, and only they.

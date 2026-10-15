@@ -33,8 +33,8 @@ struct CatalogEntry {
   std::string source;  // "epic" | "steam"
   std::string ref;     // the source's own stable id: Legendary's app_name, Steam's appid
   std::string title;
-  bool installed = false;   // already tracked by Mira (GET /v1/games has it)
-  std::string game_id;      // the tracked game's id, if installed
+  bool installed = false;         // already tracked by Mira (GET /v1/games has it)
+  std::string game_id;            // the tracked game's id, if installed
   std::int64_t play_seconds = 0;  // as the source reports it; 0 if it doesn't
   bool owned = true;  // false: listed (e.g. from an itch collection) but not installable
 };
@@ -45,19 +45,20 @@ struct CatalogEntry {
 // library.catalog_checked {source, changed}: always when one source is asked for, and when
 // listing every source only for a list over 12 hours old. `fresh` asks every source now instead.
 class CatalogCache {
-public:
+ public:
   Result<std::vector<CatalogEntry>> List(const config::Config& config, store::GameStore& games,
-                                         api::EventBus& events, Lane& lane, const std::string& source,
-                                         bool fresh);
+                                         api::EventBus& events, Lane& lane,
+                                         const std::string& source, bool fresh);
   // A sign-out: a check still fetching that account's list won't store it.
   void SignedOut(const std::string& source);
 
-private:
+ private:
   // Asks `source` and stores its answer; null when it couldn't be asked.
-  std::optional<bool> Check(const config::Config& config, store::GameStore& games, ILibrarySource& source);
+  std::optional<bool> Check(const config::Config& config, store::GameStore& games,
+                            ILibrarySource& source);
 
   std::mutex mutex_;
-  std::set<std::string> checking_;  // guarded by mutex_
+  std::set<std::string> checking_;                    // guarded by mutex_
   std::map<std::string, std::uint64_t> generations_;  // guarded by mutex_, bumped by SignedOut
 };
 

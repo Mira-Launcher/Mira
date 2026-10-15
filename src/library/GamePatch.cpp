@@ -12,15 +12,19 @@ namespace mira::library {
 using nlohmann::json;
 
 std::string StoredExePath(const std::string& install_path, const std::string& exe_path) {
-  if (install_path.empty() || exe_path.empty() || std::filesystem::path(exe_path).is_absolute()) return exe_path;
-  const std::filesystem::path full = (std::filesystem::path(install_path) / exe_path).lexically_normal();
-  const std::filesystem::path inside = full.lexically_relative(std::filesystem::path(install_path).lexically_normal());
+  if (install_path.empty() || exe_path.empty() || std::filesystem::path(exe_path).is_absolute())
+    return exe_path;
+  const std::filesystem::path full =
+      (std::filesystem::path(install_path) / exe_path).lexically_normal();
+  const std::filesystem::path inside =
+      full.lexically_relative(std::filesystem::path(install_path).lexically_normal());
   if (inside.empty() || *inside.begin() == "..") return full.string();
   return exe_path;
 }
 
 bool IsSettablePlatform(const json& value) {
-  return value.is_string() && model::PlatformFromString(value.get<std::string>()) != model::Platform::Unknown;
+  return value.is_string() &&
+         model::PlatformFromString(value.get<std::string>()) != model::Platform::Unknown;
 }
 
 model::Game ParseGamePatch(const model::Game& base, const json& patch) {
@@ -57,7 +61,8 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
     game.folder_tag = patch["folder_tag"];
   DropStalePick(game);
   // Replaced, not merged.
-  if (patch.contains("launch") && patch["launch"].is_object()) game.launch = WithLaunchIds(patch["launch"]);
+  if (patch.contains("launch") && patch["launch"].is_object())
+    game.launch = WithLaunchIds(patch["launch"]);
   // "env": null clears every entry; {"K": null} removes just K.
   if (patch.contains("env") && patch["env"].is_null()) {
     game.env.clear();
@@ -72,24 +77,30 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   }
   // A correction counts as the human having looked; a patch that changed nothing doesn't.
   if (model::ToJson(game) != model::ToJson(base)) game.reviewed = true;
-  if (patch.contains("reviewed") && patch["reviewed"].is_boolean()) game.reviewed = patch["reviewed"];
+  if (patch.contains("reviewed") && patch["reviewed"].is_boolean())
+    game.reviewed = patch["reviewed"];
   return game;
 }
 
-// The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently ignored.
+// The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently
+// ignored.
 std::optional<std::string> GamePatchProblem(const json& patch) {
   if (!patch.is_object()) return "expected a JSON object";
   for (const char* key :
        {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir", "folder_tag"}) {
-    if (patch.contains(key) && !patch[key].is_string()) return std::format("\"{}\" must be a string", key);
+    if (patch.contains(key) && !patch[key].is_string())
+      return std::format("\"{}\" must be a string", key);
   }
   if (patch.contains("platform") && !IsSettablePlatform(patch["platform"])) {
     return "\"platform\" must be \"windows\" or \"native\"";
   }
   if (patch.contains("tags") && !patch["tags"].is_array()) return "\"tags\" must be an array";
-  if (patch.contains("runner_config") && !patch["runner_config"].is_object()) return "\"runner_config\" must be an object";
-  if (patch.contains("env") && !patch["env"].is_object() && !patch["env"].is_null()) return "\"env\" must be an object or null";
-  if (patch.contains("reviewed") && !patch["reviewed"].is_boolean()) return "\"reviewed\" must be true or false";
+  if (patch.contains("runner_config") && !patch["runner_config"].is_object())
+    return "\"runner_config\" must be an object";
+  if (patch.contains("env") && !patch["env"].is_object() && !patch["env"].is_null())
+    return "\"env\" must be an object or null";
+  if (patch.contains("reviewed") && !patch["reviewed"].is_boolean())
+    return "\"reviewed\" must be true or false";
   if (patch.contains("launch")) {
     if (auto problem = LaunchProblem(patch["launch"])) return problem;
   }

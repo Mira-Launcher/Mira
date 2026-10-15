@@ -18,13 +18,13 @@ namespace mira::epic {
 // install and provisions a Wine/Proton prefix for it. Legendary itself
 // never creates one (see EpicImporter.h's class comment).
 class EpicInstaller {
-public:
+ public:
   EpicInstaller(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<void> Install(const std::string& app_name);
   Result<void> Update(const std::string& app_name);
 
-private:
+ private:
   Result<void> Run(const std::string& verb, const std::string& app_name);
 
   config::Config& config_;

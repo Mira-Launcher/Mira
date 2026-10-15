@@ -2,7 +2,6 @@
 
 #include <QString>
 #include <QWidget>
-
 #include <map>
 #include <vector>
 
@@ -21,7 +20,7 @@ class SourceTile;
 class SourceCatalog : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit SourceCatalog(QWidget* parent = nullptr);
 
   // The sources to offer, in AllSources' order. Rebuilds the tiles.
@@ -29,10 +28,10 @@ public:
   // Shows only the tiles whose name, kind or description contains `text`.
   void SetFilter(const QString& text);
 
-signals:
+ signals:
   void SetUpRequested(QString id);
 
-private:
+ private:
   struct Group {
     QString name;
     QPushButton* chip = nullptr;
@@ -45,9 +44,9 @@ private:
   std::vector<Group> groups_;
   QPushButton* all_ = nullptr;
   QLabel* empty_ = nullptr;
-  std::map<QString, SourceTile*> tiles_;   // by source id
-  std::map<QString, int> group_of_;        // by source id
-  std::map<QString, QString> haystack_;    // by source id: name, kind and blurb, lowercased
+  std::map<QString, SourceTile*> tiles_;  // by source id
+  std::map<QString, int> group_of_;       // by source id
+  std::map<QString, QString> haystack_;   // by source id: name, kind and blurb, lowercased
   QStringList shown_;  // id and Needs line per tile, to skip rebuilds that change nothing
   QString filter_;
 };

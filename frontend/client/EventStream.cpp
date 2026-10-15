@@ -48,15 +48,19 @@ EventStream::EventStream() : state_(std::make_shared<State>()) {}
 // be parked inside a Get() waiting for the next event) but it can no longer
 // reach the window that owned it either way (see async::Deliver), so a
 // lingering thread is now just idle, not dangerous.
-EventStream::~EventStream() { state_->stopped.store(true); }
+EventStream::~EventStream() {
+  state_->stopped.store(true);
+}
 
 void EventStream::Start(QObject* context, std::function<void(std::string, std::string)> on_event,
                         std::function<void(bool)> on_connection) {
   QPointer<QObject> guard(context);
-  std::thread([guard, state = state_, on_event = std::move(on_event), on_connection = std::move(on_connection)]() {
+  std::thread([guard, state = state_, on_event = std::move(on_event),
+               on_connection = std::move(on_connection)]() {
     std::string last_event_id;
     const auto report = [&](bool connected) {
-      if (on_connection) async::Deliver(guard, [on_connection, connected] { on_connection(connected); });
+      if (on_connection)
+        async::Deliver(guard, [on_connection, connected] { on_connection(connected); });
     };
 
     while (!state->stopped.load()) {

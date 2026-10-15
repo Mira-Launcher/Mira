@@ -70,8 +70,8 @@ class CoverFan : public QWidget {
   Q_OBJECT
 
  public:
-  CoverFan(const SetupContext& context, std::function<std::vector<Picture>()> pictures,
-           QSize card, int step, qreal turn, QWidget* parent);
+  CoverFan(const SetupContext& context, std::function<std::vector<Picture>()> pictures, QSize card,
+           int step, qreal turn, QWidget* parent);
   QSize sizeHint() const override;
 
  protected:

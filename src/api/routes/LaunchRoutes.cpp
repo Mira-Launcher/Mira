@@ -1,21 +1,18 @@
-#include "api/Routes.h"
-
+#include <fcntl.h>
+#include <httplib.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <map>
 #include <chrono>
 #include <filesystem>
 #include <format>
-
-#include <fcntl.h>
-
-#include <httplib.h>
+#include <map>
 
 #include "api/Http.h"
+#include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Resolver.h"
 #include "core/Json.h"
@@ -61,8 +58,9 @@ Result<void> CheckCommandWrappers(const std::vector<std::string>& wrappers) {
     const std::vector<std::string> tokens = strings::Split(entry, ' ');
     if (tokens.empty()) continue;
     if (!runner::FindOnPath(tokens[0])) {
-      return Err("wrapper_not_found", std::format("the command wrapper \"{}\" isn't installed", tokens[0]),
-                 "Install it, or remove it from Command Wrappers.", Fix::Setting("command_wrappers"));
+      return Err(
+          "wrapper_not_found", std::format("the command wrapper \"{}\" isn't installed", tokens[0]),
+          "Install it, or remove it from Command Wrappers.", Fix::Setting("command_wrappers"));
     }
   }
   return {};
@@ -80,7 +78,8 @@ void ApplyLaunchEnv(Command& command, const std::vector<std::string>& entries) {
 
 // launch.mangohud: on loads MangoHud with its layout; off set for the game drops a MANGOHUD the
 // launch environment added, while one in the game's own env still wins.
-void ApplyMangoHud(Command& command, const config::Resolver& resolver, const model::Game& game, bool game_set) {
+void ApplyMangoHud(Command& command, const config::Resolver& resolver, const model::Game& game,
+                   bool game_set) {
   if (!resolver.GetBool("launch.mangohud")) {
     if (!game_set && game.overrides.contains("launch.mangohud")) command.env.erase("MANGOHUD");
     return;
@@ -107,8 +106,8 @@ void ApplyShaderCache(Command& command, const config::Resolver& resolver, const 
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
   if (ec) return;
-  for (const char* key : {"MESA_SHADER_CACHE_DIR", "__GL_SHADER_DISK_CACHE_PATH", "DXVK_STATE_CACHE_PATH",
-                          "VKD3D_SHADER_CACHE_PATH"}) {
+  for (const char* key : {"MESA_SHADER_CACHE_DIR", "__GL_SHADER_DISK_CACHE_PATH",
+                          "DXVK_STATE_CACHE_PATH", "VKD3D_SHADER_CACHE_PATH"}) {
     command.env.try_emplace(key, dir.string());
   }
 }
@@ -121,10 +120,11 @@ Result<void> RunPreScriptInline(const std::string& pre_script, int timeout_s) {
   script.timeout_s = timeout_s;  // a stuck script mustn't hold the request forever
   const Result<runner::ExecResult> ran = runner::RunAndWait(script);
   if (!ran || ran->exit_code != 0) {
-    return Err("pre_launch_failed",
-               !ran ? ran.error().message
-                    : std::format("the pre-launch script exited {}: {}", ran->exit_code, ran->output),
-               "Fix or clear the pre-launch script.", Fix::Setting("launch.pre_script"));
+    return Err(
+        "pre_launch_failed",
+        !ran ? ran.error().message
+             : std::format("the pre-launch script exited {}: {}", ran->exit_code, ran->output),
+        "Fix or clear the pre-launch script.", Fix::Setting("launch.pre_script"));
   }
   return {};
 }
@@ -138,9 +138,12 @@ std::filesystem::path OwnBinaryDir() {
 
 struct WrapperStatus {
   bool ok = false;
-  bool read_timed_out = false;  // mirad's own read deadline, distinct from mira-run's launch.pre_timeout_s
-  std::string code;             // "ok" / "pre_failed" / "pre_timeout" / "no_cgroup" / "exec_failed" / "no_status"
-  std::string detail;           // session path (ok), the pre script's output (pre_failed) or mira-run's message (no_cgroup)
+  bool read_timed_out =
+      false;  // mirad's own read deadline, distinct from mira-run's launch.pre_timeout_s
+  std::string
+      code;  // "ok" / "pre_failed" / "pre_timeout" / "no_cgroup" / "exec_failed" / "no_status"
+  std::string detail;  // session path (ok), the pre script's output (pre_failed) or mira-run's
+                       // message (no_cgroup)
 };
 
 // Blocks until mira-run writes its status and closes the pipe, or `timeout_s` passes.
@@ -154,7 +157,8 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
     const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
         deadline - std::chrono::steady_clock::now());
     pollfd pfd{.fd = fd, .events = POLLIN, .revents = 0};
-    const int rc = ::poll(&pfd, 1, static_cast<int>(std::max<std::chrono::milliseconds::rep>(0, remaining.count())));
+    const int rc = ::poll(
+        &pfd, 1, static_cast<int>(std::max<std::chrono::milliseconds::rep>(0, remaining.count())));
     if (rc <= 0) break;  // timed out, or poll itself failed
     const ssize_t n = ::read(fd, chunk, sizeof(chunk));
     if (n <= 0) {  // EOF: mira-run closed its end after writing everything
@@ -166,8 +170,10 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
   const auto newline = buffer.find('\n');
   if (newline == std::string::npos) {
     // Closed with nothing said: mira-run never ran, e.g. systemd-run couldn't create its scope.
-    if (closed && buffer.empty()) result.code = "no_status";
-    else result.read_timed_out = true;
+    if (closed && buffer.empty())
+      result.code = "no_status";
+    else
+      result.read_timed_out = true;
     return result;
   }
   result.code = buffer.substr(0, newline);
@@ -180,33 +186,40 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
   return result;
 }
 
-
-// A missing folder or program is the game's state (409); anything else PrepareCommand refuses is the request's (400).
+// A missing folder or program is the game's state (409); anything else PrepareCommand refuses is
+// the request's (400).
 int PrepareStatus(const Error& error) {
-  return error.code == "working_dir_missing" || error.code == "program_missing" || error.code == "not_executable" ? 409
-                                                                                                               : 400;
+  return error.code == "working_dir_missing" || error.code == "program_missing" ||
+                 error.code == "not_executable"
+             ? 409
+             : 400;
 }
 
 struct RunProgram {
   std::string exe_path;
   std::string args;
-  bool native = false;      // run as a Linux program, not with the game's runner
-  bool as_game = true;      // with launch.env, MangoHud and command wrappers
+  bool native = false;  // run as a Linux program, not with the game's runner
+  bool as_game = true;  // with launch.env, MangoHud and command wrappers
 };
 
-// The command that starts `game` (or `program` in its prefix) under its resolved runner, with launch.env and
-// command wrappers applied. Pins the runner on the game when launch.pin_runner is on and none was set.
-Result<Command> PrepareCommand(Services& s, model::Game& game, const std::optional<RunProgram>& program) {
+// The command that starts `game` (or `program` in its prefix) under its resolved runner, with
+// launch.env and command wrappers applied. Pins the runner on the game when launch.pin_runner is on
+// and none was set.
+Result<Command> PrepareCommand(Services& s, model::Game& game,
+                               const std::optional<RunProgram>& program) {
   const runner::RunnerRegistry registry(s.config);
   auto resolved = program && program->native
-                      ? Result<runner::RunnerRegistry::Resolved>(runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})
+                      ? Result<runner::RunnerRegistry::Resolved>(
+                            runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})
                       : registry.Resolve(registry.ResolveRef(game));
   if (!resolved) return std::unexpected(resolved.error());
 
   if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
-    const std::string pinned = std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
+    const std::string pinned =
+        std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
     game.runner_ref = pinned;
-    [[maybe_unused]] auto _ = s.games.Update(game.id, [&](model::Game& g) { g.runner_ref = pinned; });
+    [[maybe_unused]] auto _ =
+        s.games.Update(game.id, [&](model::Game& g) { g.runner_ref = pinned; });
   }
 
   model::Game target = game;
@@ -227,17 +240,20 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   auto command = resolved->runner->BuildCommand(target, resolved->build);
   if (!command) return std::unexpected(command.error());
   // Otherwise the spawned child's chdir fails and it exits 127 before anything is logged.
-  if (std::error_code ec; !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
-    return Err("working_dir_missing",
-               std::format("the folder the game starts in, \"{}\", doesn't exist", command->cwd.string()),
-               "Check the game's folder is still there, or choose its executable again.",
-               Fix::Game(game.id, "exe"));
+  if (std::error_code ec;
+      !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
+    return Err(
+        "working_dir_missing",
+        std::format("the folder the game starts in, \"{}\", doesn't exist", command->cwd.string()),
+        "Check the game's folder is still there, or choose its executable again.",
+        Fix::Game(game.id, "exe"));
   }
   if (program && !program->as_game) return command;
 
   const config::Resolver resolver(s.config, game.overrides);
   const std::vector<std::string> wrappers = resolver.GetStringArray("command_wrappers");
-  if (auto checked = CheckCommandWrappers(wrappers); !checked) return std::unexpected(checked.error());
+  if (auto checked = CheckCommandWrappers(wrappers); !checked)
+    return std::unexpected(checked.error());
   const bool game_mangohud = command->env.contains("MANGOHUD");
   ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
   ApplyMangoHud(*command, resolver, game, game_mangohud);
@@ -246,7 +262,8 @@ Result<Command> PrepareCommand(Services& s, model::Game& game, const std::option
   return command;
 }
 
-// One of the game's launch options as a program to run: in its prefix for a Windows game, unless it's native.
+// One of the game's launch options as a program to run: in its prefix for a Windows game, unless
+// it's native.
 RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& option) {
   const bool native = option.native || game.platform != model::Platform::Windows;
   std::vector<std::string> args = strings::SplitArgs(option.args);
@@ -257,14 +274,17 @@ RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& o
           .as_game = option.mode == library::LaunchMode::Play};
 }
 
-// Starts a launch option detached and untracked, with its output in the game's log; `unit` puts it in a
-// systemd scope of that name.
-Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option, const std::string& unit) {
+// Starts a launch option detached and untracked, with its output in the game's log; `unit` puts it
+// in a systemd scope of that name.
+Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option,
+                         const std::string& unit) {
   auto command = PrepareCommand(s, game, OptionProgram(game, option));
   if (!command) return std::unexpected(command.error());
   if (!unit.empty()) {
-    command->argv.insert(command->argv.begin(), {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit",
-                                                 unit, "--description", std::format("Mira: {} with {}", option.name, game.name), "--"});
+    command->argv.insert(
+        command->argv.begin(),
+        {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
+         "--description", std::format("Mira: {} with {}", option.name, game.name), "--"});
   }
   const std::filesystem::path log = proc::GameLogPath(s.games.Dir(), game.id);
   std::error_code ec;
@@ -290,18 +310,21 @@ void StartAlongside(Services& s, model::Game game) {
 
 // Starts `command` under mira-run in its own systemd scope and tracks its session.
 // Sends the response: an error, or "running".
-void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& game, const Command& command,
-                        const std::string& pre_script, const std::string& post_script) {
+void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& game,
+                        const Command& command, const std::string& pre_script,
+                        const std::string& post_script) {
   const config::Resolver resolver(s.config, game.overrides);
   // mira-run owns the session so it survives mirad dying.
   const auto mira_run = runner::ResolveSiblingBinary(OwnBinaryDir(), "mira-run");
   if (!mira_run) {
-    return SendError(res, 500, "mira_run_missing", "mira-run wasn't found next to mirad or on PATH");
+    return SendError(res, 500, "mira_run_missing",
+                     "mira-run wasn't found next to mirad or on PATH");
   }
 
   const auto systemd_run = runner::FindOnPath("systemd-run");
   if (!systemd_run) {
-    return SendError(res, 500, "systemd_missing", "launching games needs systemd (systemd-run wasn't found)");
+    return SendError(res, 500, "systemd_missing",
+                     "launching games needs systemd (systemd-run wasn't found)");
   }
 
   const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
@@ -309,12 +332,21 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
   Command wrapped;
   wrapped.env = command.env;
   wrapped.cwd = command.cwd;
-  wrapped.argv = {*mira_run,         "--game-id",       game.id,
-                  "--database",     s.games.File().string(), "--log-file", log_file.string(),
-                  "--log-max-mb",   std::to_string(resolver.GetInt("launch.log_max_mb")),
-                  "--status-fd",    "3",
-                  "--pre-timeout",  std::to_string(pre_timeout_s),
-                  "--post-timeout", std::to_string(resolver.GetInt("launch.post_timeout_s"))};
+  wrapped.argv = {*mira_run,
+                  "--game-id",
+                  game.id,
+                  "--database",
+                  s.games.File().string(),
+                  "--log-file",
+                  log_file.string(),
+                  "--log-max-mb",
+                  std::to_string(resolver.GetInt("launch.log_max_mb")),
+                  "--status-fd",
+                  "3",
+                  "--pre-timeout",
+                  std::to_string(pre_timeout_s),
+                  "--post-timeout",
+                  std::to_string(resolver.GetInt("launch.post_timeout_s"))};
   if (!pre_script.empty()) {
     wrapped.argv.push_back("--pre");
     wrapped.argv.push_back(pre_script);
@@ -326,8 +358,9 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
   if (resolver.GetBool("launch.gamemode")) wrapped.argv.push_back("--gamemode");
   wrapped.argv.push_back("--");
   wrapped.argv.insert(wrapped.argv.end(), command.argv.begin(), command.argv.end());
-  wrapped.argv.insert(wrapped.argv.begin(), {*systemd_run, "--user", "--scope", "--quiet", "--collect", "-p",
-                                             "Delegate=yes", "--description", "Mira: " + game.name, "--"});
+  wrapped.argv.insert(wrapped.argv.begin(),
+                      {*systemd_run, "--user", "--scope", "--quiet", "--collect", "-p",
+                       "Delegate=yes", "--description", "Mira: " + game.name, "--"});
 
   int status_fd = -1;
   auto wrapper_pid = runner::SpawnDetachedWithStatus(wrapped, status_fd);
@@ -351,36 +384,46 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
                            "Its output is in the game's log.", Fix::Game(game.id, "log")});
   }
   if (status.code == "exec_failed") {
-    return SendError(res, 409, Error{"exec_failed", status.detail, "Check the executable and its permissions.",
-                                     Fix::Game(game.id, "exe")});
+    return SendError(res, 409,
+                     Error{"exec_failed", status.detail,
+                           "Check the executable and its permissions.", Fix::Game(game.id, "exe")});
   }
   if (status.code == "no_status") {
     return SendError(res, 500,
-                     Error{"cgroup_unavailable", "systemd-run couldn't start the game in its own scope",
-                           "Mira needs a systemd user session to track games.", {}});
+                     Error{"cgroup_unavailable",
+                           "systemd-run couldn't start the game in its own scope",
+                           "Mira needs a systemd user session to track games.",
+                           {}});
   }
   if (status.code == "no_cgroup") {
     return SendError(res, 500,
-                     Error{"cgroup_unavailable", status.detail,
-                           "Mira needs a systemd user session to track games.", {}});
+                     Error{"cgroup_unavailable",
+                           status.detail,
+                           "Mira needs a systemd user session to track games.",
+                           {}});
   }
   if (status.code == "pre_timeout") {
-    return SendError(res, 409,
-                     Error{"pre_launch_timeout",
-                           std::format("the pre-launch script didn't finish within {}s", pre_timeout_s),
-                           "Make the script finish sooner, or allow it more time.",
-                           Fix::Setting("launch.pre_timeout_s")});
+    return SendError(
+        res, 409,
+        Error{"pre_launch_timeout",
+              std::format("the pre-launch script didn't finish within {}s", pre_timeout_s),
+              "Make the script finish sooner, or allow it more time.",
+              Fix::Setting("launch.pre_timeout_s")});
   }
   if (!status.ok) {
-    return SendError(res, 500, "wrapper_failed", std::format("unexpected mira-run status: {}", status.code));
+    return SendError(res, 500, "wrapper_failed",
+                     std::format("unexpected mira-run status: {}", status.code));
   }
 
   std::int64_t session_started_at = 0;
-  if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(), session_started_at).ec !=
-      std::errc()) {
-    return SendError(res, 500, "wrapper_failed", std::format("mira-run sent no session start: {}", status.detail));
+  if (std::from_chars(status.detail.data(), status.detail.data() + status.detail.size(),
+                      session_started_at)
+          .ec != std::errc()) {
+    return SendError(res, 500, "wrapper_failed",
+                     std::format("mira-run sent no session start: {}", status.detail));
   }
-  if (auto launched = s.supervisor.LaunchWrapped(game, *wrapper_pid, session_started_at); !launched) {
+  if (auto launched = s.supervisor.LaunchWrapped(game, *wrapper_pid, session_started_at);
+      !launched) {
     return SendError(res, 409, launched.error());
   }
   SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
@@ -401,20 +444,23 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
     if (game->status == model::GameStatus::NeedsInstall) {
       return SendError(res, 409, "needs_install",
-                       game->last_error.empty() ? std::format("\"{}\" needs installing before it can launch", game->id)
-                                                : game->last_error);
+                       game->last_error.empty()
+                           ? std::format("\"{}\" needs installing before it can launch", game->id)
+                           : game->last_error);
     }
     if (game->status != model::GameStatus::Ready) {
       return SendError(res, 409, "not_ready",
                        std::format("\"{}\" is {}, not ready to launch", game->id,
-                                  model::ToString(game->status)));
+                                   model::ToString(game->status)));
     }
 
     // Documents to open, as absolute paths: a Microsoft 365 app opened from a file manager.
     const json body = req.body.empty() ? json::object() : json::parse(req.body, nullptr, false);
     const auto files = body.is_object() ? StringList(body, "files") : std::nullopt;
-    if (!files || !std::ranges::all_of(*files, [](const std::string& file) { return file.starts_with('/'); })) {
-      return SendError(res, 400, "invalid_body", R"(expected no body, or {"files": ["/absolute/path", ...]})");
+    if (!files || !std::ranges::all_of(
+                      *files, [](const std::string& file) { return file.starts_with('/'); })) {
+      return SendError(res, 400, "invalid_body",
+                       R"(expected no body, or {"files": ["/absolute/path", ...]})");
     }
     if (!files->empty() && !(launchers::ForGame(*game) && game->source == "office")) {
       return SendError(res, 400, "files_unsupported", "only a Microsoft 365 app opens files");
@@ -427,13 +473,16 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     std::optional<library::LaunchOption> option =
         chosen.empty() ? library::DefaultLaunch(*game) : library::FindLaunchOption(*game, chosen);
     if (!chosen.empty() && chosen != library::kGameLaunch && !option) {
-      return SendError(res, 404, "launch_option_not_found", std::format("\"{}\" has no launch option \"{}\"", game->id, chosen));
+      return SendError(res, 404, "launch_option_not_found",
+                       std::format("\"{}\" has no launch option \"{}\"", game->id, chosen));
     }
     if (option && option->mode == library::LaunchMode::Alongside) {
-      return SendError(res, 400, "alongside_option", std::format("{} only runs beside the game", option->name));
+      return SendError(res, 400, "alongside_option",
+                       std::format("{} only runs beside the game", option->name));
     }
     if (option && option->mode == library::LaunchMode::Tool) {
-      if (auto opened = SpawnOption(s, *game, *option, ""); !opened) return SendError(res, PrepareStatus(opened.error()), opened.error());
+      if (auto opened = SpawnOption(s, *game, *option, ""); !opened)
+        return SendError(res, PrepareStatus(opened.error()), opened.error());
       return SendJson(res, {{"status", "opened"}, {"tracked", false}});
     }
 
@@ -446,14 +495,16 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         return SendError(res, 409, GameBusyError(game->id, busy));
     }
     if (!reservation && files->empty()) {
-      return SendError(res, 409, "already_running", std::format("\"{}\" is already running", game->id));
+      return SendError(res, 409, "already_running",
+                       std::format("\"{}\" is already running", game->id));
     }
 
     const config::Resolver resolver(s.config, game->overrides);
     const std::string pre_script = resolver.GetString("launch.pre_script");
-    if (game->platform == model::Platform::Windows && resolver.GetBool("launch.follow_system_theme") &&
-        !game->runner_ref.starts_with("steam:")) {
-      if (auto synced = runner::SyncWindowsTheme(runner::RunnerRegistry(s.config), *game); !synced) {
+    if (game->platform == model::Platform::Windows &&
+        resolver.GetBool("launch.follow_system_theme") && !game->runner_ref.starts_with("steam:")) {
+      if (auto synced = runner::SyncWindowsTheme(runner::RunnerRegistry(s.config), *game);
+          !synced) {
         log::Warn("couldn't set {}'s Windows theme: {}", game->id, synced.error().message);
       }
     }
@@ -472,8 +523,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     // game exits; the game's own processes are tracked.
     if (const launchers::Launcher* launcher = launchers::ForGame(*game)) {
       if (launcher->id == "office") {
-        if (const auto host = s.games.Find(launchers::GameId(*launcher)); host && !host->data_dir.empty()) {
-          if (auto refreshed = launchers::office::RefreshShims(s.config, runner::RunnerRegistry(s.config), *host);
+        if (const auto host = s.games.Find(launchers::GameId(*launcher));
+            host && !host->data_dir.empty()) {
+          if (auto refreshed = launchers::office::RefreshShims(
+                  s.config, runner::RunnerRegistry(s.config), *host);
               !refreshed) {
             log::Warn("couldn't update the Microsoft 365 shims: {}", refreshed.error().message);
           }
@@ -485,7 +538,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         std::ranges::replace(file, '/', '\\');
         command->argv.push_back("Z:" + file);
       }
-      if (auto ran = RunPreScriptInline(pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s"))); !ran) {
+      if (auto ran = RunPreScriptInline(pre_script,
+                                        static_cast<int>(resolver.GetInt("launch.pre_timeout_s")));
+          !ran) {
         return SendError(res, 409, ran.error());
       }
       const bool game_mangohud = command->env.contains("MANGOHUD");
@@ -503,11 +558,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       if (!spawned) return SendError(res, 500, spawned.error());
       [[maybe_unused]] auto _ =
           s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
-      if (!reservation) return SendJson(res, {{"status", "opened_in_running_app"}, {"tracked", false}});
+      if (!reservation)
+        return SendJson(res, {{"status", "opened_in_running_app"}, {"tracked", false}});
       s.events.Publish("game.launched", {{"id", game->id}, {"via", "launcher"}, {"tracked", true}});
-      if (auto started = s.supervisor.TrackLauncherLaunch(*game, launchers::TrackedPath(*game),
-                                                         s.config.GetInt("launchers.detect_timeout_s"), post_script,
-                                                         post_timeout_s);
+      if (auto started = s.supervisor.TrackLauncherLaunch(
+              *game, launchers::TrackedPath(*game), s.config.GetInt("launchers.detect_timeout_s"),
+              post_script, post_timeout_s);
           !started) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
       }
@@ -515,30 +571,34 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendJson(res, {{"status", "launched_via_launcher"}, {"tracked", true}});
     }
 
-    // Steam games default to a handoff to the Steam client (-applaunch) for overlay, achievements and playtime.
-    // Mira can't waitpid() that process; steam.track_process finds it in /proc instead.
+    // Steam games default to a handoff to the Steam client (-applaunch) for overlay, achievements
+    // and playtime. Mira can't waitpid() that process; steam.track_process finds it in /proc
+    // instead.
     if (game->runner_ref.starts_with("steam:")) {
       if (resolver.GetString("steam.launch_mode") == "steam") {
-        if (auto ran = RunPreScriptInline(pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s"))); !ran) {
+        if (auto ran = RunPreScriptInline(
+                pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s")));
+            !ran) {
           return SendError(res, 409, ran.error());
         }
         const std::string appid = game->runner_ref.substr(std::string_view("steam:").size());
         Command command;
-        // -silent: a Steam that wasn't running starts without opening its window. -applaunch rather than a
-        // steam:// URL, which a cold-started client answers by opening its window anyway.
+        // -silent: a Steam that wasn't running starts without opening its window. -applaunch rather
+        // than a steam:// URL, which a cold-started client answers by opening its window anyway.
         command.argv = steam::SteamCommand(s.config);
         if (resolver.GetBool("steam.launch_silent")) command.argv.push_back("-silent");
         command.argv.insert(command.argv.end(), {"-applaunch", appid});
         if (auto spawned = runner::SpawnReaped(command); !spawned) {
           return SendError(res, 500, spawned.error());
         }
-        [[maybe_unused]] auto _ =
-            s.games.Update(game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
+        [[maybe_unused]] auto _ = s.games.Update(
+            game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
         const bool track = resolver.GetBool("steam.track_process");
-        s.events.Publish("game.launched",
-                        {{"id", game->id}, {"via", "steam"}, {"tracked", track}});
+        s.events.Publish("game.launched", {{"id", game->id}, {"via", "steam"}, {"tracked", track}});
         if (track) {
-          if (auto started = s.supervisor.TrackSteamLaunch(*game, appid, post_script, post_timeout_s); !started) {
+          if (auto started =
+                  s.supervisor.TrackSteamLaunch(*game, appid, post_script, post_timeout_s);
+              !started) {
             log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
           }
           StartAlongside(s, *game);
@@ -552,8 +612,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
 
     // A Windows "game" that turns out to be an installer is caught at exit (CheckForInstall).
     // Only for an existing prefix: a new one's own Program Files would all look installed.
-    if (std::error_code ec; game->platform == model::Platform::Windows && !game->data_dir.empty() &&
-                            std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec)) {
+    if (std::error_code ec;
+        game->platform == model::Platform::Windows && !game->data_dir.empty() &&
+        std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec)) {
       s.WatchForInstall(game->id, library::InstallFolders(s.config, game->data_dir));
     }
 
@@ -562,9 +623,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
   });
 
   http.Post(R"(/v1/games/([^/]+)/stop)", [&s](const Request& req, Response& res) {
-    // Creative Cloud closes to its tray and leaves services behind, so stopping it ends its whole prefix.
-    if (const auto game = s.games.Find(req.matches[1]); game && game->source == "launcher" && !game->data_dir.empty()) {
-      if (const launchers::Launcher* launcher = launchers::ForGame(*game); launcher && launcher->stop_ends_session) {
+    // Creative Cloud closes to its tray and leaves services behind, so stopping it ends its whole
+    // prefix.
+    if (const auto game = s.games.Find(req.matches[1]);
+        game && game->source == "launcher" && !game->data_dir.empty()) {
+      if (const launchers::Launcher* launcher = launchers::ForGame(*game);
+          launcher && launcher->stop_ends_session) {
         launchers::EndPrefixSession(game->data_dir);
         // Its watcher sees it go; one that never found it has nothing to stop.
         [[maybe_unused]] auto _ = s.supervisor.Stop(game->id);
@@ -573,7 +637,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
     std::int64_t timeout_s = 0;
     if (const auto game = s.games.Find(req.matches[1])) {
-      if (const emulators::Emulator* emulator = emulators::ForGame(*game)) timeout_s = emulator->stop_timeout_s;
+      if (const emulators::Emulator* emulator = emulators::ForGame(*game))
+        timeout_s = emulator->stop_timeout_s;
     }
     if (auto stopped = s.supervisor.Stop(req.matches[1], timeout_s); !stopped) {
       // A client that missed the exit gets told it's stopped instead of an error.
@@ -604,8 +669,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
 
     // A game with no usable prefix yet gets one now.
     std::error_code ec;
-    const bool needs_provisioning = game->platform == model::Platform::Windows &&
-        (game->runner_ref.empty() || !std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec));
+    const bool needs_provisioning =
+        game->platform == model::Platform::Windows &&
+        (game->runner_ref.empty() ||
+         !std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec));
     if (needs_provisioning) {
       const runner::RunnerRegistry provisioner(s.config);
       const model::Game provisioned = provisioner.ProvisionGame(*game);
@@ -622,7 +689,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       game = *saved;
       if (game->status == model::GameStatus::Broken) {
         return SendError(res, 409,
-                         Error{"provision_failed", "couldn't set up this game's Wine prefix: " + game->last_error,
+                         Error{"provision_failed",
+                               "couldn't set up this game's Wine prefix: " + game->last_error,
                                "The runner may be broken. Try a different one.", Fix::Runners()});
       }
     }
@@ -664,11 +732,13 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) return SendError(res, 400, "invalid_body", "expected a JSON object");
+    if (body.is_discarded() || !body.is_object())
+      return SendError(res, 400, "invalid_body", "expected a JSON object");
     const bool interactive = body.value("interactive", false);
     std::optional<std::filesystem::path> installer;
     if (body.contains("installer")) {
-      if (!body["installer"].is_string()) return SendError(res, 400, "invalid_body", "installer must be a string");
+      if (!body["installer"].is_string())
+        return SendError(res, 400, "invalid_body", "installer must be a string");
       installer = std::filesystem::path(game->install_path) / body["installer"].get<std::string>();
       if (!paths::IsWithin(*installer, {std::filesystem::path(game->install_path)})) {
         return SendError(res, 400, "invalid_body", "installer must be inside the game's folder");
@@ -676,28 +746,32 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       std::error_code ec;
       if (!std::filesystem::is_regular_file(*installer, ec)) {
         return SendError(res, 404,
-                         Error{"installer_missing", std::format("there's no installer at {}", installer->string()),
+                         Error{"installer_missing",
+                               std::format("there's no installer at {}", installer->string()),
                                "Pick the installer again."});
       }
     }
     const bool installable = game->status == model::GameStatus::NeedsInstall ||
                              (installer && game->status == model::GameStatus::Broken);
-    if (!installable) return SendError(res, 409, "not_needs_install", "game isn't waiting on an installer");
+    if (!installable)
+      return SendError(res, 409, "not_needs_install", "game isn't waiting on an installer");
     if (!library::BeginInstall(game->id)) {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
 
-    s.StartJob(req, res, "install", game->id, "Installing " + game->name,
-               [&s, id = game->id, interactive, installer](JobRegistry::Progress&) -> Result<json> {
-                 if (auto done = library::RunInstall(
-                         s.config, s.games, s.events, &s.fetches, id,
-                         interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto, installer);
-                     !done) {
-                   return std::unexpected(done.error());
-                 }
-                 return json{{"id", id}};
-               },
-               &s.operations);
+    s.StartJob(
+        req, res, "install", game->id, "Installing " + game->name,
+        [&s, id = game->id, interactive, installer](JobRegistry::Progress&) -> Result<json> {
+          if (auto done = library::RunInstall(
+                  s.config, s.games, s.events, &s.fetches, id,
+                  interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto,
+                  installer);
+              !done) {
+            return std::unexpected(done.error());
+          }
+          return json{{"id", id}};
+        },
+        &s.operations);
   });
 
   http.Post(R"(/v1/games/([^/]+)/finish-install)", [&s](const Request& req, Response& res) {
@@ -714,11 +788,14 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (!req.body.empty()) {
       const auto body = BodyObject(req, res, R"({"install_path"?: "...", "exe_path"?: "..."})");
       if (!body) return;
-      if (const std::string install_path = core::JsonString(*body, "install_path"); !install_path.empty()) {
+      if (const std::string install_path = core::JsonString(*body, "install_path");
+          !install_path.empty()) {
         if (!paths::IsWithin(install_path, {game->data_dir})) {
-          return SendError(res, 400, "invalid_install_path", "the install folder must be inside the game's prefix");
+          return SendError(res, 400, "invalid_install_path",
+                           "the install folder must be inside the game's prefix");
         }
-        if (s.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+        if (s.supervisor.IsRunning(game->id))
+          return SendError(res, 409, GameRunningError(game->id));
         const library::Detector::Result detected =
             library::Detector(library::SettingsFromConfig(s.config)).Detect(install_path);
         library::AdoptInstallFolder(*game, install_path);
@@ -730,12 +807,13 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       if (const std::string exe_path = core::JsonString(*body, "exe_path"); !exe_path.empty()) {
         game->exe_path = exe_path;
       }
-      for (model::Candidate& candidate : game->candidates) candidate.chosen = candidate.rel_path == game->exe_path;
+      for (model::Candidate& candidate : game->candidates)
+        candidate.chosen = candidate.rel_path == game->exe_path;
     }
     if (game->exe_path.empty()) return needs_exe("this game has no executable set");
-    const bool still_installer = std::ranges::any_of(game->candidates, [&](const model::Candidate& c) {
-      return c.is_installer && c.rel_path == game->exe_path;
-    });
+    const bool still_installer = std::ranges::any_of(
+        game->candidates,
+        [&](const model::Candidate& c) { return c.is_installer && c.rel_path == game->exe_path; });
     if (still_installer) return needs_exe("the game's executable is still the installer");
     std::error_code ec;
     if (!std::filesystem::exists(std::filesystem::path(game->install_path) / game->exe_path, ec)) {
@@ -753,7 +831,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         g.confidence = game->confidence;
       }
       g.exe_path = game->exe_path;
-      for (model::Candidate& candidate : g.candidates) candidate.chosen = candidate.rel_path == g.exe_path;
+      for (model::Candidate& candidate : g.candidates)
+        candidate.chosen = candidate.rel_path == g.exe_path;
       g.status = model::GameStatus::Ready;
       g.last_error.clear();
     });
@@ -775,7 +854,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     if (s.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
     if (auto deleted = library::DeleteInstallerFolder(s.config, *game); !deleted) {
-      return SendError(res, deleted.error().code == "no_installer_dir" ? 404 : 409, deleted.error());
+      return SendError(res, deleted.error().code == "no_installer_dir" ? 404 : 409,
+                       deleted.error());
     }
     auto result = s.games.Update(game->id, [](model::Game& g) { g.installer_dir.clear(); });
     if (!result) return SendStoreError(res, result.error());
@@ -846,24 +926,26 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     const std::string id = game->id;
 
     s.events.Publish("tricks.started", {{"id", id}, {"verb", verb}});
-    s.StartJob(req, res, "tricks", id, "Running winetricks " + verb,
-               [&s, id, verb](JobRegistry::Progress&) -> Result<json> {
-                 const runner::RunnerRegistry registry(s.config);
-                 const auto game = s.games.Find(id);
-                 if (!game) {  // removed while queued
-                   const Error removed{"game_not_found", "the game was removed", {}, {}};
-                   s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
-                   return std::unexpected(removed);
-                 }
-                 if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
-                   log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
-                   s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
-                   return std::unexpected(ran.error());
-                 }
-                 s.events.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
-                 return json{{"id", id}, {"verb", verb}};
-               },
-               &s.tricks);
+    s.StartJob(
+        req, res, "tricks", id, "Running winetricks " + verb,
+        [&s, id, verb](JobRegistry::Progress&) -> Result<json> {
+          const runner::RunnerRegistry registry(s.config);
+          const auto game = s.games.Find(id);
+          if (!game) {  // removed while queued
+            const Error removed{"game_not_found", "the game was removed", {}, {}};
+            s.events.Publish("tricks.failed", FailedEvent({{"id", id}, {"verb", verb}}, removed));
+            return std::unexpected(removed);
+          }
+          if (auto ran = runner::RunTricksVerb(registry, *game, verb); !ran) {
+            log::Error("winetricks {} failed for {}: {}", verb, id, ran.error().message);
+            s.events.Publish("tricks.failed",
+                             FailedEvent({{"id", id}, {"verb", verb}}, ran.error()));
+            return std::unexpected(ran.error());
+          }
+          s.events.Publish("tricks.finished", {{"id", id}, {"verb", verb}});
+          return json{{"id", id}, {"verb", verb}};
+        },
+        &s.tricks);
   });
 }
 

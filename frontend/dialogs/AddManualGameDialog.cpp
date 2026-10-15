@@ -10,9 +10,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-
-#include "../client/api/Games.h"
 #include "../app/Notify.h"
+#include "../client/api/Games.h"
 #include "../widgets/PathField.h"
 #include "../widgets/PopupDialog.h"
 
@@ -37,8 +36,8 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
   install_path_ = new QLineEdit(this);
   install_path_->setPlaceholderText("The game's own folder");
   form->addRow("Install path", PathRow(install_path_, [this] {
-    return QFileDialog::getExistingDirectory(this, "Select the game's folder");
-  }));
+                 return QFileDialog::getExistingDirectory(this, "Select the game's folder");
+               }));
 
   exe_path_ = new QLineEdit(this);
   exe_path_->setPlaceholderText("Relative to the install path");
@@ -50,19 +49,20 @@ AddManualGameDialog::AddManualGameDialog(QWidget* parent) : QDialog(parent) {
                      !install_path_->text().trimmed().isEmpty());
   });
   form->addRow("Executable", PathRow(exe_path_, [this] {
-    const QString start =
-        install_path_->text().trimmed().isEmpty() ? QString() : install_path_->text();
-    const QString selected = QFileDialog::getOpenFileName(this, "Select the executable", start);
-    if (selected.isEmpty()) return selected;
+                 const QString start =
+                     install_path_->text().trimmed().isEmpty() ? QString() : install_path_->text();
+                 const QString selected =
+                     QFileDialog::getOpenFileName(this, "Select the executable", start);
+                 if (selected.isEmpty()) return selected;
 
-    // Picking the exe before the install path fills the install path from it.
-    if (install_path_->text().trimmed().isEmpty()) {
-      const QFileInfo info(selected);
-      install_path_->setText(info.absolutePath());
-      return info.fileName();
-    }
-    return RelativeIfInside(selected, install_path_->text().toStdString());
-  }));
+                 // Picking the exe before the install path fills the install path from it.
+                 if (install_path_->text().trimmed().isEmpty()) {
+                   const QFileInfo info(selected);
+                   install_path_->setText(info.absolutePath());
+                   return info.fileName();
+                 }
+                 return RelativeIfInside(selected, install_path_->text().toStdString());
+               }));
 
   name_ = new QLineEdit(this);
   name_->setPlaceholderText("Defaults to the install folder's name");
@@ -100,18 +100,17 @@ void AddManualGameDialog::Submit() {
 
   setEnabled(false);
   add_->setText("Adding…");
-  api::AddManualGameAsync(
-      this, install_path, exe_path, name_->text().trimmed().toStdString(),
-      platform_->currentData().toString().toStdString(), is_installer_->isChecked(),
-      [this](GameDetailResult result) {
-        setEnabled(true);
-        add_->setText("Add");
-        if (!result.ok) {
-          notify::FailedRequest(this, "Could not add that game.", result.error);
-          return;
-        }
-        accept();
-      });
+  api::AddManualGameAsync(this, install_path, exe_path, name_->text().trimmed().toStdString(),
+                          platform_->currentData().toString().toStdString(),
+                          is_installer_->isChecked(), [this](GameDetailResult result) {
+                            setEnabled(true);
+                            add_->setText("Add");
+                            if (!result.ok) {
+                              notify::FailedRequest(this, "Could not add that game.", result.error);
+                              return;
+                            }
+                            accept();
+                          });
 }
 
 }  // namespace mira_gui

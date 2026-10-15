@@ -21,9 +21,13 @@ namespace {
 QColor g_accent;
 }  // namespace
 
-QColor Accent() { return g_accent.isValid() ? g_accent : theme::Current().accent; }
+QColor Accent() {
+  return g_accent.isValid() ? g_accent : theme::Current().accent;
+}
 
-void SetAccent(const QColor& color) { g_accent = color; }
+void SetAccent(const QColor& color) {
+  g_accent = color;
+}
 
 namespace {
 bool g_swap_confirm = false;
@@ -35,55 +39,81 @@ Nav PhysicalNav(Nav nav, const QString& kind) {
 }
 }  // namespace
 
-void SetSwapConfirm(bool swap) { g_swap_confirm = swap; }
+void SetSwapConfirm(bool swap) {
+  g_swap_confirm = swap;
+}
 
 QString GlyphText(Nav nav, const QString& kind) {
   nav = PhysicalNav(nav, kind);
   if (kind == "keys") {
     switch (nav) {
-      case Nav::Accept: return "Enter";
-      case Nav::Back: return "Esc";
-      case Nav::Action: return "X";
-      case Nav::Search: return "Y";
-      case Nav::PrevTab: return "Q";
-      case Nav::NextTab: return "E";
-      case Nav::Sort: return "S";
-      case Nav::PrevLetter: return "[";
-      case Nav::NextLetter: return "]";
-      default: return {};
+      case Nav::Accept:
+        return "Enter";
+      case Nav::Back:
+        return "Esc";
+      case Nav::Action:
+        return "X";
+      case Nav::Search:
+        return "Y";
+      case Nav::PrevTab:
+        return "Q";
+      case Nav::NextTab:
+        return "E";
+      case Nav::Sort:
+        return "S";
+      case Nav::PrevLetter:
+        return "[";
+      case Nav::NextLetter:
+        return "]";
+      default:
+        return {};
     }
   }
   const bool ps = kind == "ps", nin = kind == "nin";
   switch (nav) {
-    case Nav::Accept: return ps ? "✕" : nin ? "B" : "A";
-    case Nav::Back: return ps ? "○" : nin ? "A" : "B";
-    case Nav::Action: return ps ? "□" : nin ? "Y" : "X";
-    case Nav::Search: return ps ? "△" : nin ? "X" : "Y";
-    case Nav::PrevTab: return ps ? "L1" : nin ? "L" : "LB";
-    case Nav::NextTab: return ps ? "R1" : nin ? "R" : "RB";
-    case Nav::Sort: return ps ? "Create" : nin ? "−" : "View";
-    case Nav::PrevLetter: return ps ? "L2" : nin ? "ZL" : "LT";
-    case Nav::NextLetter: return ps ? "R2" : nin ? "ZR" : "RT";
-    default: return {};
+    case Nav::Accept:
+      return ps ? "✕" : nin ? "B" : "A";
+    case Nav::Back:
+      return ps ? "○" : nin ? "A" : "B";
+    case Nav::Action:
+      return ps ? "□" : nin ? "Y" : "X";
+    case Nav::Search:
+      return ps ? "△" : nin ? "X" : "Y";
+    case Nav::PrevTab:
+      return ps ? "L1" : nin ? "L" : "LB";
+    case Nav::NextTab:
+      return ps ? "R1" : nin ? "R" : "RB";
+    case Nav::Sort:
+      return ps ? "Create" : nin ? "−" : "View";
+    case Nav::PrevLetter:
+      return ps ? "L2" : nin ? "ZL" : "LT";
+    case Nav::NextLetter:
+      return ps ? "R2" : nin ? "ZR" : "RT";
+    default:
+      return {};
   }
 }
 
 namespace {
 bool Wide(Nav nav) {
-  return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::PrevLetter || nav == Nav::NextLetter;
+  return nav == Nav::PrevTab || nav == Nav::NextTab || nav == Nav::PrevLetter ||
+         nav == Nav::NextLetter;
 }
 
 // The small button left of center: Xbox's View (two overlapping squares) or PlayStation's Create
 // (a pill with three rays). Nintendo's minus is plain text.
-void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps, const QColor& color) {
+void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps,
+                  const QColor& color) {
   const QPointF c = rect.center();
   const double s = unit * 0.36;
   painter.setPen(QPen(color, std::max(1.0, unit * 0.08)));
   painter.setBrush(Qt::NoBrush);
   if (ps) {
-    painter.drawRoundedRect(QRectF(c.x() - s * 0.45, c.y() - s * 0.2, s * 0.9, s * 1.2), s * 0.3, s * 0.3);
+    painter.drawRoundedRect(QRectF(c.x() - s * 0.45, c.y() - s * 0.2, s * 0.9, s * 1.2), s * 0.3,
+                            s * 0.3);
     for (const double dx : {-0.6, 0.0, 0.6}) {
-      painter.drawLine(QPointF(c.x() + dx * s * 0.75, c.y() - s * 0.55), QPointF(c.x() + dx * s, c.y() - s * 0.95));
+      painter.drawLine(QPointF(c.x() + dx * s * 0.75, c.y() - s * 0.55),
+                       QPointF(c.x() + dx * s, c.y() - s * 0.95));
     }
     return;
   }
@@ -95,10 +125,12 @@ void DrawSortIcon(QPainter& painter, const QRectF& rect, double unit, bool ps, c
 
 double GlyphWidth(double unit, Nav nav, const QString& kind) {
   if (!Wide(nav) && kind != "keys") return unit * 1.45;
-  return QFontMetricsF(Font(unit, 0.62, QFont::Bold)).horizontalAdvance(GlyphText(nav, kind)) + unit * 0.9;
+  return QFontMetricsF(Font(unit, 0.62, QFont::Bold)).horizontalAdvance(GlyphText(nav, kind)) +
+         unit * 0.9;
 }
 
-double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, const QString& kind) {
+double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav,
+                 const QString& kind) {
   const QString text = GlyphText(nav, kind);
   nav = PhysicalNav(nav, kind);  // for its color
   // A key is a keycap whatever it is.
@@ -134,7 +166,8 @@ double DrawGlyph(QPainter& painter, QPointF left_center, double unit, Nav nav, c
   return w;
 }
 
-QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size, const QString& text) {
+QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size,
+                 const QString& text) {
   for (const double scale : {1.0, 0.82, 0.68}) {
     painter.setFont(Font(unit, size * scale, QFont::ExtraBold));
     const QFontMetricsF metrics(painter.font());
@@ -164,7 +197,8 @@ CoverGrid::CoverGrid(const QRectF& area, int columns, double gap, int focus_row)
 
 QRectF CoverGrid::Box(int index) const {
   const int row = index / columns - first_row;
-  return {left + (index % columns) * (tile_w + gap), area.top() + row * (tile_h + gap), tile_w, tile_h};
+  return {left + (index % columns) * (tile_w + gap), area.top() + row * (tile_h + gap), tile_w,
+          tile_h};
 }
 
 void DrawGlow(QPainter& painter, const QRectF& tile, double unit) {
@@ -177,13 +211,14 @@ void DrawGlow(QPainter& painter, const QRectF& tile, double unit) {
     glow.setAlpha(14 + (4 - ring) * 10);
     painter.setBrush(glow);
     const double grow = unit * 0.32 * ring;
-    painter.drawRoundedRect(tile.adjusted(-grow, -grow, grow, grow), unit * 0.45 + grow, unit * 0.45 + grow);
+    painter.drawRoundedRect(tile.adjusted(-grow, -grow, grow, grow), unit * 0.45 + grow,
+                            unit * 0.45 + grow);
   }
   painter.restore();
 }
 
-void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,
-               bool dim, double progress) {
+void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit,
+               bool focused, bool dim, double progress) {
   const theme::Tokens& tokens = theme::Current();
   const double radius = unit * 0.45;
   painter.save();
@@ -205,7 +240,8 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
     painter.fillRect(rect, tokens.tile_placeholder);
     // Cropped to fill, never stretched: a cover that isn't 2:3 loses its edges.
     const QSizeF shown = QSizeF(rect.size()).scaled(cover.size(), Qt::KeepAspectRatio);
-    const QRectF source((cover.width() - shown.width()) / 2, (cover.height() - shown.height()) / 2, shown.width(), shown.height());
+    const QRectF source((cover.width() - shown.width()) / 2, (cover.height() - shown.height()) / 2,
+                        shown.width(), shown.height());
     painter.drawPixmap(rect, cover, source);
   }
   if (dim) painter.fillRect(rect, QColor(0, 0, 0, 130));
@@ -213,22 +249,26 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
   if (dim && progress < 0) {
     painter.setFont(Font(unit, 0.72, QFont::Bold));
     const QString label = "↓  Not installed";
-    const double w = std::min(rect.width() - unit * 1.2, painter.fontMetrics().horizontalAdvance(label) + unit * 1.4);
+    const double w = std::min(rect.width() - unit * 1.2,
+                              painter.fontMetrics().horizontalAdvance(label) + unit * 1.4);
     const QRectF pill(rect.center().x() - w / 2, rect.bottom() - unit * 2.1, w, unit * 1.5);
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(0, 0, 0, 190));
     painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
     painter.setPen(tokens.text);
-    painter.drawText(pill, Qt::AlignCenter, painter.fontMetrics().elidedText(label, Qt::ElideRight, int(w - unit)));
+    painter.drawText(pill, Qt::AlignCenter,
+                     painter.fontMetrics().elidedText(label, Qt::ElideRight, int(w - unit)));
   }
   if (progress >= 0) {
-    const QRectF track(rect.left() + unit * 0.6, rect.bottom() - unit * 0.95, rect.width() - unit * 1.2, unit * 0.35);
+    const QRectF track(rect.left() + unit * 0.6, rect.bottom() - unit * 0.95,
+                       rect.width() - unit * 1.2, unit * 0.35);
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(0, 0, 0, 170));
     painter.drawRoundedRect(track, track.height() / 2, track.height() / 2);
     painter.setBrush(Accent());
-    painter.drawRoundedRect(QRectF(track.topLeft(), QSizeF(track.width() * progress, track.height())),
-                            track.height() / 2, track.height() / 2);
+    painter.drawRoundedRect(
+        QRectF(track.topLeft(), QSizeF(track.width() * progress, track.height())),
+        track.height() / 2, track.height() / 2);
   }
   painter.restore();
   if (focused) {
@@ -241,7 +281,8 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
       glow.setAlpha(46 - i * 8);
       const double spread = unit * (0.2 + 0.18 * i);
       painter.setPen(QPen(glow, unit * 0.2));
-      painter.drawRoundedRect(rect.adjusted(-spread, -spread, spread, spread), radius + spread, radius + spread);
+      painter.drawRoundedRect(rect.adjusted(-spread, -spread, spread, spread), radius + spread,
+                              radius + spread);
     }
     const double gap = unit * 0.2;
     painter.setPen(QPen(Accent(), unit * 0.2));
@@ -251,7 +292,8 @@ void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, doub
   }
 }
 
-double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString& text, const std::optional<QColor>& dot) {
+double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString& text,
+                const std::optional<QColor>& dot) {
   painter.save();
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setFont(Font(unit, 0.85, QFont::DemiBold));
@@ -264,16 +306,19 @@ double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString&
   painter.drawRoundedRect(rect, h / 2, h / 2);
   if (dot) {
     painter.setBrush(*dot);
-    painter.drawEllipse(QRectF(rect.left() + pad, rect.center().y() - dot_size / 2, dot_size, dot_size));
+    painter.drawEllipse(
+        QRectF(rect.left() + pad, rect.center().y() - dot_size / 2, dot_size, dot_size));
   }
   painter.setPen(theme::Current().text);
-  painter.drawText(rect.adjusted(pad + dot_size + gap, 0, -pad, 0), Qt::AlignVCenter | Qt::AlignLeft, text);
+  painter.drawText(rect.adjusted(pad + dot_size + gap, 0, -pad, 0),
+                   Qt::AlignVCenter | Qt::AlignLeft, text);
   painter.restore();
   return w;
 }
 
 QString StatusText(const Item& item, double progress, bool paused) {
-  if (paused) return progress >= 0 ? QString("Paused · %1%").arg(qRound(progress * 100)) : QString("Paused");
+  if (paused)
+    return progress >= 0 ? QString("Paused · %1%").arg(qRound(progress * 100)) : QString("Paused");
   if (progress >= 0) return QString("Installing · %1%").arg(qRound(progress * 100));
   if (!item.installed()) return "Not installed";
   if (item.game->running) return "Running";

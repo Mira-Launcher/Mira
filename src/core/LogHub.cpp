@@ -17,12 +17,12 @@ constexpr std::size_t kKeepEnded = 16;
 struct Channel {
   std::deque<std::string> lines;
   std::uint64_t first = 0;  // sequence number of lines.front()
-  std::string partial;  // text since the last '\n' or '\r'
-  std::string redraw;    // the line a '\r' cut off, which the next text replaces
-  std::string progress;  // the latest download progress line, which the next one replaces
+  std::string partial;      // text since the last '\n' or '\r'
+  std::string redraw;       // the line a '\r' cut off, which the next text replaces
+  std::string progress;     // the latest download progress line, which the next one replaces
   bool active = false;
   std::uint64_t ended = 0;  // when End last ran, by g_ends
-  std::ofstream journal;  // open while the channel is being kept on disk (Journal)
+  std::ofstream journal;    // open while the channel is being kept on disk (Journal)
 };
 
 std::mutex g_mutex;
@@ -49,7 +49,8 @@ Channel& Find(std::string_view name) {
 }
 
 void Push(Channel& channel, std::string line) {
-  if (channel.journal.is_open()) channel.journal << line << std::endl;  // flushed: it has to survive a crash
+  if (channel.journal.is_open())
+    channel.journal << line << std::endl;  // flushed: it has to survive a crash
   channel.lines.push_back(std::move(line));
   if (channel.lines.size() > kKeepLines) {
     channel.lines.pop_front();
@@ -57,8 +58,9 @@ void Push(Channel& channel, std::string line) {
   }
 }
 
-// A download's progress readout, which repeats until it is done: wget's dots ("918750K .......... 99% 39.6M 1s"),
-// legendary and gogdl's "Progress: 12.3% ... ETA:", or a line that starts with a percentage.
+// A download's progress readout, which repeats until it is done: wget's dots ("918750K ..........
+// 99% 39.6M 1s"), legendary and gogdl's "Progress: 12.3% ... ETA:", or a line that starts with a
+// percentage.
 bool IsProgress(std::string_view line) {
   const std::size_t first = line.find_first_not_of(' ');
   if (first == std::string_view::npos) return false;
@@ -181,12 +183,15 @@ Page Read(std::string_view name, const std::uint64_t* after, int tail) {
   }
   const Channel& channel = it->second;
   const std::uint64_t end = channel.first + channel.lines.size();
-  std::uint64_t from = after != nullptr ? *after : (end > static_cast<std::uint64_t>(tail) ? end - tail : 0);
+  std::uint64_t from =
+      after != nullptr ? *after : (end > static_cast<std::uint64_t>(tail) ? end - tail : 0);
   from = std::max(from, channel.first);
   for (std::uint64_t i = from; i < end; ++i) page.lines.push_back(channel.lines[i - channel.first]);
   page.next = end;
   page.active = channel.active || name == "daemon";  // always being written to
-  page.live = !channel.partial.empty() ? channel.partial : !channel.redraw.empty() ? channel.redraw : channel.progress;
+  page.live = !channel.partial.empty()  ? channel.partial
+              : !channel.redraw.empty() ? channel.redraw
+                                        : channel.progress;
   return page;
 }
 

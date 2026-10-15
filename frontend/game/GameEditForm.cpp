@@ -1,27 +1,5 @@
 #include "GameEditForm.h"
 
-#include "../client/Async.h"
-#include "../client/EventHub.h"
-#include "../client/api/Config.h"
-#include "../widgets/Labels.h"
-#include "../client/api/Emulators.h"
-#include "../client/api/Games.h"
-#include "../client/api/Library.h"
-#include "../client/api/Runners.h"
-#include "../sources/Sources.h"
-#include "../client/JsonMapping.h"
-#include "../app/ErrorHelp.h"
-#include "../app/Notify.h"
-#include "../app/Shortcuts.h"
-#include "../settings/SettingEditor.h"
-#include "../settings/SettingsCard.h"
-#include "../widgets/KeyValueEdit.h"
-#include "../widgets/PathField.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/TagEdit.h"
-#include "LaunchOptionsEdit.h"
-#include "OverridesEditor.h"
-
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
@@ -37,9 +15,30 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
-
 #include <algorithm>
 #include <filesystem>
+
+#include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
+#include "../app/Shortcuts.h"
+#include "../client/Async.h"
+#include "../client/EventHub.h"
+#include "../client/JsonMapping.h"
+#include "../client/api/Config.h"
+#include "../client/api/Emulators.h"
+#include "../client/api/Games.h"
+#include "../client/api/Library.h"
+#include "../client/api/Runners.h"
+#include "../settings/SettingEditor.h"
+#include "../settings/SettingsCard.h"
+#include "../sources/Sources.h"
+#include "../widgets/KeyValueEdit.h"
+#include "../widgets/Labels.h"
+#include "../widgets/PathField.h"
+#include "../widgets/Scrolling.h"
+#include "../widgets/TagEdit.h"
+#include "LaunchOptionsEdit.h"
+#include "OverridesEditor.h"
 
 namespace mira_gui {
 namespace {
@@ -81,7 +80,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* scroll = new QScrollArea(pages_);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
-  scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
+  scroll->setStyleSheet(
+      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
   scroll->viewport()->setAutoFillBackground(false);
   SetUpScrolling(scroll);
   auto* cards_page = new QWidget();
@@ -140,7 +140,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   launch_options_ = new LaunchOptionsEdit(launch);
   launch_options_row_ = new SettingRow(
-      "Launch options", "Other ways to start it, and programs to run beside it or open for it, such as mod managers.",
+      "Launch options",
+      "Other ways to start it, and programs to run beside it or open for it, such as mod managers.",
       launch);
   launch_options_row_->SetBelow(launch_options_);
   launch->AddRow(launch_options_row_);
@@ -152,8 +153,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_ = new SettingRow("Runner", QString(), runner);
   runner_row_->SetBelow(runner_combo_);
   runner->AddRow(runner_row_);
-  emulator_row_ = new SettingRow("Emulator", "Picking another moves its files to that emulator's games folder.",
-                                 runner);
+  emulator_row_ = new SettingRow(
+      "Emulator", "Picking another moves its files to that emulator's games folder.", runner);
   emulator_combo_ = new QComboBox(emulator_row_);
   emulator_row_->AddControl(emulator_combo_);
   connect(emulator_combo_, &QComboBox::activated, this, [this](int index) {
@@ -161,11 +162,12 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
     const QString name = emulator_combo_->currentText();
     api::MoveGameToEmulatorAsync(this, id_, emulator_combo_->currentData().toString().toStdString(),
                                  [this, name](StoreActionResult moved) {
-      if (!moved.ok) {
-        emulator_combo_->setCurrentIndex(0);
-        notify::FailedRequest(this, "Could not move it to " + name + ".", moved.error);
-      }
-    });
+                                   if (!moved.ok) {
+                                     emulator_combo_->setCurrentIndex(0);
+                                     notify::FailedRequest(
+                                         this, "Could not move it to " + name + ".", moved.error);
+                                   }
+                                 });
   });
   emulator_row_->setVisible(false);
   runner->AddRow(emulator_row_);
@@ -178,7 +180,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   advanced_line_layout->setContentsMargins(0, 0, 0, 0);
   advanced_line_layout->addWidget(advanced);
   advanced_line_layout->addStretch(1);
-  auto* advanced_row = new SettingRow("Environment and scripts", "Environment variables, runner options and scripts.", runner);
+  auto* advanced_row = new SettingRow("Environment and scripts",
+                                      "Environment variables, runner options and scripts.", runner);
   advanced_row->SetBelow(advanced_line);
   runner->AddRow(advanced_row);
 
@@ -191,14 +194,16 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   tags_edit_ = new TagEdit(details);
   connect(tags_edit_, &TagEdit::TagClicked, this, &GameEditForm::TagFilterRequested);
-  tags_row_ = new SettingRow("Tags",
-                             "Labels of your choice. The \"hidden\" tag keeps this game out of the "
-                             "library until you ask for it " + shortcuts::HiddenGamesHint() +
-                                 ". In a library folder sorted by tag, the outlined tag is the folder "
-                             "the game is in; drag another folder tag ahead of it to move the "
-                             "game. Folder tags are chosen on the "
-                             "Tags page.",
-                             details);
+  tags_row_ =
+      new SettingRow("Tags",
+                     "Labels of your choice. The \"hidden\" tag keeps this game out of the "
+                     "library until you ask for it " +
+                         shortcuts::HiddenGamesHint() +
+                         ". In a library folder sorted by tag, the outlined tag is the folder "
+                         "the game is in; drag another folder tag ahead of it to move the "
+                         "game. Folder tags are chosen on the "
+                         "Tags page.",
+                     details);
   tags_row_->SetBelow(tags_edit_);
   details->AddRow(tags_row_);
 
@@ -217,15 +222,15 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   open_data_dir_ = new QPushButton("Open", files);
   open_data_dir_->setToolTip("Open this folder in the file manager");
   open_data_dir_->setEnabled(false);
-  connect(open_data_dir_, &QPushButton::clicked, this, [this] {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(data_dir_edit_->text()));
-  });
+  connect(open_data_dir_, &QPushButton::clicked, this,
+          [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(data_dir_edit_->text())); });
   // Editing the path repoints the record to another prefix; Move… moves this one.
   move_prefix_ = new QPushButton("Move…", files);
   move_prefix_->setVisible(false);
   connect(move_prefix_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/true); });
-  data_dir_row_ = new SettingRow("Prefix and data folder",
-                                 "The folder holding this game's Wine or Proton prefix and its data.", files);
+  data_dir_row_ =
+      new SettingRow("Prefix and data folder",
+                     "The folder holding this game's Wine or Proton prefix and its data.", files);
   data_dir_row_->SetBelow(FieldLine(files, data_dir_edit_, {open_data_dir_, move_prefix_}));
   files->AddRow(data_dir_row_);
 
@@ -249,8 +254,9 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_options_card_->hide();
   SettingsCard* env_card = options_page->AddCard(QString());
   env_edit_ = new KeyValueEdit("Add variable", env_card);
-  env_row_ = new SettingRow("Environment variables",
-                            "Added to the runner's own environment. A variable set here wins over both.", env_card);
+  env_row_ = new SettingRow(
+      "Environment variables",
+      "Added to the runner's own environment. A variable set here wins over both.", env_card);
   env_row_->SetBelow(env_edit_);
   env_card->AddRow(env_row_);
   pages_->addWidget(overrides_);
@@ -309,9 +315,13 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   });
 }
 
-void GameEditForm::SetTagSuggestions(const QStringList& tags) { tags_edit_->SetSuggestions(tags); }
+void GameEditForm::SetTagSuggestions(const QStringList& tags) {
+  tags_edit_->SetSuggestions(tags);
+}
 
-void GameEditForm::SetTagOrder(std::vector<std::string> order) { tags_edit_->SetOrder(std::move(order)); }
+void GameEditForm::SetTagOrder(std::vector<std::string> order) {
+  tags_edit_->SetOrder(std::move(order));
+}
 
 void GameEditForm::SetBottomRoom(int height) {
   const QMargins margins = cards_layout_->contentsMargins();
@@ -328,10 +338,13 @@ void GameEditForm::CloseAdvanced() {
   ResetScroll();
 }
 
-bool GameEditForm::AdvancedOpen() const { return pages_->currentIndex() == 1; }
+bool GameEditForm::AdvancedOpen() const {
+  return pages_->currentIndex() == 1;
+}
 
 void GameEditForm::ResetScroll() {
-  if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0))) scroll->verticalScrollBar()->setValue(0);
+  if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0)))
+    scroll->verticalScrollBar()->setValue(0);
 }
 
 void GameEditForm::Reload() {
@@ -344,9 +357,8 @@ void GameEditForm::Reload() {
 
 void GameEditForm::Load() {
   stale_ = false;
-  mira_gui::api::ListRunnersAsync(this, [this](mira_gui::RunnersResult result) {
-    PopulateRunnerCombo(result);
-  });
+  mira_gui::api::ListRunnersAsync(
+      this, [this](mira_gui::RunnersResult result) { PopulateRunnerCombo(result); });
   mira_gui::api::GetGameAsync(this, id_, [this](mira_gui::GameDetailResult result) {
     if (!result.ok) {
       emit LoadFailed(error_help::Describe(result.error), !loaded_);
@@ -373,11 +385,13 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   move_prefix_->setToolTip("Move this " + noun_ + "'s prefix to another folder");
   ShowInstallPath();
   // A desktop entry's files belong to another app; Steam moves its own games.
-  move_button_->setVisible(!game.install_path.empty() && game.source != "desktop-entry" && game.source != "steam");
+  move_button_->setVisible(!game.install_path.empty() && game.source != "desktop-entry" &&
+                           game.source != "steam");
 
   if (game.source == "steam") {
     source_note_label_->setText(
-        "Steam launches this game from its own record of the executable, so changing it here has no effect.");
+        "Steam launches this game from its own record of the executable, so changing it here has "
+        "no effect.");
   }
   source_note_label_->setVisible(game.source == "steam");
 
@@ -420,15 +434,19 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
                              QString::fromStdString(game.source));
     emulator_combo_->setEnabled(false);
     emulator_combo_->setToolTip(QString());
-    api::GetGameEmulatorsAsync(emulator_combo_, game.id, [this, id = game.id](EmulatorChoicesResult result) {
-      if (!result.ok || id != id_) return;
-      while (emulator_combo_->count() > 1) emulator_combo_->removeItem(1);  // an earlier Populate's answer
-      for (const EmulatorChoice& choice : result.emulators) {
-        emulator_combo_->addItem(QString::fromStdString(choice.name), QString::fromStdString(choice.id));
-      }
-      emulator_combo_->setEnabled(!result.emulators.empty());
-      if (result.emulators.empty()) emulator_combo_->setToolTip("No other installed emulator plays this");
-    });
+    api::GetGameEmulatorsAsync(
+        emulator_combo_, game.id, [this, id = game.id](EmulatorChoicesResult result) {
+          if (!result.ok || id != id_) return;
+          while (emulator_combo_->count() > 1)
+            emulator_combo_->removeItem(1);  // an earlier Populate's answer
+          for (const EmulatorChoice& choice : result.emulators) {
+            emulator_combo_->addItem(QString::fromStdString(choice.name),
+                                     QString::fromStdString(choice.id));
+          }
+          emulator_combo_->setEnabled(!result.emulators.empty());
+          if (result.emulators.empty())
+            emulator_combo_->setToolTip("No other installed emulator plays this");
+        });
   }
   ShowRunnerOptions();
   UpdateModified();
@@ -450,9 +468,11 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
   if (!runner_config_.is_object()) runner_config_ = nlohmann::json::object();
   ShowRunnerFieldValues();
   std::map<std::string, std::string> env;
-  const nlohmann::json env_json = nlohmann::json::parse(patch.env_json.value_or("{}"), nullptr, false);
+  const nlohmann::json env_json =
+      nlohmann::json::parse(patch.env_json.value_or("{}"), nullptr, false);
   if (env_json.is_object()) {
-    for (const auto& [key, value] : env_json.items()) env[key] = value.is_string() ? value.get<std::string>() : value.dump();
+    for (const auto& [key, value] : env_json.items())
+      env[key] = value.is_string() ? value.get<std::string>() : value.dump();
   }
   env_edit_->SetValues(env);
   launch_options_->SetLaunch(patch.launch.value_or(GameLaunch()), windows_, install_path_);
@@ -468,7 +488,8 @@ void GameEditForm::ShowRunnerOptions() {
   const std::string kind = RunnerKind();
   if (kind == options_kind_) return;
   options_kind_ = kind;
-  if (const auto known = runner_schemas_.find(kind); known != runner_schemas_.end() || kind.empty()) {
+  if (const auto known = runner_schemas_.find(kind);
+      known != runner_schemas_.end() || kind.empty()) {
     BuildRunnerFields(kind.empty() ? std::vector<RunnerOption>() : known->second);
     return;
   }
@@ -476,7 +497,8 @@ void GameEditForm::ShowRunnerOptions() {
     // An unknown kind (a typed-in reference) simply has no options to show. Only an answer is
     // kept, so a failed request is made again next time.
     if (result.ok) runner_schemas_[kind] = result.options;
-    if (kind == options_kind_) BuildRunnerFields(result.ok ? result.options : std::vector<RunnerOption>());
+    if (kind == options_kind_)
+      BuildRunnerFields(result.ok ? result.options : std::vector<RunnerOption>());
   });
 }
 
@@ -487,8 +509,8 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
   if (!title.isEmpty()) title[0] = title[0].toUpper();
   runner_options_card_->SetTitle(title);
   for (const RunnerOption& option : options) {
-    auto* row = new SettingRow(QString::fromStdString(option.label), QString::fromStdString(option.doc),
-                               runner_options_card_);
+    auto* row = new SettingRow(QString::fromStdString(option.label),
+                               QString::fromStdString(option.doc), runner_options_card_);
     QLineEdit* edit = LineEdit(runner_options_card_, "Not set");
     row->SetBelow(edit);
     runner_options_card_->AddRow(row);
@@ -502,7 +524,8 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
       UpdateModified();
     });
     connect(row, &SettingRow::RevertClicked, this, [this, key] {
-      const nlohmann::json saved = nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
+      const nlohmann::json saved =
+          nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
       if (saved.is_object() && saved.contains(key)) {
         runner_config_[key] = saved[key];
       } else {
@@ -542,10 +565,10 @@ void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Cand
   exe_combo_->blockSignals(true);
   exe_combo_->clear();
   for (const mira_gui::GameDetail::Candidate& candidate : sorted) {
-    QString label = QString("%1 (%2, score %3)")
-                        .arg(QString::fromStdString(candidate.rel_path),
-                             QString::fromStdString(candidate.kind))
-                        .arg(candidate.score, 0, 'f', 1);
+    QString label =
+        QString("%1 (%2, score %3)")
+            .arg(QString::fromStdString(candidate.rel_path), QString::fromStdString(candidate.kind))
+            .arg(candidate.score, 0, 'f', 1);
     if (candidate.is_installer) label += " (installer, probably not the game)";
     exe_combo_->addItem(label, QString::fromStdString(candidate.rel_path));
   }
@@ -562,7 +585,7 @@ void GameEditForm::PopulateRunnerCombo(const mira_gui::RunnersResult& result) {
   if (result.ok) {
     for (const mira_gui::RunnerInfo& runner : result.runners) {
       const QString label = QString("%1 (%2)").arg(QString::fromStdString(runner.name),
-                                                     QString::fromStdString(runner.kind));
+                                                   QString::fromStdString(runner.kind));
       runner_combo_->addItem(label, QString::fromStdString(runner.reference));
     }
   }
@@ -576,7 +599,8 @@ void GameEditForm::OnExeComboActivated(int index) {
 }
 
 void GameEditForm::BrowseExecutable() {
-  const QString start_dir = install_path_.empty() ? QString() : QString::fromStdString(install_path_);
+  const QString start_dir =
+      install_path_.empty() ? QString() : QString::fromStdString(install_path_);
   const QString selected = QFileDialog::getOpenFileName(this, "Select executable", start_dir);
   if (selected.isEmpty()) return;
 
@@ -585,46 +609,54 @@ void GameEditForm::BrowseExecutable() {
 }
 
 void GameEditForm::MoveFolder(bool prefix) {
-  const std::string current = prefix ? original_patch_.data_dir.value_or(std::string()) : install_path_;
+  const std::string current =
+      prefix ? original_patch_.data_dir.value_or(std::string()) : install_path_;
   const QString parent_dir =
-      current.empty() ? QString() : QString::fromStdString(std::filesystem::path(current).parent_path().string());
+      current.empty()
+          ? QString()
+          : QString::fromStdString(std::filesystem::path(current).parent_path().string());
   const QString picked = QFileDialog::getExistingDirectory(
-      this, prefix ? "Move the prefix folder into" : "Move the " + noun_ + "'s folder into", parent_dir);
+      this, prefix ? "Move the prefix folder into" : "Move the " + noun_ + "'s folder into",
+      parent_dir);
   if (picked.isEmpty()) return;
   const std::string target =
-      (std::filesystem::path(picked.toStdString()) / std::filesystem::path(current).filename()).string();
+      (std::filesystem::path(picked.toStdString()) / std::filesystem::path(current).filename())
+          .string();
   if (target == current) return;
   const QString what = "this " + noun_ + (prefix ? "'s prefix" : "'s files");
-  if (!notify::Confirm(this, prefix ? "Move prefix" : "Move " + noun_,
-                       QString("Move %1 to %2? A move to another drive copies them first, which can take a while.")
-                           .arg(what, QString::fromStdString(target)),
-                       "Move")) {
+  if (!notify::Confirm(
+          this, prefix ? "Move prefix" : "Move " + noun_,
+          QString(
+              "Move %1 to %2? A move to another drive copies them first, which can take a while.")
+              .arg(what, QString::fromStdString(target)),
+          "Move")) {
     return;
   }
   QPushButton* button = prefix ? move_prefix_ : move_button_;
   button->setEnabled(false);
   button->setText("Moving…");
-  api::RelocateGameAsync(this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
-                                 [this, button, prefix](GameDetailResult result) {
-                                   button->setText("Move…");
-                                   if (!result.ok) {
-                                     button->setEnabled(true);
-                                     notify::FailedRequest(
-                                         this, prefix ? "Could not move the prefix." : "Could not move the " + noun_ + ".",
-                                         result.error);
-                                     return;
-                                   }
-                                   install_path_ = result.game.install_path;
-                                   ShowInstallPath();
-                                   // Moved on disk and saved, so not an unsaved change.
-                                   original_patch_.data_dir = result.game.data_dir;
-                                   populating_ = true;
-                                   data_dir_edit_->setText(QString::fromStdString(result.game.data_dir));
-                                   data_dir_edit_->setCursorPosition(0);
-                                   populating_ = false;
-                                   button->setEnabled(true);
-                                   UpdateModified();
-                                 });
+  api::RelocateGameAsync(
+      this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
+      [this, button, prefix](GameDetailResult result) {
+        button->setText("Move…");
+        if (!result.ok) {
+          button->setEnabled(true);
+          notify::FailedRequest(
+              this, prefix ? "Could not move the prefix." : "Could not move the " + noun_ + ".",
+              result.error);
+          return;
+        }
+        install_path_ = result.game.install_path;
+        ShowInstallPath();
+        // Moved on disk and saved, so not an unsaved change.
+        original_patch_.data_dir = result.game.data_dir;
+        populating_ = true;
+        data_dir_edit_->setText(QString::fromStdString(result.game.data_dir));
+        data_dir_edit_->setCursorPosition(0);
+        populating_ = false;
+        button->setEnabled(true);
+        UpdateModified();
+      });
 }
 
 void GameEditForm::ConfirmExecutable() {
@@ -673,7 +705,9 @@ void GameEditForm::UpdateModified() {
   const nlohmann::json saved_config =
       nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
   for (const RunnerField& field : runner_fields_) {
-    const nlohmann::json was = saved_config.is_object() ? saved_config.value(field.key, nlohmann::json()) : nlohmann::json();
+    const nlohmann::json was = saved_config.is_object()
+                                   ? saved_config.value(field.key, nlohmann::json())
+                                   : nlohmann::json();
     field.row->SetModified(runner_config_.value(field.key, nlohmann::json()) != was);
   }
   env_row_->SetModified(now.env_json != original_patch_.env_json);
@@ -690,13 +724,16 @@ int GameEditForm::ChangeCount() const {
       (now.env_json != original_patch_.env_json) + (now.launch != original_patch_.launch);
   // One per runner option, since each is its own row.
   const int runner_options = static_cast<int>(
-      mapping::MergePatchBetween(nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false),
-                                 runner_config_)
+      mapping::MergePatchBetween(
+          nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false),
+          runner_config_)
           .size());
   return fields + runner_options + static_cast<int>(overrides_->PendingEdits().size());
 }
 
-bool GameEditForm::IsDirty() const { return ChangeCount() > 0; }
+bool GameEditForm::IsDirty() const {
+  return ChangeCount() > 0;
+}
 
 void GameEditForm::DiscardChanges() {
   populating_ = true;
@@ -708,11 +745,13 @@ void GameEditForm::DiscardChanges() {
   if (stale_) Load();
 }
 
-mira_gui::GamesPatch GameEditForm::TagsPatch(const std::optional<std::vector<std::string>>& now) const {
+mira_gui::GamesPatch GameEditForm::TagsPatch(
+    const std::optional<std::vector<std::string>>& now) const {
   mira_gui::GamesPatch tags;
   tags.ids = {id_};
   const std::vector<std::string> now_tags = now.value_or(std::vector<std::string>());
-  const std::vector<std::string> was_tags = original_patch_.tags.value_or(std::vector<std::string>());
+  const std::vector<std::string> was_tags =
+      original_patch_.tags.value_or(std::vector<std::string>());
   for (const std::string& tag : now_tags) {
     if (std::ranges::find(was_tags, tag) == was_tags.end()) tags.add_tags.push_back(tag);
   }
@@ -731,7 +770,8 @@ void GameEditForm::Save() {
   // Only what changed here is sent, so a pin, hide or rename made elsewhere
   // while the card was open isn't reverted. Tags go as add/remove sets for the same reason.
   mira_gui::GamePatch patch;
-  const auto changed = [](const std::optional<std::string>& now, const std::optional<std::string>& before,
+  const auto changed = [](const std::optional<std::string>& now,
+                          const std::optional<std::string>& before,
                           std::optional<std::string>& out) {
     if (now != before) out = now;
   };
@@ -745,18 +785,21 @@ void GameEditForm::Save() {
   changed(current.env_json, original_patch_.env_json, patch.env_json);
   if (current.launch != original_patch_.launch) patch.launch = current.launch;
   // mirad merges both objects, so only changed keys go, and a removed one as null.
-  for (auto [now, before] : {std::pair{&patch.runner_config_json, &original_patch_.runner_config_json},
-                             std::pair{&patch.env_json, &original_patch_.env_json}}) {
+  for (auto [now, before] :
+       {std::pair{&patch.runner_config_json, &original_patch_.runner_config_json},
+        std::pair{&patch.env_json, &original_patch_.env_json}}) {
     if (!*now) continue;
     *now = mapping::MergePatchBetween(nlohmann::json::parse(before->value_or("{}"), nullptr, false),
                                       nlohmann::json::parse(**now, nullptr, false))
                .dump();
   }
-  const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir || patch.runner_ref ||
-                              patch.data_dir || patch.runner_config_json || patch.env_json || patch.launch;
+  const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir ||
+                              patch.runner_ref || patch.data_dir || patch.runner_config_json ||
+                              patch.env_json || patch.launch;
 
   const mira_gui::GamesPatch tags = TagsPatch(current.tags);
-  const bool tags_changed = !tags.add_tags.empty() || !tags.remove_tags.empty() || tags.folder_tag.has_value();
+  const bool tags_changed =
+      !tags.add_tags.empty() || !tags.remove_tags.empty() || tags.folder_tag.has_value();
 
   const auto fail = [this](const std::string& error) {
     setEnabled(true);
@@ -772,7 +815,8 @@ void GameEditForm::Save() {
   const auto save_overrides = [this, override_edits, fail, succeed] {
     if (override_edits.empty()) return succeed();
     mira_gui::api::PatchGameConfigAsync(
-        this, id_, override_edits, [this, fail, succeed](mira_gui::PatchGameConfigResult override_result) {
+        this, id_, override_edits,
+        [this, fail, succeed](mira_gui::PatchGameConfigResult override_result) {
           if (!override_result.ok) return fail(override_result.error);
           overrides_->MarkSaved();
           succeed();
@@ -804,13 +848,14 @@ void GameEditForm::Save() {
     save_tags();
     return;
   }
-  mira_gui::api::PatchGameAsync(this, id_, patch, [fail, save_tags](mira_gui::PatchGameResult result) {
-    if (!result.ok) {
-      fail(result.error);
-      return;
-    }
-    save_tags();
-  });
+  mira_gui::api::PatchGameAsync(this, id_, patch,
+                                [fail, save_tags](mira_gui::PatchGameResult result) {
+                                  if (!result.ok) {
+                                    fail(result.error);
+                                    return;
+                                  }
+                                  save_tags();
+                                });
 }
 
 }  // namespace mira_gui

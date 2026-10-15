@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-
 #include <functional>
 #include <vector>
 
@@ -17,7 +16,8 @@ struct WebApp {
 // Streaming sites big screen can add as apps.
 const std::vector<WebApp>& StreamingApps();
 
-// The browser that runs them full screen: a Chromium-based one (they ship Widevine), else Firefox; empty with none.
+// The browser that runs them full screen: a Chromium-based one (they ship Widevine), else Firefox;
+// empty with none.
 QString KioskBrowser();
 
 // Adds `app` to the library: a launcher script in ~/.local/share/mira/webapps/<id>/ that runs

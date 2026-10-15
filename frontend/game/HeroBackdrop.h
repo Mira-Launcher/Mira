@@ -2,7 +2,6 @@
 
 #include <QPixmap>
 #include <QWidget>
-
 #include <string>
 
 #include "../client/Types.h"
@@ -19,7 +18,7 @@ class ArtworkStore;
 class HeroBackdrop : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit HeroBackdrop(ArtworkStore* artwork, QWidget* parent = nullptr);
 
   void ShowGame(const GameSummary& game);
@@ -30,11 +29,11 @@ public:
   // pixmap, or until that slot's new art arrives.
   void SetPreview(const QString& slot, const QPixmap& preview);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   void LoadHero();
   QPixmap Source() const;
 
@@ -56,7 +55,7 @@ private:
 class CoverChip : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit CoverChip(ArtworkStore* artwork, QWidget* parent = nullptr);
 
   void ShowGame(const GameSummary& game);
@@ -64,10 +63,10 @@ public:
   void RefreshCover(const std::string& id);
   void SetPreview(const QPixmap& preview);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   ArtworkStore* artwork_ = nullptr;
   GameSummary game_;
   QPixmap preview_;

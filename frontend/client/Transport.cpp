@@ -2,13 +2,13 @@
 
 #include <httplib.h>
 #include <pwd.h>
-#include <toml.hpp>
 #include <unistd.h>
 
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
+#include <toml.hpp>
 
 #include "JsonMapping.h"
 
@@ -26,19 +26,24 @@ httplib::Client MakeClient(const Options& options) {
 }
 
 ApiError Unreachable(const httplib::Result& res) {
-  return ApiError("cannot reach mirad at " + SocketPath() + " (" + httplib::to_string(res.error()) + ")",
-                  ApiError::kUnreachable);
+  return ApiError(
+      "cannot reach mirad at " + SocketPath() + " (" + httplib::to_string(res.error()) + ")",
+      ApiError::kUnreachable);
 }
 
-// mirad's {"error": {...}} envelope, or the raw body if it isn't one. Never JSON shown as a message.
+// mirad's {"error": {...}} envelope, or the raw body if it isn't one. Never JSON shown as a
+// message.
 ApiError FromBody(int status, const std::string& body_text) {
   const json body = json::parse(body_text, nullptr, false);
   if (body.is_discarded() || !body.contains("error") || !body["error"].is_object()) {
-    return ApiError(body_text.empty() || !body.is_discarded() ? "mirad answered HTTP " + std::to_string(status)
-                                                               : body_text);
+    return ApiError(body_text.empty() || !body.is_discarded()
+                        ? "mirad answered HTTP " + std::to_string(status)
+                        : body_text);
   }
   ApiError error = mapping::ToApiError(body["error"]);
-  if (error.message.empty()) error.message = error.code.empty() ? "mirad answered HTTP " + std::to_string(status) : error.code;
+  if (error.message.empty())
+    error.message =
+        error.code.empty() ? "mirad answered HTTP " + std::to_string(status) : error.code;
   return error;
 }
 
@@ -65,7 +70,8 @@ std::string Home() {
   return "/tmp";
 }
 
-// paths::RuntimeDir: never /tmp, where another user could make mira/ first and take the socket's place.
+// paths::RuntimeDir: never /tmp, where another user could make mira/ first and take the socket's
+// place.
 std::string RuntimeDir() {
   for (const char* name : {"XDG_RUNTIME_DIR", "XDG_CACHE_HOME"}) {
     if (const char* value = std::getenv(name); value && *value) return value;
@@ -92,7 +98,9 @@ std::string ConfiguredSocket() {
       out += Home();
     } else if (c == '$' && i + 1 < raw->size()) {
       size_t end = i + 1;
-      while (end < raw->size() && (std::isalnum(static_cast<unsigned char>((*raw)[end])) || (*raw)[end] == '_')) ++end;
+      while (end < raw->size() &&
+             (std::isalnum(static_cast<unsigned char>((*raw)[end])) || (*raw)[end] == '_'))
+        ++end;
       const std::string name = raw->substr(i + 1, end - i - 1);
       if (const char* value = std::getenv(name.c_str()); value && *value) {
         out += value;

@@ -18,14 +18,15 @@ namespace {
 constexpr mode_t kSettingsMode = 0600;  // it holds API keys
 using nlohmann::json;
 
-}
+}  // namespace
 
 Config::Config(std::filesystem::path file)
     : file_(file), frontend_file_(file.parent_path() / "frontend.toml") {
   document_ = Schema::Instance().Defaults();
 }
 
-void Config::ResetInvalid(json& whole, const std::function<json(const Entry&)>& fallback, std::string_view note) {
+void Config::ResetInvalid(json& whole, const std::function<json(const Entry&)>& fallback,
+                          std::string_view note) {
   const Schema& schema = Schema::Instance();
   for (const Entry& entry : schema.Entries()) {
     const auto pointer = Schema::Pointer(entry.key);
@@ -51,7 +52,9 @@ void Config::Load(const std::string& fallback) {
   const auto write_text = [&](const auto& text) {
     std::ostringstream out;
     out << text;
-    if (auto written = WriteFileAtomic(file_, out.str(), "config_write_failed", true, kSettingsMode); !written) {
+    if (auto written =
+            WriteFileAtomic(file_, out.str(), "config_write_failed", true, kSettingsMode);
+        !written) {
       log::Warn("couldn't write {}: {}", file_.string(), written.error().message);
     }
   };
@@ -73,22 +76,25 @@ void Config::Load(const std::string& fallback) {
     write_text(tomljson::ToToml(document_));
   } else {
     // A file from before saves were owner-only.
-    std::filesystem::permissions(file_, std::filesystem::perms::group_all | std::filesystem::perms::others_all,
-                                 std::filesystem::perm_options::remove, ec);
+    std::filesystem::permissions(
+        file_, std::filesystem::perms::group_all | std::filesystem::perms::others_all,
+        std::filesystem::perm_options::remove, ec);
     const auto read = files::ReadFile(file_);
     const std::string text = read.value_or("");
     toml::parse_result parsed = toml::parse(text, file_.string());
     if (!read && std::filesystem::exists(file_, ec)) {
       // Unreadable is not empty: defaults saved over it would lose every setting.
       keep_file_ = true;
-      log::Error("could not read the settings at {}; continuing with defaults and not saving", file_.string());
+      log::Error("could not read the settings at {}; continuing with defaults and not saving",
+                 file_.string());
     } else if (parsed) {
       apply(parsed.table(), text);
     } else if (const auto broken = SetAside(file_)) {
       toml::parse_result last_good = toml::parse(fallback);
       if (!fallback.empty() && last_good) {
         log::Error(
-            "settings at {} could not be parsed ({}); kept it as {} and went back to the last settings that loaded",
+            "settings at {} could not be parsed ({}); kept it as {} and went back to the last "
+            "settings that loaded",
             file_.string(), parsed.error().description(), broken->string());
         write_text(fallback);
         apply(last_good.table(), fallback);
@@ -180,19 +186,23 @@ Result<std::vector<std::string>> Config::SyncLocked() {
   if (!parsed) {
     const auto& error = parsed.error();
     return Err("settings_invalid",
-               std::format("{} line {}: {}", file_.filename().string(), error.source().begin.line, error.description()),
-               "Fix the line, or change the setting in Mira. Until then the settings before the edit stay in use.");
+               std::format("{} line {}: {}", file_.filename().string(), error.source().begin.line,
+                           error.description()),
+               "Fix the line, or change the setting in Mira. Until then the settings before the "
+               "edit stay in use.");
   }
   json whole = tomljson::ToJson(parsed.table());
   ResetInvalid(
-      whole, [this](const Entry& entry) { return GetLocked(entry.key); }, "(keeping the current value)");
+      whole, [this](const Entry& entry) { return GetLocked(entry.key); },
+      "(keeping the current value)");
   json next = schema.Defaults();
   next.merge_patch(whole);
 
   std::vector<std::string> changed;
   for (const Entry& entry : schema.Entries()) {
     const auto pointer = Schema::Pointer(entry.key);
-    if (next.value(pointer, json()) != document_.value(pointer, json())) changed.push_back(entry.key);
+    if (next.value(pointer, json()) != document_.value(pointer, json()))
+      changed.push_back(entry.key);
   }
   document_ = std::move(next);
   loaded_text_ = text;
@@ -212,8 +222,8 @@ Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
   if (auto synced = SyncLocked(); !synced) {
     // The app's change is saved over a broken hand edit, which is kept as <file>.bad.
     if (const auto broken = SetAside(file_)) {
-      log::Warn("{}; kept it as {} and saved the settings before it with this change", synced.error().message,
-                broken->string());
+      log::Warn("{}; kept it as {} and saved the settings before it with this change",
+                synced.error().message, broken->string());
     } else {
       keep_file_ = true;
     }
@@ -222,7 +232,9 @@ Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
   ++revision_;  // every change to the settings saves
   if (keep_file_) return KeptFileError(file_);
   const std::string text = tomljson::ToTomlText(document_);
-  if (auto written = WriteFileAtomic(file_, text, "config_write_failed", true, kSettingsMode); !written) return written;
+  if (auto written = WriteFileAtomic(file_, text, "config_write_failed", true, kSettingsMode);
+      !written)
+    return written;
   loaded_text_ = text;
   if (on_valid_text_) on_valid_text_(text);
   return {};
@@ -275,8 +287,9 @@ Result<void> Config::Patch(const json& patch) {
       problems.push_back(std::format("{}: {}", entry.key, *problem));
     }
   }
-  // A key the schema doesn't know (a typo) would be saved unchecked. A setting's value may nest (a list, a map).
-  // A removal (null) sets nothing; an empty object or list flattens to null too, so look at the real value.
+  // A key the schema doesn't know (a typo) would be saved unchecked. A setting's value may nest (a
+  // list, a map). A removal (null) sets nothing; an empty object or list flattens to null too, so
+  // look at the real value.
   const json flat = patch.flatten();  // named: items() would outlive a temporary
   for (const auto& item : flat.items()) {
     const std::string& pointer = item.key();
@@ -285,7 +298,8 @@ Result<void> Config::Patch(const json& patch) {
     std::string key = pointer.substr(1);
     std::ranges::replace(key, '/', '.');
     const std::string dotted = key;
-    while (schema.Find(key) == nullptr && key.rfind('.') != std::string::npos) key.resize(key.rfind('.'));
+    while (schema.Find(key) == nullptr && key.rfind('.') != std::string::npos)
+      key.resize(key.rfind('.'));
     if (schema.Find(key) == nullptr) problems.push_back(std::format("{}: unknown setting", dotted));
   }
   if (!problems.empty()) {
@@ -298,7 +312,8 @@ Result<void> Config::Patch(const json& patch) {
   }
 
   json backend_patch = patch;
-  if (backend_patch.contains("frontend") && !backend_patch["frontend"].is_object() && !backend_patch["frontend"].is_null()) {
+  if (backend_patch.contains("frontend") && !backend_patch["frontend"].is_object() &&
+      !backend_patch["frontend"].is_null()) {
     return Err("invalid_setting", "frontend: expected an object");
   }
   if (backend_patch.contains("frontend")) {

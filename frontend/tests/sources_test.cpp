@@ -1,15 +1,18 @@
-#include <doctest.h>
-
 #include "sources/Sources.h"
+
+#include <doctest.h>
 
 using namespace mira_gui;
 
-TEST_CASE("A saved source order keeps its own order and places sources it doesn't name by default") {
+TEST_CASE(
+    "A saved source order keeps its own order and places sources it doesn't name by default") {
   // Saved before Local existed, with Steam moved below the stores.
   const std::vector<QString> order = OrderSources({"epic", "gog", "steam", "lutris"});
   REQUIRE(order.size() == AllSources().size());
   CHECK(order[0] == "local");
-  const auto at = [&](const char* id) { return std::ranges::find(order, QString(id)) - order.begin(); };
+  const auto at = [&](const char* id) {
+    return std::ranges::find(order, QString(id)) - order.begin();
+  };
   CHECK(at("epic") < at("gog"));
   CHECK(at("gog") < at("steam"));
   CHECK(at("steam") < at("lutris"));

@@ -6,7 +6,7 @@ namespace mira::runner {
 
 // Runs Windows games through Wine, without Proton or umu.
 class WineRunner final : public IRunner {
-public:
+ public:
   std::string kind() const override { return "wine"; }
   std::vector<model::RunnerBuild> Discover(const config::Config& config) const override;
   Result<void> Provision(const model::Game& game,

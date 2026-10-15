@@ -20,8 +20,8 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress) {
   if (!std::regex_search(begin, end, match, kProgress)) return false;
   progress.fraction = std::min(1.0, std::stod(match[1].str()) / 100.0);
   if (std::regex_search(begin, end, match, kEta)) {
-    progress.eta_seconds =
-        std::stoll(match[1].str()) * 3600 + std::stoll(match[2].str()) * 60 + std::stoll(match[3].str());
+    progress.eta_seconds = std::stoll(match[1].str()) * 3600 + std::stoll(match[2].str()) * 60 +
+                           std::stoll(match[3].str());
   }
   return true;
 }
@@ -31,7 +31,9 @@ StoreProgress::StoreProgress(api::EventBus& events, std::string source, std::str
   loghub::Begin(channel());
 }
 
-StoreProgress::~StoreProgress() { loghub::End(channel()); }
+StoreProgress::~StoreProgress() {
+  loghub::End(channel());
+}
 
 void StoreProgress::Feed(std::string_view chunk) {
   loghub::Append(channel(), chunk);

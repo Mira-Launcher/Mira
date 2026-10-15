@@ -2,7 +2,6 @@
 
 #include <QSize>
 #include <QStyledItemDelegate>
-
 #include <optional>
 
 #include "../activity/DownloadTracker.h"
@@ -22,7 +21,7 @@ class ArtworkStore;
 // index's own DecorationRole if it has one, else the artwork store's cover
 // for its TitleCoverRole or IdRole at this delegate's tile size.
 class GameTileDelegate : public QStyledItemDelegate {
-public:
+ public:
   // The roles the grid sets on each item and this delegate reads.
   enum Role {
     IdRole = Qt::UserRole + 1,
@@ -55,11 +54,13 @@ public:
     TitleCoverRole,
   };
 
-  // Where the tile's ActionRole button, a round download icon, sits inside its cell (empty without one).
+  // Where the tile's ActionRole button, a round download icon, sits inside its cell (empty without
+  // one).
   static QRect ActionRect(const QRect& cell, const QModelIndex& index);
   // A store title's tile: a running install's rail and lines in place of the pill, or the
   // `idle_action` pill ("Install") while nothing runs.
-  static void SetTileProgress(QStandardItem& item, const std::optional<DownloadTracker::TileProgress>& installing,
+  static void SetTileProgress(QStandardItem& item,
+                              const std::optional<DownloadTracker::TileProgress>& installing,
                               const QString& idle_action);
 
   // The covers of `view`'s tiles from the first on screen, as many as fit on screen at `tile`,
@@ -72,14 +73,15 @@ public:
   void SetShowStatus(bool show) { show_status_ = show; }
   void SetShowSource(bool show) { show_source_ = show; }
   QSize TileSize() const { return tile_; }
-  // Shows `text` over game `id`'s tile in `view` for a few seconds, e.g. why a double-click did nothing.
+  // Shows `text` over game `id`'s tile in `view` for a few seconds, e.g. why a double-click did
+  // nothing.
   static void ShowNote(QAbstractItemView* view, const QString& id, const QString& text);
 
   QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override;
   void paint(QPainter* painter, const QStyleOptionViewItem& option,
              const QModelIndex& index) const override;
 
-private:
+ private:
   QSize tile_;
   bool show_status_ = true;
   bool show_source_ = true;

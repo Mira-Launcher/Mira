@@ -4,17 +4,17 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <mutex>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "core/Result.h"
+#include "model/Types.h"
 #include "store/Database.h"
 #include "store/MetadataStore.h"
-#include "model/Types.h"
 
 namespace mira::store {
 
@@ -35,10 +35,10 @@ struct PlaySession {
 // A source's place in Mira: whether it's set up, on, in the sidebar and where.
 struct SourceState {
   std::string id;
-  bool added = false;    // set up: shown on the Sources page and in the sidebar, not in the catalog
-  bool enabled = true;   // off keeps it added but hidden, its games unlisted and imports skipped
+  bool added = false;   // set up: shown on the Sources page and in the sidebar, not in the catalog
+  bool enabled = true;  // off keeps it added but hidden, its games unlisted and imports skipped
   bool in_sidebar = true;
-  int position = 0;      // sidebar order, ascending
+  int position = 0;              // sidebar order, ascending
   std::int64_t imported_at = 0;  // unix seconds of the last successful import, 0 if none
 };
 
@@ -49,7 +49,7 @@ std::string SourceIdOf(const std::string& game_source);
 bool IsHidden(const model::Game& game);
 
 class GameStore {
-public:
+ public:
   explicit GameStore(std::filesystem::path file);
 
   // The directory the database lives in, the natural base for sibling
@@ -70,7 +70,8 @@ public:
   // Fetched info and art pointers, in cache.db beside the library; Load opens it too.
   MetadataStore& Metadata() { return metadata_; }
 
-  // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of frontend.toml.
+  // The GUI's window state (sizes, sort, last filter): what it sets as it's used, kept out of
+  // frontend.toml.
   nlohmann::json UiState();
   Result<void> KeepUiState(const nlohmann::json& state);
 
@@ -125,11 +126,14 @@ public:
 
   // Held while scanning a library root and while moving or deleting a game's
   // folders, so a scan never sees a folder mid-move and adds it as a new game.
-  [[nodiscard]] std::unique_lock<std::mutex> LockFolders() { return std::unique_lock(folders_mutex_); }
+  [[nodiscard]] std::unique_lock<std::mutex> LockFolders() {
+    return std::unique_lock(folders_mutex_);
+  }
 
   // Update that also adds `session` to the game's history, in one transaction. A
   // session already recorded (same game and start) is not added again.
-  Result<model::Game> FinishSession(const PlaySession& session, std::function<void(model::Game&)> mutator);
+  Result<model::Game> FinishSession(const PlaySession& session,
+                                    std::function<void(model::Game&)> mutator);
   // A game's sessions, newest first, at most `limit`.
   std::vector<PlaySession> Sessions(const std::string& id, int limit) const;
 
@@ -139,7 +143,8 @@ public:
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
 
   // Store titles hidden while not installed, as "<source>-<ref>". A game added under one of
-  // these ids gets the "hidden" tag and the title leaves the set, so its tag says it once installed.
+  // these ids gets the "hidden" tag and the title leaves the set, so its tag says it once
+  // installed.
   std::set<std::string> HiddenTitles() const;
   // HiddenTitles plus the ids of games tagged "hidden", which is how a store game's id and its
   // title's key line up.
@@ -153,7 +158,7 @@ public:
   std::string Secret(const std::string& key) const;
   Result<void> SetSecret(const std::string& key, const std::string& value);
 
-private:
+ private:
   Result<void> Open();
   Result<void> Write(const model::Game& game);
   Result<void> Delete(const std::string& id);
@@ -173,7 +178,8 @@ private:
   MetadataStore metadata_;
   std::vector<model::Game> games_;
   std::set<std::string> hidden_titles_;
-  // The database couldn't be opened: refuse changes rather than lose the library. Guarded by mutex_.
+  // The database couldn't be opened: refuse changes rather than lose the library. Guarded by
+  // mutex_.
   bool read_only_ = false;
   bool sources_new_ = false;  // set by Load
   std::atomic<std::uint64_t> revision_{0};

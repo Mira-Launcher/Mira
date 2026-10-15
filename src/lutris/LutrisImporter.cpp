@@ -1,13 +1,12 @@
 #include "lutris/LutrisImporter.h"
 
-#include <fkYAML.hpp>
-#include <json.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fkYAML.hpp>
 #include <fstream>
+#include <json.hpp>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -37,7 +36,7 @@ struct LutrisRow {
   std::string runner;
   std::string configpath;
   std::vector<std::string> categories;  // Mira tags, already mapped
-  std::int64_t lastplayed = 0;  // unix seconds; 0 if never
+  std::int64_t lastplayed = 0;          // unix seconds; 0 if never
   double playtime_hours = 0;
 };
 
@@ -53,7 +52,8 @@ Result<json> Query(const std::string& sqlite3_bin, const fs::path& pga_db, const
   }
   if (result->output.find_first_not_of(" \t\r\n") == std::string::npos) return json::array();
   json parsed = json::parse(result->output, nullptr, false);
-  if (!parsed.is_array()) return Err("lutris_db_parse_failed", "unexpected output from sqlite3 -json");
+  if (!parsed.is_array())
+    return Err("lutris_db_parse_failed", "unexpected output from sqlite3 -json");
   return parsed;
 }
 
@@ -99,7 +99,9 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
         .configpath = core::JsonString(row, "configpath"),
         .categories = {},
         .lastplayed = core::JsonInt(row, "lastplayed"),
-        .playtime_hours = row.contains("playtime") && row["playtime"].is_number() ? row["playtime"].get<double>() : 0,
+        .playtime_hours = row.contains("playtime") && row["playtime"].is_number()
+                              ? row["playtime"].get<double>()
+                              : 0,
     };
     // A JSON array: sqlite3 3.45's -json mangles control characters, so no separator is safe.
     const json categories = json::parse(core::JsonString(row, "categories", "[]"), nullptr, false);
@@ -115,7 +117,8 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
 // Union, not replace: a re-import must keep tags the user added by hand,
 // same contract as every other field Lutris doesn't own (see Import()'s
 // comment below).
-std::vector<std::string> MergeTags(std::vector<std::string> existing, const std::vector<std::string>& lutris_tags) {
+std::vector<std::string> MergeTags(std::vector<std::string> existing,
+                                   const std::vector<std::string>& lutris_tags) {
   for (const std::string& tag : lutris_tags) {
     if (std::ranges::find(existing, tag) == existing.end()) existing.push_back(tag);
   }
@@ -152,9 +155,12 @@ std::optional<LutrisGameConfig> ReadGameConfig(const fs::path& yaml_path, bool r
     const fkyaml::node root = fkyaml::node::deserialize(buffer.str());
     if (!root.is_mapping() || !root.contains("game")) return std::nullopt;
     const fkyaml::node& game = root["game"];
-    if (game.contains("exe") && game["exe"].is_string()) cfg.exe = game["exe"].get_value<std::string>();
-    if (game.contains("prefix") && game["prefix"].is_string()) cfg.prefix = game["prefix"].get_value<std::string>();
-    if (game.contains("args") && game["args"].is_string()) cfg.args = game["args"].get_value<std::string>();
+    if (game.contains("exe") && game["exe"].is_string())
+      cfg.exe = game["exe"].get_value<std::string>();
+    if (game.contains("prefix") && game["prefix"].is_string())
+      cfg.prefix = game["prefix"].get_value<std::string>();
+    if (game.contains("args") && game["args"].is_string())
+      cfg.args = game["args"].get_value<std::string>();
 
     if (root.contains("system") && root["system"].is_mapping() && root["system"].contains("env") &&
         root["system"]["env"].is_mapping()) {
@@ -185,7 +191,8 @@ std::optional<fs::path> FindLutrisDataDir(const config::Config& config) {
   if (const fs::path configured = config.GetPath("lutris.data_dir"); !configured.empty()) {
     candidates.push_back(configured);
   }
-  candidates.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") / "lutris");
+  candidates.push_back(paths::EnvOr("XDG_DATA_HOME", paths::Home() / ".local" / "share") /
+                       "lutris");
 
   std::error_code ec;
   for (const fs::path& candidate : candidates) {
@@ -194,7 +201,8 @@ std::optional<fs::path> FindLutrisDataDir(const config::Config& config) {
   return std::nullopt;
 }
 
-LutrisImporter::LutrisImporter(config::Config& config, store::GameStore& games, api::EventBus& events)
+LutrisImporter::LutrisImporter(config::Config& config, store::GameStore& games,
+                               api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
 Result<LutrisImportSummary> LutrisImporter::Import() {
@@ -204,7 +212,8 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
   const auto data_dir = FindLutrisDataDir(config_);
   if (!data_dir) {
     return Err("lutris_not_found", "Mira couldn't find a Lutris installation",
-               "If Lutris is installed somewhere unusual, set its data folder.", Fix::Setting("lutris.data_dir"));
+               "If Lutris is installed somewhere unusual, set its data folder.",
+               Fix::Setting("lutris.data_dir"));
   }
 
   const auto sqlite3 = runner::FindOnPath("sqlite3");
@@ -276,8 +285,10 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     // itself, e.g. Batman) is fine and left alone: that prefix belongs to
     // this game alone.
     if (!is_native && install_path == (prefix / "drive_c").string()) {
-      log::Warn("skipping lutris game {}: install path {} is drive_c's own root, not something game-specific",
-               row.name, install_path);
+      log::Warn(
+          "skipping lutris game {}: install path {} is drive_c's own root, not something "
+          "game-specific",
+          row.name, install_path);
       ++summary.incomplete;
       continue;
     }
@@ -290,8 +301,9 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
       continue;
     }
 
-    // By slug first: a game moved into Mira's folders no longer sits at Lutris's path, and two Lutris
-    // games can share a folder. By path for one Mira has from elsewhere, never another Lutris game's.
+    // By slug first: a game moved into Mira's folders no longer sits at Lutris's path, and two
+    // Lutris games can share a folder. By path for one Mira has from elsewhere, never another
+    // Lutris game's.
     std::optional<model::Game> existing;
     if (!row.slug.empty()) {
       for (const model::Game& known : library) {
@@ -310,9 +322,10 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     // Moved by an older Mira, which left it a Lutris game: Lutris points at
     // folders that are gone, so it's Mira's own now, as a move makes it today.
     std::error_code ec;
-    const bool install_moved = existing && existing->install_path != install_path && !fs::exists(exe_abs, ec);
-    const bool prefix_moved =
-        existing && !data_dir_path.empty() && existing->data_dir != data_dir_path && !fs::exists(prefix, ec);
+    const bool install_moved =
+        existing && existing->install_path != install_path && !fs::exists(exe_abs, ec);
+    const bool prefix_moved = existing && !data_dir_path.empty() &&
+                              existing->data_dir != data_dir_path && !fs::exists(prefix, ec);
     if (install_moved || prefix_moved) {
       if (auto taken = games_.Update(existing->id, [&](model::Game& g) {
             g.source = "manual";
@@ -335,29 +348,38 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     // Lutris sets where the game is when it arrives; after that the
     // executable and folders are Mira's to change (a pick in the game's
     // settings), and Lutris's only come back if Mira's are gone.
-    const bool own_program = existing && fs::exists(fs::path(existing->install_path) / existing->exe_path, ec);
+    const bool own_program =
+        existing && fs::exists(fs::path(existing->install_path) / existing->exe_path, ec);
     if (!own_program) {
       game.install_path = install_path;
       game.exe_path = exe_path;
     }
     // Arguments and environment follow Lutris's unless edited in Mira.
-    if (!existing || game.args == core::JsonString(existing->runner_config, "lutris_args")) game.args = cfg->args;
-    if (!existing || nlohmann::json(game.env) == existing->runner_config.value("lutris_env", nlohmann::json()))
+    if (!existing || game.args == core::JsonString(existing->runner_config, "lutris_args"))
+      game.args = cfg->args;
+    if (!existing ||
+        nlohmann::json(game.env) == existing->runner_config.value("lutris_env", nlohmann::json()))
       game.env = cfg->env;
     game.runner_config["lutris_args"] = cfg->args;
     game.runner_config["lutris_env"] = cfg->env;
-    if (!existing || existing->data_dir.empty() || !fs::exists(existing->data_dir, ec)) game.data_dir = data_dir_path;
+    if (!existing || existing->data_dir.empty() || !fs::exists(existing->data_dir, ec))
+      game.data_dir = data_dir_path;
     // Lutris names one executable; the folder's others are offered to pick from,
     // unless the folder holds other games too.
     if (game.candidates.empty() && library::SharedFolder(config_, game, library).empty()) {
-      game.candidates = library::Detector(library::SettingsFromConfig(config_)).Detect(game.install_path).candidates;
-      for (model::Candidate& candidate : game.candidates) candidate.chosen = candidate.rel_path == game.exe_path;
+      game.candidates = library::Detector(library::SettingsFromConfig(config_))
+                            .Detect(game.install_path)
+                            .candidates;
+      for (model::Candidate& candidate : game.candidates)
+        candidate.chosen = candidate.rel_path == game.exe_path;
       if (std::ranges::none_of(game.candidates, &model::Candidate::chosen)) {
-        game.candidates.insert(game.candidates.begin(),
-                               {.rel_path = game.exe_path,
-                                .kind = is_native ? model::Platform::Native : model::Platform::Windows,
-                                .score = 1.0, .chosen = true,
-                                .is_installer = false});
+        game.candidates.insert(
+            game.candidates.begin(),
+            {.rel_path = game.exe_path,
+             .kind = is_native ? model::Platform::Native : model::Platform::Windows,
+             .score = 1.0,
+             .chosen = true,
+             .is_installer = false});
       }
     }
     game.platform = is_native ? model::Platform::Native : model::Platform::Windows;

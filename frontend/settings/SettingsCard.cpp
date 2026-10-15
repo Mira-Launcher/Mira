@@ -1,7 +1,5 @@
 #include "SettingsCard.h"
 
-#include <algorithm>
-
 #include <QApplication>
 #include <QCursor>
 #include <QGraphicsDropShadowEffect>
@@ -20,6 +18,7 @@
 #include <QTransform>
 #include <QVBoxLayout>
 #include <QVariantAnimation>
+#include <algorithm>
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -37,10 +36,10 @@ constexpr int kRowPaddingX = 18;
 // A card's rows, with a line between each two shown. Drawn here rather than by the card so the
 // lines scroll with the rows.
 class CardBody : public QWidget {
-public:
+ public:
   CardBody(const QList<QWidget*>* rows, QWidget* parent) : QWidget(parent), rows_(rows) {}
 
-protected:
+ protected:
   void paintEvent(QPaintEvent*) override {
     QPainter painter(this);
     QColor line = theme::Current().border;
@@ -57,7 +56,7 @@ protected:
     }
   }
 
-private:
+ private:
   const QList<QWidget*>* rows_;
 };
 
@@ -93,7 +92,9 @@ Switch::Switch(QWidget* parent) : QAbstractButton(parent) {
   });
 }
 
-QSize Switch::sizeHint() const { return {36, 22}; }
+QSize Switch::sizeHint() const {
+  return {36, 22};
+}
 
 void Switch::paintEvent(QPaintEvent*) {
   // Set with its signals blocked, the switch never saw the toggle that starts the slide.
@@ -106,7 +107,8 @@ void Switch::paintEvent(QPaintEvent*) {
   const QColor on = isEnabled() ? tokens.accent : tokens.border;
   // Blend the track color with the knob's travel, so the animation carries the color too.
   const auto mix = [](const QColor& a, const QColor& b, qreal t) {
-    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t, a.greenF() + (b.greenF() - a.greenF()) * t,
+    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
+                            a.greenF() + (b.greenF() - a.greenF()) * t,
                             a.blueF() + (b.blueF() - a.blueF()) * t);
   };
   painter.setPen(QPen(position_ > 0.5 ? on : tokens.border, 1));
@@ -210,14 +212,18 @@ void SettingRow::SetGripShown(bool shown) {
   grip_->setVisible(shown);
 }
 
-void SettingRow::AddControl(QWidget* control, int stretch) { line_->addWidget(control, stretch, Qt::AlignVCenter); }
+void SettingRow::AddControl(QWidget* control, int stretch) {
+  line_->addWidget(control, stretch, Qt::AlignVCenter);
+}
 
 void SettingRow::SetLeading(QWidget* widget) {
   line_->insertWidget(line_->indexOf(label_), widget, 0, Qt::AlignVCenter);
   ++label_end_;
 }
 
-void SettingRow::AddAfterLabel(QWidget* widget) { line_->insertWidget(label_end_++, widget, 0, Qt::AlignVCenter); }
+void SettingRow::AddAfterLabel(QWidget* widget) {
+  line_->insertWidget(label_end_++, widget, 0, Qt::AlignVCenter);
+}
 
 void SettingRow::SetBelow(QWidget* widget) {
   auto* indent = new QHBoxLayout();
@@ -319,7 +325,9 @@ void SettingsCard::SetPinnedRow(QWidget* row) {
   layout->insertWidget(layout->indexOf(header_) + 1, pinned_);
 }
 
-QString SettingsCard::Title() const { return title_->text(); }
+QString SettingsCard::Title() const {
+  return title_->text();
+}
 
 void SettingsCard::MoveRow(QWidget* row, int to) {
   const int from = static_cast<int>(rows_.indexOf(row));
@@ -346,7 +354,8 @@ bool SettingsCard::HandleGrip(QWidget* grip, QEvent* event) {
       return true;
     case QEvent::MouseMove: {
       if (dragging_ != row) return false;
-      const int y = body_->mapFromGlobal(static_cast<QMouseEvent*>(event)->globalPosition().toPoint()).y();
+      const int y =
+          body_->mapFromGlobal(static_cast<QMouseEvent*>(event)->globalPosition().toPoint()).y();
       for (int i = 0; i < rows_.size(); ++i) {
         const QWidget* other = rows_[i];
         if (other->isVisible() && other != row && HasGrip(other) && y >= other->y() &&
@@ -366,7 +375,8 @@ bool SettingsCard::HandleGrip(QWidget* grip, QEvent* event) {
       return true;
     case QEvent::KeyPress: {
       auto* key = static_cast<QKeyEvent*>(event);
-      if (key->modifiers() != Qt::AltModifier || (key->key() != Qt::Key_Up && key->key() != Qt::Key_Down)) {
+      if (key->modifiers() != Qt::AltModifier ||
+          (key->key() != Qt::Key_Up && key->key() != Qt::Key_Down)) {
         return false;
       }
       dragged_ = false;
@@ -431,7 +441,8 @@ void SettingsCard::SetCollapsible(bool collapsed) {
     chevron_->setFocusPolicy(Qt::StrongFocus);
     connect(chevron_, &QToolButton::clicked, this, [this] { SetExpanded(!Expanded()); });
     // Redrawn in the new theme's color.
-    connect(theme::Notifier::Instance(), &theme::Notifier::Changed, chevron_, [this] { SetExpanded(Expanded()); });
+    connect(theme::Notifier::Instance(), &theme::Notifier::Changed, chevron_,
+            [this] { SetExpanded(Expanded()); });
     header_layout_->addWidget(chevron_);
     header_->setCursor(Qt::PointingHandCursor);
     header_->installEventFilter(this);
@@ -454,18 +465,22 @@ void SettingsCard::SetExpanded(bool expanded) {
   update();
 }
 
-bool SettingsCard::Expanded() const { return body_->isVisibleTo(this); }
+bool SettingsCard::Expanded() const {
+  return body_->isVisibleTo(this);
+}
 
 bool SettingsCard::eventFilter(QObject* watched, QEvent* event) {
-  if (auto* grip = qobject_cast<QWidget*>(watched); grip != nullptr && grip->objectName() == "row_grip") {
+  if (auto* grip = qobject_cast<QWidget*>(watched);
+      grip != nullptr && grip->objectName() == "row_grip") {
     if (HandleGrip(grip, event)) return true;
   }
   if (watched == header_ && event->type() == QEvent::MouseButtonRelease) {
     // A click on a header control (a switch, a button) is that control's, not a fold.
     auto* mouse = static_cast<QMouseEvent*>(event);
-    for (QWidget* hit = header_->childAt(mouse->position().toPoint()); hit != nullptr && hit != header_;
-         hit = hit->parentWidget()) {
-      if (qobject_cast<QAbstractButton*>(hit) != nullptr) return QFrame::eventFilter(watched, event);
+    for (QWidget* hit = header_->childAt(mouse->position().toPoint());
+         hit != nullptr && hit != header_; hit = hit->parentWidget()) {
+      if (qobject_cast<QAbstractButton*>(hit) != nullptr)
+        return QFrame::eventFilter(watched, event);
     }
     SetExpanded(!Expanded());
     return true;
@@ -482,7 +497,7 @@ namespace {
 // moves cards between columns. The last card of a shorter column grows down to
 // the tallest column's bottom, unless it can fold.
 class CardColumns : public QLayout {
-public:
+ public:
   explicit CardColumns(QWidget* parent) : QLayout(parent) { setContentsMargins(0, 0, 0, 0); }
   ~CardColumns() override {
     while (QLayoutItem* item = takeAt(0)) delete item;
@@ -501,8 +516,12 @@ public:
   }
   Qt::Orientations expandingDirections() const override { return {}; }
   bool hasHeightForWidth() const override { return true; }
-  int heightForWidth(int width) const override { return Place(QRect(0, 0, width, 0), /*apply=*/false); }
-  QSize sizeHint() const override { return {settings_columns::kMaxWidth, heightForWidth(settings_columns::kMaxWidth)}; }
+  int heightForWidth(int width) const override {
+    return Place(QRect(0, 0, width, 0), /*apply=*/false);
+  }
+  QSize sizeHint() const override {
+    return {settings_columns::kMaxWidth, heightForWidth(settings_columns::kMaxWidth)};
+  }
   QSize minimumSize() const override {
     int width = 0;
     for (const QLayoutItem* item : items_) {
@@ -519,7 +538,7 @@ public:
     invalidate();
   }
 
-private:
+ private:
   static int HeightOf(const QLayoutItem* item, int width) {
     return item->hasHeightForWidth() ? item->heightForWidth(width) : item->sizeHint().height();
   }
@@ -602,11 +621,17 @@ SettingsCard* SettingsPage::AddCard(const QString& title) {
   return card;
 }
 
-void SettingsPage::AddWidget(QWidget* widget) { cards_->layout()->addWidget(widget); }
+void SettingsPage::AddWidget(QWidget* widget) {
+  cards_->layout()->addWidget(widget);
+}
 
-QString SettingsPage::Title() const { return title_->text(); }
+QString SettingsPage::Title() const {
+  return title_->text();
+}
 
-void SettingsPage::Rearrange() { static_cast<CardColumns*>(cards_->layout())->Replan(); }
+void SettingsPage::Rearrange() {
+  static_cast<CardColumns*>(cards_->layout())->Replan();
+}
 
 void SettingsPage::SetGroupHeading(const QString& text) {
   auto* heading = new QLabel(text.toUpper(), this);
@@ -667,7 +692,9 @@ void ChangeBar::SetText(const QString& text, const QString& save, const QString&
   for (SettingsNavWidget* nav : navs) nav->SetBottomRoom(text.isEmpty() ? 0 : RoomNeeded());
 }
 
-int ChangeBar::RoomNeeded() const { return height() + 18; }
+int ChangeBar::RoomNeeded() const {
+  return height() + 18;
+}
 
 void ChangeBar::SetBusy(bool busy) {
   discard_->setEnabled(!busy);

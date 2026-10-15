@@ -1,9 +1,9 @@
+#include "core/LogHub.h"
+
 #include <doctest.h>
 
 #include <filesystem>
 #include <fstream>
-
-#include "core/LogHub.h"
 
 using namespace mira;
 
@@ -57,8 +57,10 @@ TEST_CASE("A line redrawn with \\r is one live line, then one final line") {
 TEST_CASE("Repeated download progress lines are one live line, kept once something else follows") {
   loghub::Begin("test:f");
   loghub::Append("test:f", "Downloading corefonts\n");
-  loghub::Append("test:f", "  918750K .......... .......... .......... .......... .......... 98% 39.6M 1s\n");
-  loghub::Append("test:f", "  918800K .......... .......... .......... .......... .......... 99% 26.8M 1s\n");
+  loghub::Append("test:f",
+                 "  918750K .......... .......... .......... .......... .......... 98% 39.6M 1s\n");
+  loghub::Append("test:f",
+                 "  918800K .......... .......... .......... .......... .......... 99% 26.8M 1s\n");
   loghub::Page page = loghub::Read("test:f", nullptr, 10);
   CHECK(page.lines == std::vector<std::string>{"Downloading corefonts"});
   CHECK(page.live.find("99%") != std::string::npos);
@@ -70,8 +72,10 @@ TEST_CASE("Repeated download progress lines are one live line, kept once somethi
   CHECK(page.live.empty());
 }
 
-TEST_CASE("A channel is journaled to disk as it is written, and read back from there after a restart") {
-  const std::filesystem::path dir = std::filesystem::temp_directory_path() / "mira-loghub-journal-test";
+TEST_CASE(
+    "A channel is journaled to disk as it is written, and read back from there after a restart") {
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "mira-loghub-journal-test";
   std::filesystem::remove_all(dir);
   loghub::SetJournalDirectory(dir);
 

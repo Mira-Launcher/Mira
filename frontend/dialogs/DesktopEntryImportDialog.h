@@ -12,10 +12,10 @@ namespace mira_gui {
 class DesktopEntryImportDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   explicit DesktopEntryImportDialog(QWidget* parent = nullptr);
 
-private:
+ private:
   void Load();
   void Import();
   void UpdateImportEnabled();

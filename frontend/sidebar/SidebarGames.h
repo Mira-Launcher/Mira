@@ -2,7 +2,6 @@
 
 #include <QPushButton>
 #include <QString>
-
 #include <string>
 #include <vector>
 
@@ -45,8 +44,8 @@ struct PreviewGame {
 };
 // A miniature of a section in `style`, drawn with `games` and their art;
 // with none, a sketch in the theme's colors instead.
-void PaintStylePreview(QPainter* painter, const QRect& rect, Style style, const std::vector<PreviewGame>& games,
-                       ArtworkStore* artwork);
+void PaintStylePreview(QPainter* painter, const QRect& rect, Style style,
+                       const std::vector<PreviewGame>& games, ArtworkStore* artwork);
 
 // Shelf columns for `count` covers: as many as there are, two to four.
 int ShelfColumns(int count);
@@ -72,14 +71,14 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
 
 // A Hero row: the hero art (or the cover) under a scrim, the name over it.
 class HeroRow : public QPushButton {
-public:
+ public:
   HeroRow(const GameSummary& game, ArtworkStore* artwork, const QString& trailing, QWidget* parent);
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   std::string id_;
   bool running_;
   QString trailing_;
@@ -89,14 +88,15 @@ private:
 
 // One cover on a Shelf.
 class ShelfCover : public QPushButton {
-public:
+ public:
   // `trailing` ("Yesterday", "Playing") is drawn over the cover's foot; empty for none.
-  ShelfCover(const GameSummary& game, ArtworkStore* artwork, const QString& trailing, QWidget* parent);
+  ShelfCover(const GameSummary& game, ArtworkStore* artwork, const QString& trailing,
+             QWidget* parent);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   QString id_;
   QString name_;
   bool running_;
@@ -122,7 +122,7 @@ class PlaceholderRow : public QWidget {
 // Lays its covers (ShelfCovers or Shelf PlaceholderRows) out ShelfColumns
 // across at the sidebar's width, so fewer games get bigger covers; the height follows.
 class Shelf : public QWidget {
-public:
+ public:
   explicit Shelf(QWidget* parent);
   void Add(QWidget* cover);
 
@@ -130,10 +130,10 @@ public:
   int heightForWidth(int width) const override;
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   static constexpr int kGap = kShelfGap;
   int Columns() const;
   int CellWidth(int width) const;

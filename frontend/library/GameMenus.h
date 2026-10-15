@@ -3,7 +3,6 @@
 #include <QObject>
 #include <QPoint>
 #include <QString>
-
 #include <functional>
 #include <string>
 #include <vector>
@@ -18,7 +17,7 @@ namespace mira_gui {
 // The right-click menus for one game and for several, and the tag changes
 // they make. The grid, the sidebar, Continue playing and source pages share them.
 class GameMenus : public QObject {
-public:
+ public:
   // What the menus need from the window that shows them.
   struct Host {
     std::function<const GameSummary*(const std::string& id)> find;
@@ -49,7 +48,7 @@ public:
   void SetTag(const std::vector<std::string>& ids, const std::string& tag, bool present);
   void ToggleTag(const std::string& id, const std::string& tag);
 
-private:
+ private:
   // "Tags": the library's tags, folder tags of the games' library folders first and marked with a
   // folder icon, each added to the games in `ids` that lack it (a folder tag in front, moving them
   // into its folder) or taken off all of them when every one has it, and a field for a new one.

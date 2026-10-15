@@ -49,7 +49,7 @@ struct ExternalMatch {
 // Polls with WNOHANG (not a blocking waitpid()) so shutdown doesn't wait on
 // the player quitting; only ticks while a game is actually running.
 class ProcessSupervisor {
-public:
+ public:
   ProcessSupervisor(store::GameStore& games, api::EventBus& events,
                     std::int64_t stop_timeout_s = 10);
   ~ProcessSupervisor();
@@ -93,25 +93,27 @@ public:
   bool IsRunning(const std::string& game_id) const;
   bool AnyRunning() const;
 
-  // A systemd scope name for a program started beside the game, empty if the game isn't tracked. Forget
-  // stops every such scope, including ones started before mirad restarted.
+  // A systemd scope name for a program started beside the game, empty if the game isn't tracked.
+  // Forget stops every such scope, including ones started before mirad restarted.
   std::string CompanionUnit(const std::string& game_id, const std::string& option_id) const;
 
   // Claims a game before anything is spawned or any of its files change, so two quick
   // launches can't both start it and a game can't launch mid-move. Empty if it is
   // running or already claimed.
   class Reservation {
-  public:
+   public:
     Reservation(ProcessSupervisor& supervisor, std::string game_id)
         : supervisor_(&supervisor), game_id_(std::move(game_id)) {}
-    Reservation(Reservation&& other) noexcept : supervisor_(std::exchange(other.supervisor_, nullptr)), game_id_(std::move(other.game_id_)) {}
+    Reservation(Reservation&& other) noexcept
+        : supervisor_(std::exchange(other.supervisor_, nullptr)),
+          game_id_(std::move(other.game_id_)) {}
     Reservation(const Reservation&) = delete;
     Reservation& operator=(const Reservation&) = delete;
     ~Reservation() {
       if (supervisor_) supervisor_->Release(game_id_);
     }
 
-  private:
+   private:
     ProcessSupervisor* supervisor_;
     std::string game_id_;
   };
@@ -122,11 +124,14 @@ public:
 
   // Called with the game's id on its watcher thread after a LaunchWrapped()
   // game exits. Set once, before any launch.
-  void SetExitHook(std::function<void(const std::string& game_id)> hook) { exit_hook_ = std::move(hook); }
+  void SetExitHook(std::function<void(const std::string& game_id)> hook) {
+    exit_hook_ = std::move(hook);
+  }
 
-private:
+ private:
   void Release(const std::string& game_id);
-  // A watcher thread, and whether it has finished, so a replaced one can be joined as soon as it ends.
+  // A watcher thread, and whether it has finished, so a replaced one can be joined as soon as it
+  // ends.
   struct Watcher {
     std::thread thread;
     std::shared_ptr<std::atomic<bool>> done;
@@ -137,7 +142,8 @@ private:
   void KillIfOverdue(const std::string& game_id, pid_t wrapper_pid);
   void WatchWrapped(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
   void WatchReconciledLive(std::string game_id, pid_t wrapper_pid, std::int64_t started_at);
-  void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record, bool requested_stop);
+  void FinalizeWrappedSession(const std::string& game_id, const proc::SessionRecord& record,
+                              bool requested_stop);
   // Takes a finished game off every running list; true if Stop() had asked it to quit.
   bool Forget(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);
@@ -154,7 +160,7 @@ private:
   std::map<std::string, ExternalMatch> external_;  // game id -> match, for Stop()/WatchExternal()
   std::map<std::string, std::int64_t> kill_deadlines_;  // game id -> when to SIGKILL
   std::map<std::string, std::string> reserved_;  // games claimed by Reserve(), with the purpose
-  std::set<std::string> stop_requested_;  // Stop() was called; the exit isn't a crash
+  std::set<std::string> stop_requested_;         // Stop() was called; the exit isn't a crash
   std::map<std::string, Watcher> watchers_;
   // Watchers replaced by a relaunch of the same game; each is joined once it has finished.
   std::vector<Watcher> retired_;

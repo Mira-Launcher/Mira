@@ -1,13 +1,12 @@
 #include "Tray.h"
 
-#include <algorithm>
-
 #include <QAction>
 #include <QApplication>
 #include <QIcon>
 #include <QMainWindow>
 #include <QMenu>
 #include <QSystemTrayIcon>
+#include <algorithm>
 
 namespace mira_gui::tray {
 namespace {
@@ -25,11 +24,17 @@ void Restore() {
 
 }  // namespace
 
-bool Available() { return g_icon != nullptr; }
+bool Available() {
+  return g_icon != nullptr;
+}
 
-bool IsManaged(QMainWindow* window) { return window != nullptr && window == g_window; }
+bool IsManaged(QMainWindow* window) {
+  return window != nullptr && window == g_window;
+}
 
-bool Quitting() { return g_quitting; }
+bool Quitting() {
+  return g_quitting;
+}
 
 void RequestQuit() {
   g_quitting = true;
@@ -78,13 +83,12 @@ void Attach(QMainWindow* window) {
 
   // Trigger (left click) or DoubleClick, since platforms differ on which
   // one fires for a tray icon.
-  QObject::connect(g_icon, &QSystemTrayIcon::activated, window,
-                   [](QSystemTrayIcon::ActivationReason reason) {
-                     if (reason == QSystemTrayIcon::Trigger ||
-                         reason == QSystemTrayIcon::DoubleClick) {
-                       Restore();
-                     }
-                   });
+  QObject::connect(
+      g_icon, &QSystemTrayIcon::activated, window, [](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+          Restore();
+        }
+      });
 
   g_icon->show();
 }

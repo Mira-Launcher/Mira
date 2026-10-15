@@ -144,9 +144,13 @@ Result<model::Game> PlaceLink(const config::Config& config, model::Game game,
 
 }  // namespace
 
-bool SameTag(std::string_view a, std::string_view b) { return SameName(a, b); }
+bool SameTag(std::string_view a, std::string_view b) {
+  return SameName(a, b);
+}
 
-fs::path NormalRoot(const std::string& root) { return Normal(paths::Expand(root)); }
+fs::path NormalRoot(const std::string& root) {
+  return Normal(paths::Expand(root));
+}
 
 SortRules::SortRules(const config::Config& config)
     : folders(config.GetStringArray("tags.folders")),
@@ -170,7 +174,9 @@ bool IsLooseAppImage(const SortRules& rules, const model::Game& game) {
   return !root.empty() && ContainerOf(rules, root, game.install_path).has_value();
 }
 
-bool IsAtOrUnder(const fs::path& path, const fs::path& base) { return IsUnder(Normal(path), Normal(base)); }
+bool IsAtOrUnder(const fs::path& path, const fs::path& base) {
+  return IsUnder(Normal(path), Normal(base));
+}
 
 fs::path RootOf(const SortRules& rules, const fs::path& path) {
   const fs::path normal = Normal(path);

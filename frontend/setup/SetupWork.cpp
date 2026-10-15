@@ -33,8 +33,8 @@ SetupWork::SetupWork(DownloadTracker* downloads, QObject* parent)
     if (!proton_running_) return;
     // Ends it even when RunnersChanged is missed.
     const DownloadTracker::Entry* entry = downloads_->Find(key);
-    if (entry != nullptr && entry->kind == DownloadTracker::Kind::Runner && entry->source == "proton" &&
-        entry->state == DownloadTracker::State::Finished)
+    if (entry != nullptr && entry->kind == DownloadTracker::Kind::Runner &&
+        entry->source == "proton" && entry->state == DownloadTracker::State::Finished)
       proton_running_ = false;
     emit Changed();
   });
@@ -60,15 +60,20 @@ void SetupWork::DownloadProton() {
   api::GetRunnerCatalogAsync(this, "proton", "", [this](RunnerCatalogResult catalog) {
     if (!catalog.ok || catalog.releases.empty()) {
       proton_running_ = false;
-      if (!catalog.ok) notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not list Proton versions.", catalog.error);
-      else notify::Notice(qobject_cast<QWidget*>(parent()), "No Proton versions are available right now.");
+      if (!catalog.ok)
+        notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not list Proton versions.",
+                              catalog.error);
+      else
+        notify::Notice(qobject_cast<QWidget*>(parent()),
+                       "No Proton versions are available right now.");
       return emit Changed();
     }
     const RunnerRelease& newest = catalog.releases.front();
     api::DownloadRunnerAsync(this, "proton", newest.tag, newest.source,
                              [this](RunnerDownloadResult result) {
                                if (result.ok) return;  // RunnersChanged ends it
-                               notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not download Proton.", result.error);
+                               notify::FailedRequest(qobject_cast<QWidget*>(parent()),
+                                                     "Could not download Proton.", result.error);
                                proton_running_ = false;
                                emit Changed();
                              });
@@ -82,20 +87,23 @@ void SetupWork::SetUpTools(const QStringList& stores) {
         tools_running_.contains(store))
       continue;
     tools_running_.insert(store);
-    api::GetStoreStatusAsync(this, store.toStdString(), [this, store, name = source->name](StoreStatusResult status) {
-      const auto done = [this, store, name](StoreActionResult result) {
-        if (!result.ok)
-          notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not set up " + name + "'s tools.", result.error);
-        tools_running_.remove(store);
-        emit Changed();
-      };
-      if (status.ok && status.tool_installed) return done({.ok = true});
-      emit Changed();
-      api::SetupStoreToolAsync(this, store.toStdString(), [this, done](StoreActionResult result) {
-        if (result.ok) return;  // the job's setup event ends it
-        done(result);
-      });
-    });
+    api::GetStoreStatusAsync(
+        this, store.toStdString(), [this, store, name = source->name](StoreStatusResult status) {
+          const auto done = [this, store, name](StoreActionResult result) {
+            if (!result.ok)
+              notify::FailedRequest(qobject_cast<QWidget*>(parent()),
+                                    "Could not set up " + name + "'s tools.", result.error);
+            tools_running_.remove(store);
+            emit Changed();
+          };
+          if (status.ok && status.tool_installed) return done({.ok = true});
+          emit Changed();
+          api::SetupStoreToolAsync(this, store.toStdString(),
+                                   [this, done](StoreActionResult result) {
+                                     if (result.ok) return;  // the job's setup event ends it
+                                     done(result);
+                                   });
+        });
   }
 }
 
@@ -198,9 +206,10 @@ void SetupWork::SetSourcesOn(const QStringList& on, const QStringList& off) {
   // One PATCH per source; the sidebar refreshes once the last one lands.
   auto pending = std::make_shared<int>(static_cast<int>(edits.size()));
   for (const auto& [id, enabled] : edits) {
-    api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt, [this, pending](PatchConfigResult) {
-      if (--*pending == 0) emit SourcesChanged();
-    });
+    api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt,
+                          [this, pending](PatchConfigResult) {
+                            if (--*pending == 0) emit SourcesChanged();
+                          });
   }
 }
 
@@ -245,11 +254,13 @@ void SetupWork::HandleEvent(const std::string& type, const std::string& data) {
   StoreEvent event;
   const bool setup = events::ParseStoreEvent(type, data, &event) && event.kind == "setup";
   const QString source = QString::fromStdString(event.source);
-  if (setup && (event.state == "finished" || event.state == "failed") && tools_running_.remove(source)) {
+  if (setup && (event.state == "finished" || event.state == "failed") &&
+      tools_running_.remove(source)) {
     if (event.state == "failed") {
       const SourceInfo* info = FindSourceInfo(source);
       notify::FailedRequest(qobject_cast<QWidget*>(parent()),
-                            "Could not set up " + (info ? info->name : source) + "'s tools.", event.error);
+                            "Could not set up " + (info ? info->name : source) + "'s tools.",
+                            event.error);
     }
     emit Changed();
   }

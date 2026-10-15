@@ -1,12 +1,6 @@
 #include "Notify.h"
 
-#include "../theme/Theme.h"
-#include "../widgets/PopupDialog.h"
-#include "SystemNotifier.h"
-
 #include <QEvent>
-
-#include <algorithm>
 #include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
@@ -15,12 +9,17 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPointer>
-#include <QShowEvent>
 #include <QPropertyAnimation>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <algorithm>
+
+#include "../theme/Theme.h"
+#include "../widgets/PopupDialog.h"
+#include "SystemNotifier.h"
 
 namespace mira_gui::notify {
 namespace {
@@ -49,7 +48,7 @@ constexpr const char* kHostName = "mira_toast_host";
 // Not a QObject subclass: overriding mousePressEvent needs no signals, and
 // staying out of moc's way avoids a generated-include dance for no gain.
 class ToastCard : public QFrame {
-public:
+ public:
   ToastCard(Level level, const QString& text, QWidget* parent) : QFrame(parent) {
     setCursor(Qt::PointingHandCursor);
     const theme::Tokens& tokens = theme::Current();
@@ -103,13 +102,13 @@ public:
     animation->start(QAbstractAnimation::DeleteWhenStopped);
   }
 
-protected:
+ protected:
   void mousePressEvent(QMouseEvent* event) override {
     Dismiss();
     event->accept();
   }
 
-private:
+ private:
   QLabel* label_ = nullptr;
   bool dismissing_ = false;
 };
@@ -121,7 +120,7 @@ private:
 // be a second taskbar entry, wouldn't follow its owning window, and on
 // Wayland couldn't reliably position itself at all.
 class ToastHost : public QWidget {
-public:
+ public:
   explicit ToastHost(QWidget* window) : QWidget(window) {
     setObjectName(kHostName);
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
@@ -157,21 +156,20 @@ public:
     }
     // The card's own destruction shrinks the stack, so the host must follow
     // it back down.
-    connect(card, &QObject::destroyed, this, [this] { QTimer::singleShot(0, this, [this] {
-                                                       Reposition();
-                                                     }); });
+    connect(card, &QObject::destroyed, this,
+            [this] { QTimer::singleShot(0, this, [this] { Reposition(); }); });
     show();
     raise();
     Reposition();
   }
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override {
     if (watched == parentWidget() && event->type() == QEvent::Resize) Reposition();
     return QWidget::eventFilter(watched, event);
   }
 
-private:
+ private:
   void Reposition() {
     QWidget* window = parentWidget();
     if (window == nullptr) return;
@@ -248,23 +246,25 @@ std::function<void()> RaiseThen(QWidget* parent, std::function<void()> activate)
 }  // namespace
 
 void FailedWithAction(QWidget* parent, const QString& what, const QString& detail,
-                      const QString& hint, const QString& action,
-                      std::function<void()> activate) {
+                      const QString& hint, const QString& action, std::function<void()> activate) {
   const QString body = JoinDetail(detail, hint);
-  const std::function<void()> on_action = activate ? RaiseThen(parent, activate) : std::function<void()>();
+  const std::function<void()> on_action =
+      activate ? RaiseThen(parent, activate) : std::function<void()>();
   if (system_notifier::Send(Urgency::Persistent, what, body, action, on_action)) return;
   FailedPopup(parent, what, body, action, std::move(activate));
 }
 
-bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body, const QString& action,
-                   std::function<void()> activate) {
-  return system_notifier::Send(Urgency::Persistent, title, body, action, RaiseThen(parent, std::move(activate)));
+bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body,
+                   const QString& action, std::function<void()> activate) {
+  return system_notifier::Send(Urgency::Persistent, title, body, action,
+                               RaiseThen(parent, std::move(activate)));
 }
 
 void FailedRequest(QWidget* parent, const QString& what, const ApiError& error) {
   const std::optional<error_help::Action> action = error_help::ActionFor(error);
   FailedWithAction(parent, what, QString::fromStdString(error.message), error_help::HintFor(error),
-                   action ? action->label : QString(), action ? action->run : std::function<void()>());
+                   action ? action->label : QString(),
+                   action ? action->run : std::function<void()>());
 }
 
 void Warn(QWidget* parent, const QString& text) {
@@ -318,10 +318,14 @@ Level LevelFromString(const QString& text) {
 QColor AccentFor(Level level) {
   const theme::Tokens& tokens = theme::Current();
   switch (level) {
-    case Level::Success: return tokens.success;
-    case Level::Warning: return tokens.warning;
-    case Level::Error: return tokens.error;
-    case Level::Info: break;
+    case Level::Success:
+      return tokens.success;
+    case Level::Warning:
+      return tokens.warning;
+    case Level::Error:
+      return tokens.error;
+    case Level::Info:
+      break;
   }
   return tokens.info;
 }

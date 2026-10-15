@@ -1,5 +1,6 @@
 #include "api/Server.h"
 
+#include <httplib.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -9,8 +10,6 @@
 #include <format>
 #include <regex>
 
-#include <httplib.h>
-
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "core/Lane.h"
@@ -19,17 +18,17 @@
 namespace mira::api {
 namespace {
 
-// httplib's ThreadPool starts every thread at once and keeps them; a Lane starts them as requests come and lets
-// idle ones go.
+// httplib's ThreadPool starts every thread at once and keeps them; a Lane starts them as requests
+// come and lets idle ones go.
 class LaneQueue final : public httplib::TaskQueue {
-public:
+ public:
   bool enqueue(std::function<void()> fn) override {
     lane_.Post(std::move(fn));
     return true;
   }
   void shutdown() override { lane_.Stop(); }
 
-private:
+ private:
   Lane lane_{"http", 64};
 };
 
@@ -82,7 +81,7 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
   const std::filesystem::path dir = socket_path.parent_path();
   std::filesystem::create_directories(dir, ec);
   // A folder another user made, or can write to, would let them swap in a socket of their own.
-  struct stat st {};
+  struct stat st{};
   if (::lstat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != ::getuid()) {
     return Err("socket_dir_unsafe", std::format("{} isn't a folder of this user's", dir.string()));
   }
@@ -116,16 +115,18 @@ void Server::Stop() {
 }
 
 void Server::RegisterRoutes() {
-  // A body field of the wrong type throws out of a route; answer in the JSON envelope instead of a bare 500.
-  http_->set_exception_handler([](const httplib::Request&, httplib::Response& res, std::exception_ptr error) {
-    try {
-      std::rethrow_exception(error);
-    } catch (const nlohmann::json::exception& e) {
-      SendError(res, 400, "invalid_body", e.what());
-    } catch (const std::exception& e) {
-      SendError(res, 500, "internal_error", e.what());
-    }
-  });
+  // A body field of the wrong type throws out of a route; answer in the JSON envelope instead of a
+  // bare 500.
+  http_->set_exception_handler(
+      [](const httplib::Request&, httplib::Response& res, std::exception_ptr error) {
+        try {
+          std::rethrow_exception(error);
+        } catch (const nlohmann::json::exception& e) {
+          SendError(res, 400, "invalid_body", e.what());
+        } catch (const std::exception& e) {
+          SendError(res, 500, "internal_error", e.what());
+        }
+      });
   // Unknown paths and wrong methods arrive with no body.
   http_->set_error_handler([](const httplib::Request&, httplib::Response& res) {
     if (!res.body.empty()) return;

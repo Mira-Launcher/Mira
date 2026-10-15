@@ -2,7 +2,6 @@
 
 #include <QColor>
 #include <QString>
-
 #include <functional>
 
 #include "ErrorHelp.h"
@@ -39,14 +38,13 @@ void FailedWithHint(QWidget* parent, const QString& what, const QString& detail,
 
 // Same, plus an `action` button that raises the window and runs `activate`.
 void FailedWithAction(QWidget* parent, const QString& what, const QString& detail,
-                      const QString& hint, const QString& action,
-                      std::function<void()> activate);
+                      const QString& hint, const QString& action, std::function<void()> activate);
 
 // A question for while the window is hidden or minimized: a persistent
 // notification whose `action` raises the window and runs `activate`. False
 // with no notification service, so the caller asks in the window instead.
-bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body, const QString& action,
-                   std::function<void()> activate);
+bool AskOutOfSight(QWidget* parent, const QString& title, const QString& body,
+                   const QString& action, std::function<void()> activate);
 
 // A failed mirad request: its message and hint, plus a button for its fix
 // (ui/ErrorHelp). Prefer this over Failed for any result.error.
@@ -67,8 +65,8 @@ void Info(QWidget* parent, const QString& title, const QString& message);
 // A question the caller must not proceed without an answer to. `accept`
 // labels the affirmative button with the verb about to happen, never "OK".
 // `destructive` keeps the focus on Cancel.
-bool Confirm(QWidget* parent, const QString& title, const QString& question,
-             const QString& accept, bool destructive = false);
+bool Confirm(QWidget* parent, const QString& title, const QString& question, const QString& accept,
+             bool destructive = false);
 
 // The unsaved-edits prompt every Back/Close/Quit path shares. `what` names
 // what's unsaved, as a sentence ("This game's edits aren't saved."). True to

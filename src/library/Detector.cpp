@@ -36,13 +36,13 @@ bool LooksLikeElf(const fs::path& path) {
   char magic[4] = {};
   file.read(magic, sizeof(magic));
   return file.gcount() == sizeof(magic) && magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' &&
-        magic[3] == 'F';
+         magic[3] == 'F';
 }
 
 // Only extensionless files and the usual native-binary extensions are worth opening to check.
 bool MightBeElf(const std::string& lower_ext) {
-  return lower_ext.empty() || lower_ext == ".x86_64" || lower_ext == ".x86" || lower_ext == ".bin" ||
-         lower_ext == ".run" || lower_ext == ".appimage";
+  return lower_ext.empty() || lower_ext == ".x86_64" || lower_ext == ".x86" ||
+         lower_ext == ".bin" || lower_ext == ".run" || lower_ext == ".appimage";
 }
 
 bool HasExecuteBit(const fs::path& path) {
@@ -61,9 +61,11 @@ std::uintmax_t MinInstallerBytes(const DetectorSettings& settings) {
 // this real, common packaging shape entirely.
 bool DirectoryHasLargeFile(const fs::path& dir, std::uintmax_t min_bytes) {
   std::error_code ec;
-  for (const auto& entry : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
+  for (const auto& entry :
+       fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
     std::error_code size_ec;
-    if (entry.is_regular_file(size_ec) && fs::file_size(entry.path(), size_ec) >= min_bytes) return true;
+    if (entry.is_regular_file(size_ec) && fs::file_size(entry.path(), size_ec) >= min_bytes)
+      return true;
   }
   return false;
 }
@@ -72,10 +74,12 @@ bool DirectoryHasLargeFile(const fs::path& dir, std::uintmax_t min_bytes) {
 // (they carry the same marks). Failing that, an installer's name plus a size signal: the exe
 // itself is large (a monolithic installer), or it shares a directory with a large payload (a
 // split installer). Only shallow files are opened for a mark, since that reads up to 4 MB of each.
-bool LooksLikeInstaller(const fs::path& path, const DetectorSettings& settings, bool dir_has_large_file, int depth) {
+bool LooksLikeInstaller(const fs::path& path, const DetectorSettings& settings,
+                        bool dir_has_large_file, int depth) {
   const std::string name = path.filename().string();
   const bool named = MatchesAny(settings.installer_name_patterns, name);
-  if ((named || depth <= 1) && !MatchesAny(settings.deny_name_patterns, name) && IsBuiltInstaller(path)) {
+  if ((named || depth <= 1) && !MatchesAny(settings.deny_name_patterns, name) &&
+      IsBuiltInstaller(path)) {
     return true;
   }
   if (!named) return false;
@@ -89,7 +93,8 @@ bool LooksLikeInstaller(const fs::path& path, const DetectorSettings& settings, 
 // (relative to `folder`, so "*/prefix/*" excludes a prefix directory the
 // caller nested inside the game folder, and a bare glob like ".*" excludes
 // dotfiles at any depth).
-std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const DetectorSettings& settings) {
+std::vector<RawCandidate> WalkForExecutables(const fs::path& folder,
+                                             const DetectorSettings& settings) {
   std::vector<RawCandidate> found;
 
   const std::uintmax_t min_installer_bytes = MinInstallerBytes(settings);
@@ -107,7 +112,8 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
     const bool dir_has_large_file = !settings.installer_name_patterns.empty() &&
                                     DirectoryHasLargeFile(dir, min_installer_bytes);
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
+    for (const auto& entry :
+         fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
       // Lexical: fs::relative resolves symlinks, turning a linked subfolder into "../..".
       const fs::path rel = entry.path().lexically_relative(folder);
       if (MatchesAny(settings.ignore_globs, rel.generic_string())) continue;
@@ -129,7 +135,8 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder, const Detec
                          LooksLikeInstaller(entry.path(), settings, dir_has_large_file, depth)});
       } else if (ext == ".msi") {
         found.push_back({rel, model::Platform::Windows, depth, /*is_installer=*/true});
-      } else if (ext == ".sh" || HasExecuteBit(entry.path()) || (MightBeElf(ext) && LooksLikeElf(entry.path()))) {
+      } else if (ext == ".sh" || HasExecuteBit(entry.path()) ||
+                 (MightBeElf(ext) && LooksLikeElf(entry.path()))) {
         // A .sh is a candidate regardless of its executable bit (archives
         // routinely lose it); anything else needs the bit or ELF magic so a
         // stray data file doesn't get treated as a launcher.
@@ -206,8 +213,9 @@ Detector::Result Detector::Detect(const fs::path& folder) const {
   if (result.candidates.empty()) {
     result.confidence = 0.0;
   } else {
-    const double name_component = 0.3 * strings::Similarity(
-        fs::path(result.candidates[0].rel_path).stem().string(), cleaned_name);
+    const double name_component =
+        0.3 *
+        strings::Similarity(fs::path(result.candidates[0].rel_path).stem().string(), cleaned_name);
     double margin_component;
     if (result.candidates.size() == 1) {
       margin_component = 0.4;

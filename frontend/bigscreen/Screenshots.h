@@ -3,7 +3,6 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-
 #include <functional>
 
 namespace mira_gui::bigscreen {

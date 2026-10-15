@@ -8,15 +8,16 @@
 
 #include "config/Config.h"
 #include "desktop/DesktopEntries.h"
-#include "store/MetadataStore.h"
 #include "metadata/MetadataFetcher.h"
+#include "store/MetadataStore.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
 using test::TempDir;
 namespace fs = std::filesystem;
 
-TEST_CASE("DesktopEntries never writes an entry for a Steam-sourced game -- Steam already has one") {
+TEST_CASE(
+    "DesktopEntries never writes an entry for a Steam-sourced game -- Steam already has one") {
   const fs::path state = TempDir("desktop-entries-steam-state");
   const fs::path applications = TempDir("desktop-entries-steam-apps");
 
@@ -50,7 +51,9 @@ TEST_CASE("DesktopEntries never writes an entry for a Steam-sourced game -- Stea
   CHECK(fs::exists(applications / "mira-native-game.desktop"));
 }
 
-TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, and a Microsoft 365 app opens its files") {
+TEST_CASE(
+    "DesktopEntries: an app-tagged entry is filed under Utility, and a Microsoft 365 app opens its "
+    "files") {
   const fs::path state = TempDir("desktop-entries-app-state");
   const fs::path applications = TempDir("desktop-entries-app-apps");
   config::Config config(state / "settings.toml");
@@ -86,11 +89,13 @@ TEST_CASE("DesktopEntries: an app-tagged entry is filed under Utility, and a Mic
   const std::string word_text = read("mira-office-word.desktop");
   CHECK(word_text.find("mira\" launch office-word %F") != std::string::npos);
   CHECK(word_text.find("StartupWMClass=steam_app_mira_officeword\n") != std::string::npos);
-  CHECK(word_text.find("MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;") !=
+  CHECK(word_text.find(
+            "MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;") !=
         std::string::npos);
 }
 
-TEST_CASE("DesktopEntries: a per-game desktop_entries.enabled=false override excludes just that game") {
+TEST_CASE(
+    "DesktopEntries: a per-game desktop_entries.enabled=false override excludes just that game") {
   const fs::path state = TempDir("desktop-entries-override-state");
   const fs::path applications = TempDir("desktop-entries-override-apps");
 
@@ -181,13 +186,16 @@ TEST_CASE("DesktopEntries: uses cached artwork as Icon= when present, falls back
 
   store::MetadataStore cache(config.File().parent_path());
   cache.Load();
-  REQUIRE(cache.Write("with-art", nlohmann::json::parse(R"({"artwork": {"file": "cover.png"}})")).has_value());
+  REQUIRE(cache.Write("with-art", nlohmann::json::parse(R"({"artwork": {"file": "cover.png"}})"))
+              .has_value());
   desktop::DesktopEntries entries(config, cache);
   REQUIRE(entries.Sync({with_art, without_art}).has_value());
 
   std::ifstream with_art_in(applications / "mira-with-art.desktop");
-  std::string with_art_contents((std::istreambuf_iterator<char>(with_art_in)), std::istreambuf_iterator<char>());
-  CHECK(with_art_contents.find(std::format("Icon={}", (artwork_dir / "cover.png").string())) != std::string::npos);
+  std::string with_art_contents((std::istreambuf_iterator<char>(with_art_in)),
+                                std::istreambuf_iterator<char>());
+  CHECK(with_art_contents.find(std::format("Icon={}", (artwork_dir / "cover.png").string())) !=
+        std::string::npos);
 
   std::ifstream without_art_in(applications / "mira-without-art.desktop");
   std::string without_art_contents((std::istreambuf_iterator<char>(without_art_in)),

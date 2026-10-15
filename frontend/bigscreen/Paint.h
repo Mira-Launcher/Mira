@@ -5,7 +5,6 @@
 #include <QPixmap>
 #include <QRectF>
 #include <QString>
-
 #include <optional>
 
 #include "../client/Types.h"
@@ -17,7 +16,7 @@ namespace mira_gui::bigscreen {
 
 // A game Mira tracks, or a store title the account owns but hasn't installed.
 struct Item {
-  QString key;     // the game id, or "<source>-<ref>" for a title (where its art is kept)
+  QString key;  // the game id, or "<source>-<ref>" for a title (where its art is kept)
   QString name;
   QString source;  // a source id
   QString ref;     // titles only
@@ -33,7 +32,9 @@ struct Hint {
 
 // Big screen is laid out in units of 1/49 of the screen height, so a TV and
 // the Deck share one layout.
-inline double Unit(int height, bool large_text) { return height / 49.0 * (large_text ? 1.15 : 1.0); }
+inline double Unit(int height, bool large_text) {
+  return height / 49.0 * (large_text ? 1.15 : 1.0);
+}
 
 QFont Font(double unit, double size, int weight = QFont::Normal);
 // The focus color: picked from the focused game's art, else the theme's accent.
@@ -52,7 +53,8 @@ double GlyphWidth(double unit, Nav nav, const QString& kind);
 // A cover with its focus ring, dimming and install progress.
 // A game's name at the top of a page, in at most two lines inside `box` (its width and top): a
 // smaller size when it doesn't fit, then cut off. Returns the area used.
-QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size, const QString& text);
+QRectF DrawTitle(QPainter& painter, const QRectF& box, double unit, double size,
+                 const QString& text);
 
 // Covers (2:3) in rows of `columns` inside `area`: sized so two rows always fit, centered, and
 // scrolled so the focused row is whole.
@@ -68,8 +70,8 @@ struct CoverGrid {
   int first_row;
 };
 
-void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit, bool focused,
-               bool dim, double progress);
+void DrawCover(QPainter& painter, const QRectF& rect, const QPixmap& cover, double unit,
+               bool focused, bool dim, double progress);
 
 // A filled pill with a colored dot; returns its width.
 // A soft glow in the focus color around a focused tile, drawn before it.

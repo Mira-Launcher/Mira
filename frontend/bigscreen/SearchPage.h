@@ -11,7 +11,7 @@ namespace mira_gui::bigscreen {
 class SearchPage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit SearchPage(BigScreenWindow* window);
 
   bool Navigate(Nav nav) override;
@@ -20,10 +20,10 @@ public:
   void PrefsChanged() override { Search(); }
   bool Typed(const QString& text) override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   enum class Zone { Field, Keys, Filters, Results };
   void Search();
   // The saved searches shown while the query is empty.

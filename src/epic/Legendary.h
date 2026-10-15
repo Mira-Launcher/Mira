@@ -1,18 +1,17 @@
 #pragma once
 
 #include <filesystem>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include <json.hpp>
-
 #include "config/Config.h"
 #include "core/Result.h"
 #include "runner/Downloader.h"
-#include "runner/StoreTool.h"
 #include "runner/Exec.h"
+#include "runner/StoreTool.h"
 
 // Epic Games Store support: wraps Legendary, a native-Linux Epic CLI client,
 // for everything protocol-shaped (auth, catalog, install, update, uninstall).
@@ -46,17 +45,19 @@ runner::ToolStatus DetectLegendary(const config::Config& config);
 // Downloads legendary's latest matching GitHub release asset (a standalone
 // binary, not an archive) into ManagedLegendaryPath via runner::InstallToolBinary.
 // Reuses runner::ListReleases (config kind "legendary").
-Result<void> InstallLegendaryBinary(const config::Config& config, const runner::ReleaseAsset& asset);
+Result<void> InstallLegendaryBinary(const config::Config& config,
+                                    const runner::ReleaseAsset& asset);
 
 // Runs `legendary <args...>` using whatever DetectLegendary resolved.
 // Err("legendary_missing", ...) up front if nothing resolved, pointing at
 // "mira epic setup", and never assumes legendary is there. Returns combined
 // stdout+stderr; Err("legendary_failed", ...) on a nonzero exit.
 Result<std::string> RunLegendary(const config::Config& config, std::vector<std::string> args,
-                               const runner::OutputFn& on_output = {});
+                                 const runner::OutputFn& on_output = {});
 
 // Like RunLegendary, but appends --json and parses stdout as JSON.
-Result<nlohmann::json> RunLegendaryJson(const config::Config& config, std::vector<std::string> args);
+Result<nlohmann::json> RunLegendaryJson(const config::Config& config,
+                                        std::vector<std::string> args);
 
 // Legendary's own documented manual-login URL (its README's instructions for
 // an environment with no browser legendary itself can open, which is the case here,
@@ -64,7 +65,8 @@ Result<nlohmann::json> RunLegendaryJson(const config::Config& config, std::vecto
 // public URL, not a secret; only changes if Epic ever rotates the OAuth
 // client id legendary itself uses.
 inline constexpr std::string_view kLoginUrl =
-    "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId"
+    "https://www.epicgames.com/id/"
+    "login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId"
     "%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 
 // Whether legendary is installed and signed in, from its saved session

@@ -14,14 +14,16 @@ namespace fs = std::filesystem;
 // Temporary, like migrate/Legacy.h: delete with it.
 TEST_CASE("files from Mira 0.13 are moved into the databases once") {
   const fs::path dir = TempDir("legacy-import");
-  std::ofstream(dir / "games.toml") << "[[game]]\nid = 'celeste'\nname = 'Celeste'\nstatus = 'ready'\n"
-                                       "tags = ['hidden', 'favorite']\n";
+  std::ofstream(dir / "games.toml")
+      << "[[game]]\nid = 'celeste'\nname = 'Celeste'\nstatus = 'ready'\n"
+         "tags = ['hidden', 'favorite']\n";
   fs::create_directories(dir / "metadata");
   std::ofstream(dir / "metadata" / "celeste.json") << R"({"description": "hi"})";
   std::ofstream(dir / "metadata" / "broken.json") << "{ not json";
   fs::create_directories(dir / "sessions");
   std::ofstream(dir / "sessions" / "celeste-1700000000.toml")
-      << "game_id = 'celeste'\nwrapper_pid = 1\nstarted_at = 1700000000\nfinished = true\nduration_seconds = 30\n";
+      << "game_id = 'celeste'\nwrapper_pid = 1\nstarted_at = 1700000000\nfinished = "
+         "true\nduration_seconds = 30\n";
   std::ofstream(dir / "frontend.toml") << "theme = 'dark'\nwindow_width = 900\n";
 
   store::GameStore games(dir / "mira.db");

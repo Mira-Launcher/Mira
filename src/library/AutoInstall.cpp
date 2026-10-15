@@ -4,9 +4,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <fstream>
 #include <map>
-#include <format>
 #include <mutex>
 #include <set>
 
@@ -125,7 +125,8 @@ std::mutex install_run_mutex;  // one installer at a time
 std::uintmax_t TreeBytes(const fs::path& root) {
   std::uintmax_t total = 0;
   std::error_code ec;
-  for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+  for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec),
+       end;
        !ec && it != end; it.increment(ec)) {
     if (it->is_regular_file(ec)) total += it->file_size(ec);
   }
@@ -175,19 +176,22 @@ std::optional<model::Candidate> FirstGameExe(const Detector::Result& detected, c
                                              const fs::path& installer) {
   std::error_code ec;
   for (const model::Candidate& candidate : detected.candidates) {
-    if (candidate.is_installer || fs::equivalent(root / candidate.rel_path, installer, ec)) continue;
+    if (candidate.is_installer || fs::equivalent(root / candidate.rel_path, installer, ec))
+      continue;
     return candidate;
   }
   return std::nullopt;
 }
 
-Result<model::Game> RunInstaller(config::Config& config, const model::Game& game, InstallMode mode) {
+Result<model::Game> RunInstaller(config::Config& config, const model::Game& game,
+                                 InstallMode mode) {
   const fs::path installer = fs::path(game.install_path) / game.exe_path;
   const InstallerFormat format = DetectInstallerFormat(installer);
   const bool silent = format != InstallerFormat::kUnknown && mode != InstallMode::kInteractive;
   if (!silent && mode == InstallMode::kSilentOnly) {
     return Err("installer_unsupported", "not a known silent-install format",
-               "Run the installer with its window shown and click through it.", Fix::Game(game.id, "install"));
+               "Run the installer with its window shown and click through it.",
+               Fix::Game(game.id, "install"));
   }
 
   const runner::RunnerRegistry runners(config);
@@ -195,7 +199,8 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   if (to_provision.runner_ref.empty()) to_provision.runner_ref = config.GetString("install.runner");
   const model::Game provisioned = runners.ProvisionGame(to_provision);
   if (provisioned.status == model::GameStatus::Broken) {
-    return Err("provision_failed", "couldn't set up a Wine prefix for the installer: " + provisioned.last_error,
+    return Err("provision_failed",
+               "couldn't set up a Wine prefix for the installer: " + provisioned.last_error,
                "The runner may be broken. Try a different one.", Fix::Runners());
   }
   const Result<runner::RunnerRegistry::Resolved> resolved = runners.Resolve(provisioned.runner_ref);
@@ -212,12 +217,13 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     std::string target = "Z:" + fs::absolute(game.install_path).string();
     std::ranges::replace(target, '/', '\\');
     const char* flag = format == InstallerFormat::kInnoSetup ? "/DIR="
-                       : format == InstallerFormat::kMsi   ? "TARGETDIR="
-                                                           : "/D=";
+                       : format == InstallerFormat::kMsi     ? "TARGETDIR="
+                                                             : "/D=";
     run.argv.push_back(flag + target);
   }
 
-  const std::set<fs::path> before = InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir);
+  const std::set<fs::path> before =
+      InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir);
   const std::uintmax_t baseline_bytes = TreeBytes(game.install_path);
   {
     const std::lock_guard lock(tracked_mutex);
@@ -231,7 +237,8 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     entry.detect_dirs = config.GetStringArray("install.detect_dirs");
     entry.drive_c_before = before;
   }
-  log::Info("running {} installer for {}: {}", silent ? "silent" : "interactive", game.id, installer.string());
+  log::Info("running {} installer for {}: {}", silent ? "silent" : "interactive", game.id,
+            installer.string());
   const Result<runner::ExecResult> result = runner::RunAndWait(run);
   if (!result) {
     // Wine's own processes leave the installer's group, so a cancel ends them through the prefix.
@@ -242,16 +249,19 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
   // A GUI installer's exit code isn't reliable; detection below decides.
   if (silent && result->exit_code != 0) {
-    return Err("installer_failed", std::format("the quiet install failed (exit code {})", result->exit_code),
-               "Some installers only work with their window shown. Run it that way and click through it.",
-               Fix::Game(game.id, "install"));
+    return Err(
+        "installer_failed",
+        std::format("the quiet install failed (exit code {})", result->exit_code),
+        "Some installers only work with their window shown. Run it that way and click through it.",
+        Fix::Game(game.id, "install"));
   }
 
   const Detector detector(SettingsFromConfig(config));
   model::Game done = provisioned;
   Detector::Result detected = detector.Detect(game.install_path);
   std::optional<model::Candidate> exe = FirstGameExe(detected, game.install_path, installer);
-  for (const fs::path& dir : InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir)) {
+  for (const fs::path& dir :
+       InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir)) {
     if (exe) break;
     if (before.contains(dir)) continue;
     detected = detector.Detect(dir);
@@ -266,7 +276,8 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
   if (!exe) {
     return Err("no_executable", "the installer finished, but Mira couldn't find the installed game",
-               "Choose the installed game's executable, then mark it installed.", Fix::Game(game.id, "exe"));
+               "Choose the installed game's executable, then mark it installed.",
+               Fix::Game(game.id, "exe"));
   }
 
   done.exe_path = exe->rel_path;
@@ -300,8 +311,8 @@ std::set<fs::path> InstallFolders(const config::Config& config, const fs::path& 
 std::optional<InstalledApp> NewInstall(const config::Config& config, const fs::path& prefix,
                                        const std::set<fs::path>& before) {
   // Wine's own, which a Proton or Wine update can add to an existing prefix.
-  static const std::set<std::string> kWineFolders = {"Common Files", "Internet Explorer", "Windows Media Player",
-                                                     "Windows NT"};
+  static const std::set<std::string> kWineFolders = {"Common Files", "Internet Explorer",
+                                                     "Windows Media Player", "Windows NT"};
   const Detector detector(SettingsFromConfig(config));
   std::optional<InstalledApp> found;
   for (const fs::path& dir : InstallFolders(config, prefix)) {
@@ -365,8 +376,11 @@ std::optional<InstallProgress> Progress(const std::string& id) {
 bool AutoInstalls(const config::Config& config, const model::Game& game) {
   if (game.status != model::GameStatus::NeedsInstall) return false;
   if (!config.GetBool("auto_setup") || !config.GetBool("scan.auto_run_installers")) return false;
-  if (!config.GetBool("install.retry_failed") && game.last_error.starts_with("Install didn't finish")) return false;
-  return DetectInstallerFormat(fs::path(game.install_path) / game.exe_path) != InstallerFormat::kUnknown;
+  if (!config.GetBool("install.retry_failed") &&
+      game.last_error.starts_with("Install didn't finish"))
+    return false;
+  return DetectInstallerFormat(fs::path(game.install_path) / game.exe_path) !=
+         InstallerFormat::kUnknown;
 }
 
 void AdoptInstallFolder(model::Game& game, const std::string& install_path) {
@@ -395,11 +409,13 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
   }
   const fs::path folder = fs::weakly_canonical(game.installer_dir);
   for (const std::string& kept : {game.install_path, game.data_dir}) {
-    if (!kept.empty() && paths::IsWithin(fs::weakly_canonical(kept), {folder}, /*allow_equal=*/true)) {
+    if (!kept.empty() &&
+        paths::IsWithin(fs::weakly_canonical(kept), {folder}, /*allow_equal=*/true)) {
       return Err("installer_dir_in_use", "the installer folder also holds the game or its prefix");
     }
   }
-  if (auto deleted = DeleteInside(game.installer_dir, config.GetPathArray("library_roots")); !deleted) {
+  if (auto deleted = DeleteInside(game.installer_dir, config.GetPathArray("library_roots"));
+      !deleted) {
     return std::unexpected(deleted.error());
   }
   return {};
@@ -429,7 +445,8 @@ Result<void> RunInstall(config::Config& config, store::GameStore& games, api::Ev
 bool BeginInstall(const std::string& id) {
   const std::lock_guard lock(tracked_mutex);
   const auto it = tracked.find(id);
-  if (it != tracked.end() && (it->second.progress.state == "queued" || it->second.progress.state == "running")) {
+  if (it != tracked.end() &&
+      (it->second.progress.state == "queued" || it->second.progress.state == "running")) {
     return false;
   }
   Tracked entry;
@@ -438,8 +455,9 @@ bool BeginInstall(const std::string& id) {
   return true;
 }
 
-static Result<model::Game> InstallImpl(config::Config& config, store::GameStore& games, const std::string& id,
-                                       InstallMode mode, const std::optional<fs::path>& installer) {
+static Result<model::Game> InstallImpl(config::Config& config, store::GameStore& games,
+                                       const std::string& id, InstallMode mode,
+                                       const std::optional<fs::path>& installer) {
   const std::lock_guard run_lock(install_run_mutex);
   std::optional<model::Game> game = games.Find(id);
   if (!game) {
@@ -456,7 +474,8 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
     std::error_code ec;
     if (!fs::is_regular_file(*installer, ec)) {
       Finish(id, "installer not found");
-      return Err("installer_missing", std::format("there's no installer at {}", installer->string()),
+      return Err("installer_missing",
+                 std::format("there's no installer at {}", installer->string()),
                  "Pick the installer again.");
     }
     // Relative when it sits in the game folder, so a relocate keeps it valid.
@@ -487,8 +506,9 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.status = done->status;
       stored.last_error.clear();
     } else {
-      stored.last_error = std::format("Install didn't finish: {}. Run the installer again with its window shown.",
-                                      done.error().message);
+      stored.last_error =
+          std::format("Install didn't finish: {}. Run the installer again with its window shown.",
+                      done.error().message);
     }
     stored.updated_at = model::NowSeconds();
   });

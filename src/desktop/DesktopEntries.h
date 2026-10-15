@@ -23,7 +23,7 @@ namespace mira::desktop {
 // Only ever touches files it created (`mira-<id>.desktop`), never anything
 // else in the directory.
 class DesktopEntries {
-public:
+ public:
   DesktopEntries(config::Config& config, const store::MetadataStore& cache);
 
   // Writes an entry per launchable game and removes the ones that no longer
@@ -32,11 +32,11 @@ public:
   // entries previously written.
   Result<void> Sync(const std::vector<model::Game>& games);
 
-  // Writes or removes just the entry of `game_id` (`game` is empty once it's deleted), for a change to
-  // one game, where Sync's pass over every game and the whole folder would be wasted.
+  // Writes or removes just the entry of `game_id` (`game` is empty once it's deleted), for a change
+  // to one game, where Sync's pass over every game and the whole folder would be wasted.
   Result<void> SyncOne(const std::string& game_id, const std::optional<model::Game>& game);
 
-private:
+ private:
   std::filesystem::path EntryPath(const std::string& game_id) const;
   std::string Render(const model::Game& game) const;
   bool IsWanted(const model::Game& game) const;

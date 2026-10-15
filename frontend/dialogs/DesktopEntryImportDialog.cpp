@@ -6,8 +6,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../client/api/Library.h"
 #include "../app/Notify.h"
+#include "../client/api/Library.h"
 
 namespace mira_gui {
 
@@ -63,7 +63,7 @@ void DesktopEntryImportDialog::Load() {
     }
     for (const DesktopEntryCandidate& candidate : result.candidates) {
       const QString name = candidate.name.empty() ? QString::fromStdString(candidate.id)
-                                                   : QString::fromStdString(candidate.name);
+                                                  : QString::fromStdString(candidate.name);
       auto* item = new QListWidgetItem(name, list_);
       item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
       item->setCheckState(Qt::Unchecked);
@@ -86,7 +86,8 @@ void DesktopEntryImportDialog::Import() {
   std::vector<std::string> ids;
   for (int i = 0; i < list_->count(); ++i) {
     const QListWidgetItem* item = list_->item(i);
-    if (item->checkState() == Qt::Checked) ids.push_back(item->data(kIdRole).toString().toStdString());
+    if (item->checkState() == Qt::Checked)
+      ids.push_back(item->data(kIdRole).toString().toStdString());
   }
   if (ids.empty()) return;  // Import is disabled for this case
 

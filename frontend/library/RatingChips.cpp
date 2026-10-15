@@ -24,7 +24,9 @@ QIcon Swatch(const QColor& color) {
   return QIcon(pixmap);
 }
 
-QString ChipText(const QString& name, int count) { return QString("%1  %2").arg(name).arg(count); }
+QString ChipText(const QString& name, int count) {
+  return QString("%1  %2").arg(name).arg(count);
+}
 
 }  // namespace
 
@@ -55,15 +57,17 @@ RatingChips::RatingChips(QWidget* parent) : QWidget(parent) {
     return button;
   };
 
-  QWidget* tiers = row(0, "ProtonDB", "How well each game runs through Proton, from ProtonDB's reports.");
+  QWidget* tiers =
+      row(0, "ProtonDB", "How well each game runs through Proton, from ProtonDB's reports.");
   for (const char* tier : kProtonDbFilterTiers) {
     QPushButton* button = chip(tiers);
     button->setIcon(Swatch(*tier == '\0' ? QColor("#4a4f5a") : ProtonDbTierColor(tier)));
     tier_chips_[tier] = button;
   }
-  QWidget* reviews = row(1, "Steam reviews",
-                         "Steam's user reviews. Games from other stores use the Steam game of the same name while "
-                         "matching by name is on.");
+  QWidget* reviews =
+      row(1, "Steam reviews",
+          "Steam's user reviews. Games from other stores use the Steam game of the same name while "
+          "matching by name is on.");
   for (const ReviewBucket bucket : kReviewBuckets) review_chips_[bucket] = chip(reviews);
   SetTitles({});
 }
@@ -75,8 +79,10 @@ void RatingChips::SetTitles(const std::vector<Title>& titles) {
     ++tiers[ProtonDbFilterTier(title.protondb_tier)];
     ++reviews[ReviewBucketOf(title.review_summary)];
   }
-  for (const auto& [tier, button] : tier_chips_) button->setText(ChipText(ProtonDbTierName(tier), tiers[tier]));
-  for (const auto& [bucket, button] : review_chips_) button->setText(ChipText(ReviewBucketName(bucket), reviews[bucket]));
+  for (const auto& [tier, button] : tier_chips_)
+    button->setText(ChipText(ProtonDbTierName(tier), tiers[tier]));
+  for (const auto& [bucket, button] : review_chips_)
+    button->setText(ChipText(ReviewBucketName(bucket), reviews[bucket]));
 }
 
 void RatingChips::Clear() {

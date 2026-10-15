@@ -1,14 +1,13 @@
 #pragma once
 
 #include <filesystem>
+#include <json.hpp>
 #include <map>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "config/Config.h"
 #include "core/Result.h"
@@ -33,9 +32,9 @@ struct Container {
 struct SortRules {
   SortRules(const config::Config& config);  // NOLINT: implicit, so callers pass their Config
 
-  std::vector<std::filesystem::path> roots;   // normalised, in library_roots order
-  std::vector<std::string> roots_as_written;  // the same, as library_roots spells them
-  std::vector<std::string> folders;           // tags.folders, in order
+  std::vector<std::filesystem::path> roots;         // normalised, in library_roots order
+  std::vector<std::string> roots_as_written;        // the same, as library_roots spells them
+  std::vector<std::string> folders;                 // tags.folders, in order
   std::vector<std::filesystem::path> sorted_roots;  // tags.sorted_roots, normalised
   std::filesystem::path prefix_root;
   bool tag_by_root = true;

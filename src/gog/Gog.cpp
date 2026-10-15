@@ -5,11 +5,10 @@
 #include <chrono>
 #include <format>
 #include <fstream>
+#include <json.hpp>
 #include <optional>
 #include <ranges>
 #include <regex>
-
-#include <json.hpp>
 
 #include "core/Log.h"
 #include "core/StoreErrors.h"
@@ -42,7 +41,9 @@ std::filesystem::path ManagedGogPath(const config::Config& config) {
 
 const runner::StoreTool kTool = {"gog", "GOG", "gogdl", "gog.gogdl_bin", ManagedGogPath};
 
-runner::ToolStatus DetectGog(const config::Config& config) { return runner::DetectTool(config, kTool); }
+runner::ToolStatus DetectGog(const config::Config& config) {
+  return runner::DetectTool(config, kTool);
+}
 
 Result<void> InstallGogBinary(const config::Config& config, const runner::ReleaseAsset& asset) {
   // gogdl is a Python zipapp ("#!/usr/bin/env python3" shebang), not a
@@ -52,9 +53,10 @@ Result<void> InstallGogBinary(const config::Config& config, const runner::Releas
   // "mira gog setup" fails with a clear, actionable error immediately
   // instead of leaving a binary that can't execute.
   if (!runner::FindOnPath("python3")) {
-    return Err("python3_missing",
-              "gogdl needs a system python3 to run (it's a Python zipapp, not a standalone binary). "
-              "Install python3 first");
+    return Err(
+        "python3_missing",
+        "gogdl needs a system python3 to run (it's a Python zipapp, not a standalone binary). "
+        "Install python3 first");
   }
   auto installed = runner::InstallToolBinary(config, "gog", asset, "gogdl");
   if (!installed) return std::unexpected(installed.error());
@@ -65,8 +67,10 @@ std::filesystem::path AuthConfigPath(const config::Config& config) {
   return config.File().parent_path() / "gog-auth.json";
 }
 
-Result<std::string> RunGogdl(const config::Config& config, std::vector<std::string> args, const runner::OutputFn& on_output) {
-  return runner::RunTool(config, kTool, args, on_output, {"--auth-config-path", AuthConfigPath(config).string()});
+Result<std::string> RunGogdl(const config::Config& config, std::vector<std::string> args,
+                             const runner::OutputFn& on_output) {
+  return runner::RunTool(config, kTool, args, on_output,
+                         {"--auth-config-path", AuthConfigPath(config).string()});
 }
 
 runner::AuthStatus Status(const config::Config& config) {
@@ -76,8 +80,9 @@ runner::AuthStatus Status(const config::Config& config) {
 
   const auto stored = ReadAuthConfig(config);
   if (!stored) return status;
-  status.authenticated = stored->contains("access_token") && (*stored)["access_token"].is_string() &&
-                        !(*stored)["access_token"].get<std::string>().empty();
+  status.authenticated = stored->contains("access_token") &&
+                         (*stored)["access_token"].is_string() &&
+                         !(*stored)["access_token"].get<std::string>().empty();
   return status;
 }
 
@@ -102,19 +107,24 @@ Result<void> Login(const config::Config& config, const std::string& pasted) {
     return std::unexpected(output.error());
   }
   if (const runner::AuthStatus status = Status(config); !status.authenticated) {
-    return Err("login_failed", "gogdl didn't accept that code. It may be wrong, expired, or already used");
+    return Err("login_failed",
+               "gogdl didn't accept that code. It may be wrong, expired, or already used");
   }
   // The access token must not be world-readable.
   std::error_code perm_ec;
   fs::permissions(AuthConfigPath(config), fs::perms::owner_read | fs::perms::owner_write, perm_ec);
-  if (perm_ec) log::Warn("couldn't make {} owner-only: {}", AuthConfigPath(config).string(), perm_ec.message());
+  if (perm_ec)
+    log::Warn("couldn't make {} owner-only: {}", AuthConfigPath(config).string(),
+              perm_ec.message());
   return {};
 }
 
 Result<void> Logout(const config::Config& config) {
   std::error_code ec;
   fs::remove(AuthConfigPath(config), ec);
-  if (ec) return Err("logout_failed", std::format("couldn't remove {}: {}", AuthConfigPath(config).string(), ec.message()));
+  if (ec)
+    return Err("logout_failed", std::format("couldn't remove {}: {}",
+                                            AuthConfigPath(config).string(), ec.message()));
   return {};
 }
 
@@ -127,8 +137,8 @@ Result<std::string> AccessToken(const config::Config& config) {
     const double login_time = (*stored)["loginTime"].get<double>();
     const double expires_in = (*stored)["expires_in"].get<double>();
     const double now = static_cast<double>(std::chrono::duration_cast<std::chrono::seconds>(
-                                              std::chrono::system_clock::now().time_since_epoch())
-                                              .count());
+                                               std::chrono::system_clock::now().time_since_epoch())
+                                               .count());
     return now >= login_time + expires_in;
   };
   auto stored = ReadAuthConfig(config);
@@ -139,17 +149,21 @@ Result<std::string> AccessToken(const config::Config& config) {
     // refresh_credentials run before any subcommand does its own work),
     // so triggering that is as simple as invoking gogdl with no real work to
     // do.
-    if (auto refreshed = RunGogdl(config, {"auth"}); !refreshed) return std::unexpected(refreshed.error());
+    if (auto refreshed = RunGogdl(config, {"auth"}); !refreshed)
+      return std::unexpected(refreshed.error());
     stored = ReadAuthConfig(config);
-    // gogdl exits 0 even when the refresh fails: a token still dated expired means signing in again.
-    if (stored && stored->contains("loginTime") && expired(stored)) return StoreNotSignedIn("gog", "GOG");
+    // gogdl exits 0 even when the refresh fails: a token still dated expired means signing in
+    // again.
+    if (stored && stored->contains("loginTime") && expired(stored))
+      return StoreNotSignedIn("gog", "GOG");
   }
 
   if (!stored) {
     // Missing file means signed out; a file that exists but won't parse is unreadable.
     std::error_code ec;
     if (fs::exists(AuthConfigPath(config), ec)) {
-      return Err("store_auth_unreadable", std::format("couldn't read {}", AuthConfigPath(config).string()));
+      return Err("store_auth_unreadable",
+                 std::format("couldn't read {}", AuthConfigPath(config).string()));
     }
     return StoreNotSignedIn("gog", "GOG");
   }

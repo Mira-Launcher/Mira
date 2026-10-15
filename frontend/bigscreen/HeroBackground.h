@@ -21,7 +21,7 @@ struct Item;
 class HeroBackground : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit HeroBackground(BigScreenWindow* window);
 
   void Show(const Item& item);
@@ -30,7 +30,8 @@ public:
   void Leave();
   // While held (a game is starting) nothing showcases or plays; released, the wait starts over.
   void Hold(bool on);
-  // A game took over from big screen: only the hero on screen stays, the others fetched again when shown.
+  // A game took over from big screen: only the hero on screen stays, the others fetched again when
+  // shown.
   void Release();
   // The game's logo art (transparent PNG), once fetched; null when it has none or isn't loaded.
   QPixmap Logo(const QString& key) const;
@@ -38,16 +39,16 @@ public:
   // trailer when it has one.
   bool Showcasing() const { return reveal_; }
 
-signals:
+ signals:
   // A logo arrived, or the accent color changed with the focused game.
   void ArtChanged();
   // Showcasing() changed.
   void ShowcaseChanged();
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   QPixmap Blurred(const Item& item) const;
   void Fade(const QPixmap& art);
   void LoadHero();

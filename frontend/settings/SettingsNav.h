@@ -3,7 +3,6 @@
 #include <QHash>
 #include <QString>
 #include <QWidget>
-
 #include <string>
 #include <vector>
 
@@ -45,11 +44,12 @@ icons::Glyph CategoryGlyph(const QString& category);
 class SettingsNavWidget : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit SettingsNavWidget(QWidget* parent = nullptr);
 
   // A page with its nav row, under `nav_group`'s heading (none when empty).
-  SettingsPage* AddCategory(const QString& title, icons::Glyph glyph, const QString& nav_group = {});
+  SettingsPage* AddCategory(const QString& title, icons::Glyph glyph,
+                            const QString& nav_group = {});
 
   // Call once per row, after it is placed in a card on one of these pages, so
   // the search box can find it. Every query word must appear, in any order
@@ -84,10 +84,10 @@ public:
   // Back to the first page's top, at once.
   void ScrollToTop();
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 
-private:
+ private:
   struct Category {
     QPushButton* button = nullptr;
     QLabel* count = nullptr;          // matches while searching, inside the button
@@ -119,10 +119,10 @@ private:
   QWidget* nav_ = nullptr;
   QVBoxLayout* nav_layout_ = nullptr;
   QButtonGroup* buttons_ = nullptr;
-  QScrollArea* scroll_ = nullptr;            // every page, one after another
+  QScrollArea* scroll_ = nullptr;  // every page, one after another
   QWidget* canvas_ = nullptr;
   QVBoxLayout* sections_ = nullptr;
-  QLabel* sticky_ = nullptr;                 // the current page's title, over the scroll's top
+  QLabel* sticky_ = nullptr;  // the current page's title, over the scroll's top
   QVariantAnimation* jump_ = nullptr;
   int jumping_to_ = -1;                      // the nav row a jump is heading for
   int bottom_room_ = 0;                      // for a change bar
@@ -131,7 +131,7 @@ private:
   QWidget* left_ = nullptr;
   QVBoxLayout* left_layout_ = nullptr;  // header widget (if any), search box, nav
   QWidget* header_widget_ = nullptr;
-  QLabel* current_heading_ = nullptr;   // the group heading new categories go under
+  QLabel* current_heading_ = nullptr;  // the group heading new categories go under
   QString current_group_;
 
   std::vector<Category> categories_;

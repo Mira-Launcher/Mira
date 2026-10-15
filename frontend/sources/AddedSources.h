@@ -2,7 +2,6 @@
 
 #include <QString>
 #include <QWidget>
-
 #include <cstdint>
 #include <map>
 #include <string>
@@ -34,7 +33,7 @@ struct SourceEntry {
 class AddedSources : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit AddedSources(QWidget* parent = nullptr);
 
   // The set-up entries, in sidebar order. Tiles are kept across calls, so an
@@ -43,7 +42,7 @@ public:
   // Shows only the tiles whose name or kind contains `text`.
   void SetFilter(const QString& text);
 
-signals:
+ signals:
   void OpenRequested(QString id);
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
@@ -51,7 +50,7 @@ signals:
   void Imported(QString id);  // an import finished and changed something
   void Removed(QString id);
 
-private:
+ private:
   struct Tile {
     SourceEntry entry;
     SourceTile* tile = nullptr;

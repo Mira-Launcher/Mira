@@ -41,8 +41,9 @@ AboutPanel::AboutPanel(QWidget* parent) : QWidget(parent) {
   layout->addWidget(Line(this, QString("Version %1").arg(MIRA_VERSION), "muted"));
   layout->addSpacing(8);
   layout->addWidget(
-      Line(this, "One library for native games and Windows games run through Wine or Proton, "
-                 "with Steam and Lutris folded in alongside them."));
+      Line(this,
+           "One library for native games and Windows games run through Wine or Proton, "
+           "with Steam and Lutris folded in alongside them."));
   layout->addSpacing(8);
   layout->addWidget(Line(this,
                          "By <a href=\"https://github.com/AriGood\">AriGood</a> and "

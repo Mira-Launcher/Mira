@@ -1,14 +1,13 @@
 #include "GameKeyboard.h"
 
-#include <QGuiApplication>
-#include <QPainter>
-#include <QScreen>
-
 #include <fcntl.h>
 #include <linux/uinput.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include <QGuiApplication>
+#include <QPainter>
+#include <QScreen>
 #include <algorithm>
 #include <cstring>
 
@@ -47,9 +46,14 @@ GameKeyboard::GameKeyboard(BigScreenWindow* window)
   rows_ = {
       letters("1234567890", {KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0}),
       letters("qwertyuiop", {KEY_Q, KEY_W, KEY_E, KEY_R, KEY_T, KEY_Y, KEY_U, KEY_I, KEY_O, KEY_P}),
-      letters("asdfghjkl'", {KEY_A, KEY_S, KEY_D, KEY_F, KEY_G, KEY_H, KEY_J, KEY_K, KEY_L, KEY_APOSTROPHE}),
-      letters("zxcvbnm,.-", {KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M, KEY_COMMA, KEY_DOT, KEY_MINUS}),
-      {{"Shift", kShift, 2}, {"Space", KEY_SPACE, 4}, {"⌫", KEY_BACKSPACE, 1.5}, {"Enter", KEY_ENTER, 1.5},
+      letters("asdfghjkl'",
+              {KEY_A, KEY_S, KEY_D, KEY_F, KEY_G, KEY_H, KEY_J, KEY_K, KEY_L, KEY_APOSTROPHE}),
+      letters("zxcvbnm,.-",
+              {KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M, KEY_COMMA, KEY_DOT, KEY_MINUS}),
+      {{"Shift", kShift, 2},
+       {"Space", KEY_SPACE, 4},
+       {"⌫", KEY_BACKSPACE, 1.5},
+       {"Enter", KEY_ENTER, 1.5},
        {"Close", kClose, 1}},
   };
 }
@@ -76,7 +80,8 @@ bool GameKeyboard::EnsureDevice(QString* error) {
     }
   }
   // Also what app controls and the MangoHud toggle send.
-  for (const int code : {KEY_LEFTSHIFT, KEY_RIGHTSHIFT, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESC, KEY_F12}) {
+  for (const int code :
+       {KEY_LEFTSHIFT, KEY_RIGHTSHIFT, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESC, KEY_F12}) {
     ioctl(fd, UI_SET_KEYBIT, code);
   }
   uinput_setup setup{};
@@ -128,8 +133,12 @@ void GameKeyboard::Type(int code) {
 void GameKeyboard::Navigate(Nav nav) {
   const auto& row = rows_[size_t(row_)];
   switch (nav) {
-    case Nav::Left: column_ = (column_ + int(row.size()) - 1) % int(row.size()); break;
-    case Nav::Right: column_ = (column_ + 1) % int(row.size()); break;
+    case Nav::Left:
+      column_ = (column_ + int(row.size()) - 1) % int(row.size());
+      break;
+    case Nav::Right:
+      column_ = (column_ + 1) % int(row.size());
+      break;
     case Nav::Up:
     case Nav::Down: {
       // Keep roughly the same horizontal spot between rows of different widths.
@@ -159,13 +168,23 @@ void GameKeyboard::Navigate(Nav nav) {
       shift_ = false;
       break;
     }
-    case Nav::Action: Type(KEY_BACKSPACE); break;
-    case Nav::Search: Type(KEY_SPACE); break;
-    case Nav::PrevTab: shift_ = !shift_; break;
-    case Nav::NextTab: Type(KEY_ENTER); break;
+    case Nav::Action:
+      Type(KEY_BACKSPACE);
+      break;
+    case Nav::Search:
+      Type(KEY_SPACE);
+      break;
+    case Nav::PrevTab:
+      shift_ = !shift_;
+      break;
+    case Nav::NextTab:
+      Type(KEY_ENTER);
+      break;
     case Nav::Back:
-    case Nav::Guide: return hide();
-    default: return;
+    case Nav::Guide:
+      return hide();
+    default:
+      return;
   }
   update();
 }
@@ -181,7 +200,8 @@ void GameKeyboard::paintEvent(QPaintEvent*) {
   painter.setBrush(back);
   painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, height()), u, u);
   const double pad = u * 0.9, gap = u * 0.35;
-  const double key_h = (height() - pad * 2 - u * 2.2 - gap * (double(rows_.size()) - 1)) / double(rows_.size());
+  const double key_h =
+      (height() - pad * 2 - u * 2.2 - gap * (double(rows_.size()) - 1)) / double(rows_.size());
   for (size_t r = 0; r < rows_.size(); ++r) {
     double total = 0;
     for (const Key& key : rows_[r]) total += key.width;
@@ -198,7 +218,8 @@ void GameKeyboard::paintEvent(QPaintEvent*) {
       painter.drawRoundedRect(box, u * 0.4, u * 0.4);
       painter.setPen(tokens.text);
       painter.setFont(Font(u, key.label.size() > 1 ? 1.0 : 1.4, QFont::DemiBold));
-      painter.drawText(box, Qt::AlignCenter, shift_ && key.label.size() == 1 ? key.label.toUpper() : key.label);
+      painter.drawText(box, Qt::AlignCenter,
+                       shift_ && key.label.size() == 1 ? key.label.toUpper() : key.label);
       x += box.width() + gap;
     }
   }
@@ -206,9 +227,12 @@ void GameKeyboard::paintEvent(QPaintEvent*) {
   const QString kind = window_->GlyphKind();
   QPointF at(pad, height() - pad - u * 0.7);
   painter.setFont(Font(u, 0.9));
-  for (const auto& [nav, label] : std::initializer_list<std::pair<Nav, QString>>{
-           {Nav::Action, "Delete"}, {Nav::Search, "Space"}, {Nav::PrevTab, "Shift"}, {Nav::NextTab, "Enter"},
-           {Nav::Back, "Close"}}) {
+  for (const auto& [nav, label] :
+       std::initializer_list<std::pair<Nav, QString>>{{Nav::Action, "Delete"},
+                                                      {Nav::Search, "Space"},
+                                                      {Nav::PrevTab, "Shift"},
+                                                      {Nav::NextTab, "Enter"},
+                                                      {Nav::Back, "Close"}}) {
     at.rx() += DrawGlyph(painter, at, u, nav, kind) + u * 0.4;
     painter.setPen(tokens.text_muted);
     painter.setFont(Font(u, 0.9));

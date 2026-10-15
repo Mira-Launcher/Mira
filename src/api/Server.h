@@ -19,7 +19,7 @@ namespace mira::api {
 // httplib server; everything the routes act on lives in Services, so they can
 // be exercised without a real socket in tests.
 class Server {
-public:
+ public:
   explicit Server(Services& services);
   ~Server();
   Server(const Server&) = delete;
@@ -32,7 +32,7 @@ public:
   Result<void> Serve(const std::filesystem::path& socket_path);
   void Stop();
 
-private:
+ private:
   void RegisterRoutes();
 
   Services& s_;

@@ -1,40 +1,37 @@
 #include "SourcePage.h"
 
-#include <algorithm>
-
 #include <QComboBox>
 #include <QEvent>
 #include <QFileDialog>
-#include <QGridLayout>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QStandardItemModel>
 #include <QMenu>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStandardItemModel>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
 
-#include "../client/Events.h"
-#include "../client/api/Artwork.h"
-#include "../client/api/Emulators.h"
-#include "../client/api/ModManagers.h"
-#include "../client/api/Library.h"
-#include "../client/api/Stores.h"
-#include "../dialogs/AddManualGameDialog.h"
-#include "../dialogs/LogWindow.h"
-#include "ItchCollectionsCard.h"
 #include "../activity/DownloadTracker.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
-#include "../client/api/Games.h"
-#include "../widgets/PopupDialog.h"
 #include "../client/EventHub.h"
+#include "../client/Events.h"
+#include "../client/api/Artwork.h"
+#include "../client/api/Emulators.h"
+#include "../client/api/Games.h"
+#include "../client/api/Library.h"
+#include "../client/api/ModManagers.h"
+#include "../client/api/Stores.h"
+#include "../dialogs/AddManualGameDialog.h"
+#include "../dialogs/LogWindow.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../library/GameActions.h"
@@ -48,9 +45,11 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
+#include "../widgets/PopupDialog.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
+#include "ItchCollectionsCard.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
 #include "SourceSetupCard.h"
@@ -106,7 +105,8 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   });
   content_layout_->addWidget(setup_card_);
   if (id_ != "humble") content_layout_->addWidget(BuildLibrarySection());
-  if (id_ != "humble" && HasOwned()) content_layout_->addWidget(MakeDivider(content, Qt::Horizontal));
+  if (id_ != "humble" && HasOwned())
+    content_layout_->addWidget(MakeDivider(content, Qt::Horizontal));
   if (HasOwned()) content_layout_->addWidget(BuildOwnedSection());
   content_layout_->addStretch(1);
   scroll->setWidget(content);
@@ -120,7 +120,8 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
             if (live) HandleEvent(type, data);
           });
   connect(downloads_, &DownloadTracker::Changed, this, [this](const QString& key) {
-    if (owned_grid_ != nullptr && (key.isEmpty() || key.startsWith(source_.id + ":"))) RebuildOwnedTiles();
+    if (owned_grid_ != nullptr && (key.isEmpty() || key.startsWith(source_.id + ":")))
+      RebuildOwnedTiles();
   });
   connect(library_, &GameLibraryModel::Changed, this, &SourcePage::LibraryUpdated);
   connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
@@ -141,7 +142,8 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
-  if (watched == modal_card_ && modal_card_ != nullptr && event->type() == QEvent::LayoutRequest && SettingsModalOpen()) {
+  if (watched == modal_card_ && modal_card_ != nullptr && event->type() == QEvent::LayoutRequest &&
+      SettingsModalOpen()) {
     QMetaObject::invokeMethod(this, &SourcePage::FitSettingsModal, Qt::QueuedConnection);
   }
   if (watched == content_ && event->type() == QEvent::MouseButtonPress) {
@@ -154,14 +156,22 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
   return QWidget::eventFilter(watched, event);
 }
 
-bool SourcePage::HasImport() const { return !CopyFor(id_).import_button.isEmpty(); }
+bool SourcePage::HasImport() const {
+  return !CopyFor(id_).import_button.isEmpty();
+}
 
 // Every page but Local has both sections; ones that can't list what the account owns say so.
-bool SourcePage::HasOwned() const { return id_ != "local" && !IsEmulator() && !IsModManager(); }
+bool SourcePage::HasOwned() const {
+  return id_ != "local" && !IsEmulator() && !IsModManager();
+}
 
-bool SourcePage::ListsOwned() const { return IsStore() || id_ == "steam" || id_ == "office"; }
+bool SourcePage::ListsOwned() const {
+  return IsStore() || id_ == "steam" || id_ == "office";
+}
 
-bool SourcePage::IsOwnGame(const GameSummary& game) const { return InSource(game, id_); }
+bool SourcePage::IsOwnGame(const GameSummary& game) const {
+  return InSource(game, id_);
+}
 
 // No title: the sidebar already says which source this is. One row holds the
 // status and every action.
@@ -183,7 +193,8 @@ QWidget* SourcePage::BuildTopRow() {
     if (IsEmulator()) {
       api::OpenEmulatorAsync(this, id_, [this](StoreActionResult result) {
         banner_primary_->setEnabled(true);
-        if (!result.ok) setup_card_->ShowError("Could not open " + source_.name + ".", result.error);
+        if (!result.ok)
+          setup_card_->ShowError("Could not open " + source_.name + ".", result.error);
       });
       return;
     }
@@ -228,7 +239,8 @@ QWidget* SourcePage::BuildTopRow() {
   }
 
   import_button_ = new QPushButton(CopyFor(id_).import_button, tabs_);
-  icons::Follow(import_button_, IsEmulator() || IsModManager() ? icons::Glyph::Plus : icons::Glyph::Refresh);
+  icons::Follow(import_button_,
+                IsEmulator() || IsModManager() ? icons::Glyph::Plus : icons::Glyph::Refresh);
   // Stores and launchers show it once set up (ApplyStoreStatus/ApplyLauncher).
   import_button_->setVisible(HasImport() && !IsStore() && !IsLauncher());
   import_button_->setEnabled(!IsModManager());  // until its status says it's installed
@@ -270,7 +282,8 @@ QWidget* SourcePage::BuildTopRow() {
 void SourcePage::OpenSettingsModal() {
   if (settings_card_ == nullptr) {
     settings_card_ = new SourceSettingsCard(source_, this);
-    connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this, &SourcePage::OpenSettingsRequested);
+    connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this,
+            &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
     auto* close = new QToolButton(settings_card_);
     icons::Follow(close, icons::Glyph::Close);
@@ -339,20 +352,24 @@ void SourcePage::ShowModal(mira_gui::SettingsCard* card) {
   settings_overlay_->setFocus();
 }
 
-bool SourcePage::SettingsModalOpen() const { return settings_overlay_ != nullptr && settings_overlay_->isVisible(); }
+bool SourcePage::SettingsModalOpen() const {
+  return settings_overlay_ != nullptr && settings_overlay_->isVisible();
+}
 
 void SourcePage::CloseSettingsModal() {
   if (!SettingsModalOpen()) return;
   if (modal_card_ == settings_card_ && settings_card_->IsDirty()) {
-    const bool leave = notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
-      connect(settings_card_, &SourceSettingsCard::SaveFinished, this,
+    const bool leave =
+        notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
+          connect(
+              settings_card_, &SourceSettingsCard::SaveFinished, this,
               [this](bool ok) {
                 if (!ok) return;
                 settings_overlay_->hide();
-                            },
+              },
               Qt::SingleShotConnection);
-      settings_card_->Save();
-    });
+          settings_card_->Save();
+        });
     if (!leave) return;
     settings_card_->Discard();
   }
@@ -366,8 +383,11 @@ void SourcePage::FitSettingsModal() {
   const int width = std::min(560, std::max(280, this->width() - 2 * kMargin));
   modal_card_->setFixedWidth(width);
   const int wanted = modal_card_->heightForWidth(width) > 0 ? modal_card_->heightForWidth(width)
-                                                               : modal_card_->sizeHint().height();
-  settings_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? settings_scroll_->verticalScrollBar()->sizeHint().width() : 0));
+                                                            : modal_card_->sizeHint().height();
+  settings_scroll_->setFixedWidth(width +
+                                  (wanted > height() - 2 * kMargin
+                                       ? settings_scroll_->verticalScrollBar()->sizeHint().width()
+                                       : 0));
   settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 
@@ -383,53 +403,63 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
   menu->clear();
   const QString tool = CopyFor(id_).tool;
   if (IsStore() && tool_installed_) {
-    const QString version = tool_version_.empty() ? QString() : " (" + QString::fromStdString(tool_version_) + ")";
-    QAction* update = menu->addAction(icons::For(icons::Glyph::Download), "Update " + tool + version, this,
-                                      &SourcePage::UpdateTool);
+    const QString version =
+        tool_version_.empty() ? QString() : " (" + QString::fromStdString(tool_version_) + ")";
+    QAction* update = menu->addAction(icons::For(icons::Glyph::Download),
+                                      "Update " + tool + version, this, &SourcePage::UpdateTool);
     update->setEnabled(!tool_updating_);
     update->setToolTip("Download the latest release of " + tool + " again.");
   }
   if (IsLauncher() || IsStore()) {
-    menu->addAction("View setup log", this, [this] { LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup"); });
+    menu->addAction("View setup log", this, [this] {
+      LogWindow::Open(this, "setup:" + source_.id, source_.name + " setup");
+    });
   }
   if (IsEmulator()) {
     if (emulator_.installed && !emulator_.version.empty()) {
-      menu->addAction(icons::For(icons::Glyph::Download),
-                      "Update " + source_.name + " (" + QString::fromStdString(emulator_.version) + ")", this, [this] {
-                        api::InstallEmulatorAsync(this, id_, [this](StoreActionResult result) {
-                          if (!result.ok) setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
-                          RefreshStatus();
-                        });
-                      });
+      menu->addAction(
+          icons::For(icons::Glyph::Download),
+          "Update " + source_.name + " (" + QString::fromStdString(emulator_.version) + ")", this,
+          [this] {
+            api::InstallEmulatorAsync(this, id_, [this](StoreActionResult result) {
+              if (!result.ok)
+                setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
+              RefreshStatus();
+            });
+          });
     }
     menu->addAction(icons::For(icons::Glyph::Home), "Open games folder", this,
                     [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
-    menu->addAction(icons::For(icons::Glyph::Refresh), "Look for new games", this, &SourcePage::Import);
+    menu->addAction(icons::For(icons::Glyph::Refresh), "Look for new games", this,
+                    &SourcePage::Import);
   }
   if (IsModManager() && manager_.installed) {
-    menu->addAction(icons::For(icons::Glyph::Download),
-                    "Update " + source_.name + " (" + QString::fromStdString(manager_.version) + ")", this, [this] {
-                      api::InstallModManagerAsync(this, id_, [this](StoreActionResult result) {
-                        if (!result.ok) setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
-                        RefreshStatus();
-                      });
-                    });
+    menu->addAction(
+        icons::For(icons::Glyph::Download),
+        "Update " + source_.name + " (" + QString::fromStdString(manager_.version) + ")", this,
+        [this] {
+          api::InstallModManagerAsync(this, id_, [this](StoreActionResult result) {
+            if (!result.ok)
+              setup_card_->ShowError("Could not update " + source_.name + ".", result.error);
+            RefreshStatus();
+          });
+        });
   }
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
-    menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this, [this] {
-      actions::OpenInstallFolder(this, launcher_prefix_);
-    });
+    menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this,
+                    [this] { actions::OpenInstallFolder(this, launcher_prefix_); });
     menu->addAction(icons::For(icons::Glyph::Wrench), "Winetricks…", this,
                     [this, game_id] { actions::RunWinetricks(this, game_id, source_.name); });
     menu->addAction("Run a program in its prefix…", this, [this, game_id] {
       actions::RunInPrefix(this, game_id, launcher_prefix_ + "/drive_c", source_.name);
     });
-    menu->addAction("View launcher log", this, [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
+    menu->addAction("View launcher log", this,
+                    [this, game_id] { actions::ViewLog(this, game_id, source_.name); });
   }
 
   // What removing does differs per kind; RemoveSource spells it out before anything happens.
-  const bool removable = library_count_ > 0 || (IsStore() ? tool_installed_ || authenticated_
+  const bool removable = library_count_ > 0 || (IsStore()      ? tool_installed_ || authenticated_
                                                 : IsLauncher() ? launcher_installed_
                                                                : true);
   if (removable) {
@@ -437,9 +467,8 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
     const QString label = IsLauncher() ? "Uninstall " + source_.name + "…"
                           : IsStore()  ? "Remove " + source_.name + "…"
                                        : "Remove from Mira…";
-    menu->addAction(icons::For(icons::Glyph::Trash, theme::Current().error), label, this, [this] {
-      RemoveSource(this, source_, [this] { emit Removed(); });
-    });
+    menu->addAction(icons::For(icons::Glyph::Trash, theme::Current().error), label, this,
+                    [this] { RemoveSource(this, source_, [this] { emit Removed(); }); });
   }
   if (menu->isEmpty()) menu->addAction("Nothing to manage until it's set up")->setEnabled(false);
 }
@@ -476,7 +505,9 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   title->setAlignment(Qt::AlignCenter);
   title->setWordWrap(true);
   layout->addWidget(title);
-  auto* line = MakeLabel(drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.", "muted");
+  auto* line = MakeLabel(
+      drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.",
+      "muted");
   line->setAlignment(Qt::AlignCenter);
   layout->addWidget(line);
   auto* buttons = new QHBoxLayout();
@@ -486,7 +517,8 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   add->setDefault(true);
   connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
   auto* folder = new QPushButton("Open games folder", drop_zone_);
-  connect(folder, &QPushButton::clicked, this, [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+  connect(folder, &QPushButton::clicked, this,
+          [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
   buttons->addWidget(add);
   buttons->addWidget(folder);
   buttons->addStretch(1);
@@ -526,7 +558,9 @@ QWidget* SourcePage::BuildLibrarySection() {
   connect(library_grid_, &QAbstractItemView::doubleClicked, this, [this](const QModelIndex& index) {
     emit PlayRequested(index.data(GameTileDelegate::IdRole).toString());
   });
-  library_grid_->on_hover = [this](const QModelIndex& index) { ShowHoverCard(library_grid_, index); };
+  library_grid_->on_hover = [this](const QModelIndex& index) {
+    ShowHoverCard(library_grid_, index);
+  };
   library_grid_->on_ctrl_wheel = [this](int steps) { emit ZoomRequested(steps); };
   layout->addWidget(library_grid_);
   return section;
@@ -541,9 +575,9 @@ QWidget* SourcePage::BuildOwnedSection() {
 
   auto* header = new QHBoxLayout();
   header->setSpacing(8);
-  owned_heading_ = new QLabel(id_ == "humble"   ? QString("Your purchases")
-                              : IsLauncher() ? "More " + CopyFor(id_).item + "s"
-                                             : QString("Not installed"),
+  owned_heading_ = new QLabel(id_ == "humble" ? QString("Your purchases")
+                              : IsLauncher()  ? "More " + CopyFor(id_).item + "s"
+                                              : QString("Not installed"),
                               owned_section_);
   owned_heading_->setProperty("role", "heading");
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
@@ -561,7 +595,8 @@ QWidget* SourcePage::BuildOwnedSection() {
   connect(owned_refresh_, &QPushButton::clicked, this, [this] { RefreshOwned(/*fresh=*/true); });
   if (id_ == "itch") {
     auto* collections = new QPushButton("Manage collections…", owned_section_);
-    collections->setToolTip("Show games from itch.io collections here. Add your own or any collection by link.");
+    collections->setToolTip(
+        "Show games from itch.io collections here. Add your own or any collection by link.");
     connect(collections, &QPushButton::clicked, this, &SourcePage::OpenCollectionsModal);
     header->addWidget(collections);
   }
@@ -613,7 +648,8 @@ QWidget* SourcePage::BuildOwnedSection() {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
     icons::Follow(art_key_, icons::Glyph::Image);
     art_key_->setVisible(false);
-    connect(art_key_, &QPushButton::clicked, this, [this] { emit OpenSettingsRequested(art_key_setting_); });
+    connect(art_key_, &QPushButton::clicked, this,
+            [this] { emit OpenSettingsRequested(art_key_setting_); });
     layout->addWidget(art_key_, 0, Qt::AlignLeft);
   }
 
@@ -622,7 +658,9 @@ QWidget* SourcePage::BuildOwnedSection() {
     if (art_key_ != nullptr) art_key_->setVisible(false);
     // A launcher's note follows whether it's installed (UpdateStatusLine).
     if (!IsLauncher()) {
-      ShowLine(owned_note_, source_.name + " doesn't list games you own. What it installs shows up in your library above.",
+      ShowLine(owned_note_,
+               source_.name +
+                   " doesn't list games you own. What it installs shows up in your library above.",
                "muted");
     }
   }
@@ -664,10 +702,12 @@ QWidget* SourcePage::BuildOwnedSection() {
   };
   // Double-click does what the tile's button does, while it's clickable.
   connect(owned_grid_, &QAbstractItemView::doubleClicked, this, [this](const QModelIndex& index) {
-    if (index.data(GameTileDelegate::ActionEnabledRole).toBool() && owned_grid_->on_action) owned_grid_->on_action(index);
+    if (index.data(GameTileDelegate::ActionEnabledRole).toBool() && owned_grid_->on_action)
+      owned_grid_->on_action(index);
   });
   layout->addWidget(owned_grid_);
-  // Takes any height the section is given while the grid resizes, which otherwise spread the chips' rows apart.
+  // Takes any height the section is given while the grid resizes, which otherwise spread the chips'
+  // rows apart.
   layout->addStretch(1);
   return owned_section_;
 }
@@ -677,7 +717,8 @@ void SourcePage::LibraryUpdated() {
       static_cast<int>(std::ranges::count_if(library_->Games(), [this](const GameSummary& game) {
         return IsOwnGame(game) && library_->Shown(game);
       }));
-  if (library_heading_ != nullptr) library_heading_->setText(CountedHeading("In your library", library_count_));
+  if (library_heading_ != nullptr)
+    library_heading_->setText(CountedHeading("In your library", library_count_));
   UpdateStatusLine();
   if (library_grid_ != nullptr) library_grid_->FitHeight();
 }
@@ -698,7 +739,8 @@ void SourcePage::SetTileWidth(int width) {
   // Bundles' placeholder covers are made again at the new size once the zoom settles.
   if (owned_grid_ != nullptr) owned_grid_->SetTileSize(tile_);
   if (owned_skeleton_ != nullptr) {
-    for (QWidget* placeholder : owned_skeleton_->findChildren<QWidget*>("tile_skeleton")) placeholder->setFixedSize(tile_);
+    for (QWidget* placeholder : owned_skeleton_->findChildren<QWidget*>("tile_skeleton"))
+      placeholder->setFixedSize(tile_);
   }
   // So the chips and the owned titles move with the library's covers in the same frame.
   SettleLayout(content_);
@@ -724,8 +766,10 @@ void SourcePage::UpdateCover(const QString& id) {
     if (!result.ok) return;
     const GameMetadata& metadata = result.metadata;
     if (!metadata.steam_tags.empty()) tags_.insert(ref, ToQStringList(metadata.steam_tags));
-    if (!metadata.protondb_tier.empty()) tiers_.insert(ref, QString::fromStdString(metadata.protondb_tier));
-    if (!metadata.review_summary.empty()) reviews_.insert(ref, QString::fromStdString(metadata.review_summary));
+    if (!metadata.protondb_tier.empty())
+      tiers_.insert(ref, QString::fromStdString(metadata.protondb_tier));
+    if (!metadata.review_summary.empty())
+      reviews_.insert(ref, QString::fromStdString(metadata.review_summary));
     if (metadata.review_percent >= 0) review_percents_.insert(ref, metadata.review_percent);
     RebuildOwnedTiles();
   });
@@ -759,7 +803,8 @@ void SourcePage::RefreshStatus() {
       manager_unknown_ = !result.ok;
       if (!result.ok) {
         UpdateStatusLine();
-        return setup_card_->ShowError("Could not ask mirad about " + source_.name + ".", result.error);
+        return setup_card_->ShowError("Could not ask mirad about " + source_.name + ".",
+                                      result.error);
       }
       for (const ModManagerInfo& manager : result.managers) {
         if (manager.id == id_) manager_ = manager;
@@ -772,20 +817,24 @@ void SourcePage::RefreshStatus() {
   }
 }
 
-// Picks a Windows game to add the mod manager to; adding readies its prefix, which can take minutes.
+// Picks a Windows game to add the mod manager to; adding readies its prefix, which can take
+// minutes.
 void SourcePage::AddToGame() {
   std::vector<const GameSummary*> games;
   for (const GameSummary& game : library_->Games()) {
     if (game.platform == "windows" && !IsOwnGame(game)) games.push_back(&game);
   }
   if (games.empty()) {
-    notify::Info(this, "No Windows games to add it to", source_.name + " runs in a Windows game's prefix. Add one first.");
+    notify::Info(this, "No Windows games to add it to",
+                 source_.name + " runs in a Windows game's prefix. Add one first.");
     return;
   }
   std::ranges::sort(games, {}, &GameSummary::name);
   PopupDialog dialog(this, notify::Level::Info, "Add " + source_.name + " to a game");
-  dialog.SetMessage(source_.name + " opens from the game's page and runs in its prefix. Mira first installs what it "
-                    "needs there, which can take a few minutes.");
+  dialog.SetMessage(
+      source_.name +
+      " opens from the game's page and runs in its prefix. Mira first installs what it "
+      "needs there, which can take a few minutes.");
   auto* picker = new QComboBox(&dialog);
   for (const GameSummary* game : games) {
     picker->addItem(QString::fromStdString(game->name), QString::fromStdString(game->id));
@@ -797,10 +846,12 @@ void SourcePage::AddToGame() {
   const std::string game_id = picker->currentData().toString().toStdString();
   const QString name = picker->currentText();
   import_button_->setEnabled(false);
-  ShowLine(import_result_, "Getting " + name + "'s prefix ready for " + source_.name + "…", "muted");
+  ShowLine(import_result_, "Getting " + name + "'s prefix ready for " + source_.name + "…",
+           "muted");
   api::AddModManagerToGameAsync(this, id_, game_id, [this, name](StoreActionResult result) {
     import_button_->setEnabled(manager_.installed);
-    if (!result.ok) return ShowError(import_result_, "Could not add it to " + name + ".", result.error);
+    if (!result.ok)
+      return ShowError(import_result_, "Could not add it to " + name + ".", result.error);
     ShowLine(import_result_, "Added to " + name + ". Open it from the game's page.", "muted");
   });
 }
@@ -844,8 +895,10 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
 }
 
 void SourcePage::AskStartFile(const StartChoice& choice) {
-  PopupDialog dialog(this, notify::Level::Info, "Which file starts " + QString::fromStdString(choice.name) + "?");
-  dialog.SetMessage("Its folder has more than one program. You can change it later in the game's settings.");
+  PopupDialog dialog(this, notify::Level::Info,
+                     "Which file starts " + QString::fromStdString(choice.name) + "?");
+  dialog.SetMessage(
+      "Its folder has more than one program. You can change it later in the game's settings.");
   auto* files = new QComboBox(&dialog);
   for (const std::string& file : choice.files) files->addItem(QString::fromStdString(file));
   dialog.AddWidget(files);
@@ -855,7 +908,8 @@ void SourcePage::AskStartFile(const StartChoice& choice) {
   GamePatch patch;
   patch.exe_path = files->currentText().toStdString();
   api::PatchGameAsync(this, choice.id, patch, [this](PatchGameResult result) {
-    if (!result.ok) notify::FailedRequest(this, "Could not change which file starts it.", result.error);
+    if (!result.ok)
+      notify::FailedRequest(this, "Could not change which file starts it.", result.error);
   });
 }
 
@@ -886,7 +940,8 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   }
   // Listed at once for a store already signed in; Humble and a new sign-in wait for the status.
   const bool listed_at_open = id_ != "humble" && !status_known_;
-  if (owned_section_ != nullptr && authenticated_ && (!was_authenticated && !listed_at_open)) RefreshOwned();
+  if (owned_section_ != nullptr && authenticated_ && (!was_authenticated && !listed_at_open))
+    RefreshOwned();
   status_known_ = true;
   UpdateStatusLine();
 }
@@ -921,14 +976,17 @@ void SourcePage::UpdateStatusLine() {
       parts << StatusDot(tokens.warning) + "Not signed in";
     } else {
       parts << StatusDot(tokens.success) +
-                   (account_.empty() ? QString("Signed in") : "Signed in as " + QString::fromStdString(account_).toHtmlEscaped());
+                   (account_.empty()
+                        ? QString("Signed in")
+                        : "Signed in as " + QString::fromStdString(account_).toHtmlEscaped());
     }
   } else if (IsLauncher()) {
-    parts << (launcher_installing_ ? StatusDot(tokens.info) + "Installing…"
+    parts << (launcher_installing_  ? StatusDot(tokens.info) + "Installing…"
               : launcher_installed_ ? StatusDot(tokens.success) + "Installed"
                                     : StatusDot(tokens.warning) + "Not installed");
   } else if (IsEmulator()) {
-    parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed" : StatusDot(tokens.warning) + "Not installed");
+    parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed"
+                                  : StatusDot(tokens.warning) + "Not installed");
   } else if (IsModManager()) {
     parts << (manager_unknown_     ? StatusDot(tokens.warning) + "Could not check"
               : manager_.installed ? StatusDot(tokens.success) + "Installed"
@@ -936,17 +994,19 @@ void SourcePage::UpdateStatusLine() {
   }
   if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
-    parts << (library_count_ == 1 ? QString("1 %1 in your library").arg(item)
-                                  : QString("%1 %2s in your library").arg(library_count_).arg(item));
+    parts << (library_count_ == 1
+                  ? QString("1 %1 in your library").arg(item)
+                  : QString("%1 %2s in your library").arg(library_count_).arg(item));
   }
   status_line_->setText(parts.join("  ·  "));
 
   if (IsLauncher() && owned_note_ != nullptr) {
     const QString items = CopyFor(id_).item + "s";
     ShowLine(owned_note_,
-             launcher_installed_ ? "Install more " + items + " in " + source_.name + ", then press \"" +
-                                       CopyFor(id_).import_button + "\" to add them here."
-                                 : "Install " + source_.name + " first, then install " + items + " in it.",
+             launcher_installed_
+                 ? "Install more " + items + " in " + source_.name + ", then press \"" +
+                       CopyFor(id_).import_button + "\" to add them here."
+                 : "Install " + source_.name + " first, then install " + items + " in it.",
              "muted");
   }
   if (library_empty_ == nullptr) return;
@@ -956,15 +1016,19 @@ void SourcePage::UpdateStatusLine() {
     library_empty_->setText("Games from " + source_.name + " show up here once you're signed in.");
   } else if (IsLauncher() && !launcher_installed_) {
     const QString item = CopyFor(id_).item;
-    library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " + source_.name + " show up here.");
+    library_empty_->setText(item[0].toUpper() + item.mid(1) + "s you install through " +
+                            source_.name + " show up here.");
   } else if (IsEmulator()) {
     library_empty_->setVisible(false);
     drop_zone_->setVisible(library_count_ == 0);
   } else if (IsModManager()) {
-    library_empty_->setText("Add " + source_.name + " to a Windows game, then open it from that game's page. It runs in "
-                            "the game's own prefix, where it finds the game the way the game finds itself.");
+    library_empty_->setText(
+        "Add " + source_.name +
+        " to a Windows game, then open it from that game's page. It runs in "
+        "the game's own prefix, where it finds the game the way the game finds itself.");
   } else if (id_ == "local") {
-    library_empty_->setText("Games you add yourself, or that a scan finds in your library folders, show up here.");
+    library_empty_->setText(
+        "Games you add yourself, or that a scan finds in your library folders, show up here.");
   } else if (HasImport()) {
     library_empty_->setText("Nothing from " + source_.name + " in your library yet. \"" +
                             CopyFor(id_).import_button + "\" brings in what's already installed.");
@@ -987,17 +1051,20 @@ void SourcePage::Import() {
   if (id_ == "local") {
     api::ScanLibraryAsync(this, [done](ScanResult r) { done(r.ok, r.error, r.added, 0); });
   } else if (id_ == "steam") {
-    api::ScanSteamAsync(this, [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ScanSteamAsync(this,
+                        [done](SteamScanResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (id_ == "lutris") {
-    api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLutrisAsync(
+        this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsEmulator()) {
-    api::ImportEmulatorAsync(this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportEmulatorAsync(
+        this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsLauncher()) {
-    api::ImportLauncherAsync(this, id_,
-                                     [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+    api::ImportLauncherAsync(
+        this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else {
     api::ImportStoreAsync(this, id_,
-                                  [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+                          [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   }
 }
 
@@ -1005,7 +1072,8 @@ void SourcePage::RefreshOwned(bool fresh) {
   owned_refresh_->setEnabled(false);
   owned_loading_ = true;
   const int generation = ++owned_generation_;
-  // A stored list answers within a frame or two; only a store actually being asked is worth showing.
+  // A stored list answers within a frame or two; only a store actually being asked is worth
+  // showing.
   QTimer::singleShot(150, this, [this, generation] {
     if (generation != owned_generation_ || !owned_loading_) return;
     owned_waiting_ = true;
@@ -1055,8 +1123,9 @@ void SourcePage::UpdateOwnedCount() {
   }
   const int total = static_cast<int>(owned_.size());
   const int shown = owned_grid_ != nullptr ? owned_grid_->VisibleCount() : total;
-  owned_count_->setText(total == 0 ? QString() : shown == total ? QString::number(total)
-                                                                : QString("%1 of %2").arg(shown).arg(total));
+  owned_count_->setText(total == 0       ? QString()
+                        : shown == total ? QString::number(total)
+                                         : QString("%1 of %2").arg(shown).arg(total));
   clear_filters_->setVisible(chips_ != nullptr && !chips_->Filter().Empty());
 }
 
@@ -1078,18 +1147,23 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   }
   std::vector<StoreTitle> uninstalled;
   for (const StoreTitle& title : result.titles) {
-    downloads_->NoteTitle(source_.id, QString::fromStdString(title.ref), QString::fromStdString(title.title));
+    downloads_->NoteTitle(source_.id, QString::fromStdString(title.ref),
+                          QString::fromStdString(title.title));
     if (!title.installed && title.hidden == library_->ShowingHidden()) {
       owned_.emplace_back(QString::fromStdString(title.ref), QString::fromStdString(title.title));
       if (!title.owned) not_owned_.insert(QString::fromStdString(title.ref));
       if (!title.protondb_tier.empty()) {
-        tiers_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.protondb_tier));
+        tiers_.insert(QString::fromStdString(title.ref),
+                      QString::fromStdString(title.protondb_tier));
       }
-      if (!title.steam_tags.empty()) tags_.insert(QString::fromStdString(title.ref), ToQStringList(title.steam_tags));
+      if (!title.steam_tags.empty())
+        tags_.insert(QString::fromStdString(title.ref), ToQStringList(title.steam_tags));
       if (!title.review_summary.empty()) {
-        reviews_.insert(QString::fromStdString(title.ref), QString::fromStdString(title.review_summary));
+        reviews_.insert(QString::fromStdString(title.ref),
+                        QString::fromStdString(title.review_summary));
       }
-      if (title.review_percent >= 0) review_percents_.insert(QString::fromStdString(title.ref), title.review_percent);
+      if (title.review_percent >= 0)
+        review_percents_.insert(QString::fromStdString(title.ref), title.review_percent);
       uninstalled.push_back(title);
     }
   }
@@ -1134,7 +1208,8 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
   }
   for (const HumbleBundle& bundle : result.bundles) {
     owned_.emplace_back(QString::fromStdString(bundle.key), QString::fromStdString(bundle.name));
-    downloads_->NoteTitle("humble", QString::fromStdString(bundle.key), QString::fromStdString(bundle.name));
+    downloads_->NoteTitle("humble", QString::fromStdString(bundle.key),
+                          QString::fromStdString(bundle.name));
   }
   ShowLine(owned_note_,
            owned_.empty() ? QString("No purchases on this account.")
@@ -1168,13 +1243,15 @@ void SourcePage::RebuildOwnedTiles() {
     const auto& [ref, title] = owned_[row];
     // Bundles aren't games, so there's no cover to look up.
     if (id_ == "humble") {
-      item->setData(PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF()), Qt::DecorationRole);
+      item->setData(PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF()),
+                    Qt::DecorationRole);
     } else {
       item->setData(QStringList{source_.id, ref}, GameTileDelegate::TitleCoverRole);
     }
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
-    item->setData(review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
-                  GameTileDelegate::ReviewRole);
+    item->setData(
+        review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
+        GameTileDelegate::ReviewRole);
     // Cleared once the install stops: the item is reused.
     const QString state = owned_state_.value(ref);
     std::optional<DownloadTracker::TileProgress> installing;
@@ -1187,11 +1264,13 @@ void SourcePage::RebuildOwnedTiles() {
     if (not_owned_.contains(ref)) {
       GameTileDelegate::SetTileProgress(*item, std::nullopt, "Not owned");
       item->setData(false, GameTileDelegate::ActionEnabledRole);
-      item->setToolTip(title + "\nA paid game from a collection. Buy it on itch.io to install it here.");
+      item->setToolTip(title +
+                       "\nA paid game from a collection. Buy it on itch.io to install it here.");
       continue;
     }
     const QString action = humble_paths_.contains(ref) ? QString("Add to library…") : idle;
-    GameTileDelegate::SetTileProgress(*item, installing, installing || state.isEmpty() ? action : state);
+    GameTileDelegate::SetTileProgress(*item, installing,
+                                      installing || state.isEmpty() ? action : state);
     // An outcome ("Sent to Steam") shows on the pill until the list refreshes.
     if (!installing && !state.isEmpty()) item->setData(false, GameTileDelegate::ActionEnabledRole);
   }
@@ -1210,15 +1289,15 @@ void SourcePage::RebuildOwnedTiles() {
 void SourcePage::StartInstall(const QString& ref, bool update) {
   owned_state_.insert(ref, update ? "Updating…" : "Installing…");
   if (owned_grid_ != nullptr) RebuildOwnedTiles();
-  api::InstallStoreTitleAsync(this, id_, ref.toStdString(), update,
-                                      [this, ref, update](StoreActionResult r) {
-                                        if (r.ok) return;  // events report the rest
-                                        owned_state_.remove(ref);
-                                        if (owned_grid_ != nullptr) RebuildOwnedTiles();
-                                        // An update starts from "In your library", an install from below.
-                                        ShowError(update || owned_note_ == nullptr ? import_result_ : owned_note_,
-                                                  "Could not start it.", r.error);
-                                      });
+  api::InstallStoreTitleAsync(
+      this, id_, ref.toStdString(), update, [this, ref, update](StoreActionResult r) {
+        if (r.ok) return;  // events report the rest
+        owned_state_.remove(ref);
+        if (owned_grid_ != nullptr) RebuildOwnedTiles();
+        // An update starts from "In your library", an install from below.
+        ShowError(update || owned_note_ == nullptr ? import_result_ : owned_note_,
+                  "Could not start it.", r.error);
+      });
 }
 
 void SourcePage::ApplyFilter() {
@@ -1231,12 +1310,15 @@ void SourcePage::ApplyFilter() {
     for (int row = 0; row < owned_model_->rowCount(); ++row) {
       const QStandardItem* item = owned_model_->item(row);
       const QString ref = item->data(GameTileDelegate::IdRole).toString();
-      // A title's Steam tags match whole, so "rpg" finds RPGs without matching every word containing it.
-      const bool found = needle.isEmpty() ||
-                         item->data(GameTileDelegate::NameRole).toString().contains(needle, Qt::CaseInsensitive) ||
-                         tags_.value(ref).contains(needle, Qt::CaseInsensitive);
-      const bool rated = chips_ == nullptr ||
-                         chips_->Filter().Matches(id_, tiers_.value(ref).toStdString(), reviews_.value(ref).toStdString());
+      // A title's Steam tags match whole, so "rpg" finds RPGs without matching every word
+      // containing it.
+      const bool found =
+          needle.isEmpty() ||
+          item->data(GameTileDelegate::NameRole).toString().contains(needle, Qt::CaseInsensitive) ||
+          tags_.value(ref).contains(needle, Qt::CaseInsensitive);
+      const bool rated =
+          chips_ == nullptr || chips_->Filter().Matches(id_, tiers_.value(ref).toStdString(),
+                                                        reviews_.value(ref).toStdString());
       owned_grid_->setRowHidden(row, !found || !rated);
     }
     owned_grid_->FitHeight();
@@ -1264,8 +1346,8 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
       status = id_ == "humble" ? "Not downloaded" : "Not installed";
     }
-    hover_card_->ShowTitle(QString::fromStdString(id_), ref, index.data(GameTileDelegate::NameRole).toString(), status,
-                           source_.name);
+    hover_card_->ShowTitle(QString::fromStdString(id_), ref,
+                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));
@@ -1301,7 +1383,8 @@ void SourcePage::ShowLibraryMenu(const QPoint& pos) {
   const QString id = index.data(GameTileDelegate::IdRole).toString();
   // A store game's id is "<source>-<ref>"; those can also be updated.
   const QString prefix = source_.id + "-";
-  const QString update_ref = IsStore() && id_ != "humble" && id.startsWith(prefix) ? id.mid(prefix.size()) : QString();
+  const QString update_ref =
+      IsStore() && id_ != "humble" && id.startsWith(prefix) ? id.mid(prefix.size()) : QString();
   emit GameMenuRequested(id, library_grid_->viewport()->mapToGlobal(pos), update_ref);
 }
 
@@ -1351,11 +1434,14 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   }
 }
 
-void SourcePage::UpdateTitle(const QString& ref) { StartInstall(ref, /*update=*/true); }
+void SourcePage::UpdateTitle(const QString& ref) {
+  StartInstall(ref, /*update=*/true);
+}
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   // An emulator installed or firmware added elsewhere (its install job, a second window).
-  if ((IsEmulator() || IsModManager() || IsStore()) && type == "sources.changed") return RefreshStatus();
+  if ((IsEmulator() || IsModManager() || IsStore()) && type == "sources.changed")
+    return RefreshStatus();
   if (StoreEvent art; events::ParseTitleArtworkEvent(type, data, &art)) {
     // "ready" is LibraryWindow's: it has to land while this page is closed too.
     if (art.source == id_ && art.state == "failed" && art.error.code == "no_steamgriddb_key" &&

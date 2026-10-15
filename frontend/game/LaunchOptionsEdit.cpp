@@ -11,15 +11,14 @@
 #include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 #include <set>
 
 #include "../sources/Sources.h"
-#include "../widgets/PathField.h"
-#include "../widgets/PopupDialog.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/PathField.h"
+#include "../widgets/PopupDialog.h"
 
 namespace mira_gui {
 namespace {
@@ -37,13 +36,15 @@ QString ModeText(const std::string& mode) {
   return QString::fromStdString(mode);
 }
 
-// An id from the name that no other option has; "game" names the game's own program, and mod managers' ids
-// mark them as on the game.
+// An id from the name that no other option has; "game" names the game's own program, and mod
+// managers' ids mark them as on the game.
 std::string FreeId(const QString& name, const std::vector<LaunchOption>& options) {
   std::string base;
   for (const QChar ch : name.toLower()) {
-    if (ch.isLetterOrNumber() && ch.unicode() < 128) base += char(ch.unicode());
-    else if (!base.empty() && base.back() != '-') base += '-';
+    if (ch.isLetterOrNumber() && ch.unicode() < 128)
+      base += char(ch.unicode());
+    else if (!base.empty() && base.back() != '-')
+      base += '-';
   }
   while (!base.empty() && base.back() == '-') base.pop_back();
   if (base.empty()) base = "option";
@@ -118,14 +119,17 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
   Rebuild();
 }
 
-void LaunchOptionsEdit::SetLaunch(const GameLaunch& launch, bool windows, const std::string& install_path) {
+void LaunchOptionsEdit::SetLaunch(const GameLaunch& launch, bool windows,
+                                  const std::string& install_path) {
   launch_ = launch;
   windows_ = windows;
   install_path_ = install_path;
   Rebuild();
 }
 
-GameLaunch LaunchOptionsEdit::Launch() const { return launch_; }
+GameLaunch LaunchOptionsEdit::Launch() const {
+  return launch_;
+}
 
 void LaunchOptionsEdit::Rebuild() {
   // deleteLater: a row's own button may be what asked for this.
@@ -147,7 +151,8 @@ void LaunchOptionsEdit::Rebuild() {
     text->setTextFormat(Qt::PlainText);
     text->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     text->setText(QString::fromStdString(option.name) + "  ·  " + ModeText(option.mode));
-    text->setToolTip(QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
+    text->setToolTip(
+        QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
     layout->addWidget(text, /*stretch=*/1);
     auto* edit = new QToolButton(row);
     edit->setAutoRaise(true);
@@ -193,7 +198,8 @@ void LaunchOptionsEdit::Rebuild() {
   default_->clear();
   default_->addItem("The game's own program", QString());
   for (const LaunchOption& option : launch_.options) {
-    if (option.mode == "play") default_->addItem(QString::fromStdString(option.name), QString::fromStdString(option.id));
+    if (option.mode == "play")
+      default_->addItem(QString::fromStdString(option.name), QString::fromStdString(option.id));
   }
   const int at = default_->findData(QString::fromStdString(launch_.default_id));
   default_->setCurrentIndex(std::max(at, 0));
@@ -204,10 +210,12 @@ void LaunchOptionsEdit::Rebuild() {
 }
 
 bool LaunchOptionsEdit::Edit(LaunchOption& option) {
-  PopupDialog dialog(this, notify::Level::Info, option.name.empty() ? "Add launch option" : "Edit launch option");
-  dialog.SetMessage("Another program that starts the game (a mod launcher), runs beside it (a deck tracker), or "
-                    "opens by itself (a mod manager). {game_dir}, {game_exe} and {prefix} in its arguments are "
-                    "filled in.");
+  PopupDialog dialog(this, notify::Level::Info,
+                     option.name.empty() ? "Add launch option" : "Edit launch option");
+  dialog.SetMessage(
+      "Another program that starts the game (a mod launcher), runs beside it (a deck tracker), or "
+      "opens by itself (a mod manager). {game_dir}, {game_exe} and {prefix} in its arguments are "
+      "filled in.");
   dialog.SetWidth(600);
   auto* form_widget = new QWidget(&dialog);
   auto* form = new QFormLayout(form_widget);
@@ -221,8 +229,8 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   auto* exe = new QLineEdit(QString::fromStdString(option.exe), form_widget);
   exe->setPlaceholderText("Absolute, or relative to the install folder");
   form->addRow("Program", PathRow(exe, [this, form_widget] {
-                 const QString picked = QFileDialog::getOpenFileName(form_widget, "Choose the program",
-                                                                     QString::fromStdString(install_path_));
+                 const QString picked = QFileDialog::getOpenFileName(
+                     form_widget, "Choose the program", QString::fromStdString(install_path_));
                  return picked.isEmpty() ? picked : RelativeIfInside(picked, install_path_);
                }));
   auto* args = new QLineEdit(QString::fromStdString(option.args), form_widget);
@@ -235,7 +243,9 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   dialog.AddWidget(form_widget);
   dialog.AddButton("Cancel", false);
   QPushButton* save = dialog.AddButton(option.name.empty() ? "Add" : "Save", true, true);
-  const auto update = [=] { save->setEnabled(!name->text().trimmed().isEmpty() && !exe->text().trimmed().isEmpty()); };
+  const auto update = [=] {
+    save->setEnabled(!name->text().trimmed().isEmpty() && !exe->text().trimmed().isEmpty());
+  };
   connect(name, &QLineEdit::textChanged, save, update);
   connect(exe, &QLineEdit::textChanged, save, update);
   update();

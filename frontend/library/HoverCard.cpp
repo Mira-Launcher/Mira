@@ -8,12 +8,11 @@
 #include <QScreen>
 #include <QSizePolicy>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
-#include "GamePresentation.h"
 #include "../theme/Theme.h"
+#include "GamePresentation.h"
 
 namespace mira_gui {
 namespace {
@@ -60,7 +59,8 @@ void Paint(QWidget* widget) {
 QPoint Place(const QRect& anchor, QSize size, bool beside) {
   QScreen* screen = QGuiApplication::screenAt(anchor.center());
   if (screen == nullptr) screen = QGuiApplication::primaryScreen();
-  return Place(anchor, size, beside, screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size));
+  return Place(anchor, size, beside,
+               screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size));
 }
 
 QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
@@ -72,14 +72,17 @@ QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
     pos = QPoint(anchor.center().x() - size.width() / 2, anchor.bottom() + 1 + kGap);
     if (pos.y() + size.height() > area.bottom()) pos.setY(anchor.top() - kGap - size.height());
   }
-  pos.setX(std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
-  pos.setY(std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
+  pos.setX(
+      std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
+  pos.setY(
+      std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
   return pos;
 }
 
 }  // namespace card
 
-HoverDwell::HoverDwell(std::function<void(const QModelIndex&)> on_hover) : on_hover_(std::move(on_hover)) {
+HoverDwell::HoverDwell(std::function<void(const QModelIndex&)> on_hover)
+    : on_hover_(std::move(on_hover)) {
   timer_.setSingleShot(true);
   QObject::connect(&timer_, &QTimer::timeout, [this] {
     if (last_.isValid()) on_hover_(last_);
@@ -135,7 +138,8 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
 void HoverCard::Reset() {
   protondb_->hide();
-  for (QLabel* line : {platform_line_, played_line_, developer_line_, review_line_, error_line_, hint_line_}) {
+  for (QLabel* line :
+       {platform_line_, played_line_, developer_line_, review_line_, error_line_, hint_line_}) {
     SetLine(line, QString());
   }
 }
@@ -152,14 +156,17 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
   const bool native = game.platform == "native";
   QString platform_label = QString::fromStdString(game.platform);
   if (!platform_label.isEmpty()) platform_label[0] = platform_label[0].toUpper();
-  SetLine(platform_line_, native ? "Native, no Proton involved" : QString("Platform: %1").arg(platform_label));
+  SetLine(platform_line_,
+          native ? "Native, no Proton involved" : QString("Platform: %1").arg(platform_label));
   SetLine(played_line_, IsApp(game) ? FormatLastPlayed(game.last_played_at)
                                     : QString("%1 · %2").arg(FormatLastPlayed(game.last_played_at),
                                                              FormatPlaytime(game.play_seconds)));
   SetLine(error_line_, QString::fromStdString(game.last_error));
-  SetLine(hint_line_, !hint.isEmpty() || !game.needs_check
-                          ? hint
-                          : QString("Not checked: Mira wasn't sure which program starts it. Open it to check."));
+  SetLine(
+      hint_line_,
+      !hint.isEmpty() || !game.needs_check
+          ? hint
+          : QString("Not checked: Mira wasn't sure which program starts it. Open it to check."));
   Reposition();
 
   api::GetMetadataAsync(this, game.id, [this, id = game.id](GameMetadataResult result) {
@@ -168,8 +175,8 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
   });
 }
 
-void HoverCard::ShowTitle(const QString& source, const QString& ref, const QString& title, const QString& status,
-                          const QString& detail) {
+void HoverCard::ShowTitle(const QString& source, const QString& ref, const QString& title,
+                          const QString& status, const QString& detail) {
   // Keyed like the id it gets once installed, so a late answer for another title is dropped.
   game_id_ = (source + "-" + ref).toStdString();
   Reset();
@@ -179,17 +186,18 @@ void HoverCard::ShowTitle(const QString& source, const QString& ref, const QStri
   SetLine(platform_line_, detail);
   Reposition();
 
-  api::GetTitleMetadataAsync(this, source.toStdString(), ref.toStdString(),
-                             [this, id = game_id_](GameMetadataResult result) {
-                               if (game_id_ != id || !result.ok || result.missing) return;
-                               ShowMetadata(result.metadata);
-                               if (!result.metadata.review_summary.empty()) {
-                                 SetLine(review_line_, QString("Steam reviews: %1 (%2)")
-                                                           .arg(QString::fromStdString(result.metadata.review_summary))
-                                                           .arg(QLocale().toString(result.metadata.review_total)));
-                                 Reposition();
-                               }
-                             });
+  api::GetTitleMetadataAsync(
+      this, source.toStdString(), ref.toStdString(),
+      [this, id = game_id_](GameMetadataResult result) {
+        if (game_id_ != id || !result.ok || result.missing) return;
+        ShowMetadata(result.metadata);
+        if (!result.metadata.review_summary.empty()) {
+          SetLine(review_line_, QString("Steam reviews: %1 (%2)")
+                                    .arg(QString::fromStdString(result.metadata.review_summary))
+                                    .arg(QLocale().toString(result.metadata.review_total)));
+          Reposition();
+        }
+      });
 }
 
 void HoverCard::ShowMetadata(const GameMetadata& metadata) {
@@ -207,8 +215,10 @@ void HoverCard::ShowMetadata(const GameMetadata& metadata) {
   }
   protondb_->setVisible(!tier.isEmpty());
 
-  const std::string developer_genre = Join(metadata.developers) +
-      (!metadata.developers.empty() && !metadata.genres.empty() ? " · " : "") + Join(metadata.genres);
+  const std::string developer_genre =
+      Join(metadata.developers) +
+      (!metadata.developers.empty() && !metadata.genres.empty() ? " · " : "") +
+      Join(metadata.genres);
   SetLine(developer_line_, QString::fromStdString(developer_genre));
   Reposition();
 }
@@ -231,6 +241,8 @@ void HoverCard::Reposition() {
   move(window->mapFromGlobal(card::Place(anchor_, size(), /*beside=*/true, area)));
 }
 
-void HoverCard::paintEvent(QPaintEvent*) { card::Paint(this); }
+void HoverCard::paintEvent(QPaintEvent*) {
+  card::Paint(this);
+}
 
 }  // namespace mira_gui

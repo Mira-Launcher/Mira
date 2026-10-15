@@ -10,24 +10,24 @@ namespace mira_gui {
 class ShortcutEdit : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit ShortcutEdit(const QKeySequence& keys, QWidget* parent = nullptr);
 
   QKeySequence Keys() const { return keys_; }
   void SetKeys(const QKeySequence& keys);
   QSize sizeHint() const override;
 
-signals:
+ signals:
   void Changed(const QKeySequence& keys);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
   void focusOutEvent(QFocusEvent* event) override;
   bool event(QEvent* event) override;
 
-private:
+ private:
   void SetRecording(bool recording);
   QStringList Caps() const;
 

@@ -150,17 +150,18 @@ void RegisterTagsRoutes(Router& http, Services& s) {
 
   // Steam tags for the games whose metadata predates them (or whose last try got no answer).
   http.Post("/v1/tags/fetch", [&s](const Request& req, Response& res) {
-    s.StartJob(req, res, "tags", "", "Getting tags from Steam",
-               [&s](JobRegistry::Progress&) -> Result<json> {
-                 std::vector<model::Game> wanting;
-                 const auto stored = metadata::StoredSteamTags(s.games.Metadata());
-                 for (const model::Game& game : s.games.All()) {
-                   const auto found = stored.find(game.id);
-                   if (found != stored.end() && !found->second && metadata::WantsSteamTags(s.config, game))
-                     wanting.push_back(game);
-                 }
-                 return json{{"fetched", metadata::FetchSteamTags(s.config, s.games.Metadata(), wanting)}};
-               });
+    s.StartJob(
+        req, res, "tags", "", "Getting tags from Steam",
+        [&s](JobRegistry::Progress&) -> Result<json> {
+          std::vector<model::Game> wanting;
+          const auto stored = metadata::StoredSteamTags(s.games.Metadata());
+          for (const model::Game& game : s.games.All()) {
+            const auto found = stored.find(game.id);
+            if (found != stored.end() && !found->second && metadata::WantsSteamTags(s.config, game))
+              wanting.push_back(game);
+          }
+          return json{{"fetched", metadata::FetchSteamTags(s.config, s.games.Metadata(), wanting)}};
+        });
   });
 
   // Exactly the games in `ids` have `name` afterwards: it's added where missing (at the end) and
@@ -203,7 +204,8 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    Changed(s, *updated, folders.has_value(), res, folders ? SaveFolders(s, *folders) : Result<void>{});
+    Changed(s, *updated, folders.has_value(), res,
+            folders ? SaveFolders(s, *folders) : Result<void>{});
   });
 
   // Every spelling of `from` becomes `to`, in place, on every game and in tags.folders.
@@ -250,7 +252,8 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    Changed(s, *updated, folder_renamed, res, folder_renamed ? SaveFolders(s, folders) : Result<void>{});
+    Changed(s, *updated, folder_renamed, res,
+            folder_renamed ? SaveFolders(s, folders) : Result<void>{});
   });
 
   // Takes `name` off every game, and out of tags.folders.
@@ -277,7 +280,8 @@ void RegisterTagsRoutes(Router& http, Services& s) {
       return true;
     });
     if (!updated) return SendStoreError(res, updated.error());
-    Changed(s, *updated, folders.has_value(), res, folders ? SaveFolders(s, *folders) : Result<void>{});
+    Changed(s, *updated, folders.has_value(), res,
+            folders ? SaveFolders(s, *folders) : Result<void>{});
   });
 
   // Which games would move if tags.folders and tags.sorted_roots were these, and games had these

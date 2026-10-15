@@ -2,7 +2,6 @@
 
 #include <QAbstractButton>
 #include <QWidget>
-
 #include <vector>
 
 #include "../client/Types.h"
@@ -20,15 +19,15 @@ class GameTileDelegate;
 class ThemeChoice : public QAbstractButton {
   Q_OBJECT
 
-public:
-  ThemeChoice(const QString& theme, const QString& label, std::vector<GameSummary> games, ArtworkStore* artwork,
-              QWidget* parent = nullptr);
+ public:
+  ThemeChoice(const QString& theme, const QString& label, std::vector<GameSummary> games,
+              ArtworkStore* artwork, QWidget* parent = nullptr);
   QString Theme() const { return theme_; }
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   // Read from the theme files once, not on every paint.
   void LoadTokens();
 
@@ -45,15 +44,15 @@ private:
 class TilePreview : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   TilePreview(std::vector<GameSummary> games, ArtworkStore* artwork, QWidget* parent = nullptr);
   void SetShown(bool status, bool source);
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   void Recolor();
 
   QStandardItemModel* model_;
@@ -66,7 +65,7 @@ private:
 class LayoutPreview : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   struct Shape {
     int tile_gap = 5;
     int grid_padding = 6;
@@ -79,10 +78,10 @@ public:
   void SetShape(const Shape& shape);
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   std::vector<GameSummary> games_;
   ArtworkStore* artwork_;
   Shape shape_;

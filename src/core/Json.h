@@ -1,9 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-
 #include <json.hpp>
+#include <string>
 
 namespace mira::core {
 

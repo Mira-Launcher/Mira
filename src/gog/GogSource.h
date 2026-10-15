@@ -9,7 +9,7 @@ namespace mira::gog {
 // list-owned-games subcommand of its own (see Gog.h's class comment).
 // Install/Update wrap GogInstaller.
 class GogSource : public library::ILibrarySource {
-public:
+ public:
   std::string Name() const override { return "gog"; }
   bool CanPause() const override { return true; }
 
@@ -17,9 +17,9 @@ public:
                                                      const store::GameStore& games) const override;
 
   Result<void> Install(config::Config& config, store::GameStore& games, api::EventBus& events,
-                      const std::string& ref) override;
+                       const std::string& ref) override;
   Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
-                     const std::string& ref) override;
+                      const std::string& ref) override;
 };
 
 }  // namespace mira::gog

@@ -17,7 +17,7 @@ namespace mira_gui {
 class SourceTile : public QFrame {
   Q_OBJECT
 
-public:
+ public:
   SourceTile(const SourceInfo& source, QWidget* parent = nullptr);
 
   const SourceInfo& Source() const { return source_; }
@@ -33,14 +33,14 @@ public:
   bool hasHeightForWidth() const override;
   int heightForWidth(int width) const override;
 
-signals:
+ signals:
   void Clicked();
 
-protected:
+ protected:
   void mousePressEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
 
-private:
+ private:
   SourceInfo source_;
   QLabel* badge_ = nullptr;
   QLabel* name_ = nullptr;

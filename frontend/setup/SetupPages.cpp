@@ -393,8 +393,7 @@ void WelcomePage::ShowFolder() {
   const QStorageInfo drive(existing);
   const qint64 total = drive.bytesTotal();
   used_->SetProgress(total > 0 ? 1.0 - static_cast<double>(drive.bytesAvailable()) / total : 0);
-  free_->setText(
-      QString("%1 free of %2").arg(SizeText(drive.bytesAvailable()), SizeText(total)));
+  free_->setText(QString("%1 free of %2").arg(SizeText(drive.bytesAvailable()), SizeText(total)));
   static const QSet<QByteArray> kRisky = {"ntfs", "ntfs3", "fuseblk", "exfat", "vfat", "msdos"};
   drive_warning_->setVisible(kRisky.contains(drive.fileSystemType()));
 }
@@ -429,14 +428,14 @@ void WelcomePage::ChooseFolder(const QString& folder) {
 void WelcomePage::ShowPackages() {
   note_->setVisible(packages_.ok && !packages_.missing.empty());
   if (!note_->isVisibleTo(this)) return;
-  const bool can_install = packages_.install.size() >= packages_.missing.size() &&
-                           !packages_.install.empty();
+  const bool can_install =
+      packages_.install.size() >= packages_.missing.size() && !packages_.install.empty();
   QStringList chosen;
   for (const std::string& package : packages_.missing) {
     if (!unticked_.contains(package)) chosen << QString::fromStdString(package);
   }
-  const QString count =
-      chosen.size() == 1 ? QString("1 system package") : QString("%1 system packages").arg(chosen.size());
+  const QString count = chosen.size() == 1 ? QString("1 system package")
+                                           : QString("%1 system packages").arg(chosen.size());
   if (!can_install) {
     QStringList all;
     for (const std::string& package : packages_.missing) all << QString::fromStdString(package);
@@ -480,9 +479,9 @@ void WelcomePage::Leave() {
       if (!unticked_.contains(package)) chosen.push_back(package);
     }
     // mirad's command ends with every missing package; only the ticked ones go.
-    std::vector<std::string> argv(packages_.install.begin(),
-                                  packages_.install.end() -
-                                      static_cast<std::ptrdiff_t>(packages_.missing.size()));
+    std::vector<std::string> argv(
+        packages_.install.begin(),
+        packages_.install.end() - static_cast<std::ptrdiff_t>(packages_.missing.size()));
     argv.insert(argv.end(), chosen.begin(), chosen.end());
     if (!chosen.empty()) context_.work->InstallPackages(window(), argv, chosen, packages_.restart);
   }
@@ -509,8 +508,9 @@ UsePage::UsePage(const SetupContext& context) : context_(context) {
     auto* art_layout = new QGridLayout(art);
     art_layout->setContentsMargins(0, 0, 10, 0);
     CoverFan* fan =
-        games ? new CoverFan(context, [&context] { return PreviewGames(context, 3); },
-                             QSize(60, 90), 40, 8, art)
+        games ? new CoverFan(
+                    context, [&context] { return PreviewGames(context, 3); }, QSize(60, 90), 40, 8,
+                    art)
               : new CoverFan(
                     context,
                     [] {
@@ -567,9 +567,9 @@ void UsePage::Enter() {
 // --- Found on this computer -------------------------------------------------------------------
 
 FoundPage::FoundPage(const SetupContext& context) : context_(context) {
-  QVBoxLayout* layout = SetupPageLayout(this, icons::Glyph::Search, "Games",
-                                        "Found on this computer",
-                                        "These come into Mira as they are. Nothing is moved or changed.");
+  QVBoxLayout* layout =
+      SetupPageLayout(this, icons::Glyph::Search, "Games", "Found on this computer",
+                      "These come into Mira as they are. Nothing is moved or changed.");
   body_ = new QVBoxLayout();
   body_->setSpacing(10);
   layout->addLayout(body_);
@@ -650,11 +650,10 @@ void FoundPage::Show() {
           std::vector<Picture> pictures;
           for (std::size_t i = 0; i < games.size() && i < 4; ++i) {
             const QString name = QString::fromStdString(games[i].name);
-            pictures.push_back({.cover = artwork->TitleCover("steam",
-                                                             QString::fromStdString(games[i].appid),
-                                                             name, QSize(88, 132),
-                                                             card->devicePixelRatioF()),
-                                .name = name});
+            pictures.push_back(
+                {.cover = artwork->TitleCover("steam", QString::fromStdString(games[i].appid), name,
+                                              QSize(88, 132), card->devicePixelRatioF()),
+                 .name = name});
           }
           return pictures;
         },
@@ -681,10 +680,11 @@ void FoundPage::Show() {
       for (std::size_t i = 0; i < games.size() && i < 3; ++i) {
         names << QString::fromStdString(games[i].name);
       }
-      detail = games.size() == 1 ? QString("1 installed game, %1").arg(names.front())
-               : games.size() <= 3
-                   ? QString("%1 installed games: %2").arg(games.size()).arg(JoinAnd(names))
-                   : QString("%1 installed games, including %2").arg(games.size()).arg(JoinAnd(names));
+      detail =
+          games.size() == 1 ? QString("1 installed game, %1").arg(names.front())
+          : games.size() <= 3
+              ? QString("%1 installed games: %2").arg(games.size()).arg(JoinAnd(names))
+              : QString("%1 installed games, including %2").arg(games.size()).arg(JoinAnd(names));
     }
     text->addWidget(MakeLabel(card, detail, "muted"));
     head->addLayout(text, /*stretch=*/1);
@@ -700,10 +700,10 @@ void FoundPage::Show() {
     // Whose games: owned games and playtime are read for one account.
     if (accounts_.accounts.size() > 1) {
       column->addSpacing(6);
-      column->addWidget(MakeLabel(
-          card,
-          QString("Steam has %1 accounts signed in. Which one is yours?").arg(accounts_.accounts.size()),
-          "muted"));
+      column->addWidget(MakeLabel(card,
+                                  QString("Steam has %1 accounts signed in. Which one is yours?")
+                                      .arg(accounts_.accounts.size()),
+                                  "muted"));
       auto* group = new QButtonGroup(card);
       const auto palette = theme::SampleArt(tokens);
       for (std::size_t i = 0; i < accounts_.accounts.size(); ++i) {
@@ -760,8 +760,9 @@ void FoundPage::Show() {
     text->setSpacing(1);
     text->addWidget(Bold(card, "Lutris"));
     text->addWidget(MakeLabel(card,
-                              lutris_games > 0 ? QString("%1 games added").arg(lutris_games)
-                                               : QString("Its Wine and Linux games, as Lutris runs them"),
+                              lutris_games > 0
+                                  ? QString("%1 games added").arg(lutris_games)
+                                  : QString("Its Wine and Linux games, as Lutris runs them"),
                               "muted"));
     line->addLayout(text, /*stretch=*/1);
     if (lutris_games == 0) {
@@ -802,10 +803,11 @@ void FoundPage::Show() {
     column->setSpacing(8);
     QStringList builds;
     for (const RunnerInfo& runner : runners_) {
-      if (runner.kind == "proton" || runner.kind == "wine") builds << QString::fromStdString(runner.label);
+      if (runner.kind == "proton" || runner.kind == "wine")
+        builds << QString::fromStdString(runner.label);
     }
-    column->addWidget(
-        Bold(card, builds.isEmpty() ? "Getting ready for Windows games" : "Ready for Windows games"));
+    column->addWidget(Bold(
+        card, builds.isEmpty() ? "Getting ready for Windows games" : "Ready for Windows games"));
     auto* chips = new QHBoxLayout();
     chips->setSpacing(6);
     const QString tick = QString::fromUtf8("\xe2\x9c\x93 ");
@@ -814,10 +816,10 @@ void FoundPage::Show() {
       for (const QString& line : context_.work->Running()) {
         if (line.contains("Proton")) downloading = line;
       }
-      chips->addWidget(Chip(card,
-                            downloading.isEmpty() ? QString("No Proton yet. Runners has it, any time.")
-                                                  : downloading,
-                            downloading.isEmpty() ? "warning" : "plain"));
+      chips->addWidget(Chip(
+          card,
+          downloading.isEmpty() ? QString("No Proton yet. Runners has it, any time.") : downloading,
+          downloading.isEmpty() ? "warning" : "plain"));
     }
     for (const QString& build : builds.mid(0, 3)) chips->addWidget(Chip(card, tick + build, "ok"));
     if (gamemode_.ok) {
@@ -919,10 +921,11 @@ void StoresPage::Enter() {
 void StoresPage::Show() {
   const QStringList& stores = context_.choices->stores;
   const bool tools = std::ranges::any_of(stores, [](const QString& id) { return id != "steam"; });
-  count_->setText(stores.isEmpty() ? QString("None picked, so no sign-ins follow.")
-                  : tools ? QString("%1 picked · their helper tools start downloading when you continue.")
-                                .arg(stores.size())
-                          : QString("%1 picked").arg(stores.size()));
+  count_->setText(
+      stores.isEmpty() ? QString("None picked, so no sign-ins follow.")
+      : tools ? QString("%1 picked · their helper tools start downloading when you continue.")
+                    .arg(stores.size())
+              : QString("%1 picked").arg(stores.size()));
 }
 
 void StoresPage::Leave() {
@@ -967,8 +970,8 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
   rows->setContentsMargins(14, 4, 14, 4);
   rows->setSpacing(0);
   in_all_ = new Switch(card);
-  rows->addWidget(SetupRow(card, "Apps under All", "List apps under the All tab too, not only under Apps.",
-                           in_all_));
+  rows->addWidget(SetupRow(card, "Apps under All",
+                           "List apps under the All tab too, not only under Apps.", in_all_));
   rows->addWidget(MakeDivider(card, Qt::Horizontal));
   big_screen_ = new Switch(card);
   rows->addWidget(SetupRow(card, "Apps in big screen",
@@ -983,8 +986,9 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
 void AppsPage::Enter() {
   context_.choices->apps_skipped = false;
   office_->setChecked(context_.choices->office);
-  line_->setText(context_.choices->office ? "Its Windows setup starts getting ready when you continue."
-                                          : "More applications are coming.");
+  line_->setText(context_.choices->office
+                     ? "Its Windows setup starts getting ready when you continue."
+                     : "More applications are coming.");
   in_all_->setChecked(context_.prefs->library_apps_in_all.value_or(true));
   big_screen_->setChecked(context_.prefs->big_screen_show_apps.value_or(false));
 }
@@ -1029,8 +1033,9 @@ StorePage::StorePage(const SetupContext& context, const QString& store)
   layout->addWidget(done_);
   connect(panel_, &SignInPanel::Connected, this, [this, guide](bool just_now) {
     if (store_ != "steam") {
-      api::PatchSourceAsync(this, store_.toStdString(), true, std::nullopt,
-                            [work = context_.work](PatchConfigResult) { emit work->SourcesChanged(); });
+      api::PatchSourceAsync(
+          this, store_.toStdString(), true, std::nullopt,
+          [work = context_.work](PatchConfigResult) { emit work->SourcesChanged(); });
     }
     if (!just_now) return;
     done_->setText(QString::fromUtf8("\xe2\x9c\x93  ") + guide.done + ". Moving on…");
@@ -1048,9 +1053,8 @@ void StorePage::Enter() {
   for (const QString& key : setup::Flow(*context_.choices)) {
     if (key.startsWith("sign:")) signs << key;
   }
-  eyebrow_->setText(QString("STORE %1 OF %2")
-                        .arg(signs.indexOf("sign:" + store_) + 1)
-                        .arg(signs.size()));
+  eyebrow_->setText(
+      QString("STORE %1 OF %2").arg(signs.indexOf("sign:" + store_) + 1).arg(signs.size()));
 }
 
 // --- Microsoft 365 ---------------------------------------------------------------------------
@@ -1073,7 +1077,8 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   head->addLayout(text, /*stretch=*/1);
   layout->addLayout(head);
   layout->addWidget(MakeLabel(
-      this, "Office runs in its own Windows setup. Pick your plan and the apps you want. About 4 GB.",
+      this,
+      "Office runs in its own Windows setup. Pick your plan and the apps you want. About 4 GB.",
       "muted"));
 
   QFrame* plan_card = SetupCard(this);
@@ -1094,8 +1099,8 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   }
   connect(plans_, &QButtonGroup::buttonClicked, this,
           [this](QAbstractButton* button) { plan_ = button->property("plan").toString(); });
-  plan_rows->addWidget(SetupRow(plan_card, "Your plan", "Office installs the edition that matches it.",
-                                segmented));
+  plan_rows->addWidget(
+      SetupRow(plan_card, "Your plan", "Office installs the edition that matches it.", segmented));
   layout->addWidget(plan_card);
 
   QFrame* apps_card = SetupCard(this);
@@ -1110,8 +1115,8 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   apps->addWidget(app_tiles_);
   layout->addWidget(apps_card);
 
-  layout->addWidget(MakeLabel(this, "Next starts the install. It keeps going while you finish setting up.",
-                              "muted"));
+  layout->addWidget(MakeLabel(
+      this, "Next starts the install. It keeps going while you finish setting up.", "muted"));
   layout->addWidget(Note(this, icons::Glyph::EyeSlash,
                          new QLabel("You sign in inside Word or Excel the first time you open one, "
                                     "like on Windows. Mira never sees your account.")));
@@ -1177,11 +1182,13 @@ void OfficeSetupPage::Enter() {
 void OfficeSetupPage::Leave() {
   std::vector<std::string> refs;
   for (const LauncherApp& app : apps_) {
-    if (context_.choices->office_apps.contains(QString::fromStdString(app.ref))) refs.push_back(app.ref);
+    if (context_.choices->office_apps.contains(QString::fromStdString(app.ref)))
+      refs.push_back(app.ref);
   }
   // The plan picks the edition the apps install from, so it's saved before they're asked for.
-  api::PatchConfigAsync(this, {{"launchers.office.plan", "a string", plan_.toStdString()}},
-                        [work = context_.work, refs](PatchConfigResult) { work->AddOfficeApps(refs); });
+  api::PatchConfigAsync(
+      this, {{"launchers.office.plan", "a string", plan_.toStdString()}},
+      [work = context_.work, refs](PatchConfigResult) { work->AddOfficeApps(refs); });
 }
 
 // --- Done ------------------------------------------------------------------------------------
@@ -1223,14 +1230,15 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);
     big_screen_->setChecked(true);
-    QWidget* row = SetupRow(
-        switches, "Open Mira in big screen",
-        "Mira full screen, made for a controller. Switch any time from the menu or the Mira button.",
-        big_screen_, /*below=*/false,
-        MakeLabel(switches,
-                  context.screen == setup::Screen::SteamDeck ? QString::fromUtf8("\xc2\xb7 looks like a Steam Deck")
-                                                             : QString::fromUtf8("\xc2\xb7 looks like a TV"),
-                  "muted", false));
+    QWidget* row = SetupRow(switches, "Open Mira in big screen",
+                            "Mira full screen, made for a controller. Switch any time from the "
+                            "menu or the Mira button.",
+                            big_screen_, /*below=*/false,
+                            MakeLabel(switches,
+                                      context.screen == setup::Screen::SteamDeck
+                                          ? QString::fromUtf8("\xc2\xb7 looks like a Steam Deck")
+                                          : QString::fromUtf8("\xc2\xb7 looks like a TV"),
+                                      "muted", false));
     switch_rows->addWidget(MakeDivider(switches, Qt::Horizontal));
     switch_rows->addWidget(row);
     // A login start opens big screen instead of the tray when that's on.
@@ -1256,7 +1264,8 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   star_line->addWidget(glyph);
   auto* star_text = new QVBoxLayout();
   star_text->setSpacing(1);
-  star_text->addWidget(MakeLabel(star, "Enjoying Mira? A star on GitHub helps other people find it."));
+  star_text->addWidget(
+      MakeLabel(star, "Enjoying Mira? A star on GitHub helps other people find it."));
   auto* link = new QLabel(
       "<a href='https://github.com/Mira-Launcher/Mira'>github.com/Mira-Launcher/Mira</a>", star);
   link->setObjectName("setup_link");
@@ -1302,7 +1311,7 @@ void DonePage::ShowSummary() {
   int added = 0;
   enum class Mark { Done, Left, Running };
   const auto add = [this, rows, &tokens, &added](Mark state, const QString& text,
-                                                const QString& detail) {
+                                                 const QString& detail) {
     ++added;
     auto* row = new QWidget(summary_);
     auto* line = new QHBoxLayout(row);
@@ -1329,11 +1338,13 @@ void DonePage::ShowSummary() {
 
   const setup::Choices& choices = *context_.choices;
   const auto count = [this](const char* source) {
-    return static_cast<int>(std::ranges::count_if(
-        context_.services.library->Games(), [source](const GameSummary& g) { return g.source == source; }));
+    return static_cast<int>(
+        std::ranges::count_if(context_.services.library->Games(),
+                              [source](const GameSummary& g) { return g.source == source; }));
   };
   if (choices.games) {
-    for (const auto& [source, name] : {std::pair{"steam", "Steam"}, std::pair{"lutris", "Lutris"}}) {
+    for (const auto& [source, name] :
+         {std::pair{"steam", "Steam"}, std::pair{"lutris", "Lutris"}}) {
       const int games = count(source);
       if (games > 0) {
         add(Mark::Done, QString("%1: %2 games in your library").arg(name).arg(games), {});
@@ -1353,7 +1364,8 @@ void DonePage::ShowSummary() {
       } else if (signed_in_[store]) {
         add(Mark::Done, StoreName(store) + ": signed in", {});
       } else {
-        add(Mark::Left, StoreName(store), "Not signed in. Its page in the sidebar has the sign-in.");
+        add(Mark::Left, StoreName(store),
+            "Not signed in. Its page in the sidebar has the sign-in.");
       }
     }
   }
@@ -1389,7 +1401,9 @@ void DonePage::ShowSummary() {
   }
 }
 
-bool DonePage::BigScreen() const { return big_screen_ != nullptr && big_screen_->isChecked(); }
+bool DonePage::BigScreen() const {
+  return big_screen_ != nullptr && big_screen_->isChecked();
+}
 
 void DonePage::Leave() {
   FrontendPrefs change;

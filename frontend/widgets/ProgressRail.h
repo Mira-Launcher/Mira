@@ -13,14 +13,15 @@ namespace mira_gui {
 // `fraction` is 0..1, or below 0 when nothing reports how far along it is,
 // which draws a short segment sliding along, placed by the clock so every
 // rail on screen moves together.
-void PaintRail(QPainter& painter, const QRectF& track, double fraction, const QColor& fill, const QColor& groove);
+void PaintRail(QPainter& painter, const QRectF& track, double fraction, const QColor& fill,
+               const QColor& groove);
 
 // The rail as a widget, for rows (downloads, runners). Animates itself
 // while busy.
 class ProgressRail : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit ProgressRail(QWidget* parent = nullptr);
 
   // 0..1, or below 0 for busy.
@@ -29,13 +30,13 @@ public:
   void SetFaint(bool faint);
   QSize sizeHint() const override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   // Ticks only while on screen.
   void showEvent(QShowEvent* event) override;
   void hideEvent(QHideEvent* event) override;
 
-private:
+ private:
   double fraction_ = -1;
   bool faint_ = false;
   QTimer* tick_ = nullptr;

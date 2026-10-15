@@ -1,9 +1,8 @@
 #pragma once
 
+#include <json.hpp>
 #include <optional>
 #include <string>
-
-#include <json.hpp>
 
 #include "model/Types.h"
 
@@ -19,7 +18,8 @@ bool IsSettablePlatform(const nlohmann::json& value);
 // `base` with the fields of a PATCH /v1/games/{id} body applied.
 model::Game ParseGamePatch(const model::Game& base, const nlohmann::json& patch);
 
-// The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently ignored.
+// The first wrong-typed field of a game patch, named, so a bad body is a 400 rather than silently
+// ignored.
 std::optional<std::string> GamePatchProblem(const nlohmann::json& patch);
 
 // Applies a flat {"dotted.key": value} overrides patch; null removes an override.

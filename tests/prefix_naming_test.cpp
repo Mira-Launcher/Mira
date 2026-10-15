@@ -78,10 +78,13 @@ TEST_CASE("PrefixDir skips a folder another game already owns even though it isn
   second.id = "b";
   second.name = "Celeste";
   CHECK(library::PrefixDir(config, games, second).filename() == "celeste-2");
-  CHECK(library::PrefixDir(config, games, first).filename() == "celeste");  // its own, not a collision
+  CHECK(library::PrefixDir(config, games, first).filename() ==
+        "celeste");  // its own, not a collision
 }
 
-TEST_CASE("PrefixDir falls back to strings::Slugify's own \"game\" default for a name with no letters or digits") {
+TEST_CASE(
+    "PrefixDir falls back to strings::Slugify's own \"game\" default for a name with no letters or "
+    "digits") {
   config::Config config(TempConfigFile("prefix-naming-empty.toml"));
   config.Load();
   const fs::path root = TempDir("prefix-naming-empty-root");
@@ -110,7 +113,8 @@ TEST_CASE("Relocate leaves a prefix already at its named directory in place") {
   CHECK(fs::is_directory(root / "celeste" / "drive_c"));
 }
 
-TEST_CASE("Relocate with only an install target moves the files and leaves the prefix where it is") {
+TEST_CASE(
+    "Relocate with only an install target moves the files and leaves the prefix where it is") {
   config::Config config(TempConfigFile("relocate-only-given.toml"));
   config.Load();
   const fs::path library = TempDir("relocate-only-given-lib");
@@ -202,9 +206,12 @@ struct RelocateEnv {
   fs::path prefixes = env.config.GetPath("prefix_root");
   fs::path outside = env.dir / "lutris-games";
 
-  RelocateEnv() { REQUIRE(env.config.Set("library_roots", nlohmann::json::array({library.string()})).has_value()); }
+  RelocateEnv() {
+    REQUIRE(env.config.Set("library_roots", nlohmann::json::array({library.string()})).has_value());
+  }
 
-  model::Game LutrisGame(const std::string& id, const std::string& name, const fs::path& install, const fs::path& prefix) {
+  model::Game LutrisGame(const std::string& id, const std::string& name, const fs::path& install,
+                         const fs::path& prefix) {
     test::Touch(install / "Game.exe", "exe");
     fs::create_directories(prefix / "drive_c");
     model::Game game;
@@ -222,8 +229,9 @@ struct RelocateEnv {
 
 TEST_CASE("Relocate moves a Lutris game's files as well as its prefix") {
   RelocateEnv setup;
-  const model::Game game = setup.LutrisGame("blue-prince", "Blue Prince", setup.outside / "blue-prince",
-                                            setup.outside / "prefixes" / "blue-prince");
+  const model::Game game =
+      setup.LutrisGame("blue-prince", "Blue Prince", setup.outside / "blue-prince",
+                       setup.outside / "prefixes" / "blue-prince");
   const auto relocated = library::Relocate(setup.env.config, game, {}, std::vector{game});
   REQUIRE(relocated.has_value());
   CHECK(paths::IsWithin(relocated->install_path, {setup.library}));
@@ -236,12 +244,13 @@ TEST_CASE("Relocate moves a Lutris game's files as well as its prefix") {
 TEST_CASE("Relocate moves a prefix that holds the game as one folder") {
   RelocateEnv setup;
   const fs::path prefix = setup.outside / "nine-sols";
-  const model::Game game =
-      setup.LutrisGame("nine-sols", "Nine Sols", prefix / "drive_c" / "Games" / "Nine Sols", prefix);
+  const model::Game game = setup.LutrisGame("nine-sols", "Nine Sols",
+                                            prefix / "drive_c" / "Games" / "Nine Sols", prefix);
   const auto relocated = library::Relocate(setup.env.config, game, {}, std::vector{game});
   REQUIRE(relocated.has_value());
   REQUIRE(paths::IsWithin(relocated->data_dir, {setup.prefixes}));
-  CHECK(relocated->install_path == (fs::path(relocated->data_dir) / "drive_c" / "Games" / "Nine Sols").string());
+  CHECK(relocated->install_path ==
+        (fs::path(relocated->data_dir) / "drive_c" / "Games" / "Nine Sols").string());
   CHECK(fs::exists(fs::path(relocated->install_path) / "Game.exe"));
   CHECK_FALSE(fs::exists(prefix));
 
@@ -262,7 +271,8 @@ TEST_CASE("Relocate refuses to move an install folder that holds other games") {
   loose.data_dir.clear();
   const model::Game neighbour =
       setup.LutrisGame("jump-king", "Jump King", shared / "jump-king", shared / "jump-king");
-  const auto relocated = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+  const auto relocated =
+      library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
   REQUIRE_FALSE(relocated.has_value());
   CHECK(relocated.error().code == "shared_folder");
   CHECK(fs::exists(shared / "Game.exe"));
@@ -282,7 +292,8 @@ TEST_CASE("Relocate refuses to move an install folder that holds other games") {
   SUBCASE("but an AppImage leaves it on its own, into a folder of its own") {
     test::Touch(shared / "osu.AppImage", "appimage", /*executable=*/true);
     loose.exe_path = "osu.AppImage";
-    const auto moved = library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
+    const auto moved =
+        library::Relocate(setup.env.config, loose, {}, std::vector{loose, neighbour});
     REQUIRE(moved.has_value());
     CHECK(paths::IsWithin(moved->install_path, {setup.library}));
     CHECK(fs::exists(fs::path(moved->install_path) / "osu.AppImage"));

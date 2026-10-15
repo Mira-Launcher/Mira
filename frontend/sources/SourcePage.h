@@ -1,12 +1,11 @@
 #pragma once
 
-#include <QPoint>
 #include <QHash>
+#include <QPoint>
 #include <QSet>
 #include <QSize>
 #include <QString>
 #include <QWidget>
-
 #include <functional>
 #include <set>
 #include <string>
@@ -52,10 +51,10 @@ class TileGrid;
 class SourcePage : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   // `library` is the window's shared game model; the page shows this source's games from it.
-  SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork, DownloadTracker* downloads,
-             int tile_width, QWidget* parent = nullptr);
+  SourcePage(const SourceInfo& source, GameLibraryModel* library, ArtworkStore* artwork,
+             DownloadTracker* downloads, int tile_width, QWidget* parent = nullptr);
 
   // A store title's cover arrived; a game's own tile repaints from the model.
   void UpdateCover(const QString& id);
@@ -81,7 +80,7 @@ public:
   bool TakesDroppedFiles() const { return IsEmulator(); }
   void AddDroppedFiles(const std::vector<std::string>& paths) { AddGames(paths); }
 
-signals:
+ signals:
   // An import added or changed games.
   void LibraryChanged();
   void OpenSettingsRequested(QString focus_key);
@@ -96,11 +95,11 @@ signals:
   // Ctrl+wheel over a grid, one step per notch; the window owns the zoom.
   void ZoomRequested(int steps);
 
-protected:
+ protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   bool IsStore() const { return source_.kind == SourceInfo::Kind::Store; }
   bool IsLauncher() const { return source_.kind == SourceInfo::Kind::Launcher; }
   bool IsEmulator() const { return source_.kind == SourceInfo::Kind::Emulator; }
@@ -176,8 +175,8 @@ private:
   bool status_known_ = false;     // a store's status arrived at least once
   bool owned_loaded_ = false;     // a list (or its failure) arrived since the page opened
   bool owned_loading_ = false;
-  bool owned_waiting_ = false;    // still loading after a moment: worth showing
-  bool checking_ = false;         // mirad is re-checking the store behind the list shown
+  bool owned_waiting_ = false;  // still loading after a moment: worth showing
+  bool checking_ = false;       // mirad is re-checking the store behind the list shown
   int owned_generation_ = 0;
 
   QLabel* status_line_ = nullptr;
@@ -188,9 +187,9 @@ private:
   QToolButton* more_button_ = nullptr;
   QWidget* content_ = nullptr;
   QVBoxLayout* content_layout_ = nullptr;
-  SourceSettingsCard* settings_card_ = nullptr;  // built on first open
+  SourceSettingsCard* settings_card_ = nullptr;      // built on first open
   ItchCollectionsCard* collections_card_ = nullptr;  // itch only, built on first open
-  mira_gui::SettingsCard* modal_card_ = nullptr;  // the one the overlay shows
+  mira_gui::SettingsCard* modal_card_ = nullptr;     // the one the overlay shows
   ModalOverlay* settings_overlay_ = nullptr;
   QScrollArea* settings_scroll_ = nullptr;
 
@@ -223,18 +222,18 @@ private:
   HumbleLibraryResult bundles_result_;
   // What the account owns and isn't installed, under the hidden mode, by ref, with its title.
   std::vector<std::pair<QString, QString>> owned_;
-  QSet<QString> not_owned_;  // refs listed from a collection but not bought
-  QHash<QString, QString> tiers_;  // ref -> ProtonDB tier
-  QHash<QString, QStringList> tags_;  // ref -> Steam tags, for the filter
-  QHash<QString, QString> reviews_;   // ref -> Steam's review label
+  QSet<QString> not_owned_;              // refs listed from a collection but not bought
+  QHash<QString, QString> tiers_;        // ref -> ProtonDB tier
+  QHash<QString, QStringList> tags_;     // ref -> Steam tags, for the filter
+  QHash<QString, QString> reviews_;      // ref -> Steam's review label
   QHash<QString, int> review_percents_;  // ref -> share of positive Steam reviews
   // Refs asked to install/update/download and not yet started by mirad, and
   // the ones done this session. What's running comes from downloads_.
-  QHash<QString, QString> owned_state_;  // ref -> "Installing…", "Downloaded", ...
+  QHash<QString, QString> owned_state_;   // ref -> "Installing…", "Downloaded", ...
   QHash<QString, QString> humble_paths_;  // downloaded bundle key -> its folder, to add as a game
 
   GameLibraryModel* library_ = nullptr;
-  GameFilterProxy* games_ = nullptr;        // this source's games, for library_grid_
+  GameFilterProxy* games_ = nullptr;           // this source's games, for library_grid_
   QStandardItemModel* owned_model_ = nullptr;  // owned_ as tiles, for owned_grid_
   HoverCard* hover_card_ = nullptr;
 };

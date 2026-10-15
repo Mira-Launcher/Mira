@@ -91,11 +91,9 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   CHECK(native_game.tags == std::vector<std::string>{root.filename().string()});
 
   library::Detector::Result windows_result;
-  windows_result.candidates.push_back(
-      {"hollow_knight.exe", model::Platform::Windows, 4.5, true});
+  windows_result.candidates.push_back({"hollow_knight.exe", model::Platform::Windows, 4.5, true});
   windows_result.confidence = 0.8;
-  model::Game windows_game =
-      auto_setup.CreateGame("/games/Hollow Knight", windows_result);
+  model::Game windows_game = auto_setup.CreateGame("/games/Hollow Knight", windows_result);
   CHECK(windows_game.status == model::GameStatus::SettingUp);
   CHECK_FALSE(windows_game.data_dir.empty());
   // Found outside every library root (an install inside a prefix): no folder to name it after.
@@ -224,7 +222,9 @@ TEST_CASE("Detector never descends into a nested wine prefix during its own walk
   CHECK(result.candidates.empty());
 }
 
-TEST_CASE("A game kept in its own prefix lists its own executables, not Wine's or what the prefix's links lead to") {
+TEST_CASE(
+    "A game kept in its own prefix lists its own executables, not Wine's or what the prefix's "
+    "links lead to") {
   // Wine links dosdevices/z: to / and the user folders to the real home.
   const fs::path outside = TempDir("prefix-links-outside");
   Touch(outside / "bin" / "head", "elf", /*executable=*/true);
@@ -236,7 +236,8 @@ TEST_CASE("A game kept in its own prefix lists its own executables, not Wine's o
   fs::create_directories(prefix / "dosdevices");
   fs::create_directory_symlink(outside, prefix / "dosdevices" / "z:");
   fs::create_directories(prefix / "drive_c" / "users" / "me");
-  fs::create_directory_symlink(outside / "Documents", prefix / "drive_c" / "users" / "me" / "Documents");
+  fs::create_directory_symlink(outside / "Documents",
+                               prefix / "drive_c" / "users" / "me" / "Documents");
 
   const auto rel_paths = [](const std::vector<model::Candidate>& candidates) {
     std::vector<std::string> paths;
@@ -372,8 +373,8 @@ TEST_CASE("A small installer is recognised by its builder's mark, whatever its n
   };
   installer_like(dir / "Moonleap-1.2-win.exe", "Inno Setup");
   installer_like(dir / "setup_tiny.exe", "Nullsoft.NSIS.exehead");
-  installer_like(dir / "unins000.exe", "Inno Setup");         // its uninstaller, on the deny list
-  installer_like(dir / "VC_redist.x64.exe", ".wixburn");       // a redistributable, likewise
+  installer_like(dir / "unins000.exe", "Inno Setup");     // its uninstaller, on the deny list
+  installer_like(dir / "VC_redist.x64.exe", ".wixburn");  // a redistributable, likewise
   Touch(dir / "Moonleap.exe");
 
   library::DetectorSettings settings = DefaultSettings();
@@ -383,7 +384,8 @@ TEST_CASE("A small installer is recognised by its builder's mark, whatever its n
   const auto result = library::Detector(settings).Detect(dir);
 
   const auto flagged = [&](const std::string& name) {
-    const auto it = std::ranges::find_if(result.candidates, [&](const auto& c) { return c.rel_path == name; });
+    const auto it =
+        std::ranges::find_if(result.candidates, [&](const auto& c) { return c.rel_path == name; });
     REQUIRE(it != result.candidates.end());
     return it->is_installer;
   };
@@ -399,7 +401,8 @@ TEST_CASE("AutoSetup stores an installer candidate as needs_install, not launcha
   library::AutoSetup auto_setup(env.config, env.games, env.events);
 
   library::Detector::Result detected;
-  detected.candidates.push_back({"setup_hollow_knight.exe", model::Platform::Windows, 4.0, true, true});
+  detected.candidates.push_back(
+      {"setup_hollow_knight.exe", model::Platform::Windows, 4.0, true, true});
   detected.confidence = 1.0;
 
   model::Game game = auto_setup.CreateGame("/games/game-hollow", detected);
@@ -438,7 +441,8 @@ TEST_CASE("the real default deny list excludes known engine/launcher helper exec
   // Uses the actual shipped schema default, not the test's minimal one
   // above, so this fails if that default ever regresses.
   library::DetectorSettings settings;
-  settings.deny_name_patterns = config::Schema::Instance().Find("detect.deny_name_patterns")
+  settings.deny_name_patterns = config::Schema::Instance()
+                                    .Find("detect.deny_name_patterns")
                                     ->default_value.get<std::vector<std::string>>();
 
   const fs::path dir = TempDir("engine-helpers-detect");

@@ -19,7 +19,7 @@ class Services;
 // Registers routes on `http` with each handler behind `gate`, which answers instead when it returns
 // true. Unlike httplib's pre-routing handler, the gate sees the request body.
 class Router {
-public:
+ public:
   using Handler = std::function<void(const httplib::Request&, httplib::Response&)>;
   using Gate = std::function<bool(const httplib::Request&, httplib::Response&)>;
   Router(httplib::Server& http, Gate gate) : http_(http), gate_(std::move(gate)) {}
@@ -30,14 +30,15 @@ public:
   void Patch(const std::string& pattern, Handler handler);
   void Delete(const std::string& pattern, Handler handler);
 
-private:
+ private:
   Handler Gated(Handler handler) const;
 
   httplib::Server& http_;
   Gate gate_;
 };
 
-// Each registers one area of the API on `http`; handlers keep a reference to `s`, which outlives the server.
+// Each registers one area of the API on `http`; handlers keep a reference to `s`, which outlives
+// the server.
 void RegisterConfigRoutes(Router& http, Services& s);
 void RegisterGameRoutes(Router& http, Services& s);
 void RegisterLaunchRoutes(Router& http, Services& s);
@@ -55,7 +56,7 @@ void RegisterEventRoutes(Router& http, Services& s);
 void RegisterLogRoutes(Router& http, Services& s);
 
 // Serves one cached art slot for `id`, or 404s.
-void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id, const std::string& type,
-                       httplib::Response& res);
+void SendCachedArtwork(const store::MetadataStore& cache, const std::string& id,
+                       const std::string& type, httplib::Response& res);
 
 }  // namespace mira::api

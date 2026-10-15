@@ -7,24 +7,22 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QHash>
-#include <QPalette>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPalette>
 #include <QRegularExpression>
 #include <QStandardPaths>
-#include <QWidget>
 #include <QStyle>
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTimer>
-
+#include <QWidget>
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <utility>
-
 #include <toml.hpp>
+#include <utility>
 
 namespace mira_gui::theme {
 namespace {
@@ -74,7 +72,9 @@ std::filesystem::path UserThemeDir() {
   return base / ".config" / "mira" / "themes";
 }
 
-QString BundledPath(const QString& name) { return QString(":/themes/%1.toml").arg(name); }
+QString BundledPath(const QString& name) {
+  return QString(":/themes/%1.toml").arg(name);
+}
 
 QString UserPath(const QString& name) {
   return QString::fromStdString((UserThemeDir() / (name.toStdString() + ".toml")).string());
@@ -227,8 +227,7 @@ Tokens ReadTokens(const QString& name) {
 // on the qtsvg image plugin being present (it is not something the AppImage can
 // count on bundling).
 QString GlyphPath(const QString& kind, const QColor& color) {
-  const QString dir =
-      QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/glyphs";
+  const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/glyphs";
   QDir().mkpath(dir);
   // The color is in the name because Qt caches an image by its path, and two
   // themes' chevrons would otherwise be the same file.
@@ -240,8 +239,8 @@ QString GlyphPath(const QString& kind, const QColor& color) {
   image.fill(Qt::transparent);
   QPainter painter(&image);
   painter.setRenderHint(QPainter::Antialiasing);
-  painter.setPen(QPen(color, kind == "check" ? 4.0 : 3.2, Qt::SolidLine, Qt::RoundCap,
-                      Qt::RoundJoin));
+  painter.setPen(
+      QPen(color, kind == "check" ? 4.0 : 3.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
   QPainterPath stroke;
   if (kind == "check") {
     stroke.moveTo(8, 17);
@@ -288,9 +287,9 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
                 g_hidden_mode ? ColorToQss(Mix(tokens.border, tokens.accent, 0.6)) : "transparent");
   values.insert("hidden_note", ColorToQss(Mix(tokens.text, tokens.accent, 0.35)));
   // Faint washes behind a note or a mark, still readable under text.
-  for (const auto& [name, color] : {std::pair{"accent_faint", tokens.accent},
-                                    std::pair{"info_faint", tokens.info},
-                                    std::pair{"success_faint", tokens.success}}) {
+  for (const auto& [name, color] :
+       {std::pair{"accent_faint", tokens.accent}, std::pair{"info_faint", tokens.info},
+        std::pair{"success_faint", tokens.success}}) {
     QColor faint = color;
     faint.setAlphaF(0.14);
     values.insert(name, ColorToQss(faint));
@@ -374,10 +373,10 @@ void Restyle() {
   if (g_hidden_mode) g_tokens.accent = g_tokens.accent_hidden;
 
   UseFusion();
-  emit Notifier::Instance()->AboutToRestyle();
+  emit Notifier::Instance() -> AboutToRestyle();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
-  emit Notifier::Instance()->Changed();
+  emit Notifier::Instance() -> Changed();
 }
 
 void ApplyResolved(const QString& resolved) {
@@ -390,7 +389,7 @@ void ApplyResolved(const QString& resolved) {
 // Follows the desktop: its colors once its theme changes, and its light or dark preference for
 // "auto". Qt sends ThemeChange to every window, so one restyle covers them all.
 class DesktopWatch : public QObject {
-public:
+ public:
   DesktopWatch() {
     qApp->installEventFilter(this);
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
@@ -402,7 +401,7 @@ public:
     return QObject::eventFilter(watched, event);
   }
 
-private:
+ private:
   void Schedule() {
     if (std::exchange(pending_, true)) return;
     QTimer::singleShot(0, this, [this] {
@@ -443,18 +442,26 @@ namespace {
 std::optional<QFont> g_desktop_font;
 }  // namespace
 
-QFont DesktopFont() { return g_desktop_font.value_or(QApplication::font()); }
+QFont DesktopFont() {
+  return g_desktop_font.value_or(QApplication::font());
+}
 
 void EnlargeAppFont() {
   g_desktop_font = QApplication::font();
   QApplication::setFont(Larger(*g_desktop_font));
 }
 
-const Tokens& Current() { return g_tokens; }
+const Tokens& Current() {
+  return g_tokens;
+}
 
-const Tokens& ThemeDefaults() { return g_theme_tokens; }
+const Tokens& ThemeDefaults() {
+  return g_theme_tokens;
+}
 
-const Overrides& CurrentOverrides() { return g_overrides; }
+const Overrides& CurrentOverrides() {
+  return g_overrides;
+}
 
 void SetOverrides(const Overrides& overrides) {
   g_overrides = overrides;
@@ -469,7 +476,9 @@ void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {
   widget->style()->polish(widget);
 }
 
-QString CurrentName() { return g_name; }
+QString CurrentName() {
+  return g_name;
+}
 
 Tokens Peek(const QString& name) {
   return ReadTokens(name == "auto" ? DesktopTheme() : name);

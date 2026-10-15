@@ -25,13 +25,19 @@ namespace mira::updates {
 namespace {
 namespace fs = std::filesystem;
 
-std::string WithoutV(const std::string& tag) { return tag.starts_with('v') ? tag.substr(1) : tag; }
+std::string WithoutV(const std::string& tag) {
+  return tag.starts_with('v') ? tag.substr(1) : tag;
+}
 
 // Whether `output` contains `version` as a whole token, not as part of a longer version.
 bool MentionsVersion(const std::string& output, const std::string& version) {
   std::string spaced = output;
   std::ranges::replace_if(
-      spaced, [](unsigned char c) { return !std::isalnum(c) && c != '.' && c != '-' && c != '_' && c != '+'; }, ' ');
+      spaced,
+      [](unsigned char c) {
+        return !std::isalnum(c) && c != '.' && c != '-' && c != '_' && c != '+';
+      },
+      ' ');
   std::istringstream tokens(spaced);
   for (std::string token; tokens >> token;) {
     if (WithoutV(token) == version) return true;
@@ -48,18 +54,24 @@ bool Behind(const runner::InstalledTool& installed, const runner::ReleaseAsset& 
 constexpr const char* kMiraRepo = "Mira-Launcher/Mira";
 
 std::optional<Update> MiraUpdate() {
-  const auto latest = runner::LatestRelease(std::format("https://api.github.com/repos/{}/releases/latest", kMiraRepo),
-                                            "*.AppImage");
+  const auto latest = runner::LatestRelease(
+      std::format("https://api.github.com/repos/{}/releases/latest", kMiraRepo), "*.AppImage");
   if (!latest) {
     log::Warn("couldn't check for a Mira update: {}", latest.error().message);
     return std::nullopt;
   }
   if (strverscmp(WithoutV(latest->tag).c_str(), MIRA_VERSION) <= 0) return std::nullopt;
-  return Update{.kind = "mira", .id = "mira", .name = "Mira", .installed = MIRA_VERSION, .latest = latest->tag,
-                .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, latest->tag)};
+  return Update{
+      .kind = "mira",
+      .id = "mira",
+      .name = "Mira",
+      .installed = MIRA_VERSION,
+      .latest = latest->tag,
+      .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, latest->tag)};
 }
 
-std::optional<Update> EmulatorUpdate(const config::Config& config, const emulators::Emulator& emulator) {
+std::optional<Update> EmulatorUpdate(const config::Config& config,
+                                     const emulators::Emulator& emulator) {
   const auto installed = runner::InstalledToolOf(config, emulator.id);
   if (!installed || emulators::Binary(config, emulator) != installed->binary) return std::nullopt;
   const auto latest = emulators::Latest(config, emulator);
@@ -68,14 +80,19 @@ std::optional<Update> EmulatorUpdate(const config::Config& config, const emulato
     return std::nullopt;
   }
   if (!Behind(*installed, *latest)) return std::nullopt;
-  return Update{.kind = "emulator", .id = emulator.id, .name = emulator.name, .installed = installed->tag,
-                .latest = latest->tag, .url = ""};
+  return Update{.kind = "emulator",
+                .id = emulator.id,
+                .name = emulator.name,
+                .installed = installed->tag,
+                .latest = latest->tag,
+                .url = ""};
 }
 
-// A tool Mira downloaded to `path`, from the releases of `release_kind`. One downloaded before Mira kept a
-// record of its tag is compared by the version it prints.
-std::optional<Update> ToolUpdate(const config::Config& config, const std::string& id, const std::string& name,
-                                 const std::string& release_kind, const std::string& path) {
+// A tool Mira downloaded to `path`, from the releases of `release_kind`. One downloaded before Mira
+// kept a record of its tag is compared by the version it prints.
+std::optional<Update> ToolUpdate(const config::Config& config, const std::string& id,
+                                 const std::string& name, const std::string& release_kind,
+                                 const std::string& path) {
   const fs::path tools = config.File().parent_path() / "tools";
   const fs::path relative = fs::path(path).lexically_relative(tools);
   if (path.empty() || relative.empty() || *relative.begin() == "..") return std::nullopt;
@@ -93,7 +110,12 @@ std::optional<Update> ToolUpdate(const config::Config& config, const std::string
     installed = runner::ToolVersion(path);
     if (installed.empty() || MentionsVersion(installed, WithoutV(latest.tag))) return std::nullopt;
   }
-  return Update{.kind = "tool", .id = id, .name = name, .installed = installed, .latest = latest.tag, .url = ""};
+  return Update{.kind = "tool",
+                .id = id,
+                .name = name,
+                .installed = installed,
+                .latest = latest.tag,
+                .url = ""};
 }
 
 }  // namespace
@@ -103,15 +125,18 @@ std::vector<Update> FindUpdates(config::Config& config) {
   checks.push_back(std::async(std::launch::async, MiraUpdate));
   for (const emulators::Emulator& emulator : emulators::All()) {
     if (!emulators::Downloads(emulator)) continue;
-    checks.push_back(std::async(std::launch::async, [&config, &emulator] { return EmulatorUpdate(config, emulator); }));
+    checks.push_back(std::async(std::launch::async,
+                                [&config, &emulator] { return EmulatorUpdate(config, emulator); }));
   }
   for (const library::Store& store : library::AllStores()) {
     checks.push_back(std::async(std::launch::async, [&config, &store] {
-      return ToolUpdate(config, store.id, store.tool, store.release_kind, store.status(config).tool.path);
+      return ToolUpdate(config, store.id, store.tool, store.release_kind,
+                        store.status(config).tool.path);
     }));
   }
-  checks.push_back(std::async(std::launch::async,
-                              [&config] { return ToolUpdate(config, "umu", "umu", "umu", runner::UmuRunPath()); }));
+  checks.push_back(std::async(std::launch::async, [&config] {
+    return ToolUpdate(config, "umu", "umu", "umu", runner::UmuRunPath());
+  }));
 
   std::vector<Update> updates;
   for (auto& check : checks) {
@@ -119,11 +144,14 @@ std::vector<Update> FindUpdates(config::Config& config) {
   }
   const runner::RunnerRegistry registry(config);
   for (const runner::RunnerUpdate& update : runner::FindRunnerUpdates(config, registry)) {
-    updates.push_back({.kind = "runner", .id = update.build.Reference(), .name = update.family.label,
-                       .installed = runner::BuildLabel(update.build.kind, update.build.name),
-                       .latest = runner::BuildLabel(update.build.kind,
-                                                    runner::ReleaseName(update.build.kind, update.latest)),
-                       .url = ""});
+    updates.push_back(
+        {.kind = "runner",
+         .id = update.build.Reference(),
+         .name = update.family.label,
+         .installed = runner::BuildLabel(update.build.kind, update.build.name),
+         .latest = runner::BuildLabel(update.build.kind,
+                                      runner::ReleaseName(update.build.kind, update.latest)),
+         .url = ""});
   }
   return updates;
 }

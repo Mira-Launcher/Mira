@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QSize>
-
 #include <functional>
 
 #include "../widgets/TileView.h"
@@ -15,7 +14,7 @@ class GameTileDelegate;
 // instead of scrolling, for a page that scrolls as a whole. Tiles are
 // painted by GameTileDelegate from the model's roles.
 class TileGrid : public TileView {
-public:
+ public:
   TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent = nullptr);
 
   // A tile's ActionRole pill was clicked (only while ActionEnabledRole).
@@ -30,7 +29,7 @@ public:
   void FitHeight();
   int VisibleCount() const;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
@@ -42,7 +41,7 @@ protected:
   void rowsInserted(const QModelIndex& parent, int start, int end) override;
   void rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end) override;
 
-private:
+ private:
   QModelIndex ActionIndexAt(const QPoint& pos) const;
 
   ArtworkStore* artwork_ = nullptr;

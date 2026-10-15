@@ -11,11 +11,13 @@ EpicInstaller::EpicInstaller(config::Config& config, store::GameStore& games, ap
 
 Result<void> EpicInstaller::Run(const std::string& verb, const std::string& app_name) {
   // A leading '-' would be read as an option.
-  if (app_name.empty() || app_name.starts_with('-')) return Err("invalid_ref", "that isn't an Epic app name");
+  if (app_name.empty() || app_name.starts_with('-'))
+    return Err("invalid_ref", "that isn't an Epic app name");
   library::StoreProgress progress(events_, "epic", app_name);
   std::vector<std::string> args = {verb, app_name, "-y"};
   // Without it legendary installs into its own default, ~/Games. An update stays where the game is.
-  if (verb == "install") args.insert(args.end(), {"--base-path", config_.GetPath("epic.install_root").string()});
+  if (verb == "install")
+    args.insert(args.end(), {"--base-path", config_.GetPath("epic.install_root").string()});
   if (auto output = RunLegendary(config_, args,
                                  [&progress](std::string_view chunk) { progress.Feed(chunk); });
       !output) {
@@ -30,7 +32,11 @@ Result<void> EpicInstaller::Run(const std::string& verb, const std::string& app_
   return {};
 }
 
-Result<void> EpicInstaller::Install(const std::string& app_name) { return Run("install", app_name); }
-Result<void> EpicInstaller::Update(const std::string& app_name) { return Run("update", app_name); }
+Result<void> EpicInstaller::Install(const std::string& app_name) {
+  return Run("install", app_name);
+}
+Result<void> EpicInstaller::Update(const std::string& app_name) {
+  return Run("update", app_name);
+}
 
 }  // namespace mira::epic

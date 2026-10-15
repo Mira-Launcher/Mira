@@ -1,11 +1,10 @@
 #pragma once
 
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <json.hpp>
 
 #include "model/Types.h"
 

@@ -14,7 +14,7 @@ namespace mira::desktop {
 
 // One already-installed application-menu entry that could become a game.
 struct DesktopEntryCandidate {
-  std::string id;    // freedesktop "desktop file ID" -- stable, no stored state needed
+  std::string id;  // freedesktop "desktop file ID" -- stable, no stored state needed
   std::string name;
   std::string icon;  // Icon= value verbatim, empty if absent
 };
@@ -29,13 +29,13 @@ struct DesktopEntryCandidate {
 // is added to the library until Import() is called with specific ids picked
 // by the user.
 class DesktopEntryScanner {
-public:
+ public:
   DesktopEntryScanner(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<std::vector<DesktopEntryCandidate>> ListCandidates() const;
   Result<library::ImportSummary> Import(const std::vector<std::string>& ids);
 
-private:
+ private:
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

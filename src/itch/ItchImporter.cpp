@@ -1,10 +1,9 @@
-#include "core/Json.h"
 #include "itch/ItchImporter.h"
 
 #include <algorithm>
-
 #include <json.hpp>
 
+#include "core/Json.h"
 #include "core/Log.h"
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
@@ -46,7 +45,8 @@ std::vector<Cave> ParseCaves(const json& items) {
     // butlerd's own spec (a naive .value<bool>() here throws on a real
     // linux upload).
     const json upload = item.contains("upload") ? item["upload"] : json::object();
-    cave.is_linux_native = upload.contains("platforms") && upload["platforms"].is_object() && upload["platforms"].contains("linux");
+    cave.is_linux_native = upload.contains("platforms") && upload["platforms"].is_object() &&
+                           upload["platforms"].contains("linux");
 
     out.push_back(std::move(cave));
   }
@@ -68,7 +68,9 @@ Result<library::ImportSummary> ItchImporter::Import() {
   const Result<json> caves_json = Call(config_, "Fetch.Caves", {{"profileId", *profile_id}});
   if (!caves_json) return std::unexpected(caves_json.error());
 
-  const json items = caves_json->is_object() && caves_json->contains("items") ? (*caves_json)["items"] : json::array();
+  const json items = caves_json->is_object() && caves_json->contains("items")
+                         ? (*caves_json)["items"]
+                         : json::array();
   const runner::RunnerRegistry provisioner(config_);
 
   for (const Cave& cave : ParseCaves(items)) {

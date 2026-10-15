@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <map>
 #include <string>
 #include <vector>
@@ -17,7 +16,7 @@ namespace mira_gui {
 class RatingChips : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit RatingChips(QWidget* parent = nullptr);
 
   struct Title {
@@ -28,10 +27,10 @@ public:
   const TitleFilter& Filter() const { return filter_; }
   void Clear();
 
-signals:
+ signals:
   void Changed();
 
-private:
+ private:
   void Toggle();
 
   TitleFilter filter_;

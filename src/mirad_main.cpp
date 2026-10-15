@@ -20,17 +20,17 @@
 #include "api/EventBus.h"
 #include "api/Server.h"
 #include "api/Services.h"
-#include "core/LogHub.h"
 #include "config/Config.h"
 #include "core/Log.h"
+#include "core/LogHub.h"
 #include "core/Paths.h"
 #include "library/Scanner.h"
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
-#include "runner/RefMigration.h"
 #include "migrate/EarlySchema.h"
 #include "migrate/Legacy.h"
 #include "migrate/Sources.h"
+#include "runner/RefMigration.h"
 #include "store/GameStore.h"
 
 namespace {
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
       continue;
     }
     std::fprintf(stderr, "mirad: unrecognised argument \"%.*s\"\n", static_cast<int>(arg.size()),
-                arg.data());
+                 arg.data());
     PrintUsage();
     return 2;
   }
@@ -85,16 +85,18 @@ int main(int argc, char** argv) {
   std::filesystem::create_directories(mira::paths::UserDir(), ec);
   std::filesystem::permissions(mira::paths::UserDir(), std::filesystem::perms::owner_all, ec);
 
-  // One mirad per library: a second would scan, reconcile sessions and clear caches under the first, then
-  // take its socket. The lock goes with the process.
+  // One mirad per library: a second would scan, reconcile sessions and clear caches under the
+  // first, then take its socket. The lock goes with the process.
   const std::filesystem::path lock_file = mira::paths::UserDir() / "mirad.lock";
   if (const int lock = ::open(lock_file.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
       lock < 0 || ::flock(lock, LOCK_EX | LOCK_NB) != 0) {
-    std::fprintf(stderr, "mirad: another mirad is already running for %s\n", mira::paths::UserDir().c_str());
+    std::fprintf(stderr, "mirad: another mirad is already running for %s\n",
+                 mira::paths::UserDir().c_str());
     return 1;
   }
 
-  // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back to.
+  // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back
+  // to.
   const auto cache_db = mira::paths::DatabaseFile().parent_path() / "cache.db";
   // Temporary; see migrate/EarlySchema.h.
   mira::migrate::RepairEarlySchemas(mira::paths::DatabaseFile(), cache_db);
@@ -107,7 +109,8 @@ int main(int argc, char** argv) {
                          [&games](const nlohmann::json& state) { (void)games.KeepUiState(state); });
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
-  if (games.SourcesNew()) mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
+  if (games.SourcesNew())
+    mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);
@@ -132,12 +135,14 @@ int main(int argc, char** argv) {
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
   services.artwork_selects.Post([&config, &games, &services, &events] {
-    mira::metadata::FitCachedArt(config, games.Metadata(), [&games](const std::string& id) { return !games.Find(id); });
+    mira::metadata::FitCachedArt(config, games.Metadata(),
+                                 [&games](const std::string& id) { return !games.Find(id); });
     mira::metadata::PruneOrphanArt(config, games.Metadata());
     if (!config.GetBool("metadata.enabled")) return;
     std::vector<mira::model::Game> stale;
     for (mira::model::Game& game : games.All()) {
-      if (games.Metadata().Has(game.id) && !mira::metadata::DetailsFresh(config, games.Metadata().Read(game.id))) {
+      if (games.Metadata().Has(game.id) &&
+          !mira::metadata::DetailsFresh(config, games.Metadata().Read(game.id))) {
         stale.push_back(std::move(game));
       }
     }
@@ -145,7 +150,8 @@ int main(int argc, char** argv) {
   });
 
   const std::filesystem::path socket_path =
-      socket_override.empty() ? mira::paths::Expand(config.GetString("socket_path")) : socket_override;
+      socket_override.empty() ? mira::paths::Expand(config.GetString("socket_path"))
+                              : socket_override;
 
   // Block SIGINT/SIGTERM on every thread before any is created, so only the
   // dedicated WaitForShutdownSignal() call below ever receives them.
@@ -184,7 +190,8 @@ int main(int argc, char** argv) {
     if (auto result = server.Serve(socket_path); !result) {
       mira::log::Error("server exited: {}", result.error().message);
       serve_failed = true;
-      kill(getpid(), SIGTERM);  // wakes WaitForShutdownSignal so the daemon doesn't linger with no socket
+      kill(getpid(),
+           SIGTERM);  // wakes WaitForShutdownSignal so the daemon doesn't linger with no socket
     }
   });
 

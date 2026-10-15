@@ -26,7 +26,7 @@ struct SetupContext {
   LibraryServices services;
   SetupWork* work = nullptr;
   setup::Choices* choices = nullptr;
-  DemoArt* art = nullptr;  // the example games' covers and heroes, fetched for the previews
+  DemoArt* art = nullptr;          // the example games' covers and heroes, fetched for the previews
   FrontendPrefs* prefs = nullptr;  // as saved so far, applied whole so nothing else resets
   setup::Screen screen = setup::Screen::Desktop;
 };

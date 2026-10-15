@@ -8,8 +8,8 @@
 #include <QPushButton>
 #include <QToolButton>
 
-#include "../client/api/Games.h"
 #include "../app/ErrorHelp.h"
+#include "../client/api/Games.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../widgets/Labels.h"
@@ -20,8 +20,9 @@ namespace {
 constexpr QSize kCover(40, 60);
 
 // The game's cover before the title, a heading title and a close button: InstallPromptCard's frame.
-void BuildHeader(SettingsCard* card, const GameSummary& game, const QString& title, ArtworkStore* artwork,
-                 const QString& close_tip, const std::function<void()>& close) {
+void BuildHeader(SettingsCard* card, const GameSummary& game, const QString& title,
+                 ArtworkStore* artwork, const QString& close_tip,
+                 const std::function<void()>& close) {
   auto* cover = new QLabel(card);
   cover->setFixedSize(kCover);
   const auto show_cover = [card, cover, artwork, game] {
@@ -90,8 +91,9 @@ InstallerCard::InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWi
   auto* change = new QPushButton("Change…", installer);
   change->setToolTip("Pick a different installer file");
   connect(change, &QPushButton::clicked, this, [this] {
-    const QString picked = QFileDialog::getOpenFileName(this, "Installer", QString::fromStdString(install_path_),
-                                                        "Installers (*.exe *.msi *.EXE *.MSI);;All files (*)");
+    const QString picked =
+        QFileDialog::getOpenFileName(this, "Installer", QString::fromStdString(install_path_),
+                                     "Installers (*.exe *.msi *.EXE *.MSI);;All files (*)");
     if (!picked.isEmpty()) LoadInfo(picked.toStdString());
   });
   installer->AddControl(change);
@@ -163,17 +165,17 @@ void InstallerCard::Install(bool interactive) {
   });
 }
 
-InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game, const std::string& installer_dir,
-                                             std::int64_t bytes, ArtworkStore* artwork, QWidget* parent)
+InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
+                                             const std::string& installer_dir, std::int64_t bytes,
+                                             ArtworkStore* artwork, QWidget* parent)
     : SettingsCard(QString(), parent), game_id_(game.id) {
   setFixedWidth(560);
-  BuildHeader(this, game, "Delete " + QString::fromStdString(game.name) + "'s installer?", artwork, "Keep it",
-              [this] { emit CloseRequested(); });
+  BuildHeader(this, game, "Delete " + QString::fromStdString(game.name) + "'s installer?", artwork,
+              "Keep it", [this] { emit CloseRequested(); });
 
   auto* folder = new SettingRow("Installer folder", QString(), this);
-  auto* path = new QLabel(QString("%1  ·  %2").arg(QString::fromStdString(installer_dir),
-                                                  SizeText(bytes)),
-                          folder);
+  auto* path = new QLabel(
+      QString("%1  ·  %2").arg(QString::fromStdString(installer_dir), SizeText(bytes)), folder);
   path->setWordWrap(true);
   path->setTextInteractionFlags(Qt::TextSelectableByMouse);
   folder->SetBelow(path);

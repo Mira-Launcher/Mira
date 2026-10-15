@@ -28,7 +28,8 @@ struct ApiError {
   ApiError() = default;
   ApiError(std::string text) : message(std::move(text)) {}  // NOLINT: implicit, a client-side error
   ApiError(const char* text) : message(text) {}             // NOLINT
-  ApiError(std::string text, std::string error_code) : message(std::move(text)), code(std::move(error_code)) {}
+  ApiError(std::string text, std::string error_code)
+      : message(std::move(text)), code(std::move(error_code)) {}
 
   operator const std::string&() const { return message; }  // NOLINT: reads as its message
   bool empty() const { return message.empty(); }

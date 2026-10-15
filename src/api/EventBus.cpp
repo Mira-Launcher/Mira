@@ -24,7 +24,8 @@ void EventBus::SetArtHook(std::function<nlohmann::json(const std::string& id)> h
 
 void EventBus::DecorateGames(const std::string& type, nlohmann::json& payload) {
   if (!payload.is_object()) return;
-  if (type == "game.metadata_ready" || type == "game.metadata_failed" || type == "game.artwork_selected") {
+  if (type == "game.metadata_ready" || type == "game.metadata_failed" ||
+      type == "game.artwork_selected") {
     std::function<nlohmann::json(const std::string&)> art;
     {
       std::lock_guard lock(hook_mutex_);
@@ -102,7 +103,7 @@ model::Event EventBus::PublishNotification(model::NotifyLevel level, std::string
 }
 
 std::optional<model::Event> EventBus::WaitNext(std::int64_t after_id, const std::atomic<bool>& stop,
-                                                std::chrono::milliseconds timeout) {
+                                               std::chrono::milliseconds timeout) {
   std::unique_lock lock(mutex_);
   const bool got = cv_.wait_for(lock, timeout, [&] {
     return stop.load(std::memory_order_relaxed) ||
@@ -149,7 +150,8 @@ void AddHintAndFix(nlohmann::json& out, const Error& error) {
 
 namespace {
 
-// Never empty: a tool that failed without a word still gets its code read out ("store_failed" -> "store failed").
+// Never empty: a tool that failed without a word still gets its code read out ("store_failed" ->
+// "store failed").
 std::string ErrorMessage(const Error& error) {
   if (!error.message.empty()) return error.message;
   std::string words = error.code.empty() ? std::string("failed") : error.code;

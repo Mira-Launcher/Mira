@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QObject>
-
 #include <functional>
 
 namespace mira_gui::bigscreen {
@@ -26,13 +25,13 @@ void ReleaseScreenBlanking(unsigned cookie);
 class SleepWatcher : public QObject {
   Q_OBJECT
 
-public:
+ public:
   explicit SleepWatcher(QObject* parent);
 
-signals:
+ signals:
   void Woke();
 
-private slots:
+ private slots:
   void OnPrepareForSleep(bool sleeping);
 };
 

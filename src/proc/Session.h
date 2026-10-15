@@ -20,12 +20,14 @@ namespace mira::proc {
 struct SessionRecord {
   std::string game_id;
   pid_t wrapper_pid = 0;  // mira-run's own pid, used to detect a live session on restart
-  pid_t game_pid = 0;     // the actual game; kept even if wrapper_pid dies, so it can still be Stop()ed
+  pid_t game_pid =
+      0;  // the actual game; kept even if wrapper_pid dies, so it can still be Stop()ed
   std::int64_t started_at = 0;
 
   bool finished = false;
   std::int64_t ended_at = 0;
-  std::int64_t duration_seconds = 0;  // from a monotonic clock, immune to a wall-clock jump mid-session
+  std::int64_t duration_seconds =
+      0;  // from a monotonic clock, immune to a wall-clock jump mid-session
   int exit_code = -1;
   int signal = 0;
   std::string launch_error;  // set if execvp of the game itself failed
@@ -40,14 +42,16 @@ struct SessionRecord {
 };
 
 // Where mira-run writes a game's output; `state_dir` is the game store's folder.
-std::filesystem::path GameLogPath(const std::filesystem::path& state_dir, const std::string& game_id);
+std::filesystem::path GameLogPath(const std::filesystem::path& state_dir,
+                                  const std::string& game_id);
 
-// Session records live in mira.db's sessions table, keyed by game and start time. mira-run writes one as
-// the session starts and again as it ends, through a connection of its own, so a record survives mirad
-// dying; mirad counts it, which marks it counted. Writing never unmarks a counted record.
+// Session records live in mira.db's sessions table, keyed by game and start time. mira-run writes
+// one as the session starts and again as it ends, through a connection of its own, so a record
+// survives mirad dying; mirad counts it, which marks it counted. Writing never unmarks a counted
+// record.
 Result<void> WriteSessionRecord(const std::filesystem::path& database, const SessionRecord& record);
-Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database, const std::string& game_id,
-                                        std::int64_t started_at);
+Result<SessionRecord> ReadSessionRecord(const std::filesystem::path& database,
+                                        const std::string& game_id, std::int64_t started_at);
 // Records mirad hasn't counted yet: sessions still running, or finished while it was down.
 std::vector<SessionRecord> UncountedSessions(const std::filesystem::path& database);
 

@@ -1,10 +1,11 @@
-#include <algorithm>
+#include "emulators/Emulators.h"
+
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 
 #include "core/Strings.h"
-#include "emulators/Emulators.h"
 #include "library/Scanner.h"
 #include "runner/EmulatorRunner.h"
 #include "support/TestEnv.h"
@@ -14,7 +15,8 @@ namespace fs = std::filesystem;
 
 TEST_CASE("emulators: ROM names lose their dump tags but keep disc numbers") {
   CHECK(emulators::CleanName("Metroid Fusion (USA) [!].gba") == "Metroid Fusion");
-  CHECK(emulators::CleanName("Final_Fantasy_VII (USA) (Disc 2).cue") == "Final Fantasy VII (Disc 2)");
+  CHECK(emulators::CleanName("Final_Fantasy_VII (USA) (Disc 2).cue") ==
+        "Final Fantasy VII (Disc 2)");
   CHECK(emulators::CleanName("Chrono Trigger (Rev 1).sfc") == "Chrono Trigger");
 }
 
@@ -31,7 +33,8 @@ TEST_CASE("emulators: a folder imports its games, hides what a cue names, and th
   test::Touch(ps1 / "notes.txt");
   test::Touch(ps1 / "Homebrew" / "EBOOT.PBP");
   test::Touch(ps1 / "Homebrew" / "module.pbp");
-  test::Touch(emulators::RomDir(env.config, rpcs3) / "BLUS30001" / "PS3_GAME" / "USRDIR" / "EBOOT.BIN");
+  test::Touch(emulators::RomDir(env.config, rpcs3) / "BLUS30001" / "PS3_GAME" / "USRDIR" /
+              "EBOOT.BIN");
 
   const auto summary = emulators::Import(env.config, env.games, env.events, duckstation);
   REQUIRE(summary);
@@ -85,13 +88,16 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
   test::Touch(downloads / "Earthbound (USA).smc");
   test::Touch(downloads / "readme.txt");
 
-  CHECK_FALSE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "readme.txt"}, false));
+  CHECK_FALSE(emulators::AddFiles(env.config, env.games, env.events, snes9x,
+                                  {downloads / "readme.txt"}, false));
   test::Touch(downloads / "CMFileManager" / "EBOOT.PBP");
   REQUIRE(emulators::AddFiles(env.config, env.games, env.events, *emulators::Find("ppsspp"),
                               {downloads / "CMFileManager" / "EBOOT.PBP"}, false));
   CHECK(env.games.Find("ppsspp-cmfilemanager-eboot")->name == "CMFileManager");
-  REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "Super Metroid (USA).sfc"}, false));
-  REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x, {downloads / "Earthbound (USA).smc"}, true));
+  REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x,
+                              {downloads / "Super Metroid (USA).sfc"}, false));
+  REQUIRE(emulators::AddFiles(env.config, env.games, env.events, snes9x,
+                              {downloads / "Earthbound (USA).smc"}, true));
   CHECK(fs::exists(downloads / "Super Metroid (USA).sfc"));
   CHECK_FALSE(fs::exists(downloads / "Earthbound (USA).smc"));
 
@@ -100,8 +106,10 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
   const runner::EmulatorRunner runner(env.config);
   const auto command = runner.BuildCommand(*game, std::nullopt);
   REQUIRE(command);
-  CHECK(command->argv == std::vector<std::string>{(env.dir / "bin" / "snes9x").string(),
-                                                  (emulators::RomDir(env.config, snes9x) / "Super Metroid (USA).sfc").string()});
+  CHECK(command->argv ==
+        std::vector<std::string>{
+            (env.dir / "bin" / "snes9x").string(),
+            (emulators::RomDir(env.config, snes9x) / "Super Metroid (USA).sfc").string()});
 
   // Others on this computer's PATH (ares, bsnes) may be offered too.
   CHECK(std::ranges::contains(emulators::Alternatives(env.config, *game), &mesen));
@@ -118,12 +126,14 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
 TEST_CASE("emulators: download sources read as a repository or link") {
   CHECK(emulators::DefaultSource(*emulators::Find("duckstation")) == "stenzek/duckstation");
   CHECK(emulators::DefaultSource(*emulators::Find("bsnes")) == "bsnes-emu/bsnes");
-  CHECK(emulators::DefaultSource(*emulators::Find("ryujinx")).starts_with("https://mirror.cachyos.org/"));
+  CHECK(emulators::DefaultSource(*emulators::Find("ryujinx"))
+            .starts_with("https://mirror.cachyos.org/"));
   CHECK(strings::GithubRepo("https://github.com/someone/duckstation") == "someone/duckstation");
   CHECK(strings::GithubRepo("someone/duckstation") == "someone/duckstation");
 }
 
-TEST_CASE("emulators: an emulator's AppImage in a library folder sets up its source instead of a game") {
+TEST_CASE(
+    "emulators: an emulator's AppImage in a library folder sets up its source instead of a game") {
   CHECK(emulators::Recognize("DuckStation-x64.AppImage")->id == "duckstation");
   CHECK(emulators::Recognize("pcsx2-v2.2.0-linux-appimage-x64-Qt.AppImage")->id == "pcsx2");
   CHECK(emulators::Recognize("Dolphin_Emulator-x86_64.AppImage")->id == "dolphin");
@@ -137,17 +147,21 @@ TEST_CASE("emulators: an emulator's AppImage in a library folder sets up its sou
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})));
   library::Scanner(env.config, env.games, env.events).ScanAll();
   CHECK(env.games.All().empty());
-  CHECK(env.config.GetString("emulators.mgba.bin") == (root / "mGBA-0.10.5-appimage-x64.appimage").string());
+  CHECK(env.config.GetString("emulators.mgba.bin") ==
+        (root / "mGBA-0.10.5-appimage-x64.appimage").string());
   CHECK(env.games.Source("mgba").added);
 }
 
-TEST_CASE("emulators: a desktop entry that runs one of its games becomes that game, kept in place or moved") {
+TEST_CASE(
+    "emulators: a desktop entry that runs one of its games becomes that game, kept in place or "
+    "moved") {
   test::TestEnv env("emulators-existing");
   const emulators::Emulator& mgba = *emulators::Find("mgba");
   const fs::path elsewhere = env.dir / "my-roms";
   test::Touch(elsewhere / "Fusion.gba");
   test::Touch(elsewhere / "Zero.gba");
-  for (const auto& [id, file] : {std::pair{"desktop-entry-fusion", "Fusion.gba"}, {"desktop-entry-zero", "Zero.gba"}}) {
+  for (const auto& [id, file] :
+       {std::pair{"desktop-entry-fusion", "Fusion.gba"}, {"desktop-entry-zero", "Zero.gba"}}) {
     model::Game shortcut;
     shortcut.id = id;
     shortcut.name = file;

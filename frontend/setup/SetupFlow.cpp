@@ -34,8 +34,7 @@ QStringList SourcesOn(const Choices& choices) {
 
 Screen ScreenKind(QSize pixels, QSizeF millimetres) {
   if (pixels == QSize(1280, 800) || pixels == QSize(800, 1280)) return Screen::SteamDeck;
-  const double inches =
-      std::hypot(millimetres.width(), millimetres.height()) / 25.4;
+  const double inches = std::hypot(millimetres.width(), millimetres.height()) / 25.4;
   return inches > 40 ? Screen::Tv : Screen::Desktop;
 }
 

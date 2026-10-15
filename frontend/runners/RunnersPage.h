@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-
 #include <map>
 #include <string>
 #include <vector>
@@ -26,16 +25,16 @@ class SettingsCard;
 class RunnersPage : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   explicit RunnersPage(DownloadTracker* downloads, QWidget* parent = nullptr);
 
   // The whole library, to say how many games use each build.
   void SetGames(const std::vector<GameSummary>& games);
 
-protected:
+ protected:
   void resizeEvent(QResizeEvent* event) override;
 
-private:
+ private:
   std::string CurrentKind() const;
   void Refresh();
   void RefreshInstalled();
@@ -68,8 +67,8 @@ private:
   QLabel* status_ = nullptr;
 
   std::vector<GameSummary> games_;
-  std::vector<RunnerInfo> runners_;  // every kind, as last listed
-  std::vector<RunnerRelease> releases_;  // the chosen source's
+  std::vector<RunnerInfo> runners_;                               // every kind, as last listed
+  std::vector<RunnerRelease> releases_;                           // the chosen source's
   std::map<std::string, std::vector<RunnerSourceInfo>> sources_;  // by kind
   std::vector<RunnerUpdate> updates_;
   std::vector<RunnerTool> tools_;

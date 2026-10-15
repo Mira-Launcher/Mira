@@ -8,7 +8,8 @@
 
 namespace mira::library {
 
-void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game, bool existed) {
+void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game,
+                    bool existed) {
   if (existed) {
     ++summary.updated;
     events.Publish("game.updated", model::ToJson(game));
@@ -19,8 +20,9 @@ void RecordImported(ImportSummary& summary, api::EventBus& events, const model::
   }
 }
 
-void ProvisionOnImport(model::Game& game, const std::optional<model::Game>& existing, const config::Config& config,
-                       const store::GameStore& games, const runner::RunnerRegistry& provisioner) {
+void ProvisionOnImport(model::Game& game, const std::optional<model::Game>& existing,
+                       const config::Config& config, const store::GameStore& games,
+                       const runner::RunnerRegistry& provisioner) {
   if (NeedsProvisioning(existing)) {
     if (game.data_dir.empty()) game.data_dir = PrefixDir(config, games, game).string();
     const model::Game provisioned = provisioner.ProvisionGame(game);

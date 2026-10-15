@@ -9,9 +9,9 @@
 namespace mira::updates {
 
 struct Update {
-  std::string kind;       // "mira", "emulator", "tool" or "runner"
-  std::string id;         // the emulator's id, the store's ("gog"), "umu", or the runner's reference
-  std::string name;       // "DuckStation"
+  std::string kind;  // "mira", "emulator", "tool" or "runner"
+  std::string id;    // the emulator's id, the store's ("gog"), "umu", or the runner's reference
+  std::string name;  // "DuckStation"
   std::string installed;  // the tag or version there now
   std::string latest;
   std::string url;  // Mira's release page

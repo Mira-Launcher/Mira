@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QObject>
-
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -12,12 +11,12 @@ namespace mira_gui {
 // Long-lived connection to GET /v1/events, streaming Server-Sent Events as
 // the daemon does its work. Mirrors `mira watch` (src/cli/main.cpp), a streaming
 // GET split on blank lines.
-// 
+//
 // Holds state, with the last event id for replay across reconnects. Background
 // thread runs for as long as the connection continues reconnecting, so it is
 // an instance rather than a static call.
 class EventStream {
-public:
+ public:
   EventStream();
   ~EventStream();
   EventStream(const EventStream&) = delete;
@@ -31,7 +30,7 @@ public:
   void Start(QObject* context, std::function<void(std::string type, std::string data)> on_event,
              std::function<void(bool connected)> on_connection = nullptr);
 
-private:
+ private:
   // Shared with the background thread rather than owned by it, so that
   // destroying the stream can signal a thread that outlives this object.
   struct State {

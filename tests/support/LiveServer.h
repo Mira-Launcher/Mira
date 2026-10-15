@@ -3,11 +3,10 @@
 #include <httplib.h>
 
 #include <filesystem>
+#include <json.hpp>
 #include <optional>
 #include <string_view>
 #include <thread>
-
-#include <json.hpp>
 
 #include "api/EventBus.h"
 #include "api/Server.h"

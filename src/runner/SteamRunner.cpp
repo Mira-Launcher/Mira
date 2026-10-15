@@ -24,7 +24,7 @@ Result<void> SteamRunner::Provision(const model::Game& game,
   std::error_code ec;
   if (!fs::is_directory(game.data_dir, ec)) {
     return Err("steam_prefix_missing",
-              "this game's Steam-managed prefix is gone. Run it once through Steam first");
+               "this game's Steam-managed prefix is gone. Run it once through Steam first");
   }
   return {};
 }
@@ -49,8 +49,8 @@ Result<Command> SteamRunner::BuildCommand(const model::Game& game,
     const auto info = steam::ResolveProtonCompatInfo(game.data_dir);
     if (!info) {
       return Err("steam_proton_unresolved",
-                "couldn't determine which Proton build this prefix uses. Run this game once "
-                "through Steam first");
+                 "couldn't determine which Proton build this prefix uses. Run this game once "
+                 "through Steam first");
     }
     command.argv = {info->proton_path.string(), "run"};
     std::ranges::move(WindowsProgram(exe), std::back_inserter(command.argv));

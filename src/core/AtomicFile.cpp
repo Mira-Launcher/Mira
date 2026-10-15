@@ -10,8 +10,8 @@
 
 namespace mira {
 
-Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view content, std::string code,
-                             bool durable, mode_t mode) {
+Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view content,
+                             std::string code, bool durable, mode_t mode) {
   std::error_code ec;
   std::filesystem::create_directories(path.parent_path(), ec);
 
@@ -24,7 +24,8 @@ Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view
   };
 
   const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
-  if (fd < 0) return Err(code, std::format("couldn't write {}: {}", temp, std::strerror(errno)), kDiskHint);
+  if (fd < 0)
+    return Err(code, std::format("couldn't write {}: {}", temp, std::strerror(errno)), kDiskHint);
   std::size_t written = 0;
   while (written < content.size()) {
     const ssize_t n = ::write(fd, content.data() + written, content.size() - written);
@@ -41,7 +42,8 @@ Result<void> WriteFileAtomic(const std::filesystem::path& path, std::string_view
     ::close(fd);
     return failed(std::format("couldn't write {}: {}", temp, message));
   }
-  if (::close(fd) != 0) return failed(std::format("couldn't write {}: {}", temp, std::strerror(errno)));
+  if (::close(fd) != 0)
+    return failed(std::format("couldn't write {}: {}", temp, std::strerror(errno)));
 
   std::filesystem::rename(temp, path, ec);
   if (ec) return failed(std::format("couldn't save {}: {}", path.string(), ec.message()));

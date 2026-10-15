@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <fstream>
-
 #include <toml.hpp>
 
 #include "config/Config.h"
@@ -27,7 +26,8 @@ std::optional<json> ReadToml(const fs::path& file) {
 }
 
 Result<SessionRecord> FromJson(const json& j) {
-  if (!j.is_object() || !j.contains("game_id") || !j.contains("wrapper_pid") || !j.contains("started_at")) {
+  if (!j.is_object() || !j.contains("game_id") || !j.contains("wrapper_pid") ||
+      !j.contains("started_at")) {
     return Err("session_record_invalid", "missing required fields");
   }
   SessionRecord record;

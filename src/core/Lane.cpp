@@ -14,9 +14,13 @@ thread_local std::stop_token current_stop;
 thread_local std::stop_token current_cancel;
 }  // namespace
 
-std::stop_token ThisTaskStop() { return current_stop; }
+std::stop_token ThisTaskStop() {
+  return current_stop;
+}
 
-bool ThisTaskCancelled() { return current_cancel.stop_requested(); }
+bool ThisTaskCancelled() {
+  return current_cancel.stop_requested();
+}
 
 void RunCancellable(std::stop_token cancel, const std::function<void()>& body) {
   std::stop_source either;
@@ -37,7 +41,9 @@ void RunCancellable(std::stop_token cancel, const std::function<void()>& body) {
 
 Lane::Lane(std::string name, int workers) : name_(std::move(name)), max_workers_(workers) {}
 
-Lane::~Lane() { Stop(); }
+Lane::~Lane() {
+  Stop();
+}
 
 void Lane::Post(std::function<void()> task) {
   std::list<Worker> finished;

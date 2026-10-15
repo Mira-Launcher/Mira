@@ -33,8 +33,10 @@ bool NeedsProvisioning(const std::optional<model::Game>& existing);
 // prefix_root. Only for a fresh provision -- an already-provisioned game's
 // data_dir is left alone until explicitly relocated (see library/Relocate.h).
 std::filesystem::path PrefixDir(const config::Config& config, const model::Game& game);
-// The same, also avoiding the data_dir of every other game in `games`: a prefix folder is only created when the
-// game is provisioned, so a new game must not pick one an unprovisioned game already has.
-std::filesystem::path PrefixDir(const config::Config& config, const store::GameStore& games, const model::Game& game);
+// The same, also avoiding the data_dir of every other game in `games`: a prefix folder is only
+// created when the game is provisioned, so a new game must not pick one an unprovisioned game
+// already has.
+std::filesystem::path PrefixDir(const config::Config& config, const store::GameStore& games,
+                                const model::Game& game);
 
 }  // namespace mira::library

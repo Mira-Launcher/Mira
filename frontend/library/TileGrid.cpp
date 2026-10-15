@@ -1,21 +1,22 @@
 #include "TileGrid.h"
 
-#include <algorithm>
-
 #include <QHelpEvent>
 #include <QMouseEvent>
 #include <QTimer>
 #include <QToolTip>
 #include <QWheelEvent>
+#include <algorithm>
 
 #include "ArtworkStore.h"
 #include "GameTileDelegate.h"
 
 namespace mira_gui {
 
-TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent) : TileView(parent), artwork_(artwork) {
+TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent)
+    : TileView(parent), artwork_(artwork) {
   setItemDelegate(new GameTileDelegate(this, tile, artwork));
-  if (artwork != nullptr) connect(artwork, &ArtworkStore::RequestsDropped, viewport(), qOverload<>(&QWidget::update));
+  if (artwork != nullptr)
+    connect(artwork, &ArtworkStore::RequestsDropped, viewport(), qOverload<>(&QWidget::update));
   setViewMode(QListView::IconMode);
   setResizeMode(QListView::Adjust);
   setMovement(QListView::Static);
@@ -43,7 +44,8 @@ void TileGrid::paintEvent(QPaintEvent* event) {
   const QSize tile = static_cast<GameTileDelegate*>(itemDelegate())->TileSize();
   const int end = std::min(model()->rowCount(), last.row() + kAhead);
   for (int row = last.row(); row < end; ++row) {
-    const QStringList title = model()->index(row, 0).data(GameTileDelegate::TitleCoverRole).toStringList();
+    const QStringList title =
+        model()->index(row, 0).data(GameTileDelegate::TitleCoverRole).toStringList();
     if (title.size() == 2) artwork_->PrefetchTitle(title[0], title[1], tile, devicePixelRatioF());
   }
 }
@@ -95,7 +97,8 @@ QModelIndex TileGrid::ActionIndexAt(const QPoint& pos) const {
 }
 
 void TileGrid::mouseMoveEvent(QMouseEvent* event) {
-  viewport()->setCursor(ActionIndexAt(event->pos()).isValid() ? Qt::PointingHandCursor : Qt::ArrowCursor);
+  viewport()->setCursor(ActionIndexAt(event->pos()).isValid() ? Qt::PointingHandCursor
+                                                              : Qt::ArrowCursor);
   TileView::mouseMoveEvent(event);
 }
 
@@ -113,7 +116,8 @@ bool TileGrid::viewportEvent(QEvent* event) {
   if (event->type() == QEvent::ToolTip) {
     const auto* help = static_cast<QHelpEvent*>(event);
     if (const QModelIndex hit = ActionIndexAt(help->pos()); hit.isValid()) {
-      QToolTip::showText(help->globalPos(), hit.data(GameTileDelegate::ActionRole).toString(), viewport());
+      QToolTip::showText(help->globalPos(), hit.data(GameTileDelegate::ActionRole).toString(),
+                         viewport());
       return true;
     }
   }

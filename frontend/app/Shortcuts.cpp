@@ -1,8 +1,5 @@
 #include "Shortcuts.h"
 
-#include "KeyBindings.h"
-#include "Tray.h"
-
 #include <QAction>
 #include <QApplication>
 #include <QDialog>
@@ -13,6 +10,9 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QVBoxLayout>
+
+#include "KeyBindings.h"
+#include "Tray.h"
 
 namespace mira_gui::shortcuts {
 namespace {
@@ -31,7 +31,8 @@ QList<Entry> CommonEntries() {
 
 void AddRows(QFormLayout* form, QWidget* parent, const QList<Entry>& entries) {
   for (const Entry& entry : entries) {
-    const QString text = entry.id.isEmpty() ? entry.keys : keybindings::KeysText(entry.id, entry.keys);
+    const QString text =
+        entry.id.isEmpty() ? entry.keys : keybindings::KeysText(entry.id, entry.keys);
     if (text.isEmpty()) continue;
     auto* keys = new QLabel(text, parent);
     keys->setProperty("role", "keys");
@@ -54,8 +55,8 @@ Common Install(QMainWindow* window, const QList<Entry>& window_specific) {
   QObject::connect(common.quit, &QAction::triggered, window, [] { tray::RequestQuit(); });
 
   common.close_window = new QAction("&Close window", window);
-  common.close_window->setShortcut(keybindings::Register(
-      common.close_window, "close_window", "Close this window", QKeySequence::Close));
+  common.close_window->setShortcut(keybindings::Register(common.close_window, "close_window",
+                                                         "Close this window", QKeySequence::Close));
   QObject::connect(common.close_window, &QAction::triggered, window, [window] { window->close(); });
 
   common.reference = new QAction("&Keyboard shortcuts", window);

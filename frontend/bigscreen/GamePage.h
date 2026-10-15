@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QPixmap>
-
 #include <optional>
 #include <vector>
 
@@ -17,7 +16,7 @@ namespace mira_gui::bigscreen {
 class GamePage : public Page {
   Q_OBJECT
 
-public:
+ public:
   explicit GamePage(BigScreenWindow* window);
 
   // `from` is where Back returns to.
@@ -29,10 +28,10 @@ public:
   QList<Hint> Hints() const override;
   void Shown() override;
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
 
-private:
+ private:
   enum class Action { Play, Stop, Install, Pause, Resume, Cancel, Pin, Uninstall };
   struct Button {
     Action action;
@@ -50,8 +49,8 @@ private:
   int focus_ = 0;
   QNetworkAccessManager* network_ = nullptr;
   QString description_;
-  QString proton_tier_;  // lowercase, e.g. "gold"
-  QString runner_name_;  // the game's runner's name, once the runner list arrives
+  QString proton_tier_;     // lowercase, e.g. "gold"
+  QString runner_name_;     // the game's runner's name, once the runner list arrives
   std::string controller_;  // "full", "partial" or empty
   bool metadata_loaded_ = false;
   std::optional<GameSession> last_session_;

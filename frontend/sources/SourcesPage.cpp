@@ -1,8 +1,8 @@
 #include "SourcesPage.h"
 
 #include <QButtonGroup>
-#include <QEvent>
 #include <QColor>
+#include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,12 +13,11 @@
 #include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
 #include "../app/Notify.h"
-#include "../client/api/Library.h"
 #include "../client/api/Emulators.h"
+#include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
 #include "../system/PackageInstall.h"
@@ -36,7 +35,9 @@ namespace mira_gui {
 
 namespace {
 
-const char* kAddedHint = "Click a source to open it. Turning off its games keeps them out of the library; nothing is deleted.";
+const char* kAddedHint =
+    "Click a source to open it. Turning off its games keeps them out of the library; nothing is "
+    "deleted.";
 const char* kCatalogHint = "Pick a source to set up. Search by name, kind or what it does.";
 
 }  // namespace
@@ -98,7 +99,8 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   SetUpScrolling(scroll, this);
-  // Not a QStackedWidget: that's as tall as its tallest page, so Added would scroll as far as Add source.
+  // Not a QStackedWidget: that's as tall as its tallest page, so Added would scroll as far as Add
+  // source.
   auto* views = new QWidget();
   auto* views_layout = new QVBoxLayout(views);
   views_layout->setContentsMargins(24, 16, 24, 24);
@@ -149,7 +151,9 @@ void SourcesPage::ShowCatalog() {
   search_->selectAll();
 }
 
-void SourcesPage::ShowAdded() { ShowView(0); }
+void SourcesPage::ShowAdded() {
+  ShowView(0);
+}
 
 void SourcesPage::ShowView(int view) {
   views_->button(view)->setChecked(true);
@@ -158,7 +162,9 @@ void SourcesPage::ShowView(int view) {
   hint_->setText(view == 1 ? kCatalogHint : kAddedHint);
 }
 
-bool SourcesPage::SetupOpen() const { return setup_overlay_ != nullptr && setup_overlay_->isVisible(); }
+bool SourcesPage::SetupOpen() const {
+  return setup_overlay_ != nullptr && setup_overlay_->isVisible();
+}
 
 void SourcesPage::CloseSetup() {
   if (setup_overlay_ == nullptr) return;
@@ -170,41 +176,53 @@ void SourcesPage::CloseSetup() {
 // Installs a newly added emulator that isn't yet, over `window`: the install outlives this page.
 void SourcesPage::InstallEmulator(QWidget* window, const QString& id) {
   api::GetEmulatorsAsync(window, [window, id](EmulatorsResult result) {
-    if (!result.ok) return notify::FailedRequest(window, "Could not install the emulator.", result.error);
+    if (!result.ok)
+      return notify::FailedRequest(window, "Could not install the emulator.", result.error);
     const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
     if (it == result.emulators.end() || it->installed) return;
     // A package emulator comes from the system; asks for it the same way its page does.
     if (!it->package.empty()) {
-      return system::EnsurePackages(window, it->package, QString::fromStdString(it->name), [](bool) {});
+      return system::EnsurePackages(window, it->package, QString::fromStdString(it->name),
+                                    [](bool) {});
     }
-    api::InstallEmulatorAsync(window, it->id, [window, name = QString::fromStdString(it->name)](StoreActionResult r) {
-      if (!r.ok) notify::FailedRequest(window, "Could not install " + name + ".", r.error);
-    });
+    api::InstallEmulatorAsync(
+        window, it->id, [window, name = QString::fromStdString(it->name)](StoreActionResult r) {
+          if (!r.ok) notify::FailedRequest(window, "Could not install " + name + ".", r.error);
+        });
   });
 }
 
-// Games an already-installed emulator had: folders its settings list, and desktop entries that run one.
-// Asked over `window`, since this page closes once the emulator's opens; the library follows mirad's events.
+// Games an already-installed emulator had: folders its settings list, and desktop entries that run
+// one. Asked over `window`, since this page closes once the emulator's opens; the library follows
+// mirad's events.
 void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const QString& name) {
-  api::GetExistingEmulatorGamesAsync(window, id.toStdString(), [window, id, name](ExistingEmulatorGamesResult r) {
-    if (!r.ok || (r.dirs.empty() && r.shortcuts.empty())) return;
-    QStringList lines;
-    for (const auto& [path, games] : r.dirs)
-      lines << QString("%1 (%2 game%3)").arg(QString::fromStdString(path)).arg(games).arg(games == 1 ? "" : "s");
-    for (const std::string& shortcut : r.shortcuts) lines << QString::fromStdString(shortcut) + " (desktop entry)";
-    PopupDialog dialog(window, notify::Level::Info, "Games " + name + " already has");
-    dialog.SetMessage("Mira found these. Move them into " + name + "'s folder, or play them from where they are?");
-    dialog.SetDetail(lines.join('\n'));
-    enum { kSkip, kMove, kKeep };
-    dialog.AddButton("Skip", int(kSkip));
-    dialog.AddButton("Keep in place", int(kKeep));
-    dialog.AddButton("Move into Mira", int(kMove), /*default_button=*/true);
-    const int choice = dialog.exec();
-    if (choice != kMove && choice != kKeep) return;
-    api::AdoptEmulatorGamesAsync(window, id.toStdString(), choice == kMove, [window, name](StoreImportResult r) {
-      if (!r.ok) notify::FailedRequest(window, "Could not add " + name + "'s games.", r.error);
-    });
-  });
+  api::GetExistingEmulatorGamesAsync(
+      window, id.toStdString(), [window, id, name](ExistingEmulatorGamesResult r) {
+        if (!r.ok || (r.dirs.empty() && r.shortcuts.empty())) return;
+        QStringList lines;
+        for (const auto& [path, games] : r.dirs)
+          lines << QString("%1 (%2 game%3)")
+                       .arg(QString::fromStdString(path))
+                       .arg(games)
+                       .arg(games == 1 ? "" : "s");
+        for (const std::string& shortcut : r.shortcuts)
+          lines << QString::fromStdString(shortcut) + " (desktop entry)";
+        PopupDialog dialog(window, notify::Level::Info, "Games " + name + " already has");
+        dialog.SetMessage("Mira found these. Move them into " + name +
+                          "'s folder, or play them from where they are?");
+        dialog.SetDetail(lines.join('\n'));
+        enum { kSkip, kMove, kKeep };
+        dialog.AddButton("Skip", int(kSkip));
+        dialog.AddButton("Keep in place", int(kKeep));
+        dialog.AddButton("Move into Mira", int(kMove), /*default_button=*/true);
+        const int choice = dialog.exec();
+        if (choice != kMove && choice != kKeep) return;
+        api::AdoptEmulatorGamesAsync(
+            window, id.toStdString(), choice == kMove, [window, name](StoreImportResult r) {
+              if (!r.ok)
+                notify::FailedRequest(window, "Could not add " + name + "'s games.", r.error);
+            });
+      });
 }
 
 void SourcesPage::OpenSetup(const QString& id) {
@@ -219,35 +237,42 @@ void SourcesPage::OpenSetup(const QString& id) {
     });
     return;
   }
-  const auto entry = std::ranges::find(entries_, id, [](const SourceEntry& e) { return e.source.id; });
+  const auto entry =
+      std::ranges::find(entries_, id, [](const SourceEntry& e) { return e.source.id; });
   if (entry == entries_.end()) return;
   const SourceInfo source = entry->source;
 
-  // Added at once and its page opened, where it installs; one Mira downloads starts downloading now.
+  // Added at once and its page opened, where it installs; one Mira downloads starts downloading
+  // now.
   if (source.kind == SourceInfo::Kind::ModManager) {
-    api::AddSourceAsync(this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
-      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
-      emit Imported(id);
-      // Installed unless it already is; the install outlives this page.
-      api::GetModManagersAsync(window(), [window = window(), id, name](ModManagersResult result) {
-        const auto it = std::ranges::find(result.managers, id.toStdString(), &ModManagerInfo::id);
-        if (!result.ok || it == result.managers.end() || it->installed) return;
-        api::InstallModManagerAsync(window, it->id, [window, name](StoreActionResult r) {
-          if (!r.ok) notify::FailedRequest(window, "Could not install " + name + ".", r.error);
+    api::AddSourceAsync(
+        this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
+          if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+          emit Imported(id);
+          // Installed unless it already is; the install outlives this page.
+          api::GetModManagersAsync(
+              window(), [window = window(), id, name](ModManagersResult result) {
+                const auto it =
+                    std::ranges::find(result.managers, id.toStdString(), &ModManagerInfo::id);
+                if (!result.ok || it == result.managers.end() || it->installed) return;
+                api::InstallModManagerAsync(window, it->id, [window, name](StoreActionResult r) {
+                  if (!r.ok)
+                    notify::FailedRequest(window, "Could not install " + name + ".", r.error);
+                });
+              });
+          emit OpenRequested(id);
         });
-      });
-      emit OpenRequested(id);
-    });
     return;
   }
   if (source.kind == SourceInfo::Kind::Emulator) {
-    api::AddSourceAsync(this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
-      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
-      emit Imported(id);
-      InstallEmulator(window(), id);  // before the page opens, which closes this one
-      OfferExistingGames(window(), id, name);
-      emit OpenRequested(id);
-    });
+    api::AddSourceAsync(
+        this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
+          if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+          emit Imported(id);
+          InstallEmulator(window(), id);  // before the page opens, which closes this one
+          OfferExistingGames(window(), id, name);
+          emit OpenRequested(id);
+        });
     return;
   }
 
@@ -325,7 +350,9 @@ void SourcesPage::FitSetup() {
   setup_card_->setFixedWidth(width);
   const int wanted = setup_card_->heightForWidth(width) > 0 ? setup_card_->heightForWidth(width)
                                                             : setup_card_->sizeHint().height();
-  setup_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin ? setup_scroll_->verticalScrollBar()->sizeHint().width() : 0));
+  setup_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin
+                                            ? setup_scroll_->verticalScrollBar()->sizeHint().width()
+                                            : 0));
   setup_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 

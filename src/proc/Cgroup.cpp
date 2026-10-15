@@ -47,7 +47,9 @@ std::filesystem::path GameGroup(const std::filesystem::path& scope) {
 Result<void> Create(const std::filesystem::path& group) {
   std::error_code ec;
   std::filesystem::create_directory(group, ec);
-  if (ec) return Err("cgroup_failed", std::format("couldn't create {}: {}", group.string(), ec.message()));
+  if (ec)
+    return Err("cgroup_failed",
+               std::format("couldn't create {}: {}", group.string(), ec.message()));
   return {};
 }
 
@@ -68,15 +70,18 @@ bool Populated(const std::filesystem::path& group) {
   return false;
 }
 
-bool WaitEmpty(const std::filesystem::path& group, std::optional<std::chrono::milliseconds> timeout) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout.value_or(std::chrono::milliseconds::zero());
+bool WaitEmpty(const std::filesystem::path& group,
+               std::optional<std::chrono::milliseconds> timeout) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + timeout.value_or(std::chrono::milliseconds::zero());
   // A failed open leaves fd -1, which poll() ignores, so this degrades to a 1 s sleep.
   const int fd = ::open((group / "cgroup.events").c_str(), O_RDONLY | O_CLOEXEC);
   bool empty = !Populated(group);
   while (!empty) {
     int wait_ms = 1000;
     if (timeout) {
-      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
       if (left.count() <= 0) break;
       wait_ms = static_cast<int>(std::min<long long>(wait_ms, left.count()));
     }

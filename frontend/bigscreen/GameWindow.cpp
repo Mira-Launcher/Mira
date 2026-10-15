@@ -65,13 +65,14 @@ xcb_connection_t* Connection() {
 }
 
 xcb_atom_t Atom(xcb_connection_t* c, const char* name) {
-  const Reply<xcb_intern_atom_reply_t> reply(
-      xcb_intern_atom_reply(c, xcb_intern_atom(c, 0, std::uint16_t(std::strlen(name)), name), nullptr));
+  const Reply<xcb_intern_atom_reply_t> reply(xcb_intern_atom_reply(
+      c, xcb_intern_atom(c, 0, std::uint16_t(std::strlen(name)), name), nullptr));
   return reply ? reply->atom : xcb_atom_t(XCB_ATOM_NONE);
 }
 
-Reply<xcb_get_property_reply_t> Property(xcb_connection_t* c, xcb_window_t window, xcb_atom_t property,
-                                         xcb_atom_t type, std::uint32_t length) {
+Reply<xcb_get_property_reply_t> Property(xcb_connection_t* c, xcb_window_t window,
+                                         xcb_atom_t property, xcb_atom_t type,
+                                         std::uint32_t length) {
   xcb_generic_error_t* error = nullptr;  // a window closed meanwhile
   Reply<xcb_get_property_reply_t> reply(
       xcb_get_property_reply(c, xcb_get_property(c, 0, window, property, type, 0, length), &error));
@@ -94,7 +95,8 @@ bool IsMainWindow(xcb_connection_t* c, xcb_window_t window) {
   if (transient && xcb_get_property_value_length(transient.get()) > 0) return false;
   const auto type = Property(c, window, Atom(c, "_NET_WM_WINDOW_TYPE"), XCB_ATOM_ATOM, 1);
   return !type || xcb_get_property_value_length(type.get()) == 0 ||
-         *static_cast<const xcb_atom_t*>(xcb_get_property_value(type.get())) == Atom(c, "_NET_WM_WINDOW_TYPE_NORMAL");
+         *static_cast<const xcb_atom_t*>(xcb_get_property_value(type.get())) ==
+             Atom(c, "_NET_WM_WINDOW_TYPE_NORMAL");
 }
 
 void SendToRoot(xcb_connection_t* c, xcb_window_t root, xcb_window_t window, xcb_atom_t type,
@@ -105,7 +107,8 @@ void SendToRoot(xcb_connection_t* c, xcb_window_t root, xcb_window_t window, xcb
   event.window = window;
   event.type = type;
   std::copy(data.begin(), data.end(), event.data.data32);
-  xcb_send_event(c, 0, root, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+  xcb_send_event(c, 0, root,
+                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
                  reinterpret_cast<const char*>(&event));
 }
 
@@ -124,7 +127,8 @@ bool FocusGameWindow(const std::string& game_id, bool fullscreen) {
   for (int i = xcb_get_property_value_length(list.get()) / 4 - 1; i >= 0; --i) {
     const auto pid = Property(c, windows[i], wm_pid, XCB_ATOM_CARDINAL, 1);
     if (!pid || xcb_get_property_value_length(pid.get()) != 4) continue;
-    if (!RunsGame(*static_cast<const std::uint32_t*>(xcb_get_property_value(pid.get())), game_id)) continue;
+    if (!RunsGame(*static_cast<const std::uint32_t*>(xcb_get_property_value(pid.get())), game_id))
+      continue;
     // Source 2 (a pager): window managers honor it without focus-stealing checks.
     SendToRoot(c, root, windows[i], Atom(c, "_NET_ACTIVE_WINDOW"), {2, XCB_CURRENT_TIME});
     const xcb_atom_t state = Atom(c, "_NET_WM_STATE");
@@ -140,7 +144,9 @@ bool FocusGameWindow(const std::string& game_id, bool fullscreen) {
 
 #else
 
-bool FocusGameWindow(const std::string&, bool) { return false; }
+bool FocusGameWindow(const std::string&, bool) {
+  return false;
+}
 
 #endif
 

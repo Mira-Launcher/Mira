@@ -10,7 +10,7 @@ namespace mira::tomljson {
 // human-editability. These are the only two functions that bridge the two;
 // everything else works in JSON.
 nlohmann::json ToJson(const toml::node& node);
-toml::table ToToml(const nlohmann::json& document);  // document must be an object
+toml::table ToToml(const nlohmann::json& document);      // document must be an object
 std::string ToTomlText(const nlohmann::json& document);  // ToToml, serialized
 
 }  // namespace mira::tomljson

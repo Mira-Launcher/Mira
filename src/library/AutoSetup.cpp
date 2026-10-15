@@ -24,7 +24,7 @@ void TagFromPlace(const config::Config& config, model::Game& game, const fs::pat
   if (strings::ToLower(root.filename().string()) == "applications") game.tags.push_back("app");
   if (place.hidden) game.tags.push_back("hidden");
 }
-}
+}  // namespace
 
 AutoSetup::AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
@@ -54,7 +54,8 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
       // Running an installer isn't running the game: flag it rather than
       // silently provisioning/launching a setup wizard as if it were.
       game.status = model::GameStatus::NeedsInstall;
-      game.last_error = "This looks like an installer (" + top.rel_path + "), not the game itself. Install it to play.";
+      game.last_error = "This looks like an installer (" + top.rel_path +
+                        "), not the game itself. Install it to play.";
     } else if (top.kind == model::Platform::Native) {
       game.status = model::GameStatus::Ready;  // native needs no provisioning
     } else {
@@ -84,7 +85,10 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
   game.platform = model::Platform::Native;
   game.status = model::GameStatus::Ready;  // an AppImage carries everything it needs
   game.confidence = 1.0;
-  game.candidates = {{.rel_path = game.exe_path, .kind = model::Platform::Native, .score = 1.0, .chosen = true,
+  game.candidates = {{.rel_path = game.exe_path,
+                      .kind = model::Platform::Native,
+                      .score = 1.0,
+                      .chosen = true,
                       .is_installer = false}};
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;

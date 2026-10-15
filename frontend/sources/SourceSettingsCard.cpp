@@ -5,15 +5,14 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
+#include "../app/ErrorHelp.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
-#include "../app/ErrorHelp.h"
 #include "../theme/Theme.h"
 #include "SourceText.h"
 
@@ -22,28 +21,34 @@ namespace {
 
 bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   const std::string id = source.id.toStdString();
-  if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + ".")) return true;
+  if (source.kind == SourceInfo::Kind::Launcher && key.starts_with("launchers." + id + "."))
+    return true;
   if (source.kind == SourceInfo::Kind::Emulator &&
-      (key.starts_with("emulators." + id + ".") || key == "emulators.move_added" || key == "emulators.roms_root" ||
-       key == "emulators.fullscreen"))
+      (key.starts_with("emulators." + id + ".") || key == "emulators.move_added" ||
+       key == "emulators.roms_root" || key == "emulators.fullscreen"))
     return true;
   // runner has its own row, collections their own dialog.
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
 
-QString Counted(int count, const QString& item) { return QString("%1 %2%3").arg(count).arg(item).arg(count == 1 ? "" : "s"); }
+QString Counted(int count, const QString& item) {
+  return QString("%1 %2%3").arg(count).arg(item).arg(count == 1 ? "" : "s");
+}
 
 }  // namespace
 
 SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent)
-    : SettingsCard(source.name + " settings", parent), source_(source), id_(source.id.toStdString()) {
+    : SettingsCard(source.name + " settings", parent),
+      source_(source),
+      id_(source.id.toStdString()) {
   status_ = new QLabel(this);
   status_->setVisible(false);
   Header()->addWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
   if (source_.kind == SourceInfo::Kind::Emulator) BuildEmulatorRow();
-  connect(EventHub::Instance(), &EventHub::RunnersChanged, this, &SourceSettingsCard::RunnersChanged);
+  connect(EventHub::Instance(), &EventHub::RunnersChanged, this,
+          &SourceSettingsCard::RunnersChanged);
 
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
@@ -52,7 +57,8 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   all->setObjectName("text_button");
   all->setCursor(Qt::PointingHandCursor);
   connect(all, &QPushButton::clicked, this, [this] {
-    emit OpenSettingsRequested(settings_.empty() ? QString() : QString::fromStdString(settings_.front().entry.key));
+    emit OpenSettingsRequested(
+        settings_.empty() ? QString() : QString::fromStdString(settings_.front().entry.key));
   });
   footer->addWidget(all);
   footer->addStretch(1);
@@ -71,12 +77,14 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
 }
 
 bool SourceSettingsCard::RunnerDirty() const {
-  return runner_ != nullptr && runner_->isEnabled() && runner_->currentData().toString() != runner_ref_;
+  return runner_ != nullptr && runner_->isEnabled() &&
+         runner_->currentData().toString() != runner_ref_;
 }
 
 bool SourceSettingsCard::IsDirty() const {
   if (RunnerDirty()) return true;
-  return std::ranges::any_of(settings_, [](const SettingEditor& editor) { return editor.Changed(); });
+  return std::ranges::any_of(settings_,
+                             [](const SettingEditor& editor) { return editor.Changed(); });
 }
 
 void SourceSettingsCard::UpdateButtons() {
@@ -128,7 +136,8 @@ void SourceSettingsCard::Save() {
     SaveRunner();
     return;
   }
-  const auto done = [this, sent](bool ok, const std::string& error, const std::vector<size_t>& indices) {
+  const auto done = [this, sent](bool ok, const std::string& error,
+                                 const std::vector<size_t>& indices) {
     if (ok) {
       for (const size_t i : indices) settings_[i].original = sent[i];
     } else if (save_error_.isEmpty()) {
@@ -160,18 +169,18 @@ void SourceSettingsCard::SaveRunner() {
     FinishSave(true);
     return;
   }
-  api::SetSourceRunnerAsync(this, id_, runner_->currentData().toString().toStdString(),
-                                    /*apply_to_games=*/false, [this](SourceRunnerResult result) {
-                                      if (!result.ok) {
-                                        ShowStatus("Could not change the runner: " + error_help::Describe(result.error),
-                                                   true);
-                                        FinishSave(false);
-                                        return;
-                                      }
-                                      ShowRunner(result);
-                                      ShowStatus("Saved", false);
-                                      FinishSave(true);
-                                    });
+  api::SetSourceRunnerAsync(
+      this, id_, runner_->currentData().toString().toStdString(),
+      /*apply_to_games=*/false, [this](SourceRunnerResult result) {
+        if (!result.ok) {
+          ShowStatus("Could not change the runner: " + error_help::Describe(result.error), true);
+          FinishSave(false);
+          return;
+        }
+        ShowRunner(result);
+        ShowStatus("Saved", false);
+        FinishSave(true);
+      });
 }
 
 void SourceSettingsCard::FinishSave(bool ok) {
@@ -182,14 +191,17 @@ void SourceSettingsCard::FinishSave(bool ok) {
 
 // Its own settings live in the emulator.
 void SourceSettingsCard::BuildEmulatorRow() {
-  auto* row = new SettingRow("Controls, graphics and sound",
-                             "Set up in " + source_.name + " itself: open it, then use its own settings.", this);
+  auto* row = new SettingRow(
+      "Controls, graphics and sound",
+      "Set up in " + source_.name + " itself: open it, then use its own settings.", this);
   auto* open = new QPushButton("Open " + source_.name, row);
   connect(open, &QPushButton::clicked, this, [this, open] {
     open->setEnabled(false);
     api::OpenEmulatorAsync(this, id_, [this, open](StoreActionResult result) {
       open->setEnabled(true);
-      if (!result.ok) ShowStatus("Could not open " + source_.name + ": " + error_help::Describe(result.error), true);
+      if (!result.ok)
+        ShowStatus("Could not open " + source_.name + ": " + error_help::Describe(result.error),
+                   true);
     });
   });
   row->AddControl(open);
@@ -207,15 +219,17 @@ void SourceSettingsCard::Refresh() {
 }
 
 void SourceSettingsCard::BuildRunnerRow() {
-  const QString runner_doc =
-      source_.kind == SourceInfo::Kind::Launcher
-          ? "The Wine or Proton build that " + source_.name + " and its " + CopyFor(id_).item + "s run with."
-          : "The Wine or Proton build for " + source_.name + " games that have no runner of their own.";
+  const QString runner_doc = source_.kind == SourceInfo::Kind::Launcher
+                                 ? "The Wine or Proton build that " + source_.name + " and its " +
+                                       CopyFor(id_).item + "s run with."
+                                 : "The Wine or Proton build for " + source_.name +
+                                       " games that have no runner of their own.";
   runner_row_ = new SettingRow("Runner", runner_doc, this);
   runner_ = new QComboBox(runner_row_);
   runner_->setEnabled(false);
   runner_->setMinimumWidth(260);
-  connect(runner_, QOverload<int>::of(&QComboBox::activated), this, &SourceSettingsCard::UpdateButtons);
+  connect(runner_, QOverload<int>::of(&QComboBox::activated), this,
+          &SourceSettingsCard::UpdateButtons);
   connect(runner_row_, &SettingRow::RevertClicked, this, [this] {
     SelectRunner(runner_ref_);
     UpdateButtons();
@@ -235,15 +249,17 @@ void SourceSettingsCard::BuildRunnerRow() {
     ++runner_serial_;
     runner_apply_->setEnabled(false);
     api::SetSourceRunnerAsync(this, id_, runner_ref_.toStdString(), /*apply_to_games=*/true,
-                                      [this](SourceRunnerResult result) {
-                                        runner_apply_->setEnabled(true);
-                                        if (!result.ok) {
-                                          ShowStatus("Could not switch the " + CopyFor(id_).item + "s: " + error_help::Describe(result.error), true);
-                                          return;
-                                        }
-                                        ShowStatus("Switched", false);
-                                        ShowRunner(result);
-                                      });
+                              [this](SourceRunnerResult result) {
+                                runner_apply_->setEnabled(true);
+                                if (!result.ok) {
+                                  ShowStatus("Could not switch the " + CopyFor(id_).item +
+                                                 "s: " + error_help::Describe(result.error),
+                                             true);
+                                  return;
+                                }
+                                ShowStatus("Switched", false);
+                                ShowRunner(result);
+                              });
   });
   note_row->addWidget(runner_apply_, 0, Qt::AlignTop);
   runner_row_->SetBelow(note);
@@ -290,7 +306,8 @@ void SourceSettingsCard::RunnersChanged() {
       UpdateButtons();
     }
     for (SettingEditor& editor : settings_) {
-      if (editor.combo != nullptr && editor.entry.is_runner_ref) FillRunnerCombo(editor.combo, runners);
+      if (editor.combo != nullptr && editor.entry.is_runner_ref)
+        FillRunnerCombo(editor.combo, runners);
     }
   });
 }
@@ -315,18 +332,21 @@ void SourceSettingsCard::ShowRunner(const SourceRunnerResult& runner) {
   const QString item = CopyFor(id_).item;
   if (source_.kind == SourceInfo::Kind::Launcher) {
     runner_note_->setText(runner.games == 0
-                              ? source_.name + " and the " + item + "s it installs share one prefix and runner."
+                              ? source_.name + " and the " + item +
+                                    "s it installs share one prefix and runner."
                               : source_.name + " and its " + Counted(runner.games, item) +
                                     " share one prefix, so they switch together.");
   } else if (runner.games == 0) {
     runner_note_->setText("For " + source_.name + " games you install.");
   } else if (runner.differing == 0) {
-    runner_note_->setText("All " + Counted(runner.games, item) + " from " + source_.name + " use it.");
+    runner_note_->setText("All " + Counted(runner.games, item) + " from " + source_.name +
+                          " use it.");
   } else {
-    runner_note_->setText(QString("For new games and ones without their own runner. %1 of %2 games %3 another one.")
-                              .arg(runner.differing)
-                              .arg(runner.games)
-                              .arg(runner.differing == 1 ? "uses" : "use"));
+    runner_note_->setText(
+        QString("For new games and ones without their own runner. %1 of %2 games %3 another one.")
+            .arg(runner.differing)
+            .arg(runner.games)
+            .arg(runner.differing == 1 ? "uses" : "use"));
     runner_apply_->setText(runner.differing == 1 ? "Switch it too" : "Switch them too");
     runner_can_apply_ = true;
     UpdateButtons();
@@ -349,7 +369,8 @@ void SourceSettingsCard::LoadSettings() {
       // An emulator's own settings, then those every emulator shares.
       const std::string own = "emulators." + id_ + ".";
       const auto shared = std::ranges::stable_partition(
-          settings_, [&](const SettingEditor& editor) { return editor.entry.key.starts_with(own); });
+          settings_,
+          [&](const SettingEditor& editor) { return editor.entry.key.starts_with(own); });
       const size_t first_shared = source_.kind == SourceInfo::Kind::Emulator
                                       ? static_cast<size_t>(shared.begin() - settings_.begin())
                                       : settings_.size();
@@ -371,7 +392,8 @@ void SourceSettingsCard::LoadSettings() {
       MoveRow(footer_, static_cast<int>(Rows().size()) - 1);  // the buttons stay last
       api::ListRunnersAsync(this, [this](RunnersResult runners) {
         for (SettingEditor& editor : settings_) {
-          if (editor.combo != nullptr && editor.entry.is_runner_ref) FillRunnerCombo(editor.combo, runners);
+          if (editor.combo != nullptr && editor.entry.is_runner_ref)
+            FillRunnerCombo(editor.combo, runners);
         }
       });
     }

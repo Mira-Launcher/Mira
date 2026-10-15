@@ -40,17 +40,17 @@ DetectorSettings SettingsFromConfig(const config::Config& config);
 // nothing, which is what lets a user disable one by editing the list rather
 // than needing a code change.
 class Detector {
-public:
+ public:
   struct Result {
     std::vector<model::Candidate> candidates;  // sorted best first
-    double confidence = 0.0;  // 0..1; see Detector.cpp for how this is derived
+    double confidence = 0.0;                   // 0..1; see Detector.cpp for how this is derived
   };
 
   explicit Detector(DetectorSettings settings) : settings_(std::move(settings)) {}
 
   Result Detect(const std::filesystem::path& folder) const;
 
-private:
+ private:
   DetectorSettings settings_;
 };
 

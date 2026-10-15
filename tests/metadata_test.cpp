@@ -1,14 +1,13 @@
 #include <doctest.h>
+#include <stb_image.h>
+#include <stb_image_write.h>
 
 #include <filesystem>
 #include <fstream>
+#include <json.hpp>
 #include <set>
 #include <string>
 #include <vector>
-
-#include <json.hpp>
-#include <stb_image.h>
-#include <stb_image_write.h>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -72,8 +71,12 @@ TEST_CASE("art rows point at files, and Remove drops the info, rows and files") 
   std::ofstream(dir / "artwork" / "celeste" / "header.jpg") << "jpg";
   store::MetadataStore cache(dir);
   cache.Load();
-  REQUIRE(cache.Write("celeste", nlohmann::json::parse(R"({"artwork": {"file": "cover.png", "content_type": "image/png"},
-      "header": {"file": "header.jpg"}, "hero": {"file": "missing.jpg"}})")).has_value());
+  REQUIRE(
+      cache
+          .Write("celeste", nlohmann::json::parse(
+                                R"({"artwork": {"file": "cover.png", "content_type": "image/png"},
+      "header": {"file": "header.jpg"}, "hero": {"file": "missing.jpg"}})"))
+          .has_value());
   REQUIRE(cache.ArtFor("celeste", "cover").has_value());
   CHECK(cache.ArtFor("celeste", "cover")->content_type == "image/png");
   CHECK(cache.ArtFor("celeste", "header").has_value());
@@ -103,9 +106,15 @@ TEST_CASE("SelectArtwork fails closed: no metadata, no candidate list, unknown i
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "hero", 1).has_value());
 
   {
-    REQUIRE(cache.Write("celeste", nlohmann::json{
-        {"art_candidates", {{"hero", nlohmann::json::array({{{"id", 42}, {"url", "https://example.invalid/a.jpg"}}})}}},
-    }).has_value());
+    REQUIRE(
+        cache
+            .Write("celeste",
+                   nlohmann::json{
+                       {"art_candidates",
+                        {{"hero", nlohmann::json::array(
+                                      {{{"id", 42}, {"url", "https://example.invalid/a.jpg"}}})}}},
+                   })
+            .has_value());
   }
   // Right slot, wrong id.
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "hero", 999).has_value());
@@ -118,12 +127,15 @@ TEST_CASE("FetchCandidatePage fails before asking SteamGridDB when it can't") {
   store::MetadataStore cache(dir);
   cache.Load();
 
-  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "banner", 0).error().code == "invalid_type");
-  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code == "no_steamgriddb_key");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "banner", 0).error().code ==
+        "invalid_type");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code ==
+        "no_steamgriddb_key");
 
   // A key, but no SteamGridDB match recorded for the game.
   REQUIRE(config.Set("steamgriddb.api_key", std::string("test-key")).has_value());
-  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code == "no_steamgriddb_match");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code ==
+        "no_steamgriddb_match");
 }
 
 TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
@@ -135,9 +147,14 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
 
   const fs::path image = dir / "new.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG new";
-  REQUIRE(cache.Write("celeste", nlohmann::json{
-      {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + image.string()}}})}}},
-  }).has_value());
+  REQUIRE(cache
+              .Write("celeste",
+                     nlohmann::json{
+                         {"art_candidates",
+                          {{"cover", nlohmann::json::array(
+                                         {{{"id", 5}, {"url", "file://" + image.string()}}})}}},
+                     })
+              .has_value());
 
   REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
   const nlohmann::json info = cache.Read("celeste");
@@ -145,7 +162,9 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   CHECK(cache.ArtFor("celeste", "cover").has_value());
 }
 
-TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readable PNG or JPEG of a sane size is refused") {
+TEST_CASE(
+    "An uploaded image becomes the slot's kept pick; anything but a readable PNG or JPEG of a sane "
+    "size is refused") {
   const fs::path dir = TempDir("metadata-upload");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -154,14 +173,20 @@ TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readab
 
   std::vector<unsigned char> pixels(16 * 16 * 4, 200);
   std::string png;
-  stbi_write_png_to_func([](void* out, void* data, int size) { static_cast<std::string*>(out)->append(static_cast<char*>(data), size); },
-                         &png, 16, 16, 4, pixels.data(), 0);
+  stbi_write_png_to_func(
+      [](void* out, void* data, int size) {
+        static_cast<std::string*>(out)->append(static_cast<char*>(data), size);
+      },
+      &png, 16, 16, 4, pixels.data(), 0);
 
-  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "GIF89a").error().code == "unsupported_image");
-  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "\x89PNG broken").error().code == "unsupported_image");
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "GIF89a").error().code ==
+        "unsupported_image");
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "\x89PNG broken").error().code ==
+        "unsupported_image");
   std::string bomb = png;  // its header claims 20000x20000
   for (const int offset : {16, 20}) bomb.replace(offset, 4, std::string("\x00\x00\x4e\x20", 4));
-  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", bomb).error().code == "unsupported_image");
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", bomb).error().code ==
+        "unsupported_image");
   REQUIRE(metadata::UploadArtwork(config, cache, "celeste", "hero", png).has_value());
   const nlohmann::json info = cache.Read("celeste");
   CHECK(info["hero"].value("chosen", false));
@@ -169,7 +194,9 @@ TEST_CASE("An uploaded image becomes the slot's kept pick; anything but a readab
   CHECK(cache.ArtFor("celeste", "hero").has_value());
 }
 
-TEST_CASE("Downloaded art is fitted to its slot: an opaque PNG cover shrinks to JPEG, a small transparent logo stays") {
+TEST_CASE(
+    "Downloaded art is fitted to its slot: an opaque PNG cover shrinks to JPEG, a small "
+    "transparent logo stays") {
   const fs::path dir = TempDir("metadata-fit");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -228,9 +255,14 @@ TEST_CASE("A refresh keeps art the user picked by hand") {
 
   const fs::path image = dir / "picked.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG picked";
-  REQUIRE(cache.Write("celeste", nlohmann::json{
-      {"art_candidates", {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + image.string()}}})}}},
-  }).has_value());
+  REQUIRE(cache
+              .Write("celeste",
+                     nlohmann::json{
+                         {"art_candidates",
+                          {{"cover", nlohmann::json::array(
+                                         {{{"id", 5}, {"url", "file://" + image.string()}}})}}},
+                     })
+              .has_value());
   REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
 
   model::Game game;
@@ -240,13 +272,17 @@ TEST_CASE("A refresh keeps art the user picked by hand") {
 
   const nlohmann::json info = cache.Read("celeste");
   CHECK(info["artwork"].value("candidate_id", 0) == 5);
-  std::ifstream cover(metadata::ArtworkDir(config, "celeste") / info["artwork"].value("file", std::string()),
-                      std::ios::binary);
-  const std::string bytes((std::istreambuf_iterator<char>(cover)), std::istreambuf_iterator<char>());
+  std::ifstream cover(
+      metadata::ArtworkDir(config, "celeste") / info["artwork"].value("file", std::string()),
+      std::ios::binary);
+  const std::string bytes((std::istreambuf_iterator<char>(cover)),
+                          std::istreambuf_iterator<char>());
   CHECK(bytes == "\x89PNG picked");
 }
 
-TEST_CASE("SelectArtwork that fails to download, or gets a page instead of an image, keeps the slot's current image") {
+TEST_CASE(
+    "SelectArtwork that fails to download, or gets a page instead of an image, keeps the slot's "
+    "current image") {
   const fs::path dir = TempDir("metadata-select-keeps");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -257,12 +293,17 @@ TEST_CASE("SelectArtwork that fails to download, or gets a page instead of an im
   fs::create_directories(art);
   std::ofstream(art / "cover.png") << "current";
   std::ofstream(dir / "page.png") << "<html>not found</html>";
-  REQUIRE(cache.Write("celeste", nlohmann::json{
-      {"artwork", {{"file", "cover.png"}, {"content_type", "image/png"}}},
-      {"art_candidates",
-       {{"cover", nlohmann::json::array({{{"id", 5}, {"url", "file://" + (dir / "missing.png").string()}},
-                                         {{"id", 6}, {"url", "file://" + (dir / "page.png").string()}}})}}},
-  }).has_value());
+  REQUIRE(cache
+              .Write("celeste",
+                     nlohmann::json{
+                         {"artwork", {{"file", "cover.png"}, {"content_type", "image/png"}}},
+                         {"art_candidates",
+                          {{"cover",
+                            nlohmann::json::array(
+                                {{{"id", 5}, {"url", "file://" + (dir / "missing.png").string()}},
+                                 {{"id", 6}, {"url", "file://" + (dir / "page.png").string()}}})}}},
+                     })
+              .has_value());
 
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "celeste", "cover", 6).has_value());
@@ -282,32 +323,44 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
 
   const fs::path image = dir / "thumb.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG fake";
-  REQUIRE(cache.Write("celeste", nlohmann::json{
-      {"art_candidates",
-       {{"cover", nlohmann::json::array({
-                      {{"id", 1}, {"url", "file://" + image.string()}},
-                      {{"id", 2}, {"url", "https://example.invalid/big.jpg"}, {"thumb", "file://" + image.string()}},
-                      {{"id", 3}, {"url", "file://" + (dir / "missing.png").string()}},
-                  })}}},
-  }).has_value());
+  REQUIRE(
+      cache
+          .Write(
+              "celeste",
+              nlohmann::json{
+                  {"art_candidates",
+                   {{"cover", nlohmann::json::array({
+                                  {{"id", 1}, {"url", "file://" + image.string()}},
+                                  {{"id", 2},
+                                   {"url", "https://example.invalid/big.jpg"},
+                                   {"thumb", "file://" + image.string()}},
+                                  {{"id", 3}, {"url", "file://" + (dir / "missing.png").string()}},
+                              })}}},
+              })
+          .has_value());
 
   CHECK(metadata::CandidateThumbFile(config, "celeste", "cover", 1).empty());
-  const Result<metadata::ThumbBatch> batch = metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1, 2, 3, 4});
+  const Result<metadata::ThumbBatch> batch =
+      metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1, 2, 3, 4});
   REQUIRE(batch.has_value());
-  CHECK(std::set<std::int64_t>(batch->ready.begin(), batch->ready.end()) == std::set<std::int64_t>{1, 2});
+  CHECK(std::set<std::int64_t>(batch->ready.begin(), batch->ready.end()) ==
+        std::set<std::int64_t>{1, 2});
   // 3's file doesn't exist; 4 isn't a candidate at all.
-  CHECK(std::set<std::int64_t>(batch->failed.begin(), batch->failed.end()) == std::set<std::int64_t>{3, 4});
+  CHECK(std::set<std::int64_t>(batch->failed.begin(), batch->failed.end()) ==
+        std::set<std::int64_t>{3, 4});
   CHECK_FALSE(metadata::CandidateThumbFile(config, "celeste", "cover", 2).empty());
   CHECK(metadata::CandidateThumbFile(config, "celeste", "cover", 3).empty());
 
   // Cached now: a second batch doesn't fetch it again.
   fs::remove(image);
-  const Result<metadata::ThumbBatch> again = metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1});
+  const Result<metadata::ThumbBatch> again =
+      metadata::FetchCandidateThumbs(config, cache, "celeste", "cover", {1});
   REQUIRE(again.has_value());
   CHECK(again->ready == std::vector<std::int64_t>{1});
 
   // The slot names a file, so anything but a plain word is refused.
-  CHECK_FALSE(metadata::FetchCandidateThumbs(config, cache, "celeste", "../cover", {1}).has_value());
+  CHECK_FALSE(
+      metadata::FetchCandidateThumbs(config, cache, "celeste", "../cover", {1}).has_value());
   CHECK(metadata::CandidateThumbFile(config, "celeste", "../cover", 1).empty());
 
   // Kept apart from the game's art, which a clear leaves alone.
@@ -378,12 +431,15 @@ TEST_CASE("FetchQueue runs every queued game once, through a bounded set of work
 
   std::set<std::string> fetched;
   for (const model::Event& event : events.Since(0)) {
-    if (event.type == "game.metadata_failed") fetched.insert(event.payload.value("id", std::string()));
+    if (event.type == "game.metadata_failed")
+      fetched.insert(event.payload.value("id", std::string()));
   }
   CHECK(fetched.size() == 40);
 }
 
-TEST_CASE("A store title needs fetching until it has a cover and details newer than metadata.refresh_days") {
+TEST_CASE(
+    "A store title needs fetching until it has a cover and details newer than "
+    "metadata.refresh_days") {
   const fs::path dir = TempDir("metadata-title-fresh");
   config::Config config(dir / "settings.toml");
   config.Load();
@@ -395,9 +451,10 @@ TEST_CASE("A store title needs fetching until it has a cover and details newer t
   fs::create_directories(art);
   std::ofstream(art / "cover.jpg") << "cover";
   const auto write = [&](std::int64_t fetched, int version = 2) {
-    REQUIRE(cache.Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}},
-                                  {"details_fetched", fetched},
-                                  {"details_version", version}})
+    REQUIRE(cache
+                .Write("gog-1", {{"artwork", {{"file", "cover.jpg"}}},
+                                 {"details_fetched", fetched},
+                                 {"details_version", version}})
                 .has_value());
   };
   CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached

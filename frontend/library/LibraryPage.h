@@ -2,12 +2,11 @@
 
 #include <QString>
 #include <QWidget>
+#include <functional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <functional>
-#include <set>
 
 #include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
@@ -60,7 +59,8 @@ class LibraryPage : public QWidget {
   int FilterCount() const;
   // What toggles hidden mode, for the filter menu's Hidden games switch.
   void SetHiddenShortcut(const QString& shortcut);
-  // Only the games with `tag`, as picking it alone in the pill's Tags section would; clears the search.
+  // Only the games with `tag`, as picking it alone in the pill's Tags section would; clears the
+  // search.
   void ShowTag(const QString& tag);
   // All games, no tags picked, no search.
   void ClearFilters();
@@ -88,7 +88,9 @@ class LibraryPage : public QWidget {
   // The stores' titles a search also looks through, below the library's own matches.
   void SetOwnedTitles(OwnedTitles* titles);
   // Set by the owner: a store title's running install, nullopt while idle.
-  std::function<std::optional<DownloadTracker::TileProgress>(const QString& source, const QString& ref)> title_progress;
+  std::function<std::optional<DownloadTracker::TileProgress>(const QString& source,
+                                                             const QString& ref)>
+      title_progress;
   // Redraws the store matches' install states.
   void RefreshOwnedStates();
   int ShownCount() const;
@@ -146,7 +148,8 @@ class LibraryPage : public QWidget {
   void InstallMatch(const QModelIndex& index, const QPoint& global_pos);
   // A not-installed tile's menu: install (from each store that sells it) and hide or unhide.
   void ShowTitleMenu(const QModelIndex& index, const QPoint& global_pos);
-  // The Not installed tab: every store's titles that aren't installed, in place of the library's games.
+  // The Not installed tab: every store's titles that aren't installed, in place of the library's
+  // games.
   void SetNotInstalled(bool on);
 
   GameLibraryModel* library_ = nullptr;

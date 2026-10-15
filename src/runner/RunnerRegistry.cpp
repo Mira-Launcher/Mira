@@ -1,8 +1,8 @@
 #include "runner/RunnerRegistry.h"
 
 #include <algorithm>
-#include <filesystem>
 #include <charconv>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <memory>
@@ -48,11 +48,13 @@ std::int64_t ParseVersion(const std::string& version) {
 // "auto"'s order: a build the distro packages (kept current by the package
 // manager, and tuned for that system), then Mira's preferred families, then
 // the newest.
-std::tuple<bool, int, std::int64_t> AutoRank(const config::Config& config, const model::RunnerBuild& build) {
+std::tuple<bool, int, std::int64_t> AutoRank(const config::Config& config,
+                                             const model::RunnerBuild& build) {
   const bool packaged = build.path.starts_with("/usr/") || build.path.starts_with("/opt/");
   const std::vector<RunnerFamily> families = Families(config, build.kind);
   const std::filesystem::path dir =
-      build.kind == "wine" ? std::filesystem::path(build.path).parent_path().parent_path() : std::filesystem::path(build.path);
+      build.kind == "wine" ? std::filesystem::path(build.path).parent_path().parent_path()
+                           : std::filesystem::path(build.path);
   int preference = 0;
   if (auto family = FamilyOfBuild(config, build.kind, build.release, dir.filename().string())) {
     const auto at = std::ranges::find(families, family->id, &RunnerFamily::id);
@@ -98,8 +100,10 @@ std::vector<model::RunnerBuild> DeduplicateBuilds(std::vector<model::RunnerBuild
   return unique;
 }
 
-const model::RunnerBuild& PickAuto(const config::Config& config, const std::vector<model::RunnerBuild>& builds) {
-  return *std::ranges::max_element(builds, {}, [&](const model::RunnerBuild& build) { return AutoRank(config, build); });
+const model::RunnerBuild& PickAuto(const config::Config& config,
+                                   const std::vector<model::RunnerBuild>& builds) {
+  return *std::ranges::max_element(
+      builds, {}, [&](const model::RunnerBuild& build) { return AutoRank(config, build); });
 }
 
 const std::vector<model::RunnerBuild>& RunnerRegistry::BuildsFor(const std::string& kind) const {
@@ -155,15 +159,15 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
 
   if (name == "auto") return Resolved{runner, PickAuto(config_, builds)};
   if (name == "latest") {
-    auto newest = std::ranges::max_element(builds, {}, [](const model::RunnerBuild& build) {
-      return ParseVersion(build.version);
-    });
+    auto newest = std::ranges::max_element(
+        builds, {}, [](const model::RunnerBuild& build) { return ParseVersion(build.version); });
     return Resolved{runner, *newest};
   }
 
   const auto match = std::ranges::find(builds, name, &model::RunnerBuild::name);
   if (match == builds.end()) {
-    return Err("runner_build_not_found", std::format("the {} build \"{}\" isn't installed anymore", kind, name),
+    return Err("runner_build_not_found",
+               std::format("the {} build \"{}\" isn't installed anymore", kind, name),
                "Install it again, or choose another runner.", Fix::Runners());
   }
   return Resolved{runner, *match};
@@ -211,8 +215,8 @@ model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
 
   // Pin the concrete build, not "latest". A Proton update afterwards must
   // not silently change a working game's runtime.
-  game.runner_ref = resolved->build ? std::format("{}:{}", resolved->runner->kind(), resolved->build->name)
-                                    : ref;
+  game.runner_ref =
+      resolved->build ? std::format("{}:{}", resolved->runner->kind(), resolved->build->name) : ref;
 
   std::unique_lock<std::mutex> prefix_lock;
   if (!game.data_dir.empty()) prefix_lock = LockPrefix(game.data_dir);

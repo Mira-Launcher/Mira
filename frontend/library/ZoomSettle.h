@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QSet>
-
 #include <functional>
 
 class QTimer;
@@ -14,7 +13,7 @@ class ArtworkStore;
 // The covers of one view while its zoom moves: scaled quickly at each step and not kept, then,
 // once it stops, `settled` runs to draw them smooth and every other width the view kept goes.
 class ZoomSettle : public QObject {
-public:
+ public:
   ZoomSettle(QObject* parent, ArtworkStore* artwork, int width, std::function<void()> settled);
 
   // The view's tiles are now `width` wide.
@@ -22,7 +21,7 @@ public:
   // Covers were fetched ahead at `width`, a size the zoom was heading to.
   void Prefetched(int width) { widths_.insert(width); }
 
-private:
+ private:
   ArtworkStore* artwork_;
   std::function<void()> settled_;
   QTimer* timer_;

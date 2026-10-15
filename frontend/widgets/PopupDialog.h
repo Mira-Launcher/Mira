@@ -24,7 +24,7 @@ namespace mira_gui {
 class PopupDialog : public QDialog {
   Q_OBJECT
 
-public:
+ public:
   PopupDialog(QWidget* parent, notify::Level level, const QString& title);
 
   void SetMessage(const QString& text);
@@ -53,11 +53,11 @@ public:
   // two outcomes (see notify::LeaveUnsaved).
   QPushButton* AddButton(const QString& text, int result, bool default_button = false);
 
-protected:
+ protected:
   void paintEvent(QPaintEvent* event) override;
   void showEvent(QShowEvent* event) override;
 
-private:
+ private:
   QVBoxLayout* body_ = nullptr;
   QHBoxLayout* buttons_ = nullptr;
   QLabel* message_ = nullptr;

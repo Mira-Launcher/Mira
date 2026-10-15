@@ -1,9 +1,8 @@
 #pragma once
 
+#include <QString>
 #include <functional>
 #include <string>
-
-#include <QString>
 
 #include "../client/Types.h"
 
@@ -34,9 +33,9 @@ struct SettingEditor {
 
   // Builds the row into `parent`. `doc` is the help it shows; empty uses the entry's own.
   SettingRow* Build(QWidget* parent, const QString& doc = {});
-  QString Doc() const;                         // the entry's doc, noting a per-game override
-  QString SearchText() const;                  // what the settings search matches on
-  QWidget* Input() const;                      // the widget to focus
+  QString Doc() const;         // the entry's doc, noting a per-game override
+  QString SearchText() const;  // what the settings search matches on
+  QWidget* Input() const;      // the widget to focus
   std::string Text() const;
   void SetText(const std::string& text);
   bool Changed() const { return Text() != original; }
@@ -47,7 +46,8 @@ struct SettingEditor {
 
 // Refills a runner combo: Auto, then every installed build, keeping its value.
 void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners);
-// An editable runner combo shows a listed runner by its name; anything else is the reference as typed.
+// An editable runner combo shows a listed runner by its name; anything else is the reference as
+// typed.
 void ShowRunnerRef(QComboBox* combo, const QString& ref);
 QString RunnerRef(const QComboBox* combo);
 

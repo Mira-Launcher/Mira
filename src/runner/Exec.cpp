@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -43,7 +43,8 @@ std::optional<std::string> FindOnPath(std::string_view name) {
   return std::nullopt;
 }
 
-std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir, std::string_view name) {
+std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir,
+                                                std::string_view name) {
   if (!own_binary_dir.empty()) {
     const std::filesystem::path candidate = own_binary_dir / name;
     std::error_code ec;
@@ -74,7 +75,9 @@ std::vector<std::string> SessionEnv() {
   const auto now = std::chrono::steady_clock::now();
   {
     const std::lock_guard lock(mutex);
-    if (read_at != std::chrono::steady_clock::time_point() && now - read_at < std::chrono::minutes(1)) return cached;
+    if (read_at != std::chrono::steady_clock::time_point() &&
+        now - read_at < std::chrono::minutes(1))
+      return cached;
   }
   // Outside the lock: a hung user bus holds up this launch, not every other one.
   std::vector<std::string> found;
@@ -84,8 +87,10 @@ std::vector<std::string> SessionEnv() {
   while (std::fgets(line, sizeof(line), pipe) != nullptr) {
     std::string entry(line);
     if (!entry.empty() && entry.back() == '\n') entry.pop_back();
-    for (const char* key : {"DISPLAY=", "WAYLAND_DISPLAY=", "XAUTHORITY=", "XDG_SESSION_TYPE=", "XDG_CURRENT_DESKTOP="}) {
-      if (entry.starts_with(key) && std::getenv(std::string(key, std::strlen(key) - 1).c_str()) == nullptr) {
+    for (const char* key : {"DISPLAY=", "WAYLAND_DISPLAY=", "XAUTHORITY=", "XDG_SESSION_TYPE=",
+                            "XDG_CURRENT_DESKTOP="}) {
+      if (entry.starts_with(key) &&
+          std::getenv(std::string(key, std::strlen(key) - 1).c_str()) == nullptr) {
         found.push_back(entry);
       }
     }
@@ -99,8 +104,8 @@ std::vector<std::string> SessionEnv() {
 
 // Inherited from whatever started Mira and not meant for what it starts: KWin's activation
 // token would file a game's window under Mira, and the AppImage's own variables describe Mira.
-constexpr std::array<std::string_view, 6> kNotPassedOn = {"XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID", "APPIMAGE",
-                                                         "APPDIR", "ARGV0", "OWD"};
+constexpr std::array<std::string_view, 6> kNotPassedOn = {
+    "XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID", "APPIMAGE", "APPDIR", "ARGV0", "OWD"};
 
 // Command.env is an overlay on the daemon's own environment, not a
 // replacement, so merge them for the child process. Each key appears once:
@@ -167,7 +172,8 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
   PreparedCommand prepared = Prepare(command);
 
-  // The child reports a failed chdir or exec here; a successful exec closes it (O_CLOEXEC) unwritten.
+  // The child reports a failed chdir or exec here; a successful exec closes it (O_CLOEXEC)
+  // unwritten.
   int report[2];
   const Result<pid_t> forked = ForkWithPipe(report);
   if (!forked) return forked;
@@ -180,8 +186,9 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
     close(report[0]);
     setpgid(0, 0);
     UnblockSignals();
-    // Never mirad's own stdin/stdout/stderr: the process that started mirad may be gone, leaving pipes nobody
-    // reads, and a program that writes to one (umu-run's first log line) dies on the spot.
+    // Never mirad's own stdin/stdout/stderr: the process that started mirad may be gone, leaving
+    // pipes nobody reads, and a program that writes to one (umu-run's first log line) dies on the
+    // spot.
     const int null_fd = open("/dev/null", O_RDWR);
     if (null_fd >= 0) {
       dup2(null_fd, 0);
@@ -218,9 +225,11 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
 
   ::waitpid(pid, nullptr, 0);
   if (failure[0] == 1) {
-    return Err("exec_failed", std::format("couldn't open the folder \"{}\": {}", prepared.cwd, std::strerror(failure[1])));
+    return Err("exec_failed", std::format("couldn't open the folder \"{}\": {}", prepared.cwd,
+                                          std::strerror(failure[1])));
   }
-  return Err("exec_failed", std::format("couldn't start \"{}\": {}", command.argv.front(), std::strerror(failure[1])));
+  return Err("exec_failed", std::format("couldn't start \"{}\": {}", command.argv.front(),
+                                        std::strerror(failure[1])));
 }
 
 Result<void> SpawnReaped(const Command& command, int output_fd) {
@@ -306,8 +315,9 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     }
     long long wait_ms = 250;
     if (command.timeout_s > 0) {
-      const auto left =
-          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            deadline - std::chrono::steady_clock::now())
+                            .count();
       if (left <= 0) {
         timed_out = true;
         break;
@@ -318,7 +328,8 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     const int polled = poll(&ready, 1, static_cast<int>(wait_ms));
     if (polled < 0 && errno != EINTR) break;
     if (polled <= 0) {
-      // A quiet pipe after the child exited: whatever still holds it open (a wineserver) isn't waited for.
+      // A quiet pipe after the child exited: whatever still holds it open (a wineserver) isn't
+      // waited for.
       if (reaped) break;
       reaped = waitpid(pid, &status, WNOHANG) == pid;
       continue;
@@ -347,10 +358,14 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
   }
 
   if (!reaped && waitpid(pid, &status, 0) < 0) return Err("exec_wait_failed", std::strerror(errno));
-  if (stopped && ThisTaskCancelled()) return Err("cancelled", std::format("{} was cancelled", command.argv[0]));
-  if (stopped) return Err("shutting_down", std::format("{} was stopped because mirad is shutting down", command.argv[0]));
+  if (stopped && ThisTaskCancelled())
+    return Err("cancelled", std::format("{} was cancelled", command.argv[0]));
+  if (stopped)
+    return Err("shutting_down",
+               std::format("{} was stopped because mirad is shutting down", command.argv[0]));
   if (timed_out) {
-    return Err("exec_timeout", std::format("{} gave no result within {}s", command.argv[0], command.timeout_s));
+    return Err("exec_timeout",
+               std::format("{} gave no result within {}s", command.argv[0], command.timeout_s));
   }
   result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
   return result;
@@ -358,14 +373,16 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
 
 std::string ToolVersion(const std::string& path) {
   static std::mutex mutex;
-  static std::map<std::filesystem::path, std::pair<std::filesystem::file_time_type, std::string>> cache;
+  static std::map<std::filesystem::path, std::pair<std::filesystem::file_time_type, std::string>>
+      cache;
   std::error_code ec;
   const std::filesystem::path resolved = std::filesystem::canonical(path, ec);
   const std::filesystem::file_time_type mtime =
       ec ? std::filesystem::file_time_type() : std::filesystem::last_write_time(resolved, ec);
   if (!ec) {
     const std::lock_guard lock(mutex);
-    if (const auto found = cache.find(resolved); found != cache.end() && found->second.first == mtime) {
+    if (const auto found = cache.find(resolved);
+        found != cache.end() && found->second.first == mtime) {
       return found->second.second;
     }
   }
@@ -373,8 +390,10 @@ std::string ToolVersion(const std::string& path) {
   command.argv = {path, "--version"};
   command.timeout_s = 15;  // a hung tool must not block its status
   const auto result = RunAndWait(command);
-  std::string version = result && result->exit_code == 0 ? strings::Trim(result->output) : std::string();
-  // A tool that answered without a version too, so it isn't run again until it changes; a timeout is asked again.
+  std::string version =
+      result && result->exit_code == 0 ? strings::Trim(result->output) : std::string();
+  // A tool that answered without a version too, so it isn't run again until it changes; a timeout
+  // is asked again.
   if (!ec && result) {
     const std::lock_guard lock(mutex);
     cache[resolved] = {mtime, version};
@@ -391,7 +410,8 @@ std::string CurlConfigLine(std::string_view name, std::string_view value) {
   return line + "\"\n";
 }
 
-Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std::string_view secret_config) {
+Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args,
+                                      std::string_view secret_config) {
   std::string path = (std::filesystem::temp_directory_path() / "mira-curl-XXXXXX").string();
   const int fd = mkostemp(path.data(), O_CLOEXEC);  // created 0600
   if (fd < 0) return Err("exec_temp_failed", std::strerror(errno));
@@ -411,7 +431,8 @@ Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args, std:
 
 Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir) {
   const std::string name = strings::ToLower(archive.filename().string());
-  const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") || name.find(".tar.") != std::string::npos ||
+  const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") ||
+                       name.find(".tar.") != std::string::npos ||
                        name.find(".tar_.") != std::string::npos;
 
   Command command;
@@ -421,12 +442,14 @@ Result<void> Extract(const std::filesystem::path& archive, const std::filesystem
     std::optional<std::string> seven_zip = FindOnPath("7z");
     if (!seven_zip) seven_zip = FindOnPath("7zz");
     if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
-    command.argv = {*seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
+    command.argv = {
+        *seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
   }
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());
   if (result->exit_code != 0) {
-    return Err("extract_failed", std::format("{} exited {}: {}", command.argv[0], result->exit_code, result->output));
+    return Err("extract_failed",
+               std::format("{} exited {}: {}", command.argv[0], result->exit_code, result->output));
   }
   return {};
 }

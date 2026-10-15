@@ -1,11 +1,10 @@
-#include "core/Json.h"
 #include "epic/EpicImporter.h"
 
 #include <algorithm>
 #include <filesystem>
-
 #include <json.hpp>
 
+#include "core/Json.h"
 #include "core/Log.h"
 #include "epic/Legendary.h"
 #include "library/ImportSummary.h"
@@ -67,8 +66,9 @@ Result<library::ImportSummary> EpicImporter::Import() {
     game.install_path = title.install_path;
     // Keep a picked exe while it still exists, as LutrisImporter does.
     std::error_code ec;
-    const bool own_exe = existing && !existing->exe_path.empty() &&
-                         std::filesystem::exists(std::filesystem::path(title.install_path) / existing->exe_path, ec);
+    const bool own_exe =
+        existing && !existing->exe_path.empty() &&
+        std::filesystem::exists(std::filesystem::path(title.install_path) / existing->exe_path, ec);
     game.exe_path = own_exe ? existing->exe_path : title.executable;
     game.platform = model::Platform::Windows;
     game.last_error.clear();

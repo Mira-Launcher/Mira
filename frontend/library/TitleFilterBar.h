@@ -2,7 +2,6 @@
 
 #include <QString>
 #include <QWidget>
-
 #include <vector>
 
 #include "OwnedTitles.h"
@@ -21,7 +20,7 @@ class DropdownButton;
 class TitleFilterBar : public QWidget {
   Q_OBJECT
 
-public:
+ public:
   enum class Sort { StoreOrder, Name, BestReviewed, ProtonDb };
 
   explicit TitleFilterBar(QWidget* parent = nullptr);
@@ -38,11 +37,11 @@ public:
   void SetSortKey(const std::string& key);
   void Clear();
 
-signals:
+ signals:
   void Changed();
   void SortChanged();  // picked from the menu
 
-private:
+ private:
   void Update();
 
   TitleFilter filter_;
