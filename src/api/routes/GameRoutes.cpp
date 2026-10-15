@@ -55,7 +55,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
         continue;
       }
       if (tag_filter != req.params.end()) {
-        if (!std::ranges::contains(game.tags, tag_filter->second)) continue;
+        if (std::ranges::none_of(game.tags, [&](const std::string& tag) {
+              return library::SameTag(tag, tag_filter->second);
+            }))
+          continue;
       } else if (!include_hidden && std::ranges::contains(game.tags, std::string("hidden"))) {
         continue;
       }
@@ -199,16 +202,21 @@ void RegisterGameRoutes(Router& http, Services& s) {
       const std::vector<std::string> old_tags = game.tags;
       const std::string old_pick = game.folder_tag;
       const json old_overrides = game.overrides;
+      const auto has = [&](const std::string& tag) {
+        return std::ranges::any_of(game.tags,
+                                   [&](const std::string& t) { return library::SameTag(t, tag); });
+      };
       std::erase_if(game.tags, [&](const std::string& tag) {
-        return std::ranges::contains(*remove_tags, tag);
+        return std::ranges::any_of(*remove_tags,
+                                   [&](const std::string& r) { return library::SameTag(r, tag); });
       });
       for (const std::string& tag : *add_tags) {
-        if (!std::ranges::contains(game.tags, tag)) game.tags.push_back(tag);
+        if (!has(tag)) game.tags.push_back(tag);
       }
       // The game's folder from now on, whatever tags.folders' order says; "" goes back to it.
       if (folder_tag.is_string()) {
         const std::string pick = folder_tag.get<std::string>();
-        if (!pick.empty() && !std::ranges::contains(game.tags, pick)) game.tags.push_back(pick);
+        if (!pick.empty() && !has(pick)) game.tags.push_back(pick);
         game.folder_tag = pick;
       }
       library::DropStalePick(game);

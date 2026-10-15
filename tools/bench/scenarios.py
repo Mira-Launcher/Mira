@@ -163,6 +163,9 @@ def reads(ctx, meta):
     def tags():
         status, body = ctx.client.get("/v1/tags")
         check(status == 200 and len(body["tags"]) >= 5, "GET /v1/tags")
+        # Not all: a tag only hidden games have isn't listed.
+        check(len(body["steam"]) >= meta.get("steam_tags", 0) // 2,
+              f"GET /v1/tags suggested {len(body['steam'])} of {meta.get('steam_tags')} Steam tags")
     ctx.repeat("GET /v1/tags", 10, tags)
 
 
@@ -344,11 +347,11 @@ def relocate(ctx, meta):
 
 
 def gui_pid(launcher, timeout=30):
-    """mira-gui's own pid in the session xvfb-run started. A child it forks is named mira-gui too until it
+    """mira-gui's own pid in the session it was started in. A child it forks is named mira-gui too until it
     execs, so the one whose parent isn't mira-gui."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        check(launcher.poll() is None, f"xvfb-run exited with {launcher.returncode}")
+        check(launcher.poll() is None, f"the GUI exited with {launcher.returncode}")
         parents = {}
         for stat in Path("/proc").glob("[0-9]*/stat"):
             try:
@@ -457,8 +460,17 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
     folder = Path(ctx.mirad.binary).parent
     binary = next(p for p in (folder / "frontend" / "mira-gui", folder / "mira-gui") if p.exists())
     log = open(ctx.mirad.home / f"{label}.log", "w")
-    gui = subprocess.Popen(["xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "--", str(binary), *args],
-                           env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    # Xvfb picks its own free display: xvfb-run -a checks lock files first, so base and branch starting
+    # together both got :99, the second server failed silently and both GUIs shared the first's.
+    read_end, write_end = os.pipe()
+    xvfb = subprocess.Popen(["Xvfb", "-displayfd", str(write_end), "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                            pass_fds=(write_end,), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    os.close(write_end)
+    with os.fdopen(read_end) as displayfd:
+        display = displayfd.readline().strip()  # written once it accepts clients
+    check(display.isdigit(), f"Xvfb exited with {xvfb.poll()} before giving a display")
+    gui = subprocess.Popen([str(binary), *args], env=env | {"DISPLAY": f":{display}"}, stdout=log,
+                           stderr=subprocess.STDOUT, start_new_session=True)
     try:
         start = time.perf_counter()
         pid = gui_pid(gui)
@@ -497,6 +509,8 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
                 gui.wait(10)
             except subprocess.TimeoutExpired:
                 os.killpg(gui.pid, signal.SIGKILL)
+        xvfb.terminate()
+        xvfb.wait(10)
         log.close()
 
 
@@ -510,8 +524,11 @@ def zoom(ctx, label):
         for _ in range(2):
             for key in ("ctrl+minus", "ctrl+plus"):
                 for _ in range(20):  # the window's width sets how many sizes there are
+                    shown = display.snapshot()
                     step = respond(pid, lambda: display.key(key), may_idle=True)
-                    if step is None:
+                    # At the end of the range a press does nothing, but work the GUI does anyway can
+                    # still start the clock, so a step counts only when the tiles changed.
+                    if step is None or changed(shown, display.snapshot()) < 0.01:
                         break
                     walls.append(step[0])
                     cpus.append(step[1])
@@ -549,6 +566,24 @@ def gui_hidden_mode_tags(ctx, meta):
     hidden_mode(ctx, "GUI hidden mode on Tags", page_keys="ctrl+shift+F9")
 
 
+@scenario("gui-pages", gui=True)
+def gui_pages(ctx, meta):
+    """Opening Settings, Runners and Tags from the library, each until it has settled."""
+    def visit(pid):
+        display = Display(pid)
+        # Tags first, from the library: its cards look much like Runners'.
+        for name, keys, back in (("Tags", "ctrl+shift+F9", None), ("Settings", "ctrl+comma", "Escape"),
+                                 ("Runners", "ctrl+shift+F10", None)):
+            shown = display.snapshot()
+            wall, cpu = respond(pid, lambda: display.key(keys))
+            check(changed(shown, display.snapshot()) > 0.05, f"{keys} didn't open {name}")
+            ctx.results[f"open {name}"] = round(wall, 1)
+            ctx.results[f"open {name}, CPU until done"] = round(cpu, 1)
+            if back:
+                respond(pid, lambda: display.key(back))
+    open_gui(ctx, "GUI pages", then=visit)
+
+
 @scenario("gui-zoom", gui=True)
 def gui_zoom(ctx, meta):
     """Zooming the library's tiles from smallest to largest and back."""
@@ -566,9 +601,10 @@ def main():
     parser.add_argument("--only", nargs="*")
     parser.add_argument("--gui", action="store_true", help="run the GUI scenarios instead of mirad's")
     parser.add_argument("--list", action="store_true", help="print mirad's scenarios and stop")
+    parser.add_argument("--list-gui", action="store_true", help="print the GUI's scenarios and stop")
     args = parser.parse_args()
-    if args.list:
-        print(" ".join(name for name, _, _, is_gui in SCENARIOS if not is_gui))
+    if args.list or args.list_gui:
+        print(" ".join(name for name, _, _, is_gui in SCENARIOS if is_gui == args.list_gui))
         return
     meta = json.loads(Path(args.fixture).with_suffix(".json").read_text())
     binary = Path(args.build) / "mirad"

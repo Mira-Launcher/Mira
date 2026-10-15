@@ -1,6 +1,7 @@
 #include "library/FolderTags.h"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <system_error>
 
@@ -27,7 +28,9 @@ bool IsUnder(const fs::path& path, const fs::path& base) {
 }
 
 bool SameName(std::string_view a, std::string_view b) {
-  return strings::ToLower(a) == strings::ToLower(b);
+  // strings::ToLower's comparison, without its two copies.
+  return std::ranges::equal(
+      a, b, [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
 }
 
 bool IsApplications(const fs::path& root) {
@@ -366,9 +369,12 @@ void TagsForPlace(const SortRules& rules, model::Game& game, const fs::path& old
   std::vector<std::string>& tags = game.tags;
   if (!old_root.empty() && Normal(old_root) != Normal(root)) {
     if (rules.tag_by_root) {
-      std::erase(tags, old_root.filename().string());
-      if (!root.filename().empty() && !std::ranges::contains(tags, root.filename().string()))
-        tags.push_back(root.filename().string());
+      const std::string old_tag = old_root.filename().string();
+      std::erase_if(tags, [&](const std::string& tag) { return SameName(tag, old_tag); });
+      const std::string tag = strings::TitleCase(root.filename().string());
+      if (!tag.empty() &&
+          std::ranges::none_of(tags, [&](const std::string& t) { return SameName(t, tag); }))
+        tags.push_back(tag);
     }
     if (IsApplications(old_root) && !IsApplications(root)) std::erase(tags, std::string("app"));
     if (IsApplications(root) && !std::ranges::contains(tags, std::string("app")))

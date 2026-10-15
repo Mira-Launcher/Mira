@@ -4,6 +4,8 @@
 
 #include <format>
 
+#include "core/Strings.h"
+
 namespace mira::store {
 namespace {
 
@@ -88,6 +90,16 @@ Result<void> Database::Open(const std::filesystem::path& file) {
     return std::unexpected(error);
   }
   sqlite3_busy_timeout(db_, 5000);
+  // strings::TitleCase, for migrations that re-case tags.
+  sqlite3_create_function_v2(
+      db_, "title_case", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nullptr,
+      [](sqlite3_context* context, int, sqlite3_value** args) {
+        const auto* text = reinterpret_cast<const char*>(sqlite3_value_text(args[0]));
+        if (text == nullptr) return sqlite3_result_null(context);
+        const std::string out = strings::TitleCase(text);
+        sqlite3_result_text(context, out.c_str(), static_cast<int>(out.size()), SQLITE_TRANSIENT);
+      },
+      nullptr, nullptr, nullptr);
   return Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;");
 }
 

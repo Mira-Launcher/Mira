@@ -124,9 +124,8 @@ class ArtworkStore : public QObject {
   // Drops the covers drawn at this tile width, once the grid no longer uses it.
   void ForgetWidth(int width);
 
-  // With the window in the tray: everything but the small copies goes. Restore fetches the
-  // sidebar's copies again, and a cover drawn again is fetched for its size, its placeholder shown
-  // meanwhile.
+  // With the window in the tray: every image goes, small copies too. Restore fetches the
+  // sidebar's covers again, and a cover drawn again is fetched, its placeholder shown meanwhile.
   void Release();
   void Restore();
   // Drops the covers not drawn since `mark` (a Clock() reading), once another page has taken the

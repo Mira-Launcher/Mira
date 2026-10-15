@@ -20,6 +20,7 @@
 #include <cmath>
 #include <memory>
 #include <unordered_set>
+#include <utility>
 
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
@@ -36,8 +37,8 @@
 namespace mira_gui {
 namespace {
 
-// Steam was asked for missing tags this session. Not the page's: a page that isn't shown is built
-// again after a restyle, and a new one mustn't ask again.
+// Steam was asked for missing tags this session. Not the page's: it's built anew on every open, and
+// a new one mustn't ask again.
 bool g_fetching_steam = false;
 
 constexpr int kCountWidth = 64;
@@ -609,6 +610,7 @@ void TagsPage::Sync() {
   SyncMine();
   SyncSteam();
   SyncSettings();
+  if (!std::exchange(ready_, true)) emit Ready();
 }
 
 const TagSummary* TagsPage::Mine(const std::string& name) const {
@@ -1082,6 +1084,7 @@ void TagsPage::PatchSetting(const std::string& key, const std::string& type,
 
 void TagsPage::Failed(const QString& what, const ApiError& error) {
   notify::FailedRequest(window(), what, error);
+  if (!ready_) emit LoadFailed();
 }
 
 }  // namespace mira_gui

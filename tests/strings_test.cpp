@@ -6,6 +6,16 @@
 
 using namespace mira::strings;
 
+TEST_CASE("TitleCase capitalises lowercase words as Steam names tags, and keeps any other casing") {
+  CHECK(TitleCase("open world") == "Open World");
+  CHECK(TitleCase("free to play") == "Free to Play");
+  CHECK(TitleCase("the witcher") == "The Witcher");
+  CHECK(TitleCase("RPG") == "RPG");
+  CHECK(TitleCase("eSports") == "eSports");
+  CHECK(TitleCase("Co-op  sci-fi") == "Co-op  Sci-fi");
+  CHECK(TitleCase("2d 'em") == "2d 'em");
+}
+
 TEST_CASE("GlobMatch handles * and ? like shell globs") {
   CHECK(GlobMatch("*.exe", "Celeste.exe"));
   CHECK(GlobMatch("unins*", "uninstall.exe"));

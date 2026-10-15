@@ -55,11 +55,14 @@ class TagsPage : public QWidget {
   void ClosePicker();
   // Hidden mode: counts are of hidden games only, else of the rest, and so are the picker's covers.
   void SetShowingHidden(bool showing);
-  // The window is leaving the page, which it keeps: a rename being typed, an open picker and a
-  // question in the bar are all dropped, as Esc or Cancel would.
+  // The window is leaving the page: a rename being typed, an open picker and a question in the bar
+  // are all dropped, as Esc or Cancel would.
   void Leave();
 
  signals:
+  // The tags and the tag settings are in and shown, once; or the first load failed, already said.
+  void Ready();
+  void LoadFailed();
   // Records a request changed, for the window to apply without waiting for their events.
   void GamesChanged(const std::vector<GameSummary>& games);
   // Ctrl+wheel over the picker's covers, one step per notch; the window owns the zoom.
@@ -138,6 +141,7 @@ class TagsPage : public QWidget {
   bool tags_loaded_ = false;
   bool fetching_steam_ = false;  // this page started the Steam fetch in g_fetching_steam
   bool settings_loaded_ = false;
+  bool ready_ = false;            // Ready sent
   bool show_rare_steam_ = false;  // the Steam tags on only one game, which are many and say little
   int folder_width_ = 0;          // the Folder column's, as wide as its heading or a switch
 

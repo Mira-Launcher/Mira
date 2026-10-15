@@ -219,11 +219,15 @@ void ArtworkStore::Release() {
   loading_.clear();
   last_drawn_.clear();
   sidebar_.clear();
+  thumbs_.clear();
   drawn_.clear();
+  // Asked again when next drawn. What's in flight lands and stays answered.
+  answered_.intersect(queued_);
   released_kept_ = std::exchange(kept_, {});
   QPixmapCache::clear();
-  // After the event loop drops what the widgets still held.
-  QTimer::singleShot(0, [] { malloc_trim(0); });
+  // Once the pages closed for the tray are deleted and in-flight decodes have landed. The images
+  // were decoded on worker threads, so most of the memory is in their malloc arenas.
+  QTimer::singleShot(2000, [] { malloc_trim(0); });
 }
 
 void ArtworkStore::Restore() {
@@ -231,6 +235,9 @@ void ArtworkStore::Restore() {
   QSet<QString> kept = std::move(*released_kept_);
   released_kept_.reset();
   Keep(kept);
+  // The sidebar's covers first, before the grid's.
+  for (const QString& id : kept_)
+    if (!answered_.contains(id)) Request(id);
 }
 
 QPixmap ArtworkStore::Cover(const GameSummary& game, QSize tile, qreal device_pixel_ratio) {
@@ -668,7 +675,11 @@ void ArtworkStore::Pump() {
         answered_.remove(id);
         Request(id);
       } else if (!missing.isEmpty()) {
-        wanted_.insert(id, missing);
+        // Added to, not replacing: a view drawing it at another size on CoverChanged may have
+        // asked again already, and losing that size would ask for it forever.
+        QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
+        for (const auto& size : missing)
+          if (!sizes.contains(size)) sizes.append(size);
         refetching_.insert(id);
         Request(id);
       }

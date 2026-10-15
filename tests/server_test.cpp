@@ -326,7 +326,7 @@ TEST_CASE(
   CHECK(hidden_list->body.find("\"umu-launcher\"") != std::string::npos);
   CHECK(hidden_list->body.find("\"celeste\"") == std::string::npos);
 
-  auto tool_list = client.Get("/v1/games?tag=tool");
+  auto tool_list = client.Get("/v1/games?tag=Tool");  // as tags compare, ignoring case
   REQUIRE(tool_list != nullptr);
   CHECK(tool_list->body.find("\"umu-launcher\"") != std::string::npos);
 

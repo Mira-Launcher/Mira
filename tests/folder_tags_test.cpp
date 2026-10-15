@@ -7,6 +7,7 @@
 #include <json.hpp>
 #include <thread>
 
+#include "core/Strings.h"
 #include "library/FolderTags.h"
 #include "library/Scanner.h"
 #include "library/Watcher.h"
@@ -193,7 +194,7 @@ TEST_CASE("A scan finds games in sorting folders, tags them by place, and leaves
   const fs::path root = TempDir("folder-tags-scan-games");
   REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
   REQUIRE(env.config.Patch(Sorting(root, {"RPG", "Strategy"})).has_value());
-  const std::string root_tag = root.filename().string();
+  const std::string root_tag = strings::TitleCase(root.filename().string());
   for (const fs::path& game : {root / "RPG" / "Alpha", root / ".hidden" / "RPG" / "Beta",
                                root / ".hidden" / "Gamma", root / "Other" / "Delta"}) {
     Touch(game / "run.sh", "#!/bin/sh\n", /*executable=*/true);
@@ -227,7 +228,7 @@ TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
   const fs::path root = TempDir("folder-tags-moved-games");
   REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
   REQUIRE(env.config.Patch(Sorting(root, {"RPG"})).has_value());
-  const std::string root_tag = root.filename().string();
+  const std::string root_tag = strings::TitleCase(root.filename().string());
   for (const fs::path& game :
        {root / "RPG" / "Alpha", root / ".hidden" / "RPG" / "Beta", root / ".hidden" / "Gamma"}) {
     Touch(game / "run.sh", "#!/bin/sh\n", /*executable=*/true);
