@@ -53,6 +53,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
   connect(change_bar_, &ChangeBar::SaveClicked, this, &SettingsPanel::Save);
 
   BuildInterfacePage();
+  BuildBigScreenPage();
   BuildSidebarPage();
   BuildShortcutsPage();
 
@@ -90,6 +91,10 @@ void SettingsPanel::LoadFrontendPrefs() {
     for (PrefSeconds& seconds : seconds_) {
       seconds.spin->setValue((prefs.*seconds.member).value_or(seconds.fallback) / 1000.0);
       seconds.saved = qRound(seconds.spin->value() * 1000);  // after the clamp
+    }
+    for (PrefChoice& choice : choices_) {
+      choice.load(prefs);
+      choice.saved = choice.combo->currentData();
     }
     continue_count_->setValue(prefs.library_continue_count.value_or(3));
     continue_count_saved_ = continue_count_->value();  // after the clamp
@@ -407,6 +412,7 @@ void SettingsPanel::Save() {
     for (const PrefToggle& toggle : toggles_) prefs.*toggle.member = toggle.toggle->isChecked();
     for (const PrefSeconds& seconds : seconds_)
       prefs.*seconds.member = qRound(seconds.spin->value() * 1000);
+    for (const PrefChoice& choice : choices_) choice.store(prefs);
     prefs.library_continue_count = continue_count_->value();
     prefs.big_screen_trailer_volume = trailer_volume_->value();
     const QString theme_name = SelectedTheme();

@@ -6,6 +6,7 @@
 
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
+#include "Choices.h"
 #include "GamepadInput.h"
 #include "WebApps.h"
 
@@ -27,17 +28,6 @@ QString LabelOf(const std::vector<std::pair<T, QString>>& options, const T& curr
   const auto at = std::ranges::find(options, current, &std::pair<T, QString>::first);
   return at == options.end() ? options.front().second : at->second;
 }
-
-const std::vector<std::pair<std::string, QString>> kButtonKinds = {
-    {"auto", "Match controller"}, {"xbox", "Xbox"}, {"ps", "PlayStation"}, {"nin", "Nintendo"}};
-const std::vector<std::pair<std::string, QString>> kStick = {
-    {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}};
-const std::vector<std::pair<std::string, QString>> kRepeat = {
-    {"slow", "Slow"}, {"normal", "Normal"}, {"fast", "Fast"}};
-const std::vector<std::pair<std::string, QString>> kRumble = {
-    {"off", "Off"}, {"light", "Light"}, {"strong", "Strong"}};
-const std::vector<std::pair<int, QString>> kIdle = {
-    {0, "Never"}, {15, "15 minutes"}, {30, "30 minutes"}, {60, "1 hour"}};
 
 QString OnOff(bool on) {
   return on ? "On" : "Off";

@@ -5,6 +5,7 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
 #include <QWidget>
 #include <functional>
 #include <map>
@@ -18,6 +19,7 @@
 #include "SettingEditor.h"
 
 class QButtonGroup;
+class QComboBox;
 class QLabel;
 class QSlider;
 class QDoubleSpinBox;
@@ -121,6 +123,13 @@ class SettingsPanel : public QWidget {
     int fallback = 0;
     int saved = 0;
   };
+  // A pref picked from a few values, kept in the combo's item data.
+  struct PrefChoice {
+    QComboBox* combo = nullptr;
+    std::function<void(const FrontendPrefs&)> load;
+    std::function<void(FrontendPrefs&)> store;
+    QVariant saved;
+  };
 
   // One shape adjustment over the theme; unset follows the theme.
   struct ShapeField {
@@ -149,6 +158,7 @@ class SettingsPanel : public QWidget {
   void LoadFrontendPrefs();
   void BuildInterfacePage();
   void AddDisplayRows(SettingsCard* card);
+  void BuildBigScreenPage();
   // Settings › Library's Mira folders, each with Games and Applications in library_roots.
   void AddMiraFoldersCard(SettingsPage* page);
   void ShowMiraFolders(const ConfigResult& config);
@@ -167,6 +177,11 @@ class SettingsPanel : public QWidget {
   QDoubleSpinBox* AddSeconds(SettingsCard* card, const QString& label, const QString& doc,
                              const QString& search, std::optional<int> FrontendPrefs::* member,
                              int fallback_ms, double maximum);
+  // A choice among `options` (value, label).
+  template <typename T>
+  QComboBox* AddChoice(SettingsCard* card, const QString& label, const QString& doc,
+                       const QString& search, std::optional<T> FrontendPrefs::* member,
+                       const std::vector<std::pair<T, QString>>& options, const T& fallback);
   // Returns the field's index in pref_fields_.
   size_t AddPrefField(PrefField field);
   // A card's "Reset to defaults" over these pref_fields_ and fields_ indices.
@@ -203,6 +218,7 @@ class SettingsPanel : public QWidget {
   QString theme_saved_;
   std::vector<PrefToggle> toggles_;
   std::vector<PrefSeconds> seconds_;
+  std::vector<PrefChoice> choices_;
   QSpinBox* continue_count_ = nullptr;
   int continue_count_saved_ = 3;
   QSpinBox* trailer_volume_ = nullptr;

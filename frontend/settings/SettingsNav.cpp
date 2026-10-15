@@ -23,7 +23,7 @@
 namespace mira_gui {
 
 QString CategoryNavGroup(const QString& category) {
-  static const QStringList kLookAndFeel = {"Interface", "Sidebar", "Shortcuts"};
+  static const QStringList kLookAndFeel = {"Interface", "Big screen", "Sidebar", "Shortcuts"};
   static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Updates",
                                       "Advanced"};
   if (kLookAndFeel.contains(category)) return "Look and feel";
@@ -34,7 +34,8 @@ QString CategoryNavGroup(const QString& category) {
 icons::Glyph CategoryGlyph(const QString& category) {
   using icons::Glyph;
   static const QHash<QString, Glyph> kGlyphs = {
-      {"Interface", Glyph::Monitor},    {"Sidebar", Glyph::Sidebar},
+      {"Interface", Glyph::Monitor},    {"Big screen", Glyph::Gamepad},
+      {"Sidebar", Glyph::Sidebar},
       {"Shortcuts", Glyph::Keyboard},   {"Library", Glyph::Folder},
       {"Metadata", Glyph::Image},       {"Sources", Glyph::Layers},
       {"Runners", Glyph::Wrench},       {"Launching", Glyph::Play},
