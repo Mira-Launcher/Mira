@@ -62,9 +62,11 @@ class HoverCard : public QWidget {
   // `hint` is a muted last line, e.g. what a click does.
   void ShowGame(const GameSummary& game, bool running, const QString& hint = QString());
   // A store title that isn't in the library yet, with its cached details
-  // (GET /v1/library/metadata) once they arrive.
+  // (GET /v1/library/metadata) once they arrive. Having no genres, it lists those of its Steam
+  // tags that are among `library_tags`.
   void ShowTitle(const QString& source, const QString& ref, const QString& title,
-                 const QString& status, const QString& detail);
+                 const QString& status, const QString& detail,
+                 std::vector<std::string> library_tags);
   // Shows the card beside `anchor` (global), and keeps it there as it grows.
   void PopUpBeside(const QRect& anchor);
 
@@ -72,7 +74,7 @@ class HoverCard : public QWidget {
   void paintEvent(QPaintEvent* event) override;
 
  private:
-  void ShowMetadata(const GameMetadata& metadata);
+  void ShowMetadata(const GameMetadata& metadata, const std::vector<std::string>& genres);
   void Reset();
   void Reposition();
 

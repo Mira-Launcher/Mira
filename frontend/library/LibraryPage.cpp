@@ -653,6 +653,10 @@ void LibraryPage::ShowTag(const QString& tag) {
 
 void LibraryPage::ClearFilters() {
   search_->clear();
+  title_filters_->Clear();
+  // The pill's own reset changes nothing when its filter is already All, as on Not installed.
+  tabs_->SetCurrent("all");
+  SetNotInstalled(false);
   pill_->ClearFilters();
 }
 

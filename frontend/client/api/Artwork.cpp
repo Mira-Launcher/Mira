@@ -118,10 +118,6 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
   if (body.contains("steam_tags") && body["steam_tags"].is_object()) {
     out.steam_tags = strings(body["steam_tags"].value("tags", json::array()));
   }
-  // A store title's details have no genres; its top Steam tags say as much.
-  if (out.genres.empty())
-    out.genres.assign(out.steam_tags.begin(),
-                      out.steam_tags.begin() + std::min<std::size_t>(3, out.steam_tags.size()));
   // "artwork" is the cover slot under its pre-`hero` name; see docs/api.md.
   for (const char* key : {"artwork", "hero", "logo", "icon"}) {
     if (!body.contains(key) || !body[key].is_object()) continue;

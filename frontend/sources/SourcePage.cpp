@@ -1348,7 +1348,8 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
       status = id_ == "humble" ? "Not downloaded" : "Not installed";
     }
     hover_card_->ShowTitle(QString::fromStdString(id_), ref,
-                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
+                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name,
+                           TagOrder(library_->Games()));
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));

@@ -14,6 +14,7 @@
 #include "../app/KeyBindings.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlowLayout.h"
 #include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
 #include "SettingsCard.h"
@@ -173,9 +174,9 @@ void SettingsPanel::BuildInterfacePage() {
                      "or mira-light.toml there to change the built-in themes, or copy one to "
                      "another name to add a theme of your own.");
   auto* tiles = new QWidget(theme_row);
-  auto* tiles_layout = new QHBoxLayout(tiles);
+  // Wraps: built-in themes and the user's own copies can outgrow the card.
+  auto* tiles_layout = new FlowLayout(tiles, 10);
   tiles_layout->setContentsMargins(0, 0, 0, 4);
-  tiles_layout->setSpacing(10);
   themes_ = new QButtonGroup(this);
   QStringList names{"auto"};
   names << theme::Available();
@@ -185,7 +186,6 @@ void SettingsPanel::BuildInterfacePage() {
     themes_->addButton(choice);
     tiles_layout->addWidget(choice);
   }
-  tiles_layout->addStretch(1);
   theme_row->SetBelow(tiles);
   appearance->AddRow(theme_row);
   nav_->RegisterRow(theme_row, "theme appearance dark light colors");

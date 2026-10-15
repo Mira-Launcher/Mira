@@ -398,6 +398,8 @@ void LibraryWindow::BuildShortcuts() {
   hidden_action_ =
       add_action(this, "toggle_hidden", "Show only hidden games, or leave hidden mode",
                  QKeySequence(Qt::CTRL | Qt::Key_H), {}, [this] { ToggleHiddenMode(); });
+  // Held down, it would flip the whole window's style at the key repeat rate.
+  hidden_action_->setAutoRepeat(false);
   qApp->installEventFilter(this);  // input anywhere keeps unlocked hidden games unlocked
   grid_page_->SetHiddenShortcut(HiddenShortcut());
 
@@ -596,8 +598,6 @@ void LibraryWindow::ImportDropped(const QString& path) {
 }
 
 void LibraryWindow::StartImport(const QString& path, const QString& kind, const QString& name) {
-  mira_gui::notify::Notice(this,
-                           "Adding " + name + " to " + (kind == "app" ? "Applications" : "Games"));
   mira_gui::api::ImportPathAsync(this, path.toStdString(), kind.toStdString(),
                                  [this, name](mira_gui::ImportPathResult result) {
                                    if (!result.ok)
@@ -1228,6 +1228,8 @@ void LibraryWindow::ShowingHiddenChanged(bool showing) {
 }
 
 void LibraryWindow::ToggleHiddenMode() {
+  // Settings lists no games, and restyling all of its widgets is slow.
+  if (settings_loading_ || SettingsOpen()) return;
   if (library_->ShowingHidden() || !hidden_locked_) {
     library_->SetShowingHidden(!library_->ShowingHidden());
     return;
