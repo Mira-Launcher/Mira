@@ -611,6 +611,18 @@ void LibraryWindow::showEvent(QShowEvent* event) {
   QMainWindow::showEvent(event);
 }
 
+void LibraryWindow::ClosePagesForTray() {
+  CloseSourcesPage();
+  if (settings_loading_ || (SettingsOpen() && !settings_panel_->IsDirty())) CloseSettings();
+  if (GameEditOpen() && !game_card_->IsDirty()) CloseGameEdit();
+  mira_gui::SourceSettingsCard* card =
+      source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
+  if (source_page_ != nullptr && (card == nullptr || !card->IsDirty())) CloseSource();
+  CloseRunners();
+  CloseTags();
+  HideHoverCard();
+}
+
 void LibraryWindow::changeEvent(QEvent* event) {
   if (event->type() == QEvent::WindowStateChange && top_bar_ != nullptr) {
     top_bar_->SyncMaximized();
@@ -634,7 +646,8 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
     FlushPrefs(/*quitting=*/false);  // the process stays, so the save needn't freeze the window
     event->ignore();
     hide();
-    // Nothing is drawn from the tray: its art goes until the window is back.
+    // Nothing is drawn from the tray: its pages and art go until the window is back.
+    ClosePagesForTray();
     artwork_->Release();
     return;
   }

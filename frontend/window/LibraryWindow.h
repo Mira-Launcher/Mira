@@ -229,6 +229,9 @@ class LibraryWindow : public QMainWindow {
   void CloseRunners();
   // The Tags page, built on each open off screen and shown once loaded, like Settings.
   void BuildTagsPage();
+  // Hiding to the tray: closes the open page (unless it holds unsaved edits), so the window comes
+  // back on the library.
+  void ClosePagesForTray();
   void OpenTags();
   // Deletes the page, shown or still loading.
   void CloseTags();

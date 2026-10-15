@@ -230,6 +230,7 @@ On connect, `mirad` replays its event buffer and then sends `stream.live`. Windo
 - A cover is fetched once, and again only when its version changes in a record, `game.metadata_ready` or `game.artwork_selected`. The old image stays on screen until the new one lands.
 - At most eight requests are in flight.
 - A small copy of every image is kept; covers are kept as drawn at the tile width in use and fetched again for a new one. While a zoom moves (`library/ZoomSettle`, one per page and the Tags picker), covers are scaled quickly from the last copy and not kept; the covers on screen are fetched at the width it's heading to, and once it stops every other width that view kept is dropped.
+- Hiding to the tray drops every image, small copies included, and closes the open page (unless it has unsaved edits); the window comes back on the library and fetches covers again as they're drawn. mira-gui runs with one malloc arena (`main.cpp`), since images freed in the worker threads' arenas stayed resident.
 
 Without `steamgriddb.api_key`, non-Steam games may have no source. `mirad` then fails the fetch with `no_steamgriddb_key`, and the GUI says so once per session: a popup offering Settings when the user asked, a notice after a background scan.
 

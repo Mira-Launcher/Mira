@@ -1,3 +1,5 @@
+#include <malloc.h>
+
 #include <QApplication>
 #include <QDir>
 #include <QGuiApplication>
@@ -45,6 +47,9 @@ void DefaultToBundledPlatform() {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Covers decode on worker threads. With glibc's per-thread arenas, the freed images stayed
+  // resident in the tray (about 45 MB) even after malloc_trim; one arena gives them back.
+  mallopt(M_ARENA_MAX, 1);
   DefaultToBundledPlatform();
   QApplication app(argc, argv);
   QApplication::setApplicationName("Mira");
