@@ -347,11 +347,11 @@ def relocate(ctx, meta):
 
 
 def gui_pid(launcher, timeout=30):
-    """mira-gui's own pid in the session xvfb-run started. A child it forks is named mira-gui too until it
+    """mira-gui's own pid in the session it was started in. A child it forks is named mira-gui too until it
     execs, so the one whose parent isn't mira-gui."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        check(launcher.poll() is None, f"xvfb-run exited with {launcher.returncode}")
+        check(launcher.poll() is None, f"the GUI exited with {launcher.returncode}")
         parents = {}
         for stat in Path("/proc").glob("[0-9]*/stat"):
             try:
@@ -460,8 +460,17 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
     folder = Path(ctx.mirad.binary).parent
     binary = next(p for p in (folder / "frontend" / "mira-gui", folder / "mira-gui") if p.exists())
     log = open(ctx.mirad.home / f"{label}.log", "w")
-    gui = subprocess.Popen(["xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "--", str(binary), *args],
-                           env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    # Xvfb picks its own free display: xvfb-run -a checks lock files first, so base and branch starting
+    # together both got :99, the second server failed silently and both GUIs shared the first's.
+    read_end, write_end = os.pipe()
+    xvfb = subprocess.Popen(["Xvfb", "-displayfd", str(write_end), "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                            pass_fds=(write_end,), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    os.close(write_end)
+    with os.fdopen(read_end) as displayfd:
+        display = displayfd.readline().strip()  # written once it accepts clients
+    check(display.isdigit(), f"Xvfb exited with {xvfb.poll()} before giving a display")
+    gui = subprocess.Popen([str(binary), *args], env=env | {"DISPLAY": f":{display}"}, stdout=log,
+                           stderr=subprocess.STDOUT, start_new_session=True)
     try:
         start = time.perf_counter()
         pid = gui_pid(gui)
@@ -500,6 +509,8 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
                 gui.wait(10)
             except subprocess.TimeoutExpired:
                 os.killpg(gui.pid, signal.SIGKILL)
+        xvfb.terminate()
+        xvfb.wait(10)
         log.close()
 
 
@@ -513,8 +524,11 @@ def zoom(ctx, label):
         for _ in range(2):
             for key in ("ctrl+minus", "ctrl+plus"):
                 for _ in range(20):  # the window's width sets how many sizes there are
+                    shown = display.snapshot()
                     step = respond(pid, lambda: display.key(key), may_idle=True)
-                    if step is None:
+                    # At the end of the range a press does nothing, but work the GUI does anyway can
+                    # still start the clock, so a step counts only when the tiles changed.
+                    if step is None or changed(shown, display.snapshot()) < 0.01:
                         break
                     walls.append(step[0])
                     cpus.append(step[1])
