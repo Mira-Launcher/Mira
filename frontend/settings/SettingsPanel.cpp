@@ -527,7 +527,7 @@ void SettingsPanel::FinishSave(bool ok, const QString& error) {
   Refresh();
   emit SaveFinished(ok, error);
   // Once everything is saved: display settings take a restart.
-  if (std::exchange(restart_prompt_, false) &&
+  if (std::exchange(restart_prompt_, false) && ok &&
       notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens.",
                       "Restart now")) {
     display::Restart({});
@@ -653,8 +653,12 @@ void SettingsPanel::SaveMiraFolders(const QStringList& folders, const QStringLis
         if (field.entry.key != "library_roots") continue;
         const auto it = config.values.find(field.entry.key);
         if (it == config.values.end()) continue;
+        // An edit not yet saved stays, as a change from the new value.
+        const std::optional<std::string> edit =
+            field.Changed() ? std::optional(field.Text()) : std::nullopt;
         field.SetText(it->second);
         field.original = field.Text();
+        if (edit) field.SetText(*edit);
       }
       Refresh();
     });

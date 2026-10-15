@@ -46,6 +46,8 @@ class SettingsNavWidget : public QWidget {
 
  public:
   explicit SettingsNavWidget(QWidget* parent = nullptr);
+  // Rows outlive rows_ as children; their destroyed must not reach it.
+  ~SettingsNavWidget() override;
 
   // A page with its nav row, under `nav_group`'s heading (none when empty).
   SettingsPage* AddCategory(const QString& title, icons::Glyph glyph,
@@ -105,6 +107,7 @@ class SettingsNavWidget : public QWidget {
     int category_index = -1;
   };
 
+  void UnregisterRow(QWidget* row_widget);
   void ApplyFilter();
   // Scrolls to a page's title.
   void Select(int index);

@@ -27,6 +27,9 @@ void Prepare(bool big_screen);
 // On X11, starts this process over with QT_SCREEN_SCALE_FACTORS when a screen's scale is off,
 // for when the desktop gives X11 no scale or one for all screens. Call right after QApplication.
 void FixX11Scale(char** argv);
+// Removes what Prepare and FixX11Scale set once Qt has read it, so mirad and the games it starts
+// don't inherit Mira's scale or platform.
+void ForgetEnv();
 
 // Restarting gives up the single-instance lock and activation socket, and hands over a mirad this
 // process started.

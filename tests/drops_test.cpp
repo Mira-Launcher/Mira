@@ -44,6 +44,15 @@ TEST_CASE("drops: a ROM goes to the one emulator that runs it, and Mira asks whe
   CHECK(fs::exists(mira / "EBOOT.PBP"));
   CHECK(fs::exists(mira / "readme.txt") == false);
 
+  // Already there when mirad started: asked about, never moved.
+  test::Touch(mira / "Earthbound (Japan).sfc");
+  drops.Sort(mira / "Earthbound (Japan).sfc", /*ask=*/true);
+  CHECK(fs::exists(mira / "Earthbound (Japan).sfc"));
+  REQUIRE(drops.All().size() == 1);
+  CHECK(drops.All()[0].choices == std::vector<std::string>{"snes9x"});
+  fs::remove(mira / "Earthbound (Japan).sfc");
+  drops.Forget(mira / "Earthbound (Japan).sfc");
+
   test::Touch(mira / "readme.txt");
   drops.Sort(mira / "readme.txt");
   CHECK(fs::exists(mira / "readme.txt"));

@@ -166,8 +166,10 @@ void Watcher::WatchRoots() {
     }
     if (watches_.contains(wd)) continue;  // also a library root, scanned as one
     watches_[wd] = {.root = folder, .dir = folder, .mira_folder = true};
-    // What was dropped in while Mira wasn't running.
-    for (const fs::path& entry : paths::ListDir(folder)) ScheduleDrop(folder, entry);
+    // What was there before: asked about, since it may be the user's own.
+    for (const fs::path& entry : paths::ListDir(folder)) {
+      if (drops_ != nullptr && !IsMiraFoldersOwn(config_, entry)) drops_->Sort(entry, /*ask=*/true);
+    }
   }
   ++roots_watched_;  // events queue in inotify from here, read once the loop runs
 }

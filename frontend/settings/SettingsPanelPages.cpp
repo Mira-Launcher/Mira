@@ -219,7 +219,7 @@ void SettingsPanel::AddDisplayRows(SettingsCard* card) {
       display::Server(), "desktop",
       [](const QVariant& value) { display::SetServer(value.toString()); });
   // Wayland needs a Wayland session.
-  server->setEnabled(display::SystemServer() == "wayland");
+  server->setEnabled(display::SystemServer() == "wayland" || display::Server() != "desktop");
   if (const QString hint = display::StretchHint(); !hint.isEmpty()) {
     auto* label = new QLabel(hint, server);
     label->setWordWrap(true);
@@ -468,8 +468,7 @@ void SettingsPanel::SelectTheme(const QString& name) {
 
 template <typename T>
 QComboBox* SettingsPanel::AddChoice(SettingsCard* card, const QString& label, const QString& doc,
-                                    const QString& search,
-                                    std::optional<T> FrontendPrefs::* member,
+                                    const QString& search, std::optional<T> FrontendPrefs::* member,
                                     const std::vector<std::pair<T, QString>>& options,
                                     const T& fallback) {
   const auto to_data = [](const T& value) {
@@ -516,8 +515,8 @@ QComboBox* SettingsPanel::AddChoice(SettingsCard* card, const QString& label, co
                  choices_[index].combo->findData(choices_[index].saved));
            },
        .reset = [combo, fallback_data] { combo->setCurrentIndex(combo->findData(fallback_data)); },
-       .mark_saved =
-           [this, index] { choices_[index].saved = choices_[index].combo->currentData(); }});
+       .mark_saved = [this,
+                      index] { choices_[index].saved = choices_[index].combo->currentData(); }});
   return combo;
 }
 
@@ -609,7 +608,6 @@ void SettingsPanel::BuildBigScreenPage() {
                 .revert = [this] { trailer_volume_->setValue(trailer_volume_saved_); },
                 .reset = [this] { trailer_volume_->setValue(50); },
                 .mark_saved = [this] { trailer_volume_saved_ = trailer_volume_->value(); }});
-
 }
 
 void SettingsPanel::BuildSidebarPage() {

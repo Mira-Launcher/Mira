@@ -34,14 +34,14 @@ QString CategoryNavGroup(const QString& category) {
 icons::Glyph CategoryGlyph(const QString& category) {
   using icons::Glyph;
   static const QHash<QString, Glyph> kGlyphs = {
-      {"Interface", Glyph::Monitor},    {"Big screen", Glyph::Gamepad},
-      {"Sidebar", Glyph::Sidebar},
-      {"Shortcuts", Glyph::Keyboard},   {"Library", Glyph::Folder},
-      {"Metadata", Glyph::Image},       {"Sources", Glyph::Layers},
-      {"Runners", Glyph::Wrench},       {"Launching", Glyph::Play},
-      {"Installers", Glyph::Download},  {"Store launchers", Glyph::Store},
-      {"Detection", Glyph::Target},     {"Scanning", Glyph::Refresh},
-      {"Desktop entries", Glyph::Grid}, {"Advanced", Glyph::Sliders},
+      {"Interface", Glyph::Monitor},     {"Big screen", Glyph::Gamepad},
+      {"Sidebar", Glyph::Sidebar},       {"Shortcuts", Glyph::Keyboard},
+      {"Library", Glyph::Folder},        {"Metadata", Glyph::Image},
+      {"Sources", Glyph::Layers},        {"Runners", Glyph::Wrench},
+      {"Launching", Glyph::Play},        {"Installers", Glyph::Download},
+      {"Store launchers", Glyph::Store}, {"Detection", Glyph::Target},
+      {"Scanning", Glyph::Refresh},      {"Desktop entries", Glyph::Grid},
+      {"Advanced", Glyph::Sliders},
   };
   return kGlyphs.value(category, Glyph::Settings);
 }
@@ -331,6 +331,22 @@ void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchab
   rows_.push_back(row);
   row_index_by_widget_.insert(row_widget, static_cast<int>(rows_.size()) - 1);
   category->total_rows++;
+  // A row rebuilt later (SettingsCard::ClearRows) leaves the search with it.
+  connect(row_widget, &QObject::destroyed, this, [this, row_widget] { UnregisterRow(row_widget); });
+}
+
+SettingsNavWidget::~SettingsNavWidget() {
+  for (const RowEntry& row : rows_) disconnect(row.row_widget, nullptr, this, nullptr);
+}
+
+void SettingsNavWidget::UnregisterRow(QWidget* row_widget) {
+  const auto it = row_index_by_widget_.constFind(row_widget);
+  if (it == row_index_by_widget_.constEnd()) return;
+  categories_[size_t(rows_[size_t(it.value())].category_index)].total_rows--;
+  rows_.erase(rows_.begin() + it.value());
+  row_index_by_widget_.clear();
+  for (int i = 0; i < int(rows_.size()); ++i)
+    row_index_by_widget_.insert(rows_[size_t(i)].row_widget, i);
 }
 
 void SettingsNavWidget::SetRowGateVisible(QWidget* row_widget, bool visible) {

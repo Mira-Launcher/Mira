@@ -56,7 +56,7 @@ bool IsMiraFoldersOwn(const config::Config& config, const fs::path& path) {
   return false;
 }
 
-void Drops::Sort(const fs::path& path) {
+void Drops::Sort(const fs::path& path, bool ask) {
   std::error_code ec;
   if (!fs::exists(path, ec)) return Forget(path);
   std::vector<std::string> emulators;
@@ -73,12 +73,16 @@ void Drops::Sort(const fs::path& path) {
     drop.name = guess.name;
     drop.reason = guess.reason;
     drop.choices = {"game", "app"};
-    if (guess.kind != ImportKind::kUnknown && emulators.empty()) {
+    if (ask) {
+      drop.reason = "It was already here when Mira started";
+    } else if (guess.kind != ImportKind::kUnknown && emulators.empty()) {
       auto moved = MoveTo(path, std::string(ImportKindName(guess.kind)));
       if (moved) return;
       // Asked instead, so it doesn't sit there unseen.
       drop.reason = moved.error().message;
     }
+  } else if (emulators.size() == 1 && ask) {
+    drop.reason = "It was already here when Mira started";
   } else if (emulators.size() == 1) {
     auto moved = MoveTo(path, emulators.front());
     if (moved) return;

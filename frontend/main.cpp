@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
   std::vector<char*> arguments(argv, argv + argc + 1);
   QApplication app(argc, argv);
   mira_gui::display::FixX11Scale(arguments.data());
+  mira_gui::display::ForgetEnv();
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
   mira_gui::theme::EnlargeAppFont();

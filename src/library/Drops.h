@@ -35,8 +35,9 @@ class Drops {
 
   // A program goes into Games or Applications by what it looks like, a ROM to the one added
   // emulator that runs it; anything else Mira knows is kept to ask about. Archives are the
-  // caller's to extract first.
-  void Sort(const std::filesystem::path& path);
+  // caller's to extract first. With `ask`, nothing moves without asking: for what was there
+  // before mirad started, which may be the user's own.
+  void Sort(const std::filesystem::path& path, bool ask = false);
   // Moves an unclear drop where `choice` (one of its choices) says.
   Result<void> Settle(const std::filesystem::path& path, const std::string& choice);
   // Drops one no longer on disk.

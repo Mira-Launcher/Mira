@@ -174,6 +174,13 @@ void FixX11Scale(char** argv) {
   ::execv(QCoreApplication::applicationFilePath().toLocal8Bit().constData(), argv);
 }
 
+void ForgetEnv() {
+  for (const QByteArray& name : qgetenv(kSetByMira).split(',')) {
+    if (!name.isEmpty()) ::unsetenv(name.constData());
+  }
+  ::unsetenv(kSetByMira);
+}
+
 void SetInstanceLock(QLockFile* lock) {
   instance_lock = lock;
 }
