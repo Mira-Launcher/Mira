@@ -670,7 +670,7 @@ Store info is cached in `cache.db` in the config directory, and art as files und
 
 With a key, SteamGridDB also adds alternates for every game in `art_candidates`, without replacing store art. `metadata.steam_by_name` (on by default) looks up a ProtonDB tier by name for non-Steam games, and Steam's reviews and tags for a Steam game of exactly the same name. A game's `metadata.steam_appid` replaces the name match.
 
-Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover within 900x1350, a hero within 1920 wide, a logo within 800 and an icon within 256, or about two thirds of that when compact. It's saved as JPEG, or PNG when it has transparency. A JPEG that already fits is kept as downloaded.
+Art is shrunk as it's saved to fit its slot (`metadata.art_size`: `auto`, `compact`, `high` or `original`): a cover within 900x1350, a hero within 1920 wide, a logo within 800 and an icon within 256, or about two thirds of that when compact. `auto` is high, or original on a 4K or larger screen, and original is never shrunk. It's saved as JPEG, or PNG when it has transparency. A JPEG that already fits is kept as downloaded.
 
 New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 

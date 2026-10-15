@@ -359,13 +359,14 @@ Schema::Schema() {
          .keywords = "sgdb"});
 
   s.Add({.key = "metadata.art_size",
-         .label = "Art size",
+         .label = "Art resolution",
          .type = Type::String,
-         .default_value = "high",
-         .doc = "How large downloaded art is kept. High keeps covers sharp on large tiles and "
-                "high-DPI screens. Compact uses about half the disk space.",
-         .constraint = OneOf({"high", "compact"}),
-         .keywords = "quality resolution disk space cover hero"});
+         .default_value = "auto",
+         .doc = "The resolution downloaded art is kept at. Auto keeps it at High, or Original when "
+                "a 4K or larger screen is connected. Compact uses about half the disk space of "
+                "High. Original keeps art as downloaded.",
+         .constraint = OneOf({"auto", "compact", "high", "original"}),
+         .keywords = "quality resolution disk space cover hero 4k"});
 
   s.Add({.key = "metadata.title_details",
          .label = "Details for games not installed",
@@ -484,11 +485,10 @@ Schema::Schema() {
          .label = "Steam Web API key",
          .type = Type::String,
          .default_value = "",
-         .doc =
-             "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
-             "localhost. Steam's local files only list installed games. With this key and your "
-             "Steam ID, Mira can also list every game "
-             "you own and import your Steam playtime.",
+         .doc = "Optional. A free key from steamcommunity.com/dev/apikey; any domain name works "
+                "there, such as localhost. Without it Mira lists your games from Steam's files on "
+                "this computer. With it and your Steam ID, the list comes from Steam's servers and "
+                "playtime includes your other computers.",
          .is_secret = true,
          .link = "https://steamcommunity.com/dev/apikey",
          .keywords = "token owned games"});

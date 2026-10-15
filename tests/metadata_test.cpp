@@ -245,6 +245,13 @@ TEST_CASE(
   CHECK(fs::file_size(logo->file) == fs::file_size(dir / "logo.png"));
 }
 
+TEST_CASE("Original art is never smaller than high") {
+  const metadata::Box high = metadata::SlotBox("cover", false, metadata::ArtSize::kHigh);
+  const metadata::Box original = metadata::SlotBox("cover", false, metadata::ArtSize::kOriginal);
+  CHECK(original.width >= high.width);
+  CHECK(original.height >= high.height);
+}
+
 TEST_CASE("A refresh keeps art the user picked by hand") {
   const fs::path dir = TempDir("metadata-refresh-keeps-chosen");
   config::Config config(dir / "settings.toml");

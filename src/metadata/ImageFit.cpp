@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -30,12 +31,15 @@ constexpr long long kMaxPixels = 50'000'000;
 
 }  // namespace
 
-Box SlotBox(std::string_view slot, bool title, bool compact) {
+Box SlotBox(std::string_view slot, bool title, ArtSize size) {
+  if (size == ArtSize::kOriginal && slot != "icon")
+    return {std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
   Box box = slot == "cover"  ? (title ? Box{450, 675} : Box{900, 1350})
             : slot == "logo" ? Box{800, 800}
             : slot == "icon" ? Box{256, 256}
                              : Box{1920, 1920};
-  if (compact && slot != "icon") box = {box.width * 2 / 3, box.height * 2 / 3, 82};
+  if (size == ArtSize::kCompact && slot != "icon")
+    box = {box.width * 2 / 3, box.height * 2 / 3, 82};
   return box;
 }
 

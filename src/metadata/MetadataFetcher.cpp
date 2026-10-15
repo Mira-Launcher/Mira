@@ -141,8 +141,32 @@ json GriddbJson(const std::string& auth_header, const std::string& url) {
   return json::parse(result->output, nullptr, false);
 }
 
+// The tallest connected monitor's physical height, 0 when none is found.
+int LargestScreenHeight() {
+  int height = 0;
+  std::error_code ec;
+  for (auto it = fs::directory_iterator("/sys/class/drm", ec);
+       !ec && it != fs::directory_iterator(); it.increment(ec)) {
+    std::string state;
+    std::ifstream(it->path() / "status") >> state;
+    if (state != "connected") continue;
+    std::string mode;
+    std::getline(std::ifstream(it->path() / "modes"), mode);
+    const std::size_t x = mode.find('x');
+    if (x != std::string::npos) height = std::max(height, std::atoi(mode.c_str() + x + 1));
+  }
+  return height;
+}
+
 Box ArtBox(const config::Config& config, std::string_view slot, bool title = false) {
-  return SlotBox(slot, title, config.GetString("metadata.art_size") == "compact");
+  const std::string setting = config.GetString("metadata.art_size");
+  ArtSize size = ArtSize::kHigh;
+  if (setting == "compact") {
+    size = ArtSize::kCompact;
+  } else if (setting == "original" || (setting != "high" && LargestScreenHeight() >= 2160)) {
+    size = ArtSize::kOriginal;
+  }
+  return SlotBox(slot, title, size);
 }
 
 // Fits the finished `part` into `box` and moves it to `dest`, whose extension follows the fitted
