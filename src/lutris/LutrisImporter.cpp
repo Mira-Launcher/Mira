@@ -16,7 +16,9 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "library/Detector.h"
+#include "library/FolderTags.h"
 #include "library/Relocate.h"
 #include "runner/Exec.h"
 
@@ -60,12 +62,12 @@ Result<json> Query(const std::string& sqlite3_bin, const fs::path& pga_db, const
 // Lutris's "hidden" is a category named ".hidden", and "favorite" is
 // "favorites", both discovered from a real pga.db, not Lutris's docs (see
 // lutris/game.py's is_hidden/mark_as_hidden). Everything else maps straight
-// across as a same-named tag: a category is meant to organize games, which
-// is exactly what a tag already does in Mira.
+// across as a same-named tag, cased like Steam's: a category is meant to
+// organize games, which is exactly what a tag already does in Mira.
 std::string TagForCategory(const std::string& category) {
   if (category == ".hidden") return "hidden";
   if (category == "favorites") return "favorite";
-  return category;
+  return strings::TitleCase(category);
 }
 
 // The games with their categories and play history in one query. Older
@@ -120,7 +122,9 @@ Result<std::vector<LutrisRow>> ReadCatalog(const std::string& sqlite3_bin, const
 std::vector<std::string> MergeTags(std::vector<std::string> existing,
                                    const std::vector<std::string>& lutris_tags) {
   for (const std::string& tag : lutris_tags) {
-    if (std::ranges::find(existing, tag) == existing.end()) existing.push_back(tag);
+    if (std::ranges::none_of(existing,
+                             [&](const std::string& e) { return library::SameTag(e, tag); }))
+      existing.push_back(tag);
   }
   return existing;
 }

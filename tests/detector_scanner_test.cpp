@@ -6,6 +6,7 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "config/Schema.h"
+#include "core/Strings.h"
 #include "library/AutoSetup.h"
 #include "library/Detector.h"
 #include "library/Scanner.h"
@@ -88,7 +89,7 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   CHECK(native_game.status == model::GameStatus::Ready);
   CHECK(native_game.id == "celeste");
   // scan.tag_by_root defaults on: the library root's name becomes a tag, with no config needed.
-  CHECK(native_game.tags == std::vector<std::string>{root.filename().string()});
+  CHECK(native_game.tags == std::vector<std::string>{strings::TitleCase(root.filename().string())});
 
   library::Detector::Result windows_result;
   windows_result.candidates.push_back({"hollow_knight.exe", model::Platform::Windows, 4.5, true});

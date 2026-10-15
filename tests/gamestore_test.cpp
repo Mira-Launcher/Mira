@@ -8,6 +8,8 @@
 #include <thread>
 #include <vector>
 
+#include "store/Database.h"
+
 using namespace mira;
 namespace fs = std::filesystem;
 
@@ -150,6 +152,26 @@ TEST_CASE("a finished session is counted once and outlives its game") {
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.Sessions("celeste", 10).size() == 1);
   CHECK(store.Find("celeste")->play_seconds == 60);
+}
+
+TEST_CASE("an older library's tags are cased as Steam's, merging tags that only differed in case") {
+  const fs::path file = TempFile("games-tag-case.db");
+  {
+    store::GameStore store(file);
+    store.Load();
+    model::Game game = MakeGame("celeste", "Celeste");
+    game.tags = {"rpg", "Rpg", "open world", "eSports", "favorite"};
+    REQUIRE(store.Upsert(game).has_value());
+  }
+  {
+    store::Database db;
+    REQUIRE(db.Open(file).has_value());
+    REQUIRE(db.Exec("PRAGMA user_version = 6").has_value());  // from before the step
+  }
+  store::GameStore store(file);
+  store.Load();
+  CHECK(store.Find("celeste")->tags ==
+        std::vector<std::string>{"Rpg", "Open World", "eSports", "favorite"});
 }
 
 TEST_CASE("a damaged database is set aside and the library comes back from its backup") {

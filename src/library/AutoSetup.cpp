@@ -20,7 +20,7 @@ void TagFromPlace(const config::Config& config, model::Game& game, const fs::pat
   const Container place = ContainerOf(config, root, folder).value_or(Container{});
   if (!place.folder_tag.empty()) game.tags.push_back(place.folder_tag);
   if (config.GetBool("scan.tag_by_root") && !root.filename().empty())
-    game.tags.push_back(root.filename().string());
+    game.tags.push_back(strings::TitleCase(root.filename().string()));
   if (strings::ToLower(root.filename().string()) == "applications") game.tags.push_back("app");
   if (place.hidden) game.tags.push_back("hidden");
 }

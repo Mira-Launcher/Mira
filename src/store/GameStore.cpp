@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 6> kMigrations = {
+constexpr std::array<std::string_view, 7> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -134,6 +134,12 @@ INSERT INTO sessions_kept SELECT * FROM sessions;
 DROP TABLE sessions;
 ALTER TABLE sessions_kept RENAME TO sessions;
 CREATE INDEX sessions_uncounted ON sessions(counted) WHERE counted = 0;
+)sql",
+    R"sql(
+-- Tags cased as Steam names them, a tag that then matches one the game has merging into it. The
+-- tags Mira gives a meaning to stay lowercase.
+UPDATE OR IGNORE game_tags SET tag = title_case(tag) WHERE tag NOT IN ('favorite', 'hidden', 'app');
+DELETE FROM game_tags WHERE tag NOT IN ('favorite', 'hidden', 'app') AND tag <> title_case(tag);
 )sql",
 };
 

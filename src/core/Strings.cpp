@@ -1,6 +1,7 @@
 #include "core/Strings.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <regex>
 
@@ -38,6 +39,30 @@ std::string ToLower(std::string_view input) {
   std::string out(input);
   std::ranges::transform(out, out.begin(),
                          [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return out;
+}
+
+std::string TitleCase(std::string_view input) {
+  static constexpr std::array<std::string_view, 16> kSmall = {
+      "a",  "an",  "and", "as", "at", "but", "by", "for",
+      "in", "nor", "of",  "on", "or", "the", "to", "vs"};
+  std::string out(input);
+  bool first = true;
+  for (std::size_t start = 0; start < out.size();) {
+    if (out[start] == ' ') {
+      ++start;
+      continue;
+    }
+    const std::size_t end = std::min(out.find(' ', start), out.size());
+    const std::string_view word = std::string_view(out).substr(start, end - start);
+    const bool lower = std::ranges::none_of(word, [](unsigned char c) { return std::isupper(c); });
+    if (lower && std::islower(static_cast<unsigned char>(word.front())) &&
+        (first || !std::ranges::contains(kSmall, word))) {
+      out[start] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[start])));
+    }
+    first = false;
+    start = end;
+  }
   return out;
 }
 
