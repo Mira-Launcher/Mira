@@ -26,6 +26,7 @@ enum class Glyph {
   Filter,
   SortArrows,
   ChevronDown,
+  ChevronUp,
   Play,
   CheckCircle,
   Download,

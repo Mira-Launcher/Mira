@@ -1,6 +1,7 @@
 #include "RatingChips.h"
 
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
@@ -13,8 +14,9 @@ namespace mira_gui {
 namespace {
 
 QIcon Swatch(const QColor& color) {
-  QPixmap pixmap(18, 18);
-  pixmap.setDevicePixelRatio(2);
+  const qreal ratio = qApp->devicePixelRatio();
+  QPixmap pixmap(QSize(9, 9) * ratio);
+  pixmap.setDevicePixelRatio(ratio);
   pixmap.fill(Qt::transparent);
   QPainter painter(&pixmap);
   painter.setRenderHint(QPainter::Antialiasing);
