@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <format>
 #include <map>
+#include <unordered_map>
 
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Schema.h"
+#include "core/Strings.h"
 #include "library/FolderTags.h"
 #include "metadata/MetadataFetcher.h"
 
@@ -29,23 +31,40 @@ struct Tally {
   std::vector<std::string> ids;
 };
 
-void Count(std::vector<Tally>& tallies, const std::string& tag, const std::string& id) {
-  auto found =
-      std::ranges::find_if(tallies, [&](const Tally& t) { return library::SameTag(t.name, tag); });
-  if (found == tallies.end()) {
-    tallies.push_back({tag, {}});
-    found = tallies.end() - 1;
+// Tallies looked up by lowercased name, so counting every game's tags stays linear.
+class Tallies {
+ public:
+  void Count(const std::string& tag, const std::string& id) {
+    std::vector<std::string>& ids = At(tag).ids;
+    // A game's tags are counted together, so a second spelling of one repeats the last id.
+    if (ids.empty() || ids.back() != id) ids.push_back(id);
   }
-  if (!std::ranges::contains(found->ids, id)) found->ids.push_back(id);
-}
+  // Listed even with no games.
+  void Add(const std::string& tag) { At(tag); }
+  const Tally* Find(std::string_view tag) const {
+    const auto found = index_.find(strings::ToLower(tag));
+    return found != index_.end() ? &tallies_[found->second] : nullptr;
+  }
+  // Most games first, then by name.
+  std::vector<Tally> Ranked() const {
+    std::vector<Tally> out = tallies_;
+    std::ranges::sort(out, [](const Tally& a, const Tally& b) {
+      if (a.ids.size() != b.ids.size()) return a.ids.size() > b.ids.size();
+      return a.name < b.name;
+    });
+    return out;
+  }
 
-// Most games first, then by name.
-void Rank(std::vector<Tally>& tallies) {
-  std::ranges::sort(tallies, [](const Tally& a, const Tally& b) {
-    if (a.ids.size() != b.ids.size()) return a.ids.size() > b.ids.size();
-    return a.name < b.name;
-  });
-}
+ private:
+  Tally& At(const std::string& tag) {
+    const auto [found, added] = index_.try_emplace(strings::ToLower(tag), tallies_.size());
+    if (added) tallies_.push_back({tag, {}});
+    return tallies_[found->second];
+  }
+
+  std::vector<Tally> tallies_;
+  std::unordered_map<std::string, size_t> index_;
+};
 
 // tags.folders with `tag` in or out, keeping the others' order; nullopt when that's no change.
 std::optional<std::vector<std::string>> FoldersWith(const config::Config& config,
@@ -95,14 +114,14 @@ void Changed(Services& s, const std::vector<model::Game>& updated, bool folders_
 void RegisterTagsRoutes(Router& http, Services& s) {
   http.Get("/v1/tags", [&s](const Request&, Response& res) {
     const std::vector<std::string> folders = s.config.GetStringArray("tags.folders");
-    std::vector<Tally> mine;
-    std::vector<Tally> steam;
+    Tallies mine;
+    Tallies steam;
     int missing = 0;
     const auto stored = metadata::StoredSteamTags(s.games.Metadata());
     for (const model::Game& game : s.games.All()) {
       if (s.Conceals(game)) continue;
       for (const std::string& tag : game.tags) {
-        if (!IsMeaningTag(tag)) Count(mine, tag, game.id);
+        if (!IsMeaningTag(tag)) mine.Count(tag, game.id);
       }
       if (game.source == "launcher") continue;  // a store's launcher, not a game
       const auto found = stored.find(game.id);
@@ -111,36 +130,26 @@ void RegisterTagsRoutes(Router& http, Services& s) {
         if (metadata::WantsSteamTags(s.config, game)) ++missing;
         continue;
       }
-      for (const std::string& tag : *found->second) Count(steam, tag, game.id);
+      for (const std::string& tag : *found->second) steam.Count(tag, game.id);
     }
     // A folder tag no game has yet is still listed.
-    for (const std::string& folder : folders) {
-      if (std::ranges::none_of(mine,
-                               [&](const Tally& t) { return library::SameTag(t.name, folder); }))
-        mine.push_back({folder, {}});
-    }
-    Rank(mine);
-    Rank(steam);
+    for (const std::string& folder : folders) mine.Add(folder);
 
     json tags = json::array();
-    for (const Tally& tag : mine) {
-      const auto from_steam = std::ranges::find_if(
-          steam, [&](const Tally& t) { return library::SameTag(t.name, tag.name); });
-      tags.push_back({{"name", tag.name},
-                      {"count", tag.ids.size()},
-                      {"ids", tag.ids},
-                      {"folder", std::ranges::any_of(folders,
-                                                     [&](const std::string& f) {
-                                                       return library::SameTag(f, tag.name);
-                                                     })},
-                      {"steam_ids",
-                       from_steam != steam.end() ? from_steam->ids : std::vector<std::string>{}}});
+    for (const Tally& tag : mine.Ranked()) {
+      const Tally* from_steam = steam.Find(tag.name);
+      tags.push_back(
+          {{"name", tag.name},
+           {"count", tag.ids.size()},
+           {"ids", tag.ids},
+           {"folder",
+            std::ranges::any_of(
+                folders, [&](const std::string& f) { return library::SameTag(f, tag.name); })},
+           {"steam_ids", from_steam != nullptr ? from_steam->ids : std::vector<std::string>{}}});
     }
     json suggestions = json::array();
-    for (const Tally& tag : steam) {
-      if (std::ranges::any_of(mine,
-                              [&](const Tally& t) { return library::SameTag(t.name, tag.name); }))
-        continue;
+    for (const Tally& tag : steam.Ranked()) {
+      if (mine.Find(tag.name) != nullptr) continue;
       suggestions.push_back({{"name", tag.name}, {"count", tag.ids.size()}, {"ids", tag.ids}});
     }
     SendJson(

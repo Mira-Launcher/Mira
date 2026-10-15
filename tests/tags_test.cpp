@@ -80,7 +80,7 @@ TEST_CASE("The tag list counts your tags and suggests the Steam tags you don't h
   REQUIRE(config.Set("metadata.steam_by_name", true).has_value());
   REQUIRE(config.Set("tags.folders", json::array({"RPG", "Puzzle"})).has_value());
   const fs::path games = TempDir("tags-list-games");
-  AddGame(server.games(), "a", games / "A", {"rpg", "favorite"});
+  AddGame(server.games(), "a", games / "A", {"rpg", "favorite", "Rpg"});  // counted once
   AddGame(server.games(), "b", games / "B", {"RPG", "Indie"});
   AddGame(server.games(), "c", games / "C", {}, "steam:3");
   AddGame(server.games(), "d", games / "D");
