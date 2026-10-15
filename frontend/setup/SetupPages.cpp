@@ -1290,11 +1290,10 @@ void DonePage::Enter() {
   ShowSummary();
   if (!choices.games || choices.stores_skipped) return;
   for (const QString& store : choices.stores) {
+    // Steam's own files list its games; a key is extra.
     if (store == "steam") {
-      api::GetConfigAsync(this, [this](ConfigResult result) {
-        signed_in_["steam"] = result.ok && !result.values["steam.web_api_key"].empty();
-        ShowSummary();
-      });
+      signed_in_["steam"] = true;
+      ShowSummary();
       continue;
     }
     api::GetStoreStatusAsync(this, store.toStdString(), [this, store](StoreStatusResult status) {
@@ -1355,12 +1354,7 @@ void DonePage::ShowSummary() {
     for (const QString& store : choices.stores) {
       if (!signed_in_.contains(store)) continue;
       if (store == "steam") {
-        if (signed_in_[store]) {
-          add(Mark::Done, "Steam: the games you own are listed", {});
-        } else {
-          add(Mark::Left, "Steam's games you own",
-              "No key yet. Steam's page in the sidebar has this step.");
-        }
+        add(Mark::Done, "Steam: the games you own are listed", {});
       } else if (signed_in_[store]) {
         add(Mark::Done, StoreName(store) + ": signed in", {});
       } else {

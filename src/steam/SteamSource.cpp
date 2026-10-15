@@ -4,6 +4,7 @@
 
 #include "core/Command.h"
 #include "runner/Exec.h"
+#include "steam/AppCache.h"
 #include "steam/SteamDetector.h"
 #include "steam/SteamWebApi.h"
 
@@ -14,10 +15,24 @@ Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(
   std::vector<library::CatalogEntry> entries;
   if (!games.SourceEnabled("steam")) return entries;
 
-  const Result<std::vector<OwnedGame>> owned = ListOwnedGames(config);
-  if (!owned) return std::unexpected(owned.error());
+  std::vector<OwnedGame> owned;
+  if (config.GetString("steam.web_api_key").empty()) {
+    const auto root = FindSteamRoot(config);
+    if (!root) return entries;
+    owned = OwnedFromAppCache(*root);
+    const auto activity = ReadAppActivity(*root, config.GetString("steam.steamid64"));
+    for (OwnedGame& game : owned) {
+      if (const auto found = activity.find(game.appid); found != activity.end()) {
+        game.play_seconds = found->second.play_seconds;
+      }
+    }
+  } else {
+    Result<std::vector<OwnedGame>> listed = ListOwnedGames(config);
+    if (!listed) return std::unexpected(listed.error());
+    owned = std::move(*listed);
+  }
 
-  for (const OwnedGame& game : *owned) {
+  for (const OwnedGame& game : owned) {
     library::CatalogEntry entry;
     entry.source = "steam";
     entry.ref = game.appid;
