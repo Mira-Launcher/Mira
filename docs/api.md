@@ -686,13 +686,13 @@ The cached image for a slot (`cover` by default). `404` if that slot isn't cache
 Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
 
 ### `PUT /v1/games/{id}/artwork?type=`
-The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
+The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `missing_image` for an empty body, `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
 
 ### `DELETE /v1/games/{id}/artwork?type=`
 Leaves the slot with no image, so clients draw their placeholder: the slot becomes `{"source": "none", "chosen": true}` with no file and is kept through refreshes like a pick, and a store title without a cover isn't fetched again for it. Picking or uploading again replaces it. A job (kind `artwork`) with the same events as picking a candidate.
 
-### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
-Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.
+### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=[&style=][&adult=1]`
+Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. `style` narrows it to one of SteamGridDB's styles for the slot (covers: `alternate`, `blurred`, `white_logo`, `material`, `no_logo`; heroes: `alternate`, `blurred`, `material`; logos: `official`, `white`, `black`, `custom`; icons: `official`, `custom`), and `adult=1` to adult art, which needs `steamgriddb.nsfw`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, where `total` counts what matches; unfiltered page 0 adds the whole list's counts, `styles` (`{style: count}`, styles with none left out) and `adult`. On failure `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`, `invalid_style`, `adult_art_off`). `request` is echoed back so a caller can match its answer.
 
 ### `POST /v1/games/{id}/artwork/thumbs?type=`
 Body `{"candidate_ids": [...]}`, 1 to 64 ids. Caches a preview for each, in parallel. Event: `game.artwork_thumbs_ready` with `{id, type, ready, failed}` and `error` if the whole batch failed.

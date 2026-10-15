@@ -80,6 +80,16 @@ TEST_CASE("ParseArtCandidatesEvent reads a page of candidates, or why there isn'
   REQUIRE(event.candidates.size() == 1);
   CHECK(event.candidates[0].nsfw);
   CHECK(event.candidates[0].source == "steamgriddb");
+  CHECK_FALSE(event.styles.has_value());
+
+  REQUIRE(events::ParseArtCandidatesEvent(
+      R"({"id": "ripples", "type": "cover", "page": 0, "total": 16, "candidates": [],
+          "styles": {"alternate": 12, "material": 4}, "adult": 3})",
+      &event));
+  REQUIRE(event.styles.has_value());
+  CHECK(*event.styles ==
+        std::vector<std::pair<std::string, int>>{{"alternate", 12}, {"material", 4}});
+  CHECK(event.adult == 3);
 
   REQUIRE(events::ParseArtCandidatesEvent(
       R"({"id": "ripples", "type": "cover", "page": 0, "code": "no_steamgriddb_key", "error": "set it"})",

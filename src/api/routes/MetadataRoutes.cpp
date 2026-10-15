@@ -174,10 +174,12 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     }
     // Echoed back, so a caller can tell its answer from a replayed one.
     const std::string request = Param(req, "request");
-    s.artwork_thumbs.Post([&s, id, slot, page, request, name = subject->name] {
+    const metadata::CandidateFilter filter = {.style = Param(req, "style"),
+                                              .adult = Param(req, "adult") == "1"};
+    s.artwork_thumbs.Post([&s, id, slot, page, request, filter, name = subject->name] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
-      if (auto fetched =
-              metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page, name);
+      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page,
+                                                      name, filter);
           fetched) {
         event.update(*fetched);
       } else {

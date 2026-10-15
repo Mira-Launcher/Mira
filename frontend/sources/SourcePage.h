@@ -85,6 +85,8 @@ class SourcePage : public QWidget {
   void LibraryChanged();
   void OpenSettingsRequested(QString focus_key);
   void PlayRequested(QString id);
+  // Change cover on a not-installed title.
+  void TitleCoverRequested(QString source, QString ref, QString name);
   // Right-click on an installed game: the library's own game menu, plus
   // Update when `update_ref` is set.
   void GameMenuRequested(QString id, QPoint global_pos, QString update_ref);

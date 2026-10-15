@@ -84,14 +84,22 @@ Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& c
 Result<void> RemoveArtwork(const config::Config& config, store::MetadataStore& cache,
                            const std::string& game_id, const std::string& slot);
 
+// Narrows SteamGridDB's list to one of its styles, or to adult art.
+struct CandidateFilter {
+  std::string style;
+  bool adult = false;
+};
+
 // One page (50) of SteamGridDB's art for a game's slot, asked for now, so the
 // current steamgriddb.nsfw applies and results past the first 50 a metadata
 // fetch cached are reachable: {"page", "total", "candidates": [...]}, each
 // candidate shaped like art_candidates' and added to that cached list. A record with no
 // SteamGridDB match yet (a store title whose cover came from its store) is matched by `name`.
+// Unfiltered page 0 also counts the whole list: "styles" {style: count} and "adult".
 Result<nlohmann::json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache,
                                           const std::string& game_id, const std::string& slot,
-                                          int page, const std::string& name = {});
+                                          int page, const std::string& name = {},
+                                          const CandidateFilter& filter = {});
 
 // Points a store title's record at another SteamGridDB game (0: the top match for its name
 // again), dropping the SteamGridDB candidates listed for the old one. A title has no overrides

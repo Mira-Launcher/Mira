@@ -133,6 +133,15 @@ TEST_CASE("FetchCandidatePage fails before asking SteamGridDB when it can't") {
         "invalid_type");
   CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0).error().code ==
         "no_steamgriddb_key");
+  // A logo style isn't a cover's, and adult art only comes with steamgriddb.nsfw.
+  CHECK(
+      metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0, {}, {.style = "official"})
+          .error()
+          .code == "invalid_style");
+  CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "cover", 0, {},
+                                     {.style = {}, .adult = true})
+            .error()
+            .code == "adult_art_off");
 
   // A key, but no SteamGridDB match recorded for the game.
   REQUIRE(config.Set("steamgriddb.api_key", std::string("test-key")).has_value());
@@ -181,6 +190,8 @@ TEST_CASE(
       },
       &png, 16, 16, 4, pixels.data(), 0);
 
+  CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "").error().code ==
+        "missing_image");
   CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "GIF89a").error().code ==
         "unsupported_image");
   CHECK(metadata::UploadArtwork(config, cache, "celeste", "hero", "\x89PNG broken").error().code ==

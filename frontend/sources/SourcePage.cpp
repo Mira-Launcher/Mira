@@ -1457,11 +1457,18 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   // Every title in the list shares the mode, so they all hide or all unhide.
   const bool hide = !library_->ShowingHidden();
   QAction* hide_action = nullptr;
+  QAction* cover_action = nullptr;
   if (id_ != "humble") {
     menu.addSeparator();
+    if (selected.size() == 1) cover_action = menu.addAction("Change cover…");
     hide_action = menu.addAction(counted(hide ? "Hide" : "Unhide", selected.size()));
   }
   QAction* chosen = menu.exec(owned_grid_->viewport()->mapToGlobal(pos));
+  if (chosen != nullptr && chosen == cover_action) {
+    emit TitleCoverRequested(QString::fromStdString(id_), QString::fromStdString(selected.front()),
+                             index.data(GameTileDelegate::NameRole).toString());
+    return;
+  }
   if (chosen != nullptr && chosen == hide_action) {
     api::SetTitlesHiddenAsync(this, id_, std::move(selected), hide, [this](StoreActionResult r) {
       if (!r.ok) ShowError(owned_note_, "Could not change what's hidden.", r.error);

@@ -181,6 +181,8 @@ class LibraryWindow : public QMainWindow {
   void ShowNextCard();
   void LaunchGame(const std::string& id, const std::string& option = {});
   void OpenGameDialog(const std::string& id);
+  // The same card for a store title that isn't installed: its cover only.
+  void OpenTitleCover(const QString& source, const QString& ref, const QString& name);
   // Scrim + centered card slot, built once. Shown/hidden per open rather
   // than swapped into content_stack_, so the grid and sidebar stay live
   // underneath it.

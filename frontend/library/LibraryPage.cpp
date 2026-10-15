@@ -583,6 +583,11 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
     }
     menu.addSeparator();
   }
+  // The tile shows the first copy's cover.
+  connect(menu.addAction("Change cover…"), &QAction::triggered, this, [this, match] {
+    const auto& [source, ref] = match.copies.front();
+    emit TitleCoverRequested(source, ref, match.title);
+  });
   const bool hide = !library_->ShowingHidden();
   connect(menu.addAction(hide ? "Hide" : "Unhide"), &QAction::triggered, this, [this, match, hide] {
     for (const auto& [source, ref] : match.copies) {

@@ -293,6 +293,9 @@ struct ArtCandidatesEvent {
   int total = 0;
   std::string request;  // as passed to FetchArtCandidatesAsync
   std::vector<ArtCandidate> candidates;
+  // The whole list's counts, on unfiltered page 0 only: per SteamGridDB style, and adult art.
+  std::optional<std::vector<std::pair<std::string, int>>> styles;
+  int adult = 0;
   std::string code;
   ApiError error;
 };
@@ -320,6 +323,9 @@ struct GameMetadata {
   // Which art slots are actually cached, so a panel knows whether asking for
   // one is worth a round trip. See GET /v1/games/{id}/artwork?type=.
   std::vector<std::string> art_slots;
+  // Where each recorded slot's art came from: a store, "steamgriddb", "upload" for the user's
+  // own image, "none" once removed.
+  std::map<std::string, std::string> art_sources;
   // Each slot's ("cover", "hero", "logo", "icon") cached candidates: the
   // store's own art and what SteamGridDB returned. A slot without any is left out.
   std::map<std::string, std::vector<ArtCandidate>> candidates;

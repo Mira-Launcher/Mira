@@ -262,17 +262,35 @@ void RefitSlot(const fs::path& dir, json& slot, Box box) {
 // the slot doesn't already have one -- a Steam-owned game already got its
 // cover/hero from Steam's own CDN (FetchSteamOwned), and SteamGridDB here is
 // an alternate to switch to, not a replacement to switch to automatically.
-// One page (50 results) of a SteamGridDB game's art for one endpoint.
+// One page (50 results, or `limit`) of a SteamGridDB game's art for one endpoint.
 json FetchGriddbPage(const config::Config& config, const std::string& auth_header,
-                     std::string_view endpoint, std::int64_t griddb_id, int page) {
+                     std::string_view endpoint, std::int64_t griddb_id, int page,
+                     const CandidateFilter& filter = {}, int limit = 0) {
   // SteamGridDB leaves adult art out unless asked for it.
-  const std::string_view nsfw = config.GetBool("steamgriddb.nsfw") ? "any" : "false";
+  const std::string_view nsfw = filter.adult                         ? "true"
+                                : config.GetBool("steamgriddb.nsfw") ? "any"
+                                                                     : "false";
   // "Grids" include Steam's wide 920x430 capsules; a cover is the tall kind.
-  const std::string_view dimensions =
-      endpoint == "grids" ? "&dimensions=600x900,342x482,660x930" : "";
+  std::string extra = endpoint == "grids" ? "&dimensions=600x900,342x482,660x930" : "";
+  if (!filter.style.empty()) extra += "&styles=" + filter.style;
+  if (limit > 0) extra += std::format("&limit={}", limit);
   return GriddbJson(auth_header,
                     std::format("https://www.steamgriddb.com/api/v2/{}/game/{}?nsfw={}&page={}{}",
-                                endpoint, griddb_id, nsfw, page, dimensions));
+                                endpoint, griddb_id, nsfw, page, extra));
+}
+
+// The styles SteamGridDB sorts an endpoint's art into.
+std::span<const std::string_view> GriddbStyles(std::string_view endpoint) {
+  static constexpr std::array<std::string_view, 5> kGrids = {"alternate", "blurred", "white_logo",
+                                                             "material", "no_logo"};
+  static constexpr std::array<std::string_view, 3> kHeroes = {"alternate", "blurred", "material"};
+  static constexpr std::array<std::string_view, 4> kLogos = {"official", "white", "black",
+                                                             "custom"};
+  static constexpr std::array<std::string_view, 2> kIcons = {"official", "custom"};
+  if (endpoint == "grids") return kGrids;
+  if (endpoint == "heroes") return kHeroes;
+  if (endpoint == "logos") return kLogos;
+  return kIcons;
 }
 
 // A SteamGridDB result as an art_candidates entry; null without a url.
@@ -1525,6 +1543,7 @@ Result<void> UploadArtwork(const config::Config& config, store::MetadataStore& c
   if (slot != "cover" && slot != "hero" && slot != "logo" && slot != "icon") {
     return Err("invalid_type", "unknown art slot");
   }
+  if (bytes.empty()) return Err("missing_image", "no image was sent");
   const bool png = bytes.starts_with("\x89PNG");
   if (!png && !bytes.starts_with("\xFF\xD8\xFF"))
     return Err("unsupported_image", "only PNG and JPEG images can be used");
@@ -1598,13 +1617,18 @@ Result<void> MatchTitle(store::MetadataStore& cache, const std::string& id,
 
 Result<json> FetchCandidatePage(const config::Config& config, store::MetadataStore& cache,
                                 const std::string& game_id, const std::string& slot, int page,
-                                const std::string& name) {
+                                const std::string& name, const CandidateFilter& filter) {
   const std::string_view endpoint = slot == "cover"  ? "grids"
                                     : slot == "hero" ? "heroes"
                                     : slot == "logo" ? "logos"
                                     : slot == "icon" ? "icons"
                                                      : "";
   if (endpoint.empty()) return Err("invalid_type", "unknown art slot");
+  const auto styles = GriddbStyles(endpoint);
+  if (!filter.style.empty() && std::ranges::find(styles, filter.style) == styles.end())
+    return Err("invalid_style", "SteamGridDB has no such style for this slot");
+  const bool nsfw = config.GetBool("steamgriddb.nsfw");
+  if (filter.adult && !nsfw) return Err("adult_art_off", "steamgriddb.nsfw is off");
   const std::string api_key = config.GetString("steamgriddb.api_key");
   if (api_key.empty()) return NoGriddbKey("browsing SteamGridDB's art needs an API key");
 
@@ -1623,7 +1647,25 @@ Result<json> FetchCandidatePage(const config::Config& config, store::MetadataSto
   }
   if (griddb_id == 0) return Err("no_steamgriddb_match", "this game has no SteamGridDB match yet");
 
-  const json response = FetchGriddbPage(config, auth_header, endpoint, griddb_id, page);
+  // The whole list's counts, one single-result request each (SteamGridDB answers with the total),
+  // alongside the page itself.
+  const bool counts = page == 0 && filter.style.empty() && !filter.adult;
+  std::vector<int> totals(counts ? styles.size() + 1 : 0, 0);
+  json response;
+  {
+    std::vector<std::jthread> threads;
+    for (std::size_t i = 0; i < totals.size(); ++i) {
+      if (i == styles.size() && !nsfw) continue;
+      const CandidateFilter only = i < styles.size()
+                                       ? CandidateFilter{.style = std::string(styles[i])}
+                                       : CandidateFilter{.style = {}, .adult = true};
+      threads.push_back(Spawn([&, i, only] {
+        totals[i] = Value(FetchGriddbPage(config, auth_header, endpoint, griddb_id, 0, only, 1),
+                          "total", 0);
+      }));
+    }
+    response = FetchGriddbPage(config, auth_header, endpoint, griddb_id, page, filter);
+  }  // the counts' threads joined
   if (response.is_discarded() || !Value(response, "success", false)) {
     return Err("steamgriddb_unreachable", "couldn't reach SteamGridDB",
                "Check the internet connection. SteamGridDB also limits requests, so waiting a "
@@ -1652,7 +1694,16 @@ Result<json> FetchCandidatePage(const config::Config& config, store::MetadataSto
       [[maybe_unused]] auto written = cache.Write(game_id, info);
     }
   }
-  return json{{"page", page}, {"total", Value(response, "total", 0)}, {"candidates", candidates}};
+  json result = {
+      {"page", page}, {"total", Value(response, "total", 0)}, {"candidates", candidates}};
+  if (counts) {
+    json& by_style = result["styles"] = json::object();
+    for (std::size_t i = 0; i < styles.size(); ++i) {
+      if (totals[i] > 0) by_style[std::string(styles[i])] = totals[i];
+    }
+    result["adult"] = totals.back();
+  }
+  return result;
 }
 
 namespace {

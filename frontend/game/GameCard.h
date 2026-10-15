@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,10 @@ class GameCard : public HeroBackdrop {
  public:
   GameCard(const std::string& id, GameLibraryModel* library, ArtworkStore* artwork,
            QWidget* parent = nullptr);
+  // A store title that isn't installed, by the id it will have: only its cover, in the art picker.
+  // `title` carries its id, name and source.
+  GameCard(const GameSummary& title, GameLibraryModel* library, ArtworkStore* artwork,
+           QWidget* parent = nullptr);
 
   const std::string& id() const { return id_; }
   bool IsDirty() const;
@@ -48,6 +53,8 @@ class GameCard : public HeroBackdrop {
   void TagFilterRequested(QString tag);
 
  private:
+  // Both constructors' common part; `title` is null for a game.
+  void Build(const GameSummary* title);
   // Swaps the form for the art picker, and back.
   void OpenArtPicker();
   void CloseArtPicker(bool applied = false);
@@ -63,6 +70,8 @@ class GameCard : public HeroBackdrop {
   bool ChangesThisGame(const std::string& type, const std::string& data) const;
 
   std::string id_;
+  // A not-installed title's card has no form, so form_ stays null.
+  std::optional<GameSummary> title_info_;
   GameLibraryModel* library_ = nullptr;
   ArtworkStore* artwork_ = nullptr;
   GameEditForm* form_ = nullptr;
