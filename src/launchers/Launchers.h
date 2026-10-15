@@ -74,6 +74,12 @@ struct Launcher {
   // Autodesk's product code in its Create Installer's file name (Create_Installer_ACD_2027_...):
   // that installer builds an install image, which then installs the app.
   std::string autodesk_code;
+  // Its services stay in the prefix after it closes, and Proton's next launch waits on them: a
+  // launch with nothing of Mira's running in the prefix ends them first.
+  bool services_outlive_app = false;
+  // Link schemes its apps sign in through (Autodesk's adskidmgr:): the desktop hands them to `mira
+  // open-url`, which opens them in its prefix.
+  std::vector<std::string> url_schemes;
 };
 
 const std::vector<Launcher>& All();
@@ -127,8 +133,16 @@ std::string WindowsDir(const model::Game& game);
 // its own exe, since Microsoft 365's share one folder.
 std::string TrackedPath(const model::Game& game);
 
-// Stops everything running in `prefix`, in the background: asks, then insists.
-void EndPrefixSession(const std::string& prefix);
+// The command `reg` (a prefix's user.reg or system.reg) opens `scheme:` links with, split into
+// arguments with `url` in place of %1; empty if it registers none.
+std::vector<std::string> UrlCommand(std::string_view reg, std::string_view scheme,
+                                    std::string_view url);
+
+// Every launcher's url_schemes.
+std::vector<std::string> UrlSchemes();
+
+// Stops everything running in `prefix`: asks, then insists. In the background unless `wait`.
+void EndPrefixSession(const std::string& prefix, bool wait = false);
 
 // Host path of a Windows path inside `prefix`.
 std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_view windows_path);

@@ -13,7 +13,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <thread>
+#include <utility>
 
 #include "core/Lane.h"
 #include "core/Log.h"
@@ -845,6 +847,8 @@ const std::vector<Launcher>& All() {
           "installer (Create_Installer_{}_....exe), then choose it here.",
           app.name, code);
       app.autodesk_code = std::move(code);
+      app.services_outlive_app = true;
+      app.url_schemes = {"adskidmgr", "adsk.idmgr"};
       return app;
     };
     const Launcher autocad =
@@ -1102,7 +1106,63 @@ std::string TrackedPath(const model::Game& game) {
   return WindowsDir(game);
 }
 
-void EndPrefixSession(const std::string& prefix) {
+std::vector<std::string> UrlCommand(std::string_view reg, std::string_view scheme,
+                                    std::string_view url) {
+  const std::string header =
+      std::format("[Software\\\\Classes\\\\{}\\\\shell\\\\open\\\\command]", scheme);
+  const size_t section = reg.find(header);
+  if (section == std::string_view::npos) return {};
+  // The default value, as in @="\"C:\\...\\App.exe\" \"%1\"", unescaped.
+  std::string command;
+  std::istringstream lines{std::string(reg.substr(section + header.size()))};
+  for (std::string line; std::getline(lines, line);) {
+    if (line.starts_with('[')) break;
+    if (!line.starts_with("@=")) continue;
+    const size_t open = line.find('"'), close = line.rfind('"');
+    if (open == std::string::npos || close <= open) return {};
+    for (size_t i = open + 1; i < close; ++i)
+      command += line[i] == '\\' && i + 1 < close ? line[++i] : line[i];
+    break;
+  }
+  // Arguments split at spaces outside quotes.
+  std::vector<std::string> argv;
+  std::string arg;
+  bool quoted = false, any = false;
+  for (const char ch : command + " ") {
+    if (ch == '"') {
+      quoted = !quoted;
+      any = true;
+    } else if (ch == ' ' && !quoted) {
+      if (any) argv.push_back(std::exchange(arg, {}));
+      any = false;
+    } else {
+      arg += ch;
+      any = true;
+    }
+  }
+  bool placed = false;
+  for (std::string& a : argv) {
+    if (const size_t at = a.find("%1"); at != std::string::npos) {
+      a.replace(at, 2, url);
+      placed = true;
+    }
+  }
+  if (!argv.empty() && !placed) argv.emplace_back(url);
+  return argv;
+}
+
+std::vector<std::string> UrlSchemes() {
+  std::vector<std::string> schemes;
+  for (const Launcher& launcher : All()) {
+    for (const std::string& scheme : launcher.url_schemes) {
+      if (!std::ranges::contains(schemes, scheme)) schemes.push_back(scheme);
+    }
+  }
+  return schemes;
+}
+
+void EndPrefixSession(const std::string& prefix, bool wait) {
+  if (wait) return StopPrefix(prefix);
   std::thread([prefix] { StopPrefix(prefix); }).detach();
 }
 

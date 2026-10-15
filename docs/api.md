@@ -196,6 +196,9 @@ A live log, one per task so two running at once don't mix. Channels: `daemon` (m
 ### `POST /v1/games/{id}/stop`
 Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
 
+### `POST /v1/open-url`
+Body `{"url": "scheme:..."}`. Opens a link whose scheme an app's launcher takes (Autodesk's `adskidmgr:` and `adsk.idmgr:`, which finish its sign-in) with the command the app's prefix registers for it, in the prefix of a running app of that launcher, else the one played last. Mira's `mira.open-url.desktop` entry, `mira open-url %u`, is what the desktop opens these links with. `{"status": "opened", "game_id"}`, `400 invalid_body`, `404 no_app_for_url` when no installed app takes the scheme, `404 no_url_handler` when its prefix registers nothing for it.
+
 ### `POST /v1/games/{id}/run`
 Body `{"exe_path": "...", "args": "..."}`. Runs any executable in the game's prefix with normal tracking, provisioning the prefix first if there isn't one. This is how an installer is run by hand. `409 program_missing` when `exe_path` (relative to the game's folder, or absolute) isn't a file; a Windows path such as `C:\...` isn't checked.
 

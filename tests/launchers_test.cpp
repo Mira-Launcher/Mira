@@ -267,3 +267,18 @@ TEST_CASE(
   REQUIRE(failed);
   CHECK(failed->contains("failed on Revit 2027 and undid"));
 }
+
+TEST_CASE(
+    "launchers: a prefix's registered command opens a sign-in link, with the link in place of %1") {
+  const std::string reg =
+      "[Software\\\\Classes\\\\adskidmgr] 1792004047\n\"URL Protocol\"=\"\"\n\n"
+      "[Software\\\\Classes\\\\adskidmgr\\\\shell\\\\open\\\\command] 1792004047\n"
+      "@=\"\\\"C:\\\\Program Files\\\\Autodesk\\\\Idm.exe\\\" \\\"%1\\\"\"\n\n"
+      "[Software\\\\Classes\\\\other\\\\shell\\\\open\\\\command] 1\n@=\"x.exe\"\n";
+  CHECK(launchers::UrlCommand(reg, "adskidmgr", "adskidmgr:/login?code=a&state=b") ==
+        std::vector<std::string>{"C:\\Program Files\\Autodesk\\Idm.exe",
+                                 "adskidmgr:/login?code=a&state=b"});
+  CHECK(launchers::UrlCommand(reg, "other", "other:x") ==
+        std::vector<std::string>{"x.exe", "other:x"});
+  CHECK(launchers::UrlCommand(reg, "adsk.idmgr", "adsk.idmgr:/login").empty());
+}

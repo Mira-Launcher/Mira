@@ -15,6 +15,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
@@ -26,6 +27,8 @@ namespace fs = std::filesystem;
 
 constexpr std::string_view kPrefix = "mira-";
 constexpr std::string_view kSuffix = ".desktop";
+// Opens the launchers' sign-in links (Autodesk's adskidmgr:) through `mira open-url`.
+constexpr std::string_view kUrlHandler = "mira.open-url.desktop";
 
 // Freedesktop values are newline-delimited, so a name containing one would
 // inject arbitrary keys into the entry.
@@ -91,6 +94,18 @@ void UpdateMimeCache(const fs::path& dir) {
   command.argv = {"update-desktop-database", dir.string()};
   if (auto ran = runner::RunAndWait(command); !ran || ran->exit_code != 0)
     log::Info("update-desktop-database didn't run");
+}
+
+// The entry for kUrlHandler. The desktop opens a scheme with it while nothing else claims that
+// scheme.
+std::string UrlHandler() {
+  std::string mime;
+  for (const std::string& scheme : launchers::UrlSchemes())
+    mime += std::format("x-scheme-handler/{};", scheme);
+  return std::format(
+      "[Desktop Entry]\nType=Application\nName=Mira\nComment=Opens app sign-in links\n"
+      "Exec={} open-url %u\nNoDisplay=true\nTerminal=false\nMimeType={}\n",
+      strings::DesktopExecArg(Binary("mira")), mime);
 }
 
 }  // namespace
@@ -175,8 +190,17 @@ Result<void> DesktopEntries::Sync(const std::vector<model::Game>& games) {
   const fs::path dir = config_.GetPath("desktop_entries.directory");
 
   std::error_code ec;
+  // Sign-in links work with the menu entries off too.
+  fs::create_directories(dir, ec);
+  if (const std::string handler = UrlHandler(); files::ReadFile(dir / kUrlHandler) != handler) {
+    if (auto written = WriteFileAtomic(dir / kUrlHandler, handler, "desktop_write_failed");
+        written) {
+      UpdateMimeCache(dir);
+    } else {
+      log::Warn("could not write {}: {}", (dir / kUrlHandler).string(), written.error().message);
+    }
+  }
   if (enabled) {
-    fs::create_directories(dir, ec);
     if (ec) return Err("desktop_dir_failed", ec.message());
   } else if (!fs::is_directory(dir, ec)) {
     return {};  // disabled and nothing was ever written
