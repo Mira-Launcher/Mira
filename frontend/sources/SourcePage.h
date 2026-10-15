@@ -216,6 +216,7 @@ class SourcePage : public QWidget {
   QPushButton* art_key_ = nullptr;  // covers need a SteamGridDB key
   QString art_key_setting_;         // that failure's fix target
   TileGrid* owned_grid_ = nullptr;
+  TileGrid* dragging_grid_ = nullptr;  // a drag-select pressed on the page's background
 
   // The last lists, kept so a switch of hidden mode shows the other part at once.
   StoreLibraryResult owned_result_;

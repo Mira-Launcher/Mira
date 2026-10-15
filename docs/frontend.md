@@ -105,7 +105,7 @@ Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for e
 
 ### Selection and hover
 
-One click selects a tile. Ctrl, Shift or a drag selects several, and the context menu then offers batch actions; source pages work the same way (`widgets/TileView`), with *Install (N)* on not-installed titles. Double-click launches. A single click never launches, so a misclick can't start a game. *Drag to select* on the Interface tab turns drag selection off.
+One click selects a tile. Ctrl, Shift or a drag selects several, and the context menu then offers batch actions; source pages work the same way (`widgets/TileView`), with *Install (N)* on not-installed titles. There a drag may start anywhere on the page but stays within its section, and selecting in one section clears the other, since the two offer different actions. Double-click launches. A single click never launches, so a misclick can't start a game. *Drag to select* on the Interface tab turns drag selection off.
 
 Hovering a tile shows `library/HoverCard` with the name, status, runner, ProtonDB tier, developer and genres. Tooltips everywhere go through `widgets/ToolTip`, which draws them as the same card.
 

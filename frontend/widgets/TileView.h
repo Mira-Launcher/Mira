@@ -32,6 +32,18 @@ class TileView : public QListView {
   // A pixel less: QListView wraps a tile that ends exactly at the row's edge.
   TileRow Row() const { return {RoomBesideScrollbar(this, viewport()->width()) - 1, 0}; }
   void SetDragSelectEnabled(bool enabled);
+  // A drag-select pressed outside the grid (the page around a grid sized to its tiles), with the
+  // page passing on its moves and release. Points are in this view's viewport coordinates.
+  void BeginDragAt(const QPoint& pos, Qt::KeyboardModifiers modifiers);
+  void MoveDragTo(const QPoint& pos);
+  void FinishDrag() { EndDrag(); }
+  // Draws the drag's box on `host` (an ancestor) rather than inside this view, so a drag from the
+  // page around the grid shows from its start, kept within `bounds` (the grid's section, between
+  // the two) so it never reaches another grid. Null: this view's viewport.
+  void SetBandHost(QWidget* host, QWidget* bounds) {
+    band_host_ = host;
+    band_bounds_ = bounds;
+  }
   // A tile painted something that moves (a busy progress rail): repaint soon.
   // Stops by itself once no paint asks again.
   void KeepAnimating();
@@ -64,6 +76,8 @@ class TileView : public QListView {
   QPoint drag_pos_;                       // viewport coordinates, last seen
   Qt::KeyboardModifiers drag_modifiers_;  // at the press
   QRubberBand* rubber_band_ = nullptr;
+  QWidget* band_host_ = nullptr;
+  QWidget* band_bounds_ = nullptr;
   QTimer* autoscroll_timer_ = nullptr;
   QTimer* animation_timer_ = nullptr;
   QItemSelection base_selection_;  // what was selected when the drag began

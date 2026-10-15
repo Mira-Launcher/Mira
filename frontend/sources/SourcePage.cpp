@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -113,6 +114,17 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   // A click on the page's own background deselects, like one between tiles.
   content->installEventFilter(this);
   content_ = content;
+  // A drag pressed beside a grid shows its box over the page from the start, within its section.
+  // One section's selection at a time: what an action on the selection does differs between them.
+  for (TileGrid* grid : {library_grid_, owned_grid_}) {
+    if (grid == nullptr) continue;
+    grid->SetBandHost(content_, grid == library_grid_ ? library_section_ : owned_section_);
+    TileGrid* other = grid == library_grid_ ? owned_grid_ : library_grid_;
+    if (other == nullptr) continue;
+    connect(grid->selectionModel(), &QItemSelectionModel::selectionChanged, other, [grid, other] {
+      if (grid->selectionModel()->hasSelection()) other->clearSelection();
+    });
+  }
   outer->addWidget(scroll);
 
   connect(EventHub::Instance(), &EventHub::Received, this,
@@ -151,6 +163,38 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
       if (grid == nullptr) continue;
       grid->clearSelection();
       grid->setCurrentIndex(QModelIndex());
+    }
+    // Each grid is only as tall as its tiles, so a drag-select may start anywhere on the page: in
+    // the grid nearest the press, as if from the grid's own empty space.
+    const auto* press = static_cast<QMouseEvent*>(event);
+    dragging_grid_ = nullptr;
+    int nearest = 0;
+    for (TileGrid* grid : {library_grid_, owned_grid_}) {
+      if (grid == nullptr || !grid->isVisible()) continue;
+      const QRect area(grid->mapTo(content_, QPoint()), grid->size());
+      const int y = press->position().toPoint().y();
+      const int distance = y < area.top() ? area.top() - y : std::max(0, y - area.bottom());
+      if (dragging_grid_ == nullptr || distance < nearest) {
+        dragging_grid_ = grid;
+        nearest = distance;
+      }
+    }
+    if (press->button() == Qt::LeftButton && dragging_grid_ != nullptr) {
+      dragging_grid_->BeginDragAt(
+          dragging_grid_->viewport()->mapFrom(content_, press->position().toPoint()),
+          press->modifiers());
+    } else {
+      dragging_grid_ = nullptr;
+    }
+  }
+  if (watched == content_ && dragging_grid_ != nullptr) {
+    if (event->type() == QEvent::MouseMove) {
+      const auto* move = static_cast<QMouseEvent*>(event);
+      dragging_grid_->MoveDragTo(
+          dragging_grid_->viewport()->mapFrom(content_, move->position().toPoint()));
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+      dragging_grid_->FinishDrag();
+      dragging_grid_ = nullptr;
     }
   }
   return QWidget::eventFilter(watched, event);
