@@ -100,6 +100,13 @@ std::string Registry(const config::Config& config) {
       "\n[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\{}\\DllOverrides]\n"
       "\"appxdeploymentclient\"=\"builtin\"\n\n",
       kSetupFile);
+  // WebView2, which signs in, presents through a composition swapchain only Wine's own dxgi has. It
+  // stays off the shims too: its browser quit before loading the sign-in page.
+  reg +=
+      "[HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\msedgewebview2.exe\\DllOverrides]\n"
+      "\"dxgi\"=\"builtin\"\n\"d3d11\"=\"builtin\"\n";
+  for (const Shim& shim : kShims) reg += std::format("\"{}\"=\"builtin\"\n", shim.name);
+  reg += "\n";
 
   // Sign-in through the browser flow in WebView2, not the Windows account
   // broker Wine doesn't have.
@@ -175,6 +182,22 @@ std::string Configuration(const config::Config& config, std::span<const std::str
                      config.GetString("launchers.office.plan"), excluded);
 }
 
+// Writes Registry() into the prefix.
+Result<void> ImportRegistry(const config::Config& config, const runner::RunnerRegistry& runners,
+                            const model::Game& host, const fs::path& downloads) {
+  std::error_code ec;
+  fs::create_directories(downloads, ec);
+  const fs::path reg = downloads / "office-settings.reg";
+  std::ofstream(reg) << Registry(config);
+  std::string windows_reg = "Z:" + reg.string();
+  std::ranges::replace(windows_reg, '/', '\\');
+  const auto imported = runner::RunWine(runners, host, {"regedit", "/S", windows_reg});
+  if (!imported) return std::unexpected(imported.error());
+  if (imported->exit_code != 0)
+    return Err("regedit_failed", "couldn't write Microsoft 365's registry settings");
+  return {};
+}
+
 Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegistry& runners,
                           const model::Game& host) {
   // At most one check every few hours; a launch never waits on it twice.
@@ -197,6 +220,8 @@ Result<void> RefreshShims(const config::Config& config, const runner::RunnerRegi
   }
   log::Info("updating the Microsoft 365 shims to {}",
             version.empty() ? "the local build" : version);
+  // A new release can come with new settings.
+  if (auto imported = ImportRegistry(config, runners, host, downloads); !imported) return imported;
   if (auto installed = shims::Install(config, runners, host, downloads, kShims, &version);
       !installed)
     return installed;
@@ -267,17 +292,8 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> DownloadProgress(const fs
 
 Result<void> Prepare(const config::Config& config, const runner::RunnerRegistry& runners,
                      const model::Game& host, const fs::path& downloads) {
-  std::error_code ec;
-  fs::create_directories(downloads, ec);
-  const fs::path reg = downloads / "office-settings.reg";
-  std::ofstream(reg) << Registry(config);
   log::Info("writing Microsoft 365 settings");
-  std::string windows_reg = "Z:" + reg.string();
-  std::ranges::replace(windows_reg, '/', '\\');
-  const auto imported = runner::RunWine(runners, host, {"regedit", "/S", windows_reg});
-  if (!imported) return std::unexpected(imported.error());
-  if (imported->exit_code != 0)
-    return Err("regedit_failed", "couldn't write Microsoft 365's registry settings");
+  if (auto imported = ImportRegistry(config, runners, host, downloads); !imported) return imported;
 
   log::Info("installing the Microsoft 365 shims");
   std::string version;
