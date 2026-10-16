@@ -18,6 +18,8 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include "../client/Async.h"
+
 namespace mira_gui::display {
 namespace {
 
@@ -69,7 +71,12 @@ QString Wanted(bool big_screen) {
   }
   const bool wayland = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY");
   const bool x11 = !qEnvironmentVariableIsEmpty("DISPLAY");
-  if (!wayland || (x11 && (big_screen || Server() == "x11" || !WaylandPluginAvailable()))) {
+  // Started by Steam (its shortcut, or Game Mode's gamescope, which shows only X11 windows): a
+  // restart would end what Steam tracks, so it stays on X11 throughout.
+  const bool steam = qEnvironmentVariableIsSet("SteamGameId") ||
+                     qEnvironmentVariable("XDG_CURRENT_DESKTOP") == "gamescope";
+  if (!wayland ||
+      (x11 && (big_screen || steam || Server() == "x11" || !WaylandPluginAvailable()))) {
     return "xcb";
   }
   return "wayland";
@@ -202,6 +209,8 @@ bool Restart(const QStringList& arguments) {
   if (const qint64 pid = daemon_pid ? daemon_pid() : 0; pid > 0) {
     environment.insert("MIRA_DAEMON_PID", QString::number(pid));
   }
+  // Saves still on their way to mirad (setup's last page, a setting) land before this one quits.
+  async::QuickPool()->waitForDone(5000);
   QProcess process;
   process.setProgram(QCoreApplication::applicationFilePath());
   process.setArguments(arguments);

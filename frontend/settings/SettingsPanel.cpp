@@ -530,7 +530,7 @@ void SettingsPanel::FinishSave(bool ok, const QString& error) {
   if (std::exchange(restart_prompt_, false) && ok &&
       notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens.",
                       "Restart now")) {
-    display::Restart({});
+    display::Restart({"--desktop"});
   }
 }
 
