@@ -74,6 +74,7 @@ struct GameSummary {
   // ... ("launcher" for a store launcher's own install).
   std::string source;
   std::string source_ref;  // the launcher's id, for a launcher's own install
+  std::string store_url;   // its page on the store it's from; empty when there's none
   bool running = false;
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
@@ -293,6 +294,9 @@ struct ArtCandidatesEvent {
   int total = 0;
   std::string request;  // as passed to FetchArtCandidatesAsync
   std::vector<ArtCandidate> candidates;
+  // The whole list's counts, on unfiltered page 0 only: per SteamGridDB style, and adult art.
+  std::optional<std::vector<std::pair<std::string, int>>> styles;
+  int adult = 0;
   std::string code;
   ApiError error;
 };
@@ -320,6 +324,9 @@ struct GameMetadata {
   // Which art slots are actually cached, so a panel knows whether asking for
   // one is worth a round trip. See GET /v1/games/{id}/artwork?type=.
   std::vector<std::string> art_slots;
+  // Where each recorded slot's art came from: a store, "steamgriddb", "upload" for the user's
+  // own image, "none" once removed.
+  std::map<std::string, std::string> art_sources;
   // Each slot's ("cover", "hero", "logo", "icon") cached candidates: the
   // store's own art and what SteamGridDB returned. A slot without any is left out.
   std::map<std::string, std::vector<ArtCandidate>> candidates;
@@ -1221,6 +1228,7 @@ struct StoreTitle {
   std::vector<std::string> steam_tags;  // most voted first, empty when none are cached
   std::string review_summary;  // Steam's label ("Very Positive"), empty when none is cached
   int review_percent = -1;     // share of positive Steam reviews, -1 when none is cached
+  std::string store_url;       // its page on the store; empty when the store gives none
 };
 
 // GET /v1/sources/{id}/removal.

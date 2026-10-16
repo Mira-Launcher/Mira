@@ -57,6 +57,19 @@ void TileView::mousePressEvent(QMouseEvent* event) {
   QListView::mousePressEvent(event);
 }
 
+void TileView::BeginDragAt(const QPoint& pos, Qt::KeyboardModifiers modifiers) {
+  if (!drag_select_enabled_) return;
+  drag_origin_ = pos + Offset();
+  drag_modifiers_ = modifiers;
+  tracking_drag_ = true;
+}
+
+void TileView::MoveDragTo(const QPoint& pos) {
+  if (!tracking_drag_) return;
+  drag_pos_ = pos;
+  UpdateDrag();
+}
+
 void TileView::mouseMoveEvent(QMouseEvent* event) {
   // The release went somewhere else (alt-tab, a desktop switch): drop the
   // drag instead of resuming it from the old origin.
@@ -112,7 +125,9 @@ void TileView::UpdateDrag() {
     if (!(drag_modifiers_ & (Qt::ControlModifier | Qt::ShiftModifier))) clearSelection();
     base_selection_ = selectionModel()->selection();
     hover_.Track(QModelIndex());  // a dwell started before the drag would pop up mid-drag
-    rubber_band_ = new QRubberBand(QRubberBand::Rectangle, viewport());
+    rubber_band_ =
+        new QRubberBand(QRubberBand::Rectangle, band_host_ != nullptr ? band_host_ : viewport());
+    rubber_band_->raise();
     rubber_band_->show();
     if (autoscroll_timer_ == nullptr) {
       autoscroll_timer_ = new QTimer(this);
@@ -121,8 +136,18 @@ void TileView::UpdateDrag() {
     }
     autoscroll_timer_->start();
   }
-  const QRect rect = QRect(drag_origin_, current).normalized();
-  rubber_band_->setGeometry(rect.translated(-Offset()));
+  QRect rect = QRect(drag_origin_, current).normalized();
+  QRect band = rect.translated(-Offset());
+  if (band_host_ != nullptr) {
+    band.moveTopLeft(viewport()->mapTo(band_host_, band.topLeft()));
+    QRect bounds = band_host_->rect();
+    if (band_bounds_ != nullptr)
+      bounds = QRect(band_bounds_->mapTo(band_host_, QPoint()), band_bounds_->size());
+    band = band.intersected(bounds);
+    // What the box covers is what it selects.
+    rect = QRect(viewport()->mapFrom(band_host_, band.topLeft()) + Offset(), band.size());
+  }
+  rubber_band_->setGeometry(band);
   // One select() call, not one per tile: each of those emits its own
   // selectionChanged.
   QItemSelection selection = base_selection_;

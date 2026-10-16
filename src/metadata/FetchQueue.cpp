@@ -34,6 +34,16 @@ void FetchQueue::Enqueue(const config::Config& config, api::EventBus& events, mo
   StartWorkers(config, events);
 }
 
+void FetchQueue::EnqueueNew(const config::Config& config, api::EventBus& events, model::Game game) {
+  Done done;
+  if (new_game_hook_) {
+    done = [this, id = game.id](bool ok) {
+      if (ok) new_game_hook_(id);
+    };
+  }
+  Enqueue(config, events, std::move(game), /*force=*/false, /*announce=*/false, std::move(done));
+}
+
 int FetchQueue::EnqueueTitles(const config::Config& config, api::EventBus& events,
                               std::vector<model::Game> titles) {
   std::vector<model::Game> others;

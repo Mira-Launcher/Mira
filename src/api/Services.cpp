@@ -81,6 +81,45 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     CheckForInstall(id);
     SortByTags({id});  // its tags may have changed while it ran
   });
+  fetches.OnNewGameFetched([this](const std::string& id) { TagFromSteam(id); });
+}
+
+void Services::TagFromSteam(const std::string& id) {
+  if (!config.GetBool("tags.steam") || !config.GetBool("tags.steam_new_games")) return;
+  const json record = games.Metadata().Read(id);
+  const json steam =
+      record.contains("steam_tags") ? record["steam_tags"].value("tags", json()) : json();
+  if (!steam.is_array() || steam.empty()) return;
+  // The user's tags as the library spells them: the other games' and the folder tags.
+  std::vector<std::string> mine = config.GetStringArray("tags.folders");
+  for (const model::Game& game : games.All()) {
+    if (game.id == id) continue;
+    for (const std::string& tag : game.tags) {
+      if (library::SameTag(tag, "favorite") || library::SameTag(tag, "hidden") ||
+          library::SameTag(tag, "app"))
+        continue;
+      if (std::ranges::none_of(mine,
+                               [&](const std::string& m) { return library::SameTag(m, tag); }))
+        mine.push_back(tag);
+    }
+  }
+  bool added = false;
+  auto updated = games.Update(id, [&](model::Game& game) {
+    for (const json& name : steam) {
+      if (!name.is_string()) continue;
+      const auto known = std::ranges::find_if(
+          mine, [&](const std::string& m) { return library::SameTag(m, name.get<std::string>()); });
+      if (known == mine.end() || std::ranges::any_of(game.tags, [&](const std::string& t) {
+            return library::SameTag(t, *known);
+          }))
+        continue;
+      game.tags.push_back(*known);
+      added = true;
+    }
+  });
+  if (!updated || !added) return;
+  events.Publish("game.updated", Record(*updated));
+  SortByTags({id});
 }
 
 Services::~Services() {
@@ -309,6 +348,8 @@ void Services::AddRecordFields(json& record, const model::Game& game,
   // So a client can resync after a reconnect.
   record["running"] = supervisor.IsRunning(game.id);
   record["art"] = games.Metadata().ArtVersions(game.id);
+  if (std::string page = library::StorePage(games, game); !page.empty())
+    record["store_url"] = std::move(page);
   AddNeedsCheck(record, settings.threshold);
   AddSorting(record, settings.rules, game);
 }
@@ -393,7 +434,7 @@ void Services::WatchExternalGames() {
 }
 
 void Services::QueueMetadata(const std::vector<model::Game>& games) {
-  for (const model::Game& game : games) fetches.Enqueue(config, events, game);
+  for (const model::Game& game : games) fetches.EnqueueNew(config, events, game);
 }
 
 library::ScanSummary Services::Scan() {

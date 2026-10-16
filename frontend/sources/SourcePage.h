@@ -85,6 +85,8 @@ class SourcePage : public QWidget {
   void LibraryChanged();
   void OpenSettingsRequested(QString focus_key);
   void PlayRequested(QString id);
+  // Change cover on a not-installed title.
+  void TitleCoverRequested(QString source, QString ref, QString name);
   // Right-click on an installed game: the library's own game menu, plus
   // Update when `update_ref` is set.
   void GameMenuRequested(QString id, QPoint global_pos, QString update_ref);
@@ -216,6 +218,7 @@ class SourcePage : public QWidget {
   QPushButton* art_key_ = nullptr;  // covers need a SteamGridDB key
   QString art_key_setting_;         // that failure's fix target
   TileGrid* owned_grid_ = nullptr;
+  TileGrid* dragging_grid_ = nullptr;  // a drag-select pressed on the page's background
 
   // The last lists, kept so a switch of hidden mode shows the other part at once.
   StoreLibraryResult owned_result_;
@@ -224,6 +227,7 @@ class SourcePage : public QWidget {
   std::vector<std::pair<QString, QString>> owned_;
   QSet<QString> not_owned_;              // refs listed from a collection but not bought
   QHash<QString, QString> tiers_;        // ref -> ProtonDB tier
+  QHash<QString, QString> store_urls_;   // ref -> its store page
   QHash<QString, QStringList> tags_;     // ref -> Steam tags, for the filter
   QHash<QString, QString> reviews_;      // ref -> Steam's review label
   QHash<QString, int> review_percents_;  // ref -> share of positive Steam reviews

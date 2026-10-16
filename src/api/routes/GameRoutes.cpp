@@ -230,8 +230,12 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const Services::RecordSettings settings = s.CurrentRecordSettings();
     for (const model::Game& game : *updated) games.push_back(s.Record(game, &settings));
     if (!updated->empty()) {
-      // Tags never change a menu entry; only an override can.
-      if (!config.empty()) {
+      // Of the tags only hidden changes a menu entry, as an override can.
+      const auto names_hidden = [](const std::vector<std::string>& tags) {
+        return std::ranges::any_of(
+            tags, [](const std::string& tag) { return library::SameTag(tag, "hidden"); });
+      };
+      if (!config.empty() || names_hidden(*add_tags) || names_hidden(*remove_tags)) {
         for (const model::Game& game : *updated) s.SyncDesktopEntry(game.id);
       }
       s.events.Publish("games.updated", {{"games", games}});
@@ -458,7 +462,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (!result) return SendError(res, 500, result.error());
 
     s.SyncDesktopEntry(game.id);
-    if (!existing) s.fetches.Enqueue(s.config, s.events, game);
+    if (!existing) s.fetches.EnqueueNew(s.config, s.events, game);
     SendJson(res,
              s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game)).payload);
     if (game.status == model::GameStatus::SettingUp) s.ProvisionLater(game);

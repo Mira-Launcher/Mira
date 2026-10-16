@@ -132,6 +132,14 @@ bool ParseArtCandidatesEvent(const std::string& data, ArtCandidatesEvent* out) {
     for (const json& item : payload["candidates"])
       out->candidates.push_back(mapping::ToArtCandidate(item));
   }
+  out->styles.reset();
+  if (const auto styles = payload.find("styles"); styles != payload.end() && styles->is_object()) {
+    out->styles.emplace();
+    for (const auto& [style, count] : styles->items()) {
+      if (count.is_number_integer()) out->styles->emplace_back(style, count.get<int>());
+    }
+  }
+  out->adult = payload.value("adult", 0);
   return true;
 }
 

@@ -61,11 +61,8 @@ void ImportLutris(QWidget* parent, std::function<void()> on_imported) {
 
 void SyncDesktopEntries(QWidget* parent) {
   api::SyncDesktopEntriesAsync(parent, [parent](DesktopEntrySyncResult result) {
-    if (!result.ok) {
+    if (!result.ok)
       notify::FailedRequest(parent, "Could not regenerate desktop entries.", result.error);
-      return;
-    }
-    notify::Notice(parent, "Desktop entries regenerated.");
   });
 }
 
@@ -87,11 +84,8 @@ void RemoveAllDesktopEntries(QWidget* parent) {
       return;
     }
     api::SyncDesktopEntriesAsync(parent, [parent](DesktopEntrySyncResult sync_result) {
-      if (!sync_result.ok) {
+      if (!sync_result.ok)
         notify::FailedRequest(parent, "Could not remove the desktop entries.", sync_result.error);
-        return;
-      }
-      notify::Notice(parent, "Desktop entries removed.");
     });
   });
 }
@@ -106,7 +100,6 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
           "Move games")) {
     return;
   }
-  notify::Notice(parent, "Moving games into Mira's folders…");
   api::RelocateLibraryAsync(parent, [parent, game_name](RelocateLibraryResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not move the games.", result.error);

@@ -1,5 +1,7 @@
 #include "LibraryWindow.h"
 
+#include <malloc.h>
+
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -398,6 +400,8 @@ void LibraryWindow::BuildShortcuts() {
   hidden_action_ =
       add_action(this, "toggle_hidden", "Show only hidden games, or leave hidden mode",
                  QKeySequence(Qt::CTRL | Qt::Key_H), {}, [this] { ToggleHiddenMode(); });
+  // Held down, it would flip the whole window's style at the key repeat rate.
+  hidden_action_->setAutoRepeat(false);
   qApp->installEventFilter(this);  // input anywhere keeps unlocked hidden games unlocked
   grid_page_->SetHiddenShortcut(HiddenShortcut());
 
@@ -596,8 +600,6 @@ void LibraryWindow::ImportDropped(const QString& path) {
 }
 
 void LibraryWindow::StartImport(const QString& path, const QString& kind, const QString& name) {
-  mira_gui::notify::Notice(this,
-                           "Adding " + name + " to " + (kind == "app" ? "Applications" : "Games"));
   mira_gui::api::ImportPathAsync(this, path.toStdString(), kind.toStdString(),
                                  [this, name](mira_gui::ImportPathResult result) {
                                    if (!result.ok)
@@ -899,6 +901,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
       return std::nullopt;
     return mira_gui::DownloadTracker::TileProgressFor(*entry);
   };
+  connect(page, &mira_gui::LibraryPage::TitleCoverRequested, this, &LibraryWindow::OpenTitleCover);
   connect(page, &mira_gui::LibraryPage::InstallTitleRequested, this,
           [this](const QString& source, const QString& ref) {
             mira_gui::api::InstallStoreTitleAsync(
@@ -1228,6 +1231,8 @@ void LibraryWindow::ShowingHiddenChanged(bool showing) {
 }
 
 void LibraryWindow::ToggleHiddenMode() {
+  // Settings lists no games, and restyling all of its widgets is slow.
+  if (settings_loading_ || SettingsOpen()) return;
   if (library_->ShowingHidden() || !hidden_locked_) {
     library_->SetShowingHidden(!library_->ShowingHidden());
     return;
@@ -1458,6 +1463,24 @@ void LibraryWindow::LaunchGame(const std::string& id, const std::string& option)
       [this, id] { library_->SetLaunching(id, false); });
 }
 
+void LibraryWindow::OpenTitleCover(const QString& source, const QString& ref, const QString& name) {
+  if (!LeaveOverlays()) return;
+  if (game_card_ != nullptr) CloseGameEdit();
+  SetGridControlsEnabled(false);
+  mira_gui::GameSummary title;
+  title.id = (source + "-" + ref).toStdString();
+  title.name = name.toStdString();
+  title.source = source.toStdString();
+  title.source_ref = ref.toStdString();
+  game_card_ = new mira_gui::GameCard(title, library_, artwork_);
+  SizeGameEditCard(game_card_);
+  connect(game_card_, &mira_gui::GameCard::CloseRequested, this, &LibraryWindow::CloseGameEdit);
+  game_edit_overlay_layout_->addWidget(game_card_, 0, 0, Qt::AlignCenter);
+  root_stack_->setCurrentWidget(game_edit_overlay_);
+  game_edit_overlay_->show();
+  UpdateLibraryNavActive();
+}
+
 void LibraryWindow::OpenGameDialog(const std::string& id) {
   if (!LeaveOverlays()) return;  // a dirty card or Settings page was kept
   // Fresh instance each time: the card loads its id at construction.
@@ -1498,6 +1521,8 @@ void LibraryWindow::CloseGameEdit() {
     game_edit_overlay_layout_->removeWidget(game_card_);
     game_card_->deleteLater();
     game_card_ = nullptr;
+    // The picker's previews are freed once the card is deleted; glibc keeps that memory otherwise.
+    QTimer::singleShot(2000, [] { malloc_trim(0); });
   }
   ShowNextCard();
 }
@@ -1841,6 +1866,8 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
             for (const QString& id : ids) games.push_back(id.toStdString());
             menus_->ShowBatchMenu(games, pos);
           });
+  connect(source_page_, &mira_gui::SourcePage::TitleCoverRequested, this,
+          &LibraryWindow::OpenTitleCover);
   connect(source_page_, &mira_gui::SourcePage::PlayRequested, this, [this](const QString& id) {
     const mira_gui::GameSummary* game = FindGame(id.toStdString());
     if (game != nullptr && !double_click_play_) {
@@ -2156,7 +2183,12 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     mira_gui::ArtworkSelectEvent event;
     if (!live || !mira_gui::events::ParseArtworkSelectEvent(data, &event)) return;
     if (event.slot == "cover") {
-      artwork_->NoteArt(event.id, event.art);
+      // A store title's cover is held without its versions to compare: it's fetched again.
+      if (library_->Find(event.id) != nullptr) {
+        artwork_->NoteArt(event.id, event.art);
+      } else {
+        artwork_->Invalidate(event.id);
+      }
     } else if (event.slot == "hero") {
       if (game_card_ != nullptr) game_card_->RefreshHero(event.id);
     }

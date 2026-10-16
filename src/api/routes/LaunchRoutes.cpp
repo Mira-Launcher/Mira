@@ -905,7 +905,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     s.events.Publish("game.updated", s.Record(*result));
     // Its art and store info were looked up by the installer's name.
     if (moved) {
-      s.fetches.Enqueue(s.config, s.events, *result);
+      s.fetches.EnqueueNew(s.config, s.events, *result);
       library::AnnounceInstallerLeftover(s.events, *result);
     }
     SendJson(res, s.Record(*result));

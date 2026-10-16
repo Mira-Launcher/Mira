@@ -1,6 +1,7 @@
 #include "GameMenus.h"
 
 #include <QAction>
+#include <QDesktopServices>
 #include <QLineEdit>
 #include <QMenu>
 #include <QWidget>
@@ -83,6 +84,11 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   }
   QAction* details = menu.addAction("Game settings…");
   QAction* folder = menu.addAction("Open install folder");
+  if (!game.store_url.empty()) {
+    const QUrl page(QString::fromStdString(game.store_url));
+    connect(menu.addAction("Open store page"), &QAction::triggered, parent_,
+            [page] { QDesktopServices::openUrl(page); });
+  }
   QAction* more_details = menu.addAction("More details…");
   const bool pinned = IsPinned(game);
   QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");

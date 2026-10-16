@@ -1,6 +1,7 @@
 #include "SourcePage.h"
 
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFrame>
@@ -9,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -113,6 +115,17 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   // A click on the page's own background deselects, like one between tiles.
   content->installEventFilter(this);
   content_ = content;
+  // A drag pressed beside a grid shows its box over the page from the start, within its section.
+  // One section's selection at a time: what an action on the selection does differs between them.
+  for (TileGrid* grid : {library_grid_, owned_grid_}) {
+    if (grid == nullptr) continue;
+    grid->SetBandHost(content_, grid == library_grid_ ? library_section_ : owned_section_);
+    TileGrid* other = grid == library_grid_ ? owned_grid_ : library_grid_;
+    if (other == nullptr) continue;
+    connect(grid->selectionModel(), &QItemSelectionModel::selectionChanged, other, [grid, other] {
+      if (grid->selectionModel()->hasSelection()) other->clearSelection();
+    });
+  }
   outer->addWidget(scroll);
 
   connect(EventHub::Instance(), &EventHub::Received, this,
@@ -151,6 +164,38 @@ bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
       if (grid == nullptr) continue;
       grid->clearSelection();
       grid->setCurrentIndex(QModelIndex());
+    }
+    // Each grid is only as tall as its tiles, so a drag-select may start anywhere on the page: in
+    // the grid nearest the press, as if from the grid's own empty space.
+    const auto* press = static_cast<QMouseEvent*>(event);
+    dragging_grid_ = nullptr;
+    int nearest = 0;
+    for (TileGrid* grid : {library_grid_, owned_grid_}) {
+      if (grid == nullptr || !grid->isVisible()) continue;
+      const QRect area(grid->mapTo(content_, QPoint()), grid->size());
+      const int y = press->position().toPoint().y();
+      const int distance = y < area.top() ? area.top() - y : std::max(0, y - area.bottom());
+      if (dragging_grid_ == nullptr || distance < nearest) {
+        dragging_grid_ = grid;
+        nearest = distance;
+      }
+    }
+    if (press->button() == Qt::LeftButton && dragging_grid_ != nullptr) {
+      dragging_grid_->BeginDragAt(
+          dragging_grid_->viewport()->mapFrom(content_, press->position().toPoint()),
+          press->modifiers());
+    } else {
+      dragging_grid_ = nullptr;
+    }
+  }
+  if (watched == content_ && dragging_grid_ != nullptr) {
+    if (event->type() == QEvent::MouseMove) {
+      const auto* move = static_cast<QMouseEvent*>(event);
+      dragging_grid_->MoveDragTo(
+          dragging_grid_->viewport()->mapFrom(content_, move->position().toPoint()));
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+      dragging_grid_->FinishDrag();
+      dragging_grid_ = nullptr;
     }
   }
   return QWidget::eventFilter(watched, event);
@@ -1137,6 +1182,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   owned_.clear();
   not_owned_.clear();
   tiers_.clear();
+  store_urls_.clear();
   tags_.clear();
   reviews_.clear();
   review_percents_.clear();
@@ -1153,6 +1199,10 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
     if (!title.installed && title.hidden == library_->ShowingHidden()) {
       owned_.emplace_back(QString::fromStdString(title.ref), QString::fromStdString(title.title));
       if (!title.owned) not_owned_.insert(QString::fromStdString(title.ref));
+      if (!title.store_url.empty()) {
+        store_urls_.insert(QString::fromStdString(title.ref),
+                           QString::fromStdString(title.store_url));
+      }
       if (!title.protondb_tier.empty()) {
         tiers_.insert(QString::fromStdString(title.ref),
                       QString::fromStdString(title.protondb_tier));
@@ -1348,7 +1398,8 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
       status = id_ == "humble" ? "Not downloaded" : "Not installed";
     }
     hover_card_->ShowTitle(QString::fromStdString(id_), ref,
-                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name);
+                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name,
+                           TagOrder(library_->Games()));
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));
@@ -1412,11 +1463,25 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   // Every title in the list shares the mode, so they all hide or all unhide.
   const bool hide = !library_->ShowingHidden();
   QAction* hide_action = nullptr;
+  QAction* cover_action = nullptr;
   if (id_ != "humble") {
     menu.addSeparator();
+    if (selected.size() == 1) cover_action = menu.addAction("Change cover…");
+    if (const QString page = selected.size() == 1
+                                 ? store_urls_.value(QString::fromStdString(selected.front()))
+                                 : QString();
+        !page.isEmpty()) {
+      connect(menu.addAction("Open store page"), &QAction::triggered, this,
+              [page] { QDesktopServices::openUrl(QUrl(page)); });
+    }
     hide_action = menu.addAction(counted(hide ? "Hide" : "Unhide", selected.size()));
   }
   QAction* chosen = menu.exec(owned_grid_->viewport()->mapToGlobal(pos));
+  if (chosen != nullptr && chosen == cover_action) {
+    emit TitleCoverRequested(QString::fromStdString(id_), QString::fromStdString(selected.front()),
+                             index.data(GameTileDelegate::NameRole).toString());
+    return;
+  }
   if (chosen != nullptr && chosen == hide_action) {
     api::SetTitlesHiddenAsync(this, id_, std::move(selected), hide, [this](StoreActionResult r) {
       if (!r.ok) ShowError(owned_note_, "Could not change what's hidden.", r.error);

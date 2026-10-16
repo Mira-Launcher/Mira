@@ -95,6 +95,8 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 
 - `art` lists the art slots Mira has an image cached for, each with a version: `{"cover": "18f3a…-2c41", "hero": "…"}`. A slot left out has no image, so `GET /v1/games/{id}/artwork` for it would 404. The version changes whenever the slot's image does, so a client can keep its copy until then. Every game record has it, and so do `game.metadata_ready`, `game.metadata_failed` and `game.artwork_selected`.
 
+- `store_url` is the game's page on the store it's from, when there is one: Steam's from its appid, itch's and GOG's from the store's last listing (`GET /v1/library`). Left out otherwise.
+
 - `confidence` is how sure the detector was of its pick of executable; it stays 0 for games an importer added, which have no `candidates`. `reviewed` turns true once someone changes or confirms the game.
 - `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at.
 - `candidates` lists every executable the detector considered.
@@ -269,7 +271,7 @@ What each account owns, whether or not it's installed:
    "play_seconds": 0, "owned": true, "hidden": false }]
 ```
 
-`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `hidden` is the game's `hidden` tag once installed, and before that whether the title was hidden with `POST /v1/library/hidden`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
+`ref` is the store's id and what `/v1/library/install` takes. `installed` and `game_id` say whether Mira tracks it as `<source>-<ref>`. `hidden` is the game's `hidden` tag once installed, and before that whether the title was hidden with `POST /v1/library/hidden`. `play_seconds` comes from the store (only Steam reports it). `owned` is false for a paid itch game listed from a collection the account hasn't bought. `store_url` is the title's store page, for Steam, itch and GOG (the others don't give one). `protondb_tier`, `steam_tags` (most voted first) and `steam_reviews` (`{score_description, percent_positive, total_reviews}`, Steam's user reviews of the title or, with `metadata.steam_by_name`, of the Steam game of its name) are there when cached.
 
 Each source's owned titles are stored in cache.db as it last listed them, so the listing answers at once; titles become games once installed. A source never listed yet is asked during the request. Every other one is re-checked in the background, one check per source at a time, between `library.catalog_checking` and `library.catalog_checked` (`changed` says whether the list differs, the cue to list again). `fresh=1` asks each source during the request instead. Signing out of a store drops its stored list. A source that isn't set up lists nothing, and `GET /v1/<source>/status` tells why. Steam needs `steam.web_api_key` and `steam.steamid64` to list games that aren't installed. Humble Bundle isn't included.
 
@@ -313,7 +315,7 @@ Body `{"source": "epic", "titles": [{"ref": "...", "title": "..."}]}`. Queues a 
 
 ## Tags
 
-Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. Tags Mira makes (a library root's name, a Lutris category) are in Title Case as Steam names its tags: each lowercase word capitalised except short joining words ("Free to Play"), other casing kept ("RPG"). Tags a client sets are kept as given; a library from before this was cased the same way once, merging tags that then matched. With `tags.steam` on, a game's or store title's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record as `steam_tags`, from the same Steam store request as its details: a Steam game's by its appid, any other game's (with `metadata.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. They're never added to a game; clients offer them.
+Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. Tags Mira makes (a library root's name, a Lutris category) are in Title Case as Steam names its tags: each lowercase word capitalised except short joining words ("Free to Play"), other casing kept ("RPG"). Tags a client sets are kept as given; a library from before this was cased the same way once, merging tags that then matched. With `tags.steam` on, a game's or store title's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record as `steam_tags`, from the same Steam store request as its details: a Steam game's by its appid, any other game's (with `metadata.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. Clients offer them as tags, and with `tags.steam_new_games` a game just added (scanned, imported, installed or added by hand) gets, once its first fetch is in, each of its Steam tags that is already one of the library's tags or in `tags.folders`, spelled as the library has it (`game.updated` follows). Other Steam tags are never added to a game.
 
 ### `GET /v1/tags`
 `{"tags": [{"name", "count", "ids", "folder", "steam_ids"}], "steam": [{"name", "count", "ids"}], "steam_missing": N}`. `tags` are the library's, most games first, spelled as first seen, with the games that have each, whether it's in `tags.folders` (a folder tag no game has yet is listed with none), and the games Steam gives it. `steam` is every Steam tag on the library's games that isn't one of `tags`, most games first. `steam_missing` counts the games with a metadata record but no Steam tags in it yet (fetched before `tags.steam`, or Steam didn't answer).
@@ -635,7 +637,7 @@ Body `{"runner_ref", "apply_to_games"?}`. `runner_ref` is `kind:name`, `auto` or
 
 ## Desktop entries
 
-Imports existing `.desktop` entries as games. Mira's own `mira-<id>.desktop` entries are controlled by the `desktop_entries.*` settings. Nothing is imported automatically.
+Imports existing `.desktop` entries as games. Mira's own `mira-<id>.desktop` entries are controlled by the `desktop_entries.*` settings; a hidden game gets none unless `desktop_entries.hidden_games` is on (off by default), so with it off hiding a game removes its entry and showing it again adds it back. Nothing is imported automatically.
 
 ### `GET /v1/desktop-entries/candidates`
 Entries from `$XDG_DATA_HOME/applications`, `$XDG_DATA_DIRS`, the Flatpak export directories and `desktop_import.extra_dirs`:
@@ -674,8 +676,10 @@ Art is shrunk as it's saved to fit its slot (`metadata.art_size`): a cover withi
 
 New games are fetched when first added, through a queue of three workers. Tracked games go before store titles. `metadata.enabled` turns automatic fetching off. Details (store info, reviews, ProtonDB tier) older than `metadata.refresh_days` are fetched again on start, without the art. `details_fetched` is when they last were.
 
+The routes below that take a game's `{id}` (metadata, artwork, candidates, thumbs, matches and match) also take a store title that isn't installed, by the id it gets once installed (`<source>-<ref>`), as long as that source's stored list (`GET /v1/library`) has it; `404 game_not_found` otherwise. A title's art is picked, uploaded and removed like a game's. With no SteamGridDB match recorded yet (its cover came from its store), its candidates are looked up by its title.
+
 ### `GET /v1/games/{id}/metadata`
-The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
+The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. A refetch keeps the art SteamGridDB's top result gave a slot while the match (`steamgriddb_id`) stays the same, since that order changes as art is added and voted on. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
 
 ### `GET /v1/games/{id}/artwork?type=`
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.
@@ -684,10 +688,13 @@ The cached image for a slot (`cover` by default). `404` if that slot isn't cache
 Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
 
 ### `PUT /v1/games/{id}/artwork?type=`
-The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
+The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `missing_image` for an empty body, `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
 
-### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=`
-Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, or `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`). `request` is echoed back so a caller can match its answer.
+### `DELETE /v1/games/{id}/artwork?type=`
+Leaves the slot with no image, so clients draw their placeholder: the slot becomes `{"source": "none", "chosen": true}` with no file and is kept through refreshes like a pick, and a store title without a cover isn't fetched again for it. Picking or uploading again replaces it. A job (kind `artwork`) with the same events as picking a candidate.
+
+### `POST /v1/games/{id}/artwork/candidates?type=&page=&request=[&style=][&adult=1]`
+Fetches one page (50) of SteamGridDB art for a slot, starting at page 0, and adds it to `art_candidates`. `style` narrows it to one of SteamGridDB's styles for the slot (covers: `alternate`, `blurred`, `white_logo`, `material`, `no_logo`; heroes: `alternate`, `blurred`, `material`; logos: `official`, `white`, `black`, `custom`; icons: `official`, `custom`), and `adult=1` to adult art, which needs `steamgriddb.nsfw`. Event: `game.artwork_candidates_ready` with `{id, type, page, request, total, candidates}`, where `total` counts what matches; unfiltered page 0 adds the whole list's counts, `styles` (`{style: count}`, styles with none left out) and `adult`. On failure `code` and `error` (`no_steamgriddb_key`, `no_steamgriddb_match`, `steamgriddb_unreachable`, `invalid_style`, `adult_art_off`). `request` is echoed back so a caller can match its answer.
 
 ### `POST /v1/games/{id}/artwork/thumbs?type=`
 Body `{"candidate_ids": [...]}`, 1 to 64 ids. Caches a preview for each, in parallel. Event: `game.artwork_thumbs_ready` with `{id, type, ready, failed}` and `error` if the whole batch failed.
@@ -711,7 +718,7 @@ SteamGridDB's matches for the name (or `q`): `{query, chosen, matches: [{id, nam
 Moves to the next SteamGridDB match, saves it as `metadata.steamgriddb_id` and fetches again. `202 {status, match}`, or `409 no_more_matches`.
 
 ### `POST /v1/games/{id}/metadata/match`
-Body `{"steamgriddb_id": N}`. Uses that SteamGridDB game from now on; `0` goes back to the top match.
+Body `{"steamgriddb_id": N}`. Uses that SteamGridDB game from now on; `0` goes back to the top match. A game is fetched again (`202`). A store title has no overrides, so its record keeps the match as `steamgriddb_id`; its SteamGridDB candidates are dropped, its current art stays, and `game.metadata_ready` follows at once (`200 {status: "matched"}`).
 
 ### `POST /v1/games/metadata/refresh`
 Body `{"ids": [...]}`. Fetches each of these games again, like `POST /v1/games/{id}/metadata/refresh` without `announce`. Unknown ids are skipped. A job (see [Jobs](#jobs)) of kind `metadata`: `job.progress` counts games as their fetches end, and the result is `{"refreshed", "failed"}`. Each game still sends its own `game.metadata_ready`/`metadata_failed`.

@@ -118,14 +118,13 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
   if (body.contains("steam_tags") && body["steam_tags"].is_object()) {
     out.steam_tags = strings(body["steam_tags"].value("tags", json::array()));
   }
-  // A store title's details have no genres; its top Steam tags say as much.
-  if (out.genres.empty())
-    out.genres.assign(out.steam_tags.begin(),
-                      out.steam_tags.begin() + std::min<std::size_t>(3, out.steam_tags.size()));
   // "artwork" is the cover slot under its pre-`hero` name; see docs/api.md.
   for (const char* key : {"artwork", "hero", "logo", "icon"}) {
     if (!body.contains(key) || !body[key].is_object()) continue;
-    out.art_slots.push_back(std::string(key) == "artwork" ? "cover" : key);
+    const std::string slot = std::string(key) == "artwork" ? "cover" : key;
+    out.art_sources[slot] = body[key].value("source", std::string());
+    // A removed slot has no file.
+    if (body[key].contains("file")) out.art_slots.push_back(slot);
   }
 
   for (const char* slot : {"cover", "hero", "logo", "icon"}) {
@@ -179,11 +178,20 @@ ArtworkSelectResult UploadArtworkSync(const std::string& id, const std::string& 
   return {reply.ok, reply.error};
 }
 
-GameActionResult FetchArtCandidatesSync(const std::string& id, const std::string& slot, int page,
-                                        const std::string& request) {
+ArtworkSelectResult RemoveArtworkSync(const std::string& id, const std::string& slot) {
   const transport::Reply reply =
-      transport::Post("/v1/games/" + PercentEncode(id) + "/artwork/candidates?type=" + slot +
-                      "&page=" + std::to_string(page) + "&request=" + request);
+      transport::Delete("/v1/games/" + PercentEncode(id) + "/artwork?type=" + slot);
+  return {reply.ok, reply.error};
+}
+
+GameActionResult FetchArtCandidatesSync(const std::string& id, const std::string& slot, int page,
+                                        const std::string& request, const std::string& style,
+                                        bool adult) {
+  std::string query = "?type=" + slot + "&page=" + std::to_string(page) + "&request=" + request;
+  if (!style.empty()) query += "&style=" + PercentEncode(style);
+  if (adult) query += "&adult=1";
+  const transport::Reply reply =
+      transport::Post("/v1/games/" + PercentEncode(id) + "/artwork/candidates" + query);
   return {reply.ok, reply.error};
 }
 
@@ -334,12 +342,19 @@ void UploadArtworkAsync(QObject* context, const std::string& id, const std::stri
       std::move(callback));
 }
 
+void RemoveArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
+                        std::function<void(ArtworkSelectResult)> callback) {
+  async::Run(context, [id, slot] { return RemoveArtworkSync(id, slot); }, std::move(callback));
+}
+
 void FetchArtCandidatesAsync(QObject* context, const std::string& id, const std::string& slot,
-                             int page, const std::string& request,
-                             std::function<void(GameActionResult)> callback) {
+                             int page, const std::string& request, const std::string& style,
+                             bool adult, std::function<void(GameActionResult)> callback) {
   async::Run(
       context,
-      [id, slot, page, request] { return FetchArtCandidatesSync(id, slot, page, request); },
+      [id, slot, page, request, style, adult] {
+        return FetchArtCandidatesSync(id, slot, page, request, style, adult);
+      },
       std::move(callback));
 }
 
@@ -353,13 +368,14 @@ void FetchArtThumbsAsync(QObject* context, const std::string& id, const std::str
 
 void GetArtThumbsAsync(QObject* context, const std::string& id, const std::string& slot,
                        const std::vector<std::int64_t>& candidate_ids,
-                       std::function<void(std::vector<std::pair<std::int64_t, QImage>>)> callback) {
+                       std::function<void(std::vector<std::pair<std::int64_t, QImage>>)> callback,
+                       QSize max) {
   async::Run<std::vector<std::pair<std::int64_t, QImage>>>(
       context,
-      [id, slot, candidate_ids] {
+      [id, slot, candidate_ids, max] {
         std::vector<std::pair<std::int64_t, QImage>> images;
         for (const auto& [candidate_id, bytes] : GetArtThumbsSync(id, slot, candidate_ids).images) {
-          if (QImage image = DecodeImage(bytes); !image.isNull())
+          if (QImage image = DecodeImage(bytes, max); !image.isNull())
             images.emplace_back(candidate_id, std::move(image));
         }
         return images;

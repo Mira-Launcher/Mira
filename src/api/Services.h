@@ -142,8 +142,11 @@ class Services {
   void ReloadSettings();
   // The same for one game, after a change to just that game (also once it is deleted).
   void SyncDesktopEntry(const std::string& game_id);
-  // Fetches metadata and art for games added outside a request.
+  // Fetches metadata and art for games just added, which then get their tags from Steam.
   void QueueMetadata(const std::vector<model::Game>& games);
+  // A new game's Steam tags that are already the user's tags become its own
+  // (tags.steam_new_games), once its first fetch has stored them.
+  void TagFromSteam(const std::string& id);
   // A full library scan, metadata queued for what it added. One asked for while another runs waits
   // for that one's summary instead of scanning again.
   library::ScanSummary Scan();

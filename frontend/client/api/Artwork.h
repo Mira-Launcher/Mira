@@ -61,12 +61,18 @@ void SelectArtworkAsync(QObject* context, const std::string& id, const std::stri
 void UploadArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
                         std::string bytes, std::function<void(ArtworkSelectResult)> callback);
 
+// DELETE /v1/games/{id}/artwork?type=: the slot has no image from now on, leaving the
+// placeholder. Events as for SelectArtworkAsync.
+void RemoveArtworkAsync(QObject* context, const std::string& id, const std::string& slot,
+                        std::function<void(ArtworkSelectResult)> callback);
+
 // POST /v1/games/{id}/artwork/candidates?type=&page=: one page of
-// SteamGridDB's art, asked for now; game.artwork_candidates_ready follows,
-// carrying `request` (an alphanumeric token) back.
+// SteamGridDB's art, asked for now, of one `style` and only adult art when
+// set; game.artwork_candidates_ready follows, carrying `request` (an
+// alphanumeric token) back.
 void FetchArtCandidatesAsync(QObject* context, const std::string& id, const std::string& slot,
-                             int page, const std::string& request,
-                             std::function<void(GameActionResult)> callback);
+                             int page, const std::string& request, const std::string& style,
+                             bool adult, std::function<void(GameActionResult)> callback);
 
 // POST /v1/games/{id}/artwork/thumbs?type=: caches previews of up to 64
 // candidates in the background; game.artwork_thumbs_ready follows.
@@ -75,10 +81,12 @@ void FetchArtThumbsAsync(QObject* context, const std::string& id, const std::str
                          std::function<void(GameActionResult)> callback);
 
 // GET .../artwork/thumb for each id, in one round of requests, decoded off
-// the UI thread. An id without a decodable preview is left out.
+// the UI thread, and scaled down to fit `max` when given. An id without a
+// decodable preview is left out.
 void GetArtThumbsAsync(QObject* context, const std::string& id, const std::string& slot,
                        const std::vector<std::int64_t>& candidate_ids,
-                       std::function<void(std::vector<std::pair<std::int64_t, QImage>>)> callback);
+                       std::function<void(std::vector<std::pair<std::int64_t, QImage>>)> callback,
+                       QSize max = {});
 
 // POST /v1/games/metadata/refresh-missing: every game without a cover, as one job.
 void RefreshMissingArtworkAsync(QObject* context,

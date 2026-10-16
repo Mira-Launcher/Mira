@@ -1,6 +1,7 @@
 #include "LibraryPage.h"
 
 #include <QCursor>
+#include <QDesktopServices>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
@@ -583,6 +584,19 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
     }
     menu.addSeparator();
   }
+  // The tile shows the first copy's cover.
+  connect(menu.addAction("Change cover…"), &QAction::triggered, this, [this, match] {
+    const auto& [source, ref] = match.copies.front();
+    emit TitleCoverRequested(source, ref, match.title);
+  });
+  for (const auto& [source, page] : match.store_urls) {
+    const SourceInfo* info = FindSourceInfo(source);
+    const QString label = match.store_urls.size() == 1
+                              ? QString("Open store page")
+                              : "Open store page on " + (info != nullptr ? info->name : source);
+    connect(menu.addAction(label), &QAction::triggered, this,
+            [page] { QDesktopServices::openUrl(QUrl(page)); });
+  }
   const bool hide = !library_->ShowingHidden();
   connect(menu.addAction(hide ? "Hide" : "Unhide"), &QAction::triggered, this, [this, match, hide] {
     for (const auto& [source, ref] : match.copies) {
@@ -653,6 +667,10 @@ void LibraryPage::ShowTag(const QString& tag) {
 
 void LibraryPage::ClearFilters() {
   search_->clear();
+  title_filters_->Clear();
+  // The pill's own reset changes nothing when its filter is already All, as on Not installed.
+  tabs_->SetCurrent("all");
+  SetNotInstalled(false);
   pill_->ClearFilters();
 }
 

@@ -117,6 +117,8 @@ class LibraryPage : public QWidget {
   void GameActivated(const std::string& id);  // a tile's double click
   // Install pressed on a store match (the store picked, when several sell it).
   void InstallTitleRequested(const QString& source, const QString& ref);
+  // Change cover on a not-installed title.
+  void TitleCoverRequested(const QString& source, const QString& ref, const QString& name);
   void PlayRequested(const std::string& id);  // a Continue playing card
   void GameMenuRequested(const std::string& id, const QPoint& global_pos);
   void BatchMenuRequested(const std::vector<std::string>& ids, const QPoint& global_pos);

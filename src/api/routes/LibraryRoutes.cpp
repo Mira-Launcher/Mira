@@ -502,6 +502,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                      {"play_seconds", entry.play_seconds},
                      {"owned", entry.owned},
                      {"hidden", hidden}});
+      if (!entry.url.empty()) out.back()["store_url"] = entry.url;
       if (std::string tier = s.games.Metadata().ProtonDbTier(key); !tier.empty()) {
         out.back()["protondb_tier"] = std::move(tier);
       }
@@ -573,8 +574,13 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
           s.paused_installs.Remove(source + "-" + ref);  // finished before a pause took hold
           log::Info("{} {} finished: {}", source, is_update ? "update" : "install", ref);
           s.SyncDesktopEntry(source + "-" + ref);
-          if (const auto game = s.games.Find(source + "-" + ref))
-            s.fetches.Enqueue(s.config, s.events, *game);
+          if (const auto game = s.games.Find(source + "-" + ref)) {
+            if (is_update) {
+              s.fetches.Enqueue(s.config, s.events, *game);
+            } else {
+              s.fetches.EnqueueNew(s.config, s.events, *game);
+            }
+          }
           s.events.Publish("library.install.finished",
                            {{"source", source}, {"ref", ref}, {"update", is_update}});
           return json{{"source", source}, {"ref", ref}};
@@ -670,7 +676,10 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       return true;
     });
     if (!changed) return SendError(res, 500, changed.error());
-    for (const model::Game& game : *changed) s.events.Publish("game.updated", s.Record(game));
+    for (const model::Game& game : *changed) {
+      s.SyncDesktopEntry(game.id);
+      s.events.Publish("game.updated", s.Record(game));
+    }
     if (auto kept = s.games.SetTitlesHidden(titles, hide); !kept)
       return SendError(res, 500, kept.error());
     const json payload = {{"source", source}, {"refs", refs}, {"hidden", hide}};

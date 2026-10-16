@@ -438,7 +438,7 @@ Result<void> RunInstall(config::Config& config, store::GameStore& games, api::Ev
   events.Publish("game.install.finished", {{"id", id}});
   AnnounceInstallerLeftover(events, *done);
   // Its art and store info were looked up by the installer's name.
-  if (fetches != nullptr) fetches->Enqueue(config, events, *done);
+  if (fetches != nullptr) fetches->EnqueueNew(config, events, *done);
   return {};
 }
 

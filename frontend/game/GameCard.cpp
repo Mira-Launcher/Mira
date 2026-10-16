@@ -33,8 +33,22 @@ constexpr std::size_t kPrefetchThumbs = 24;
 GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStore* artwork,
                    QWidget* parent)
     : HeroBackdrop(artwork, parent), id_(id), library_(library), artwork_(artwork) {
+  Build(nullptr);
+}
+
+GameCard::GameCard(const GameSummary& title, GameLibraryModel* library, ArtworkStore* artwork,
+                   QWidget* parent)
+    : HeroBackdrop(artwork, parent),
+      id_(title.id),
+      title_info_(title),
+      library_(library),
+      artwork_(artwork) {
+  Build(&*title_info_);
+}
+
+void GameCard::Build(const GameSummary* title) {
   const theme::Tokens& tokens = theme::Current();
-  const GameSummary* game = library_->Find(id);
+  const GameSummary* game = title != nullptr ? title : library_->Find(id_);
 
   // The hero fills the card's top and fades into it; everything below sits
   // over it.
@@ -82,6 +96,8 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   top->addWidget(back);
   top->addStretch(1);
   top->addWidget(art_button_);
+  // A title's card is only the picker: Back closes it.
+  art_button_->setVisible(title == nullptr);
   layout->addLayout(top);
 
   // Name and status over the art. The shadow, in the surface's color, keeps
@@ -119,7 +135,7 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   connect(library_, &QAbstractItemModel::modelReset, this, &GameCard::UpdateIdentity);
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
-            if (live && ChangesThisGame(type, data)) form_->Reload();
+            if (live && form_ != nullptr && ChangesThisGame(type, data)) form_->Reload();
           });
   header->addWidget(cover_, 0, Qt::AlignBottom);
   header->addLayout(identity, /*stretch=*/1);
@@ -154,7 +170,23 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
 
   stack_ = new QStackedWidget(panel);
   panel_layout->addWidget(stack_);
-  form_ = new GameEditForm(id, stack_);
+  bar_ = new ChangeBar(this);
+  // While the art picker is open the bar is its Cancel and Use.
+  connect(bar_, &ChangeBar::DiscardClicked, this, [this] {
+    if (ArtPickerOpen()) return picker_->ResetPick();
+    form_->DiscardChanges();
+  });
+  connect(bar_, &ChangeBar::SaveClicked, this, [this] {
+    // The picker stays open, to change another slot or pick again.
+    if (ArtPickerOpen()) return picker_->Apply();
+    Save();
+  });
+  if (title != nullptr) {
+    play_->hide();
+    OpenArtPicker();
+    return;
+  }
+  form_ = new GameEditForm(id_, stack_);
   stack_->addWidget(form_);
   UpdatePlay();
   QStringList tags;
@@ -166,20 +198,6 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
   form_->SetTagSuggestions(tags);
   form_->SetTagOrder(TagOrder(library_->Games()));
 
-  bar_ = new ChangeBar(this);
-  // While the art picker is open the bar is its Cancel and Use.
-  connect(bar_, &ChangeBar::DiscardClicked, this, [this] {
-    if (ArtPickerOpen()) return picker_->ResetPick();
-    form_->DiscardChanges();
-  });
-  connect(bar_, &ChangeBar::SaveClicked, this, [this] {
-    if (ArtPickerOpen()) {
-      picker_->Apply();
-      CloseArtPicker(/*applied=*/true);
-      return;
-    }
-    Save();
-  });
   connect(form_, &GameEditForm::Changed, this, [this] {
     if (!ArtPickerOpen()) UpdateBar();
   });
@@ -204,18 +222,20 @@ GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStor
 }
 
 bool GameCard::IsDirty() const {
-  return form_->IsDirty();
+  return form_ != nullptr && form_->IsDirty();
 }
 
 void GameCard::Save() {
-  if (saving_) return;
+  if (saving_ || form_ == nullptr) return;
   saving_ = true;
   bar_->SetBusy(true);
   form_->Save();
 }
 
 void GameCard::Back() {
-  if (ArtPickerOpen()) {
+  if (form_ == nullptr) {
+    RequestClose();
+  } else if (ArtPickerOpen()) {
     CloseArtPicker();
   } else if (form_->AdvancedOpen()) {
     form_->CloseAdvanced();
@@ -253,7 +273,7 @@ bool GameCard::ArtPickerOpen() const {
 void GameCard::OpenArtPicker() {
   if (ArtPickerOpen()) return;
   if (picker_ == nullptr) {
-    picker_ = new ArtPickerPanel(id_, stack_);
+    picker_ = new ArtPickerPanel(id_, stack_, /*title=*/form_ == nullptr);
     stack_->addWidget(picker_);
     connect(picker_, &ArtPickerPanel::Previewed, this,
             [this](const QString& preview_slot, const QPixmap& preview) {
@@ -268,14 +288,16 @@ void GameCard::OpenArtPicker() {
                            : slot == "logo" ? "logo"
                            : slot == "icon" ? "icon"
                                             : "cover";
-      bar_->SetText(
-          has_change ? QString("New %1 picked").arg(slot == "hero" ? "hero art" : noun) : QString(),
-          "Use this " + noun, "Cancel");
+      const QString what = slot == "hero" ? "hero art" : noun;
+      if (has_change && picker_->PicksNone()) {
+        bar_->SetText(QString("No %1 picked").arg(what), "Use no " + what, "Cancel");
+        return;
+      }
+      bar_->SetText(has_change ? QString("New %1 picked").arg(what) : QString(), "Use this " + noun,
+                    "Cancel");
     });
     connect(picker_, &ArtPickerPanel::PickActivated, this, [this] {
-      if (!ArtPickerOpen()) return;
-      picker_->Apply();
-      CloseArtPicker(/*applied=*/true);
+      if (ArtPickerOpen()) picker_->Apply();
     });
     connect(picker_, &ArtPickerPanel::ApplyFailed, this,
             [this](const QString& failed_slot, const QString& error) {
@@ -303,6 +325,7 @@ void GameCard::CloseArtPicker(bool applied) {
 }
 
 void GameCard::UpdateBar() {
+  if (form_ == nullptr) return;
   bar_->SetCount(form_->ChangeCount());
   if (!bar_->isHidden() && bar_->RoomNeeded() > bottom_room_) {
     bottom_room_ = bar_->RoomNeeded();
@@ -340,6 +363,16 @@ void GameCard::UpdatePlay() {
 }
 
 void GameCard::UpdateIdentity() {
+  if (title_info_) {
+    title_->setText(QString::fromStdString(title_info_->name));
+    const SourceInfo* info = FindSourceInfo(QString::fromStdString(title_info_->source));
+    status_->setText(
+        QString("<span style='color:%1; font-weight:600;'>Not installed</span>&nbsp;&nbsp;%2")
+            .arg(theme::Current().text_muted.name(),
+                 (info != nullptr ? info->name : QString::fromStdString(title_info_->source))
+                     .toHtmlEscaped()));
+    return;
+  }
   const GameSummary* game = library_->Find(id_);
   status_->setVisible(game != nullptr);
   if (game == nullptr) return;

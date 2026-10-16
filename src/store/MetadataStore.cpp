@@ -13,7 +13,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 3> kMigrations = {
+constexpr std::array<std::string_view, 4> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -52,6 +52,11 @@ CREATE TABLE catalog(
   PRIMARY KEY(source, position)
 ) STRICT;
 CREATE TABLE catalog_checked(source TEXT PRIMARY KEY, checked_at INTEGER NOT NULL) STRICT;
+)sql",
+    // Each title's store page, filled in as each store is listed again; found by ref for a game.
+    R"sql(
+ALTER TABLE catalog ADD COLUMN url TEXT NOT NULL DEFAULT '';
+CREATE INDEX catalog_ref ON catalog(source, ref);
 )sql",
 };
 
@@ -234,14 +239,25 @@ std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog
   if (auto row = checked->Step(); !row || !*row) return std::nullopt;
 
   auto select = db_.Prepare(
-      "SELECT ref, title, play_seconds, owned FROM catalog WHERE source = ? ORDER BY position");
+      "SELECT ref, title, play_seconds, owned, url FROM catalog WHERE source = ? ORDER BY "
+      "position");
   if (!select) return std::nullopt;
   select->Bind(1, source);
   std::vector<CatalogRow> rows;
   for (auto row = select->Step(); row && *row; row = select->Step()) {
-    rows.push_back({select->Text(0), select->Text(1), select->Int(2), select->Int(3) != 0});
+    rows.push_back(
+        {select->Text(0), select->Text(1), select->Int(2), select->Int(3) != 0, select->Text(4)});
   }
   return rows;
+}
+
+std::string MetadataStore::CatalogUrl(const std::string& source, const std::string& ref) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return {};
+  auto select = db_.Prepare("SELECT url FROM catalog WHERE source = ? AND ref = ? LIMIT 1");
+  if (!select) return {};
+  auto row = select->Bind(1, source).Bind(2, ref).Step();
+  return row && *row ? select->Text(0) : std::string();
 }
 
 Result<bool> MetadataStore::WriteCatalog(const std::string& source,
@@ -257,8 +273,8 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source,
     if (!clear) return std::unexpected(clear.error());
     if (auto done = clear->Bind(1, source).Run(); !done) return std::unexpected(done.error());
     auto add = db_.Prepare(
-        "INSERT INTO catalog(source, position, ref, title, play_seconds, owned) VALUES(?, ?, ?, ?, "
-        "?, ?)");
+        "INSERT INTO catalog(source, position, ref, title, play_seconds, owned, url) VALUES(?, ?, "
+        "?, ?, ?, ?, ?)");
     if (!add) return std::unexpected(add.error());
     for (std::size_t at = 0; at < rows.size(); ++at) {
       const CatalogRow& row = rows[at];
@@ -268,6 +284,7 @@ Result<bool> MetadataStore::WriteCatalog(const std::string& source,
                           .Bind(4, row.title)
                           .Bind(5, row.play_seconds)
                           .Bind(6, std::int64_t{row.owned ? 1 : 0})
+                          .Bind(7, row.url)
                           .Run();
           !done) {
         return std::unexpected(done.error());

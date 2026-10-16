@@ -54,6 +54,7 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
   // GOG's products API rejects more than 50 ids per request (HTTP 400).
   constexpr std::size_t kIdsPerRequest = 50;
   std::unordered_map<std::string, std::string> titles;
+  std::unordered_map<std::string, std::string> pages;  // links.product_card
   // Owned packs (a bundle's own entry), DLC and promo items aren't games to install.
   std::unordered_set<std::string> not_games;
   for (std::size_t start = 0; start < ids.size(); start += kIdsPerRequest) {
@@ -69,6 +70,11 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
       for (const json& product : *products) {
         const std::string id = std::to_string(core::JsonInt(product, "id"));
         titles[id] = core::JsonString(product, "title");
+        if (const auto links = product.find("links"); links != product.end()) {
+          if (std::string page = core::JsonString(*links, "product_card");
+              page.starts_with("https://"))
+            pages[id] = std::move(page);
+        }
         const std::string type = core::JsonString(product, "game_type");
         if ((!type.empty() && type != "game") || !core::JsonBool(product, "is_installable", true))
           not_games.insert(id);
@@ -84,6 +90,7 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
     entry.ref = id;
     const auto title = titles.find(id);
     entry.title = (title != titles.end() && !title->second.empty()) ? title->second : id;
+    if (const auto page = pages.find(id); page != pages.end()) entry.url = page->second;
     library::MarkTracked(games, entry);
     entries.push_back(std::move(entry));
   }

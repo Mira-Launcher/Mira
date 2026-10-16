@@ -171,12 +171,13 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
 
   api::GetMetadataAsync(this, game.id, [this, id = game.id](GameMetadataResult result) {
     if (game_id_ != id || !result.ok || result.missing) return;
-    ShowMetadata(result.metadata);
+    ShowMetadata(result.metadata, result.metadata.genres);
   });
 }
 
 void HoverCard::ShowTitle(const QString& source, const QString& ref, const QString& title,
-                          const QString& status, const QString& detail) {
+                          const QString& status, const QString& detail,
+                          std::vector<std::string> library_tags) {
   // Keyed like the id it gets once installed, so a late answer for another title is dropped.
   game_id_ = (source + "-" + ref).toStdString();
   Reset();
@@ -188,9 +189,20 @@ void HoverCard::ShowTitle(const QString& source, const QString& ref, const QStri
 
   api::GetTitleMetadataAsync(
       this, source.toStdString(), ref.toStdString(),
-      [this, id = game_id_](GameMetadataResult result) {
+      [this, id = game_id_, library_tags = std::move(library_tags)](GameMetadataResult result) {
         if (game_id_ != id || !result.ok || result.missing) return;
-        ShowMetadata(result.metadata);
+        std::vector<std::string> genres = result.metadata.genres;
+        if (genres.empty()) {
+          // Steam's other tags are only suggestions for the Tags page.
+          for (const std::string& tag : result.metadata.steam_tags) {
+            if (genres.size() < 3 && std::ranges::any_of(library_tags, [&](const std::string& t) {
+                  return QString::fromStdString(t).compare(QString::fromStdString(tag),
+                                                           Qt::CaseInsensitive) == 0;
+                }))
+              genres.push_back(tag);
+          }
+        }
+        ShowMetadata(result.metadata, genres);
         if (!result.metadata.review_summary.empty()) {
           SetLine(review_line_, QString("Steam reviews: %1 (%2)")
                                     .arg(QString::fromStdString(result.metadata.review_summary))
@@ -200,7 +212,7 @@ void HoverCard::ShowTitle(const QString& source, const QString& ref, const QStri
       });
 }
 
-void HoverCard::ShowMetadata(const GameMetadata& metadata) {
+void HoverCard::ShowMetadata(const GameMetadata& metadata, const std::vector<std::string>& genres) {
   const QString tier = QString::fromStdString(metadata.protondb_tier);
   if (!tier.isEmpty()) {
     QString label = tier;
@@ -216,9 +228,8 @@ void HoverCard::ShowMetadata(const GameMetadata& metadata) {
   protondb_->setVisible(!tier.isEmpty());
 
   const std::string developer_genre =
-      Join(metadata.developers) +
-      (!metadata.developers.empty() && !metadata.genres.empty() ? " · " : "") +
-      Join(metadata.genres);
+      Join(metadata.developers) + (!metadata.developers.empty() && !genres.empty() ? " · " : "") +
+      Join(genres);
   SetLine(developer_line_, QString::fromStdString(developer_genre));
   Reposition();
 }

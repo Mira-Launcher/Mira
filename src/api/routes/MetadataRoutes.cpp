@@ -11,6 +11,7 @@
 #include "api/Services.h"
 #include "config/Resolver.h"
 #include "library/GamePatch.h"
+#include "library/SourceRegistry.h"
 #include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
 
@@ -21,6 +22,33 @@ using httplib::Response;
 using nlohmann::json;
 
 constexpr std::size_t kMaxUpload = 32 << 20;
+
+// The game `id` names, or else a store title that isn't installed, by the id it gets once
+// installed ("<source>-<ref>"), from that source's stored list. A title's art is chosen the same
+// way as a game's.
+std::optional<model::Game> ArtSubject(Services& s, const std::string& id) {
+  if (auto game = s.games.Find(id)) return game;
+  const std::size_t dash = id.find('-');
+  if (dash == std::string::npos) return std::nullopt;
+  const std::string source = id.substr(0, dash);
+  if (library::FindSource(source) == nullptr) return std::nullopt;
+  const auto rows = s.games.Metadata().ReadCatalog(source);
+  if (!rows) return std::nullopt;
+  const auto row =
+      std::ranges::find(*rows, id.substr(dash + 1), &store::MetadataStore::CatalogRow::ref);
+  if (row == rows->end()) return std::nullopt;
+  model::Game title;
+  title.id = id;
+  title.name = row->title;
+  title.source = source;
+  title.source_ref = row->ref;
+  if (source == "steam") title.runner_ref = "steam:" + row->ref;
+  return title;
+}
+
+bool HasArtSubject(Services& s, const std::string& id) {
+  return s.games.Contains(id) || ArtSubject(s, id).has_value();
+}
 
 }  // namespace
 
@@ -44,7 +72,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   // --- metadata ---------------------------------------------------------
 
   http.Get(R"(/v1/games/([^/]+)/metadata)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1]))
+    if (!HasArtSubject(s, req.matches[1]))
       return SendError(res, 404, "game_not_found", "no such game");
     if (!s.games.Metadata().Has(req.matches[1])) {
       return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
@@ -53,7 +81,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   });
 
   http.Get(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1]))
+    if (!HasArtSubject(s, req.matches[1]))
       return SendError(res, 404, "game_not_found", "no such game");
     SendCachedArtwork(s.games.Metadata(), req.matches[1], Param(req, "type", "cover"), res);
   });
@@ -62,7 +90,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   // arbitrary address.
   http.Post(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!HasArtSubject(s, id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const auto body = BodyObject(req, res, R"({"candidate_id": <id>})");
@@ -91,7 +119,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   // The body is the image itself, PNG or JPEG.
   http.Put(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!HasArtSubject(s, id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     if (req.body.size() > kMaxUpload)
       return SendError(res, 413, "image_too_large", "the image is over 32 MB");
@@ -112,9 +140,31 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
         &s.artwork_selects);
   });
 
+  http.Delete(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {
+    const std::string id = req.matches[1];
+    if (!HasArtSubject(s, id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
+    const std::string slot = req.get_param_value("type");
+    s.StartJob(
+        req, res, "artwork", id, "Removing artwork",
+        [&s, id, slot](JobRegistry::Progress&) -> Result<json> {
+          if (auto removed = metadata::RemoveArtwork(s.config, s.games.Metadata(), id, slot);
+              !removed) {
+            s.events.Publish("game.artwork_select_failed",
+                             FailedEvent({{"id", id}, {"type", slot}}, removed.error()));
+            return std::unexpected(removed.error());
+          }
+          s.SyncDesktopEntry(id);  // its icon
+          s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
+          return json{{"id", id}, {"type", slot}};
+        },
+        &s.artwork_selects);
+  });
+
   http.Post(R"(/v1/games/([^/]+)/artwork/candidates)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
+    const auto subject = ArtSubject(s, id);
+    if (!subject) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     int page = 0;
@@ -124,9 +174,12 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     }
     // Echoed back, so a caller can tell its answer from a replayed one.
     const std::string request = Param(req, "request");
-    s.artwork_thumbs.Post([&s, id, slot, page, request] {
+    const metadata::CandidateFilter filter = {.style = Param(req, "style"),
+                                              .adult = Param(req, "adult") == "1"};
+    s.artwork_thumbs.Post([&s, id, slot, page, request, filter, name = subject->name] {
       json event = {{"id", id}, {"type", slot}, {"page", page}, {"request", request}};
-      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page);
+      if (auto fetched = metadata::FetchCandidatePage(s.config, s.games.Metadata(), id, slot, page,
+                                                      name, filter);
           fetched) {
         event.update(*fetched);
       } else {
@@ -140,7 +193,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   // Cached previews are ready at once; the rest are fetched in the background.
   http.Post(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!HasArtSubject(s, id)) return SendError(res, 404, "game_not_found", "no such game");
     if (!req.has_param("type")) return SendError(res, 400, "missing_type", "?type= is required");
     const std::string slot = req.get_param_value("type");
     const auto body = BodyObject(req, res, R"({"candidate_ids": [<id>, ...]})");
@@ -171,7 +224,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
 
   http.Get(R"(/v1/games/([^/]+)/artwork/thumb)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
-    if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
+    if (!HasArtSubject(s, id)) return SendError(res, 404, "game_not_found", "no such game");
     const std::string slot = Param(req, "type", "cover");
     std::int64_t candidate_id = 0;
     const std::string raw = Param(req, "candidate_id");
@@ -196,7 +249,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
 
   // As a game's settings close: the previews fetched while they were open.
   http.Delete(R"(/v1/games/([^/]+)/artwork/thumbs)", [&s](const Request& req, Response& res) {
-    if (!s.games.Contains(req.matches[1]))
+    if (!HasArtSubject(s, req.matches[1]))
       return SendError(res, 404, "game_not_found", "no such game");
     metadata::ClearCandidateThumbs(s.config, req.matches[1]);
     res.status = 204;
@@ -213,13 +266,16 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
   });
 
   http.Get(R"(/v1/games/([^/]+)/metadata/matches)", [&s](const Request& req, Response& res) {
-    auto game = s.games.Find(req.matches[1]);
+    auto game = ArtSubject(s, req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     const std::string query = Param(req, "q", game->name);
     auto matches = metadata::SearchSteamGridDb(s.config, query);
     if (!matches) return SendError(res, 502, matches.error());
+    // A title has no overrides: its record keeps the match it uses.
     const std::int64_t chosen =
-        config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id");
+        s.games.Contains(game->id)
+            ? config::Resolver(s.config, game->overrides).GetInt("metadata.steamgriddb_id")
+            : s.games.Metadata().Read(game->id).value("steamgriddb_id", std::int64_t{0});
     SendJson(res, {{"query", query}, {"chosen", chosen}, {"matches", *matches}});
   });
 
@@ -258,6 +314,15 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
     const std::int64_t id = b["steamgriddb_id"];
+    // A store title keeps its art: its picker lists the new match's, to pick from.
+    if (!s.games.Contains(req.matches[1])) {
+      if (!ArtSubject(s, req.matches[1]))
+        return SendError(res, 404, "game_not_found", "no such game");
+      if (auto matched = metadata::MatchTitle(s.games.Metadata(), req.matches[1], id); !matched)
+        return SendError(res, 500, matched.error());
+      s.events.Publish("game.metadata_ready", {{"id", req.matches[1]}});
+      return SendJson(res, {{"status", "matched"}, {"steamgriddb_id", id}});
+    }
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
     auto game = s.games.Update(req.matches[1],
                                [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });

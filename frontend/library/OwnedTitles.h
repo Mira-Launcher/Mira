@@ -14,9 +14,10 @@ namespace mira_gui {
 // even when several stores sell it, with each store's copy.
 struct OwnedMatch {
   QString title;
-  std::vector<std::pair<QString, QString>> copies;  // (source, ref), in store order
-  std::string protondb_tier;                        // from the first copy that has one
-  std::string review_summary;                       // Steam's review label, likewise
+  std::vector<std::pair<QString, QString>> copies;      // (source, ref), in store order
+  std::vector<std::pair<QString, QString>> store_urls;  // (source, page), for copies that have one
+  std::string protondb_tier;                            // from the first copy that has one
+  std::string review_summary;                           // Steam's review label, likewise
   int review_percent = -1;
 };
 

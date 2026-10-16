@@ -169,16 +169,11 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) 
 void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_enabled) {
   const GameConfigEdit edit{"desktop_entries.enabled", "a boolean",
                             currently_enabled ? "false" : "true", false};
-  api::PatchGameConfigAsync(
-      parent, id, {edit}, [parent, currently_enabled](PatchGameConfigResult result) {
-        if (!result.ok) {
-          notify::FailedRequest(parent, "Could not update the desktop entry.", result.error);
-          return;
-        }
-        // The only feedback there is: nothing in Mira's own window changes.
-        notify::Notice(parent, currently_enabled ? "Removed from the application menu."
-                                                 : "Added to the application menu.");
-      });
+  // Success needs no notice: the menu entry itself appears or goes.
+  api::PatchGameConfigAsync(parent, id, {edit}, [parent](PatchGameConfigResult result) {
+    if (!result.ok)
+      notify::FailedRequest(parent, "Could not update the desktop entry.", result.error);
+  });
 }
 
 void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
@@ -253,13 +248,9 @@ void BatchSetDesktopEntry(QWidget* parent, const std::vector<std::string>& ids, 
   GamesPatch patch;
   patch.ids = ids;
   patch.config = {{"desktop_entries.enabled", "a boolean", enabled ? "true" : "false", false}};
-  api::PatchGamesAsync(parent, patch, [parent, enabled](PatchGamesResult result) {
-    if (!result.ok) {
+  api::PatchGamesAsync(parent, patch, [parent](PatchGamesResult result) {
+    if (!result.ok)
       notify::FailedRequest(parent, "Could not update the application menu.", result.error);
-      return;
-    }
-    notify::Notice(
-        parent, enabled ? "Added to the application menu." : "Removed from the application menu.");
   });
 }
 
