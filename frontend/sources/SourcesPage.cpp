@@ -264,6 +264,18 @@ void SourcesPage::OpenSetup(const QString& id) {
         });
     return;
   }
+  // Owned games come from Steam's own files; the Web API key is optional, in Settings.
+  if (id == "steam") {
+    api::AddSourceAsync(this, id.toStdString(), [this, id](PatchConfigResult r) {
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      api::ScanSteamAsync(this, [this, id](SteamScanResult scan) {
+        if (!scan.ok) notify::FailedRequest(this, "Could not scan the Steam library.", scan.error);
+        emit Imported(id);
+        emit OpenRequested(id);
+      });
+    });
+    return;
+  }
   if (source.kind == SourceInfo::Kind::Emulator) {
     api::AddSourceAsync(
         this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
@@ -321,15 +333,7 @@ void SourcesPage::OpenSetup(const QString& id) {
       emit OpenRequested(id);
     });
   };
-  connect(setup_card_, &SourceSetupCard::StatusChanged, this, [this, id, added] {
-    if (id != "steam") return added();
-    CloseSetup();
-    api::ScanSteamAsync(this, [this, id](SteamScanResult r) {
-      if (!r.ok) return notify::FailedRequest(this, "Could not scan the Steam library.", r.error);
-      emit Imported(id);
-      emit OpenRequested(id);
-    });
-  });
+  connect(setup_card_, &SourceSetupCard::StatusChanged, this, added);
   connect(setup_card_, &SourceSetupCard::LauncherInstallStarted, this, added);
 
   setup_scroll_->setWidget(setup_card_);
