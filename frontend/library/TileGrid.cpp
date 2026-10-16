@@ -41,7 +41,8 @@ void TileGrid::paintEvent(QPaintEvent* event) {
   if (shown.isEmpty()) return;
   const QModelIndex last = indexAt(QPoint(shown.left() + 1, shown.bottom()));
   if (!last.isValid()) return;
-  const QSize tile = static_cast<GameTileDelegate*>(itemDelegate())->TileSize();
+  const QSize tile =
+      GameTileDelegate::CoverSize(static_cast<GameTileDelegate*>(itemDelegate())->TileSize());
   const int end = std::min(model()->rowCount(), last.row() + kAhead);
   for (int row = last.row(); row < end; ++row) {
     const QStringList title =
