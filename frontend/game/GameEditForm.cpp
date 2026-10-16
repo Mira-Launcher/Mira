@@ -1,5 +1,6 @@
 #include "GameEditForm.h"
 
+#include <QAbstractItemView>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
@@ -102,6 +103,16 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* launch = new SettingsCard("Launch", cards_page);
   exe_combo_ = EditableCombo(launch, "Choose the program to run");
   connect(exe_combo_, &QComboBox::activated, this, &GameEditForm::OnExeComboActivated);
+  // A long candidate keeps its file name in the list, and the field's tooltip is the whole path.
+  exe_combo_->view()->setTextElideMode(Qt::ElideMiddle);
+  connect(exe_combo_, &QComboBox::editTextChanged, this, [this](const QString& text) {
+    exe_combo_->setToolTip(
+        text.isEmpty() || install_path_.empty()
+            ? text
+            : QString::fromStdString((std::filesystem::path(install_path_) / text.toStdString())
+                                         .lexically_normal()
+                                         .string()));
+  });
   auto* browse = new QPushButton("Browse…", launch);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
   // Shown while mirad wants its pick confirmed; saving any change confirms it too.
@@ -462,6 +473,8 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
   show(working_dir_edit_, patch.working_dir);
   show(data_dir_edit_, patch.data_dir);
   show(exe_combo_->lineEdit(), patch.exe_path);
+  for (QLineEdit* edit : {working_dir_edit_, data_dir_edit_, exe_combo_->lineEdit()})
+    ShowPathEnd(edit);
   ShowRunnerRef(runner_combo_, QString::fromStdString(patch.runner_ref.value_or(std::string())));
   tags_edit_->SetTags(patch.tags.value_or(std::vector<std::string>()));
   runner_config_ = nlohmann::json::parse(patch.runner_config_json.value_or("{}"), nullptr, false);
@@ -553,7 +566,7 @@ void GameEditForm::ShowRunnerFieldValues() {
 
 void GameEditForm::ShowInstallPath() {
   install_path_edit_->setText(QString::fromStdString(install_path_));
-  install_path_edit_->setCursorPosition(0);
+  ShowPathEnd(install_path_edit_);
   install_path_edit_->setToolTip(install_path_edit_->text());
 }
 
@@ -573,7 +586,7 @@ void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Cand
     exe_combo_->addItem(label, QString::fromStdString(candidate.rel_path));
   }
   exe_combo_->setEditText(QString::fromStdString(current));
-  exe_combo_->lineEdit()->setCursorPosition(0);
+  ShowPathEnd(exe_combo_->lineEdit());
   exe_combo_->blockSignals(false);
 }
 
@@ -595,7 +608,7 @@ void GameEditForm::PopulateRunnerCombo(const mira_gui::RunnersResult& result) {
 
 void GameEditForm::OnExeComboActivated(int index) {
   exe_combo_->setEditText(exe_combo_->itemData(index).toString());
-  exe_combo_->lineEdit()->setCursorPosition(0);
+  ShowPathEnd(exe_combo_->lineEdit());
 }
 
 void GameEditForm::BrowseExecutable() {
@@ -605,7 +618,7 @@ void GameEditForm::BrowseExecutable() {
   if (selected.isEmpty()) return;
 
   exe_combo_->setEditText(RelativeIfInside(selected, install_path_));
-  exe_combo_->lineEdit()->setCursorPosition(0);
+  ShowPathEnd(exe_combo_->lineEdit());
 }
 
 void GameEditForm::MoveFolder(bool prefix) {
@@ -652,7 +665,7 @@ void GameEditForm::MoveFolder(bool prefix) {
         original_patch_.data_dir = result.game.data_dir;
         populating_ = true;
         data_dir_edit_->setText(QString::fromStdString(result.game.data_dir));
-        data_dir_edit_->setCursorPosition(0);
+        ShowPathEnd(data_dir_edit_);
         populating_ = false;
         button->setEnabled(true);
         UpdateModified();

@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <utility>
@@ -125,9 +126,9 @@ void GameCard::Build(const GameSummary* title) {
   if (game != nullptr) cover_->ShowGame(*game);
   identity->insertStretch(0, 1);
   play_ = new QPushButton(this);
-  icons::Follow(play_, icons::Glyph::Play, &theme::Tokens::on_accent);
-  play_->setDefault(true);
+  play_->setObjectName("game_play");
   connect(play_, &QPushButton::clicked, this, &GameCard::PlayClicked);
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &GameCard::UpdatePlay);
   // Follows the game starting and stopping, and changes made elsewhere (the CLI, a batch edit).
   connect(library_, &QAbstractItemModel::dataChanged, this, &GameCard::UpdatePlay);
   connect(library_, &QAbstractItemModel::modelReset, this, &GameCard::UpdatePlay);
@@ -340,8 +341,18 @@ QString GameCard::Noun() const {
 
 void GameCard::UpdatePlay() {
   const GameSummary* game = library_->Find(id_);
-  play_->setText(game == nullptr ? "Play" : game->running ? "Stop" : RunVerb(*game));
+  const bool running = game != nullptr && game->running;
+  play_->setText(game == nullptr ? "Play" : running ? "Stop" : RunVerb(*game));
   play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
+  // A running game's button is a red Stop, and not the default, so Enter can't end the game.
+  play_->setDefault(!running);
+  play_->setIcon(running ? icons::For(icons::Glyph::Stop, theme::Current().on_accent)
+                         : icons::For(icons::Glyph::Play, theme::Current().on_accent));
+  if (play_->property("stop").toBool() != running) {
+    play_->setProperty("stop", running);
+    play_->style()->unpolish(play_);
+    play_->style()->polish(play_);
+  }
 
   const std::vector<PlayChoice> tools =
       game != nullptr ? ToolChoices(*game) : std::vector<PlayChoice>();
