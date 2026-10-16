@@ -8,6 +8,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/PrefixNaming.h"
 #include "library/Relocate.h"
 
 namespace mira::library {
@@ -39,10 +40,11 @@ bool IsApplications(const fs::path& root) {
 
 // Folders Mira keeps for something else, which pruning must never remove.
 bool IsConfiguredFolder(const config::Config& config, const fs::path& dir) {
-  std::vector<fs::path> folders = {
-      config.GetPath("prefix_root"), config.GetPath("epic.install_root"),
-      config.GetPath("gog.install_root"), config.GetPath("itch.install_root"),
-      config.GetPath("amazon.install_root")};
+  std::vector<fs::path> folders = PrefixRoots(config);
+  for (const char* key :
+       {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
+    folders.push_back(config.GetPath(key));
+  }
   for (const char* key : {"runner_search_paths", "wine_search_paths"}) {
     for (fs::path& path : config.GetPathArray(key)) folders.push_back(std::move(path));
   }

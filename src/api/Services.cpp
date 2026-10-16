@@ -17,6 +17,7 @@
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
+#include "library/PrefixNaming.h"
 #include "library/Scanner.h"
 #include "library/SourceRemoval.h"
 #include "metadata/MetadataFetcher.h"
@@ -641,7 +642,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
   if (prefix && !game.data_dir.empty()) {
-    if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted)
+    if (auto deleted = DeleteUnderRoot(game.data_dir, library::PrefixRoots(config)); !deleted)
       return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.

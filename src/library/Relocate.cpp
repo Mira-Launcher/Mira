@@ -132,14 +132,9 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
   // The prefix's target is checked before anything moves, so a bad one never needs an undo.
   const bool move_prefix = !game.data_dir.empty() && !prefix_in_install && !shared_prefix &&
                            !steam_prefix && (request.data_dir || !request.only_given);
-  const fs::path prefix_root = config.GetPath("prefix_root");
-  const fs::path prefix_target = !move_prefix ? fs::path()
-                                 : request.data_dir
-                                     ? *request.data_dir
-                                     : NamedDir(config, game, prefix_root, game.data_dir);
-  if (move_prefix && !paths::IsWithin(prefix_target, {prefix_root})) {
+  if (move_prefix && request.data_dir && !paths::IsWithin(*request.data_dir, PrefixRoots(config))) {
     return Err("path_outside_root",
-               std::format("\"{}\" is not inside prefix_root", prefix_target.string()),
+               std::format("\"{}\" is not inside a prefix folder", request.data_dir->string()),
                "Pick a folder inside the prefix folder, or change that setting.",
                Fix::Setting("prefix_root"));
   }
@@ -192,6 +187,11 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
     }
   }
 
+  // On the disk the install is on now.
+  const fs::path prefix_target =
+      !move_prefix       ? fs::path()
+      : request.data_dir ? *request.data_dir
+                         : NamedDir(config, game, PrefixRoot(config, game), game.data_dir);
   if (move_prefix && fs::path(game.data_dir) != prefix_target) {
     if (auto moved = MovePath(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
         !moved) {
