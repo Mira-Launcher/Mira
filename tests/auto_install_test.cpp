@@ -1,10 +1,14 @@
 #include <doctest.h>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
+#include "proc/Session.h"
 #include "runner/IRunner.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
@@ -129,16 +133,29 @@ model::Game AddWaitingGame(test::LiveServer& server, const fs::path& folder,
 
 }  // namespace
 
-TEST_CASE("A recognised installer runs quietly into the game's folder, which becomes playable") {
+TEST_CASE("A recognised installer runs quietly into its prefix, logging as it goes") {
   const fs::path state = test::TempDir("auto-install-quiet");
   test::LiveServer server(state);
-  // "Inno Setup" in the file is what marks it as one; it installs where /DIR= says.
-  AddWaitingGame(server, state / "setup_celeste",
-                 "# Inno Setup\necho \"$@\" > \"$0.args\"\n"
-                 "for arg; do case \"$arg\" in\n"
-                 "  /DIR=Z:*) dir=$(printf '%s' \"${arg#/DIR=Z:}\" | tr '\\\\' /) ;;\n"
-                 "esac; done\n"
-                 "printf game > \"$dir/Celeste.exe\"\n");
+  const fs::path release = state / "release";
+  // "Inno Setup" in the file is what marks it as one; it installs where /DIR= says, C: being the
+  // prefix's drive_c, and waits for `release` so the test can read the log meanwhile.
+  const model::Game waiting =
+      AddWaitingGame(server, state / "setup_celeste",
+                     "# Inno Setup\necho \"$@\" > \"$0.args\"\n"
+                     "cat /proc/self/cgroup > \"$0.cgroup\"\n"
+                     "for arg; do case \"$arg\" in\n"
+                     "  /DIR=C:*) dir=" +
+                         (state / "prefix" / "drive_c").string() +
+                         "/$(printf '%s' \"${arg#/DIR=C:}\" | tr '\\\\' /) ;;\n"
+                         "  /LOG=C:*) echo 'Inno: extracting' > " +
+                         (state / "prefix" / "drive_c").string() +
+                         "/\"$(printf '%s' \"${arg#/LOG=C:}\" | tr '\\\\' /)\" ;;\n"
+                         "esac; done\n"
+                         "echo unpacking fg-01.bin\n"
+                         "while [ ! -e '" +
+                         release.string() +
+                         "' ]; do sleep 0.05; done\n"
+                         "mkdir -p \"$dir\"\nprintf game > \"$dir/Celeste.exe\"\n");
   REQUIRE(server.MutableConfig().Set("install.inno_args", "/QUIET /SP-"));
   REQUIRE(server.MutableConfig().Set("install.show_progress", false));
   httplib::Client client = server.Client();
@@ -146,17 +163,51 @@ TEST_CASE("A recognised installer runs quietly into the game's folder, which bec
   auto started = client.Post("/v1/games/celeste/install");
   REQUIRE(started != nullptr);
   CHECK(started->status == 202);
+
+  // The game's log window shows the installer's output, live, while it runs.
+  nlohmann::json shown_log;
+  for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+       std::chrono::steady_clock::now() < deadline;
+       std::this_thread::sleep_for(std::chrono::milliseconds(50))) {
+    auto log = client.Get("/v1/logs/game:celeste");
+    REQUIRE(log != nullptr);
+    shown_log = nlohmann::json::parse(log->body);
+    if (shown_log["lines"].dump().contains("unpacking fg-01.bin")) break;
+  }
+  CHECK(shown_log["lines"].dump().contains("unpacking fg-01.bin"));
+  CHECK(shown_log["active"] == true);
+  test::Touch(release);
   REQUIRE(test::WaitForEvent(server.events(), "game.install.finished"));
 
+  const fs::path target = state / "prefix" / "drive_c" / "Games" / waiting.name;
   const auto game = server.games().Find("celeste");
   REQUIRE(game);
   CHECK(game->status == model::GameStatus::Ready);
-  CHECK(game->install_path == (state / "setup_celeste").string());
+  CHECK(game->install_path == target.string());
   CHECK(game->exe_path == "Celeste.exe");
+  CHECK(game->installer_dir == (state / "setup_celeste").string());
   std::ifstream args(state / "setup_celeste" / "setup_celeste.exe.args");
   std::string passed;
   std::getline(args, passed);
-  CHECK(passed.starts_with("/QUIET /SP- /DIR=Z:"));  // the configured arguments, then the target
+  // The configured arguments, then the target and Inno's own log.
+  CHECK(passed == "/QUIET /SP- /DIR=C:\\Games\\" + waiting.name + " /LOG=C:\\mira-install.log");
+  // Its own scope, so running out of memory takes the installer, not mirad.
+  const auto cgroup_of = [](const fs::path& file) {
+    std::ifstream in(file);
+    std::string line;
+    std::getline(in, line);
+    return line;
+  };
+  const std::string installer_cgroup =
+      cgroup_of(state / "setup_celeste" / "setup_celeste.exe.cgroup");
+  CHECK(installer_cgroup.ends_with(".scope"));
+  CHECK(installer_cgroup != cgroup_of("/proc/self/cgroup"));
+  auto ended = client.Get("/v1/logs/game:celeste");
+  REQUIRE(ended != nullptr);
+  const auto ended_log = nlohmann::json::parse(ended->body);
+  CHECK(ended_log["lines"].dump().contains("exited with code 0"));
+  CHECK(ended_log["lines"].dump().contains("Inno: extracting"));
+  CHECK(ended_log["active"] == false);
 
   auto progress = client.Get("/v1/games/celeste/install/progress");
   REQUIRE(progress != nullptr);
@@ -221,7 +272,9 @@ TEST_CASE("An installer that uses a publisher's folder moves the game to the gam
 TEST_CASE("An installer that installs nothing leaves the game waiting, with a way forward") {
   const fs::path state = test::TempDir("auto-install-nothing");
   test::LiveServer server(state);
-  AddWaitingGame(server, state / "setup_celeste", "exit 0\n");
+  AddWaitingGame(server, state / "setup_celeste", "echo installer ran\nexit 0\n");
+  const fs::path log_file = proc::GameLogPath(server.games().Dir(), "celeste");
+  test::Touch(log_file, "[mira-run] session start, game_id=celeste\nlast launch\n");
   httplib::Client client = server.Client();
 
   REQUIRE(client.Post("/v1/games/celeste/install"));
@@ -232,4 +285,30 @@ TEST_CASE("An installer that installs nothing leaves the game waiting, with a wa
   const auto game = server.games().Find("celeste");
   CHECK(game->status == model::GameStatus::NeedsInstall);
   CHECK_FALSE(game->last_error.empty());
+
+  // Trying again adds to the install's log, so the first run's output is still there to read; the
+  // last launch's log is kept beside it.
+  const auto read = [](const fs::path& path) {
+    std::ifstream in(path);
+    return std::string(std::istreambuf_iterator<char>(in), {});
+  };
+  REQUIRE(client.Post("/v1/games/celeste/install"));
+  const auto failures = [&] {
+    return std::ranges::count(server.events().Since(0), std::string("game.install.failed"),
+                              &model::Event::type);
+  };
+  for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+       failures() < 2 && std::chrono::steady_clock::now() < deadline;) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  REQUIRE(failures() == 2);
+  const std::string log = read(log_file);
+  size_t runs = 0;
+  for (size_t at = log.find("installer ran"); at != std::string::npos;
+       at = log.find("installer ran", at + 1)) {
+    ++runs;
+  }
+  CHECK(runs == 2);
+  CHECK(read(log_file.string() + ".1").contains("last launch"));
+  CHECK_FALSE(log.contains("last launch"));
 }

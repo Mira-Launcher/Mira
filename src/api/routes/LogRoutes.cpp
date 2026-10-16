@@ -11,6 +11,7 @@
 #include "api/Services.h"
 #include "core/LogHub.h"
 #include "core/Strings.h"
+#include "library/AutoInstall.h"
 #include "proc/ProcessSupervisor.h"
 #include "proc/Session.h"
 
@@ -21,11 +22,12 @@ namespace fs = std::filesystem;
 
 constexpr std::streamoff kMaxReadBytes = 4 * 1024 * 1024;
 
-// A game's log is mira-run's file; the cursor is a byte offset into it.
+// A game's log is the file mira-run or its installer run writes; the cursor is a byte offset into
+// it.
 json GameLog(Services& s, const std::string& id, const std::optional<std::uint64_t>& after,
              int tail) {
   std::ifstream in(proc::GameLogPath(s.games.Dir(), id), std::ios::binary);
-  const bool active = s.supervisor.IsRunning(id);
+  const bool active = s.supervisor.IsRunning(id) || library::Installing(id);
   if (!in) return {{"lines", json::array()}, {"next", 0}, {"active", active}};
   in.seekg(0, std::ios::end);
   const std::streamoff size = in.tellg();

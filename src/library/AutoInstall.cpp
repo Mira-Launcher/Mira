@@ -19,6 +19,7 @@
 #include "library/SourceRemoval.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
+#include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 
@@ -201,8 +202,32 @@ std::optional<model::Candidate> FirstGameExe(const Detector::Result& detected, c
   return std::nullopt;
 }
 
-Result<model::Game> RunInstaller(config::Config& config, const model::Game& game,
-                                 InstallMode mode) {
+// Where a quiet install puts the game: C:\Games\<name> in its prefix, where an installer left to
+// itself would put it, so the installer's own folder keeps only the installer.
+fs::path SilentTarget(const model::Game& game, const fs::path& prefix) {
+  std::string name = game.name;
+  std::erase_if(name, [](char c) { return std::string_view("<>:\"/\\|?*").contains(c); });
+  if (name.empty()) name = game.id;
+  return prefix / "drive_c" / "Games" / name;
+}
+
+constexpr std::string_view kInstallLogMark = "[mira] install ";
+
+// The game's log, where its log window reads: a launch's is written by mira-run, an install's here.
+// Installer runs add to one log, so a quiet run's output survives the shown run tried after it; a
+// launch's log is kept as <log>.1, as mira-run keeps it.
+std::ofstream OpenInstallLog(const fs::path& log_file) {
+  std::error_code ec;
+  fs::create_directories(log_file.parent_path(), ec);
+  std::string first_line;
+  std::getline(std::ifstream(log_file), first_line);
+  if (first_line.starts_with(kInstallLogMark)) return std::ofstream(log_file, std::ios::app);
+  fs::rename(log_file, log_file.string() + ".1", ec);
+  return std::ofstream(log_file, std::ios::binary | std::ios::trunc);
+}
+
+Result<model::Game> RunInstaller(config::Config& config, const model::Game& game, InstallMode mode,
+                                 const fs::path& log_file) {
   const fs::path installer = fs::path(game.install_path) / game.exe_path;
   const InstallerFormat format = DetectInstallerFormat(installer);
   const bool silent = format != InstallerFormat::kUnknown && mode != InstallMode::kInteractive;
@@ -230,14 +255,30 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   if (!command) return std::unexpected(command.error());
 
   Command run = *command;
+  // In a scope of its own, as a game runs: an unpacker that runs the system out of memory is what
+  // systemd-oomd kills, not mirad and the GUI with it. The scope execs the installer, so its output
+  // and exit code are still the installer's.
+  if (const auto systemd_run = runner::FindOnPath("systemd-run")) {
+    run.argv.insert(run.argv.begin(), {*systemd_run, "--user", "--scope", "--quiet", "--collect",
+                                       "--description", "Mira: installing " + game.name, "--"});
+  }
+  const fs::path target = SilentTarget(provisioned, provisioned.data_dir);
   if (silent) {
-    // Point the installer at install_path via Wine's Z: drive.
-    std::string target = "Z:" + fs::absolute(game.install_path).string();
-    std::ranges::replace(target, '/', '\\');
+    std::string windows_target =
+        "C:\\" + target.lexically_relative(fs::path(provisioned.data_dir) / "drive_c").string();
+    std::ranges::replace(windows_target, '/', '\\');
     const char* flag = format == InstallerFormat::kInnoSetup ? "/DIR="
                        : format == InstallerFormat::kMsi     ? "TARGETDIR="
                                                              : "/D=";
-    run.argv.push_back(flag + target);
+    run.argv.push_back(flag + windows_target);
+  }
+  // Inno Setup prints nothing; its own log says what a failed run was doing. Copied into the
+  // game's log after the run.
+  const fs::path inno_log = fs::path(provisioned.data_dir) / "drive_c" / "mira-install.log";
+  if (format == InstallerFormat::kInnoSetup) {
+    std::error_code ec;
+    fs::remove(inno_log, ec);
+    run.argv.push_back("/LOG=C:\\mira-install.log");
   }
 
   const Detector detector(SettingsFromConfig(config));
@@ -259,7 +300,25 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
   log::Info("running {} installer for {}: {}", silent ? "silent" : "interactive", game.id,
             installer.string());
-  const Result<runner::ExecResult> result = runner::RunAndWait(run);
+  std::ofstream install_log = OpenInstallLog(log_file);
+  const auto write_log = [&](std::string_view text) {
+    install_log << text;
+    install_log.flush();
+  };
+  std::string command_line;
+  for (const std::string& arg : run.argv) command_line += (command_line.empty() ? "" : " ") + arg;
+  write_log(std::format("{}({}): {}\n", kInstallLogMark, silent ? "silent" : "interactive",
+                        command_line));
+  const Result<runner::ExecResult> result = runner::RunAndWait(run, write_log);
+  write_log(result ? std::format("\n[mira] installer exited with code {}\n", result->exit_code)
+                   : std::format("\n[mira] installer didn't run: {}\n", result.error().message));
+  if (std::ifstream inno(inno_log, std::ios::binary); inno) {
+    write_log("[mira] Inno Setup's log:\n");
+    write_log(std::string(std::istreambuf_iterator<char>(inno), {}));
+    inno.close();
+    std::error_code ec;
+    fs::remove(inno_log, ec);
+  }
   if (!result) {
     // Wine's own processes leave the installer's group, so a cancel ends them through the prefix.
     if (result.error().code == "cancelled" && !provisioned.data_dir.empty()) {
@@ -277,9 +336,17 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
 
   model::Game done = provisioned;
-  Detector::Result detected = detector.Detect(game.install_path);
-  std::optional<model::Candidate> exe =
-      FirstGameExe(detected, game.install_path, installer, existed);
+  Detector::Result detected;
+  std::optional<model::Candidate> exe;
+  if (silent) {
+    detected = detector.Detect(target);
+    exe = FirstGameExe(detected, target, installer);
+    if (exe) done.install_path = target.string();
+  }
+  if (!exe) {
+    detected = detector.Detect(game.install_path);
+    exe = FirstGameExe(detected, game.install_path, installer, existed);
+  }
   for (const fs::path& dir :
        InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir)) {
     if (exe) break;
@@ -391,6 +458,12 @@ std::optional<InstallProgress> Progress(const std::string& id) {
     it->second.measured_at = checked;
   }
   return entry.progress;
+}
+
+bool Installing(const std::string& id) {
+  const std::lock_guard lock(tracked_mutex);
+  const auto it = tracked.find(id);
+  return it != tracked.end() && it->second.progress.state == "running";
 }
 
 bool AutoInstalls(const config::Config& config, const model::Game& game) {
@@ -512,7 +585,8 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
     game = *saved;
   }
 
-  const Result<model::Game> done = RunInstaller(config, *game, mode);
+  const Result<model::Game> done =
+      RunInstaller(config, *game, mode, proc::GameLogPath(games.Dir(), id));
   Finish(id, done ? "" : done.error().message);
   if (done) {
     log::Info("installed {}: {} in {}", id, done->exe_path, done->install_path);
