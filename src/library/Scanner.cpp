@@ -18,6 +18,7 @@
 #include "library/AutoSetup.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/PrefixNaming.h"
 #include "library/WinePrefix.h"
 #include "runner/RunnerRegistry.h"
 
@@ -271,16 +272,14 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
     return summary;
   }
 
-  const fs::path prefix_root = config_.GetPath("prefix_root");
   // Sources with their own structured tracking (gog-<id>/itch-<id> rows,
   // via GogImporter/ItchImporter) shouldn't also get double-detected here
   // as one big bogus game named after the wrapper folder itself.
-  const std::vector<fs::path> excluded_roots = {prefix_root,
-                                                config_.GetPath("epic.install_root"),
-                                                config_.GetPath("gog.install_root"),
-                                                config_.GetPath("itch.install_root"),
-                                                config_.GetPath("amazon.install_root"),
-                                                config_.GetPath("emulators.roms_root")};
+  std::vector<fs::path> excluded_roots = PrefixRoots(config_);
+  for (const char* key : {"epic.install_root", "gog.install_root", "itch.install_root",
+                          "amazon.install_root", "emulators.roms_root"}) {
+    excluded_roots.push_back(config_.GetPath(key));
+  }
   const DetectorSettings detector_settings = SettingsFromConfig(config_);
   const Detector detector(detector_settings);
   AutoSetup auto_setup(config_, games_, events_);

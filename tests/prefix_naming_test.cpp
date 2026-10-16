@@ -339,3 +339,24 @@ TEST_CASE("Relocate leaves a program outside the game's folder alone and keeps p
   CHECK(kept->exe_path == (setup.outside / "Applications" / "Eden.AppImage").string());
   CHECK(fs::exists(setup.outside / "Applications" / "Eden.AppImage"));
 }
+
+TEST_CASE("PrefixDir puts a game on another disk in that disk's Mira folder") {
+  const fs::path other_disk = "/dev/shm";
+  std::error_code ec;
+  if (!fs::is_directory(other_disk, ec)) return;
+  config::Config config(TempConfigFile("prefix-naming-disk.toml"));
+  config.Load();
+  const fs::path prefix_root = TempDir("prefix-naming-home");
+  const fs::path mira = other_disk / "mira-tests-prefix-disk";
+  fs::create_directories(mira / "Games" / "Celeste");
+  REQUIRE(config.Set("prefix_root", prefix_root.string()).has_value());
+  REQUIRE(config.Set("mira_folders", nlohmann::json::array({mira.string()})).has_value());
+
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  CHECK(library::PrefixDir(config, game).parent_path() == prefix_root);
+  game.install_path = (mira / "Games" / "Celeste").string();
+  CHECK(library::PrefixDir(config, game) == mira / "prefixes" / "celeste");
+  fs::remove_all(mira);
+}

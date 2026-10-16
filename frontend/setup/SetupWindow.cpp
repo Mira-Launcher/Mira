@@ -395,20 +395,21 @@ void SetupWindow::keyPressEvent(QKeyEvent* event) {
 
 void SetupWindow::FitHeight() {
   fitted_ = true;
-  constexpr int kWidth = 640;
+  // Wider on larger screens, so pages wrap less and fit a 720p-sized screen (a TV at 300%).
+  const QScreen* screen = this->screen();
+  const int width =
+      screen != nullptr ? std::clamp(screen->availableGeometry().width() * 3 / 5, 640, 820) : 640;
   int tallest = 0;
   for (SetupStep* page : pages_) {
     page->ensurePolished();
     const int height =
-        page->hasHeightForWidth() ? page->heightForWidth(kWidth) : page->sizeHint().height();
+        page->hasHeightForWidth() ? page->heightForWidth(width) : page->sizeHint().height();
     tallest = std::max(tallest, height);
   }
   int height = tallest + layout()->itemAt(0)->sizeHint().height() +
                layout()->itemAt(2)->widget()->sizeHint().height();
-  if (const QScreen* screen = this->screen()) {
-    height = std::min(height, screen->availableGeometry().height() - 60);
-  }
-  setFixedSize(kWidth, height);
+  if (screen != nullptr) height = std::min(height, screen->availableGeometry().height() - 60);
+  setFixedSize(width, height);
 }
 
 void SetupWindow::ShowRunning() {

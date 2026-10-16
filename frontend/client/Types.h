@@ -697,6 +697,20 @@ struct UnclearMovesResult {
   std::vector<UnclearMove> moves;
 };
 
+// Something dropped into a Mira folder that Mira couldn't sort (GET /v1/library/drops).
+struct UnclearDrop {
+  std::string path;
+  std::string name;
+  std::string reason;
+  std::vector<std::pair<std::string, std::string>> choices;  // id, label
+};
+
+struct UnclearDropsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<UnclearDrop> drops;
+};
+
 struct SettleMoveResult {
   bool ok = false;
   ApiError error;

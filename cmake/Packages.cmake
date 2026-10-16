@@ -13,13 +13,8 @@ set(MIRA_PACKAGE_LIB /usr/lib/mira)
 
 set(MIRA_LAUNCHER_DIR "${CMAKE_BINARY_DIR}/package-launchers")
 foreach(program IN ITEMS mira mira-gui)
-  set(default_platform "")
-  if(program STREQUAL "mira-gui")
-    # As in the AppImage: the bundled Qt has the xcb platform plugin, which also runs through XWayland.
-    set(default_platform "export QT_QPA_PLATFORM=\"\${QT_QPA_PLATFORM:-xcb}\"\n")
-  endif()
   file(WRITE "${MIRA_LAUNCHER_DIR}/${program}"
-       "#!/bin/sh\n${default_platform}exec ${MIRA_PACKAGE_LIB}/bin/${program} \"$@\"\n")
+       "#!/bin/sh\nexec ${MIRA_PACKAGE_LIB}/bin/${program} \"$@\"\n")
   file(CHMOD "${MIRA_LAUNCHER_DIR}/${program}" PERMISSIONS
        OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 endforeach()

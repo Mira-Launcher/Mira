@@ -10,89 +10,10 @@
 #include <sstream>
 
 #include "core/AtomicFile.h"
+#include "steam/BinaryVdf.h"
 
 namespace mira::steam {
 namespace {
-
-// Valve's binary KeyValues, as shortcuts.vdf uses it: a type byte, a
-// NUL-terminated name, then the value. Objects end with kEnd.
-enum Type : std::uint8_t { kObject = 0, kString = 1, kInt = 2, kFloat = 3, kUint64 = 7, kEnd = 8 };
-
-struct Node {
-  Type type = kObject;
-  std::string name;
-  std::string bytes;  // a string's text, or a number's raw little-endian bytes
-  std::vector<Node> children;
-
-  Node() = default;
-  Node(Type t, std::string n = {}, std::string b = {})
-      : type(t), name(std::move(n)), bytes(std::move(b)) {}
-
-  Node* Child(std::string_view key) {
-    for (Node& child : children) {
-      if (child.name.size() == key.size() &&
-          std::equal(key.begin(), key.end(), child.name.begin(),
-                     [](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
-        return &child;
-      }
-    }
-    return nullptr;
-  }
-};
-
-struct Reader {
-  std::string_view data;
-  size_t at = 0;
-
-  std::optional<std::string> CString() {
-    const size_t end = data.find('\0', at);
-    if (end == std::string_view::npos) return std::nullopt;
-    std::string text(data.substr(at, end - at));
-    at = end + 1;
-    return text;
-  }
-
-  // Reads children up to kEnd into `parent`, refusing nesting deeper than Steam writes.
-  bool Object(Node& parent, int depth = 0) {
-    if (depth > 64) return false;
-    while (at < data.size()) {
-      const auto type = static_cast<Type>(data[at++]);
-      if (type == kEnd) return true;
-      Node node{type};
-      auto name = CString();
-      if (!name) return false;
-      node.name = std::move(*name);
-      size_t width = 0;
-      switch (type) {
-        case kObject:
-          if (!Object(node, depth + 1)) return false;
-          break;
-        case kString: {
-          auto text = CString();
-          if (!text) return false;
-          node.bytes = std::move(*text);
-          break;
-        }
-        case kInt:
-        case kFloat:
-          width = 4;
-          break;
-        case kUint64:
-          width = 8;
-          break;
-        default:
-          return false;
-      }
-      if (width > 0) {
-        if (at + width > data.size()) return false;
-        node.bytes = std::string(data.substr(at, width));
-        at += width;
-      }
-      parent.children.push_back(std::move(node));
-    }
-    return false;
-  }
-};
 
 void Write(std::string& out, const Node& node) {
   out += char(node.type);

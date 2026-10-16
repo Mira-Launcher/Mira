@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <set>
+#include <vector>
 
 #include "config/Config.h"
 #include "model/Types.h"
@@ -29,8 +30,14 @@ std::filesystem::path NamedDir(const config::Config& config, const model::Game& 
 // provisioning attempt failed.
 bool NeedsProvisioning(const std::optional<model::Game>& existing);
 
+// prefix_root, or for a game on another disk the prefixes folder of the Mira folder on that disk,
+// so Proton's links between the game and its prefix stay on one disk.
+std::filesystem::path PrefixRoot(const config::Config& config, const model::Game& game);
+// prefix_root and every Mira folder's prefixes folder.
+std::vector<std::filesystem::path> PrefixRoots(const config::Config& config);
+
 // Where a newly-provisioned game's data directory goes: NamedDir under
-// prefix_root. Only for a fresh provision -- an already-provisioned game's
+// PrefixRoot. Only for a fresh provision -- an already-provisioned game's
 // data_dir is left alone until explicitly relocated (see library/Relocate.h).
 std::filesystem::path PrefixDir(const config::Config& config, const model::Game& game);
 // The same, also avoiding the data_dir of every other game in `games`: a prefix folder is only

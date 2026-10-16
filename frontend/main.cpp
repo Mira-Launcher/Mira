@@ -9,11 +9,13 @@
 #include <QLockFile>
 #include <QStandardPaths>
 #include <QStringList>
-#include <cstdlib>
-#include <filesystem>
+#include <algorithm>
+#include <string_view>
+#include <vector>
 
 #include "app/Appearance.h"
 #include "app/DaemonSupervisor.h"
+#include "app/Display.h"
 #include "app/KeyBindings.h"
 #include "app/Notify.h"
 #include "app/SystemNotifier.h"
@@ -26,32 +28,17 @@
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
 
-namespace {
-
-// A bundled build (AppImage, .deb, .rpm) carries only Qt's xcb platform plugin; picking it up
-// front runs through XWayland instead of failing to find wayland when started without the
-// /usr/bin/mira-gui wrapper (from `mira`, autostart or Steam).
-void DefaultToBundledPlatform() {
-  if (std::getenv("QT_QPA_PLATFORM") != nullptr) return;
-  std::error_code ec;
-  const std::filesystem::path platforms =
-      std::filesystem::read_symlink("/proc/self/exe", ec).parent_path().parent_path() / "plugins" /
-      "platforms";
-  if (ec || !std::filesystem::is_directory(platforms, ec)) return;
-  for (const auto& entry : std::filesystem::directory_iterator(platforms, ec)) {
-    if (entry.path().filename().string().starts_with("libqwayland")) return;
-  }
-  ::setenv("QT_QPA_PLATFORM", "xcb", 0);
-}
-
-}  // namespace
-
 int main(int argc, char** argv) {
   // Covers decode on worker threads. With glibc's per-thread arenas, the freed images stayed
   // resident in the tray (about 45 MB) even after malloc_trim; one arena gives them back.
   mallopt(M_ARENA_MAX, 1);
-  DefaultToBundledPlatform();
+  mira_gui::display::Prepare(std::find(argv, argv + argc, std::string_view("--big-screen")) !=
+                             argv + argc);
+  // QApplication takes out the arguments it handles.
+  std::vector<char*> arguments(argv, argv + argc + 1);
   QApplication app(argc, argv);
+  mira_gui::display::FixX11Scale(arguments.data());
+  mira_gui::display::ForgetEnv();
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
   mira_gui::theme::EnlargeAppFont();
@@ -68,6 +55,7 @@ int main(int argc, char** argv) {
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
   // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
   const bool big_screen = app.arguments().contains("--big-screen");
+  const bool desktop = app.arguments().contains("--desktop");
   // Started by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
   const bool hidden = app.arguments().contains("--hidden");
   // Started at login: the tray too, unless big screen opens at start.
@@ -110,8 +98,11 @@ int main(int argc, char** argv) {
   // ourselves if nothing is already listening, so the AppImage works as one
   // self-contained app.
   auto* supervisor = new mira_gui::DaemonSupervisor(&app);
+  mira_gui::display::SetInstanceLock(&single_instance_lock);
+  mira_gui::display::SetDaemon([supervisor] { return supervisor->Pid(); },
+                               [supervisor] { supervisor->HandOff(); });
   QObject::connect(
-      supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, hidden, login] {
+      supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, desktop, hidden, login] {
         // Read once and applied before the window exists, so it opens at its saved
         // size and look instead of changing once shown.
         const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
@@ -143,7 +134,7 @@ int main(int argc, char** argv) {
         } else if (tray) {
           // With no tray to come back from, the dock or taskbar.
           if (!mira_gui::tray::Available()) window->showMinimized();
-        } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {
+        } else if (big_screen || (!desktop && prefs.big_screen_at_start.value_or(false))) {
           window->OpenBigScreen();
         } else {
           window->show();
@@ -154,6 +145,7 @@ int main(int argc, char** argv) {
         QLocalServer::removeServer("mira-gui-activate");
         auto* activation_server = new QLocalServer(window);
         activation_server->listen("mira-gui-activate");
+        mira_gui::display::SetActivationServer(activation_server);
         QObject::connect(
             activation_server, &QLocalServer::newConnection, window, [activation_server, window] {
               QLocalSocket* client = activation_server->nextPendingConnection();

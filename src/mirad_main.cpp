@@ -184,6 +184,7 @@ int main(int argc, char** argv) {
   watcher.UseInstallLane(services.installs);
   watcher.OnSettingsSaved([&services] { services.ReloadSettings(); });
   watcher.UseUnclearMoves(services.unclear_moves);
+  watcher.UseDrops(services.drops);
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 

@@ -38,6 +38,11 @@ bool ParseUnclearMove(const std::string& data, UnclearMove* out);
 // The folder of `library.move_settled` ({folder}), or empty.
 std::string ParseSettledFolder(const std::string& data);
 
+// Parses `library.drop_unclear`'s payload (a Drop); false without a path or with no choices.
+bool ParseUnclearDrop(const std::string& data, UnclearDrop* out);
+// The path of `library.drop_settled` ({path}), or empty.
+std::string ParseSettledDropPath(const std::string& data);
+
 // Parses `game.removed`'s payload (`{"id": "..."}`, Server.cpp).
 std::string ParseRemovedId(const std::string& data);
 

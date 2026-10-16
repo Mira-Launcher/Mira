@@ -140,7 +140,9 @@ class Sidebar : public QWidget {
   QPushButton* runners_nav_ = nullptr;
   QPushButton* tags_nav_ = nullptr;
   QPushButton* settings_button_ = nullptr;
+  QWidget* sources_heading_ = nullptr;
   QToolButton* manage_sources_button_ = nullptr;
+  QPushButton* add_source_button_ = nullptr;  // shown until another source is added
   QToolButton* add_games_ = nullptr;
   QToolButton* fetch_art_button_ = nullptr;
   QLabel* footer_ = nullptr;

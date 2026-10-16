@@ -2,11 +2,13 @@
 
 #include <QAbstractButton>
 #include <QAction>
+#include <QIconEngine>
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
 #include <QTransform>
+#include <algorithm>
 #include <cmath>
 
 #include "Theme.h"
@@ -109,6 +111,9 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       return;
     case Glyph::ChevronDown:
       painter.drawPolyline(QPolygonF({QPointF(4.0, 6.0), QPointF(8.0, 10.0), QPointF(12.0, 6.0)}));
+      return;
+    case Glyph::ChevronUp:
+      painter.drawPolyline(QPolygonF({QPointF(4.0, 10.0), QPointF(8.0, 6.0), QPointF(12.0, 10.0)}));
       return;
     case Glyph::Play:
       painter.setPen(Qt::NoPen);
@@ -255,6 +260,13 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
                                      QPointF(8.0, 13.5), QPointF(2.5, 8.0)}));
       painter.drawEllipse(QPointF(5.5, 5.5), 1.0, 1.0);
       return;
+    case Glyph::Gamepad:
+      painter.drawRoundedRect(QRectF(1.5, 4.5, 13.0, 7.5), 3.2, 3.2);
+      painter.drawLine(QPointF(4.0, 8.25), QPointF(6.5, 8.25));
+      painter.drawLine(QPointF(5.25, 7.0), QPointF(5.25, 9.5));
+      painter.drawEllipse(QPointF(10.5, 7.4), 0.5, 0.5);
+      painter.drawEllipse(QPointF(11.8, 9.0), 0.5, 0.5);
+      return;
     case Glyph::Layers:
       painter.drawPolygon(
           QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
@@ -310,15 +322,44 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
   }
 }
 
-QPixmap Render(Glyph glyph, int size, const QColor& color) {
-  QPixmap pixmap(size, size);
-  pixmap.fill(Qt::transparent);
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.scale(size / kGrid, size / kGrid);
-  PaintGlyph(painter, glyph, color);
-  return pixmap;
-}
+// Paints the glyph at whatever size and pixel ratio it's asked for, so it stays sharp on a scaled
+// screen.
+class GlyphEngine : public QIconEngine {
+ public:
+  GlyphEngine(Glyph glyph, const QColor& color) : glyph_(glyph), color_(color) {}
+
+  void paint(QPainter* painter, const QRect& rect, QIcon::Mode mode, QIcon::State) override {
+    QColor color = color_;
+    if (mode == QIcon::Disabled) color.setAlphaF(color.alphaF() * 0.4);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    const qreal side = std::min(rect.width(), rect.height());
+    painter->translate(rect.x() + (rect.width() - side) / 2, rect.y() + (rect.height() - side) / 2);
+    painter->scale(side / kGrid, side / kGrid);
+    PaintGlyph(*painter, glyph_, color);
+    painter->restore();
+  }
+
+  QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override {
+    return scaledPixmap(size, mode, state, 1.0);
+  }
+
+  QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State state,
+                       qreal scale) override {
+    QPixmap pixmap(size * scale);
+    pixmap.setDevicePixelRatio(scale);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    paint(&painter, QRect(QPoint(), size), mode, state);
+    return pixmap;
+  }
+
+  QIconEngine* clone() const override { return new GlyphEngine(glyph_, color_); }
+
+ private:
+  Glyph glyph_;
+  QColor color_;
+};
 
 }  // namespace
 
@@ -327,9 +368,7 @@ QIcon For(Glyph glyph) {
 }
 
 QIcon For(Glyph glyph, const QColor& color) {
-  QIcon icon;
-  for (const int size : {16, 20, 24, 32, 48}) icon.addPixmap(Render(glyph, size, color));
-  return icon;
+  return QIcon(new GlyphEngine(glyph, color));
 }
 
 void Follow(QAbstractButton* button, Glyph glyph, Role role) {

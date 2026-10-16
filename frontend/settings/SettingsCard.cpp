@@ -455,9 +455,8 @@ void SettingsCard::SetExpanded(bool expanded) {
   body_->setVisible(expanded);
   if (chevron_ != nullptr) {
     const QColor muted = theme::Current().text_muted;
-    QIcon icon = icons::For(icons::Glyph::ChevronDown, muted);
-    if (expanded) icon = QIcon(icon.pixmap(32).transformed(QTransform().rotate(180)));
-    chevron_->setIcon(icon);
+    chevron_->setIcon(
+        icons::For(expanded ? icons::Glyph::ChevronUp : icons::Glyph::ChevronDown, muted));
     chevron_->setToolTip(expanded ? "Fold" : "Show");
     // Folded, the header is the whole card, so it gets the bottom padding.
     header_layout_->setContentsMargins(kRowPaddingX, 12, kRowPaddingX - 6, expanded ? 4 : 12);

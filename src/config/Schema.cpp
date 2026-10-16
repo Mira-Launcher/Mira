@@ -191,6 +191,16 @@ Schema::Schema() {
   // --- Library ---------------------------------------------------------------
   s.Section("Library", "Folders");
 
+  s.Add({.key = "mira_folders",
+         .label = "Mira folders",
+         .type = Type::StringArray,
+         .default_value = json::array({"~/Mira"}),
+         .doc =
+             "Folders holding Mira's Games, Applications and other folders, one per disk. A game, "
+             "app, ROM or archive dropped straight into one is sorted into place, and Mira asks "
+             "when it can't tell where it goes.",
+         .path = PathKind::Folder});
+
   s.Add({.key = "library_roots",
          .label = "Library folders",
          .type = Type::StringArray,
@@ -205,8 +215,9 @@ Schema::Schema() {
          .type = Type::String,
          .default_value = "~/Mira/prefixes",
          .doc =
-             "The folder where each game's Wine or Proton prefix is created. Mira never scans it "
-             "for games.",
+             "The folder where each game's Wine or Proton prefix is created. A game on another "
+             "disk gets its prefix in the prefixes folder of that disk's Mira folder. Mira never "
+             "scans them for games.",
          .path = PathKind::Folder});
 
   s.Add({.key = "prefix_naming",
@@ -367,13 +378,14 @@ Schema::Schema() {
          .keywords = "sgdb"});
 
   s.Add({.key = "metadata.art_size",
-         .label = "Art size",
+         .label = "Art resolution",
          .type = Type::String,
-         .default_value = "high",
-         .doc = "How large downloaded art is kept. High keeps covers sharp on large tiles and "
-                "high-DPI screens. Compact uses about half the disk space.",
-         .constraint = OneOf({"high", "compact"}),
-         .keywords = "quality resolution disk space cover hero"});
+         .default_value = "auto",
+         .doc = "The resolution downloaded art is kept at. Auto keeps it at High, or Original when "
+                "a 4K or larger screen is connected. Compact uses about half the disk space of "
+                "High. Original keeps art as downloaded.",
+         .constraint = OneOf({"auto", "compact", "high", "original"}),
+         .keywords = "quality resolution disk space cover hero 4k"});
 
   s.Add({.key = "metadata.title_details",
          .label = "Details for games not installed",
@@ -492,11 +504,10 @@ Schema::Schema() {
          .label = "Steam Web API key",
          .type = Type::String,
          .default_value = "",
-         .doc =
-             "A free key from steamcommunity.com/dev/apikey. Any domain name works there, such as "
-             "localhost. Steam's local files only list installed games. With this key and your "
-             "Steam ID, Mira can also list every game "
-             "you own and import your Steam playtime.",
+         .doc = "Optional. A free key from steamcommunity.com/dev/apikey; any domain name works "
+                "there, such as localhost. Without it Mira lists your games from Steam's files on "
+                "this computer. With it and your Steam ID, the list comes from Steam's servers and "
+                "playtime includes your other computers.",
          .is_secret = true,
          .link = "https://steamcommunity.com/dev/apikey",
          .keywords = "token owned games"});

@@ -2,24 +2,33 @@
 
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStorageInfo>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <optional>
 #include <utility>
 
+#include "../app/Display.h"
 #include "../app/ErrorHelp.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
+#include "../bigscreen/Session.h"
 #include "../client/EventHub.h"
+#include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
+#include "../client/api/Stores.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -44,6 +53,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
   connect(change_bar_, &ChangeBar::SaveClicked, this, &SettingsPanel::Save);
 
   BuildInterfacePage();
+  BuildBigScreenPage();
   BuildSidebarPage();
   BuildShortcutsPage();
 
@@ -82,6 +92,10 @@ void SettingsPanel::LoadFrontendPrefs() {
       seconds.spin->setValue((prefs.*seconds.member).value_or(seconds.fallback) / 1000.0);
       seconds.saved = qRound(seconds.spin->value() * 1000);  // after the clamp
     }
+    for (PrefChoice& choice : choices_) {
+      choice.load(prefs);
+      choice.saved = choice.combo->currentData();
+    }
     continue_count_->setValue(prefs.library_continue_count.value_or(3));
     continue_count_saved_ = continue_count_->value();  // after the clamp
     trailer_volume_->setValue(prefs.big_screen_trailer_volume.value_or(50));
@@ -118,8 +132,8 @@ void SettingsPanel::Load() {
       return;
     }
     for (ConfigSchemaEntry& entry : schema.entries) {
-      // The Tags page shows its own settings (TagsPage).
-      if (entry.game_only || entry.category == "Tags") continue;
+      // The Tags page shows its own settings (TagsPage), and Library its Mira folders.
+      if (entry.game_only || entry.category == "Tags" || entry.key == "mira_folders") continue;
       SettingEditor field;
       field.entry = std::move(entry);
       fields_.push_back(std::move(field));
@@ -137,6 +151,7 @@ void SettingsPanel::Load() {
         emit LoadFailed(error_help::Describe(config.error));
         return;
       }
+      ShowMiraFolders(config);
       for (SettingEditor& field : fields_) {
         const auto it = config.values.find(field.entry.key);
         field.original = it != config.values.end() ? it->second : field.entry.default_display;
@@ -169,6 +184,7 @@ void SettingsPanel::BuildSchemaPages() {
       BuildSourceCards(page, rows);
       continue;
     }
+    if (category == "Library") AddMiraFoldersCard(page);
     SettingsCard* card = nullptr;
     int group = -1;
     std::vector<size_t> card_rows;
@@ -223,6 +239,7 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
     const QString id = QString::fromStdString(source_id);
     const SourceInfo* source = FindSourceInfo(id);
     auto* card = new SettingsCard(source != nullptr ? source->name : id);
+    source_cards_[id] = card;
     page->AddWidget(card);
     if (source != nullptr) card->SetLeading(MakeSourceBadge(*source, 24, card));
     for (const size_t i : rows) {
@@ -230,6 +247,15 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
       AddSchemaRow(card, i);
     }
   }
+  // Sources not set up yet are added from the sidebar, so their cards stay hidden.
+  api::ListSourcesAsync(this, [this](SourcesResult result) {
+    if (!result.ok) return;
+    QSet<QString> added{"local"};
+    for (const SourceState& source : result.sources) {
+      if (source.added) added.insert(QString::fromStdString(source.id));
+    }
+    for (const auto& [id, card] : source_cards_) card->setVisible(added.contains(id));
+  });
 }
 
 SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
@@ -386,6 +412,7 @@ void SettingsPanel::Save() {
     for (const PrefToggle& toggle : toggles_) prefs.*toggle.member = toggle.toggle->isChecked();
     for (const PrefSeconds& seconds : seconds_)
       prefs.*seconds.member = qRound(seconds.spin->value() * 1000);
+    for (const PrefChoice& choice : choices_) choice.store(prefs);
     prefs.library_continue_count = continue_count_->value();
     prefs.big_screen_trailer_volume = trailer_volume_->value();
     const QString theme_name = SelectedTheme();
@@ -473,10 +500,15 @@ void SettingsPanel::Save() {
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
   if (prefs_to_save) {
-    api::SaveFrontendPrefsAsync(this, *prefs_to_save, [done](PatchConfigResult result) {
-      done(result.ok,
-           result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
-    });
+    const bool start_on_login = prefs_to_save->start_on_login.value_or(false);
+    api::SaveFrontendPrefsAsync(
+        this, *prefs_to_save, [this, done, start_on_login](PatchConfigResult result) {
+          if (result.ok && !bigscreen::ApplyStartOnLogin(start_on_login)) {
+            notify::Warn(this, "Could not change Mira's login entry in ~/.config/autostart.");
+          }
+          done(result.ok,
+               result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
+        });
   }
   if (!edits.empty()) {
     api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
@@ -494,6 +526,143 @@ void SettingsPanel::FinishSave(bool ok, const QString& error) {
   change_bar_->SetBusy(false);
   Refresh();
   emit SaveFinished(ok, error);
+  // Once everything is saved: display settings take a restart.
+  if (std::exchange(restart_prompt_, false) && ok &&
+      notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens.",
+                      "Restart now")) {
+    display::Restart({"--desktop"});
+  }
+}
+
+// --- Mira folders ----------------------------------------------------------
+
+namespace {
+
+QStringList ListValue(const ConfigResult& config, const std::string& key) {
+  QStringList list;
+  const auto it = config.values.find(key);
+  if (it == config.values.end()) return list;
+  for (const std::string& item : mapping::ParseListText(it->second))
+    list << QString::fromStdString(item);
+  return list;
+}
+
+QString HomeShort(const QString& path) {
+  const QString home = QDir::homePath();
+  return path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
+}
+
+QString Expanded(const QString& path) {
+  return path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
+}
+
+}  // namespace
+
+void SettingsPanel::AddMiraFoldersCard(SettingsPage* page) {
+  mira_folders_card_ = page->AddCard("Mira folders");
+}
+
+void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
+  if (mira_folders_card_ == nullptr) return;
+  mira_folders_card_->ClearRows();
+  const QStringList folders = ListValue(config, "mira_folders");
+  for (const QString& folder : folders) {
+    const QStorageInfo drive(Expanded(folder));
+    const QString space = drive.isValid()
+                              ? QString("%1 GB free").arg(drive.bytesAvailable() / 1'000'000'000)
+                              : QString("Not there: its disk isn't mounted");
+    auto* row = new SettingRow(HomeShort(Expanded(folder)), space, mira_folders_card_);
+    if (folders.size() > 1) {
+      auto* remove = new QPushButton("Remove", row);
+      connect(remove, &QPushButton::clicked, this, [this, folder] {
+        if (!notify::Confirm(this, "Remove this Mira folder?",
+                             "Its games and apps leave the library. Nothing is deleted from the "
+                             "disk, and adding the folder again brings them back.",
+                             "Remove")) {
+          return;
+        }
+        EditMiraFolders([folder](QStringList& folders, QStringList& roots) {
+          folders.removeAll(folder);
+          roots.removeIf([&](const QString& root) {
+            return Expanded(root).startsWith(Expanded(folder) + "/");
+          });
+        });
+      });
+      row->AddControl(remove);
+    }
+    mira_folders_card_->AddRow(row);
+  }
+  auto* add_row = new SettingRow(
+      "Add a Mira folder",
+      "Pick a folder on another disk: Mira makes Games and Applications in it and watches it. "
+      "Drop a game, app, ROM or archive into it and Mira sorts it into place.",
+      mira_folders_card_);
+  auto* add = new QPushButton("Add…", add_row);
+  connect(add, &QPushButton::clicked, this, [this] {
+    const QString folder = QFileDialog::getExistingDirectory(this, "Choose a Mira folder");
+    if (folder.isEmpty()) return;
+    EditMiraFolders([folder](QStringList& folders, QStringList& roots) {
+      if (std::ranges::any_of(folders, [&](const QString& f) { return Expanded(f) == folder; }))
+        return;
+      folders << folder;
+      for (const QString& sub : {"/Games", "/Applications"}) {
+        if (!roots.contains(folder + sub)) roots << folder + sub;
+      }
+    });
+  });
+  add_row->AddControl(add);
+  mira_folders_card_->AddRow(add_row);
+  nav_->RegisterRow(add_row, "mira folder disk drive storage library add second");
+}
+
+void SettingsPanel::EditMiraFolders(
+    const std::function<void(QStringList& folders, QStringList& roots)>& edit) {
+  // From the settings as saved now: Library folders may have been saved since this page loaded.
+  api::GetConfigAsync(this, [this, edit](ConfigResult config) {
+    if (!config.ok) {
+      notify::FailedRequest(this, "Could not change the Mira folders.", config.error);
+      return;
+    }
+    QStringList folders = ListValue(config, "mira_folders");
+    QStringList roots = ListValue(config, "library_roots");
+    edit(folders, roots);
+    SaveMiraFolders(folders, roots);
+  });
+}
+
+void SettingsPanel::SaveMiraFolders(const QStringList& folders, const QStringList& roots) {
+  const auto json = [](const QStringList& list) {
+    return QJsonDocument(QJsonArray::fromStringList(list))
+        .toJson(QJsonDocument::Compact)
+        .toStdString();
+  };
+  const std::vector<ConfigEdit> edits = {
+      {"mira_folders", "an array of strings", json(folders)},
+      {"library_roots", "an array of strings", json(roots)},
+  };
+  api::PatchConfigAsync(this, edits, [this](PatchConfigResult result) {
+    if (!result.ok) {
+      notify::FailedRequest(this, "Could not change the Mira folders.", result.error);
+      return;
+    }
+    api::GetConfigAsync(this, [this](ConfigResult config) {
+      if (!config.ok) return;
+      ShowMiraFolders(config);
+      // Library folders show the roots just added or removed.
+      for (SettingEditor& field : fields_) {
+        if (field.entry.key != "library_roots") continue;
+        const auto it = config.values.find(field.entry.key);
+        if (it == config.values.end()) continue;
+        // An edit not yet saved stays, as a change from the new value.
+        const std::optional<std::string> edit =
+            field.Changed() ? std::optional(field.Text()) : std::nullopt;
+        field.SetText(it->second);
+        field.original = field.Text();
+        if (edit) field.SetText(*edit);
+      }
+      Refresh();
+    });
+  });
 }
 
 }  // namespace mira_gui

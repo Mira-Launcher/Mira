@@ -232,6 +232,32 @@ void SettleUnclearMoveAsync(QObject* context, const std::string& folder, const s
       std::move(callback));
 }
 
+void ListUnclearDropsAsync(QObject* context, std::function<void(UnclearDropsResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<UnclearDropsResult>(
+            transport::Get("/v1/library/drops"), "GET /v1/library/drops", Shape::Object,
+            [](UnclearDropsResult& result, const json& reply) {
+              for (const json& entry : reply.value("drops", json::array())) {
+                result.drops.push_back(mapping::ToUnclearDrop(entry));
+              }
+            });
+      },
+      std::move(callback));
+}
+
+void SortDropAsync(QObject* context, const std::string& path, const std::string& choice,
+                   std::function<void(ImportPathResult)> callback) {
+  RunJob<ImportPathResult>(
+      context, "sort_drop",
+      [path, choice](const std::string& query) {
+        return transport::PostJson("/v1/library/drops" + query,
+                                   json{{"path", path}, {"choice", choice}});
+      },
+      FillImportPath, std::move(callback));
+}
+
 void ClassifyImportAsync(QObject* context, const std::string& path,
                          std::function<void(ImportGuessResult)> callback) {
   async::Run(

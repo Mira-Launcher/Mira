@@ -944,6 +944,21 @@ bool MovesAdded(const config::Config& config, const Emulator& emulator) {
   return mode == "default" ? config.GetBool("emulators.move_added") : mode == "move";
 }
 
+// A homebrew comes as its folder: picked itself, or by its EBOOT.PBP.
+fs::path AddedSource(const Emulator& emulator, const fs::path& file) {
+  return Accepts(emulator, file) && IsGenericName(file) ? file.parent_path() : file;
+}
+
+bool Takes(const Emulator& emulator, const fs::path& file) {
+  const fs::path source = AddedSource(emulator, file);
+  std::error_code ec;
+  if (!fs::is_directory(source, ec)) return Accepts(emulator, file);
+  if (IsFolderGame(emulator, source)) return true;
+  if (emulator.folders) return !StartFile(emulator, source).empty();
+  return std::ranges::any_of(paths::ListDir(source),
+                             [&](const fs::path& entry) { return Accepts(emulator, entry); });
+}
+
 Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore& games,
                                         api::EventBus& events, const Emulator& emulator,
                                         const std::vector<fs::path>& files, bool move) {
@@ -952,16 +967,9 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
   std::vector<std::pair<fs::path, fs::path>> transfers;
   for (const fs::path& file : files) {
     std::error_code ec;
-    // A homebrew comes as its folder: picked itself, or by its EBOOT.PBP.
-    const bool generic = Accepts(emulator, file) && IsGenericName(file);
-    const fs::path source = generic ? file.parent_path() : file;
+    const fs::path source = AddedSource(emulator, file);
     const bool folder = fs::is_directory(source, ec);
-    const auto holds_game = [&] {
-      if (emulator.folders) return !StartFile(emulator, source).empty();
-      return std::ranges::any_of(paths::ListDir(source),
-                                 [&](const fs::path& entry) { return Accepts(emulator, entry); });
-    };
-    if (folder ? !IsFolderGame(emulator, source) && !holds_game() : !Accepts(emulator, file)) {
+    if (!Takes(emulator, file)) {
       refused.push_back(file.filename().string());
       continue;
     }

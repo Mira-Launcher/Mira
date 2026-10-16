@@ -1224,8 +1224,8 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   }
   if (result.titles.empty() && id_ == "steam") {
     ShowLine(owned_note_,
-             "Set a Steam Web API key and your SteamID64 in Settings to see the games you own "
-             "but haven't installed.",
+             "Steam on this computer hasn't listed any games yet. Open Steam and sign in, or set "
+             "a Steam Web API key and your SteamID64 in Settings.",
              "muted");
     if (steam_settings_ != nullptr) steam_settings_->setVisible(true);
   } else if (owned_.empty()) {

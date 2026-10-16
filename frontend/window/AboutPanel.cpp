@@ -60,9 +60,13 @@ AboutPanel::AboutPanel(QWidget* parent) : QWidget(parent) {
 }
 
 void AboutPanel::ApplyLogo() {
-  const QPixmap pixmap(":/icons/128x128/apps/mira.png");
-  logo_->setPixmap(
-      pixmap.scaled(kLogoSize, kLogoSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  // The largest icon there is, so it isn't stretched on a scaled screen.
+  const qreal ratio = logo_->devicePixelRatioF();
+  QPixmap pixmap = QPixmap(":/icons/256x256/apps/mira.png")
+                       .scaled(QSize(kLogoSize, kLogoSize) * ratio, Qt::KeepAspectRatio,
+                               Qt::SmoothTransformation);
+  pixmap.setDevicePixelRatio(ratio);
+  logo_->setPixmap(pixmap);
 }
 
 }  // namespace mira_gui

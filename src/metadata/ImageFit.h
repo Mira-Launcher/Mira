@@ -13,9 +13,11 @@ struct Box {
   int quality = 90;  // JPEG
 };
 
-// The box a slot's art is kept within. A store title not installed gets a smaller cover, and
-// `compact` (metadata.art_size) about half the size.
-Box SlotBox(std::string_view slot, bool title = false, bool compact = false);
+// metadata.art_size, resolved: kCompact about half of kHigh, kOriginal no limit but for icons.
+enum class ArtSize { kCompact, kHigh, kOriginal };
+
+// The box a slot's art is kept within. A store title not installed gets a smaller cover.
+Box SlotBox(std::string_view slot, bool title = false, ArtSize size = ArtSize::kHigh);
 
 struct Fitted {
   std::string bytes;

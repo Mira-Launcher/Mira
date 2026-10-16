@@ -106,10 +106,16 @@ void CreateMissingRoots(const config::Config& config) {
   // Resolved, so /home/you and /var/home/you (Fedora Atomic's symlink) count as the same home.
   std::error_code ec;
   const fs::path home = fs::weakly_canonical(paths::Home(), ec);
+  const std::vector<fs::path> mira_folders = config.GetPathArray("mira_folders");
   for (const fs::path& root : config.GetPathArray("library_roots")) {
     const fs::path normal = root.lexically_normal();
     const fs::path relative = fs::weakly_canonical(normal, ec).lexically_relative(home);
-    if (relative.empty() || relative == "." || *relative.begin() == "..") continue;
+    // One in a Mira folder on another disk is made too, while that disk is there.
+    const bool in_mira_folder = std::ranges::any_of(mira_folders, [&](const fs::path& folder) {
+      return IsAtOrUnder(normal, folder) && fs::is_directory(folder, ec);
+    });
+    if (!in_mira_folder && (relative.empty() || relative == "." || *relative.begin() == ".."))
+      continue;
     if (fs::exists(normal, ec)) continue;
     if (fs::create_directories(normal, ec)) {
       log::Info("created library root {}", normal.string());
@@ -148,6 +154,21 @@ void Watcher::WatchRoots() {
       if (watches_.contains(wd))
         continue;  // already a library root's: its games aren't the emulator's alone
       watches_[wd] = {.root = dir, .dir = dir, .emulator = emulator.id};
+    }
+  }
+  for (const fs::path& folder : config_.GetPathArray("mira_folders")) {
+    std::error_code ec;
+    if (!fs::is_directory(folder, ec)) continue;
+    const int wd = inotify_add_watch(inotify_fd_, folder.c_str(), kWatchMask);
+    if (wd < 0) {
+      log::Error("Watcher: could not watch {}: {}", folder.string(), std::strerror(errno));
+      continue;
+    }
+    if (watches_.contains(wd)) continue;  // also a library root, scanned as one
+    watches_[wd] = {.root = folder, .dir = folder, .mira_folder = true};
+    // What was there before: asked about, since it may be the user's own.
+    for (const fs::path& entry : paths::ListDir(folder)) {
+      if (drops_ != nullptr && !IsMiraFoldersOwn(config_, entry)) drops_->Sort(entry, /*ask=*/true);
     }
   }
   ++roots_watched_;  // events queue in inotify from here, read once the loop runs
@@ -200,15 +221,27 @@ void Watcher::RearmTimer() {
 }
 
 void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive,
-                            const std::string& emulator) {
+                            const std::string& emulator, bool drop) {
   Pending entry;
   entry.root = root;
   entry.is_archive = is_archive;
   entry.emulator = emulator;
+  entry.drop = drop;
   entry.last_size = is_archive ? ArchiveSize(path) : TotalSize(path);
   entry.stable_since_ms = NowMs();
   pending_[path.string()] = entry;
   RearmTimer();
+}
+
+void Watcher::ScheduleDrop(const fs::path& folder, const fs::path& path) {
+  if (drops_ == nullptr || IsMiraFoldersOwn(config_, path)) return;
+  if (!config_.GetBool("scan.auto_extract_archives")) {
+    ScheduleCheck(folder, path, /*is_archive=*/false, {}, /*drop=*/true);
+  } else if (IsLaterVolume(path)) {
+    if (auto first = FirstVolumeOf(path)) ScheduleCheck(folder, *first, true, {}, true);
+  } else {
+    ScheduleCheck(folder, path, LooksLikeArchive(path), {}, /*drop=*/true);
+  }
 }
 
 void Watcher::Run() {
@@ -308,6 +341,15 @@ void Watcher::HandleInotify() {
       if (event->len == 0) continue;
       const fs::path root = watched->second.root;
       const fs::path path = watched->second.dir / event->name;
+      if (watched->second.mira_folder) {
+        if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+          ScheduleDrop(root, path);
+        } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+          pending_.erase(path.string());
+          if (drops_ != nullptr) drops_->Forget(path);
+        }
+        continue;
+      }
       if (const std::string& emulator = watched->second.emulator; !emulator.empty()) {
         if (std::string_view(event->name).starts_with('.')) continue;
         if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
@@ -399,6 +441,11 @@ void Watcher::HandleDebounceTick() {
         roms.insert(entry.emulator);
         continue;
       }
+      if (entry.drop && !entry.is_archive) {
+        // Sorted into a library or emulator folder, whose own watch then picks it up.
+        drops_->Sort(path);
+        continue;
+      }
 
       if (entry.is_archive) {
         const fs::path archive(path);
@@ -408,6 +455,8 @@ void Watcher::HandleDebounceTick() {
           log::Error("failed to extract {}: {}", path, extracted.error().message);
           continue;
         }
+        // Extracted into a Mira folder: sorted when its folder appears there.
+        if (entry.drop) continue;
       } else {
         log::Info("{} settled, scanning {}", path, entry.root.string());
       }

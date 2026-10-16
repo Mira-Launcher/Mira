@@ -136,13 +136,13 @@ SignInGuide GuideFor(const std::string& id) {
     guide.note = "This value works like a password. It stays on this computer.";
     guide.note_private = true;
   } else if (id == "steam") {
-    guide.title = "List Steam games you own";
-    guide.line =
-        "Installed Steam games need nothing. This also lists the ones you haven't installed.";
+    guide.title = "Add a Steam Web API key (optional)";
+    guide.line = "Mira already lists your Steam games from Steam on this computer.";
     guide.open = "Open the Steam API key page";
     guide.intro =
-        "Installed Steam games need nothing. To also list games you own but haven't installed, "
-        "Mira needs a free key from Steam.";
+        "Mira lists the Steam games you own, installed or not, from Steam's files on this "
+        "computer. A free key from Steam is optional: it adds playtime from your other computers "
+        "and games Steam here hasn't seen yet.";
     guide.steps = {"Sign in with your Steam account.",
                    "The form asks for a domain name. Type <code>localhost</code>.",
                    "Tick the box to agree, then press <b>Register</b>.", "Copy the key."};

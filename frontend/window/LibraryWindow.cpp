@@ -41,6 +41,7 @@
 #include "../activity/DownloadsPanel.h"
 #include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
+#include "../app/Display.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
 #include "../app/Tray.h"
@@ -58,6 +59,7 @@
 #include "../game/GameCard.h"
 #include "../game/InstallPromptCard.h"
 #include "../game/InstallerCards.h"
+#include "../game/UnclearDropCard.h"
 #include "../game/UnclearMoveCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
@@ -1190,6 +1192,9 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   mira_gui::api::ListUnclearMovesAsync(this, [this](mira_gui::UnclearMovesResult result) {
     for (const mira_gui::UnclearMove& move : result.moves) AskUnclearMove(move);
   });
+  mira_gui::api::ListUnclearDropsAsync(this, [this](mira_gui::UnclearDropsResult result) {
+    for (const mira_gui::UnclearDrop& drop : result.drops) AskUnclearDrop(drop);
+  });
   // At once: mirad answers from its stored lists and re-checks the stores behind them, so the
   // sidebar's and the Not installed tab's counts show with the library.
   owned_titles_->RefreshIfStale();
@@ -1392,6 +1397,24 @@ void LibraryWindow::AskUnclearMove(const mira_gui::UnclearMove& move) {
                     if (!result.ok)
                       mira_gui::notify::FailedRequest(this, "Could not settle that folder.",
                                                       result.error);
+                  });
+            });
+    ShowSidebarCard(card);
+  });
+}
+
+void LibraryWindow::AskUnclearDrop(const mira_gui::UnclearDrop& drop) {
+  QueueCard("drop:" + drop.path, [this, drop] {
+    auto* card = new mira_gui::UnclearDropCard(drop);
+    connect(card, &mira_gui::UnclearDropCard::CloseRequested, this,
+            &LibraryWindow::CloseSidebarCard);
+    connect(card, &mira_gui::UnclearDropCard::Chosen, this,
+            [this](const std::string& path, const std::string& choice) {
+              CloseSidebarCard();
+              mira_gui::api::SortDropAsync(
+                  this, path, choice, [this](mira_gui::ImportPathResult result) {
+                    if (!result.ok)
+                      mira_gui::notify::FailedRequest(this, "Could not sort that.", result.error);
                   });
             });
     ShowSidebarCard(card);
@@ -2221,6 +2244,25 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     return;
   }
 
+  if (type == "library.drop_unclear") {
+    // History's are listed on connect instead.
+    mira_gui::UnclearDrop drop;
+    if (live && mira_gui::events::ParseUnclearDrop(data, &drop)) AskUnclearDrop(drop);
+    return;
+  }
+  if (type == "library.drop_settled") {
+    // Sorted elsewhere (another client, the CLI) or gone from disk: nothing left to ask.
+    const std::string path = mira_gui::events::ParseSettledDropPath(data);
+    if (path.empty()) return;
+    std::erase_if(pending_cards_,
+                  [&](const auto& queued) { return queued.first == "drop:" + path; });
+    if (auto* card = qobject_cast<mira_gui::UnclearDropCard*>(sidebar_card_);
+        card != nullptr && card->Path() == path) {
+      CloseSidebarCard();
+    }
+    return;
+  }
+
   if (type == "game.install_detected") {
     // History's would ask again after every reconnect.
     mira_gui::InstallDetectedEvent event;
@@ -2281,6 +2323,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
 }
 
 void LibraryWindow::OpenBigScreen() {
+  if (mira_gui::display::RestartFor(/*big_screen=*/true)) return;
   if (big_screen_ == nullptr) {
     // A child, so it never outlives the library state it reads.
     big_screen_ = new mira_gui::bigscreen::BigScreenWindow(services(), this);
@@ -2288,6 +2331,7 @@ void LibraryWindow::OpenBigScreen() {
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::RefreshRequested, this,
             &LibraryWindow::RefreshLibrary);
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::Closed, this, [this] {
+      if (mira_gui::display::RestartFor(/*big_screen=*/false)) return;
       show();
       raise();
       activateWindow();

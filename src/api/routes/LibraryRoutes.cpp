@@ -192,6 +192,33 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                });
   });
 
+  // --- drops -------------------------------------------------------------
+
+  http.Get("/v1/library/drops", [&s](const Request&, Response& res) {
+    json drops = json::array();
+    for (const library::Drop& drop : s.drops.All()) drops.push_back(library::Drops::ToJson(drop));
+    SendJson(res, {{"drops", std::move(drops)}});
+  });
+
+  http.Post("/v1/library/drops", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape =
+        R"({"path": "...", "choice": "game", "app" or an emulator id})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const std::string path = core::JsonString(*body, "path");
+    const std::string choice = core::JsonString(*body, "choice");
+    if (path.empty() || choice.empty()) {
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    }
+    s.StartJob(req, res, "sort_drop", path,
+               "Sorting " + std::filesystem::path(path).filename().string(),
+               [&s, path, choice](JobRegistry::Progress&) -> Result<json> {
+                 if (auto settled = s.drops.Settle(path, choice); !settled)
+                   return std::unexpected(settled.error());
+                 return json::object();
+               });
+  });
+
   // --- import ------------------------------------------------------------
 
   http.Post("/v1/library/import/classify", [](const Request& req, Response& res) {

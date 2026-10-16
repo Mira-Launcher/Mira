@@ -17,6 +17,7 @@
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
+#include "library/PrefixNaming.h"
 #include "library/Scanner.h"
 #include "library/SourceRemoval.h"
 #include "metadata/MetadataFetcher.h"
@@ -255,7 +256,8 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
   SyncDesktopEntries();
   // Sorting folders are watched like the roots, and games move to match the new folders.
   if (std::ranges::any_of(keys, [](const std::string& key) {
-        return key == "library_roots" || key == "tags.folders" || key == "tags.sorted_roots";
+        return key == "library_roots" || key == "mira_folders" || key == "tags.folders" ||
+               key == "tags.sorted_roots";
       })) {
     SortingChanged();
   }
@@ -681,7 +683,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
   if (prefix && !game.data_dir.empty()) {
-    if (auto deleted = DeleteUnderRoot(game.data_dir, {config.GetPath("prefix_root")}); !deleted)
+    if (auto deleted = DeleteUnderRoot(game.data_dir, library::PrefixRoots(config)); !deleted)
       return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.

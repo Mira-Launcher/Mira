@@ -406,6 +406,7 @@ void WelcomePage::ChooseFolder(const QString& folder) {
     if (dir.exists() && !dir.isEmpty() && !roots.contains(old)) roots << old;
   }
   const std::vector<ConfigEdit> edits = {
+      {"mira_folders", "an array of strings", Json(QStringList{folder}).toStdString()},
       {"library_roots", "an array of strings", Json(roots).toStdString()},
       {"prefix_root", "a string", (folder + "/prefixes").toStdString()},
       {"epic.install_root", "a string", (folder + "/Epic Games").toStdString()},
@@ -1229,7 +1230,6 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   switch_rows->addWidget(login_row);
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);
-    big_screen_->setChecked(true);
     QWidget* row = SetupRow(switches, "Open Mira in big screen",
                             "Mira full screen, made for a controller. Switch any time from the "
                             "menu or the Mira button.",
@@ -1290,11 +1290,10 @@ void DonePage::Enter() {
   ShowSummary();
   if (!choices.games || choices.stores_skipped) return;
   for (const QString& store : choices.stores) {
+    // Steam's own files list its games; a key is extra.
     if (store == "steam") {
-      api::GetConfigAsync(this, [this](ConfigResult result) {
-        signed_in_["steam"] = result.ok && !result.values["steam.web_api_key"].empty();
-        ShowSummary();
-      });
+      signed_in_["steam"] = true;
+      ShowSummary();
       continue;
     }
     api::GetStoreStatusAsync(this, store.toStdString(), [this, store](StoreStatusResult status) {
@@ -1355,12 +1354,7 @@ void DonePage::ShowSummary() {
     for (const QString& store : choices.stores) {
       if (!signed_in_.contains(store)) continue;
       if (store == "steam") {
-        if (signed_in_[store]) {
-          add(Mark::Done, "Steam: the games you own are listed", {});
-        } else {
-          add(Mark::Left, "Steam's games you own",
-              "No key yet. Steam's page in the sidebar has this step.");
-        }
+        add(Mark::Done, "Steam: the games you own are listed", {});
       } else if (signed_in_[store]) {
         add(Mark::Done, StoreName(store) + ": signed in", {});
       } else {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QObject>
-#include <QProcess>
 #include <QString>
 
 namespace mira_gui {
@@ -24,6 +23,10 @@ class DaemonSupervisor : public QObject {
   ~DaemonSupervisor() override;
 
   void EnsureRunning();
+  // A mirad this frontend started, or 0.
+  qint64 Pid() const { return pid_; }
+  // Leaves that mirad running, for the mira-gui that replaces this one to stop.
+  void HandOff();
 
  signals:
   void Ready();
@@ -34,8 +37,7 @@ class DaemonSupervisor : public QObject {
   void PollHealth(int attempts_left);
   void StopIfSelfStarted();
 
-  QProcess* process_ = nullptr;
-  bool self_started_ = false;
+  qint64 pid_ = 0;  // a mirad this frontend started, or was handed
 };
 
 }  // namespace mira_gui

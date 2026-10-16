@@ -113,6 +113,18 @@ UnclearMove ToUnclearMove(const json& entry) {
   return move;
 }
 
+UnclearDrop ToUnclearDrop(const json& entry) {
+  UnclearDrop drop;
+  drop.path = entry.value("path", std::string());
+  drop.name = entry.value("name", std::string());
+  drop.reason = entry.value("reason", std::string());
+  for (const json& choice : entry.value("choices", json::array())) {
+    drop.choices.emplace_back(choice.value("id", std::string()),
+                              choice.value("label", std::string()));
+  }
+  return drop;
+}
+
 std::optional<ArtVersions> ToArtVersions(const json& entry) {
   if (!entry.is_object() || !entry.contains("art") || !entry["art"].is_object())
     return std::nullopt;

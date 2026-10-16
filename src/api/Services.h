@@ -20,6 +20,7 @@
 #include "core/Lane.h"
 #include "core/Result.h"
 #include "library/Catalog.h"
+#include "library/Drops.h"
 #include "library/FolderTags.h"
 #include "library/ImportSummary.h"
 #include "library/Scanner.h"
@@ -83,6 +84,8 @@ class Services {
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
   library::UnclearMoves unclear_moves{events};
+  // What was dropped into a Mira folder that Mira couldn't sort itself.
+  library::Drops drops{config, games, events};
   // After everything a job's work touches, so it's joined first on the way down.
   JobRegistry jobs{events};
 

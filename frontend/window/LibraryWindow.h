@@ -175,6 +175,8 @@ class LibraryWindow : public QMainWindow {
   void OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent& event);
   // The card that asks which game a folder moved by hand is, when several could be.
   void AskUnclearMove(const mira_gui::UnclearMove& move);
+  // The card that asks where something dropped into a library folder goes, when Mira can't tell.
+  void AskUnclearDrop(const mira_gui::UnclearDrop& drop);
   // Shows a prompt card now, or once Settings, a game's card and other cards have closed.
   // One per `key`; a second ask while it waits is dropped.
   void QueueCard(const std::string& key, std::function<void()> show);

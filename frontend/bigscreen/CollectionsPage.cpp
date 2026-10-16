@@ -204,11 +204,13 @@ void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Colle
     const QSize size = cell.size().toSize();
     const QPixmap cover = window_->Cover(collection.items[size_t(i)], size);
     if (cover.isNull()) continue;
-    const QPixmap scaled =
-        cover.scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    const QPointF crop((scaled.width() - size.width()) / 2.0,
-                       (scaled.height() - size.height()) / 2.0);
-    painter.drawPixmap(cell, scaled, QRectF(crop, cell.size()));
+    // In device pixels, so it stays sharp on a scaled screen.
+    const QSize device = (cell.size() * cover.devicePixelRatio()).toSize();
+    QPixmap scaled = cover.scaled(device, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    scaled.setDevicePixelRatio(1);
+    const QPointF crop((scaled.width() - device.width()) / 2.0,
+                       (scaled.height() - device.height()) / 2.0);
+    painter.drawPixmap(cell, scaled, QRectF(crop, QSizeF(device)));
   }
 
   const double text_x = box.left() + u * 0.9;
