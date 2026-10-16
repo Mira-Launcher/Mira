@@ -1206,10 +1206,48 @@ bool CoverPicked(const json& info) {
          Value(info["artwork"], "chosen", false);
 }
 
-// Slots the user picked by hand carry over; FetchArtworkInto then leaves them be.
-void CarryChosenSlots(const json& old, json& info) {
+constexpr std::array<std::pair<const char*, const char*>, 4> kArtSlots = {
+    {{"cover", "artwork"}, {"hero", "hero"}, {"logo", "logo"}, {"icon", "icon"}}};
+
+// Whether a slot's record names a file of ours that's gone.
+bool SlotFileMissing(const fs::path& dir, const json& slot) {
+  const std::string name = Value(slot, "file", std::string());
+  std::error_code ec;
+  return !name.empty() && name.find('/') == std::string::npos && !fs::exists(dir / name, ec);
+}
+
+// Slots the user picked by hand carry over; FetchArtworkInto then leaves them be. One whose file
+// is gone doesn't, so the fetch fills it again.
+void CarryChosenSlots(const fs::path& dir, const json& old, json& info) {
   for (const auto& [key, value] : old.items()) {
-    if (value.is_object() && Value(value, "chosen", false)) info[key] = value;
+    if (value.is_object() && Value(value, "chosen", false) && !SlotFileMissing(dir, value))
+      info[key] = value;
+  }
+}
+
+// A hand pick in `old` whose file is gone is downloaded again from the candidate it was, looked up
+// in `listing`'s candidates; an upload can't be, so its slot gets the fetch's own choice.
+void RestoreLostPicks(const config::Config& config, const std::string& game_id, const json& old,
+                      const json& listing, json& info) {
+  const fs::path dir = ArtworkDir(config, game_id);
+  for (const auto& [slot, key] : kArtSlots) {
+    const json picked = Value(old, key, json::object());
+    if (!Value(picked, "chosen", false) || !SlotFileMissing(dir, picked) ||
+        !picked.contains("candidate_id"))
+      continue;
+    if (const json now = Value(info, key, json::object());
+        Value(now, "chosen", false) && !SlotFileMissing(dir, now))
+      continue;  // already restored
+    const std::int64_t id = Value(picked, "candidate_id", std::int64_t{0});
+    for (const json& candidate :
+         Value(Value(listing, "art_candidates", json::object()), slot, json::array())) {
+      if (Value(candidate, "id", std::int64_t{-1}) != id) continue;
+      if (FetchArtworkInto(config, Value(candidate, "url", std::string()), game_id,
+                           Value(candidate, "source", std::string("steamgriddb")), slot, info, id,
+                           /*picked=*/true))
+        info[key]["chosen"] = true;
+      break;
+    }
   }
 }
 
@@ -1218,12 +1256,14 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
   json info = {{"fetched_at", model::NowSeconds()},
                {"details_fetched", model::NowSeconds()},
                {"details_version", kDetailsVersion}};
-  const json previous = cache.Read(game.id);
-  CarryChosenSlots(previous, info);
+  const json old = cache.Read(game.id);
+  const fs::path dir = ArtworkDir(config, game.id);
+  CarryChosenSlots(dir, old, info);
+  RestoreLostPicks(config, game.id, old, old, info);
   // For FetchGriddbCandidates only; never written.
-  info["previous"] = {{"steamgriddb_id", previous.value("steamgriddb_id", json())}};
+  info["previous"] = {{"steamgriddb_id", old.value("steamgriddb_id", json())}};
   for (const char* key : {"artwork", "hero", "logo", "icon"}) {
-    if (previous.contains(key)) info["previous"][key] = previous[key];
+    if (old.contains(key)) info["previous"][key] = old[key];
   }
   const std::int64_t griddb_id =
       config::Resolver(config, game.overrides).GetInt("metadata.steamgriddb_id");
@@ -1279,10 +1319,18 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
   }
 
   info.erase("previous");
+  RestoreLostPicks(config, game.id, old, info, info);  // from the candidates just listed
   // A pick made while this fetch ran stays.
   const std::lock_guard lock(MetadataFileMutex());
-  CarryChosenSlots(cache.Read(game.id), info);
+  CarryChosenSlots(dir, cache.Read(game.id), info);
   return cache.Write(game.id, info);
+}
+
+bool ArtFilesMissing(const config::Config& config, const std::string& game_id, const json& info) {
+  const fs::path dir = ArtworkDir(config, game_id);
+  return std::ranges::any_of(kArtSlots, [&](const auto& slot) {
+    return SlotFileMissing(dir, Value(info, slot.second, json::object()));
+  });
 }
 
 namespace {
@@ -1396,7 +1444,8 @@ Result<void> RefreshDetails(const config::Config& config, store::MetadataStore& 
 
 bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& cache,
                      const std::string& id) {
-  if (!cache.ArtVersions(id).contains("cover") && !CoverPicked(cache.Read(id))) return true;
+  // None yet, or its file is gone; a cover removed on purpose stays removed.
+  if (!cache.ArtFor(id, "cover") && !CoverPicked(cache.Read(id))) return true;
   return config.GetBool("metadata.title_details") &&
          !DetailsFresh(config, cache.Read(id), /*title=*/true);
 }

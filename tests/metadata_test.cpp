@@ -300,6 +300,39 @@ TEST_CASE("A refresh keeps art the user picked by hand") {
   CHECK(bytes == "\x89PNG picked");
 }
 
+TEST_CASE("Art whose file was deleted is missing, and a refresh downloads the same pick again") {
+  const fs::path dir = TempDir("metadata-refresh-restores");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  store::MetadataStore cache(dir);
+  cache.Load();
+  test::Isolate(config);  // keeps Fetch offline
+
+  const fs::path image = dir / "picked.png";
+  std::ofstream(image, std::ios::binary) << "\x89PNG picked";
+  REQUIRE(cache
+              .Write("celeste",
+                     nlohmann::json{
+                         {"art_candidates",
+                          {{"cover", nlohmann::json::array(
+                                         {{{"id", 5}, {"url", "file://" + image.string()}}})}}},
+                     })
+              .has_value());
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
+  CHECK_FALSE(metadata::ArtFilesMissing(config, "celeste", cache.Read("celeste")));
+
+  fs::remove_all(metadata::ArtworkDir(config, "celeste"));
+  CHECK(metadata::ArtFilesMissing(config, "celeste", cache.Read("celeste")));
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(metadata::Fetch(config, cache, game).has_value());
+  const nlohmann::json restored = cache.Read("celeste");
+  CHECK(restored["artwork"].value("chosen", false));
+  CHECK(restored["artwork"].value("candidate_id", 0) == 5);
+  CHECK_FALSE(metadata::ArtFilesMissing(config, "celeste", restored));
+}
+
 TEST_CASE(
     "SelectArtwork that fails to download, or gets a page instead of an image, keeps the slot's "
     "current image") {
