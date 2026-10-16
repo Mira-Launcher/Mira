@@ -172,12 +172,30 @@ fs::path GameFolder(const fs::path& dir, const fs::path& exe_rel_path) {
   return folder;
 }
 
+// Each executable under `root` with its modification time.
+using ExeTimes = std::map<std::string, fs::file_time_type>;
+ExeTimes Executables(const Detector& detector, const fs::path& root) {
+  ExeTimes times;
+  std::error_code ec;
+  for (const model::Candidate& candidate : detector.Detect(root).candidates) {
+    times[candidate.rel_path] = fs::last_write_time(root / candidate.rel_path, ec);
+  }
+  return times;
+}
+
+// `existed`: executables there before the installer ran, which aren't what it installed unless it
+// rewrote them (a repack's checksum tool beside its setup.exe).
 std::optional<model::Candidate> FirstGameExe(const Detector::Result& detected, const fs::path& root,
-                                             const fs::path& installer) {
+                                             const fs::path& installer,
+                                             const ExeTimes& existed = {}) {
   std::error_code ec;
   for (const model::Candidate& candidate : detected.candidates) {
     if (candidate.is_installer || fs::equivalent(root / candidate.rel_path, installer, ec))
       continue;
+    if (const auto it = existed.find(candidate.rel_path);
+        it != existed.end() && fs::last_write_time(root / candidate.rel_path, ec) == it->second) {
+      continue;
+    }
     return candidate;
   }
   return std::nullopt;
@@ -222,6 +240,8 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     run.argv.push_back(flag + target);
   }
 
+  const Detector detector(SettingsFromConfig(config));
+  const ExeTimes existed = Executables(detector, game.install_path);
   const std::set<fs::path> before =
       InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir);
   const std::uintmax_t baseline_bytes = TreeBytes(game.install_path);
@@ -256,10 +276,10 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
         Fix::Game(game.id, "install"));
   }
 
-  const Detector detector(SettingsFromConfig(config));
   model::Game done = provisioned;
   Detector::Result detected = detector.Detect(game.install_path);
-  std::optional<model::Candidate> exe = FirstGameExe(detected, game.install_path, installer);
+  std::optional<model::Candidate> exe =
+      FirstGameExe(detected, game.install_path, installer, existed);
   for (const fs::path& dir :
        InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir)) {
     if (exe) break;
@@ -494,7 +514,11 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
 
   const Result<model::Game> done = RunInstaller(config, *game, mode);
   Finish(id, done ? "" : done.error().message);
-  if (!done) log::Warn("install for {} failed: {}", id, done.error().message);
+  if (done) {
+    log::Info("installed {}: {} in {}", id, done->exe_path, done->install_path);
+  } else {
+    log::Warn("install for {} failed: {}", id, done.error().message);
+  }
   auto saved = games.Update(id, [&](model::Game& stored) {
     if (done) {
       AdoptInstallFolder(stored, done->install_path);

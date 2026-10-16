@@ -83,6 +83,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     SortByTags({id});  // its tags may have changed while it ran
   });
   fetches.OnNewGameFetched([this](const std::string& id) { TagFromSteam(id); });
+  library_roots_ = config.GetPathArray("library_roots");
 }
 
 void Services::TagFromSteam(const std::string& id) {
@@ -253,6 +254,7 @@ void Services::ReloadSettings() {
 }
 
 void Services::SettingsChanged(const std::vector<std::string>& keys) {
+  if (std::ranges::contains(keys, std::string("library_roots"))) MarkLeftRootsMissing();
   SyncDesktopEntries();
   // Sorting folders are watched like the roots, and games move to match the new folders.
   if (std::ranges::any_of(keys, [](const std::string& key) {
@@ -634,6 +636,33 @@ void Services::PublishAllGames() {
   if (!records.empty()) events.Publish("games.updated", {{"games", std::move(records)}});
 }
 
+void Services::MarkLeftRootsMissing() {
+  const std::vector<std::filesystem::path> roots = config.GetPathArray("library_roots");
+  std::vector<std::filesystem::path> left;
+  {
+    const std::lock_guard lock(roots_mutex_);
+    for (const std::filesystem::path& root : library_roots_)
+      if (!std::ranges::contains(roots, root)) left.push_back(root);
+    library_roots_ = roots;
+  }
+  if (left.empty()) return;
+  for (const model::Game& game : games.All()) {
+    // Only what a library folder holds: a store keeps its own games wherever they are, and a game
+    // installed in its prefix lives there, not in the folder its link was in.
+    if ((game.source != "scan" && game.source != "manual") || game.install_path.empty() ||
+        game.status == model::GameStatus::Missing ||
+        !paths::IsWithin(game.install_path, left, /*allow_equal=*/true) ||
+        paths::IsWithin(game.install_path, roots, /*allow_equal=*/true)) {
+      continue;
+    }
+    if (auto missing =
+            games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
+      events.Publish("game.updated", model::ToJson(*missing));
+      log::Info("{} is no longer in a library folder, marking missing", game.install_path);
+    }
+  }
+}
+
 void Services::SortingChanged() {
   if (on_roots_changed) on_roots_changed();
   PublishAllGames();
@@ -682,9 +711,16 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
   }
-  if (prefix && !game.data_dir.empty()) {
-    if (auto deleted = DeleteUnderRoot(game.data_dir, library::PrefixRoots(config)); !deleted)
-      return deleted;
+  if (std::error_code ec;
+      prefix && !game.data_dir.empty() && std::filesystem::exists(game.data_dir, ec)) {
+    // Also one kept in the game's own folder (a disk with no Mira folder), when that folder is
+    // the library's.
+    std::vector<std::filesystem::path> roots = library::PrefixRoots(config);
+    if (const auto own = library::PrefixInGameFolder(config, game);
+        own && *own == std::filesystem::path(game.data_dir).lexically_normal() &&
+        paths::IsWithin(game.install_path, config.GetPathArray("library_roots")))
+      roots.push_back(game.install_path);
+    if (auto deleted = DeleteUnderRoot(game.data_dir, roots); !deleted) return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.
   if ((files || prefix) && !game.id.empty()) {

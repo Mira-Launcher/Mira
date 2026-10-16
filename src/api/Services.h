@@ -236,6 +236,13 @@ class Services {
   // added a program folder to its prefix, i.e. the "game" was an installer.
   void CheckForInstall(const std::string& game_id);
 
+  // After library_roots changed: games found in a library folder that was taken out are marked
+  // missing, as if their drive were unplugged. Adding the folder back (or the same games in another
+  // folder, such as a drive mounted elsewhere) finds them again with their history.
+  void MarkLeftRootsMissing();
+  std::mutex roots_mutex_;
+  std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
+
   std::mutex stop_mutex_;
   std::condition_variable stop_wake_;  // wakes WatchExternalGames as soon as `stopping` is set
   std::thread external_watch_;

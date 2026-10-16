@@ -358,5 +358,45 @@ TEST_CASE("PrefixDir puts a game on another disk in that disk's Mira folder") {
   CHECK(library::PrefixDir(config, game).parent_path() == prefix_root);
   game.install_path = (mira / "Games" / "Celeste").string();
   CHECK(library::PrefixDir(config, game) == mira / "prefixes" / "celeste");
+
+  // With no Mira folder there, each game keeps its prefix in its own folder; nothing is shared.
+  const fs::path drive = other_disk / "mira-tests-prefix-drive";
+  fs::create_directories(drive / "Games" / "Celeste");
+  REQUIRE(config.Set("mira_folders", nlohmann::json::array()).has_value());
+  REQUIRE(
+      config.Set("library_roots", nlohmann::json::array({(drive / "Games").string()})).has_value());
+  game.install_path = (drive / "Games" / "Celeste").string();
+  CHECK(library::PrefixDir(config, game) == drive / "Games" / "Celeste" / "prefix");
   fs::remove_all(mira);
+  fs::remove_all(drive);
+}
+
+TEST_CASE("PrefixDir puts a library folder outside a Mira folder in its disk's prefixes") {
+  config::Config config(TempConfigFile("prefix-naming-library.toml"));
+  config.Load();
+  const fs::path home = TempDir("prefix-naming-library");
+  const fs::path prefix_root = home / "Mira" / "prefixes";
+  REQUIRE(config.Set("prefix_root", prefix_root.string()).has_value());
+  REQUIRE(
+      config.Set("library_roots", nlohmann::json::array({(home / "Games").string()})).has_value());
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  game.install_path = (home / "Games" / "Celeste").string();
+  CHECK(library::PrefixDir(config, game) == prefix_root / "celeste");
+
+  // On another disk, that disk's Mira folder's, though the library folder isn't inside it.
+  const fs::path other_disk = "/dev/shm";
+  std::error_code ec;
+  if (!fs::is_directory(other_disk, ec)) return;
+  const fs::path drive = other_disk / "mira-tests-prefix-outside";
+  fs::create_directories(drive / "Mira");
+  fs::create_directories(drive / "Games" / "Celeste");
+  REQUIRE(
+      config.Set("mira_folders", nlohmann::json::array({(drive / "Mira").string()})).has_value());
+  REQUIRE(
+      config.Set("library_roots", nlohmann::json::array({(drive / "Games").string()})).has_value());
+  game.install_path = (drive / "Games" / "Celeste").string();
+  CHECK(library::PrefixDir(config, game) == drive / "Mira" / "prefixes" / "celeste");
+  fs::remove_all(drive);
 }

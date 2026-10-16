@@ -214,10 +214,10 @@ Schema::Schema() {
          .label = "Prefix folder",
          .type = Type::String,
          .default_value = "~/Mira/prefixes",
-         .doc =
-             "The folder where each game's Wine or Proton prefix is created. A game on another "
-             "disk gets its prefix in the prefixes folder of that disk's Mira folder. Mira never "
-             "scans them for games.",
+         .doc = "The folder where each game's Wine or Proton prefix is created. A game on another "
+                "disk gets its prefix in the prefixes folder of that disk's Mira folder, or in a "
+                "prefix folder inside its own folder when that disk has none. Mira never scans "
+                "them for games.",
          .path = PathKind::Folder});
 
   s.Add({.key = "prefix_naming",

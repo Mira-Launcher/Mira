@@ -177,6 +177,20 @@ Result<model::Game> Scanner::Follow(const model::Game& moved, const fs::path& fo
         fs::path(game.data_dir).lexically_normal().lexically_relative(old_install);
     if (!loose && !game.data_dir.empty() && !relative.empty() && *relative.begin() != "..") {
       game.data_dir = (folder / relative).lexically_normal().string();
+    } else if (std::error_code gone; !game.data_dir.empty() && !fs::exists(game.data_dir, gone)) {
+      // The whole drive moved (mounted elsewhere): its prefix is at the same place under the new
+      // mount point, found by taking the path the install and its new place end with off both.
+      fs::path old_base = old_install;
+      fs::path new_base = folder.lexically_normal();
+      while (old_base.has_relative_path() && new_base.has_relative_path() &&
+             old_base.filename() == new_base.filename()) {
+        old_base = old_base.parent_path();
+        new_base = new_base.parent_path();
+      }
+      const fs::path inside =
+          fs::path(game.data_dir).lexically_normal().lexically_relative(old_base);
+      if (!inside.empty() && *inside.begin() != ".." && fs::is_directory(new_base / inside, gone))
+        game.data_dir = (new_base / inside).string();
     }
     game.install_path = folder.string();
     TagsForPlace(rules, game, old_root, root, place);
@@ -305,14 +319,17 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
       linked_by_target.emplace(fs::path(game.install_path).lexically_normal(), game);
     if (IsLooseFile(game))
       loose_programs.emplace(std::pair{fs::path(game.install_path), game.exe_path}, game);
-    // A game in a root that isn't there (an unplugged drive) hasn't moved anywhere.
+    // A game in a root that isn't there (an unplugged drive) hasn't moved anywhere. One left
+    // missing when its library folder was taken out may be back in another (the drive mounted
+    // elsewhere).
     const fs::path game_root =
         game.install_path.empty() ? fs::path() : RootOf(rules, game.install_path);
-    if ((game.source == "scan" || game.source == "manual") && !game_root.empty() &&
-        fs::is_directory(game_root, ec) &&
-        !fs::exists(IsLooseFile(game) ? fs::path(game.install_path) / game.exe_path
-                                      : fs::path(game.install_path),
-                    ec)) {
+    const bool root_left = game_root.empty() && game.status == model::GameStatus::Missing;
+    if ((game.source == "scan" || game.source == "manual") && !game.install_path.empty() &&
+        (root_left || (!game_root.empty() && fs::is_directory(game_root, ec) &&
+                       !fs::exists(IsLooseFile(game) ? fs::path(game.install_path) / game.exe_path
+                                                     : fs::path(game.install_path),
+                                   ec)))) {
       moved_away.push_back(game);
     }
   }

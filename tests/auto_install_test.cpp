@@ -176,6 +176,8 @@ TEST_CASE("An installer that puts the game in its prefix moves the game there, r
   AddWaitingGame(server, state / "setup_celeste_1.4",
                  "mkdir -p '" + installed.string() + "'\nprintf game > '" + installed.string() +
                      "/Celeste.exe'\n");
+  // Packed beside the installer, as a repack's checksum tool is: not what it installed.
+  test::Touch(state / "setup_celeste_1.4" / "MD5" / "QuickSFV.exe", "tool");
   httplib::Client client = server.Client();
 
   auto started = client.Post("/v1/games/celeste/install");

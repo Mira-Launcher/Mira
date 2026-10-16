@@ -9,6 +9,7 @@
 
 #include "core/Strings.h"
 #include "library/FolderTags.h"
+#include "library/PrefixNaming.h"
 #include "library/Scanner.h"
 #include "library/Watcher.h"
 #include "store/GameStore.h"
@@ -655,4 +656,82 @@ TEST_CASE("tags.folders refuses tags that can't be folders") {
     CHECK_FALSE(env.config.Set("tags.folders", json::array({bad})).has_value());
   }
   CHECK_FALSE(env.config.Set("tags.folders", json::array({"RPG", "rpg"})).has_value());
+}
+
+TEST_CASE("Games in a library folder taken out are missing, and found again where it comes back") {
+  LiveServer server(TempDir("roots-left-state"));
+  const fs::path drive = TempDir("roots-left-drive");
+  const fs::path kept = TempDir("roots-left-kept");
+  httplib::Client client = server.Client();
+  const auto set_roots = [&](const std::vector<fs::path>& roots) {
+    json list = json::array();
+    for (const fs::path& root : roots) list.push_back(root.string());
+    const auto res =
+        client.Patch("/v1/config", json{{"library_roots", list}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  set_roots({drive / "Games", kept});
+  model::Game quest_record =
+      AddGame(server.games(), "quest", drive / "Games" / "Quest", {}, "scan");
+  quest_record.data_dir = (drive / "prefixes" / "quest").string();
+  fs::create_directories(quest_record.data_dir);
+  REQUIRE(server.games().Upsert(quest_record).has_value());
+  AddGame(server.games(), "stays", kept / "Stays", {}, "scan");
+  AddGame(server.games(), "store", drive / "Games" / "Store", {}, "steam");
+  const auto status = [&](const std::string& id) { return server.games().Find(id)->status; };
+
+  set_roots({kept});
+  CHECK(status("quest") == model::GameStatus::Missing);
+  CHECK(status("stays") == model::GameStatus::Ready);
+  CHECK(status("store") == model::GameStatus::Ready);  // its store keeps track of it
+
+  // Added back as it was.
+  set_roots({drive / "Games", kept});
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  CHECK(status("quest") == model::GameStatus::Ready);
+
+  // The drive mounted elsewhere: the same game, followed with its history.
+  set_roots({kept});
+  REQUIRE(status("quest") == model::GameStatus::Missing);
+  const fs::path remounted = TempDir("roots-left-remounted");
+  fs::rename(drive / "Games", remounted / "Games");
+  fs::rename(drive / "prefixes", remounted / "prefixes");
+  set_roots({remounted / "Games", kept});
+  REQUIRE(AwaitJob(client, client.Post("/v1/library/scan"))["state"] == "finished");
+  const auto quest = server.games().Find("quest");
+  CHECK(quest->install_path == (remounted / "Games" / "Quest").string());
+  CHECK(quest->status == model::GameStatus::Ready);
+  CHECK(quest->data_dir == (remounted / "prefixes" / "quest").string());  // its prefix moved too
+  CHECK(std::ranges::count(server.games().All(), quest->install_path, &model::Game::install_path) ==
+        1);
+}
+
+TEST_CASE("A game on a disk with no Mira folder keeps its prefix in its own folder") {
+  const fs::path other_disk = "/dev/shm";
+  std::error_code ec;
+  if (!fs::is_directory(other_disk, ec)) return;
+  LiveServer server(TempDir("own-prefix-state"));
+  const fs::path drive = other_disk / "mira-tests-own-prefix";
+  fs::remove_all(drive, ec);
+  httplib::Client client = server.Client();
+  const auto set =
+      client.Patch("/v1/config", json{{"library_roots", {(drive / "Games").string()}}}.dump(),
+                   "application/json");
+  REQUIRE(set != nullptr);
+  REQUIRE(set->status == 200);
+  model::Game quest = AddGame(server.games(), "quest", drive / "Games" / "Quest", {}, "scan");
+
+  const fs::path prefix = library::PrefixDir(server.MutableConfig(), server.games(), quest);
+  CHECK(prefix == drive / "Games" / "Quest" / "prefix");
+  quest.data_dir = prefix.string();
+  Touch(prefix / "drive_c" / "users" / "steamuser" / "save.dat", "save");
+  REQUIRE(server.games().Upsert(quest).has_value());
+
+  // Deleting just the prefix works there too, and leaves the game's files.
+  CHECK(AwaitJob(client, client.Delete("/v1/games/quest?delete_prefix=true"))["state"] ==
+        "finished");
+  CHECK_FALSE(fs::exists(prefix));
+  CHECK(fs::exists(drive / "Games" / "Quest" / "run.sh"));
+  fs::remove_all(drive, ec);
 }

@@ -397,6 +397,47 @@ TEST_CASE("A small installer is recognised by its builder's mark, whatever its n
   CHECK_FALSE(flagged("Moonleap.exe"));
 }
 
+TEST_CASE("A marked installer beside its payload is picked over the tools packed with it") {
+  const auto installer_like = [](const fs::path& path, std::string_view mark) {
+    std::ofstream out(path, std::ios::binary);
+    out << "MZ" << std::string(300 * 1024, '\0') << "<assemblyIdentity name=\"" << mark << "\"/>";
+  };
+  const auto large = [](const fs::path& path) {
+    std::ofstream out(path, std::ios::binary);
+    out.seekp(60 * 1024 * 1024 - 1);
+    out.put('\0');
+  };
+  library::DetectorSettings settings = DefaultSettings();
+  settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
+  // An older settings.toml's list, which still names setup*.
+  settings.deny_name_patterns = {"unins*", "setup*", "*redist*"};
+  settings.installer_min_size_mb = 50;
+  const library::Detector detector(settings);
+
+  // A repack: setup.exe, its .bin payload and a checksum tool in a subfolder.
+  const fs::path repack = TempDir("repack-detect");
+  installer_like(repack / "setup.exe", "Inno Setup");
+  large(repack / "fg-01.bin");
+  fs::create_directories(repack / "MD5");
+  Touch(repack / "MD5" / "QuickSFV.EXE");
+  const auto packed = detector.Detect(repack);
+  REQUIRE(packed.candidates.size() == 2);
+  CHECK(packed.candidates[0].rel_path == "setup.exe");
+  CHECK(packed.candidates[0].is_installer);
+  CHECK(packed.confidence >= settings.low_confidence_threshold);
+
+  // An installed game keeps its uninstaller and a redistributable beside its data: still the game.
+  const fs::path installed = TempDir("installed-detect");
+  Touch(installed / "Genesis.exe");
+  installer_like(installed / "unins000.exe", "Inno Setup");
+  installer_like(installed / "VC_redist.x64.exe", ".wixburn");
+  large(installed / "data.pak");
+  const auto game = detector.Detect(installed);
+  REQUIRE_FALSE(game.candidates.empty());
+  CHECK(game.candidates[0].rel_path == "Genesis.exe");
+  CHECK_FALSE(game.candidates[0].is_installer);
+}
+
 TEST_CASE("AutoSetup stores an installer candidate as needs_install, not launchable") {
   test::TestEnv env("autosetup-installer-config");
   library::AutoSetup auto_setup(env.config, env.games, env.events);
