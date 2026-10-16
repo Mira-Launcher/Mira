@@ -55,6 +55,7 @@ int main(int argc, char** argv) {
   QLockFile single_instance_lock(runtime_dir + "/mira-gui.lock");
   // Big screen mode, for a TV and a controller (bigscreen/BigScreenWindow.h).
   const bool big_screen = app.arguments().contains("--big-screen");
+  const bool desktop = app.arguments().contains("--desktop");
   // Started by `mira` with no Mira open: only mirad is wanted, so stay in the tray.
   const bool hidden = app.arguments().contains("--hidden");
   // Started at login: the tray too, unless big screen opens at start.
@@ -101,7 +102,7 @@ int main(int argc, char** argv) {
   mira_gui::display::SetDaemon([supervisor] { return supervisor->Pid(); },
                                [supervisor] { supervisor->HandOff(); });
   QObject::connect(
-      supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, hidden, login] {
+      supervisor, &mira_gui::DaemonSupervisor::Ready, &app, [big_screen, desktop, hidden, login] {
         // Read once and applied before the window exists, so it opens at its saved
         // size and look instead of changing once shown.
         const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
@@ -133,7 +134,7 @@ int main(int argc, char** argv) {
         } else if (tray) {
           // With no tray to come back from, the dock or taskbar.
           if (!mira_gui::tray::Available()) window->showMinimized();
-        } else if (big_screen || prefs.big_screen_at_start.value_or(false)) {
+        } else if (big_screen || (!desktop && prefs.big_screen_at_start.value_or(false))) {
           window->OpenBigScreen();
         } else {
           window->show();

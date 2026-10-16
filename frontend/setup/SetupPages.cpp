@@ -1230,7 +1230,6 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   switch_rows->addWidget(login_row);
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);
-    big_screen_->setChecked(true);
     QWidget* row = SetupRow(switches, "Open Mira in big screen",
                             "Mira full screen, made for a controller. Switch any time from the "
                             "menu or the Mira button.",

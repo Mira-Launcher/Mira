@@ -222,7 +222,8 @@ bool Restart(const QStringList& arguments) {
 
 bool RestartFor(bool big_screen) {
   if (QGuiApplication::platformName() == Wanted(big_screen)) return false;
-  return Restart(big_screen ? QStringList{"--big-screen"} : QStringList{});
+  // --desktop: back from big screen, not into it again for big screen at start.
+  return Restart(QStringList{big_screen ? "--big-screen" : "--desktop"});
 }
 
 QString StretchHint() {
