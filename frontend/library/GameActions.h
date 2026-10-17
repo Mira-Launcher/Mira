@@ -6,6 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "../client/Types.h"
+
 class QWidget;
 
 namespace mira_gui {
@@ -38,10 +40,10 @@ void ChoosePlay(QWidget* parent, const GameSummary& game,
 // that follows is what actually updates the view.
 void Stop(QWidget* parent, const std::string& id);
 
-// Asks (see DeleteGameDialog, which offers deleting the files and the
-// prefix too), then DELETEs. `on_deleted` runs only if something was removed.
-void Delete(QWidget* parent, const std::string& id, const QString& name,
-            std::function<void()> on_deleted);
+// Removes the games a RemoveGamesCard was confirmed for, as their plans say: files go wherever
+// they're Mira's or a store's to delete, never otherwise, and prefixes only with
+// `delete_prefix`. A Steam game goes to Steam's own uninstall and leaves once Steam is done.
+void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix);
 
 // Runs an executable inside the game's own prefix, asking which one first.
 // Takes install_path/name directly, since both are already on GameSummary, so no
@@ -76,14 +78,6 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name);
 // `currently_enabled` (the caller already resolved it to label the menu
 // item "Add"/"Remove", so this doesn't re-fetch).
 void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_enabled);
-
-// Confirms once for the whole batch (see AskDeleteGames), then DELETEs each
-// game: file/prefix flags are skipped per-game for a desktop-entry source,
-// same rule as the single-game Delete, checked with one GetGameAsync per
-// game first since `source` isn't on GameSummary. `on_done` runs once, after
-// every request settles.
-void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
-                 std::function<void()> on_done);
 
 // PATCHes desktop_entries.enabled = `enabled` for every id. Unlike
 // ToggleDesktopEntry this doesn't flip each game's own current value: a

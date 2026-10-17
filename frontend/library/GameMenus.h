@@ -31,8 +31,8 @@ class GameMenus : public QObject {
     std::function<void(const std::string& id)> open_details;
     std::function<void(const std::string& id)> offer_install;
     std::function<void(const std::string& id)> refresh_metadata;
-    // The game was deleted from the library.
-    std::function<void(const std::string& id)> removed;
+    // Asks before removing these games (RemoveGamesCard).
+    std::function<void(const std::vector<std::string>& ids)> remove;
     // Records a request already changed, applied without waiting for their events.
     std::function<void(const std::vector<GameSummary>& games)> upsert;
   };

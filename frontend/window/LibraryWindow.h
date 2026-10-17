@@ -222,6 +222,8 @@ class LibraryWindow : public QMainWindow {
   void CloseSidebarCard();
   bool SidebarCardOpen() const;
   void OpenSidebarStyle();
+  // Asks what removing these games should take with them (RemoveGamesCard), then removes them.
+  void AskRemove(const std::vector<std::string>& ids);
   // A sidebar row or card's click. Ignores the second click of a double
   // click, which would otherwise land on whatever row moved under it.
   void RowClicked(const std::string& id);

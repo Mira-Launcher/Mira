@@ -14,12 +14,6 @@
 // (client/Async.h), so the UI never blocks on the socket. See docs/api.md.
 namespace mira_gui::api {
 
-// DELETE /v1/games/{id}[?delete_files=true][?delete_prefix=true][?delete_metadata=true].
-// All opt-in; false/omitted never touches disk. delete_metadata alone has
-// no library/prefix-root restriction: it's keyed by id under Mira's own state dir.
-void DeleteGameAsync(QObject* context, const std::string& id, bool delete_files, bool delete_prefix,
-                     bool delete_metadata, std::function<void(DeleteResult)> callback);
-
 // POST /v1/games/{id}/launch. Returns once the process exists, not once
 // it exits. 409 if the game isn't `ready` (message explains why, e.g.
 // needs_install) or 400 if the runner reference doesn't resolve.
@@ -71,11 +65,6 @@ void PatchGameConfigAsync(QObject* context, const std::string& id,
 void PatchGamesAsync(QObject* context, const GamesPatch& patch,
                      std::function<void(PatchGamesResult)> callback);
 
-// GET /v1/games/{id}/log?lines=. `lines` is how many trailing lines to ask
-// for; an empty result means nothing has ever been logged, not a failure.
-void GetGameLogAsync(QObject* context, const std::string& id, int lines,
-                     std::function<void(GameLogResult)> callback);
-
 // GET /v1/games/{id}/sessions?limit=. Newest first.
 void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
                           std::function<void(GameSessionsResult)> callback);
@@ -109,10 +98,18 @@ void GetInstallProgressAsync(QObject* context, const std::string& id,
 void RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
                        const std::string& data_dir, std::function<void(GameDetailResult)> callback);
 
-// POST /v1/games/delete: the same for many games in one request.
+// POST /v1/games/delete, a job: removes games, keeping what the user set on them, and with
+// `delete_files` their files (a Steam game through Steam), with `delete_prefix` their prefixes.
 void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, bool delete_files,
-                      bool delete_prefix, bool delete_metadata,
-                      std::function<void(DeleteGamesResult)> callback);
+                      bool delete_prefix, std::function<void(DeleteGamesResult)> callback);
+
+// POST /v1/games/removal: what removing each game can delete.
+void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                          std::function<void(RemovalPlansResult)> callback);
+
+// POST /v1/games/removal/sizes, a job: the sizes behind those plans.
+void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,
+                          std::function<void(RemovalSizesResult)> callback);
 
 // DELETE /v1/games/{id}/installer: the folder an install left its installer in.
 void DeleteInstallerAsync(QObject* context, const std::string& id,

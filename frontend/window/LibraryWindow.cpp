@@ -59,6 +59,7 @@
 #include "../game/GameCard.h"
 #include "../game/InstallPromptCard.h"
 #include "../game/InstallerCards.h"
+#include "../game/RemoveGamesCard.h"
 #include "../game/UnclearDropCard.h"
 #include "../game/UnclearMoveCard.h"
 #include "../library/ArtworkStore.h"
@@ -162,7 +163,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
        .open_details = [this](const std::string& id) { OpenGameDetailPage(id); },
        .offer_install = [this](const std::string& id) { OfferInstall(id); },
        .refresh_metadata = [this](const std::string& id) { RefreshMetadata(id); },
-       .removed = [this](const std::string& id) { RemoveGame(id); },
+       .remove = [this](const std::vector<std::string>& ids) { AskRemove(ids); },
        .upsert = [this](const std::vector<mira_gui::GameSummary>& games) { UpsertGames(games); }});
 
   // Before the panel and the grid, because both ask it for covers.
@@ -442,16 +443,9 @@ void LibraryWindow::BuildShortcuts() {
 
   add_action(grid_scope, "delete_game", "Remove the selected games", QKeySequence(Qt::Key_Delete),
              {}, [this] {
-               // Copied before the call: the dialog's event loop can change the library.
-               const std::vector<std::pair<std::string, QString>> selected =
-                   grid_page_->SelectedGames();
-               if (selected.size() > 1) {
-                 mira_gui::actions::BatchDelete(this, selected, nullptr);
-               } else if (selected.size() == 1) {
-                 const std::string id = selected.front().first;
-                 mira_gui::actions::Delete(this, id, selected.front().second,
-                                           [this, id] { RemoveGame(id); });
-               }
+               std::vector<std::string> ids;
+               for (const auto& [id, name] : grid_page_->SelectedGames()) ids.push_back(id);
+               if (!ids.empty()) AskRemove(ids);
              });
 }
 
@@ -1813,6 +1807,37 @@ void LibraryWindow::OpenSidebarStyle() {
   connect(card, &mira_gui::SidebarStyleCard::CloseRequested, this,
           &LibraryWindow::CloseSidebarCard);
   ShowSidebarCard(card);
+}
+
+void LibraryWindow::AskRemove(const std::vector<std::string>& ids) {
+  mira_gui::api::GetRemovalPlansAsync(this, ids, [this](mira_gui::RemovalPlansResult result) {
+    if (!result.ok) {
+      mira_gui::notify::FailedRequest(this, "Could not remove the games.", result.error);
+      return;
+    }
+    std::vector<mira_gui::GameSummary> games;
+    std::vector<mira_gui::RemovalPlan> plans;
+    for (mira_gui::RemovalPlan& plan : result.plans) {
+      const mira_gui::GameSummary* game = FindGame(plan.id);
+      if (game == nullptr) continue;  // removed while asking
+      games.push_back(*game);
+      plans.push_back(std::move(plan));
+    }
+    if (plans.empty() || !LeaveOverlays()) return;
+    std::vector<std::string> measured;
+    for (const mira_gui::RemovalPlan& plan : plans) measured.push_back(plan.id);
+    auto* card = new mira_gui::RemoveGamesCard(games, plans, artwork_);
+    connect(card, &mira_gui::RemoveGamesCard::CloseRequested, this,
+            &LibraryWindow::CloseSidebarCard);
+    connect(card, &mira_gui::RemoveGamesCard::Confirmed, this, [this, plans](bool delete_prefix) {
+      CloseSidebarCard();
+      mira_gui::actions::RemoveGames(this, plans, delete_prefix);
+    });
+    ShowSidebarCard(card);
+    mira_gui::api::GetRemovalSizesAsync(card, measured, [card](mira_gui::RemovalSizesResult sizes) {
+      if (sizes.ok) card->SetSizes(sizes.sizes);
+    });
+  });
 }
 
 void LibraryWindow::CloseSidebarCard() {

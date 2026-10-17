@@ -14,7 +14,6 @@
 #include "../app/Notify.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
-#include "../dialogs/DeleteGameDialog.h"
 #include "../dialogs/LogWindow.h"
 #include "../dialogs/RunInPrefixDialog.h"
 #include "../dialogs/WinetricksDialog.h"
@@ -90,31 +89,27 @@ void Stop(QWidget* parent, const std::string& id) {
   });
 }
 
-void Delete(QWidget* parent, const std::string& id, const QString& name,
-            std::function<void()> on_deleted) {
-  // Paths come from a detail fetch; the list summary carries neither
-  // install_path nor data_dir. A failed fetch still offers the plain
-  // remove, with both options disabled.
-  api::GetGameAsync(parent, id, [parent, id, name, on_deleted](GameDetailResult detail) {
-    const QString install_path =
-        detail.ok ? QString::fromStdString(detail.game.install_path) : QString();
-    const QString data_dir = detail.ok ? QString::fromStdString(detail.game.data_dir) : QString();
-    const QString source = detail.ok ? QString::fromStdString(detail.game.source) : QString();
-
-    const DeleteChoice choice = AskDeleteGame(parent, name, install_path, data_dir, source);
-    if (!choice.confirmed) return;
-
-    api::DeleteGameAsync(parent, id, choice.delete_files, choice.delete_prefix,
-                         choice.delete_metadata, [parent, name, on_deleted](DeleteResult result) {
-                           if (!result.ok) {
-                             notify::FailedRequest(parent,
-                                                   QString("Could not remove \"%1\".").arg(name),
-                                                   result.error);
-                             return;
-                           }
-                           if (on_deleted) on_deleted();
-                         });
-  });
+void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix) {
+  // Files only where mirad's plan says they're Mira's or a store's: an explicit delete_files on
+  // another app's files is refused, and would keep the game.
+  std::vector<std::string> deleting, forgetting;
+  std::map<std::string, QString> names;
+  for (const RemovalPlan& plan : plans) {
+    (DeletesFiles(plan) ? deleting : forgetting).push_back(plan.id);
+    names[plan.id] = QString::fromStdString(plan.name);
+  }
+  for (const auto& [ids, files] : {std::pair{deleting, true}, std::pair{forgetting, false}}) {
+    if (ids.empty()) continue;
+    // Success needs no notice: the games leave the grid, a Steam game once Steam is done.
+    api::DeleteGamesAsync(
+        parent, ids, files, delete_prefix, [parent, names](DeleteGamesResult result) {
+          if (!result.ok) {
+            notify::FailedRequest(parent, "Could not remove the games.", result.error);
+          } else if (!result.failed.empty()) {
+            NotifyFailures(parent, result.failed, names, "Could not remove");
+          }
+        });
+  }
 }
 
 void RunInPrefix(QWidget* parent, const std::string& id, const std::string& install_path,
@@ -174,26 +169,6 @@ void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_e
     if (!result.ok)
       notify::FailedRequest(parent, "Could not update the desktop entry.", result.error);
   });
-}
-
-void BatchDelete(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
-                 std::function<void()> on_done) {
-  if (games.empty()) return;
-  const DeleteChoice choice = AskDeleteGames(parent, static_cast<int>(games.size()));
-  if (!choice.confirmed) return;
-
-  // mirad itself never deletes a desktop-entry game's files or prefix.
-  api::DeleteGamesAsync(
-      parent, Ids(games), choice.delete_files, choice.delete_prefix, choice.delete_metadata,
-      [parent, names = NamesById(games), on_done](DeleteGamesResult result) {
-        if (!result.ok) {
-          notify::FailedRequest(parent, "Could not remove the games.", result.error);
-        } else if (!result.failed.empty()) {
-          // Success needs no notice: the games leave the grid.
-          NotifyFailures(parent, result.failed, names, "Could not remove");
-        }
-        if (on_done) on_done();
-      });
 }
 
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,

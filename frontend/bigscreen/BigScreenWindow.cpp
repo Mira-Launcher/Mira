@@ -20,6 +20,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../game/RemoveGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
@@ -715,19 +716,36 @@ void BigScreenWindow::CancelInstall(const Item& item) {
 
 void BigScreenWindow::Uninstall(const Item& item) {
   if (!item.game) return;
-  Confirm(
-      "Uninstall " + item.name + "?",
-      "This deletes the game's files. Its Wine prefix, with saves and settings, is kept.",
-      "Uninstall", [this, item] {
-        api::DeleteGameAsync(
-            this, item.game->id, true, false, false, [this, item](DeleteResult result) {
-              Toast(result.ok ? item.name + " uninstalled" : "Could not uninstall " + item.name);
-              // Its page would offer Play for a game that's gone.
-              if (result.ok && stack_->currentWidget() == game_page_ &&
-                  game_page_->key() == item.key)
-                Back();
-            });
-      });
+  // What it loses depends on whose files they are, which mirad's plan says.
+  api::GetRemovalPlansAsync(this, {item.game->id}, [this, item](RemovalPlansResult plans) {
+    if (!plans.ok || plans.plans.empty()) {
+      Toast("Could not uninstall " + item.name);
+      return;
+    }
+    const RemovalPlan plan = plans.plans.front();
+    const QString action = RemoveGamesCard::ActionText({plan});
+    const QString text =
+        plan.kind == "steam"    ? QString("Steam asks first, then removes its files and prefix.")
+        : !DeletesFiles(plan)   ? QString("Its files stay where they are.")
+        : plan.folder_is_prefix ? QString("This deletes its folder, which is also its prefix.")
+                                : QString(
+                                      "This deletes the game's files. Its prefix, with saves "
+                                      "and settings, is kept.");
+    Confirm(action.section(' ', 0, 0) + " " + item.name + "?", text, action, [this, item, plan] {
+      api::DeleteGamesAsync(
+          this, {plan.id}, DeletesFiles(plan), /*delete_prefix=*/false,
+          [this, item](DeleteGamesResult result) {
+            if (!result.ok || !result.failed.empty()) {
+              Toast("Could not uninstall " + item.name);
+              return;
+            }
+            if (result.removed.empty()) return;  // Steam's own uninstall takes it from here
+            Toast(item.name + " removed");
+            // Its page would offer Play for a game that's gone.
+            if (stack_->currentWidget() == game_page_ && game_page_->key() == item.key) Back();
+          });
+    });
+  });
 }
 
 void BigScreenWindow::TogglePin(const Item& item) {

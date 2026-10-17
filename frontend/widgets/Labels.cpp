@@ -67,7 +67,7 @@ void ElidedLabel::paintEvent(QPaintEvent*) {
   setToolTip(shown == text() ? QString() : text());
   QPainter painter(this);
   painter.setPen(palette().color(QPalette::WindowText));
-  painter.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter, shown);
+  painter.drawText(rect(), alignment(), shown);
 }
 
 QString StatusDot(const QColor& color) {

@@ -153,7 +153,10 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
       "An app is a program rather than a game: no playtime, and kept out of Continue");
   AddTagsMenu(menu, {id});
   menu.addSeparator();
-  QAction* remove = menu.addAction(game.source == "office" ? "Uninstall…" : "Remove from library…");
+  // A store's games are uninstalled; the card says what any other game loses.
+  const bool store = game.source == "steam" || game.source == "office" ||
+                     (source != nullptr && source->kind == SourceInfo::Kind::Store);
+  QAction* remove = menu.addAction(store ? "Uninstall…" : "Remove…");
 
   QAction* chosen = menu.exec(global_pos);
   if (chosen == play) {
@@ -188,7 +191,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   } else if (chosen == toggle_app) {
     ToggleTag(id, tags::kApp);
   } else if (chosen == remove) {
-    actions::Delete(parent_, id, name, [this, id] { host_.removed(id); });
+    host_.remove({id});
   }
 }
 
@@ -236,7 +239,7 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
   QAction* relocate = menu.addAction(QString("Move to Mira's folders… (%1)").arg(count));
   AddTagsMenu(menu, ids);
   menu.addSeparator();
-  QAction* remove = menu.addAction(QString("Remove from library… (%1)").arg(count));
+  QAction* remove = menu.addAction(QString("Remove… (%1)").arg(count));
 
   QAction* chosen = menu.exec(global_pos);
   if (chosen == nullptr) return;  // dismissed; also keeps it from matching an action left out above
@@ -262,7 +265,7 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
   } else if (chosen == relocate) {
     actions::Relocate(parent_, named, nullptr);
   } else if (chosen == remove) {
-    actions::BatchDelete(parent_, named, nullptr);
+    host_.remove(ids);
   }
 }
 

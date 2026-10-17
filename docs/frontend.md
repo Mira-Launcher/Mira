@@ -244,7 +244,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 |---|---|
 | `GET /v1/health` | Online/Offline badge |
 | `GET /v1/games`, `GET`/`PATCH /v1/games/{id}` | Library views, `game/GameEditForm` |
-| `DELETE /v1/games/{id}` | `DeleteGameDialog` |
+| `POST /v1/games/removal`, `/removal/sizes`, `/delete` | `game/RemoveGamesCard`, `actions::RemoveGames`, big screen's Uninstall |
 | `GET`/`PATCH /v1/games/{id}/config` | `OverridesEditor` |
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
 | `POST /v1/games/manual` | `AddManualGameDialog` |

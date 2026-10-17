@@ -19,31 +19,6 @@ namespace {
 
 using nlohmann::json;
 
-std::string DeletePath(const std::string& id, bool delete_files, bool delete_prefix,
-                       bool delete_metadata) {
-  // Every flag is opt-in server-side too: the bare DELETE never touches
-  // disk, so an omitted param and "false" mean the same thing.
-  std::string path = "/v1/games/" + PercentEncode(id);
-  std::string separator = "?";
-  if (delete_files) {
-    path += separator + "delete_files=true";
-    separator = "&";
-  }
-  if (delete_prefix) {
-    path += separator + "delete_prefix=true";
-    separator = "&";
-  }
-  if (delete_metadata) path += separator + "delete_metadata=true";
-  return path;
-}
-
-DeleteResult DeleteGameSync(const std::string& id, bool delete_files, bool delete_prefix,
-                            bool delete_metadata) {
-  const transport::Reply reply =
-      transport::Delete(DeletePath(id, delete_files, delete_prefix, delete_metadata));
-  return {reply.ok, reply.error};
-}
-
 LaunchResult LaunchGameSync(const std::string& id, const std::string& option) {
   const std::string path = "/v1/games/" + PercentEncode(id) + "/launch";
   const transport::Reply reply =
@@ -194,17 +169,6 @@ PatchGamesResult PatchGamesSync(const GamesPatch& patch) {
   return result;
 }
 
-GameLogResult GetGameLogSync(const std::string& id, int lines) {
-  return ReadReply<GameLogResult>(
-      transport::Get("/v1/games/" + PercentEncode(id) + "/log?lines=" + std::to_string(lines)),
-      "GET /v1/games/" + id + "/log", Shape::Object, [](GameLogResult& result, const json& body) {
-        if (!body.contains("lines") || !body["lines"].is_array()) return;
-        for (const json& line : body["lines"]) {
-          if (line.is_string()) result.lines.push_back(line.get<std::string>());
-        }
-      });
-}
-
 GameSessionsResult GetGameSessionsSync(const std::string& id, int limit) {
   return ReadReply<GameSessionsResult>(
       transport::Get("/v1/games/" + PercentEncode(id) + "/sessions?limit=" + std::to_string(limit)),
@@ -281,25 +245,6 @@ void FillDeleteGames(DeleteGamesResult& result, const json& body) {
 
 }  // namespace
 
-void DeleteGameAsync(QObject* context, const std::string& id, bool delete_files, bool delete_prefix,
-                     bool delete_metadata, std::function<void(DeleteResult)> callback) {
-  if (!delete_files && !delete_prefix) {
-    async::Run(
-        context,
-        [id, delete_metadata] { return DeleteGameSync(id, false, false, delete_metadata); },
-        std::move(callback), async::Lane::Slow);
-    return;
-  }
-  // Deleting files or a prefix is a job.
-  RunJob<DeleteResult>(
-      context, "delete",
-      [id, delete_files, delete_prefix, delete_metadata](const std::string& query) {
-        return transport::Delete(DeletePath(id, delete_files, delete_prefix, delete_metadata) +
-                                 "&" + query.substr(1));
-      },
-      [](DeleteResult&, const json&) {}, std::move(callback));
-}
-
 void LaunchGameAsync(QObject* context, const std::string& id, const std::string& option,
                      std::function<void(LaunchResult)> callback) {
   async::Run(context, [id, option] { return LaunchGameSync(id, option); }, std::move(callback));
@@ -350,11 +295,6 @@ void PatchGameConfigAsync(QObject* context, const std::string& id,
 void PatchGamesAsync(QObject* context, const GamesPatch& patch,
                      std::function<void(PatchGamesResult)> callback) {
   async::Run(context, [patch] { return PatchGamesSync(patch); }, std::move(callback));
-}
-
-void GetGameLogAsync(QObject* context, const std::string& id, int lines,
-                     std::function<void(GameLogResult)> callback) {
-  async::Run(context, [id, lines] { return GetGameLogSync(id, lines); }, std::move(callback));
 }
 
 void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
@@ -418,18 +358,57 @@ void RelocateGameAsync(QObject* context, const std::string& id, const std::strin
 }
 
 void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, bool delete_files,
-                      bool delete_prefix, bool delete_metadata,
-                      std::function<void(DeleteGamesResult)> callback) {
-  const json body = {{"ids", ids},
-                     {"delete_files", delete_files},
-                     {"delete_prefix", delete_prefix},
-                     {"delete_metadata", delete_metadata}};
+                      bool delete_prefix, std::function<void(DeleteGamesResult)> callback) {
+  const json body = {
+      {"ids", ids}, {"delete_files", delete_files}, {"delete_prefix", delete_prefix}};
   RunJob<DeleteGamesResult>(
       context, "delete",
       [body](const std::string& query) {
         return transport::PostJson("/v1/games/delete" + query, body);
       },
       FillDeleteGames, std::move(callback));
+}
+
+void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                          std::function<void(RemovalPlansResult)> callback) {
+  async::Run(
+      context,
+      [ids] {
+        return ReadReply<RemovalPlansResult>(
+            transport::PostJson("/v1/games/removal", {{"ids", ids}}), "POST /v1/games/removal",
+            Shape::Array, [](RemovalPlansResult& result, const json& body) {
+              for (const json& entry : body) {
+                result.plans.push_back(
+                    {.id = entry.at("id").get<std::string>(),
+                     .name = entry.value("name", std::string()),
+                     .kind = entry.value("kind", std::string()),
+                     .tool = entry.value("tool", std::string()),
+                     .files = entry.value("files", std::string()),
+                     .files_in_prefix = entry.value("files_in_prefix", std::string()),
+                     .folder_is_prefix = entry.value("folder_is_prefix", false),
+                     .prefix = entry.value("prefix", std::string()),
+                     .prefix_shared_with = entry.value("prefix_shared_with", std::string())});
+              }
+            });
+      },
+      std::move(callback));
+}
+
+void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,
+                          std::function<void(RemovalSizesResult)> callback) {
+  const json body = {{"ids", ids}};
+  RunJob<RemovalSizesResult>(
+      context, "removal-sizes",
+      [body](const std::string& query) {
+        return transport::PostJson("/v1/games/removal/sizes" + query, body);
+      },
+      [](RemovalSizesResult& result, const json& sizes) {
+        for (const auto& [id, size] : sizes.items()) {
+          result.sizes[id] = {.files = size.value("files", std::uint64_t{0}),
+                              .prefix = size.value("prefix", std::uint64_t{0})};
+        }
+      },
+      std::move(callback));
 }
 
 void DeleteInstallerAsync(QObject* context, const std::string& id,

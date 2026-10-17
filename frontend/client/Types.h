@@ -195,11 +195,6 @@ struct GameStateEvent {
   ApiError error;
 };
 
-struct DeleteResult {
-  bool ok = false;
-  ApiError error;
-};
-
 // POST /v1/games/{id}/launch. The actual outcome (running, exited,
 // crashed) arrives later as a `game.state` SSE event (docs/api.md), since
 // launch returns as soon as the process exists, not when it finishes.
@@ -447,8 +442,7 @@ struct GameDetail {
   std::string platform;
   // "scan", "steam", "lutris", or "desktop-entry", which source owns this
   // game's own fields on a rescan/re-import. GameEditForm uses it to warn
-  // when exe_path isn't actually what launches the game; DeleteGameDialog
-  // uses "desktop-entry" to disable file/prefix deletion.
+  // when exe_path isn't actually what launches the game.
   std::string source;
   std::string install_path;
   std::string exe_path;
@@ -1066,12 +1060,40 @@ struct DeleteGamesResult {
   std::vector<GameFailure> failed;
 };
 
-// GET /v1/games/{id}/log?lines=: the game's own log tail. An empty
-// `lines` means nothing was ever logged, not an error.
-struct GameLogResult {
+// One game's entry from POST /v1/games/removal: what removing it can delete.
+struct RemovalPlan {
+  std::string id;
+  std::string name;
+  std::string kind;  // "steam", "store", "folder" or "external"
+  std::string tool;  // who deletes a store game's files ("Legendary"); "" for Mira
+  std::string files;
+  std::string files_in_prefix;  // "C:\Games\X" when it's installed inside its prefix
+  bool folder_is_prefix = false;
+  std::string prefix;  // "" when there's none Mira made
+  std::string prefix_shared_with;
+};
+
+// Whether removing it asks for its files to go: never another app's or the user's own.
+inline bool DeletesFiles(const RemovalPlan& plan) {
+  return plan.kind != "external";
+}
+
+struct RemovalPlansResult {
   bool ok = false;
   ApiError error;
-  std::vector<std::string> lines;
+  std::vector<RemovalPlan> plans;
+};
+
+// POST /v1/games/removal/sizes, by id.
+struct RemovalSize {
+  std::uint64_t files = 0;
+  std::uint64_t prefix = 0;
+};
+
+struct RemovalSizesResult {
+  bool ok = false;
+  ApiError error;
+  std::map<std::string, RemovalSize> sizes;
 };
 
 // GET /v1/logs/<channel>. `next` is the cursor for the following read; `active` is whether the task
