@@ -158,19 +158,25 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
 
   const fs::path image = dir / "new.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG new";
+  // Stores hand out URLs with raw spaces (Epic's art names), which curl refuses as written.
+  const fs::path spaced = dir / "EGS art (1).png";
+  std::ofstream(spaced, std::ios::binary) << "\x89PNG spaced";
   REQUIRE(cache
               .Write("celeste",
                      nlohmann::json{
                          {"art_candidates",
                           {{"cover", nlohmann::json::array(
-                                         {{{"id", 5}, {"url", "file://" + image.string()}}})}}},
+                                         {{{"id", 5}, {"url", "file://" + image.string()}},
+                                          {{"id", 6}, {"url", "file://" + spaced.string()}}})}}},
                      })
               .has_value());
 
   REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 5).has_value());
-  const nlohmann::json info = cache.Read("celeste");
-  CHECK(info["artwork"].value("candidate_id", 0) == 5);
+  CHECK(cache.Read("celeste")["artwork"].value("candidate_id", 0) == 5);
   CHECK(cache.ArtFor("celeste", "cover").has_value());
+
+  REQUIRE(metadata::SelectArtwork(config, cache, "celeste", "cover", 6).has_value());
+  CHECK(cache.Read("celeste")["artwork"].value("candidate_id", 0) == 6);
 }
 
 TEST_CASE(

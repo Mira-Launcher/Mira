@@ -36,7 +36,14 @@ UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel
     if (const GameSummary* game = library->Find(id)) {
       auto* cover = new QLabel(row);
       cover->setFixedSize(kCover);
-      cover->setPixmap(artwork->Cover(*game, kCover, devicePixelRatioF()));
+      const auto show_cover = [this, cover, artwork, game = *game] {
+        cover->setPixmap(artwork->Cover(game, kCover, devicePixelRatioF()));
+      };
+      show_cover();
+      connect(artwork, &ArtworkStore::CoverChanged, cover,
+              [show_cover, id = QString::fromStdString(game->id)](const QString& changed) {
+                if (changed == id) show_cover();
+              });
       row->AddAfterLabel(cover);
     }
     auto* pick = new QPushButton("This game", row);

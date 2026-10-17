@@ -249,7 +249,7 @@ bool FetchArtworkInto(const config::Config& config, const std::string& url,
                   "-o",
                   part.string(),
                   "--url",
-                  url};
+                  strings::EscapeUrl(url)};
   const Result<runner::ExecResult> result = runner::RunAndWait(command);
   if (!result || result->exit_code != 0 || !CommitArt(part, dest, ArtBox(config, slot))) {
     log::Warn("couldn't download artwork for {} from {}", game_id, url);
@@ -1875,7 +1875,7 @@ Result<ThumbBatch> FetchCandidateThumbs(const config::Config& config,
     }
     const std::string part = ThumbPath(config, game_id, slot, id).string() + suffix;
     pending[part] = id;
-    command.argv.insert(command.argv.end(), {"-o", part, "--url", url});
+    command.argv.insert(command.argv.end(), {"-o", part, "--url", strings::EscapeUrl(url)});
   }
   if (pending.empty()) return batch;
 

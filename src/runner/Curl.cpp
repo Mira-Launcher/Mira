@@ -2,6 +2,7 @@
 
 #include <format>
 
+#include "core/Strings.h"
 #include "runner/Exec.h"
 
 namespace mira::runner {
@@ -30,7 +31,7 @@ Command CurlDownloadCommand(const std::string& url, const std::filesystem::path&
                   "-o",
                   dest.string(),
                   "--url",
-                  url};
+                  strings::EscapeUrl(url)};
   if (max_bytes > 0)
     command.argv.insert(command.argv.end(), {"--max-filesize", std::to_string(max_bytes)});
   return command;
@@ -53,9 +54,14 @@ Result<void> CurlDownload(const std::string& url, const std::filesystem::path& d
 
 Result<nlohmann::json> CurlJson(const std::string& url, int max_time_s) {
   Command command;
-  command.argv = {"curl",  "-sSL",       "--connect-timeout",
-                  "10",    "--max-time", std::to_string(max_time_s),
-                  "--url", url};
+  command.argv = {"curl",
+                  "-sSL",
+                  "--connect-timeout",
+                  "10",
+                  "--max-time",
+                  std::to_string(max_time_s),
+                  "--url",
+                  strings::EscapeUrl(url)};
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());
   nlohmann::json parsed = nlohmann::json::parse(result->output, nullptr, false);

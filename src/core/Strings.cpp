@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <format>
 #include <regex>
 
 namespace mira::strings {
@@ -276,6 +277,21 @@ std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_vi
 std::string GithubRepo(std::string_view text) {
   const auto parsed = ParseGithubUrl(text);
   return parsed ? parsed->first : std::string(text);
+}
+
+std::string EscapeUrl(std::string_view url) {
+  constexpr std::string_view kUnsafe = "\"<>\\^`{|}";
+  std::string out;
+  out.reserve(url.size());
+  for (const char c : url) {
+    const auto byte = static_cast<unsigned char>(c);
+    if (byte <= 0x20 || byte >= 0x7f || kUnsafe.find(c) != std::string_view::npos) {
+      out += std::format("%{:02X}", byte);
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 }  // namespace mira::strings
