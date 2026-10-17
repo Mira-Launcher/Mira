@@ -123,16 +123,7 @@ std::mutex tracked_mutex;
 std::map<std::string, Tracked> tracked;
 std::mutex install_run_mutex;  // one installer at a time
 
-std::uintmax_t TreeBytes(const fs::path& root) {
-  std::uintmax_t total = 0;
-  std::error_code ec;
-  for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec),
-       end;
-       !ec && it != end; it.increment(ec)) {
-    if (it->is_regular_file(ec)) total += it->file_size(ec);
-  }
-  return total;
-}
+using paths::TreeBytes;
 
 void Finish(const std::string& id, const std::string& error) {
   const std::lock_guard lock(tracked_mutex);

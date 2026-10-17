@@ -151,6 +151,17 @@ A store import (`POST /v1/steam/scan`, `POST /v1/stores/{id}/import`) also remov
 ### `POST /v1/games/delete`
 The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A folder shared only by games removed together is deleted; one another game still uses isn't (`shared_folder`). A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. Steam games with `delete_files` go to Steam's own uninstall, one dialog each. A [job](#jobs) whose result is `{"removed": [ids], "handed_to_steam": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
 
+### `POST /v1/games/removal`
+What removing each game can delete, to show before asking: `{"ids": [...]}` answers a list, in order and without unknown ids, of `{id, name, kind, tool, files, files_in_prefix, folder_is_prefix, prefix, prefix_shared_with}`:
+
+- `kind`: `steam` (Steam's own uninstall takes it), `store` (its store's tool, or Mira for GOG, deletes `files`), `folder` (Mira deletes `files`) or `external` (its files aren't Mira's: a desktop entry, Lutris, an emulator's or launcher's game, or one outside every Mira folder; only `delete_prefix` does anything).
+- `tool`: who deletes a store game's files (`Steam`, `Legendary`, `Nile`, `butler`, `Office`), `""` for Mira.
+- `files`: the folder or AppImage `delete_files` removes, `""` for `external`. `files_in_prefix` is the same as the game sees it (`C:\Games\X`) when it's installed inside its prefix, else `""`. `folder_is_prefix` is true when the folder is the prefix itself, so `delete_files` removes the prefix.
+- `prefix`: the prefix Mira made that `delete_prefix` removes, `""` when there's none (Steam games, a prefix Mira didn't make). `prefix_shared_with` names another game using it, which keeps it (`shared_prefix`).
+
+### `POST /v1/games/removal/sizes`
+The sizes behind those plans, as a [job](#jobs) since big folders take a while: `{"ids": [...]}`, result `{"<id>": {"files": bytes, "prefix": bytes}}`. For a game installed inside its prefix, `prefix` is the rest of it.
+
 ### `GET /v1/games/{id}/config`
 Every setting as it resolves for this game, with the layer it came from:
 

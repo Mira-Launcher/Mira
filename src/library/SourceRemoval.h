@@ -63,4 +63,23 @@ Result<void> DeleteInside(const std::string& target,
 Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
                              std::span<const model::Game> library);
 
+// What removing one game can delete, for a client to show before asking.
+struct GameRemoval {
+  std::string id;
+  std::string name;
+  // "steam": Steam's own uninstall takes it. "store": its store's tool or Mira deletes its files.
+  // "folder": Mira deletes its files. "external": its files aren't Mira's, so they stay.
+  std::string kind;
+  std::string tool;   // who deletes a store game's files ("Legendary"), "" for Mira
+  std::string files;  // the folder or file delete_files removes; "" for "external"
+  // `files` as the game sees them inside its prefix ("C:\Games\X"), when they're there.
+  std::string files_in_prefix;
+  bool folder_is_prefix = false;   // `files` is the prefix itself, so both go together
+  std::string prefix;              // the prefix Mira made that delete_prefix removes, or ""
+  std::string prefix_shared_with;  // another game using that prefix, which keeps it
+};
+// `library` is every game, `game` included.
+GameRemoval PlanGameRemoval(const config::Config& config, const model::Game& game,
+                            std::span<const model::Game> library);
+
 }  // namespace mira::library

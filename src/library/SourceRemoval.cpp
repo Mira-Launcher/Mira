@@ -12,6 +12,7 @@
 #include "itch/Butlerd.h"
 #include "itch/Itch.h"
 #include "launchers/Launchers.h"
+#include "library/PrefixNaming.h"
 #include "library/Relocate.h"
 #include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
@@ -121,6 +122,51 @@ std::vector<std::string> KeptInProgramDir(std::string_view launcher) {
   return {};
 }
 
+// The store tool DeleteGameFiles uninstalls a game through, by name; "" when Mira deletes its
+// files itself.
+std::string UninstallTool(const model::Game& game) {
+  if (game.source == "office") return "Office";
+  if (game.source_ref.empty()) return {};
+  if (game.source == "epic") return "Legendary";
+  if (game.source == "amazon") return "Nile";
+  if (game.source == "itch") return "butler";
+  return {};
+}
+
+// What DeleteGameFiles deletes itself for a game no store tool uninstalls, and the folders it may
+// delete them from.
+struct OwnFiles {
+  std::vector<fs::path> paths;
+  std::vector<fs::path> roots;
+};
+
+Result<OwnFiles> FilesToDelete(const config::Config& config, const model::Game& game,
+                               std::span<const model::Game> library) {
+  if (const emulators::Emulator* emulator = emulators::ForGame(game)) {
+    OwnFiles files{.paths = emulators::GameFiles(config, game),
+                   .roots = emulators::GameRoots(config, *emulator)};
+    files.roots.push_back(config.GetPath("emulators.roms_root"));
+    return files;
+  }
+  // A program the game only runs (an emulator) isn't the game's to delete.
+  if (RunsExternalProgram(game)) return OwnFiles{};
+  OwnFiles files;
+  files.roots = DeleteRoots(config, game.data_dir);
+  // An AppImage is the whole game, so only that file goes, wherever it sits.
+  if (RunsFromAppImage(game)) {
+    files.paths = {fs::path(game.install_path) / game.exe_path};
+    return files;
+  }
+  if (const std::string shared = SharedFolder(config, game, library); !shared.empty()) {
+    return Err("shared_folder",
+               std::format("\"{}\" also holds {}, so its files weren't deleted", game.install_path,
+                           shared),
+               "Delete the files by hand, or move the game to a folder of its own first.");
+  }
+  files.paths = {game.install_path};
+  return files;
+}
+
 }  // namespace
 
 Result<void> DeleteInside(const std::string& target, const std::vector<fs::path>& roots) {
@@ -151,26 +197,77 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
   }
   if (game.source == "itch" && !game.source_ref.empty())
     return UninstallItch(config, game.source_ref);
-  if (const emulators::Emulator* emulator = emulators::ForGame(game)) {
-    std::vector<fs::path> roots = emulators::GameRoots(config, *emulator);
-    roots.push_back(config.GetPath("emulators.roms_root"));
-    for (const fs::path& file : emulators::GameFiles(config, game)) {
-      if (auto deleted = DeleteInside(file.string(), roots); !deleted) return deleted;
-    }
-    return {};
+  const Result<OwnFiles> files = FilesToDelete(config, game, library);
+  if (!files) return std::unexpected(files.error());
+  for (const fs::path& path : files->paths) {
+    if (auto deleted = DeleteInside(path.string(), files->roots); !deleted) return deleted;
   }
-  // A program the game only runs (an emulator) isn't the game's to delete.
-  if (RunsExternalProgram(game)) return {};
-  const std::vector<fs::path> roots = DeleteRoots(config, game.data_dir);
-  // An AppImage is the whole game, so only that file goes, wherever it sits.
-  if (RunsFromAppImage(game))
-    return DeleteInside((fs::path(game.install_path) / game.exe_path).string(), roots);
-  const std::string shared = SharedFolder(config, game, library);
-  if (shared.empty()) return DeleteInside(game.install_path, roots);
-  return Err(
-      "shared_folder",
-      std::format("\"{}\" also holds {}, so its files weren't deleted", game.install_path, shared),
-      "Delete the files by hand, or move the game to a folder of its own first.");
+  return {};
+}
+
+GameRemoval PlanGameRemoval(const config::Config& config, const model::Game& game,
+                            std::span<const model::Game> library) {
+  GameRemoval plan;
+  plan.id = game.id;
+  plan.name = game.name;
+  std::error_code ec;
+  const auto same = [&ec](const std::string& a, const std::string& b) {
+    return !a.empty() && !b.empty() && fs::weakly_canonical(a, ec) == fs::weakly_canonical(b, ec);
+  };
+  // Only a prefix Mira made; Steam deletes its own with the game.
+  if (game.source != "steam" && fs::is_directory(game.data_dir, ec) &&
+      paths::IsWithin(game.data_dir, PrefixRoots(config))) {
+    plan.prefix = game.data_dir;
+    for (const model::Game& other : library) {
+      if (other.id != game.id && same(other.data_dir, game.data_dir)) {
+        plan.prefix_shared_with = other.name;
+        break;
+      }
+    }
+  }
+  if (game.source == "steam") {
+    plan.kind = "steam";
+    plan.tool = "Steam";
+    plan.files = game.install_path;
+    return plan;
+  }
+  plan.tool = UninstallTool(game);
+  if (!plan.tool.empty() || (FindStore(game.source) != nullptr && !game.install_path.empty())) {
+    plan.kind = "store";
+    plan.files = game.install_path;
+    return plan;
+  }
+  const launchers::Launcher* launcher = launchers::Find(game.source);
+  plan.kind = "external";
+  if (game.source == "desktop-entry" || FilesOwnedElsewhere(game.source) || launcher != nullptr ||
+      (game.source == "launcher" && game.install_path.empty())) {
+    return plan;
+  }
+  // A game whose folder is its prefix (an old import's) goes with the prefix.
+  if (!plan.prefix.empty() && same(game.install_path, game.data_dir)) {
+    plan.kind = "folder";
+    plan.files = game.install_path;
+    plan.folder_is_prefix = true;
+    return plan;
+  }
+  const Result<OwnFiles> files = FilesToDelete(config, game, library);
+  if (!files || files->paths.empty() ||
+      !std::ranges::all_of(files->paths, [&](const fs::path& path) {
+        return paths::IsWithin(path, files->roots);
+      })) {
+    return plan;
+  }
+  plan.kind = "folder";
+  plan.files = files->paths.front().string();
+  const fs::path drive_c = fs::path(game.data_dir) / "drive_c";
+  if (!plan.prefix.empty() && paths::IsWithin(plan.files, {drive_c})) {
+    std::string inside = fs::weakly_canonical(plan.files, ec)
+                             .lexically_relative(fs::weakly_canonical(drive_c, ec))
+                             .string();
+    std::ranges::replace(inside, '/', '\\');
+    plan.files_in_prefix = "C:\\" + inside;
+  }
+  return plan;
 }
 
 Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameStore& games,

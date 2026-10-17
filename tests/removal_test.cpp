@@ -6,6 +6,7 @@
 #include <format>
 #include <fstream>
 #include <json.hpp>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -194,4 +195,115 @@ TEST_CASE("A desktop entry's prefix Mira made can be deleted, but never the app'
   CHECK(done["state"] == "finished");
   CHECK_FALSE(fs::exists(prefix));
   CHECK(fs::exists(app / "notepad.exe"));
+}
+
+TEST_CASE("The removal plan says what each kind of game loses, and how much") {
+  LiveServer server(TempDir("removal-plan"));
+  const fs::path library_root = TempDir("removal-plan-library");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", nlohmann::json::array({library_root.string()}))
+              .has_value());
+  const fs::path prefixes = server.config().GetPath("prefix_root");
+  const auto add = [&](model::Game game) {
+    REQUIRE(server.games().Upsert(game).has_value());
+    return game;
+  };
+
+  model::Game steam = StoreGame("steam", "400", TempDir("removal-plan-steam") / "Portal");
+  steam.id = "steam-400";
+  add(steam);
+  model::Game epic = StoreGame("epic", "aaa", TempDir("removal-plan-epic") / "A");
+  epic.data_dir = (prefixes / "epic-aaa").string();
+  Touch(prefixes / "epic-aaa" / "system.reg", std::string(100, 'r'));
+  add(epic);
+
+  model::Game folder;
+  folder.id = "animal-well";
+  folder.name = "Animal Well";
+  folder.install_path = (library_root / "Animal Well").string();
+  folder.data_dir = (prefixes / "animal-well").string();
+  Touch(library_root / "Animal Well" / "game.exe", std::string(30, 'x'));
+  Touch(prefixes / "animal-well" / "system.reg", std::string(10, 'r'));
+  add(folder);
+
+  model::Game inside;
+  inside.id = "dispatch";
+  inside.name = "Dispatch";
+  inside.data_dir = (prefixes / "dispatch").string();
+  inside.install_path = (prefixes / "dispatch" / "drive_c" / "Games" / "Dispatch").string();
+  Touch(fs::path(inside.install_path) / "game.exe", std::string(40, 'x'));
+  Touch(prefixes / "dispatch" / "system.reg", std::string(5, 'r'));
+  add(inside);
+
+  model::Game own_prefix;
+  own_prefix.id = "cuphead";
+  own_prefix.name = "Cuphead";
+  own_prefix.data_dir = (prefixes / "cuphead").string();
+  own_prefix.install_path = own_prefix.data_dir;
+  Touch(prefixes / "cuphead" / "Cuphead.exe");
+  add(own_prefix);
+
+  model::Game entry;
+  entry.id = "olympus";
+  entry.name = "Olympus";
+  entry.source = "desktop-entry";
+  entry.install_path = TempDir("removal-plan-olympus").string();
+  add(entry);
+  // A game Mira didn't install, outside every Mira folder.
+  model::Game outside;
+  outside.id = "outside";
+  outside.name = "Outside";
+  outside.install_path = TempDir("removal-plan-outside").string();
+  add(outside);
+  // Sharing Animal Well's prefix keeps it.
+  model::Game sharer = folder;
+  sharer.id = "sharer";
+  sharer.name = "Sharer";
+  sharer.install_path = (library_root / "Sharer").string();
+
+  httplib::Client client = server.Client();
+  const json ids = {"steam-400", "epic-aaa", "animal-well", "dispatch",
+                    "cuphead",   "olympus",  "outside",     "nope"};
+  const auto plans = [&] {
+    auto res = client.Post("/v1/games/removal", json{{"ids", ids}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    std::map<std::string, json> by_id;
+    for (const json& plan : json::parse(res->body)) by_id[plan["id"]] = plan;
+    return by_id;
+  };
+  std::map<std::string, json> plan = plans();
+  CHECK(plan.size() == 7);
+  CHECK(plan["steam-400"]["kind"] == "steam");
+  CHECK(plan["steam-400"]["prefix"] == "");
+  CHECK(plan["epic-aaa"]["kind"] == "store");
+  CHECK(plan["epic-aaa"]["tool"] == "Legendary");
+  CHECK(plan["epic-aaa"]["prefix"] == epic.data_dir);
+  CHECK(plan["animal-well"]["kind"] == "folder");
+  CHECK(plan["animal-well"]["files"] == folder.install_path);
+  CHECK(plan["animal-well"]["files_in_prefix"] == "");
+  CHECK(plan["dispatch"]["kind"] == "folder");
+  CHECK(plan["dispatch"]["files_in_prefix"] == "C:\\Games\\Dispatch");
+  CHECK(plan["cuphead"]["kind"] == "folder");
+  CHECK(plan["cuphead"]["folder_is_prefix"] == true);
+  CHECK(plan["olympus"]["kind"] == "external");
+  CHECK(plan["outside"]["kind"] == "external");
+  CHECK(plan["animal-well"]["prefix_shared_with"] == "");
+  add(sharer);
+  CHECK(plans()["animal-well"]["prefix_shared_with"] == "Sharer");
+
+  const json sizes = AwaitJob(client, client.Post("/v1/games/removal/sizes",
+                                                  json{{"ids", ids}}.dump(), "application/json"));
+  REQUIRE(sizes["state"] == "finished");
+  CHECK(sizes["result"]["animal-well"]["files"] == 30);
+  CHECK(sizes["result"]["animal-well"]["prefix"] == 10);
+  // The rest of the prefix, without the game inside it.
+  CHECK(sizes["result"]["dispatch"]["files"] == 40);
+  CHECK(sizes["result"]["dispatch"]["prefix"] == 5);
+  CHECK(sizes["result"]["epic-aaa"]["prefix"] == 100);
+
+  // A folder that's its prefix goes as the prefix.
+  const json deleted = AwaitJob(client, client.Delete("/v1/games/cuphead?delete_files=true"));
+  CHECK(deleted["state"] == "finished");
+  CHECK_FALSE(fs::exists(prefixes / "cuphead"));
 }

@@ -13,10 +13,12 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Resolver.h"
+#include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
+#include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
 
@@ -329,6 +331,59 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
+  // What removing each game can delete, for a client to show before asking.
+  http.Post("/v1/games/removal", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"ids": [...]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
+    if (!ids) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    const std::vector<model::Game> library = s.games.All();
+    json plans = json::array();
+    for (const std::string& id : *ids) {
+      const auto game = std::ranges::find(library, id, &model::Game::id);
+      if (game == library.end()) continue;
+      const library::GameRemoval plan = library::PlanGameRemoval(s.config, *game, library);
+      plans.push_back({{"id", plan.id},
+                       {"name", plan.name},
+                       {"kind", plan.kind},
+                       {"tool", plan.tool},
+                       {"files", plan.files},
+                       {"files_in_prefix", plan.files_in_prefix},
+                       {"folder_is_prefix", plan.folder_is_prefix},
+                       {"prefix", plan.prefix},
+                       {"prefix_shared_with", plan.prefix_shared_with}});
+    }
+    SendJson(res, plans);
+  });
+
+  // The sizes behind POST /v1/games/removal's plans, as a job, since big folders take a while.
+  http.Post("/v1/games/removal/sizes", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"ids": [...]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
+    if (!ids) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    s.StartJob(
+        req, res, "removal-sizes", "", "Measuring games",
+        [&s, ids = *ids](JobRegistry::Progress&) -> Result<json> {
+          const std::vector<model::Game> library = s.games.All();
+          json sizes = json::object();
+          for (const std::string& id : ids) {
+            const auto game = std::ranges::find(library, id, &model::Game::id);
+            if (game == library.end()) continue;
+            const library::GameRemoval plan = library::PlanGameRemoval(s.config, *game, library);
+            const std::uintmax_t files = paths::TreeBytes(plan.files);
+            std::uintmax_t prefix =
+                plan.prefix.empty() || plan.folder_is_prefix ? 0 : paths::TreeBytes(plan.prefix);
+            // A game installed inside its prefix: the rest of the prefix.
+            if (!plan.files_in_prefix.empty()) prefix -= std::min(prefix, files);
+            sizes[id] = {{"files", files}, {"prefix", prefix}};
+          }
+          return sizes;
+        });
+  });
+
   http.Post("/v1/games/delete", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape =
         R"({"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})";

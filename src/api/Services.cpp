@@ -704,6 +704,13 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if (game.source == "desktop-entry") files = false;
   // Steam's own uninstall takes its games out (UninstallThroughSteam), compatdata and all.
   if (game.source == "steam") files = prefix = false;
+  // A game whose folder is its prefix (an old import's) goes as the prefix, under its rules.
+  if (std::error_code ec; files && !game.data_dir.empty() &&
+                          std::filesystem::weakly_canonical(game.install_path, ec) ==
+                              std::filesystem::weakly_canonical(game.data_dir, ec)) {
+    files = false;
+    prefix = true;
+  }
   // A launcher's own files are in its prefix.
   if (game.source == "launcher" && game.install_path.empty()) files = false;
   std::vector<model::Game> others(staying.begin(), staying.end());
