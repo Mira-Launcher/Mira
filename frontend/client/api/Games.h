@@ -86,9 +86,11 @@ void AddManualGameAsync(QObject* context, const std::string& install_path,
 void GetInstallerInfoAsync(QObject* context, const std::string& id, const std::string& path,
                            std::function<void(InstallerInfoResult)> callback);
 
-// Detached; an InstallEvent follows. Empty `installer` uses the game's own.
+// Detached; an InstallEvent follows. Empty `installer` uses the game's own; empty `target` lets
+// mirad pick the library root for an installer outside them.
 void InstallGameAsync(QObject* context, const std::string& id, bool interactive,
-                      const std::string& installer, std::function<void(GameActionResult)> callback);
+                      const std::string& installer, const std::string& target,
+                      std::function<void(GameActionResult)> callback);
 
 void GetInstallProgressAsync(QObject* context, const std::string& id,
                              std::function<void(InstallProgressResult)> callback);

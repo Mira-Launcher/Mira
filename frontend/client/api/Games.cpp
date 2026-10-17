@@ -212,13 +212,21 @@ InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::strin
         result.size_bytes = body.value("size_bytes", std::int64_t{0});
         result.format = body.value("format", std::string("unknown"));
         result.silent = body.value("silent", false);
+        if (body.contains("targets") && body["targets"].is_array()) {
+          for (const json& target : body["targets"]) {
+            if (!target.is_object()) continue;
+            result.targets.push_back(
+                {target.value("path", std::string()), target.value("free_bytes", std::int64_t{0})});
+          }
+        }
       });
 }
 
 GameActionResult InstallGameSync(const std::string& id, bool interactive,
-                                 const std::string& installer) {
+                                 const std::string& installer, const std::string& target) {
   json body = {{"interactive", interactive}};
   if (!installer.empty()) body["installer"] = installer;
+  if (!target.empty()) body["target"] = target;
   const transport::Reply reply =
       transport::PostJson("/v1/games/" + PercentEncode(id) + "/install", body);
   return {reply.ok, reply.error};
@@ -325,10 +333,13 @@ void GetInstallerInfoAsync(QObject* context, const std::string& id, const std::s
 }
 
 void InstallGameAsync(QObject* context, const std::string& id, bool interactive,
-                      const std::string& installer,
+                      const std::string& installer, const std::string& target,
                       std::function<void(GameActionResult)> callback) {
   async::Run(
-      context, [id, interactive, installer] { return InstallGameSync(id, interactive, installer); },
+      context,
+      [id, interactive, installer, target] {
+        return InstallGameSync(id, interactive, installer, target);
+      },
       std::move(callback));
 }
 

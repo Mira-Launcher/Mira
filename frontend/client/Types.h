@@ -980,6 +980,13 @@ struct InstallerInfoResult {
   std::int64_t size_bytes = 0;
   std::string format;   // "inno" | "nsis" | "msi" | "unknown"
   bool silent = false;  // Mira knows how to run it without its window
+  // Library roots whose disk can hold the prefix when the game's folder is outside them (a disc);
+  // the first is mirad's default.
+  struct Target {
+    std::string path;
+    std::int64_t free_bytes = 0;
+  };
+  std::vector<Target> targets;
 };
 
 // GET /v1/games/{id}/install/progress.

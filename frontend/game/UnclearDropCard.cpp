@@ -1,21 +1,13 @@
 #include "UnclearDropCard.h"
 
-#include <QDir>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 
+#include "../widgets/Labels.h"
+
 namespace mira_gui {
-namespace {
-
-QString HomeRelative(const std::string& path) {
-  const QString text = QString::fromStdString(path);
-  const QString home = QDir::homePath();
-  return text.startsWith(home + "/") ? "~" + text.mid(home.size()) : text;
-}
-
-}  // namespace
 
 UnclearDropCard::UnclearDropCard(const UnclearDrop& drop, QWidget* parent)
     : SettingsCard(QString(), parent), path_(drop.path) {
@@ -28,7 +20,8 @@ UnclearDropCard::UnclearDropCard(const UnclearDrop& drop, QWidget* parent)
   title->setWordWrap(true);
   SetTitleWidget(title);
 
-  AddRow(new SettingRow(HomeRelative(drop.path), QString::fromStdString(drop.reason), this));
+  AddRow(new SettingRow(HomeRelative(QString::fromStdString(drop.path)),
+                        QString::fromStdString(drop.reason), this));
 
   auto* buttons = new QWidget(this);
   auto* buttons_layout = new QHBoxLayout(buttons);

@@ -1,6 +1,5 @@
 #include "RemoveGamesCard.h"
 
-#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -62,13 +61,6 @@ class CoverStack : public QWidget {
   std::vector<GameSummary> games_;
   ArtworkStore* artwork_;
 };
-
-// "~/Mira/Games/X" for a path in the home folder.
-QString ShownPath(const std::string& path) {
-  const QString text = QString::fromStdString(path);
-  const QString home = QDir::homePath();
-  return text.startsWith(home + "/") ? "~" + text.mid(home.size()) : text;
-}
 
 bool HasPrefixToDelete(const RemovalPlan& plan) {
   return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
@@ -140,7 +132,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
                                                   : thing + " folder";
       AddInfoRow(label, [this, plan, size] {
         const QString where = plan.files_in_prefix.empty()
-                                  ? ShownPath(plan.files)
+                                  ? HomeRelative(QString::fromStdString(plan.files))
                                   : QString::fromStdString(plan.files_in_prefix) + " in its prefix";
         return size.arg(Size(plan.id, false), where);
       });

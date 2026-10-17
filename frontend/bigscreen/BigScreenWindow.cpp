@@ -677,7 +677,7 @@ void BigScreenWindow::Install(const Item& item) {
     api::InstallStoreTitleAsync(this, item.source.toStdString(), item.ref.toStdString(), false,
                                 [done](StoreActionResult result) { done(result.error); });
   } else if (item.game && item.game->status == "needs_install") {
-    api::InstallGameAsync(this, item.game->id, false, {},
+    api::InstallGameAsync(this, item.game->id, false, {}, {},
                           [done](GameActionResult result) { done(result.error); });
   }
 }

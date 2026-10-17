@@ -1069,14 +1069,8 @@ void LibraryWindow::InstallErrorNavigator() {
     mira_gui::actions::ViewLog(self, id,
                                game != nullptr ? QString::fromStdString(game->name) : QString());
   };
-  nav.install_shown = [self](const std::string& id) {
-    if (!self) return;
-    mira_gui::api::InstallGameAsync(
-        self, id, /*interactive=*/true, std::string(), [self](mira_gui::GameActionResult result) {
-          if (self && !result.ok) {
-            mira_gui::notify::FailedRequest(self, "Could not start the installer.", result.error);
-          }
-        });
+  nav.install = [self](const std::string& id) {
+    if (self) self->OfferInstall(id);
   };
   nav.install_packages = [self](const std::string& feature) {
     if (self) mira_gui::system::EnsurePackages(self, feature, "Mira", [](bool) {});
@@ -1356,10 +1350,20 @@ void LibraryWindow::OfferInstall(const std::string& id) {
       ShowNextCard();
       return;
     }
-    auto* card = new mira_gui::InstallerCard(*game, artwork_);
-    connect(card, &mira_gui::InstallerCard::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
-    connect(card, &mira_gui::InstallerCard::Started, this, &LibraryWindow::CloseSidebarCard);
-    ShowSidebarCard(card);
+    // Read first, so the card shows whole: a disc's installer adds its "Install onto" row.
+    mira_gui::api::GetInstallerInfoAsync(
+        this, id, std::string(), [this, id](mira_gui::InstallerInfoResult info) {
+          const mira_gui::GameSummary* game = FindGame(id);
+          if (game == nullptr) {
+            ShowNextCard();
+            return;
+          }
+          auto* card = new mira_gui::InstallerCard(*game, info, artwork_);
+          connect(card, &mira_gui::InstallerCard::CloseRequested, this,
+                  &LibraryWindow::CloseSidebarCard);
+          connect(card, &mira_gui::InstallerCard::Started, this, &LibraryWindow::CloseSidebarCard);
+          ShowSidebarCard(card);
+        });
   });
 }
 
