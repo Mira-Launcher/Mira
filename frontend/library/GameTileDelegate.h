@@ -57,6 +57,11 @@ class GameTileDelegate : public QStyledItemDelegate {
   // Where the tile's ActionRole button, a round download icon, sits inside its cell (empty without
   // one).
   static QRect ActionRect(const QRect& cell, const QModelIndex& index);
+  // The cover inside a `tile` cell, the gap between tiles taken off: what it's drawn and fetched
+  // at.
+  static QSize CoverSize(QSize tile);
+  // Its width alone: the width covers are cached under, so the one a zoom forgets.
+  static int CoverWidth(int tile_width);
   // A store title's tile: a running install's rail and lines in place of the pill, or the
   // `idle_action` pill ("Install") while nothing runs.
   static void SetTileProgress(QStandardItem& item,

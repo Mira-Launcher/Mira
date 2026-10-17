@@ -324,6 +324,18 @@ QPushButton:default:disabled {
   background: @surface_alt;
 }
 
+QPushButton#game_play[stop="true"] {
+  background: @error;
+  border-color: @error;
+  color: @on_accent;
+}
+
+QPushButton#game_play[stop="true"]:disabled {
+  background: @surface_alt;
+  border-color: @border;
+  color: @text_muted;
+}
+
 /* Frameless tool buttons (autoRaise): back, close, fold, more, a row's grip
  * and undo. Fusion's own hover is a raised bevel that matches nothing else. */
 QToolButton[autoRaise="true"] {

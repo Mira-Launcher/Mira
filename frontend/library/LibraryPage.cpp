@@ -88,7 +88,7 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
     : QWidget(parent), library_(library), artwork_(artwork), tile_width_(tile_width) {
   games_ = new GameFilterProxy(library_, this);
   games_->SetSort(sort_key, sort_descending);
-  zoom_settle_ = new ZoomSettle(this, artwork_, tile_width_, [this] {
+  zoom_settle_ = new ZoomSettle(this, artwork_, GameTileDelegate::CoverWidth(tile_width_), [this] {
     grid_->viewport()->update();
     owned_grid_->viewport()->update();
   });
@@ -364,7 +364,7 @@ QSize LibraryPage::TileSize() const {
 void LibraryPage::SetTileWidth(int width) {
   if (width == tile_width_) return;
   tile_width_ = width;
-  zoom_settle_->Step(width);
+  zoom_settle_->Step(GameTileDelegate::CoverWidth(width));
   delegate_->SetTileSize(TileSize());
   grid_->setGridSize(TileSize());
   owned_grid_->SetTileSize(TileSize());
@@ -375,7 +375,7 @@ void LibraryPage::SetTileWidth(int width) {
 
 void LibraryPage::PrefetchTileWidth(int width) {
   const QSize tile(width, width * 3 / 2);
-  zoom_settle_->Prefetched(width);
+  zoom_settle_->Prefetched(GameTileDelegate::CoverWidth(width));
   GameTileDelegate::PrefetchShown(grid_, artwork_, tile);
   GameTileDelegate::PrefetchShown(owned_grid_, artwork_, tile);
 }

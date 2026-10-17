@@ -28,6 +28,7 @@ enum class Glyph {
   ChevronDown,
   ChevronUp,
   Play,
+  Stop,
   CheckCircle,
   Download,
   Clock,

@@ -15,6 +15,10 @@ QString RelativeIfInside(const QString& selected, const std::filesystem::path& b
   return inside ? QString::fromStdString(relative.string()) : selected;
 }
 
+void ShowPathEnd(QLineEdit* edit) {
+  edit->setCursorPosition(int(edit->text().size()));
+}
+
 QWidget* PathRow(QLineEdit* edit, std::function<QString()> pick) {
   auto* row = new QWidget(edit->parentWidget());
   auto* layout = new QHBoxLayout(row);
@@ -27,7 +31,7 @@ QWidget* PathRow(QLineEdit* edit, std::function<QString()> pick) {
     const QString chosen = pick();
     if (chosen.isEmpty()) return;
     edit->setText(chosen);
-    edit->setCursorPosition(0);
+    ShowPathEnd(edit);
   });
   return row;
 }

@@ -68,6 +68,8 @@ std::optional<InstalledApp> NewInstall(const config::Config& config,
 
 // The latest install for `id` since mirad started, if any.
 std::optional<InstallProgress> Progress(const std::string& id);
+// Whether `id`'s installer is running now, writing to the game's log.
+bool Installing(const std::string& id);
 
 enum class InstallMode {
   kSilentOnly,   // known formats only, unattended (scanner)
@@ -78,8 +80,9 @@ enum class InstallMode {
 // Queues `id` for an install; false if one is already queued or running.
 bool BeginInstall(const std::string& id);
 
-// Runs a needs_install (or broken) game's installer in its prefix, one at a
-// time, then finds the game exe in install_path or a new drive_c folder.
+// Runs a needs_install (or broken) game's installer in its prefix, one at a time, writing its
+// output to the game's log. A quiet install targets C:\Games\<name> in the prefix. Then finds the
+// game exe there, among what it wrote to install_path, or in a new drive_c folder.
 // `installer` overrides exe_path and is saved as the game's installer.
 // Saves the result: Ready on success, last_error on failure.
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,

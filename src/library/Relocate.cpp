@@ -189,9 +189,11 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
 
   // On the disk the install is on now.
   const fs::path prefix_target =
-      !move_prefix       ? fs::path()
-      : request.data_dir ? *request.data_dir
-                         : NamedDir(config, game, PrefixRoot(config, game), game.data_dir);
+      !move_prefix ? fs::path()
+      : request.data_dir
+          ? *request.data_dir
+          : PrefixInGameFolder(config, game)
+                .value_or(NamedDir(config, game, PrefixRoot(config, game), game.data_dir));
   if (move_prefix && fs::path(game.data_dir) != prefix_target) {
     if (auto moved = MovePath(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
         !moved) {

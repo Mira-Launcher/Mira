@@ -301,8 +301,9 @@ QPixmap ArtworkStore::Placeholder(const QString& id, const QString& name, QSize 
   const QPixmap logo = info != nullptr && info->kind == SourceInfo::Kind::Emulator
                            ? SourceLogo(*info, tile.width() / 2, device_pixel_ratio)
                            : QPixmap();
-  return PlaceholderCover(name, id, QSize(tile.width() - 10, tile.height() - 10),
-                          device_pixel_ratio, logo);
+  // The size asked for and rounded like fitted art, so it's drawn 1:1 wherever a cover is.
+  return FitToTile(PlaceholderCover(name, id, tile, device_pixel_ratio, logo), tile,
+                   device_pixel_ratio);
 }
 
 void ArtworkStore::Refetch(const QString& id, QSize tile, qreal device_pixel_ratio) {

@@ -51,6 +51,9 @@ bool TitleNeedsFetch(const config::Config& config, const store::MetadataStore& c
 // Whether `info`'s details were fetched within metadata.refresh_days, by a Mira new enough for a
 // game, or with `title` for a store title.
 bool DetailsFresh(const config::Config& config, const nlohmann::json& info, bool title = false);
+// Whether `info` names an art file of the game's that's gone from disk; Fetch downloads it again.
+bool ArtFilesMissing(const config::Config& config, const std::string& game_id,
+                     const nlohmann::json& info);
 
 // Shrinks art saved before downloads were fitted, and drops the unused capsule and header
 // images, once per game. Stops between games when its Lane task is stopped. Temporary: drop

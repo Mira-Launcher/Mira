@@ -141,8 +141,13 @@ int main(int argc, char** argv) {
     if (!config.GetBool("metadata.enabled")) return;
     std::vector<mira::model::Game> stale;
     for (mira::model::Game& game : games.All()) {
-      if (games.Metadata().Has(game.id) &&
-          !mira::metadata::DetailsFresh(config, games.Metadata().Read(game.id))) {
+      if (!games.Metadata().Has(game.id)) continue;
+      const nlohmann::json info = games.Metadata().Read(game.id);
+      // Art whose files are gone (deleted by hand, or by an older mirad's cleanup) is fetched
+      // again whole; anything else only refreshes its details.
+      if (mira::metadata::ArtFilesMissing(config, game.id, info)) {
+        services.fetches.Enqueue(config, events, std::move(game));
+      } else if (!mira::metadata::DetailsFresh(config, info)) {
         stale.push_back(std::move(game));
       }
     }

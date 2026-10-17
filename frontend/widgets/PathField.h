@@ -12,6 +12,10 @@ namespace mira_gui {
 // `selected` relative to `base` when it is inside `base`, else `selected` itself.
 QString RelativeIfInside(const QString& selected, const std::filesystem::path& base);
 
+// Scrolls `edit` to the end of its path: when it doesn't fit, the file or folder name is what
+// tells paths apart, not the folders they share at the start.
+void ShowPathEnd(QLineEdit* edit);
+
 // A row of `edit` plus a "Browse…" button; `pick` opens the dialog and returns the chosen path or
 // "" (cancelled).
 QWidget* PathRow(QLineEdit* edit, std::function<QString()> pick);

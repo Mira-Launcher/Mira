@@ -56,8 +56,18 @@ void GameTileDelegate::PrefetchShown(QListView* view, ArtworkStore* artwork, QSi
     if (!index.data(Qt::DecorationRole).value<QPixmap>().isNull()) continue;  // its own cover
     const QStringList title = index.data(TitleCoverRole).toStringList();
     artwork->PrefetchCover(
-        title.size() == 2 ? title[0] + "-" + title[1] : index.data(IdRole).toString(), tile, dpr);
+        title.size() == 2 ? title[0] + "-" + title[1] : index.data(IdRole).toString(),
+        CoverSize(tile), dpr);
   }
+}
+
+QSize GameTileDelegate::CoverSize(QSize tile) {
+  const int inset = theme::Current().tile_spacing;
+  return tile.shrunkBy(QMargins(inset, inset, inset, inset));
+}
+
+int GameTileDelegate::CoverWidth(int tile_width) {
+  return tile_width - 2 * theme::Current().tile_spacing;
 }
 
 QRect GameTileDelegate::ActionRect(const QRect& cell, const QModelIndex& index) {
@@ -161,8 +171,9 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   if (cover.isNull() && artwork_ != nullptr) {
     const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
     const QStringList title = index.data(TitleCoverRole).toStringList();
-    cover = title.size() == 2 ? artwork_->TitleCover(title[0], title[1], name, tile_, dpr)
-                              : artwork_->CoverById(index.data(IdRole).toString(), name, tile_, dpr,
+    const QSize size = CoverSize(tile_);
+    cover = title.size() == 2 ? artwork_->TitleCover(title[0], title[1], name, size, dpr)
+                              : artwork_->CoverById(index.data(IdRole).toString(), name, size, dpr,
                                                     index.data(SourceRole).toString());
   }
   if (cover.isNull()) {

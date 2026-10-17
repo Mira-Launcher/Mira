@@ -120,6 +120,11 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.setBrush(color);
       painter.drawPolygon(QPolygonF({QPointF(5.5, 4.3), QPointF(5.5, 11.7), QPointF(12.2, 8.0)}));
       return;
+    case Glyph::Stop:
+      painter.setPen(Qt::NoPen);
+      painter.setBrush(color);
+      painter.drawRoundedRect(QRectF(4.5, 4.5, 7.0, 7.0), 1.2, 1.2);
+      return;
     case Glyph::CheckCircle:
       painter.drawEllipse(QPointF(8.0, 8.0), 5.5, 5.5);
       painter.drawPolyline(QPolygonF({QPointF(5.7, 8.3), QPointF(7.3, 10.0), QPointF(10.7, 6.2)}));

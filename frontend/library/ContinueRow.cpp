@@ -8,6 +8,7 @@
 #include <algorithm>
 
 #include "../theme/Icons.h"
+#include "../theme/Theme.h"
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 
@@ -91,7 +92,8 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   text->addStretch(1);
 
   auto* play = new QPushButton(running ? "Stop" : RunVerb(game), card);
-  icons::Follow(play, icons::Glyph::Play);
+  icons::Follow(play, running ? icons::Glyph::Stop : icons::Glyph::Play,
+                running ? &theme::Tokens::error : &theme::Tokens::text);
   play->setEnabled(CanPlayOrStop(game));
   connect(play, &QPushButton::clicked, this, [this, id] { emit PlayToggled(id); });
   auto* actions = new QHBoxLayout();
