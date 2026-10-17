@@ -101,8 +101,15 @@ class GameStore {
   bool HasInstallUnder(const std::string& dir) const;
 
   // Derives an id from the game's name, disambiguating against existing ids and removed games'
-  // history ("celeste", "celeste-2", ...) so ids stay readable.
-  std::string NextId(const std::string& name) const;
+  // history ("celeste", "celeste-2", ...) so ids stay readable. A game removed from
+  // `install_path` gives back its own id, so it's added again as what it was; `exe_path` also has
+  // to match where a folder can hold several games (an AppImage's, a desktop entry's /usr/bin).
+  std::string NextId(const std::string& name, const std::string& install_path = {},
+                     const std::string& exe_path = {}) const;
+
+  // The prefix a removed game with this id kept, while it's still there and no game uses it; ""
+  // otherwise. A store game added again picks its saves back up from it.
+  std::string KeptDataDir(const std::string& id) const;
 
   // Inserts or replaces a game wholesale, then saves.
   Result<void> Upsert(model::Game game);
@@ -137,10 +144,13 @@ class GameStore {
   // A game's sessions, newest first, at most `limit`.
   std::vector<PlaySession> Sessions(const std::string& id, int limit) const;
 
-  // A removed hidden store game leaves its title hidden (HiddenTitles).
-  Result<void> Remove(const std::string& id);
+  // A removed game keeps what the user set on it (tags, runner, exe, launch options, overrides,
+  // prefix), which a game added again under its id takes back; `forget` drops that too. A removed
+  // hidden store game leaves its title hidden (HiddenTitles).
+  Result<void> Remove(const std::string& id, bool forget = false);
   // Removes every known id with one save and returns those removed.
-  Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids);
+  Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids,
+                                              bool forget = false);
 
   // Store titles hidden while not installed, as "<source>-<ref>". A game added under one of
   // these ids gets the "hidden" tag and the title leaves the set, so its tag says it once
@@ -162,8 +172,11 @@ class GameStore {
   Result<void> Open();
   Result<void> Write(const model::Game& game);
   Result<void> Delete(const std::string& id);
-  // A new game with a removed game's id (a store game added again) takes its play totals back.
+  // A new game with a removed game's id (a store game added again) takes its play totals and what
+  // the user set on it back.
   Result<void> Reattach(model::Game& game);
+  // Keeps what the user set on a game being removed, for Reattach.
+  Result<void> KeepRecord(const model::Game& game);
   // Runs `write` in a transaction of its own.
   Result<void> Transact(const std::function<Result<void>()>& write);
   Result<void> ReadAll();

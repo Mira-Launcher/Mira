@@ -10,6 +10,7 @@
 
 #include "api/Http.h"
 #include "config/Resolver.h"
+#include "core/Command.h"
 #include "core/Log.h"
 #include "core/LogHub.h"
 #include "core/Paths.h"
@@ -20,11 +21,14 @@
 #include "library/PrefixNaming.h"
 #include "library/Scanner.h"
 #include "library/SourceRemoval.h"
+#include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
 #include "proc/ProcessIndex.h"
+#include "runner/Exec.h"
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
+#include "steam/SteamDetector.h"
 
 namespace mira::api {
 namespace {
@@ -289,18 +293,35 @@ void Services::AfterImport(const std::vector<model::Game>& added) {
 nlohmann::json Services::FinishImport(const std::string& source,
                                       const library::ImportSummary& summary) {
   // A store lists only what's installed, so a game uninstalled in its own client would stay Ready.
+  std::vector<std::string> uninstalled;
   for (const model::Game& game : games.All()) {
-    if (game.source != source || game.status != model::GameStatus::Ready ||
-        game.install_path.empty() || game.exe_path.empty() || supervisor.IsRunning(game.id)) {
+    const bool settled =
+        game.status == model::GameStatus::Ready || game.status == model::GameStatus::Missing;
+    if (game.source != source || !settled || game.install_path.empty() ||
+        supervisor.IsRunning(game.id)) {
       continue;
     }
+    const std::filesystem::path folder = game.install_path;
     std::error_code ec;
-    if (std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec) || ec)
+    if (std::filesystem::exists(game.exe_path.empty() ? folder : folder / game.exe_path, ec) || ec)
       continue;
+    // Left out of the store's list while the folder it was in is still there: uninstalled, so it
+    // moves to the store's Not installed list, keeping what the user set on it. Otherwise (a disk
+    // not mounted) it's only missing for now.
+    if (summary.lists_installed && !summary.listed.contains(game.id) &&
+        std::filesystem::is_directory(folder.parent_path(), ec)) {
+      uninstalled.push_back(game.id);
+      continue;
+    }
+    if (game.status != model::GameStatus::Ready || game.exe_path.empty()) continue;
     if (auto missing =
             games.Update(game.id, [](model::Game& g) { g.status = model::GameStatus::Missing; })) {
       events.Publish("game.updated", model::ToJson(*missing));
     }
+  }
+  if (auto removed = games.RemoveMany(uninstalled); removed && !removed->empty()) {
+    for (const std::string& id : *removed) SyncDesktopEntry(id);
+    events.Publish("games.removed", {{"ids", *removed}});
   }
   games.MarkSourceAdded(source, true);
   events.Publish("sources.changed", nlohmann::json::object());
@@ -382,6 +403,7 @@ void Services::WatchExternalGames() {
       if (stop_wake_.wait_for(lock, wait, stopped)) return;
     }
     LockHiddenWhenIdle();
+    const bool steam_uninstalling = CheckSteamUninstalls();
 
     const std::pair revisions{games.Revision(), config.Revision()};
     if (built_for != revisions) {
@@ -397,7 +419,7 @@ void Services::WatchExternalGames() {
         }
       }
     }
-    wait = candidates.empty() ? kIdleScanEvery : kScanEvery;
+    wait = candidates.empty() && !steam_uninstalling ? kIdleScanEvery : kScanEvery;
     if (candidates.empty()) continue;  // nothing to watch: don't touch /proc
 
     index.Refresh();
@@ -676,9 +698,12 @@ void Services::SortAllByTags() {
 }
 
 Result<void> Services::DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
-                                      bool files, bool prefix, bool metadata) {
-  // A desktop-entry import only links to another app's own files.
-  if (game.source == "desktop-entry") files = prefix = false;
+                                      bool files, bool prefix, bool forget) {
+  // A desktop-entry import only links to another app's own files; a prefix Mira made for it is
+  // Mira's.
+  if (game.source == "desktop-entry") files = false;
+  // Steam's own uninstall takes its games out (UninstallThroughSteam), compatdata and all.
+  if (game.source == "steam") files = prefix = false;
   // A launcher's own files are in its prefix.
   if (game.source == "launcher" && game.install_path.empty()) files = false;
   std::vector<model::Game> others(staying.begin(), staying.end());
@@ -727,11 +752,57 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     std::error_code ec;
     std::filesystem::remove_all(paths::ShaderCacheDir(game.id), ec);
   }
-  if (metadata) {
-    // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
+  // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
+  if (forget) {
     games.Metadata().Remove(game.id);
+  } else if (game.source != "steam" && library::FindStore(game.source) == nullptr) {
+    games.Metadata().KeepPicks(game.id);
   }
   return {};
+}
+
+Result<void> Services::UninstallThroughSteam(const model::Game& game) {
+  if (game.source != "steam" || !game.runner_ref.starts_with("steam:"))
+    return Err("not_steam", std::format("\"{}\" isn't a Steam game", game.name));
+  Command command;
+  command.argv = steam::SteamCommand(config);
+  command.argv.push_back(std::format("steam://uninstall/{}", game.runner_ref.substr(6)));
+  if (auto spawned = runner::SpawnReaped(command); !spawned)
+    return std::unexpected(spawned.error());
+  // Long enough to answer Steam's dialog; a cancelled uninstall leaves the game as it was.
+  const std::lock_guard lock(steam_uninstalls_mutex_);
+  steam_uninstalls_[game.id] = std::chrono::steady_clock::now() + std::chrono::minutes(30);
+  return {};
+}
+
+bool Services::CheckSteamUninstalls() {
+  std::map<std::string, std::chrono::steady_clock::time_point> waiting;
+  {
+    const std::lock_guard lock(steam_uninstalls_mutex_);
+    std::erase_if(steam_uninstalls_, [now = std::chrono::steady_clock::now()](const auto& entry) {
+      return entry.second < now;
+    });
+    waiting = steam_uninstalls_;
+  }
+  if (waiting.empty()) return false;
+  const auto root = steam::FindSteamRoot(config);
+  if (!root) return true;
+  std::set<std::string> installed;
+  for (const steam::SteamApp& app : steam::ListApps(*root)) installed.insert("steam-" + app.appid);
+  std::vector<std::string> gone;
+  for (const auto& [id, until] : waiting) {
+    if (!installed.contains(id)) gone.push_back(id);
+  }
+  if (gone.empty()) return true;
+  {
+    const std::lock_guard lock(steam_uninstalls_mutex_);
+    for (const std::string& id : gone) steam_uninstalls_.erase(id);
+  }
+  if (auto removed = games.RemoveMany(gone); removed && !removed->empty()) {
+    for (const std::string& id : *removed) SyncDesktopEntry(id);
+    events.Publish("games.removed", {{"ids", *removed}});
+  }
+  return waiting.size() > gone.size();
 }
 
 void Services::InstallRunner(const httplib::Request& req, httplib::Response& res,

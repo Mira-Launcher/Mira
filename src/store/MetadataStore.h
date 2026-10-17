@@ -62,6 +62,9 @@ class MetadataStore {
   Result<void> Write(const std::string& id, const nlohmann::json& info);
   // Drops the id's info, art rows and art files.
   void Remove(const std::string& id);
+  // Drops all but the art the user picked, for a removed game: the rest is fetched again if it
+  // comes back.
+  void KeepPicks(const std::string& id);
 
   std::filesystem::path ArtworkDir(const std::string& id) const;
 

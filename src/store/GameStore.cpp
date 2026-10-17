@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 7> kMigrations = {
+constexpr std::array<std::string_view, 8> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -141,7 +141,22 @@ CREATE INDEX sessions_uncounted ON sessions(counted) WHERE counted = 0;
 UPDATE OR IGNORE game_tags SET tag = title_case(tag) WHERE tag NOT IN ('favorite', 'hidden', 'app');
 DELETE FROM game_tags WHERE tag NOT IN ('favorite', 'hidden', 'app') AND tag <> title_case(tag);
 )sql",
+    R"sql(
+-- What the user set on a removed game, taken back when it's added again (GameStore::Reattach).
+CREATE TABLE IF NOT EXISTS removed_games(
+  id TEXT PRIMARY KEY,
+  install_path TEXT NOT NULL,
+  record TEXT NOT NULL CHECK(json_valid(record)),
+  removed_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS removed_games_install_path ON removed_games(install_path);
+)sql",
 };
+
+// The fields a removed game keeps: what the user chose, not what a store or scan finds again.
+constexpr std::array<std::string_view, 12> kKeptFields = {
+    "name",     "exe_path",   "args",      "working_dir", "runner_ref", "runner_config",
+    "data_dir", "folder_tag", "overrides", "env",         "launch",     "tags"};
 
 // An id names folders (its artwork's, among others), so it must be one plain path segment.
 Result<void> CheckId(const std::string& id) {
@@ -156,6 +171,39 @@ Result<void> CheckId(const std::string& id) {
 std::string TitleKey(const model::Game& game) {
   if (game.source_ref.empty() || game.id != game.source + "-" + game.source_ref) return {};
   return game.id;
+}
+
+// Puts back what the user set on a removed game, where it still fits the game as found now.
+void Restore(model::Game& game, const json& kept, const std::vector<model::Game>& others) {
+  const model::Game old = model::GameFromJson(kept);
+  std::error_code ec;
+  if (!old.name.empty()) game.name = old.name;
+  if (!old.exe_path.empty() && !game.install_path.empty() &&
+      fs::exists(fs::path(game.install_path) / old.exe_path, ec)) {
+    game.exe_path = old.exe_path;
+    game.args = old.args;
+    game.working_dir = old.working_dir;
+  }
+  // Steam runs its own games in its own prefix.
+  if (game.source != "steam") {
+    if (!old.runner_ref.empty()) {
+      game.runner_ref = old.runner_ref;
+      game.runner_config = old.runner_config;
+    }
+    if (!old.data_dir.empty() && old.data_dir != game.data_dir &&
+        fs::is_directory(old.data_dir, ec) &&
+        !std::ranges::contains(others, old.data_dir, &model::Game::data_dir) &&
+        (game.data_dir.empty() || !fs::is_directory(game.data_dir, ec))) {
+      game.data_dir = old.data_dir;
+    }
+  }
+  if (game.folder_tag.empty()) game.folder_tag = old.folder_tag;
+  if (game.overrides.empty()) game.overrides = old.overrides;
+  if (game.launch.empty()) game.launch = old.launch;
+  if (game.env.empty()) game.env = old.env;
+  for (const std::string& tag : old.tags) {
+    if (!std::ranges::contains(game.tags, tag)) game.tags.push_back(tag);
+  }
 }
 
 constexpr std::array<std::string_view, 16> kTextColumns = {
@@ -633,9 +681,21 @@ bool GameStore::HasInstallUnder(const std::string& dir) const {
   });
 }
 
-std::string GameStore::NextId(const std::string& name) const {
+std::string GameStore::NextId(const std::string& name, const std::string& install_path,
+                              const std::string& exe_path) const {
   const std::string base = strings::Slugify(name);
   std::lock_guard lock(mutex_);
+  if (!install_path.empty() && db_.IsOpen()) {
+    auto kept = db_.Prepare(
+        "SELECT id FROM removed_games WHERE install_path = ?1 AND (?2 = '' OR "
+        "json_extract(record, '$.exe_path') = ?2) ORDER BY removed_at DESC");
+    if (kept) {
+      kept->Bind(1, install_path).Bind(2, exe_path);
+      for (auto row = kept->Step(); row && *row; row = kept->Step()) {
+        if (!std::ranges::contains(games_, kept->Text(0), &model::Game::id)) return kept->Text(0);
+      }
+    }
+  }
   // A removed game's id keeps its play history, which a new game of the same name mustn't take.
   const auto used = [&](const std::string& id) {
     if (std::ranges::any_of(games_, [&](const model::Game& g) { return g.id == id; })) return true;
@@ -674,12 +734,63 @@ Result<void> GameStore::Upsert(model::Game game) {
   return {};
 }
 
+std::string GameStore::KeptDataDir(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return {};
+  auto select = db_.Prepare(
+      "SELECT COALESCE(json_extract(record, '$.data_dir'), '') FROM removed_games WHERE id = ?");
+  if (!select) return {};
+  const auto row = select->Bind(1, id).Step();
+  if (!row || !*row) return {};
+  const std::string dir = select->Text(0);
+  if (dir.empty() || std::ranges::contains(games_, dir, &model::Game::data_dir)) return {};
+  std::error_code ec;
+  return fs::is_directory(dir, ec) ? dir : std::string();
+}
+
+Result<void> GameStore::KeepRecord(const model::Game& game) {
+  const json document = model::ToJson(game);
+  json record = json::object();
+  for (const std::string_view field : kKeptFields) {
+    if (document.contains(field)) record[field] = document[field];
+  }
+  // A store title's hidden mark is kept in hidden_titles, which unhiding it in the store list
+  // clears; and it's found again by its id, not by its folder.
+  const bool title = !TitleKey(game).empty();
+  if (title) {
+    std::vector<std::string> tags = game.tags;
+    std::erase(tags, "hidden");
+    record["tags"] = tags;
+  }
+  auto insert = db_.Prepare(
+      "INSERT OR REPLACE INTO removed_games(id, install_path, record, removed_at) "
+      "VALUES(?, ?, ?, ?)");
+  if (!insert) return std::unexpected(insert.error());
+  return insert->Bind(1, game.id)
+      .Bind(2, title ? std::string() : game.install_path)
+      .Bind(3, record.dump())
+      .Bind(4, model::NowSeconds())
+      .Run();
+}
+
 Result<void> GameStore::Reattach(model::Game& game) {
+  auto kept = db_.Prepare("SELECT record FROM removed_games WHERE id = ?");
+  if (!kept) return std::unexpected(kept.error());
+  auto row = kept->Bind(1, game.id).Step();
+  if (!row) return std::unexpected(row.error());
+  if (*row) {
+    const json record = json::parse(kept->Text(0), nullptr, /*allow_exceptions=*/false);
+    if (record.is_object()) Restore(game, record, games_);
+    auto drop = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
+    if (!drop) return std::unexpected(drop.error());
+    if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+  }
+
   auto select = db_.Prepare(
       "SELECT SUM(duration_seconds), MAX(ended_at), MAX(started_at) FROM sessions WHERE game_id = "
       "? AND finished = 1");
   if (!select) return std::unexpected(select.error());
-  auto row = select->Bind(1, game.id).Step();
+  row = select->Bind(1, game.id).Step();
   if (!row) return std::unexpected(row.error());
   if (!*row || select->IsNull(0)) return {};
   // The larger figure wins, as with a store's own play time.
@@ -828,7 +939,8 @@ Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::st
   return updated;
 }
 
-Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::string>& ids) {
+Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::string>& ids,
+                                                       bool forget) {
   std::lock_guard lock(mutex_);
   std::vector<std::string> removed;
   std::vector<std::string> still_hidden;  // store titles that stay hidden once their game is gone
@@ -839,6 +951,16 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
   }
   if (removed.empty()) return removed;
   const auto deleted = Transact([&]() -> Result<void> {
+    for (const model::Game& game : games_) {
+      if (!std::ranges::contains(removed, game.id)) continue;
+      if (!forget) {
+        if (auto kept = KeepRecord(game); !kept) return kept;
+        continue;
+      }
+      auto drop = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
+      if (!drop) return std::unexpected(drop.error());
+      if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+    }
     for (const std::string& id : removed) {
       if (auto done = Delete(id); !done) return done;
     }
@@ -855,8 +977,8 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
   return removed;
 }
 
-Result<void> GameStore::Remove(const std::string& id) {
-  auto removed = RemoveMany({id});
+Result<void> GameStore::Remove(const std::string& id, bool forget) {
+  auto removed = RemoveMany({id}, forget);
   if (!removed) return std::unexpected(removed.error());
   if (removed->empty()) return Err("game_not_found", std::format("no game with id \"{}\"", id));
   return {};

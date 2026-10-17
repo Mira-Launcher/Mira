@@ -274,6 +274,14 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     const bool purge = BoolParam(req, "purge");
     const auto flag = [&](const char* name) { return purge || BoolParam(req, name); };
+    if (flag("delete_files") && game->source == "steam") {
+      return s.StartJob(req, res, "delete", game->id, "Uninstalling " + game->name,
+                        [&s, game = *game](JobRegistry::Progress&) -> Result<json> {
+                          if (auto handed = s.UninstallThroughSteam(game); !handed)
+                            return std::unexpected(handed.error());
+                          return json{{"handed_to", "steam"}};
+                        });
+    }
     // Deleting files or a prefix can take minutes (a store's uninstaller, a big folder), so it's
     // a job rather than a request holding one of the server's threads.
     if (flag("delete_files") || flag("delete_prefix")) {
@@ -292,7 +300,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
                 !deleted) {
               return std::unexpected(deleted.error());
             }
-            if (auto removed = s.games.Remove(id); !removed)
+            if (auto removed = s.games.Remove(id, metadata); !removed)
               return std::unexpected(removed.error());
             folders_lock.unlock();
             s.SyncDesktopEntry(id);
@@ -312,7 +320,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
       return SendError(res, refused ? 409 : 500, deleted.error());
     }
 
-    auto result = s.games.Remove(req.matches[1]);
+    auto result = s.games.Remove(req.matches[1], flag("delete_metadata"));
     if (!result) return SendStoreError(res, result.error());
     s.SyncDesktopEntry(req.matches[1]);
     s.events.Publish("game.removed", {{"id", req.matches[1].str()}});
@@ -340,6 +348,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
         [&s, ids = *ids, files, prefix, metadata](JobRegistry::Progress& progress) -> Result<json> {
           std::vector<std::string> deletable;
           json failed = json::array();
+          json handed_to_steam = json::array();
           auto folders_lock = s.games.LockFolders();
           // Every game claimed first, so none can launch mid-delete. Games that share a folder and
           // are removed together don't keep it from each other; one that couldn't be claimed
@@ -361,6 +370,14 @@ void RegisterGameRoutes(Router& http, Services& s) {
             if (!claims.contains(id)) continue;
             const auto game = s.games.Find(id);
             if (!game) continue;
+            if (files && game->source == "steam") {
+              if (auto handed = s.UninstallThroughSteam(*game); !handed) {
+                failed.push_back(BatchFailure(id, handed.error()));
+              } else {
+                handed_to_steam.push_back(id);
+              }
+              continue;
+            }
             if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata);
                 !deleted) {
               failed.push_back(BatchFailure(id, deleted.error()));
@@ -368,14 +385,16 @@ void RegisterGameRoutes(Router& http, Services& s) {
             }
             deletable.push_back(id);
           }
-          auto removed = s.games.RemoveMany(deletable);
+          auto removed = s.games.RemoveMany(deletable, metadata);
           folders_lock.unlock();
           if (!removed) return std::unexpected(removed.error());
           if (!removed->empty()) {
             for (const std::string& removed_id : *removed) s.SyncDesktopEntry(removed_id);
             s.events.Publish("games.removed", {{"ids", *removed}});
           }
-          return json{{"removed", *removed}, {"failed", std::move(failed)}};
+          return json{{"removed", *removed},
+                      {"handed_to_steam", std::move(handed_to_steam)},
+                      {"failed", std::move(failed)}};
         });
   });
 
@@ -432,7 +451,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
                                               : install_path.filename().string();
     // Adding a known game again keeps its name and args unless the body sets them.
     game.name = b.value("name", existing ? game.name : strings::CleanGameName(default_name));
-    game.id = existing ? game.id : s.games.NextId(game.name);
+    game.id = existing ? game.id : s.games.NextId(game.name, install_path.string(), exe_path);
     game.source = "manual";
     game.install_path = install_path.string();
     game.exe_path = exe_path;

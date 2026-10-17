@@ -75,7 +75,7 @@ mira set celeste --tag hidden
 `POST /v1/games/manual`. Adds a game from anywhere on disk. With `--installer` it is stored `needs_install`.
 
 ### `mira remove <id> [--delete-files] [--delete-prefix] [--delete-metadata] [--purge]`
-`DELETE /v1/games/{id}`. Without flags only the library entry is removed. `--purge` does all three deletes. Files are only deleted when they are inside a library root or `prefix_root`.
+`DELETE /v1/games/{id}`. Without flags only the library entry is removed, keeping what you set on the game for when it's added again. `--delete-files` on a Steam game opens Steam's own uninstall. `--delete-metadata` forgets the game entirely. `--purge` does all three. Files are only deleted when they are inside a library root or `prefix_root`.
 
 ### `mira relocate <id>` / `mira library relocate`
 `POST /v1/games/{id}/relocate` / `POST /v1/library/relocate`. Moves a game's files and prefix into Mira's layout, named per `prefix_naming`.

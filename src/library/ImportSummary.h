@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,11 @@ struct ImportSummary {
   // The newly-added games; see ScanSummary::added_games in library/Scanner.h
   // for why a metadata fetch isn't triggered in the importer.
   std::vector<model::Game> added_games;
+
+  // Every game the import listed, by id. When the store gives its whole installed list
+  // (`lists_installed`), a game of its left out was uninstalled outside Mira.
+  std::set<std::string> listed;
+  bool lists_installed = false;
 };
 
 // Counts a game as added or updated and publishes its event.

@@ -5,10 +5,12 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <thread>
 #include <vector>
 
 #include "store/Database.h"
+#include "support/TestEnv.h"
 
 using namespace mira;
 namespace fs = std::filesystem;
@@ -152,6 +154,81 @@ TEST_CASE("a finished session is counted once and outlives its game") {
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.Sessions("celeste", 10).size() == 1);
   CHECK(store.Find("celeste")->play_seconds == 60);
+}
+
+TEST_CASE("a removed game takes back what the user set on it when it's added again") {
+  const fs::path dir = test::TempDir("gamestore-kept");
+  const fs::path prefix = dir / "prefixes" / "epic-abc";
+  fs::create_directories(prefix);
+  test::Touch(dir / "AGame" / "Picked.exe");
+  test::Touch(dir / "AGame" / "Store.exe");
+  store::GameStore store(dir / "games.db");
+  store.Load();
+
+  model::Game game = MakeGame("epic-abc", "My Name");
+  game.source = "epic";
+  game.source_ref = "abc";
+  game.install_path = (dir / "AGame").string();
+  game.exe_path = "Picked.exe";
+  game.runner_ref = "wine:custom";
+  game.data_dir = prefix.string();
+  game.overrides = {{"launch.gamemode", true}};
+  game.launch = {{"options", {{{"name", "Safe mode"}}}}};
+  game.tags = {"favorite", "Rpg", "hidden"};
+  REQUIRE(store.Upsert(game).has_value());
+  REQUIRE(store.Remove("epic-abc").has_value());
+  CHECK(store.KeptDataDir("epic-abc") == prefix.string());
+
+  // As a store import adds it back: its own name, exe and a new prefix path.
+  model::Game found = MakeGame("epic-abc", "A Game");
+  found.source = "epic";
+  found.source_ref = "abc";
+  found.install_path = (dir / "AGame").string();
+  found.exe_path = "Store.exe";
+  found.data_dir = (dir / "prefixes" / "new").string();
+  REQUIRE(store.Upsert(found).has_value());
+  const model::Game back = *store.Find("epic-abc");
+  CHECK(back.name == "My Name");
+  CHECK(back.exe_path == "Picked.exe");
+  CHECK(back.runner_ref == "wine:custom");
+  CHECK(back.data_dir == prefix.string());
+  CHECK(back.overrides == game.overrides);
+  CHECK(back.launch == game.launch);
+  // Its title stayed hidden while removed, so it comes back hidden too.
+  CHECK(std::set(back.tags.begin(), back.tags.end()) ==
+        std::set<std::string>{"favorite", "Rpg", "hidden"});
+
+  // A picked exe that's gone isn't put back, and a forgotten game keeps nothing.
+  fs::remove(dir / "AGame" / "Picked.exe");
+  REQUIRE(store.Remove("epic-abc").has_value());
+  REQUIRE(store.Upsert(found).has_value());
+  CHECK(store.Find("epic-abc")->exe_path == "Store.exe");
+  CHECK(store.Find("epic-abc")->name == "My Name");
+  REQUIRE(store.Remove("epic-abc", /*forget=*/true).has_value());
+  CHECK(store.KeptDataDir("epic-abc").empty());
+  REQUIRE(store.Upsert(found).has_value());
+  CHECK(store.Find("epic-abc")->name == "A Game");
+  CHECK(store.Find("epic-abc")->overrides.empty());
+}
+
+TEST_CASE("a game found again where a removed one was gets the removed one's id") {
+  store::GameStore store(TempFile("games-kept-ids.db"));
+  store.Load();
+  model::Game celeste = MakeGame("celeste", "Celeste");
+  celeste.exe_path = "Celeste.exe";
+  model::Game appimage = MakeGame("tool", "Tool");
+  appimage.install_path = "/games/Apps";
+  appimage.exe_path = "Tool.AppImage";
+  REQUIRE(store.Upsert(celeste).has_value());
+  REQUIRE(store.Upsert(appimage).has_value());
+  REQUIRE(store.RemoveMany({"celeste", "tool"}).has_value());
+
+  CHECK(store.NextId("Celeste Classic", "/games/celeste") == "celeste");
+  CHECK(store.NextId("Tool Box", "/games/Apps", "Tool.AppImage") == "tool");
+  // Another program in the same folder is another game.
+  CHECK(store.NextId("Tool Box", "/games/Apps", "Other.AppImage") == "tool-box");
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  CHECK(store.NextId("Celeste Classic", "/games/celeste") == "celeste-classic");
 }
 
 TEST_CASE("an older library's tags are cased as Steam's, merging tags that only differed in case") {

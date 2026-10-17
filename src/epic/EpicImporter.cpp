@@ -82,6 +82,7 @@ Result<library::ImportSummary> EpicImporter::Import() {
     auto result = games_.Merge(existing, game);
     if (!result) {
       log::Error("failed to save epic game {}: {}", id, result.error().message);
+      summary.listed.insert(id);  // still installed, only not saved
       continue;
     }
     library::RecordImported(summary, events_, game, existing.has_value());
@@ -92,6 +93,7 @@ Result<library::ImportSummary> EpicImporter::Import() {
   // of them turned games.toml into 120 rows of placeholders carrying a
   // meaningless data_dir/runner_ref/play_seconds each. GET /v1/library lists
   // them instead; see library::CatalogCache.
+  summary.lists_installed = true;
   return summary;
 }
 

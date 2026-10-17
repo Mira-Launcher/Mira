@@ -111,10 +111,12 @@ Result<library::ImportSummary> AmazonImporter::Import() {
 
     if (auto saved = games_.Merge(existing, game); !saved) {
       log::Error("failed to import amazon game {}: {}", product_id, saved.error().message);
+      summary.listed.insert(game.id);  // still installed, only not saved
       continue;
     }
     library::RecordImported(summary, events_, game, existing.has_value());
   }
+  summary.lists_installed = true;
   return summary;
 }
 

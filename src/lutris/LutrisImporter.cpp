@@ -345,7 +345,8 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     // only the fields Lutris itself owns get overwritten, same contract as
     // SteamScanner::Scan.
     model::Game game = existing.value_or(model::Game{});
-    game.id = existing ? game.id : games_.NextId(row.slug.empty() ? row.name : row.slug);
+    game.id =
+        existing ? game.id : games_.NextId(row.slug.empty() ? row.name : row.slug, install_path);
     game.source = "lutris";
     game.source_ref = row.slug;  // joins Lutris's own cached banner/cover/icon files by slug
     game.name = row.name;

@@ -10,6 +10,7 @@ namespace mira::library {
 
 void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game,
                     bool existed) {
+  summary.listed.insert(game.id);
   if (existed) {
     ++summary.updated;
     events.Publish("game.updated", model::ToJson(game));

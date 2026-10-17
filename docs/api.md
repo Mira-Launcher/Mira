@@ -135,15 +135,21 @@ Removes the game from the library. Nothing on disk is touched unless asked:
 
 - `delete_files` removes `install_path`.
 - `delete_prefix` removes `data_dir`.
-- `delete_metadata` removes cached metadata and art.
+- `delete_metadata` forgets the game entirely: its fetched info, the art the user picked and its kept record (below).
 - `purge` does all three.
 
-Files are only deleted when they resolve inside a library root, a store's install root (`epic.`, `gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root` or another disk's [prefixes folder](#library-folders); never for a `desktop-entry` game, whose files belong to another app. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
+A removed game keeps a small record of what the user set on it: its name, exe, arguments, runner, prefix path, folder tag, overrides, environment, launch options and tags. A game added again under its id (a store game installed again) or found again where it was (`install_path`, and the exe for an AppImage or desktop entry) takes the same id back with that record, and its play history. A kept prefix that's still there becomes its prefix again, saves and all. A store game's fetched info stays for its store's Not installed list; any other game keeps only the art the user picked.
+
+Files are only deleted when they resolve inside a library root, a store's install root (`epic.`, `gog.`, `itch.`, `amazon.install_root`) or the game's own prefix, and prefixes inside `prefix_root` or another disk's [prefixes folder](#library-folders). A `desktop-entry` game's files belong to another app and are never deleted, though a prefix Mira made for it can be. For Epic, Amazon and itch.io games, `delete_files` uninstalls through `legendary`, `nile` or butler so the store's records stay correct. A game run from an AppImage loses just the AppImage; for any other game, a folder that also holds another game or a library root isn't deleted (`shared_folder`). A program the game only runs (see relocate below) is never deleted. Publishes `game.removed`.
+
+For a Steam game, `delete_files` opens Steam's own uninstall instead (`steam://uninstall/<appid>`), which asks first and takes its compatdata too; the job's result is `{"handed_to": "steam"}`. The game stays until Steam has uninstalled it, then leaves the library as below; if the uninstall is cancelled, nothing changes. `delete_prefix` is ignored for Steam games.
 
 With `delete_files`, `delete_prefix` or `purge` it is a [job](#jobs) (deleting can take minutes) whose result is `{}`, failing with the error that kept the game; otherwise it answers `{}` straight away.
 
+A store import (`POST /v1/steam/scan`, `POST /v1/stores/{id}/import`) also removes a game the store no longer lists as installed whose files are gone while the folder they were in is still there: it was uninstalled in the store's own client. It keeps its record and publishes `games.removed`. A game whose folder is gone too (a disk that isn't mounted) is marked `missing` instead.
+
 ### `POST /v1/games/delete`
-The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A folder shared only by games removed together is deleted; one another game still uses isn't (`shared_folder`). A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. A [job](#jobs) whose result is `{"removed": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
+The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A folder shared only by games removed together is deleted; one another game still uses isn't (`shared_folder`). A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. Steam games with `delete_files` go to Steam's own uninstall, one dialog each. A [job](#jobs) whose result is `{"removed": [ids], "handed_to_steam": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
 
 ### `GET /v1/games/{id}/config`
 Every setting as it resolves for this game, with the layer it came from:
@@ -758,7 +764,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.updated` | The game. |
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed, or, at startup, every game that isn't running (a client open across a restart may still show some as running). |
 | `game.removed` | `{id}`. |
-| `games.removed` | `{ids}`, from `POST /v1/games/delete`. |
+| `games.removed` | `{ids}`, from `POST /v1/games/delete`, a store import that found games uninstalled, or Steam finishing an uninstall Mira handed it. |
 | `config.changed` | `{keys, frontend}` after `PATCH /v1/config`, a reset, or a hand edit of `settings.toml`: the dotted settings keys that changed (names only, never values) and the whole `frontend` table, so a client applies a change made elsewhere. |
 | `game.state` | The game plus `state` (`running`, `exited`, `crashed`, `idle`) and, after an exit, `exit_code`, `signal`, `played_seconds` and `error`. `crashed` means a crash signal (or a shell's 128 + one), exit code 126/127 or a program Wine couldn't load, or Wine's "Unhandled ..." report in the log followed by a non-zero exit; a plain non-zero exit is `exited`, and so is anything after a stop. A crash adds `code` (`crashed`, `killed` or `start_failed`), a plain-language `error` that is also the game's `last_error`, a `hint` and a `fix` that opens the game's log. |
 | `game.install_detected` | `{id, install_path, exe_path}`, after a launched Windows game exits and its prefix gained a program folder, i.e. the "game" was an installer. `exe_path` is relative to `install_path`, empty when no program was found. Adopt it with `finish-install`. |
