@@ -16,6 +16,7 @@
 #include "core/Strings.h"
 #include "desktop/DesktopEntries.h"
 #include "library/Detector.h"
+#include "library/PrefixNaming.h"
 #include "library/SourceRemoval.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
@@ -422,6 +423,13 @@ Result<InstallerInfo> DescribeInstaller(const config::Config& config, const mode
   info.format = DetectInstallerFormat(info.path);
   info.silent = info.format != InstallerFormat::kUnknown;
   info.silent_args = SilentArgsFor(config, info.format);
+  const std::vector<fs::path> roots = config.GetPathArray("library_roots");
+  if (!paths::IsWithin(game.install_path, roots, /*allow_equal=*/true)) {
+    for (const fs::path& root : roots) {
+      const fs::space_info space = fs::space(root, ec);
+      if (!ec) info.targets.push_back({root, space.available});
+    }
+  }
   return info;
 }
 
@@ -479,9 +487,12 @@ void AdoptInstallFolder(model::Game& game, const std::string& install_path) {
   game.install_path = install_path;
 }
 
-void AnnounceInstallerLeftover(api::EventBus& events, const model::Game& game) {
+void AnnounceInstallerLeftover(const config::Config& config, api::EventBus& events,
+                               const model::Game& game) {
   std::error_code ec;
   if (game.installer_dir.empty() || !fs::is_directory(game.installer_dir, ec)) return;
+  // A disc or someone else's folder isn't Mira's to offer to delete.
+  if (!paths::IsWithin(game.installer_dir, config.GetPathArray("library_roots"))) return;
   events.Publish("game.installer_leftover", {{"id", game.id},
                                              {"installer_dir", game.installer_dir},
                                              {"bytes", TreeBytes(game.installer_dir)}});
@@ -507,9 +518,10 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
 
 Result<void> RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
                         metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
-                        const std::optional<fs::path>& installer) {
+                        const std::optional<fs::path>& installer,
+                        const std::optional<fs::path>& target) {
   events.Publish("game.install.started", {{"id", id}});
-  const Result<model::Game> done = Install(config, games, id, mode, installer);
+  const Result<model::Game> done = Install(config, games, id, mode, installer, target);
   if (!done) {
     if (const auto stored = games.Find(id)) events.Publish("game.updated", model::ToJson(*stored));
     events.Publish("game.install.failed", api::FailedEvent({{"id", id}}, done.error()));
@@ -520,7 +532,7 @@ Result<void> RunInstall(config::Config& config, store::GameStore& games, api::Ev
   }
   events.Publish("game.updated", model::ToJson(*done));
   events.Publish("game.install.finished", {{"id", id}});
-  AnnounceInstallerLeftover(events, *done);
+  AnnounceInstallerLeftover(config, events, *done);
   // Its art and store info were looked up by the installer's name.
   if (fetches != nullptr) fetches->EnqueueNew(config, events, *done);
   return {};
@@ -541,7 +553,8 @@ bool BeginInstall(const std::string& id) {
 
 static Result<model::Game> InstallImpl(config::Config& config, store::GameStore& games,
                                        const std::string& id, InstallMode mode,
-                                       const std::optional<fs::path>& installer) {
+                                       const std::optional<fs::path>& installer,
+                                       const std::optional<fs::path>& target) {
   const std::lock_guard run_lock(install_run_mutex);
   std::optional<model::Game> game = games.Find(id);
   if (!game) {
@@ -576,6 +589,16 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
     game = *saved;
   }
 
+  // The game installs into its prefix, so a disc or mounted image (full or read-only) mustn't hold
+  // it: it goes on the target root's disk. One already in Mira's prefix folders (an earlier try)
+  // is kept.
+  std::error_code ec;
+  if (target &&
+      (!fs::exists(game->data_dir, ec) || !paths::IsWithin(game->data_dir, PrefixRoots(config)))) {
+    model::Game placed = *game;
+    placed.install_path = target->string();  // the root itself, so never a game folder's own
+    game->data_dir = PrefixDir(config, games, placed).string();
+  }
   const Result<model::Game> done =
       RunInstaller(config, *game, mode, proc::GameLogPath(games.Dir(), id));
   Finish(id, done ? "" : done.error().message);
@@ -595,6 +618,7 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.status = done->status;
       stored.last_error.clear();
     } else {
+      stored.data_dir = game->data_dir;  // a prefix moved to the target's disk was made there
       stored.last_error =
           std::format("Install didn't finish: {}. Run the installer again with its window shown.",
                       done.error().message);
@@ -607,10 +631,11 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
 }
 
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,
-                            InstallMode mode, const std::optional<fs::path>& installer) {
+                            InstallMode mode, const std::optional<fs::path>& installer,
+                            const std::optional<fs::path>& target) {
   // A throw would otherwise leave the install "running", refusing the game forever.
   try {
-    return InstallImpl(config, games, id, mode, installer);
+    return InstallImpl(config, games, id, mode, installer, target);
   } catch (const std::exception& error) {
     Finish(id, error.what());
     return Err("internal_error", error.what());

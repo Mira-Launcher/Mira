@@ -21,6 +21,7 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "config/Schema.h"
+#include "core/Paths.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/GameStore.h"
 #include "support/LiveServer.h"
@@ -1683,6 +1684,80 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
   auto missing = client.Get("/v1/games/nope/config");
   REQUIRE(missing != nullptr);
   CHECK(missing->status == 404);
+}
+
+TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown") {
+  const fs::path state = TempDir("server-install-disc");
+  // A stand-in Wine whose installer writes the game to its /DIR= (C: being the prefix's drive_c),
+  // or to Program Files without one.
+  test::Touch(
+      state / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine",
+      "#!/bin/sh\ncase \"$1\" in\n  --version) echo wine-9.0 ;;\n"
+      "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n  reg) ;;\n"
+      "  *) dir=\"$WINEPREFIX/drive_c/Program Files/Disc Game\"\n"
+      "     for a in \"$@\"; do case \"$a\" in /DIR=C:*) dir=\"$WINEPREFIX/drive_c/$(printf %s "
+      "\"${a#/DIR=C:}\" | tr '\\\\' /)\" ;; esac; done\n"
+      "     mkdir -p \"$dir\" && head -c 300000 /dev/zero > \"$dir/DiscGame.exe\" ;;\nesac\n",
+      /*executable=*/true);
+  LiveServer server(state);
+  REQUIRE(server.MutableConfig().Set("default_runner.windows", "wine:wine-9.0-amd64"));
+  REQUIRE(server.MutableConfig().Set("install.runner", "wine:wine-9.0-amd64"));
+  const fs::path root = state / "Games";
+  fs::create_directories(root);
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({root.string()})));
+  const fs::path disc = TempDir("server-install-disc-media");
+  test::Touch(disc / "setup.exe", "...Inno Setup...");
+  const auto add = [&](const std::string& id) {
+    model::Game game;
+    game.id = id;
+    game.name = "Disc Game";
+    game.platform = model::Platform::Windows;
+    game.install_path = disc.string();
+    game.exe_path = "setup.exe";
+    game.data_dir = (disc / "prefix").string();  // where it landed before: on the disc
+    game.status = model::GameStatus::NeedsInstall;
+    REQUIRE(server.games().Upsert(game));
+  };
+  add("quiet");
+  add("shown");
+  httplib::Client client = server.Client();
+
+  auto info = client.Get("/v1/games/quiet/installer");
+  REQUIRE(info != nullptr);
+  const auto targets = nlohmann::json::parse(info->body)["targets"];
+  REQUIRE_FALSE(targets.empty());
+  CHECK(targets[0].value("path", "") == root.string());
+
+  auto bad = client.Post("/v1/games/quiet/install", R"({"target": "/somewhere/else"})",
+                         "application/json");
+  REQUIRE(bad != nullptr);
+  CHECK(bad->status == 400);
+
+  const nlohmann::json body = {{"target", root.string()}};
+  CHECK(AwaitJob(client, client.Post("/v1/games/quiet/install", body.dump(), "application/json"))
+            .value("state", "") == "finished");
+  const model::Game quiet = *server.games().Find("quiet");
+  CHECK(quiet.status == model::GameStatus::Ready);
+  CHECK(quiet.install_path == (fs::path(quiet.data_dir) / "drive_c" / "Games" / "Disc Game"));
+  CHECK(quiet.installer_dir == disc.string());
+
+  // With no target picked, the first root.
+  const nlohmann::json shown_body = {{"interactive", true}};
+  CHECK(AwaitJob(client,
+                 client.Post("/v1/games/shown/install", shown_body.dump(), "application/json"))
+            .value("state", "") == "finished");
+  const model::Game shown = *server.games().Find("shown");
+  CHECK(shown.status == model::GameStatus::Ready);
+  CHECK(paths::IsWithin(shown.install_path, {shown.data_dir}));
+
+  for (const model::Game& game : {quiet, shown}) {
+    CHECK_FALSE(paths::IsWithin(game.data_dir, {disc}, /*allow_equal=*/true));
+    CHECK(fs::is_directory(fs::path(game.data_dir) / "drive_c"));
+  }
+  CHECK_FALSE(fs::exists(disc / "prefix"));
+  // The disc isn't Mira's to offer to delete.
+  for (const model::Event& event : server.events().Since(0))
+    CHECK(event.type != "game.installer_leftover");
 }
 
 TEST_CASE("Running a picked program in a game with no prefix first makes one with its runner") {

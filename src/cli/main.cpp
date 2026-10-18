@@ -598,7 +598,7 @@ int CmdAdd(int argc, char** argv) {
 int CmdInstall(int argc, char** argv) {
   if (argc < 1) {
     std::fprintf(stderr,
-                 "usage: mira install <id> [--interactive] [--installer PATH]\n"
+                 "usage: mira install <id> [--interactive] [--installer PATH] [--into ROOT]\n"
                  "       mira install <id> --info [--installer PATH]\n"
                  "       mira install <id> --progress\n");
     return 2;
@@ -608,10 +608,13 @@ int CmdInstall(int argc, char** argv) {
   bool info = false;
   bool progress = false;
   std::string installer;
+  std::string into;
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
     if (arg == "--interactive") {
       interactive = true;
+    } else if (arg == "--into" && i + 1 < argc) {
+      into = std::filesystem::absolute(argv[++i]).string();
     } else if (arg == "--info") {
       info = true;
     } else if (arg == "--progress") {
@@ -635,6 +638,7 @@ int CmdInstall(int argc, char** argv) {
   } else {
     json body = {{"interactive", interactive}};
     if (!installer.empty()) body["installer"] = installer;
+    if (!into.empty()) body["target"] = into;
     res =
         client.Post(std::format("/v1/games/{}/install", Seg(id)), body.dump(), "application/json");
   }

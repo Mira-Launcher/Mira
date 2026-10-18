@@ -94,8 +94,8 @@ mira set my-game --exe MyGame.exe
 mira finish-install my-game
 ```
 
-### `mira install <id> [--interactive] [--installer PATH]`
-`POST /v1/games/{id}/install`. Runs a `needs_install` game's installer and marks it ready once the game executable is found. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for a `broken` game. `--info` shows the installer's path, size, format and silent arguments; `--progress` shows install progress.
+### `mira install <id> [--interactive] [--installer PATH] [--into ROOT]`
+`POST /v1/games/{id}/install`. Runs a `needs_install` game's installer and marks it ready once the game executable is found. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for a `broken` game. `--into` makes the game's prefix, where it installs, on that library root's disk, for an installer on a disc or mounted image (the first root when it's left out). `--info` shows the installer's path, size, format, silent arguments and the library roots it can install into; `--progress` shows install progress.
 
 ### `mira finish-install <id>`
 `POST /v1/games/{id}/finish-install`. Marks a `needs_install` or `broken` game ready once `exe_path` points at the installed game.

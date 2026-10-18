@@ -37,6 +37,13 @@ struct InstallerInfo {
   InstallerFormat format = InstallerFormat::kUnknown;
   bool silent = false;      // a known format Mira can run unattended
   std::string silent_args;  // empty unless silent
+  // Library roots whose disk can hold the prefix, when the installer sits outside them (a disc or
+  // a mounted image, often full or read-only); the first is the default. Empty otherwise.
+  struct Target {
+    std::filesystem::path root;
+    std::uintmax_t free_bytes = 0;
+  };
+  std::vector<Target> targets;
 };
 
 // The installer a needs_install game points at (its exe_path).
@@ -85,20 +92,24 @@ bool BeginInstall(const std::string& id);
 // game exe there, among what it wrote to install_path, or in a new drive_c folder.
 // `installer` overrides exe_path and is saved as the game's installer.
 // Saves the result: Ready on success, last_error on failure.
+// `target`, a library root, makes a prefix not yet in Mira's prefix folders on that root's disk
+// instead, for an installer on a disc or mounted image.
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,
-                            InstallMode mode,
-                            const std::optional<std::filesystem::path>& installer);
+                            InstallMode mode, const std::optional<std::filesystem::path>& installer,
+                            const std::optional<std::filesystem::path>& target = std::nullopt);
 
 // Install, reported: game.install.started, game.updated, then game.install.finished or
 // .failed (with the error's hint and fix). On success it updates the menu entries and,
 // with `fetches`, fetches the game's art and store info again. After BeginInstall.
 Result<void> RunInstall(config::Config& config, store::GameStore& games, api::EventBus& events,
                         metadata::FetchQueue* fetches, const std::string& id, InstallMode mode,
-                        const std::optional<std::filesystem::path>& installer);
+                        const std::optional<std::filesystem::path>& installer,
+                        const std::optional<std::filesystem::path>& target = std::nullopt);
 
 // Publishes game.installer_leftover when the game's installer folder (installer_dir) is still
-// on disk, so a client can offer to delete it.
-void AnnounceInstallerLeftover(api::EventBus& events, const model::Game& game);
+// on disk inside a library root, so a client can offer to delete it.
+void AnnounceInstallerLeftover(const config::Config& config, api::EventBus& events,
+                               const model::Game& game);
 
 // Deletes the game's installer_dir, only inside a library root and never when it holds the
 // game itself or its prefix.
