@@ -15,8 +15,8 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../dialogs/LogWindow.h"
-#include "../dialogs/RunInPrefixDialog.h"
-#include "../dialogs/WinetricksDialog.h"
+#include "../game/PrefixCards.h"
+#include "../widgets/WindowCards.h"
 #include "PlayChoices.h"
 
 namespace mira_gui::actions {
@@ -114,8 +114,7 @@ void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool de
 
 void RunInPrefix(QWidget* parent, const std::string& id, const std::string& install_path,
                  const QString& name) {
-  RunInPrefixDialog dialog(id, install_path, name, parent);
-  dialog.exec();
+  cards::Show(parent, new RunInPrefixCard(id, install_path, name));
 }
 
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished) {
@@ -156,8 +155,7 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) 
                              "provisions one on demand.");
       return;
     }
-    WinetricksDialog dialog(id, name, parent);
-    dialog.exec();
+    cards::Show(parent, new WinetricksCard(id, name));
   });
 }
 

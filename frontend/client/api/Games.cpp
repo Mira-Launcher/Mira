@@ -311,6 +311,23 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
   async::Run(context, [id, verb] { return RunWinetricksSync(id, verb); }, std::move(callback));
 }
 
+void GetInstalledTricksAsync(QObject* context, const std::string& id,
+                             std::function<void(InstalledTricksResult)> callback) {
+  async::Run(
+      context,
+      [id] {
+        return ReadReply<InstalledTricksResult>(
+            transport::Get("/v1/games/" + PercentEncode(id) + "/tricks"),
+            "GET /v1/games/" + id + "/tricks", Shape::Object,
+            [](InstalledTricksResult& result, const json& body) {
+              for (const json& verb : body.value("installed", json::array())) {
+                if (verb.is_string()) result.installed.push_back(verb.get<std::string>());
+              }
+            });
+      },
+      std::move(callback));
+}
+
 void AddManualGameAsync(QObject* context, const std::string& install_path,
                         const std::string& exe_path, const std::string& name,
                         const std::string& platform, bool is_installer, bool app,

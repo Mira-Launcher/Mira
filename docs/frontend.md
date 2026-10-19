@@ -252,9 +252,9 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `GET`/`PATCH /v1/games/{id}/config` | `OverridesEditor` |
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
 | `POST /v1/games/manual`, `POST /v1/library/import/classify`, `POST /v1/library/import` | `library/AddGamesCard`, dropping on the window |
-| `POST /v1/games/{id}/run` | `RunInPrefixDialog` |
+| `POST /v1/games/{id}/run` | `game/PrefixCards` (Run in prefix) |
 | `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install`, `DELETE .../installer` | `game/InstallerCards`, *Mark as installed*, `game/InstallPromptCard`, `DownloadTracker` |
-| `POST /v1/games/{id}/tricks` | `WinetricksDialog` |
+| `POST`/`GET /v1/games/{id}/tricks` | `game/PrefixCards` (Winetricks) |
 | `GET /v1/logs/{channel}` | `LogWindow` (a window per log), a launcher install's running tail (`setup/SetupLog`, in the sign-in panels), the Activity popover's *Log* buttons |
 | `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…*, and the game card's *Move…* buttons for the install folder and the prefix |
 | `/v1/tags`, `/v1/tags/*` | `tags/TagsPage`, `tags/TagPicker` |

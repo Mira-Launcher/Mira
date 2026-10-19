@@ -190,7 +190,7 @@ TEST_CASE("ParseRunnerDownload reads the state from the event type and ignores u
 }
 
 TEST_CASE("ParseTricksEvent ignores unrelated event types") {
-  // Same shared-stream hazard as runner downloads: a WinetricksDialog must
+  // Same shared-stream hazard as runner downloads: the Winetricks card must
   // not mistake a game.updated (or someone else's tricks event) for its own.
   TricksEvent event;
   CHECK_FALSE(events::ParseTricksEvent("game.added", R"({"id": "x"})", &event));

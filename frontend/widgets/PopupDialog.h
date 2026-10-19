@@ -9,7 +9,6 @@ class QLabel;
 class QToolButton;
 class QVBoxLayout;
 class QHBoxLayout;
-class QBoxLayout;
 class QPushButton;
 
 namespace mira_gui {
@@ -71,8 +70,5 @@ class PopupDialog : public QDialog {
   QPushButton* default_ = nullptr;  // has the focus
   QPushButton* last_ = nullptr;     // the default, unless it rejects: it ends the row
 };
-
-// Cancel plus an accept-role `action_text` button, added to `layout`; returns the action button.
-QPushButton* AddDialogButtons(QDialog* dialog, QBoxLayout* layout, const QString& action_text);
 
 }  // namespace mira_gui

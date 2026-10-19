@@ -1155,6 +1155,13 @@ struct TricksResult {
   ApiError error;
 };
 
+// GET /v1/games/{id}/tricks: the verbs already in the game's prefix.
+struct InstalledTricksResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> installed;
+};
+
 // A tricks.started / .finished / .failed payload.
 struct TricksEvent {
   std::string id;

@@ -69,7 +69,7 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path);
 // fetch is needed first: id/name are already known from the tile/row.
 void ViewLog(QWidget* parent, const std::string& id, const QString& name);
 
-// Opens WinetricksDialog. Fetches the full record first to check data_dir
+// Opens the Winetricks card. Fetches the full record first to check data_dir
 // (not in the list summary) before opening; mirad only rejects "no
 // prefix" asynchronously, so this catches it up front instead.
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name);

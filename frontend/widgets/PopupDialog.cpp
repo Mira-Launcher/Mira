@@ -1,8 +1,6 @@
 #include "PopupDialog.h"
 
-#include <QBoxLayout>
 #include <QDesktopServices>
-#include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -209,14 +207,6 @@ void PopupDialog::mousePressEvent(QMouseEvent* event) {
     return;
   }
   QDialog::mousePressEvent(event);
-}
-
-QPushButton* AddDialogButtons(QDialog* dialog, QBoxLayout* layout, const QString& action_text) {
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, dialog);
-  QPushButton* action = buttons->addButton(action_text, QDialogButtonBox::AcceptRole);
-  QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-  layout->addWidget(buttons);
-  return action;
 }
 
 }  // namespace mira_gui

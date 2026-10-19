@@ -74,6 +74,10 @@ void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,
                         std::function<void(TricksResult)> callback);
 
+// GET /v1/games/{id}/tricks: what winetricks already put in its prefix.
+void GetInstalledTricksAsync(QObject* context, const std::string& id,
+                             std::function<void(InstalledTricksResult)> callback);
+
 // POST /v1/games/manual: adds a game record directly, for an installer or
 // a folder outside every library root, tagged `app` when `app`. Response mirrors GetGameAsync.
 void AddManualGameAsync(QObject* context, const std::string& install_path,

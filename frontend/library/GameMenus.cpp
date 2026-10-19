@@ -110,7 +110,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
                                  : "Only available for a game that still needs installing");
   QAction* refresh_metadata = menu.addAction("Refresh metadata && cover art");
   QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
-  QAction* winetricks = menu.addAction("Run winetricks…");
+  QAction* winetricks = menu.addAction("Winetricks…");
   QAction* relocate = menu.addAction("Move to Mira's folders…");
   relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
   // An emulator's game has no installer, prefix or folder of Mira's to move it to.
