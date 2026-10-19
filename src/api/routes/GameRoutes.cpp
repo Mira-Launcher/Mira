@@ -18,6 +18,7 @@
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
+#include "library/Relocate.h"
 #include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
@@ -357,6 +358,37 @@ void RegisterGameRoutes(Router& http, Services& s) {
     SendJson(res, plans);
   });
 
+  // What moving each game into Mira's folders does, for a client to show before asking.
+  http.Post("/v1/games/relocation", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"ids": [...]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
+    if (!ids) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    const std::vector<model::Game> library = s.games.All();
+    const auto part = [](const library::RelocatePart& p) {
+      return json{{"action", p.action},
+                  {"from", p.from},
+                  {"to", p.to},
+                  {"reason", p.reason},
+                  {"copies", p.copies}};
+    };
+    json plans = json::array();
+    for (const std::string& id : *ids) {
+      const auto game = std::ranges::find(library, id, &model::Game::id);
+      if (game == library.end()) continue;
+      json entry = {{"id", game->id}, {"name", game->name}};
+      if (const auto plan = library::PlanRelocate(s.config, *game, {}, library)) {
+        entry["files"] = part(plan->files);
+        entry["prefix"] = part(plan->prefix);
+      } else {
+        entry["error"] = ErrorJson(plan.error());
+      }
+      plans.push_back(std::move(entry));
+    }
+    SendJson(res, plans);
+  });
+
   // The sizes behind POST /v1/games/removal's plans, as a job, since big folders take a while.
   http.Post("/v1/games/removal/sizes", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape = R"({"ids": [...]})";
@@ -457,7 +489,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
   http.Post("/v1/games/manual", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape =
-        R"({"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?})";
+        R"({"install_path": "...", "exe_path": "...", "name"?, "platform"?, "is_installer"?, "app"?})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const json& b = *body;
@@ -512,6 +544,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     game.exe_path = exe_path;
     game.args = b.value("args", game.args);
     game.platform = platform;
+    if (b.value("app", false) && !std::ranges::contains(game.tags, std::string("app")))
+      game.tags.push_back("app");
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
     // An installer needs the prefix too: it installs the game into it.

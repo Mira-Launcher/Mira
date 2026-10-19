@@ -66,6 +66,11 @@ std::filesystem::path PrefixRoot(const config::Config& config, const model::Game
   return MiraPrefixesOn(config, *disk).value_or(prefix_root);
 }
 
+bool OnSameDisk(const std::filesystem::path& a, const std::filesystem::path& b) {
+  const std::optional<dev_t> disk = DiskOf(a);
+  return disk && disk == DiskOf(b);
+}
+
 std::vector<std::filesystem::path> PrefixRoots(const config::Config& config) {
   std::vector<std::filesystem::path> roots = {config.GetPath("prefix_root")};
   for (const std::filesystem::path& folder : config.GetPathArray("mira_folders"))

@@ -37,4 +37,8 @@ Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& gam
 Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game,
                            const std::string& verb, const OutputFn& on_output = {});
 
+// The verbs winetricks has installed in the game's prefix, in the order it ran them, from the
+// winetricks.log it keeps there.
+std::vector<std::string> InstalledVerbs(const model::Game& game);
+
 }  // namespace mira::runner

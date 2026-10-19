@@ -997,6 +997,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                });
   });
 
+  http.Get(R"(/v1/games/([^/]+)/tricks)", [&s](const Request& req, Response& res) {
+    const auto game = s.games.Find(req.matches[1]);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    SendJson(res, json{{"installed", runner::InstalledVerbs(*game)}});
+  });
+
   http.Post(R"(/v1/games/([^/]+)/tricks)", [&s](const Request& req, Response& res) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");

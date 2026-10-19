@@ -128,7 +128,7 @@ Adds a game from any path:
   "name": "My Game", "platform": "windows", "is_installer": true }
 ```
 
-`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`; a `platform` other than those two is `400 invalid_body`. `is_installer` stores the game `needs_install`. A Windows game is returned `setting_up` while a `provision` [job](#jobs) sets up its prefix, then becomes `ready` or `broken` with a `game.updated`. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
+`install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`; a `platform` other than those two is `400 invalid_body`. `is_installer` stores the game `needs_install`. `app: true` tags it `app`. A Windows game is returned `setting_up` while a `provision` [job](#jobs) sets up its prefix, then becomes `ready` or `broken` with a `game.updated`. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
 
 ### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true]`
 Removes the game from the library. Nothing on disk is touched unless asked:
@@ -243,6 +243,12 @@ An optional body `{"install_path"?, "exe_path"?}` switches the game to a program
 ### `POST /v1/games/{id}/relocate`
 Body (optional) `{"install_path"?, "data_dir"?}`. Moves the game's files and prefix to those paths, leaving one left out of the body where it is, or with no body into Mira's layout (`relocate.install_root` or the first library root, and `prefix_root`, or the [prefixes folder](#library-folders) of the game's disk when that's another, named per `prefix_naming`). Targets must be inside a library root, `prefix_root` or another disk's prefixes folder. Store games keep their install folder unless one is given, since their store tool tracks it; Lutris games don't: once moved they become `manual` games (their `source_ref` is `lutris:<slug>`), which a later Lutris import leaves alone. When one folder is inside the other (a prefix holding the game), the outer one moves and the inner one follows. A game run from an AppImage moves as that file alone, into a folder of its own, whatever else its folder holds. Otherwise an install folder that holds another game or a library root isn't moved (`shared_folder`). A program the game only runs (an executable outside the game's folder, or an AppImage handed the game's file in `args`, like an emulator) stays where it is. Moves across filesystems copy then delete, unless `relocate.allow_copy` is off. A [job](#jobs) whose result is the moved game; publishes `game.updated`.
 
+### `POST /v1/games/relocation`
+What moving each game into Mira's layout (`relocate` with no body) would do, to show before asking: `{"ids": [...]}` answers a list, in order and without unknown ids, of `{id, name, files, prefix}`, or `{id, name, error}` with the error envelope's fields when the move would be refused (`shared_folder`, `no_library_roots`, `cross_device` with copying off). `files` and `prefix` are each `{action, from, to, reason, copies}`: `action` is `move` (`from` goes to `to`; `copies` when that's another disk, so it's copied then removed), `follow` (it's inside the other one and moves with it), `stay` (`reason` says why, such as "Steam keeps track of them"), `in_place` (already there) or `none` (the game has no such folder). Nothing moves. Sizes come from `POST /v1/games/removal/sizes`, which measures the same folders.
+
+### `GET /v1/games/{id}/tricks`
+`{"installed": [...]}`: the verbs winetricks has installed in the game's prefix, in the order it ran them, from the `winetricks.log` it keeps there. Empty for a game without a prefix.
+
 ### `POST /v1/games/{id}/tricks`
 Body `{"verb": "corefonts"}`. Runs `winetricks --unattended <verb>` in the game's prefix. Fails if the game has no provisioned Wine or Proton prefix or winetricks isn't available (see `/v1/runners/tools`). A job (kind `tricks`) that runs one at a time. Events: `tricks.started`/`finished`/`failed`.
 
@@ -261,7 +267,7 @@ Scans every library root now: adds new games (each folder in a root or in one of
 Body (optional) `{"ids": [...]}`. Relocates those games, or every game without a body, into Mira's layout (inside the game's [sorting folder](#folders-by-tag) when the destination is sorted by tag), one at a time, publishing `game.updated` and `job.progress` as each one moves. A [job](#jobs) whose result is `{"moved": N, "failed": N, "errors": [{"id", "error": {...}}]}`.
 
 ### `POST /v1/library/import/classify`
-Body `{"path": "/absolute/path"}`. Says what a dropped file or folder is, without moving it: `{"kind": "game" | "app" | "unknown", "name", "reason"}`. An AppImage is read from its own desktop entry (its `Categories`); anything else is looked up on Steam's store by exact name (software or game). 400 `invalid_body` for a missing or relative path, 404 `not_found` when it doesn't exist.
+Body `{"path": "/absolute/path"}`. Says what a dropped file or folder is, without moving it: `{"kind": "game" | "app" | "unknown", "name", "reason", "programs": [{"path", "platform", "installer"}], "installer"}`. An AppImage is read from its own desktop entry (its `Categories`); anything else is looked up on Steam's store by exact name (software or game). `programs` are what could start it, best first: for a folder its executables scored the way a scan scores them (`path` relative to it, up to 8), for a file the file itself. `installer` marks one an installer builder made (or an `.msi`, or the scan's name and size fallback); the top-level `installer` is the first program's. `installer_info` (`{path, size_bytes, format, silent, targets}`, as `GET /v1/games/{id}/installer` gives them) describes running a file, or a folder's first program when that's an installer, as one before there's a game to ask about. 400 `invalid_body` for a missing or relative path, 404 `not_found` when it doesn't exist.
 
 ### `POST /v1/library/import`
 Body `{"path": "/absolute/path", "kind": "game" | "app"}`. Moves the file or folder into the first games folder (`game`) or the Applications folder (`app`) in `library_roots`. A [job](#jobs) of kind `import_path` whose result is `{"path"}`, the new location (from another drive it is copied beside the root first, then the original is removed); the watcher then scans it. 400 `invalid_body` for a bad body or kind. The job fails with `source_missing`, `no_library_root` (no games or Applications folder in `library_roots`), `already_in_library` (the path is inside a library root already) or `target_exists`.
@@ -673,13 +679,14 @@ Imports existing `.desktop` entries as games. Mira's own `mira-<id>.desktop` ent
 Entries from `$XDG_DATA_HOME/applications`, `$XDG_DATA_DIRS`, the Flatpak export directories and `desktop_import.extra_dirs`:
 
 ```json
-[{ "id": "com.spotify.Client", "name": "Spotify", "icon": "com.spotify.Client" }]
+[{ "id": "com.spotify.Client", "name": "Spotify", "icon": "com.spotify.Client",
+   "command": "com.spotify.Client", "flatpak": true, "app": true }]
 ```
 
-`id` is the desktop file ID. Skipped: non-applications, `NoDisplay` or `Hidden` entries, Mira's own entries, Steam game shortcuts, and entries already in the library.
+`id` is the desktop file ID. `command` is the program it runs, or a Flatpak's app id. `app` is true when its `Categories` don't include `Game`. Skipped: non-applications, `NoDisplay` or `Hidden` entries, Mira's own entries, Steam game shortcuts, and entries already in the library.
 
 ### `POST /v1/desktop-entries/import`
-Body `{"ids": [...]}`. A Flatpak entry becomes `flatpak run <app-id>`. Anything else uses its `Exec=` line with field codes removed. The command is stored as an absolute `exe_path`: a bare one is looked up on `PATH` when importing, and an entry whose command isn't installed isn't offered. Imported games are native, keep the entry's id in `source_ref`, and get a `desktop_entries.enabled: false` override, since the app already has a menu entry. Importing the same entry again updates it and keeps that override if it's set. Returns `{"added": 1, "updated": 0}`.
+Body `{"ids": [...], "apps"?: [...]}`. The ids also in `apps` are tagged `app`; the others are games (re-importing one as a game takes the tag off). A Flatpak entry becomes `flatpak run <app-id>`. Anything else uses its `Exec=` line with field codes removed. The command is stored as an absolute `exe_path`: a bare one is looked up on `PATH` when importing, and an entry whose command isn't installed isn't offered. Imported games are native, keep the entry's id in `source_ref`, and get a `desktop_entries.enabled: false` override, since the app already has a menu entry. Importing the same entry again updates it and keeps that override if it's set. Returns `{"added": 1, "updated": 0}`.
 
 ### `POST /v1/desktop-entries/sync`
 Rewrites Mira's own desktop entries now.

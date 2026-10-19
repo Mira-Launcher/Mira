@@ -33,6 +33,8 @@ bool NeedsProvisioning(const std::optional<model::Game>& existing);
 // prefix_root, or for a game on another disk the prefixes folder of the Mira folder on that disk,
 // so Proton's links between the game and its prefix stay on one disk.
 std::filesystem::path PrefixRoot(const config::Config& config, const model::Game& game);
+// Whether `a` and `b` (or the nearest folders above them that exist) are on one disk.
+bool OnSameDisk(const std::filesystem::path& a, const std::filesystem::path& b);
 // prefix_root and the prefixes folder of every Mira folder.
 std::vector<std::filesystem::path> PrefixRoots(const config::Config& config);
 // For a game in a folder of its own on a disk with neither prefix_root nor a Mira folder: "prefix"

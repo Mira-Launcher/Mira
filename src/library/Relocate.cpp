@@ -12,6 +12,7 @@
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
+#include "library/Stores.h"
 
 namespace mira::library {
 namespace fs = std::filesystem;
@@ -58,6 +59,33 @@ std::string Rebase(const fs::path& inner, const fs::path& outer, const fs::path&
   return (relative.empty() || relative == "." ? moved_outer : moved_outer / relative).string();
 }
 
+// Why a store-managed game's files stay, naming who keeps track of them.
+std::string KeptBy(const model::Game& game) {
+  if (game.source == "steam") return "Steam keeps track of them";
+  if (const launchers::Launcher* launcher = launchers::ForGame(game))
+    return launcher->name + " keeps track of them";
+  if (const emulators::Emulator* emulator = emulators::ForGame(game))
+    return emulator->name + " finds them there";
+  if (const Store* store = FindStore(game.source))
+    return std::string(store->name) + " keeps track of them";
+  return "Their store keeps track of them";
+}
+
+RelocatePart Part(std::string action, std::string from, std::string reason = {}) {
+  RelocatePart part;
+  part.action = std::move(action);
+  part.from = std::move(from);
+  part.reason = std::move(reason);
+  return part;
+}
+
+RelocatePart Move(const fs::path& from, const fs::path& to) {
+  RelocatePart part = Part("move", from.string());
+  part.to = to.string();
+  part.copies = !OnSameDisk(from, to);
+  return part;
+}
+
 }  // namespace
 
 std::string SharedFolder(const config::Config& config, const model::Game& game,
@@ -93,13 +121,13 @@ bool RunsFromAppImage(const model::Game& game) {
          fs::is_regular_file(fs::path(game.install_path) / game.exe_path, ec);
 }
 
-Result<model::Game> Relocate(const config::Config& config, model::Game game,
-                             const RelocateRequest& request, std::span<const model::Game> library) {
+Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Game& original,
+                                  const RelocateRequest& request,
+                                  std::span<const model::Game> library) {
+  model::Game game = original;
+  game.exe_path = StoredExePath(game.install_path, game.exe_path);
   // Store installs stay where their tool expects them unless a path is given.
   // Lutris only launches what it found, so its games are Mira's to move.
-  const std::string original_install = game.install_path;
-  const std::string original_data = game.data_dir;
-  game.exe_path = StoredExePath(game.install_path, game.exe_path);
   // A store launcher's prefix holds the launcher and every game installed in it.
   const bool shared_prefix = launchers::ForGame(game) != nullptr;
   const bool store_managed = game.source == "steam" || game.source == "epic" ||
@@ -121,16 +149,17 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
                "Move the launcher's prefix folder yourself, then point each of its games at the "
                "new folder.");
   }
+
+  RelocatePlan plan;
   const bool both = !game.install_path.empty() && !game.data_dir.empty();
-  const bool install_in_prefix =
+  plan.install_in_prefix =
       both && !request.install_path &&
       paths::IsWithin(game.install_path, {game.data_dir}, /*allow_equal=*/true);
-  const bool prefix_in_install = both && !install_in_prefix && !request.data_dir &&
-                                 paths::IsWithin(game.data_dir, {game.install_path});
-  bool single_file = false;  // only the program moved, out of a shared folder
+  plan.prefix_in_install = both && !plan.install_in_prefix && !request.data_dir &&
+                           paths::IsWithin(game.data_dir, {game.install_path});
 
   // The prefix's target is checked before anything moves, so a bad one never needs an undo.
-  const bool move_prefix = !game.data_dir.empty() && !prefix_in_install && !shared_prefix &&
+  const bool move_prefix = !game.data_dir.empty() && !plan.prefix_in_install && !shared_prefix &&
                            !steam_prefix && (request.data_dir || !request.only_given);
   if (move_prefix && request.data_dir && !paths::IsWithin(*request.data_dir, PrefixRoots(config))) {
     return Err("path_outside_root",
@@ -138,11 +167,20 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
                "Pick a folder inside the prefix folder, or change that setting.",
                Fix::Setting("prefix_root"));
   }
+  const bool allow_copy = config.GetBool("relocate.allow_copy");
 
-  // A program the game only runs (an emulator in ~/Applications) stays where it is.
-  if (!game.install_path.empty() && !install_in_prefix &&
-      (request.install_path ||
-       (!request.only_given && !store_managed && !RunsExternalProgram(game)))) {
+  if (game.install_path.empty()) {
+    plan.files = Part("none", {});
+  } else if (plan.install_in_prefix) {
+    plan.files = Part("follow", game.install_path, "Inside its prefix, so they move with it");
+  } else if (!request.install_path && request.only_given) {
+    plan.files = Part("in_place", game.install_path);
+  } else if (!request.install_path && store_managed) {
+    plan.files = Part("stay", game.install_path, KeptBy(game));
+  } else if (!request.install_path && RunsExternalProgram(game)) {
+    // A program the game only runs (an emulator in ~/Applications) stays where it is.
+    plan.files = Part("stay", game.install_path, "The program it runs stays where it is");
+  } else {
     const std::vector<fs::path> library_roots = config.GetPathArray("library_roots");
     fs::path target;
     if (request.install_path) {
@@ -165,53 +203,98 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
                  "Pick a folder inside one of the library folders, or add it as one.",
                  Fix::Setting("library_roots"));
     }
-    if (fs::path(game.install_path) != target) {
+    if (fs::path(game.install_path) == target) {
+      plan.files = Part("in_place", game.install_path, "Already in Mira's folders");
+    } else {
       // An AppImage carries everything it needs, so it moves on its own, whatever else its folder
       // holds.
-      const fs::path program = fs::path(game.install_path) / game.exe_path;
-      single_file = RunsFromAppImage(game);
-      const std::string shared = single_file ? std::string() : SharedFolder(config, game, library);
+      plan.single_file = RunsFromAppImage(game);
+      const std::string shared =
+          plan.single_file ? std::string() : SharedFolder(config, game, library);
       if (!shared.empty()) {
         return Err("shared_folder",
                    std::format("\"{}\" also holds {}, so it can't move with this game",
                                game.install_path, shared),
                    "Put the game in a folder of its own, then point the game at it.");
       }
-      const fs::path from = single_file ? program : fs::path(game.install_path);
-      const fs::path to = single_file ? target / game.exe_path : target;
-      if (auto moved = MovePath(from, to, config.GetBool("relocate.allow_copy")); !moved)
-        return std::unexpected(moved.error());
-      game.install_path = target.string();
-      if (prefix_in_install && !single_file)
-        game.data_dir = Rebase(original_data, original_install, target);
+      plan.files = plan.single_file
+                       ? Move(fs::path(game.install_path) / game.exe_path, target / game.exe_path)
+                       : Move(game.install_path, target);
+      if (plan.files.copies && !allow_copy) {
+        return Err(
+            "cross_device",
+            std::format("\"{}\" is on another drive and copying is turned off", target.string()),
+            "Turn on copying across drives, or pick a folder on the same drive.",
+            Fix::Setting("relocate.allow_copy"));
+      }
+      plan.install_target = target.string();
+      game.install_path = target.string();  // the prefix's place follows the install's new disk
     }
   }
 
-  // On the disk the install is on now.
-  const fs::path prefix_target =
-      !move_prefix ? fs::path()
-      : request.data_dir
-          ? *request.data_dir
-          : PrefixInGameFolder(config, game)
-                .value_or(NamedDir(config, game, PrefixRoot(config, game), game.data_dir));
-  if (move_prefix && fs::path(game.data_dir) != prefix_target) {
-    if (auto moved = MovePath(game.data_dir, prefix_target, config.GetBool("relocate.allow_copy"));
-        !moved) {
+  if (game.data_dir.empty()) {
+    plan.prefix = Part("none", {});
+  } else if (plan.prefix_in_install) {
+    plan.prefix = Part("follow", game.data_dir, "Inside the game's folder, so it moves with it");
+  } else if (steam_prefix) {
+    plan.prefix = Part("stay", game.data_dir, "Steam keeps it in its compatdata folder");
+  } else if (shared_prefix) {
+    plan.prefix = Part("stay", game.data_dir, "Shared with its launcher and its other games");
+  } else if (!move_prefix) {
+    plan.prefix = Part("in_place", game.data_dir);
+  } else {
+    const fs::path target =
+        request.data_dir
+            ? *request.data_dir
+            : PrefixInGameFolder(config, game)
+                  .value_or(NamedDir(config, game, PrefixRoot(config, game), game.data_dir));
+    if (fs::path(game.data_dir) == target) {
+      plan.prefix = Part("in_place", game.data_dir, "Already in Mira's folders");
+    } else {
+      plan.prefix = Move(game.data_dir, target);
+      if (plan.prefix.copies && !allow_copy) {
+        return Err(
+            "cross_device",
+            std::format("\"{}\" is on another drive and copying is turned off", target.string()),
+            "Turn on copying across drives, or pick a folder on the same drive.",
+            Fix::Setting("relocate.allow_copy"));
+      }
+    }
+  }
+  return plan;
+}
+
+Result<model::Game> Relocate(const config::Config& config, model::Game game,
+                             const RelocateRequest& request, std::span<const model::Game> library) {
+  const auto plan = PlanRelocate(config, game, request, library);
+  if (!plan) return std::unexpected(plan.error());
+  const std::string original_install = game.install_path;
+  const std::string original_data = game.data_dir;
+  game.exe_path = StoredExePath(game.install_path, game.exe_path);
+  const bool allow_copy = config.GetBool("relocate.allow_copy");
+
+  if (plan->files.action == "move") {
+    if (auto moved = MovePath(plan->files.from, plan->files.to, allow_copy); !moved)
+      return std::unexpected(moved.error());
+    game.install_path = plan->install_target;
+    if (plan->prefix_in_install && !plan->single_file)
+      game.data_dir = Rebase(original_data, original_install, plan->install_target);
+  }
+
+  if (plan->prefix.action == "move") {
+    if (auto moved = MovePath(plan->prefix.from, plan->prefix.to, allow_copy); !moved) {
       if (game.install_path == original_install) return std::unexpected(moved.error());
       // Put the install back, so the stored paths stay true.
-      const Result<void> undone = single_file
-                                      ? MovePath(fs::path(game.install_path) / game.exe_path,
-                                                 fs::path(original_install) / game.exe_path, true)
-                                      : MovePath(game.install_path, original_install, true);
+      const Result<void> undone = MovePath(plan->files.to, plan->files.from, true);
       if (undone) return std::unexpected(moved.error());
       // It stays moved, so the game is returned with the install where it now is.
       log::Warn(
           "couldn't move {}'s prefix ({}) or put its install back ({}); the install stays at {}",
           game.id, moved.error().message, undone.error().message, game.install_path);
     } else {
-      game.data_dir = prefix_target.string();
-      if (install_in_prefix)
-        game.install_path = Rebase(original_install, original_data, prefix_target);
+      game.data_dir = plan->prefix.to;
+      if (plan->install_in_prefix)
+        game.install_path = Rebase(original_install, original_data, plan->prefix.to);
     }
   }
 

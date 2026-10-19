@@ -322,16 +322,22 @@ Result<std::vector<DesktopEntryCandidate>> DesktopEntryScanner::ListCandidates()
     // No reason to list something already in the library as a candidate to
     // add again.
     if (FindImported(library, entry)) continue;
+    const std::string flatpak = entry.file.Get("X-Flatpak");
     candidates.push_back(DesktopEntryCandidate{
         .id = entry.id,
         .name = entry.file.Get("Name"),
         .icon = entry.file.Get("Icon"),
+        .command = flatpak.empty() ? entry.resolved.exe_path : flatpak,
+        .flatpak = !flatpak.empty(),
+        .app = !std::ranges::contains(strings::Split(entry.file.Get("Categories"), ';'),
+                                      std::string("Game")),
     });
   }
   return candidates;
 }
 
-Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std::string>& ids) {
+Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std::string>& ids,
+                                                           const std::vector<std::string>& apps) {
   if (!config_.GetBool("desktop_import.enabled")) {
     return Err("desktop_import_disabled", "desktop_import.enabled is off");
   }
@@ -363,6 +369,8 @@ Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
+    std::erase(game.tags, std::string("app"));
+    if (std::ranges::contains(apps, entry.id)) game.tags.push_back("app");
 
     auto result = games_.Merge(existing, game);
     if (!result) {

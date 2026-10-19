@@ -4,6 +4,7 @@
 #include <format>
 #include <limits>
 #include <map>
+#include <ranges>
 #include <set>
 
 #include "api/Http.h"
@@ -12,10 +13,13 @@
 #include "core/Command.h"
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/Strings.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "emulators/Emulators.h"
 #include "launchers/Launchers.h"
+#include "library/AutoInstall.h"
 #include "library/Catalog.h"
+#include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/Import.h"
 #include "library/Relocate.h"
@@ -221,7 +225,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
 
   // --- import ------------------------------------------------------------
 
-  http.Post("/v1/library/import/classify", [](const Request& req, Response& res) {
+  http.Post("/v1/library/import/classify", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape = R"({"path": "/absolute/path"})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
@@ -237,9 +241,49 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       return SendError(res, 404, "not_found", path + " doesn't exist");
     }
     const library::ImportGuess guess = library::ClassifyImport(path);
-    SendJson(res, json{{"kind", std::string(library::ImportKindName(guess.kind))},
-                       {"name", guess.name},
-                       {"reason", guess.reason}});
+    // The programs that could start it, best first: the folder's, scored as a scan would, or the
+    // file itself.
+    json programs = json::array();
+    if (std::filesystem::is_directory(path, ec)) {
+      const auto found =
+          library::Detector(library::SettingsFromConfig(s.config)).Detect(path).candidates;
+      for (const model::Candidate& candidate : found | std::views::take(8)) {
+        programs.push_back({{"path", candidate.rel_path},
+                            {"platform", std::string(model::ToString(candidate.kind))},
+                            {"installer", candidate.is_installer}});
+      }
+    } else {
+      const std::string ext = strings::ToLower(std::filesystem::path(path).extension().string());
+      const bool windows = ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd";
+      programs.push_back({{"path", std::filesystem::path(path).filename().string()},
+                          {"platform", windows ? "windows" : "native"},
+                          {"installer", ext == ".msi" || library::IsBuiltInstaller(path)}});
+    }
+    const bool installer = !programs.empty() && programs.front()["installer"].get<bool>();
+    json out{{"kind", std::string(library::ImportKindName(guess.kind))},
+             {"name", guess.name},
+             {"reason", guess.reason},
+             {"installer", installer}};
+    // What installing would be like, for a file (picked as an installer, whatever it looks like)
+    // or a folder led by an installer: there's no game yet to ask GET /v1/games/{id}/installer.
+    const bool folder = std::filesystem::is_directory(path, ec);
+    if (!programs.empty() && (!folder || installer)) {
+      model::Game probe;
+      probe.install_path = folder ? path : std::filesystem::path(path).parent_path().string();
+      probe.exe_path = programs.front()["path"].get<std::string>();
+      if (const auto info = library::DescribeInstaller(s.config, probe)) {
+        json targets = json::array();
+        for (const auto& target : info->targets)
+          targets.push_back({{"path", target.root.string()}, {"free_bytes", target.free_bytes}});
+        out["installer_info"] = {{"path", info->path.string()},
+                                 {"size_bytes", info->size_bytes},
+                                 {"format", library::ToString(info->format)},
+                                 {"silent", info->silent},
+                                 {"targets", std::move(targets)}};
+      }
+    }
+    out["programs"] = std::move(programs);
+    SendJson(res, out);
   });
 
   http.Post("/v1/library/import", [&s](const Request& req, Response& res) {
@@ -780,20 +824,26 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     if (!candidates) return SendError(res, 404, candidates.error());
     json out = json::array();
     for (const auto& c : *candidates)
-      out.push_back({{"id", c.id}, {"name", c.name}, {"icon", c.icon}});
+      out.push_back({{"id", c.id},
+                     {"name", c.name},
+                     {"icon", c.icon},
+                     {"command", c.command},
+                     {"flatpak", c.flatpak},
+                     {"app", c.app}});
     SendJson(res, std::move(out));
   });
 
   http.Post("/v1/desktop-entries/import", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"ids": ["..."]})";
+    constexpr std::string_view kShape = R"({"ids": ["..."], "apps"?: ["..."]})";
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const auto listed = body->contains("ids") ? StringList(*body, "ids") : std::nullopt;
-    if (!listed) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
-    const std::vector<std::string>& ids = *listed;
+    const auto apps = StringList(*body, "apps");
+    if (!listed || !apps)
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
 
     desktop::DesktopEntryScanner scanner(s.config, s.games, s.events);
-    auto summary = scanner.Import(ids);
+    auto summary = scanner.Import(*listed, *apps);
     if (!summary) return SendError(res, 404, summary.error());
     s.AfterImport(summary->added_games);
     SendJson(res, {{"added", summary->added}, {"updated", summary->updated}});

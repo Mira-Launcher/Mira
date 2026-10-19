@@ -49,6 +49,32 @@ bool RunsFromAppImage(const model::Game& game);
 // emulator). Moving and deleting the game leave that program where it is.
 bool RunsExternalProgram(const model::Game& game);
 
+// What a relocate does to one half of a game (its files or its prefix).
+struct RelocatePart {
+  // "move": `from` goes to `to`. "follow": it's inside the other half and moves with it.
+  // "stay": `reason` says why it stays. "in_place": already where it would go. "none": the game
+  // has no such path.
+  std::string action = "none";
+  std::string from;
+  std::string to;
+  std::string reason;
+  bool copies = false;  // to another disk: copied, then removed
+};
+
+struct RelocatePlan {
+  RelocatePart files;
+  RelocatePart prefix;
+  std::string install_target;  // the install folder after the move, when files move
+  bool single_file = false;    // only the AppImage moves, out of a shared folder
+  bool install_in_prefix = false;
+  bool prefix_in_install = false;
+};
+
+// What Relocate would do, checking every refusal it would hit, without moving anything.
+Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Game& game,
+                                  const RelocateRequest& request = {},
+                                  std::span<const model::Game> library = {});
+
 // When one folder is inside the other (a Lutris prefix that holds the
 // game), the outer one moves and the inner follows, unless the inner has
 // its own target. An install folder that also holds another game in
