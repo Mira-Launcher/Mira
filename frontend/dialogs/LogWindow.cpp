@@ -1,7 +1,6 @@
 #include "LogWindow.h"
 
 #include <QApplication>
-#include <QCheckBox>
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QDir>
@@ -11,6 +10,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
@@ -18,14 +19,18 @@
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
+#include <QWindow>
 #include <map>
 
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Logs.h"
+#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../window/FramelessRoot.h"
 
 namespace mira_gui {
 namespace {
@@ -37,6 +42,33 @@ std::map<QString, QPointer<LogWindow>>& Windows() {
   static std::map<QString, QPointer<LogWindow>> windows;
   return windows;
 }
+
+void ToggleMaximized(QWidget* window) {
+  window->isMaximized() ? window->showNormal() : window->showMaximized();
+}
+
+// The window's own title bar: dragging it moves the window, a double click maximizes it.
+class LogBar : public QWidget {
+ public:
+  explicit LogBar(QWidget* parent) : QWidget(parent) {
+    setObjectName("top_bar");
+    setAttribute(Qt::WA_StyledBackground);
+  }
+
+ protected:
+  void mousePressEvent(QMouseEvent* event) override {
+    if (event->button() == Qt::LeftButton && window()->windowHandle() != nullptr) {
+      window()->windowHandle()->startSystemMove();
+      event->accept();
+      return;
+    }
+    QWidget::mousePressEvent(event);
+  }
+  void mouseDoubleClickEvent(QMouseEvent* event) override {
+    ToggleMaximized(window());
+    event->accept();
+  }
+};
 
 }  // namespace
 
@@ -58,32 +90,70 @@ void LogWindow::Open(QWidget* parent, const QString& channel, const QString& tit
 }
 
 LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
-    : QWidget(parent, Qt::Window), channel_(std::move(channel)), title_(std::move(title)) {
+    : QWidget(parent, Qt::Window | Qt::FramelessWindowHint),
+      channel_(std::move(channel)),
+      title_(std::move(title)) {
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowTitle(title_ + " · Log");
   resize(860, 560);
   new QShortcut(QKeySequence(Qt::Key_Escape), this, this, &QWidget::close);
 
-  auto* root = new QVBoxLayout(this);
-  root->setContentsMargins(18, 14, 18, 12);
-  root->setSpacing(10);
+  auto* outer = new QVBoxLayout(this);
+  outer->setContentsMargins(0, 0, 0, 0);
+  auto* frame = new FramelessRoot(this);
+  // The window's edge, which a frameless window doesn't get from the system.
+  frame->setObjectName("log_frame");
+  frame->setAttribute(Qt::WA_StyledBackground);
+  outer->addWidget(frame);
+  auto* root = new QVBoxLayout(frame);
+  root->setContentsMargins(kResizeMargin, kResizeMargin, kResizeMargin, kResizeMargin);
+  root->setSpacing(0);
 
-  auto* head = new QHBoxLayout();
-  auto* name = new QLabel(title_, this);
-  name->setProperty("role", "heading");
-  head->addWidget(name);
-  state_ = new QLabel(this);
+  // Mira's own bar: what the log is and whether it's live, then the window's buttons.
+  auto* bar = new LogBar(frame);
+  bar->setCursor(Qt::ArrowCursor);
+  auto* bar_layout = new QHBoxLayout(bar);
+  bar_layout->setContentsMargins(12, 4, 6, 4);
+  bar_layout->setSpacing(10);
+  auto* badge = new QLabel("M", bar);
+  badge->setObjectName("brand_badge");
+  badge->setFixedSize(22, 22);
+  badge->setAlignment(Qt::AlignCenter);
+  bar_layout->addWidget(badge);
+  auto* name = new QLabel(title_, bar);
+  name->setObjectName("log_title");
+  bar_layout->addWidget(name);
+  state_ = new QLabel(bar);
   state_->setTextFormat(Qt::RichText);
-  head->addWidget(state_);
-  head->addStretch(1);
-  root->addLayout(head);
+  bar_layout->addWidget(state_);
+  bar_layout->addStretch(1);
+  const auto window_button = [bar, bar_layout](const QString& tooltip) {
+    auto* button = new QToolButton(bar);
+    button->setAutoRaise(true);
+    button->setToolTip(tooltip);
+    bar_layout->addWidget(button);
+    return button;
+  };
+  minimize_ = window_button("Minimize");
+  connect(minimize_, &QToolButton::clicked, this, &QWidget::showMinimized);
+  maximize_ = window_button("Maximize");
+  connect(maximize_, &QToolButton::clicked, this, [this] { ToggleMaximized(this); });
+  close_ = window_button("Close");
+  close_->setObjectName("close_button");
+  connect(close_, &QToolButton::clicked, this, &QWidget::close);
+  root->addWidget(bar);
 
+  auto* body = new QWidget(frame);
+  body->setCursor(Qt::ArrowCursor);
+  auto* body_layout = new QVBoxLayout(body);
+  body_layout->setContentsMargins(16, 10, 16, 8);
+  body_layout->setSpacing(8);
   auto* tools = new QHBoxLayout();
-  tools->setSpacing(8);
-  filter_ = new QLineEdit(this);
-  filter_->setPlaceholderText("Filter lines…");
+  tools->setSpacing(6);
+  filter_ = new QLineEdit(body);
+  filter_->setPlaceholderText("Filter");
   filter_->setClearButtonEnabled(true);
-  filter_->setMaximumWidth(260);
+  filter_->setMaximumWidth(240);
   // Each render redraws every kept line, so it waits for a pause in typing.
   auto* refilter = new QTimer(this);
   refilter->setSingleShot(true);
@@ -92,40 +162,53 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   connect(refilter, &QTimer::timeout, this, &LogWindow::Render);
   tools->addWidget(filter_);
   tools->addStretch(1);
-  follow_ = new QCheckBox("Follow", this);
+  const auto toggle = [body, tools](const QString& text, const QString& tooltip) {
+    auto* button = new QPushButton(text, body);
+    button->setObjectName("chip");
+    button->setCheckable(true);
+    button->setToolTip(tooltip);
+    tools->addWidget(button);
+    return button;
+  };
+  follow_ = toggle("Follow", "Keep the newest line in view");
   follow_->setChecked(true);
-  follow_->setToolTip("Keep the newest line in view");
-  tools->addWidget(follow_);
-  wrap_ = new QCheckBox("Wrap lines", this);
-  connect(wrap_, &QCheckBox::toggled, this, [this](bool on) {
+  wrap_ = toggle("Wrap", "Wrap long lines");
+  connect(wrap_, &QPushButton::toggled, this, [this](bool on) {
     view_->setLineWrapMode(on ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
   });
-  tools->addWidget(wrap_);
-  pause_ = new QPushButton("Pause", this);
-  connect(pause_, &QPushButton::clicked, this, [this] {
-    paused_ = !paused_;
-    pause_->setText(paused_ ? "Resume" : "Pause");
+  pause_ = toggle("Pause", "Stop reading new lines until it's switched off");
+  connect(pause_, &QPushButton::toggled, this, [this](bool on) {
+    paused_ = on;
     UpdateStatus();
     if (!paused_) Poll();
   });
-  tools->addWidget(pause_);
-  auto* copy = new QPushButton("Copy", this);
-  connect(copy, &QPushButton::clicked, this, [this] {
+  const auto tool = [body, tools](const QString& tooltip) {
+    auto* button = new QToolButton(body);
+    button->setAutoRaise(true);
+    button->setToolTip(tooltip);
+    tools->addWidget(button);
+    return button;
+  };
+  copy_ = tool("Copy the selection, or the whole log");
+  connect(copy_, &QToolButton::clicked, this, [this] {
     QString selected = view_->textCursor().selectedText();
     selected.replace(QChar(0x2029), '\n');
     QApplication::clipboard()->setText(selected.isEmpty() ? view_->toPlainText() : selected);
+    // A tick for a moment says it worked, without a notice.
+    copied_ = true;
+    ApplyIcons();
+    QTimer::singleShot(1500, copy_, [this] {
+      copied_ = false;
+      ApplyIcons();
+    });
   });
-  tools->addWidget(copy);
-  auto* save = new QPushButton("Save…", this);
-  connect(save, &QPushButton::clicked, this, &LogWindow::Save);
-  tools->addWidget(save);
-  auto* clear = new QPushButton("Clear", this);
-  clear->setToolTip("Empties this window; the log itself is untouched");
-  connect(clear, &QPushButton::clicked, this, &LogWindow::Clear);
-  tools->addWidget(clear);
-  root->addLayout(tools);
+  save_ = tool("Save to a file…");
+  connect(save_, &QToolButton::clicked, this, &LogWindow::Save);
+  clear_ = tool("Empty this window; the log itself is untouched");
+  connect(clear_, &QToolButton::clicked, this, &LogWindow::Clear);
+  body_layout->addLayout(tools);
 
-  view_ = new QPlainTextEdit(this);
+  view_ = new QPlainTextEdit(body);
   view_->setObjectName("log_view");
   view_->setReadOnly(true);
   view_->setLineWrapMode(QPlainTextEdit::NoWrap);
@@ -133,11 +216,17 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   QFont font("monospace");
   font.setStyleHint(QFont::Monospace);
   view_->setFont(font);
-  root->addWidget(view_, 1);
+  body_layout->addWidget(view_, 1);
 
-  count_ = new QLabel(this);
+  count_ = new QLabel(body);
   count_->setProperty("role", "subtle");
-  root->addWidget(count_);
+  body_layout->addWidget(count_);
+  root->addWidget(body, 1);
+  ApplyIcons();
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
+    ApplyIcons();
+    UpdateStatus();
+  });
 
   timer_ = new QTimer(this);
   connect(timer_, &QTimer::timeout, this, &LogWindow::Poll);
@@ -149,6 +238,23 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
 void LogWindow::closeEvent(QCloseEvent* event) {
   Windows().erase(channel_);
   QWidget::closeEvent(event);
+}
+
+void LogWindow::changeEvent(QEvent* event) {
+  if (event->type() == QEvent::WindowStateChange) ApplyIcons();
+  QWidget::changeEvent(event);
+}
+
+void LogWindow::ApplyIcons() {
+  using icons::Glyph;
+  minimize_->setIcon(icons::For(Glyph::Minimize));
+  maximize_->setIcon(icons::For(isMaximized() ? Glyph::Restore : Glyph::Maximize));
+  maximize_->setToolTip(isMaximized() ? "Restore" : "Maximize");
+  close_->setIcon(icons::For(Glyph::Close));
+  copy_->setIcon(copied_ ? icons::For(Glyph::CheckCircle, theme::Current().success)
+                         : icons::For(Glyph::Copy));
+  save_->setIcon(icons::For(Glyph::Download));
+  clear_->setIcon(icons::For(Glyph::Trash));
 }
 
 void LogWindow::Poll() {
@@ -174,18 +280,36 @@ void LogWindow::Poll() {
   });
 }
 
+bool LogWindow::Matches(const QString& line) const {
+  return filter_->text().isEmpty() || line.contains(filter_->text(), Qt::CaseInsensitive);
+}
+
+// All the kept lines, or how many of them the filter shows.
+void LogWindow::UpdateCount() {
+  const QLocale locale;
+  const QString total = locale.toString(static_cast<qlonglong>(lines_.size()));
+  count_->setText(filter_->text().isEmpty()
+                      ? QString("%1 lines").arg(total)
+                      : QString("%1 of %2 lines").arg(locale.toString(shown_), total));
+}
+
 void LogWindow::Add(const std::vector<std::string>& lines) {
   QScrollBar* bar = view_->verticalScrollBar();
   const bool at_end = bar->value() >= bar->maximum() - 4;
   for (const std::string& raw : lines) {
     QString line = QString::fromStdString(raw);
     lines_.push_back(line);
-    if (static_cast<int>(lines_.size()) > kKeepLines) lines_.pop_front();
-    if (filter_->text().isEmpty() || line.contains(filter_->text(), Qt::CaseInsensitive))
+    if (static_cast<int>(lines_.size()) > kKeepLines) {
+      if (Matches(lines_.front())) --shown_;
+      lines_.pop_front();
+    }
+    if (Matches(line)) {
+      ++shown_;
       AppendLine(line);
+    }
   }
   if (!lines.empty() && follow_->isChecked() && at_end) bar->setValue(bar->maximum());
-  count_->setText(QString("%1 lines").arg(lines_.size()));
+  UpdateCount();
 }
 
 void LogWindow::AppendLine(const QString& line) {
@@ -220,9 +344,7 @@ void LogWindow::RemoveLive() {
 
 void LogWindow::ShowLive(const QString& text) {
   live_ = text;
-  if (text.isEmpty() ||
-      (!filter_->text().isEmpty() && !text.contains(filter_->text(), Qt::CaseInsensitive)))
-    return;
+  if (text.isEmpty() || !Matches(text)) return;
   QScrollBar* bar = view_->verticalScrollBar();
   const bool at_end = bar->value() >= bar->maximum() - 4;
   AppendLine(text);
@@ -235,17 +357,21 @@ void LogWindow::Clear() {
   has_live_ = false;
   live_.clear();
   view_->clear();
-  count_->setText("0 lines");
+  shown_ = 0;
+  UpdateCount();
 }
 
 void LogWindow::Render() {
   view_->clear();
   has_live_ = false;
-  const QString needle = filter_->text();
+  shown_ = 0;
   for (const QString& line : lines_) {
-    if (needle.isEmpty() || line.contains(needle, Qt::CaseInsensitive)) AppendLine(line);
+    if (!Matches(line)) continue;
+    ++shown_;
+    AppendLine(line);
   }
   ShowLive(live_);
+  UpdateCount();
   view_->verticalScrollBar()->setValue(view_->verticalScrollBar()->maximum());
 }
 

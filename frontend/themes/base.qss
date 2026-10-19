@@ -1259,3 +1259,13 @@ QPlainTextEdit#log_view {
   border-radius: @radius_control;
   padding: 6px 8px;
 }
+
+/* dialogs/LogWindow: the task's name in the window's own bar. */
+QLabel#log_title {
+  font-weight: 600;
+}
+
+QWidget#log_frame {
+  background: @window;
+  border: 1px solid @border;
+}

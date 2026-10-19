@@ -9,17 +9,17 @@
 #include <string>
 #include <vector>
 
-class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QTimer;
+class QToolButton;
 
 namespace mira_gui {
 
-// A task's live log in a window of its own (GET /v1/logs/<channel>). One window
-// per channel: opening the same log again raises it, opening another task's
+// A task's live log in a window of its own (GET /v1/logs/<channel>), frameless with Mira's own
+// bar. One window per channel: opening the same log again raises it, opening another task's
 // opens a second window, so logs never mix.
 class LogWindow : public QWidget {
   Q_OBJECT
@@ -31,6 +31,7 @@ class LogWindow : public QWidget {
 
  protected:
   void closeEvent(QCloseEvent* event) override;
+  void changeEvent(QEvent* event) override;
 
  private:
   LogWindow(QWidget* parent, QString channel, QString title);
@@ -45,7 +46,10 @@ class LogWindow : public QWidget {
   void RemoveLive();
   void ShowLive(const QString& text);
   void UpdateStatus();
+  void UpdateCount();
+  bool Matches(const QString& line) const;
   void Save();
+  void ApplyIcons();
 
   QString channel_;
   QString title_;
@@ -54,8 +58,14 @@ class LogWindow : public QWidget {
   QLabel* count_ = nullptr;
   QLineEdit* filter_ = nullptr;
   QPushButton* pause_ = nullptr;
-  QCheckBox* wrap_ = nullptr;
-  QCheckBox* follow_ = nullptr;
+  QPushButton* wrap_ = nullptr;
+  QPushButton* follow_ = nullptr;
+  QToolButton* copy_ = nullptr;
+  QToolButton* save_ = nullptr;
+  QToolButton* clear_ = nullptr;
+  QToolButton* minimize_ = nullptr;
+  QToolButton* maximize_ = nullptr;
+  QToolButton* close_ = nullptr;
   QTimer* timer_ = nullptr;
 
   std::deque<QString> lines_;
@@ -64,6 +74,8 @@ class LogWindow : public QWidget {
   bool paused_ = false;
   bool polling_ = false;
   bool failed_ = false;
+  bool copied_ = false;
+  qlonglong shown_ = 0;  // kept lines the filter shows
   bool has_live_ = false;
   QString live_;
 };

@@ -113,6 +113,8 @@ The game menu's tools open cards over the library. *Run in prefix…* and *Winet
 
 *Game details…* (`game/GameDetailsCard`) is its own card, not part of the game settings card: the hero with the cover, name, status and Play, then the store's cached info (`GET /v1/games/{id}/metadata`) on the same translucent panel: a facts line (release, developers, genres, controller support, achievements, DLC count, and a *System requirements* link that opens them below), the description cut to a few lines with *More*, chips for reviews, ProtonDB and content descriptors, up to four screenshots fetched while the card shows (a click opens one large over the card, another click closes it), and the website. With nothing cached the card is the hero alone; refreshing is the menu's *Refresh metadata*.
 
+*View log…* is the one tool that keeps a window of its own (`dialogs/LogWindow`, one per log), so it can sit beside the game: frameless, with Mira's bar (the log's name, a Live, Paused or Not running dot, and the window's buttons; `FramelessRoot` gives it the same edge resizing as the main window), a Filter field, Follow, Wrap and Pause toggles, Copy, Save and Clear, and the line count below.
+
 Hovering a tile shows `library/HoverCard` with the name, status, runner, ProtonDB tier, developer and genres. Tooltips everywhere go through `widgets/ToolTip`, which draws them as the same card.
 
 ### Keyboard
