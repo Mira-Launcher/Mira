@@ -3,12 +3,12 @@
 #include <QBoxLayout>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QGridLayout>
 #include <QGuiApplication>
 #include <QHBoxLayout>
-#include <QKeyEvent>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPushButton>
 #include <QScreen>
 #include <QShowEvent>
@@ -16,66 +16,99 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
 namespace {
 
-constexpr int kWidth = 380;
-constexpr int kMargin = 20;
-constexpr int kStripe = 4;
+constexpr int kWidth = 420;
+constexpr int kIcon = 22;
+
+std::pair<icons::Glyph, icons::Role> LevelIcon(notify::Level level) {
+  switch (level) {
+    case notify::Level::Success:
+      return {icons::Glyph::CheckCircle, &theme::Tokens::success};
+    case notify::Level::Warning:
+      return {icons::Glyph::Warning, &theme::Tokens::warning};
+    case notify::Level::Error:
+      return {icons::Glyph::CircleX, &theme::Tokens::error};
+    case notify::Level::Info:
+      break;
+  }
+  return {icons::Glyph::Info, &theme::Tokens::info};
+}
+
+// Shown over its window only while that window is up; from the tray it needs a window of its own.
+QWidget* HostWindow(QWidget* parent) {
+  QWidget* window = parent != nullptr ? parent->window() : nullptr;
+  return window != nullptr && window->isVisible() && !window->isMinimized() ? window : nullptr;
+}
 
 }  // namespace
 
 PopupDialog::PopupDialog(QWidget* parent, notify::Level level, const QString& title)
-    : QDialog(parent), level_(level) {
-  // Frameless: no WM title bar. Translucent: paintEvent's rounded card
-  // shows through the square corners instead of a solid one behind it.
-  setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-  setAttribute(Qt::WA_TranslucentBackground);
+    : QDialog(HostWindow(parent) != nullptr ? HostWindow(parent) : parent) {
+  QWidget* host = HostWindow(parent);
+  overlay_ = host != nullptr;
   setModal(true);
-  setFixedWidth(kWidth);
+  if (overlay_) {
+    // A child laid over the whole window rather than a window of its own, so no window manager
+    // places, decorates or shadows it.
+    setWindowFlags(Qt::Widget);
+    setGeometry(host->rect());
+    host->installEventFilter(this);
+  } else {
+    // Translucent: the card's rounded corners show through instead of a square behind them.
+    setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    setAttribute(Qt::WA_TranslucentBackground);
+  }
 
-  auto* outer = new QVBoxLayout(this);
-  // Left inset wider: room for paintEvent's accent stripe, same language as
-  // ToastCard's border-left.
-  outer->setContentsMargins(kMargin + kStripe, kMargin, kMargin, kMargin);
-  outer->setSpacing(14);
+  auto* outer = new QGridLayout(this);
+  outer->setContentsMargins(overlay_ ? QMargins(24, 24, 24, 24) : QMargins());
+  card_ = new SettingsCard(QString(), this);
+  card_->setFixedWidth(kWidth);
+  outer->addWidget(card_, 0, 0, Qt::AlignCenter);
 
-  auto* heading_row = new QHBoxLayout();
-  auto* heading = new QLabel(title, this);
+  auto* icon = new QLabel(card_);
+  const auto [glyph, role] = LevelIcon(level);
+  icons::Follow(icon, glyph, kIcon, role);
+  card_->SetLeading(icon);
+  auto* heading = new QLabel(title, card_);
   heading->setProperty("role", "heading");
   heading->setWordWrap(true);
-  heading_row->addWidget(heading, /*stretch=*/1);
+  card_->SetTitleWidget(heading);
+  auto* close = new QToolButton(card_);
+  close->setAutoRaise(true);
+  icons::Follow(close, icons::Glyph::Close);
+  close->setToolTip("Close");
+  connect(close, &QToolButton::clicked, this, &QDialog::reject);
+  card_->Header()->addWidget(close, 0, Qt::AlignTop);
 
-  // Top-right X: the cancel/dismiss affordance a frameless dialog has no WM
-  // titlebar to supply one for. Same hand-drawn glyph as the top bar's own
-  // window controls, not a font character: nothing guarantees a fallback
-  // font has one.
-  close_button_ = new QToolButton(this);
-  close_button_->setAutoRaise(true);
-  icons::Follow(close_button_, icons::Glyph::Close);
-  close_button_->setCursor(Qt::PointingHandCursor);
-  connect(close_button_, &QToolButton::clicked, this, &QDialog::reject);
-  heading_row->addWidget(close_button_, 0, Qt::AlignTop);
-  outer->addLayout(heading_row);
-
-  body_ = new QVBoxLayout();
-  body_->setSpacing(8);
-  message_ = new QLabel(this);
+  // Lined up under the title, past the icon.
+  auto* body = new QWidget(card_);
+  body_ = new QVBoxLayout(body);
+  body_->setContentsMargins(18 + kIcon + 10, 0, 18, 6);
+  body_->setSpacing(6);
+  message_ = new QLabel(body);
   message_->setWordWrap(true);
   message_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  message_->hide();
   body_->addWidget(message_);
-  outer->addLayout(body_);
+  card_->AddRow(body);
 
-  buttons_ = new QHBoxLayout();
+  auto* buttons = new QWidget(card_);
+  buttons_ = new QHBoxLayout(buttons);
+  buttons_->setContentsMargins(18, 10, 18, 10);
+  buttons_->setSpacing(8);
   buttons_->addStretch(1);
-  outer->addLayout(buttons_);
+  card_->AddRow(buttons);
 }
 
 void PopupDialog::SetMessage(const QString& text) {
   message_->setText(text);
+  message_->setVisible(!text.isEmpty());
 }
 
 void PopupDialog::SetDetail(const QString& text) {
@@ -91,6 +124,10 @@ void PopupDialog::SetDetail(const QString& text) {
 
 void PopupDialog::AddWidget(QWidget* widget) {
   body_->addWidget(widget);
+}
+
+void PopupDialog::SetWidth(int width) {
+  card_->setFixedWidth(width);
 }
 
 void PopupDialog::SetAction(const QString& label, const QString& url) {
@@ -121,13 +158,26 @@ QPushButton* PopupDialog::AddButton(const QString& text, int result, bool defaul
   button->setAutoDefault(default_button);
   button->setDefault(default_button);
   connect(button, &QPushButton::clicked, this, [this, result] { done(result); });
-  // Before the trailing stretch, so buttons stack left-to-right.
-  buttons_->insertWidget(buttons_->count() - 1, button);
+  // After the stretch: rejecting buttons lead, the default one ends the row.
+  int at = buttons_->count();
+  if (result == QDialog::Rejected) {
+    at = 1;
+  } else if (last_ != nullptr) {
+    at = buttons_->indexOf(last_);
+  }
+  buttons_->insertWidget(at, button);
+  if (default_button) default_ = button;
+  if (default_button && result != QDialog::Rejected) last_ = button;
   return button;
 }
 
 void PopupDialog::showEvent(QShowEvent* event) {
   QDialog::showEvent(event);
+  if (overlay_) {
+    raise();
+    if (default_ != nullptr) default_->setFocus();
+    return;
+  }
   // Tall enough for the wrapped lines at this width; a dialog's own size hint ignores wrapping.
   if (layout()->hasHeightForWidth()) setFixedHeight(layout()->totalHeightForWidth(width()));
   // WM placement heuristics are tuned for decorated windows and place a
@@ -140,21 +190,25 @@ void PopupDialog::showEvent(QShowEvent* event) {
 }
 
 void PopupDialog::paintEvent(QPaintEvent*) {
-  const theme::Tokens& tokens = theme::Current();
+  if (!overlay_) return;
   QPainter painter(this);
-  painter.setRenderHint(QPainter::Antialiasing);
+  painter.fillRect(rect(), QColor(0, 0, 0, theme::Current().modal_scrim_alpha));
+}
 
-  QPainterPath card;
-  card.addRoundedRect(rect(), tokens.radius_panel, tokens.radius_panel);
-  painter.fillPath(card, tokens.surface);
-  painter.setPen(QPen(tokens.border, 1));
-  painter.drawPath(card);
+bool PopupDialog::eventFilter(QObject* watched, QEvent* event) {
+  if (overlay_ && watched == parentWidget() && event->type() == QEvent::Resize)
+    setGeometry(parentWidget()->rect());
+  return QDialog::eventFilter(watched, event);
+}
 
-  QPainterPath stripe;
-  stripe.addRoundedRect(QRectF(0, 0, kStripe * 2, height()), tokens.radius_panel,
-                        tokens.radius_panel);
-  painter.setClipPath(card);
-  painter.fillPath(stripe, notify::AccentFor(level_));
+// A click beside the card is a no, as a click outside any other modal is.
+void PopupDialog::mousePressEvent(QMouseEvent* event) {
+  if (overlay_ && event->button() == Qt::LeftButton &&
+      !card_->geometry().contains(event->position().toPoint())) {
+    reject();
+    return;
+  }
+  QDialog::mousePressEvent(event);
 }
 
 QPushButton* AddDialogButtons(QDialog* dialog, QBoxLayout* layout, const QString& action_text) {

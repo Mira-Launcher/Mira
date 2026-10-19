@@ -1858,6 +1858,17 @@ void LibraryWindow::CloseSidebarCard() {
   ShowNextCard();
 }
 
+bool LibraryWindow::ShowCard(QWidget* card) {
+  if (!LeaveOverlays()) return false;
+  ShowSidebarCard(card);
+  card->setFocus();
+  return true;
+}
+
+void LibraryWindow::CloseCard(QWidget* card) {
+  if (card == sidebar_card_) CloseSidebarCard();
+}
+
 bool LibraryWindow::SidebarCardOpen() const {
   return sidebar_card_overlay_ != nullptr && sidebar_card_overlay_->isVisible();
 }

@@ -210,6 +210,8 @@ Every field is optional; a missing one means the default. Values go through the 
 
 `app/Notify` handles every message. Failures (`Failed`, `FailedWithHint`, `FailedWithAction`, `Warn`) are persistent desktop notifications; confirmations (`Notice`) use the desktop's default timeout. Only questions (`Confirm`, `LeaveUnsaved`) and answers to a button (`Info`) are popups. Pages with their own status line, such as `RunnersPage` and `ArtPickerPanel`, report errors there.
 
+A popup (`widgets/PopupDialog`) is the same card as the window's other cards, laid over the window it was asked from with the rest dimmed: a level icon before the title, the message under it, and the buttons on the right, Cancel first and the action last. A destructive action is red and Cancel keeps the focus, so a stray Return never picks it. A click beside the card is a no. Asked while the window is hidden or minimized, it's a frameless window of its own. Other cards go through `widgets/WindowCards`: `cards::Show` puts a card in the library window's card overlay (`LibraryWindow` is a `CardHost`, so the sidebar stays bright beside it), or over any other window with that window dimmed; Esc or a click beside it closes it.
+
 Success that already shows on screen gets no message. A notice only goes out when nothing in the window would change, such as "No new Steam games found."
 
 Notifications use `org.freedesktop.Notifications` (`app/SystemNotifier`) with a `desktop-entry` hint of `mira`. `FailedWithAction` adds a button that raises the window and runs the action. Without a notification service, failures become popups and notices become cards in the window's corner.

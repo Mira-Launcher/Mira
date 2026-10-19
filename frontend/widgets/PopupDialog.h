@@ -14,10 +14,11 @@ class QPushButton;
 
 namespace mira_gui {
 
-// Themed QMessageBox replacement. A native QDialog gets WM decorations of
-// its own on top of a window that has none (LibraryWindow is frameless),
-// two window styles stacked, the "popup inside a popup" look. This draws
-// its own frameless, rounded, themed card instead.
+class SettingsCard;
+
+// Themed QMessageBox replacement: the same card as every other in-window card, over the window
+// it was asked from with the rest dimmed, so a question never looks like another program's
+// window. Asked with no window shown (Mira in the tray), it's a frameless window of its own.
 //
 // mira_gui::notify::Failed/Info/Confirm/… are built on this; construct it
 // directly only for a shape none of them cover.
@@ -36,7 +37,7 @@ class PopupDialog : public QDialog {
   // A widget of the caller's under the message and detail.
   void AddWidget(QWidget* widget);
   // Wider than a message needs, for a form.
-  void SetWidth(int width) { setFixedWidth(width); }
+  void SetWidth(int width);
 
   // Clickable link under the detail, for a popup that names where to go fix
   // the problem. Opens `url` in the desktop's browser.
@@ -45,9 +46,9 @@ class PopupDialog : public QDialog {
   // SetAction overload.
   void SetAction(const QString& label, std::function<void()> activated);
 
-  // First button added is Tab-order first, and the Enter-activated default
-  // unless a later one passes `default_button`. Closes the dialog on click;
-  // exec() then returns QDialog::Accepted or ::Rejected per `accept`.
+  // A button that closes the dialog; exec() then returns QDialog::Accepted or ::Rejected per
+  // `accept`. Buttons sit on the right, those that reject first, then the rest in the order
+  // added with the Enter-activated `default_button` last.
   QPushButton* AddButton(const QString& text, bool accept, bool default_button = false);
   // Same, but exec() returns `result` verbatim, for a caller with more than
   // two outcomes (see notify::LeaveUnsaved).
@@ -56,15 +57,19 @@ class PopupDialog : public QDialog {
  protected:
   void paintEvent(QPaintEvent* event) override;
   void showEvent(QShowEvent* event) override;
+  bool eventFilter(QObject* watched, QEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
 
  private:
+  bool overlay_ = false;  // over its window, rather than a window of its own
+  SettingsCard* card_ = nullptr;
   QVBoxLayout* body_ = nullptr;
   QHBoxLayout* buttons_ = nullptr;
   QLabel* message_ = nullptr;
   QLabel* detail_ = nullptr;
   QLabel* action_ = nullptr;
-  QToolButton* close_button_ = nullptr;
-  notify::Level level_;
+  QPushButton* default_ = nullptr;  // has the focus
+  QPushButton* last_ = nullptr;     // the default, unless it rejects: it ends the row
 };
 
 // Cancel plus an accept-role `action_text` button, added to `layout`; returns the action button.

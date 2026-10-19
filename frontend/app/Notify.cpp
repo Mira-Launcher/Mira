@@ -292,7 +292,7 @@ bool Confirm(QWidget* parent, const QString& title, const QString& question, con
   // never pick the dangerous answer.
   QPushButton* go = dialog.AddButton(accept, /*accept_role=*/true, !destructive);
   dialog.AddButton("Cancel", /*accept_role=*/false, destructive);
-  Q_UNUSED(go);
+  if (destructive) go->setProperty("tone", "danger");
   return dialog.exec() == QDialog::Accepted;
 }
 
