@@ -46,7 +46,7 @@ std::optional<std::filesystem::path> PrefixInGameFolder(const config::Config& co
 std::filesystem::path PrefixDir(const config::Config& config, const model::Game& game);
 // The same, also avoiding the data_dir of every other game in `games`: a prefix folder is only
 // created when the game is provisioned, so a new game must not pick one an unprovisioned game
-// already has.
+// already has. A removed game's kept prefix comes back to a game added under its id, saves and all.
 std::filesystem::path PrefixDir(const config::Config& config, const store::GameStore& games,
                                 const model::Game& game);
 

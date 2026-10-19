@@ -223,8 +223,12 @@ TEST_CASE("A recognised installer runs quietly into its prefix, logging as it go
 TEST_CASE("An installer that puts the game in its prefix moves the game there, renamed to match") {
   const fs::path state = test::TempDir("auto-install-into-prefix");
   test::LiveServer server(state);
-  const fs::path installed = state / "prefix" / "drive_c" / "Program Files" / "Celeste Classic";
-  AddWaitingGame(server, state / "setup_celeste_1.4",
+  // Offered for deleting only in a library root.
+  const fs::path root = state / "Games";
+  fs::create_directories(root);
+  REQUIRE(server.MutableConfig().Set("library_roots", nlohmann::json::array({root.string()})));
+  const fs::path installed = root / "prefix" / "drive_c" / "Program Files" / "Celeste Classic";
+  AddWaitingGame(server, root / "setup_celeste_1.4",
                  "mkdir -p '" + installed.string() + "'\nprintf game > '" + installed.string() +
                      "/Celeste.exe'\n");
   // Packed beside the installer, as a repack's checksum tool is: not what it installed.
@@ -241,10 +245,10 @@ TEST_CASE("An installer that puts the game in its prefix moves the game there, r
   CHECK(game->install_path == installed.string());
   CHECK(game->exe_path == "Celeste.exe");
   CHECK(game->name == "Celeste Classic");
-  CHECK(game->installer_dir == (state / "setup_celeste_1.4").string());
+  CHECK(game->installer_dir == (root / "setup_celeste_1.4").string());
   const auto leftover = test::WaitForEvent(server.events(), "game.installer_leftover");
   REQUIRE(leftover);
-  CHECK(leftover->payload["installer_dir"] == (state / "setup_celeste_1.4").string());
+  CHECK(leftover->payload["installer_dir"] == (root / "setup_celeste_1.4").string());
 }
 
 TEST_CASE("An installer that uses a publisher's folder moves the game to the game's own folder") {

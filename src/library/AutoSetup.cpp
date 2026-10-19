@@ -32,7 +32,7 @@ AutoSetup::AutoSetup(config::Config& config, store::GameStore& games, api::Event
 model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::Result& detected) {
   model::Game game;
   game.name = strings::CleanGameName(install_path.filename().string());
-  game.id = games_.NextId(game.name);
+  game.id = games_.NextId(game.name, install_path.string());
   game.install_path = install_path.string();
   game.confidence = detected.confidence;
   game.candidates = detected.candidates;
@@ -79,7 +79,7 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
 model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& appimage) {
   model::Game game;
   game.name = strings::CleanGameName(appimage.stem().string());
-  game.id = games_.NextId(game.name);
+  game.id = games_.NextId(game.name, root.string(), appimage.filename().string());
   game.install_path = root.string();
   game.exe_path = appimage.filename().string();
   game.platform = model::Platform::Native;

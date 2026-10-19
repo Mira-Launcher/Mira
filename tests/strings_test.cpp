@@ -89,3 +89,12 @@ TEST_CASE("ParseGithubUrl reads a repository or one release, and nothing else") 
   CHECK_FALSE(mira::strings::ParseGithubUrl("https://gitlab.com/me/AdobeWine"));
   CHECK_FALSE(mira::strings::ParseGithubUrl("https://github.com/me"));
 }
+
+TEST_CASE("EscapeUrl encodes what curl refuses and leaves a valid URL alone") {
+  using mira::strings::EscapeUrl;
+  CHECK(EscapeUrl("https://cdn.example/EGS_Game (1)_1200x1600") ==
+        "https://cdn.example/EGS_Game%20(1)_1200x1600");
+  CHECK(EscapeUrl("https://example.com/a%20b?x=1&y=2#top") ==
+        "https://example.com/a%20b?x=1&y=2#top");
+  CHECK(EscapeUrl("https://example.com/caf\xc3\xa9") == "https://example.com/caf%C3%A9");
+}

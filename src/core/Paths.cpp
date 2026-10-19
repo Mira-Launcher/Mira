@@ -70,6 +70,19 @@ std::filesystem::path Expand(std::string_view raw) {
   return out;
 }
 
+std::uintmax_t TreeBytes(const std::filesystem::path& root) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  if (fs::is_regular_file(root, ec)) return fs::file_size(root, ec);
+  std::uintmax_t total = 0;
+  for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    if (it->is_regular_file(ec)) total += it->file_size(ec);
+  }
+  return total;
+}
+
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,
               bool allow_equal) {
   std::error_code ec;

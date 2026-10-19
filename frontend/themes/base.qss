@@ -324,7 +324,9 @@ QPushButton:default:disabled {
   background: @surface_alt;
 }
 
-QPushButton#game_play[stop="true"] {
+/* A running game's Stop, and an action that deletes files, in the error color. */
+QPushButton#game_play[stop="true"],
+QPushButton[tone="danger"] {
   background: @error;
   border-color: @error;
   color: @on_accent;
@@ -334,6 +336,10 @@ QPushButton#game_play[stop="true"]:disabled {
   background: @surface_alt;
   border-color: @border;
   color: @text_muted;
+}
+
+QPushButton[tone="danger"]:hover {
+  border-color: @text;
 }
 
 /* Frameless tool buttons (autoRaise): back, close, fold, more, a row's grip

@@ -345,7 +345,9 @@ Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std
 
     const auto existing = FindImported(library, entry);  // only the picked entries
     model::Game game = existing.value_or(model::Game{});
-    game.id = existing ? game.id : games_.NextId(entry.file.Get("Name"));
+    game.id = existing ? game.id
+                       : games_.NextId(entry.file.Get("Name"), entry.resolved.install_path,
+                                       entry.resolved.exe_path);
     game.source = "desktop-entry";
     game.source_ref = entry.id;
     // The app already has its own menu entry; a Mira one would duplicate it.

@@ -44,11 +44,6 @@
 namespace mira_gui {
 namespace {
 
-QString HomeRelative(const QString& path) {
-  const QString home = QDir::homePath();
-  return path == home || path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
-}
-
 QString Json(const QStringList& items) {
   nlohmann::json list = nlohmann::json::array();
   for (const QString& item : items) list.push_back(item.toStdString());

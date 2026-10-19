@@ -13,10 +13,12 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Resolver.h"
+#include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
+#include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
 
@@ -274,6 +276,14 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     const bool purge = BoolParam(req, "purge");
     const auto flag = [&](const char* name) { return purge || BoolParam(req, name); };
+    if (flag("delete_files") && game->source == "steam") {
+      return s.StartJob(req, res, "delete", game->id, "Uninstalling " + game->name,
+                        [&s, game = *game](JobRegistry::Progress&) -> Result<json> {
+                          if (auto handed = s.UninstallThroughSteam(game); !handed)
+                            return std::unexpected(handed.error());
+                          return json{{"handed_to", "steam"}};
+                        });
+    }
     // Deleting files or a prefix can take minutes (a store's uninstaller, a big folder), so it's
     // a job rather than a request holding one of the server's threads.
     if (flag("delete_files") || flag("delete_prefix")) {
@@ -292,7 +302,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
                 !deleted) {
               return std::unexpected(deleted.error());
             }
-            if (auto removed = s.games.Remove(id); !removed)
+            if (auto removed = s.games.Remove(id, metadata); !removed)
               return std::unexpected(removed.error());
             folders_lock.unlock();
             s.SyncDesktopEntry(id);
@@ -312,7 +322,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
       return SendError(res, refused ? 409 : 500, deleted.error());
     }
 
-    auto result = s.games.Remove(req.matches[1]);
+    auto result = s.games.Remove(req.matches[1], flag("delete_metadata"));
     if (!result) return SendStoreError(res, result.error());
     s.SyncDesktopEntry(req.matches[1]);
     s.events.Publish("game.removed", {{"id", req.matches[1].str()}});
@@ -321,6 +331,59 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
+  // What removing each game can delete, for a client to show before asking.
+  http.Post("/v1/games/removal", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"ids": [...]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
+    if (!ids) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    const std::vector<model::Game> library = s.games.All();
+    json plans = json::array();
+    for (const std::string& id : *ids) {
+      const auto game = std::ranges::find(library, id, &model::Game::id);
+      if (game == library.end()) continue;
+      const library::GameRemoval plan = library::PlanGameRemoval(s.config, *game, library);
+      plans.push_back({{"id", plan.id},
+                       {"name", plan.name},
+                       {"kind", plan.kind},
+                       {"tool", plan.tool},
+                       {"files", plan.files},
+                       {"files_in_prefix", plan.files_in_prefix},
+                       {"folder_is_prefix", plan.folder_is_prefix},
+                       {"prefix", plan.prefix},
+                       {"prefix_shared_with", plan.prefix_shared_with}});
+    }
+    SendJson(res, plans);
+  });
+
+  // The sizes behind POST /v1/games/removal's plans, as a job, since big folders take a while.
+  http.Post("/v1/games/removal/sizes", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"ids": [...]})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto ids = StringList(*body, "ids");
+    if (!ids) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    s.StartJob(
+        req, res, "removal-sizes", "", "Measuring games",
+        [&s, ids = *ids](JobRegistry::Progress&) -> Result<json> {
+          const std::vector<model::Game> library = s.games.All();
+          json sizes = json::object();
+          for (const std::string& id : ids) {
+            const auto game = std::ranges::find(library, id, &model::Game::id);
+            if (game == library.end()) continue;
+            const library::GameRemoval plan = library::PlanGameRemoval(s.config, *game, library);
+            const std::uintmax_t files = paths::TreeBytes(plan.files);
+            std::uintmax_t prefix =
+                plan.prefix.empty() || plan.folder_is_prefix ? 0 : paths::TreeBytes(plan.prefix);
+            // A game installed inside its prefix: the rest of the prefix.
+            if (!plan.files_in_prefix.empty()) prefix -= std::min(prefix, files);
+            sizes[id] = {{"files", files}, {"prefix", prefix}};
+          }
+          return sizes;
+        });
+  });
+
   http.Post("/v1/games/delete", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape =
         R"({"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?})";
@@ -340,6 +403,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
         [&s, ids = *ids, files, prefix, metadata](JobRegistry::Progress& progress) -> Result<json> {
           std::vector<std::string> deletable;
           json failed = json::array();
+          json handed_to_steam = json::array();
           auto folders_lock = s.games.LockFolders();
           // Every game claimed first, so none can launch mid-delete. Games that share a folder and
           // are removed together don't keep it from each other; one that couldn't be claimed
@@ -361,6 +425,14 @@ void RegisterGameRoutes(Router& http, Services& s) {
             if (!claims.contains(id)) continue;
             const auto game = s.games.Find(id);
             if (!game) continue;
+            if (files && game->source == "steam") {
+              if (auto handed = s.UninstallThroughSteam(*game); !handed) {
+                failed.push_back(BatchFailure(id, handed.error()));
+              } else {
+                handed_to_steam.push_back(id);
+              }
+              continue;
+            }
             if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata);
                 !deleted) {
               failed.push_back(BatchFailure(id, deleted.error()));
@@ -368,14 +440,16 @@ void RegisterGameRoutes(Router& http, Services& s) {
             }
             deletable.push_back(id);
           }
-          auto removed = s.games.RemoveMany(deletable);
+          auto removed = s.games.RemoveMany(deletable, metadata);
           folders_lock.unlock();
           if (!removed) return std::unexpected(removed.error());
           if (!removed->empty()) {
             for (const std::string& removed_id : *removed) s.SyncDesktopEntry(removed_id);
             s.events.Publish("games.removed", {{"ids", *removed}});
           }
-          return json{{"removed", *removed}, {"failed", std::move(failed)}};
+          return json{{"removed", *removed},
+                      {"handed_to_steam", std::move(handed_to_steam)},
+                      {"failed", std::move(failed)}};
         });
   });
 
@@ -432,7 +506,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
                                               : install_path.filename().string();
     // Adding a known game again keeps its name and args unless the body sets them.
     game.name = b.value("name", existing ? game.name : strings::CleanGameName(default_name));
-    game.id = existing ? game.id : s.games.NextId(game.name);
+    game.id = existing ? game.id : s.games.NextId(game.name, install_path.string(), exe_path);
     game.source = "manual";
     game.install_path = install_path.string();
     game.exe_path = exe_path;

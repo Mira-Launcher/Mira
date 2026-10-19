@@ -1,5 +1,6 @@
 #include "Labels.h"
 
+#include <QDir>
 #include <QLabel>
 #include <QLocale>
 #include <QPainter>
@@ -8,6 +9,11 @@ namespace mira_gui {
 
 QString SizeText(qint64 bytes) {
   return QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeTraditionalFormat);
+}
+
+QString HomeRelative(const QString& path) {
+  const QString home = QDir::homePath();
+  return path == home || path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
 }
 
 QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role, bool wrap) {
@@ -67,7 +73,7 @@ void ElidedLabel::paintEvent(QPaintEvent*) {
   setToolTip(shown == text() ? QString() : text());
   QPainter painter(this);
   painter.setPen(palette().color(QPalette::WindowText));
-  painter.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter, shown);
+  painter.drawText(rect(), alignment(), shown);
 }
 
 QString StatusDot(const QColor& color) {

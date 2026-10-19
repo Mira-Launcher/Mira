@@ -1,23 +1,17 @@
 #include "UnclearMoveCard.h"
 
-#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
+#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {
 
 constexpr QSize kCover(32, 48);
-
-QString HomeRelative(const std::string& path) {
-  const QString text = QString::fromStdString(path);
-  const QString home = QDir::homePath();
-  return text.startsWith(home + "/") ? "~" + text.mid(home.size()) : text;
-}
 
 }  // namespace
 
@@ -26,7 +20,8 @@ UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel
     : SettingsCard(QString(), parent), folder_(move.folder) {
   setFixedWidth(560);
 
-  auto* title = new QLabel(QString("Which game is %1?").arg(HomeRelative(move.folder)), this);
+  auto* title = new QLabel(
+      QString("Which game is %1?").arg(HomeRelative(QString::fromStdString(move.folder))), this);
   title->setProperty("role", "heading");
   title->setWordWrap(true);
   SetTitleWidget(title);
@@ -36,7 +31,14 @@ UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel
     if (const GameSummary* game = library->Find(id)) {
       auto* cover = new QLabel(row);
       cover->setFixedSize(kCover);
-      cover->setPixmap(artwork->Cover(*game, kCover, devicePixelRatioF()));
+      const auto show_cover = [this, cover, artwork, game = *game] {
+        cover->setPixmap(artwork->Cover(game, kCover, devicePixelRatioF()));
+      };
+      show_cover();
+      connect(artwork, &ArtworkStore::CoverChanged, cover,
+              [show_cover, id = QString::fromStdString(game->id)](const QString& changed) {
+                if (changed == id) show_cover();
+              });
       row->AddAfterLabel(cover);
     }
     auto* pick = new QPushButton("This game", row);

@@ -772,11 +772,15 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (req.has_param("path")) game->exe_path = req.get_param_value("path");
     const auto info = library::DescribeInstaller(s.config, *game);
     if (!info) return SendError(res, 404, info.error());
+    json targets = json::array();
+    for (const auto& target : info->targets)
+      targets.push_back({{"path", target.root.string()}, {"free_bytes", target.free_bytes}});
     SendJson(res, {{"path", info->path.string()},
                    {"size_bytes", info->size_bytes},
                    {"format", library::ToString(info->format)},
                    {"silent", info->silent},
-                   {"silent_args", info->silent_args}});
+                   {"silent_args", info->silent_args},
+                   {"targets", targets}});
   });
 
   http.Get(R"(/v1/games/([^/]+)/install/progress)", [&s](const Request& req, Response& res) {
@@ -815,6 +819,21 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                                "Pick the installer again."});
       }
     }
+    std::optional<std::filesystem::path> target;
+    const std::vector<std::filesystem::path> roots = s.config.GetPathArray("library_roots");
+    if (!body.contains("target")) {
+      // A disc or a mounted image is full or read-only: the first root unless one is picked.
+      if (!roots.empty() && !paths::IsWithin(game->install_path, roots, /*allow_equal=*/true))
+        target = roots.front();
+    } else {
+      const auto it =
+          body["target"].is_string()
+              ? std::ranges::find(roots, paths::Expand(body["target"].get<std::string>()))
+              : roots.end();
+      if (it == roots.end())
+        return SendError(res, 400, "invalid_body", "target must be one of library_roots");
+      target = *it;
+    }
     const bool installable = game->status == model::GameStatus::NeedsInstall ||
                              (installer && game->status == model::GameStatus::Broken);
     if (!installable)
@@ -825,11 +844,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
 
     s.StartJob(
         req, res, "install", game->id, "Installing " + game->name,
-        [&s, id = game->id, interactive, installer](JobRegistry::Progress&) -> Result<json> {
+        [&s, id = game->id, interactive, installer,
+         target](JobRegistry::Progress&) -> Result<json> {
           if (auto done = library::RunInstall(
                   s.config, s.games, s.events, &s.fetches, id,
                   interactive ? library::InstallMode::kInteractive : library::InstallMode::kAuto,
-                  installer);
+                  installer, target);
               !done) {
             return std::unexpected(done.error());
           }
@@ -906,7 +926,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     // Its art and store info were looked up by the installer's name.
     if (moved) {
       s.fetches.EnqueueNew(s.config, s.events, *result);
-      library::AnnounceInstallerLeftover(s.events, *result);
+      library::AnnounceInstallerLeftover(s.config, s.events, *result);
     }
     SendJson(res, s.Record(*result));
     // Installed in its prefix: its link goes where its tags say.

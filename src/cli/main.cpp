@@ -598,7 +598,7 @@ int CmdAdd(int argc, char** argv) {
 int CmdInstall(int argc, char** argv) {
   if (argc < 1) {
     std::fprintf(stderr,
-                 "usage: mira install <id> [--interactive] [--installer PATH]\n"
+                 "usage: mira install <id> [--interactive] [--installer PATH] [--into ROOT]\n"
                  "       mira install <id> --info [--installer PATH]\n"
                  "       mira install <id> --progress\n");
     return 2;
@@ -608,10 +608,13 @@ int CmdInstall(int argc, char** argv) {
   bool info = false;
   bool progress = false;
   std::string installer;
+  std::string into;
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
     if (arg == "--interactive") {
       interactive = true;
+    } else if (arg == "--into" && i + 1 < argc) {
+      into = std::filesystem::absolute(argv[++i]).string();
     } else if (arg == "--info") {
       info = true;
     } else if (arg == "--progress") {
@@ -635,6 +638,7 @@ int CmdInstall(int argc, char** argv) {
   } else {
     json body = {{"interactive", interactive}};
     if (!installer.empty()) body["installer"] = installer;
+    if (!into.empty()) body["target"] = into;
     res =
         client.Post(std::format("/v1/games/{}/install", Seg(id)), body.dump(), "application/json");
   }
@@ -692,12 +696,15 @@ int CmdRemove(int argc, char** argv) {
     std::fprintf(
         stderr,
         "usage: mira remove <id> [--delete-files] [--delete-prefix] [--delete-metadata] [--purge]\n"
-        "  forgets the game; nothing on disk is touched unless you ask for it\n"
-        "  explicitly, and only paths that are really inside a configured root.\n"
-        "  --delete-files     removes the game's own install folder\n"
+        "  removes the game, keeping what you set on it for when it's added again;\n"
+        "  nothing on disk is touched unless you ask for it explicitly, and only\n"
+        "  paths that are really inside a configured root.\n"
+        "  --delete-files     removes the game's own install folder (a Steam game\n"
+        "                     opens Steam's own uninstall)\n"
         "  --delete-prefix    removes its Wine/Proton prefix; use --delete-files\n"
         "                     alone to remove the game but leave the prefix in place\n"
-        "  --delete-metadata  removes cached cover art / store info\n"
+        "  --delete-metadata  forgets it entirely: store info, picked art and what\n"
+        "                     you set on it\n"
         "  --purge            shorthand for all three of the above\n");
     return 2;
   }
@@ -731,7 +738,9 @@ int CmdRemove(int argc, char** argv) {
   // A job when it deletes files or a prefix; AwaitJob takes a plain reply as well.
   json result;
   if (!AwaitJob(client, client.Delete(path), result)) return 1;
-  std::puts("removed");
+  std::puts(result.value("handed_to", "") == "steam"
+                ? "opened Steam's uninstall; the game leaves Mira once Steam has removed it"
+                : "removed");
   return 0;
 }
 

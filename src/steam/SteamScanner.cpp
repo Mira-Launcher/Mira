@@ -86,10 +86,12 @@ Result<library::ImportSummary> SteamScanner::Scan() {
     auto result = games_.Merge(existing, game);
     if (!result) {
       log::Error("failed to save steam game {}: {}", id, result.error().message);
+      summary.listed.insert(id);  // still installed, only not saved
       continue;
     }
     library::RecordImported(summary, events_, game, existing.has_value());
   }
+  summary.lists_installed = true;
   return summary;
 }
 

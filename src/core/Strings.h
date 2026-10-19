@@ -45,4 +45,9 @@ std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_vi
 // "owner/name" from a GitHub link, or `text` itself when it isn't one.
 std::string GithubRepo(std::string_view text);
 
+// `url` with the characters a URL can't hold (spaces, quotes, non-ASCII) percent-encoded, so curl
+// sends it as written. Stores hand out such URLs as-is (Epic's art names have spaces); an existing
+// %xx is kept.
+std::string EscapeUrl(std::string_view url);
+
 }  // namespace mira::strings

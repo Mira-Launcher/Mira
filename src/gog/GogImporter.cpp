@@ -145,6 +145,7 @@ Result<library::ImportSummary> GogImporter::Import() {
     if (!found && !legacy_id) continue;
     const std::string id = found.value_or(folder);
     const bool existed = games_.Find("gog-" + id).has_value();
+    summary.listed.insert("gog-" + id);
 
     const Result<model::Game> imported = ImportPath(id, entry, /*refresh=*/false);
     if (!imported) {
@@ -158,6 +159,7 @@ Result<library::ImportSummary> GogImporter::Import() {
       summary.added_games.push_back(*imported);
     }
   }
+  summary.lists_installed = true;
   return summary;
 }
 

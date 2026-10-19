@@ -3,6 +3,7 @@
 #include <array>
 #include <format>
 #include <fstream>
+#include <set>
 #include <utility>
 
 #include "core/Log.h"
@@ -397,6 +398,29 @@ void MetadataStore::Remove(const std::string& id) {
   }
   std::error_code ec;
   fs::remove_all(ArtworkDir(id), ec);
+}
+
+void MetadataStore::KeepPicks(const std::string& id) {
+  const json info = Read(id);
+  json kept = json::object();
+  std::set<std::string> files;
+  for (const auto& [slot, key] : kSlots) {
+    if (!info.contains(key) || !info[key].is_object() || !info[key].value("chosen", false))
+      continue;
+    kept[key] = info[key];
+    if (const std::string name = FileName(info[key]); !name.empty()) files.insert(name);
+  }
+  if (kept.empty()) return Remove(id);
+  if (auto written = Write(id, kept); !written) {
+    log::Warn("could not trim {}'s metadata: {}", id, written.error().message);
+    return;
+  }
+  std::error_code ec;
+  std::vector<fs::path> dropped;
+  for (const fs::directory_entry& entry : fs::directory_iterator(ArtworkDir(id), ec)) {
+    if (!files.contains(entry.path().filename().string())) dropped.push_back(entry.path());
+  }
+  for (const fs::path& path : dropped) fs::remove_all(path, ec);
 }
 
 std::optional<MetadataStore::Art> MetadataStore::ArtFor(const std::string& id,

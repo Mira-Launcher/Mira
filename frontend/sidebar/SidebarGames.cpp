@@ -502,6 +502,11 @@ ShelfCover::ShelfCover(const GameSummary& game, ArtworkStore* artwork, const QSt
   setFlat(true);
   setAttribute(Qt::WA_Hover);
   setAccessibleName(name_);
+  // A sharp copy at this size can land without changing the row's ArtSignature, so nothing
+  // rebuilds the row for it.
+  connect(artwork, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
+    if (id == id_) update();
+  });
 }
 
 void ShelfCover::paintEvent(QPaintEvent*) {

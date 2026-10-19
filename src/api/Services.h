@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <filesystem>
 #include <functional>
@@ -183,10 +184,14 @@ class Services {
   Result<proc::ProcessSupervisor::Reservation> Claim(const std::string& game_id,
                                                      const std::string& purpose);
   // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed. `staying`
-  // are the games that remain afterwards: a folder one of them also uses isn't deleted. The
-  // caller holds the game's Claim.
+  // are the games that remain afterwards: a folder one of them also uses isn't deleted. Fetched
+  // info goes too, except a store game's (its Not installed entry shows it) and the art the user
+  // picked, unless `forget`. The caller holds the game's Claim.
   Result<void> DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
-                              bool files, bool prefix, bool metadata);
+                              bool files, bool prefix, bool forget);
+  // Opens Steam's own uninstall for a Steam game. The game stays until Steam has uninstalled it,
+  // then leaves the library keeping its record, as if a Steam import found it gone.
+  Result<void> UninstallThroughSteam(const model::Game& game);
   // Installs a runner build as a job, publishing runners.download.* as well.
   // With `replacing` ("kind:name"), games and the default using it move over.
   void InstallRunner(const httplib::Request& req, httplib::Response& res, const std::string& kind,
@@ -242,6 +247,13 @@ class Services {
   void MarkLeftRootsMissing();
   std::mutex roots_mutex_;
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
+
+  // Steam games handed to Steam's own uninstall, by id, with when to stop waiting for it.
+  std::mutex steam_uninstalls_mutex_;
+  std::map<std::string, std::chrono::steady_clock::time_point> steam_uninstalls_;
+  // Removes, keeping their records, the handed-over games Steam no longer has installed. True
+  // while any are still waited for.
+  bool CheckSteamUninstalls();
 
   std::mutex stop_mutex_;
   std::condition_variable stop_wake_;  // wakes WatchExternalGames as soon as `stopping` is set

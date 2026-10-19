@@ -75,7 +75,7 @@ mira set celeste --tag hidden
 `POST /v1/games/manual`. Adds a game from anywhere on disk. With `--installer` it is stored `needs_install`.
 
 ### `mira remove <id> [--delete-files] [--delete-prefix] [--delete-metadata] [--purge]`
-`DELETE /v1/games/{id}`. Without flags only the library entry is removed. `--purge` does all three deletes. Files are only deleted when they are inside a library root or `prefix_root`.
+`DELETE /v1/games/{id}`. Without flags only the library entry is removed, keeping what you set on the game for when it's added again. `--delete-files` on a Steam game opens Steam's own uninstall. `--delete-metadata` forgets the game entirely. `--purge` does all three. Files are only deleted when they are inside a library root or `prefix_root`.
 
 ### `mira relocate <id>` / `mira library relocate`
 `POST /v1/games/{id}/relocate` / `POST /v1/library/relocate`. Moves a game's files and prefix into Mira's layout, named per `prefix_naming`.
@@ -94,8 +94,8 @@ mira set my-game --exe MyGame.exe
 mira finish-install my-game
 ```
 
-### `mira install <id> [--interactive] [--installer PATH]`
-`POST /v1/games/{id}/install`. Runs a `needs_install` game's installer and marks it ready once the game executable is found. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for a `broken` game. `--info` shows the installer's path, size, format and silent arguments; `--progress` shows install progress.
+### `mira install <id> [--interactive] [--installer PATH] [--into ROOT]`
+`POST /v1/games/{id}/install`. Runs a `needs_install` game's installer and marks it ready once the game executable is found. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for a `broken` game. `--into` makes the game's prefix, where it installs, on that library root's disk, for an installer on a disc or mounted image (the first root when it's left out). `--info` shows the installer's path, size, format, silent arguments and the library roots it can install into; `--progress` shows install progress.
 
 ### `mira finish-install <id>`
 `POST /v1/games/{id}/finish-install`. Marks a `needs_install` or `broken` game ready once `exe_path` points at the installed game.

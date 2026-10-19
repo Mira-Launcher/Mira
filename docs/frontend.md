@@ -99,7 +99,7 @@ When a launched game turns out to have been an installer (`game.install_detected
 
 When a scan finds a folder that could be any of several games moved by hand (`library.move_unclear`, and `GET /v1/library/unclear` on every connect), `game/UnclearMoveCard` asks in the same overlay which game it is ("Which game is ~/Games/Copied?", with each game's cover), or *It's a new game*; *Ask again later* leaves it waiting in mirad. `library.move_settled` (settled by another client, or the folder gone) takes the card away, shown or queued.
 
-Two more cards share that overlay (`game/InstallerCards`). `InstallerCard` runs a game's installer: the file found (*Change…* picks another), then *Not now*, *Install quietly* when the format allows, and *Show the installer*. It opens from *Install…* and double-clicking a game that needs installing, and on its own when a new installer is found (`game.added` with `needs_install`), unless the scan already runs it (`auto_install`). `InstallerLeftoverCard` follows `game.installer_leftover`: the folder and its size, *Keep* (the default) or *Delete* (`DELETE /v1/games/{id}/installer`). Every such card waits its turn in one queue (`LibraryWindow::QueueCard`) and never covers Settings, a game's card or another card.
+Two more cards share that overlay (`game/InstallerCards`). `InstallerCard` runs a game's installer: the file found (*Change…* picks another), *Install onto* (a library root with its free space) when the installer sits outside them, as on a disc or mounted image, then *Not now*, *Install quietly* when the format allows, and *Show the installer*. The installer is read before the card shows, so it never grows a row. It is the only installer surface on the desktop: it opens from *Install…*, double-clicking a game that needs installing, an install error's *Install…* fix, and on its own when a new installer is found (`game.added` with `needs_install`), unless the scan already runs it (`auto_install`). `InstallerLeftoverCard` follows `game.installer_leftover`: the folder and its size, *Keep* (the default) or *Delete* (`DELETE /v1/games/{id}/installer`). Every such card waits its turn in one queue (`LibraryWindow::QueueCard`) and never covers Settings, a game's card or another card.
 
 Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for each one's `job.finished` or `job.failed` on the shared event connection, and after a reconnect asks `GET /v1/jobs/{id}` about any it was still waiting on, so the `client/api` calls that start them still hand their caller one result.
 
@@ -244,7 +244,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 |---|---|
 | `GET /v1/health` | Online/Offline badge |
 | `GET /v1/games`, `GET`/`PATCH /v1/games/{id}` | Library views, `game/GameEditForm` |
-| `DELETE /v1/games/{id}` | `DeleteGameDialog` |
+| `POST /v1/games/removal`, `/removal/sizes`, `/delete` | `game/RemoveGamesCard`, `actions::RemoveGames`, big screen's Uninstall |
 | `GET`/`PATCH /v1/games/{id}/config` | `OverridesEditor` |
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
 | `POST /v1/games/manual` | `AddManualGameDialog` |

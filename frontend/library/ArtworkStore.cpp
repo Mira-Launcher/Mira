@@ -63,8 +63,12 @@ template <typename Image>
 Image FitAnyToTile(const Image& source, QSize tile, qreal device_pixel_ratio, int radius,
                    bool quick = false) {
   const QSize target = tile * device_pixel_ratio;
-  const Image filled = source.scaled(target, Qt::KeepAspectRatioByExpanding,
-                                     quick ? Qt::FastTransformation : Qt::SmoothTransformation);
+  // A copy fitted earlier carries its scale, which scaled() keeps and drawing at a point honours:
+  // it would land in the top-left at 1/scale of the tile.
+  Image plain = source;
+  plain.setDevicePixelRatio(1);
+  const Image filled = plain.scaled(target, Qt::KeepAspectRatioByExpanding,
+                                    quick ? Qt::FastTransformation : Qt::SmoothTransformation);
 
   Image out;
   if constexpr (std::is_same_v<Image, QImage>) {
@@ -93,6 +97,16 @@ Image FitAnyToTile(const Image& source, QSize tile, qreal device_pixel_ratio, in
   }
   out.setDevicePixelRatio(device_pixel_ratio);
   return out;
+}
+
+// "id@120x180@2.5": a copy is only right for its own tile shape and screen scale, which differ
+// between windows on two screens.
+QString ScaledKey(const QString& id, QSize tile, qreal device_pixel_ratio) {
+  return QString("%1@%2x%3@%4")
+      .arg(id)
+      .arg(tile.width())
+      .arg(tile.height())
+      .arg(device_pixel_ratio);
 }
 
 QPixmap FitToTile(const QPixmap& source, QSize tile, qreal device_pixel_ratio, bool quick = false) {
@@ -203,9 +217,9 @@ void ArtworkStore::Keep(const QSet<QString>& ids) {
 }
 
 void ArtworkStore::ForgetWidth(int width) {
-  const QString suffix = '@' + QString::number(width);
+  const QString size = QString::number(width) + 'x';
   for (auto it = scaled_.begin(); it != scaled_.end();) {
-    if (it.key().endsWith(suffix)) {
+    if (it.key().section('@', 1, 1).startsWith(size)) {
       it = scaled_.erase(it);
     } else {
       ++it;
@@ -260,12 +274,20 @@ QPixmap ArtworkStore::CoverById(const QString& id, const QString& name, QSize ti
 
 QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
                            qreal device_pixel_ratio, const QString& source) {
-  const QString scaled_key = id + '@' + QString::number(tile.width());
+  const QString scaled_key = ScaledKey(id, tile, device_pixel_ratio);
   Touch(id);
   // Before the cached copy, which may be a placeholder drawn for a request since dropped.
   if (!answered_.contains(id)) {
-    // Drawn at this size as soon as it lands.
-    if (!quick_ && !queued_.contains(id)) wanted_[id] = {{tile, device_pixel_ratio}};
+    // Drawn at this size as soon as it lands, also when asked already without a size (the
+    // sidebar's Keep, a CoverColor), which would otherwise take a second fetch for it.
+    if (!quick_) {
+      QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
+      if (!queued_.contains(id)) {
+        sizes = {{tile, device_pixel_ratio}};
+      } else if (!sizes.contains(std::pair{tile, device_pixel_ratio})) {
+        sizes.append({tile, device_pixel_ratio});
+      }
+    }
     Request(id);
   }
   if (const auto cached = scaled_.constFind(scaled_key); cached != scaled_.constEnd())
@@ -315,7 +337,7 @@ void ArtworkStore::Refetch(const QString& id, QSize tile, qreal device_pixel_rat
 }
 
 void ArtworkStore::PrefetchCover(const QString& id, QSize tile, qreal device_pixel_ratio) {
-  if (!thumbs_.contains(id) || scaled_.contains(id + '@' + QString::number(tile.width()))) return;
+  if (!thumbs_.contains(id) || scaled_.contains(ScaledKey(id, tile, device_pixel_ratio))) return;
   Refetch(id, tile, device_pixel_ratio);
 }
 
@@ -372,7 +394,7 @@ void ArtworkStore::PrefetchTitle(const QString& source, const QString& ref, QSiz
   if (quick_ || queued_.contains(id)) return;
   const bool held = thumbs_.contains(id);
   // A placeholder is cached too, so only an answered title's copy counts.
-  if (answered_.contains(id) && scaled_.contains(id + '@' + QString::number(tile.width()))) return;
+  if (answered_.contains(id) && scaled_.contains(ScaledKey(id, tile, device_pixel_ratio))) return;
   if (answered_.contains(id) && !held) return;  // it has none
   wanted_[id] = {{tile, device_pixel_ratio}};
   if (held) refetching_.insert(id);
@@ -652,12 +674,12 @@ void ArtworkStore::Pump() {
             const auto& [tile, dpr] = size;
             const qsizetype fitted = sizes.indexOf(size);
             if (fitted >= 0 && fitted < static_cast<qsizetype>(decoded.fitted.size())) {
-              KeepScaled(id + '@' + QString::number(tile.width()),
+              KeepScaled(ScaledKey(id, tile, dpr),
                          QPixmap::fromImage(std::move(decoded.fitted[fitted])));
             } else if (decoded.reduced) {
               missing.append(size);  // asked for after the fetch began: too small here
             } else {
-              KeepScaled(id + '@' + QString::number(tile.width()), FitToTile(full, tile, dpr));
+              KeepScaled(ScaledKey(id, tile, dpr), FitToTile(full, tile, dpr));
             }
           }
         }

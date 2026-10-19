@@ -42,6 +42,9 @@ class SettingRow : public QWidget {
 
   // Right-aligned, in the order added.
   void AddControl(QWidget* control, int stretch = 0);
+  // A control that takes all the width the label leaves, e.g. a line of its own text, placed
+  // right after the label.
+  void AddWideControl(QWidget* control);
   // Full width under the label, e.g. a folder list.
   void SetBelow(QWidget* widget);
   // Widgets placed between the label and the controls, e.g. a source's kind tag.

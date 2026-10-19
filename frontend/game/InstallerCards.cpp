@@ -1,5 +1,6 @@
 #include "InstallerCards.h"
 
+#include <QComboBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -77,14 +78,15 @@ QString FormatName(const std::string& format) {
 
 }  // namespace
 
-InstallerCard::InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWidget* parent)
+InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult& info,
+                             ArtworkStore* artwork, QWidget* parent)
     : SettingsCard(QString(), parent), game_id_(game.id), install_path_(game.install_path) {
   setFixedWidth(560);
   BuildHeader(this, game, "Install " + QString::fromStdString(game.name) + "?", artwork, "Not now",
               [this] { emit CloseRequested(); });
 
   auto* installer = new SettingRow("Installer", QString(), this);
-  file_ = new QLabel("Reading the installer…", installer);
+  file_ = new QLabel(installer);
   file_->setWordWrap(true);
   file_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   installer->SetBelow(file_);
@@ -98,6 +100,19 @@ InstallerCard::InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWi
   });
   installer->AddControl(change);
   AddRow(installer);
+  // A disc or mounted image is full or read-only: the game's prefix goes on a library root's disk.
+  if (!info.targets.empty()) {
+    auto* row = new SettingRow("Install onto", QString(), this);
+    target_ = new QComboBox(row);
+    for (const InstallerInfoResult::Target& target : info.targets) {
+      target_->addItem(
+          QString("%1  ·  %2 free")
+              .arg(HomeRelative(QString::fromStdString(target.path)), SizeText(target.free_bytes)),
+          QString::fromStdString(target.path));
+    }
+    row->AddControl(target_);
+    AddRow(row);
+  }
   error_ = ErrorLine(this);
 
   QHBoxLayout* buttons = ButtonRow(this);
@@ -117,7 +132,7 @@ InstallerCard::InstallerCard(const GameSummary& game, ArtworkStore* artwork, QWi
   connect(shown_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/true); });
   buttons->addWidget(shown_);
 
-  LoadInfo(std::string());
+  ShowInfo(info, std::string());
 }
 
 void InstallerCard::LoadInfo(const std::string& path) {
@@ -126,43 +141,49 @@ void InstallerCard::LoadInfo(const std::string& path) {
   error_->hide();
   const int request = ++info_request_;
   api::GetInstallerInfoAsync(this, game_id_, path, [this, path, request](InstallerInfoResult info) {
-    if (request != info_request_) return;
-    if (!info.ok) {
-      // The last pick that loaded stays, if any did.
-      const bool loaded = !file_->text().isEmpty();
-      shown_->setEnabled(loaded);
-      quiet_->setVisible(loaded && silent_);
-      error_->setText("Could not read the installer: " + error_help::Describe(info.error));
-      error_->show();
-      return;
-    }
-    installer_ = path;
-    QStringList parts{QFileInfo(QString::fromStdString(info.path)).fileName(),
-                      SizeText(info.size_bytes)};
-    if (const QString format = FormatName(info.format); !format.isEmpty()) parts << format;
-    file_->setText(parts.join("  ·  "));
-    file_->setToolTip(QString::fromStdString(info.path));
-    silent_ = info.silent;
-    quiet_->setVisible(info.silent);
-    (info.silent ? quiet_ : shown_)->setDefault(true);
-    shown_->setEnabled(true);
+    if (request == info_request_) ShowInfo(info, path);
   });
+}
+
+void InstallerCard::ShowInfo(const InstallerInfoResult& info, const std::string& path) {
+  if (!info.ok) {
+    // The last pick that loaded stays, if any did.
+    const bool loaded = !file_->text().isEmpty();
+    shown_->setEnabled(loaded);
+    quiet_->setVisible(loaded && silent_);
+    error_->setText("Could not read the installer: " + error_help::Describe(info.error));
+    error_->show();
+    return;
+  }
+  installer_ = path;
+  QStringList parts{QFileInfo(QString::fromStdString(info.path)).fileName(),
+                    SizeText(info.size_bytes)};
+  if (const QString format = FormatName(info.format); !format.isEmpty()) parts << format;
+  file_->setText(parts.join("  ·  "));
+  file_->setToolTip(QString::fromStdString(info.path));
+  silent_ = info.silent;
+  quiet_->setVisible(info.silent);
+  (info.silent ? quiet_ : shown_)->setDefault(true);
+  shown_->setEnabled(true);
 }
 
 void InstallerCard::Install(bool interactive) {
   shown_->setEnabled(false);
   quiet_->setEnabled(false);
   error_->hide();
-  api::InstallGameAsync(this, game_id_, interactive, installer_, [this](GameActionResult result) {
-    if (result.ok) {
-      emit Started();
-      return;
-    }
-    shown_->setEnabled(true);
-    quiet_->setEnabled(true);
-    error_->setText("Could not start the install: " + error_help::Describe(result.error));
-    error_->show();
-  });
+  const std::string target =
+      target_ != nullptr ? target_->currentData().toString().toStdString() : std::string();
+  api::InstallGameAsync(
+      this, game_id_, interactive, installer_, target, [this](GameActionResult result) {
+        if (result.ok) {
+          emit Started();
+          return;
+        }
+        shown_->setEnabled(true);
+        quiet_->setEnabled(true);
+        error_->setText("Could not start the install: " + error_help::Describe(result.error));
+        error_->show();
+      });
 }
 
 InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,

@@ -26,7 +26,7 @@ TEST_CASE("An error's fix button opens the place that fixes it, and none appears
     return source == "gog" ? QString("GOG") : QString();
   };
   nav.view_log = [&](const std::string& id) { opened = "log " + id; };
-  nav.install_shown = [&](const std::string& id) { opened = "installer " + id; };
+  nav.install = [&](const std::string& id) { opened = "installer " + id; };
   nav.open_game_settings = [&](const std::string& id) { opened = "game " + id; };
   error_help::SetNavigator(nav);
 

@@ -96,6 +96,7 @@ std::filesystem::path PrefixDir(const config::Config& config, const model::Game&
 
 std::filesystem::path PrefixDir(const config::Config& config, const store::GameStore& games,
                                 const model::Game& game) {
+  if (const std::string kept = games.KeptDataDir(game.id); !kept.empty()) return kept;
   if (auto own = PrefixInGameFolder(config, game)) return *own;
   std::set<std::filesystem::path> taken;
   for (const model::Game& other : games.All()) {

@@ -216,6 +216,12 @@ void SettingRow::AddControl(QWidget* control, int stretch) {
   line_->addWidget(control, stretch, Qt::AlignVCenter);
 }
 
+void SettingRow::AddWideControl(QWidget* control) {
+  // Before the revert button, whose kept space would indent it past the other rows' labels.
+  line_->insertWidget(label_end_++, control, 1, Qt::AlignVCenter);
+  line_->setStretch(label_end_, 0);  // the spacer between the label and the controls
+}
+
 void SettingRow::SetLeading(QWidget* widget) {
   line_->insertWidget(line_->indexOf(label_), widget, 0, Qt::AlignVCenter);
   ++label_end_;

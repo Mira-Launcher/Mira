@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -38,6 +39,9 @@ std::filesystem::path Expand(std::string_view raw);
 // itself only counts with `allow_equal`. Empty roots never match.
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,
               bool allow_equal = false);
+
+// The bytes of every file under `root`, or of `root` itself when it's a file; 0 when it's gone.
+std::uintmax_t TreeBytes(const std::filesystem::path& root);
 
 // The entries directly under `dir`, or none when it can't be read. Unlike a
 // range-for over directory_iterator this never throws, even if the folder
