@@ -178,8 +178,8 @@ def covers(ctx, meta):
         for game_id in ids:
             status, data = ctx.client.request("GET", f"/v1/games/{game_id}/artwork?type=cover", raw=True)
             check(status == 200 and data[:3] == b"\xff\xd8\xff", f"{game_id}'s cover isn't the JPEG it was given")
-    with ctx.measure("200 covers", repeats=1):
-        fetch_all()
+    # One pass is tens of ms, so a single hiccup moved it by 30%: the median of several holds.
+    ctx.repeat("200 covers", 7, fetch_all)
 
 
 @scenario("rescan")

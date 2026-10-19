@@ -150,8 +150,11 @@ void Server::RegisterRoutes() {
     }
     return false;
   });
-  RegisterConfigRoutes(router, s_);
+  // httplib tries each pattern in order, so the most requested go first: art for every tile
+  // shown, then the games and job polls. No pattern of one area matches another's paths.
+  RegisterMetadataRoutes(router, s_);
   RegisterGameRoutes(router, s_);
+  RegisterConfigRoutes(router, s_);
   RegisterLaunchRoutes(router, s_);
   RegisterLibraryRoutes(router, s_);
   RegisterTagsRoutes(router, s_);
@@ -161,7 +164,6 @@ void Server::RegisterRoutes() {
   RegisterEmulatorRoutes(router, s_);
   RegisterModManagerRoutes(router, s_);
   RegisterUpdateRoutes(router, s_);
-  RegisterMetadataRoutes(router, s_);
   RegisterRunnerRoutes(router, s_);
   RegisterEventRoutes(router, s_);
   RegisterLogRoutes(router, s_);
