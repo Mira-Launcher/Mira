@@ -50,8 +50,9 @@ void GetDesktopEntryCandidatesAsync(QObject* context,
                                     std::function<void(DesktopEntryCandidatesResult)> callback);
 
 // POST /v1/desktop-entries/import. `ids` are candidate ids as returned by
-// GetDesktopEntryCandidatesAsync.
+// GetDesktopEntryCandidatesAsync; those also in `apps` are tagged app.
 void ImportDesktopEntriesAsync(QObject* context, const std::vector<std::string>& ids,
+                               const std::vector<std::string>& apps,
                                std::function<void(DesktopEntryImportResult)> callback);
 
 // POST /v1/desktop-entries/sync: regenerates Mira's own desktop entries

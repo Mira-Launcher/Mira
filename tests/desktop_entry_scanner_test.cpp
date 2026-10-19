@@ -93,6 +93,7 @@ TEST_CASE(
   test::Touch(fx.apps_dir / "native-game.desktop", std::format("[Desktop Entry]\n"
                                                                "Type=Application\n"
                                                                "Name=Native Game\n"
+                                                               "Categories=Game;ActionGame;\n"
                                                                "Exec=\"{}/game\" --fullscreen\n",
                                                                native_dir.string()));
 
@@ -140,10 +141,16 @@ TEST_CASE(
       found_flatpak = true;
       CHECK(c.name == "Example App");
       CHECK(c.icon == "com.example.App");
+      CHECK(c.flatpak);
+      CHECK(c.command == "com.example.App");
+      CHECK(c.app);  // no Game category
     }
     if (c.id == "native-game") {
       found_native = true;
       CHECK(c.name == "Native Game");
+      CHECK_FALSE(c.flatpak);
+      CHECK(c.command == (native_dir / "game").string());
+      CHECK_FALSE(c.app);
     }
   }
   CHECK(found_flatpak);
@@ -197,11 +204,15 @@ TEST_CASE(
   CHECK(first->added_games[0].args == "--fullscreen");
   CHECK(first->added_games[0].install_path == exe_dir.string());
 
-  auto second = scanner.Import({"native-game"});
+  CHECK_FALSE(std::ranges::contains(first->added_games[0].tags, std::string("app")));
+
+  // Picked as an app the second time, it's tagged one.
+  auto second = scanner.Import({"native-game"}, {"native-game"});
   REQUIRE(second.has_value());
   CHECK(second->added == 0);
   CHECK(second->updated == 1);
-  CHECK(fx.games.All().size() == 1);
+  REQUIRE(fx.games.All().size() == 1);
+  CHECK(std::ranges::contains(fx.games.All()[0].tags, std::string("app")));
 }
 
 TEST_CASE(

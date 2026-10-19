@@ -2,7 +2,6 @@
 
 #include <QAbstractScrollArea>
 #include <QApplication>
-#include <QMainWindow>
 #include <QMouseEvent>
 #include <QWindow>
 
@@ -20,7 +19,7 @@ Qt::Edges EdgesAt(const QSize& size, const QPoint& pos) {
 
 }  // namespace
 
-FramelessRoot::FramelessRoot(QMainWindow* window) : window_(window) {
+FramelessRoot::FramelessRoot(QWidget* window) : window_(window) {
   setMouseTracking(true);
 }
 

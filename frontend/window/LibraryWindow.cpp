@@ -54,14 +54,15 @@
 #include "../client/api/Hidden.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
-#include "../dialogs/GameDetailPageDialog.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/GameCard.h"
+#include "../game/GameDetailsCard.h"
 #include "../game/InstallPromptCard.h"
 #include "../game/InstallerCards.h"
 #include "../game/RemoveGamesCard.h"
 #include "../game/UnclearDropCard.h"
 #include "../game/UnclearMoveCard.h"
+#include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
@@ -90,7 +91,7 @@
 #include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TileView.h"
-#include "AboutPanel.h"
+#include "AboutCard.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
 
@@ -306,20 +307,22 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
 void LibraryWindow::BuildShortcuts() {
   common_ = mira_gui::shortcuts::Install(
-      this, {
-                {"Ctrl+F", "Focus the search box", "focus_search"},
-                {"Esc", "Clear the search, then the selection", "clear_or_deselect"},
-                {"Ctrl+1…9", "Pick a filter"},
-                {"Ctrl+H", "Show only hidden games, or leave hidden mode", "toggle_hidden"},
-                {"F5, Ctrl+R", "Refresh the library", "refresh"},
-                {"Enter", "Play the selected game, or stop it while it runs", "play_stop"},
-                {"Alt+Enter", "Game settings", "details_settings"},
-                {"Delete", "Remove the selected games", "delete_game"},
-                {"Ctrl++", "Bigger tiles", "zoom_in"},
-                {"Ctrl+-", "Smaller tiles", "zoom_out"},
-                {"Ctrl+0", "Reset tile size", "reset_zoom"},
-                {"Ctrl+,", "Settings", "settings"},
-            });
+      this,
+      {
+          {"Ctrl+F", "Focus the search box", "focus_search", "Library"},
+          {"Esc", "Clear the search, then the selection", "clear_or_deselect", "Library"},
+          {"Ctrl+1…9", "Pick a filter", {}, "Library"},
+          {"Ctrl+H", "Show only hidden games, or leave hidden mode", "toggle_hidden", "Library"},
+          {"Enter", "Play the selected game, or stop it while it runs", "play_stop", "Library"},
+          {"Alt+Enter", "Game settings", "details_settings", "Library"},
+          {"Delete", "Remove the selected games", "delete_game", "Library"},
+          {"Ctrl++", "Bigger tiles", "zoom_in", "View"},
+          {"Ctrl+-", "Smaller tiles", "zoom_out", "View"},
+          {"Ctrl+0", "Reset tile size", "reset_zoom", "View"},
+          {"F5, Ctrl+R", "Refresh the library", "refresh", "View"},
+          {"Ctrl+,", "Settings", "settings", "Everywhere"},
+      },
+      [this] { OpenSettings(mira_gui::SettingsPanel::kShortcutsKey); });
 
   // Each of these registers with ui/KeyBindings so Settings' Shortcuts
   // category can list and edit it; Ctrl+1…9's per-filter loop below is the
@@ -566,7 +569,10 @@ void LibraryWindow::dropEvent(QDropEvent* event) {
     source_page_->AddDroppedFiles(paths);
     return;
   }
-  for (const QUrl& url : event->mimeData()->urls()) ImportDropped(url.toLocalFile());
+  // One thing opens its page in Add games; several are each moved in by Mira's guess.
+  const QList<QUrl> urls = event->mimeData()->urls();
+  if (urls.size() == 1) return OpenAddGames(urls.front().toLocalFile());
+  for (const QUrl& url : urls) ImportDropped(url.toLocalFile());
 }
 
 void LibraryWindow::ImportDropped(const QString& path) {
@@ -577,31 +583,24 @@ void LibraryWindow::ImportDropped(const QString& path) {
           mira_gui::notify::FailedRequest(this, "Could not add " + filename + ".", result.error);
           return;
         }
-        const QString name = result.name.empty() ? filename : QString::fromStdString(result.name);
-        if (result.kind == "game" || result.kind == "app") {
-          StartImport(path, QString::fromStdString(result.kind), name);
+        // An installer, or something Mira can't tell is a game or an app, needs the card's page.
+        if (result.installer || (result.kind != "game" && result.kind != "app")) {
+          OpenAddGames(path);
           return;
         }
-        constexpr int kGame = 1;
-        constexpr int kApp = 2;
-        mira_gui::PopupDialog dialog(this, mira_gui::notify::Level::Info, "Game or app?");
-        dialog.SetMessage("Mira couldn't tell what " + name + " is.");
-        dialog.AddButton("Game", kGame, /*default_button=*/true);
-        dialog.AddButton("App", kApp);
-        dialog.AddButton("Cancel", false);
-        const int answer = dialog.exec();
-        if (answer == kGame || answer == kApp)
-          StartImport(path, answer == kApp ? "app" : "game", name);
+        const QString name = result.name.empty() ? filename : QString::fromStdString(result.name);
+        mira_gui::api::ImportPathAsync(
+            this, path.toStdString(), result.kind, [this, name](mira_gui::ImportPathResult moved) {
+              if (!moved.ok)
+                mira_gui::notify::FailedRequest(this, "Could not add " + name + ".", moved.error);
+            });
       });
 }
 
-void LibraryWindow::StartImport(const QString& path, const QString& kind, const QString& name) {
-  mira_gui::api::ImportPathAsync(this, path.toStdString(), kind.toStdString(),
-                                 [this, name](mira_gui::ImportPathResult result) {
-                                   if (!result.ok)
-                                     mira_gui::notify::FailedRequest(
-                                         this, "Could not add " + name + ".", result.error);
-                                 });
+void LibraryWindow::OpenAddGames(const QString& path) {
+  auto* card = new mira_gui::AddGamesCard();
+  mira_gui::cards::Show(this, card);
+  if (!path.isEmpty()) card->OpenPath(path);
 }
 
 void LibraryWindow::showEvent(QShowEvent* event) {
@@ -795,26 +794,11 @@ mira_gui::SetupWindow* LibraryWindow::OpenSetup(const mira_gui::FrontendPrefs& p
 }
 
 void LibraryWindow::OpenAbout() {
-  QDialog dialog(this);
-  dialog.setWindowTitle("About Mira");
-  auto* layout = new QVBoxLayout(&dialog);
-  layout->addWidget(new mira_gui::AboutPanel(&dialog));
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-  auto* daemon_log = buttons->addButton("Service log", QDialogButtonBox::ActionRole);
-  daemon_log->setToolTip("What Mira's background service is doing, live");
-  connect(daemon_log, &QPushButton::clicked, this,
-          [this] { mira_gui::LogWindow::Open(this, "daemon", "Mira service"); });
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-  layout->addWidget(buttons);
-  dialog.resize(560, dialog.sizeHint().height());
-  dialog.exec();
+  mira_gui::cards::Show(this, new mira_gui::AboutCard());
 }
 
 void LibraryWindow::OpenGameDetailPage(const std::string& id) {
-  const mira_gui::GameSummary* game = FindGame(id);
-  const QString name = game != nullptr ? QString::fromStdString(game->name) : QString();
-  mira_gui::GameDetailPageDialog dialog(id, name, this);
-  dialog.exec();
+  mira_gui::GameDetailsCard::Open(this, id, library_, artwork_, [this, id] { ToggleRunning(id); });
 }
 
 mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {
@@ -1856,6 +1840,17 @@ void LibraryWindow::CloseSidebarCard() {
   sources_page_ = nullptr;
   UpdateLibraryNavActive();
   ShowNextCard();
+}
+
+bool LibraryWindow::ShowCard(QWidget* card) {
+  if (!LeaveOverlays()) return false;
+  ShowSidebarCard(card);
+  card->setFocus();
+  return true;
+}
+
+void LibraryWindow::CloseCard(QWidget* card) {
+  if (card == sidebar_card_) CloseSidebarCard();
 }
 
 bool LibraryWindow::SidebarCardOpen() const {

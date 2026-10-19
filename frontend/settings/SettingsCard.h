@@ -113,6 +113,8 @@ class SettingsCard : public QFrame {
   void SetScrollable();
   // A row between the header and the rows that stays put while they scroll, e.g. column headings.
   void SetPinnedRow(QWidget* row);
+  // A row under the rows that stays put while they scroll, e.g. the card's buttons.
+  void AddFooterRow(QWidget* row);
   // The scroll the rows are in, once SetScrollable made one.
   QScrollArea* Scroll() const { return scroll_; }
   // A "Reset to defaults" button in the header, shown while `resettable`.
@@ -141,6 +143,8 @@ class SettingsCard : public QFrame {
   QVBoxLayout* body_layout_ = nullptr;
   QScrollArea* scroll_ = nullptr;
   QWidget* pinned_ = nullptr;
+  QWidget* footer_ = nullptr;
+  QVBoxLayout* footer_layout_ = nullptr;
   QList<QWidget*> rows_;
 };
 

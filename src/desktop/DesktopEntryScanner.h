@@ -16,7 +16,10 @@ namespace mira::desktop {
 struct DesktopEntryCandidate {
   std::string id;  // freedesktop "desktop file ID" -- stable, no stored state needed
   std::string name;
-  std::string icon;  // Icon= value verbatim, empty if absent
+  std::string icon;     // Icon= value verbatim, empty if absent
+  std::string command;  // what it runs: the resolved program, or the Flatpak's app id
+  bool flatpak = false;
+  bool app = false;  // its Categories don't include Game
 };
 
 // Reads other apps' .desktop files (never mira-*.desktop, which
@@ -33,7 +36,9 @@ class DesktopEntryScanner {
   DesktopEntryScanner(config::Config& config, store::GameStore& games, api::EventBus& events);
 
   Result<std::vector<DesktopEntryCandidate>> ListCandidates() const;
-  Result<library::ImportSummary> Import(const std::vector<std::string>& ids);
+  // The ids in `apps` are tagged app, the others are games.
+  Result<library::ImportSummary> Import(const std::vector<std::string>& ids,
+                                        const std::vector<std::string>& apps = {});
 
  private:
   config::Config& config_;

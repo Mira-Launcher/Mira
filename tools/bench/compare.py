@@ -2,7 +2,8 @@
 """Compares a base build's results with a branch's. Writes a short summary of what changed beyond noise
 (stdout and --summary, for the PR comment) and every value, scenario by scenario (--full).
 
-Each side takes one or more result files; repeated runs are reduced to their median. A scenario that fails
+Each side takes one or more result files, in run order; repeated runs are shown as their median and
+compared run by run. A scenario that fails
 only on the base is new or changed in the branch, so it's listed without a comparison.
 Usage: compare.py --base a.json [...] --branch b.json [...] --summary s.md --full f.md
 """
@@ -25,7 +26,7 @@ MEMORY = {"threads": "threads", "rss_kb": "resident memory", "pss_anon_kb": "own
 
 
 def load(paths):
-    """{(mode, scenario, key): median}, the failures and the runs."""
+    """{(mode, scenario, key): [value per run]}, the failures and the runs."""
     runs = [json.loads(Path(p).read_text()) for p in paths]
     values = {}
     for run in runs:
@@ -35,11 +36,19 @@ def load(paths):
     failures = {}
     for run in runs:
         failures.update(run["failures"])
-    return {k: statistics.median(v) for k, v in values.items()}, failures, runs
+    return values, failures, runs
 
 
 def change(old, new):
     return (new - old) / old if old else 0.0
+
+
+def paired_change(old_runs, new_runs):
+    """Run i of each side ran at the same moment, so they share the machine's load: the median of each
+    pair's change holds where the change between medians follows whichever runs were slow."""
+    if len(old_runs) == len(new_runs) > 1 and all(old_runs):
+        return statistics.median(change(o, n) for o, n in zip(old_runs, new_runs))
+    return change(statistics.median(old_runs), statistics.median(new_runs))
 
 
 def ms(v):
@@ -63,12 +72,18 @@ def pct(c):
 
 
 class Report:
-    def __init__(self, base, branch):
-        self.base, self.branch = base, branch
-        self.scenarios = list(dict.fromkeys(s for _, s, _ in list(branch) + list(base)))
+    def __init__(self, base_runs, branch_runs):
+        self.base_runs, self.branch_runs = base_runs, branch_runs
+        self.base = {k: statistics.median(v) for k, v in base_runs.items()}
+        self.branch = {k: statistics.median(v) for k, v in branch_runs.items()}
+        self.scenarios = list(dict.fromkeys(s for _, s, _ in list(self.branch) + list(self.base)))
 
     def pair(self, mode, scenario, key):
         return self.base.get((mode, scenario, key)), self.branch.get((mode, scenario, key))
+
+    def time_change(self, scenario, key):
+        """The change in a measure from the timed runs, memory included."""
+        return paired_change(self.base_runs[("time", scenario, key)], self.branch_runs[("time", scenario, key)])
 
     def keys(self, scenario):
         return list(dict.fromkeys(key for _, s, key in list(self.branch) + list(self.base) if s == scenario))
@@ -93,7 +108,7 @@ class Report:
                 timed = t_old is not None and t_new is not None
                 if self.is_memory(key):
                     process, _, metric = key.partition(".")
-                    c = change(t_old, t_new) if timed and self.summarized(scenario, metric) else 0
+                    c = self.time_change(scenario, key) if timed and self.summarized(scenario, metric) else 0
                     if c > 0:
                         floor = 2 if metric == "threads" else MEMORY_FLOOR_KB
                         found.append((c, f"**{scenario}**: {PROCESSES[process]} {MEMORY[metric]} "
@@ -116,7 +131,7 @@ class Report:
                     if over:
                         continue
                 # Time alone swings with load on the runner, so it needs a bigger change to count.
-                c = change(t_old, t_new) if timed else 0
+                c = self.time_change(scenario, key) if timed else 0
                 if c > 0:
                     found.append((c, f"**{key}** ({scenario}): {times} ({pct(c)})",
                                   c >= WORSE and t_new - t_old >= TIME_FLOOR_MS))
@@ -137,7 +152,8 @@ class Report:
                 c = change(i_old, i_new)
                 if c <= -INSTR_NOISE and i_old - i_new >= INSTR_FLOOR:
                     t_old, t_new = self.pair("time", scenario, key)
-                    times = f", {ms(t_old)} → {ms(t_new)}" if t_old is not None and t_new is not None else ""
+                    times = (f", {ms(t_old)} → {ms(t_new)} ({pct(self.time_change(scenario, key))})"
+                             if t_old is not None and t_new is not None else "")
                     lines.append(f"**{key}** ({scenario}): {mega(i_old)} → {mega(i_new)} instructions ({pct(c)}){times}")
         return lines
 
@@ -155,7 +171,7 @@ class Report:
                     if old is None or new is None or not self.summarized(scenario, metric):
                         continue
                     measured += 1
-                    c = change(old, new)
+                    c = self.time_change(scenario, key)
                     floor = 2 if metric == "threads" else MEMORY_FLOOR_KB
                     if c <= -MEMORY_NOISE and old - new >= floor:
                         moved.append((c, scenario, old, new))
@@ -168,7 +184,8 @@ class Report:
     def full(self, gui_runs):
         once = " The GUI scenarios ran once, so their values are from that run." if gui_runs == 1 else ""
         out = ["# Benchmark: every value", "",
-               f"Time is the median of the runs; instructions are from one callgrind run.{once} Memory is measured "
+               f"Time is the median of the runs, and its change the median of each pair of runs' change, since "
+               f"a pair ran at the same moment; instructions are from one callgrind run.{once} Memory is measured "
                "at the end of each scenario.", ""]
         for scenario in self.scenarios:
             out += [f"## {scenario}", "", "| Measure | Time base | Time branch | Change | Instr base | Instr branch | Change |",
@@ -179,11 +196,11 @@ class Report:
                 if self.is_memory(key):
                     process, _, metric = key.partition(".")
                     cell = lambda v: "-" if v is None else memory_text(metric, v)
-                    c = pct(change(t_old, t_new)) if t_old and t_new is not None else ""
+                    c = pct(self.time_change(scenario, key)) if t_old and t_new is not None else ""
                     memory_rows.append(f"| {PROCESSES[process]} {MEMORY[metric]} | {cell(t_old)} | {cell(t_new)} | {c} |")
                     continue
                 i_old, i_new = self.pair("instr", scenario, key)
-                tc = pct(change(t_old, t_new)) if t_old and t_new is not None else ""
+                tc = pct(self.time_change(scenario, key)) if t_old and t_new is not None else ""
                 ic = pct(change(i_old, i_new)) if i_old and i_new is not None else ""
                 show_t = lambda v: "-" if v is None else ms(v)
                 show_i = lambda v: "-" if v is None else mega(v)

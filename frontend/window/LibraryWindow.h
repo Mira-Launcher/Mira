@@ -14,6 +14,7 @@
 
 #include "../app/Shortcuts.h"
 #include "../client/Types.h"
+#include "../widgets/WindowCards.h"
 
 class QGridLayout;
 class QLabel;
@@ -65,10 +66,13 @@ struct LibraryServices {
 // game's card or a sidebar card in an overlay above. Frameless, so it owns
 // its own move/resize/minimize/maximize/close. This class puts the pieces
 // together: it decides what's on screen and routes each piece's requests.
-class LibraryWindow : public QMainWindow {
+class LibraryWindow : public QMainWindow, public mira_gui::CardHost {
   Q_OBJECT
 
  public:
+  // Cards shown with cards::Show go in the sidebar card's place.
+  bool ShowCard(QWidget* card) override;
+  void CloseCard(QWidget* card) override;
   // `prefs` is frontend.toml as read at startup; the theme is already applied.
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
   mira_gui::LibraryServices services() const {
@@ -105,8 +109,10 @@ class LibraryWindow : public QMainWindow {
   void dragMoveEvent(QDragMoveEvent* event) override;
   void dragLeaveEvent(QDragLeaveEvent* event) override;
   void dropEvent(QDropEvent* event) override;
+  // Moves a dropped `path` in by mirad's guess, or opens its page in Add games when that's unclear.
   void ImportDropped(const QString& path);
-  void StartImport(const QString& path, const QString& kind, const QString& name);
+  // Opens Add games, on the page for `path` unless that's empty.
+  void OpenAddGames(const QString& path = {});
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();
   void changeEvent(QEvent* event) override;

@@ -1200,6 +1200,65 @@ TEST_CASE("POST /v1/library/relocate with ids moves only those games") {
   CHECK(fs::exists(elsewhere / "left" / "run.sh"));
 }
 
+TEST_CASE("The move plan says what moving each game does, and the move does that") {
+  LiveServer server(TempDir("server-relocation-state"));
+  const fs::path library_root = TempDir("server-relocation-library");
+  const fs::path elsewhere = TempDir("server-relocation-elsewhere");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", nlohmann::json::array({library_root.string()}))
+              .has_value());
+  const fs::path prefixes = server.config().GetPath("prefix_root");
+  const auto add = [&](const std::string& id, const std::string& source, const fs::path& folder,
+                       const fs::path& prefix) {
+    test::Touch(folder / "game.exe");
+    if (!prefix.empty()) test::Touch(prefix / "system.reg");
+    model::Game game;
+    game.id = id;
+    game.name = id;
+    game.source = source;
+    game.install_path = folder.string();
+    game.data_dir = prefix.string();
+    game.exe_path = "game.exe";
+    game.status = model::GameStatus::Ready;
+    REQUIRE(server.games().Upsert(game).has_value());
+  };
+  add("loose", "manual", elsewhere / "Loose", prefixes / "loose");
+  add("steam-400", "steam", elsewhere / "Portal", elsewhere / "compatdata" / "400");
+  add("inside", "manual", prefixes / "inside" / "drive_c" / "Games" / "Inside",
+      prefixes / "inside");
+  add("pair-a", "manual", elsewhere / "Pair", {});
+  add("pair-b", "manual", elsewhere / "Pair" / "B", {});
+
+  httplib::Client client = server.Client();
+  auto res = client.Post("/v1/games/relocation",
+                         R"({"ids": ["loose", "steam-400", "inside", "pair-a", "nope"]})",
+                         "application/json");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  std::map<std::string, nlohmann::json> plan;
+  for (const auto& entry : nlohmann::json::parse(res->body)) plan[entry["id"]] = entry;
+  CHECK(plan.size() == 4);
+
+  CHECK(plan["loose"]["files"]["action"] == "move");
+  CHECK(plan["loose"]["files"]["from"] == (elsewhere / "Loose").string());
+  CHECK(fs::path(plan["loose"]["files"]["to"].get<std::string>()).parent_path() == library_root);
+  CHECK(plan["loose"]["files"]["copies"] == false);
+  CHECK(plan["loose"]["prefix"]["action"] == "in_place");
+  CHECK(plan["steam-400"]["files"]["action"] == "stay");
+  CHECK_FALSE(plan["steam-400"]["files"]["reason"].get<std::string>().empty());
+  CHECK(plan["steam-400"]["prefix"]["action"] == "stay");
+  CHECK(plan["inside"]["files"]["action"] == "follow");
+  CHECK(plan["pair-a"]["error"]["code"] == "shared_folder");
+  // Planning moves nothing.
+  CHECK(fs::exists(elsewhere / "Loose" / "game.exe"));
+
+  const auto job = AwaitJob(client, client.Post("/v1/games/loose/relocate"));
+  REQUIRE(job["state"] == "finished");
+  CHECK(server.games().Find("loose")->install_path ==
+        plan["loose"]["files"]["to"].get<std::string>());
+  CHECK(server.games().Find("loose")->data_dir == (prefixes / "loose").string());
+}
+
 TEST_CASE("A game can't launch while it's being moved, and can't be moved while it's launching") {
   LiveServer server(TempDir("server-claim-state"));
   const fs::path library_root = TempDir("server-claim-library");
@@ -1294,6 +1353,61 @@ TEST_CASE("POST /v1/games/manual adds a ready native game outside any configured
   const std::string id = parsed.value("id", "");
   REQUIRE_FALSE(id.empty());
   CHECK(server.games().Find(id).has_value());
+}
+
+TEST_CASE("Adding by hand: classify names a folder's programs and installers, and app tags it") {
+  LiveServer server(TempDir("server-add-by-hand"));
+  const fs::path folder = TempDir("server-add-by-hand-game");
+  test::Touch(folder / "Nine Sols.exe", std::string(64, 'x'));
+  test::Touch(folder / "tools" / "crashhandler.exe", std::string(64, 'x'));
+  httplib::Client client = server.Client();
+  const auto classify = [&](const fs::path& path) {
+    auto res = client.Post("/v1/library/import/classify",
+                           nlohmann::json{{"path", path.string()}}.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body);
+  };
+
+  const nlohmann::json game = classify(folder);
+  REQUIRE(game["programs"].size() == 2);
+  CHECK(game["programs"][0]["path"] == "Nine Sols.exe");  // the name match, scored as a scan does
+  CHECK(game["programs"][0]["platform"] == "windows");
+  CHECK(game["installer"] == false);
+  CHECK_FALSE(game.contains("installer_info"));
+
+  const fs::path msi = TempDir("server-add-by-hand-setup") / "setup.msi";
+  test::Touch(msi, "msi");
+  const nlohmann::json setup = classify(msi);
+  REQUIRE(setup["programs"].size() == 1);
+  CHECK(setup["programs"][0]["path"] == "setup.msi");
+  CHECK(setup["installer"] == true);
+  // Described as the install would run it, before any game exists.
+  REQUIRE(setup.contains("installer_info"));
+  CHECK(setup["installer_info"]["path"] == msi.string());
+  CHECK(setup["installer_info"]["size_bytes"] == 3);
+  CHECK(setup["installer_info"]["silent"] == true);
+
+  const fs::path tool = TempDir("server-add-by-hand-app");
+  test::Touch(tool / "tool", "#!/bin/sh\n", /*executable=*/true);
+  auto added = client.Post(
+      "/v1/games/manual",
+      nlohmann::json{{"install_path", tool.string()}, {"exe_path", "tool"}, {"app", true}}.dump(),
+      "application/json");
+  REQUIRE(added != nullptr);
+  REQUIRE(added->status == 200);
+  const auto record = nlohmann::json::parse(added->body);
+  CHECK(std::ranges::contains(record["tags"], nlohmann::json("app")));
+
+  // Winetricks' log in the prefix lists what's installed, each verb once.
+  model::Game windows = *server.games().Find(record["id"]);
+  windows.data_dir = TempDir("server-add-by-hand-prefix").string();
+  test::Touch(fs::path(windows.data_dir) / "winetricks.log", "vcrun2022\ncorefonts\nvcrun2022\n");
+  REQUIRE(server.games().Upsert(windows).has_value());
+  auto verbs = client.Get("/v1/games/" + windows.id + "/tricks");
+  REQUIRE(verbs != nullptr);
+  CHECK(nlohmann::json::parse(verbs->body)["installed"] ==
+        nlohmann::json::array({"vcrun2022", "corefonts"}));
 }
 
 TEST_CASE(

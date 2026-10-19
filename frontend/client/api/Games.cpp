@@ -193,8 +193,11 @@ TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
 
 GameDetailResult AddManualGameSync(const std::string& install_path, const std::string& exe_path,
                                    const std::string& name, const std::string& platform,
-                                   bool is_installer) {
-  json body{{"install_path", install_path}, {"exe_path", exe_path}, {"is_installer", is_installer}};
+                                   bool is_installer, bool app) {
+  json body{{"install_path", install_path},
+            {"exe_path", exe_path},
+            {"is_installer", is_installer},
+            {"app", app}};
   if (!name.empty()) body["name"] = name;
   if (!platform.empty()) body["platform"] = platform;
 
@@ -205,21 +208,14 @@ GameDetailResult AddManualGameSync(const std::string& install_path, const std::s
 InstallerInfoResult GetInstallerInfoSync(const std::string& id, const std::string& path) {
   std::string url = "/v1/games/" + PercentEncode(id) + "/installer";
   if (!path.empty()) url += "?path=" + PercentEncode(path);
-  return ReadReply<InstallerInfoResult>(
-      transport::Get(url), "GET /v1/games/" + id + "/installer", Shape::Object,
-      [](InstallerInfoResult& result, const json& body) {
-        result.path = body.value("path", std::string());
-        result.size_bytes = body.value("size_bytes", std::int64_t{0});
-        result.format = body.value("format", std::string("unknown"));
-        result.silent = body.value("silent", false);
-        if (body.contains("targets") && body["targets"].is_array()) {
-          for (const json& target : body["targets"]) {
-            if (!target.is_object()) continue;
-            result.targets.push_back(
-                {target.value("path", std::string()), target.value("free_bytes", std::int64_t{0})});
-          }
-        }
-      });
+  return ReadReply<InstallerInfoResult>(transport::Get(url), "GET /v1/games/" + id + "/installer",
+                                        Shape::Object,
+                                        [](InstallerInfoResult& result, const json& body) {
+                                          InstallerInfoResult info = mapping::ToInstallerInfo(body);
+                                          info.ok = result.ok;
+                                          info.error = std::move(result.error);
+                                          result = std::move(info);
+                                        });
 }
 
 GameActionResult InstallGameSync(const std::string& id, bool interactive,
@@ -315,14 +311,31 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
   async::Run(context, [id, verb] { return RunWinetricksSync(id, verb); }, std::move(callback));
 }
 
+void GetInstalledTricksAsync(QObject* context, const std::string& id,
+                             std::function<void(InstalledTricksResult)> callback) {
+  async::Run(
+      context,
+      [id] {
+        return ReadReply<InstalledTricksResult>(
+            transport::Get("/v1/games/" + PercentEncode(id) + "/tricks"),
+            "GET /v1/games/" + id + "/tricks", Shape::Object,
+            [](InstalledTricksResult& result, const json& body) {
+              for (const json& verb : body.value("installed", json::array())) {
+                if (verb.is_string()) result.installed.push_back(verb.get<std::string>());
+              }
+            });
+      },
+      std::move(callback));
+}
+
 void AddManualGameAsync(QObject* context, const std::string& install_path,
                         const std::string& exe_path, const std::string& name,
-                        const std::string& platform, bool is_installer,
+                        const std::string& platform, bool is_installer, bool app,
                         std::function<void(GameDetailResult)> callback) {
   async::Run(
       context,
-      [install_path, exe_path, name, platform, is_installer] {
-        return AddManualGameSync(install_path, exe_path, name, platform, is_installer);
+      [install_path, exe_path, name, platform, is_installer, app] {
+        return AddManualGameSync(install_path, exe_path, name, platform, is_installer, app);
       },
       std::move(callback));
 }
@@ -399,6 +412,40 @@ void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
                      .folder_is_prefix = entry.value("folder_is_prefix", false),
                      .prefix = entry.value("prefix", std::string()),
                      .prefix_shared_with = entry.value("prefix_shared_with", std::string())});
+              }
+            });
+      },
+      std::move(callback));
+}
+
+void GetRelocationPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                             std::function<void(RelocationPlansResult)> callback) {
+  async::Run(
+      context,
+      [ids] {
+        return ReadReply<RelocationPlansResult>(
+            transport::PostJson("/v1/games/relocation", {{"ids", ids}}),
+            "POST /v1/games/relocation", Shape::Array,
+            [](RelocationPlansResult& result, const json& body) {
+              const auto part = [](const json& entry) {
+                return RelocationPlan::Part{.action = entry.value("action", std::string("none")),
+                                            .from = entry.value("from", std::string()),
+                                            .to = entry.value("to", std::string()),
+                                            .reason = entry.value("reason", std::string()),
+                                            .copies = entry.value("copies", false)};
+              };
+              for (const json& entry : body) {
+                RelocationPlan plan;
+                plan.id = entry.value("id", std::string());
+                plan.name = entry.value("name", std::string());
+                if (entry.contains("error")) {
+                  plan.ok = false;
+                  plan.error = mapping::ToApiError(entry["error"]);
+                } else {
+                  plan.files = part(entry.value("files", json::object()));
+                  plan.prefix = part(entry.value("prefix", json::object()));
+                }
+                result.plans.push_back(std::move(plan));
               }
             });
       },

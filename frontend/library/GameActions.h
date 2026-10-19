@@ -56,7 +56,7 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
 // the failure message matters more here than elsewhere.
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished);
 
-// Asks, then moves each game's files and prefix into Mira's own layout.
+// Shows what moving each game into Mira's own layout does (MoveGamesCard), then moves them.
 // `on_done` runs once every move has answered, whatever the outcome.
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done);
@@ -69,7 +69,7 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path);
 // fetch is needed first: id/name are already known from the tile/row.
 void ViewLog(QWidget* parent, const std::string& id, const QString& name);
 
-// Opens WinetricksDialog. Fetches the full record first to check data_dir
+// Opens the Winetricks card. Fetches the full record first to check data_dir
 // (not in the list summary) before opening; mirad only rejects "no
 // prefix" asynchronously, so this catches it up front instead.
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name);

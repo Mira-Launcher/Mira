@@ -47,7 +47,7 @@ class HoverDwell {
 // A floating, non-modal preview shown after a short dwell over a game: name,
 // status, ProtonDB tier, platform, last played, playtime, developer/genres.
 // Install path and description are left out: this is a glance; the per-game
-// edit page and GameDetailPageDialog have them. A store title also shows its
+// edit page and GameDetailsCard have them. A store title also shows its
 // Steam reviews, since it has no detail page.
 class HoverCard : public QWidget {
   Q_OBJECT

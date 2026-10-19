@@ -175,7 +175,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   connect(confirm, &QPushButton::clicked, this,
           [this] { emit Confirmed(prefix_ != nullptr && prefix_->isChecked()); });
   buttons_layout->addWidget(confirm);
-  AddRow(buttons);
+  AddFooterRow(buttons);
   // Reached by a click or the Delete key, so Return mustn't confirm it a second time.
   cancel->setFocus();
 }

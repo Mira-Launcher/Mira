@@ -13,6 +13,12 @@ QLabel[role="muted"] {
   font-size: @font_size_small;
 }
 
+/* A glyph on a tile, before a card row's label (Add games' choices). */
+QLabel[role="tile_icon"] {
+  background: @surface_alt;
+  border-radius: 7px;
+}
+
 QLabel[role="heading"] {
   font-size: @font_size_heading;
   font-weight: 600;
@@ -55,9 +61,20 @@ QLabel[role="error"] {
   font-size: @font_size_small;
 }
 
-QLabel[role="keys"] {
+/* Something to notice before confirming, such as a move that copies to another drive. */
+QLabel[role="warning"] {
+  color: @warning;
+}
+
+/* One key of a shortcut, drawn as a keycap. */
+QLabel[role="keycap"] {
   font-family: monospace;
-  font-weight: 600;
+  font-size: @font_size_small;
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0px 6px;
 }
 
 /* A game's lifecycle state, set as a "status" property so a theme change
@@ -1128,7 +1145,7 @@ QLabel#setup_tick[on="true"] {
   border-color: @accent;
 }
 
-QLabel#setup_chip {
+QLabel#setup_chip, QLabel#info_chip {
   background: @surface_alt;
   border: 1px solid @border;
   border-radius: 8px;
@@ -1136,17 +1153,17 @@ QLabel#setup_chip {
   font-size: @font_size_small;
 }
 
-QLabel#setup_chip[state="ok"] {
+QLabel#setup_chip[state="ok"], QLabel#info_chip[state="ok"] {
   color: @success;
   border-color: @success;
 }
 
-QLabel#setup_chip[state="warning"] {
+QLabel#setup_chip[state="warning"], QLabel#info_chip[state="warning"] {
   color: @warning;
   border-color: @warning;
 }
 
-QLabel#setup_chip[state="error"] {
+QLabel#setup_chip[state="error"], QLabel#info_chip[state="error"] {
   color: @error;
   border-color: @error;
 }
@@ -1225,10 +1242,30 @@ QLabel#setup_link {
   font-weight: 600;
 }
 
+/* game/GameDetailsCard */
+QLabel#screenshot {
+  background: @surface_alt;
+  border-radius: @radius_control;
+}
+
+QLabel#screenshot_large {
+  background: rgba(0, 0, 0, 0.85);
+}
+
 
 QPlainTextEdit#log_view {
   background: @window;
   border: 1px solid @border;
   border-radius: @radius_control;
   padding: 6px 8px;
+}
+
+/* dialogs/LogWindow: the task's name in the window's own bar. */
+QLabel#log_title {
+  font-weight: 600;
+}
+
+QWidget#log_frame {
+  background: @window;
+  border: 1px solid @border;
 }

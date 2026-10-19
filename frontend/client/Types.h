@@ -330,7 +330,7 @@ struct GameMetadata {
   std::map<std::string, std::int64_t> active_candidate_ids;
 
   // The wider store info that doesn't fit the sidebar; see
-  // GameDetailPageDialog. requirements_min/rec are HTML, not plain text.
+  // GameDetailsCard. requirements_min/rec are HTML, not plain text.
   std::string requirements_min;
   std::string requirements_rec;
   std::vector<std::int64_t> dlc_ids;
@@ -1050,6 +1050,16 @@ struct ImportGuessResult {
   std::string kind;
   std::string name;
   std::string reason;
+  // What could start it, best first: relative to a folder, or the file's own name.
+  struct Program {
+    std::string path;
+    std::string platform;  // "windows" | "native"
+    bool installer = false;
+  };
+  std::vector<Program> programs;
+  bool installer = false;  // the first program is an installer
+  // Running it as an installer; ok only when mirad described it.
+  InstallerInfoResult installer_info;
 };
 
 // POST /v1/library/import: path is where the dropped item now lives.
@@ -1092,6 +1102,29 @@ struct RemovalPlansResult {
 };
 
 // POST /v1/games/removal/sizes, by id.
+// One game's entry from POST /v1/games/relocation: what moving it into Mira's folders does.
+struct RelocationPlan {
+  struct Part {
+    std::string action;  // "move" | "follow" | "stay" | "in_place" | "none"
+    std::string from;
+    std::string to;
+    std::string reason;   // why it stays
+    bool copies = false;  // moved to another disk: copied, then removed
+  };
+  std::string id;
+  std::string name;
+  bool ok = true;  // false: the move would be refused, for `error`
+  ApiError error;
+  Part files;
+  Part prefix;
+};
+
+struct RelocationPlansResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<RelocationPlan> plans;
+};
+
 struct RemovalSize {
   std::uint64_t files = 0;
   std::uint64_t prefix = 0;
@@ -1145,6 +1178,13 @@ struct TricksResult {
   ApiError error;
 };
 
+// GET /v1/games/{id}/tricks: the verbs already in the game's prefix.
+struct InstalledTricksResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> installed;
+};
+
 // A tricks.started / .finished / .failed payload.
 struct TricksEvent {
   std::string id;
@@ -1166,6 +1206,9 @@ struct DesktopEntryCandidate {
   std::string id;
   std::string name;
   std::string icon;
+  std::string command;
+  bool flatpak = false;
+  bool app = false;  // its Categories don't say Game
 };
 
 struct DesktopEntryCandidatesResult {

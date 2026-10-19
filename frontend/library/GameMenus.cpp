@@ -89,7 +89,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     connect(menu.addAction("Open store page"), &QAction::triggered, parent_,
             [page] { QDesktopServices::openUrl(page); });
   }
-  QAction* more_details = menu.addAction("More details…");
+  QAction* game_details = menu.addAction("Game details…");
   const bool pinned = IsPinned(game);
   QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");
   menu.addSeparator();
@@ -110,14 +110,14 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
                                  : "Only available for a game that still needs installing");
   QAction* refresh_metadata = menu.addAction("Refresh metadata && cover art");
   QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
-  QAction* winetricks = menu.addAction("Run winetricks…");
+  QAction* winetricks = menu.addAction("Winetricks…");
   QAction* relocate = menu.addAction("Move to Mira's folders…");
   relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
   // An emulator's game has no installer, prefix or folder of Mira's to move it to.
   const bool emulated = source != nullptr && source->kind == SourceInfo::Kind::Emulator;
-  // Nor store info for More details to show.
+  // Nor store info for Game details to show.
   for (QAction* action :
-       {install, run_in_prefix, finish_install, winetricks, relocate, more_details})
+       {install, run_in_prefix, finish_install, winetricks, relocate, game_details})
     action->setVisible(!emulated);
   const bool native = game.platform == "native";
   winetricks->setEnabled(!native);
@@ -166,7 +166,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     host_.open_settings(id);
   } else if (chosen == folder) {
     actions::OpenInstallFolder(parent_, game.install_path);
-  } else if (chosen == more_details) {
+  } else if (chosen == game_details) {
     host_.open_details(id);
   } else if (chosen == install) {
     host_.offer_install(id);

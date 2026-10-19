@@ -15,8 +15,9 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../dialogs/LogWindow.h"
-#include "../dialogs/RunInPrefixDialog.h"
-#include "../dialogs/WinetricksDialog.h"
+#include "../game/MoveGamesCard.h"
+#include "../game/PrefixCards.h"
+#include "../widgets/WindowCards.h"
 #include "PlayChoices.h"
 
 namespace mira_gui::actions {
@@ -114,8 +115,7 @@ void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool de
 
 void RunInPrefix(QWidget* parent, const std::string& id, const std::string& install_path,
                  const QString& name) {
-  RunInPrefixDialog dialog(id, install_path, name, parent);
-  dialog.exec();
+  cards::Show(parent, new RunInPrefixCard(id, install_path, name));
 }
 
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished) {
@@ -156,8 +156,7 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) 
                              "provisions one on demand.");
       return;
     }
-    WinetricksDialog dialog(id, name, parent);
-    dialog.exec();
+    cards::Show(parent, new WinetricksCard(id, name));
   });
 }
 
@@ -171,52 +170,70 @@ void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_e
   });
 }
 
+namespace {
+
+// Moves them, saying how it went.
+void MoveGames(QWidget* parent, const std::vector<std::string>& ids,
+               const std::map<std::string, QString>& names, std::function<void()> on_done);
+
+}  // namespace
+
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done) {
   if (games.empty()) return;
-  const QString question =
-      games.size() == 1
-          ? QString("Move %1 into your games folder, and its prefix into the prefixes folder?")
-                .arg(games.front().second)
-          : QString(
-                "Move these %1 games into your games folder, and their prefixes into the "
-                "prefixes folder?")
-                .arg(games.size());
-  if (!notify::Confirm(parent, "Move to Mira's folders",
-                       question +
-                           " Folders are named after the game. Games installed by a store "
-                           "(Steam, Epic, GOG, itch.io, Amazon) keep their install folder; only "
-                           "the prefix moves. Games from Lutris move completely and become Mira's "
-                           "own, since Lutris can't start them from there.",
-                       "Move")) {
-    return;
-  }
-
-  api::RelocateGamesAsync(
-      parent, Ids(games),
-      [parent, names = NamesById(games), on_done](RelocateLibraryResult result) {
+  api::GetRelocationPlansAsync(
+      parent, Ids(games), [parent, games, on_done](RelocationPlansResult result) {
         if (!result.ok) {
           notify::FailedRequest(parent, "Could not move the games.", result.error);
-        } else {
-          // Nothing on screen shows a path, so success gets a notice.
-          if (result.moved > 0) {
-            notify::Notice(
-                parent,
-                QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
-          } else if (result.skipped > 0) {
-            notify::Notice(
-                parent,
-                result.skipped == 1
-                    ? QString("That game was removed meanwhile.")
-                    : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
-          } else if (result.errors.empty()) {
-            notify::Notice(parent, "Already in Mira's folders.");
-          }
-          NotifyFailures(parent, result.errors, names, "Could not move");
+          return;
         }
-        if (on_done) on_done();
+        if (result.plans.empty()) return;  // removed while asking
+        std::vector<std::string> measured;
+        for (const RelocationPlan& plan : result.plans) {
+          if (MoveGamesCard::Moves(plan)) measured.push_back(plan.id);
+        }
+        auto* card = new MoveGamesCard(std::move(result.plans));
+        QObject::connect(card, &MoveGamesCard::Confirmed, parent,
+                         [parent, card, games, on_done](const std::vector<std::string>& ids) {
+                           cards::Close(card);
+                           MoveGames(parent, ids, NamesById(games), on_done);
+                         });
+        cards::Show(parent, card);
+        if (measured.empty()) return;
+        api::GetRemovalSizesAsync(card, measured, [card](RemovalSizesResult sizes) {
+          if (sizes.ok) card->SetSizes(sizes.sizes);
+        });
       });
 }
+
+namespace {
+
+void MoveGames(QWidget* parent, const std::vector<std::string>& ids,
+               const std::map<std::string, QString>& names, std::function<void()> on_done) {
+  api::RelocateGamesAsync(parent, ids, [parent, names, on_done](RelocateLibraryResult result) {
+    if (!result.ok) {
+      notify::FailedRequest(parent, "Could not move the games.", result.error);
+    } else {
+      // Nothing on screen shows a path, so success gets a notice.
+      if (result.moved > 0) {
+        notify::Notice(
+            parent,
+            QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+      } else if (result.skipped > 0) {
+        notify::Notice(parent,
+                       result.skipped == 1
+                           ? QString("That game was removed meanwhile.")
+                           : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
+      } else if (result.errors.empty()) {
+        notify::Notice(parent, "Already in Mira's folders.");
+      }
+      NotifyFailures(parent, result.errors, names, "Could not move");
+    }
+    if (on_done) on_done();
+  });
+}
+
+}  // namespace
 
 void BatchSetDesktopEntry(QWidget* parent, const std::vector<std::string>& ids, bool enabled) {
   if (ids.empty()) return;

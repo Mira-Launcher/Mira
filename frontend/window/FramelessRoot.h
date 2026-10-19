@@ -3,8 +3,6 @@
 #include <QObject>
 #include <QWidget>
 
-class QMainWindow;
-
 namespace mira_gui {
 
 // The strip around a frameless window's content that resizes it.
@@ -16,7 +14,7 @@ inline constexpr int kResizeMargin = 5;
 // which is what makes this work under Wayland.
 class FramelessRoot : public QWidget {
  public:
-  explicit FramelessRoot(QMainWindow* window);
+  explicit FramelessRoot(QWidget* window);
 
  protected:
   void mousePressEvent(QMouseEvent* event) override;
@@ -31,7 +29,7 @@ class FramelessRoot : public QWidget {
   // depend on the screen edges.
   Qt::Edges ResizableEdgesAt(const QPoint& pos) const;
 
-  QMainWindow* window_;
+  QWidget* window_;
 };
 
 // A click on anything that can't take focus itself (a page's background, a

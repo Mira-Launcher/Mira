@@ -74,11 +74,15 @@ void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,
                         std::function<void(TricksResult)> callback);
 
+// GET /v1/games/{id}/tricks: what winetricks already put in its prefix.
+void GetInstalledTricksAsync(QObject* context, const std::string& id,
+                             std::function<void(InstalledTricksResult)> callback);
+
 // POST /v1/games/manual: adds a game record directly, for an installer or
-// a folder outside every library root. Response mirrors GetGameAsync.
+// a folder outside every library root, tagged `app` when `app`. Response mirrors GetGameAsync.
 void AddManualGameAsync(QObject* context, const std::string& install_path,
                         const std::string& exe_path, const std::string& name,
-                        const std::string& platform, bool is_installer,
+                        const std::string& platform, bool is_installer, bool app,
                         std::function<void(GameDetailResult)> callback);
 
 // The game's own installer, or `path` (absolute, or relative to its
@@ -108,6 +112,10 @@ void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, boo
 // POST /v1/games/removal: what removing each game can delete.
 void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
                           std::function<void(RemovalPlansResult)> callback);
+
+// POST /v1/games/relocation: what moving each game into Mira's folders does, before anything moves.
+void GetRelocationPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                             std::function<void(RelocationPlansResult)> callback);
 
 // POST /v1/games/removal/sizes, a job: the sizes behind those plans.
 void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,

@@ -38,6 +38,8 @@ tools=$root/tools/bench
 # A HOME per run that can overlap: the callgrind pass is split in two per side (callgrind runs one thread
 # at a time, so this uses the cores).
 declare -A home=([base]=/tmp/mira-bench-a [branch]=/tmp/mira-bench-b [base-2]=/tmp/mira-bench-c [branch-2]=/tmp/mira-bench-d)
+# Natively they're on the host's /tmp, so they go when the run ends; in Docker they go with the container.
+[ -z "${MIRA_BENCH_NATIVE:-}" ] || trap 'rm -rf "${home[@]}"' EXIT
 
 declare -A bin
 if [ -n "${MIRA_BENCH_BASE_BIN:-}" ]; then

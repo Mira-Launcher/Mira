@@ -113,6 +113,20 @@ UnclearMove ToUnclearMove(const json& entry) {
   return move;
 }
 
+InstallerInfoResult ToInstallerInfo(const json& entry) {
+  InstallerInfoResult info;
+  info.path = entry.value("path", std::string());
+  info.size_bytes = entry.value("size_bytes", std::int64_t{0});
+  info.format = entry.value("format", std::string("unknown"));
+  info.silent = entry.value("silent", false);
+  for (const json& target : entry.value("targets", json::array())) {
+    if (!target.is_object()) continue;
+    info.targets.push_back(
+        {target.value("path", std::string()), target.value("free_bytes", std::int64_t{0})});
+  }
+  return info;
+}
+
 UnclearDrop ToUnclearDrop(const json& entry) {
   UnclearDrop drop;
   drop.path = entry.value("path", std::string());

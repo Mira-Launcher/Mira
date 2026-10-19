@@ -276,6 +276,10 @@ void SettingsPanel::FocusKey(const QString& key) {
     nav_->RevealRow(sidebar_style_->Rows().front());
     return;
   }
+  if (key == kShortcutsKey) {
+    if (SettingsPage* page = pages_.value("Shortcuts")) nav_->RevealPage(page);
+    return;
+  }
   if (key == kSidebarSourcesKey) {
     if (!rows_built_) {
       pending_focus_key_ = key;  // the card moves to the Sources page once the schema loads

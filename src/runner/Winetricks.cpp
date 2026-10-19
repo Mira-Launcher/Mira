@@ -4,6 +4,7 @@
 #include <cctype>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <json.hpp>
 
 #include "core/Command.h"
@@ -142,6 +143,18 @@ Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& gam
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["WINEDEBUG"] = "-all";
   return RunAndWait(command);
+}
+
+std::vector<std::string> InstalledVerbs(const model::Game& game) {
+  std::vector<std::string> verbs;
+  if (game.data_dir.empty()) return verbs;
+  std::ifstream log(std::filesystem::path(game.data_dir) / "winetricks.log");
+  for (std::string line; std::getline(log, line);) {
+    // A forced rerun logs the verb again, and some lines are winetricks' own options.
+    if (line.empty() || line.starts_with('-') || std::ranges::contains(verbs, line)) continue;
+    verbs.push_back(line);
+  }
+  return verbs;
 }
 
 }  // namespace mira::runner

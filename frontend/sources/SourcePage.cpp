@@ -32,8 +32,8 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
-#include "../dialogs/AddManualGameDialog.h"
 #include "../dialogs/LogWindow.h"
+#include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../library/GameActions.h"
@@ -51,6 +51,7 @@
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
+#include "../widgets/WindowCards.h"
 #include "ItchCollectionsCard.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
@@ -726,9 +727,9 @@ QWidget* SourcePage::BuildOwnedSection() {
       return;
     }
     if (humble_paths_.contains(ref)) {
-      AddManualGameDialog dialog(this);
-      dialog.Prefill(humble_paths_.value(ref), index.data(GameTileDelegate::NameRole).toString());
-      dialog.exec();
+      auto* card = new AddGamesCard();
+      cards::Show(this, card);
+      card->OpenPath(humble_paths_.value(ref), index.data(GameTileDelegate::NameRole).toString());
       return;
     }
     owned_state_.insert(ref, "Downloading…");

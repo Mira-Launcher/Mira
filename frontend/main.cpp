@@ -36,7 +36,13 @@ int main(int argc, char** argv) {
                              argv + argc);
   // QApplication takes out the arguments it handles.
   std::vector<char*> arguments(argv, argv + argc + 1);
+  // File pickers through xdg-desktop-portal: the desktop's own dialog, which the AppImage can't
+  // bundle (it has no Plasma theme plugin). The portal theme keeps the desktop's theme for the
+  // rest and falls back to it without a portal. Unset again so games and mirad don't inherit it.
+  const bool portal_theme = qEnvironmentVariableIsEmpty("QT_QPA_PLATFORMTHEME");
+  if (portal_theme) qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
   QApplication app(argc, argv);
+  if (portal_theme) qunsetenv("QT_QPA_PLATFORMTHEME");
   mira_gui::display::FixX11Scale(arguments.data());
   mira_gui::display::ForgetEnv();
   QApplication::setApplicationName("Mira");

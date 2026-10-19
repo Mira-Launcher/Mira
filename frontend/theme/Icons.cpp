@@ -272,6 +272,19 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawEllipse(QPointF(10.5, 7.4), 0.5, 0.5);
       painter.drawEllipse(QPointF(11.8, 9.0), 0.5, 0.5);
       return;
+    case Glyph::Copy: {
+      // The page in front, and the corner of the one behind it.
+      painter.drawRoundedRect(QRectF(5.5, 5.5, 8.0, 8.0), 1.4, 1.4);
+      QPainterPath back;
+      back.moveTo(3.5, 10.5);
+      back.quadTo(2.5, 10.5, 2.5, 9.5);
+      back.lineTo(2.5, 3.5);
+      back.quadTo(2.5, 2.5, 3.5, 2.5);
+      back.lineTo(9.5, 2.5);
+      back.quadTo(10.5, 2.5, 10.5, 3.5);
+      painter.drawPath(back);
+      return;
+    }
     case Glyph::Layers:
       painter.drawPolygon(
           QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));
