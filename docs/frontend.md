@@ -111,6 +111,8 @@ One click selects a tile. Ctrl, Shift or a drag selects several, and the context
 
 The game menu's tools open cards over the library. *Run in prefix…* and *Winetricks…* (`game/PrefixCards`) run a program or a verb in the game's prefix, with a rail and a status line while it starts or runs; Winetricks shows common verbs as chips, those already in the prefix (`GET /v1/games/{id}/tricks`) first and ticked, narrowed by its field, which also takes any other verb, and stays open for the next one. *Move to Mira's folders…* (`game/MoveGamesCard`) shows mirad's plan before anything moves: for one game, where its game files and prefix go (from → to, with the size and whether it stays on the same drive) or why they stay; for a selection, a row per game with what moves and its size, which opens (a click, or Right and Left) to the same lines, the games with nothing to move sharing a row per reason, and the total in the footer.
 
+*Game details…* (`game/GameDetailsCard`) is its own card, not part of the game settings card: the hero with the cover, name, status and Play, then the store's cached info (`GET /v1/games/{id}/metadata`) on the same translucent panel: a facts line (release, developers, genres, controller support, achievements, DLC count, and a *System requirements* link that opens them below), the description cut to a few lines with *More*, chips for reviews, ProtonDB and content descriptors, up to four screenshots fetched while the card shows (a click opens one large over the card, another click closes it), and the website. With nothing cached the card is the hero alone; refreshing is the menu's *Refresh metadata*.
+
 Hovering a tile shows `library/HoverCard` with the name, status, runner, ProtonDB tier, developer and genres. Tooltips everywhere go through `widgets/ToolTip`, which draws them as the same card.
 
 ### Keyboard
@@ -261,7 +263,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `POST /v1/games/relocation`, `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…* (`game/MoveGamesCard`), and the game card's *Move…* buttons for the install folder and the prefix |
 | `/v1/tags`, `/v1/tags/*` | `tags/TagsPage`, `tags/TagPicker` |
 | `GET`/`POST /v1/library/unclear` | `game/UnclearMoveCard` |
-| Metadata and artwork endpoints | `ArtworkStore`, `HoverCard`, `GameDetailPageDialog`, `ArtPickerPanel` |
+| Metadata and artwork endpoints | `ArtworkStore`, `HoverCard`, `GameDetailsCard`, `ArtPickerPanel` |
 | `POST /v1/library/scan` | Startup and *Refresh library* |
 | `/v1/library`, `/v1/library/install`, `/update`, `/artwork` | `SourcePage` |
 | `/v1/{epic,gog,itch,amazon,humble}/*`, `/v1/launchers/*`, `/v1/sources/*` | `SourcePage`, `ItchCollectionsDialog` |

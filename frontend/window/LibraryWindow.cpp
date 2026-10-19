@@ -54,9 +54,9 @@
 #include "../client/api/Hidden.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
-#include "../dialogs/GameDetailPageDialog.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/GameCard.h"
+#include "../game/GameDetailsCard.h"
 #include "../game/InstallPromptCard.h"
 #include "../game/InstallerCards.h"
 #include "../game/RemoveGamesCard.h"
@@ -798,10 +798,7 @@ void LibraryWindow::OpenAbout() {
 }
 
 void LibraryWindow::OpenGameDetailPage(const std::string& id) {
-  const mira_gui::GameSummary* game = FindGame(id);
-  const QString name = game != nullptr ? QString::fromStdString(game->name) : QString();
-  mira_gui::GameDetailPageDialog dialog(id, name, this);
-  dialog.exec();
+  mira_gui::GameDetailsCard::Open(this, id, library_, artwork_, [this, id] { ToggleRunning(id); });
 }
 
 mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {

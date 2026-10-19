@@ -330,7 +330,7 @@ struct GameMetadata {
   std::map<std::string, std::int64_t> active_candidate_ids;
 
   // The wider store info that doesn't fit the sidebar; see
-  // GameDetailPageDialog. requirements_min/rec are HTML, not plain text.
+  // GameDetailsCard. requirements_min/rec are HTML, not plain text.
   std::string requirements_min;
   std::string requirements_rec;
   std::vector<std::int64_t> dlc_ids;

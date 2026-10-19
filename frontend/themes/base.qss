@@ -1145,7 +1145,7 @@ QLabel#setup_tick[on="true"] {
   border-color: @accent;
 }
 
-QLabel#setup_chip {
+QLabel#setup_chip, QLabel#info_chip {
   background: @surface_alt;
   border: 1px solid @border;
   border-radius: 8px;
@@ -1153,17 +1153,17 @@ QLabel#setup_chip {
   font-size: @font_size_small;
 }
 
-QLabel#setup_chip[state="ok"] {
+QLabel#setup_chip[state="ok"], QLabel#info_chip[state="ok"] {
   color: @success;
   border-color: @success;
 }
 
-QLabel#setup_chip[state="warning"] {
+QLabel#setup_chip[state="warning"], QLabel#info_chip[state="warning"] {
   color: @warning;
   border-color: @warning;
 }
 
-QLabel#setup_chip[state="error"] {
+QLabel#setup_chip[state="error"], QLabel#info_chip[state="error"] {
   color: @error;
   border-color: @error;
 }
@@ -1240,6 +1240,16 @@ QLabel#setup_star_glyph {
 
 QLabel#setup_link {
   font-weight: 600;
+}
+
+/* game/GameDetailsCard */
+QLabel#screenshot {
+  background: @surface_alt;
+  border-radius: @radius_control;
+}
+
+QLabel#screenshot_large {
+  background: rgba(0, 0, 0, 0.85);
 }
 
 
