@@ -25,13 +25,11 @@
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Stores.h"
-#include "../dialogs/AddManualGameDialog.h"
-#include "../dialogs/DesktopEntryImportDialog.h"
+#include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
 #include "../library/HoverCard.h"
-#include "../library/LibraryActions.h"
 #include "../library/OwnedTitles.h"
 #include "../settings/SettingsPanel.h"
 #include "../sources/SourceRemoval.h"
@@ -42,6 +40,7 @@
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
+#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {
@@ -186,10 +185,10 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   add_games_->setObjectName("add_games");
   add_games_->setText("Add games");
   add_games_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  add_games_->setPopupMode(QToolButton::InstantPopup);
   // QToolButton stays content-sized otherwise.
   add_games_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  add_games_->setMenu(BuildAddGamesMenu());
+  connect(add_games_, &QToolButton::clicked, this,
+          [this] { cards::Show(this, new AddGamesCard()); });
   actions->addWidget(add_games_, /*stretch=*/1);
 
   fetch_art_button_ = new QToolButton(this);
@@ -245,32 +244,6 @@ QWidget* Sidebar::BuildGameHeading(QWidget* parent, const QString& text, QToolBu
   heading_layout->addWidget(button, 0, Qt::AlignVCenter);
   heading->setVisible(false);
   return heading;
-}
-
-QMenu* Sidebar::BuildAddGamesMenu() {
-  auto* menu = new QMenu(add_games_);
-  menu->addAction("Scan library folders", this, [this] { actions::ScanLibrary(window()); });
-  menu->addAction("Import Steam library", this,
-                  [this] { actions::ImportSteam(window(), [this] { NoteImported("steam"); }); });
-  menu->addAction("Import Lutris games", this,
-                  [this] { actions::ImportLutris(window(), [this] { NoteImported("lutris"); }); })
-      ->setToolTip(
-          "Add the Wine games from Lutris's database. Nothing is moved or renamed, so the games "
-          "stay playable in Lutris too.");
-  menu->addAction("Import desktop entries…", this,
-                  [this] {
-                    DesktopEntryImportDialog dialog(window());
-                    dialog.exec();
-                  })
-      ->setToolTip(
-          "Pick installed apps from your application menu to add as games. This includes "
-          "Flatpak apps.");
-  menu->addSeparator();
-  menu->addAction("Add game manually…", this, [this] {
-    AddManualGameDialog dialog(window());
-    dialog.exec();
-  });
-  return menu;
 }
 
 void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {

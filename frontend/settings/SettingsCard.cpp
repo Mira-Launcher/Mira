@@ -60,6 +60,25 @@ class CardBody : public QWidget {
   const QList<QWidget*>* rows_;
 };
 
+// The rows under a scrolling card's rows, with a line over each shown, the first included.
+class CardFooter : public QWidget {
+ public:
+  using QWidget::QWidget;
+
+ protected:
+  void paintEvent(QPaintEvent*) override {
+    QPainter painter(this);
+    QColor line = theme::Current().border;
+    line.setAlpha(150);
+    painter.setPen(line);
+    for (QObject* child : children()) {
+      auto* row = qobject_cast<QWidget*>(child);
+      if (row == nullptr || !row->isVisible()) continue;
+      painter.drawLine(QPoint(1, row->y()), QPoint(width() - 2, row->y()));
+    }
+  }
+};
+
 bool HasGrip(const QWidget* row) {
   const auto* setting = qobject_cast<const SettingRow*>(row);
   return setting != nullptr && setting->Grip() != nullptr && !setting->Grip()->isHidden();
@@ -267,6 +286,18 @@ SettingsCard::SettingsCard(const QString& title, QWidget* parent) : QFrame(paren
   body_layout_->setSpacing(0);
   layout->addWidget(body_);
   layout->addStretch(1);  // a card stretched to its column's bottom keeps its rows at the top
+  footer_ = new CardFooter(this);
+  footer_layout_ = new QVBoxLayout(footer_);
+  footer_layout_->setContentsMargins(0, 0, 0, 0);
+  footer_layout_->setSpacing(0);
+  footer_->hide();
+  layout->addWidget(footer_);
+}
+
+void SettingsCard::AddFooterRow(QWidget* row) {
+  row->setParent(footer_);
+  footer_layout_->addWidget(row);
+  footer_->show();
 }
 
 void SettingsCard::AddRow(QWidget* row) {
@@ -311,7 +342,7 @@ void SettingsCard::SetScrollable() {
   scroll_->setWidget(body_);
   // The scroll takes the card's spare height in place of the stretch under the rows, which moves
   // inside it so a few rows stay their own height at the top.
-  delete layout->takeAt(layout->count() - 1);
+  delete layout->takeAt(layout->indexOf(scroll_) + 1);
   layout->setStretchFactor(scroll_, 1);
   body_layout_->addStretch(1);
   SetUpScrolling(scroll_);

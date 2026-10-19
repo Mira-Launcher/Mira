@@ -62,6 +62,7 @@
 #include "../game/RemoveGamesCard.h"
 #include "../game/UnclearDropCard.h"
 #include "../game/UnclearMoveCard.h"
+#include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
@@ -566,7 +567,10 @@ void LibraryWindow::dropEvent(QDropEvent* event) {
     source_page_->AddDroppedFiles(paths);
     return;
   }
-  for (const QUrl& url : event->mimeData()->urls()) ImportDropped(url.toLocalFile());
+  // One thing opens its page in Add games; several are each moved in by Mira's guess.
+  const QList<QUrl> urls = event->mimeData()->urls();
+  if (urls.size() == 1) return OpenAddGames(urls.front().toLocalFile());
+  for (const QUrl& url : urls) ImportDropped(url.toLocalFile());
 }
 
 void LibraryWindow::ImportDropped(const QString& path) {
@@ -577,31 +581,24 @@ void LibraryWindow::ImportDropped(const QString& path) {
           mira_gui::notify::FailedRequest(this, "Could not add " + filename + ".", result.error);
           return;
         }
-        const QString name = result.name.empty() ? filename : QString::fromStdString(result.name);
-        if (result.kind == "game" || result.kind == "app") {
-          StartImport(path, QString::fromStdString(result.kind), name);
+        // An installer, or something Mira can't tell is a game or an app, needs the card's page.
+        if (result.installer || (result.kind != "game" && result.kind != "app")) {
+          OpenAddGames(path);
           return;
         }
-        constexpr int kGame = 1;
-        constexpr int kApp = 2;
-        mira_gui::PopupDialog dialog(this, mira_gui::notify::Level::Info, "Game or app?");
-        dialog.SetMessage("Mira couldn't tell what " + name + " is.");
-        dialog.AddButton("Game", kGame, /*default_button=*/true);
-        dialog.AddButton("App", kApp);
-        dialog.AddButton("Cancel", false);
-        const int answer = dialog.exec();
-        if (answer == kGame || answer == kApp)
-          StartImport(path, answer == kApp ? "app" : "game", name);
+        const QString name = result.name.empty() ? filename : QString::fromStdString(result.name);
+        mira_gui::api::ImportPathAsync(
+            this, path.toStdString(), result.kind, [this, name](mira_gui::ImportPathResult moved) {
+              if (!moved.ok)
+                mira_gui::notify::FailedRequest(this, "Could not add " + name + ".", moved.error);
+            });
       });
 }
 
-void LibraryWindow::StartImport(const QString& path, const QString& kind, const QString& name) {
-  mira_gui::api::ImportPathAsync(this, path.toStdString(), kind.toStdString(),
-                                 [this, name](mira_gui::ImportPathResult result) {
-                                   if (!result.ok)
-                                     mira_gui::notify::FailedRequest(
-                                         this, "Could not add " + name + ".", result.error);
-                                 });
+void LibraryWindow::OpenAddGames(const QString& path) {
+  auto* card = new mira_gui::AddGamesCard();
+  mira_gui::cards::Show(this, card);
+  if (!path.isEmpty()) card->OpenPath(path);
 }
 
 void LibraryWindow::showEvent(QShowEvent* event) {

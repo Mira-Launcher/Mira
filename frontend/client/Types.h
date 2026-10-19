@@ -1050,6 +1050,16 @@ struct ImportGuessResult {
   std::string kind;
   std::string name;
   std::string reason;
+  // What could start it, best first: relative to a folder, or the file's own name.
+  struct Program {
+    std::string path;
+    std::string platform;  // "windows" | "native"
+    bool installer = false;
+  };
+  std::vector<Program> programs;
+  bool installer = false;  // the first program is an installer
+  // Running it as an installer; ok only when mirad described it.
+  InstallerInfoResult installer_info;
 };
 
 // POST /v1/library/import: path is where the dropped item now lives.
@@ -1166,6 +1176,9 @@ struct DesktopEntryCandidate {
   std::string id;
   std::string name;
   std::string icon;
+  std::string command;
+  bool flatpak = false;
+  bool app = false;  // its Categories don't say Game
 };
 
 struct DesktopEntryCandidatesResult {

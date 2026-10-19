@@ -106,7 +106,6 @@ class Sidebar : public QWidget {
 
  private:
   QWidget* BuildGameHeading(QWidget* parent, const QString& text, QToolButton*& button);
-  QMenu* BuildAddGamesMenu();
   // Redrawn rather than stored: each glyph is painted in the theme's colors.
   void ApplyIcons();
   // The rows' checked state and icons, for the page SetActive last named.

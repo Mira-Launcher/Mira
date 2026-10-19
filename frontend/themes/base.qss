@@ -13,6 +13,12 @@ QLabel[role="muted"] {
   font-size: @font_size_small;
 }
 
+/* A glyph on a tile, before a card row's label (Add games' choices). */
+QLabel[role="tile_icon"] {
+  background: @surface_alt;
+  border-radius: 7px;
+}
+
 QLabel[role="heading"] {
   font-size: @font_size_heading;
   font-weight: 600;

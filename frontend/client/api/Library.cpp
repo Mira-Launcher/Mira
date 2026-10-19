@@ -62,14 +62,18 @@ DesktopEntryCandidatesResult GetDesktopEntryCandidatesSync() {
           c.id = entry.value("id", std::string());
           c.name = entry.value("name", std::string());
           c.icon = entry.value("icon", std::string());
+          c.command = entry.value("command", std::string());
+          c.flatpak = entry.value("flatpak", false);
+          c.app = entry.value("app", false);
           result.candidates.push_back(std::move(c));
         }
       });
 }
 
-DesktopEntryImportResult ImportDesktopEntriesSync(const std::vector<std::string>& ids) {
+DesktopEntryImportResult ImportDesktopEntriesSync(const std::vector<std::string>& ids,
+                                                  const std::vector<std::string>& apps) {
   return ReadReply<DesktopEntryImportResult>(
-      transport::PostJson("/v1/desktop-entries/import", json{{"ids", ids}}),
+      transport::PostJson("/v1/desktop-entries/import", json{{"ids", ids}, {"apps", apps}}),
       "POST /v1/desktop-entries/import", Shape::Object, FillAddedUpdated<DesktopEntryImportResult>);
 }
 
@@ -183,8 +187,10 @@ void GetDesktopEntryCandidatesAsync(QObject* context,
 }
 
 void ImportDesktopEntriesAsync(QObject* context, const std::vector<std::string>& ids,
+                               const std::vector<std::string>& apps,
                                std::function<void(DesktopEntryImportResult)> callback) {
-  async::Run(context, [ids] { return ImportDesktopEntriesSync(ids); }, std::move(callback));
+  async::Run(
+      context, [ids, apps] { return ImportDesktopEntriesSync(ids, apps); }, std::move(callback));
 }
 
 void SyncDesktopEntriesAsync(QObject* context,
@@ -270,6 +276,16 @@ void ClassifyImportAsync(QObject* context, const std::string& path,
               result.kind = reply.value("kind", std::string());
               result.name = reply.value("name", std::string());
               result.reason = reply.value("reason", std::string());
+              for (const json& program : reply.value("programs", json::array())) {
+                result.programs.push_back({program.value("path", std::string()),
+                                           program.value("platform", std::string()),
+                                           program.value("installer", false)});
+              }
+              result.installer = reply.value("installer", false);
+              if (reply.contains("installer_info")) {
+                result.installer_info = mapping::ToInstallerInfo(reply["installer_info"]);
+                result.installer_info.ok = true;
+              }
             });
       },
       std::move(callback));

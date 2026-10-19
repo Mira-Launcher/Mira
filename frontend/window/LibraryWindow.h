@@ -109,8 +109,10 @@ class LibraryWindow : public QMainWindow, public mira_gui::CardHost {
   void dragMoveEvent(QDragMoveEvent* event) override;
   void dragLeaveEvent(QDragLeaveEvent* event) override;
   void dropEvent(QDropEvent* event) override;
+  // Moves a dropped `path` in by mirad's guess, or opens its page in Add games when that's unclear.
   void ImportDropped(const QString& path);
-  void StartImport(const QString& path, const QString& kind, const QString& name);
+  // Opens Add games, on the page for `path` unless that's empty.
+  void OpenAddGames(const QString& path = {});
   void closeEvent(QCloseEvent* event) override;
   void QuitOrClose();
   void changeEvent(QEvent* event) override;

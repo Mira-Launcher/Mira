@@ -75,10 +75,10 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
                         std::function<void(TricksResult)> callback);
 
 // POST /v1/games/manual: adds a game record directly, for an installer or
-// a folder outside every library root. Response mirrors GetGameAsync.
+// a folder outside every library root, tagged `app` when `app`. Response mirrors GetGameAsync.
 void AddManualGameAsync(QObject* context, const std::string& install_path,
                         const std::string& exe_path, const std::string& name,
-                        const std::string& platform, bool is_installer,
+                        const std::string& platform, bool is_installer, bool app,
                         std::function<void(GameDetailResult)> callback);
 
 // The game's own installer, or `path` (absolute, or relative to its

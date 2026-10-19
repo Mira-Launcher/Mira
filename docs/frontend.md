@@ -34,6 +34,8 @@ Settings › Library › Hidden games sets a password (`library/HiddenLock`'s `H
 
 From top to bottom: the Mira header, the Library, Runners and Settings rows, pinned games, the sources, recently played games (off by default), and the Add games button.
 
+*Add games* opens `library/AddGamesCard`, an in-window card (`widgets/WindowCards`) with four choices: *Scan library folders*, *Already installed* (a folder or a program, from Choose…'s menu), *Installer* and *From your app menu*. Steam and Lutris aren't there, since their sources import them. A pick replaces the card's first page with its own, which has a back arrow; cancelling the file picker leaves the card as it was. Already installed shows the folder or program (Change…), the program that starts a folder (classify's `programs`, best first), the name, game or app (classify's guess) and *Move it into* the first Mira folder's Games or Applications, on unless it's already in a library folder; Add moves it first (`POST /v1/library/import`) when that's on, then adds it (`POST /v1/games/manual`). Installer is the installer card's rows (classify's `installer_info`, since there's no game yet) plus a Name row: *Add without installing* adds it as needing install, and *Install quietly* (when the format allows it) and *Show the installer* add it and start the install at once; a failed install retries the install, not the add. From your app menu lists the entries mirad hasn't added (fetched as the card opens, so the first page shows their count), with a search field; ticking one shows its *App* chip, on when the entry isn't marked as a game, in a space kept while it's hidden. The footer counts the games and apps picked and *Add N* imports them in one `POST /v1/desktop-entries/import`. Dropping one file or folder on the window opens its page (Installer for an installer, Already installed otherwise); several dropped at once are each moved in by mirad's guess, and one it can't place opens its page.
+
 Pinning a game (game menu, or several at once from the batch menu, which offers Pin/Unpin and Hide/Unhide for whichever selected games each would change) adds the `favorite` tag, the same one Lutris imports its favorites under. Pinned games list by name under PINNED; their tiles carry no mark. PINNED follows hidden mode: hidden pinned games show only in it, and only they do. Clicking a pinned or recently played row plays the game; the second click of a double click is ignored, since the list can reorder under it. Source rows lead with up to three of the source's covers fanned like a hand of cards (most recently played on top; a dashed outline when it has none), then the name over a muted line: how many games it has, out of what the store owns once `OwnedTitles` has listed it ("2/229 games"), *No games*, or *Signed out* in orange for a store that has games but is signed out. With covers turned off, a row is one line with a colored dot and the count.
 
 Only sources that are set up show in the sidebar. *Manage sources* (`sources/ManageSourcesCard`) is an in-window card over the content, sharing the sidebar style card's overlay so the sidebar stays bright beside it. It lists every source in sidebar order as one freely reorderable list (drag the grip or Alt+Up/Down), each row with its kind tag and status inline, a switch that turns the source on or off, Set up for one that isn't set up yet, and a ⋯ menu for open, import, show in sidebar and remove. Every change applies at once. `sources/Sources` lists them for every view.
@@ -249,7 +251,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `POST /v1/games/removal`, `/removal/sizes`, `/delete` | `game/RemoveGamesCard`, `actions::RemoveGames`, big screen's Uninstall |
 | `GET`/`PATCH /v1/games/{id}/config` | `OverridesEditor` |
 | `POST /v1/games/{id}/launch`, `/stop` | Play/Stop, double-click, context menu |
-| `POST /v1/games/manual` | `AddManualGameDialog` |
+| `POST /v1/games/manual`, `POST /v1/library/import/classify`, `POST /v1/library/import` | `library/AddGamesCard`, dropping on the window |
 | `POST /v1/games/{id}/run` | `RunInPrefixDialog` |
 | `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install`, `DELETE .../installer` | `game/InstallerCards`, *Mark as installed*, `game/InstallPromptCard`, `DownloadTracker` |
 | `POST /v1/games/{id}/tricks` | `WinetricksDialog` |
@@ -262,7 +264,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `/v1/library`, `/v1/library/install`, `/update`, `/artwork` | `SourcePage` |
 | `/v1/{epic,gog,itch,amazon,humble}/*`, `/v1/launchers/*`, `/v1/sources/*` | `SourcePage`, `ItchCollectionsDialog` |
 | `POST /v1/steam/scan`, `/v1/lutris/import` | Steam and Lutris pages |
-| `/v1/desktop-entries/*` | `DesktopEntryImportDialog`, Settings |
+| `/v1/desktop-entries/*` | `library/AddGamesCard`, Settings |
 | `/v1/config`, `/v1/config/schema`, `/reset` | `SettingsPanel`, `OverridesEditor`, `RunnersPage` |
 | `/v1/runners/*` | `RunnersPage`, runner pickers |
 | `GET /v1/gamemode/status` | Settings |

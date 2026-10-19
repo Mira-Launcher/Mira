@@ -95,7 +95,7 @@ void AddWebApp(QObject* context, const WebApp& app, std::function<void(QString)>
   file.close();
   api::AddManualGameAsync(
       context, dir.toStdString(), "launch.sh", app.name.toStdString(), "native", false,
-      [context, done](GameDetailResult added) {
+      /*app=*/false, [context, done](GameDetailResult added) {
         if (!added.ok) return done(QString::fromStdString(added.error.message));
         GamePatch patch;
         patch.tags = std::vector<std::string>{"app", "media"};
