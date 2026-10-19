@@ -60,6 +60,8 @@ class SettingsPanel : public QWidget {
   static constexpr const char* kSidebarKey = "frontend.sidebar";
   // The Sources page's card of which sources the sidebar shows.
   static constexpr const char* kSidebarSourcesKey = "frontend.sidebar_sources";
+  // The Shortcuts page.
+  static constexpr const char* kShortcutsKey = "frontend.shortcuts";
 
   // Saves every change. Emits SaveFinished either way.
   void Save();

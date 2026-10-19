@@ -91,7 +91,7 @@
 #include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TileView.h"
-#include "AboutPanel.h"
+#include "AboutCard.h"
 #include "FramelessRoot.h"
 #include "TopBar.h"
 
@@ -307,20 +307,22 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
 void LibraryWindow::BuildShortcuts() {
   common_ = mira_gui::shortcuts::Install(
-      this, {
-                {"Ctrl+F", "Focus the search box", "focus_search"},
-                {"Esc", "Clear the search, then the selection", "clear_or_deselect"},
-                {"Ctrl+1…9", "Pick a filter"},
-                {"Ctrl+H", "Show only hidden games, or leave hidden mode", "toggle_hidden"},
-                {"F5, Ctrl+R", "Refresh the library", "refresh"},
-                {"Enter", "Play the selected game, or stop it while it runs", "play_stop"},
-                {"Alt+Enter", "Game settings", "details_settings"},
-                {"Delete", "Remove the selected games", "delete_game"},
-                {"Ctrl++", "Bigger tiles", "zoom_in"},
-                {"Ctrl+-", "Smaller tiles", "zoom_out"},
-                {"Ctrl+0", "Reset tile size", "reset_zoom"},
-                {"Ctrl+,", "Settings", "settings"},
-            });
+      this,
+      {
+          {"Ctrl+F", "Focus the search box", "focus_search", "Library"},
+          {"Esc", "Clear the search, then the selection", "clear_or_deselect", "Library"},
+          {"Ctrl+1…9", "Pick a filter", {}, "Library"},
+          {"Ctrl+H", "Show only hidden games, or leave hidden mode", "toggle_hidden", "Library"},
+          {"Enter", "Play the selected game, or stop it while it runs", "play_stop", "Library"},
+          {"Alt+Enter", "Game settings", "details_settings", "Library"},
+          {"Delete", "Remove the selected games", "delete_game", "Library"},
+          {"Ctrl++", "Bigger tiles", "zoom_in", "View"},
+          {"Ctrl+-", "Smaller tiles", "zoom_out", "View"},
+          {"Ctrl+0", "Reset tile size", "reset_zoom", "View"},
+          {"F5, Ctrl+R", "Refresh the library", "refresh", "View"},
+          {"Ctrl+,", "Settings", "settings", "Everywhere"},
+      },
+      [this] { OpenSettings(mira_gui::SettingsPanel::kShortcutsKey); });
 
   // Each of these registers with ui/KeyBindings so Settings' Shortcuts
   // category can list and edit it; Ctrl+1…9's per-filter loop below is the
@@ -792,19 +794,7 @@ mira_gui::SetupWindow* LibraryWindow::OpenSetup(const mira_gui::FrontendPrefs& p
 }
 
 void LibraryWindow::OpenAbout() {
-  QDialog dialog(this);
-  dialog.setWindowTitle("About Mira");
-  auto* layout = new QVBoxLayout(&dialog);
-  layout->addWidget(new mira_gui::AboutPanel(&dialog));
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-  auto* daemon_log = buttons->addButton("Service log", QDialogButtonBox::ActionRole);
-  daemon_log->setToolTip("What Mira's background service is doing, live");
-  connect(daemon_log, &QPushButton::clicked, this,
-          [this] { mira_gui::LogWindow::Open(this, "daemon", "Mira service"); });
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-  layout->addWidget(buttons);
-  dialog.resize(560, dialog.sizeHint().height());
-  dialog.exec();
+  mira_gui::cards::Show(this, new mira_gui::AboutCard());
 }
 
 void LibraryWindow::OpenGameDetailPage(const std::string& id) {

@@ -60,6 +60,7 @@ enum class Glyph {
   External,
   Tag,
   Gamepad,
+  Copy,
 };
 
 // Drawn on demand in the current theme's text color, at the handful of sizes
