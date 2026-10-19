@@ -113,6 +113,10 @@ void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, boo
 void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
                           std::function<void(RemovalPlansResult)> callback);
 
+// POST /v1/games/relocation: what moving each game into Mira's folders does, before anything moves.
+void GetRelocationPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                             std::function<void(RelocationPlansResult)> callback);
+
 // POST /v1/games/removal/sizes, a job: the sizes behind those plans.
 void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,
                           std::function<void(RemovalSizesResult)> callback);

@@ -418,6 +418,40 @@ void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
       std::move(callback));
 }
 
+void GetRelocationPlansAsync(QObject* context, const std::vector<std::string>& ids,
+                             std::function<void(RelocationPlansResult)> callback) {
+  async::Run(
+      context,
+      [ids] {
+        return ReadReply<RelocationPlansResult>(
+            transport::PostJson("/v1/games/relocation", {{"ids", ids}}),
+            "POST /v1/games/relocation", Shape::Array,
+            [](RelocationPlansResult& result, const json& body) {
+              const auto part = [](const json& entry) {
+                return RelocationPlan::Part{.action = entry.value("action", std::string("none")),
+                                            .from = entry.value("from", std::string()),
+                                            .to = entry.value("to", std::string()),
+                                            .reason = entry.value("reason", std::string()),
+                                            .copies = entry.value("copies", false)};
+              };
+              for (const json& entry : body) {
+                RelocationPlan plan;
+                plan.id = entry.value("id", std::string());
+                plan.name = entry.value("name", std::string());
+                if (entry.contains("error")) {
+                  plan.ok = false;
+                  plan.error = mapping::ToApiError(entry["error"]);
+                } else {
+                  plan.files = part(entry.value("files", json::object()));
+                  plan.prefix = part(entry.value("prefix", json::object()));
+                }
+                result.plans.push_back(std::move(plan));
+              }
+            });
+      },
+      std::move(callback));
+}
+
 void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,
                           std::function<void(RemovalSizesResult)> callback) {
   const json body = {{"ids", ids}};

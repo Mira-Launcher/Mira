@@ -109,6 +109,8 @@ Jobs answer `202` at once (see [api.md](api.md#jobs)). `client/Jobs` waits for e
 
 One click selects a tile. Ctrl, Shift or a drag selects several, and the context menu then offers batch actions; source pages work the same way (`widgets/TileView`), with *Install (N)* on not-installed titles. There a drag may start anywhere on the page but stays within its section, and selecting in one section clears the other, since the two offer different actions. Double-click launches. A single click never launches, so a misclick can't start a game. *Drag to select* on the Interface tab turns drag selection off.
 
+The game menu's tools open cards over the library. *Run in prefix…* and *Winetricks…* (`game/PrefixCards`) run a program or a verb in the game's prefix, with a rail and a status line while it starts or runs; Winetricks shows common verbs as chips, those already in the prefix (`GET /v1/games/{id}/tricks`) first and ticked, narrowed by its field, which also takes any other verb, and stays open for the next one. *Move to Mira's folders…* (`game/MoveGamesCard`) shows mirad's plan before anything moves: for one game, where its game files and prefix go (from → to, with the size and whether it stays on the same drive) or why they stay; for a selection, a row per game with what moves and its size, which opens (a click, or Right and Left) to the same lines, the games with nothing to move sharing a row per reason, and the total in the footer.
+
 Hovering a tile shows `library/HoverCard` with the name, status, runner, ProtonDB tier, developer and genres. Tooltips everywhere go through `widgets/ToolTip`, which draws them as the same card.
 
 ### Keyboard
@@ -256,7 +258,7 @@ Metadata is only fetched when a game is first added. A tile's *Refresh metadata 
 | `GET /v1/games/{id}/installer`, `POST .../install`, `GET .../install/progress`, `POST .../finish-install`, `DELETE .../installer` | `game/InstallerCards`, *Mark as installed*, `game/InstallPromptCard`, `DownloadTracker` |
 | `POST`/`GET /v1/games/{id}/tricks` | `game/PrefixCards` (Winetricks) |
 | `GET /v1/logs/{channel}` | `LogWindow` (a window per log), a launcher install's running tail (`setup/SetupLog`, in the sign-in panels), the Activity popover's *Log* buttons |
-| `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…*, and the game card's *Move…* buttons for the install folder and the prefix |
+| `POST /v1/games/relocation`, `POST /v1/games/{id}/relocate`, `/v1/library/relocate` | *Move to Mira's folders…* (`game/MoveGamesCard`), and the game card's *Move…* buttons for the install folder and the prefix |
 | `/v1/tags`, `/v1/tags/*` | `tags/TagsPage`, `tags/TagPicker` |
 | `GET`/`POST /v1/library/unclear` | `game/UnclearMoveCard` |
 | Metadata and artwork endpoints | `ArtworkStore`, `HoverCard`, `GameDetailPageDialog`, `ArtPickerPanel` |

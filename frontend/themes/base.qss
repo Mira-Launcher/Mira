@@ -61,6 +61,11 @@ QLabel[role="error"] {
   font-size: @font_size_small;
 }
 
+/* Something to notice before confirming, such as a move that copies to another drive. */
+QLabel[role="warning"] {
+  color: @warning;
+}
+
 QLabel[role="keys"] {
   font-family: monospace;
   font-weight: 600;

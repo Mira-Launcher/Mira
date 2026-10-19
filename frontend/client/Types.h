@@ -1102,6 +1102,29 @@ struct RemovalPlansResult {
 };
 
 // POST /v1/games/removal/sizes, by id.
+// One game's entry from POST /v1/games/relocation: what moving it into Mira's folders does.
+struct RelocationPlan {
+  struct Part {
+    std::string action;  // "move" | "follow" | "stay" | "in_place" | "none"
+    std::string from;
+    std::string to;
+    std::string reason;   // why it stays
+    bool copies = false;  // moved to another disk: copied, then removed
+  };
+  std::string id;
+  std::string name;
+  bool ok = true;  // false: the move would be refused, for `error`
+  ApiError error;
+  Part files;
+  Part prefix;
+};
+
+struct RelocationPlansResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<RelocationPlan> plans;
+};
+
 struct RemovalSize {
   std::uint64_t files = 0;
   std::uint64_t prefix = 0;
