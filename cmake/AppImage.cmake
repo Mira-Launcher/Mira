@@ -181,6 +181,10 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
     COMMAND "${CMAKE_COMMAND}" -E copy
             "${MIRA_QT_FILTERED_PLUGINS_DIR}/platformthemes/libqgtk3.so"
             "${MIRA_APPDIR}/usr/plugins/platformthemes/libqgtk3.so"
+    # File pickers through xdg-desktop-portal, the desktop's own on Plasma too; see main.cpp.
+    COMMAND "${CMAKE_COMMAND}" -E copy
+            "${MIRA_QT_FILTERED_PLUGINS_DIR}/platformthemes/libqxdgdesktopportal.so"
+            "${MIRA_APPDIR}/usr/plugins/platformthemes/libqxdgdesktopportal.so"
     # Wayland's EGL client, for OpenGL and video under Wayland; the Qt plugin skips it.
     COMMAND "${CMAKE_COMMAND}" -E copy
             "${MIRA_QT_FILTERED_PLUGINS_DIR}/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
