@@ -81,6 +81,8 @@ class Services {
   Lane artwork_thumbs{"artwork-thumbs", 4};
   Lane operations{"operations", 4};  // installs and downloads
   Lane installs{"installs", 1};      // installers a scan runs on its own
+  Lane achievements{"achievements", 2};
+  Lane achievement_icons{"achievement-icons", 4};
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
@@ -204,6 +206,13 @@ class Services {
   // With no Wine or Proton build installed (a fresh install), downloads the newest GE-Proton so
   // Windows games run.
   void EnsureWindowsRunner();
+
+  // Fetches a game's achievements from its store and caches them, publishing
+  // game.achievements_ready when they changed. {id, total, unlocked, changed}.
+  Result<nlohmann::json> RefreshAchievements(const std::string& id);
+  // After a session ends: RefreshAchievements on the achievements lane, unless achievements are
+  // off or the game was found to have none within the last week.
+  void RefreshAchievementsAfterPlay(const std::string& id);
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes

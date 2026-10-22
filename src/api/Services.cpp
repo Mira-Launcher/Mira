@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 
+#include "achievements/Achievements.h"
 #include "api/Http.h"
 #include "config/Resolver.h"
 #include "core/Command.h"
@@ -85,6 +86,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
   supervisor.SetExitHook([this](const std::string& id) {
     CheckForInstall(id);
     SortByTags({id});  // its tags may have changed while it ran
+    RefreshAchievementsAfterPlay(id);
   });
   fetches.OnNewGameFetched([this](const std::string& id) { TagFromSteam(id); });
   library_roots_ = config.GetPathArray("library_roots");
@@ -135,7 +137,8 @@ Services::~Services() {
   BeginStopping();
   if (external_watch_.joinable()) external_watch_.join();
   // Their tasks report to `jobs`, which is destroyed before the lanes are.
-  for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs})
+  for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs,
+                     &achievements, &achievement_icons})
     lane->Stop();
 }
 
@@ -891,6 +894,54 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
   }
   events.Publish("runners.download.finished", finished);
   return finished;
+}
+
+Result<json> Services::RefreshAchievements(const std::string& id) {
+  const auto game = games.Find(id);
+  if (!game) return Err("game_not_found", "the game was removed");
+  auto fetched = achievements::Fetch(config, *game);
+  if (!fetched) return std::unexpected(fetched.error());
+  store::MetadataStore& cache = games.Metadata();
+  const json before = cache.ReadAchievements(id);
+  const bool changed =
+      before.is_null() || !achievements::SameContent(achievements::FromJson(before), *fetched);
+  if (auto written =
+          cache.WriteAchievements(id, fetched->fetched_at, achievements::ToJson(*fetched));
+      !written)
+    return std::unexpected(written.error());
+  achievements::PruneIcons(cache.ArtworkDir(id) / "achievements", *fetched);
+  const json counts = achievements::ApiJson(*fetched);
+  json result = {{"id", id}, {"total", counts["total"]}, {"unlocked", counts["unlocked"]}};
+  if (changed) events.Publish("game.achievements_ready", result);
+  result["changed"] = changed;
+  return result;
+}
+
+void Services::RefreshAchievementsAfterPlay(const std::string& id) {
+  if (!config.GetBool("achievements.enabled")) return;
+  const auto game = games.Find(id);
+  if (!game || !achievements::HasSource(*game)) return;
+  // A game without achievements isn't asked about after every session.
+  const json cached = games.Metadata().ReadAchievements(id);
+  constexpr std::int64_t kWeek = 7 * 24 * 3600;
+  if (cached.is_object() && cached.value("items", json::array()).empty() &&
+      model::NowSeconds() - cached.value("fetched_at", std::int64_t{0}) < kWeek)
+    return;
+  const bool steam = game->runner_ref.starts_with("steam:");
+  achievements.Post([this, id, steam] {
+    auto refreshed = RefreshAchievements(id);
+    // Steam writes its stats file a moment after the game exits.
+    if (steam && refreshed && !refreshed->value("changed", false)) {
+      std::mutex mutex;
+      std::condition_variable_any wake;
+      std::unique_lock lock(mutex);
+      wake.wait_for(lock, ThisTaskStop(), std::chrono::seconds(5), [] { return false; });
+      if (ThisTaskStop().stop_requested()) return;
+      refreshed = RefreshAchievements(id);
+    }
+    if (!refreshed)
+      log::Info("couldn't check {}'s achievements: {}", id, refreshed.error().message);
+  });
 }
 
 void Services::EnsureWindowsRunner() {

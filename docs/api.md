@@ -31,7 +31,7 @@ Long-running work (scans, downloads, installs, winetricks) is a [job](#jobs): it
 
 Scans, imports, moving games, removing games, removing a source, bulk metadata refreshes, installs, store and tool setup, Humble downloads, runner downloads, winetricks verbs and choosing artwork are jobs. Their own `*.started`, `*.finished` and `*.failed` events are published as well, for clients that follow one thing. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
 
-Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks` or `artwork`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
+Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork` or `achievements`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
 
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
@@ -763,6 +763,23 @@ Body `{"ids": [...]}`. Fetches each of these games again, like `POST /v1/games/{
 ### `POST /v1/games/metadata/refresh-missing`
 The same, for every game without a cover.
 
+## Achievements
+
+A game's achievements as its store last listed them, cached in `cache.db` and refreshed on request, after a tracked session of the game ends (for Steam games only with `steam.track_process`), never on a timer. A game whose store listed none within the last week isn't asked again after playing. `achievements.enabled` (on by default) turns refreshing off; what's cached still answers. Sources:
+
+- **Steam games** (`runner_ref` `steam:<appid>`): every definition from Steam's `appcache/stats/UserGameStatsSchema_<appid>.bin` and the account's progress from `UserGameStats_<account>_<appid>.bin`, which Steam writes for games it has run on this computer. The account is `steam.steamid64`, else the one Steam signed in last. Without those files, Steam's Web API when `steam.web_api_key` and `steam.steamid64` are set, else `no_local_achievements` with a fix for the key. Rarity comes from Steam's global percentages, which need no key. Unlocking stays with the Steam client.
+
+Text is in the system language (`LC_ALL`, `LC_MESSAGES`, `LANG`), falling back to English.
+
+### `GET /v1/games/{id}/achievements`
+`{source, fetched_at, total, unlocked, items: [{key, name, description, hidden, unlocked, unlocked_at, rarity, xp, icon}]}`, items in the store's order. `unlocked_at` is unix seconds (0 while locked or when the store doesn't say), `rarity` the percent of players who have it (-1 when unknown), `xp` Epic's points (0 elsewhere). A `hidden` achievement keeps its name and description: a client masks it until unlocked. `icon` is a version for the icon endpoint, empty when the achievement has no icon. `404 no_achievements` before the first refresh, `400 no_achievements_source` for a game whose source has none. While `achievements.enabled` is off, this route, the refresh and the icon answer `400 achievements_off`; the cached lists are kept for when it's turned on again.
+
+### `POST /v1/games/{id}/achievements/refresh`
+Asks the game's store again. A job (kind `achievements`) whose result is `{id, total, unlocked, changed}`. Event: `game.achievements_ready {id, total, unlocked}` when the list changed.
+
+### `GET /v1/games/{id}/achievements/icon?key=&state=locked|unlocked`
+One achievement's picture (`unlocked` by default; a store with one picture uses it for both), downloaded the first time it's asked for, a few at a time, fitted within 128x128 and kept under `artwork/<id>/achievements/`. Icons no longer listed are deleted on refresh, and all of them with the game's other art. `404 achievement_not_found`, `404 icon_not_found`, `502 icon_download_failed`.
+
 ## Events
 
 ### `GET /v1/events`
@@ -791,6 +808,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.install.*` | See `POST /v1/games/{id}/install`. |
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |
 | `game.artwork_*` | See the artwork endpoints. |
+| `game.achievements_ready` | `{id, total, unlocked}` after an [achievements](#achievements) refresh changed the list. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |

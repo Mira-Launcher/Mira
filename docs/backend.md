@@ -27,7 +27,8 @@ src/
               Exec, GameMode, Winetricks
   proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
-  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus
+  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus,
+              Achievements (Steam's stats files)
   epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
   gog/        gogdl wrapper, importer, installer and source
   itch/       butlerd JSON-RPC client, importer, installer and source
@@ -37,6 +38,7 @@ src/
   emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
+  achievements/  Achievement lists from each store, the system locale, and achievement icons
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
@@ -71,7 +73,7 @@ logs/           per-game output from the last launches
 
 **mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` (removed with their game), `sessions` (kept when their game is removed, so a game added again under its id gets its play history back; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `removed_games` (what the user set on each removed game, as JSON, which `Reattach` puts back on a game added under its id; `NextId` gives a game found at a removed one's `install_path` that id), `settings_snapshot`, `ui_state` (the GUI's window state, kept out of `frontend.toml`), and `hidden_titles` (store titles hidden while not installed; a hidden title's game takes the `hidden` tag as it's added, and a removed hidden store game puts its title back), and `secrets` (values clients can't read through settings.toml: the hidden games' password hash). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
-**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, and `lists` of what's fetched for the whole library (Steam's tag names). Everything in it can be fetched again, so a damaged one is started over.
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, `lists` of what's fetched for the whole library (Steam's tag names), and `achievements` per game (icons under `artwork/<id>/achievements/`, dropped with the game's metadata). Everything in it can be fetched again, so a damaged one is started over.
 
 Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 

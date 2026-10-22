@@ -38,6 +38,11 @@ class MetadataStore {
   // when none is cached.
   nlohmann::json ReadList(const std::string& name) const;
   Result<void> WriteList(const std::string& name, const nlohmann::json& value);
+  // A game's achievements as achievements::ToJson stored them; null when none are cached.
+  nlohmann::json ReadAchievements(const std::string& id) const;
+  Result<void> WriteAchievements(const std::string& id, std::int64_t fetched_at,
+                                 const nlohmann::json& value);
+
   // A store's owned titles as it last listed them, in its order.
   struct CatalogRow {
     std::string ref;
@@ -88,6 +93,7 @@ class MetadataStore {
   Result<void> Open();
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
   std::optional<std::vector<CatalogRow>> ReadCatalogLocked(const std::string& source) const;
+  void DropAchievementsLocked(const std::string& id);
 
   std::filesystem::path dir_;
   mutable std::mutex mutex_;

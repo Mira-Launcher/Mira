@@ -432,6 +432,15 @@ Schema::Schema() {
              "match. The match can be wrong, and each lookup sends the game's name to Steam's "
              "public search. It does not change how the game launches or its cover art."});
 
+  s.Add({.key = "achievements.enabled",
+         .label = "Show achievements",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Read achievements for Steam, GOG and Epic games and check them again after you "
+                "play. Steam's come from its files on this computer; GOG and Epic ask the store "
+                "with your sign-in.",
+         .keywords = "trophies unlocked rarity"});
+
   s.Add(
       {.key = "lutris.import_art",
        .label = "Use Lutris artwork",
