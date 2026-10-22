@@ -989,6 +989,30 @@ Schema::Schema() {
          .doc = "How long the post-launch script may run before Mira force-kills it.",
          .constraint = Range(1, 600)});
 
+  // --- Saves -----------------------------------------------------------------
+  s.Section("Saves", "Backups");
+  s.Group("Where saves are", Sections::Fold::Collapsed);
+
+  s.Add({.key = "saves.manifest_url",
+         .label = "Save locations list",
+         .type = Type::String,
+         .default_value =
+             "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/"
+             "manifest.yaml",
+         .doc = "Where Mira downloads the list of where each game keeps its saves. It's checked "
+                "for changes at most once a day, and only while something needs it.",
+         .constraint = NonEmptyString(),
+         .keywords = "ludusavi manifest"});
+
+  s.Add({.key = "saves.manifest_name",
+         .label = "Game in the save locations list",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::GameOnly,
+         .doc = "The entry of the save locations list this game's saves are found through. Empty "
+                "finds it by the game's Steam, GOG or Lutris ID, then by its exact name.",
+         .keywords = "ludusavi manifest"});
+
   // --- Installers ------------------------------------------------------------
   s.Section("Installers", "Silent installs");
 

@@ -31,7 +31,7 @@ Long-running work (scans, downloads, installs, winetricks) is a [job](#jobs): it
 
 Scans, imports, moving games, removing games, removing a source, bulk metadata refreshes, installs, store and tool setup, Humble downloads, runner downloads, winetricks verbs and choosing artwork are jobs. Their own `*.started`, `*.finished` and `*.failed` events are published as well, for clients that follow one thing. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
 
-Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork` or `achievements`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
+Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork`, `achievements` or `saves`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
 
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
@@ -787,6 +787,21 @@ Asks the game's store again. A job (kind `achievements`) whose result is `{id, t
 ### `GET /v1/games/{id}/achievements/icon?key=&state=locked|unlocked`
 One achievement's picture (`unlocked` by default; a store with one picture uses it for both), downloaded the first time it's asked for, a few at a time, fitted within 128x128 and kept under `artwork/<id>/achievements/`. Icons no longer listed are deleted on refresh, and all of them with the game's other art. `404 achievement_not_found`, `404 icon_not_found`, `502 icon_download_failed`.
 
+## Saves
+
+Where each game keeps its saves comes from a list of save locations, downloaded from `saves.manifest_url` and indexed in `cache.db`. Only the list's data is used (by default the [ludusavi-manifest](https://github.com/mtkennerly/ludusavi-manifest) project's, MIT); finding, backing up and syncing the files is Mira's own. It's fetched the first time something needs it, then at most once a day when something does, never on a timer; after a failed fetch, not again for an hour. An update sends the last ETag and asks for a compressed transfer, and a download identical to the indexed one isn't indexed again. Entries that list no save files and no registry keys are left out, so a game whose entry has only install or launch info has none.
+
+A game's entry is found by the first of: its `saves.manifest_name` (an entry no longer in the list is skipped), its Steam app id (`runner_ref` `steam:<appid>`, else `metadata.steam_appid`, also matching an entry's extra Steam ids), its GOG product id, its Lutris slug (as the entry's Lutris id, then read as a name), then its exact name. Names compare in lower case, without ™ ® © or apostrophes, other punctuation read as spaces. Aliases lead to the entry they name. There's no matching by similarity.
+
+### `GET /v1/saves/manifest`
+`{url, games, fetched_at, checked_at}`: the list's address, how many games the index holds (0 before the first download, or after `saves.manifest_url` changed until it's fetched from there), when it was last downloaded and when last checked (unix seconds, 0 for never).
+
+### `POST /v1/saves/manifest/update`
+Checks for a newer list now. A job (kind `saves`, target `saves-manifest`) whose result is `{changed, games}`, publishing `saves.manifest_changed` when `changed`; while one runs, answers with its id. A list that doesn't parse fails with `manifest_invalid` and the index stays as it was; reads go on answering from the old index while a new one is built.
+
+### `GET /v1/saves/entries?q=`
+`{entries: [{name, alias_of?}]}`: up to 50 entries whose name contains `q`, names starting with it first, then shorter names first. `alias_of` is the entry an alias leads to. Starts a fetch when the list is due, answering from the index there is meanwhile (empty before the first download).
+
 ## Events
 
 ### `GET /v1/events`
@@ -816,6 +831,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |
 | `game.artwork_*` | See the artwork endpoints. |
 | `game.achievements_ready` | `{id, total, unlocked}` after an [achievements](#achievements) refresh changed the list. |
+| `saves.manifest_changed` | No payload: a newer save locations list is in use, so any game's saves may be found elsewhere now. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |

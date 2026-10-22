@@ -32,6 +32,7 @@
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
+#include "saves/Manifest.h"
 #include "steam/SteamDetector.h"
 
 namespace mira::api {
@@ -151,7 +152,7 @@ Services::~Services() {
   if (external_watch_.joinable()) external_watch_.join();
   // Their tasks report to `jobs`, which is destroyed before the lanes are.
   for (Lane* lane : {&tricks, &artwork_selects, &artwork_thumbs, &operations, &installs,
-                     &achievements, &achievement_icons})
+                     &achievements, &achievement_icons, &saves})
     lane->Stop();
 }
 
@@ -936,6 +937,26 @@ Result<json> Services::RefreshAchievements(const std::string& id) {
   if (changed) events.Publish("game.achievements_ready", result);
   result["changed"] = changed;
   return result;
+}
+
+std::string Services::UpdateSaveManifest(const std::string& requested_job) {
+  static constexpr const char* kTarget = "saves-manifest";
+  std::lock_guard lock(save_manifest_mutex_);
+  if (auto running = jobs.RunningFor(kTarget)) return *running;
+  return jobs.Start(
+      "saves", kTarget, "Updating the list of where games keep their saves",
+      [this](JobRegistry::Progress&) {
+        auto updated = saves::UpdateManifest(config, games.Metadata(), games.Dir());
+        // Every game's save locations may have moved with it, so open views look again.
+        if (updated && updated->value("changed", false))
+          events.Publish("saves.manifest_changed", json::object());
+        return updated;
+      },
+      requested_job, &saves);
+}
+
+void Services::CheckSaveManifest() {
+  if (saves::ManifestDue(config, games.Metadata())) UpdateSaveManifest();
 }
 
 void Services::StartShared(const model::Game& game, const Command& command) {

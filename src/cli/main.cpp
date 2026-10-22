@@ -1277,6 +1277,56 @@ int CmdAchievements(int argc, char** argv) {
   return 0;
 }
 
+int CmdSaves(int argc, char** argv) {
+  const std::string_view what = argc > 0 ? argv[0] : "";
+  const bool update = what == "manifest" && argc == 2 && std::string_view(argv[1]) == "--update";
+  if (!((what == "manifest" && (argc == 1 || update)) || (what == "search" && argc == 2))) {
+    std::fprintf(stderr,
+                 "usage: mira saves manifest [--update]\n"
+                 "  where the list of save locations comes from and when it was checked;\n"
+                 "  --update checks it now.\n"
+                 "usage: mira saves search <name>\n"
+                 "  entries of that list whose name contains <name>, for saves.manifest_name.\n");
+    return 2;
+  }
+  auto client = Connect();
+  if (what == "search") {
+    auto res = client.Get(std::format("/v1/saves/entries?q={}", Seg(argv[1])));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    for (const json& entry :
+         json::parse(res->body, nullptr, false).value("entries", json::array())) {
+      const std::string alias = entry.value("alias_of", std::string());
+      std::printf("%s%s\n", entry.value("name", std::string()).c_str(),
+                  alias.empty() ? "" : std::format("  (same as {})", alias).c_str());
+    }
+    return 0;
+  }
+  if (update) {
+    json result;
+    if (!AwaitJob(client, client.Post("/v1/saves/manifest/update"), result)) return 1;
+  }
+  auto res = client.Get("/v1/saves/manifest");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  const json state = json::parse(res->body, nullptr, false);
+  const auto when = [](std::int64_t at) {
+    return at > 0 ? std::format("{:%Y-%m-%d %H:%M}",
+                                std::chrono::sys_seconds(std::chrono::seconds(at)))
+                  : std::string("never");
+  };
+  std::printf("%s\n%lld games, downloaded %s, checked %s\n",
+              state.value("url", std::string()).c_str(),
+              static_cast<long long>(state.value("games", 0)),
+              when(state.value("fetched_at", std::int64_t{0})).c_str(),
+              when(state.value("checked_at", std::int64_t{0})).c_str());
+  return 0;
+}
+
 int CmdTricks(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
@@ -1979,6 +2029,7 @@ void PrintUsage() {
       "  metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]\n"
       "                         cached cover-art/store info, or pick its SteamGridDB match\n"
       "  achievements <id> [--refresh]   a Steam, GOG or Epic game's achievements\n"
+      "  saves manifest [--update] | search <name>   the list of where games keep saves\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"
       "  watch                  tail the event stream\n");
@@ -2020,6 +2071,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "gamemode") return CmdGameMode(rest_argc, rest);
   if (command == "metadata") return CmdMetadata(rest_argc, rest);
   if (command == "achievements") return CmdAchievements(rest_argc, rest);
+  if (command == "saves") return CmdSaves(rest_argc, rest);
   if (command == "tricks") return CmdTricks(rest_argc, rest);
   if (command == "setup") return CmdSetup(rest_argc, rest);
   if (command == "list") return CmdList(rest_argc, rest);

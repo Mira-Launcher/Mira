@@ -83,6 +83,7 @@ class Services {
   Lane installs{"installs", 1};      // installers a scan runs on its own
   Lane achievements{"achievements", 2};
   Lane achievement_icons{"achievement-icons", 4};
+  Lane saves{"saves", 1};  // the save-location list's updates
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
@@ -224,6 +225,13 @@ class Services {
   // off or the game was found to have none within the last week.
   void RefreshAchievementsAfterPlay(const std::string& id);
 
+  // Updates the save-location list (saves::UpdateManifest) as a job on the saves lane, or finds
+  // the update already running. The job's id.
+  std::string UpdateSaveManifest(const std::string& requested_job = std::string());
+  // UpdateSaveManifest when the list is due (saves::ManifestDue): what anything needing the list
+  // calls, so it's fetched on first use and then at most daily, never on a timer.
+  void CheckSaveManifest();
+
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
   // config.changed with the keys (names only: values can be secrets) and the frontend table, so a
@@ -267,6 +275,7 @@ class Services {
   std::mutex roots_mutex_;
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
 
+  std::mutex save_manifest_mutex_;  // so two requests don't both start an update
   std::mutex exit_files_mutex_;
   std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 

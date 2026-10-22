@@ -52,6 +52,7 @@ void RegisterModManagerRoutes(Router& http, Services& s);
 void RegisterUpdateRoutes(Router& http, Services& s);
 void RegisterMetadataRoutes(Router& http, Services& s);
 void RegisterAchievementRoutes(Router& http, Services& s);
+void RegisterSaveRoutes(Router& http, Services& s);
 void RegisterRunnerRoutes(Router& http, Services& s);
 void RegisterEventRoutes(Router& http, Services& s);
 void RegisterLogRoutes(Router& http, Services& s);

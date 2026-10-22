@@ -166,6 +166,9 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 ### `mira achievements <id> [--refresh]`
 `GET /v1/games/{id}/achievements`. Lists a Steam, GOG or Epic game's achievements as last checked, unlocked ones marked `[x]` with their date and rarity. `--refresh` asks the store again first and waits for it.
 
+### `mira saves manifest [--update]` / `search <name>`
+`GET /v1/saves/manifest` / `GET /v1/saves/entries?q=`. `manifest` prints where the list of save locations comes from, how many games it holds and when it was downloaded and checked; `--update` checks for a newer one first and waits for it. `search` lists the entries whose name contains `<name>`, for setting a game's `saves.manifest_name`.
+
 ### `mira metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]`
 `GET /v1/games/{id}/metadata`. Prints the cached store info. `--refresh` fetches it again in the background. `--matches` lists SteamGridDB matches for the name, starred where the art comes from. `--wrong` moves to the next match, `--match N` picks one from the list (`0` is the top match) and `--match-id` takes a SteamGridDB id.
 
