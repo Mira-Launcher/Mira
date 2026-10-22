@@ -888,6 +888,25 @@ QPushButton#hero_action:checked {
   border-color: @accent;
 }
 
+/* The game card's achievement count: a line of the status, which opens their page. */
+QPushButton#achievements_summary {
+  background: transparent;
+  border: none;
+  padding: 0px;
+  color: @text;
+  text-align: left;
+}
+
+QPushButton#achievements_summary:hover,
+QPushButton#achievements_summary:focus {
+  color: @accent;
+}
+
+QPushButton#achievements_summary:pressed,
+QPushButton#achievements_summary:disabled {
+  color: @text_muted;
+}
+
 /* --- Page header and tabs (ui/PageHeader) -------------------------------- */
 
 QLabel#page_status {

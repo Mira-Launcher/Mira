@@ -383,6 +383,20 @@ void GetArtThumbsAsync(QObject* context, const std::string& id, const std::strin
       std::move(callback));
 }
 
+void GetAchievementIconAsync(QObject* context, const std::string& id, const std::string& key,
+                             bool unlocked, std::function<void(QImage)> callback) {
+  // Slow: mirad may download it from the store first.
+  async::Run<QImage>(
+      context,
+      [id, key, unlocked] {
+        const transport::Blob blob = transport::GetBinary(
+            "/v1/games/" + PercentEncode(id) + "/achievements/icon?key=" + PercentEncode(key) +
+            "&state=" + (unlocked ? "unlocked" : "locked"));
+        return blob.ok ? DecodeImage(blob.bytes) : QImage();
+      },
+      std::move(callback), async::Lane::Slow);
+}
+
 void RefreshMissingArtworkAsync(QObject* context,
                                 std::function<void(MetadataBatchResult)> callback) {
   RunJob<MetadataBatchResult>(

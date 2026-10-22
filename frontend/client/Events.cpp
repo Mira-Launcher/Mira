@@ -87,10 +87,22 @@ std::string ParseSettledDropPath(const std::string& data) {
   return entry.value("path", std::string());
 }
 
-std::string ParseRemovedId(const std::string& data) {
+std::string ParseGameId(const std::string& data) {
   const json entry = json::parse(data, nullptr, false);
   if (entry.is_discarded() || !entry.is_object()) return {};
   return entry.value("id", std::string());
+}
+
+std::vector<std::string> ParseChangedKeys(const std::string& data) {
+  const json entry = json::parse(data, nullptr, false);
+  std::vector<std::string> keys;
+  if (entry.is_discarded() || !entry.is_object() || !entry.contains("keys") ||
+      !entry["keys"].is_array())
+    return keys;
+  for (const json& key : entry["keys"]) {
+    if (key.is_string()) keys.push_back(key.get<std::string>());
+  }
+  return keys;
 }
 
 std::vector<std::string> ParseRemovedIds(const std::string& data) {

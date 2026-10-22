@@ -43,8 +43,12 @@ bool ParseUnclearDrop(const std::string& data, UnclearDrop* out);
 // The path of `library.drop_settled` ({path}), or empty.
 std::string ParseSettledDropPath(const std::string& data);
 
-// Parses `game.removed`'s payload (`{"id": "..."}`, Server.cpp).
-std::string ParseRemovedId(const std::string& data);
+// The game an event is about, from its payload's `id` (`game.removed`, `game.achievements_ready`),
+// or empty.
+std::string ParseGameId(const std::string& data);
+
+// The settings a `config.changed` names (`{"keys": [...]}`), or none.
+std::vector<std::string> ParseChangedKeys(const std::string& data);
 
 // Parses `games.removed`'s payload (`{"ids": [...]}`).
 std::vector<std::string> ParseRemovedIds(const std::string& data);

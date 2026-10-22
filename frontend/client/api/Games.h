@@ -69,6 +69,14 @@ void PatchGamesAsync(QObject* context, const GamesPatch& patch,
 void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
                           std::function<void(GameSessionsResult)> callback);
 
+// GET /v1/games/{id}/achievements: what's cached. `missing` when nothing is yet.
+void GetAchievementsAsync(QObject* context, const std::string& id,
+                          std::function<void(AchievementsResult)> callback);
+
+// POST /v1/games/{id}/achievements/refresh, a job: fetches them from the game's store.
+void RefreshAchievementsAsync(QObject* context, const std::string& id,
+                              std::function<void(AchievementsRefreshResult)> callback);
+
 // POST /v1/games/{id}/tricks. Returns 202; watch for
 // tricks.started/.finished/.failed via ParseTricksEvent.
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,

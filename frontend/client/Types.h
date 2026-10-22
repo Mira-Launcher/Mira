@@ -361,6 +361,37 @@ struct GameSessionsResult {
   std::vector<GameSession> sessions;
 };
 
+// One of GET /v1/games/{id}/achievements' items, in the store's order.
+struct Achievement {
+  std::string key;
+  std::string name;
+  std::string description;
+  bool hidden = false;  // its text is a spoiler until unlocked
+  bool unlocked = false;
+  std::int64_t unlocked_at = 0;  // unix seconds; 0 when locked or unknown
+  double rarity = -1;            // percent of players; below 0 when unknown
+  std::string icon;              // changes when its pictures do; empty for none
+};
+
+struct AchievementsResult {
+  bool ok = false;
+  ApiError error;
+  bool missing = false;  // 404 no_achievements: nothing fetched for this game yet
+  std::string source;
+  std::int64_t fetched_at = 0;
+  int total = 0;
+  int unlocked = 0;
+  std::vector<Achievement> items;
+};
+
+// POST /v1/games/{id}/achievements/refresh's job.
+struct AchievementsRefreshResult {
+  bool ok = false;
+  ApiError error;
+  int total = 0;
+  int unlocked = 0;
+};
+
 // POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
 // fetch was accepted. The outcome arrives as game.metadata_ready or
 // game.metadata_failed on the event stream (docs/api.md).

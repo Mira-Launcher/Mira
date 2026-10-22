@@ -80,6 +80,11 @@ void FetchArtThumbsAsync(QObject* context, const std::string& id, const std::str
                          const std::vector<std::int64_t>& candidate_ids,
                          std::function<void(GameActionResult)> callback);
 
+// GET /v1/games/{id}/achievements/icon: one achievement's picture, unlocked or locked. A null
+// image when there's none.
+void GetAchievementIconAsync(QObject* context, const std::string& id, const std::string& key,
+                             bool unlocked, std::function<void(QImage)> callback);
+
 // GET .../artwork/thumb for each id, in one round of requests, decoded off
 // the UI thread, and scaled down to fit `max` when given. An id without a
 // decodable preview is left out.

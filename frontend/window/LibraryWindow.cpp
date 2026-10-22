@@ -2163,7 +2163,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   }
 
   if (type == "game.removed") {
-    const std::string id = mira_gui::events::ParseRemovedId(data);
+    const std::string id = mira_gui::events::ParseGameId(data);
     if (!id.empty()) RemoveGame(id);
     return;
   }
