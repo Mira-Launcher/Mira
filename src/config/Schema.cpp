@@ -758,14 +758,16 @@ Schema::Schema() {
          .label = "Legendary download repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryRepo),
-         .doc = "The GitHub repository (\"owner/repo\") that Legendary is downloaded from."});
+         .doc = "The GitHub repository (\"owner/repo\") that Legendary is downloaded from.",
+         .old_defaults = {"derrod/legendary"}});
 
   s.Add({.key = "runner_sources.legendary.asset_pattern",
          .label = "Legendary file pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. Legendary ships "
-                "as a single Linux binary, not an archive."});
+                "as a single file per processor, not an archive.",
+         .old_defaults = {"legendary"}});
 
   s.Add({.key = "runner_sources.gog.repo",
          .label = "gogdl download repository",

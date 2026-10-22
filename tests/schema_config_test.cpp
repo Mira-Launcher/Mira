@@ -74,6 +74,23 @@ TEST_CASE("Config materialises defaults when no file exists") {
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());
 }
 
+TEST_CASE("A setting saved with an earlier default gets the new one, and a chosen value stays") {
+  const Entry* pattern = Schema::Instance().Find("runner_sources.legendary.asset_pattern");
+  REQUIRE(pattern != nullptr);
+  REQUIRE_FALSE(pattern->old_defaults.empty());
+  const fs::path file = TempFile("settings-old-default.toml");
+  {
+    std::ofstream out(file, std::ios::trunc);
+    out << "[runner_sources.legendary]\nasset_pattern = " << pattern->old_defaults.front().dump()
+        << "\nrepo = \"me/legendary-fork\"\n";
+  }
+  Config config(file);
+  config.Load();
+  CHECK(config.GetString("runner_sources.legendary.asset_pattern") ==
+        pattern->default_value.get<std::string>());
+  CHECK(config.GetString("runner_sources.legendary.repo") == "me/legendary-fork");
+}
+
 TEST_CASE(
     "Config round-trips a value and preserves frontend settings; settings.toml stays owner-only") {
   const fs::path file = TempFile("settings-roundtrip.toml");

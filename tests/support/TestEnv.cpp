@@ -72,7 +72,7 @@ void Isolate(config::Config& config) {
   // Games' shader caches.
   setenv("XDG_CACHE_HOME", (dir / "cache").c_str(), 1);
   // Store endpoints achievements are read from; a test that turns them on serves files here.
-  for (const char* name : {"STEAM_API", "STEAM_ICONS"}) {
+  for (const char* name : {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY"}) {
     setenv(std::format("MIRA_{}_URL", name).c_str(),
            ("file://" + (dir / "endpoints" / name).string()).c_str(), 1);
   }

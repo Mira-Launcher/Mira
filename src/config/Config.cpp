@@ -66,6 +66,14 @@ void Config::Load(const std::string& fallback) {
     // daemon that refuses to start.
     ResetInvalid(
         whole, [](const Entry& entry) { return entry.default_value; }, "(using the default)");
+    for (const Entry& entry : schema.Entries()) {
+      const auto pointer = Schema::Pointer(entry.key);
+      if (!entry.old_defaults.empty() && whole.contains(pointer) &&
+          std::ranges::find(entry.old_defaults, whole[pointer]) != entry.old_defaults.end()) {
+        log::Info("settings: {} moves to its new default", entry.key);
+        whole[pointer] = entry.default_value;
+      }
+    }
 
     document_.merge_patch(whole);
     loaded_text_ = text;

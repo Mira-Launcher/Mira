@@ -143,7 +143,7 @@ Lists the stores: `epic`, `gog`, `itch`, `amazon` and `humble`. Each wraps a com
 - `logout` forgets the sign-in. Not for Humble.
 - `import` adds what the tool reports as installed, with the store as its source. Not for Humble. GOG only looks under `gog.install_root` (default `~/Mira/Games/GOG`).
 
-Epic wraps [Legendary](https://github.com/derrod/legendary), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
+Epic wraps [Legendary](https://github.com/legendary-gl/legendary) (which needs `python3`), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
 
 ### `mira store itch collections [list | add <link> | remove <id>]`
 Manages the collections whose games show in `mira library itch`: your own plus any added by link. Free games from them can be installed.

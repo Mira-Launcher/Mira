@@ -3,14 +3,19 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <set>
+#include <unordered_set>
 
 #include "core/AtomicFile.h"
 #include "core/Command.h"
 #include "core/Json.h"
 #include "core/Strings.h"
+#include "epic/Achievements.h"
+#include "gog/Achievements.h"
 #include "metadata/ImageFit.h"
 #include "runner/Exec.h"
 #include "steam/Achievements.h"
@@ -21,7 +26,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Endpoints a test may move, by the name its $MIRA_<NAME>_URL uses.
-constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS"};
+constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY"};
 
 // FNV-1a: stable across builds, unlike std::hash, so file names and versions survive restarts.
 std::string Hash(std::string_view text) {
@@ -36,6 +41,12 @@ std::string Hash(std::string_view text) {
 std::string IconVersion(const Achievement& item) {
   if (item.icon_unlocked.empty() && item.icon_locked.empty()) return {};
   return Hash(item.icon_unlocked + "\n" + item.icon_locked).substr(0, 12);
+}
+
+// A key is one achievement: one listed twice would show twice and count twice.
+void KeepFirstOfEachKey(std::vector<Achievement>& items) {
+  std::unordered_set<std::string> seen;
+  std::erase_if(items, [&](const Achievement& item) { return !seen.insert(item.key).second; });
 }
 
 }  // namespace
@@ -79,6 +90,8 @@ GameAchievements FromJson(const json& in) {
     item.xp = core::JsonInt(entry, "xp");
     set.items.push_back(std::move(item));
   }
+  // Also on read, so a cache written with repeats shows each once.
+  KeepFirstOfEachKey(set.items);
   return set;
 }
 
@@ -165,6 +178,43 @@ std::string SteamLanguage(const Locale& locale) {
   return "english";
 }
 
+std::int64_t ParseTime(std::string_view text) {
+  int year = 0;
+  unsigned month = 0;
+  unsigned day = 0;
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+  char separator = 0;
+  int read = 0;
+  const std::string copy(text);
+  if (std::sscanf(copy.c_str(), "%4d-%2u-%2u%c%2d:%2d:%2d%n", &year, &month, &day, &separator,
+                  &hour, &minute, &second, &read) != 7 ||
+      (separator != 'T' && separator != ' '))
+    return 0;
+  const std::chrono::year_month_day date{std::chrono::year(year), std::chrono::month(month),
+                                         std::chrono::day(day)};
+  if (!date.ok()) return 0;
+  std::int64_t seconds = std::chrono::sys_days(date).time_since_epoch() / std::chrono::seconds(1) +
+                         hour * 3600 + minute * 60 + second;
+  // A fraction, then Z or an offset ("+0000", "+00:00").
+  std::string_view rest = text.substr(static_cast<std::size_t>(read));
+  while (!rest.empty() &&
+         (rest.front() == '.' || std::isdigit(static_cast<unsigned char>(rest.front()))))
+    rest.remove_prefix(1);
+  if (!rest.empty() && (rest.front() == '+' || rest.front() == '-')) {
+    const int sign = rest.front() == '+' ? 1 : -1;
+    std::string digits;
+    for (const char c : rest.substr(1)) {
+      if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
+    }
+    if (digits.size() == 4) {
+      seconds -= sign * (std::stoi(digits.substr(0, 2)) * 3600 + std::stoi(digits.substr(2)) * 60);
+    }
+  }
+  return seconds;
+}
+
 std::string Endpoint(std::string_view name, std::string_view fallback) {
   const std::string variable = std::format("MIRA_{}_URL", name);
   if (const char* set = std::getenv(variable.c_str()); set != nullptr && *set != '\0') return set;
@@ -181,7 +231,8 @@ bool FetchableUrl(std::string_view url) {
 }
 
 bool HasSource(const model::Game& game) {
-  return game.runner_ref.starts_with("steam:");
+  return game.runner_ref.starts_with("steam:") ||
+         ((game.source == "gog" || game.source == "epic") && !game.source_ref.empty());
 }
 
 Result<GameAchievements> Fetch(const config::Config& config, const model::Game& game) {
@@ -189,12 +240,18 @@ Result<GameAchievements> Fetch(const config::Config& config, const model::Game& 
   Result<GameAchievements> fetched;
   if (game.runner_ref.starts_with("steam:")) {
     fetched = steam::FetchAchievements(config, game.runner_ref.substr(6), locale);
+  } else if (game.source == "gog" && !game.source_ref.empty()) {
+    fetched = gog::FetchAchievements(config, game.source_ref, locale);
+  } else if (game.source == "epic" && !game.source_ref.empty()) {
+    fetched = epic::FetchAchievements(config, game.source_ref);
   } else {
     return Err("no_achievements_source",
                std::format("Mira can't read achievements for \"{}\"", game.name),
                "Achievements are shown for Steam, GOG and Epic games.");
   }
-  if (fetched) fetched->fetched_at = model::NowSeconds();
+  if (!fetched) return fetched;
+  fetched->fetched_at = model::NowSeconds();
+  KeepFirstOfEachKey(fetched->items);
   return fetched;
 }
 

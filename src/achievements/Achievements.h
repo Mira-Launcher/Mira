@@ -54,6 +54,10 @@ std::string LanguageTag(const Locale& locale);
 // Steam's name for the language ("english", "german", "schinese").
 std::string SteamLanguage(const Locale& locale);
 
+// Unix seconds from an ISO 8601 time as stores write it ("2024-05-01T12:00:00Z",
+// "...+0000", "2024-05-01 12:00:00.5+00:00"); 0 when it isn't one.
+std::int64_t ParseTime(std::string_view text);
+
 // A store endpoint's base URL: `fallback`, or $MIRA_<NAME>_URL when set (tests serve fixtures
 // from file:// that way).
 std::string Endpoint(std::string_view name, std::string_view fallback);

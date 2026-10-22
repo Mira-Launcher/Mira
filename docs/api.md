@@ -527,7 +527,7 @@ Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five s
 
 ### Epic
 
-Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's files runs `legendary uninstall`.
+Wraps [Legendary](https://github.com/legendary-gl/legendary), whose Linux release since 0.21 is a zipapp that needs `python3` 3.10 or newer. Deleting an Epic game's files runs `legendary uninstall`.
 
 ### GOG
 
@@ -768,6 +768,8 @@ The same, for every game without a cover.
 A game's achievements as its store last listed them, cached in `cache.db` and refreshed on request, after a tracked session of the game ends (for Steam games only with `steam.track_process`), never on a timer. A game whose store listed none within the last week isn't asked again after playing. `achievements.enabled` (on by default) turns refreshing off; what's cached still answers. Sources:
 
 - **Steam games** (`runner_ref` `steam:<appid>`): every definition from Steam's `appcache/stats/UserGameStatsSchema_<appid>.bin` and the account's progress from `UserGameStats_<account>_<appid>.bin`, which Steam writes for games it has run on this computer. The account is `steam.steamid64`, else the one Steam signed in last. Without those files, Steam's Web API when `steam.web_api_key` and `steam.steamid64` are set, else `no_local_achievements` with a fix for the key. Rarity comes from Steam's global percentages, which need no key. Unlocking stays with the Steam client.
+- **GOG games**: GOG Galaxy's gameplay API (`gameplay.gog.com/clients/<product id>/users/<user id>/achievements`) with the account gogdl signed in, rarity included. Undocumented, so a change on GOG's side fails the refresh rather than anything else. Signed out, the error's fix is `{"kind": "source", "target": "gog", "step": "login"}`.
+- **Epic games**: `legendary achievements <app> --json` (Legendary 0.21.1 or newer; an older one fails with `legendary_too_old` and a fix to set the source up again), in Epic's own order from Legendary's metadata cache, with rarity and XP. A game without Epic achievements is an empty list.
 
 Text is in the system language (`LC_ALL`, `LC_MESSAGES`, `LANG`), falling back to English.
 

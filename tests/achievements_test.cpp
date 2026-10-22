@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "epic/Legendary.h"
+#include "gog/Gog.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
@@ -284,4 +286,239 @@ TEST_CASE("A locked hidden game's achievements stay out of answers and events") 
   REQUIRE(listed);
   CHECK(listed->status == 404);
   CHECK(json::parse(listed->body)["error"]["code"] == "game_not_found");
+}
+
+namespace {
+
+// A stand-in `legendary`, signed in, whose `achievements` prints `answer` (and logs each call to
+// <bin>.calls) and caches `definitions` as legendary's metadata for the game, as the real one does.
+void UseFakeLegendary(config::Config& config, const fs::path& dir, const std::string& answer,
+                      const json& definitions = nullptr) {
+  const fs::path bin = dir / "legendary";
+  const fs::path meta = epic::LegendaryMetadataFile("Fir");
+  fs::create_directories(meta.parent_path());
+  test::Touch(dir / "legendary-answer", answer);
+  test::Touch(
+      dir / "legendary-meta",
+      definitions.is_null()
+          ? std::string("{}")
+          : json{{"app_name", "Fir"}, {"achievements", {{"achievements", definitions}}}}.dump());
+  test::Touch(bin,
+              "#!/bin/sh\n"
+              "case \"$1\" in\n"
+              "  achievements)\n"
+              "    echo \"$*\" >> \"$0.calls\"\n"
+              "    cp \"" +
+                  (dir / "legendary-meta").string() + "\" \"" + meta.string() +
+                  "\"\n"
+                  "    cat \"" +
+                  (dir / "legendary-answer").string() +
+                  "\" ;;\n"
+                  "  --version) echo 'legendary version \"0.21.1\"' ;;\n"
+                  "esac\n",
+              /*executable=*/true);
+  REQUIRE(config.Set("epic.legendary_bin", bin.string()).has_value());
+  const fs::path user = epic::LegendaryConfigDir() / "user.json";
+  fs::create_directories(user.parent_path());
+  test::Touch(user, R"({"displayName": "Tester", "refresh_expires_at": "2999-01-01T00:00:00Z"})");
+}
+
+int Calls(const fs::path& dir) {
+  std::ifstream log(dir / "legendary.calls");
+  return static_cast<int>(
+      std::count(std::istreambuf_iterator<char>(log), std::istreambuf_iterator<char>(), '\n'));
+}
+
+// An installed store game that runs a script natively.
+model::Game StoreGame(const std::string& source, const std::string& ref, const fs::path& folder) {
+  test::Touch(folder / "run.sh", "#!/bin/sh\n", /*executable=*/true);
+  model::Game game;
+  game.id = source + "-" + ref;
+  game.name = ref;
+  game.source = source;
+  game.source_ref = ref;
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;
+  game.install_path = folder.string();
+  game.exe_path = "run.sh";
+  return game;
+}
+
+json Definition(const std::string& name, bool hidden) {
+  return {{"achievement",
+           {{"name", name},
+            {"hidden", hidden},
+            {"unlockedDisplayName", name + " unlocked"},
+            {"unlockedDescription", name + " done"},
+            {"unlockedIconLink", "https://cdn.example/" + name + ".png"},
+            {"lockedIconLink", "https://cdn.example/" + name + "-locked.png"}}}};
+}
+
+}  // namespace
+
+TEST_CASE("An Epic game's achievements come from legendary, in Epic's order") {
+  test::LiveServer server(test::TempDir("achievements-epic"));
+  const fs::path dir = server.config().File().parent_path();
+  REQUIRE(server.MutableConfig().Set("achievements.enabled", true).has_value());
+  // legendary's own groups: completed, then untouched, then hidden, each sorted its own way.
+  const json answer = {{"completed",
+                        {{{"name", "won"},
+                          {"display_name", "Winner"},
+                          {"description", "Win"},
+                          {"unlocked", true},
+                          {"unlock_date", "2024-05-01 12:00:00+00:00"},
+                          {"rarity", {{"percent", 12.5}}},
+                          {"xp", 10},
+                          {"icon_link", "https://cdn.example/won.png"}}}},
+                       {"in_progress", json::array()},
+                       {"uninitiated",
+                        {{{"name", "start"},
+                          {"display_name", "Starter"},
+                          {"unlocked", false},
+                          {"xp", 5},
+                          {"rarity", {{"percent", 90.0}}}}}},
+                       {"hidden",
+                        {{{"name", "secret"},
+                          {"display_name", "Hidden"},
+                          {"description", "Keep playing"},
+                          {"unlocked", false},
+                          {"xp", 50}}}}};
+  UseFakeLegendary(server.MutableConfig(), dir, "[cli] INFO: noise\n" + answer.dump() + "\n",
+                   json::array({Definition("start", false), Definition("secret", true),
+                                Definition("won", false)}));
+  REQUIRE(server.games().Upsert(StoreGame("epic", "Fir", dir / "fir")).has_value());
+  auto client = server.Client();
+
+  const json job = test::AwaitJob(client, client.Post("/v1/games/epic-Fir/achievements/refresh"));
+  REQUIRE(job["state"] == "finished");
+  const json set = json::parse(client.Get("/v1/games/epic-Fir/achievements")->body);
+  CHECK(set["source"] == "epic");
+  CHECK(set["unlocked"] == 1);
+  REQUIRE(set["items"].size() == 3);
+  CHECK(set["items"][0]["key"] == "start");
+  CHECK(set["items"][0]["rarity"].get<double>() == doctest::Approx(90.0));
+  CHECK(set["items"][1]["key"] == "secret");
+  CHECK(set["items"][1]["hidden"] == true);
+  CHECK(set["items"][1]["name"] == "secret unlocked");  // the client masks it, not mirad
+  CHECK(set["items"][1]["xp"] == 50);
+  CHECK(set["items"][2]["key"] == "won");
+  CHECK(set["items"][2]["unlocked"] == true);
+  CHECK(set["items"][2]["unlocked_at"] == 1714564800);
+  CHECK(set["items"][2]["icon"] != "");
+
+  // A game without Epic achievements is an empty list, not a failure.
+  test::Touch(dir / "legendary-answer", "[cli] INFO: No achievements found for \"Fir\"\n");
+  const json none = test::AwaitJob(client, client.Post("/v1/games/epic-Fir/achievements/refresh"));
+  REQUIRE(none["state"] == "finished");
+  CHECK(none["result"]["total"] == 0);
+
+  // A legendary from before `achievements` says to update it.
+  test::Touch(dir / "legendary",
+              "#!/bin/sh\necho \"legendary: error: argument subparser_name: invalid choice: "
+              "'achievements'\" >&2\nexit 2\n",
+              /*executable=*/true);
+  const json old = test::AwaitJob(client, client.Post("/v1/games/epic-Fir/achievements/refresh"));
+  REQUIRE(old["state"] == "failed");
+  CHECK(old["error"]["code"] == "legendary_too_old");
+  CHECK(old["error"]["fix"] == json{{"kind", "source"}, {"target", "epic"}, {"step", "setup"}});
+}
+
+TEST_CASE("A GOG game's achievements come from GOG with the signed-in account") {
+  test::LiveServer server(test::TempDir("achievements-gog"));
+  const fs::path dir = server.config().File().parent_path();
+  REQUIRE(server.MutableConfig().Set("achievements.enabled", true).has_value());
+  test::Touch(dir / "gogdl", "#!/bin/sh\necho 'gogdl version 1.3.0'\n", /*executable=*/true);
+  REQUIRE(server.MutableConfig().Set("gog.gogdl_bin", (dir / "gogdl").string()).has_value());
+  test::Touch(gog::AuthConfigPath(server.config()),
+              R"({"46899977096215655": {"access_token": "tok", "refresh_token": "ref",
+                  "expires_in": 3600, "loginTime": 9999999999, "user_id": "4862"}})");
+  test::Touch(
+      EndpointDir("GOG_GAMEPLAY") / "clients" / "1207" / "users" / "4862" / "achievements",
+      // GOG sets page_token on every reply, the whole list included. "open" is listed twice
+      // to check a repeated key shows once.
+      R"({"total_count": 2, "limit": 1000, "page_token": "MTAwMA", "achievements_mode": "all",
+                  "items": [
+                    {"achievement_id": "1", "achievement_key": "open", "name": "Opened",
+                     "description": "Open the door", "image_url_unlocked": "https://img/u.png",
+                     "image_url_locked": "https://img/l.png", "visible": true,
+                     "date_unlocked": "2021-05-03T19:31:29+0000", "rarity": 41.2},
+                    {"achievement_id": "2", "achievement_key": "twist", "name": "Twist",
+                     "description": "It was you", "image_url_unlocked": "https://img/t.png",
+                     "image_url_locked": "https://img/tl.png", "visible": false,
+                     "date_unlocked": null, "rarity": 2.5},
+                    {"achievement_id": "1", "achievement_key": "open", "name": "Opened"}]})");
+  REQUIRE(server.games().Upsert(StoreGame("gog", "1207", dir / "door")).has_value());
+  auto client = server.Client();
+
+  const json job = test::AwaitJob(client, client.Post("/v1/games/gog-1207/achievements/refresh"));
+  REQUIRE(job["state"] == "finished");
+  const json set = json::parse(client.Get("/v1/games/gog-1207/achievements")->body);
+  CHECK(set["source"] == "gog");
+  CHECK(set["total"] == 2);
+  REQUIRE(set["items"].size() == 2);
+  CHECK(set["items"][0]["key"] == "open");
+  CHECK(set["items"][0]["unlocked"] == true);
+  CHECK(set["items"][0]["unlocked_at"] == 1620070289);
+  CHECK(set["items"][0]["rarity"].get<double>() == doctest::Approx(41.2));
+  CHECK(set["items"][1]["hidden"] == true);
+  CHECK(set["items"][1]["unlocked"] == false);
+
+  // Signed out: the fix is signing in again.
+  fs::remove(gog::AuthConfigPath(server.config()));
+  const json out = test::AwaitJob(client, client.Post("/v1/games/gog-1207/achievements/refresh"));
+  REQUIRE(out["state"] == "failed");
+  CHECK(out["error"]["fix"] == json{{"kind", "source"}, {"target", "gog"}, {"step", "login"}});
+
+  // A cache holding repeats, as an earlier build wrote it, still shows each once.
+  json doubled = server.games().Metadata().ReadAchievements("gog-1207");
+  doubled["items"].push_back(doubled["items"][0]);
+  doubled["items"].push_back(doubled["items"][1]);
+  REQUIRE(server.games()
+              .Metadata()
+              .WriteAchievements("gog-1207", doubled["fetched_at"].get<std::int64_t>(), doubled)
+              .has_value());
+  const json cached = json::parse(client.Get("/v1/games/gog-1207/achievements")->body);
+  CHECK(cached["total"] == 2);
+  CHECK(cached["items"].size() == 2);
+}
+
+TEST_CASE("Achievements are checked after playing, but not every time for a game without any") {
+  test::LiveServer server(test::TempDir("achievements-after-play"));
+  const fs::path dir = server.config().File().parent_path();
+  REQUIRE(server.MutableConfig().Set("achievements.enabled", true).has_value());
+  const json answer = {
+      {"completed", {{{"name", "won"}, {"display_name", "Winner"}, {"unlocked", true}}}}};
+  UseFakeLegendary(server.MutableConfig(), dir, answer.dump() + "\n");
+  REQUIRE(server.games().Upsert(StoreGame("epic", "Fir", dir / "fir")).has_value());
+  auto client = server.Client();
+
+  const auto play = [&] {
+    const std::size_t exits = static_cast<std::size_t>(
+        std::ranges::count_if(server.events().Since(0), [](const model::Event& event) {
+          return event.type == "game.state" && event.payload.value("state", "") == "exited";
+        }));
+    REQUIRE(client.Post("/v1/games/epic-Fir/launch")->status < 300);
+    REQUIRE(test::WaitUntil([&] {
+      return static_cast<std::size_t>(
+                 std::ranges::count_if(server.events().Since(0), [](const model::Event& event) {
+                   return event.type == "game.state" &&
+                          event.payload.value("state", "") == "exited";
+                 })) > exits;
+    }));
+  };
+
+  play();
+  const auto ready = test::WaitForEvent(server.events(), "game.achievements_ready");
+  REQUIRE(ready);
+  CHECK(ready->payload["unlocked"] == 1);
+  CHECK(Calls(dir) == 1);
+
+  // Found to have none: the next session doesn't ask Epic again.
+  test::Touch(dir / "legendary-answer", "[cli] INFO: No achievements found for \"Fir\"\n");
+  REQUIRE(test::AwaitJob(client, client.Post("/v1/games/epic-Fir/achievements/refresh"))["state"] ==
+          "finished");
+  CHECK(Calls(dir) == 2);
+  play();
+  server.services().achievements.WaitIdle();
+  CHECK(Calls(dir) == 2);
 }
