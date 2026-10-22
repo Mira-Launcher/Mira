@@ -79,6 +79,7 @@ void Isolate(config::Config& config) {
       {"steam.root", (dir / "steam").string()},
       {"lutris.data_dir", (dir / "lutris").string()},
       {"saves.manifest_url", "file://" + (dir / "endpoints" / "save-locations.yaml").string()},
+      {"saves.backup_root", (dir / "saves").string()},
   };
   for (const auto& [key, value] : folders) {
     [[maybe_unused]] auto set = config.Set(key, value);

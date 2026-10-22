@@ -167,7 +167,13 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 `GET /v1/games/{id}/achievements`. Lists a Steam, GOG or Epic game's achievements as last checked, unlocked ones marked `[x]` with their date and rarity. `--refresh` asks the store again first and waits for it.
 
 ### `mira saves <id>`
-`GET /v1/games/{id}/saves`. Prints whether Mira keeps the game's saves and why not, the list entry it matched and how, then each save location with how many files and bytes are there, or why it isn't read.
+`GET /v1/games/{id}/saves`. Prints whether Mira keeps the game's saves and why not, the list entry it matched and how, then each save location with how many files and bytes are there, or why it isn't read, then why the last backup after play failed, if it did, and the backups, newest first.
+
+### `mira saves backup <id>`
+`POST /v1/games/{id}/saves/backup`, waiting for the job. Prints the new backup's id, or the newest one's when nothing changed.
+
+### `mira saves restore <id> <backup>` / `delete <id> <backup>`
+`POST /v1/games/{id}/saves/restore` (waiting for the job) / `DELETE /v1/games/{id}/saves/{backup}`. `restore` puts a backup's files back after backing up what's there, and prints the command that undoes it. `delete` deletes one backup.
 
 ### `mira saves manifest [--update]` / `search <name>`
 `GET /v1/saves/manifest` / `GET /v1/saves/entries?q=`. `manifest` prints where the list of save locations comes from, how many games it holds and when it was downloaded and checked; `--update` checks for a newer one first and waits for it. `search` lists the entries whose name contains `<name>`, for setting a game's `saves.manifest_name`.

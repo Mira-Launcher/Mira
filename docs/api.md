@@ -130,13 +130,14 @@ Adds a game from any path:
 
 `install_path` and `exe_path` (relative to `install_path`) are required. `name` defaults to the cleaned folder name, or the file's own name for an AppImage, and `platform` to `windows` for `.exe`, else `native`; a `platform` other than those two is `400 invalid_body`. `is_installer` stores the game `needs_install`. `app: true` tags it `app`. A Windows game is returned `setting_up` while a `provision` [job](#jobs) sets up its prefix, then becomes `ready` or `broken` with a `game.updated`. Adding the same `install_path` and `exe_path` again updates that game, and so does another program in its folder. An AppImage is a game of its own, so each AppImage in one folder is a separate game. Returns the game and publishes `game.added` or `game.updated`.
 
-### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true]`
+### `DELETE /v1/games/{id}[?delete_files=true][&delete_prefix=true][&delete_metadata=true][&purge=true][&delete_saves=true]`
 Removes the game from the library. Nothing on disk is touched unless asked:
 
 - `delete_files` removes `install_path`.
 - `delete_prefix` removes `data_dir`.
 - `delete_metadata` forgets the game entirely: its fetched info, the art the user picked and its kept record (below).
 - `purge` does all three.
+- `delete_saves` removes its [save backups](#saves), which are the user's own data: `purge` keeps them. Only the game's folder inside the backup folder is deleted. Ignored when `delete_files` hands a Steam game to Steam's uninstall.
 
 A removed game keeps a small record of what the user set on it: its name, exe, arguments, runner, prefix path, folder tag, overrides, environment, launch options and tags. A game added again under its id (a store game installed again) or found again where it was (`install_path`, and the exe for an AppImage or desktop entry) takes the same id back with that record, and its play history. A kept prefix that's still there becomes its prefix again, saves and all. A store game's fetched info stays for its store's Not installed list; any other game keeps only the art the user picked.
 
@@ -149,18 +150,19 @@ With `delete_files`, `delete_prefix` or `purge` it is a [job](#jobs) (deleting c
 A store import (`POST /v1/steam/scan`, `POST /v1/stores/{id}/import`) also removes a game the store no longer lists as installed whose files are gone while the folder they were in is still there: it was uninstalled in the store's own client. It keeps its record and publishes `games.removed`. A game whose folder is gone too (a disk that isn't mounted) is marked `missing` instead.
 
 ### `POST /v1/games/delete`
-The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?}`, flags as above. A folder shared only by games removed together is deleted; one another game still uses isn't (`shared_folder`). A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. Steam games with `delete_files` go to Steam's own uninstall, one dialog each. A [job](#jobs) whose result is `{"removed": [ids], "handed_to_steam": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
+The same for many games: `{"ids": [...], "delete_files"?, "delete_prefix"?, "delete_metadata"?, "purge"?, "delete_saves"?}`, flags as above. A folder shared only by games removed together is deleted; one another game still uses isn't (`shared_folder`). A game whose files or prefix can't be deleted stays in the library. Unknown ids are skipped. Steam games with `delete_files` go to Steam's own uninstall, one dialog each. A [job](#jobs) whose result is `{"removed": [ids], "handed_to_steam": [ids], "failed": [{"id", "error": {...}}]}`, with each error shaped like the error envelope, and publishes one `games.removed` event with the removed `ids`.
 
 ### `POST /v1/games/removal`
-What removing each game can delete, to show before asking: `{"ids": [...]}` answers a list, in order and without unknown ids, of `{id, name, kind, tool, files, files_in_prefix, folder_is_prefix, prefix, prefix_shared_with}`:
+What removing each game can delete, to show before asking: `{"ids": [...]}` answers a list, in order and without unknown ids, of `{id, name, kind, tool, files, files_in_prefix, folder_is_prefix, prefix, prefix_shared_with, saves}`:
 
 - `kind`: `steam` (Steam's own uninstall takes it), `store` (its store's tool, or Mira for GOG, deletes `files`), `folder` (Mira deletes `files`) or `external` (its files aren't Mira's: a desktop entry, Lutris, an emulator's or launcher's game, or one outside every Mira folder; only `delete_prefix` does anything).
 - `tool`: who deletes a store game's files (`Steam`, `Legendary`, `Nile`, `butler`, `Office`), `""` for Mira.
 - `files`: the folder or AppImage `delete_files` removes, `""` for `external`. `files_in_prefix` is the same as the game sees it (`C:\Games\X`) when it's installed inside its prefix, else `""`. `folder_is_prefix` is true when the folder is the prefix itself, so `delete_files` removes the prefix.
 - `prefix`: the prefix Mira made that `delete_prefix` removes, `""` when there's none (Steam games, a prefix Mira didn't make). `prefix_shared_with` names another game using it, which keeps it (`shared_prefix`).
+- `saves`: the folder of its save backups that `delete_saves` removes, null when it has none.
 
 ### `POST /v1/games/removal/sizes`
-The sizes behind those plans, as a [job](#jobs) since big folders take a while: `{"ids": [...]}`, result `{"<id>": {"files": bytes, "prefix": bytes}}`. For a game installed inside its prefix, `prefix` is the rest of it.
+The sizes behind those plans, as a [job](#jobs) since big folders take a while: `{"ids": [...]}`, result `{"<id>": {"files": bytes, "prefix": bytes, "saves": bytes}}`. For a game installed inside its prefix, `prefix` is the rest of it. `saves` counts a file shared between backups once.
 
 ### `GET /v1/games/{id}/config`
 Every setting as it resolves for this game, with the layer it came from:
@@ -174,7 +176,7 @@ Every setting as it resolves for this game, with the layer it came from:
 Sets or removes (`null`) this game's overrides as a flat `{"dotted.key": value}` body. Only `per_game` keys are accepted, and nothing is applied if any key fails.
 
 ### `POST /v1/games/{id}/launch`
-Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game. A Microsoft 365 app takes an optional body `{"files": ["/absolute/path", ...]}` and opens those documents, also while it's already running (`400 files_unsupported` for anything else); its desktop entry declares the file types it opens and passes them on. `409 needs_install` or `409 not_ready` when it can't run, `409 game_busy` while it's being moved or its files deleted (a move or delete likewise waits for no launch and fails with `game_busy` or `game_running`). A Windows game left `broken` by a missing runner is provisioned again first.
+Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game. A Microsoft 365 app takes an optional body `{"files": ["/absolute/path", ...]}` and opens those documents, also while it's already running (`400 files_unsupported` for anything else); its desktop entry declares the file types it opens and passes them on. `409 needs_install` or `409 not_ready` when it can't run, `409 game_busy` while it's being moved, its files deleted or its saves backed up (a move or delete likewise waits for no launch and fails with `game_busy` or `game_running`). A Windows game left `broken` by a missing runner is provisioned again first.
 
 - `command_wrappers` are prepended in order, first outermost. Each entry is split on spaces, so `"gamescope -W 1920 -H 1080"` is one entry. A wrapper missing from `PATH` fails with `400 wrapper_not_found`.
 - `launch.env` applies under the runner's environment; the game's own `env` wins over both.
@@ -794,8 +796,9 @@ Where each game keeps its saves comes from a list of save locations, downloaded 
 A game's entry is found by the first of: its `saves.manifest_name` (an entry no longer in the list is skipped), its Steam app id (`runner_ref` `steam:<appid>`, else `metadata.steam_appid`, also matching an entry's extra Steam ids), its GOG product id, its Lutris slug (as the entry's Lutris id, then read as a name), then its exact name. Names compare in lower case, without ™ ® © or apostrophes, other punctuation read as spaces. Aliases lead to the entry they name. There's no matching by similarity.
 
 ### `GET /v1/games/{id}/saves`
-`{enabled, status, entry, match, locations: [{pattern, path, files, bytes, skipped, problem?}]}`, answered from the index and the disk without the network (it starts a fetch of the list when that's due). `entry` is the list's entry for the game and `match` the rule that found it (`setting`, `steam`, `gog`, `lutris` or `name`), both null when none did. `status`:
+`{enabled, status, entry, match, locations: [{pattern, path, files, bytes, skipped, problem?}], snapshots: [{id, taken_at, reason, files, bytes}], last_error?}`, answered from the index and the disk without the network (it starts a fetch of the list when that's due). `entry` is the list's entry for the game and `match` the rule that found it (`setting`, `steam`, `gog`, `lutris` or `name`), both null when none did. `status`:
 
+- `kept`: Mira backs up its saves and has at least one backup.
 - `ready`: save files were found.
 - `no_files`: the game has save locations, but nothing is there yet.
 - `no_entry`: no save locations are known for it on this system: no entry, or one whose locations are all for another system or store. `saves.extra_paths` adds the game's own.
@@ -803,7 +806,20 @@ A game's entry is found by the first of: its `saves.manifest_name` (an entry no 
 - `steam_cloud`: a Steam game the Steam client starts (`steam.launch_mode` `steam`) whose saves Steam Cloud keeps, while `saves.skip_cloud` is on.
 - `off`: `saves.enabled` is off for the game (`enabled` false).
 
-`locations` are the entry's save locations that apply to the game, then its `saves.extra_paths`: those whose `when` allows its system (Wine and Proton count as `windows`) and, for a Steam, GOG or Epic game, its store; a location tagged only `config` (settings, not saves) is left out. `path` is the location with the game's folders filled in. A location that would take a whole prefix, home or user folder or one of their shared folders (AppData, Documents, `~/.local/share`) whole has `problem: "too_broad"` and isn't read; one using a folder the game doesn't have (a Windows folder for a native game) has `problem: "unknown_placeholder"`. Placeholders are the list's (`<base>`, `<root>`, `<home>`, `<winAppData>`, `<winLocalAppData>`, `<winLocalAppDataLow>`, `<winDocuments>`, `<winPublic>`, `<winProgramData>`, `<winDir>`, `<xdgData>`, `<xdgConfig>`, `<storeUserId>`, `<storeGameId>`, `<osUserName>`, `<game>`), GOG's (`<?INSTALL?>`, `<?APPLICATION_DATA_ROAMING?>`, `<?APPLICATION_DATA_LOCAL?>`, `<?APPLICATION_DATA_LOCAL_LOW?>`, `<?DOCUMENTS?>`, `<?SAVED_GAMES?>`) and Epic's (`{installdir}`, `{appdata}`, `{roaming}`, `{locallow}`, `{userdir}`, `{usersavedgames}`). In a prefix they're read in the Windows user folder (`steamuser` once Proton made it, else `$USER`), case ignored, Wine's older "Application Data" and "My Documents" tried too; a Steam game's prefix is its `compatdata/<appid>/pfx` and its `<root>` both its library folder and Steam's own. A folder that matches brings every file under it. Symlinks inside a save folder aren't followed and are listed in `skipped`; Wine's `dosdevices` is never entered.
+`locations` are the entry's save locations that apply to the game, then its `saves.extra_paths`: those whose `when` allows its system (Wine and Proton count as `windows`) and, for a Steam, GOG or Epic game, its store; a location tagged only `config` (settings, not saves) is left out. `path` is the location with the game's folders filled in. A location that would take a whole prefix, home or user folder or one of their shared folders (AppData, Documents, `~/.local/share`) whole has `problem: "too_broad"` and isn't read; one using a folder the game doesn't have (a Windows folder for a native game) has `problem: "unknown_placeholder"`. Placeholders are the list's (`<base>`, `<root>`, `<home>`, `<winAppData>`, `<winLocalAppData>`, `<winLocalAppDataLow>`, `<winDocuments>`, `<winPublic>`, `<winProgramData>`, `<winDir>`, `<xdgData>`, `<xdgConfig>`, `<storeUserId>`, `<storeGameId>`, `<osUserName>`, `<game>`), GOG's (`<?INSTALL?>`, `<?APPLICATION_DATA_ROAMING?>`, `<?APPLICATION_DATA_LOCAL?>`, `<?APPLICATION_DATA_LOCAL_LOW?>`, `<?DOCUMENTS?>`, `<?SAVED_GAMES?>`) and Epic's (`{installdir}`, `{appdata}`, `{roaming}`, `{locallow}`, `{userdir}`, `{usersavedgames}`). In a prefix they're read in the Windows user folder (`steamuser` once Proton made it, else `$USER`), case ignored, Wine's older "Application Data" and "My Documents" tried too; a Steam game's prefix is its `compatdata/<appid>/pfx` and its `<root>` both its library folder and Steam's own. A folder that matches brings every file under it. Symlinks inside a save folder aren't followed and are listed in `skipped`; Wine's `dosdevices` is never entered. Locations are listed whatever the status.
+
+`snapshots` are the game's backups, newest first: `id` names it (the UTC time it was taken, such as `20261021T143005Z`), `taken_at` is unix seconds, `reason` is `after_play`, `manual` or `before_restore`, and `files` and `bytes` are what it holds. `last_error` (`{code, message, hint?, at}`) is why the last backup after play failed, until one succeeds.
+
+Backups go to `saves.backup_root`, or a `saves` folder in the first of `mira_folders` when that's empty, one folder per game id, so a removed game added back under its id finds them. Each is `<id>/files/<root>/<path>` plus a `snapshot.json`, where `root` is one of the game's folders (`install`, `prefix`, `prefix_user`, `steam_library`, `steam`, `home`) and `path` is inside it, so a backup still restores to the right place after the game or its prefix moved. Copies keep each file's modified time; a file unchanged since the previous backup is a hard link to its copy there, so ten backups of a save set where one file changes take about one copy plus the changes. A backup is taken after each session of a game whose saves Mira keeps, unless nothing changed (the same files, sizes and modified times); it isn't taken while the game runs, moves or is deleted. The newest `saves.keep` backups taken after play or by hand are kept, plus the copies taken before a restore that are newer than the oldest of them. A game whose saves are over `saves.max_mb` isn't backed up (`saves_too_large`, naming the location holding the most); one whose disk is short of room fails with `saves_disk_full`. Each publishes `game.saves_changed {id}`, as does a failure after play.
+
+### `POST /v1/games/{id}/saves/backup`
+Backs up the game's saves now, whatever `saves.enabled` and `saves.skip_cloud` say. A [job](#jobs) (kind `saves`, target the game) whose result is `{snapshot, taken}`: the new backup, or with `taken` false the newest when nothing changed. Fails with `saves_not_found` when no save files were found, `saves_too_large`, `saves_disk_full`, `saves_failed`, or `game_running`/`game_busy`.
+
+### `POST /v1/games/{id}/saves/restore`
+`{"snapshot": "<id>"}` puts that backup's files back where the game keeps them now, with their modified times, by their folders (`root`), so they land in the game's current folder or prefix and its current Windows user. Files the backup doesn't hold are left alone. What's there is backed up first (reason `before_restore`), so a restore can be undone by restoring that one. A [job](#jobs) (kind `saves`, target the game) whose result is `{restored, files, undo}`: `undo` is the backup holding what was replaced, the newest one when nothing had changed since, or null when there were no saves. `404 snapshot_not_found` for an unknown backup. Fails with `saves_unplaceable` before writing anything when the game no longer has a folder the backup needs (a prefix, for a game now native), with the backup's errors when the first copy can't be taken, or with `game_running`/`game_busy`. Publishes `game.saves_changed`.
+
+### `DELETE /v1/games/{id}/saves/{snapshot}`
+Deletes one backup, also while the game runs. `{}`, or `404 snapshot_not_found`. Publishes `game.saves_changed`.
 
 ### `GET /v1/saves/manifest`
 `{url, games, fetched_at, checked_at}`: the list's address, how many games the index holds (0 before the first download, or after `saves.manifest_url` changed until it's fetched from there), when it was last downloaded and when last checked (unix seconds, 0 for never).
@@ -843,7 +859,8 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |
 | `game.artwork_*` | See the artwork endpoints. |
 | `game.achievements_ready` | `{id, total, unlocked}` after an [achievements](#achievements) refresh changed the list. |
-| `saves.manifest_changed` | No payload: a newer save locations list is in use, so any game's saves may be found elsewhere now. |
+| `game.saves_changed` | `{id}` when a game's [save](#saves) backups changed, or a backup after play failed or succeeded again. |
+| `saves.manifest_changed` | No payload: a newer save locations list is in use, so any game's `GET /v1/games/{id}/saves` may answer differently. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |

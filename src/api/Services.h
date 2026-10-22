@@ -189,9 +189,10 @@ class Services {
   // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed. `staying`
   // are the games that remain afterwards: a folder one of them also uses isn't deleted. Fetched
   // info goes too, except a store game's (its Not installed entry shows it) and the art the user
-  // picked, unless `forget`. The caller holds the game's Claim.
+  // picked, unless `forget`. Its save backups only with `backups`. The caller holds the game's
+  // Claim.
   Result<void> DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
-                              bool files, bool prefix, bool forget);
+                              bool files, bool prefix, bool forget, bool backups);
   // Opens Steam's own uninstall for a Steam game. The game stays until Steam has uninstalled it,
   // then leaves the library keeping its record, as if a Steam import found it gone.
   Result<void> UninstallThroughSteam(const model::Game& game);
@@ -231,6 +232,17 @@ class Services {
   // UpdateSaveManifest when the list is due (saves::ManifestDue): what anything needing the list
   // calls, so it's fetched on first use and then at most daily, never on a timer.
   void CheckSaveManifest();
+  // Snapshots a game's saves (saves::TakeSnapshot) holding its claim, publishing
+  // game.saves_changed when one was taken. Errs game_running or game_busy as Claim does.
+  Result<nlohmann::json> BackUpSaves(const std::string& id, std::string_view reason);
+  // Puts a snapshot's files back holding the game's claim, after a before_restore snapshot of
+  // what's there now. {restored, files, undo}: `undo` is the snapshot holding what was replaced
+  // (null when there were no saves). Errs snapshot_not_found and saves::RestoreSnapshot's errors.
+  Result<nlohmann::json> RestoreSaves(const std::string& id, const std::string& snapshot);
+  // After a session ends: BackUpSaves on the saves lane when the game's saves are backed up,
+  // keeping a failure for GET /v1/games/{id}/saves to show. `then` runs once it's done (or at
+  // once when nothing is backed up), so a move of the game's folder can't take its claim first.
+  void BackUpSavesAfterPlay(const std::string& id, std::function<void()> then);
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes

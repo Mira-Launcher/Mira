@@ -1,7 +1,7 @@
 #include "saves/Saves.h"
 
 #include "config/Resolver.h"
-#include "saves/Resolve.h"
+#include "saves/Backups.h"
 
 namespace mira::saves {
 namespace {
@@ -28,28 +28,32 @@ Plan PlanFor(const config::Config& config, const model::Game& game,
   return {.backup = true};
 }
 
-json Overview(const config::Config& config, const store::MetadataStore& cache,
-              const model::Game& game) {
-  const std::optional<Match> match = FindEntry(config, cache, game);
-  const Plan plan = PlanFor(config, game, match);
-  json answer = {{"enabled", plan.status != "off"},
-                 {"entry", match ? json(match->entry.name) : json(nullptr)},
-                 {"match", match ? json(match->rule) : json(nullptr)},
-                 {"locations", json::array()}};
-  if (!plan.backup) {
-    answer["status"] = plan.status;
-    return answer;
-  }
-
+Survey SurveyFor(const config::Config& config, const store::MetadataStore& cache,
+                 const model::Game& game) {
+  Survey survey{.match = FindEntry(config, cache, game)};
+  survey.plan = PlanFor(config, game, survey.match);
   const Roots roots = RootsFor(config, game);
-  const json entry = EntryJson(match);
+  const json entry = EntryJson(survey.match);
   std::vector<std::string> patterns = FileLocations(entry, roots);
   for (std::string& extra :
        config::Resolver(config, game.overrides).GetStringArray("saves.extra_paths"))
     patterns.push_back(std::move(extra));
+  for (const std::string& pattern : patterns) survey.locations.push_back(Find(pattern, roots));
+  const json registry = entry.value("registry", json::object());
+  survey.registry = registry.is_object() && !registry.empty();
+  return survey;
+}
+
+json Overview(const config::Config& config, const store::MetadataStore& cache,
+              const model::Game& game) {
+  const Survey survey = SurveyFor(config, cache, game);
+  json answer = {{"enabled", survey.plan.status != "off"},
+                 {"entry", survey.match ? json(survey.match->entry.name) : json(nullptr)},
+                 {"match", survey.match ? json(survey.match->rule) : json(nullptr)},
+                 {"locations", json::array()},
+                 {"snapshots", json::array()}};
   bool found = false;
-  for (const std::string& pattern : patterns) {
-    const Location location = Find(pattern, roots);
+  for (const Location& location : survey.locations) {
     std::uintmax_t bytes = 0;
     for (const SaveFile& file : location.files) bytes += file.bytes;
     json item = {{"pattern", location.pattern},
@@ -61,9 +65,18 @@ json Overview(const config::Config& config, const store::MetadataStore& cache,
     answer["locations"].push_back(std::move(item));
     found = found || !location.files.empty();
   }
-  const json registry = entry.value("registry", json::object());
-  if (patterns.empty())
-    answer["status"] = registry.is_object() && !registry.empty() ? "registry_only" : "no_entry";
+  const std::filesystem::path dir = GameBackups(config, game.id);
+  const std::vector<Snapshot> snapshots = ListSnapshots(dir);
+  for (const Snapshot& snapshot : snapshots) answer["snapshots"].push_back(SnapshotJson(snapshot));
+  if (json failure = LastFailure(dir); !failure.is_null())
+    answer["last_error"] = std::move(failure);
+
+  if (!survey.plan.backup)
+    answer["status"] = survey.plan.status;
+  else if (!snapshots.empty())
+    answer["status"] = "kept";
+  else if (survey.locations.empty())
+    answer["status"] = survey.registry ? "registry_only" : "no_entry";
   else
     answer["status"] = found ? "ready" : "no_files";
   return answer;

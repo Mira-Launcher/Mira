@@ -1011,6 +1011,36 @@ Schema::Schema() {
                 "Cloud.",
          .keywords = "backup steam cloud"});
 
+  s.Add({.key = "saves.keep",
+         .label = "Backups kept per game",
+         .type = Type::Int,
+         .default_value = 10,
+         .scope = Scope::PerGame,
+         .doc = "How many backups of a game's saves Mira keeps; the oldest goes when a new one is "
+                "taken. Copies Mira makes before restoring or downloading saves are kept on top "
+                "of these.",
+         .constraint = Range(1, 100),
+         .keywords = "backup snapshot retention"});
+
+  s.Add({.key = "saves.max_mb",
+         .label = "Largest backup (MB)",
+         .type = Type::Int,
+         .default_value = 1024,
+         .scope = Scope::PerGame,
+         .doc = "A game whose saves are bigger than this isn't backed up, since its save "
+                "locations most likely take more than saves.",
+         .constraint = Range(1, 1048576),
+         .keywords = "backup size limit"});
+
+  s.Add({.key = "saves.backup_root",
+         .label = "Backup folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Where backups of saves go. Empty keeps them in a saves folder inside the first "
+                "Mira folder. Backups made before a change stay where they are.",
+         .path = PathKind::Folder,
+         .keywords = "backup location"});
+
   s.Add({.key = "saves.extra_paths",
          .label = "More save locations",
          .type = Type::StringArray,

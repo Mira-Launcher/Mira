@@ -39,7 +39,7 @@ src/
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
   achievements/  Achievement lists from each store, the system locale, and achievement icons
-  saves/      The save locations list (download, index, matching a game to an entry) and resolving a game's save files
+  saves/      The save locations list (download, index, matching a game to an entry), resolving a game's save files, and their backups
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
@@ -158,6 +158,8 @@ Where a game keeps its saves comes from the save locations list (`src/saves/Mani
 Registry saves aren't kept: a game's registry lives in its prefix's `user.reg` with every other program's settings, so putting back an old copy would undo those too.
 
 `saves::Find` (`src/saves/Resolve.cpp`) resolves one location. Placeholders in the list's, GOG's and Epic's forms map to the same folders (`saves::RootsFor`): the prefix's Windows user folder (`library::WindowsUserDir`: `steamuser` once Proton made it, else `$USER`), the install folder, a Steam game's library and Steam's own folder, or the home and XDG folders for a native game. The glob walker matches one path component at a time, ignoring case for a Windows game, follows symlinks only while matching the location's own folders, and never enters `dosdevices`. A location that would take a whole prefix, home or user folder, or one of their shared folders, is refused, also when a symlink leads there (Wine links a prefix's Documents to the home folder's). Each found file is described by a logical root (`install`, `prefix`, `prefix_user`, `steam_library`, `steam`, `home`; the deepest holding it) plus a path inside it, never an absolute path, so a copy taken now still lands right after the game or its prefix moves or its runner changes between Wine and Proton.
+
+Backups (`src/saves/Backups.cpp`) live outside every game's folders, in `saves.backup_root` or the first Mira folder's `saves`, so they don't move or go with a game's files; `saves` is one of the Mira-folder names a drop or scan never takes for a game. `saves::TakeSnapshot` writes a snapshot into `<id>.partial` and renames it when complete, so a crash or cancel leaves no half snapshot (the next backup clears the leftover). Files unchanged since the newest snapshot (path, size and mtime) are hard links to its copies, and copies keep their mtimes, which is also how "nothing changed" is decided without reading a byte. Every backup holds the game's launch claim (`Services::BackUpSaves`), so it can't overlap a session, a move, a delete or another backup of the same game. After a session, the exit hook posts the backup to the `saves` lane after `game.state` went out, so exiting isn't slowed; a failure there is kept in the game's `state.json` for the GUI rather than lost in a job nobody watched. A restore (`Services::RestoreSaves`) snapshots what's there first (`before_restore`), checks every file has a folder to go to before writing any, and puts each one in place by copying beside it and renaming over it, so a file is never left half written.
 
 ## Desktop entries
 

@@ -32,6 +32,7 @@
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
+#include "saves/Backups.h"
 #include "saves/Manifest.h"
 #include "steam/SteamDetector.h"
 
@@ -99,8 +100,9 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     }
     StopSharedIfIdle(id);
     CheckForInstall(id);
-    SortByTags({id});  // its tags may have changed while it ran
     RefreshAchievementsAfterPlay(id);
+    // Its tags may have changed while it ran.
+    BackUpSavesAfterPlay(id, [this, id] { SortByTags({id}); });
   });
   fetches.OnNewGameFetched([this](const std::string& id) { TagFromSteam(id); });
   library_roots_ = config.GetPathArray("library_roots");
@@ -715,7 +717,7 @@ void Services::SortAllByTags() {
 }
 
 Result<void> Services::DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
-                                      bool files, bool prefix, bool forget) {
+                                      bool files, bool prefix, bool forget, bool backups) {
   // A desktop-entry import only links to another app's own files; a prefix Mira made for it is
   // Mira's.
   if (game.source == "desktop-entry") files = false;
@@ -741,6 +743,9 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
           std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
           "Remove the launcher it came with to delete its prefix.");
     }
+  }
+  if (backups) {
+    if (auto deleted = saves::DeleteBackups(config, game.id); !deleted) return deleted;
   }
   // Its link in a library folder goes with it, whatever else is kept.
   if (!game.library_link.empty()) {
@@ -957,6 +962,69 @@ std::string Services::UpdateSaveManifest(const std::string& requested_job) {
 
 void Services::CheckSaveManifest() {
   if (saves::ManifestDue(config, games.Metadata())) UpdateSaveManifest();
+}
+
+Result<json> Services::BackUpSaves(const std::string& id, std::string_view reason) {
+  const auto claim = Claim(id, "saves");
+  if (!claim) return std::unexpected(claim.error());
+  const auto game = games.Find(id);
+  if (!game) return Err("game_not_found", "no such game");
+  CheckSaveManifest();
+  auto taken =
+      saves::TakeSnapshot(config, *game, saves::SurveyFor(config, games.Metadata(), *game), reason);
+  if (taken && taken->value("taken", false)) events.Publish("game.saves_changed", {{"id", id}});
+  return taken;
+}
+
+Result<json> Services::RestoreSaves(const std::string& id, const std::string& snapshot_id) {
+  const auto claim = Claim(id, "saves");
+  if (!claim) return std::unexpected(claim.error());
+  const auto game = games.Find(id);
+  if (!game) return Err("game_not_found", "no such game");
+  const auto snapshot = saves::FindSnapshot(saves::GameBackups(config, id), snapshot_id);
+  if (!snapshot) return Err("snapshot_not_found", "no such backup");
+
+  auto before = saves::TakeSnapshot(
+      config, *game, saves::SurveyFor(config, games.Metadata(), *game), saves::kBeforeRestore);
+  if (!before && before.error().code != "saves_not_found") return std::unexpected(before.error());
+  auto restored = saves::RestoreSnapshot(config, *game, *snapshot);
+  events.Publish("game.saves_changed", {{"id", id}});
+  if (!restored) return std::unexpected(restored.error());
+  return json{{"restored", snapshot->id},
+              {"files", snapshot->files.size()},
+              {"undo", before ? (*before)["snapshot"]["id"] : json(nullptr)}};
+}
+
+void Services::BackUpSavesAfterPlay(const std::string& id, std::function<void()> then) {
+  const auto game = games.Find(id);
+  if (!game || !saves::PlanFor(config, *game, std::nullopt).backup) return then();
+  saves.Post([this, id, then = std::move(then)] {
+    struct Finally {
+      const std::function<void()>& run;
+      ~Finally() { run(); }
+    } finally{then};
+    const auto game = games.Find(id);
+    if (!game) return;
+    // The plan again, now with the entry: Steam Cloud is only known from it.
+    if (!saves::PlanFor(config, *game, saves::FindEntry(config, games.Metadata(), *game)).backup)
+      return;
+    auto taken = BackUpSaves(id, saves::kAfterPlay);
+    if (!taken && (taken.error().code == "saves_not_found" || taken.error().code == "cancelled" ||
+                   taken.error().code == "game_running" || taken.error().code == "game_busy"))
+      return;
+    const std::filesystem::path dir = saves::GameBackups(config, id);
+    const json before = saves::LastFailure(dir);
+    if (taken) {
+      if (!before.is_null()) {
+        saves::RecordFailure(dir, std::nullopt);
+        events.Publish("game.saves_changed", {{"id", id}});
+      }
+      return;
+    }
+    log::Warn("couldn't back up {}'s saves: {}", id, taken.error().message);
+    saves::RecordFailure(dir, taken.error());
+    events.Publish("game.saves_changed", {{"id", id}});
+  });
 }
 
 void Services::StartShared(const model::Game& game, const Command& command) {
