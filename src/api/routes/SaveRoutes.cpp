@@ -4,6 +4,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "saves/Manifest.h"
+#include "saves/Saves.h"
 
 namespace mira::api {
 namespace {
@@ -16,6 +17,14 @@ constexpr int kSearchLimit = 50;
 }  // namespace
 
 void RegisterSaveRoutes(Router& http, Services& s) {
+  // Answers from the index and the disk, never the network; fetches the list when it's due.
+  http.Get(R"(/v1/games/([^/]+)/saves)", [&s](const Request& req, Response& res) {
+    const auto game = s.games.Find(req.matches[1]);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    s.CheckSaveManifest();
+    SendJson(res, saves::Overview(s.config, s.games.Metadata(), *game));
+  });
+
   http.Get("/v1/saves/manifest", [&s](const Request&, Response& res) {
     SendJson(res, saves::ManifestState(s.config, s.games.Metadata()));
   });

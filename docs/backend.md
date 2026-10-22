@@ -39,7 +39,7 @@ src/
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
   achievements/  Achievement lists from each store, the system locale, and achievement icons
-  saves/      The save locations list: its download, index and matching a game to an entry
+  saves/      The save locations list (download, index, matching a game to an entry) and resolving a game's save files
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
@@ -143,6 +143,21 @@ A store source can add to a launch through `ILibrarySource::BeforeLaunch`, which
 `proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record, plus the end of the game's log for Wine's crash report, and `proc::ClassifyExit` decides between a crash and an ordinary exit for every launch path. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. A finished session is added to the game's `play_seconds` once: the game remembers the newest session it counted (`last_session_at`).
 
 If `mira-run` can't be found or started, `mirad` launches the game directly with no session record or log.
+
+## Saves
+
+Where a game keeps its saves comes from the save locations list (`src/saves/Manifest.cpp`, indexed in `cache.db`); everything done with them is Mira's own. `saves::FindEntry` picks a game's entry, and `saves::PlanFor` decides whether Mira keeps its saves at all:
+
+| Game | Mira backs up its saves |
+|---|---|
+| Steam, started by the Steam client, with Steam Cloud in its entry | No, while `saves.skip_cloud` is on: Steam Cloud keeps them |
+| Steam started directly, or without Steam Cloud | Yes |
+| Anything else with save locations | Yes |
+| Only registry saves | No |
+
+Registry saves aren't kept: a game's registry lives in its prefix's `user.reg` with every other program's settings, so putting back an old copy would undo those too.
+
+`saves::Find` (`src/saves/Resolve.cpp`) resolves one location. Placeholders in the list's, GOG's and Epic's forms map to the same folders (`saves::RootsFor`): the prefix's Windows user folder (`library::WindowsUserDir`: `steamuser` once Proton made it, else `$USER`), the install folder, a Steam game's library and Steam's own folder, or the home and XDG folders for a native game. The glob walker matches one path component at a time, ignoring case for a Windows game, follows symlinks only while matching the location's own folders, and never enters `dosdevices`. A location that would take a whole prefix, home or user folder, or one of their shared folders, is refused, also when a symlink leads there (Wine links a prefix's Documents to the home folder's). Each found file is described by a logical root (`install`, `prefix`, `prefix_user`, `steam_library`, `steam`, `home`; the deepest holding it) plus a path inside it, never an absolute path, so a copy taken now still lands right after the game or its prefix moves or its runner changes between Wine and Proton.
 
 ## Desktop entries
 

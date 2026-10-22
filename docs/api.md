@@ -793,6 +793,18 @@ Where each game keeps its saves comes from a list of save locations, downloaded 
 
 A game's entry is found by the first of: its `saves.manifest_name` (an entry no longer in the list is skipped), its Steam app id (`runner_ref` `steam:<appid>`, else `metadata.steam_appid`, also matching an entry's extra Steam ids), its GOG product id, its Lutris slug (as the entry's Lutris id, then read as a name), then its exact name. Names compare in lower case, without ™ ® © or apostrophes, other punctuation read as spaces. Aliases lead to the entry they name. There's no matching by similarity.
 
+### `GET /v1/games/{id}/saves`
+`{enabled, status, entry, match, locations: [{pattern, path, files, bytes, skipped, problem?}]}`, answered from the index and the disk without the network (it starts a fetch of the list when that's due). `entry` is the list's entry for the game and `match` the rule that found it (`setting`, `steam`, `gog`, `lutris` or `name`), both null when none did. `status`:
+
+- `ready`: save files were found.
+- `no_files`: the game has save locations, but nothing is there yet.
+- `no_entry`: no save locations are known for it on this system: no entry, or one whose locations are all for another system or store. `saves.extra_paths` adds the game's own.
+- `registry_only`: its entry keeps saves only in the Windows registry, which Mira doesn't back up: restoring a prefix's `user.reg` would also roll back every other setting in the prefix.
+- `steam_cloud`: a Steam game the Steam client starts (`steam.launch_mode` `steam`) whose saves Steam Cloud keeps, while `saves.skip_cloud` is on.
+- `off`: `saves.enabled` is off for the game (`enabled` false).
+
+`locations` are the entry's save locations that apply to the game, then its `saves.extra_paths`: those whose `when` allows its system (Wine and Proton count as `windows`) and, for a Steam, GOG or Epic game, its store; a location tagged only `config` (settings, not saves) is left out. `path` is the location with the game's folders filled in. A location that would take a whole prefix, home or user folder or one of their shared folders (AppData, Documents, `~/.local/share`) whole has `problem: "too_broad"` and isn't read; one using a folder the game doesn't have (a Windows folder for a native game) has `problem: "unknown_placeholder"`. Placeholders are the list's (`<base>`, `<root>`, `<home>`, `<winAppData>`, `<winLocalAppData>`, `<winLocalAppDataLow>`, `<winDocuments>`, `<winPublic>`, `<winProgramData>`, `<winDir>`, `<xdgData>`, `<xdgConfig>`, `<storeUserId>`, `<storeGameId>`, `<osUserName>`, `<game>`), GOG's (`<?INSTALL?>`, `<?APPLICATION_DATA_ROAMING?>`, `<?APPLICATION_DATA_LOCAL?>`, `<?APPLICATION_DATA_LOCAL_LOW?>`, `<?DOCUMENTS?>`, `<?SAVED_GAMES?>`) and Epic's (`{installdir}`, `{appdata}`, `{roaming}`, `{locallow}`, `{userdir}`, `{usersavedgames}`). In a prefix they're read in the Windows user folder (`steamuser` once Proton made it, else `$USER`), case ignored, Wine's older "Application Data" and "My Documents" tried too; a Steam game's prefix is its `compatdata/<appid>/pfx` and its `<root>` both its library folder and Steam's own. A folder that matches brings every file under it. Symlinks inside a save folder aren't followed and are listed in `skipped`; Wine's `dosdevices` is never entered.
+
 ### `GET /v1/saves/manifest`
 `{url, games, fetched_at, checked_at}`: the list's address, how many games the index holds (0 before the first download, or after `saves.manifest_url` changed until it's fetched from there), when it was last downloaded and when last checked (unix seconds, 0 for never).
 

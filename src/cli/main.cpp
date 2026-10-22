@@ -1280,8 +1280,12 @@ int CmdAchievements(int argc, char** argv) {
 int CmdSaves(int argc, char** argv) {
   const std::string_view what = argc > 0 ? argv[0] : "";
   const bool update = what == "manifest" && argc == 2 && std::string_view(argv[1]) == "--update";
-  if (!((what == "manifest" && (argc == 1 || update)) || (what == "search" && argc == 2))) {
+  const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
+  if (!game &&
+      !((what == "manifest" && (argc == 1 || update)) || (what == "search" && argc == 2))) {
     std::fprintf(stderr,
+                 "usage: mira saves <id>\n"
+                 "  where a game keeps its saves, and what's there.\n"
                  "usage: mira saves manifest [--update]\n"
                  "  where the list of save locations comes from and when it was checked;\n"
                  "  --update checks it now.\n"
@@ -1290,6 +1294,31 @@ int CmdSaves(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
+  if (game) {
+    auto res = client.Get(std::format("/v1/games/{}/saves", Seg(argv[0])));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    const json saves = json::parse(res->body, nullptr, false);
+    std::printf("%s", saves.value("status", std::string()).c_str());
+    if (saves["entry"].is_string()) {
+      std::printf("  (%s, by %s)", saves["entry"].get<std::string>().c_str(),
+                  saves.value("match", std::string()).c_str());
+    }
+    std::printf("\n");
+    for (const json& location : saves.value("locations", json::array())) {
+      const std::string problem = location.value("problem", std::string());
+      std::printf("  %s\n    %s\n", location.value("pattern", std::string()).c_str(),
+                  !problem.empty()
+                      ? problem.c_str()
+                      : std::format("{} files, {} bytes: {}", location.value("files", 0),
+                                    location.value("bytes", std::uint64_t{0}),
+                                    location.value("path", std::string()))
+                            .c_str());
+    }
+    return 0;
+  }
   if (what == "search") {
     auto res = client.Get(std::format("/v1/saves/entries?q={}", Seg(argv[1])));
     if (!Ok(res)) {
@@ -2029,6 +2058,7 @@ void PrintUsage() {
       "  metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]\n"
       "                         cached cover-art/store info, or pick its SteamGridDB match\n"
       "  achievements <id> [--refresh]   a Steam, GOG or Epic game's achievements\n"
+      "  saves <id>             where a game keeps its saves\n"
       "  saves manifest [--update] | search <name>   the list of where games keep saves\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"

@@ -991,6 +991,36 @@ Schema::Schema() {
 
   // --- Saves -----------------------------------------------------------------
   s.Section("Saves", "Backups");
+
+  s.Add({.key = "saves.enabled",
+         .label = "Back up saves after playing",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Keep a copy of a game's saves each time you stop playing it, so you can go back "
+                "to an earlier one. Only saves kept as files are copied; a few games keep theirs "
+                "in the Windows registry instead.",
+         .keywords = "backup snapshot restore"});
+
+  s.Add({.key = "saves.skip_cloud",
+         .label = "Leave Steam Cloud games to Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Don't back up the saves of Steam games that Steam starts and keeps in Steam "
+                "Cloud.",
+         .keywords = "backup steam cloud"});
+
+  s.Add({.key = "saves.extra_paths",
+         .label = "More save locations",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::GameOnly,
+         .doc = "Files or folders this game keeps saves in that Mira doesn't know about. "
+                "Wildcards (*) work, and so do the save locations list's folder names, such as "
+                "<base> for the game's folder or <winAppData> for its prefix's AppData/Roaming.",
+         .keywords = "backup custom"});
+
   s.Group("Where saves are", Sections::Fold::Collapsed);
 
   s.Add({.key = "saves.manifest_url",

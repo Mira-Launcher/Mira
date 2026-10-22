@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/Strings.h"
+#include "library/WinePrefix.h"
 
 namespace mira::launchers::autodesk {
 namespace fs = std::filesystem;
@@ -22,7 +23,7 @@ std::optional<fs::path> FindImage(const fs::path& prefix, fs::file_time_type sin
   fs::file_time_type newest_time = since;
   // Downloads/Autodesk/<Product> - (EN)/Setup.exe, with " (1)" added when that folder is taken.
   for (const auto& entry :
-       fs::directory_iterator(prefix / "drive_c/users/steamuser/Downloads/Autodesk", ec)) {
+       fs::directory_iterator(library::WindowsUserDir(prefix) / "Downloads/Autodesk", ec)) {
     const fs::path setup = entry.path() / "Setup.exe";
     if (!fs::is_regular_file(setup, ec) || !fs::is_regular_file(entry.path() / "setup.xml", ec))
       continue;
@@ -39,11 +40,11 @@ std::optional<fs::path> FindImage(const fs::path& prefix, fs::file_time_type sin
 namespace {
 
 fs::path DeployLog(const fs::path& prefix) {
-  return prefix / "drive_c/users/steamuser/AppData/Local/Temp/AdOdisDeployTool.log";
+  return library::WindowsUserDir(prefix) / "AppData/Local/Temp/AdOdisDeployTool.log";
 }
 
 fs::path InstallLog(const fs::path& prefix) {
-  return prefix / "drive_c/users/steamuser/AppData/Local/Autodesk/ODIS/Install.log";
+  return library::WindowsUserDir(prefix) / "AppData/Local/Autodesk/ODIS/Install.log";
 }
 
 }  // namespace
