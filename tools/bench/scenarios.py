@@ -15,11 +15,13 @@ import os
 import re
 import signal
 import shutil
+import sqlite3
 import statistics
+import struct
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -346,6 +348,272 @@ def relocate(ctx, meta):
     check(Path(target).is_dir(), "the game's folder isn't at its new place")
 
 
+# --- store games ----------------------------------------------------------------------------------------------
+# Epic, GOG and Steam games with stand-in store tools that answer at once, so what's measured is Mira's own
+# work. No API adds a game with a store as its source, so they're written into mira.db before mirad starts.
+
+def write_script(path, body):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+
+
+def add_games(home, games):
+    """`games`: dicts of id, name, source, ref and runner_ref, each a native game running `run.sh` in
+    home/store-games/<id>, which notes when it ends."""
+    now = int(time.time())
+    with closing(sqlite3.connect(home / ".config" / "mira" / "mira.db")) as db, db:
+        for game in games:
+            folder = home / "store-games" / game["id"]
+            write_script(folder / "run.sh", 'date +%s.%N > "$0.end"\n')
+            db.execute("INSERT INTO games(id, install_path, name, status, confidence, reviewed, platform, source, exe_path,"
+                       " args, working_dir, runner_ref, source_ref, data_dir, installer_dir, last_error, created_at,"
+                       " updated_at, play_seconds, last_session_at, runner_config, overrides, env, candidates)"
+                       " VALUES(?, ?, ?, 'ready', 1, 1, 'native', ?, 'run.sh', '', '', ?, ?, '', '', '', ?, ?, 0, 0,"
+                       " '{}', '{}', '{}', '[]')",
+                       (game["id"], str(folder), game["name"], game["source"], game.get("runner_ref", ""),
+                        game.get("ref", ""), now, now))
+
+
+def add_settings(home, text):
+    with (home / ".config" / "mira" / "settings.toml").open("a") as settings:
+        settings.write("\n" + text)
+
+
+def fake_stores(home, epic_achievements=None):
+    """Signed-in stand-ins for legendary, gogdl and comet. Returns the environment mirad needs to find
+    GOG's account name and achievements without the network."""
+    tools = home / "fake-tools"
+    epic_args = json.dumps({"game_parameters": [], "egl_parameters": [
+        "-AUTH_LOGIN=unused", "-AUTH_PASSWORD=bench0code", "-AUTH_TYPE=exchangecode", "-epicapp=Bench",
+        "-epicenv=Prod", "-EpicPortal", "-epicusername=Bench", "-epicuserid=bench"]})
+    answer = home / "legendary-achievements.json"
+    answer.write_text(json.dumps(epic_achievements or {"completed": [], "in_progress": [], "uninitiated": [],
+                                                       "hidden": []}))
+    write_script(tools / "legendary", 'case "$1" in\n'
+                 f"  launch) echo '{epic_args}' ;;\n"
+                 f'  achievements) cat "{answer}" ;;\n'
+                 "  --version) echo 'legendary version \"0.21.1\"' ;;\n"
+                 "esac\n")
+    write_script(tools / "gogdl", '[ "$1" = --version ] && echo 1.3.1\n')
+    write_script(tools / "comet", "[ \"$1\" = --version ] && echo 'comet 0.3.2' && exit 0\nexec sleep 300\n")
+    legendary = home / ".config" / "legendary"
+    legendary.mkdir(parents=True, exist_ok=True)
+    (legendary / "user.json").write_text('{"displayName": "Bench", "refresh_expires_at": "2999-01-01T00:00:00Z"}')
+    (home / ".config" / "mira" / "gog-auth.json").write_text(json.dumps({"46899977096215655": {
+        "access_token": "bench", "refresh_token": "bench", "user_id": "4815", "loginTime": int(time.time()),
+        "expires_in": 86400}}))
+    endpoints = home / "endpoints"
+    (endpoints / "GOG_EMBED").mkdir(parents=True, exist_ok=True)
+    (endpoints / "GOG_EMBED" / "userData.json").write_text('{"username": "Bench"}')
+    gog_list = endpoints / "GOG_GAMEPLAY" / "clients" / "2000" / "users" / "4815" / "achievements"
+    gog_list.parent.mkdir(parents=True, exist_ok=True)
+    gog_list.write_text('{"total_count": 0, "limit": 1000, "page_token": "MA", "items": []}')
+    add_settings(home, f'[epic]\nlegendary_bin = "{tools / "legendary"}"\n\n[gog]\ngogdl_bin = "{tools / "gogdl"}"\n')
+    return {"MIRA_GOG_EMBED_URL": f"file://{endpoints / 'GOG_EMBED'}",
+            "MIRA_GOG_GAMEPLAY_URL": f"file://{endpoints / 'GOG_GAMEPLAY'}"}
+
+
+def start_with(ctx, env):
+    """Starts a startup scenario's mirad with `env` added, as far as its startup scan."""
+    saved = {key: os.environ.get(key) for key in env}
+    os.environ.update(env)
+    try:
+        ctx.mirad.start(timeout=600)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    ctx.mirad.wait_log("startup scan:", timeout=1200)
+    ctx.client = ctx.mirad.client()
+    # Only this branch has comet, so base answers 400 and runs GOG games without it.
+    ctx.client.request("PATCH", "/v1/config", {"gog": {"comet_bin": str(ctx.mirad.home / "fake-tools" / "comet")}})
+
+
+def link_systemd(home):
+    """Games start in a systemd scope of their own, so the host's user manager is reached from the bench's
+    runtime dir through links to its sockets; mirad's own socket stays in the bench."""
+    host = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    check((host / "systemd" / "private").exists(), "launching needs the host's systemd user session")
+    run = home / "run"
+    (run / "systemd").mkdir(parents=True, exist_ok=True)
+    os.chmod(run, 0o700)
+    (run / "bus").symlink_to(host / "bus")
+    (run / "systemd" / "private").symlink_to(host / "systemd" / "private")
+
+
+class Events:
+    """mirad's event stream, written to a file as it comes."""
+
+    def __init__(self, mirad):
+        self.path = mirad.home / "launch-events.txt"
+        self.reader = subprocess.Popen(["curl", "-sN", "--unix-socket", str(mirad.sock), "http://mirad/v1/events"],
+                                       stdout=self.path.open("wb"), stderr=subprocess.DEVNULL)
+        time.sleep(0.3)
+
+    def exits(self, game_id):
+        text = self.path.read_text(errors="replace")
+        return sum(1 for line in text.splitlines()
+                   if '"state":"exited"' in line and f'"id":"{game_id}"' in line)
+
+    def close(self):
+        self.reader.terminate()
+        self.reader.wait()
+
+
+@scenario("launch", startup=True)
+def launch(ctx, meta):
+    """Starting a game and its exit reaching clients, for a native game, an Epic one (whose sign-in comes
+    from legendary) and a GOG one (with comet beside it), five times each; then mirad left idle."""
+    home = ctx.mirad.home
+    games = [{"id": "bench-native", "name": "Bench Native", "source": "manual"},
+             {"id": "epic-Bench", "name": "Bench Epic", "source": "epic", "ref": "Bench"},
+             {"id": "gog-2000", "name": "Bench GOG", "source": "gog", "ref": "2000"}]
+    add_games(home, games)
+    env = fake_stores(home)
+    link_systemd(home)
+    start_with(ctx, env)
+    events = Events(ctx.mirad)
+    try:
+        for game, kind in zip(games, ("native", "Epic", "GOG")):
+            end_file = home / "store-games" / game["id"] / "run.sh.end"
+
+            def play():
+                before = events.exits(game["id"])
+                status, body = ctx.client.request("POST", f"/v1/games/{game['id']}/launch")
+                check(status == 200 and body.get("tracked"), f"launching {kind} answered {status}: {body}")
+                started = time.perf_counter()
+                deadline = time.time() + 30
+                while events.exits(game["id"]) == before:
+                    check(time.time() < deadline, f"the {kind} game's exit never reached clients")
+                    time.sleep(0.002)
+                seen = time.time()
+                return started, seen - float(end_file.read_text())
+
+            if ctx.mode == "instr":
+                with ctx.measure(f"launch and exit, {kind}", repeats=5):
+                    for _ in range(5):
+                        play()
+                continue
+            starts, exits = [], []
+            for _ in range(5):
+                before = time.perf_counter()
+                started, exit_delay = play()
+                starts.append((started - before) * 1000)
+                exits.append(exit_delay * 1000)
+            ctx.results[f"start, {kind}"] = round(statistics.median(starts), 1)
+            ctx.results[f"exit to exited, {kind}"] = round(statistics.median(exits), 1)
+        if ctx.mode == "time":
+            # Lanes started for the games' achievements end once idle; the threads below show they did.
+            time.sleep(40)
+    finally:
+        events.close()
+
+
+def kv(kind, name, value=b""):
+    """Valve's binary KeyValues, as Steam writes its stats files: 0 an object, 1 text, 2 a 32-bit int."""
+    key = bytes([kind]) + name.encode() + b"\0"
+    if kind == 0:
+        return key + value + b"\x08"
+    if kind == 1:
+        return key + value.encode() + b"\0"
+    return key + struct.pack("<I", value)
+
+
+def steam_stats(root, appid, account, count):
+    """Steam's stats files for `count` achievements, a tenth hidden, every other one unlocked."""
+    blocks, progress, percentages = b"", b"", []
+    for stat in range((count + 31) // 32):
+        bits, data, times = b"", 0, b""
+        for bit in range(min(32, count - stat * 32)):
+            n = stat * 32 + bit
+            display = (kv(0, "name", kv(1, "english", f"Achievement {n}") + kv(1, "german", f"Erfolg {n}"))
+                       + kv(0, "desc", kv(1, "english", f"Do thing number {n} in the game"))
+                       + kv(2, "hidden", int(n % 10 == 9)) + kv(1, "icon", f"a{n}.jpg") + kv(1, "icon_gray", f"a{n}g.jpg"))
+            bits += kv(0, str(bit), kv(1, "name", f"ACH_{n:03d}") + kv(0, "display", display))
+            percentages.append({"name": f"ACH_{n:03d}", "percent": round(100 / (n + 1), 1)})
+            if n % 2 == 0:
+                data |= 1 << bit
+                times += kv(2, str(bit), 1700000000 + n * 60)
+        blocks += kv(0, str(stat + 1), kv(0, "bits", bits) + kv(1, "type", "ACHIEVEMENTS"))
+        progress += kv(0, str(stat + 1), kv(2, "data", data) + kv(0, "AchievementTimes", times))
+    stats = root / "appcache" / "stats"
+    stats.mkdir(parents=True, exist_ok=True)
+    (root / "steamapps").mkdir(exist_ok=True)
+    (stats / f"UserGameStatsSchema_{appid}.bin").write_bytes(kv(0, appid, kv(0, "stats", blocks)) + b"\x08")
+    (stats / f"UserGameStats_{account}_{appid}.bin").write_bytes(kv(0, "cache", kv(2, "crc", 7) + progress) + b"\x08")
+    return percentages
+
+
+def achievement_icons(folder, count):
+    from PIL import Image  # only here: the other scenarios run without it
+    folder.mkdir(parents=True, exist_ok=True)
+    for n in range(count):
+        for name, tint in ((f"a{n}.jpg", (40 + n % 200, 120, 200)), (f"a{n}g.jpg", (90, 90, 90))):
+            Image.new("RGB", (256, 256), tint).save(folder / name, "JPEG", quality=85)
+
+
+def steam_achievements(home, appid="4000", count=200):
+    """A Steam game with `count` achievements, its icons and rarity, all on disk. Returns mirad's extra env."""
+    account = 1000
+    root = home / "steam-root"
+    percentages = steam_stats(root, appid, account, count)
+    endpoints = home / "endpoints"
+    rarity = endpoints / "STEAM_API" / "ISteamUserStats" / "GetGlobalAchievementPercentagesForApp" / "v2"
+    rarity.parent.mkdir(parents=True, exist_ok=True)
+    rarity.write_text(json.dumps({"achievementpercentages": {"achievements": percentages}}))
+    achievement_icons(endpoints / "STEAM_ICONS" / appid, count)
+    add_settings(home, f'[steam]\nroot = "{root}"\nsteamid64 = "{76561197960265728 + account}"\n')
+    return {"MIRA_STEAM_API_URL": f"file://{endpoints / 'STEAM_API'}",
+            "MIRA_STEAM_ICONS_URL": f"file://{endpoints / 'STEAM_ICONS'}"}
+
+
+@scenario("achievements", startup=True)
+def achievements(ctx, meta):
+    """A Steam game's 200 achievements read from its stats files, then served, with their icons; and an Epic
+    game's 200 from legendary."""
+    home = ctx.mirad.home
+    add_games(home, [{"id": "bench-steam", "name": "Bench Steam", "source": "manual", "runner_ref": "steam:4000"},
+                     {"id": "epic-Bench", "name": "Bench Epic", "source": "epic", "ref": "Bench"}])
+    epic = {"completed": [{"name": f"e{n}", "display_name": f"Epic {n}", "description": "Win", "unlocked": True,
+                           "unlock_date": "2024-05-01 12:00:00+00:00", "rarity": {"percent": 12.5}, "xp": 10,
+                           "icon_link": f"https://cdn.example/e{n}.png"} for n in range(100)],
+            "in_progress": [],
+            "uninitiated": [{"name": f"e{n}", "display_name": f"Epic {n}", "description": "Later", "unlocked": False,
+                             "rarity": {"percent": 50.0}, "xp": 5} for n in range(100, 200)],
+            "hidden": []}
+    env = fake_stores(home, epic) | steam_achievements(home)
+    start_with(ctx, env)
+
+    def refresh(game_id):
+        state = ctx.client.wait_job(ctx.client.request("POST", f"/v1/games/{game_id}/achievements/refresh"))
+        check(state.get("state") == "finished" and state["result"]["total"] == 200, f"{game_id}'s refresh: {state}")
+    # The first refresh also fetches rarity; later ones parse the same files again.
+    with ctx.measure("first refresh, Steam"):
+        refresh("bench-steam")
+    ctx.repeat("refresh, Steam", 5, lambda: refresh("bench-steam"))
+    ctx.repeat("refresh, Epic", 5, lambda: refresh("epic-Bench"))
+
+    def get():
+        status, body = ctx.client.get("/v1/games/bench-steam/achievements")
+        check(status == 200 and len(body["items"]) == 200 and body["unlocked"] == 100, "the 200 achievements")
+    ctx.repeat("GET achievements, 200", 20, get)
+
+    keys = [f"ACH_{n:03d}" for n in range(0, 40, 2)]
+
+    def icons():
+        for key in keys:
+            status, data = ctx.client.request("GET", f"/v1/games/bench-steam/achievements/icon?key={key}&state=unlocked",
+                                              raw=True)
+            check(status == 200 and data[:3] == b"\xff\xd8\xff", f"{key}'s icon answered {status}")
+    with ctx.measure("20 icons, first time"):
+        icons()
+    with ctx.measure("20 icons, cached"):
+        icons()
+
+
 def gui_pid(launcher, timeout=30):
     """mira-gui's own pid in the session it was started in. A child it forks is named mira-gui too until it
     execs, so the one whose parent isn't mira-gui."""
@@ -582,6 +850,52 @@ def gui_pages(ctx, meta):
             if back:
                 respond(pid, lambda: display.key(back))
     open_gui(ctx, "GUI pages", then=visit)
+
+
+@scenario("gui-game-card", gui=True, startup=True)
+def gui_game_card(ctx, meta):
+    """A game card with 100 achievements opened, then its achievements page with their icons, then both
+    closed, three times; what the card took should go with it."""
+    home = ctx.mirad.home
+    add_games(home, [{"id": "bench-steam", "name": "Bench Steam", "source": "manual", "runner_ref": "steam:4000"}])
+    start_with(ctx, fake_stores(home) | steam_achievements(home, count=100))
+    state = ctx.client.wait_job(ctx.client.request("POST", "/v1/games/bench-steam/achievements/refresh"))
+    check(state.get("state") == "finished", f"the achievements refresh ended {state}")
+
+    def cycle(pid):
+        display = Display(pid)
+        # Searched for, so its tile is the first; a click selects it and gives the grid focus. Places are
+        # the 1600x1000 window's on the 1920x1080 screen.
+        display.key("ctrl+f")
+        time.sleep(1.5)
+        display.xdotool("type", "--delay", "20", "Bench Steam")
+        time.sleep(1.5)
+        cards, card_cpus, pages, page_cpus, closed = [], [], [], [], []
+        for round_ in range(1, 4):
+            # Again each round: a closed card leaves the grid without focus.
+            display.xdotool("mousemove", "500", "270", "click", "1")
+            time.sleep(1.5)
+            library = display.snapshot()
+            wall, cpu = respond(pid, lambda: display.key("alt+Return"))
+            check(changed(library, display.snapshot()) > 0.05, f"Alt+Enter didn't open the game card (round {round_})")
+            cards.append(wall)
+            card_cpus.append(cpu)
+            shown = display.snapshot()
+            wall, cpu = respond(pid, lambda: display.xdotool("mousemove", "570", "302", "click", "1"))
+            check(changed(shown, display.snapshot()) > 0.05, f"the achievements line didn't open their page (round {round_})")
+            pages.append(wall)
+            page_cpus.append(cpu)
+            for _ in range(2):  # back to the card, then the card closed
+                respond(pid, lambda: display.key("Escape"), may_idle=True)
+            check(changed(library, display.snapshot()) < 0.02, f"Esc didn't close the card (round {round_})")
+            closed.append(proc_status(pid)["rss_kb"])
+        ctx.results["open the card"] = round(statistics.median(cards), 1)
+        ctx.results["open the card, CPU until done"] = round(statistics.median(card_cpus), 1)
+        ctx.results["open achievements"] = round(statistics.median(pages), 1)
+        ctx.results["open achievements, CPU until done"] = round(statistics.median(page_cpus), 1)
+        check(closed[-1] - closed[0] <= 2048,
+              f"each card opened and closed kept memory: {closed} KB after each close")
+    open_gui(ctx, "GUI game card", then=cycle)
 
 
 @scenario("gui-zoom", gui=True)
