@@ -34,6 +34,11 @@ struct RemovalPlan {
       data;  // an emulator's settings, saves and caches, deleted only when asked
   std::vector<std::string> kept;  // prefixes and save folders left alone
   bool signs_out = false;
+  struct Tool {
+    std::string name;  // "gogdl"
+    std::string path;  // its folder under Mira's tools folder, deleted
+  };
+  std::vector<Tool> tools;  // a store's tools Mira downloaded; copies on PATH or set by hand stay
 };
 
 Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameStore& games,

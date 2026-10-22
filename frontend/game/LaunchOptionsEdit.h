@@ -19,8 +19,10 @@ class LaunchOptionsEdit : public QWidget {
  public:
   explicit LaunchOptionsEdit(QWidget* parent = nullptr);
 
-  // `windows`: its options can run in its prefix; `install_path` is where the file picker opens.
-  void SetLaunch(const GameLaunch& launch, bool windows, const std::string& install_path);
+  // `windows`: its options can run in its prefix; `install_path` is where the file picker opens;
+  // `store`: the store that starts the game signed in ("Epic Games"), empty when none does.
+  void SetLaunch(const GameLaunch& launch, bool windows, const std::string& install_path,
+                 const QString& store = {});
   GameLaunch Launch() const;
 
  signals:
@@ -34,6 +36,7 @@ class LaunchOptionsEdit : public QWidget {
   GameLaunch launch_;
   bool windows_ = false;
   std::string install_path_;
+  QString store_;
   QVBoxLayout* rows_ = nullptr;
   QWidget* empty_ = nullptr;
   QComboBox* default_ = nullptr;

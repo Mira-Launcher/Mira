@@ -26,21 +26,13 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Endpoints a test may move, by the name its $MIRA_<NAME>_URL uses.
-constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY"};
+constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY", "GOG_EMBED"};
 
-// FNV-1a: stable across builds, unlike std::hash, so file names and versions survive restarts.
-std::string Hash(std::string_view text) {
-  std::uint64_t hash = 0xcbf29ce484222325ULL;
-  for (const unsigned char c : text) {
-    hash ^= c;
-    hash *= 0x100000001b3ULL;
-  }
-  return std::format("{:016x}", hash);
-}
+using strings::StableHash;
 
 std::string IconVersion(const Achievement& item) {
   if (item.icon_unlocked.empty() && item.icon_locked.empty()) return {};
-  return Hash(item.icon_unlocked + "\n" + item.icon_locked).substr(0, 12);
+  return StableHash(item.icon_unlocked + "\n" + item.icon_locked).substr(0, 12);
 }
 
 // A key is one achievement: one listed twice would show twice and count twice.
@@ -257,7 +249,7 @@ Result<GameAchievements> Fetch(const config::Config& config, const model::Game& 
 
 std::optional<fs::path> CachedIcon(const fs::path& dir, std::string_view url) {
   // DownloadIcon's only two names, looked up rather than listing a folder of hundreds per icon.
-  const std::string stem = Hash(url);
+  const std::string stem = StableHash(url);
   std::error_code ec;
   for (const char* ext : {".jpg", ".png"}) {
     fs::path file = dir / (stem + ext);
@@ -272,7 +264,7 @@ Result<fs::path> DownloadIcon(const fs::path& dir, const std::string& url) {
   fs::create_directories(dir, ec);
   if (ec) return Err("icon_write_failed", ec.message(), kDiskHint);
   static std::atomic<unsigned> next_part{0};
-  const std::string stem = Hash(url);
+  const std::string stem = StableHash(url);
   const fs::path part = dir / std::format("{}.{}.part", stem, next_part++);
   Command command;
   command.argv = {"curl",
@@ -319,7 +311,7 @@ void PruneIcons(const fs::path& dir, const GameAchievements& set) {
   std::set<std::string> kept;
   for (const Achievement& item : set.items) {
     for (const std::string* url : {&item.icon_unlocked, &item.icon_locked}) {
-      if (!url->empty()) kept.insert(Hash(*url));
+      if (!url->empty()) kept.insert(StableHash(*url));
     }
   }
   std::error_code ec;

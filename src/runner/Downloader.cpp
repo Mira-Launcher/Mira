@@ -39,11 +39,11 @@ Result<Source> SourceFor(const config::Config& config, const std::string& kind) 
         .repo = family.repo, .asset_pattern = family.asset_pattern, .exclude = family.exclude};
   }
   // Not a runner kind: the store CLIs (legendary, gogdl, butler, nile,
-  // humble-cli) share the same "list a GitHub repo's releases, filter assets
+  // humble-cli, and GOG's comet) share the same "list a GitHub repo's releases, filter assets
   // by glob" shape, so they reuse ListReleases rather than duplicating the
   // GitHub API call. Each one's repo and pattern are settings.
   if (kind == "legendary" || kind == "gog" || kind == "itch" || kind == "amazon" ||
-      kind == "humble") {
+      kind == "humble" || kind == "comet") {
     const std::string prefix = "runner_sources." + kind;
     return Source{.repo = config.GetString(prefix + ".repo"),
                   .asset_pattern = config.GetString(prefix + ".asset_pattern"),

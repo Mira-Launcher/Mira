@@ -27,6 +27,7 @@ struct SourceInfo {
   std::vector<QString> consoles = {};  // an emulator's, by the daemon's ids: "ps2", "snes"
   bool beta = false;                   // works, but not well enough yet to promise it
   bool recommended = false;            // the one to pick for its consoles
+  bool signs_in = false;               // starts its games signed in, which a play option may skip
 };
 
 const std::vector<SourceInfo>& AllSources();

@@ -419,7 +419,11 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     for (const library::RemovalGame& game : plan->games) {
       games.push_back({{"id", game.id}, {"name", game.name}, {"deletes", game.deletes}});
     }
+    json tools = json::array();
+    for (const library::RemovalPlan::Tool& tool : plan->tools)
+      tools.push_back({{"name", tool.name}, {"path", tool.path}});
     SendJson(res, {{"source", plan->source},
+                   {"tools", tools},
                    {"games", games},
                    {"program_dir", plan->program_dir},
                    {"packages", plan->packages},

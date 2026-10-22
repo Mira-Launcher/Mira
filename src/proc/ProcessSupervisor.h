@@ -92,6 +92,12 @@ class ProcessSupervisor {
 
   bool IsRunning(const std::string& game_id) const;
   bool AnyRunning() const;
+  std::vector<std::string> RunningIds() const;
+
+  // A program several games share (GOG's comet), in one systemd scope per name, named after this
+  // mirad's data folder so another Mira's never clashes. StartShared does nothing while it runs.
+  Result<void> StartShared(const std::string& name, Command command, int output_fd);
+  void StopShared(const std::string& name);
 
   // A systemd scope name for a program started beside the game, empty if the game isn't tracked.
   // Forget stops every such scope, including ones started before mirad restarted.
@@ -130,6 +136,7 @@ class ProcessSupervisor {
 
  private:
   void Release(const std::string& game_id);
+  std::string SharedUnit(const std::string& name) const;
   // A watcher thread, and whether it has finished, so a replaced one can be joined as soon as it
   // ends.
   struct Watcher {

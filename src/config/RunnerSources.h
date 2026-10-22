@@ -55,6 +55,15 @@ inline constexpr std::string_view kLegendaryAssetPattern = "legendary_linux_x64"
 inline constexpr std::string_view kGogdlRepo = "Heroic-Games-Launcher/heroic-gogdl";
 inline constexpr std::string_view kGogdlAssetPattern = "gogdl_linux_x86_64";
 
+// comet stands in for GOG Galaxy's communication service so GOG games can unlock achievements.
+// A bare binary per architecture.
+inline constexpr std::string_view kCometRepo = "imLinguin/comet";
+#if defined(__aarch64__)
+inline constexpr std::string_view kCometAssetPattern = "comet-aarch64-unknown-linux-gnu";
+#else
+inline constexpr std::string_view kCometAssetPattern = "comet-x86_64-unknown-linux-gnu";
+#endif
+
 // butler (itch.io's own launcher-integration daemon) ships zipped, with
 // two shared libraries (7z.so/libc7zip.so) alongside the binary it needs
 // at runtime. See

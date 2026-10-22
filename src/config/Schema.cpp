@@ -549,6 +549,14 @@ Schema::Schema() {
                 "your PATH.",
          .path = PathKind::File});
 
+  s.Add({.key = "gog.comet_bin",
+         .label = "comet binary",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Path to the comet binary. Empty uses the copy Mira downloaded, then the one on "
+                "your PATH.",
+         .path = PathKind::File});
+
   s.Add({.key = "itch.butler_bin",
          .label = "butler binary",
          .type = Type::String,
@@ -614,6 +622,15 @@ Schema::Schema() {
          .doc = "Install the DLC you own for a GOG game along with it. Updating a game also adds "
                 "DLC bought since it was installed.",
          .keywords = "dlc expansion add-on"});
+
+  s.Add({.key = "gog.comet",
+         .label = "Unlock GOG achievements",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Run comet beside GOG games, standing in for GOG Galaxy, so the achievements you "
+                "earn unlock on your GOG account.",
+         .keywords = "comet galaxy achievements"});
 
   s.Add({.key = "itch.collections",
          .label = "itch.io collections",
@@ -781,6 +798,19 @@ Schema::Schema() {
          .default_value = std::string(runner_sources::kGogdlAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. gogdl ships as a "
                 "single Linux binary, not an archive."});
+
+  s.Add({.key = "runner_sources.comet.repo",
+         .label = "comet download repository",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kCometRepo),
+         .doc = "The GitHub repository (\"owner/repo\") that comet is downloaded from."});
+
+  s.Add({.key = "runner_sources.comet.asset_pattern",
+         .label = "comet file pattern",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kCometAssetPattern),
+         .doc = "A glob pattern that picks which file of a release to download. comet ships as a "
+                "single Linux binary for each processor type."});
 
   s.Add({.key = "runner_sources.itch.repo",
          .label = "butler download repository",

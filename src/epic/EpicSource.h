@@ -20,6 +20,12 @@ class EpicSource : public library::ILibrarySource {
                        const std::string& ref) override;
   Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
                       const std::string& ref) override;
+
+  // Epic Online Services' sign-in arguments from `legendary launch --json`, as `legendary launch`
+  // itself would pass them: without them EOS games run signed out, with no achievements or
+  // online features.
+  Result<library::LaunchExtras> BeforeLaunch(const config::Config& config, const model::Game& game,
+                                             bool sign_in) const override;
 };
 
 }  // namespace mira::epic

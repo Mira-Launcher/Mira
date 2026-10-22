@@ -39,6 +39,7 @@ struct LaunchOption {
   std::string exe;
   std::string args;
   bool native = false;
+  std::optional<bool> sign_in;  // gets the store's sign-in; unset: when it's in the game's folder
 
   bool operator==(const LaunchOption&) const = default;
 };
@@ -1256,6 +1257,10 @@ struct StoreStatusResult {
   ApiError error;
   bool tool_installed = false;
   std::string tool_version;
+  // A program the store's setup also downloads (GOG's comet); empty name when it has none.
+  std::string helper_name;
+  bool helper_installed = false;
+  std::string helper_version;
   bool authenticated = false;
   std::string account;  // Epic only
 };
@@ -1334,6 +1339,7 @@ struct RemovalPlanResult {
   std::vector<std::string> data;  // an emulator's settings, saves and caches
   std::vector<std::string> kept;
   bool signs_out = false;
+  std::vector<std::string> tools;  // names of the store tools Mira downloaded, deleted
 };
 
 // POST /v1/sources/{id}/remove.

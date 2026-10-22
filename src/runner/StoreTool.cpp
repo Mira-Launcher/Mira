@@ -4,6 +4,7 @@
 #include <format>
 
 #include "core/StoreErrors.h"
+#include "runner/Downloader.h"
 
 namespace mira::runner {
 namespace fs = std::filesystem;
@@ -23,7 +24,20 @@ ToolStatus DetectTool(const config::Config& config, const StoreTool& tool) {
   const std::string override_path = config.GetString(tool.override_key);
   if (!override_path.empty() && fs::exists(override_path)) return found("override", override_path);
   const fs::path managed = tool.managed_path(config);
-  if (fs::exists(managed)) return found("managed", managed.string());
+  if (fs::exists(managed)) {
+    // The release Mira downloaded names the version; `--version` output is free-form
+    // (`legendary version "0.21.1", codename "Lowlife"`).
+    const fs::path folder = managed.lexically_relative(config.File().parent_path() / "tools");
+    if (!folder.empty() && *folder.begin() != "..") {
+      if (const auto record = InstalledToolOf(config, folder.begin()->string());
+          record && record->binary == managed)
+        return {.installed = true,
+                .source = "managed",
+                .path = managed.string(),
+                .version = record->tag};
+    }
+    return found("managed", managed.string());
+  }
   if (const auto on_path = FindOnPath(tool.binary)) return found("path", *on_path);
   return {};
 }

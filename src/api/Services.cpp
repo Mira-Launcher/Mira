@@ -1,6 +1,8 @@
 #include "api/Services.h"
 
+#include <fcntl.h>
 #include <httplib.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -21,6 +23,7 @@
 #include "library/FolderTags.h"
 #include "library/PrefixNaming.h"
 #include "library/Scanner.h"
+#include "library/SourceRegistry.h"
 #include "library/SourceRemoval.h"
 #include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
@@ -84,6 +87,16 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     return FilterEvent(type, payload, live);
   });
   supervisor.SetExitHook([this](const std::string& id) {
+    {
+      std::vector<std::filesystem::path> files;
+      {
+        const std::lock_guard lock(exit_files_mutex_);
+        if (auto found = exit_files_.extract(id)) files = std::move(found.mapped());
+      }
+      std::error_code ec;
+      for (const std::filesystem::path& file : files) std::filesystem::remove(file, ec);
+    }
+    StopSharedIfIdle(id);
     CheckForInstall(id);
     SortByTags({id});  // its tags may have changed while it ran
     RefreshAchievementsAfterPlay(id);
@@ -896,6 +909,14 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
   return finished;
 }
 
+void Services::RemoveAfterExit(const std::string& game_id,
+                               std::vector<std::filesystem::path> files) {
+  if (files.empty()) return;
+  const std::lock_guard lock(exit_files_mutex_);
+  auto& kept = exit_files_[game_id];
+  kept.insert(kept.end(), files.begin(), files.end());
+}
+
 Result<json> Services::RefreshAchievements(const std::string& id) {
   const auto game = games.Find(id);
   if (!game) return Err("game_not_found", "the game was removed");
@@ -915,6 +936,31 @@ Result<json> Services::RefreshAchievements(const std::string& id) {
   if (changed) events.Publish("game.achievements_ready", result);
   result["changed"] = changed;
   return result;
+}
+
+void Services::StartShared(const model::Game& game, const Command& command) {
+  const library::ILibrarySource* source = library::FindSource(game.source);
+  if (source == nullptr || source->SharedProgram().empty()) return;
+  const std::string name = source->SharedProgram();
+  const std::filesystem::path log = games.Dir() / "logs" / (name + ".log");
+  std::error_code ec;
+  std::filesystem::create_directories(log.parent_path(), ec);
+  const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  if (auto started = supervisor.StartShared(name, command, log_fd); !started)
+    log::Warn("couldn't start {} with {}: {}", name, game.id, started.error().message);
+  if (log_fd >= 0) ::close(log_fd);
+}
+
+// Once no game of `game_id`'s store is running, stops the program they share.
+void Services::StopSharedIfIdle(const std::string& game_id) {
+  const auto game = games.Find(game_id);
+  if (!game) return;
+  const library::ILibrarySource* source = library::FindSource(game->source);
+  if (source == nullptr || source->SharedProgram().empty()) return;
+  for (const std::string& id : supervisor.RunningIds()) {
+    if (const auto other = games.Find(id); other && other->source == game->source) return;
+  }
+  supervisor.StopShared(source->SharedProgram());
 }
 
 void Services::RefreshAchievementsAfterPlay(const std::string& id) {

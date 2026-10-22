@@ -31,12 +31,18 @@ json CollectionJson(const itch::ItchCollection& collection) {
           {"url", std::format("https://itch.io/c/{}", collection.id)}};
 }
 
-json StatusJson(const library::Store& store, const runner::AuthStatus& status) {
-  return {{"id", store.id},
-          {"name", store.name},
-          {"tool", runner::ToJson(status.tool)},
-          {"authenticated", status.authenticated},
-          {"account", status.account}};
+json StatusJson(const library::Store& store, const runner::AuthStatus& status,
+                const config::Config& config) {
+  json reply = {{"id", store.id},
+                {"name", store.name},
+                {"tool", runner::ToJson(status.tool)},
+                {"authenticated", status.authenticated},
+                {"account", status.account}};
+  if (store.helper_status) {
+    reply["helper"] = runner::ToJson(store.helper_status(config));
+    reply["helper"]["name"] = store.helper;
+  }
+  return reply;
 }
 
 // The store a route's {id} names, or nullptr after a 404.
@@ -70,7 +76,7 @@ void RegisterStoreRoutes(Router& http, Services& s) {
 
   http.Get(R"(/v1/stores/([a-z0-9-]+)/status)", [&s](const Request& req, Response& res) {
     const library::Store* store = FindStoreOr404(req, res);
-    if (store) SendJson(res, StatusJson(*store, store->status(s.config)));
+    if (store) SendJson(res, StatusJson(*store, store->status(s.config), s.config));
   });
 
   // Downloads the newest release of the store's command-line tool. Running it again is how it
@@ -79,7 +85,9 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     const library::Store* store = FindStoreOr404(req, res);
     if (!store) return;
     s.StartJob(
-        req, res, "setup", store->id, std::format("Setting up {}", store->tool),
+        req, res, "setup", store->id,
+        store->helper ? std::format("Setting up {} and {}", store->tool, store->helper)
+                      : std::format("Setting up {}", store->tool),
         [&s, store](JobRegistry::Progress&) -> Result<json> {
           // One setup per store at a time. One asked for while another ran (set up early, then
           // again from its sign-in page) finds the tool there and stops.
@@ -87,7 +95,9 @@ void RegisterStoreRoutes(Router& http, Services& s) {
           if (!turn.owns_lock()) {
             turn.lock();
             const runner::ToolStatus tool = store->status(s.config).tool;
-            if (tool.installed) return json{{"tag", tool.version}};
+            if (tool.installed &&
+                (!store->helper_status || store->helper_status(s.config).installed))
+              return json{{"tag", tool.version}};
           }
           const std::string channel = std::string("setup:") + store->id;
           loghub::Begin(channel);
@@ -113,6 +123,23 @@ void RegisterStoreRoutes(Router& http, Services& s) {
             return fail(installed.error());
           log::Info("installed {} {}", store->tool, asset.tag);
           say(std::format("Installed {} {}", store->tool, asset.tag));
+          if (store->helper) {
+            // The store works without its helper, so a failure here doesn't fail the setup.
+            say(std::format("Looking up the newest {} release", store->helper));
+            const auto helper = runner::ListReleases(s.config, store->helper_release_kind);
+            if (helper && !helper->empty())
+              say(std::format("Downloading {} {}", store->helper, helper->front().tag));
+            Result<void> installed = helper && !helper->empty()
+                                         ? store->install_helper(s.config, helper->front())
+                                         : Err("no_release_found", "no matching release found");
+            if (!helper) installed = std::unexpected(helper.error());
+            if (installed) {
+              say(std::format("Installed {} {}", store->helper, helper->front().tag));
+            } else {
+              log::Warn("couldn't install {}: {}", store->helper, installed.error().message);
+              say(std::format("Couldn't install {}: {}", store->helper, installed.error().message));
+            }
+          }
           loghub::End(channel);
           return json{{"tag", asset.tag}};
         });
@@ -145,7 +172,7 @@ void RegisterStoreRoutes(Router& http, Services& s) {
     s.games.Metadata().DropCatalog(store->id);
     s.games.MarkSourceAdded(store->id, false);
     s.events.Publish("sources.changed", json::object());
-    SendJson(res, StatusJson(*store, store->status(s.config)));
+    SendJson(res, StatusJson(*store, store->status(s.config), s.config));
   });
 
   // The credential in text the user copied, so a client can sign in once the right thing is on the

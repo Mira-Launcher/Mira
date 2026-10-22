@@ -30,7 +30,7 @@ src/
   steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus,
               Achievements (Steam's stats files)
   epic/       Legendary wrapper, importer, installer, source and achievements (library/Stores.cpp lists the five stores)
-  gog/        gogdl wrapper, importer, installer, source and achievements (GOG Galaxy's gameplay API)
+  gog/        gogdl wrapper, importer, installer, source, achievements (GOG Galaxy's gameplay API) and comet
   itch/       butlerd JSON-RPC client, importer, installer and source
   amazon/     Nile wrapper, importer and source
   humble/     humble-cli wrapper (downloads only, not an ILibrarySource)
@@ -134,6 +134,8 @@ Windows games are provisioned when they are detected and again on later scans wh
 A direct launch goes through `mira-run` (`src/wrapper/main.cpp`). `mirad` resolves the runner, applies `command_wrappers` and `launch.env`, and passes the command to `mira-run`. It waits only for a short status handshake over a pipe.
 
 `mira-run` owns the session: `launch.pre_script`, the game process, `launch.post_script`, the game's output in `logs/<id>.log`, and a session record in `mira.db` written before and after. The session completes even if `mirad` dies in the meantime. `launch.gamemode` registers the game with GameMode over D-Bus through `gdbus`.
+
+A store source can add to a launch through `ILibrarySource::BeforeLaunch`, which returns `LaunchExtras`: arguments, environment, argument prefixes `mira-run` masks in its log (`--redact`), and files `mirad` deletes when the game exits. Epic uses it for its sign-in arguments. A failure there is logged and the game starts without them. `LaunchExtras::shared` is a program the store's running games share, named by `ILibrarySource::SharedProgram`: GOG's comet (`src/gog/Comet.cpp`). `ProcessSupervisor::StartShared` runs it in a systemd scope named after the program and a hash of the data folder, so a test's or another Mira's never clashes, before the game starts; the exit hook stops it once no game of that store is running, and waits for it to end. A scope left from before mirad restarted is stopped by the next exit of one of its games; comet's `--quit` also ends it once the games that connected have gone.
 
 `mira-run` shares its process group with the game, so `kill(-pid)` stops the whole tree. It ignores SIGTERM and SIGINT so it can still run the post script and write the final record.
 

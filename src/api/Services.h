@@ -207,6 +207,16 @@ class Services {
   // Windows games run.
   void EnsureWindowsRunner();
 
+  // Files a store wrote for one launch of `game_id` (Epic's ownership token), deleted once it
+  // exits.
+  void RemoveAfterExit(const std::string& game_id, std::vector<std::filesystem::path> files);
+
+  // Starts the program `game`'s store shares between its running games (GOG's comet) unless it
+  // runs already, with its output in logs/<name>.log. Stopped when the last of them exits.
+  void StartShared(const model::Game& game, const Command& command);
+  // Stops it once no game of `game_id`'s store is running.
+  void StopSharedIfIdle(const std::string& game_id);
+
   // Fetches a game's achievements from its store and caches them, publishing
   // game.achievements_ready when they changed. {id, total, unlocked, changed}.
   Result<nlohmann::json> RefreshAchievements(const std::string& id);
@@ -256,6 +266,9 @@ class Services {
   void MarkLeftRootsMissing();
   std::mutex roots_mutex_;
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
+
+  std::mutex exit_files_mutex_;
+  std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 
   // Steam games handed to Steam's own uninstall, by id, with when to stop waiting for it.
   std::mutex steam_uninstalls_mutex_;
