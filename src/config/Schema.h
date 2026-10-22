@@ -54,6 +54,9 @@ struct Entry {
   std::string link = {};       // where to get the value, e.g. an API key page
   PathKind path = PathKind::None;
   std::string keywords = {};  // extra search terms a settings screen matches, e.g. "sgdb"
+  // Defaults it had before. Every default is written to settings.toml, so a stored one of these
+  // was never chosen and loads as `default_value`.
+  std::vector<nlohmann::json> old_defaults = {};
 
   // Set by the section the entry is declared under, never per entry.
   std::string category = {};

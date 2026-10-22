@@ -50,6 +50,11 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
                    " installed: remove it with your system's package manager.";
     }
     if (plan.signs_out) lines << "Signs you out of " + name + ".";
+    if (!plan.tools.empty()) {
+      QStringList tools;
+      for (const std::string& tool : plan.tools) tools << QString::fromStdString(tool);
+      lines << "Deletes " + tools.join(" and ") + ", which Mira downloaded.";
+    }
     if (!plan.kept.empty())
       lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)."
                               : "Keeps game data and saves (prefixes stay on disk).");

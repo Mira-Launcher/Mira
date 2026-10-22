@@ -88,14 +88,21 @@ std::optional<Update> EmulatorUpdate(const config::Config& config,
                 .url = ""};
 }
 
+// Whether `path` is a tool Mira downloaded, under its tools folder.
+bool Managed(const config::Config& config, const std::string& path) {
+  const fs::path relative =
+      fs::path(path).lexically_relative(config.File().parent_path() / "tools");
+  return !path.empty() && !relative.empty() && *relative.begin() != "..";
+}
+
 // A tool Mira downloaded to `path`, from the releases of `release_kind`. One downloaded before Mira
 // kept a record of its tag is compared by the version it prints.
 std::optional<Update> ToolUpdate(const config::Config& config, const std::string& id,
                                  const std::string& name, const std::string& release_kind,
                                  const std::string& path) {
-  const fs::path tools = config.File().parent_path() / "tools";
-  const fs::path relative = fs::path(path).lexically_relative(tools);
-  if (path.empty() || relative.empty() || *relative.begin() == "..") return std::nullopt;
+  if (!Managed(config, path)) return std::nullopt;
+  const fs::path relative =
+      fs::path(path).lexically_relative(config.File().parent_path() / "tools");
   const auto releases = runner::ListReleases(config, release_kind);
   if (!releases || releases->empty()) {
     if (!releases) log::Warn("couldn't check for a {} update: {}", name, releases.error().message);
@@ -133,6 +140,24 @@ std::vector<Update> FindUpdates(config::Config& config) {
       return ToolUpdate(config, store.id, store.tool, store.release_kind,
                         store.status(config).tool.path);
     }));
+    // The store's setup also updates its helper.
+    if (store.helper_status) {
+      checks.push_back(std::async(std::launch::async, [&config, &store]() -> std::optional<Update> {
+        const std::string path = store.helper_status(config).path;
+        if (!path.empty())
+          return ToolUpdate(config, store.id, store.helper, store.helper_release_kind, path);
+        // A store set up before it had a helper: offered with nothing installed.
+        if (!Managed(config, store.status(config).tool.path)) return std::nullopt;
+        const auto releases = runner::ListReleases(config, store.helper_release_kind);
+        if (!releases || releases->empty()) return std::nullopt;
+        return Update{.kind = "tool",
+                      .id = store.id,
+                      .name = store.helper,
+                      .installed = "",
+                      .latest = releases->front().tag,
+                      .url = ""};
+      }));
+    }
   }
   checks.push_back(std::async(std::launch::async, [&config] {
     return ToolUpdate(config, "umu", "umu", "umu", runner::UmuRunPath());

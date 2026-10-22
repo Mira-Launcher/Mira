@@ -377,6 +377,39 @@ bool ProcessSupervisor::AnyRunning() const {
   return !running_.empty();
 }
 
+std::vector<std::string> ProcessSupervisor::RunningIds() const {
+  std::lock_guard lock(mutex_);
+  std::vector<std::string> ids;
+  for (const auto& [id, pid] : running_) ids.push_back(id);
+  return ids;
+}
+
+std::string ProcessSupervisor::SharedUnit(const std::string& name) const {
+  return std::format("mira-{}-{}.scope", strings::Slugify(name),
+                     strings::StableHash(games_.File().parent_path().string()).substr(0, 12));
+}
+
+Result<void> ProcessSupervisor::StartShared(const std::string& name, Command command,
+                                            int output_fd) {
+  const std::string unit = SharedUnit(name);
+  Command active;
+  active.argv = {"systemctl", "--user", "is-active", "--quiet", unit};
+  if (const auto ran = runner::RunAndWait(active); ran && ran->exit_code == 0) return {};
+  command.argv.insert(command.argv.begin(),
+                      {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
+                       "--description", "Mira: " + name, "--"});
+  return runner::SpawnReaped(command, output_fd);
+}
+
+void ProcessSupervisor::StopShared(const std::string& name) {
+  // Waits, so a game started right after doesn't find it still stopping.
+  Command command;
+  command.argv = {"systemctl", "--user", "stop", SharedUnit(name)};
+  command.timeout_s = 15;
+  if (const auto ran = runner::RunAndWait(command); !ran)
+    log::Warn("couldn't stop {}: {}", name, ran.error().message);
+}
+
 // Stop()'s SIGKILL escalation, for WatchWrapped and WatchReconciledLive: a game that
 // ignored SIGTERM past its deadline gets SIGKILL to its whole cgroup.
 void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_pid) {

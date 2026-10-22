@@ -120,10 +120,11 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
 }
 
 void LaunchOptionsEdit::SetLaunch(const GameLaunch& launch, bool windows,
-                                  const std::string& install_path) {
+                                  const std::string& install_path, const QString& store) {
   launch_ = launch;
   windows_ = windows;
   install_path_ = install_path;
+  store_ = store;
   Rebuild();
 }
 
@@ -240,6 +241,19 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   native->setChecked(option.native);
   native->setVisible(windows_);
   form->addRow(QString(), native);
+  // The sign-in holds a single-use code: a program elsewhere, like a mod manager, can't use it.
+  auto* sign_in = new QComboBox(form_widget);
+  sign_in->addItem("If it's in the game's folder", -1);
+  sign_in->addItem("Yes", 1);
+  sign_in->addItem("No", 0);
+  sign_in->setCurrentIndex(sign_in->findData(option.sign_in ? int(*option.sign_in) : -1));
+  sign_in->setToolTip("Hands the program " + store_ +
+                      "'s sign-in, as the game gets it, so achievements and online play work");
+  if (!store_.isEmpty()) form->addRow("Signed in to " + store_, sign_in);
+  sign_in->setVisible(!store_.isEmpty());
+  const auto play_only = [=] { sign_in->setEnabled(mode->currentData().toString() == "play"); };
+  connect(mode, &QComboBox::currentIndexChanged, sign_in, play_only);
+  play_only();
   dialog.AddWidget(form_widget);
   dialog.AddButton("Cancel", false);
   QPushButton* save = dialog.AddButton(option.name.empty() ? "Add" : "Save", true, true);
@@ -255,6 +269,10 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   option.exe = exe->text().trimmed().toStdString();
   option.args = args->text().trimmed().toStdString();
   option.native = windows_ && native->isChecked();
+  if (!store_.isEmpty()) {
+    const int choice = sign_in->currentData().toInt();
+    option.sign_in = choice < 0 ? std::nullopt : std::optional<bool>(choice == 1);
+  }
   if (option.mode != "play" && !option.id.empty() && option.id == launch_.default_id) {
     launch_.default_id.clear();
     launch_.only = false;

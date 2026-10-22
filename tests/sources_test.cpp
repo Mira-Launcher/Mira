@@ -136,11 +136,17 @@ TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, 
                                            (state / "prefixes" / "celeste").string())));
   REQUIRE(server.games().Upsert(SourceGame("gog-2", "gog", outside / "Hades")));
   Touch(gog::AuthConfigPath(server.config()), "{}");
+  // The tools Mira downloaded for GOG go with it.
+  const fs::path tools = server.config().File().parent_path() / "tools";
+  Touch(tools / "gog" / "gogdl", "#!/bin/sh\necho 1.3.1\n", /*executable=*/true);
+  Touch(tools / "comet" / "comet", "#!/bin/sh\necho 0.3.2\n", /*executable=*/true);
   httplib::Client client = server.Client();
 
   const json plan = Get(client, "/v1/sources/gog/removal");
   CHECK(plan["signs_out"].get<bool>());
   CHECK(plan["kept"] == json::array({(state / "prefixes" / "celeste").string()}));
+  CHECK(plan["tools"] == json::array({{{"name", "gogdl"}, {"path", (tools / "gog").string()}},
+                                      {{"name", "comet"}, {"path", (tools / "comet").string()}}}));
 
   const json job = AwaitJob(client, client.Post("/v1/sources/gog/remove"));
   REQUIRE(job["state"] == "finished");
@@ -151,6 +157,9 @@ TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, 
   CHECK_FALSE(fs::exists(install_root / "Celeste"));
   CHECK(fs::exists(state / "prefixes" / "celeste" / "drive_c" / "users" / "save.dat"));
   CHECK_FALSE(fs::exists(gog::AuthConfigPath(server.config())));
+  CHECK_FALSE(fs::exists(tools / "gog"));
+  CHECK_FALSE(fs::exists(tools / "comet"));
+  CHECK(fs::exists(tools));
   CHECK(server.games().All().empty());
   CHECK_FALSE(server.games().Source("gog").added);
 }

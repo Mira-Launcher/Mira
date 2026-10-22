@@ -27,9 +27,10 @@ src/
               Exec, GameMode, Winetricks
   proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
-  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus
-  epic/       Legendary wrapper, importer, installer and source (library/Stores.cpp lists the five stores)
-  gog/        gogdl wrapper, importer, installer and source
+  steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus,
+              Achievements (Steam's stats files)
+  epic/       Legendary wrapper, importer, installer, source and achievements (library/Stores.cpp lists the five stores)
+  gog/        gogdl wrapper, importer, installer, source, achievements (GOG Galaxy's gameplay API) and comet
   itch/       butlerd JSON-RPC client, importer, installer and source
   amazon/     Nile wrapper, importer and source
   humble/     humble-cli wrapper (downloads only, not an ILibrarySource)
@@ -37,6 +38,7 @@ src/
   emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
+  achievements/  Achievement lists from each store, the system locale, and achievement icons
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
@@ -67,11 +69,11 @@ frontend.toml   GUI settings, stored and returned verbatim by the backend
 logs/           per-game output from the last launches
 ```
 
-`settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once (`Services::SettingsChanged`, which a request's change goes through too), and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults.
+`settings.toml` is TOML so people can edit it, also while mirad runs: a saved edit applies at once (`Services::SettingsChanged`, which a request's change goes through too), and an app change re-reads the file first so it only changes its own keys. An edit that doesn't parse changes nothing and sends a notification naming the line. At startup such a file is renamed to `.bad`, and mirad goes back to the last settings that loaded (kept in `mira.db`), or to defaults. Every default is written to the file, so when a default changes, the schema entry lists the earlier ones (`Entry::old_defaults`) and a stored one of those loads as the new default.
 
 **mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` (removed with their game), `sessions` (kept when their game is removed, so a game added again under its id gets its play history back; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `removed_games` (what the user set on each removed game, as JSON, which `Reattach` puts back on a game added under its id; `NextId` gives a game found at a removed one's `install_path` that id), `settings_snapshot`, `ui_state` (the GUI's window state, kept out of `frontend.toml`), and `hidden_titles` (store titles hidden while not installed; a hidden title's game takes the `hidden` tag as it's added, and a removed hidden store game puts its title back), and `secrets` (values clients can't read through settings.toml: the hidden games' password hash). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
-**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, and `lists` of what's fetched for the whole library (Steam's tag names). Everything in it can be fetched again, so a damaged one is started over.
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, `lists` of what's fetched for the whole library (Steam's tag names), and `achievements` per game (icons under `artwork/<id>/achievements/`, dropped with the game's metadata). Everything in it can be fetched again, so a damaged one is started over.
 
 Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
@@ -132,6 +134,8 @@ Windows games are provisioned when they are detected and again on later scans wh
 A direct launch goes through `mira-run` (`src/wrapper/main.cpp`). `mirad` resolves the runner, applies `command_wrappers` and `launch.env`, and passes the command to `mira-run`. It waits only for a short status handshake over a pipe.
 
 `mira-run` owns the session: `launch.pre_script`, the game process, `launch.post_script`, the game's output in `logs/<id>.log`, and a session record in `mira.db` written before and after. The session completes even if `mirad` dies in the meantime. `launch.gamemode` registers the game with GameMode over D-Bus through `gdbus`.
+
+A store source can add to a launch through `ILibrarySource::BeforeLaunch`, which returns `LaunchExtras`: arguments, environment, argument prefixes `mira-run` masks in its log (`--redact`), and files `mirad` deletes when the game exits. Epic uses it for its sign-in arguments. A failure there is logged and the game starts without them. `LaunchExtras::shared` is a program the store's running games share, named by `ILibrarySource::SharedProgram`: GOG's comet (`src/gog/Comet.cpp`). `ProcessSupervisor::StartShared` runs it in a systemd scope named after the program and a hash of the data folder, so a test's or another Mira's never clashes, before the game starts; the exit hook stops it once no game of that store is running, and waits for it to end. A scope left from before mirad restarted is stopped by the next exit of one of its games; comet's `--quit` also ends it once the games that connected have gone.
 
 `mira-run` shares its process group with the game, so `kill(-pid)` stops the whole tree. It ignores SIGTERM and SIGINT so it can still run the post script and write the final record.
 

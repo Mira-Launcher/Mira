@@ -43,6 +43,7 @@ struct Args {
   int pre_timeout_s = 30;
   int post_timeout_s = 30;
   bool gamemode = false;
+  std::vector<std::string> redact;  // argument prefixes whose value the log leaves out
   std::vector<std::string> game_argv;
 };
 
@@ -73,6 +74,10 @@ std::optional<Args> ParseArgs(int argc, char** argv) {
       args.log_max_mb = std::atoi(v->c_str());
     } else if (a == "--gamemode") {
       args.gamemode = true;
+    } else if (a == "--redact") {
+      auto v = next();
+      if (!v) return std::nullopt;
+      args.redact.push_back(*v);
     } else if (a == "--status-fd") {
       auto v = next();
       if (!v) return std::nullopt;
@@ -226,7 +231,8 @@ int main(int argc, char** argv) {
   const auto parsed = ParseArgs(argc, argv);
   if (!parsed) {
     std::cerr << "mira-run: usage: mira-run --game-id ID --database FILE --status-fd N "
-                 "[--pre CMD] [--post CMD] [--pre-timeout S] [--post-timeout S] -- <argv...>\n";
+                 "[--pre CMD] [--post CMD] [--pre-timeout S] [--post-timeout S] "
+                 "[--redact PREFIX]... -- <argv...>\n";
     return 2;
   }
   const Args& args = *parsed;
@@ -295,7 +301,19 @@ int main(int argc, char** argv) {
 
   if (log_fd >= 0) {
     std::string argv_line = "[mira-run] launching:";
-    for (const std::string& a : args.game_argv) argv_line += " " + a;
+    for (const std::string& a : args.game_argv) {
+      // A credential can sit anywhere in an argument once a runner quotes it into a shell line.
+      std::string shown = a;
+      for (const std::string& prefix : args.redact) {
+        for (std::size_t at = shown.find(prefix); at != std::string::npos;
+             at = shown.find(prefix, at + prefix.size())) {
+          const std::size_t start = at + prefix.size();
+          const std::size_t end = shown.find_first_of(" \"'", start);
+          shown.replace(start, (end == std::string::npos ? shown.size() : end) - start, "***");
+        }
+      }
+      argv_line += " " + shown;
+    }
     argv_line += "\n";
     WriteLogLine(log_fd, argv_line);
   }

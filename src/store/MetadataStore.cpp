@@ -14,7 +14,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 4> kMigrations = {
+constexpr std::array<std::string_view, 5> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -58,6 +58,14 @@ CREATE TABLE catalog_checked(source TEXT PRIMARY KEY, checked_at INTEGER NOT NUL
     R"sql(
 ALTER TABLE catalog ADD COLUMN url TEXT NOT NULL DEFAULT '';
 CREATE INDEX catalog_ref ON catalog(source, ref);
+)sql",
+    // Each game's achievements as its store last listed them.
+    R"sql(
+CREATE TABLE achievements(
+  id TEXT PRIMARY KEY,
+  fetched_at INTEGER NOT NULL,
+  json TEXT NOT NULL CHECK(json_valid(json))
+) STRICT;
 )sql",
 };
 
@@ -214,6 +222,40 @@ Result<void> MetadataStore::WriteList(const std::string& name, const json& value
       .Bind(2, value.dump(-1, ' ', false, json::error_handler_t::replace))
       .Bind(3, model::NowSeconds())
       .Run();
+}
+
+json MetadataStore::ReadAchievements(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return json();
+  auto select = db_.Prepare("SELECT json FROM achievements WHERE id = ?");
+  if (!select) return json();
+  auto row = select->Bind(1, id).Step();
+  if (!row || !*row) return json();
+  json value = json::parse(select->Text(0), nullptr, false);
+  return value.is_discarded() ? json() : value;
+}
+
+Result<void> MetadataStore::WriteAchievements(const std::string& id, std::int64_t fetched_at,
+                                              const json& value) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
+  auto upsert = db_.Prepare(
+      "INSERT INTO achievements(id, fetched_at, json) VALUES(?, ?, ?) "
+      "ON CONFLICT(id) DO UPDATE SET fetched_at = excluded.fetched_at, json = excluded.json");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id)
+      .Bind(2, fetched_at)
+      .Bind(3, value.dump(-1, ' ', false, json::error_handler_t::replace))
+      .Run();
+}
+
+void MetadataStore::DropAchievementsLocked(const std::string& id) {
+  if (!db_.IsOpen()) return;
+  if (auto remove = db_.Prepare("DELETE FROM achievements WHERE id = ?")) {
+    if (auto done = remove->Bind(1, id).Run(); !done) {
+      log::Warn("could not drop {}'s achievements: {}", id, done.error().message);
+    }
+  }
 }
 
 std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog(
@@ -388,6 +430,7 @@ void MetadataStore::Remove(const std::string& id) {
     std::lock_guard lock(mutex_);
     versions_.erase(id);
     tiers_.erase(id);
+    DropAchievementsLocked(id);
     if (db_.IsOpen()) {
       if (auto remove = db_.Prepare("DELETE FROM metadata WHERE id = ?")) {
         if (auto done = remove->Bind(1, id).Run(); !done) {
@@ -411,6 +454,10 @@ void MetadataStore::KeepPicks(const std::string& id) {
     if (const std::string name = FileName(info[key]); !name.empty()) files.insert(name);
   }
   if (kept.empty()) return Remove(id);
+  {
+    std::lock_guard lock(mutex_);
+    DropAchievementsLocked(id);
+  }
   if (auto written = Write(id, kept); !written) {
     log::Warn("could not trim {}'s metadata: {}", id, written.error().message);
     return;

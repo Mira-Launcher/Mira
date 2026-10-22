@@ -157,11 +157,11 @@ TEST_CASE("ParseRemovedIds reads games.removed and ignores anything malformed") 
   CHECK(events::ParseRemovedIds("not json").empty());
 }
 
-TEST_CASE("ParseRemovedId returns an empty id rather than throwing") {
-  CHECK(events::ParseRemovedId(R"({"id": "wandering-sword"})") == "wandering-sword");
-  CHECK(events::ParseRemovedId(R"({})").empty());
-  CHECK(events::ParseRemovedId("[]").empty());
-  CHECK(events::ParseRemovedId("").empty());
+TEST_CASE("ParseGameId returns an empty id rather than throwing") {
+  CHECK(events::ParseGameId(R"({"id": "wandering-sword"})") == "wandering-sword");
+  CHECK(events::ParseGameId(R"({})").empty());
+  CHECK(events::ParseGameId("[]").empty());
+  CHECK(events::ParseGameId("").empty());
 }
 
 TEST_CASE("ParseRunnerDownload reads the state from the event type and ignores unrelated events") {
@@ -230,4 +230,11 @@ TEST_CASE("A config.changed that only moves the window's own layout reads the sa
 
   CHECK_FALSE(api::ParseChangedPrefs("not json"));
   CHECK_FALSE(api::ParseChangedPrefs(R"({"keys": ["scan.debounce_ms"]})"));
+}
+
+TEST_CASE("A config.changed names the settings that changed") {
+  CHECK(events::ParseChangedKeys(R"({"keys": ["achievements.enabled", "scan.debounce_ms"]})") ==
+        std::vector<std::string>{"achievements.enabled", "scan.debounce_ms"});
+  CHECK(events::ParseChangedKeys(R"({"keys": [], "frontend": {"theme": "mira-dark"}})").empty());
+  CHECK(events::ParseChangedKeys("not json").empty());
 }

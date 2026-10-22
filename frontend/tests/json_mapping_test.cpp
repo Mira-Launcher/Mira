@@ -241,6 +241,19 @@ TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {
   CHECK(bare.fix.kind.empty());
 }
 
+TEST_CASE("Saving launch options keeps each one's sign-in choice, and adds none") {
+  const GameSummary game =
+      mapping::ToGameSummary(json::parse(R"({"id": "control", "launch": {"options": [
+    {"id": "dx12", "name": "DX12", "exe": "Control_DX12.exe"},
+    {"id": "loader", "name": "Loader", "exe": "/l", "sign_in": true},
+    {"id": "tool", "name": "Tool", "exe": "/t", "sign_in": false}]}})"));
+  const json saved = mapping::ToJson(game.launch)["options"];
+  REQUIRE(saved.size() == 3);
+  CHECK_FALSE(saved[0].contains("sign_in"));
+  CHECK(saved[1].value("sign_in", json()) == true);
+  CHECK(saved[2].value("sign_in", json()) == false);
+}
+
 TEST_CASE("Play offers the default launch option first, and only it when asked") {
   GameSummary game =
       mapping::ToGameSummary(json::parse(R"({"id": "celeste", "launch": {"default": "olympus",

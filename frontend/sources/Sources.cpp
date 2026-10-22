@@ -15,7 +15,7 @@ const std::vector<SourceInfo>& AllSources() {
   static const std::vector<SourceInfo> sources = {
       {"local", "Local", Kind::Local, QColor("#5f6b7a")},
       {"steam", "Steam", Kind::Local, QColor("#2a475e")},
-      {"epic", "Epic Games", Kind::Store, QColor("#4a4a4a")},
+      {"epic", "Epic Games", Kind::Store, QColor("#4a4a4a"), {}, false, false, true},
       {"gog", "GOG", Kind::Store, QColor("#86328a")},
       {"itch", "itch.io", Kind::Store, QColor("#fa5c5c")},
       {"amazon", "Amazon Games", Kind::Store, QColor("#ff9900")},

@@ -1235,6 +1235,48 @@ int CmdGameMode(int argc, char** argv) {
   return 2;
 }
 
+int CmdAchievements(int argc, char** argv) {
+  if (argc < 1 || (argc > 1 && std::string_view(argv[1]) != "--refresh")) {
+    std::fprintf(stderr,
+                 "usage: mira achievements <id> [--refresh]\n"
+                 "  lists a Steam, GOG or Epic game's achievements as last checked; --refresh\n"
+                 "  asks its store again first.\n");
+    return 2;
+  }
+  const std::string id = argv[0];
+  auto client = Connect();
+  if (argc > 1) {
+    json result;
+    if (!AwaitJob(client, client.Post(std::format("/v1/games/{}/achievements/refresh", Seg(id))),
+                  result))
+      return 1;
+  }
+  auto res = client.Get(std::format("/v1/games/{}/achievements", Seg(id)));
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  const json set = json::parse(res->body, nullptr, false);
+  std::printf("%lld of %lld unlocked\n", static_cast<long long>(set.value("unlocked", 0)),
+              static_cast<long long>(set.value("total", 0)));
+  for (const json& item : set.value("items", json::array())) {
+    std::string details;
+    if (const std::int64_t at = item.value("unlocked_at", std::int64_t{0}); at > 0) {
+      details = std::format("{:%Y-%m-%d}", std::chrono::sys_seconds(std::chrono::seconds(at)));
+    }
+    if (const double rarity = item.value("rarity", -1.0); rarity >= 0) {
+      details += std::format("{}{:.1f}% of players", details.empty() ? "" : ", ", rarity);
+    }
+    if (item.value("hidden", false)) details += details.empty() ? "hidden" : ", hidden";
+    std::printf("[%c] %s%s\n", item.value("unlocked", false) ? 'x' : ' ',
+                item.value("name", std::string()).c_str(),
+                details.empty() ? "" : std::format("  ({})", details).c_str());
+    if (const std::string text = item.value("description", std::string()); !text.empty())
+      std::printf("    %s\n", text.c_str());
+  }
+  return 0;
+}
+
 int CmdTricks(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
@@ -1936,6 +1978,7 @@ void PrintUsage() {
       "  gamemode status         check whether GameMode is installed/running\n"
       "  metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]\n"
       "                         cached cover-art/store info, or pick its SteamGridDB match\n"
+      "  achievements <id> [--refresh]   a Steam, GOG or Epic game's achievements\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"
       "  watch                  tail the event stream\n");
@@ -1976,6 +2019,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "desktop-entries") return CmdDesktopEntries(rest_argc, rest);
   if (command == "gamemode") return CmdGameMode(rest_argc, rest);
   if (command == "metadata") return CmdMetadata(rest_argc, rest);
+  if (command == "achievements") return CmdAchievements(rest_argc, rest);
   if (command == "tricks") return CmdTricks(rest_argc, rest);
   if (command == "setup") return CmdSetup(rest_argc, rest);
   if (command == "list") return CmdList(rest_argc, rest);

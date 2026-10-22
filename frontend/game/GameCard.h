@@ -14,6 +14,7 @@ class QStackedWidget;
 
 namespace mira_gui {
 
+class AchievementsPage;
 class ArtPickerPanel;
 class ChangeBar;
 class GameEditForm;
@@ -38,7 +39,7 @@ class GameCard : public HeroBackdrop {
   bool IsDirty() const;
   // Saves the form's edits; Saved follows on success.
   void Save();
-  // Back and Esc: out of the art picker, then Advanced, then RequestClose.
+  // Back and Esc: out of the art picker or Achievements, then Advanced, then RequestClose.
   void Back();
   // Asks first when the edits aren't saved; CloseRequested once it may close.
   void RequestClose();
@@ -68,6 +69,12 @@ class GameCard : public HeroBackdrop {
   void UpdateIdentity();
   // Whether a live event carries a new record of this game.
   bool ChangesThisGame(const std::string& type, const std::string& data) const;
+  // The cached achievements, then a refresh in the background when there are none yet or they're
+  // over a day old (`refresh`).
+  void LoadAchievements(bool refresh);
+  void OpenAchievements();
+  void CloseAchievements();
+  bool AchievementsOpen() const;
 
   std::string id_;
   // A not-installed title's card has no form, so form_ stays null.
@@ -81,6 +88,10 @@ class GameCard : public HeroBackdrop {
   // The form, and the art picker once first opened.
   QStackedWidget* stack_ = nullptr;
   ArtPickerPanel* picker_ = nullptr;
+  // "48 of 52 achievements" under the status, which opens their page; its room kept while empty.
+  QPushButton* achievements_button_ = nullptr;
+  AchievementsPage* achievements_page_ = nullptr;
+  std::optional<AchievementsResult> achievements_;
   QPushButton* art_button_ = nullptr;
   QPushButton* play_ = nullptr;
   QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, before Play

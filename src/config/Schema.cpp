@@ -432,6 +432,15 @@ Schema::Schema() {
              "match. The match can be wrong, and each lookup sends the game's name to Steam's "
              "public search. It does not change how the game launches or its cover art."});
 
+  s.Add({.key = "achievements.enabled",
+         .label = "Show achievements",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Read achievements for Steam, GOG and Epic games and check them again after you "
+                "play. Steam's come from its files on this computer; GOG and Epic ask the store "
+                "with your sign-in.",
+         .keywords = "trophies unlocked rarity"});
+
   s.Add(
       {.key = "lutris.import_art",
        .label = "Use Lutris artwork",
@@ -540,6 +549,14 @@ Schema::Schema() {
                 "your PATH.",
          .path = PathKind::File});
 
+  s.Add({.key = "gog.comet_bin",
+         .label = "comet binary",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Path to the comet binary. Empty uses the copy Mira downloaded, then the one on "
+                "your PATH.",
+         .path = PathKind::File});
+
   s.Add({.key = "itch.butler_bin",
          .label = "butler binary",
          .type = Type::String,
@@ -605,6 +622,15 @@ Schema::Schema() {
          .doc = "Install the DLC you own for a GOG game along with it. Updating a game also adds "
                 "DLC bought since it was installed.",
          .keywords = "dlc expansion add-on"});
+
+  s.Add({.key = "gog.comet",
+         .label = "Unlock GOG achievements",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Run comet beside GOG games, standing in for GOG Galaxy, so the achievements you "
+                "earn unlock on your GOG account.",
+         .keywords = "comet galaxy achievements"});
 
   s.Add({.key = "itch.collections",
          .label = "itch.io collections",
@@ -749,14 +775,16 @@ Schema::Schema() {
          .label = "Legendary download repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryRepo),
-         .doc = "The GitHub repository (\"owner/repo\") that Legendary is downloaded from."});
+         .doc = "The GitHub repository (\"owner/repo\") that Legendary is downloaded from.",
+         .old_defaults = {"derrod/legendary"}});
 
   s.Add({.key = "runner_sources.legendary.asset_pattern",
          .label = "Legendary file pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. Legendary ships "
-                "as a single Linux binary, not an archive."});
+                "as a single file per processor, not an archive.",
+         .old_defaults = {"legendary"}});
 
   s.Add({.key = "runner_sources.gog.repo",
          .label = "gogdl download repository",
@@ -770,6 +798,19 @@ Schema::Schema() {
          .default_value = std::string(runner_sources::kGogdlAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. gogdl ships as a "
                 "single Linux binary, not an archive."});
+
+  s.Add({.key = "runner_sources.comet.repo",
+         .label = "comet download repository",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kCometRepo),
+         .doc = "The GitHub repository (\"owner/repo\") that comet is downloaded from."});
+
+  s.Add({.key = "runner_sources.comet.asset_pattern",
+         .label = "comet file pattern",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kCometAssetPattern),
+         .doc = "A glob pattern that picks which file of a release to download. comet ships as a "
+                "single Linux binary for each processor type."});
 
   s.Add({.key = "runner_sources.itch.repo",
          .label = "butler download repository",

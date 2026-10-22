@@ -7,7 +7,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "config/Resolver.h"
 #include "core/Json.h"
+#include "gog/Comet.h"
 #include "gog/Gog.h"
 #include "gog/GogInstaller.h"
 #include "runner/Exec.h"
@@ -107,6 +109,17 @@ Result<void> GogSource::Update(config::Config& config, store::GameStore& games,
                                api::EventBus& events, const std::string& ref) {
   GogInstaller installer(config, games, events);
   return installer.Update(ref);
+}
+
+Result<library::LaunchExtras> GogSource::BeforeLaunch(const config::Config& config,
+                                                      const model::Game& game,
+                                                      bool /*sign_in*/) const {
+  library::LaunchExtras extras;
+  if (!config::Resolver(config, game.overrides).GetBool("gog.comet")) return extras;
+  auto comet = CometCommand(config);
+  if (!comet) return std::unexpected(comet.error());
+  extras.shared = std::move(*comet);
+  return extras;
 }
 
 }  // namespace mira::gog

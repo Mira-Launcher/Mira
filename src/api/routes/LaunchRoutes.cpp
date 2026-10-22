@@ -30,6 +30,7 @@
 #include "library/LaunchOptions.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
+#include "library/SourceRegistry.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
@@ -207,7 +208,8 @@ struct RunProgram {
 // launch.env and command wrappers applied. Pins the runner on the game when launch.pin_runner is on
 // and none was set.
 Result<Command> PrepareCommand(Services& s, model::Game& game,
-                               const std::optional<RunProgram>& program) {
+                               const std::optional<RunProgram>& program,
+                               const library::LaunchExtras& extras = {}) {
   const runner::RunnerRegistry registry(s.config);
   auto resolved = program && program->native
                       ? Result<runner::RunnerRegistry::Resolved>(
@@ -238,8 +240,13 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
     target.args = program->args;
     target.working_dir.clear();
   }
+  // In the game's own arguments, so each runner quotes them the same way.
+  if (!extras.args.empty()) {
+    target.args += (target.args.empty() ? "" : " ") + strings::JoinArgs(extras.args);
+  }
   auto command = resolved->runner->BuildCommand(target, resolved->build);
   if (!command) return std::unexpected(command.error());
+  for (const auto& [name, value] : extras.env) command->env.try_emplace(name, value);
   // Otherwise the spawned child's chdir fails and it exits 127 before anything is logged.
   if (std::error_code ec;
       !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
@@ -309,11 +316,53 @@ void StartAlongside(Services& s, model::Game game) {
   }
 }
 
+// What the game's store adds to this launch; nothing when it adds nothing or can't say.
+library::LaunchExtras StoreExtras(Services& s, const model::Game& game, bool sign_in) {
+  const library::ILibrarySource* source = library::FindSource(game.source);
+  if (source == nullptr) return {};
+  auto extras = source->BeforeLaunch(s.config, game, sign_in);
+  if (!extras) {
+    log::Warn("starting {} without {}'s launch parameters: {}", game.id, game.source,
+              extras.error().message);
+    return {};
+  }
+  return std::move(*extras);
+}
+
+// For a launch refused before the game started: the files the store wrote for it.
+void DiscardExtras(const library::LaunchExtras& extras) {
+  std::error_code ec;
+  for (const std::filesystem::path& file : extras.remove_after_exit)
+    std::filesystem::remove(file, ec);
+}
+
 // Starts `command` under mira-run in its own systemd scope and tracks its session.
 // Sends the response: an error, or "running".
 void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& game,
                         const Command& command, const std::string& pre_script,
-                        const std::string& post_script) {
+                        const std::string& post_script, const library::LaunchExtras& extras = {}) {
+  // A start that fails leaves no store files behind; a tracked one removes them at exit.
+  struct Leftovers {
+    std::vector<std::filesystem::path> files;
+    ~Leftovers() {
+      std::error_code ec;
+      for (const std::filesystem::path& file : files) std::filesystem::remove(file, ec);
+    }
+  } leftovers{extras.remove_after_exit};
+  // Before the game, which looks for it as it starts; stopped again if the game doesn't start.
+  struct Shared {
+    Services& s;
+    const model::Game& game;
+    bool started = false;
+    bool tracked = false;
+    ~Shared() {
+      if (started && !tracked) s.StopSharedIfIdle(game.id);
+    }
+  } shared{s, game};
+  if (extras.shared) {
+    s.StartShared(game, *extras.shared);
+    shared.started = true;
+  }
   const config::Resolver resolver(s.config, game.overrides);
   // mira-run owns the session so it survives mirad dying.
   const auto mira_run = runner::ResolveSiblingBinary(OwnBinaryDir(), "mira-run");
@@ -357,6 +406,10 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
     wrapped.argv.push_back(post_script);
   }
   if (resolver.GetBool("launch.gamemode")) wrapped.argv.push_back("--gamemode");
+  for (const std::string& prefix : extras.redact) {
+    wrapped.argv.push_back("--redact");
+    wrapped.argv.push_back(prefix);
+  }
   wrapped.argv.push_back("--");
   wrapped.argv.insert(wrapped.argv.end(), command.argv.begin(), command.argv.end());
   wrapped.argv.insert(wrapped.argv.begin(),
@@ -423,10 +476,13 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
     return SendError(res, 500, "wrapper_failed",
                      std::format("mira-run sent no session start: {}", status.detail));
   }
+  // Before tracking starts, so a game that exits at once still finds them.
+  s.RemoveAfterExit(game.id, std::exchange(leftovers.files, {}));
   if (auto launched = s.supervisor.LaunchWrapped(game, *wrapper_pid, session_started_at);
       !launched) {
     return SendError(res, 409, launched.error());
   }
+  shared.tracked = true;
   SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
 }
 
@@ -522,9 +578,13 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
 
     // A play option replaces how the game starts, whatever its source, and is tracked as the game.
     if (option) {
-      auto command = PrepareCommand(s, *game, OptionProgram(*game, *option));
-      if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
-      LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script);
+      const library::LaunchExtras extras = StoreExtras(s, *game, library::SignsIn(*game, *option));
+      auto command = PrepareCommand(s, *game, OptionProgram(*game, *option), extras);
+      if (!command) {
+        DiscardExtras(extras);
+        return SendError(res, PrepareStatus(command.error()), command.error());
+      }
+      LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script, extras);
       return StartAlongside(s, *game);
     }
 
@@ -616,8 +676,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       }
     }
 
-    auto command = PrepareCommand(s, *game, std::nullopt);
-    if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
+    const library::LaunchExtras extras = StoreExtras(s, *game, true);
+    auto command = PrepareCommand(s, *game, std::nullopt, extras);
+    if (!command) {
+      DiscardExtras(extras);
+      return SendError(res, PrepareStatus(command.error()), command.error());
+    }
 
     // A Windows "game" that turns out to be an installer is caught at exit (CheckForInstall).
     // Only for an existing prefix: a new one's own Program Files would all look installed.
@@ -627,7 +691,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       s.WatchForInstall(game->id, library::InstallFolders(s.config, game->data_dir));
     }
 
-    LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script);
+    LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script, extras);
     StartAlongside(s, *game);
   });
 

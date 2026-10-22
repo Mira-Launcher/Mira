@@ -145,6 +145,8 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   const std::string kind = mapping::Str(event, "kind");
   const std::string target = mapping::Str(event, "target");
   const QString id = QString::fromStdString(mapping::Str(event, "id"));
+  // Achievements refresh quietly behind the game card, which shows the result.
+  if (kind == "achievements") return true;
   if (kind == "install" || kind == "update" || kind == "runner" ||
       (kind == "setup" && (target == "umu" || target == "winetricks"))) {
     // Kept so that row can cancel it.

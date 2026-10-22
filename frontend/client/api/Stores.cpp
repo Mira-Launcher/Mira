@@ -34,6 +34,12 @@ StoreStatusResult GetStoreStatusSync(const std::string& source) {
           result.tool_installed = tool.value("installed", false);
           result.tool_version = tool.value("version", std::string());
         }
+        const json helper = body.value("helper", json::object());
+        if (helper.is_object()) {
+          result.helper_name = helper.value("name", std::string());
+          result.helper_installed = helper.value("installed", false);
+          result.helper_version = helper.value("version", std::string());
+        }
         result.authenticated = body.value("authenticated", false);
         result.account = body.value("account", std::string());
       });
@@ -166,6 +172,9 @@ RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
           if (path.is_string()) result.kept.push_back(path.get<std::string>());
         }
         result.signs_out = body.value("signs_out", false);
+        for (const json& tool : body.value("tools", json::array())) {
+          if (tool.is_object()) result.tools.push_back(tool.value("name", std::string()));
+        }
       });
 }
 

@@ -37,18 +37,32 @@ inline constexpr std::string_view kUmuLauncherAssetPattern = "umu-launcher-*-zip
 // checksummed by one sha256sums.txt.
 inline constexpr std::string_view kKron4ekRepo = "Kron4ek/Wine-Builds";
 
-// Legendary (a native Epic Games Store CLI client) publishes a standalone
-// Linux binary per release, not an archive; see runner::InstallLegendaryBinary
+// Legendary (a native Epic Games Store CLI client) publishes a single file per
+// architecture, not an archive; see runner::InstallLegendaryBinary
 // (src/epic/Legendary.h) rather than runner::DownloadAndInstall, which assumes
-// a tarball.
-inline constexpr std::string_view kLegendaryRepo = "derrod/legendary";
-inline constexpr std::string_view kLegendaryAssetPattern = "legendary";
+// a tarball. Releases up to 0.20.34 named it plain "legendary"; achievements
+// need 0.21.1, so the old name isn't matched.
+inline constexpr std::string_view kLegendaryRepo = "legendary-gl/legendary";
+#if defined(__aarch64__)
+inline constexpr std::string_view kLegendaryAssetPattern = "legendary_linux_arm64";
+#else
+inline constexpr std::string_view kLegendaryAssetPattern = "legendary_linux_x64";
+#endif
 
 // gogdl (Heroic's GOG downloader) also publishes a standalone Linux
 // binary per release, same shape as Legendary: "gogdl_linux_x86_64", no
 // archive.
 inline constexpr std::string_view kGogdlRepo = "Heroic-Games-Launcher/heroic-gogdl";
 inline constexpr std::string_view kGogdlAssetPattern = "gogdl_linux_x86_64";
+
+// comet stands in for GOG Galaxy's communication service so GOG games can unlock achievements.
+// A bare binary per architecture.
+inline constexpr std::string_view kCometRepo = "imLinguin/comet";
+#if defined(__aarch64__)
+inline constexpr std::string_view kCometAssetPattern = "comet-aarch64-unknown-linux-gnu";
+#else
+inline constexpr std::string_view kCometAssetPattern = "comet-x86_64-unknown-linux-gnu";
+#endif
 
 // butler (itch.io's own launcher-integration daemon) ships zipped, with
 // two shared libraries (7z.so/libc7zip.so) alongside the binary it needs

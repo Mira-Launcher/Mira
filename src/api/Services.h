@@ -81,6 +81,8 @@ class Services {
   Lane artwork_thumbs{"artwork-thumbs", 4};
   Lane operations{"operations", 4};  // installs and downloads
   Lane installs{"installs", 1};      // installers a scan runs on its own
+  Lane achievements{"achievements", 2};
+  Lane achievement_icons{"achievement-icons", 4};
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
@@ -205,6 +207,23 @@ class Services {
   // Windows games run.
   void EnsureWindowsRunner();
 
+  // Files a store wrote for one launch of `game_id` (Epic's ownership token), deleted once it
+  // exits.
+  void RemoveAfterExit(const std::string& game_id, std::vector<std::filesystem::path> files);
+
+  // Starts the program `game`'s store shares between its running games (GOG's comet) unless it
+  // runs already, with its output in logs/<name>.log. Stopped when the last of them exits.
+  void StartShared(const model::Game& game, const Command& command);
+  // Stops it once no game of `game_id`'s store is running.
+  void StopSharedIfIdle(const std::string& game_id);
+
+  // Fetches a game's achievements from its store and caches them, publishing
+  // game.achievements_ready when they changed. {id, total, unlocked, changed}.
+  Result<nlohmann::json> RefreshAchievements(const std::string& id);
+  // After a session ends: RefreshAchievements on the achievements lane, unless achievements are
+  // off or the game was found to have none within the last week.
+  void RefreshAchievementsAfterPlay(const std::string& id);
+
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
   // config.changed with the keys (names only: values can be secrets) and the frontend table, so a
@@ -247,6 +266,9 @@ class Services {
   void MarkLeftRootsMissing();
   std::mutex roots_mutex_;
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
+
+  std::mutex exit_files_mutex_;
+  std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 
   // Steam games handed to Steam's own uninstall, by id, with when to stop waiting for it.
   std::mutex steam_uninstalls_mutex_;

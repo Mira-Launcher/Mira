@@ -279,6 +279,14 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
   RemovalPlan plan;
   plan.source = std::string(source);
   plan.signs_out = IsStore(source);
+  if (const Store* store = FindStore(source)) {
+    const auto add = [&](const char* name, const runner::ToolStatus& tool) {
+      if (tool.source == "managed")
+        plan.tools.push_back({.name = name, .path = fs::path(tool.path).parent_path().string()});
+    };
+    add(store->tool, store->status(config).tool);
+    if (store->helper_status) add(store->helper, store->helper_status(config));
+  }
   if (const emulators::Emulator* emulator = emulators::Find(source)) {
     plan.program_dir = emulators::DownloadDir(config, *emulator).string();
     if (!emulators::Downloads(*emulator)) {
@@ -369,6 +377,11 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     const Store* store = FindStore(source);
     const Result<void> signed_out = store && store->logout ? store->logout(config) : Result<void>();
     if (!signed_out) result.problems.push_back("signing out: " + signed_out.error().message);
+  }
+  // Last: the games' uninstalls and the sign-out above may run them.
+  for (const RemovalPlan::Tool& tool : plan->tools) {
+    if (auto done = DeleteInside(tool.path, {config.File().parent_path() / "tools"}); !done)
+      result.problems.push_back(std::format("deleting {}: {}", tool.name, done.error().message));
   }
 
   store::SourceState state = games.Source(std::string(source));

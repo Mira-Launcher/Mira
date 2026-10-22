@@ -123,6 +123,8 @@ class SourcePage : public QWidget {
   void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
+  // "gogdl", or "gogdl and comet" for a store whose setup downloads both.
+  QString ToolNames() const;
 
   void RefreshStatus();
   void ApplyStoreStatus(const StoreStatusResult& status);
@@ -165,6 +167,9 @@ class SourcePage : public QWidget {
   bool launcher_installing_ = false;
   bool tool_updating_ = false;
   std::string tool_version_;
+  std::string helper_name_;  // what the store's setup also downloads (GOG's comet), or empty
+  bool helper_installed_ = false;
+  std::string helper_version_;
   std::string launcher_game_id_;
   std::string launcher_prefix_;
   EmulatorInfo emulator_;

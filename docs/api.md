@@ -31,7 +31,7 @@ Long-running work (scans, downloads, installs, winetricks) is a [job](#jobs): it
 
 Scans, imports, moving games, removing games, removing a source, bulk metadata refreshes, installs, store and tool setup, Humble downloads, runner downloads, winetricks verbs and choosing artwork are jobs. Their own `*.started`, `*.finished` and `*.failed` events are published as well, for clients that follow one thing. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
 
-Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks` or `artwork`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
+Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork` or `achievements`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
 
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
@@ -181,6 +181,8 @@ Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game
 - `launch.pre_script` runs through `sh -c` before the game and blocks the request. A non-zero exit fails with `409 pre_launch_failed` and the script's output.
 - `launch.post_script` runs after the game exits, however it exits. Its result is only logged.
 - `launch.gamemode` registers the game with GameMode for its lifetime.
+- An Epic game gets Epic's sign-in arguments from `legendary launch --json` (online, else `--offline`, up to 10 s each), so it can reach Epic's services and unlock achievements. When legendary gives none, the game starts without them and the daemon log says why. The exchange code in them is masked in the game's log and never appears in an event or reply, and legendary's ownership token file is deleted when the game exits.
+- While `gog.comet` is on for a GOG game, [comet](https://github.com/imLinguin/comet) starts before it, standing in for GOG Galaxy so the game's achievements unlock. One comet serves every running GOG game and is stopped once none is running; its output goes to `logs/comet.log`. It signs in with gogdl's sign-in, which it reads through a link, never from its command line. Signed out of GOG or without comet, the game starts without it and the daemon log says why.
 
 The game runs under `mira-run`, which owns the scripts, the game's output log and the session record, so a session survives `mirad` restarting. If `mira-run` is missing, the game is started directly without a session record or log.
 
@@ -199,6 +201,7 @@ A game's `launch` holds other ways to start it and programs that run beside it, 
 - `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself, untracked.
 - `exe` is absolute or relative to `install_path`. `{game_dir}`, `{game_exe}` and `{prefix}` in `exe` or `args` are filled in, as `Z:\...` Wine paths in the args of an option run in the prefix.
 - A Windows game's option runs with the game's runner and in its prefix (Steam's own Proton and prefix for a Steam game), unless `native` is set. Any other game's runs as a Linux program.
+- `sign_in` (optional, `play` only): whether the option starts with the store's sign-in, as the game's own program does: Epic's sign-in arguments, which hold a single-use credential. Unset, it does when `exe` is inside `install_path` (another program of the game, such as its DirectX 12 build), and doesn't for a program elsewhere, such as a mod manager, which can't use the code before it expires. GOG's comet runs beside every play option either way, since it hands the program nothing.
 - `default` is the `play` option Play starts with no option named; empty for the game's own program. `only` asks a client to offer nothing else. `id`s are made from the name when missing; `game` is reserved for the game's own program.
 
 The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`.
@@ -512,8 +515,8 @@ Nothing on disk is moved. `install_path` is the executable's folder and `data_di
 Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five share one set of calls under `/v1/stores/{id}`, where `id` is `epic`, `gog`, `itch`, `amazon` or `humble` (`404 store_not_found` otherwise). Store games always launch through Mira's own runners, never through the store tool.
 
 - `GET /v1/stores`: `[{"id", "name", "tool_name", "can_import", "can_logout"}]`.
-- `GET /v1/stores/{id}/status`: `{id, name, tool, authenticated, account}`. `account` is only known for Epic. `tool` is `{"installed", "source", "path", "version"}`, where `source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy in `~/.config/mira/tools`), `path` or `none`, in that order. A missing tool is not an error.
-- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`. Setups of one store run one at a time; one asked for while another runs stops once that has installed the tool.
+- `GET /v1/stores/{id}/status`: `{id, name, tool, authenticated, account}`. `account` is only known for Epic. `tool` is `{"installed", "source", "path", "version"}`, where `source` is `override` (the `<store>.*_bin` setting), `managed` (Mira's copy in `~/.config/mira/tools`), `path` or `none`, in that order. `version` is the release tag Mira downloaded for a `managed` copy, else what the tool prints for `--version`. A missing tool is not an error. GOG's also has `helper`, the same shape plus `name: "comet"`.
+- `POST /v1/stores/{id}/setup`: a [job](#jobs) (kind `setup`) that downloads the tool's latest release. Run it again to update. Result `{tag}`. Setups of one store run one at a time; one asked for while another runs stops once that has installed the tool. GOG's (labelled "Setting up gogdl and comet") also downloads comet's latest release (picked for this machine's processor by `runner_sources.comet.asset_pattern`); a failure there is only written to the setup log, since GOG works without it.
 - `POST /v1/stores/{id}/login/begin`: `{url}`, the page to sign in at. Amazon makes a fresh one each time.
 - `POST /v1/stores/{id}/login`: body `{"credential": "..."}`. Returns the status. What the credential is depends on the store:
   - Epic: the `authorizationCode`, or the whole page the login ends on (the JSON, or Firefox's JSON viewer copied as text). Legendary exits 0 on a bad code, so the result is checked through status; a rejected code fails with `400 login_failed`.
@@ -527,7 +530,7 @@ Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five s
 
 ### Epic
 
-Wraps [Legendary](https://github.com/derrod/legendary). Deleting an Epic game's files runs `legendary uninstall`.
+Wraps [Legendary](https://github.com/legendary-gl/legendary), whose Linux release since 0.21 is a zipapp that needs `python3` 3.10 or newer. Deleting an Epic game's files runs `legendary uninstall`.
 
 ### GOG
 
@@ -633,7 +636,7 @@ What has a newer release: Mira itself, and the emulators, store tools, umu and r
  { "kind": "emulator", "id": "duckstation", "name": "DuckStation", "installed": "latest", "latest": "latest", "url": "" }]
 ```
 
-`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference. Mira's is the release at `url`. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference. comet is a `tool` with `id` `gog`, since GOG's setup updates it; while GOG's gogdl is Mira's copy and comet isn't there yet (GOG set up before Mira fetched comet), it's listed with `installed` empty. Mira's is the release at `url`. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
 
 `emulators.<id>.repo` switches an emulator Mira downloads to a fork: `owner/repo` or a GitHub link, or a Forgejo or GitLab releases API link. The fork's release then no longer matches what's installed, so it shows here as an update.
 
@@ -657,13 +660,15 @@ What removing a source would do:
   "program_dir": ".../drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher",
   "packages": [], "uninstall": [], "data": [],
   "kept": [ "/home/me/Mira/prefixes/ubisoft-connect", ".../Ubisoft Game Launcher/savegames" ],
-  "signs_out": false }
+  "signs_out": false, "tools": [] }
 ```
+
+`tools` lists a store's tools Mira downloaded, each `{name, path}` (GOG's gogdl and comet: `[{"name": "gogdl", "path": "~/.config/mira/tools/gog"}, ...]`), deleted after its games are uninstalled and the account signed out. A copy on `PATH` or set by a `<store>.*_bin` setting is left alone.
 
 `deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files, and an emulator's games are the user's). For an emulator, `program_dir` is Mira's download of it, `packages` the system packages it came from with `uninstall` the command removing them (empty on a distro Mira doesn't know), and `data` its settings, saves and caches.
 
 ### `POST /v1/sources/{id}/remove`
-Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
+Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, deletes the store tools Mira downloaded, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
 
 ### `GET /v1/sources/{id}/runner`
 The runner a source's games use: `{"runner_ref", "games", "differing"}`. `games` counts its Windows games and `differing` the ones on another runner. For Epic, GOG, itch and Amazon this is `<id>.runner`, the default for their games with no runner of their own (empty falls back to `default_runner.windows`). For a launcher it is the runner of its prefix, which its games share. `400 no_runner` for Steam, Lutris and Humble; `409 launcher_not_installed`.
@@ -763,6 +768,25 @@ Body `{"ids": [...]}`. Fetches each of these games again, like `POST /v1/games/{
 ### `POST /v1/games/metadata/refresh-missing`
 The same, for every game without a cover.
 
+## Achievements
+
+A game's achievements as its store last listed them, cached in `cache.db` and refreshed on request, after a tracked session of the game ends (for Steam games only with `steam.track_process`), never on a timer. A game whose store listed none within the last week isn't asked again after playing. `achievements.enabled` (on by default) turns refreshing off; what's cached still answers. Sources:
+
+- **Steam games** (`runner_ref` `steam:<appid>`): every definition from Steam's `appcache/stats/UserGameStatsSchema_<appid>.bin` and the account's progress from `UserGameStats_<account>_<appid>.bin`, which Steam writes for games it has run on this computer. The account is `steam.steamid64`, else the one Steam signed in last. Without those files, Steam's Web API when `steam.web_api_key` and `steam.steamid64` are set, else `no_local_achievements` with a fix for the key. Rarity comes from Steam's global percentages, which need no key. Unlocking stays with the Steam client.
+- **GOG games**: GOG Galaxy's gameplay API (`gameplay.gog.com/clients/<product id>/users/<user id>/achievements`) with the account gogdl signed in, rarity included. Undocumented, so a change on GOG's side fails the refresh rather than anything else. Signed out, the error's fix is `{"kind": "source", "target": "gog", "step": "login"}`.
+- **Epic games**: `legendary achievements <app> --json` (Legendary 0.21.1 or newer; an older one fails with `legendary_too_old` and a fix to set the source up again), in Epic's own order from Legendary's metadata cache, with rarity and XP. A game without Epic achievements is an empty list.
+
+Text is in the system language (`LC_ALL`, `LC_MESSAGES`, `LANG`), falling back to English.
+
+### `GET /v1/games/{id}/achievements`
+`{source, fetched_at, total, unlocked, items: [{key, name, description, hidden, unlocked, unlocked_at, rarity, xp, icon}]}`, items in the store's order. `unlocked_at` is unix seconds (0 while locked or when the store doesn't say), `rarity` the percent of players who have it (-1 when unknown), `xp` Epic's points (0 elsewhere). A `hidden` achievement keeps its name and description: a client masks it until unlocked. `icon` is a version for the icon endpoint, empty when the achievement has no icon. `404 no_achievements` before the first refresh, `400 no_achievements_source` for a game whose source has none. While `achievements.enabled` is off, this route, the refresh and the icon answer `400 achievements_off`; the cached lists are kept for when it's turned on again.
+
+### `POST /v1/games/{id}/achievements/refresh`
+Asks the game's store again. A job (kind `achievements`) whose result is `{id, total, unlocked, changed}`. Event: `game.achievements_ready {id, total, unlocked}` when the list changed.
+
+### `GET /v1/games/{id}/achievements/icon?key=&state=locked|unlocked`
+One achievement's picture (`unlocked` by default; a store with one picture uses it for both), downloaded the first time it's asked for, a few at a time, fitted within 128x128 and kept under `artwork/<id>/achievements/`. Icons no longer listed are deleted on refresh, and all of them with the game's other art. `404 achievement_not_found`, `404 icon_not_found`, `502 icon_download_failed`.
+
 ## Events
 
 ### `GET /v1/events`
@@ -791,6 +815,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.install.*` | See `POST /v1/games/{id}/install`. |
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |
 | `game.artwork_*` | See the artwork endpoints. |
+| `game.achievements_ready` | `{id, total, unlocked}` after an [achievements](#achievements) refresh changed the list. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |
 | `library.install.*` | `{source, ref, update}`; `progress` adds `progress`, `eta` and `bps`. |
 | `library.artwork_ready`, `library.artwork_failed` | `{source, ref}`, plus the error fields on failure. |

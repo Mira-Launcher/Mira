@@ -1,6 +1,7 @@
 #include "support/TestEnv.h"
 
 #include <cstdlib>
+#include <format>
 #include <fstream>
 #include <json.hpp>
 #include <thread>
@@ -41,9 +42,9 @@ PathPrepend::~PathPrepend() {
 }
 
 void Isolate(config::Config& config) {
-  for (const char* key :
-       {"metadata.enabled", "metadata.steam_art_by_name", "metadata.steam_by_name",
-        "launchers.umu_lookup", "steam.import_playtime", "runner_scan_common_dirs", "tags.steam"}) {
+  for (const char* key : {"metadata.enabled", "metadata.steam_art_by_name",
+                          "metadata.steam_by_name", "launchers.umu_lookup", "steam.import_playtime",
+                          "runner_scan_common_dirs", "tags.steam", "achievements.enabled"}) {
     [[maybe_unused]] auto off = config.Set(key, false);
   }
   // Every folder Mira reads or writes, moved next to the settings file.
@@ -70,6 +71,11 @@ void Isolate(config::Config& config) {
   setenv("LEGENDARY_CONFIG_PATH", (dir / "legendary-config").c_str(), 1);
   // Games' shader caches.
   setenv("XDG_CACHE_HOME", (dir / "cache").c_str(), 1);
+  // Store endpoints achievements are read from; a test that turns them on serves files here.
+  for (const char* name : {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY", "GOG_EMBED"}) {
+    setenv(std::format("MIRA_{}_URL", name).c_str(),
+           ("file://" + (dir / "endpoints" / name).string()).c_str(), 1);
+  }
   // Windows games run natively: provisioning through the machine's Wine builds a real prefix.
   [[maybe_unused]] auto runner = config.Set("default_runner.windows", "native:native");
 }
