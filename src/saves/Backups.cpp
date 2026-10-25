@@ -24,12 +24,13 @@ namespace fs = std::filesystem;
 
 constexpr const char* kSnapshotFile = "snapshot.json";
 constexpr const char* kStateFile = "state.json";
+constexpr const char* kPinnedFile = "pinned";  // beside snapshot.json, which never changes
 constexpr std::string_view kPartial = ".partial";
 // Left free beyond the copies, so a backup never fills the disk to the last byte.
 constexpr std::uintmax_t kSpareBytes = 64ull << 20;
 
-// Held while a game's backup folder is read and changed, since deleting doesn't claim the game: a
-// delete can't take a backup being restored.
+// Held while a game's backup folder is read and changed, since pinning and deleting don't claim the
+// game: a prune can't take a backup pinned after it listed them, nor a delete one being restored.
 std::unique_lock<std::mutex> LockBackups(const fs::path& dir) {
   static std::mutex guard;
   static std::map<std::string, std::mutex> folders;
@@ -71,6 +72,8 @@ std::optional<Snapshot> ReadSnapshot(const fs::path& folder) {
     snapshot.bytes += item.bytes;
     snapshot.files.push_back(std::move(item));
   }
+  std::error_code ec;
+  snapshot.pinned = fs::exists(folder / kPinnedFile, ec);
   return snapshot;
 }
 
@@ -95,12 +98,13 @@ void ClearPartials(const fs::path& dir) {
 }
 
 // The newest saves.keep counted snapshots, plus the safety copies newer than the oldest of them.
+// Pinned ones stay and aren't counted.
 void Prune(const fs::path& dir, const std::vector<Snapshot>& newest_first, std::int64_t keep) {
   std::int64_t counted = 0;
   std::size_t oldest_kept = 0;
   std::vector<const Snapshot*> doomed;
   for (std::size_t i = 0; i < newest_first.size(); ++i) {
-    if (!Counted(newest_first[i].reason)) continue;
+    if (newest_first[i].pinned || !Counted(newest_first[i].reason)) continue;
     if (++counted <= keep)
       oldest_kept = i;
     else
@@ -108,7 +112,8 @@ void Prune(const fs::path& dir, const std::vector<Snapshot>& newest_first, std::
   }
   if (doomed.empty()) return;
   for (std::size_t i = oldest_kept + 1; i < newest_first.size(); ++i) {
-    if (!Counted(newest_first[i].reason)) doomed.push_back(&newest_first[i]);
+    if (!newest_first[i].pinned && !Counted(newest_first[i].reason))
+      doomed.push_back(&newest_first[i]);
   }
   for (const Snapshot* snapshot : doomed) {
     std::error_code ec;
@@ -148,11 +153,9 @@ std::vector<Snapshot> ListSnapshots(const fs::path& dir) {
 }
 
 json SnapshotJson(const Snapshot& snapshot) {
-  return {{"id", snapshot.id},
-          {"taken_at", snapshot.taken_at},
-          {"reason", snapshot.reason},
-          {"files", snapshot.files.size()},
-          {"bytes", snapshot.bytes}};
+  return {{"id", snapshot.id},         {"taken_at", snapshot.taken_at},
+          {"reason", snapshot.reason}, {"files", snapshot.files.size()},
+          {"bytes", snapshot.bytes},   {"pinned", snapshot.pinned}};
 }
 
 Result<json> TakeSnapshot(const config::Config& config, const model::Game& game,
@@ -338,6 +341,23 @@ Result<void> RestoreSnapshot(const config::Config& config, const model::Game& ga
                  std::format("Couldn't put back {}: {}", target.string(), ec.message()), kDiskHint);
     }
   }
+  return {};
+}
+
+Result<void> PinSnapshot(const config::Config& config, std::string_view game_id,
+                         std::string_view id, bool pinned) {
+  const fs::path dir = GameBackups(config, game_id);
+  const auto lock = LockBackups(dir);
+  if (!FindSnapshot(dir, id)) return Err("snapshot_not_found", "no such backup");
+  const fs::path marker = dir / id / kPinnedFile;
+  std::error_code ec;
+  if (!pinned) {
+    fs::remove(marker, ec);
+  } else if (auto written = WriteFileAtomic(marker, "", "saves_failed"); !written) {
+    return std::unexpected(written.error());
+  }
+  if (ec)
+    return Err("saves_failed", std::format("Couldn't unpin {}: {}", id, ec.message()), kDiskHint);
   return {};
 }
 

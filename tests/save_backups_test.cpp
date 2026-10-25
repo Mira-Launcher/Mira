@@ -107,8 +107,9 @@ TEST_CASE("Saves are backed up after play, once per change, keeping mtimes and s
   json saves = saver.Saves();
   CHECK(saves["status"] == "kept");
   REQUIRE(saves["snapshots"].size() == 1);
+  // Taken as the game first launched; the session itself changed nothing.
   const json first = saves["snapshots"][0];
-  CHECK(first["reason"] == "after_play");
+  CHECK(first["reason"] == "first");
   CHECK(first["files"] == 2);
   CHECK(first["bytes"] == 6);
   const fs::path copy = backups / first["id"].get<std::string>() / "files/install/saves/slot1.sav";
@@ -125,6 +126,7 @@ TEST_CASE("Saves are backed up after play, once per change, keeping mtimes and s
   saves = saver.Saves();
   REQUIRE(saves["snapshots"].size() == 2);
   const std::string second = saves["snapshots"][0]["id"];
+  CHECK(saves["snapshots"][0]["reason"] == "after_play");
   CHECK(saves["snapshots"][1]["id"] == first["id"]);
   CHECK(fs::equivalent(copy, backups / second / "files/install/saves/slot1.sav"));
   CHECK_FALSE(
@@ -199,6 +201,112 @@ TEST_CASE("Backups go to the first Mira folder unless a backup folder is set") {
   CHECK(fs::is_directory(dir / "elsewhere/saver"));
   // Older backups stay where they were made.
   CHECK(fs::is_directory(dir / "first/saves/saver"));
+}
+
+TEST_CASE("A pinned backup outlives saves.keep until it's unpinned") {
+  test::LiveServer server(test::TempDir("saves-pin"));
+  SaverGame saver(server);
+  REQUIRE(server.MutableConfig().Set("saves.keep", 1).has_value());
+  const auto back_up = [&](const std::string& text) {
+    test::Touch(saver.folder / "saves/slot1.sav", text);
+    const json job = saver.BackUp();
+    REQUIRE(job["state"] == "finished");
+    return job["result"]["snapshot"]["id"].get<std::string>();
+  };
+  const auto pin = [&](const std::string& id, const std::string& body) {
+    auto res = saver.client.Patch("/v1/games/saver/saves/" + id, body, "application/json");
+    REQUIRE(res);
+    return res->status;
+  };
+  const auto ids = [&] {
+    std::vector<std::string> kept;
+    for (const json& snapshot : saver.Saves()["snapshots"]) kept.push_back(snapshot["id"]);
+    return kept;
+  };
+
+  const std::string first = back_up("one");
+  CHECK(pin(first, R"({"pinned": true})") == 200);
+  CHECK(saver.Saves()["snapshots"][0]["pinned"] == true);
+  back_up("two");
+  const std::string third = back_up("three");
+  CHECK(ids() == std::vector<std::string>{third, first});
+
+  CHECK(pin(first, R"({"pinned": false})") == 200);
+  const std::string fourth = back_up("four");
+  CHECK(ids() == std::vector<std::string>{fourth});
+
+  CHECK(pin("20200101T000000Z", R"({"pinned": true})") == 404);
+  CHECK(pin(fourth, R"({"pinned": "yes"})") == 400);
+}
+
+TEST_CASE("A save folder added by path is kept against the game's folder") {
+  test::LiveServer server(test::TempDir("saves-extra"));
+  SaverGame saver(server);
+  test::Touch(saver.folder / "profile/slot.dat", "data");
+  const json body = {{"saves.extra_paths", json::array({(saver.folder / "profile").string()})}};
+  auto res = saver.client.Patch("/v1/games/saver/config", body.dump(), "application/json");
+  REQUIRE(res);
+  REQUIRE(res->status == 200);
+  CHECK(server.games().Find("saver")->overrides["saves.extra_paths"] ==
+        json::array({"<base>/profile"}));
+
+  const json saves = saver.Saves();
+  CHECK(saves["folders"] == json{{"install", saver.folder.string()}, {"prefix", ""}});
+  const json locations = saves["locations"];
+  const auto extra = std::ranges::find(locations, json("<base>/profile"),
+                                       [](const json& location) { return location["pattern"]; });
+  REQUIRE(extra != locations.end());
+  CHECK((*extra)["extra"] == true);
+  CHECK((*extra)["files"] == 1);
+  CHECK(locations[0]["extra"] == false);
+
+  // One at a time: each edit changes the list as stored, so neither undoes the other.
+  const auto folders = [&](const json& change) {
+    auto res =
+        saver.client.Post("/v1/games/saver/saves/folders", change.dump(), "application/json");
+    REQUIRE(res);
+    return std::pair(res->status, json::parse(res->body, nullptr, false));
+  };
+  CHECK(folders({{"add", (saver.folder / "more").string()}}).second["extra_paths"] ==
+        json::array({"<base>/profile", "<base>/more"}));
+  CHECK(folders({{"add", "/elsewhere/slots"}}).second["extra_paths"] ==
+        json::array({"<base>/profile", "<base>/more", "/elsewhere/slots"}));
+  CHECK(folders({{"add", (saver.folder / "more").string()}}).second["extra_paths"] ==
+        json::array({"<base>/profile", "/elsewhere/slots", "<base>/more"}));
+  CHECK(folders({{"remove", "<base>/profile"}}).second["extra_paths"] ==
+        json::array({"/elsewhere/slots", "<base>/more"}));
+  folders({{"remove", "/elsewhere/slots"}});
+  CHECK(folders({{"remove", "<base>/more"}}).second["extra_paths"] == json::array());
+  // A picked folder matches only itself, glob characters and all.
+  CHECK(folders({{"add", (saver.folder / "Game [GOTY]/Saves?").string()}}).second["extra_paths"] ==
+        json::array({"<base>/Game [[]GOTY]/Saves[?]"}));
+  folders({{"remove", "<base>/Game [[]GOTY]/Saves[?]"}});
+  CHECK_FALSE(server.games().Find("saver")->overrides.contains("saves.extra_paths"));
+  CHECK(folders({{"add", "/a"}, {"remove", "/b"}}).first == 400);
+  CHECK(folders(json::object()).first == 400);
+}
+
+TEST_CASE("Saves work is reported while it runs and refuses to overlap") {
+  test::LiveServer server(test::TempDir("saves-doing"));
+  SaverGame saver(server);
+  test::Touch(saver.folder / "saves/slot1.sav", "one");
+
+  REQUIRE(saver.BackUp()["state"] == "finished");
+  std::vector<std::string> doing;
+  for (const model::Event& event : server.events().Since(0))
+    if (event.type == "game.saves_activity" && event.payload.value("id", "") == "saver")
+      doing.push_back(event.payload.value("doing", "?"));
+  CHECK(doing == std::vector<std::string>{"backing_up", ""});
+  CHECK(saver.Saves()["doing"] == "");
+
+  {
+    auto claim = server.services().Claim("saver", "saves");
+    REQUIRE(claim);
+    const json job = saver.BackUp();
+    REQUIRE(job["state"] == "failed");
+    CHECK(job["error"]["code"] == "saves_busy");
+  }
+  CHECK(saver.BackUp()["state"] == "finished");
 }
 
 TEST_CASE("Removing a game keeps its save backups unless asked to delete them") {

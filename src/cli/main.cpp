@@ -140,6 +140,7 @@ std::string FixCommand(const json& fix) {
   if (kind == "game" && step == "exe") return std::format("mira set {} --exe <path>", target);
   if (kind == "game" && step == "data_dir")
     return std::format("mira set {} --data-dir <path>", target);
+  if (kind == "game" && step == "saves") return "mira saves " + target;
   return "";
 }
 
@@ -1283,21 +1284,29 @@ int CmdSaves(int argc, char** argv) {
   const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
   if (!game && !((what == "manifest" && (argc == 1 || update)) ||
                  ((what == "search" || what == "backup") && argc == 2) ||
-                 ((what == "restore" || what == "delete") && argc == 3))) {
-    std::fprintf(stderr,
-                 "usage: mira saves <id>\n"
-                 "  where a game keeps its saves, what's there, and its backups.\n"
-                 "usage: mira saves backup <id>\n"
-                 "  backs up a game's saves now, unless they haven't changed.\n"
-                 "usage: mira saves restore <id> <backup>\n"
-                 "  puts a backup's files back, after backing up what's there.\n"
-                 "usage: mira saves delete <id> <backup>\n"
-                 "  deletes one backup.\n"
-                 "usage: mira saves manifest [--update]\n"
-                 "  where the list of save locations comes from and when it was checked;\n"
-                 "  --update checks it now.\n"
-                 "usage: mira saves search <name>\n"
-                 "  entries of that list whose name contains <name>, for saves.manifest_name.\n");
+                 ((what == "restore" || what == "delete" || what == "pin" || what == "unpin") &&
+                  argc == 3) ||
+                 (what == "folder" && argc == 4 &&
+                  (std::string_view(argv[2]) == "add" || std::string_view(argv[2]) == "remove")))) {
+    std::fprintf(
+        stderr,
+        "usage: mira saves <id>\n"
+        "  where a game keeps its saves, what's there, and its backups.\n"
+        "usage: mira saves backup <id>\n"
+        "  backs up a game's saves now, unless they haven't changed.\n"
+        "usage: mira saves restore <id> <backup>\n"
+        "  puts a backup's files back, after backing up what's there.\n"
+        "usage: mira saves delete <id> <backup>\n"
+        "  deletes one backup.\n"
+        "usage: mira saves folder <id> add|remove <path>\n"
+        "  adds a file or folder the game keeps saves in, or takes one out by its pattern.\n"
+        "usage: mira saves pin|unpin <id> <backup>\n"
+        "  keeps a backup however many newer ones are taken, or lets it go again.\n"
+        "usage: mira saves manifest [--update]\n"
+        "  where the list of save locations comes from and when it was checked;\n"
+        "  --update checks it now.\n"
+        "usage: mira saves search <name>\n"
+        "  entries of that list whose name contains <name>, for saves.manifest_name.\n");
     return 2;
   }
   auto client = Connect();
@@ -1329,9 +1338,10 @@ int CmdSaves(int argc, char** argv) {
     const json snapshots = saves.value("snapshots", json::array());
     if (!snapshots.empty()) std::printf("backups:\n");
     for (const json& snapshot : snapshots) {
-      std::printf("  %s  %s, %d files, %llu bytes\n", snapshot.value("id", std::string()).c_str(),
+      std::printf("  %s  %s, %d files, %llu bytes%s\n", snapshot.value("id", std::string()).c_str(),
                   snapshot.value("reason", std::string()).c_str(), snapshot.value("files", 0),
-                  static_cast<unsigned long long>(snapshot.value("bytes", std::uint64_t{0})));
+                  static_cast<unsigned long long>(snapshot.value("bytes", std::uint64_t{0})),
+                  snapshot.value("pinned", false) ? ", pinned" : "");
     }
     return 0;
   }
@@ -1357,6 +1367,30 @@ int CmdSaves(int argc, char** argv) {
       std::printf("; undo with: mira saves restore %s %s", argv[1],
                   result["undo"].get<std::string>().c_str());
     std::printf("\n");
+    return 0;
+  }
+  if (what == "folder") {
+    const bool add = std::string_view(argv[2]) == "add";
+    const std::string path =
+        add ? std::filesystem::absolute(argv[3]).lexically_normal().string() : std::string(argv[3]);
+    auto res = client.Post(std::format("/v1/games/{}/saves/folders", Seg(argv[1])),
+                           json{{add ? "add" : "remove", path}}.dump(), "application/json");
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    const json answer = json::parse(res->body, nullptr, false);
+    for (const json& kept : answer.value("extra_paths", json::array()))
+      if (kept.is_string()) std::printf("%s\n", kept.get<std::string>().c_str());
+    return 0;
+  }
+  if (what == "pin" || what == "unpin") {
+    auto res = client.Patch(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])),
+                            json{{"pinned", what == "pin"}}.dump(), "application/json");
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
     return 0;
   }
   if (what == "delete") {
@@ -2109,6 +2143,8 @@ void PrintUsage() {
       "  saves <id>             where a game keeps its saves, and its backups\n"
       "  saves backup <id>      back up a game's saves now\n"
       "  saves restore|delete <id> <backup>   put a backup's files back, or delete it\n"
+      "  saves folder <id> add|remove <path>   a folder the game keeps saves in\n"
+      "  saves pin|unpin <id> <backup>   keep a backup past saves.keep, or let it go\n"
       "  saves manifest [--update] | search <name>   the list of where games keep saves\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"

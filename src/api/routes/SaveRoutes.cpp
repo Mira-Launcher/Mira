@@ -3,8 +3,10 @@
 #include "api/Http.h"
 #include "api/Routes.h"
 #include "api/Services.h"
+#include "core/Json.h"
 #include "saves/Backups.h"
 #include "saves/Manifest.h"
+#include "saves/Resolve.h"
 #include "saves/Saves.h"
 
 namespace mira::api {
@@ -23,7 +25,9 @@ void RegisterSaveRoutes(Router& http, Services& s) {
     const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     s.CheckSaveManifest();
-    SendJson(res, saves::Overview(s.config, s.games.Metadata(), *game));
+    json answer = saves::Overview(s.config, s.games.Metadata(), *game);
+    answer["doing"] = s.SavesDoing(game->id);
+    SendJson(res, answer);
   });
 
   http.Post(R"(/v1/games/([^/]+)/saves/backup)", [&s](const Request& req, Response& res) {
@@ -49,6 +53,55 @@ void RegisterSaveRoutes(Router& http, Services& s) {
         req, res, "saves", id, std::format("Restoring {}'s saves", game->name),
         [&s, id, snapshot](JobRegistry::Progress&) { return s.RestoreSaves(id, snapshot); },
         &s.saves);
+  });
+
+  // One folder at a time, changed in the stored list itself, so two quick edits both land.
+  http.Post(R"(/v1/games/([^/]+)/saves/folders)", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"add": "<path>"} or {"remove": "<pattern>"})";
+    const std::string id = req.matches[1];
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const std::string add = core::JsonString(*body, "add");
+    const std::string remove = core::JsonString(*body, "remove");
+    if (add.empty() == remove.empty())
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    auto updated = s.games.Update(id, [&](model::Game& game) {
+      json kept = json::array();
+      if (const auto found = game.overrides.find("saves.extra_paths");
+          found != game.overrides.end() && found->is_array())
+        kept = *found;
+      // Written against the game's folders, so they follow it when it or its prefix moves.
+      const std::string pattern =
+          add.empty() ? remove
+                      : saves::Shorten(saves::Escape(add), saves::RootsFor(s.config, game));
+      kept.erase(std::remove(kept.begin(), kept.end(), json(pattern)), kept.end());
+      if (!add.empty()) kept.push_back(pattern);
+      // None left clears the game's own value rather than keeping an empty one.
+      if (kept.empty())
+        game.overrides.erase("saves.extra_paths");
+      else
+        game.overrides["saves.extra_paths"] = std::move(kept);
+    });
+    if (!updated) return SendStoreError(res, updated.error());
+    s.events.Publish("game.updated", s.Record(*updated));
+    SendJson(res, {{"extra_paths", updated->overrides.value("saves.extra_paths", json::array())}});
+  });
+
+  // Not a claim, as for a delete: pinning changes no saves.
+  http.Patch(R"(/v1/games/([^/]+)/saves/([^/]+))", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"pinned": true | false})";
+    const std::string id = req.matches[1];
+    if (!s.games.Find(id)) return SendError(res, 404, "game_not_found", "no such game");
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto pinned = body->find("pinned");
+    if (pinned == body->end() || !pinned->is_boolean())
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    if (auto done = saves::PinSnapshot(s.config, id, req.matches[2].str(), pinned->get<bool>());
+        !done)
+      return SendError(res, done.error().code == "snapshot_not_found" ? 404 : 500, done.error());
+    s.events.Publish("game.saves_changed", {{"id", id}});
+    SendJson(res, json::object());
   });
 
   // Not a claim: a backup can go while the game runs.

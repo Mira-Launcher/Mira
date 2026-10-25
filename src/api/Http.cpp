@@ -86,6 +86,11 @@ Error GameRunningError(const std::string& id) {
 }
 
 Error GameBusyError(const std::string& id, const std::string& purpose) {
+  if (purpose == "saves")
+    return Error{"saves_busy",
+                 std::format("\"{}\"'s saves are being backed up or synced", id),
+                 "Wait for them to finish, then try again.",
+                 {}};
   return Error{"game_busy",
                std::format("\"{}\" is being {}", id, purpose),
                "Wait for it to finish, then try again.",

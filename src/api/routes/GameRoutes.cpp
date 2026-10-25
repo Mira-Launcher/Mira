@@ -23,6 +23,7 @@
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
 #include "saves/Backups.h"
+#include "saves/Resolve.h"
 
 namespace mira::api {
 namespace {
@@ -272,8 +273,17 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (auto problem = library::ValidateOverridesPatch(*body)) {
       return SendError(res, 400, "invalid_setting", *problem);
     }
-    auto result =
-        s.games.Update(id, [&](model::Game& game) { library::ApplyOverridesPatch(game, *body); });
+    auto result = s.games.Update(id, [&](model::Game& game) {
+      library::ApplyOverridesPatch(game, *body);
+      // Written against the game's folders, so they follow it when it or its prefix moves.
+      const auto extra = game.overrides.find("saves.extra_paths");
+      if (body->contains("saves.extra_paths") && extra != game.overrides.end() &&
+          extra->is_array()) {
+        const saves::Roots roots = saves::RootsFor(s.config, game);
+        for (json& path : *extra)
+          if (path.is_string()) path = saves::Shorten(path.get<std::string>(), roots);
+      }
+    });
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntry(id);

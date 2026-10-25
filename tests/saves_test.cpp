@@ -324,6 +324,22 @@ TEST_CASE("Save locations resolve in a game's prefix, by any placeholder form, i
   roots = saves::RootsFor(env.config, game);
   CHECK(Found(saves::Find("<winAppData>/Studio/Game/*.sav", roots)) ==
         std::vector<std::string>{"prefix_user:AppData/Roaming/Studio/Game/save2.sav"});
+  CHECK(Found(saves::Find("<prefix>/drive_c/users/steamuser/AppData/Roaming/Studio", roots)) ==
+        std::vector<std::string>{"prefix_user:AppData/Roaming/Studio/Game/save2.sav"});
+
+  // A picked folder is written against the deepest of the game's folders that holds it.
+  const std::string profile = (prefix / "drive_c/users/steamuser").string();
+  CHECK(saves::Shorten(profile + "/AppData/Roaming/Studio", roots) ==
+        "<home>/AppData/Roaming/Studio");
+  CHECK(saves::Shorten(prefix.string() + "/drive_c/GOG Games/Game/saves", roots) ==
+        "<prefix>/drive_c/GOG Games/Game/saves");
+  CHECK(saves::Shorten((env.dir / "install/Saves").string(), roots) == "<base>/Saves");
+  CHECK(saves::Shorten(prefix.string() + "-old/saves", roots) == prefix.string() + "-old/saves");
+  CHECK(saves::Shorten("<base>/Saves", roots) == "<base>/Saves");
+  saves::Roots inside = roots;
+  inside.install = prefix / "drive_c/GOG Games/Game [GOTY]";
+  CHECK(saves::Shorten(prefix.string() + "/drive_c/GOG Games/Game [[]GOTY]/saves", inside) ==
+        "<base>/saves");
 
   CHECK(saves::Find("<xdgData>/game", roots).problem == "unknown_placeholder");
   CHECK(saves::Find("<notAFolder>/game", roots).problem == "unknown_placeholder");

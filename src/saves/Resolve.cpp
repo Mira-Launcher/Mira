@@ -23,7 +23,8 @@ bool HasWildcard(std::string_view component) {
   return component.find_first_of("*?[") != std::string_view::npos;
 }
 
-// A folder's path as a glob matching only itself.
+}  // namespace
+
 std::string Escape(const fs::path& path) {
   std::string out;
   for (const char c : path.generic_string()) {
@@ -34,6 +35,8 @@ std::string Escape(const fs::path& path) {
   }
   return out;
 }
+
+namespace {
 
 std::vector<std::string> Components(std::string_view pattern) {
   std::vector<std::string> parts;
@@ -62,6 +65,10 @@ std::vector<fs::path> Folders(std::string_view name, const Roots& roots) {
   if (name == "base" || name == "install" || name == "installdir") {
     if (roots.install.empty()) return {};
     return {roots.install};
+  }
+  if (name == "prefix") {
+    if (roots.prefix.empty()) return {};
+    return {roots.prefix};
   }
   if (name == "root") {
     if (!roots.steam_library.empty() || !roots.steam.empty()) {
@@ -393,6 +400,30 @@ std::vector<std::string> Expand(std::string_view location, const Roots& roots) {
   // Only absolute patterns: a relative one would be read against mirad's own folder.
   std::erase_if(out, [](const std::string& pattern) { return !pattern.starts_with('/'); });
   return out;
+}
+
+std::string Shorten(std::string_view path, const Roots& roots) {
+  std::vector<std::pair<fs::path, std::string_view>> candidates = {{roots.install, "<base>"}};
+  if (roots.windows) {
+    candidates.emplace_back(roots.prefix_user, "<home>");
+    candidates.emplace_back(roots.prefix, "<prefix>");
+  } else {
+    candidates.emplace_back(roots.home, "<home>");
+  }
+  std::string best(path);
+  std::size_t deepest = 0;
+  for (const auto& [root, name] : candidates) {
+    if (root.empty()) continue;
+    // A pattern spells the folder escaped, as Values fills a placeholder in.
+    std::string written = Escape(root.lexically_normal());
+    while (written.size() > 1 && written.ends_with('/')) written.pop_back();
+    if (written.size() <= deepest || !path.starts_with(written) ||
+        (path.size() > written.size() && path[written.size()] != '/'))
+      continue;
+    deepest = written.size();
+    best = std::string(name) + std::string(path.substr(written.size()));
+  }
+  return best;
 }
 
 Location Find(std::string_view location, const Roots& roots) {

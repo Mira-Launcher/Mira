@@ -102,7 +102,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     CheckForInstall(id);
     RefreshAchievementsAfterPlay(id);
     // Its tags may have changed while it ran.
-    BackUpSavesAfterPlay(id, [this, id] { SortByTags({id}); });
+    SavesAfterPlay(id, [this, id] { SortByTags({id}); });
   });
   fetches.OnNewGameFetched([this](const std::string& id) { TagFromSteam(id); });
   library_roots_ = config.GetPathArray("library_roots");
@@ -255,7 +255,11 @@ void Services::BeginStopping() {
     stopping.store(true, std::memory_order_relaxed);
   }
   stop_wake_.notify_all();
-  events.WakeWaiters();  // open event streams
+  {
+    const std::lock_guard lock(saves_doing_mutex_);  // so a launch can't check, then miss it
+  }
+  saves_done_.notify_all();  // launches waiting for saves work
+  events.WakeWaiters();      // open event streams
 }
 
 void Services::StartExternalWatch() {
@@ -964,11 +968,53 @@ void Services::CheckSaveManifest() {
   if (saves::ManifestDue(config, games.Metadata())) UpdateSaveManifest();
 }
 
+Services::SavesWork::SavesWork(Services& services, std::string id, std::string doing)
+    : services_(services), id_(std::move(id)) {
+  const std::lock_guard publishing(services_.saves_activity_mutex_);
+  {
+    const std::lock_guard lock(services_.saves_doing_mutex_);
+    services_.saves_doing_[id_].emplace_back(this, doing);
+  }
+  services_.events.Publish("game.saves_activity", {{"id", id_}, {"doing", doing}});
+}
+
+Services::SavesWork::~SavesWork() {
+  std::string doing;
+  {
+    const std::lock_guard publishing(services_.saves_activity_mutex_);
+    {
+      const std::lock_guard lock(services_.saves_doing_mutex_);
+      auto& works = services_.saves_doing_[id_];
+      std::erase_if(works, [this](const auto& work) { return work.first == this; });
+      if (works.empty())
+        services_.saves_doing_.erase(id_);
+      else
+        doing = works.back().second;
+    }
+    services_.events.Publish("game.saves_activity", {{"id", id_}, {"doing", doing}});
+  }
+  if (doing.empty()) services_.saves_done_.notify_all();
+}
+
+std::string Services::SavesDoing(const std::string& id) {
+  const std::lock_guard lock(saves_doing_mutex_);
+  const auto found = saves_doing_.find(id);
+  return found == saves_doing_.end() ? std::string() : found->second.back().second;
+}
+
+bool Services::WaitForSavesWork(const std::string& id) {
+  std::unique_lock lock(saves_doing_mutex_);
+  saves_done_.wait(
+      lock, [&] { return !saves_doing_.contains(id) || stopping.load(std::memory_order_relaxed); });
+  return !stopping.load(std::memory_order_relaxed);
+}
+
 Result<json> Services::BackUpSaves(const std::string& id, std::string_view reason) {
   const auto claim = Claim(id, "saves");
   if (!claim) return std::unexpected(claim.error());
   const auto game = games.Find(id);
   if (!game) return Err("game_not_found", "no such game");
+  const SavesWork work(*this, id, "backing_up");
   CheckSaveManifest();
   auto taken =
       saves::TakeSnapshot(config, *game, saves::SurveyFor(config, games.Metadata(), *game), reason);
@@ -984,6 +1030,7 @@ Result<json> Services::RestoreSaves(const std::string& id, const std::string& sn
   const auto snapshot = saves::FindSnapshot(saves::GameBackups(config, id), snapshot_id);
   if (!snapshot) return Err("snapshot_not_found", "no such backup");
 
+  const SavesWork work(*this, id, "restoring");
   auto before = saves::TakeSnapshot(
       config, *game, saves::SurveyFor(config, games.Metadata(), *game), saves::kBeforeRestore);
   if (!before && before.error().code != "saves_not_found") return std::unexpected(before.error());
@@ -995,36 +1042,70 @@ Result<json> Services::RestoreSaves(const std::string& id, const std::string& sn
               {"undo", before ? (*before)["snapshot"]["id"] : json(nullptr)}};
 }
 
-void Services::BackUpSavesAfterPlay(const std::string& id, std::function<void()> then) {
+void Services::SavesBeforeLaunch(const model::Game& game) {
+  // A first backup, so even the first session can be undone. Looked at once a run: a game with
+  // none found then gets its first backup after play, and the survey would slow every launch.
+  bool looked = false;
+  {
+    const std::lock_guard lock(first_backups_mutex_);
+    looked = !first_backups_.insert(game.id).second;
+  }
+  if (looked || !saves::PlanFor(config, game, std::nullopt).backup ||
+      !saves::ListSnapshots(saves::GameBackups(config, game.id)).empty())
+    return;
+  const saves::Survey survey = saves::SurveyFor(config, games.Metadata(), game);
+  if (!survey.plan.backup) return;
+  const SavesWork work(*this, game.id, "backing_up");
+  if (auto taken = saves::TakeSnapshot(config, game, survey, saves::kFirst);
+      taken && taken->value("taken", false))
+    events.Publish("game.saves_changed", {{"id", game.id}});
+  else if (!taken && taken.error().code != "saves_not_found")
+    log::Warn("couldn't back up {}'s saves before playing: {}", game.id, taken.error().message);
+}
+
+void Services::SavesAfterPlay(const std::string& id, std::function<void()> then) {
   const auto game = games.Find(id);
   if (!game || !saves::PlanFor(config, *game, std::nullopt).backup) return then();
-  saves.Post([this, id, then = std::move(then)] {
+  // Shown from the game's exit, so a client never sees it idle while the work waits its turn on
+  // the lane.
+  auto work = std::make_shared<const SavesWork>(*this, id, "backing_up");
+  saves.Post([this, id, then = std::move(then), work = std::move(work)]() mutable {
     struct Finally {
       const std::function<void()>& run;
       ~Finally() { run(); }
     } finally{then};
+    const std::shared_ptr<const SavesWork> held = std::move(work);  // ends before `then` runs
     const auto game = games.Find(id);
     if (!game) return;
-    // The plan again, now with the entry: Steam Cloud is only known from it.
-    if (!saves::PlanFor(config, *game, saves::FindEntry(config, games.Metadata(), *game)).backup)
-      return;
-    auto taken = BackUpSaves(id, saves::kAfterPlay);
-    if (!taken && (taken.error().code == "saves_not_found" || taken.error().code == "cancelled" ||
-                   taken.error().code == "game_running" || taken.error().code == "game_busy"))
-      return;
-    const std::filesystem::path dir = saves::GameBackups(config, id);
-    const json before = saves::LastFailure(dir);
-    if (taken) {
-      if (!before.is_null()) {
-        saves::RecordFailure(dir, std::nullopt);
-        events.Publish("game.saves_changed", {{"id", id}});
-      }
-      return;
-    }
-    log::Warn("couldn't back up {}'s saves: {}", id, taken.error().message);
-    saves::RecordFailure(dir, taken.error());
-    events.Publish("game.saves_changed", {{"id", id}});
+    BackUpAfterPlay(*game);
   });
+}
+
+void Services::BackUpAfterPlay(const model::Game& game) {
+  // Surveyed before claiming the game, so one with no saves found never holds up its next launch.
+  // The plan again, now with the entry: Steam Cloud is only known from it.
+  const saves::Survey survey = saves::SurveyFor(config, games.Metadata(), game);
+  if (!survey.plan.backup || std::ranges::all_of(survey.locations, [](const saves::Location& at) {
+        return at.files.empty();
+      }))
+    return;
+  auto taken = BackUpSaves(game.id, saves::kAfterPlay);
+  if (!taken && (taken.error().code == "saves_not_found" || taken.error().code == "cancelled" ||
+                 taken.error().code == "game_running" || taken.error().code == "game_busy" ||
+                 taken.error().code == "saves_busy"))
+    return;
+  const std::filesystem::path dir = saves::GameBackups(config, game.id);
+  const json before = saves::LastFailure(dir);
+  if (taken) {
+    if (!before.is_null()) {
+      saves::RecordFailure(dir, std::nullopt);
+      events.Publish("game.saves_changed", {{"id", game.id}});
+    }
+    return;
+  }
+  log::Warn("couldn't back up {}'s saves: {}", game.id, taken.error().message);
+  saves::RecordFailure(dir, taken.error());
+  events.Publish("game.saves_changed", {{"id", game.id}});
 }
 
 void Services::StartShared(const model::Game& game, const Command& command) {

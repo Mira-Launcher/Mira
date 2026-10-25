@@ -63,6 +63,16 @@ struct Location {
 // placeholder this game has no folder for.
 std::vector<std::string> Expand(std::string_view location, const Roots& roots);
 
+// A folder's path as a glob matching only itself: `*`, `?` and `[` bracketed.
+std::string Escape(const std::filesystem::path& path);
+
+// An absolute `path` (a glob pattern, folders escaped) written against the game's own folders where
+// it lies in one, so it follows the game when it moves: "<base>/..." in its install folder,
+// "<home>/..." in a Windows game's prefix user folder or a native game's home folder,
+// "<prefix>/..." elsewhere in its prefix. The deepest folder wins; anything else is returned as it
+// is.
+std::string Shorten(std::string_view path, const Roots& roots);
+
 // The files at `location`. A folder that matches brings every file under it. Symlinks are
 // followed while matching the location's own folders, never inside a save folder, and Wine's
 // dosdevices is never entered. Files outside every logical root are left out.

@@ -1025,12 +1025,13 @@ Schema::Schema() {
   s.Add({.key = "saves.max_mb",
          .label = "Largest backup (MB)",
          .type = Type::Int,
-         .default_value = 1024,
+         .default_value = 512,
          .scope = Scope::PerGame,
          .doc = "A game whose saves are bigger than this isn't backed up, since its save "
                 "locations most likely take more than saves.",
-         .constraint = Range(1, 1048576),
-         .keywords = "backup size limit"});
+         .constraint = Range(1, 102400),
+         .keywords = "backup size limit",
+         .old_defaults = {1024}});
 
   s.Add({.key = "saves.backup_root",
          .label = "Backup folder",
@@ -1048,7 +1049,9 @@ Schema::Schema() {
          .scope = Scope::GameOnly,
          .doc = "Files or folders this game keeps saves in that Mira doesn't know about. "
                 "Wildcards (*) work, and so do the save locations list's folder names, such as "
-                "<base> for the game's folder or <winAppData> for its prefix's AppData/Roaming.",
+                "<base> for the game's folder, <prefix> for its Wine prefix or <winAppData> for "
+                "its prefix's AppData/Roaming. A folder inside one of these is saved that way, "
+                "so it follows the game when it moves.",
          .keywords = "backup custom"});
 
   s.Group("Where saves are", Sections::Fold::Collapsed);

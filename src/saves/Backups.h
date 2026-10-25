@@ -37,6 +37,7 @@ struct Snapshot {
   std::string entry{};
   std::vector<SnapshotFile> files{};
   std::uintmax_t bytes = 0;
+  bool pinned = false;  // kept whatever saves.keep says, and not counted by it
 };
 
 // Where backups go: saves.backup_root, or "saves" in the first of mira_folders.
@@ -46,7 +47,7 @@ std::filesystem::path GameBackups(const config::Config& config, std::string_view
 
 // A game's snapshots in `dir` (GameBackups), newest first. Unreadable ones are left out.
 std::vector<Snapshot> ListSnapshots(const std::filesystem::path& dir);
-// {id, taken_at, reason, files, bytes}, as GET /v1/games/{id}/saves lists it.
+// {id, taken_at, reason, files, bytes, pinned}, as GET /v1/games/{id}/saves lists it.
 nlohmann::json SnapshotJson(const Snapshot& snapshot);
 
 // Copies the files `survey` found into a new snapshot of `game`, unless they are the newest
@@ -70,6 +71,10 @@ std::optional<Snapshot> FindSnapshot(const std::filesystem::path& dir, std::stri
 // before_restore snapshot first.
 Result<void> RestoreSnapshot(const config::Config& config, const model::Game& game,
                              const Snapshot& snapshot);
+
+// Pins one snapshot, so pruning never takes it, or unpins it. Errs snapshot_not_found.
+Result<void> PinSnapshot(const config::Config& config, std::string_view game_id,
+                         std::string_view id, bool pinned);
 
 // Deletes one snapshot. Errs snapshot_not_found.
 Result<void> DeleteSnapshot(const config::Config& config, std::string_view game_id,

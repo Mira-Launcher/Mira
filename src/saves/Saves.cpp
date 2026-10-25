@@ -53,6 +53,8 @@ json Overview(const config::Config& config, const store::MetadataStore& cache,
                  {"locations", json::array()},
                  {"snapshots", json::array()}};
   bool found = false;
+  const std::vector<std::string> extra =
+      config::Resolver(config, game.overrides).GetStringArray("saves.extra_paths");
   for (const Location& location : survey.locations) {
     std::uintmax_t bytes = 0;
     for (const SaveFile& file : location.files) bytes += file.bytes;
@@ -60,7 +62,8 @@ json Overview(const config::Config& config, const store::MetadataStore& cache,
                  {"path", location.path},
                  {"files", location.files.size()},
                  {"bytes", bytes},
-                 {"skipped", location.skipped}};
+                 {"skipped", location.skipped},
+                 {"extra", std::ranges::contains(extra, location.pattern)}};
     if (!location.problem.empty()) item["problem"] = location.problem;
     answer["locations"].push_back(std::move(item));
     found = found || !location.files.empty();
@@ -70,6 +73,8 @@ json Overview(const config::Config& config, const store::MetadataStore& cache,
   for (const Snapshot& snapshot : snapshots) answer["snapshots"].push_back(SnapshotJson(snapshot));
   if (json failure = LastFailure(dir); !failure.is_null())
     answer["last_error"] = std::move(failure);
+  const Roots roots = RootsFor(config, game);
+  answer["folders"] = {{"install", roots.install.string()}, {"prefix", roots.prefix.string()}};
 
   if (!survey.plan.backup)
     answer["status"] = survey.plan.status;

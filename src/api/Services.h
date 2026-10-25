@@ -239,10 +239,17 @@ class Services {
   // what's there now. {restored, files, undo}: `undo` is the snapshot holding what was replaced
   // (null when there were no saves). Errs snapshot_not_found and saves::RestoreSnapshot's errors.
   Result<nlohmann::json> RestoreSaves(const std::string& id, const std::string& snapshot);
-  // After a session ends: BackUpSaves on the saves lane when the game's saves are backed up,
-  // keeping a failure for GET /v1/games/{id}/saves to show. `then` runs once it's done (or at
-  // once when nothing is backed up), so a move of the game's folder can't take its claim first.
-  void BackUpSavesAfterPlay(const std::string& id, std::function<void()> then);
+  // What's being done with a game's saves now: "backing_up", "restoring", or "".
+  std::string SavesDoing(const std::string& id);
+  // Blocks until nothing is being done with the game's saves, so a launch right after a session
+  // waits for its backup; that work ends on its own. False when mirad began stopping.
+  bool WaitForSavesWork(const std::string& id);
+  // Before a launch, under its claim: a first backup for a game that has none.
+  void SavesBeforeLaunch(const model::Game& game);
+  // After a session ends, on the saves lane: the after-play backup, keeping a failure for
+  // GET /v1/games/{id}/saves to show. `then` runs once it's done, so a move of the game's folder
+  // can't take its claim first.
+  void SavesAfterPlay(const std::string& id, std::function<void()> then);
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
@@ -265,6 +272,21 @@ class Services {
   void StartExternalWatch();
 
  private:
+  // Marks what's being done with a game's saves (SavesDoing) for as long as it lives, publishing
+  // game.saves_activity {id, doing} as it starts and as it ends; overlapping work shows the newest.
+  class SavesWork {
+   public:
+    SavesWork(Services& services, std::string id, std::string doing);
+    ~SavesWork();
+    SavesWork(const SavesWork&) = delete;
+    SavesWork& operator=(const SavesWork&) = delete;
+
+   private:
+    Services& services_;
+    std::string id_;
+  };
+  // The after-play backup, keeping its failure for the game's saves.
+  void BackUpAfterPlay(const model::Game& game);
   void WatchExternalGames();
   // Locks hidden games once hidden.lock_after_minutes pass with no one using Mira and no game
   // running.
@@ -288,6 +310,16 @@ class Services {
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
 
   std::mutex save_manifest_mutex_;  // so two requests don't both start an update
+  // Games looked at for a first backup this run, so later launches skip the survey.
+  std::mutex first_backups_mutex_;
+  std::set<std::string> first_backups_;
+  // Held from a change to saves_doing_ through its game.saves_activity, so clients get them in
+  // order: a launch's work starting can't be announced before the previous work's end.
+  std::mutex saves_activity_mutex_;
+  std::mutex saves_doing_mutex_;
+  // Each game's SavesWork and what it does, newest last.
+  std::map<std::string, std::vector<std::pair<const SavesWork*, std::string>>> saves_doing_;
+  std::condition_variable saves_done_;  // a game's saves_doing_ emptied
   std::mutex exit_files_mutex_;
   std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 
