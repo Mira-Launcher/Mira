@@ -528,6 +528,13 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendError(res, 400, "invalid_body", R"("option" must be a launch option's id)");
     }
     const std::string chosen = body.value("option", std::string());
+    // How a cloud save conflict is settled for this launch.
+    const std::string saves_choice = core::JsonString(body, "saves");
+    if (body.contains("saves") &&
+        (saves_choice != "keep_local" && saves_choice != "use_cloud" && saves_choice != "skip")) {
+      return SendError(res, 400, "invalid_body",
+                       R"("saves" must be "keep_local", "use_cloud" or "skip")");
+    }
     std::optional<library::LaunchOption> option =
         chosen.empty() ? library::DefaultLaunch(*game) : library::FindLaunchOption(*game, chosen);
     if (!chosen.empty() && chosen != library::kGameLaunch && !option) {
@@ -545,8 +552,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
 
     // An app that's already open is handed the documents anyway; the running one stays tracked.
-    // Played again right after exiting: its saves are backed up first, which game.saves_activity
-    // tells clients.
+    // Played again right after exiting: its saves are backed up and synced first, which
+    // game.saves_activity tells clients.
     if (!s.WaitForSavesWork(game->id))
       return SendError(res, 503, "shutting_down", "mirad is stopping");
     const auto reservation = s.supervisor.Reserve(game->id);
@@ -560,7 +567,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendError(res, 409, "already_running",
                        std::format("\"{}\" is already running", game->id));
     }
-    if (reservation) s.SavesBeforeLaunch(*game);
+    if (reservation) {
+      if (auto ready = s.SavesBeforeLaunch(*game, saves_choice); !ready)
+        return SendError(res, 409, ready.error());
+    }
 
     if (const launchers::Launcher* launcher = launchers::ForGame(*game);
         reservation && launcher && launcher->services_outlive_app && !game->data_dir.empty() &&

@@ -1,7 +1,11 @@
 #include "saves/Saves.h"
 
+#include <algorithm>
+
 #include "config/Resolver.h"
+#include "core/Strings.h"
 #include "saves/Backups.h"
+#include "saves/Cloud.h"
 
 namespace mira::saves {
 namespace {
@@ -38,14 +42,27 @@ Survey SurveyFor(const config::Config& config, const store::MetadataStore& cache
   for (std::string& extra :
        config::Resolver(config, game.overrides).GetStringArray("saves.extra_paths"))
     patterns.push_back(std::move(extra));
-  for (const std::string& pattern : patterns) survey.locations.push_back(Find(pattern, roots));
+  for (std::string& cloud : CachedCloudPatterns(cache, game))
+    if (!std::ranges::contains(patterns, cloud)) patterns.push_back(std::move(cloud));
+  for (const std::string& pattern : patterns) {
+    Location location = Find(pattern, roots);
+    // The list, the user and a store can each name the same folder, spelled differently.
+    const auto key = [&](const std::string& path) {
+      return roots.windows ? strings::ToLower(path) : path;
+    };
+    if (!location.path.empty() && std::ranges::any_of(survey.locations, [&](const Location& seen) {
+          return key(seen.path) == key(location.path);
+        }))
+      continue;
+    survey.locations.push_back(std::move(location));
+  }
   const json registry = entry.value("registry", json::object());
   survey.registry = registry.is_object() && !registry.empty();
   return survey;
 }
 
 json Overview(const config::Config& config, const store::MetadataStore& cache,
-              const model::Game& game) {
+              const store::GameStore& games, const model::Game& game) {
   const Survey survey = SurveyFor(config, cache, game);
   json answer = {{"enabled", survey.plan.status != "off"},
                  {"entry", survey.match ? json(survey.match->entry.name) : json(nullptr)},
@@ -73,6 +90,7 @@ json Overview(const config::Config& config, const store::MetadataStore& cache,
   for (const Snapshot& snapshot : snapshots) answer["snapshots"].push_back(SnapshotJson(snapshot));
   if (json failure = LastFailure(dir); !failure.is_null())
     answer["last_error"] = std::move(failure);
+  answer["cloud"] = CloudOverview(config, cache, games, game);
   const Roots roots = RootsFor(config, game);
   answer["folders"] = {{"install", roots.install.string()}, {"prefix", roots.prefix.string()}};
 

@@ -32,6 +32,16 @@ struct PlaySession {
   bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
 };
 
+// One cloud save location's state, as saves::Cloud last checked and synced it.
+struct CloudSync {
+  std::string location;
+  std::string state{};            // the last check's classification (saves::kSynced, ...)
+  std::int64_t synced_at = 0;     // the cloud's newest time once last in sync (unix ns); 0 never
+  std::int64_t cloud_newest = 0;  // the cloud's newest time at the last check (unix ns)
+  std::string local_marker{};     // the local files when last in sync (saves::LocalMarker)
+  std::int64_t checked_at = 0;    // unix seconds
+};
+
 // A source's place in Mira: whether it's set up, on, in the sidebar and where.
 struct SourceState {
   std::string id;
@@ -162,6 +172,11 @@ class GameStore {
   // Whether `key` is one of HiddenKeys(), without copying any.
   bool IsHiddenKey(const std::string& key) const;
   Result<void> SetTitlesHidden(const std::vector<std::string>& keys, bool hidden);
+
+  // Cloud save state per location (saves::Cloud), kept on a plain removal and dropped with
+  // `forget`.
+  std::vector<CloudSync> CloudSyncs(const std::string& id) const;
+  Result<void> SetCloudSync(const std::string& id, const CloudSync& state);
 
   // A value stored outside settings.toml, which clients can read; "" when unset. Setting "" removes
   // it.

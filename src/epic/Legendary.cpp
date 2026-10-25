@@ -118,6 +118,12 @@ runner::AuthStatus Status(const config::Config& config) {
   return status;
 }
 
+std::string AccountId() {
+  std::ifstream file(LegendaryConfigDir() / "user.json");
+  const json user = json::parse(file, nullptr, false);
+  return user.is_object() ? user.value("account_id", std::string()) : std::string();
+}
+
 Result<void> CheckReady(const config::Config& config) {
   return runner::CheckStoreReady(kTool, Status(config));
 }

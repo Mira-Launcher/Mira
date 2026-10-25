@@ -15,7 +15,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 6> kMigrations = {
+constexpr std::array<std::string_view, 7> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -87,6 +87,14 @@ CREATE TABLE save_ids(
   name TEXT NOT NULL
 ) STRICT;
 CREATE INDEX save_ids_ref ON save_ids(generation, kind, ref, name);
+)sql",
+    // Where each GOG or Epic game keeps its cloud saves, as its store last said.
+    R"sql(
+CREATE TABLE cloud_saves(
+  id TEXT PRIMARY KEY,
+  fetched_at INTEGER NOT NULL,
+  json TEXT NOT NULL CHECK(json_valid(json))
+) STRICT;
 )sql",
 };
 
@@ -286,13 +294,38 @@ Result<void> MetadataStore::WriteAchievements(const std::string& id, std::int64_
       .Run();
 }
 
-void MetadataStore::DropAchievementsLocked(const std::string& id) {
+void MetadataStore::DropGameRowsLocked(const std::string& id) {
   if (!db_.IsOpen()) return;
-  if (auto remove = db_.Prepare("DELETE FROM achievements WHERE id = ?")) {
-    if (auto done = remove->Bind(1, id).Run(); !done) {
-      log::Warn("could not drop {}'s achievements: {}", id, done.error().message);
+  for (const char* table : {"achievements", "cloud_saves"}) {
+    if (auto remove = db_.Prepare(std::format("DELETE FROM {} WHERE id = ?", table))) {
+      if (auto done = remove->Bind(1, id).Run(); !done) {
+        log::Warn("could not drop {}'s {}: {}", id, table, done.error().message);
+      }
     }
   }
+}
+
+json MetadataStore::ReadCloudSaves(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return json();
+  auto select = db_.Prepare("SELECT fetched_at, json FROM cloud_saves WHERE id = ?");
+  if (!select) return json();
+  auto row = select->Bind(1, id).Step();
+  if (!row || !*row) return json();
+  json value = json::parse(select->Text(1), nullptr, false);
+  if (!value.is_object()) return json();
+  value["fetched_at"] = select->Int(0);
+  return value;
+}
+
+Result<void> MetadataStore::WriteCloudSaves(const std::string& id, const json& value) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
+  auto upsert = db_.Prepare(
+      "INSERT INTO cloud_saves(id, fetched_at, json) VALUES(?, ?, ?) "
+      "ON CONFLICT(id) DO UPDATE SET fetched_at = excluded.fetched_at, json = excluded.json");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id).Bind(2, model::NowSeconds()).Bind(3, value.dump()).Run();
 }
 
 Result<void> MetadataStore::ReplaceSaveEntries(std::span<const SaveEntry> entries) {
@@ -609,7 +642,7 @@ void MetadataStore::Remove(const std::string& id) {
     std::lock_guard lock(mutex_);
     versions_.erase(id);
     tiers_.erase(id);
-    DropAchievementsLocked(id);
+    DropGameRowsLocked(id);
     if (db_.IsOpen()) {
       if (auto remove = db_.Prepare("DELETE FROM metadata WHERE id = ?")) {
         if (auto done = remove->Bind(1, id).Run(); !done) {
@@ -635,7 +668,7 @@ void MetadataStore::KeepPicks(const std::string& id) {
   if (kept.empty()) return Remove(id);
   {
     std::lock_guard lock(mutex_);
-    DropAchievementsLocked(id);
+    DropGameRowsLocked(id);
   }
   if (auto written = Write(id, kept); !written) {
     log::Warn("could not trim {}'s metadata: {}", id, written.error().message);

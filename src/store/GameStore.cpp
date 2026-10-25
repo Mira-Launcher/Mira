@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 8> kMigrations = {
+constexpr std::array<std::string_view, 9> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -150,6 +150,19 @@ CREATE TABLE IF NOT EXISTS removed_games(
   removed_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS removed_games_install_path ON removed_games(install_path);
+)sql",
+    R"sql(
+-- Each cloud save location's state as of its last check and sync (saves::Cloud).
+CREATE TABLE IF NOT EXISTS cloud_sync(
+  game_id TEXT NOT NULL,
+  location TEXT NOT NULL,
+  state TEXT NOT NULL,
+  synced_at INTEGER NOT NULL,
+  cloud_newest INTEGER NOT NULL,
+  local_marker TEXT NOT NULL,
+  checked_at INTEGER NOT NULL,
+  PRIMARY KEY(game_id, location)
+) STRICT;
 )sql",
 };
 
@@ -342,6 +355,43 @@ Result<void> GameStore::WriteTitleHidden(const std::string& key, bool hidden) {
                                       : "DELETE FROM hidden_titles WHERE id = ?");
   if (!statement) return std::unexpected(statement.error());
   return statement->Bind(1, key).Run();
+}
+
+std::vector<CloudSync> GameStore::CloudSyncs(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  std::vector<CloudSync> rows;
+  auto select = db_.Prepare(
+      "SELECT location, state, synced_at, cloud_newest, local_marker, checked_at FROM cloud_sync "
+      "WHERE game_id = ? ORDER BY location");
+  if (!select) return rows;
+  select->Bind(1, id);
+  while (true) {
+    const auto row = select->Step();
+    if (!row || !*row) break;
+    rows.push_back({.location = select->Text(0),
+                    .state = select->Text(1),
+                    .synced_at = select->Int(2),
+                    .cloud_newest = select->Int(3),
+                    .local_marker = select->Text(4),
+                    .checked_at = select->Int(5)});
+  }
+  return rows;
+}
+
+Result<void> GameStore::SetCloudSync(const std::string& id, const CloudSync& state) {
+  std::lock_guard lock(mutex_);
+  auto upsert = db_.Prepare(
+      "INSERT OR REPLACE INTO cloud_sync(game_id, location, state, synced_at, cloud_newest, "
+      "local_marker, checked_at) VALUES(?, ?, ?, ?, ?, ?, ?)");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id)
+      .Bind(2, state.location)
+      .Bind(3, state.state)
+      .Bind(4, state.synced_at)
+      .Bind(5, state.cloud_newest)
+      .Bind(6, state.local_marker)
+      .Bind(7, state.checked_at)
+      .Run();
 }
 
 std::string GameStore::Secret(const std::string& key) const {
@@ -957,9 +1007,12 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
         if (auto kept = KeepRecord(game); !kept) return kept;
         continue;
       }
-      auto drop = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
-      if (!drop) return std::unexpected(drop.error());
-      if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+      for (const char* sql :
+           {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?"}) {
+        auto drop = db_.Prepare(sql);
+        if (!drop) return std::unexpected(drop.error());
+        if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+      }
     }
     for (const std::string& id : removed) {
       if (auto done = Delete(id); !done) return done;

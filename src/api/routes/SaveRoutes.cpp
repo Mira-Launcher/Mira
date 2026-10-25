@@ -25,7 +25,7 @@ void RegisterSaveRoutes(Router& http, Services& s) {
     const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     s.CheckSaveManifest();
-    json answer = saves::Overview(s.config, s.games.Metadata(), *game);
+    json answer = saves::Overview(s.config, s.games.Metadata(), s.games, *game);
     answer["doing"] = s.SavesDoing(game->id);
     SendJson(res, answer);
   });
@@ -52,6 +52,32 @@ void RegisterSaveRoutes(Router& http, Services& s) {
     s.StartJob(
         req, res, "saves", id, std::format("Restoring {}'s saves", game->name),
         [&s, id, snapshot](JobRegistry::Progress&) { return s.RestoreSaves(id, snapshot); },
+        &s.saves);
+  });
+
+  http.Post(R"(/v1/games/([^/]+)/saves/cloud)", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape = R"({"action": "check" | "sync" | "download" | "upload"})";
+    const std::string id = req.matches[1];
+    const auto game = s.games.Find(id);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    static const std::map<std::string, saves::CloudAction> kActions = {
+        {"check", saves::CloudAction::Check},
+        {"sync", saves::CloudAction::Sync},
+        {"download", saves::CloudAction::Download},
+        {"upload", saves::CloudAction::Upload}};
+    const auto action = kActions.find(body->value("action", std::string()));
+    if (action == kActions.end())
+      return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    if (saves::CloudFor(*game) == nullptr)
+      return SendError(res, 409, "cloud_unsupported",
+                       std::format("{} has no cloud saves Mira syncs.", game->name));
+    s.StartJob(
+        req, res, "saves", id, std::format("Syncing {}'s saves", game->name),
+        [&s, id, action = action->second](JobRegistry::Progress&) {
+          return s.SyncCloudSaves(id, action);
+        },
         &s.saves);
   });
 

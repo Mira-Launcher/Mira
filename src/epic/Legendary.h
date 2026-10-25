@@ -77,6 +77,10 @@ runner::AuthStatus Status(const config::Config& config);
 // Ok when the tool is installed and the account signed in, else the error that says what to set up.
 Result<void> CheckReady(const config::Config& config);
 
+// The signed-in Epic account's id (legendary's user.json), "" when signed out: Epic's {epicid} in
+// save locations.
+std::string AccountId();
+
 // Runs `legendary auth --code <code>`, the headless login path (see
 // kLoginUrl's comment): the user visits kLoginUrl in their own browser,
 // pastes back the code it shows. Err("legendary_missing", ...) if legendary
