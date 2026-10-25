@@ -185,6 +185,34 @@ GameSessionsResult GetGameSessionsSync(const std::string& id, int limit) {
       });
 }
 
+AchievementsResult GetAchievementsSync(const std::string& id) {
+  const transport::Reply reply = transport::Get("/v1/games/" + PercentEncode(id) + "/achievements");
+  if (reply.status == 404 && reply.error.code == "no_achievements") {
+    AchievementsResult result;
+    result.missing = true;
+    return result;
+  }
+  return ReadReply<AchievementsResult>(
+      reply, "GET /v1/games/" + id + "/achievements", Shape::Object,
+      [](AchievementsResult& result, const json& body) {
+        result.source = body.value("source", std::string());
+        result.fetched_at = body.value("fetched_at", std::int64_t{0});
+        result.total = body.value("total", 0);
+        result.unlocked = body.value("unlocked", 0);
+        for (const json& item : body.value("items", json::array())) {
+          if (!item.is_object()) continue;
+          result.items.push_back({.key = item.value("key", std::string()),
+                                  .name = item.value("name", std::string()),
+                                  .description = item.value("description", std::string()),
+                                  .hidden = item.value("hidden", false),
+                                  .unlocked = item.value("unlocked", false),
+                                  .unlocked_at = item.value("unlocked_at", std::int64_t{0}),
+                                  .rarity = item.value("rarity", -1.0),
+                                  .icon = item.value("icon", std::string())});
+        }
+      });
+}
+
 TricksResult RunWinetricksSync(const std::string& id, const std::string& verb) {
   const transport::Reply reply =
       transport::PostJson("/v1/games/" + PercentEncode(id) + "/tricks", json{{"verb", verb}});
@@ -304,6 +332,25 @@ void PatchGamesAsync(QObject* context, const GamesPatch& patch,
 void GetGameSessionsAsync(QObject* context, const std::string& id, int limit,
                           std::function<void(GameSessionsResult)> callback) {
   async::Run(context, [id, limit] { return GetGameSessionsSync(id, limit); }, std::move(callback));
+}
+
+void GetAchievementsAsync(QObject* context, const std::string& id,
+                          std::function<void(AchievementsResult)> callback) {
+  async::Run(context, [id] { return GetAchievementsSync(id); }, std::move(callback));
+}
+
+void RefreshAchievementsAsync(QObject* context, const std::string& id,
+                              std::function<void(AchievementsRefreshResult)> callback) {
+  RunJob<AchievementsRefreshResult>(
+      context, "achievements",
+      [id](const std::string& query) {
+        return transport::Post("/v1/games/" + PercentEncode(id) + "/achievements/refresh" + query);
+      },
+      [](AchievementsRefreshResult& result, const json& body) {
+        result.total = body.value("total", 0);
+        result.unlocked = body.value("unlocked", 0);
+      },
+      std::move(callback));
 }
 
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,

@@ -448,14 +448,20 @@ void SourcePage::resizeEvent(QResizeEvent* event) {
 
 void SourcePage::FillMoreMenu(QMenu* menu) {
   menu->clear();
-  const QString tool = CopyFor(id_).tool;
   if (IsStore() && tool_installed_) {
-    const QString version =
-        tool_version_.empty() ? QString() : " (" + QString::fromStdString(tool_version_) + ")";
-    QAction* update = menu->addAction(icons::For(icons::Glyph::Download),
-                                      "Update " + tool + version, this, &SourcePage::UpdateTool);
+    const auto versioned = [](const QString& name, const std::string& version) {
+      return version.empty() ? name : name + " (" + QString::fromStdString(version) + ")";
+    };
+    QString text = "Update " + versioned(CopyFor(id_).tool, tool_version_);
+    if (!helper_name_.empty()) {
+      const QString helper = QString::fromStdString(helper_name_);
+      text += helper_installed_ ? " and " + versioned(helper, helper_version_)
+                                : " and download " + helper;
+    }
+    QAction* update =
+        menu->addAction(icons::For(icons::Glyph::Download), text, this, &SourcePage::UpdateTool);
     update->setEnabled(!tool_updating_);
-    update->setToolTip("Download the latest release of " + tool + " again.");
+    update->setToolTip("Download the latest release of " + ToolNames() + " again.");
   }
   if (IsLauncher() || IsStore()) {
     menu->addAction("View setup log", this, [this] {
@@ -520,6 +526,11 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
   if (menu->isEmpty()) menu->addAction("Nothing to manage until it's set up")->setEnabled(false);
 }
 
+QString SourcePage::ToolNames() const {
+  const QString tool = CopyFor(id_).tool;
+  return helper_name_.empty() ? tool : tool + " and " + QString::fromStdString(helper_name_);
+}
+
 void SourcePage::UpdateTool() {
   tool_updating_ = true;
   UpdateStatusLine();
@@ -530,7 +541,7 @@ void SourcePage::UpdateTool() {
     }
     tool_updating_ = false;
     UpdateStatusLine();
-    setup_card_->ShowError("Could not update " + CopyFor(id_).tool + ".", result.error);
+    setup_card_->ShowError("Could not update " + ToolNames() + ".", result.error);
   });
 }
 
@@ -968,6 +979,9 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
   const bool was_authenticated = authenticated_;
   tool_installed_ = status.tool_installed;
   tool_version_ = status.tool_version;
+  helper_name_ = status.helper_name;
+  helper_installed_ = status.helper_installed;
+  helper_version_ = status.helper_version;
   authenticated_ = status.authenticated;
   account_ = status.account;
   setup_card_->ShowStore(tool_installed_, authenticated_);
@@ -1016,7 +1030,7 @@ void SourcePage::UpdateStatusLine() {
   QStringList parts;
   if (IsStore()) {
     if (tool_updating_) {
-      parts << StatusDot(tokens.info) + "Updating " + CopyFor(id_).tool + "…";
+      parts << StatusDot(tokens.info) + "Updating " + ToolNames() + "…";
     } else if (!tool_installed_) {
       parts << StatusDot(tokens.warning) + "Not set up";
     } else if (!authenticated_) {

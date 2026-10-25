@@ -390,6 +390,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   emit Loaded(QString::fromStdString(game.name));
 
   install_path_ = game.install_path;
+  source_ = game.source;
   windows_ = game.platform == "windows";
   noun_ = std::ranges::contains(game.tags, tags::kApp) ? "app" : "game";
   move_button_->setToolTip("Move this " + noun_ + "'s files to another folder");
@@ -488,7 +489,9 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
       env[key] = value.is_string() ? value.get<std::string>() : value.dump();
   }
   env_edit_->SetValues(env);
-  launch_options_->SetLaunch(patch.launch.value_or(GameLaunch()), windows_, install_path_);
+  const SourceInfo* store = FindSourceInfo(QString::fromStdString(source_));
+  launch_options_->SetLaunch(patch.launch.value_or(GameLaunch()), windows_, install_path_,
+                             store != nullptr && store->signs_in ? store->name : QString());
 }
 
 std::string GameEditForm::RunnerKind() const {

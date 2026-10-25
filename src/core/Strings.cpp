@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <format>
 #include <regex>
 
@@ -277,6 +278,15 @@ std::optional<std::pair<std::string, std::string>> ParseGithubUrl(std::string_vi
 std::string GithubRepo(std::string_view text) {
   const auto parsed = ParseGithubUrl(text);
   return parsed ? parsed->first : std::string(text);
+}
+
+std::string StableHash(std::string_view text) {
+  std::uint64_t hash = 0xcbf29ce484222325ULL;
+  for (const unsigned char c : text) {
+    hash ^= c;
+    hash *= 0x100000001b3ULL;
+  }
+  return std::format("{:016x}", hash);
 }
 
 std::string EscapeUrl(std::string_view url) {

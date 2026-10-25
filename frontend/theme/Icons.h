@@ -61,6 +61,8 @@ enum class Glyph {
   Tag,
   Gamepad,
   Copy,
+  Trophy,
+  Lock,
 };
 
 // Drawn on demand in the current theme's text color, at the handful of sizes

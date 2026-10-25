@@ -101,6 +101,7 @@ class GameEditForm : public QWidget {
 
   std::string id_;
   std::string install_path_;
+  std::string source_;
   QString noun_ = "game";  // or "app"
   mira_gui::GamePatch original_patch_;
   std::string original_pick_;  // the game's folder tag pick as saved

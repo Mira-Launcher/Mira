@@ -1,5 +1,6 @@
 #include "GameCard.h"
 
+#include <QDateTime>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -14,6 +15,7 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../client/api/Games.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -22,6 +24,8 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Scrolling.h"
+#include "AchievementsPage.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
 
@@ -29,6 +33,14 @@ namespace mira_gui {
 
 namespace {
 constexpr std::size_t kPrefetchThumbs = 24;
+
+// "48 of 52 achievements", or which store has none for the game.
+QString AchievementsSummary(const AchievementsResult& result) {
+  if (result.total > 0)
+    return QString("%1 of %2 achievements").arg(result.unlocked).arg(result.total);
+  const SourceInfo* store = FindSourceInfo(QString::fromStdString(result.source));
+  return store != nullptr ? "No achievements on " + store->name : QString("No achievements");
+}
 }  // namespace
 
 GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStore* artwork,
@@ -120,6 +132,19 @@ void GameCard::Build(const GameSummary* title) {
   status_ = new QLabel(this);
   status_->setTextFormat(Qt::RichText);
   identity->addWidget(status_);
+  achievements_button_ = new QPushButton(this);
+  achievements_button_->setObjectName("achievements_summary");
+  achievements_button_->setCursor(Qt::PointingHandCursor);
+  // A click mustn't leave it lit as focused; Tab still reaches it.
+  achievements_button_->setFocusPolicy(Qt::TabFocus);
+  icons::Follow(achievements_button_, icons::Glyph::Trophy, &theme::Tokens::text_muted);
+  connect(achievements_button_, &QPushButton::clicked, this, &GameCard::OpenAchievements);
+  QSizePolicy keep = achievements_button_->sizePolicy();
+  keep.setRetainSizeWhenHidden(true);
+  achievements_button_->setSizePolicy(keep);
+  achievements_button_->hide();
+  // Only a game in the library has a summary line; a title's card is the art picker.
+  if (title == nullptr) identity->addWidget(achievements_button_, 0, Qt::AlignLeft);
   UpdateIdentity();
   // The cover, which the hero otherwise hides, and where a picked one previews.
   cover_ = new CoverChip(artwork_, this);
@@ -137,6 +162,13 @@ void GameCard::Build(const GameSummary* title) {
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
             if (live && form_ != nullptr && ChangesThisGame(type, data)) form_->Reload();
+            // After a session, or a refresh asked for elsewhere.
+            if (live && form_ != nullptr && type == "game.achievements_ready" &&
+                events::ParseGameId(data) == id_)
+              LoadAchievements(/*refresh=*/false);
+            if (live && form_ != nullptr && type == "config.changed" &&
+                std::ranges::contains(events::ParseChangedKeys(data), "achievements.enabled"))
+              LoadAchievements(/*refresh=*/true);
           });
   header->addWidget(cover_, 0, Qt::AlignBottom);
   header->addLayout(identity, /*stretch=*/1);
@@ -198,6 +230,7 @@ void GameCard::Build(const GameSummary* title) {
   tags.sort(Qt::CaseInsensitive);
   form_->SetTagSuggestions(tags);
   form_->SetTagOrder(TagOrder(library_->Games()));
+  LoadAchievements(/*refresh=*/true);
 
   connect(form_, &GameEditForm::Changed, this, [this] {
     if (!ArtPickerOpen()) UpdateBar();
@@ -238,6 +271,8 @@ void GameCard::Back() {
     RequestClose();
   } else if (ArtPickerOpen()) {
     CloseArtPicker();
+  } else if (AchievementsOpen()) {
+    CloseAchievements();
   } else if (form_->AdvancedOpen()) {
     form_->CloseAdvanced();
   } else {
@@ -401,6 +436,57 @@ void GameCard::UpdateIdentity() {
                        .arg(status_color.name(),
                             running ? RunningLabel(*game) : StatusLabel(game->status),
                             facts.join(" · ").toHtmlEscaped()));
+}
+
+void GameCard::LoadAchievements(bool refresh) {
+  api::GetAchievementsAsync(this, id_, [this, refresh](AchievementsResult result) {
+    // A game no store reads them for, or with them turned off, shows nothing.
+    if (!result.ok && !result.missing) {
+      achievements_.reset();
+      achievements_button_->hide();
+      CloseAchievements();
+      return;
+    }
+    if (result.ok) {
+      achievements_ = result;
+      achievements_button_->setText(AchievementsSummary(result));
+      achievements_button_->setEnabled(result.total > 0);
+      achievements_button_->setCursor(result.total > 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+      achievements_button_->show();
+      if (achievements_page_ != nullptr) achievements_page_->Show(result);
+      if (result.total == 0 && AchievementsOpen()) CloseAchievements();
+    }
+    constexpr std::int64_t kDay = 24 * 60 * 60;
+    const bool stale =
+        result.missing || QDateTime::currentSecsSinceEpoch() - result.fetched_at > kDay;
+    if (!refresh || !stale) return;
+    // Quiet: what changed shows when it lands, and a failure leaves what's cached.
+    api::RefreshAchievementsAsync(this, id_, [this](AchievementsRefreshResult refreshed) {
+      if (refreshed.ok) LoadAchievements(/*refresh=*/false);
+    });
+  });
+}
+
+void GameCard::OpenAchievements() {
+  if (!achievements_ || form_ == nullptr) return;
+  if (achievements_page_ == nullptr) {
+    achievements_page_ = new AchievementsPage(id_, stack_);
+    stack_->addWidget(achievements_page_);
+    connect(achievements_page_, &AchievementsPage::BackClicked, this, &GameCard::CloseAchievements);
+    achievements_page_->Show(*achievements_);
+  }
+  if (ArtPickerOpen()) CloseArtPicker();
+  stack_->setCurrentWidget(achievements_page_);
+  FocusPage(achievements_page_);
+}
+
+void GameCard::CloseAchievements() {
+  if (!AchievementsOpen()) return;
+  stack_->setCurrentWidget(form_);
+}
+
+bool GameCard::AchievementsOpen() const {
+  return achievements_page_ != nullptr && stack_->currentWidget() == achievements_page_;
 }
 
 bool GameCard::ChangesThisGame(const std::string& type, const std::string& data) const {

@@ -45,6 +45,8 @@ std::vector<LaunchOption> LaunchOptions(const model::Game& game) {
     option.exe = entry.value("exe", std::string());
     option.args = entry.value("args", std::string());
     option.native = entry.value("native", false);
+    if (const auto sign_in = entry.find("sign_in"); sign_in != entry.end() && sign_in->is_boolean())
+      option.sign_in = sign_in->get<bool>();
     if (!option.id.empty() && !option.exe.empty()) options.push_back(std::move(option));
   }
   return options;
@@ -67,6 +69,16 @@ std::optional<LaunchOption> DefaultLaunch(const model::Game& game) {
   return option;
 }
 
+bool SignsIn(const model::Game& game, const LaunchOption& option) {
+  if (option.sign_in) return *option.sign_in;
+  if (game.install_path.empty()) return false;
+  namespace fs = std::filesystem;
+  const fs::path dir = fs::path(game.install_path).lexically_normal();
+  const fs::path exe = (dir / FillLaunchPlaceholders(option.exe, game, false)).lexically_normal();
+  const fs::path inside = exe.lexically_relative(dir);
+  return !inside.empty() && *inside.begin() != "..";
+}
+
 std::optional<std::string> LaunchProblem(const json& launch) {
   if (!launch.is_object()) return "\"launch\" must be an object";
   if (launch.contains("default") && !launch["default"].is_string())
@@ -82,8 +94,10 @@ std::optional<std::string> LaunchProblem(const json& launch) {
       if (option.contains(key) && !option[key].is_string())
         return std::format("a launch option's \"{}\" must be a string", key);
     }
-    if (option.contains("native") && !option["native"].is_boolean())
-      return "a launch option's \"native\" must be true or false";
+    for (const char* key : {"native", "sign_in"}) {
+      if (option.contains(key) && !option[key].is_boolean())
+        return std::format("a launch option's \"{}\" must be true or false", key);
+    }
     if (option.value("name", std::string()).empty()) return "each launch option needs a name";
     if (option.value("exe", std::string()).empty()) return "each launch option needs an exe";
     if (!ModeFromString(option.value("mode", std::string("play")))) {

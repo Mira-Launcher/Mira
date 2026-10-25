@@ -143,7 +143,7 @@ Lists the stores: `epic`, `gog`, `itch`, `amazon` and `humble`. Each wraps a com
 - `logout` forgets the sign-in. Not for Humble.
 - `import` adds what the tool reports as installed, with the store as its source. Not for Humble. GOG only looks under `gog.install_root` (default `~/Mira/Games/GOG`).
 
-Epic wraps [Legendary](https://github.com/derrod/legendary), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
+Epic wraps [Legendary](https://github.com/legendary-gl/legendary) (which needs `python3`), GOG [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) (which needs `python3`), itch.io [butler](https://itch.io/docs/butler/) (`mirad` keeps one `butler daemon` connection open, so a change to `itch.butler_bin` needs a restart), Amazon [nile](https://github.com/imLinguin/nile) and Humble [humble-cli](https://github.com/smbl64/humble-cli). Install titles with `mira library install <source> <id>`.
 
 ### `mira store itch collections [list | add <link> | remove <id>]`
 Manages the collections whose games show in `mira library itch`: your own plus any added by link. Free games from them can be installed.
@@ -162,6 +162,9 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 `GET /v1/desktop-entries/candidates` / `POST /v1/desktop-entries/import`. Lists installed `.desktop` entries and adds the chosen ones as games.
 
 ## Metadata
+
+### `mira achievements <id> [--refresh]`
+`GET /v1/games/{id}/achievements`. Lists a Steam, GOG or Epic game's achievements as last checked, unlocked ones marked `[x]` with their date and rarity. `--refresh` asks the store again first and waits for it.
 
 ### `mira metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]`
 `GET /v1/games/{id}/metadata`. Prints the cached store info. `--refresh` fetches it again in the background. `--matches` lists SteamGridDB matches for the name, starred where the art comes from. `--wrong` moves to the next match, `--match N` picks one from the list (`0` is the top match) and `--match-id` takes a SteamGridDB id.

@@ -127,6 +127,14 @@ TEST_CASE("DownloadTracker shows a store install once, under the game's name") {
       "job.started",
       R"({"id": "setup-1", "kind": "setup", "target": "gog", "label": "Setting up gogdl"})");
   CHECK(tracker.Entries().size() == 2);
+
+  // Achievements refresh behind the game card, which shows them; a failure there isn't news.
+  tracker.HandleEvent("job.started", R"({"id": "achievements-1", "kind": "achievements",
+                                         "target": "gog-1207658924", "label": "x"})");
+  tracker.HandleEvent("job.failed", R"({"id": "achievements-1", "kind": "achievements",
+                                        "target": "gog-1207658924",
+                                        "error": {"code": "gog_api_error", "message": "x"}})");
+  CHECK(tracker.Entries().size() == 2);
 }
 
 TEST_CASE(

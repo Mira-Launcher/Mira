@@ -4,6 +4,7 @@
 #include "amazon/Nile.h"
 #include "epic/EpicImporter.h"
 #include "epic/Legendary.h"
+#include "gog/Comet.h"
 #include "gog/Gog.h"
 #include "gog/GogImporter.h"
 #include "humble/Humble.h"
@@ -27,7 +28,8 @@ std::vector<Store> BuildStores() {
        epic::Login, epic::FindCode, epic::Logout, ImportWith<epic::EpicImporter>},
       {"gog", "GOG", "gogdl", "gog", gog::InstallGogBinary, gog::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(gog::kLoginUrl); },
-       gog::Login, gog::FindCode, gog::Logout, ImportWith<gog::GogImporter>},
+       gog::Login, gog::FindCode, gog::Logout, ImportWith<gog::GogImporter>, "comet", "comet",
+       gog::InstallCometBinary, gog::DetectComet},
       {"amazon", "Amazon Games", "nile", "amazon", amazon::InstallNileBinary, amazon::Status,
        amazon::BeginLogin, amazon::FinishLogin, amazon::FindCode, amazon::Logout,
        ImportWith<amazon::AmazonImporter>},

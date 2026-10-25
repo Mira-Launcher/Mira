@@ -20,6 +20,11 @@ class GogSource : public library::ILibrarySource {
                        const std::string& ref) override;
   Result<void> Update(config::Config& config, store::GameStore& games, api::EventBus& events,
                       const std::string& ref) override;
+
+  // comet, while `gog.comet` is on for the game.
+  Result<library::LaunchExtras> BeforeLaunch(const config::Config& config, const model::Game& game,
+                                             bool sign_in) const override;
+  std::string SharedProgram() const override { return "comet"; }
 };
 
 }  // namespace mira::gog

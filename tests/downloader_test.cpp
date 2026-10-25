@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/StoreTool.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -63,6 +64,13 @@ TEST_CASE("InstallToolBinary installs a bare binary directly, renamed to binary_
 
   const auto perms = fs::status(*installed).permissions();
   CHECK((perms & fs::perms::owner_exec) != fs::perms::none);
+
+  // Its status names the release, not whatever the program prints for --version.
+  const runner::StoreTool tool = {
+      "gog", "GOG", "gogdl", "gog.gogdl_bin", [](const config::Config& settings) {
+        return settings.File().parent_path() / "tools" / "gog" / "gogdl";
+      }};
+  CHECK(runner::DetectTool(config, tool).version == "v1.0.0");
 }
 
 TEST_CASE("InstallToolBinary finds a binary nested inside a zip, alongside sibling files") {

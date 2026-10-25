@@ -39,6 +39,13 @@ struct Store {
   // Null when the store has nothing installed to import.
   Result<ImportSummary> (*import)(config::Config& config, store::GameStore& games,
                                   api::EventBus& events);
+
+  // A second tool set up and updated along with the first (GOG's comet); null when none.
+  const char* helper = nullptr;
+  const char* helper_release_kind = nullptr;
+  Result<void> (*install_helper)(const config::Config& config,
+                                 const runner::ReleaseAsset& asset) = nullptr;
+  runner::ToolStatus (*helper_status)(const config::Config& config) = nullptr;
 };
 
 const std::vector<Store>& AllStores();

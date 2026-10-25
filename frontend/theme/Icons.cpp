@@ -285,6 +285,24 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawPath(back);
       return;
     }
+    case Glyph::Trophy:
+      painter.drawPolyline(
+          QPolygonF({QPointF(5.0, 2.5), QPointF(5.0, 6.0), QPointF(5.4, 7.6), QPointF(6.5, 9.0),
+                     QPointF(8.0, 9.6), QPointF(9.5, 9.0), QPointF(10.6, 7.6), QPointF(11.0, 6.0),
+                     QPointF(11.0, 2.5), QPointF(5.0, 2.5)}));
+      painter.drawPolyline(
+          QPolygonF({QPointF(5.0, 3.8), QPointF(2.6, 3.8), QPointF(2.8, 5.6), QPointF(5.3, 7.2)}));
+      painter.drawPolyline(QPolygonF(
+          {QPointF(11.0, 3.8), QPointF(13.4, 3.8), QPointF(13.2, 5.6), QPointF(10.7, 7.2)}));
+      painter.drawLine(QPointF(8.0, 9.6), QPointF(8.0, 12.5));
+      painter.drawLine(QPointF(5.5, 13.5), QPointF(10.5, 13.5));
+      return;
+    case Glyph::Lock:
+      painter.drawRoundedRect(QRectF(3.5, 7.0, 9.0, 6.5), 1.5, 1.5);
+      painter.drawArc(QRectF(5.5, 2.5, 5.0, 6.0), 0, 180 * 16);
+      painter.drawLine(QPointF(5.5, 5.5), QPointF(5.5, 7.0));
+      painter.drawLine(QPointF(10.5, 5.5), QPointF(10.5, 7.0));
+      return;
     case Glyph::Layers:
       painter.drawPolygon(
           QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));

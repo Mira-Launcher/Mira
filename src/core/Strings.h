@@ -50,4 +50,7 @@ std::string GithubRepo(std::string_view text);
 // %xx is kept.
 std::string EscapeUrl(std::string_view url);
 
+// 16 hex digits of FNV-1a: stable across builds and runs, unlike std::hash, for names kept on disk.
+std::string StableHash(std::string_view text);
+
 }  // namespace mira::strings
