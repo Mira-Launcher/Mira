@@ -40,6 +40,10 @@ class GameLibraryModel : public QAbstractListModel {
   // "Launching" on its tile from the click until its window has had time to show, or until it
   // stops.
   void SetLaunching(const std::string& id, bool launching);
+  // What mirad is doing with a game's saves (game.saves_activity), which its tile shows instead
+  // of "Launching"; a launch waits for it, so the launching time only starts once it's done.
+  void SetSavesDoing(const std::string& id, const std::string& doing);
+  std::string SavesDoing(const std::string& id) const;
   // Repaints one game's row: its cover arrived, or its install moved along.
   void Touch(const std::string& id);
 
@@ -86,8 +90,9 @@ class GameLibraryModel : public QAbstractListModel {
   std::unordered_map<std::string, int> rows_;  // id -> row
   bool change_pending_ = false;
   bool showing_hidden_ = false;
-  std::unordered_map<std::string, qint64> launching_;  // id -> when it was launched, in ms
-  QTimer* launch_tick_ = nullptr;                      // animates the launching tiles' dots
+  std::unordered_map<std::string, qint64> launching_;         // id -> when it was launched, in ms
+  QTimer* launch_tick_ = nullptr;                             // animates the launching tiles' dots
+  std::unordered_map<std::string, std::string> saves_doing_;  // id -> game.saves_activity's doing
 };
 
 // A user tag across the library: its first spelling, how many games under a filter have it

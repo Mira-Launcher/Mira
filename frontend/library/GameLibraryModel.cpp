@@ -124,10 +124,28 @@ void GameLibraryModel::TickLaunching() {
   std::vector<std::string> ids;
   for (const auto& [id, since] : launching_) ids.push_back(id);
   for (const std::string& id : ids) {
+    if (saves_doing_.contains(id)) continue;  // the launch waits; its time starts once they're done
     if (now - launching_[id] >= kLaunchingMs) launching_.erase(id);
     Touch(id);
   }
   if (launching_.empty()) launch_tick_->stop();
+}
+
+void GameLibraryModel::SetSavesDoing(const std::string& id, const std::string& doing) {
+  if (SavesDoing(id) == doing) return;
+  if (doing.empty()) {
+    saves_doing_.erase(id);
+    if (const auto launching = launching_.find(id); launching != launching_.end())
+      launching->second = QDateTime::currentMSecsSinceEpoch();
+  } else {
+    saves_doing_[id] = doing;
+  }
+  Touch(id);
+}
+
+std::string GameLibraryModel::SavesDoing(const std::string& id) const {
+  const auto found = saves_doing_.find(id);
+  return found != saves_doing_.end() ? found->second : std::string();
 }
 
 void GameLibraryModel::SetRunning(const std::string& id, bool running) {
@@ -203,8 +221,15 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     case GameTileDelegate::ProgressDetailRole: {
       const auto installing = install_progress ? install_progress(game.id) : std::nullopt;
       if (!installing) {
+        // Saves work draws an install's moving rail, with a launch waiting for it said under it.
+        if (const auto doing = saves_doing_.find(game.id); doing != saves_doing_.end()) {
+          if (role == GameTileDelegate::ProgressRole) return -1.0;
+          if (role == GameTileDelegate::StatusTextRole) return SavesDoingLabel(doing->second);
+          return launching_.contains(game.id) ? QString("Starts once they're done") : QString();
+        }
+        if (role != GameTileDelegate::StatusTextRole) return {};
         const auto launching = launching_.find(game.id);
-        if (role != GameTileDelegate::StatusTextRole || launching == launching_.end()) return {};
+        if (launching == launching_.end()) return {};
         const qint64 dots = (QDateTime::currentMSecsSinceEpoch() - launching->second) / 400 % 4;
         return "Launching" + QString(".").repeated(static_cast<int>(dots));
       }

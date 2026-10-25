@@ -253,6 +253,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       if (entry.source == "scan") glyph = icons::Glyph::Search;
       if (entry.source == "relocate") glyph = icons::Glyph::Refresh;
       if (entry.source == "metadata") glyph = icons::Glyph::Image;
+      if (entry.source == "saves") glyph = icons::Glyph::Layers;  // as the game card's saves line
       if (entry.source == "delete" || entry.source == "remove_source") glyph = icons::Glyph::Trash;
     }
     icons::Follow(cover, glyph, 22);
@@ -261,7 +262,9 @@ QWidget* DownloadsPanel::BuildRow(int index) {
 
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
-  auto* title = new QLabel(name, row);
+  // Elided, and the status below free to shrink: the panel is a fixed width, and a long name or
+  // an unbreakable path would otherwise push the buttons past its right edge.
+  auto* title = new ElidedLabel(name, row);
   title->setObjectName("download_title");
   title->setStyleSheet("font-weight: 600;");
   title->setToolTip(name);
@@ -286,6 +289,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   status->setObjectName("download_status");
   status->setProperty("role", role);
   status->setWordWrap(true);
+  status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   text->addWidget(status);
 
   if (entry.state == State::Running || entry.state == State::Paused) {

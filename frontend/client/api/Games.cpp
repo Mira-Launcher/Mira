@@ -353,6 +353,87 @@ void RefreshAchievementsAsync(QObject* context, const std::string& id,
       std::move(callback));
 }
 
+void GetSavesAsync(QObject* context, const std::string& id,
+                   std::function<void(SavesResult)> callback) {
+  async::Run(
+      context,
+      [id] {
+        return ReadReply<SavesResult>(
+            transport::Get("/v1/games/" + PercentEncode(id) + "/saves"),
+            "GET /v1/games/" + id + "/saves", Shape::Object,
+            [](SavesResult& result, const json& body) { result = mapping::ToSaves(body); });
+      },
+      std::move(callback));
+}
+
+void BackUpSavesAsync(QObject* context, const std::string& id,
+                      std::function<void(SavesJobResult)> callback) {
+  RunJob<SavesJobResult>(
+      context, "saves",
+      [id](const std::string& query) {
+        return transport::Post("/v1/games/" + PercentEncode(id) + "/saves/backup" + query);
+      },
+      [](SavesJobResult& result, const json& body) {
+        result.snapshot = mapping::Str(body, "snapshot");
+        result.taken = body.value("taken", false);
+      },
+      std::move(callback));
+}
+
+void RestoreSavesAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                       std::function<void(SavesJobResult)> callback) {
+  RunJob<SavesJobResult>(
+      context, "saves",
+      [id, snapshot](const std::string& query) {
+        return transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/restore" + query,
+                                   json{{"snapshot", snapshot}});
+      },
+      [](SavesJobResult& result, const json& body) {
+        result.snapshot = mapping::Str(body, "restored");
+        result.undo = mapping::Str(body, "undo");  // null when there were no saves
+      },
+      std::move(callback));
+}
+
+void DeleteSaveBackupAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                           std::function<void(GameActionResult)> callback) {
+  async::Run(
+      context,
+      [id, snapshot] {
+        const transport::Reply reply = transport::Delete("/v1/games/" + PercentEncode(id) +
+                                                         "/saves/" + PercentEncode(snapshot));
+        return GameActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
+void PinSaveBackupAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                        bool pinned, std::function<void(GameActionResult)> callback) {
+  async::Run(
+      context,
+      [id, snapshot, pinned] {
+        const transport::Reply reply =
+            transport::Patch("/v1/games/" + PercentEncode(id) + "/saves/" + PercentEncode(snapshot),
+                             json{{"pinned", pinned}});
+        return GameActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
+void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
+                           const std::string& folder,
+                           std::function<void(GameActionResult)> callback) {
+  async::Run(
+      context,
+      [id, add, folder] {
+        const transport::Reply reply =
+            transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/folders",
+                                json{{add ? "add" : "remove", folder}});
+        return GameActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,
                         std::function<void(TricksResult)> callback) {
   async::Run(context, [id, verb] { return RunWinetricksSync(id, verb); }, std::move(callback));
@@ -429,9 +510,12 @@ void RelocateGameAsync(QObject* context, const std::string& id, const std::strin
 }
 
 void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, bool delete_files,
-                      bool delete_prefix, std::function<void(DeleteGamesResult)> callback) {
-  const json body = {
-      {"ids", ids}, {"delete_files", delete_files}, {"delete_prefix", delete_prefix}};
+                      bool delete_prefix, bool delete_saves,
+                      std::function<void(DeleteGamesResult)> callback) {
+  const json body = {{"ids", ids},
+                     {"delete_files", delete_files},
+                     {"delete_prefix", delete_prefix},
+                     {"delete_saves", delete_saves}};
   RunJob<DeleteGamesResult>(
       context, "delete",
       [body](const std::string& query) {
@@ -458,7 +542,8 @@ void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
                      .files_in_prefix = entry.value("files_in_prefix", std::string()),
                      .folder_is_prefix = entry.value("folder_is_prefix", false),
                      .prefix = entry.value("prefix", std::string()),
-                     .prefix_shared_with = entry.value("prefix_shared_with", std::string())});
+                     .prefix_shared_with = entry.value("prefix_shared_with", std::string()),
+                     .saves = mapping::Str(entry, "saves")});  // null without backups
               }
             });
       },
@@ -510,7 +595,8 @@ void GetRemovalSizesAsync(QObject* context, const std::vector<std::string>& ids,
       [](RemovalSizesResult& result, const json& sizes) {
         for (const auto& [id, size] : sizes.items()) {
           result.sizes[id] = {.files = size.value("files", std::uint64_t{0}),
-                              .prefix = size.value("prefix", std::uint64_t{0})};
+                              .prefix = size.value("prefix", std::uint64_t{0}),
+                              .saves = size.value("saves", std::uint64_t{0})};
         }
       },
       std::move(callback));

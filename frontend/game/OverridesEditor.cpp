@@ -136,7 +136,7 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
     const std::string kept = field.Text();
     field.layer = entry.layer;
     field.layer_label->setText(entry.layer == "game"     ? QString("This game")
-                               : entry.layer == "config" ? QString("From settings")
+                               : entry.layer == "config" ? QString("Inherited from global")
                                                          : QString("Default"));
     field.clear->setVisible(entry.layer == "game");
     field.SetText(entry.value_display);
@@ -148,7 +148,19 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
   if (!values_loaded_) nav_->RearrangePages();
   values_loaded_ = true;
   resetting_key_.clear();
+  RevealKey(std::exchange(reveal_key_, {}));
   emit Changed();  // the change count, after a reset dropped that row's edit
+}
+
+void OverridesEditor::RevealKey(const std::string& key) {
+  if (key.empty()) return;
+  const auto it = std::ranges::find(fields_, key, [](const Field& f) { return f.entry.key; });
+  // Before the values arrive the rows are placeholders, so it waits for them.
+  if (!values_loaded_ || it == fields_.end()) {
+    reveal_key_ = key;
+    return;
+  }
+  nav_->RevealRow(it->row);
 }
 
 std::vector<GameConfigEdit> OverridesEditor::PendingEdits() const {

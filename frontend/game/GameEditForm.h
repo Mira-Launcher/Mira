@@ -46,7 +46,8 @@ class GameEditForm : public QWidget {
   // Extra space under the last card, so a change bar floating over it never covers a row.
   void SetBottomRoom(int height);
 
-  void OpenAdvanced();
+  // At `key`'s row when one is given.
+  void OpenAdvanced(const std::string& key = {});
   void CloseAdvanced();
   bool AdvancedOpen() const;
 

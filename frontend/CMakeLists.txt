@@ -135,6 +135,7 @@ add_executable(mira_gui_tests
   client/Jobs.cpp
   client/JsonMapping.cpp
   client/Transport.cpp
+  game/SavesText.cpp
   library/GameLibraryModel.cpp
   library/LibrarySort.cpp
   library/OwnedTitles.cpp

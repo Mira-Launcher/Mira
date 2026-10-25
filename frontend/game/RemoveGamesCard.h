@@ -14,8 +14,9 @@ namespace mira_gui {
 class ArtworkStore;
 
 // Asks before removing games: what each one loses, by the plans mirad gave (POST
-// /v1/games/removal), with one switch for their prefixes, off by default since saves live there.
-// An in-window card over the library.
+// /v1/games/removal), with one switch for their prefixes, off by default since saves live there,
+// and one for their save backups, off by default so a game added back finds them. An in-window
+// card over the library.
 class RemoveGamesCard : public SettingsCard {
   Q_OBJECT
 
@@ -31,8 +32,9 @@ class RemoveGamesCard : public SettingsCard {
   static QString ActionText(const std::vector<RemovalPlan>& plans);
 
  signals:
-  // Remove them, deleting their prefixes too when `delete_prefix`.
-  void Confirmed(bool delete_prefix);
+  // Remove them, deleting their prefixes too when `delete_prefix`, and their save backups when
+  // `delete_saves`.
+  void Confirmed(bool delete_prefix, bool delete_saves);
   void CloseRequested();
 
  private:
@@ -42,6 +44,8 @@ class RemoveGamesCard : public SettingsCard {
   void AddGameRow(const QString& name, std::function<QString()> text);
   // The prefix switch, when any game has a prefix that can go.
   void AddPrefixRow();
+  // The save backups switch, when any game has backups.
+  void AddSavesRow();
   QString Size(const std::string& id, bool prefix) const;
 
   std::vector<GameSummary> games_;
@@ -50,6 +54,7 @@ class RemoveGamesCard : public SettingsCard {
   bool measured_ = false;
   std::vector<std::function<void()>> refresh_;
   Switch* prefix_ = nullptr;
+  Switch* saves_ = nullptr;
 };
 
 }  // namespace mira_gui
