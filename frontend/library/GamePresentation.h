@@ -80,6 +80,7 @@ inline QString StatusLabel(const std::string& status) {
 inline QString SavesDoingLabel(const std::string& doing) {
   if (doing == "backing_up") return "Backing up saves…";
   if (doing == "restoring") return "Restoring saves…";
+  if (doing == "syncing") return "Syncing saves…";
   return doing.empty() ? QString() : "Working on saves…";
 }
 

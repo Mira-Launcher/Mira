@@ -52,6 +52,8 @@ void FailedRequest(QWidget* parent, const QString& what, const ApiError& error);
 
 // A persistent one-liner with no separate detail, used for mirad's own warnings.
 void Warn(QWidget* parent, const QString& text);
+// Same, for a warning an error is behind: its hint under `text`, and a button for its fix.
+void Warn(QWidget* parent, const QString& text, const ApiError& error);
 
 // A transient one-liner. `level` tints the in-window fallback card.
 void Notice(QWidget* parent, const QString& text, Level level = Level::Info);

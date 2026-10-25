@@ -272,6 +272,15 @@ void Warn(QWidget* parent, const QString& text) {
   ShowCard(parent, Level::Warning, text, /*persistent=*/true);
 }
 
+void Warn(QWidget* parent, const QString& text, const ApiError& error) {
+  const std::optional<error_help::Action> action = error_help::ActionFor(error);
+  const QString hint = error_help::HintFor(error);
+  if (system_notifier::Send(Urgency::Persistent, text, hint, action ? action->label : QString(),
+                            action ? RaiseThen(parent, action->run) : std::function<void()>()))
+    return;
+  ShowCard(parent, Level::Warning, JoinDetail(text, hint), /*persistent=*/true);
+}
+
 void Notice(QWidget* parent, const QString& text, Level level) {
   if (system_notifier::Send(Urgency::Transient, "Mira", text)) return;
   ShowCard(parent, level, text, /*persistent=*/false);

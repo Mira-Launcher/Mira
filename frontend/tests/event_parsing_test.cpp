@@ -238,3 +238,24 @@ TEST_CASE("A config.changed names the settings that changed") {
   CHECK(events::ParseChangedKeys(R"({"keys": [], "frontend": {"theme": "mira-dark"}})").empty());
   CHECK(events::ParseChangedKeys("not json").empty());
 }
+
+TEST_CASE("A notification carries whether it stays, the game it's about and the error behind it") {
+  NotificationEvent event;
+  REQUIRE(events::ParseNotification(
+      R"({"level": "warning", "message": "Fir's saves changed both here and in GOG's cloud.",
+          "persistent": true, "id": "gog-1207", "code": "saves_conflict",
+          "error": "changed on both sides", "hint": "Choose which to keep.",
+          "fix": {"kind": "game", "target": "gog-1207", "step": "saves"}})",
+      &event));
+  CHECK(event.persistent);
+  CHECK(event.id == "gog-1207");
+  CHECK(event.error.code == "saves_conflict");
+  CHECK(event.error.hint == "Choose which to keep.");
+  CHECK(event.error.fix.step == "saves");
+
+  // A plain one stays transient, about no game, with no error.
+  REQUIRE(events::ParseNotification(R"({"level": "info", "message": "Done"})", &event));
+  CHECK_FALSE(event.persistent);
+  CHECK(event.id.empty());
+  CHECK(event.error.code.empty());
+}

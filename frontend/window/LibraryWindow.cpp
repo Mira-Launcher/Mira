@@ -60,6 +60,7 @@
 #include "../game/InstallPromptCard.h"
 #include "../game/InstallerCards.h"
 #include "../game/RemoveGamesCard.h"
+#include "../game/SavesConflictCard.h"
 #include "../game/UnclearDropCard.h"
 #include "../game/UnclearMoveCard.h"
 #include "../library/AddGamesCard.h"
@@ -1855,6 +1856,37 @@ bool LibraryWindow::ShowCard(QWidget* card) {
   return true;
 }
 
+void LibraryWindow::ChooseSaves(const std::string& id,
+                                std::function<void(std::string choice)> chosen) {
+  const mira_gui::GameSummary* game = FindGame(id);
+  if (game == nullptr) return chosen({});
+  const auto show = [this, id, chosen] {
+    const mira_gui::GameSummary* found = FindGame(id);
+    if (found == nullptr) return chosen({});
+    auto* card = new mira_gui::SavesConflictCard(*found, artwork_);
+    // Closed any other way (another card took its place): the launch is cancelled.
+    auto answered = std::make_shared<bool>(false);
+    connect(card, &QObject::destroyed, this, [answered, chosen] {
+      if (!*answered) chosen({});
+    });
+    connect(card, &mira_gui::SavesConflictCard::Chosen, this,
+            [this, answered, chosen](const std::string& choice) {
+              *answered = true;
+              CloseSidebarCard();
+              chosen(choice);
+            });
+    if (!ShowCard(card)) card->deleteLater();
+  };
+  // Started from the tray: a notification brings the question up.
+  if ((!isVisible() || isMinimized()) &&
+      mira_gui::notify::AskOutOfSight(
+          this, QString::fromStdString(game->name) + "'s saves changed here and in the cloud",
+          "Choose which to start with.", "Choose…", show)) {
+    return;
+  }
+  show();
+}
+
 void LibraryWindow::CloseCard(QWidget* card) {
   if (card == sidebar_card_) CloseSidebarCard();
 }
@@ -2119,10 +2151,14 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     mira_gui::NotificationEvent event;
     if (live && mira_gui::events::ParseNotification(data, &event)) {
       const QString message = QString::fromStdString(event.message);
-      // Only an error stays until dismissed; a warning ("no metadata found") is an answer, not an
-      // alarm.
+      // A launch from here that mirad refused asks in the window instead.
+      if (!event.id.empty() && mira_gui::actions::LaunchUnderWay(event.id)) return;
+      // Only an error, or one mirad marks persistent, stays until dismissed; a warning ("no
+      // metadata found") is an answer, not an alarm.
       const auto level = mira_gui::notify::LevelFromString(QString::fromStdString(event.level));
-      if (level == mira_gui::notify::Level::Error) {
+      if (event.persistent) {
+        mira_gui::notify::Warn(this, message, event.error);
+      } else if (level == mira_gui::notify::Level::Error) {
         mira_gui::notify::Warn(this, message);
       } else {
         mira_gui::notify::Notice(this, message, level);

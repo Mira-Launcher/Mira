@@ -26,7 +26,9 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/LaidOutButton.h"
 #include "../widgets/Scrolling.h"
+#include "SavesConflictCard.h"
 #include "SavesText.h"
 
 namespace mira_gui {
@@ -118,9 +120,14 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
 
   backups_ = new SettingsCard("Backups", content);
   where_ = new SettingsCard("Where they are", content);
+  cloud_ = new SettingsCard("Cloud saves", content);
   settings_ = new SettingsCard("Settings", content);
-  // Rebuilt on a theme change: the newest backup's tint is a drawn color.
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] { FillBackups(); });
+  cloud_->hide();
+  // Rebuilt on a theme change: the newest backup's tint and the state dots are drawn colors.
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
+    FillBackups();
+    FillCloud();
+  });
 }
 
 void SavesPage::Show(const SavesResult& saves) {
@@ -130,6 +137,7 @@ void SavesPage::Show(const SavesResult& saves) {
   back_up_->setVisible(saves_.status != "registry_only" && saves_.status != "no_entry");
   FillBackups();
   FillWhere();
+  FillCloud();
   LoadSettings();
   SetBusy(busy_);
   Arrange();
@@ -139,6 +147,7 @@ void SavesPage::SetDoing(const std::string& doing) {
   if (doing == doing_) return;
   doing_ = doing;
   HoldFocus();
+  FillCloud();
   SetBusy(busy_);
 }
 
@@ -161,23 +170,25 @@ void SavesPage::Arrange() {
   if (columns == columns_) return;
   columns_ = columns;
   for (QWidget* card : {static_cast<QWidget*>(backups_), static_cast<QWidget*>(where_),
-                        static_cast<QWidget*>(settings_)})
+                        static_cast<QWidget*>(cloud_), static_cast<QWidget*>(settings_)})
     grid_->removeWidget(card);
   // Backups on the left, the rest stacked beside them; one column puts them under each other.
   if (columns == 2) {
-    grid_->addWidget(backups_, 0, 0, 2, 1, Qt::AlignTop);
+    grid_->addWidget(backups_, 0, 0, 3, 1, Qt::AlignTop);
     grid_->addWidget(where_, 0, 1, Qt::AlignTop);
-    grid_->addWidget(settings_, 1, 1, Qt::AlignTop);
+    grid_->addWidget(cloud_, 1, 1, Qt::AlignTop);
+    grid_->addWidget(settings_, 2, 1, Qt::AlignTop);
     grid_->setColumnStretch(0, 1);
     grid_->setColumnStretch(1, 1);
-    grid_->setRowStretch(1, 1);
+    grid_->setRowStretch(2, 1);
   } else {
     grid_->addWidget(backups_, 0, 0);
     grid_->addWidget(where_, 1, 0);
-    grid_->addWidget(settings_, 2, 0);
+    grid_->addWidget(cloud_, 2, 0);
+    grid_->addWidget(settings_, 3, 0);
     grid_->setColumnStretch(0, 1);
     grid_->setColumnStretch(1, 0);
-    grid_->setRowStretch(1, 0);
+    grid_->setRowStretch(2, 0);
   }
 }
 
@@ -318,6 +329,68 @@ void SavesPage::FillWhere() {
   }
 }
 
+void SavesPage::FillCloud() {
+  cloud_->ClearRows();
+  cloud_->setVisible(saves_.cloud.has_value());
+  if (!saves_.cloud) return;
+  const CloudSaves& cloud = *saves_.cloud;
+  const theme::Tokens& tokens = theme::Current();
+  const QDateTime now = QDateTime::currentDateTime();
+  QHBoxLayout* line = nullptr;
+
+  QWidget* state_row = Row(cloud_, &line);
+  // While mirad works on the saves (after play, a backup then the sync), the state it last found
+  // is about to change, so the work is what the line says.
+  const bool working = !doing_.empty();
+  const bool conflict = !working && cloud.state == "conflict";
+  const QColor dot = working                   ? tokens.info
+                     : conflict                ? tokens.warning
+                     : cloud.state == "synced" ? tokens.success
+                                               : tokens.text_muted;
+  auto* state = MakeLabel(state_row, StatusDot(dot) + (working ? SavesDoingLabel(doing_)
+                                                               : saves_text::CloudState(cloud)));
+  state->setTextFormat(Qt::RichText);
+  QWidget* text = new QWidget(state_row);
+  auto* lines = new QVBoxLayout(text);
+  lines->setContentsMargins(0, 0, 0, 0);
+  lines->setSpacing(2);
+  lines->addWidget(state);
+  lines->addWidget(MakeLabel(text,
+                             cloud.synced_at > 0
+                                 ? "Last synced " + saves_text::When(cloud.synced_at, now, true)
+                                 : QString("Never synced"),
+                             "muted"));
+  line->addWidget(text, 1);
+  const bool can_sync = cloud.state != "unsupported" && cloud.state != "off";
+  if (!conflict && can_sync) {
+    QPushButton* sync = TextButton(state_row, "Sync now");
+    sync->setEnabled(!Busy());
+    connect(sync, &QPushButton::clicked, this, [this] { Sync("sync"); });
+    line->addWidget(sync, 0, Qt::AlignTop);
+  }
+  cloud_->AddRow(state_row);
+  if (!conflict) return;
+
+  // Each side with what it holds, as the launch's question shows them.
+  QWidget* choices = Row(cloud_, &line);
+  const auto choice = [&](const QString& title, const QString& detail, const QString& effect,
+                          const std::string& action) {
+    LaidOutButton* button = MakeSavesChoice(choices, title, detail, effect);
+    button->setEnabled(!Busy());
+    connect(button, &QPushButton::clicked, this, [this, action] { Sync(action); });
+    line->addWidget(button, 1);
+  };
+  choice("Keep this computer's",
+         cloud.local_at > 0 ? "Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
+                                  Files(cloud.files, cloud.bytes)
+                            : QString(),
+         "Uploads them over the cloud's", "upload");
+  choice("Use the cloud's",
+         cloud.cloud_at > 0 ? "Uploaded " + saves_text::When(cloud.cloud_at, now, true) : QString(),
+         "This computer's are backed up first", "download");
+  cloud_->AddRow(choices);
+}
+
 void SavesPage::LoadSettings() {
   const int request = ++settings_request_;
   api::GetGameConfigAsync(this, id_, [this, request](GameConfigResult result) {
@@ -343,6 +416,12 @@ void SavesPage::LoadSettings() {
     const std::vector<std::string> extra = mapping::ParseListText(value("saves.extra_paths"));
     rows.push_back({"saves.extra_paths", "More save locations",
                     extra.empty() ? QString("None") : QString::number(extra.size())});
+    if (saves_.cloud) {
+      rows.push_back(
+          {"saves.cloud",
+           QString("Sync with %1's cloud").arg(QString::fromStdString(saves_.cloud->store)),
+           on_off(value("saves.cloud"))});
+    }
     for (const Setting& setting : rows) {
       QHBoxLayout* line = nullptr;
       QWidget* row = Row(settings_, &line);
@@ -364,7 +443,7 @@ void SavesPage::SetBusy(bool busy) {
   back_up_->setText(!doing_.empty() ? SavesDoingLabel(doing_)
                     : busy          ? QString("Working…")
                                     : QString("Back up now"));
-  for (SettingsCard* card : {backups_, where_})
+  for (SettingsCard* card : {backups_, where_, cloud_})
     for (QAbstractButton* button : card->findChildren<QAbstractButton*>())
       if (!button->property("idle_only").isValid() || button->property("idle_only").toBool())
         button->setEnabled(!Busy());
@@ -407,6 +486,17 @@ void SavesPage::Delete(const SaveSnapshot& snapshot) {
   if (restored_ && restored_->undo == snapshot.id) restored_.reset();
   api::DeleteSaveBackupAsync(this, id_, snapshot.id, [this](GameActionResult result) {
     if (!result.ok) notify::FailedRequest(this, "Could not delete the backup.", result.error);
+  });
+}
+
+void SavesPage::Sync(const std::string& action) {
+  restored_.reset();
+  SetBusy(true);
+  api::SyncCloudSavesAsync(this, id_, action, [this](SavesJobResult result) {
+    SetBusy(false);
+    // A conflict is what the cloud card shows next, with its two choices.
+    if (!result.ok && result.error.code != "saves_conflict")
+      notify::FailedRequest(this, "Could not sync the saves.", result.error);
   });
 }
 
