@@ -150,6 +150,8 @@ class Services {
   void ReloadSettings();
   // The same for one game, after a change to just that game (also once it is deleted).
   void SyncDesktopEntry(const std::string& game_id);
+  // Puts a Steam game's picked art into Steam's own library (steam.sync_art), after a pick.
+  void SyncSteamArt(const std::string& game_id);
   // Fetches metadata and art for games just added, which then get their tags from Steam.
   void QueueMetadata(const std::vector<model::Game>& games);
   // A new game's Steam tags that are already the user's tags become its own

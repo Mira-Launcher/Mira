@@ -35,11 +35,17 @@
 #include "runner/RunnerUpdates.h"
 #include "saves/Backups.h"
 #include "saves/Manifest.h"
+#include "steam/GridArt.h"
 #include "steam/SteamDetector.h"
 
 namespace mira::api {
 namespace {
 using nlohmann::json;
+
+// The files steam.sync_art wrote into Steam's folders.
+std::filesystem::path SteamArtList(const config::Config& config) {
+  return config.File().parent_path() / "steam-art.json";
+}
 
 // `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
 void AddNeedsCheck(json& game, double threshold) {
@@ -291,6 +297,14 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
       })) {
     SortingChanged();
   }
+  if (std::ranges::contains(keys, std::string("steam.sync_art"))) {
+    if (config.GetBool("steam.sync_art")) {
+      for (const model::Game& game : games.All()) SyncSteamArt(game.id);
+    } else if (const auto root = steam::FindSteamRoot(config)) {
+      if (auto removed = steam::RemoveGridArt(*root, SteamArtList(config)); !removed)
+        log::Warn("could not take Mira's art out of Steam: {}", removed.error().message);
+    }
+  }
   events.Publish("config.changed", {{"keys", keys}, {"frontend", config.FrontendSettings()}});
 }
 
@@ -306,6 +320,27 @@ void Services::SyncDesktopEntry(const std::string& game_id) {
       !synced) {
     log::Warn("could not update the application menu entry of {}: {}", game_id,
               synced.error().message);
+  }
+}
+
+void Services::SyncSteamArt(const std::string& game_id) {
+  constexpr std::string_view kPrefix = "steam-";
+  if (!game_id.starts_with(kPrefix) || !config.GetBool("steam.sync_art")) return;
+  const auto root = steam::FindSteamRoot(config);
+  if (!root) return;
+  // Only picks: Mira's automatic art for a Steam game is Steam's own.
+  const nlohmann::json info = games.Metadata().Read(game_id);
+  steam::GridPicks picks;
+  for (const auto& [slot, key] : {std::pair{"cover", "artwork"}, std::pair{"hero", "hero"},
+                                  std::pair{"logo", "logo"}, std::pair{"icon", "icon"}}) {
+    if (!info.contains(key) || !info[key].is_object() || !info[key].value("chosen", false))
+      continue;
+    if (auto art = games.Metadata().ArtFor(game_id, slot)) picks[slot] = art->file;
+  }
+  if (auto synced =
+          steam::SyncGridArt(*root, game_id.substr(kPrefix.size()), picks, SteamArtList(config));
+      !synced) {
+    log::Warn("could not put {}'s art into Steam: {}", game_id, synced.error().message);
   }
 }
 

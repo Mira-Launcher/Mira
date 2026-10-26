@@ -497,6 +497,15 @@ Schema::Schema() {
          .doc = "Keep a \"Mira\" shortcut in Steam that opens Mira's big screen, so Steam's Big "
                 "Picture can switch to Mira. Steam shows it after it restarts."});
 
+  s.Add({.key = "steam.sync_art",
+         .label = "Use the art picked in Mira in Steam",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Show the cover, hero, logo and icon picked in Mira for a Steam game in Steam's "
+                "library and Big Picture too. Art set in Steam itself is put back when a pick is "
+                "removed or this is turned off. Steam shows changes after it restarts.",
+         .keywords = "artwork grid custom"});
+
   s.Group("Steam account");
 
   s.Add({.key = "steam.import_playtime",

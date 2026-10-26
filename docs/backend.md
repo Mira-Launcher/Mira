@@ -28,7 +28,7 @@ src/
   proc/       ProcessSupervisor, Session, ExitReason, Stats, ProcessIndex
   desktop/    DesktopEntries (menu entries for games) and DesktopEntryScanner (import existing entries)
   steam/      Vdf parser, SteamDetector, SteamScanner, SteamSource, SteamWebApi, FriendsStatus,
-              Achievements (Steam's stats files)
+              Achievements (Steam's stats files), GridArt (picks into Steam's library)
   epic/       Legendary wrapper, importer, installer, source and achievements (library/Stores.cpp lists the five stores)
   gog/        gogdl wrapper, importer, installer, source, achievements (GOG Galaxy's gameplay API) and comet
   itch/       butlerd JSON-RPC client, importer, installer and source
@@ -168,4 +168,6 @@ The launch route syncs before starting the game (`Services::SavesBeforeLaunch`),
 ## Desktop entries
 
 `desktop::DesktopEntries` writes a `mira-<id>.desktop` entry for each ready game and keeps them in sync after scans and game changes. `desktop_entries.*` settings are resolved per game, so a game can opt out. `Exec=` always goes through `mira launch <id>` (or the GUI), never the game's executable, so playtime and crash tracking always apply. It only touches files it created.
+
+`steam::SyncGridArt` does the same for Steam's library with `steam.sync_art` on: a Steam game's picked cover, hero, logo and icon are copied into each account's `config/grid/` under Steam's names (`<appid>p`, `_hero`, `_logo`, `_icon`), after each pick and for the whole library when the setting turns on. Only picks go, since Mira's automatic art for a Steam game is Steam's own; a format Steam can't show (WebP) is left out. `steam-art.json` beside `settings.toml` lists the files Mira wrote, so it never replaces or removes any other: art set in Steam itself is renamed to `<file>.before-mira` and put back when the pick is removed or the setting turns off.
 

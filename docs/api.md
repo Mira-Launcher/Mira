@@ -731,7 +731,7 @@ The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `st
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.
 
 ### `POST /v1/games/{id}/artwork?type=`
-Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. Events: `game.artwork_selected`/`artwork_select_failed`.
+Body `{"candidate_id": <id>}`. A job (kind `artwork`) that switches a slot to a cached candidate. Only candidate ids are accepted, never URLs. A metadata refresh keeps the pick; picking again is the only way to change it. With `steam.sync_art` on, a Steam game's picks (this, an upload or a removal) also go into Steam's `userdata/<id>/config/grid/` before the event. Events: `game.artwork_selected`/`artwork_select_failed`.
 
 ### `PUT /v1/games/{id}/artwork?type=`
 The body is a PNG or JPEG of up to 32 MB that becomes the slot's image (`cover`, `hero`, `logo` or `icon`), fitted like downloaded art and kept through refreshes like a pick, with `"source": "upload"`. A job (kind `artwork`) with the same events as picking a candidate. Fails with `missing_image` for an empty body, `unsupported_image` for anything else or an image that can't be read, `413 image_too_large` over the limit.
