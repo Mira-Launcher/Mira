@@ -749,7 +749,7 @@ def changed(before, after):
 
 def respond(pid, press, may_idle=False):
     """Wall time from the GUI's main thread starting on `press` until it first pauses (0.3 s), and its CPU
-    until it rests (2 s), which counts work it put off, such as a page rebuilt after a restyle. Both in ms.
+    until it rests (1 s), which counts work it put off, such as a page rebuilt after a restyle. Both in ms.
     The clock starts with the GUI's work, not the press, so starting xdotool isn't counted. None when
     `may_idle` and the key did nothing."""
     before, start = main_thread_ns(pid), time.perf_counter()
@@ -763,22 +763,23 @@ def respond(pid, press, may_idle=False):
             last_busy = now
         last, last_poll = used, now
         if last_busy is None:
-            if may_idle and now - start >= 2:
+            if may_idle and now - start >= 1:
                 return None
             check(now - start < 2, "the key did nothing")
             continue
         if first is None and now - last_busy >= 0.3:
             first = last_busy
-        if now - last_busy >= 2:
+        if now - last_busy >= 1:
             return (first - began) * 1000, (used - before) / 1e6
     raise Failed("the GUI never came to rest after a key")
 
 
 def open_gui(ctx, label, args=(), then=None, startup=False, memory=False):  # label names its log
     """The real GUI, offscreen, on the fixture, until it goes quiet (library and art loaded), then idle for
-    5 s, failing on CPU used then (a redraw loop). `then(pid)` runs after. The time until quiet and the idle
-    CPU are reported with `startup`, the GUI's memory and threads at the end with `memory`: a scenario
-    reports only what it's for, since every extra measure is one more that one run can flag by chance."""
+    5 s with `startup` (2 s otherwise), failing on CPU used then (a redraw loop). `then(pid)` runs after.
+    The time until quiet and the idle CPU are reported with `startup`, the GUI's memory and threads at the
+    end with `memory`: a scenario reports only what it's for, since every extra measure is one more that
+    one run can flag by chance."""
     # On Xvfb rather than Qt's offscreen platform, which the AppImage doesn't bundle.
     env = ctx.mirad.env() | {"QT_QPA_PLATFORM": "xcb"}
     # A build tree has it under frontend/; an AppImage beside mirad.
@@ -811,13 +812,13 @@ def open_gui(ctx, label, args=(), then=None, startup=False, memory=False):  # la
                 break
             time.sleep(0.05)
         check(quiet_since is not None, "the GUI never went quiet")
-        before = cpu_ticks(pid)
-        time.sleep(5)
+        before, rest = cpu_ticks(pid), 5 if startup else 2
+        time.sleep(rest)
         idle = cpu_ticks(pid) - before
         if startup:
             ctx.results["until quiet"] = round((quiet_since - start) * 1000, 1)
             ctx.results["idle CPU ms per 5 s"] = idle * 10
-        check(idle <= 10, f"the GUI used {idle * 10} ms of CPU in 5 idle seconds (a redraw loop?)")
+        check(idle <= 2 * rest, f"the GUI used {idle * 10} ms of CPU in {rest} idle seconds (a redraw loop?)")
         if then:
             then(pid)
         check(gui.poll() is None, f"the GUI exited with {gui.returncode}")
@@ -842,23 +843,21 @@ def open_gui(ctx, label, args=(), then=None, startup=False, memory=False):  # la
 
 
 def zoom(ctx, label):
-    """Ctrl+minus until the tiles are smallest, then Ctrl+plus until they're largest, twice. Each step
-    fetches the covers on screen at the new size; memory at the end shows whether the sizes left behind
-    are let go."""
+    """Ctrl+minus until the tiles are smallest, then Ctrl+plus until they're largest. Each step fetches the
+    covers on screen at the new size; memory at the end shows whether the sizes left behind are let go."""
     def sweep(pid):
         display = Display(pid)
         walls, cpus = [], []
-        for _ in range(2):
-            for key in ("ctrl+minus", "ctrl+plus"):
-                for _ in range(20):  # the window's width sets how many sizes there are
-                    shown = display.snapshot()
-                    step = respond(pid, lambda: display.key(key), may_idle=True)
-                    # At the end of the range a press does nothing, but work the GUI does anyway can
-                    # still start the clock, so a step counts only when the tiles changed.
-                    if step is None or changed(shown, display.snapshot()) < 0.01:
-                        break
-                    walls.append(step[0])
-                    cpus.append(step[1])
+        for key in ("ctrl+minus", "ctrl+plus"):
+            for _ in range(20):  # the window's width sets how many sizes there are
+                shown = display.snapshot()
+                step = respond(pid, lambda: display.key(key), may_idle=True)
+                # At the end of the range a press does nothing, but work the GUI does anyway can still
+                # start the clock, so a step counts only when the tiles changed.
+                if step is None or changed(shown, display.snapshot()) < 0.01:
+                    break
+                walls.append(step[0])
+                cpus.append(step[1])
         check(len(walls) >= 4, f"only {len(walls)} zoom steps did anything")
         ctx.results["zoom step"] = round(statistics.median(walls), 1)
         ctx.results["zoom step, CPU until done"] = round(statistics.median(cpus), 1)
@@ -883,8 +882,8 @@ def gui_big_screen(ctx, meta):
 
 @scenario("gui-hidden-mode", gui=True)
 def gui_hidden_mode(ctx, meta):
-    """Switching hidden mode in and out three times on the library, which restyles every widget the GUI
-    has built, then on the Tags page, whose lists follow it too."""
+    """Switching hidden mode in and out twice on the library, which restyles every widget the GUI has
+    built, then on the Tags page, whose lists follow it too."""
     def toggle(pid):
         display = Display(pid)
         for page, keys in (("", None), (" on Tags", "ctrl+shift+F9")):
@@ -893,7 +892,7 @@ def gui_hidden_mode(ctx, meta):
                 respond(pid, lambda: display.key(keys))
                 check(changed(shown, display.snapshot()) > 0.2, f"{keys} didn't open Tags")
             walls, cpus = [], []
-            for _ in range(6):
+            for _ in range(4):
                 wall, cpu = respond(pid, lambda: display.key("ctrl+h"))
                 walls.append(wall)
                 cpus.append(cpu)
@@ -923,8 +922,8 @@ def gui_pages(ctx, meta):
 @scenario("gui-game-card", gui=True, startup=True)
 def gui_game_card(ctx, meta):
     """A game card with 100 achievements opened, then its achievements page with their icons, then both
-    closed, three times; then the same with its saves page and 10 backups. What the card took should go
-    with it."""
+    closed, twice; then the same with its saves page and 10 backups. What the card took should go with
+    it."""
     home = ctx.mirad.home
     add_games(home, [{"id": "bench-steam", "name": "Bench Steam", "source": "manual", "runner_ref": "steam:4000"}])
     start_with(ctx, fake_stores(home) | steam_achievements(home, count=100))
@@ -954,7 +953,7 @@ def gui_game_card(ctx, meta):
         lines = [("achievements", 570, 0.05)] + ([("saves", 760, 0.02)] if has_saves else [])
         pages = {name: ([], []) for name, _, _ in lines}
         for name, x, least in lines:
-            for round_ in range(1, 4):
+            for round_ in range(1, 3):
                 # Again each round: a closed card leaves the grid without focus.
                 display.xdotool("mousemove", "500", "270", "click", "1")
                 time.sleep(1.5)

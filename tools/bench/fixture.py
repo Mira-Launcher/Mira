@@ -52,6 +52,10 @@ check = false
 
 [runners]
 download_when_missing = false
+
+# CI runs with network: a cloud-saves launch would download and index Ludusavi's whole list.
+[saves]
+manifest_url = "file:///nonexistent/save-locations.yaml"
 """
 FRONTEND = """onboarded = true
 window_width = 1600
