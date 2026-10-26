@@ -251,9 +251,11 @@ QWidget* FilterSortPill::BuildPopover() {
     button->setCheckable(true);
     button->setChecked(option.key == sort_key_);
     const std::string key = option.key;
+    // One sort at a time, so picking it is the last step; the direction and tags stay open.
     connect(button, &QPushButton::clicked, this, [this, key] {
       sort_key_ = key;
       UpdateSummary();
+      popover_->hide();
       emit SortChanged();
     });
     sort_group->addButton(button);

@@ -20,10 +20,10 @@ struct Entry;
 
 // Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not
 // frontend.toml.
-inline constexpr std::array<std::string_view, 11> kUiStateKeys = {
-    "window_width",  "window_height",   "window_maximized",   "sidebar_width",
-    "details_width", "tile_width",      "source_tile_widths", "library_filter",
-    "sort_by",       "sort_descending", "onboarded"};
+inline constexpr std::array<std::string_view, 12> kUiStateKeys = {
+    "window_width",   "window_height", "window_maximized",   "sidebar_width",
+    "details_width",  "tile_width",    "source_tile_widths", "page_tile_widths",
+    "library_filter", "sort_by",       "sort_descending",    "onboarded"};
 
 // The on-disk settings.toml, merged with schema defaults so every declared
 // key always resolves. The file keeps only the values that were set, so a

@@ -631,8 +631,9 @@ struct ConfigSchemaEntry {
   bool game_only = false;         // only exists per game; not listed in the global settings
   bool is_secret = false;         // mask this value's field
   bool is_runner_ref = false;     // offer a runner picker (GET /v1/runners) instead of free text
-  std::string link;               // web page where the user gets the value; empty if none
-  std::string keywords;           // extra search terms, space-separated
+  std::vector<std::string> runner_kinds;  // what the picker lists, without "auto"; empty: all
+  std::string link;                       // web page where the user gets the value; empty if none
+  std::string keywords;                   // extra search terms, space-separated
 };
 
 struct ConfigSchemaResult {
@@ -649,9 +650,13 @@ struct ConfigResult {
   // stringified for display/editing: a bool as "true"/"false", a number in
   // its natural text form, an array as JSON (mapping::ParseListText). The opaque
   // `frontend` table (docs/backend.md) is excluded because it isn't part of
-  // the schema this screen renders.
+  // the schema this screen renders. A secret that's set reads as kSecretSaved.
   std::map<std::string, std::string> values;
 };
+
+// A secret mirad holds but doesn't send (secrets_set). Never sent back: an editor showing it
+// is unchanged, and typing replaces it.
+inline constexpr char kSecretSaved[] = "\x1f(saved)";
 
 // One edit to send in a PATCH /v1/config body. `type` is the schema type
 // string (ConfigSchemaEntry::type), so the string typed into the UI can be
@@ -1073,6 +1078,9 @@ struct FrontendPrefs {
   // Each source page's tile width, by source id; tile_width is the library's.
   // Synced: every page uses tile_width.
   std::optional<std::map<std::string, int>> source_tile_widths;
+  // The tag picker's ("tags") and hidden mode's ("hidden") tile widths; unset ones follow
+  // tile_width.
+  std::optional<std::map<std::string, int>> page_tile_widths;
   std::optional<bool> tile_size_synced;
   // Keys to delete from frontend.toml on save (sent as null), so they read
   // as unset again, e.g. a shape override going back to the theme's.

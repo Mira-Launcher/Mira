@@ -56,6 +56,9 @@ void FillConfigSchema(ConfigSchemaResult& result, const json& body) {
     e.game_only = scope == "game_only";
     e.is_secret = entry.value("is_secret", false);
     e.is_runner_ref = entry.value("is_runner_ref", false);
+    for (const auto& kind : entry.value("runner_kinds", nlohmann::json::array())) {
+      if (kind.is_string()) e.runner_kinds.push_back(kind.get<std::string>());
+    }
     e.link = entry.value("link", std::string());
     e.keywords = entry.value("keywords", std::string());
     if (entry.contains("default")) e.default_display = mapping::ToDisplayString(entry["default"]);
@@ -175,13 +178,17 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("big_screen_show_apps", result.prefs.big_screen_show_apps);
   read_bool("onboarded", result.prefs.onboarded);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
-  if (table.contains("source_tile_widths") && table["source_tile_widths"].is_object()) {
+  const auto read_widths = [&table](const char* key,
+                                    std::optional<std::map<std::string, int>>& out) {
+    if (!table.contains(key) || !table[key].is_object()) return;
     std::map<std::string, int> widths;
-    for (const auto& [id, width] : table["source_tile_widths"].items()) {
+    for (const auto& [id, width] : table[key].items()) {
       if (width.is_number_integer()) widths[id] = width.get<int>();
     }
-    result.prefs.source_tile_widths = std::move(widths);
-  }
+    out = std::move(widths);
+  };
+  read_widths("source_tile_widths", result.prefs.source_tile_widths);
+  read_widths("page_tile_widths", result.prefs.page_tile_widths);
   if (table.contains("shortcuts") && table["shortcuts"].is_object()) {
     std::map<std::string, std::string> overrides;
     for (const auto& [id, keys] : table["shortcuts"].items()) {
@@ -272,6 +279,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;
   if (prefs.source_tile_widths) table["source_tile_widths"] = *prefs.source_tile_widths;
+  if (prefs.page_tile_widths) table["page_tile_widths"] = *prefs.page_tile_widths;
   for (const std::string& key : prefs.clear) table[key] = nullptr;  // merge-patch: null deletes
 
   // Short, because SaveFrontendPrefsBlocking runs this on the UI thread
@@ -320,7 +328,7 @@ std::optional<ChangedPrefs> ParseChangedPrefs(const std::string& payload) {
   json table = body["frontend"];
   for (const char* key : {"window_width", "window_height", "window_maximized", "tile_width",
                           "sidebar_width", "library_filter", "sort_by", "sort_descending",
-                          "not_installed_sort", "source_tile_widths"}) {
+                          "not_installed_sort", "source_tile_widths", "page_tile_widths"}) {
     table.erase(key);
   }
   return ChangedPrefs{std::move(result.prefs), table.dump()};

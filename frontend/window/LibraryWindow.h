@@ -160,12 +160,14 @@ class LibraryWindow : public QMainWindow,
   int ShownTileWidth() const;
   mira_gui::TileRow ShownTileRow() const;
   int SourceTileWidth(const QString& id) const;
+  // The tag picker's ("tags") or hidden mode's ("hidden") width: the library's until zoomed.
+  int PageTileWidth(const std::string& key) const;
   // Points the slider at the page on screen, and off where there's no grid.
   void SyncZoom();
   // The same once the grids are laid out, after one resizes or a page shows.
   void SyncZoomSoon();
   bool SourcePageShown() const;
-  // The Tags page's game picker, whose covers follow the tile size.
+  // The Tags page's game picker, whose covers have their own zoom.
   bool TagPickerShown() const;
   bool TagsShown() const;
 
@@ -303,6 +305,10 @@ class LibraryWindow : public QMainWindow,
   bool double_click_play_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.
   std::map<std::string, int> source_tile_widths_;
+  // The tag picker's and hidden mode's (see PageTileWidth), likewise.
+  std::map<std::string, int> page_tile_widths_;
+  // The library's own width; the grid shows hidden mode's while in it.
+  int library_tile_width_ = 0;
   bool tile_size_synced_ = false;
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
@@ -326,6 +332,7 @@ class LibraryWindow : public QMainWindow,
   QWidget* game_edit_overlay_ = nullptr;
   QGridLayout* game_edit_overlay_layout_ = nullptr;
   mira_gui::GameCard* game_card_ = nullptr;
+  QPointer<QWidget> focus_before_card_;  // gets the keyboard back when the card closes
   // Owns chrome (top_bar_ + content_stack_) at index 0 and the overlays
   // after it. StackAll shows them all; this decides which one is raised.
   QStackedLayout* root_stack_ = nullptr;

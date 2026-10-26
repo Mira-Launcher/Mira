@@ -30,6 +30,9 @@ struct SettingEditor {
   QDoubleSpinBox* spin = nullptr;  // set instead of `line` for a bounded number
   ListEdit* list = nullptr;        // set instead of `line` for an array
   SettingRow* row = nullptr;
+  // A secret's button that drops the one mirad holds and doesn't send (kSecretSaved). Whether one
+  // is held is the line's "secret_saved" property, since editors move around in vectors.
+  QAction* clear_secret = nullptr;
 
   // Builds the row into `parent`. `doc` is the help it shows; empty uses the entry's own.
   SettingRow* Build(QWidget* parent, const QString& doc = {});
@@ -44,8 +47,10 @@ struct SettingEditor {
   void OnEdited(QObject* context, std::function<void()> edited) const;
 };
 
-// Refills a runner combo: Auto, then every installed build, keeping its value.
-void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners);
+// Refills a runner combo for `entry`: Auto, then every installed build, or only the builds of its
+// runner_kinds; keeps the combo's value.
+void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
+                     const ConfigSchemaEntry& entry);
 // An editable runner combo shows a listed runner by its name; anything else is the reference as
 // typed.
 void ShowRunnerRef(QComboBox* combo, const QString& ref);

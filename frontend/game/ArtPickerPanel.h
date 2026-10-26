@@ -86,6 +86,8 @@ class ArtPickerPanel : public QWidget {
   // The leading tiles that aren't candidates: None, and the user's image the slot uses.
   void AddOwnItems(const std::string& source);
   void Populate(const GameMetadataResult& result);
+  // Every other tab's count, once: what's cached now, then SteamGridDB's total from its first page.
+  void RequestCounts(const GameMetadataResult& result);
   // Added in the first placeholder's place, or at the end.
   QListWidgetItem* AddItem(const ArtCandidate& candidate);
   void UpdateTitle();
@@ -146,6 +148,10 @@ class ArtPickerPanel : public QWidget {
   bool page_loading_ = false;
   std::string page_request_;
   int griddb_total_ = -1;  // unknown until the first page
+  // RequestCounts' page requests by slot, and each slot's art that isn't SteamGridDB's.
+  bool counts_requested_ = false;
+  std::map<std::string, std::string> count_requests_;
+  std::map<std::string, int> own_counts_;
   // What the pages loaded are for (a style, adult only), and the candidates they brought.
   std::pair<std::string, bool> paged_;
   std::set<std::int64_t> query_loaded_;

@@ -6,7 +6,10 @@
 #include <QRubberBand>
 #include <QScrollBar>
 #include <QTimer>
+#include <QToolTip>
 #include <algorithm>
+
+#include "../theme/Theme.h"
 
 namespace mira_gui {
 
@@ -111,6 +114,34 @@ void TileView::wheelEvent(QWheelEvent* event) {
   hover_.Track(QModelIndex());
   QListView::wheelEvent(event);
   if (rubber_band_ != nullptr) UpdateDrag();
+}
+
+void TileView::SetPadding(int padding) {
+  padding_ = padding;
+  setViewportMargins(padding, padding, padding, padding);
+}
+
+void TileView::updateGeometries() {
+  QListView::updateGeometries();
+  // A zoom moves every tile: a card or tooltip still up belongs to whatever tile was under the
+  // cursor.
+  if (gridSize() != laid_out_cell_) {
+    laid_out_cell_ = gridSize();
+    StopHover();
+    QToolTip::hideText();
+  }
+  // Rows that overflow only into blank space (the gap under the last tiles, then the bottom
+  // padding) fit: the padding gives way first, and a scrollbar would only reveal the gap.
+  const int gap = theme::Current().tile_spacing;
+  const int bottom = viewportMargins().bottom();
+  const int overflow = contentsSize().height() - (viewport()->height() + bottom - padding_);
+  const int trim = overflow > gap && overflow <= gap + padding_ ? overflow - gap : 0;
+  if (bottom != padding_ - trim) {
+    setViewportMargins(padding_, padding_, padding_, padding_ - trim);  // lays out again
+    return;
+  }
+  QScrollBar* bar = verticalScrollBar();
+  if (bar->maximum() > 0 && bar->maximum() <= gap) bar->setRange(0, 0);
 }
 
 void TileView::UpdateDrag() {

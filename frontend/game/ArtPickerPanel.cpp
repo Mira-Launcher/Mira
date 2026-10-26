@@ -466,7 +466,26 @@ void ArtPickerPanel::Open(const std::string& slot) {
   api::GetMetadataAsync(this, id_, [this, slot](GameMetadataResult result) {
     if (slot != slot_) return;
     Populate(result);
+    if (!std::exchange(counts_requested_, true)) RequestCounts(result);
   });
+}
+
+void ArtPickerPanel::RequestCounts(const GameMetadataResult& result) {
+  if (title_ || !result.ok) return;  // a store title's picker has only covers
+  for (const char* slot : {"cover", "hero", "logo", "icon"}) {
+    if (slot == slot_) continue;
+    const auto cached = result.metadata.candidates.find(slot);
+    const std::vector<ArtCandidate> none;
+    const std::vector<ArtCandidate>& candidates =
+        cached == result.metadata.candidates.end() ? none : cached->second;
+    own_counts_[slot] = static_cast<int>(std::ranges::count_if(
+        candidates, [](const ArtCandidate& c) { return c.source != "steamgriddb"; }));
+    slots_->SetCount(slot, static_cast<int>(candidates.size()));
+    const std::string request = std::to_string(QRandomGenerator::global()->generate64());
+    count_requests_[slot] = request;
+    // game.artwork_candidates_ready brings the total; a failure leaves the cached count.
+    api::FetchArtCandidatesAsync(this, id_, slot, 0, request, "", false, [](GameActionResult) {});
+  }
 }
 
 void ArtPickerPanel::Populate(const GameMetadataResult& result) {
@@ -1279,8 +1298,15 @@ void ArtPickerPanel::ChooseMatch(int index) {
 void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& data) {
   if (type == "game.artwork_candidates_ready") {
     ArtCandidatesEvent event;
-    if (!events::ParseArtCandidatesEvent(data, &event) || event.id != id_ || event.slot != slot_)
+    if (!events::ParseArtCandidatesEvent(data, &event) || event.id != id_) return;
+    if (const auto asked = count_requests_.find(event.slot);
+        asked != count_requests_.end() && asked->second == event.request) {
+      count_requests_.erase(asked);
+      if (event.error.empty())
+        slots_->SetCount(QString::fromStdString(event.slot), event.total + own_counts_[event.slot]);
       return;
+    }
+    if (event.slot != slot_) return;
     if (!page_loading_ || event.request != page_request_)
       return;  // an earlier Open()'s, or a replay
     ShowPage(event);
