@@ -220,7 +220,8 @@ TEST_CASE("A pinned backup outlives saves.keep until it's unpinned") {
   };
   const auto ids = [&] {
     std::vector<std::string> kept;
-    for (const json& snapshot : saver.Saves()["snapshots"]) kept.push_back(snapshot["id"]);
+    const json saves = saver.Saves();
+    for (const json& snapshot : saves["snapshots"]) kept.push_back(snapshot["id"]);
     return kept;
   };
 
