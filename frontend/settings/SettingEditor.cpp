@@ -8,6 +8,7 @@
 #include <QFileDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
 #include <QToolButton>
 #include <QUrl>
 #include <cmath>
@@ -40,7 +41,12 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     spin->setDecimals(entry.type == "an integer" ? 0 : 2);
     spin->setRange(*entry.minimum, *entry.maximum);
     spin->setKeyboardTracking(false);
-    spin->setToolTip(QString("Between %1 and %2").arg(*entry.minimum).arg(*entry.maximum));
+    // Plain digits: QString::arg(double) turns 102400 into 1.024e+05.
+    const auto number = [](double value) {
+      return QLocale().toString(value, 'f', QLocale::FloatingPointShortest);
+    };
+    spin->setToolTip(
+        QString("Between %1 and %2").arg(number(*entry.minimum), number(*entry.maximum)));
     spin->setMinimumWidth(110);
     row->AddControl(spin);
   } else if (entry.is_runner_ref) {

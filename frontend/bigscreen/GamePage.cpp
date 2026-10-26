@@ -86,6 +86,8 @@ GamePage::GamePage(BigScreenWindow* window)
     : Page(window), network_(new QNetworkAccessManager(this)) {
   const LibraryServices& services = window->services();
   connect(services.library, &GameLibraryModel::Changed, this, &GamePage::Refresh);
+  // Saves work starting and ending changes a row only.
+  connect(services.library, &QAbstractItemModel::dataChanged, this, qOverload<>(&QWidget::update));
   connect(services.owned_titles, &OwnedTitles::Changed, this, &GamePage::Refresh);
   connect(services.downloads, &DownloadTracker::Changed, this, &GamePage::Refresh);
   connect(services.artwork, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
@@ -212,6 +214,8 @@ std::vector<GamePage::Button> GamePage::Buttons() const {
   }
   if (item_.game) {
     buttons.push_back({Action::Pin, IsPinned(*item_.game) ? "Unpin" : "Pin"});
+    if (download == nullptr && !item_.game->running && item_.game->status != "needs_install")
+      buttons.push_back({Action::Saves, "Saves"});
     if (download == nullptr && !item_.game->running)
       buttons.push_back({Action::Uninstall, "Uninstall"});
   }
@@ -259,6 +263,9 @@ bool GamePage::Navigate(Nav nav) {
     case Action::Pin:
       window_->TogglePin(item_);
       break;
+    case Action::Saves:
+      window_->ManageSaves(item_);
+      break;
     case Action::Uninstall:
       window_->Uninstall(item_);
       break;
@@ -303,8 +310,12 @@ void GamePage::paintEvent(QPaintEvent*) {
   const DownloadTracker::Entry* download = window_->Download(item_);
   const bool paused = download && download->state == DownloadTracker::State::Paused;
   double x = left;
-  x += DrawPill(painter, {x, y}, u, StatusText(item_, progress, paused),
-                StatusColor(item_, progress)) +
+  const std::string doing = item_.game && download == nullptr
+                                ? window_->services().library->SavesDoing(item_.game->id)
+                                : std::string();
+  x += DrawPill(painter, {x, y}, u,
+                !doing.empty() ? SavesDoingLabel(doing) : StatusText(item_, progress, paused),
+                !doing.empty() ? tokens.info : StatusColor(item_, progress)) +
        u * 0.5;
   x += DrawPill(painter, {x, y}, u, SourceName(item_.source)) + u * 0.5;
   if (!proton_tier_.isEmpty()) {

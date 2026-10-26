@@ -22,12 +22,22 @@
 #include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
+#include "saves/Backups.h"
+#include "saves/Resolve.h"
 
 namespace mira::api {
 namespace {
 using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
+
+// A game's save backups folder for the remove card, or null when it has none.
+json SavesFolder(const config::Config& config, const std::string& id) {
+  const std::filesystem::path dir = saves::GameBackups(config, id);
+  std::error_code ec;
+  return !dir.empty() && std::filesystem::is_directory(dir, ec) ? json(dir.string())
+                                                                : json(nullptr);
+}
 
 }  // namespace
 
@@ -263,8 +273,17 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (auto problem = library::ValidateOverridesPatch(*body)) {
       return SendError(res, 400, "invalid_setting", *problem);
     }
-    auto result =
-        s.games.Update(id, [&](model::Game& game) { library::ApplyOverridesPatch(game, *body); });
+    auto result = s.games.Update(id, [&](model::Game& game) {
+      library::ApplyOverridesPatch(game, *body);
+      // Written against the game's folders, so they follow it when it or its prefix moves.
+      const auto extra = game.overrides.find("saves.extra_paths");
+      if (body->contains("saves.extra_paths") && extra != game.overrides.end() &&
+          extra->is_array()) {
+        const saves::Roots roots = saves::RootsFor(s.config, game);
+        for (json& path : *extra)
+          if (path.is_string()) path = saves::Shorten(path.get<std::string>(), roots);
+      }
+    });
     if (!result) return SendStoreError(res, result.error());
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntry(id);
@@ -277,6 +296,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     const bool purge = BoolParam(req, "purge");
     const auto flag = [&](const char* name) { return purge || BoolParam(req, name); };
+    // Save backups are the user's own: never implied by purge.
+    const bool backups = BoolParam(req, "delete_saves");
     if (flag("delete_files") && game->source == "steam") {
       return s.StartJob(req, res, "delete", game->id, "Uninstalling " + game->name,
                         [&s, game = *game](JobRegistry::Progress&) -> Result<json> {
@@ -290,32 +311,33 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (flag("delete_files") || flag("delete_prefix")) {
       const std::string id = game->id;
       const bool metadata = flag("delete_metadata");
-      return s.StartJob(
-          req, res, "delete", id, "Removing " + game->name,
-          [&s, id, files = flag("delete_files"), prefix = flag("delete_prefix"),
-           metadata](JobRegistry::Progress&) -> Result<json> {
-            auto folders_lock = s.games.LockFolders();
-            const auto current = s.games.Find(id);
-            if (!current) return Err("game_not_found", "the game was removed");
-            const auto claim = s.Claim(id, "deleted");  // no launch from files being deleted
-            if (!claim) return std::unexpected(claim.error());
-            if (auto deleted = s.DeleteGameData(*current, s.games.All(), files, prefix, metadata);
-                !deleted) {
-              return std::unexpected(deleted.error());
-            }
-            if (auto removed = s.games.Remove(id, metadata); !removed)
-              return std::unexpected(removed.error());
-            folders_lock.unlock();
-            s.SyncDesktopEntry(id);
-            s.events.Publish("game.removed", {{"id", id}});
-            return json::object();
-          });
+      return s.StartJob(req, res, "delete", id, "Removing " + game->name,
+                        [&s, id, files = flag("delete_files"), prefix = flag("delete_prefix"),
+                         metadata, backups](JobRegistry::Progress&) -> Result<json> {
+                          auto folders_lock = s.games.LockFolders();
+                          const auto current = s.games.Find(id);
+                          if (!current) return Err("game_not_found", "the game was removed");
+                          const auto claim =
+                              s.Claim(id, "deleted");  // no launch from files being deleted
+                          if (!claim) return std::unexpected(claim.error());
+                          if (auto deleted = s.DeleteGameData(*current, s.games.All(), files,
+                                                              prefix, metadata, backups);
+                              !deleted) {
+                            return std::unexpected(deleted.error());
+                          }
+                          if (auto removed = s.games.Remove(id, metadata); !removed)
+                            return std::unexpected(removed.error());
+                          folders_lock.unlock();
+                          s.SyncDesktopEntry(id);
+                          s.events.Publish("game.removed", {{"id", id}});
+                          return json::object();
+                        });
     }
     const auto folders_lock = s.games.LockFolders();
     const auto claim = s.Claim(game->id, "deleted");
     if (!claim) return SendError(res, 409, claim.error());
     if (auto deleted = s.DeleteGameData(*game, s.games.All(), flag("delete_files"),
-                                        flag("delete_prefix"), flag("delete_metadata"));
+                                        flag("delete_prefix"), flag("delete_metadata"), backups);
         !deleted) {
       const std::string& code = deleted.error().code;
       const bool refused =
@@ -353,7 +375,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
                        {"files_in_prefix", plan.files_in_prefix},
                        {"folder_is_prefix", plan.folder_is_prefix},
                        {"prefix", plan.prefix},
-                       {"prefix_shared_with", plan.prefix_shared_with}});
+                       {"prefix_shared_with", plan.prefix_shared_with},
+                       {"saves", SavesFolder(s.config, plan.id)}});
     }
     SendJson(res, plans);
   });
@@ -410,7 +433,9 @@ void RegisterGameRoutes(Router& http, Services& s) {
                 plan.prefix.empty() || plan.folder_is_prefix ? 0 : paths::TreeBytes(plan.prefix);
             // A game installed inside its prefix: the rest of the prefix.
             if (!plan.files_in_prefix.empty()) prefix -= std::min(prefix, files);
-            sizes[id] = {{"files", files}, {"prefix", prefix}};
+            sizes[id] = {{"files", files},
+                         {"prefix", prefix},
+                         {"saves", saves::BackupBytes(saves::GameBackups(s.config, id))}};
           }
           return sizes;
         });
@@ -429,10 +454,12 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const bool files = purge || body->value("delete_files", false);
     const bool prefix = purge || body->value("delete_prefix", false);
     const bool metadata = purge || body->value("delete_metadata", false);
+    const bool backups = body->value("delete_saves", false);
 
     s.StartJob(
         req, res, "delete", "", "Removing games",
-        [&s, ids = *ids, files, prefix, metadata](JobRegistry::Progress& progress) -> Result<json> {
+        [&s, ids = *ids, files, prefix, metadata,
+         backups](JobRegistry::Progress& progress) -> Result<json> {
           std::vector<std::string> deletable;
           json failed = json::array();
           json handed_to_steam = json::array();
@@ -465,7 +492,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
               }
               continue;
             }
-            if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata);
+            if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata, backups);
                 !deleted) {
               failed.push_back(BatchFailure(id, deleted.error()));
               continue;

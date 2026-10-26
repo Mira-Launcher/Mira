@@ -41,28 +41,6 @@ std::string File(const std::string& body) {
   return body + std::string(1, '\x08');
 }
 
-// Sets an environment variable for one test, restoring it afterwards.
-class EnvVar {
- public:
-  EnvVar(const char* name, const char* value) : name_(name) {
-    if (const char* old = std::getenv(name)) old_ = old;
-    if (value != nullptr)
-      setenv(name, value, 1);
-    else
-      unsetenv(name);
-  }
-  ~EnvVar() {
-    if (old_)
-      setenv(name_, old_->c_str(), 1);
-    else
-      unsetenv(name_);
-  }
-
- private:
-  const char* name_;
-  std::optional<std::string> old_;
-};
-
 // The folder an Isolate'd server's $MIRA_<name>_URL points at.
 fs::path EndpointDir(const char* name) {
   const std::string url = std::getenv(std::format("MIRA_{}_URL", name).c_str());
@@ -124,9 +102,9 @@ TEST_CASE("A Steam game's achievements come from Steam's stats files, in its lan
   test::LiveServer server(test::TempDir("achievements-steam"));
   REQUIRE(server.MutableConfig().Set("achievements.enabled", true).has_value());
   REQUIRE(server.MutableConfig().Set("steam.steamid64", std::to_string(kSteamId)).has_value());
-  const EnvVar all("LC_ALL", nullptr);
-  const EnvVar messages("LC_MESSAGES", nullptr);
-  const EnvVar lang("LANG", "de_DE.UTF-8");
+  const test::EnvVar all("LC_ALL", nullptr);
+  const test::EnvVar messages("LC_MESSAGES", nullptr);
+  const test::EnvVar lang("LANG", "de_DE.UTF-8");
   WriteSteamStats(server.config().GetString("steam.root"));
   test::Touch(
       EndpointDir("STEAM_API") / "ISteamUserStats" / "GetGlobalAchievementPercentagesForApp" / "v2",

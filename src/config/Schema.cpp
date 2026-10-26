@@ -989,6 +989,93 @@ Schema::Schema() {
          .doc = "How long the post-launch script may run before Mira force-kills it.",
          .constraint = Range(1, 600)});
 
+  // --- Saves -----------------------------------------------------------------
+  s.Section("Saves", "Backups");
+
+  s.Add({.key = "saves.enabled",
+         .label = "Back up saves after playing",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Keep a copy of a game's saves each time you stop playing it, so you can go back "
+                "to an earlier one. Only saves kept as files are copied; a few games keep theirs "
+                "in the Windows registry instead.",
+         .keywords = "backup snapshot restore"});
+
+  s.Add({.key = "saves.skip_cloud",
+         .label = "Leave Steam Cloud games to Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Don't back up the saves of Steam games that Steam starts and keeps in Steam "
+                "Cloud.",
+         .keywords = "backup steam cloud"});
+
+  s.Add({.key = "saves.keep",
+         .label = "Backups kept per game",
+         .type = Type::Int,
+         .default_value = 10,
+         .scope = Scope::PerGame,
+         .doc = "How many backups of a game's saves Mira keeps; the oldest goes when a new one is "
+                "taken. Copies Mira makes before restoring or downloading saves are kept on top "
+                "of these.",
+         .constraint = Range(1, 100),
+         .keywords = "backup snapshot retention"});
+
+  s.Add({.key = "saves.max_mb",
+         .label = "Largest backup (MB)",
+         .type = Type::Int,
+         .default_value = 512,
+         .scope = Scope::PerGame,
+         .doc = "A game whose saves are bigger than this isn't backed up, since its save "
+                "locations most likely take more than saves.",
+         .constraint = Range(1, 102400),
+         .keywords = "backup size limit",
+         .old_defaults = {1024}});
+
+  s.Add({.key = "saves.backup_root",
+         .label = "Backup folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Where backups of saves go. Empty keeps them in a saves folder inside the first "
+                "Mira folder. Backups made before a change stay where they are.",
+         .path = PathKind::Folder,
+         .keywords = "backup location"});
+
+  s.Add({.key = "saves.extra_paths",
+         .label = "More save locations",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::GameOnly,
+         .doc = "Files or folders this game keeps saves in that Mira doesn't know about. "
+                "Wildcards (*) work, and so do the save locations list's folder names, such as "
+                "<base> for the game's folder, <prefix> for its Wine prefix or <winAppData> for "
+                "its prefix's AppData/Roaming. A folder inside one of these is saved that way, "
+                "so it follows the game when it moves.",
+         .keywords = "backup custom"});
+
+  s.Group("Where saves are", Sections::Fold::Collapsed);
+
+  s.Add({.key = "saves.manifest_url",
+         .label = "Save locations list",
+         .type = Type::String,
+         .default_value =
+             "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/"
+             "manifest.yaml",
+         .doc = "Where Mira downloads the list of where each game keeps its saves. It's checked "
+                "for changes at most once a day, and only while something needs it.",
+         .constraint = NonEmptyString(),
+         .keywords = "ludusavi manifest"});
+
+  s.Add({.key = "saves.manifest_name",
+         .label = "Game in the save locations list",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::GameOnly,
+         .doc = "The entry of the save locations list this game's saves are found through. Empty "
+                "finds it by the game's Steam, GOG or Lutris ID, then by its exact name.",
+         .keywords = "ludusavi manifest"});
+
   // --- Installers ------------------------------------------------------------
   s.Section("Installers", "Silent installs");
 

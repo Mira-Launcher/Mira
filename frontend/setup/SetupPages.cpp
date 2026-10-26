@@ -34,6 +34,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/LaidOutButton.h"
 #include "../widgets/ProgressRail.h"
 #include "OfficePanel.h"
 #include "SetupLook.h"
@@ -85,26 +86,6 @@ QLabel* Tick(QAbstractButton* tile) {
   show(tile->isChecked());
   return tick;
 }
-
-// A button sized by the layout inside it. QPushButton's own size hint only counts its text, so
-// wrapped labels inside got squeezed whenever the fonts were bigger than when it was made.
-class LaidOutButton : public QPushButton {
- public:
-  using QPushButton::QPushButton;
-  QSize sizeHint() const override {
-    return layout() != nullptr ? layout()->sizeHint() : QPushButton::sizeHint();
-  }
-  QSize minimumSizeHint() const override {
-    return layout() != nullptr ? layout()->minimumSize() : QPushButton::minimumSizeHint();
-  }
-  bool hasHeightForWidth() const override {
-    return layout() != nullptr && layout()->hasHeightForWidth();
-  }
-  int heightForWidth(int width) const override {
-    return layout() != nullptr ? layout()->totalHeightForWidth(width)
-                               : QPushButton::heightForWidth(width);
-  }
-};
 
 // A picked-or-not card: a choice_card button whose content is laid out inside it.
 QPushButton* Tile(QWidget* parent) {

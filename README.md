@@ -151,3 +151,5 @@ Everything lives in `~/.config/mira/` (`$XDG_CONFIG_HOME/mira`): `settings.toml`
 ## License
 
 Mira is free software under the [GPLv3](LICENSE).
+
+Where games keep their saves comes from [Ludusavi's manifest](https://github.com/mtkennerly/ludusavi-manifest) by mtkennerly and its contributors, under the MIT license.

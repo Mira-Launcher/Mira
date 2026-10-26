@@ -6,6 +6,7 @@
 #include <json.hpp>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -42,6 +43,29 @@ class MetadataStore {
   nlohmann::json ReadAchievements(const std::string& id) const;
   Result<void> WriteAchievements(const std::string& id, std::int64_t fetched_at,
                                  const nlohmann::json& value);
+
+  // One game of Ludusavi's save-location manifest, as saves::ParseManifest gives it.
+  struct SaveEntry {
+    std::string name;
+    std::string norm{};      // saves::Normalize(name)
+    std::string alias_of{};  // set when the entry only names another
+    std::string entry{};     // its `files` and `registry` as JSON; empty for an alias
+    std::vector<std::pair<std::string, std::string>> ids{};  // {"steam" | "gog" | "lutris", ref}
+  };
+  // Replaces the whole index. The new one is written beside the current one in batches, so reads
+  // go on meanwhile and see either the old index or the new one, never part of it.
+  Result<void> ReplaceSaveEntries(std::span<const SaveEntry> entries);
+  // The entry of exactly this name (an alias as itself, `entry` empty).
+  std::optional<SaveEntry> FindSaveEntry(std::string_view name) const;
+  // The name of the entry carrying this store id, or of the entry with this Normalize'd name; empty
+  // when none does.
+  std::string SaveEntryWithId(std::string_view kind, std::string_view ref) const;
+  std::string SaveEntryWithNorm(std::string_view norm) const;
+  // Up to `limit` entries whose Normalize'd name contains `norm`, those starting with it first,
+  // then shorter names first. `entry` is left empty.
+  std::vector<SaveEntry> SearchSaveEntries(std::string_view norm, int limit) const;
+  // How many games the index holds, aliases left out.
+  std::int64_t SaveEntryCount() const;
 
   // A store's owned titles as it last listed them, in its order.
   struct CatalogRow {
@@ -94,12 +118,18 @@ class MetadataStore {
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
   std::optional<std::vector<CatalogRow>> ReadCatalogLocked(const std::string& source) const;
   void DropAchievementsLocked(const std::string& id);
+  // Deletes the save index's rows of every generation but `keep`, a batch per lock.
+  void DropSaveGenerations(std::int64_t keep);
 
   std::filesystem::path dir_;
   mutable std::mutex mutex_;
   mutable Database db_;
   std::unordered_map<std::string, nlohmann::json> versions_;  // guarded by mutex_
   std::unordered_map<std::string, std::string> tiers_;        // guarded by mutex_
+  // The save index's rows reads use; a rebuild writes the next one. Guarded by mutex_.
+  std::int64_t save_generation_ = 0;
+  std::int64_t save_count_ = 0;
+  std::mutex save_rebuild_mutex_;  // one ReplaceSaveEntries at a time
 };
 
 }  // namespace mira::store

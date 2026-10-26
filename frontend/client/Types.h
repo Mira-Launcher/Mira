@@ -392,6 +392,53 @@ struct AchievementsRefreshResult {
   int unlocked = 0;
 };
 
+// One of GET /v1/games/{id}/saves' locations: where the game keeps saves, filled in.
+struct SaveLocation {
+  std::string pattern;
+  std::string path;
+  std::string problem;  // "too_broad", "unknown_placeholder"; empty when it was read
+  int files = 0;
+  std::int64_t bytes = 0;
+  bool extra = false;  // from the game's saves.extra_paths
+};
+
+// One backup of a game's saves, newest first in SavesResult.
+struct SaveSnapshot {
+  std::string id;
+  std::int64_t taken_at = 0;  // unix seconds
+  std::string reason;         // "first", "after_play", "manual", "before_restore"
+  int files = 0;
+  std::int64_t bytes = 0;
+  bool pinned = false;  // kept whatever saves.keep says
+};
+
+// GET /v1/games/{id}/saves.
+struct SavesResult {
+  bool ok = false;
+  ApiError error;
+  bool enabled = false;
+  // "kept", "ready", "no_files", "no_entry", "registry_only", "steam_cloud" or "off"
+  std::string status;
+  std::string entry;  // the save locations list's entry; empty when none matched
+  std::string match;  // how it was found: "setting", "steam", "gog", "lutris" or "name"
+  std::vector<SaveLocation> locations;
+  std::vector<SaveSnapshot> snapshots;
+  std::optional<ApiError> last_error;  // why the last backup after play failed
+  std::string doing;                   // "backing_up" or "restoring" while it runs, else empty
+  std::string install_folder;
+  std::string prefix_folder;  // the folder holding drive_c; empty for a native game
+};
+
+// The saves jobs: a backup (`snapshot`, with `taken` false when nothing changed) and a restore
+// (`undo`, the backup holding what it replaced).
+struct SavesJobResult {
+  bool ok = false;
+  ApiError error;
+  std::string snapshot;
+  bool taken = false;
+  std::string undo;
+};
+
 // POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
 // fetch was accepted. The outcome arrives as game.metadata_ready or
 // game.metadata_failed on the event stream (docs/api.md).
@@ -1120,11 +1167,18 @@ struct RemovalPlan {
   bool folder_is_prefix = false;
   std::string prefix;  // "" when there's none Mira made
   std::string prefix_shared_with;
+  std::string saves;  // its save backups' folder; "" when it has none
 };
 
 // Whether removing it asks for its files to go: never another app's or the user's own.
 inline bool DeletesFiles(const RemovalPlan& plan) {
   return plan.kind != "external";
+}
+
+// Whether removing it can also delete its prefix: one Mira made, used by no other game, and not
+// the game's own folder.
+inline bool HasPrefixToDelete(const RemovalPlan& plan) {
+  return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
 }
 
 struct RemovalPlansResult {
@@ -1160,6 +1214,7 @@ struct RelocationPlansResult {
 struct RemovalSize {
   std::uint64_t files = 0;
   std::uint64_t prefix = 0;
+  std::uint64_t saves = 0;  // its save backups
 };
 
 struct RemovalSizesResult {

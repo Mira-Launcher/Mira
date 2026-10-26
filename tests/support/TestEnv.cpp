@@ -41,6 +41,21 @@ PathPrepend::~PathPrepend() {
   setenv("PATH", old_.c_str(), 1);
 }
 
+EnvVar::EnvVar(const char* name, const char* value) : name_(name) {
+  if (const char* old = std::getenv(name)) old_ = old;
+  if (value != nullptr)
+    setenv(name, value, 1);
+  else
+    unsetenv(name);
+}
+
+EnvVar::~EnvVar() {
+  if (old_)
+    setenv(name_, old_->c_str(), 1);
+  else
+    unsetenv(name_);
+}
+
 void Isolate(config::Config& config) {
   for (const char* key : {"metadata.enabled", "metadata.steam_art_by_name",
                           "metadata.steam_by_name", "launchers.umu_lookup", "steam.import_playtime",
@@ -63,6 +78,8 @@ void Isolate(config::Config& config) {
       {"desktop_entries.directory", (dir / "applications").string()},
       {"steam.root", (dir / "steam").string()},
       {"lutris.data_dir", (dir / "lutris").string()},
+      {"saves.manifest_url", "file://" + (dir / "endpoints" / "save-locations.yaml").string()},
+      {"saves.backup_root", (dir / "saves").string()},
   };
   for (const auto& [key, value] : folders) {
     [[maybe_unused]] auto set = config.Set(key, value);

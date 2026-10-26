@@ -83,6 +83,7 @@ class Services {
   Lane installs{"installs", 1};      // installers a scan runs on its own
   Lane achievements{"achievements", 2};
   Lane achievement_icons{"achievement-icons", 4};
+  Lane saves{"saves", 1};  // the save-location list's updates
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   // Folders scans found that could be any of several games moved by hand.
@@ -188,9 +189,10 @@ class Services {
   // Deletes what DELETE /v1/games/{id} was asked to, before the game itself is removed. `staying`
   // are the games that remain afterwards: a folder one of them also uses isn't deleted. Fetched
   // info goes too, except a store game's (its Not installed entry shows it) and the art the user
-  // picked, unless `forget`. The caller holds the game's Claim.
+  // picked, unless `forget`. Its save backups only with `backups`. The caller holds the game's
+  // Claim.
   Result<void> DeleteGameData(const model::Game& game, std::span<const model::Game> staying,
-                              bool files, bool prefix, bool forget);
+                              bool files, bool prefix, bool forget, bool backups);
   // Opens Steam's own uninstall for a Steam game. The game stays until Steam has uninstalled it,
   // then leaves the library keeping its record, as if a Steam import found it gone.
   Result<void> UninstallThroughSteam(const model::Game& game);
@@ -224,6 +226,31 @@ class Services {
   // off or the game was found to have none within the last week.
   void RefreshAchievementsAfterPlay(const std::string& id);
 
+  // Updates the save-location list (saves::UpdateManifest) as a job on the saves lane, or finds
+  // the update already running. The job's id.
+  std::string UpdateSaveManifest(const std::string& requested_job = std::string());
+  // UpdateSaveManifest when the list is due (saves::ManifestDue): what anything needing the list
+  // calls, so it's fetched on first use and then at most daily, never on a timer.
+  void CheckSaveManifest();
+  // Snapshots a game's saves (saves::TakeSnapshot) holding its claim, publishing
+  // game.saves_changed when one was taken. Errs game_running or game_busy as Claim does.
+  Result<nlohmann::json> BackUpSaves(const std::string& id, std::string_view reason);
+  // Puts a snapshot's files back holding the game's claim, after a before_restore snapshot of
+  // what's there now. {restored, files, undo}: `undo` is the snapshot holding what was replaced
+  // (null when there were no saves). Errs snapshot_not_found and saves::RestoreSnapshot's errors.
+  Result<nlohmann::json> RestoreSaves(const std::string& id, const std::string& snapshot);
+  // What's being done with a game's saves now: "backing_up", "restoring", or "".
+  std::string SavesDoing(const std::string& id);
+  // Blocks until nothing is being done with the game's saves, so a launch right after a session
+  // waits for its backup; that work ends on its own. False when mirad began stopping.
+  bool WaitForSavesWork(const std::string& id);
+  // Before a launch, under its claim: a first backup for a game that has none.
+  void SavesBeforeLaunch(const model::Game& game);
+  // After a session ends, on the saves lane: the after-play backup, keeping a failure for
+  // GET /v1/games/{id}/saves to show. `then` runs once it's done, so a move of the game's folder
+  // can't take its claim first.
+  void SavesAfterPlay(const std::string& id, std::function<void()> then);
+
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
   // menu entries, runs SortingChanged when sorting's settings are among `keys`, and publishes
   // config.changed with the keys (names only: values can be secrets) and the frontend table, so a
@@ -245,6 +272,21 @@ class Services {
   void StartExternalWatch();
 
  private:
+  // Marks what's being done with a game's saves (SavesDoing) for as long as it lives, publishing
+  // game.saves_activity {id, doing} as it starts and as it ends; overlapping work shows the newest.
+  class SavesWork {
+   public:
+    SavesWork(Services& services, std::string id, std::string doing);
+    ~SavesWork();
+    SavesWork(const SavesWork&) = delete;
+    SavesWork& operator=(const SavesWork&) = delete;
+
+   private:
+    Services& services_;
+    std::string id_;
+  };
+  // The after-play backup, keeping its failure for the game's saves.
+  void BackUpAfterPlay(const model::Game& game);
   void WatchExternalGames();
   // Locks hidden games once hidden.lock_after_minutes pass with no one using Mira and no game
   // running.
@@ -267,6 +309,17 @@ class Services {
   std::mutex roots_mutex_;
   std::vector<std::filesystem::path> library_roots_;  // as of the last MarkLeftRootsMissing
 
+  std::mutex save_manifest_mutex_;  // so two requests don't both start an update
+  // Games looked at for a first backup this run, so later launches skip the survey.
+  std::mutex first_backups_mutex_;
+  std::set<std::string> first_backups_;
+  // Held from a change to saves_doing_ through its game.saves_activity, so clients get them in
+  // order: a launch's work starting can't be announced before the previous work's end.
+  std::mutex saves_activity_mutex_;
+  std::mutex saves_doing_mutex_;
+  // Each game's SavesWork and what it does, newest last.
+  std::map<std::string, std::vector<std::pair<const SavesWork*, std::string>>> saves_doing_;
+  std::condition_variable saves_done_;  // a game's saves_doing_ emptied
   std::mutex exit_files_mutex_;
   std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 

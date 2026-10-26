@@ -39,6 +39,7 @@ src/
   lutris/     Lutris library import
   metadata/   Cover art and store metadata fetching
   achievements/  Achievement lists from each store, the system locale, and achievement icons
+  saves/      The save locations list (download, index, matching a game to an entry), resolving a game's save files, and their backups
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
@@ -73,7 +74,7 @@ logs/           per-game output from the last launches
 
 **mira.db** (`store::GameStore`): `games` (JSON text for `runner_config`, `overrides`, `env`, `candidates`), `game_tags` (removed with their game), `sessions` (kept when their game is removed, so a game added again under its id gets its play history back; `mira-run` writes a session's row through its own connection, and mirad marks it counted), `removed_games` (what the user set on each removed game, as JSON, which `Reattach` puts back on a game added under its id; `NextId` gives a game found at a removed one's `install_path` that id), `settings_snapshot`, `ui_state` (the GUI's window state, kept out of `frontend.toml`), and `hidden_titles` (store titles hidden while not installed; a hidden title's game takes the `hidden` tag as it's added, and a removed hidden store game puts its title back), and `secrets` (values clients can't read through settings.toml: the hidden games' password hash). Each change is a transaction, then updates an in-memory copy that answers reads. Each start runs `PRAGMA quick_check` and writes `mira.db.bak`; a damaged file is renamed to `.bad` and the backup used.
 
-**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, `lists` of what's fetched for the whole library (Steam's tag names), and `achievements` per game (icons under `artwork/<id>/achievements/`, dropped with the game's metadata). Everything in it can be fetched again, so a damaged one is started over.
+**cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, `lists` of what's fetched for the whole library (Steam's tag names), and `achievements` per game (icons under `artwork/<id>/achievements/`, dropped with the game's metadata). `save_entries` and `save_ids` index the save locations list: a rebuild writes the next generation of rows in batches beside the current one, switches the `lists` row `save_entries` to it and only then deletes the old rows, so reads never wait out a rebuild or see half of one. Everything in it can be fetched again, so a damaged one is started over.
 
 Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
 
@@ -142,6 +143,23 @@ A store source can add to a launch through `ILibrarySource::BeforeLaunch`, which
 `proc::ProcessSupervisor` waits on `mira-run` and reads the finished session record, plus the end of the game's log for Wine's crash report, and `proc::ClassifyExit` decides between a crash and an ordinary exit for every launch path. At startup, `Reconcile()` archives finished sessions, re-adopts any `mira-run` still alive and closes the rest as `incomplete`. A finished session is added to the game's `play_seconds` once: the game remembers the newest session it counted (`last_session_at`).
 
 If `mira-run` can't be found or started, `mirad` launches the game directly with no session record or log.
+
+## Saves
+
+Where a game keeps its saves comes from the save locations list (`src/saves/Manifest.cpp`, indexed in `cache.db`); everything done with them is Mira's own. `saves::FindEntry` picks a game's entry, and `saves::PlanFor` decides whether Mira keeps its saves at all:
+
+| Game | Mira backs up its saves |
+|---|---|
+| Steam, started by the Steam client, with Steam Cloud in its entry | No, while `saves.skip_cloud` is on: Steam Cloud keeps them |
+| Steam started directly, or without Steam Cloud | Yes |
+| Anything else with save locations | Yes |
+| Only registry saves | No |
+
+Registry saves aren't kept: a game's registry lives in its prefix's `user.reg` with every other program's settings, so putting back an old copy would undo those too.
+
+`saves::Find` (`src/saves/Resolve.cpp`) resolves one location. Placeholders in the list's, GOG's and Epic's forms map to the same folders (`saves::RootsFor`): the prefix's Windows user folder (`library::WindowsUserDir`: `steamuser` once Proton made it, else `$USER`), the install folder, a Steam game's library and Steam's own folder, or the home and XDG folders for a native game. The glob walker matches one path component at a time, ignoring case for a Windows game, follows symlinks only while matching the location's own folders, and never enters `dosdevices`. A location that would take a whole prefix, home or user folder, or one of their shared folders, is refused, also when a symlink leads there (Wine links a prefix's Documents to the home folder's). Each found file is described by a logical root (`install`, `prefix`, `prefix_user`, `steam_library`, `steam`, `home`; the deepest holding it) plus a path inside it, never an absolute path, so a copy taken now still lands right after the game or its prefix moves or its runner changes between Wine and Proton.
+
+Backups (`src/saves/Backups.cpp`) live outside every game's folders, in `saves.backup_root` or the first Mira folder's `saves`, so they don't move or go with a game's files; `saves` is one of the Mira-folder names a drop or scan never takes for a game. `saves::TakeSnapshot` writes a snapshot into `<id>.partial` and renames it when complete, so a crash or cancel leaves no half snapshot (the next backup clears the leftover). Files unchanged since the newest snapshot (path, size and mtime) are hard links to its copies, and copies keep their mtimes, which is also how "nothing changed" is decided without reading a byte. Every backup holds the game's launch claim (`Services::BackUpSaves`), so it can't overlap a session, a move, a delete or another backup of the same game. After a session, the exit hook posts the backup to the `saves` lane after `game.state` went out, so exiting isn't slowed; a failure there is kept in the game's `state.json` for the GUI rather than lost in a job nobody watched. A restore (`Services::RestoreSaves`) snapshots what's there first (`before_restore`), checks every file has a folder to go to before writing any, and puts each one in place by copying beside it and renaming over it, so a file is never left half written.
 
 ## Desktop entries
 

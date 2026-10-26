@@ -140,6 +140,7 @@ std::string FixCommand(const json& fix) {
   if (kind == "game" && step == "exe") return std::format("mira set {} --exe <path>", target);
   if (kind == "game" && step == "data_dir")
     return std::format("mira set {} --data-dir <path>", target);
+  if (kind == "game" && step == "saves") return "mira saves " + target;
   return "";
 }
 
@@ -1277,6 +1278,166 @@ int CmdAchievements(int argc, char** argv) {
   return 0;
 }
 
+int CmdSaves(int argc, char** argv) {
+  const std::string_view what = argc > 0 ? argv[0] : "";
+  const bool update = what == "manifest" && argc == 2 && std::string_view(argv[1]) == "--update";
+  const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
+  if (!game && !((what == "manifest" && (argc == 1 || update)) ||
+                 ((what == "search" || what == "backup") && argc == 2) ||
+                 ((what == "restore" || what == "delete" || what == "pin" || what == "unpin") &&
+                  argc == 3) ||
+                 (what == "folder" && argc == 4 &&
+                  (std::string_view(argv[2]) == "add" || std::string_view(argv[2]) == "remove")))) {
+    std::fprintf(
+        stderr,
+        "usage: mira saves <id>\n"
+        "  where a game keeps its saves, what's there, and its backups.\n"
+        "usage: mira saves backup <id>\n"
+        "  backs up a game's saves now, unless they haven't changed.\n"
+        "usage: mira saves restore <id> <backup>\n"
+        "  puts a backup's files back, after backing up what's there.\n"
+        "usage: mira saves delete <id> <backup>\n"
+        "  deletes one backup.\n"
+        "usage: mira saves folder <id> add|remove <path>\n"
+        "  adds a file or folder the game keeps saves in, or takes one out by its pattern.\n"
+        "usage: mira saves pin|unpin <id> <backup>\n"
+        "  keeps a backup however many newer ones are taken, or lets it go again.\n"
+        "usage: mira saves manifest [--update]\n"
+        "  where the list of save locations comes from and when it was checked;\n"
+        "  --update checks it now.\n"
+        "usage: mira saves search <name>\n"
+        "  entries of that list whose name contains <name>, for saves.manifest_name.\n");
+    return 2;
+  }
+  auto client = Connect();
+  if (game) {
+    auto res = client.Get(std::format("/v1/games/{}/saves", Seg(argv[0])));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    const json saves = json::parse(res->body, nullptr, false);
+    std::printf("%s", saves.value("status", std::string()).c_str());
+    if (saves["entry"].is_string()) {
+      std::printf("  (%s, by %s)", saves["entry"].get<std::string>().c_str(),
+                  saves.value("match", std::string()).c_str());
+    }
+    std::printf("\n");
+    for (const json& location : saves.value("locations", json::array())) {
+      const std::string problem = location.value("problem", std::string());
+      std::printf("  %s\n    %s\n", location.value("pattern", std::string()).c_str(),
+                  !problem.empty()
+                      ? problem.c_str()
+                      : std::format("{} files, {} bytes: {}", location.value("files", 0),
+                                    location.value("bytes", std::uint64_t{0}),
+                                    location.value("path", std::string()))
+                            .c_str());
+    }
+    if (const json failure = saves.value("last_error", json()); failure.is_object())
+      std::printf("last backup failed: %s\n", failure.value("message", std::string()).c_str());
+    const json snapshots = saves.value("snapshots", json::array());
+    if (!snapshots.empty()) std::printf("backups:\n");
+    for (const json& snapshot : snapshots) {
+      std::printf("  %s  %s, %d files, %llu bytes%s\n", snapshot.value("id", std::string()).c_str(),
+                  snapshot.value("reason", std::string()).c_str(), snapshot.value("files", 0),
+                  static_cast<unsigned long long>(snapshot.value("bytes", std::uint64_t{0})),
+                  snapshot.value("pinned", false) ? ", pinned" : "");
+    }
+    return 0;
+  }
+  if (what == "backup") {
+    json result;
+    if (!AwaitJob(client, client.Post(std::format("/v1/games/{}/saves/backup", Seg(argv[1]))),
+                  result))
+      return 1;
+    const json snapshot = result.value("snapshot", json::object());
+    std::printf(result.value("taken", false) ? "backed up as %s\n" : "unchanged since %s\n",
+                snapshot.value("id", std::string()).c_str());
+    return 0;
+  }
+  if (what == "restore") {
+    json result;
+    if (!AwaitJob(client,
+                  client.Post(std::format("/v1/games/{}/saves/restore", Seg(argv[1])),
+                              json{{"snapshot", argv[2]}}.dump(), "application/json"),
+                  result))
+      return 1;
+    std::printf("restored %s", result.value("restored", std::string()).c_str());
+    if (result["undo"].is_string())
+      std::printf("; undo with: mira saves restore %s %s", argv[1],
+                  result["undo"].get<std::string>().c_str());
+    std::printf("\n");
+    return 0;
+  }
+  if (what == "folder") {
+    const bool add = std::string_view(argv[2]) == "add";
+    const std::string path =
+        add ? std::filesystem::absolute(argv[3]).lexically_normal().string() : std::string(argv[3]);
+    auto res = client.Post(std::format("/v1/games/{}/saves/folders", Seg(argv[1])),
+                           json{{add ? "add" : "remove", path}}.dump(), "application/json");
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    const json answer = json::parse(res->body, nullptr, false);
+    for (const json& kept : answer.value("extra_paths", json::array()))
+      if (kept.is_string()) std::printf("%s\n", kept.get<std::string>().c_str());
+    return 0;
+  }
+  if (what == "pin" || what == "unpin") {
+    auto res = client.Patch(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])),
+                            json{{"pinned", what == "pin"}}.dump(), "application/json");
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    return 0;
+  }
+  if (what == "delete") {
+    auto res = client.Delete(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    return 0;
+  }
+  if (what == "search") {
+    auto res = client.Get(std::format("/v1/saves/entries?q={}", Seg(argv[1])));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    for (const json& entry :
+         json::parse(res->body, nullptr, false).value("entries", json::array())) {
+      const std::string alias = entry.value("alias_of", std::string());
+      std::printf("%s%s\n", entry.value("name", std::string()).c_str(),
+                  alias.empty() ? "" : std::format("  (same as {})", alias).c_str());
+    }
+    return 0;
+  }
+  if (update) {
+    json result;
+    if (!AwaitJob(client, client.Post("/v1/saves/manifest/update"), result)) return 1;
+  }
+  auto res = client.Get("/v1/saves/manifest");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  const json state = json::parse(res->body, nullptr, false);
+  const auto when = [](std::int64_t at) {
+    return at > 0 ? std::format("{:%Y-%m-%d %H:%M}",
+                                std::chrono::sys_seconds(std::chrono::seconds(at)))
+                  : std::string("never");
+  };
+  std::printf("%s\n%lld games, downloaded %s, checked %s\n",
+              state.value("url", std::string()).c_str(),
+              static_cast<long long>(state.value("games", 0)),
+              when(state.value("fetched_at", std::int64_t{0})).c_str(),
+              when(state.value("checked_at", std::int64_t{0})).c_str());
+  return 0;
+}
+
 int CmdTricks(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
@@ -1979,6 +2140,12 @@ void PrintUsage() {
       "  metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]\n"
       "                         cached cover-art/store info, or pick its SteamGridDB match\n"
       "  achievements <id> [--refresh]   a Steam, GOG or Epic game's achievements\n"
+      "  saves <id>             where a game keeps its saves, and its backups\n"
+      "  saves backup <id>      back up a game's saves now\n"
+      "  saves restore|delete <id> <backup>   put a backup's files back, or delete it\n"
+      "  saves folder <id> add|remove <path>   a folder the game keeps saves in\n"
+      "  saves pin|unpin <id> <backup>   keep a backup past saves.keep, or let it go\n"
+      "  saves manifest [--update] | search <name>   the list of where games keep saves\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"
       "  watch                  tail the event stream\n");
@@ -2020,6 +2187,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "gamemode") return CmdGameMode(rest_argc, rest);
   if (command == "metadata") return CmdMetadata(rest_argc, rest);
   if (command == "achievements") return CmdAchievements(rest_argc, rest);
+  if (command == "saves") return CmdSaves(rest_argc, rest);
   if (command == "tricks") return CmdTricks(rest_argc, rest);
   if (command == "setup") return CmdSetup(rest_argc, rest);
   if (command == "list") return CmdList(rest_argc, rest);

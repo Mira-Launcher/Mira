@@ -37,8 +37,9 @@ std::string NameOf(const fs::path& path) {
 bool IsMiraFoldersOwn(const config::Config& config, const fs::path& path) {
   const std::string name = path.filename().string();
   if (name.starts_with('.')) return true;
-  if (std::ranges::contains(std::vector<std::string>{"games", "applications", "prefixes", "roms"},
-                            strings::ToLower(name))) {
+  if (std::ranges::contains(
+          std::vector<std::string>{"games", "applications", "prefixes", "roms", "saves"},
+          strings::ToLower(name))) {
     return true;
   }
   for (const config::Entry& entry : config::Schema::Instance().Entries()) {

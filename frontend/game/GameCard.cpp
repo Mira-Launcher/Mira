@@ -28,11 +28,22 @@
 #include "AchievementsPage.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
+#include "SavesPage.h"
+#include "SavesText.h"
 
 namespace mira_gui {
 
 namespace {
 constexpr std::size_t kPrefetchThumbs = 24;
+// The summary chips' icons: light on their dark glass in every theme (base.qss).
+constexpr const char* kChipIcon = "#c4c9d2";
+constexpr const char* kChipWarning = "#f5c46b";
+
+// The saves chip's stack, or a warning sign while a backup failed.
+QIcon SavesIcon(bool attention) {
+  return icons::For(attention ? icons::Glyph::Warning : icons::Glyph::Layers,
+                    QColor(attention ? kChipWarning : kChipIcon));
+}
 
 // "48 of 52 achievements", or which store has none for the game.
 QString AchievementsSummary(const AchievementsResult& result) {
@@ -137,14 +148,31 @@ void GameCard::Build(const GameSummary* title) {
   achievements_button_->setCursor(Qt::PointingHandCursor);
   // A click mustn't leave it lit as focused; Tab still reaches it.
   achievements_button_->setFocusPolicy(Qt::TabFocus);
-  icons::Follow(achievements_button_, icons::Glyph::Trophy, &theme::Tokens::text_muted);
+  // Light on dark glass in every theme, as base.qss draws the chips.
+  achievements_button_->setIcon(icons::For(icons::Glyph::Trophy, QColor(kChipIcon)));
   connect(achievements_button_, &QPushButton::clicked, this, &GameCard::OpenAchievements);
-  QSizePolicy keep = achievements_button_->sizePolicy();
-  keep.setRetainSizeWhenHidden(true);
-  achievements_button_->setSizePolicy(keep);
   achievements_button_->hide();
-  // Only a game in the library has a summary line; a title's card is the art picker.
-  if (title == nullptr) identity->addWidget(achievements_button_, 0, Qt::AlignLeft);
+  saves_button_ = new QPushButton(this);
+  saves_button_->setObjectName("saves_summary");
+  saves_button_->setCursor(Qt::PointingHandCursor);
+  saves_button_->setFocusPolicy(Qt::TabFocus);
+  saves_button_->setIcon(SavesIcon(/*attention=*/false));
+  connect(saves_button_, &QPushButton::clicked, this, &GameCard::OpenSaves);
+  saves_button_->hide();
+  // Only a game in the library has summary lines; a title's card is the art picker. The row keeps
+  // its height while they load, so the name above doesn't move.
+  if (title == nullptr) {
+    auto* facts_box = new QWidget(this);
+    auto* facts = new QHBoxLayout(facts_box);
+    facts->setContentsMargins(0, 0, 0, 0);
+    facts->setSpacing(8);
+    facts->addWidget(achievements_button_);
+    facts->addWidget(saves_button_);
+    facts->addStretch(1);
+    achievements_button_->ensurePolished();
+    facts_box->setMinimumHeight(achievements_button_->sizeHint().height());
+    identity->addWidget(facts_box);
+  }
   UpdateIdentity();
   // The cover, which the hero otherwise hides, and where a picked one previews.
   cover_ = new CoverChip(artwork_, this);
@@ -161,7 +189,22 @@ void GameCard::Build(const GameSummary* title) {
   connect(library_, &QAbstractItemModel::modelReset, this, &GameCard::UpdateIdentity);
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
-            if (live && form_ != nullptr && ChangesThisGame(type, data)) form_->Reload();
+            if (live && form_ != nullptr && ChangesThisGame(type, data)) {
+              form_->Reload();
+              LoadSaves();  // its saves settings may be what changed
+            }
+            if (live && form_ != nullptr &&
+                ((type == "game.saves_changed" && events::ParseGameId(data) == id_) ||
+                 type == "saves.manifest_changed"))
+              LoadSaves();
+            if (live && saves_page_ != nullptr && type == "game.saves_activity" &&
+                events::ParseGameId(data) == id_)
+              saves_page_->SetDoing(events::ParseSavesDoing(data));
+            if (live && form_ != nullptr && type == "config.changed" &&
+                std::ranges::any_of(events::ParseChangedKeys(data), [](const std::string& key) {
+                  return key.starts_with("saves.");
+                }))
+              LoadSaves();
             // After a session, or a refresh asked for elsewhere.
             if (live && form_ != nullptr && type == "game.achievements_ready" &&
                 events::ParseGameId(data) == id_)
@@ -231,6 +274,7 @@ void GameCard::Build(const GameSummary* title) {
   form_->SetTagSuggestions(tags);
   form_->SetTagOrder(TagOrder(library_->Games()));
   LoadAchievements(/*refresh=*/true);
+  LoadSaves();
 
   connect(form_, &GameEditForm::Changed, this, [this] {
     if (!ArtPickerOpen()) UpdateBar();
@@ -273,6 +317,8 @@ void GameCard::Back() {
     CloseArtPicker();
   } else if (AchievementsOpen()) {
     CloseAchievements();
+  } else if (SavesOpen()) {
+    CloseSaves();
   } else if (form_->AdvancedOpen()) {
     form_->CloseAdvanced();
   } else {
@@ -377,8 +423,13 @@ QString GameCard::Noun() const {
 void GameCard::UpdatePlay() {
   const GameSummary* game = library_->Find(id_);
   const bool running = game != nullptr && game->running;
-  play_->setText(game == nullptr ? "Play" : running ? "Stop" : RunVerb(*game));
-  play_->setEnabled(game != nullptr && CanPlayOrStop(*game));
+  // A launch would only wait for mirad's saves work, so the button says what that is.
+  const QString saves_doing = running ? QString() : SavesDoingLabel(library_->SavesDoing(id_));
+  play_->setText(game == nullptr          ? "Play"
+                 : running                ? "Stop"
+                 : !saves_doing.isEmpty() ? saves_doing
+                                          : RunVerb(*game));
+  play_->setEnabled(game != nullptr && saves_doing.isEmpty() && CanPlayOrStop(*game));
   // A running game's button is a red Stop, and not the default, so Enter can't end the game.
   play_->setDefault(!running);
   play_->setIcon(running ? icons::For(icons::Glyph::Stop, theme::Current().on_accent)
@@ -487,6 +538,63 @@ void GameCard::CloseAchievements() {
 
 bool GameCard::AchievementsOpen() const {
   return achievements_page_ != nullptr && stack_->currentWidget() == achievements_page_;
+}
+
+void GameCard::LoadSaves() {
+  const int request = ++saves_request_;
+  api::GetSavesAsync(this, id_, [this, request](SavesResult result) {
+    if (request != saves_request_) return;
+    // Activity events arrive in order and may be newer than this answer's `doing`.
+    result.doing = library_->SavesDoing(id_);
+    if (!result.ok) {
+      saves_.reset();
+      saves_button_->hide();
+      CloseSaves();
+      return;
+    }
+    saves_ = result;
+    saves_button_->setText(saves_text::Summary(result, QDateTime::currentDateTime()));
+    const bool attention = saves_text::NeedsAttention(result);
+    if (saves_button_->property("attention").toBool() != attention) {
+      saves_button_->setProperty("attention", attention);
+      saves_button_->setIcon(SavesIcon(attention));
+      saves_button_->style()->unpolish(saves_button_);
+      saves_button_->style()->polish(saves_button_);
+    }
+    saves_button_->show();
+    if (saves_page_ != nullptr) saves_page_->Show(result);
+    if (std::exchange(open_saves_when_loaded_, false)) OpenSaves();
+  });
+}
+
+void GameCard::OpenSaves() {
+  if (form_ == nullptr) return;
+  if (!saves_) {
+    open_saves_when_loaded_ = true;  // asked for by a notification before they arrived
+    return;
+  }
+  if (saves_page_ == nullptr) {
+    saves_page_ = new SavesPage(id_, stack_);
+    stack_->addWidget(saves_page_);
+    connect(saves_page_, &SavesPage::BackClicked, this, &GameCard::CloseSaves);
+    connect(saves_page_, &SavesPage::SettingClicked, this, [this](const std::string& key) {
+      CloseSaves();
+      form_->OpenAdvanced(key);
+    });
+    saves_page_->Show(*saves_);
+  }
+  if (ArtPickerOpen()) CloseArtPicker();
+  stack_->setCurrentWidget(saves_page_);
+  FocusPage(saves_page_);
+}
+
+void GameCard::CloseSaves() {
+  if (!SavesOpen()) return;
+  stack_->setCurrentWidget(form_);
+}
+
+bool GameCard::SavesOpen() const {
+  return saves_page_ != nullptr && stack_->currentWidget() == saves_page_;
 }
 
 bool GameCard::ChangesThisGame(const std::string& type, const std::string& data) const {

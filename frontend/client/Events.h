@@ -47,6 +47,9 @@ std::string ParseSettledDropPath(const std::string& data);
 // or empty.
 std::string ParseGameId(const std::string& data);
 
+// What `game.saves_activity` says is being done with the game's saves; empty when it's done.
+std::string ParseSavesDoing(const std::string& data);
+
 // The settings a `config.changed` names (`{"keys": [...]}`), or none.
 std::vector<std::string> ParseChangedKeys(const std::string& data);
 

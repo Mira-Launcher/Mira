@@ -28,6 +28,7 @@ TEST_CASE("An error's fix button opens the place that fixes it, and none appears
   nav.view_log = [&](const std::string& id) { opened = "log " + id; };
   nav.install = [&](const std::string& id) { opened = "installer " + id; };
   nav.open_game_settings = [&](const std::string& id) { opened = "game " + id; };
+  nav.open_game_saves = [&](const std::string& id) { opened = "saves " + id; };
   error_help::SetNavigator(nav);
 
   const auto press = [&](const ApiError& error) {
@@ -40,6 +41,7 @@ TEST_CASE("An error's fix button opens the place that fixes it, and none appears
   CHECK(press(WithFix("source", "gog", "login")) == "source gog");
   CHECK(press(WithFix("game", "celeste", "log")) == "log celeste");
   CHECK(press(WithFix("game", "celeste", "install")) == "installer celeste");
+  CHECK(press(WithFix("game", "celeste", "saves")) == "saves celeste");
   CHECK(press(WithFix("game", "celeste", "exe")) == "game celeste");
 
   // A source the window can't name, a route it doesn't have, and no fix at all.

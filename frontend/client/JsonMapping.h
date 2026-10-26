@@ -40,6 +40,8 @@ std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);
 // GET /v1/games/{id}/installer's reply, or classify's `installer_info`; ok is left to the caller.
 InstallerInfoResult ToInstallerInfo(const nlohmann::json& entry);
+// GET /v1/games/{id}/saves' reply; ok is left to the caller.
+SavesResult ToSaves(const nlohmann::json& entry);
 ArtCandidate ToArtCandidate(const nlohmann::json& item);
 // `reply[key]`'s [{"id", "error"}] entries, as batch endpoints and jobs report failures.
 std::vector<GameFailure> ToGameFailures(const nlohmann::json& reply, const char* key);

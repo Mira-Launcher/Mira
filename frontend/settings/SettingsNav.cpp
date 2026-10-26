@@ -426,11 +426,13 @@ void SettingsNavWidget::RevealRow(QWidget* row_widget) {
   if (!search_->text().isEmpty()) search_->clear();  // triggers ApplyFilter via textChanged
 
   if (row.card != nullptr && row.card->Collapsible()) row.card->SetExpanded(true);
-  // After the unfolded card has its size, and clear of the sticky title.
+  // After the unfolded card has its size, at the top just clear of the sticky title: scrolling
+  // only until it's in view leaves it at the bottom, under the rows above it.
   QTimer::singleShot(0, this, [this, row_widget = QPointer<QWidget>(row_widget)] {
     if (row_widget == nullptr) return;
-    canvas_->layout()->activate();
-    scroll_->ensureWidgetVisible(row_widget, 50, sticky_->sizeHint().height() + 24);
+    SettleLayout(canvas_);
+    const int top = row_widget->mapTo(canvas_, QPoint(0, 0)).y();
+    scroll_->verticalScrollBar()->setValue(top - sticky_->sizeHint().height() - 4);
   });
 }
 

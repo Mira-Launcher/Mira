@@ -754,6 +754,10 @@ QPushButton#text_button:disabled {
   text-decoration: none;
 }
 
+QPushButton#text_button[tone="muted"] {
+  color: @text_muted;
+}
+
 /* ui/TagEdit: one chip per tag. */
 QFrame#tag_chip {
   background: @surface_alt;
@@ -888,23 +892,38 @@ QPushButton#hero_action:checked {
   border-color: @accent;
 }
 
-/* The game card's achievement count: a line of the status, which opens their page. */
-QPushButton#achievements_summary {
-  background: transparent;
-  border: none;
-  padding: 0px;
-  color: @text;
+/* The game card's achievement count and saves line, which open their pages: dark glass like
+ * hero_action, since bright hero art shows through the scrim there. The radius stays under half
+ * the chip's height. */
+QPushButton#achievements_summary,
+QPushButton#saves_summary {
+  background: rgba(20, 22, 27, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 3px 10px;
+  color: #e6e8ec;
   text-align: left;
 }
 
 QPushButton#achievements_summary:hover,
-QPushButton#achievements_summary:focus {
-  color: @accent;
+QPushButton#saves_summary:hover,
+QPushButton#achievements_summary:focus,
+QPushButton#saves_summary:focus {
+  background: rgba(20, 22, 27, 0.8);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
 }
 
 QPushButton#achievements_summary:pressed,
-QPushButton#achievements_summary:disabled {
-  color: @text_muted;
+QPushButton#saves_summary:pressed,
+QPushButton#achievements_summary:disabled,
+QPushButton#saves_summary:disabled {
+  color: #aab0ba;
+}
+
+QPushButton#saves_summary[attention="true"] {
+  color: #f5c46b;
+  border-color: rgba(245, 196, 107, 0.55);
 }
 
 /* --- Page header and tabs (ui/PageHeader) -------------------------------- */

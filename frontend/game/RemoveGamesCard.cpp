@@ -62,10 +62,6 @@ class CoverStack : public QWidget {
   ArtworkStore* artwork_;
 };
 
-bool HasPrefixToDelete(const RemovalPlan& plan) {
-  return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
-}
-
 }  // namespace
 
 QString RemoveGamesCard::ActionText(const std::vector<RemovalPlan>& plans) {
@@ -159,6 +155,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
     if (plans_.size() > 6) SetScrollable();
   }
   AddPrefixRow();
+  AddSavesRow();
 
   auto* buttons = new QWidget(this);
   auto* buttons_layout = new QHBoxLayout(buttons);
@@ -172,8 +169,10 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   // Red when it deletes anything; a plain remove only forgets the game.
   const bool deletes = std::ranges::any_of(plans_, DeletesFiles);
   if (deletes) confirm->setProperty("tone", "danger");
-  connect(confirm, &QPushButton::clicked, this,
-          [this] { emit Confirmed(prefix_ != nullptr && prefix_->isChecked()); });
+  connect(confirm, &QPushButton::clicked, this, [this] {
+    emit Confirmed(prefix_ != nullptr && prefix_->isChecked(),
+                   saves_ != nullptr && saves_->isChecked());
+  });
   buttons_layout->addWidget(confirm);
   AddFooterRow(buttons);
   // Reached by a click or the Delete key, so Return mustn't confirm it a second time.
@@ -232,6 +231,34 @@ void RemoveGamesCard::AddPrefixRow() {
         total += static_cast<qint64>(it->second.prefix);
     }
     return one ? SizeText(total) : QString("%1 · %2").arg(with_prefix.size()).arg(SizeText(total));
+  };
+  size->setText(text());
+  refresh_.push_back([size, text] { size->setText(text()); });
+}
+
+void RemoveGamesCard::AddSavesRow() {
+  std::vector<const RemovalPlan*> with_saves;
+  for (const RemovalPlan& plan : plans_) {
+    if (!plan.saves.empty()) with_saves.push_back(&plan);
+  }
+  if (with_saves.empty()) return;
+  const bool one = plans_.size() == 1;
+  const QString label = one ? "Delete its save backups" : "Delete their save backups";
+  auto* row = new SettingRow(label, QString(), this);
+  auto* size = MakeLabel(row, QString(), "subtle");
+  row->AddControl(size);
+  saves_ = new Switch(row);
+  saves_->setAccessibleName(label);
+  row->AddControl(saves_);
+  AddRow(row);
+  const auto text = [this, one, with_saves] {
+    if (!measured_) return QString("…");
+    qint64 total = 0;
+    for (const RemovalPlan* plan : with_saves) {
+      if (const auto it = sizes_.find(plan->id); it != sizes_.end())
+        total += static_cast<qint64>(it->second.saves);
+    }
+    return one ? SizeText(total) : QString("%1 · %2").arg(with_saves.size()).arg(SizeText(total));
   };
   size->setText(text());
   refresh_.push_back([size, text] { size->setText(text()); });

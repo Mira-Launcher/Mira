@@ -185,7 +185,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   // Under its label like the other rows, so a narrow card never squeezes the label.
   auto* advanced = new QPushButton("Advanced settings…", runner);
-  connect(advanced, &QPushButton::clicked, this, &GameEditForm::OpenAdvanced);
+  connect(advanced, &QPushButton::clicked, this, [this] { OpenAdvanced(); });
   auto* advanced_line = new QWidget(runner);
   auto* advanced_line_layout = new QHBoxLayout(advanced_line);
   advanced_line_layout->setContentsMargins(0, 0, 0, 0);
@@ -339,9 +339,10 @@ void GameEditForm::SetBottomRoom(int height) {
   cards_layout_->setContentsMargins(margins.left(), margins.top(), margins.right(), 18 + height);
 }
 
-void GameEditForm::OpenAdvanced() {
+void GameEditForm::OpenAdvanced(const std::string& key) {
   pages_->setCurrentIndex(1);
   overrides_->ShowFromTop();  // the runner's card may have come or gone since last time
+  overrides_->RevealKey(key);
 }
 
 void GameEditForm::CloseAdvanced() {

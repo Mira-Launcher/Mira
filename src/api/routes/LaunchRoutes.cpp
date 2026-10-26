@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <format>
 #include <map>
+#include <thread>
 
 #include "api/Http.h"
 #include "api/Routes.h"
@@ -544,6 +545,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
 
     // An app that's already open is handed the documents anyway; the running one stays tracked.
+    // Played again right after exiting: its saves are backed up first, which game.saves_activity
+    // tells clients.
+    if (!s.WaitForSavesWork(game->id))
+      return SendError(res, 503, "shutting_down", "mirad is stopping");
     const auto reservation = s.supervisor.Reserve(game->id);
     if (!reservation) {
       // Being moved or deleted, or a launch already under way.
@@ -555,6 +560,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendError(res, 409, "already_running",
                        std::format("\"{}\" is already running", game->id));
     }
+    if (reservation) s.SavesBeforeLaunch(*game);
 
     if (const launchers::Launcher* launcher = launchers::ForGame(*game);
         reservation && launcher && launcher->services_outlive_app && !game->data_dir.empty() &&

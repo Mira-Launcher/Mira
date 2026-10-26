@@ -15,4 +15,12 @@ bool LooksLikeWinePrefix(const std::filesystem::path& dir);
 // Inside a prefix, relative to it: Wine's own programs (drive_c/windows), not a game's.
 bool IsPrefixSystemDir(const std::filesystem::path& rel);
 
+// The folder holding drive_c: `dir` itself, or its pfx/ when that has one (Steam's compatdata and
+// umu's layout).
+std::filesystem::path PrefixRoot(const std::filesystem::path& dir);
+
+// The Windows user folder programs in the prefix write to: drive_c/users/steamuser once Proton
+// has made it, else the one Wine names after $USER.
+std::filesystem::path WindowsUserDir(const std::filesystem::path& prefix);
+
 }  // namespace mira::library

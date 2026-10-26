@@ -52,6 +52,8 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
 
 void Launch(QWidget* parent, const std::string& id, const std::string& option,
             std::function<void(bool tracked)> on_launched, std::function<void()> on_failed) {
+  // mirad holds the request while the game's saves are backed up; the tile shows that from
+  // game.saves_activity.
   api::LaunchGameAsync(
       parent, id, option, [parent, id, on_launched, on_failed](LaunchResult result) {
         if (!result.ok) {
@@ -90,7 +92,8 @@ void Stop(QWidget* parent, const std::string& id) {
   });
 }
 
-void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix) {
+void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix,
+                 bool delete_saves) {
   // Files only where mirad's plan says they're Mira's or a store's: an explicit delete_files on
   // another app's files is refused, and would keep the game.
   std::vector<std::string> deleting, forgetting;
@@ -103,7 +106,7 @@ void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool de
     if (ids.empty()) continue;
     // Success needs no notice: the games leave the grid, a Steam game once Steam is done.
     api::DeleteGamesAsync(
-        parent, ids, files, delete_prefix, [parent, names](DeleteGamesResult result) {
+        parent, ids, files, delete_prefix, delete_saves, [parent, names](DeleteGamesResult result) {
           if (!result.ok) {
             notify::FailedRequest(parent, "Could not remove the games.", result.error);
           } else if (!result.failed.empty()) {

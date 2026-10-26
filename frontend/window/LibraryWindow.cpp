@@ -1047,6 +1047,11 @@ void LibraryWindow::InstallErrorNavigator() {
   nav.open_game_settings = [self](const std::string& id) {
     if (self) self->OpenGameDialog(id);
   };
+  nav.open_game_saves = [self](const std::string& id) {
+    if (!self) return;
+    self->OpenGameDialog(id);
+    if (self->game_card_ != nullptr && self->game_card_->id() == id) self->game_card_->OpenSaves();
+  };
   nav.view_log = [self](const std::string& id) {
     if (!self) return;
     const mira_gui::GameSummary* game = self->FindGame(id);
@@ -1817,10 +1822,11 @@ void LibraryWindow::AskRemove(const std::vector<std::string>& ids) {
     auto* card = new mira_gui::RemoveGamesCard(games, plans, artwork_);
     connect(card, &mira_gui::RemoveGamesCard::CloseRequested, this,
             &LibraryWindow::CloseSidebarCard);
-    connect(card, &mira_gui::RemoveGamesCard::Confirmed, this, [this, plans](bool delete_prefix) {
-      CloseSidebarCard();
-      mira_gui::actions::RemoveGames(this, plans, delete_prefix);
-    });
+    connect(card, &mira_gui::RemoveGamesCard::Confirmed, this,
+            [this, plans](bool delete_prefix, bool delete_saves) {
+              CloseSidebarCard();
+              mira_gui::actions::RemoveGames(this, plans, delete_prefix, delete_saves);
+            });
     ShowSidebarCard(card);
     mira_gui::api::GetRemovalSizesAsync(card, measured, [card](mira_gui::RemovalSizesResult sizes) {
       if (sizes.ok) card->SetSizes(sizes.sizes);
@@ -2175,6 +2181,12 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
   if (type == "games.removed") {
     const std::vector<std::string> ids = mira_gui::events::ParseRemovedIds(data);
     if (!ids.empty()) library_->Remove(ids);
+    return;
+  }
+
+  if (type == "game.saves_activity") {
+    library_->SetSavesDoing(mira_gui::events::ParseGameId(data),
+                            mira_gui::events::ParseSavesDoing(data));
     return;
   }
 
