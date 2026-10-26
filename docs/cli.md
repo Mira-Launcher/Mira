@@ -199,7 +199,7 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 | `mira runners catalog [--kind K] [--source ID]` | `GET /v1/runners/catalog` | Releases from one source, marking installed ones. Defaults to Proton and its first source. |
 | `mira runners download --kind K --tag TAG [--source ID]` | `POST /v1/runners/download` | Downloads and installs a release in the background. |
 | `mira runners updates` | `GET /v1/runners/updates` | Installed builds with a newer release. |
-| `mira runners update <kind:name>` | `POST /v1/runners/update` | Installs the newer release and moves games and the default onto it. The old build stays. |
+| `mira runners update <kind:name>` | `POST /v1/runners/update` | Installs the newer release and moves games and runner settings onto it. The old build stays. |
 | `mira runners remove <kind:name>` | `DELETE /v1/runners/{kind}:{name}` | Removes a build. Only builds inside the search paths can be removed. |
 | `mira runners tools [install umu\|winetricks]` | `GET /v1/runners/tools` | Shows or installs umu-launcher and winetricks. |
 | `mira runners schema <kind>` | `GET /v1/runners/{kind}/schema` | What `runner_config` accepts for that kind. |
@@ -208,7 +208,7 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 
 ### `mira config get|set|list|reset`
 
-- `get <key>` reads one setting by dotted key.
+- `get <key>` reads one setting by dotted key, a secret such as `steamgriddb.api_key` included (the API leaves secrets out otherwise).
 - `set <key> <value>` sets one, parsing the value as JSON with a string fallback.
 - `list` prints every setting's key, type, scope and description.
 - `reset [key]` resets one setting or all of them.

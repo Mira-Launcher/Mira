@@ -30,15 +30,22 @@
 #include "proc/ProcessIndex.h"
 #include "runner/Exec.h"
 #include "runner/ProtonRunner.h"
+#include "runner/RefMigration.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
 #include "saves/Backups.h"
 #include "saves/Manifest.h"
+#include "steam/GridArt.h"
 #include "steam/SteamDetector.h"
 
 namespace mira::api {
 namespace {
 using nlohmann::json;
+
+// The files steam.sync_art wrote into Steam's folders.
+std::filesystem::path SteamArtList(const config::Config& config) {
+  return config.File().parent_path() / "steam-art.json";
+}
 
 // `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
 void AddNeedsCheck(json& game, double threshold) {
@@ -290,6 +297,14 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
       })) {
     SortingChanged();
   }
+  if (std::ranges::contains(keys, std::string("steam.sync_art"))) {
+    if (config.GetBool("steam.sync_art")) {
+      for (const model::Game& game : games.All()) SyncSteamArt(game.id);
+    } else if (const auto root = steam::FindSteamRoot(config)) {
+      if (auto removed = steam::RemoveGridArt(*root, SteamArtList(config)); !removed)
+        log::Warn("could not take Mira's art out of Steam: {}", removed.error().message);
+    }
+  }
   events.Publish("config.changed", {{"keys", keys}, {"frontend", config.FrontendSettings()}});
 }
 
@@ -305,6 +320,27 @@ void Services::SyncDesktopEntry(const std::string& game_id) {
       !synced) {
     log::Warn("could not update the application menu entry of {}: {}", game_id,
               synced.error().message);
+  }
+}
+
+void Services::SyncSteamArt(const std::string& game_id) {
+  constexpr std::string_view kPrefix = "steam-";
+  if (!game_id.starts_with(kPrefix) || !config.GetBool("steam.sync_art")) return;
+  const auto root = steam::FindSteamRoot(config);
+  if (!root) return;
+  // Only picks: Mira's automatic art for a Steam game is Steam's own.
+  const nlohmann::json info = games.Metadata().Read(game_id);
+  steam::GridPicks picks;
+  for (const auto& [slot, key] : {std::pair{"cover", "artwork"}, std::pair{"hero", "hero"},
+                                  std::pair{"logo", "logo"}, std::pair{"icon", "icon"}}) {
+    if (!info.contains(key) || !info[key].is_object() || !info[key].value("chosen", false))
+      continue;
+    if (auto art = games.Metadata().ArtFor(game_id, slot)) picks[slot] = art->file;
+  }
+  if (auto synced =
+          steam::SyncGridArt(*root, game_id.substr(kPrefix.size()), picks, SteamArtList(config));
+      !synced) {
+    log::Warn("could not put {}'s art into Steam: {}", game_id, synced.error().message);
   }
 }
 
@@ -898,16 +934,18 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
     });
     if (fresh != builds.end()) {
       const std::string to = fresh->Reference();
+      // Games, their own settings and every runner setting: whatever named the old build.
+      std::vector<std::string> ids;
+      runner::RepointRefs(
+          config, games,
+          [&](const std::string& ref) {
+            return ref == replacing ? std::optional(to) : std::nullopt;
+          },
+          &ids);
       json moved = json::array();
       const RecordSettings settings = CurrentRecordSettings();
-      for (const model::Game& game : games.All()) {
-        if (game.runner_ref != replacing) continue;
-        if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-          moved.push_back(Record(*updated, &settings));
-        }
-      }
-      if (config.GetString("default_runner.windows") == replacing) {
-        (void)config.Set("default_runner.windows", to);
+      for (const std::string& id : ids) {
+        if (const auto game = games.Find(id)) moved.push_back(Record(*game, &settings));
       }
       if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
       events.Publish("runners.updated",

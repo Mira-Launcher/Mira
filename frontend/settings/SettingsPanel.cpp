@@ -25,6 +25,7 @@
 #include "../app/Notify.h"
 #include "../bigscreen/Session.h"
 #include "../client/EventHub.h"
+#include "../client/Events.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
@@ -60,6 +61,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
   setEnabled(false);
   LoadFrontendPrefs();
   Load();
+  FollowConfigChanges();
 }
 
 void SettingsPanel::SetHeader(QWidget* header) {
@@ -75,47 +77,84 @@ void SettingsPanel::LoadFrontendPrefs() {
   SelectTheme(theme_saved_);
 
   api::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
-    if (!result.ok) {
-      LoadDone();  // the defaults are already shown
-      return;
-    }
-    const FrontendPrefs& prefs = result.prefs;
-    if (prefs.theme) {
-      theme_saved_ = QString::fromStdString(*prefs.theme);
-      SelectTheme(theme_saved_);
-    }
-    for (PrefToggle& toggle : toggles_) {
-      toggle.saved = (prefs.*toggle.member).value_or(toggle.fallback);
-      toggle.toggle->setChecked(toggle.saved);
-    }
-    for (PrefSeconds& seconds : seconds_) {
-      seconds.spin->setValue((prefs.*seconds.member).value_or(seconds.fallback) / 1000.0);
-      seconds.saved = qRound(seconds.spin->value() * 1000);  // after the clamp
-    }
-    for (PrefChoice& choice : choices_) {
-      choice.load(prefs);
-      choice.saved = choice.combo->currentData();
-    }
-    continue_count_->setValue(prefs.library_continue_count.value_or(3));
-    continue_count_saved_ = continue_count_->value();  // after the clamp
-    trailer_volume_->setValue(prefs.big_screen_trailer_volume.value_or(50));
-    trailer_volume_saved_ = trailer_volume_->value();
-    for (ShapeField* field :
-         {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
-      field->saved = field->current = prefs.*(field->member);
-      RefreshShape(*field);
-    }
-
-    SidebarStyleChoices::Choices choices;
-    choices.pinned = sidebar::ParseStyle(prefs.sidebar_pinned_style.value_or(""));
-    choices.recent = sidebar::ParseStyle(prefs.sidebar_recent_style.value_or(""));
-    choices.recent_count = std::clamp(prefs.sidebar_recent_count.value_or(0), 0, 10);
-    choices.recent_when = prefs.sidebar_recent_when.value_or(true);
-    sidebar_style_saved_ = choices;
-    sidebar_style_->SetChoices(choices);
-
-    Refresh();
+    if (result.ok) ShowFrontendPrefs(result.prefs);  // else the defaults are already shown
     LoadDone();
+  });
+}
+
+void SettingsPanel::ShowFrontendPrefs(const FrontendPrefs& prefs) {
+  if (prefs.theme) {
+    theme_saved_ = QString::fromStdString(*prefs.theme);
+    SelectTheme(theme_saved_);
+  }
+  for (PrefToggle& toggle : toggles_) {
+    toggle.saved = (prefs.*toggle.member).value_or(toggle.fallback);
+    toggle.toggle->setChecked(toggle.saved);
+  }
+  for (PrefSeconds& seconds : seconds_) {
+    seconds.spin->setValue((prefs.*seconds.member).value_or(seconds.fallback) / 1000.0);
+    seconds.saved = qRound(seconds.spin->value() * 1000);  // after the clamp
+  }
+  for (PrefChoice& choice : choices_) {
+    choice.load(prefs);
+    choice.saved = choice.combo->currentData();
+  }
+  continue_count_->setValue(prefs.library_continue_count.value_or(3));
+  continue_count_saved_ = continue_count_->value();  // after the clamp
+  trailer_volume_->setValue(prefs.big_screen_trailer_volume.value_or(50));
+  trailer_volume_saved_ = trailer_volume_->value();
+  for (ShapeField* field :
+       {&tile_spacing_, &grid_margin_, &tile_radius_, &panel_radius_, &control_radius_}) {
+    field->saved = field->current = prefs.*(field->member);
+    RefreshShape(*field);
+  }
+
+  SidebarStyleChoices::Choices choices;
+  choices.pinned = sidebar::ParseStyle(prefs.sidebar_pinned_style.value_or(""));
+  choices.recent = sidebar::ParseStyle(prefs.sidebar_recent_style.value_or(""));
+  choices.recent_count = std::clamp(prefs.sidebar_recent_count.value_or(0), 0, 10);
+  choices.recent_when = prefs.sidebar_recent_when.value_or(true);
+  sidebar_style_saved_ = choices;
+  sidebar_style_->SetChoices(choices);
+
+  Refresh();
+}
+
+void SettingsPanel::FollowConfigChanges() {
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string& data, bool live) {
+            if (!live || (type != "config.changed" && type != "stream.gap")) return;
+            // A gap may have hidden any change; an older mirad names no keys.
+            const std::vector<std::string> keys = events::ParseChangedKeys(data);
+            const auto frontend = [](const std::string& key) {
+              return key.starts_with("frontend.");
+            };
+            if (keys.empty() || !std::ranges::all_of(keys, frontend)) ReloadValues();
+            if ((keys.empty() || std::ranges::any_of(keys, frontend)) && !PrefsDirty()) {
+              api::GetFrontendPrefsAsync(this, [this](FrontendPrefsResult result) {
+                if (result.ok && !PrefsDirty()) ShowFrontendPrefs(result.prefs);
+              });
+            }
+          });
+}
+
+void SettingsPanel::ReloadValues() {
+  if (!values_loaded_) return;  // the first load is still coming
+  api::GetConfigAsync(this, [this](ConfigResult config) {
+    if (!config.ok) return;
+    ShowMiraFolders(config);
+    for (SettingEditor& field : fields_) {
+      const auto it = config.values.find(field.entry.key);
+      const std::string& value =
+          it != config.values.end() ? it->second : field.entry.default_display;
+      // An edit not yet saved stays; only what it's compared with moves.
+      const std::optional<std::string> edited =
+          field.Changed() ? std::optional(field.Text()) : std::nullopt;
+      field.SetText(value);
+      field.original = field.Text();
+      if (edited) field.SetText(*edited);
+    }
+    Refresh();
   });
 }
 
@@ -160,6 +199,7 @@ void SettingsPanel::Load() {
       }
       nav_->RearrangePages();  // lists and paths now hold their rows, so cards have their real
                                // heights
+      values_loaded_ = true;
       setEnabled(true);
       Refresh();
       LoadDone();
@@ -348,7 +388,8 @@ void SettingsPanel::LoadGameModeStatus() {
 
 void SettingsPanel::PopulateRunnerCombos(const RunnersResult& result) {
   for (SettingEditor& field : fields_) {
-    if (field.combo != nullptr && field.entry.is_runner_ref) FillRunnerCombo(field.combo, result);
+    if (field.combo != nullptr && field.entry.is_runner_ref)
+      FillRunnerCombo(field.combo, result, field.entry);
   }
 }
 

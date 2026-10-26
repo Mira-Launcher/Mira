@@ -1927,7 +1927,8 @@ int CmdConfig(int argc, char** argv) {
       std::fprintf(stderr, "usage: mira config get <key>\n");
       return 2;
     }
-    auto res = client.Get("/v1/config");
+    // Asked for by name, so a secret is printed as stored.
+    auto res = client.Get("/v1/config?reveal=1");
     if (!Ok(res)) {
       PrintError(res);
       return 1;

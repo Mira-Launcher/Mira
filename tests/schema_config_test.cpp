@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <json.hpp>
+#include <sstream>
 
 #include "config/Config.h"
 #include "config/Resolver.h"
@@ -63,32 +65,95 @@ fs::path TempFile(const char* name) {
 std::int64_t DefaultDebounce() {
   return Schema::Instance().Find("scan.debounce_ms")->default_value.get<std::int64_t>();
 }
+std::string ReadText(const fs::path& file) {
+  std::ifstream in(file);
+  return {std::istreambuf_iterator<char>(in), {}};
+}
 }  // namespace
 
-TEST_CASE("Config materialises defaults when no file exists") {
+TEST_CASE("Settings keep only what was set, so every other one follows its default") {
   const fs::path file = TempFile("settings-defaults.toml");
   fs::remove(file);
   Config config(file);
   config.Load();
   CHECK(fs::exists(file));
   CHECK(config.GetInt("scan.debounce_ms") == DefaultDebounce());
+  CHECK(ReadText(file).find("debounce_ms") == std::string::npos);
+
+  // A value set to what is the default today stays set, and is kept across a reload.
+  REQUIRE(config.Set("scan.debounce_ms", DefaultDebounce()).has_value());
+  REQUIRE(config.Patch({{"scan", {{"max_depth", 7}}}}).has_value());
+  Config reloaded(file);
+  reloaded.Load();
+  CHECK(reloaded.GetInt("scan.max_depth") == 7);
+  CHECK(ReadText(file).find("debounce_ms") != std::string::npos);
+
+  // Taking a value back, by reset or by a null, removes it and the table it leaves empty.
+  REQUIRE(config.Reset("scan.debounce_ms").has_value());
+  REQUIRE(config.Patch({{"scan", {{"max_depth", nullptr}}}}).has_value());
+  const std::string text = ReadText(file);
+  CHECK(text.find("debounce_ms") == std::string::npos);
+  CHECK(text.find("[scan]") == std::string::npos);
+  CHECK(config.GetInt("scan.max_depth") ==
+        Schema::Instance().Find("scan.max_depth")->default_value.get<std::int64_t>());
 }
 
-TEST_CASE("A setting saved with an earlier default gets the new one, and a chosen value stays") {
+TEST_CASE("A settings file that holds every default is cleaned once, keeping chosen values") {
   const Entry* pattern = Schema::Instance().Find("runner_sources.legendary.asset_pattern");
   REQUIRE(pattern != nullptr);
   REQUIRE_FALSE(pattern->old_defaults.empty());
   const fs::path file = TempFile("settings-old-default.toml");
-  {
-    std::ofstream out(file, std::ios::trunc);
-    out << "[runner_sources.legendary]\nasset_pattern = " << pattern->old_defaults.front().dump()
-        << "\nrepo = \"me/legendary-fork\"\n";
-  }
+  const fs::path backup = fs::path(file) += ".with-defaults";
+  fs::remove(backup);
+  std::ostringstream old_text;
+  old_text << "[runner_sources.legendary]\nasset_pattern = " << pattern->old_defaults.front().dump()
+           << "\nrepo = \"me/legendary-fork\"\n\n[scan]\ndebounce_ms = " << DefaultDebounce()
+           << "\n";
+  std::ofstream(file, std::ios::trunc) << old_text.str();
+
   Config config(file);
   config.Load();
   CHECK(config.GetString("runner_sources.legendary.asset_pattern") ==
         pattern->default_value.get<std::string>());
   CHECK(config.GetString("runner_sources.legendary.repo") == "me/legendary-fork");
+  const std::string text = ReadText(file);
+  CHECK(text.find("me/legendary-fork") != std::string::npos);
+  CHECK(text.find("asset_pattern") == std::string::npos);
+  CHECK(text.find("debounce_ms") == std::string::npos);
+  CHECK(ReadText(backup) == old_text.str());
+
+  // Once cleaned, an earlier default chosen on purpose stays.
+  REQUIRE(config.Set("runner_sources.legendary.asset_pattern", pattern->old_defaults.front())
+              .has_value());
+  Config reloaded(file);
+  reloaded.Load();
+  CHECK(reloaded.Get("runner_sources.legendary.asset_pattern") == pattern->old_defaults.front());
+}
+
+TEST_CASE("Loading drops what no setting reads, keeping the file as it was") {
+  const fs::path file = TempFile("settings-removed.toml");
+  const fs::path backup = fs::path(file) += ".with-removed-settings";
+  fs::remove(file);
+  fs::remove(backup);
+  {
+    Config config(file);
+    config.Load();
+    REQUIRE(config.Set("scan.debounce_ms", 9000).has_value());
+  }
+  std::string text = ReadText(file);
+  REQUIRE(text.find("[scan]\n") != std::string::npos);
+  text.insert(text.find("[scan]\n") + 7, "old_knob = 1\n");
+  text.insert(text.find("[scan]"), "prefix_provider = \"x\"\n\n[frontend]\ntile_width = 180\n\n");
+  std::ofstream(file, std::ios::trunc) << text;
+
+  Config config(file);
+  config.Load();
+  CHECK(config.GetInt("scan.debounce_ms") == 9000);
+  const std::string saved = ReadText(file);
+  CHECK(saved.find("debounce_ms = 9000") != std::string::npos);
+  for (const char* gone : {"old_knob", "prefix_provider", "tile_width", "[frontend]"})
+    CHECK(saved.find(gone) == std::string::npos);
+  CHECK(ReadText(backup) == text);
 }
 
 TEST_CASE(
@@ -148,6 +213,10 @@ TEST_CASE(
   CHECK_FALSE(result.has_value());
   CHECK_FALSE(config.Patch({{"scan", {{"debounce_ms", 9000}, {"debounce_mss", 1}}}}).has_value());
   CHECK(config.GetInt("scan.debounce_ms") == before);
+  // A real setting's dotted name is not a nested table: saved, it would be a stray key.
+  CHECK_FALSE(config.Patch({{"scan.debounce_ms", 9000}}).has_value());
+  CHECK_FALSE(config.Patch({{"tags", {{"folders.x", 1}}}}).has_value());
+  CHECK(ReadText(file).find("debounce_ms") == std::string::npos);
   CHECK(config.Patch({{"scan", {{"debounce_ms", 9000}}}, {"library_roots", {"/a", "/b"}}})
             .has_value());
   CHECK(config.Patch(nlohmann::json::object()).has_value());

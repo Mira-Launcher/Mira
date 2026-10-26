@@ -1,6 +1,7 @@
 #include "runner/RunnerRegistry.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <filesystem>
 #include <format>
@@ -166,6 +167,21 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
 
   const auto match = std::ranges::find(builds, name, &model::RunnerBuild::name);
   if (match == builds.end()) {
+    // A build replaced by a newer one of its line (GE-Proton10-7 by GE-Proton10-9): that one runs
+    // the game instead, its name the same but for the numbers.
+    const auto masked = [](std::string text) {
+      std::erase_if(text, [](unsigned char c) { return std::isdigit(c); });
+      return text;
+    };
+    const model::RunnerBuild* newest = nullptr;
+    for (const model::RunnerBuild& build : builds) {
+      if (masked(build.name) != masked(name)) continue;
+      if (!newest || ParseVersion(build.version) > ParseVersion(newest->version)) newest = &build;
+    }
+    if (newest != nullptr) {
+      log::Info("{} isn't installed anymore: using {}", runner_ref, newest->Reference());
+      return Resolved{runner, *newest};
+    }
     return Err("runner_build_not_found",
                std::format("the {} build \"{}\" isn't installed anymore", kind, name),
                "Install it again, or choose another runner.", Fix::Runners());

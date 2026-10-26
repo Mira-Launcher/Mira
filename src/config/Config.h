@@ -7,6 +7,7 @@
 #include <functional>
 #include <json.hpp>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,14 +20,16 @@ struct Entry;
 
 // Frontend keys the GUI sets as it's used, rather than a person choosing them: kept in mira.db, not
 // frontend.toml.
-inline constexpr std::array<std::string_view, 11> kUiStateKeys = {
-    "window_width",  "window_height",   "window_maximized",   "sidebar_width",
-    "details_width", "tile_width",      "source_tile_widths", "library_filter",
-    "sort_by",       "sort_descending", "onboarded"};
+inline constexpr std::array<std::string_view, 12> kUiStateKeys = {
+    "window_width",   "window_height", "window_maximized",   "sidebar_width",
+    "details_width",  "tile_width",    "source_tile_widths", "page_tile_widths",
+    "library_filter", "sort_by",       "sort_descending",    "onboarded"};
 
 // The on-disk settings.toml, merged with schema defaults so every declared
-// key always resolves. In memory everything is JSON; only Load()/Save()
-// speak TOML (via core/TomlJson). Unknown keys are preserved across writes.
+// key always resolves. The file keeps only the values that were set, so a
+// changed default reaches everyone who never chose one. In memory everything
+// is JSON; only Load()/Save() speak TOML (via core/TomlJson). Unknown keys are
+// preserved across writes.
 //
 // frontend.toml is a separate, opaque sibling file: the daemon validates
 // settings.toml against the schema, but stores/returns frontend.toml
@@ -48,6 +51,9 @@ class Config {
   void OnValidText(std::function<void(const std::string&)> callback);
   // The text of settings.toml as Load parsed it, empty when it didn't.
   std::string LoadedText() const;
+  // settings.toml's values as Load read them, before it dropped what no setting reads, for
+  // migrations of settings that moved elsewhere.
+  nlohmann::json FileAsLoaded() const;
 
   nlohmann::json Document() const;  // backend keys only
   nlohmann::json Get(std::string_view key) const;
@@ -84,10 +90,16 @@ class Config {
 
  private:
   nlohmann::json GetLocked(std::string_view key) const;
-  // Resets each invalid value in `whole` to fallback(entry) and logs it with `note`.
-  static void ResetInvalid(nlohmann::json& whole,
-                           const std::function<nlohmann::json(const Entry&)>& fallback,
-                           std::string_view note);
+  // Resets each invalid value in `whole` to fallback(entry), or removes it when that's empty, and
+  // logs it with `note`.
+  static void ResetInvalid(
+      nlohmann::json& whole,
+      const std::function<std::optional<nlohmann::json>(const Entry&)>& fallback,
+      std::string_view note);
+  // Replaces the set values, and with them the merged document.
+  void SetLocked(nlohmann::json set);
+  // settings.toml as it's written: the set values under a header.
+  std::string TextLocked() const;
   Result<std::vector<std::string>> SyncLocked();
   // Every app change: picks up hand edits first, so only the keys the app set change.
   Result<void> ChangeAndSave(const std::function<void()>& change);
@@ -96,15 +108,17 @@ class Config {
   bool TakeUiState(nlohmann::json& table);
 
   mutable std::mutex mutex_;
-  std::filesystem::path file_;           // settings.toml: backend keys only
-  std::filesystem::path frontend_file_;  // frontend.toml: opaque, the frontend's own
-  nlohmann::json document_;
+  std::filesystem::path file_;                     // settings.toml: backend keys only
+  std::filesystem::path frontend_file_;            // frontend.toml: opaque, the frontend's own
+  nlohmann::json set_ = nlohmann::json::object();  // what settings.toml holds
+  nlohmann::json document_;                        // the defaults with set_ over them
   nlohmann::json frontend_ = nlohmann::json::object();
   nlohmann::json ui_state_ = nlohmann::json::object();
   std::function<nlohmann::json()> read_ui_state_;
   std::function<void(const nlohmann::json&)> write_ui_state_;
   // An unparseable file couldn't be set aside: saving would overwrite the only copy.
   std::string loaded_text_;  // as last read or written, to tell a hand edit apart
+  nlohmann::json file_as_loaded_ = nlohmann::json::object();
   std::function<void(const std::string&)> on_valid_text_;
   bool keep_file_ = false;
   bool keep_frontend_file_ = false;

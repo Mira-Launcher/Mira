@@ -385,7 +385,8 @@ Schema::Schema() {
                 "a 4K or larger screen is connected. Compact uses about half the disk space of "
                 "High. Original keeps art as downloaded.",
          .constraint = OneOf({"auto", "compact", "high", "original"}),
-         .keywords = "quality resolution disk space cover hero 4k"});
+         .keywords = "quality resolution disk space cover hero 4k",
+         .old_defaults = {"high"}});
 
   s.Add({.key = "metadata.title_details",
          .label = "Details for games not installed",
@@ -496,6 +497,15 @@ Schema::Schema() {
          .doc = "Keep a \"Mira\" shortcut in Steam that opens Mira's big screen, so Steam's Big "
                 "Picture can switch to Mira. Steam shows it after it restarts."});
 
+  s.Add({.key = "steam.sync_art",
+         .label = "Use the art picked in Mira in Steam",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Show the cover, hero, logo and icon picked in Mira for a Steam game in Steam's "
+                "library and Big Picture too. Art set in Steam itself is put back when a pick is "
+                "removed or this is turned off. Steam shows changes after it restarts.",
+         .keywords = "artwork grid custom"});
+
   s.Group("Steam account");
 
   s.Add({.key = "steam.import_playtime",
@@ -597,7 +607,8 @@ Schema::Schema() {
          .default_value = "~/Mira/Games/Epic",
          .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
                 "never scans it for games, so it can be inside a library folder.",
-         .path = PathKind::Folder});
+         .path = PathKind::Folder,
+         .old_defaults = {"~/.local/share/mira/epic"}});
 
   s.Add({.key = "gog.install_root",
          .label = "GOG install folder",
@@ -605,7 +616,8 @@ Schema::Schema() {
          .default_value = "~/Mira/Games/GOG",
          .doc = "The folder GOG games are installed into, with one subfolder per game. Mira never "
                 "scans it for games, so it can be inside a library folder.",
-         .path = PathKind::Folder});
+         .path = PathKind::Folder,
+         .old_defaults = {"~/Games/GOG", "~/.local/share/mira/gog"}});
 
   s.Add({.key = "gog.folder_naming",
          .label = "GOG folder naming",
@@ -647,7 +659,8 @@ Schema::Schema() {
          .default_value = "~/Mira/Games/Itch",
          .doc = "The folder itch.io games are installed into. Mira never scans it for games, so "
                 "it can be inside a library folder.",
-         .path = PathKind::Folder});
+         .path = PathKind::Folder,
+         .old_defaults = {"~/.local/share/mira/itch"}});
 
   s.Add({.key = "amazon.install_root",
          .label = "Amazon Games install folder",
@@ -655,7 +668,8 @@ Schema::Schema() {
          .default_value = "~/Mira/Games/Amazon",
          .doc = "The folder Amazon games are installed into, with one subfolder per game. Mira "
                 "never scans it for games, so it can be inside a library folder.",
-         .path = PathKind::Folder});
+         .path = PathKind::Folder,
+         .old_defaults = {"~/.local/share/mira/amazon"}});
 
   s.Add({.key = "humble.download_root",
          .label = "Humble Bundle download folder",
@@ -684,7 +698,9 @@ Schema::Schema() {
          .type = Type::String,
          .default_value = "native:native",
          .doc = "The runner for native Linux games. The default starts them directly.",
-         .constraint = RunnerRef()});
+         .constraint = RunnerRef(),
+         .is_runner_ref = true,
+         .runner_kinds = {"native"}});
 
   s.Add({.key = "launch.pin_runner",
          .label = "Remember the chosen runner",
@@ -903,7 +919,8 @@ Schema::Schema() {
          .scope = Scope::PerGame,
          .doc = "Turn on Feral GameMode, which boosts performance, while a game runs. This works "
                 "without adding gamemoderun as a command wrapper. Does nothing if GameMode is not "
-                "installed or not running."});
+                "installed or not running.",
+         .old_defaults = {false}});
 
   s.Add(
       {.key = "launch.shader_cache",
@@ -1106,7 +1123,8 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = false,
          .doc = "Run an installer (Inno Setup, NSIS or MSI) silently as soon as Mira finds it. "
-                "When off, installers wait until you run them yourself."});
+                "When off, installers wait until you run them yourself.",
+         .old_defaults = {true}});
 
   s.Add({.key = "install.retry_failed",
          .label = "Retry failed installs",
@@ -1130,7 +1148,8 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = true,
          .doc = "Show the progress window of Inno Setup installers during a silent install. It "
-                "still asks no questions. NSIS installers have no such window."});
+                "still asks no questions. NSIS installers have no such window.",
+         .old_defaults = {false}});
 
   s.Group("Detection and arguments");
   s.ResetTogether();
@@ -1291,7 +1310,8 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = true,
          .doc = "Games you add to an emulator are moved into its folder. Off copies them, leaving "
-                "the originals."});
+                "the originals.",
+         .old_defaults = {false}});
 
   for (const emulators::Emulator& emulator : emulators::All()) {
     s.Add({.key = std::format("emulators.{}.bin", emulator.id),
@@ -1368,7 +1388,14 @@ Schema::Schema() {
          .type = Type::StringArray,
          .default_value = json(known_exe_patterns::kDeny),
          .doc = "Executables matching these glob patterns are heavily penalized, because they are "
-                "usually helpers or uninstallers, not the game."});
+                "usually helpers or uninstallers, not the game.",
+         .old_defaults = {
+             json::array({"unins*", "setup*", "vcredist*", "dxsetup*", "*crashreport*", "dotnet*",
+                          "directx*", "*redist*", "touchup*", "*launcher_installer*"}),
+             json::array({"unins*", "setup*", "vcredist*", "dxsetup*", "dotnet*", "directx*",
+                          "*redist*", "touchup*", "*crashreport*", "*cefsubprocess*",
+                          "*crashhandler*", "*launcher_installer*", "*webhelper*", "upc.exe",
+                          "*anticheat*", "battleye*"})}});
 
   s.Group("Installers");
   s.ResetTogether();
@@ -1416,7 +1443,8 @@ Schema::Schema() {
          .default_value = true,
          .doc = "Extract archives (.zip, .rar, .tar, .7z and split archives) dropped into a "
                 "library folder, into a folder of the same name, then delete the archive. Needs "
-                "7-Zip (7z or 7zz) installed."});
+                "7-Zip (7z or 7zz) installed.",
+         .old_defaults = {false}});
 
   s.Add({.key = "scan.ignore_globs",
          .label = "Ignored paths",

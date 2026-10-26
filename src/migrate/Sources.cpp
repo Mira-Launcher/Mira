@@ -37,7 +37,8 @@ void ImportSourceState(const config::Config& config, store::GameStore& games) {
   }
   if (!config.GetString("steam.web_api_key").empty()) mark("steam");
 
-  const json document = config.Document();
+  // `<id>.enabled` is no setting now, so Load dropped it from the document.
+  const json document = config.FileAsLoaded();
   for (const std::string_view id : kToggled) {
     const std::string key(id);
     if (!document.contains(key) || !document[key].is_object()) continue;

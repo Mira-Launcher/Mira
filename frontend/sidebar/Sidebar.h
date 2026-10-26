@@ -118,6 +118,9 @@ class Sidebar : public QWidget {
   int SourceDropRow(int y) const;
   void ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos);
   void ShowMenu(const QPoint& global_pos);
+  // Which sources' tools or emulators have a newer release, while updates.check is on.
+  void RefreshUpdates();
+  void UpdateSourceTool(const SourceInfo& source);
   // Both sections, if what they'd show changed.
   void RefreshGames();
   // Rebuilds one section's rows in `style`, only if what they'd show differs
@@ -180,6 +183,9 @@ class Sidebar : public QWidget {
   QHash<QString, QString> source_account_;     // signed-in account, where a store says
   QHash<QString, qint64> source_imported_at_;  // last import, unix seconds
   int sources_request_ = 0;                    // RefreshSources keeps only the newest answer
+  // Source id to what has a newer release ("butler v15.32.0"), from GET /v1/updates.
+  QHash<QString, QString> source_updates_;
+  int updates_request_ = 0;  // RefreshUpdates keeps only the newest answer
   bool show_source_counts_ = true;
   bool show_source_covers_ = true;
   QSet<QString> source_cover_ids_;           // the games source rows show covers of

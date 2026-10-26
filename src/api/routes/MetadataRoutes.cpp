@@ -110,6 +110,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
                              FailedEvent({{"id", id}, {"type", slot}}, selected.error()));
             return std::unexpected(selected.error());
           }
+          s.SyncSteamArt(id);
           s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
           return json{{"id", id}, {"type", slot}};
         },
@@ -134,6 +135,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
                              FailedEvent({{"id", id}, {"type", slot}}, uploaded.error()));
             return std::unexpected(uploaded.error());
           }
+          s.SyncSteamArt(id);
           s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
           return json{{"id", id}, {"type", slot}};
         },
@@ -155,6 +157,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
             return std::unexpected(removed.error());
           }
           s.SyncDesktopEntry(id);  // its icon
+          s.SyncSteamArt(id);
           s.events.Publish("game.artwork_selected", {{"id", id}, {"type", slot}});
           return json{{"id", id}, {"type", slot}};
         },

@@ -307,7 +307,7 @@ void SourceSettingsCard::RunnersChanged() {
     }
     for (SettingEditor& editor : settings_) {
       if (editor.combo != nullptr && editor.entry.is_runner_ref)
-        FillRunnerCombo(editor.combo, runners);
+        FillRunnerCombo(editor.combo, runners, editor.entry);
     }
   });
 }
@@ -393,7 +393,7 @@ void SourceSettingsCard::LoadSettings() {
       api::ListRunnersAsync(this, [this](RunnersResult runners) {
         for (SettingEditor& editor : settings_) {
           if (editor.combo != nullptr && editor.entry.is_runner_ref)
-            FillRunnerCombo(editor.combo, runners);
+            FillRunnerCombo(editor.combo, runners, editor.entry);
         }
       });
     }
