@@ -343,6 +343,29 @@ TEST_CASE(
   CHECK(resolved->build->release == "proton-11.0-4-x86_64");
 }
 
+TEST_CASE("A game on a removed Proton build runs on the newest build of its line") {
+  test::TestEnv env("replaced-runner");
+  REQUIRE(env.config.Set("runner_scan_common_dirs", false));
+  const fs::path tools = env.dir / "compatibilitytools.d";
+  REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({tools.string()})));
+  const auto install = [&tools](const std::string& name, const std::string& version) {
+    fs::create_directories(tools / name);
+    std::ofstream(tools / name / "proton").close();
+    std::ofstream(tools / name / "toolmanifest.vdf").close();
+    std::ofstream(tools / name / "version") << version << " " << name;
+  };
+  install("GE-Proton11-8", "1700000000");
+  install("GE-Proton11-9", "1700000100");
+  install("cachyos-11.0-20261005-slr", "1700000200");
+  const runner::RunnerRegistry registry(env.config);
+
+  const auto resolved = registry.Resolve("proton:GE-Proton11-7");
+  REQUIRE(resolved.has_value());
+  CHECK(resolved->build->name == "GE-Proton11-9");
+  // Another line's build isn't a stand-in.
+  CHECK_FALSE(registry.Resolve("proton:Kron4ek-Proton-9").has_value());
+}
+
 TEST_CASE("Steam's Proton is found in a library on another drive") {
   test::TestEnv env("steam-library-proton");
   const fs::path root = env.dir / "steam";

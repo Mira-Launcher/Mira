@@ -46,10 +46,10 @@ Stops a running job: the programs it runs (a store tool, an installer and the Wi
 
 ## Settings
 
-Stored in `settings.toml`. Every key is declared once in `src/config/Schema.cpp`.
+Stored in `settings.toml`, which holds only the settings that were set: every other one reads its default, so a changed default reaches everyone who never picked a value. Every key is declared once in `src/config/Schema.cpp`.
 
-### `GET /v1/config`
-Every setting at its current value, plus the `frontend` table, which the backend stores without interpreting: `frontend.toml`, with the window state the GUI sets as it's used (sizes, sort, last filter, `onboarded`, `source_imported_at`) merged in from `mira.db`.
+### `GET /v1/config[?reveal=1]`
+Every setting at its current value, plus `secrets_set` and the `frontend` table. A secret (`is_secret` in the schema, such as `steamgriddb.api_key`) reads as `""`, and `secrets_set` lists the secrets that have a value, so a dump of the config never carries them; `?reveal=1` returns them as stored (`mira config get` uses it). Writing one is a plain `PATCH`, and a reset clears it. The `frontend` table is what the backend stores without interpreting: `frontend.toml`, with the window state the GUI sets as it's used (sizes, sort, last filter, `onboarded`, `source_imported_at`) merged in from `mira.db`.
 
 ### `GET /v1/config/schema`
 Every setting in display order:
@@ -62,7 +62,7 @@ Every setting in display order:
    "minimum": 0, "maximum": 600000 }]
 ```
 
-`category` is the settings section. Within it, settings sharing a `group` number belong together under the title `group_label`. Labels and group titles are in sentence case. `scope` is `per_game` when a game can override the setting and `game_only` when it only exists per game. Optional fields, present only when they apply: `game_doc` (help text for a game's own settings, used instead of `doc`), `one_of` (enum values), `minimum`/`maximum`, `is_secret` (mask the value), `is_runner_ref` (offer a runner picker), `link` (a web page where the user gets the value, e.g. an API key page), `keywords` (extra search terms such as abbreviations, space-separated), `group_collapsed` (the group holds rarely changed values, best shown folded), `group_resettable` (the group's values make sense to put back to their defaults together, so a screen can offer one reset for the group), `path` (`"folder"` or `"file"` when the value, or each item of an array, is a path on this computer, so a screen can offer a picker) and `source` (the source the setting belongs to, e.g. `"steam"` or `"ubisoft"`, so a screen can gather one source's settings together).
+`category` is the settings section. Within it, settings sharing a `group` number belong together under the title `group_label`. Labels and group titles are in sentence case. `scope` is `per_game` when a game can override the setting and `game_only` when it only exists per game. Optional fields, present only when they apply: `game_doc` (help text for a game's own settings, used instead of `doc`), `one_of` (enum values), `minimum`/`maximum`, `is_secret` (mask the value), `is_runner_ref` (offer a runner picker), `runner_kinds` (the runner kinds that picker lists, such as `["native"]`, with no `auto`; without it, every runner and `auto`), `link` (a web page where the user gets the value, e.g. an API key page), `keywords` (extra search terms such as abbreviations, space-separated), `group_collapsed` (the group holds rarely changed values, best shown folded), `group_resettable` (the group's values make sense to put back to their defaults together, so a screen can offer one reset for the group), `path` (`"folder"` or `"file"` when the value, or each item of an array, is a path on this computer, so a screen can offer a picker) and `source` (the source the setting belongs to, e.g. `"steam"` or `"ubisoft"`, so a screen can gather one source's settings together).
 
 ### `PATCH /v1/config`
 Sets any subset of settings, nested like `GET /v1/config`, plus an optional `frontend` key, merged into `frontend.toml` as a JSON merge patch (a `null` value deletes that key). The whole patch is validated first; one bad value means nothing is applied.
@@ -454,7 +454,7 @@ Removable builds whose source has a newer release:
 ```
 
 ### `POST /v1/runners/update`
-Body `{"reference": "kind:name"}`. Installs the newer release like a download, then moves every game using the old build, and `default_runner.windows` if it names it, onto the new one. The old build stays. The moved games arrive as `games.updated`, then `runners.updated {kind, from, to, games}` fires before `runners.download.finished`, which then carries `replaced`. `409 no_update` when nothing is newer.
+Body `{"reference": "kind:name"}`. Installs the newer release like a download, then moves everything naming the old build onto the new one: games' runners, their overrides and every runner setting (`default_runner.windows`, a store's `<id>.runner`, ...). The old build stays. The moved games arrive as `games.updated`, then `runners.updated {kind, from, to, games}` fires before `runners.download.finished`, which then carries `replaced`. `409 no_update` when nothing is newer.
 
 ### `GET /v1/runners/tools`
 

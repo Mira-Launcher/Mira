@@ -30,6 +30,7 @@
 #include "proc/ProcessIndex.h"
 #include "runner/Exec.h"
 #include "runner/ProtonRunner.h"
+#include "runner/RefMigration.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
 #include "saves/Backups.h"
@@ -898,16 +899,18 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
     });
     if (fresh != builds.end()) {
       const std::string to = fresh->Reference();
+      // Games, their own settings and every runner setting: whatever named the old build.
+      std::vector<std::string> ids;
+      runner::RepointRefs(
+          config, games,
+          [&](const std::string& ref) {
+            return ref == replacing ? std::optional(to) : std::nullopt;
+          },
+          &ids);
       json moved = json::array();
       const RecordSettings settings = CurrentRecordSettings();
-      for (const model::Game& game : games.All()) {
-        if (game.runner_ref != replacing) continue;
-        if (auto updated = games.Update(game.id, [&](model::Game& g) { g.runner_ref = to; })) {
-          moved.push_back(Record(*updated, &settings));
-        }
-      }
-      if (config.GetString("default_runner.windows") == replacing) {
-        (void)config.Set("default_runner.windows", to);
+      for (const std::string& id : ids) {
+        if (const auto game = games.Find(id)) moved.push_back(Record(*game, &settings));
       }
       if (!moved.empty()) events.Publish("games.updated", {{"games", moved}});
       events.Publish("runners.updated",

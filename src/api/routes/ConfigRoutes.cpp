@@ -52,8 +52,20 @@ void RegisterConfigRoutes(Router& http, Services& s) {
 
   // --- settings -----------------------------------------------------------
 
-  http.Get("/v1/config", [&s](const Request&, Response& res) {
+  http.Get("/v1/config", [&s](const Request& req, Response& res) {
     json body = s.config.Document();
+    // A secret reads as "" unless asked for, so a dump of the config (a client's log, a bug
+    // report) never carries it; secrets_set says which are set.
+    const bool reveal = BoolParam(req, "reveal");
+    json set = json::array();
+    for (const config::Entry& entry : config::Schema::Instance().Entries()) {
+      const json::json_pointer pointer = config::Schema::Pointer(entry.key);
+      if (!entry.is_secret || !body.contains(pointer)) continue;
+      if (body[pointer].is_string() && !body[pointer].get<std::string>().empty())
+        set.push_back(entry.key);
+      if (!reveal) body[pointer] = "";
+    }
+    body["secrets_set"] = std::move(set);
     body["frontend"] = s.config.FrontendSettings();
     SendJson(res, std::move(body));
   });
@@ -79,6 +91,7 @@ void RegisterConfigRoutes(Router& http, Services& s) {
       if (!entry.game_doc.empty()) entries.back()["game_doc"] = entry.game_doc;
       if (entry.is_secret) entries.back()["is_secret"] = true;
       if (entry.is_runner_ref) entries.back()["is_runner_ref"] = true;
+      if (!entry.runner_kinds.empty()) entries.back()["runner_kinds"] = entry.runner_kinds;
       if (!entry.link.empty()) entries.back()["link"] = entry.link;
       if (!entry.keywords.empty()) entries.back()["keywords"] = entry.keywords;
       if (entry.group_collapsed) entries.back()["group_collapsed"] = true;

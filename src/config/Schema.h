@@ -51,11 +51,13 @@ struct Entry {
 
   bool is_secret = false;      // a credential: mask it
   bool is_runner_ref = false;  // a runner reference: offer a runner picker
-  std::string link = {};       // where to get the value, e.g. an API key page
+  // The runner kinds that picker lists, without "auto"; empty lists every runner and "auto".
+  std::vector<std::string> runner_kinds = {};
+  std::string link = {};  // where to get the value, e.g. an API key page
   PathKind path = PathKind::None;
   std::string keywords = {};  // extra search terms a settings screen matches, e.g. "sgdb"
-  // Defaults it had before. Every default is written to settings.toml, so a stored one of these
-  // was never chosen and loads as `default_value`.
+  // Defaults it had before. Older versions wrote every default to settings.toml, so in a file from
+  // then a stored one of these was never chosen, and is dropped when the file is cleaned.
   std::vector<nlohmann::json> old_defaults = {};
 
   // Set by the section the entry is declared under, never per entry.
