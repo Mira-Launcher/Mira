@@ -28,6 +28,7 @@ struct Roots {
   bool windows = false;       // runs under Wine or Proton: Windows locations, folded case
   std::string store;          // "steam", "gog" or "epic"; empty when the store isn't known
   std::string store_game_id;  // its id there
+  std::string store_user_id;  // the signed-in account's id there (Epic's {epicid}); may be empty
   std::string user_name;      // <osUserName>
 };
 Roots RootsFor(const config::Config& config, const model::Game& game);

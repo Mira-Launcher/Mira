@@ -452,9 +452,16 @@ def fake_stores(home, epic_achievements=None):
     answer = home / "legendary-achievements.json"
     answer.write_text(json.dumps(epic_achievements or {"completed": [], "in_progress": [], "uninitiated": [],
                                                        "hidden": []}))
+    # Only BenchCloud keeps cloud saves, in its own folder; an upload adds a manifest named by its time.
+    manifests = home / "epic-cloud-manifests"
     write_script(tools / "legendary", 'case "$1" in\n'
                  f"  launch) echo '{epic_args}' ;;\n"
                  f'  achievements) cat "{answer}" ;;\n'
+                 "  info) if [ \"$2\" = BenchCloud ]; then\n"
+                 "    echo '{\"game\": {\"cloud_saves_supported\": true, \"cloud_save_folder\": \"{InstallDir}/Saved/\"}}'\n"
+                 "  else echo '{\"game\": {\"cloud_saves_supported\": false}}'; fi ;;\n"
+                 f'  list-saves) cat "{manifests}" 2>/dev/null || true ;;\n'
+                 f'  sync-saves) [ "$5" = --force-upload ] && date -u +" + %Y.%m.%d-%H.%M.%S.manifest" >> "{manifests}" ;;\n'
                  "  --version) echo 'legendary version \"0.21.1\"' ;;\n"
                  "esac\n")
     write_script(tools / "gogdl", '[ "$1" = --version ] && echo 1.3.1\n')
@@ -528,18 +535,23 @@ class Events:
 @scenario("launch", startup=True)
 def launch(ctx, meta):
     """Starting a game and its exit reaching clients, for a native game, an Epic one (whose sign-in comes
-    from legendary) and a GOG one (with comet beside it), five times each; then mirad left idle."""
+    from legendary), a GOG one (with comet beside it) and an Epic one whose saves are synced with its cloud
+    (nothing to move after the first launch), five times each; then mirad left idle."""
     home = ctx.mirad.home
     games = [{"id": "bench-native", "name": "Bench Native", "source": "manual"},
              {"id": "epic-Bench", "name": "Bench Epic", "source": "epic", "ref": "Bench"},
-             {"id": "gog-2000", "name": "Bench GOG", "source": "gog", "ref": "2000"}]
+             {"id": "gog-2000", "name": "Bench GOG", "source": "gog", "ref": "2000"},
+             {"id": "epic-BenchCloud", "name": "Bench Cloud", "source": "epic", "ref": "BenchCloud"}]
     add_games(home, games)
+    saves = home / "store-games" / "epic-BenchCloud" / "Saved"
+    saves.mkdir(parents=True)
+    (saves / "slot.sav").write_bytes(os.urandom(64 * 1024))
     env = fake_stores(home)
     link_systemd(home)
     start_with(ctx, env)
     events = Events(ctx.mirad)
     try:
-        for game, kind in zip(games, ("native", "Epic", "GOG")):
+        for game, kind in zip(games, ("native", "Epic", "GOG", "Epic cloud saves")):
             end_file = home / "store-games" / game["id"] / "run.sh.end"
 
             def play():

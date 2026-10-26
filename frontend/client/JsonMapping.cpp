@@ -167,6 +167,18 @@ SavesResult ToSaves(const json& entry) {
   }
   if (entry.contains("last_error") && entry["last_error"].is_object())
     saves.last_error = ToApiError(entry["last_error"]);
+  if (entry.contains("cloud") && entry["cloud"].is_object()) {
+    const json& cloud = entry["cloud"];
+    saves.cloud = CloudSaves{.store = Str(cloud, "store"),
+                             .state = Str(cloud, "state"),
+                             .reason = Str(cloud, "reason"),
+                             .synced_at = int64(cloud, "synced_at"),
+                             .checked_at = int64(cloud, "checked_at"),
+                             .local_at = int64(cloud, "local_at"),
+                             .cloud_at = int64(cloud, "cloud_at"),
+                             .files = Int(cloud, "files"),
+                             .bytes = int64(cloud, "bytes")};
+  }
   return saves;
 }
 

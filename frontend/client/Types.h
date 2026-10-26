@@ -406,10 +406,24 @@ struct SaveLocation {
 struct SaveSnapshot {
   std::string id;
   std::int64_t taken_at = 0;  // unix seconds
-  std::string reason;         // "first", "after_play", "manual", "before_restore"
+  std::string reason;  // "first", "after_play", "manual", "before_restore", "before_cloud_download"
   int files = 0;
   std::int64_t bytes = 0;
   bool pinned = false;  // kept whatever saves.keep says
+};
+
+// GET /v1/games/{id}/saves' `cloud`, for a GOG or Epic game.
+struct CloudSaves {
+  std::string store;  // its name, "GOG" or "Epic"
+  // "synced", "local_newer", "cloud_newer", "conflict", "unknown", "unsupported" or "off"
+  std::string state;
+  std::string reason;  // why it's unsupported
+  std::int64_t synced_at = 0;
+  std::int64_t checked_at = 0;
+  std::int64_t local_at = 0;  // this computer's newest save file
+  std::int64_t cloud_at = 0;  // the cloud's newest upload at the last check
+  int files = 0;
+  std::int64_t bytes = 0;
 };
 
 // GET /v1/games/{id}/saves.
@@ -424,19 +438,21 @@ struct SavesResult {
   std::vector<SaveLocation> locations;
   std::vector<SaveSnapshot> snapshots;
   std::optional<ApiError> last_error;  // why the last backup after play failed
-  std::string doing;                   // "backing_up" or "restoring" while it runs, else empty
+  std::optional<CloudSaves> cloud;
+  std::string doing;  // "backing_up", "restoring" or "syncing" while it runs, else empty
   std::string install_folder;
   std::string prefix_folder;  // the folder holding drive_c; empty for a native game
 };
 
-// The saves jobs: a backup (`snapshot`, with `taken` false when nothing changed) and a restore
-// (`undo`, the backup holding what it replaced).
+// The saves jobs: a backup (`snapshot`, with `taken` false when nothing changed), a restore
+// (`undo`, the backup holding what it replaced) and a cloud sync (`state`).
 struct SavesJobResult {
   bool ok = false;
   ApiError error;
   std::string snapshot;
   bool taken = false;
   std::string undo;
+  std::string state;
 };
 
 // POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
@@ -489,6 +505,9 @@ struct ArtworkSelectResult {
 struct NotificationEvent {
   std::string level;  // "info" | "success" | "warning" | "error"
   std::string message;
+  bool persistent = false;  // stays until dismissed, whatever its level
+  std::string id;           // the game it's about; empty for none
+  ApiError error;           // the failure behind it, with its hint and fix; empty for none
 };
 
 struct StopResult {

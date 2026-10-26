@@ -827,6 +827,12 @@ void BigScreenWindow::ShowSaves(const Item& item) {
   api::GetSavesAsync(this, item.game->id, [this, item](SavesResult saves) {
     if (!saves.ok) return Toast("Could not read " + item.name + "'s saves");
     std::vector<std::pair<QString, std::function<void()>>> entries;
+    if (saves.cloud && saves.cloud->state == "conflict") {
+      entries.push_back({"Keep this computer's", [this, item] { SyncSaves(item, "upload"); }});
+      entries.push_back({"Use the cloud's", [this, item] { SyncSaves(item, "download"); }});
+    } else if (saves.cloud && saves.cloud->state != "unsupported" && saves.cloud->state != "off") {
+      entries.push_back({"Sync now", [this, item] { SyncSaves(item, "sync"); }});
+    }
     if (saves.status != "registry_only" && saves.status != "no_entry")
       entries.push_back({"Back up now", [this, item] { BackUpSaves(item); }});
     if (!saves.snapshots.empty()) {
@@ -841,7 +847,8 @@ void BigScreenWindow::ShowSaves(const Item& item) {
                                            : "Mira doesn't know where " + item.name + " saves");
     }
     const QDateTime now = QDateTime::currentDateTime();
-    ShowMenu(saves_text::Summary(saves, now), std::move(entries));
+    ShowMenu(saves.cloud ? saves_text::CloudState(*saves.cloud) : saves_text::Summary(saves, now),
+             std::move(entries));
   });
 }
 
@@ -893,6 +900,16 @@ void BigScreenWindow::ShowBackup(const Item& item, const SaveSnapshot& snapshot)
            {{"Restore", restore}, {snapshot.pinned ? "Unpin" : "Pin", pin}, {"Delete", remove}});
 }
 
+void BigScreenWindow::SyncSaves(const Item& item, const std::string& action) {
+  Toast(SavesDoingLabel("syncing"));
+  api::SyncCloudSavesAsync(this, item.game->id, action, [this, item](SavesJobResult result) {
+    // Both sides changed: the menu comes back with the two choices.
+    if (!result.ok && result.error.code == "saves_conflict") return ShowSaves(item);
+    Toast(result.ok ? item.name + "'s saves are in sync"
+                    : "Could not sync " + item.name + "'s saves");
+  });
+}
+
 void BigScreenWindow::BackUpSaves(const Item& item) {
   Toast(SavesDoingLabel("backing_up"));
   api::BackUpSavesAsync(this, item.game->id, [this, item](SavesJobResult result) {
@@ -922,8 +939,27 @@ void BigScreenWindow::Exit() {
 
 void BigScreenWindow::ShowMenu(const QString& title,
                                std::vector<std::pair<QString, std::function<void()>>> entries) {
+  DismissMenu();  // a question it replaces is answered as cancelled
   menu_ = Menu{title, std::move(entries)};
   chrome_->update();
+}
+
+void BigScreenWindow::DismissMenu() {
+  if (!menu_) return;
+  std::function<void()> dismissed = std::move(menu_->on_dismiss);
+  menu_.reset();
+  if (dismissed) dismissed();
+}
+
+void BigScreenWindow::ChooseSaves(const std::string& id,
+                                  std::function<void(std::string choice)> chosen) {
+  const GameSummary* game = services_.library->Find(id);
+  const QString name = game != nullptr ? QString::fromStdString(game->name) : QString("the game");
+  ShowMenu(QString("Which saves should %1 start with?").arg(name),
+           {{"Use the cloud's", [chosen] { chosen("use_cloud"); }},
+            {"Keep this computer's", [chosen] { chosen("keep_local"); }},
+            {"Play without syncing", [chosen] { chosen("skip"); }}});
+  menu_->on_dismiss = [chosen] { chosen({}); };
 }
 
 void BigScreenWindow::OpenSteamBigPicture() {
@@ -963,7 +999,7 @@ void BigScreenWindow::closeEvent(QCloseEvent* event) {
 void BigScreenWindow::Navigate(Nav nav) {
   Feedback(nav);
   if (nav == Nav::Home) {
-    menu_.reset();
+    DismissMenu();
     dialog_.reset();
     return SelectTab(kHomeTab);
   }
@@ -971,7 +1007,7 @@ void BigScreenWindow::Navigate(Nav nav) {
     const int count = int(menu_->entries.size());
     if (nav == Nav::Up || nav == Nav::Down)
       menu_->focus = (menu_->focus + (nav == Nav::Down ? 1 : count - 1)) % count;
-    if (nav == Nav::Back) menu_.reset();
+    if (nav == Nav::Back) DismissMenu();
     if (nav == Nav::Accept) {
       auto action = std::move(menu_->entries[size_t(menu_->focus)].second);
       const QString title = menu_->title;
@@ -1087,7 +1123,7 @@ const GameSummary* BigScreenWindow::RunningGame() const {
 
 void BigScreenWindow::Guide() {
   if (menu_ && isActiveWindow()) {
-    menu_.reset();
+    DismissMenu();
     return ReturnToGame();
   }
   RaiseFromGame();
@@ -1114,6 +1150,7 @@ void BigScreenWindow::Guide() {
     });
   }
   menu.entries.emplace_back("Downloads", [this] { SelectTab(kDownloadsTab); });
+  DismissMenu();  // a question it replaces is answered as cancelled
   menu_ = std::move(menu);
   chrome_->update();
 }
@@ -1218,6 +1255,7 @@ void BigScreenWindow::ShowQuickSettings(const std::string& id, const QString& na
                               change(next);
                             });
   menu.entries.emplace_back("Done", [] {});
+  DismissMenu();  // a question it replaces is answered as cancelled
   menu_ = std::move(menu);
   chrome_->update();
 }

@@ -14,6 +14,7 @@
 
 #include "../app/Shortcuts.h"
 #include "../client/Types.h"
+#include "../library/GameActions.h"
 #include "../widgets/WindowCards.h"
 
 class QGridLayout;
@@ -66,13 +67,17 @@ struct LibraryServices {
 // game's card or a sidebar card in an overlay above. Frameless, so it owns
 // its own move/resize/minimize/maximize/close. This class puts the pieces
 // together: it decides what's on screen and routes each piece's requests.
-class LibraryWindow : public QMainWindow, public mira_gui::CardHost {
+class LibraryWindow : public QMainWindow,
+                      public mira_gui::CardHost,
+                      public mira_gui::actions::SavesChooser {
   Q_OBJECT
 
  public:
   // Cards shown with cards::Show go in the sidebar card's place.
   bool ShowCard(QWidget* card) override;
   void CloseCard(QWidget* card) override;
+  // A card in the sidebar card's place, or out of sight a notification that brings it up.
+  void ChooseSaves(const std::string& id, std::function<void(std::string choice)> chosen) override;
   // `prefs` is frontend.toml as read at startup; the theme is already applied.
   explicit LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* parent = nullptr);
   mira_gui::LibraryServices services() const {

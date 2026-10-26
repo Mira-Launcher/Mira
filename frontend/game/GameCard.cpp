@@ -39,7 +39,7 @@ constexpr std::size_t kPrefetchThumbs = 24;
 constexpr const char* kChipIcon = "#c4c9d2";
 constexpr const char* kChipWarning = "#f5c46b";
 
-// The saves chip's stack, or a warning sign while a backup failed.
+// The saves chip's stack, or a warning sign while a backup failed or the cloud's saves conflict.
 QIcon SavesIcon(bool attention) {
   return icons::For(attention ? icons::Glyph::Warning : icons::Glyph::Layers,
                     QColor(attention ? kChipWarning : kChipIcon));

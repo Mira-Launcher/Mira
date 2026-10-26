@@ -20,7 +20,7 @@ QString Reason(const std::string& reason);
 // The card's line: "7 backups · last after today's session", or what stands in for backups.
 QString Summary(const SavesResult& saves, const QDateTime& now);
 
-// Whether the line reads as a warning: a failed backup.
+// Whether the line reads as a warning: a failed backup or a cloud conflict.
 bool NeedsAttention(const SavesResult& saves);
 
 // A save folder as the page shows it: "prefix › AppData/LocalLow/Studio/Game" inside a Wine
@@ -29,5 +29,9 @@ QString Path(const std::string& path, const QString& home);
 
 // What the game's status means when there's nothing to list: empty for "kept" and "ready".
 QString StatusNote(const SavesResult& saves);
+
+// The cloud's state in a line: "In sync with GOG's cloud", "Changed here and in Epic Games's
+// cloud", ...
+QString CloudState(const CloudSaves& cloud);
 
 }  // namespace mira_gui::saves_text

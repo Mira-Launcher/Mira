@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -300,6 +301,8 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
   // Parent.
   close(pipe_fds[1]);
   setpgid(pid, pid);
+  // Readable once the child exits, so a child whose output closed first is reaped at once.
+  const int exited_fd = static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
   const std::stop_token stop = ThisTaskStop();
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(command.timeout_s);
   bool timed_out = false;
@@ -339,13 +342,19 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     if (n <= 0) {
       // Output closed but the child may live on: it's still waited for under the deadline and stop.
       if (reaped || (reaped = waitpid(pid, &status, WNOHANG) == pid)) break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      if (exited_fd >= 0) {
+        pollfd exited{.fd = exited_fd, .events = POLLIN, .revents = 0};
+        poll(&exited, 1, 50);
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
       continue;
     }
     result.output.append(buffer, static_cast<size_t>(n));
     if (on_output) on_output(std::string_view(buffer, static_cast<size_t>(n)));
   }
   close(pipe_fds[0]);
+  if (exited_fd >= 0) close(exited_fd);
   if (timed_out || stopped) {  // the group too, even with the child itself gone
     // SIGTERM first so a store tool can save where it got to, then SIGKILL.
     kill(-pid, SIGTERM);

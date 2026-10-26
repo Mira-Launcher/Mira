@@ -19,10 +19,14 @@ namespace {
 
 using nlohmann::json;
 
-LaunchResult LaunchGameSync(const std::string& id, const std::string& option) {
+LaunchResult LaunchGameSync(const std::string& id, const std::string& option,
+                            const std::string& saves) {
   const std::string path = "/v1/games/" + PercentEncode(id) + "/launch";
+  json body = json::object();
+  if (!option.empty()) body["option"] = option;
+  if (!saves.empty()) body["saves"] = saves;
   const transport::Reply reply =
-      option.empty() ? transport::Post(path) : transport::PostJson(path, {{"option", option}});
+      body.empty() ? transport::Post(path) : transport::PostJson(path, body);
   // `tracked` (docs/api.md): whether game.state events are coming for this
   // launch. An older mirad only says `status`; with neither, assume so.
   bool tracked = true;
@@ -278,8 +282,10 @@ void FillDeleteGames(DeleteGamesResult& result, const json& body) {
 }  // namespace
 
 void LaunchGameAsync(QObject* context, const std::string& id, const std::string& option,
-                     std::function<void(LaunchResult)> callback) {
-  async::Run(context, [id, option] { return LaunchGameSync(id, option); }, std::move(callback));
+                     const std::string& saves, std::function<void(LaunchResult)> callback) {
+  async::Run(
+      context, [id, option, saves] { return LaunchGameSync(id, option, saves); },
+      std::move(callback));
 }
 
 void StopGameAsync(QObject* context, const std::string& id,
@@ -431,6 +437,18 @@ void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
                                 json{{add ? "add" : "remove", folder}});
         return GameActionResult{reply.ok, reply.error};
       },
+      std::move(callback));
+}
+
+void SyncCloudSavesAsync(QObject* context, const std::string& id, const std::string& action,
+                         std::function<void(SavesJobResult)> callback) {
+  RunJob<SavesJobResult>(
+      context, "saves",
+      [id, action](const std::string& query) {
+        return transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/cloud" + query,
+                                   json{{"action", action}});
+      },
+      [](SavesJobResult& result, const json& body) { result.state = mapping::Str(body, "state"); },
       std::move(callback));
 }
 

@@ -9,6 +9,7 @@
 #include "model/Types.h"
 #include "saves/Match.h"
 #include "saves/Resolve.h"
+#include "store/GameStore.h"
 #include "store/MetadataStore.h"
 
 namespace mira::saves {
@@ -23,8 +24,8 @@ struct Plan {
 Plan PlanFor(const config::Config& config, const model::Game& game,
              const std::optional<Match>& match);
 
-// A game's save locations and the files in them now: the list entry's that apply to it, then
-// saves.extra_paths.
+// A game's save locations and the files in them now: the list entry's that apply to it,
+// saves.extra_paths, then its store's cloud save folders as last asked.
 struct Survey {
   std::optional<Match> match;
   Plan plan{};
@@ -35,9 +36,9 @@ Survey SurveyFor(const config::Config& config, const store::MetadataStore& cache
                  const model::Game& game);
 
 // GET /v1/games/{id}/saves's answer: {enabled, status, entry, match, locations, snapshots,
-// last_error?}. Status "kept" (snapshots taken and the game is backed up), "ready" (files found),
-// "no_files", "no_entry" (no save locations known for it), "registry_only", or a Plan's.
+// last_error?, cloud}. Status "kept" (snapshots taken and the game is backed up), "ready" (files
+// found), "no_files", "no_entry" (no save locations known for it), "registry_only", or a Plan's.
 nlohmann::json Overview(const config::Config& config, const store::MetadataStore& cache,
-                        const model::Game& game);
+                        const store::GameStore& games, const model::Game& game);
 
 }  // namespace mira::saves

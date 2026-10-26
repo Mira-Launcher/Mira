@@ -70,7 +70,7 @@ Result<void> InstallWinetricks() {
   const std::string tag =
       release.is_object() ? release.value("tag_name", std::string()) : std::string();
   if (tag.empty())
-    return Err("github_api_error", "couldn't find the latest winetricks release", kConnectionHint);
+    return Err("github_api_error", "couldn't find the latest winetricks release", kGitHubHint);
 
   const fs::path target = BundledWinetricks();
   std::error_code ec;

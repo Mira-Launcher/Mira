@@ -40,10 +40,12 @@ template <typename T>
 using Result = std::expected<T, Error>;
 
 // The hint for a download or web API call that didn't get through.
-inline constexpr const char* kConnectionHint =
+inline constexpr const char* kConnectionHint = "Check the internet connection and try again.";
+
+// The same for GitHub's API, which limits how often it answers.
+inline constexpr const char* kGitHubHint =
     "Check the internet connection and try again. GitHub limits how often it answers, so waiting a "
-    "few "
-    "minutes can help.";
+    "few minutes can help.";
 
 // The hint for a file Mira couldn't write.
 inline constexpr const char* kDiskHint = "Check the disk isn't full and the folder is writable.";

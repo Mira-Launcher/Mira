@@ -20,6 +20,15 @@ SaveSnapshot Backup(int days_ago, const std::string& reason) {
   return {.id = "b", .taken_at = At(days_ago, 21, 14), .reason = reason, .files = 1, .bytes = 1};
 }
 
+CloudSaves Cloud(const std::string& store, const std::string& state,
+                 const std::string& reason = {}) {
+  CloudSaves cloud;
+  cloud.store = store;
+  cloud.state = state;
+  cloud.reason = reason;
+  return cloud;
+}
+
 }  // namespace
 
 TEST_CASE("A backup's time reads as today, yesterday, then its date") {
@@ -43,8 +52,12 @@ TEST_CASE("The card's saves line counts backups and says when the last was taken
   saves.snapshots = {Backup(0, "manual")};
   CHECK(saves_text::Summary(saves, kNow) == "1 backup · last today, 21:14");
 
-  // A failed backup is what the line says, and it reads as a warning.
+  // A conflict or a failed backup is what the line says, and it reads as a warning.
   CHECK_FALSE(saves_text::NeedsAttention(saves));
+  saves.cloud = Cloud("Epic Games", "conflict");
+  CHECK(saves_text::Summary(saves, kNow) == "Saves changed here and in Epic Games's cloud");
+  CHECK(saves_text::NeedsAttention(saves));
+  saves.cloud.reset();
   saves.last_error = ApiError("too big", "saves_too_large");
   CHECK(saves_text::Summary(saves, kNow) == "The last backup failed");
   CHECK(saves_text::NeedsAttention(saves));
@@ -64,4 +77,11 @@ TEST_CASE("A save folder reads from the prefix's user folder or the home folder"
   CHECK(saves_text::Path("/home/u/.config/unity3d/Game", "/home/u") == "~/.config/unity3d/Game");
   CHECK(saves_text::Path("/home/user2/save", "/home/u") == "/home/user2/save");
   CHECK(saves_text::Path("/mnt/games/fir/Saved", "/home/u") == "/mnt/games/fir/Saved");
+}
+
+TEST_CASE("The cloud's state names its store, and an unsupported one says why") {
+  CHECK(saves_text::CloudState(Cloud("GOG", "synced")) == "In sync with GOG's cloud");
+  CHECK(saves_text::CloudState(Cloud("GOG", "unknown")) == "Not checked with GOG's cloud yet");
+  CHECK(saves_text::CloudState(Cloud("GOG", "unsupported", "GOG keeps none for native games")) ==
+        "GOG keeps none for native games");
 }

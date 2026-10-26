@@ -18,8 +18,10 @@ namespace mira_gui::api {
 // it exits. 409 if the game isn't `ready` (message explains why, e.g.
 // needs_install) or 400 if the runner reference doesn't resolve.
 // `option` names one of its launch options ("game" for its own program); empty for its default.
+// `saves` settles a cloud save conflict ("keep_local", "use_cloud" or "skip"); empty syncs as
+// usual, which is 409 saves_conflict when its saves changed both here and in the cloud.
 void LaunchGameAsync(QObject* context, const std::string& id, const std::string& option,
-                     std::function<void(LaunchResult)> callback);
+                     const std::string& saves, std::function<void(LaunchResult)> callback);
 
 // POST /v1/games/{id}/stop. SIGTERMs the game's process group; 409 if it
 // isn't currently running.
@@ -77,7 +79,7 @@ void GetAchievementsAsync(QObject* context, const std::string& id,
 void RefreshAchievementsAsync(QObject* context, const std::string& id,
                               std::function<void(AchievementsRefreshResult)> callback);
 
-// GET /v1/games/{id}/saves: where its saves are, and its backups, from the disk.
+// GET /v1/games/{id}/saves: where its saves are, its backups and its cloud state, from the disk.
 void GetSavesAsync(QObject* context, const std::string& id,
                    std::function<void(SavesResult)> callback);
 
@@ -101,6 +103,11 @@ void PinSaveBackupAsync(QObject* context, const std::string& id, const std::stri
 void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
                            const std::string& folder,
                            std::function<void(GameActionResult)> callback);
+
+// POST /v1/games/{id}/saves/cloud, a job: `action` is "check", "sync", "download" or "upload".
+void SyncCloudSavesAsync(QObject* context, const std::string& id, const std::string& action,
+                         std::function<void(SavesJobResult)> callback);
+
 // POST /v1/games/{id}/tricks. Returns 202; watch for
 // tricks.started/.finished/.failed via ParseTricksEvent.
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,

@@ -26,7 +26,9 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Endpoints a test may move, by the name its $MIRA_<NAME>_URL uses.
-constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY", "GOG_EMBED"};
+constexpr std::string_view kEndpoints[] = {"STEAM_API", "STEAM_ICONS", "GOG_GAMEPLAY",
+                                           "GOG_EMBED", "GOG_CONTENT", "GOG_REMOTE_CONFIG",
+                                           "GOG_CLOUD"};
 
 using strings::StableHash;
 

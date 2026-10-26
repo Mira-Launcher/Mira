@@ -44,6 +44,11 @@ class MetadataStore {
   Result<void> WriteAchievements(const std::string& id, std::int64_t fetched_at,
                                  const nlohmann::json& value);
 
+  // Where a GOG or Epic game keeps its cloud saves (saves::CloudInfo as JSON) plus `fetched_at`;
+  // null when never asked. Dropped with the game's achievements.
+  nlohmann::json ReadCloudSaves(const std::string& id) const;
+  Result<void> WriteCloudSaves(const std::string& id, const nlohmann::json& value);
+
   // One game of Ludusavi's save-location manifest, as saves::ParseManifest gives it.
   struct SaveEntry {
     std::string name;
@@ -117,7 +122,8 @@ class MetadataStore {
   Result<void> Open();
   Result<void> WriteLocked(const std::string& id, const nlohmann::json& info);
   std::optional<std::vector<CatalogRow>> ReadCatalogLocked(const std::string& source) const;
-  void DropAchievementsLocked(const std::string& id);
+  // A game's achievements and cloud save locations.
+  void DropGameRowsLocked(const std::string& id);
   // Deletes the save index's rows of every generation but `keep`, a batch per lock.
   void DropSaveGenerations(std::int64_t keep);
 

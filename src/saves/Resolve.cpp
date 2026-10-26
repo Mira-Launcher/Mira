@@ -6,6 +6,7 @@
 #include <set>
 
 #include "core/Strings.h"
+#include "epic/Legendary.h"
 #include "library/WinePrefix.h"
 #include "steam/SteamDetector.h"
 
@@ -105,6 +106,7 @@ std::vector<fs::path> Folders(std::string_view name, const Roots& roots) {
 // What a placeholder stands for as glob text: folders escaped, a store user id as any name.
 std::vector<std::string> Values(std::string_view name, const Roots& roots) {
   if (name == "storeuserid") return {"*"};
+  if (name == "epicid") return {roots.store_user_id.empty() ? "*" : Escape(roots.store_user_id)};
   if (name == "osusername") return {Escape(roots.user_name)};
   if (name == "game") return {Escape(roots.install.filename())};
   if (name == "storegameid") {
@@ -272,6 +274,7 @@ Roots RootsFor(const config::Config& config, const model::Game& game) {
     roots.store = game.source;
     roots.store_game_id = game.source_ref;
   }
+  if (game.source == "epic") roots.store_user_id = epic::AccountId();
   if (game.runner_ref.starts_with("steam:")) {
     roots.store = "steam";
     roots.store_game_id = game.runner_ref.substr(std::string_view("steam:").size());
@@ -443,7 +446,10 @@ Location Find(std::string_view location, const Roots& roots) {
     }
     Walker walker{.fold = roots.windows, .parts = Components(pattern)};
     walker.Step("/", 0);
-    if (found.path.empty() || (!walker.files.empty() && files.empty())) found.path = pattern;
+    if (found.path.empty() || (!walker.files.empty() && files.empty())) {
+      found.path = pattern;
+      while (found.path.size() > 1 && found.path.ends_with('/')) found.path.pop_back();
+    }
     files.merge(walker.files);
     skipped.merge(walker.skipped);
   }

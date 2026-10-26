@@ -21,10 +21,14 @@ QString Reason(const std::string& reason) {
   if (reason == "first") return "Before the first launch";
   if (reason == "manual") return "Backed up by hand";
   if (reason == "before_restore") return "Before restoring";
+  if (reason == "before_cloud_download") return "Before a cloud download";
   return QString::fromStdString(reason);
 }
 
 QString Summary(const SavesResult& saves, const QDateTime& now) {
+  if (saves.cloud && saves.cloud->state == "conflict")
+    return QString("Saves changed here and in %1's cloud")
+        .arg(QString::fromStdString(saves.cloud->store));
   if (saves.last_error) return "The last backup failed";
   if (saves.status == "kept" && !saves.snapshots.empty()) {
     const SaveSnapshot& last = saves.snapshots.front();
@@ -48,7 +52,7 @@ QString Summary(const SavesResult& saves, const QDateTime& now) {
 }
 
 bool NeedsAttention(const SavesResult& saves) {
-  return saves.last_error.has_value();
+  return saves.last_error.has_value() || (saves.cloud && saves.cloud->state == "conflict");
 }
 
 QString Path(const std::string& path, const QString& home) {
@@ -73,6 +77,19 @@ QString StatusNote(const SavesResult& saves) {
     return "Mira doesn't know where this game keeps its saves. Add its save folders as more save "
            "locations.";
   return {};
+}
+
+QString CloudState(const CloudSaves& cloud) {
+  const QString store = QString::fromStdString(cloud.store);
+  if (cloud.state == "synced") return QString("In sync with %1's cloud").arg(store);
+  if (cloud.state == "local_newer") return QString("Newer here than in %1's cloud").arg(store);
+  if (cloud.state == "cloud_newer") return QString("Newer in %1's cloud").arg(store);
+  if (cloud.state == "conflict") return QString("Changed here and in %1's cloud").arg(store);
+  if (cloud.state == "unsupported")
+    return cloud.reason.empty() ? QString("%1 keeps no cloud saves for this game").arg(store)
+                                : QString::fromStdString(cloud.reason);
+  if (cloud.state == "off") return QString("Not synced with %1's cloud").arg(store);
+  return QString("Not checked with %1's cloud yet").arg(store);
 }
 
 }  // namespace mira_gui::saves_text

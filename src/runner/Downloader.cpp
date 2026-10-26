@@ -133,12 +133,11 @@ Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const s
   if (!listed)
     return Err("github_api_error",
                std::format("couldn't list releases for {}: {}", repo, listed.error().message),
-               kConnectionHint);
+               kGitHubHint);
   const json& parsed = *listed;
   if (!parsed.is_array()) {
     return Err("github_api_error",
-               std::format("couldn't list releases for {}: {}", repo, parsed.dump()),
-               kConnectionHint);
+               std::format("couldn't list releases for {}: {}", repo, parsed.dump()), kGitHubHint);
   }
 
   std::vector<ReleaseAsset> releases;
@@ -511,14 +510,14 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
   const Result<json> release = CurlJson(url);
   if (!release)
     return Err("release_api_error",
-               std::format("couldn't read {}: {}", url, release.error().message), kConnectionHint);
+               std::format("couldn't read {}: {}", url, release.error().message), kGitHubHint);
   // GitHub and Forgejo answer a missing release with {"message": "Not Found"}, and a refusal
   // (such as a rate limit) with its reason.
   if (const std::string message = release->is_object() ? core::JsonString(*release, "message") : "";
       !message.empty()) {
     if (message == "Not Found")
       return Err("release_not_found", std::format("there's no release at {}", url));
-    return Err("release_api_error", std::format("{} answered: {}", url, message), kConnectionHint);
+    return Err("release_api_error", std::format("{} answered: {}", url, message), kGitHubHint);
   }
   auto asset = AssetOf(*release, pattern, exclude);
   if (!asset)
