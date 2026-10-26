@@ -18,12 +18,14 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <json.hpp>
 #include <map>
 
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
+#include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
@@ -75,9 +77,20 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   setObjectName("left_sidebar");
   // A point above the rest of the window, so its rows read at a glance.
   setFont(theme::Larger(font()));
-  connect(EventHub::Instance(), &EventHub::Received, this, [this](const std::string& type) {
-    if (type == "sources.changed") RefreshSources();
-  });
+  connect(EventHub::Instance(), &EventHub::Received, this,
+          [this](const std::string& type, const std::string& data, bool live) {
+            if (type == "sources.changed") RefreshSources();
+            if (!live) return;
+            // A tool set up or an emulator installed may be the newer release.
+            const auto payload = nlohmann::json::parse(data, nullptr, false);
+            if (!payload.is_object()) return;
+            const std::string kind = payload.value("kind", std::string());
+            const bool installed = type == "job.finished" && (kind == "setup" || kind == "install");
+            const bool check_changed =
+                type == "config.changed" && payload.contains("keys") &&
+                std::ranges::contains(payload["keys"], nlohmann::json("updates.check"));
+            if (installed || check_changed) RefreshUpdates();
+          });
 
   // Rows with their own menu handle it first; the rest fall through to here.
   setContextMenuPolicy(Qt::CustomContextMenu);
@@ -229,6 +242,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
     RefreshGames();
     ShowActive();
   });
+  RefreshUpdates();
 }
 
 // PINNED and RECENTLY PLAYED headings carry a button for the customize card.
@@ -593,6 +607,7 @@ void Sidebar::UpdateSources() {
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
+    const QString update = off || signed_out ? QString() : source_updates_.value(id);
     auto* row = qobject_cast<QHBoxLayout*>(source_row.nav->layout());
     if (show_source_covers_) {
       std::vector<const GameSummary*> covers = std::move(shown[id.toStdString()]);
@@ -630,6 +645,10 @@ void Sidebar::UpdateSources() {
         detail = QString("<span style=\"color: %1;\">Signed out</span>")
                      .arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
+      } else if (!update.isEmpty()) {
+        detail = QString("<span style=\"color: %1;\">Update available</span>")
+                     .arg(theme::Current().accent.name()) +
+                 (detail.isEmpty() ? QString() : " · " + detail);
       }
       source_row.detail->setText(detail);
       source_row.detail->setVisible(!detail.isEmpty());
@@ -643,11 +662,13 @@ void Sidebar::UpdateSources() {
       QString label = show_source_counts_ ? counted : QString();
       if (off) label = "Off";
       if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
+      if (!update.isEmpty()) label = StatusDot(theme::Current().accent) + label;
       source_row.count->setText(label);
       source_row.count->show();
     }
-    source_row.nav->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
-                                          : QString());
+    source_row.nav->setToolTip(signed_out         ? QString("Signed out of %1").arg(sources[i].name)
+                               : update.isEmpty() ? QString()
+                                                  : "Update available: " + update);
   }
   // isHidden, not isVisible: this also runs while the sidebar itself is off screen.
   sources_empty_->setVisible(sources_shown &&
@@ -795,6 +816,9 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
 void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos) {
   QMenu menu(this);
   QAction* open = menu.addAction("Open " + source.name);
+  QAction* update = nullptr;
+  if (const QString what = source_updates_.value(source.id); !what.isEmpty())
+    update = menu.addAction(icons::For(icons::Glyph::Download), "Update " + what);
   // Neighbours among the visible rows, in their shown order.
   std::vector<QPushButton*> shown;
   for (int row = 0; row < source_nav_layout_->count(); ++row) {
@@ -824,6 +848,8 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
   QAction* chosen = menu.exec(global_pos);
   if (chosen == open) {
     emit SourceClicked(source);
+  } else if (chosen != nullptr && chosen == update) {
+    UpdateSourceTool(source);
   } else if (chosen == up) {
     MoveSource(source.id, source_nav_layout_->indexOf(*(position - 1)));
   } else if (chosen == down) {
@@ -840,6 +866,47 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
     emit ManageSourcesRequested();
   } else if (chosen == settings) {
     emit SettingsRequested(SettingsPanel::kSidebarSourcesKey);
+  }
+}
+
+void Sidebar::RefreshUpdates() {
+  const int request = ++updates_request_;
+  api::GetConfigAsync(this, [this, request](ConfigResult config) {
+    if (request != updates_request_ || !config.ok) return;
+    const auto check = config.values.find("updates.check");
+    if (check != config.values.end() && check->second == "false") {
+      source_updates_.clear();
+      UpdateSources();
+      return;
+    }
+    api::GetUpdatesAsync(this, [this, request](UpdatesResult result) {
+      if (request != updates_request_ || !result.ok) return;
+      source_updates_.clear();
+      // Runner builds and umu belong to the Runners page, Mira's own release to no source.
+      for (const UpdateInfo& update : result.updates) {
+        const QString id = QString::fromStdString(update.id);
+        if ((update.kind != "tool" && update.kind != "emulator") || FindSourceInfo(id) == nullptr)
+          continue;
+        QString& what = source_updates_[id];
+        if (!what.isEmpty()) what += " and ";
+        what += QString::fromStdString(update.name);
+        if (!update.latest.empty()) what += " (" + QString::fromStdString(update.latest) + ")";
+      }
+      UpdateSources();
+    });
+  });
+}
+
+void Sidebar::UpdateSourceTool(const SourceInfo& source) {
+  // The job runs on, and its job.finished asks again, which takes the marker away.
+  const auto done = [this,
+                     failure = "Could not update " + source.name + "."](StoreActionResult result) {
+    if (!result.ok) notify::FailedRequest(this, failure, result.error);
+  };
+  if (source.kind == SourceInfo::Kind::Emulator) {
+    api::InstallEmulatorAsync(this, source.id.toStdString(), done);
+  } else {
+    api::SetupStoreToolAsync(this, source.id.toStdString(), done);
   }
 }
 

@@ -863,6 +863,21 @@ struct RunnerUpdatesResult {
   std::vector<RunnerUpdate> updates;
 };
 
+// GET /v1/updates: something Mira downloaded that has a newer release.
+struct UpdateInfo {
+  std::string kind;  // "mira", "emulator", "tool" or "runner"
+  std::string id;    // the source's id for an emulator or a store's tool
+  std::string name;
+  std::string installed;
+  std::string latest;
+};
+
+struct UpdatesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<UpdateInfo> updates;
+};
+
 // GET /v1/runners/tools: umu-launcher and winetricks.
 struct RunnerTool {
   std::string id;
