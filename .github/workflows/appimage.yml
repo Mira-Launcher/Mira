@@ -1,5 +1,6 @@
 # Builds each PR's AppImage and links it from one comment on the PR, updated on every push, then benchmarks
-# it against main's latest AppImage (tools/bench). Builds on main keep the compiler cache warm for new PRs.
+# it against main's latest AppImage (tools/bench). Builds on main keep the compiler cache warm for new PRs and
+# keep the next version's draft release up to date (.github/scripts/draft-release.sh).
 name: AppImage
 
 on:
@@ -14,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write  # the draft release
   pull-requests: write
 
 jobs:
@@ -36,6 +37,12 @@ jobs:
           path: out/Mira-x86_64.AppImage
           # Main's is what PRs are benchmarked against, so it's kept longer.
           retention-days: ${{ github.event_name == 'push' && 90 || 14 }}
+
+      - name: Draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/draft-release.sh
 
       - name: Comment
         if: github.event_name == 'pull_request'

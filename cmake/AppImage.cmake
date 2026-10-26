@@ -56,13 +56,13 @@ if(NOT MIRA_QMAKE_EXECUTABLE)
                   "MIRA_QMAKE_EXECUTABLE manually and reconfigure.")
 else()
   # linuxdeploy-plugin-qt deploys every plugin it finds under
-  # `qmake -query QT_INSTALL_PLUGINS`, including third-party ones from the
-  # system's kimageformats package (HEIF/EXR/AVIF/... support Mira's blank
-  # window has no use for), and on at least one real machine, kimg_heif.so
-  # depends on a libheif.so.1 linuxdeploy can't resolve, which fails the
-  # whole deploy. There's no include/exclude flag for this, so the fix is a
-  # filtered copy of the real plugins tree (missing only the offending
-  # kimg_*.so files) plus a qmake wrapper that answers
+  # `qmake -query QT_INSTALL_PLUGINS`, including third-party ones from
+  # kimageformats (EXR, PSD, ... that Mira has no use for), and on at least
+  # one real machine, kimg_heif.so depends on a libheif.so.1 linuxdeploy
+  # can't resolve, which fails the whole deploy. There's no include/exclude
+  # flag for this, so the fix is a filtered copy of the real plugins tree
+  # (without the kimg_*.so files it doesn't want or can't resolve) plus a
+  # qmake wrapper that answers
   # `-query QT_INSTALL_PLUGINS` with that copy and delegates every other
   # query to the real qmake6, redirecting linuxdeploy-plugin-qt's own
   # discovery without touching the system's actual Qt install.
@@ -171,7 +171,16 @@ exec \"\$HERE/usr/bin/mira-gui\" \"$@\"
     # currently installed rather than a stale snapshot from first configure.
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIRA_QT_FILTERED_PLUGINS_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${MIRA_QT_REAL_PLUGINS_DIR}" "${MIRA_QT_FILTERED_PLUGINS_DIR}"
-    COMMAND sh -c "rm -f '${MIRA_QT_FILTERED_PLUGINS_DIR}'/imageformats/kimg_*.so"
+    # Of kimageformats only AVIF, HEIF and JPEG XL, which sites serve covers in, and only when
+    # their libraries resolve here.
+    COMMAND sh -c "for f in '${MIRA_QT_FILTERED_PLUGINS_DIR}'/imageformats/kimg_*.so; do \
+      [ -e \"$f\" ] || continue; \
+      case \"$(basename \"$f\")\" in \
+        kimg_avif.so|kimg_heif.so|kimg_jxl.so) \
+          LD_LIBRARY_PATH='${MIRA_QT_LIBS_DIR}' ldd \"$f\" | grep -q 'not found' && rm -f \"$f\" ;; \
+        *) rm -f \"$f\" ;; \
+      esac; \
+    done; true"
     # Video plays through the FFmpeg backend. The GStreamer one would load the system's GStreamer
     # plugins into a process of bundled libraries.
     COMMAND sh -c "rm -f '${MIRA_QT_FILTERED_PLUGINS_DIR}'/multimedia/libgstreamermediaplugin.so"

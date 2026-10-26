@@ -774,28 +774,11 @@ def respond(pid, press, may_idle=False):
     raise Failed("the GUI never came to rest after a key")
 
 
-def hidden_mode(ctx, label, page_keys=None):
-    """Ctrl+H in and out of hidden mode three times, on the library or the page `page_keys` opens."""
-    def toggle(pid):
-        display = Display(pid)
-        if page_keys:
-            shown = display.snapshot()
-            wall, _ = respond(pid, lambda: display.key(page_keys))
-            check(changed(shown, display.snapshot()) > 0.2, f"{page_keys} didn't open the page")
-            ctx.results["open the page"] = round(wall, 1)
-        walls, cpus = [], []
-        for _ in range(6):
-            wall, cpu = respond(pid, lambda: display.key("ctrl+h"))
-            walls.append(wall)
-            cpus.append(cpu)
-        ctx.results["Ctrl+H"] = round(statistics.median(walls), 1)
-        ctx.results["Ctrl+H, CPU until done"] = round(statistics.median(cpus), 1)
-    open_gui(ctx, label, then=toggle)
-
-
-def open_gui(ctx, label, args=(), then=None):  # label names its log
-    """The real GUI, offscreen, on the fixture: time until it goes quiet (library and art loaded), then its
-    CPU while idle, which catches redraw loops, and its memory and threads. `then(pid)` runs after."""
+def open_gui(ctx, label, args=(), then=None, startup=False, memory=False):  # label names its log
+    """The real GUI, offscreen, on the fixture, until it goes quiet (library and art loaded), then idle for
+    5 s, failing on CPU used then (a redraw loop). `then(pid)` runs after. The time until quiet and the idle
+    CPU are reported with `startup`, the GUI's memory and threads at the end with `memory`: a scenario
+    reports only what it's for, since every extra measure is one more that one run can flag by chance."""
     # On Xvfb rather than Qt's offscreen platform, which the AppImage doesn't bundle.
     env = ctx.mirad.env() | {"QT_QPA_PLATFORM": "xcb"}
     # A build tree has it under frontend/; an AppImage beside mirad.
@@ -828,17 +811,19 @@ def open_gui(ctx, label, args=(), then=None):  # label names its log
                 break
             time.sleep(0.05)
         check(quiet_since is not None, "the GUI never went quiet")
-        ctx.results["until quiet"] = round((quiet_since - start) * 1000, 1)
         before = cpu_ticks(pid)
         time.sleep(5)
         idle = cpu_ticks(pid) - before
-        ctx.results["idle CPU ms per 5 s"] = idle * 10
+        if startup:
+            ctx.results["until quiet"] = round((quiet_since - start) * 1000, 1)
+            ctx.results["idle CPU ms per 5 s"] = idle * 10
         check(idle <= 10, f"the GUI used {idle * 10} ms of CPU in 5 idle seconds (a redraw loop?)")
         if then:
             then(pid)
         check(gui.poll() is None, f"the GUI exited with {gui.returncode}")
         # After `then`, so what it did is counted, as for mirad's memory at a scenario's end.
-        ctx.results.update({f"gui.{k}": v for k, v in proc_status(pid).items()})
+        if memory:
+            ctx.results.update({f"gui.{k}": v for k, v in proc_status(pid).items()})
     except Failed as e:
         # Its last lines say why, such as a library the runner lacks.
         log.flush()
@@ -877,13 +862,13 @@ def zoom(ctx, label):
         check(len(walls) >= 4, f"only {len(walls)} zoom steps did anything")
         ctx.results["zoom step"] = round(statistics.median(walls), 1)
         ctx.results["zoom step, CPU until done"] = round(statistics.median(cpus), 1)
-    open_gui(ctx, label, then=sweep)
+    open_gui(ctx, label, then=sweep, memory=True)
 
 
 @scenario("gui", gui=True)
 def gui_library(ctx, meta):
     """Opening Mira on the library."""
-    open_gui(ctx, "GUI library")
+    open_gui(ctx, "GUI library", startup=True, memory=True)
 
 
 @scenario("gui-big-screen", gui=True)
@@ -893,19 +878,28 @@ def gui_big_screen(ctx, meta):
     # pause, quiet is after the showcase.
     status, _ = ctx.client.request("PATCH", "/v1/config", {"frontend": {"big_screen_trailer_delay_ms": 0}})
     check(status == 200, f"setting the showcase delay answered {status}")
-    open_gui(ctx, "GUI big screen", ["--big-screen"])
+    open_gui(ctx, "GUI big screen", ["--big-screen"], startup=True, memory=True)
 
 
 @scenario("gui-hidden-mode", gui=True)
 def gui_hidden_mode(ctx, meta):
-    """Switching hidden mode on the library, which restyles every widget the GUI has built."""
-    hidden_mode(ctx, "GUI hidden mode")
-
-
-@scenario("gui-hidden-mode-tags", gui=True)
-def gui_hidden_mode_tags(ctx, meta):
-    """Switching hidden mode on the Tags page."""
-    hidden_mode(ctx, "GUI hidden mode on Tags", page_keys="ctrl+shift+F9")
+    """Switching hidden mode in and out three times on the library, which restyles every widget the GUI
+    has built, then on the Tags page, whose lists follow it too."""
+    def toggle(pid):
+        display = Display(pid)
+        for page, keys in (("", None), (" on Tags", "ctrl+shift+F9")):
+            if keys:
+                shown = display.snapshot()
+                respond(pid, lambda: display.key(keys))
+                check(changed(shown, display.snapshot()) > 0.2, f"{keys} didn't open Tags")
+            walls, cpus = [], []
+            for _ in range(6):
+                wall, cpu = respond(pid, lambda: display.key("ctrl+h"))
+                walls.append(wall)
+                cpus.append(cpu)
+            ctx.results[f"Ctrl+H{page}"] = round(statistics.median(walls), 1)
+            ctx.results[f"Ctrl+H{page}, CPU until done"] = round(statistics.median(cpus), 1)
+    open_gui(ctx, "GUI hidden mode", then=toggle)
 
 
 @scenario("gui-pages", gui=True)
@@ -987,7 +981,7 @@ def gui_game_card(ctx, meta):
         # lowest is compared: a leak raises every round.
         check(min(closed[len(closed) // 2:]) - closed[0] <= 2048,
               f"each card opened and closed kept memory: {closed} KB after each close")
-    open_gui(ctx, "GUI game card", then=cycle)
+    open_gui(ctx, "GUI game card", then=cycle, memory=True)
 
 
 @scenario("gui-zoom", gui=True)
@@ -1030,7 +1024,8 @@ def main():
                 mirad.wait_log("startup scan:", timeout=1200)
                 ctx.client = mirad.client()
             fn(ctx, meta)
-            if args.mode == "time":
+            # mirad's own scenarios measure its memory; under the GUI it follows what the GUI asked for.
+            if args.mode == "time" and not is_gui:
                 scenario_results.update({f"mirad.{k}": v for k, v in mirad.proc_status().items()})
             print(f"PASS {name}", file=sys.stderr)
         except Exception as error:  # a failed scenario is reported, and the others still run
