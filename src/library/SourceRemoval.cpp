@@ -30,7 +30,7 @@ bool IsStore(std::string_view source) {
 
 // Only the app owns these games' files. An emulator's games are the user's own, kept when it goes.
 bool FilesOwnedElsewhere(std::string_view source) {
-  return source == "steam" || source == "lutris" || source == "humble" ||
+  return source == "steam" || source == "lutris" || source == "heroic" || source == "humble" ||
          emulators::Find(source) != nullptr || modmanagers::Find(source) != nullptr;
 }
 

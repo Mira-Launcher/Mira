@@ -28,7 +28,7 @@ bool WaitUntil(const std::function<bool()>& done,
 
 // Keeps `config` off the network and out of the user's own folders: no
 // metadata, umu or Steam Web API lookups, every folder Mira uses (library,
-// prefixes, store installs, runners, menu entries, Steam, Lutris) next to the
+// prefixes, store installs, runners, menu entries, Steam, Lutris, Heroic) next to the
 // settings file, and Windows games run natively instead of through the
 // machine's Wine. A test of metadata turns `metadata.enabled` back on itself.
 void Isolate(config::Config& config);

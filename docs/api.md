@@ -514,6 +514,23 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 
 Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags in Title Case (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags, ignoring case. Re-importing updates Lutris's fields and leaves overrides alone. Lutris sets `install_path`, `exe_path` and `data_dir` on the first import; after that Mira's stay (a different executable picked in Mira survives) unless what they point at is gone. `candidates` lists the executables in the game's folder, unless the folder holds other games too. Lutris's `playtime` and `lastplayed` fill `play_seconds` and `last_played_at` until Mira has recorded a session of its own (`last_session_at`); after that Mira's record stays.
 
+## Heroic
+
+### `GET /v1/heroic`
+Whether Heroic Games Launcher is on this computer: `{"found", "config_dir"}`, its config folder (`heroic.config_dir`, else `$XDG_CONFIG_HOME/heroic`, else the Flatpak's `~/.var/app/com.heroicgameslauncher.hgl/config/heroic`). `config_dir` is empty when not found.
+
+### `POST /v1/heroic/import`
+Imports the games Heroic installed, from its own files: Epic games from `legendaryConfig/legendary/installed.json`, GOG games from `gog_store/installed.json` (the program from the game's `goggame-<id>.info`, `start.sh` on Linux), Amazon games from `nile_config/nile/installed.json` (the program from the game's `fuel.json`) and sideloaded games from `sideload_apps/library.json`. A [job](#jobs) whose result is:
+
+```json
+{ "added": 3, "updated": 1, "unsupported": 1, "incomplete": 0 }
+```
+
+- `unsupported` counts macOS and browser games, which are skipped.
+- `incomplete` counts games whose program, or a Windows game's prefix (`GamesConfig/<id>.json`'s `winePrefix`, its `pfx` folder for a Proton prefix), Heroic's files don't name.
+
+The games' `source` is `heroic` and `source_ref` is `<store>:<id>` (`epic`, `gog`, `amazon` or `sideload`). They run through Mira's runners in Heroic's prefix, without the store's sign-in, as Lutris's do; `runner_ref` is left empty so `default_runner.windows` applies. A game Mira already has at that folder from its own Epic, GOG or Amazon source stays that source's. Nothing on disk is moved, and as with Lutris, Heroic sets `install_path`, `exe_path`, `args` and `data_dir` on the first import, after which Mira's stay unless what they point at is gone.
+
 ## Stores
 
 Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five share one set of calls under `/v1/stores/{id}`, where `id` is `epic`, `gog`, `itch`, `amazon` or `humble` (`404 store_not_found` otherwise). Store games always launch through Mira's own runners, never through the store tool.

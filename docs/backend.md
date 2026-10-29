@@ -37,6 +37,7 @@ src/
   launchers/  Battle.net, Ubisoft Connect, EA app, Microsoft 365 and Creative Cloud, each installed into its own prefix
   emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
   lutris/     Lutris library import
+  heroic/     Heroic Games Launcher import
   metadata/   Cover art and store metadata fetching
   achievements/  Achievement lists from each store, the system locale, and achievement icons
   saves/      The save locations list (download, index, matching a game to an entry), resolving a game's save files, and their backups

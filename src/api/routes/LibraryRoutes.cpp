@@ -16,6 +16,7 @@
 #include "core/Strings.h"
 #include "desktop/DesktopEntryScanner.h"
 #include "emulators/Emulators.h"
+#include "heroic/HeroicImporter.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/Catalog.h"
@@ -45,6 +46,7 @@ const std::vector<std::string> kSourceIds = [] {
   std::vector<std::string> ids = {"local", "steam", "epic", "gog", "itch", "amazon", "humble"};
   for (const launchers::Launcher& launcher : launchers::All()) ids.push_back(launcher.id);
   ids.push_back("lutris");
+  ids.push_back("heroic");
   for (const emulators::Emulator& emulator : emulators::All()) ids.push_back(emulator.id);
   for (const modmanagers::ModManager& manager : modmanagers::All()) ids.push_back(manager.id);
   return ids;
@@ -405,6 +407,26 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                  if (!summary) return std::unexpected(summary.error());
                  json result = s.FinishImport("lutris", *summary);
                  result["other_runner"] = summary->other_runner;
+                 result["incomplete"] = summary->incomplete;
+                 return result;
+               });
+  });
+
+  // --- heroic -----------------------------------------------------------
+
+  http.Get("/v1/heroic", [&s](const Request&, Response& res) {
+    const auto dir = heroic::FindHeroicConfigDir(s.config);
+    SendJson(res, {{"found", dir.has_value()}, {"config_dir", dir ? dir->string() : ""}});
+  });
+
+  http.Post("/v1/heroic/import", [&s](const Request& req, Response& res) {
+    s.StartJob(req, res, "import", "heroic", "Importing from Heroic",
+               [&s](JobRegistry::Progress&) -> Result<json> {
+                 heroic::HeroicImporter importer(s.config, s.games, s.events);
+                 auto summary = importer.Import();
+                 if (!summary) return std::unexpected(summary.error());
+                 json result = s.FinishImport("heroic", *summary);
+                 result["unsupported"] = summary->unsupported;
                  result["incomplete"] = summary->incomplete;
                  return result;
                });

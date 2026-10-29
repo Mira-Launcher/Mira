@@ -79,6 +79,7 @@ void Isolate(config::Config& config) {
       {"desktop_entries.directory", (dir / "applications").string()},
       {"steam.root", (dir / "steam").string()},
       {"lutris.data_dir", (dir / "lutris").string()},
+      {"heroic.config_dir", (dir / "heroic").string()},
       {"saves.manifest_url", "file://" + (dir / "endpoints" / "save-locations.yaml").string()},
       {"saves.backup_root", (dir / "saves").string()},
   };

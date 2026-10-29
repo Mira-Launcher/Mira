@@ -123,9 +123,9 @@ Validator FolderTags() {
 // The source a key belongs to: "steam.root" and "launchers.ubisoft.disable_overlay" do,
 // "runner_sources.gog.repo" (a download location) and "scan.max_depth" don't.
 std::string SourceOf(std::string_view key) {
-  static constexpr std::string_view kSources[] = {"steam",   "epic",   "gog",    "itch",
-                                                  "humble",  "amazon", "lutris", "battlenet",
-                                                  "ubisoft", "ea",     "office"};
+  static constexpr std::string_view kSources[] = {"steam",     "epic",    "gog",    "itch",
+                                                  "humble",    "amazon",  "lutris", "heroic",
+                                                  "battlenet", "ubisoft", "ea",     "office"};
   if (key.starts_with("launchers.")) key.remove_prefix(std::string_view("launchers.").size());
   if (key.starts_with("emulators.")) key.remove_prefix(std::string_view("emulators.").size());
   const std::string_view head = key.substr(0, key.find('.'));
@@ -590,6 +590,14 @@ Schema::Schema() {
          .default_value = "",
          .doc = "The folder where Lutris keeps its database and game configs. Empty looks in "
                 "$XDG_DATA_HOME/lutris, then ~/.local/share/lutris.",
+         .path = PathKind::Folder});
+
+  s.Add({.key = "heroic.config_dir",
+         .label = "Heroic config folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "The folder where Heroic Games Launcher keeps its settings and installed games. "
+                "Empty looks in $XDG_CONFIG_HOME/heroic, then Heroic's Flatpak folder.",
          .path = PathKind::Folder});
 
   s.Group("Install folders");
