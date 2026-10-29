@@ -288,8 +288,8 @@ RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& o
           .as_game = option.mode == library::LaunchMode::Play};
 }
 
-// Starts a launch option detached and untracked, with its output in the game's log; `unit` puts it
-// in a systemd scope of that name.
+// Starts a launch option detached, with its output in the game's log: an alongside one in the
+// systemd scope `unit`, a tool (no `unit`) as one of the game's open tools.
 Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option,
                          const std::string& unit) {
   auto command = PrepareCommand(s, game, OptionProgram(game, option));
@@ -304,7 +304,10 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
   std::error_code ec;
   std::filesystem::create_directories(log.parent_path(), ec);
   const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
-  auto spawned = runner::SpawnReaped(*command, log_fd);
+  auto spawned = unit.empty()
+                     ? s.supervisor.StartTool(game.id, {.id = option.id, .name = option.name},
+                                              *command, log_fd)
+                     : runner::SpawnReaped(*command, log_fd);
   if (log_fd >= 0) ::close(log_fd);
   if (!spawned) return std::unexpected(spawned.error());
   return {};
@@ -551,8 +554,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                        std::format("{} only runs beside the game", option->name));
     }
     if (option && option->mode == library::LaunchMode::Tool) {
-      if (auto opened = SpawnOption(s, *game, *option, ""); !opened)
-        return SendError(res, PrepareStatus(opened.error()), opened.error());
+      if (auto opened = SpawnOption(s, *game, *option, ""); !opened) {
+        const bool no_scope = opened.error().code == "cgroup_unavailable";  // as for a game
+        return SendError(res, no_scope ? 500 : PrepareStatus(opened.error()), opened.error());
+      }
       return SendJson(res, {{"status", "opened"}, {"tracked", false}});
     }
 
@@ -735,6 +740,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         timeout_s = emulator->stop_timeout_s;
     }
     if (auto stopped = s.supervisor.Stop(req.matches[1], timeout_s); !stopped) {
+      // With the game itself closed, stopping it closes the tools it opened.
+      if (stopped.error().code == "not_running" && s.supervisor.StopTools(req.matches[1]))
+        return SendJson(res, {{"status", "stopping"}});
       // A client that missed the exit gets told it's stopped instead of an error.
       if (stopped.error().code == "not_running") {
         if (const auto game = s.games.Find(req.matches[1])) {

@@ -92,6 +92,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 ```
 
 - `running` is whether Mira is tracking a process for the game right now. Every game record the API returns or an event carries has it.
+- `tools` lists the game's [tool options](#launch-options) open right now, `[{id, name}]`, empty when none is. Opening or closing one publishes `game.updated`.
 
 - `art` lists the art slots Mira has an image cached for, each with a version: `{"cover": "18f3a…-2c41", "hero": "…"}`. A slot left out has no image, so `GET /v1/games/{id}/artwork` for it would 404. The version changes whenever the slot's image does, so a client can keep its copy until then. Every game record has it, and so do `game.metadata_ready`, `game.metadata_failed` and `game.artwork_selected`.
 
@@ -202,13 +203,13 @@ A game's `launch` holds other ways to start it and programs that run beside it, 
   "options": [{ "id": "olympus", "name": "Olympus", "mode": "play", "exe": "/home/me/Olympus/olympus", "args": "", "native": true }] }
 ```
 
-- `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself, untracked.
+- `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself in a systemd scope of its own: not a play session (no playtime, no `game.state`), but listed in the game's `tools` while anything in that scope runs, so a launcher that starts the real program and exits still counts. Tools opened before mirad restarted aren't listed.
 - `exe` is absolute or relative to `install_path`. `{game_dir}`, `{game_exe}` and `{prefix}` in `exe` or `args` are filled in, as `Z:\...` Wine paths in the args of an option run in the prefix.
 - A Windows game's option runs with the game's runner and in its prefix (Steam's own Proton and prefix for a Steam game), unless `native` is set. Any other game's runs as a Linux program.
 - `sign_in` (optional, `play` only): whether the option starts with the store's sign-in, as the game's own program does: Epic's sign-in arguments, which hold a single-use credential. Unset, it does when `exe` is inside `install_path` (another program of the game, such as its DirectX 12 build), and doesn't for a program elsewhere, such as a mod manager, which can't use the code before it expires. GOG's comet runs beside every play option either way, since it hands the program nothing.
 - `default` is the `play` option Play starts with no option named; empty for the game's own program. `only` asks a client to offer nothing else. `id`s are made from the name when missing; `game` is reserved for the game's own program.
 
-The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`.
+The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`, or `500 cgroup_unavailable` without a systemd user session, as a game would.
 
 ### `GET /v1/games/{id}/sessions?limit=`
 `{"sessions": [{"started_at", "ended_at", "duration_seconds", "exit_code", "signal", "incomplete"}, ...]}`: the game's finished play sessions, newest first, at most `limit` (default 50; `400 invalid_param` unless a whole number, 1 or more). `incomplete` is a session mirad restarted during, so how it ended is unknown. Removing the game removes its sessions.
@@ -220,7 +221,7 @@ The launch body's `"option": "<id>"` picks one (`"game"` for the game's own prog
 A live log, one per task so two running at once don't mix. Channels: `daemon` (mirad's own output), `game:<id>` (the game's log file, as above), `setup:<source>` (a launcher's install or a store tool's download), `install:<source>:<ref>` (a store title's install or update) and `runner:<kind>:<name>` (a runner download). Reply: `{"lines": [...], "next": N, "active": bool}`. Send `next` back as `after` to get only what came since; with no `after` the last `lines` (default 300) are returned. `active` is whether the task is still writing. A channel nothing has written to is an empty list. `400 invalid_param` for a bad `after` or `lines`. Non-game channels are kept in memory (the last 4000 lines) and start over when the task starts again.
 
 ### `POST /v1/games/{id}/stop`
-Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
+Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running but has tools open, closes them instead (`{"status": "stopping"}`). If neither is, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
 
 ### `POST /v1/open-url`
 Body `{"url": "scheme:..."}`. Opens a link whose scheme an app's launcher takes (Autodesk's `adskidmgr:` and `adsk.idmgr:`, which finish its sign-in) with the command the app's prefix registers for it, in the prefix of a running app of that launcher, else the one played last. Mira's `mira.open-url.desktop` entry, `mira open-url %u`, is what the desktop opens these links with. `{"status": "opened", "game_id"}`, `400 invalid_body`, `404 no_app_for_url` when no installed app takes the scheme, `404 no_url_handler` when its prefix registers nothing for it.
