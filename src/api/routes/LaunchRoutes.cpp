@@ -28,6 +28,7 @@
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/InstallSize.h"
 #include "library/LaunchOptions.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
@@ -870,6 +871,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       targets.push_back({{"path", target.root.string()}, {"free_bytes", target.free_bytes}});
     SendJson(res, {{"path", info->path.string()},
                    {"size_bytes", info->size_bytes},
+                   {"estimated_install_bytes",
+                    library::EstimatedInstallBytes(s.games.Metadata().Read(game->id))},
                    {"format", library::ToString(info->format)},
                    {"silent", info->silent},
                    {"silent_args", info->silent_args},
@@ -881,7 +884,15 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     const auto progress = library::Progress(id);
     if (!progress) return SendJson(res, {{"state", "idle"}});
+    // How far along by the guessed size, kept under 1 while it runs since the guess can be low.
+    const std::int64_t estimate = progress->estimated_bytes;
+    const double fraction =
+        estimate > 0 && progress->state == "running"
+            ? std::min(0.99, static_cast<double>(progress->bytes_written) / estimate)
+            : -1;
     SendJson(res, {{"state", progress->state},
+                   {"estimated_bytes", estimate},
+                   {"progress", fraction},
                    {"mode", progress->mode},
                    {"started_at", progress->started_at},
                    {"finished_at", progress->finished_at},

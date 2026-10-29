@@ -1,8 +1,12 @@
 #include "library/InstallSize.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <json.hpp>
 #include <map>
 #include <mutex>
+#include <regex>
 
 #include "amazon/Nile.h"
 #include "epic/Legendary.h"
@@ -71,6 +75,32 @@ Result<InstallSize> FetchInstallSize(const config::Config& config, const std::st
   if (cache.size() >= kCacheLimit && !cache.contains({source, ref})) cache.erase(cache.begin());
   cache[{source, ref}] = *size;
   return *size;
+}
+
+std::int64_t EstimatedInstallBytes(const json& metadata) {
+  static const std::regex kTag("<[^>]*>");
+  static const std::regex kStorage(
+      R"((?:storage|hard\s*(?:drive|disk)(?:\s*space)?|disk\s*space|hdd)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*(tb|gb|mb))",
+      std::regex::icase);
+  if (!metadata.is_object() || !metadata.contains("steam") || !metadata["steam"].is_object())
+    return -1;
+  const json requirements = metadata["steam"].value("pc_requirements", json::object());
+  std::int64_t largest = -1;
+  for (const char* level : {"minimum", "recommended"}) {
+    if (!requirements.is_object() || !requirements.contains(level) ||
+        !requirements[level].is_string())
+      continue;
+    const std::string text = std::regex_replace(requirements[level].get<std::string>(), kTag, " ");
+    std::smatch match;
+    if (!std::regex_search(text, match, kStorage)) continue;
+    std::string number = match[1].str();
+    std::ranges::replace(number, ',', '.');
+    const char unit = static_cast<char>(std::tolower(match[2].str().front()));
+    // In the units clients show sizes in, so "15 GB" reads back as 15 GB.
+    const double scale = std::pow(1024.0, unit == 't' ? 4 : unit == 'g' ? 3 : 2);
+    largest = std::max(largest, static_cast<std::int64_t>(std::stod(number) * scale));
+  }
+  return largest;
 }
 
 std::optional<InstallSize> KnownInstallSize(const std::string& source, const std::string& ref) {

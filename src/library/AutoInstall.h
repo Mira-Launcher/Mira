@@ -55,7 +55,8 @@ struct InstallProgress {
   std::int64_t started_at = 0;
   std::int64_t finished_at = 0;
   std::string error;
-  std::uintmax_t bytes_written = 0;  // growth of the install folder and new drive_c folders
+  std::uintmax_t bytes_written = 0;   // growth of the install folder and new drive_c folders
+  std::int64_t estimated_bytes = -1;  // EstimatedInstallBytes of the game's metadata, at the start
 };
 
 // Top-level folders under install.detect_dirs in `prefix`'s drive_c: taken

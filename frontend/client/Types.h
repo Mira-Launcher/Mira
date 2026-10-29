@@ -1124,8 +1124,9 @@ struct InstallerInfoResult {
   ApiError error;
   std::string path;
   std::int64_t size_bytes = 0;
-  std::string format;   // "inno" | "nsis" | "msi" | "unknown"
-  bool silent = false;  // Mira knows how to run it without its window
+  std::int64_t estimated_install_bytes = -1;  // a guess from Steam's requirements; -1 without one
+  std::string format;                         // "inno" | "nsis" | "msi" | "unknown"
+  bool silent = false;                        // Mira knows how to run it without its window
   // Library roots whose disk can hold the prefix when the game's folder is outside them (a disc);
   // the first is mirad's default.
   struct Target {
@@ -1141,6 +1142,8 @@ struct InstallProgressResult {
   ApiError error;
   std::string state;  // "idle" | "queued" | "running" | "finished" | "failed"
   std::int64_t bytes_written = 0;
+  std::int64_t estimated_bytes = -1;  // a guess at the installed size, from Steam's requirements
+  double progress = -1;               // bytes_written against that guess, under 1 while running
 };
 
 // A `game.install.started` / `.finished` / `.failed` payload.

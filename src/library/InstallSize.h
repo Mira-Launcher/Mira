@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <json.hpp>
 #include <optional>
 #include <string>
 
@@ -23,6 +24,11 @@ Result<InstallSize> FetchInstallSize(const config::Config& config, const std::st
 
 // A size FetchInstallSize found earlier this session, without asking the store again.
 std::optional<InstallSize> KnownInstallSize(const std::string& source, const std::string& ref);
+
+// A guess at what a game takes on disk from the storage line of Steam's system requirements in its
+// metadata ("Storage: 15 GB available space", "Hard Disk Space: 200MB"), the larger of minimum and
+// recommended; -1 without one.
+std::int64_t EstimatedInstallBytes(const nlohmann::json& metadata);
 
 // The sizes in a store tool's info output: the first object with `download_size` or
 // `disk_size`, preferring GOG's all-languages entry ("*").

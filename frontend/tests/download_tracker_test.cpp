@@ -76,6 +76,17 @@ TEST_CASE("DownloadTracker shows a store download's progress and follows a game'
   CHECK(size.contains(SizeText(2147483648)));
   CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1")).contains(size));
   CHECK(DownloadTracker::TileProgressFor(*tracker.Find("gog:1")).detail.contains(size));
+  // An installer's written bytes against the guessed installed size, under its cover too.
+  DownloadTracker::Entry installer;
+  installer.kind = DownloadTracker::Kind::Game;
+  installer.bytes = 1073741824;
+  installer.progress = 0.25;
+  installer.total_bytes = 4294967296;
+  const QString guessed = DownloadTracker::SizeProgressText(installer);
+  CHECK(guessed.contains(SizeText(1073741824)));
+  CHECK(guessed.contains(SizeText(4294967296)));
+  CHECK(DownloadTracker::TileProgressFor(installer).detail.contains(guessed));
+  CHECK(DownloadTracker::TileProgressFor(installer).fraction == doctest::Approx(0.25));
 
   CHECK(tracker.HandleEvent("game.install.started", R"({"id": "celeste"})"));
   const QString game_key =

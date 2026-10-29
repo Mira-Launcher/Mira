@@ -108,6 +108,9 @@ QString DownloadTracker::JobFor(const Entry& entry) const {
 
 QString DownloadTracker::SizeProgressText(const Entry& entry) {
   if (entry.total_bytes <= 0) return {};
+  // An installer's total is a guess from Steam's requirements.
+  if (entry.kind == Kind::Game)
+    return SizeText(entry.bytes) + " of about " + SizeText(entry.total_bytes);
   if (entry.downloaded_bytes < 0) return SizeText(entry.total_bytes);
   return SizeText(entry.downloaded_bytes) + " of " + SizeText(entry.total_bytes);
 }
@@ -239,7 +242,11 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     Entry& entry = Upsert(Kind::Game, QString(), QString::fromStdString(install.id));
     entry.state = state;
     entry.error = install.error;
-    if (state == State::Running) entry.bytes = 0;
+    if (state == State::Running) {
+      entry.bytes = 0;
+      entry.progress = -1;
+      entry.total_bytes = -1;
+    }
     if (DropIfCancelled(entry)) return true;
     emit Changed(entry.key);
     return true;
@@ -422,6 +429,8 @@ void DownloadTracker::Poll() {
                                     [&key](const Entry& e) { return e.key == key; });
           if (!progress.ok || found == entries_.end() || found->state != State::Running) return;
           found->bytes = progress.bytes_written;
+          found->progress = progress.progress;
+          found->total_bytes = progress.estimated_bytes;
           // In case the event was missed.
           if (progress.state == "finished") found->state = State::Finished;
           if (progress.state == "failed") found->state = State::Failed;

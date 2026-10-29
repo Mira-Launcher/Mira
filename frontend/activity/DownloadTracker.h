@@ -45,8 +45,8 @@ class DownloadTracker : public QObject {
     qint64 eta_seconds = -1;
     double bytes_per_second = -1;
     qint64 downloaded_bytes = -1;  // Title, of total_bytes, when the store reports them
-    qint64 total_bytes = -1;
-    QString message;  // a Job's current step
+    qint64 total_bytes = -1;       // Title: the download's; Game: a guess at the installed size
+    QString message;               // a Job's current step
     ApiError error;
     QDateTime changed;
   };
@@ -60,7 +60,8 @@ class DownloadTracker : public QObject {
   // "42% · 1.2 GB of 4.5 GB · 12.5 MB/s · 3 min left", as much as the source reported; empty
   // when it reported nothing. `short_form` leaves out the speed.
   static QString ProgressText(const Entry& entry, bool short_form = false);
-  // "1.2 GB of 4.5 GB" of a store download, or just its total; empty when it's not known.
+  // "1.2 GB of 4.5 GB" of a store download, or just its total, and "1.2 GB of about 4 GB" of an
+  // installer; empty when the total isn't known.
   static QString SizeProgressText(const Entry& entry);
 
   // What a cover shows for a running install: the rail's fraction (negative while unknown), the
