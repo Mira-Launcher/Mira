@@ -212,6 +212,11 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
                                const std::optional<RunProgram>& program,
                                const library::LaunchExtras& extras = {}) {
   const runner::RunnerRegistry registry(s.config);
+  // A build removed outside Mira: the game moves to the one that runs instead.
+  if (registry.StandIn(registry.ResolveRef(game))) {
+    s.RepointRemovedRunners();
+    if (const auto moved = s.games.Find(game.id)) game.runner_ref = moved->runner_ref;
+  }
   auto resolved = program && program->native
                       ? Result<runner::RunnerRegistry::Resolved>(
                             runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})

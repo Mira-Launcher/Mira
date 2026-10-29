@@ -957,6 +957,17 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
   return finished;
 }
 
+void Services::RepointRemovedRunners() {
+  std::vector<std::string> ids;
+  if (runner::RepointRemovedBuilds(config, games, &ids) == 0 || ids.empty()) return;
+  json moved = json::array();
+  const RecordSettings settings = CurrentRecordSettings();
+  for (const std::string& id : ids) {
+    if (const auto game = games.Find(id)) moved.push_back(Record(*game, &settings));
+  }
+  events.Publish("games.updated", {{"games", moved}});
+}
+
 void Services::RemoveAfterExit(const std::string& game_id,
                                std::vector<std::filesystem::path> files) {
   if (files.empty()) return;
