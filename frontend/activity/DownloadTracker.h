@@ -44,6 +44,8 @@ class DownloadTracker : public QObject {
     double progress = -1;  // 0..1 when the source reports it (store installs, jobs with steps)
     qint64 eta_seconds = -1;
     double bytes_per_second = -1;
+    qint64 downloaded_bytes = -1;  // Title, of total_bytes, when the store reports them
+    qint64 total_bytes = -1;
     QString message;  // a Job's current step
     ApiError error;
     QDateTime changed;
@@ -55,9 +57,11 @@ class DownloadTracker : public QObject {
   // The live log of the work an entry stands for (GET /v1/logs/<channel>); work with no log of its
   // own reads the daemon's.
   static QString LogChannelFor(const Entry& entry);
-  // "42% · 12.5 MB/s · 3 min left", as much as the source reported; empty
+  // "42% · 1.2 GB of 4.5 GB · 12.5 MB/s · 3 min left", as much as the source reported; empty
   // when it reported nothing. `short_form` leaves out the speed.
   static QString ProgressText(const Entry& entry, bool short_form = false);
+  // "1.2 GB of 4.5 GB" of a store download, or just its total; empty when it's not known.
+  static QString SizeProgressText(const Entry& entry);
 
   // What a cover shows for a running install: the rail's fraction (negative while unknown), the
   // status line ("42% · 3 min left", or what it's doing) and a quieter line under it (the speed).

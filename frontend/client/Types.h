@@ -1428,6 +1428,14 @@ struct StoreActionResult {
   ApiError error;
 };
 
+// GET /v1/library/size: what installing a store title downloads and takes on disk.
+struct InstallSizeResult {
+  bool ok = false;
+  ApiError error;
+  std::int64_t download_bytes = -1;  // -1: the store doesn't say
+  std::int64_t install_bytes = -1;
+};
+
 // GET /v1/library/install/paused.
 struct PausedInstall {
   std::string source;
@@ -1694,6 +1702,8 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+  std::int64_t downloaded_bytes = -1;  // install "progress": of `total_bytes`, when reported
+  std::int64_t total_bytes = -1;
 };
 
 // library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account

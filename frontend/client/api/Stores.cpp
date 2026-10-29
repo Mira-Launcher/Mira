@@ -475,6 +475,23 @@ void InstallStoreTitleAsync(QObject* context, const std::string& source, const s
       std::move(callback));
 }
 
+void GetInstallSizeAsync(QObject* context, const std::string& source, const std::string& ref,
+                         std::function<void(InstallSizeResult)> callback) {
+  async::Run(
+      context,
+      [source, ref] {
+        const std::string path =
+            "/v1/library/size?source=" + PercentEncode(source) + "&ref=" + PercentEncode(ref);
+        return ReadReply<InstallSizeResult>(
+            transport::Get(path), "GET /v1/library/size", Shape::Object,
+            [](InstallSizeResult& result, const nlohmann::json& body) {
+              result.download_bytes = body.value("download_bytes", std::int64_t{-1});
+              result.install_bytes = body.value("install_bytes", std::int64_t{-1});
+            });
+      },
+      std::move(callback), async::Lane::Slow);
+}
+
 void SetTitlesHiddenAsync(QObject* context, const std::string& source,
                           std::vector<std::string> refs, bool hidden,
                           std::function<void(StoreActionResult)> callback) {

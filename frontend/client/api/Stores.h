@@ -60,6 +60,10 @@ void GetStoreLibraryAsync(QObject* context, const std::string& source, bool fres
 void InstallStoreTitleAsync(QObject* context, const std::string& source, const std::string& ref,
                             bool update, std::function<void(StoreActionResult)> callback);
 
+// GET /v1/library/size: asks the store tool, so it can take a few seconds.
+void GetInstallSizeAsync(QObject* context, const std::string& source, const std::string& ref,
+                         std::function<void(InstallSizeResult)> callback);
+
 // POST /v1/library/hidden: hides or shows owned titles; an installed one's game takes the tag.
 void SetTitlesHiddenAsync(QObject* context, const std::string& source,
                           std::vector<std::string> refs, bool hidden,

@@ -1,6 +1,7 @@
 #include <doctest.h>
 
 #include "activity/DownloadTracker.h"
+#include "widgets/Labels.h"
 
 using namespace mira_gui;
 using State = DownloadTracker::State;
@@ -65,6 +66,16 @@ TEST_CASE("DownloadTracker shows a store download's progress and follows a game'
   tracker.HandleEvent("library.install.progress",
                       R"({"source": "gog", "ref": "1", "progress": 0.9, "eta": 30})");
   CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1"), true).contains("1 min left"));
+  // How much of the download has come, where the store says, on the cover and in the full line.
+  CHECK(DownloadTracker::SizeProgressText(*tracker.Find("gog:1")).isEmpty());
+  tracker.HandleEvent("library.install.progress",
+                      R"({"source": "gog", "ref": "1", "progress": 0.5, "downloaded": 1073741824,
+                          "total": 2147483648})");
+  const QString size = DownloadTracker::SizeProgressText(*tracker.Find("gog:1"));
+  CHECK(size.contains(SizeText(1073741824)));
+  CHECK(size.contains(SizeText(2147483648)));
+  CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1")).contains(size));
+  CHECK(DownloadTracker::TileProgressFor(*tracker.Find("gog:1")).detail.contains(size));
 
   CHECK(tracker.HandleEvent("game.install.started", R"({"id": "celeste"})"));
   const QString game_key =
