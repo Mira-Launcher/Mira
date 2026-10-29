@@ -764,12 +764,16 @@ void LibraryPage::RefreshContinue() {
     for (const GameSummary& game : library_->Games()) {
       if (!library_->Shown(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
       if (IsApp(game) && !continue_apps_) continue;
-      if (game.running || game.last_played_at) games.push_back(&game);
+      if (game.running || !game.tools.empty() || game.last_played_at) games.push_back(&game);
     }
     const size_t keep = std::min(games.size(), static_cast<size_t>(continue_count_));
+    // What's open first: the game itself, or tools it opened.
+    const auto open = [](const GameSummary* game) {
+      return game->running ? 2 : game->tools.empty() ? 0 : 1;
+    };
     std::partial_sort(games.begin(), games.begin() + keep, games.end(),
-                      [](const GameSummary* a, const GameSummary* b) {
-                        if (a->running != b->running) return a->running;
+                      [&open](const GameSummary* a, const GameSummary* b) {
+                        if (open(a) != open(b)) return open(a) > open(b);
                         return a->last_played_at.value_or(0) > b->last_played_at.value_or(0);
                       });
     games.resize(keep);

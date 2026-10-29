@@ -101,8 +101,10 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   name->setProperty("role", "section");
   name->setWordWrap(true);
   text->addWidget(name);
-  const QString when =
-      running ? QString(RunningLabel(game)) + " now" : FormatPlayedAgo(game.last_played_at);
+  const QString tools = QString::fromStdString(OpenToolsLabel(game));
+  const QString when = running            ? QString(RunningLabel(game)) + " now"
+                       : !tools.isEmpty() ? tools
+                                          : FormatPlayedAgo(game.last_played_at);
   auto* meta = new QLabel(
       IsApp(game) ? when : QString("%1 · %2").arg(when, FormatPlaytime(game.play_seconds)), card);
   meta->setProperty("role", "muted");

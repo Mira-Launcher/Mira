@@ -251,6 +251,11 @@ TEST_CASE(
   // Hidden ones never, even running; hidden mode lists only them.
   library.SetRunning("secret", true);
   CHECK(ids(0).size() == 3);
+  // A game with a tool open shows like a running one, even never played.
+  GameSummary modded = Game("never", "never");
+  modded.tools = {"Vortex"};
+  library.Upsert({modded});
+  CHECK(ids(0) == std::vector<std::string>{"mid", "older", "writer", "never"});
   library.SetRunning("secret", false);
   const std::vector<const GameSummary*> hidden = library.RecentlyPlayed(3, /*hidden=*/true);
   REQUIRE(hidden.size() == 1);

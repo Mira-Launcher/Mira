@@ -77,6 +77,7 @@ struct GameSummary {
   std::string source_ref;  // the launcher's id, for a launcher's own install
   std::string store_url;   // its page on the store it's from; empty when there's none
   bool running = false;
+  std::vector<std::string> tools;  // names of its tool options open now
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
   std::optional<ArtVersions> art;
@@ -166,6 +167,20 @@ inline const char* RunVerb(const GameSummary& game) {
 }
 inline const char* RunningLabel(const GameSummary& game) {
   return IsApp(game) ? "Running" : "Playing";
+}
+// The tools the game opened, "Vortex and Tweaker"; empty when none is open.
+inline std::string ToolNames(const GameSummary& game) {
+  std::string names;
+  for (size_t i = 0; i < game.tools.size(); ++i) {
+    if (i > 0) names += i + 1 == game.tools.size() ? " and " : ", ";
+    names += game.tools[i];
+  }
+  return names;
+}
+// "Vortex open" while the game isn't running but tools it opened are; empty otherwise.
+inline std::string OpenToolsLabel(const GameSummary& game) {
+  if (game.running || game.tools.empty()) return {};
+  return ToolNames(game) + " open";
 }
 inline const char* Noun(const GameSummary& game) {
   return IsApp(game) ? "app" : "game";

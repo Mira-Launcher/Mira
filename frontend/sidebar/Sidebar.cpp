@@ -1035,6 +1035,7 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   const bool shelf = style == sidebar::Style::Shelf;
   const auto trailing = [recent, shelf, this](const GameSummary& game) {
     if (game.running) return QString(RunningLabel(game));
+    if (!game.tools.empty()) return QString::fromStdString(OpenToolsLabel(game));
     if (!recent || !style_.recent_when) return QString();
     return shelf ? FormatPlayedAgoShort(game.last_played_at) : FormatPlayedAgo(game.last_played_at);
   };
