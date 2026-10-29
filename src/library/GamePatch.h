@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 
+#include "config/Config.h"
 #include "model/Types.h"
 
 namespace mira::library {
@@ -22,8 +23,10 @@ model::Game ParseGamePatch(const model::Game& base, const nlohmann::json& patch)
 // ignored.
 std::optional<std::string> GamePatchProblem(const nlohmann::json& patch);
 
-// Applies a flat {"dotted.key": value} overrides patch; null removes an override.
-void ApplyOverridesPatch(model::Game& game, const nlohmann::json& patch);
+// Applies a flat {"dotted.key": value} overrides patch; null removes an override, and so does the
+// value the setting has without one (from settings or its default).
+void ApplyOverridesPatch(model::Game& game, const nlohmann::json& patch,
+                         const config::Config& config);
 
 // Checked first so a bad key rejects the whole patch, like Config::Patch.
 std::optional<std::string> ValidateOverridesPatch(const nlohmann::json& patch);

@@ -329,13 +329,6 @@ Schema::Schema() {
                 "you haven't added yourself are never added, and existing games are not "
                 "retagged."});
 
-  s.Add({.key = "scan.tag_by_root",
-         .label = "Tag new games by library folder",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Tag each new game a scan finds with the name of the library folder it was found "
-                "in. Existing games are not retagged."});
-
   // --- Metadata --------------------------------------------------------------
   s.Section("Metadata", "Art and store info");
 

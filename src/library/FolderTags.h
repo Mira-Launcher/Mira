@@ -37,7 +37,6 @@ struct SortRules {
   std::vector<std::string> folders;                 // tags.folders, in order
   std::vector<std::filesystem::path> sorted_roots;  // tags.sorted_roots, normalised
   std::filesystem::path prefix_root;
-  bool tag_by_root = true;
 };
 
 // Whether two tags are the same tag: folder names follow tags, so they match ignoring case.
@@ -122,7 +121,7 @@ void RemoveLink(const model::Game& game);
 // reverse of Place, for a folder or link moved by hand. The game gets the place's folder tag, and
 // it becomes the game's pick unless tags.folders' order already puts the game there; at the root
 // level the root's folder tags and the pick are dropped; `hidden` follows .hidden; a new root
-// swaps the scan.tag_by_root tag and `app`.
+// swaps `app`.
 void TagsForPlace(const SortRules& rules, model::Game& game, const std::filesystem::path& old_root,
                   const std::filesystem::path& root, const Container& place);
 

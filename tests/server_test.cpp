@@ -1808,17 +1808,32 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
     return res->status;
   };
 
-  CHECK(patch(R"({"launch.gamemode": true, "launch.log_max_mb": 10})") == 200);
+  const config::Schema& schema = config::Schema::Instance();
+  const bool gamemode = !schema.Find("launch.gamemode")->default_value.get<bool>();
+  const std::int64_t log_mb =
+      schema.Find("launch.log_max_mb")->default_value.get<std::int64_t>() + 5;
+  CHECK(
+      patch(nlohmann::json{{"launch.gamemode", gamemode}, {"launch.log_max_mb", log_mb}}.dump()) ==
+      200);
   CHECK(setting("launch.gamemode")["layer"] == "game");
-  CHECK(setting("launch.gamemode")["value"] == true);
+  CHECK(setting("launch.gamemode")["value"] == gamemode);
   CHECK_FALSE(setting("library_roots")["overridable"].get<bool>());
 
   // A daemon-wide key in the batch rejects all of it.
-  CHECK(patch(R"({"launch.log_max_mb": 20, "library_roots": []})") == 400);
-  CHECK(setting("launch.log_max_mb")["value"] == 10);
+  CHECK(patch(nlohmann::json{{"launch.log_max_mb", log_mb + 1},
+                             {"library_roots", nlohmann::json::array()}}
+                  .dump()) == 400);
+  CHECK(setting("launch.log_max_mb")["value"] == log_mb);
 
   CHECK(patch(R"({"launch.gamemode": null})") == 200);
   CHECK(setting("launch.gamemode")["layer"] != "game");
+
+  // Set to what it is without the override, the game keeps following the setting.
+  REQUIRE(server.MutableConfig().Set("launch.log_max_mb", log_mb + 2));
+  CHECK(patch(nlohmann::json{{"launch.log_max_mb", log_mb + 2}}.dump()) == 200);
+  CHECK(setting("launch.log_max_mb")["layer"] == "config");
+  REQUIRE(server.MutableConfig().Set("launch.log_max_mb", log_mb + 3));
+  CHECK(setting("launch.log_max_mb")["value"] == log_mb + 3);
 
   auto missing = client.Get("/v1/games/nope/config");
   REQUIRE(missing != nullptr);
