@@ -25,40 +25,6 @@ void ScanLibrary(QWidget* parent) {
   });
 }
 
-void ImportSteam(QWidget* parent, std::function<void()> on_imported) {
-  api::ScanSteamAsync(parent, [parent, on_imported](SteamScanResult result) {
-    if (!result.ok) {
-      notify::FailedRequest(parent, "Could not import from Steam.", result.error);
-      return;
-    }
-    on_imported();
-    if (result.added == 0) notify::Notice(parent, "No new Steam games found.");
-  });
-}
-
-void ImportLutris(QWidget* parent, std::function<void()> on_imported) {
-  api::ImportLutrisAsync(parent, [parent, on_imported](LutrisImportResult result) {
-    if (!result.ok) {
-      notify::FailedRequest(parent, "Could not import from Lutris.", result.error);
-      return;
-    }
-    on_imported();
-    QStringList skipped;
-    if (result.other_runner > 0) {
-      skipped << QString("%1 use a runner Mira leaves to Lutris (Steam, DOSBox, …)")
-                     .arg(result.other_runner);
-    }
-    if (result.incomplete > 0)
-      skipped << QString("%1 have a setup Mira can't import").arg(result.incomplete);
-    QString text = result.added == 0 ? QString("No new Lutris games found.")
-                                     : QString("Added %1 Lutris game%2.")
-                                           .arg(result.added)
-                                           .arg(result.added == 1 ? "" : "s");
-    if (!skipped.isEmpty()) text += " Skipped: " + skipped.join("; ") + ".";
-    if (result.added == 0 || !skipped.isEmpty()) notify::Notice(parent, text);
-  });
-}
-
 void SyncDesktopEntries(QWidget* parent) {
   api::SyncDesktopEntriesAsync(parent, [parent](DesktopEntrySyncResult result) {
     if (!result.ok)

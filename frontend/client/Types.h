@@ -939,14 +939,14 @@ struct SteamScanResult {
   int updated = 0;
 };
 
-// POST /v1/lutris/import.
-// GET /v1/lutris.
-struct LutrisStatusResult {
+// GET /v1/lutris or /v1/heroic: whether that launcher is on this computer.
+struct ImporterStatusResult {
   bool ok = false;
   ApiError error;
   bool found = false;
 };
 
+// POST /v1/lutris/import.
 struct LutrisImportResult {
   bool ok = false;
   ApiError error;
@@ -954,6 +954,16 @@ struct LutrisImportResult {
   int updated = 0;
   int other_runner = 0;  // left to a runner Mira doesn't drive (steam, dosbox, ...)
   int incomplete = 0;    // wine/linux games whose config can't be imported as-is
+};
+
+// POST /v1/heroic/import.
+struct HeroicImportResult {
+  bool ok = false;
+  ApiError error;
+  int added = 0;
+  int updated = 0;
+  int unsupported = 0;  // macOS and browser games
+  int incomplete = 0;   // no program, or a Windows game without a prefix yet
 };
 
 // POST /v1/games/{id}/run: an arbitrary executable inside this game's own

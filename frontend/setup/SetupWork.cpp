@@ -184,15 +184,19 @@ void SetupWork::ImportSteam() {
   });
 }
 
-void SetupWork::ImportLutris() {
-  if (lutris_running_) return;
-  lutris_running_ = true;
+void SetupWork::ImportFrom(const QString& importer) {
+  if (imports_running_.contains(importer)) return;
+  imports_running_ << importer;
   emit Changed();
-  api::ImportLutrisAsync(this, [this](LutrisImportResult) {
-    lutris_running_ = false;
+  const auto done = [this, importer] {
+    imports_running_.remove(importer);
     emit Changed();
     emit SourcesChanged();
-  });
+  };
+  if (importer == "heroic")
+    api::ImportHeroicAsync(this, [done](HeroicImportResult) { done(); });
+  else
+    api::ImportLutrisAsync(this, [done](LutrisImportResult) { done(); });
 }
 
 void SetupWork::SetSourcesOn(const QStringList& on, const QStringList& off) {
@@ -226,7 +230,10 @@ QStringList SetupWork::Running() const {
     running << line;
   }
   if (steam_running_) running << "Adding Steam games";
-  if (lutris_running_) running << "Adding Lutris games";
+  for (const QString& importer : {QString("lutris"), QString("heroic")}) {
+    if (imports_running_.contains(importer))
+      running << "Adding " + FindSourceInfo(importer)->name + " games";
+  }
   if (!tools_running_.isEmpty()) {
     QStringList names;
     for (const QString& store : tools_running_) names << FindSourceInfo(store)->name;

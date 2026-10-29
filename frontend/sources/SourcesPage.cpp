@@ -248,15 +248,21 @@ void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const Q
 }
 
 void SourcesPage::OpenSetup(const QString& id) {
+  const auto imported = [this, id](bool ok, const ApiError& error) {
+    if (!ok) {
+      notify::FailedRequest(this, "Could not import " + FindSourceInfo(id)->name + " games.",
+                            error);
+      return;
+    }
+    emit Imported(id);
+    emit OpenRequested(id);
+  };
   if (id == "lutris") {
-    api::ImportLutrisAsync(this, [this, id](LutrisImportResult r) {
-      if (!r.ok) {
-        notify::FailedRequest(this, "Could not import Lutris games.", r.error);
-        return;
-      }
-      emit Imported(id);
-      emit OpenRequested(id);
-    });
+    api::ImportLutrisAsync(this, [imported](LutrisImportResult r) { imported(r.ok, r.error); });
+    return;
+  }
+  if (id == "heroic") {
+    api::ImportHeroicAsync(this, [imported](HeroicImportResult r) { imported(r.ok, r.error); });
     return;
   }
   const auto entry =

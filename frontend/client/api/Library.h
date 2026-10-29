@@ -36,12 +36,17 @@ void UpdateSteamShortcutAsync(QObject* context, const std::string& exe,
 // POST /v1/steam/bigpicture.
 void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionResult)> callback);
 
-// GET /v1/lutris: whether Lutris is on this computer.
-void GetLutrisAsync(QObject* context, std::function<void(LutrisStatusResult)> callback);
+// GET /v1/lutris or /v1/heroic (`importer`): whether that launcher is on this computer.
+void GetImporterAsync(QObject* context, const std::string& importer,
+                      std::function<void(ImporterStatusResult)> callback);
 
 // Upserts every wine game Lutris has, reading Lutris's own database and
 // configs. Nothing on disk moves; see docs/api.md, POST /v1/lutris/import.
 void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)> callback);
+
+// Upserts the games Heroic installed, from its own files. Nothing on disk moves; see
+// docs/api.md, POST /v1/heroic/import.
+void ImportHeroicAsync(QObject* context, std::function<void(HeroicImportResult)> callback);
 
 // GET /v1/desktop-entries/candidates: already-installed .desktop entries
 // (including Flatpak apps, via their X-Flatpak key) that could become

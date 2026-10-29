@@ -1125,6 +1125,9 @@ void SourcePage::Import() {
   } else if (id_ == "lutris") {
     api::ImportLutrisAsync(
         this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+  } else if (id_ == "heroic") {
+    api::ImportHeroicAsync(
+        this, [done](HeroicImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsEmulator()) {
     api::ImportEmulatorAsync(
         this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
