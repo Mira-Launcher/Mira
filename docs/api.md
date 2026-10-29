@@ -306,6 +306,9 @@ Body `{"folder": "...", "id"?: "..."}`. Settles an unclear move: with `id` (one 
 ### `POST /v1/library/drops`
 Body `{"path": "...", "choice": "..."}`. Moves an unclear drop where `choice` (one of its choices) says, as a [job](#jobs) of kind `sort_drop`, and publishes `library.drop_settled {path}`, which is also published when it disappears on its own. The job fails with `drop_not_found`, `invalid_choice`, or the error of the import or emulator add.
 
+### `GET /v1/library/size?source=&ref=`
+What installing a store title downloads and then takes on disk, asked of its store tool: `legendary info --json` for Epic, `gogdl info` (its all-languages size) for GOG, `nile install --info --json` for Amazon. `{"download_bytes", "install_bytes"}`, -1 for one the store doesn't give. Kept while mirad runs (up to 500 titles), so asking again is free, and an install of that title reports its `total` from it. `400 invalid_param` without both, `400 size_unsupported` for another store, `404 size_unknown` when the tool's answer has no size, and the tool's own error (signed out, missing) otherwise.
+
 ### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office][&fresh=1]`
 What each account owns, whether or not it's installed:
 
@@ -332,7 +335,7 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `
 - `steam`: opens `steam://install/<appid>`. The game appears on the next Steam scan.
 - `office`: the Office Deployment Tool adds the app to Microsoft 365's prefix.
 
-A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
+A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`, `downloaded` and `total` bytes of the download, `total` from the tool's own count or else [the size](#get-v1librarysizesourceref) asked before; -1 when not reported) for Epic, GOG, Amazon and itch.
 
 Installing a title again while it's paused resumes it: the store tool continues from the files it left.
 

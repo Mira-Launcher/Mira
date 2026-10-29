@@ -23,6 +23,7 @@
 #include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/Import.h"
+#include "library/InstallSize.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
@@ -611,6 +612,24 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
   });
 
   // --- library (what the account owns, across sources) ------------------
+
+  http.Get("/v1/library/size", [&s](const Request& req, Response& res) {
+    const std::string source = Param(req, "source");
+    const std::string ref = Param(req, "ref");
+    if (source.empty() || ref.empty())
+      return SendError(res, 400, "invalid_param", "source and ref are both needed");
+    const auto size = library::FetchInstallSize(s.config, source, ref);
+    if (!size) {
+      const std::string& code = size.error().code;
+      return SendError(res,
+                       code == "size_unsupported" ? 400
+                       : code == "size_unknown"   ? 404
+                                                  : 502,
+                       size.error());
+    }
+    SendJson(res,
+             {{"download_bytes", size->download_bytes}, {"install_bytes", size->install_bytes}});
+  });
 
   http.Get("/v1/library", [&s](const Request& req, Response& res) {
     const std::string source = Param(req, "source");
