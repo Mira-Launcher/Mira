@@ -332,21 +332,23 @@ StoreActionResult OpenLauncherSync(const std::string& id) {
 }
 
 SourcesResult ListSourcesSync() {
-  return ReadReply<SourcesResult>(transport::Get("/v1/sources"), "GET /v1/sources", Shape::Object,
-                                  [](SourcesResult& result, const json& body) {
-                                    for (const json& item : body.value("sources", json::array())) {
-                                      SourceState source;
-                                      source.id = item.value("id", std::string());
-                                      source.added = item.value("added", false);
-                                      source.enabled = item.value("enabled", true);
-                                      source.in_sidebar = item.value("in_sidebar", true);
-                                      source.position = item.value("position", 0);
-                                      source.imported_at =
-                                          item.value("imported_at", std::int64_t(0));
-                                      source.games = item.value("games", 0);
-                                      result.sources.push_back(std::move(source));
-                                    }
-                                  });
+  return ReadReply<SourcesResult>(
+      transport::Get("/v1/sources"), "GET /v1/sources", Shape::Object,
+      [](SourcesResult& result, const json& body) {
+        for (const json& item : body.value("sources", json::array())) {
+          SourceState source;
+          source.id = item.value("id", std::string());
+          source.added = item.value("added", false);
+          source.enabled = item.value("enabled", true);
+          source.in_sidebar = item.value("in_sidebar", true);
+          source.in_hidden_sidebar = item.value("in_hidden_sidebar", source.in_sidebar);
+          source.position = item.value("position", 0);
+          source.imported_at = item.value("imported_at", std::int64_t(0));
+          source.games = item.value("games", 0);
+          result.sources.push_back(std::move(source));
+        }
+        result.hidden_sidebar_mirrors = body.value("hidden_sidebar_mirrors", true);
+      });
 }
 
 PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> enabled,
@@ -355,6 +357,12 @@ PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> ena
   if (enabled) body["enabled"] = *enabled;
   if (in_sidebar) body["in_sidebar"] = *in_sidebar;
   const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), body);
+  return {reply.ok, reply.error};
+}
+
+PatchConfigResult SetSourceInHiddenSidebarSync(const std::string& id, bool in_sidebar) {
+  const transport::Reply reply =
+      transport::Patch("/v1/sources/" + PercentEncode(id), json{{"in_hidden_sidebar", in_sidebar}});
   return {reply.ok, reply.error};
 }
 
@@ -382,6 +390,25 @@ void PatchSourceAsync(QObject* context, const std::string& id, std::optional<boo
                       std::function<void(PatchConfigResult)> callback) {
   async::Run(
       context, [id, enabled, in_sidebar] { return PatchSourceSync(id, enabled, in_sidebar); },
+      std::move(callback));
+}
+
+void SetSourceInHiddenSidebarAsync(QObject* context, const std::string& id, bool in_sidebar,
+                                   std::function<void(PatchConfigResult)> callback) {
+  async::Run(
+      context, [id, in_sidebar] { return SetSourceInHiddenSidebarSync(id, in_sidebar); },
+      std::move(callback));
+}
+
+void SetHiddenSidebarMirrorsAsync(QObject* context, bool mirrors,
+                                  std::function<void(PatchConfigResult)> callback) {
+  async::Run(
+      context,
+      [mirrors] {
+        const transport::Reply reply = transport::Put(
+            "/v1/sources/hidden-sidebar", json{{"mirrors", mirrors}}.dump(), "application/json");
+        return PatchConfigResult{reply.ok, reply.error};
+      },
       std::move(callback));
 }
 

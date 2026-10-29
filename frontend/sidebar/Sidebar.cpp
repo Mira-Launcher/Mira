@@ -228,6 +228,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
   connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
     UpdateSources();
     RefreshGames();
+    emit SourcesChanged();  // each mode has its own sources in the sidebar
   });
   // Game rows draw their cover, icon or hero, or take their color from it.
   const auto art_changed = [this](const QString& id) {
@@ -512,6 +513,8 @@ void Sidebar::RefreshSources() {
     added_sources_.clear();
     disabled_sources_.clear();
     hidden_sources_.clear();
+    hidden_mode_hidden_.clear();
+    hidden_sidebar_mirrors_ = result.hidden_sidebar_mirrors;
     source_order_.clear();
     for (const SourceState& source : result.sources) {
       const QString id = QString::fromStdString(source.id);
@@ -519,6 +522,7 @@ void Sidebar::RefreshSources() {
       if (source.added) added_sources_.insert(id);
       if (!source.enabled) disabled_sources_.insert(id);
       if (!source.in_sidebar) hidden_sources_.insert(id);
+      if (!source.in_hidden_sidebar) hidden_mode_hidden_.insert(id);
       source_imported_at_[id] = source.imported_at;
     }
     UpdateSources();
@@ -588,8 +592,8 @@ void Sidebar::UpdateSources() {
   for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
     const QString& id = sources[i].id;
     // Listed once set up; the Sources page adds the rest.
-    const bool listed = sources_shown && (id == "local" || added_sources_.contains(id)) &&
-                        !hidden_sources_.contains(id);
+    const bool listed =
+        sources_shown && (id == "local" || added_sources_.contains(id)) && InSidebar(id);
     if (!listed) {
       if (source_rows_[i].nav != nullptr) source_rows_[i].nav->hide();
       continue;
@@ -701,7 +705,7 @@ std::vector<SourceEntry> Sidebar::SourceEntries() const {
                        .ready = id == "local" || added_sources_.contains(id),
                        .enabled = !disabled_sources_.contains(id),
                        .games = games,
-                       .in_sidebar = !hidden_sources_.contains(id),
+                       .in_sidebar = InSidebar(id),
                        .account = source_account_.value(id).toStdString(),
                        .imported_at = source_imported_at_.value(id, 0)});
   }
@@ -796,7 +800,51 @@ void Sidebar::SetSourceOrder(std::vector<QString> order) {
   });
 }
 
+bool Sidebar::InSidebar(const QString& id) const {
+  if (library_->ShowingHidden() && !hidden_sidebar_mirrors_)
+    return !hidden_mode_hidden_.contains(id);
+  return !hidden_sources_.contains(id);
+}
+
+void Sidebar::SetHiddenSidebarMirrors(bool mirrors) {
+  if (mirrors == hidden_sidebar_mirrors_) return;
+  hidden_sidebar_mirrors_ = mirrors;
+  // Leaving the mirror starts from the list it showed.
+  if (!mirrors) hidden_mode_hidden_ = hidden_sources_;
+  UpdateSources();
+  emit SourcesChanged();
+  api::SetHiddenSidebarMirrorsAsync(this, mirrors, [this](PatchConfigResult result) {
+    if (!result.ok)
+      notify::FailedRequest(this, "Could not save which sources the sidebar shows.", result.error);
+    RefreshSources();
+  });
+}
+
 void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
+  // Hidden mode keeps its own list from its first change: what it hides or shows doesn't change
+  // the other, nor the other it.
+  if (library_->ShowingHidden()) {
+    if (hidden_sidebar_mirrors_) {
+      hidden_sidebar_mirrors_ = false;
+      hidden_mode_hidden_ = hidden_sources_;
+    }
+    if (hidden) {
+      hidden_mode_hidden_.insert(id);
+    } else {
+      hidden_mode_hidden_.remove(id);
+    }
+    UpdateSources();
+    emit SourcesChanged();
+    api::SetSourceInHiddenSidebarAsync(
+        this, id.toStdString(), !hidden, [this](PatchConfigResult result) {
+          if (!result.ok) {
+            notify::FailedRequest(this, "Could not save which sources the sidebar shows.",
+                                  result.error);
+          }
+          RefreshSources();
+        });
+    return;
+  }
   if (hidden) {
     hidden_sources_.insert(id);
   } else {

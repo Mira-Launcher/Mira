@@ -849,7 +849,9 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
           });
   connect(sidebar, &Sidebar::HoverEnded, this, &LibraryWindow::HideHoverCard);
   connect(sidebar, &Sidebar::SourcesChanged, this, [this] {
-    if (sources_page_ != nullptr) sources_page_->SetEntries(sidebar_->SourceEntries());
+    if (sources_page_ == nullptr) return;
+    sources_page_->SetEntries(sidebar_->SourceEntries());
+    sources_page_->SetHiddenSidebar(library_->ShowingHidden(), sidebar_->HiddenSidebarMirrors());
   });
   return sidebar;
 }
@@ -2093,7 +2095,10 @@ void LibraryWindow::OpenSourcesPage(bool catalog) {
   auto* page = new mira_gui::SourcesPage();
   sources_page_ = page;
   page->SetEntries(sidebar_->SourceEntries());
+  page->SetHiddenSidebar(library_->ShowingHidden(), sidebar_->HiddenSidebarMirrors());
   connect(page, &mira_gui::SourcesPage::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+  connect(page, &mira_gui::SourcesPage::HiddenSidebarMirrorsToggled, sidebar_,
+          &mira_gui::Sidebar::SetHiddenSidebarMirrors);
   connect(page, &mira_gui::SourcesPage::SidebarToggled, this,
           [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
   connect(page, &mira_gui::SourcesPage::EnabledToggled, sidebar_,

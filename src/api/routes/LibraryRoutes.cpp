@@ -458,12 +458,14 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                 {"added", state.added || state.id == "local"},
                 {"enabled", state.enabled},
                 {"in_sidebar", state.in_sidebar},
+                {"in_hidden_sidebar", state.in_hidden_sidebar.value_or(state.in_sidebar)},
                 {"position", state.position},
                 {"imported_at", state.imported_at},
                 {"games", found == counts.end() ? 0 : found->second}};
   };
 
-  http.Get("/v1/sources", [&s, source_json](const Request&, Response& res) {
+  // Every source, stored or not.
+  const auto all_sources = [&s] {
     std::map<std::string, store::SourceState, std::less<>> saved;
     for (store::SourceState& state : s.games.Sources()) saved.emplace(state.id, std::move(state));
     std::vector<store::SourceState> states;
@@ -471,6 +473,17 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       const auto found = saved.find(id);
       states.push_back(found != saved.end() ? found->second : store::SourceState{.id = id});
     }
+    return states;
+  };
+  // Hidden mode's own list, starting from the one it mirrors now.
+  const auto copy_sidebar = [&s, all_sources] {
+    std::map<std::string, bool> shown;
+    for (const store::SourceState& state : all_sources()) shown[state.id] = state.in_sidebar;
+    s.games.SetHiddenSidebar(shown);
+  };
+
+  http.Get("/v1/sources", [&s, source_json, all_sources](const Request&, Response& res) {
+    std::vector<store::SourceState> states = all_sources();
     // Never-ordered sources (position 0) go last, in default order.
     std::ranges::stable_sort(states, std::ranges::less{}, [](const store::SourceState& state) {
       return state.position == 0 ? std::numeric_limits<int>::max() : state.position;
@@ -478,17 +491,39 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto counts = s.games.CountBySource(s.hidden.Locked());
     json sources = json::array();
     for (const store::SourceState& state : states) sources.push_back(source_json(counts, state));
-    SendJson(res, {{"sources", sources}});
+    SendJson(res,
+             {{"sources", sources}, {"hidden_sidebar_mirrors", s.games.HiddenSidebarMirrors()}});
   });
 
-  http.Patch(R"(/v1/sources/([a-z0-9-]+))", [&s, source_json](const Request& req, Response& res) {
+  http.Put("/v1/sources/hidden-sidebar", [&s, copy_sidebar](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"mirrors": true})");
+    if (!body) return;
+    if (!body->contains("mirrors") || !(*body)["mirrors"].is_boolean())
+      return SendError(res, 400, "invalid_body", R"(expected {"mirrors": true|false})");
+    const bool mirrors = (*body)["mirrors"].get<bool>();
+    if (mirrors) {
+      s.games.SetHiddenSidebar({});
+    } else if (s.games.HiddenSidebarMirrors()) {
+      copy_sidebar();
+    }
+    SendJson(res, {{"hidden_sidebar_mirrors", s.games.HiddenSidebarMirrors()}});
+    s.events.Publish("sources.changed", json::object());
+  });
+
+  http.Patch(R"(/v1/sources/([a-z0-9-]+))", [&s, source_json, copy_sidebar](const Request& req,
+                                                                            Response& res) {
     const std::string id = req.matches[1].str();
     if (std::ranges::find(kSourceIds, id) == kSourceIds.end()) {
       return SendError(res, 404, "unknown_source", std::format("no source named \"{}\"", id));
     }
     const auto body = BodyObject(req, res, R"({"enabled": true, "in_sidebar": true})");
     if (!body) return;
+    // A change made in hidden mode gives it a list of its own, from then on apart from in_sidebar.
+    const auto hidden = body->find("in_hidden_sidebar");
+    const bool hidden_change = hidden != body->end() && hidden->is_boolean();
+    if (hidden_change && s.games.HiddenSidebarMirrors()) copy_sidebar();
     store::SourceState state = s.games.Source(id);
+    if (hidden_change) state.in_hidden_sidebar = hidden->get<bool>();
     const auto flag = [&body](const char* key, bool& field) {
       if (body->contains(key) && (*body)[key].is_boolean()) field = (*body)[key].get<bool>();
     };

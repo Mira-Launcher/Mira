@@ -20,6 +20,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
+#include "../settings/SettingsCard.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -104,6 +105,19 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   auto* views = new QWidget();
   auto* views_layout = new QVBoxLayout(views);
   views_layout->setContentsMargins(24, 16, 24, 24);
+  // Only in hidden mode, whose sidebar list it's about.
+  auto* mirror_row = new SettingRow(
+      "Same sidebar sources as outside hidden mode",
+      "Off gives hidden mode a list of its own: hiding or showing a source in one leaves the other "
+      "alone.",
+      views);
+  mirror_ = new Switch(mirror_row);
+  mirror_->setAccessibleName("Same sidebar sources as outside hidden mode");
+  mirror_row->AddControl(mirror_);
+  mirror_row->hide();
+  mirror_row_ = mirror_row;
+  connect(mirror_, &Switch::toggled, this, &SourcesPage::HiddenSidebarMirrorsToggled);
+  views_layout->addWidget(mirror_row);
   added_ = new AddedSources(views);
   catalog_ = new SourceCatalog(views);
   catalog_->hide();
@@ -145,6 +159,13 @@ void SourcesPage::SetEntries(const std::vector<SourceEntry>& entries) {
   views_->button(1)->setText(QString("Add source  %1").arg(offered.size()));
 }
 
+void SourcesPage::SetHiddenSidebar(bool hidden_mode, bool mirrors) {
+  const QSignalBlocker quiet(mirror_);
+  mirror_->setChecked(mirrors);
+  hidden_mode_ = hidden_mode;
+  mirror_row_->setVisible(hidden_mode_ && views_->checkedId() == 0);
+}
+
 void SourcesPage::ShowCatalog() {
   ShowView(1);
   search_->setFocus(Qt::OtherFocusReason);
@@ -157,6 +178,7 @@ void SourcesPage::ShowAdded() {
 
 void SourcesPage::ShowView(int view) {
   views_->button(view)->setChecked(true);
+  mirror_row_->setVisible(hidden_mode_ && view == 0);
   added_->setVisible(view == 0);
   catalog_->setVisible(view == 1);
   hint_->setText(view == 1 ? kCatalogHint : kAddedHint);

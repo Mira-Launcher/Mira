@@ -647,10 +647,13 @@ What has a newer release: Mira itself, and the emulators, store tools, umu and r
 ## Sources
 
 ### `GET /v1/sources`
-Every source, in sidebar order: stored ones by `position` first, then the rest in default order. `added` is true for `local` always. `games` counts the games it owns. `{"sources": [{"id": "steam", "added": true, "enabled": true, "in_sidebar": true, "position": 0, "imported_at": 1760000000, "games": 12}]}`
+Every source, in sidebar order: stored ones by `position` first, then the rest in default order. `added` is true for `local` always. `games` counts the games it owns. `in_hidden_sidebar` is whether hidden mode's sidebar lists it. While `hidden_sidebar_mirrors` is true, that's `in_sidebar`; the first change made in hidden mode gives it a copy of its own, which changes to `in_sidebar` no longer touch, even once the two match again. `{"sources": [{"id": "steam", "added": true, "enabled": true, "in_sidebar": true, "in_hidden_sidebar": true, "position": 0, "imported_at": 1760000000, "games": 12}], "hidden_sidebar_mirrors": true}`
 
 ### `PATCH /v1/sources/{id}`
-Body may hold `added`, `enabled` and `in_sidebar` (booleans); other keys are ignored. Returns the source as above and publishes `sources.changed`. `404 unknown_source` for an id not in the list.
+Body may hold `added`, `enabled`, `in_sidebar` and `in_hidden_sidebar` (booleans); other keys are ignored. Setting `in_hidden_sidebar` while hidden mode mirrors first copies the whole list for it. Returns the source as above and publishes `sources.changed`. `404 unknown_source` for an id not in the list.
+
+### `PUT /v1/sources/hidden-sidebar`
+Body `{"mirrors": true}` makes hidden mode's sidebar list what the normal one does again, dropping its own list; `false` gives it a copy of the list as it is now (nothing changes if it has one already). Returns `{"hidden_sidebar_mirrors": ...}` and publishes `sources.changed`. `400 invalid_body` without a boolean `mirrors`.
 
 ### `PUT /v1/sources/order`
 Body `{"order": ["gog", "local"]}`. Unknown ids are dropped and the rest get positions 1, 2, ... in that order. Returns `{"ok": true}` and publishes `sources.changed`.

@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <filesystem>
 #include <json.hpp>
+#include <map>
 #include <string>
+#include <tuple>
 
 #include "gog/Gog.h"
 #include "support/LiveServer.h"
@@ -212,7 +214,9 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
   CHECK(server.games().All().empty());
 }
 
-TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
+TEST_CASE(
+    "Sources can be switched off, reordered and listed in that order, and hidden mode's sidebar "
+    "mirrors the list until it's changed there") {
   LiveServer server(TempDir("sources-list"));
   httplib::Client client = server.Client();
   auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})",
@@ -234,6 +238,55 @@ TEST_CASE("Sources can be switched off, reordered, and listed in that order") {
   }
   CHECK(epic["enabled"] == false);
   CHECK(epic["in_sidebar"] == false);
+  CHECK(epic["in_hidden_sidebar"] == false);  // hidden mode mirrors in_sidebar until changed there
+  CHECK(Get(client, "/v1/sources")["hidden_sidebar_mirrors"] == true);
+
+  const auto patch = [&](const char* id, const char* body) {
+    auto res = client.Patch(std::string("/v1/sources/") + id, body, "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return json::parse(res->body);
+  };
+  const auto hidden_list = [&] {
+    const json listed = Get(client, "/v1/sources");
+    std::map<std::string, bool> shown;
+    for (const json& source : listed["sources"]) shown[source["id"]] = source["in_hidden_sidebar"];
+    return std::pair{listed["hidden_sidebar_mirrors"].get<bool>(), shown};
+  };
+  // The first change in hidden mode gives it its own copy of the list.
+  const json gog = patch("gog", R"({"in_hidden_sidebar": false})");
+  CHECK(gog["in_hidden_sidebar"] == false);
+  CHECK(gog["in_sidebar"] == true);
+  auto [mirrors, shown] = hidden_list();
+  CHECK_FALSE(mirrors);
+  CHECK(shown["epic"] == false);
+  CHECK(shown["local"] == true);
+  // From then on the normal list's changes leave it alone, and matching it again doesn't mirror.
+  CHECK(patch("epic", R"({"in_sidebar": true})")["in_hidden_sidebar"] == false);
+  CHECK(patch("local", R"({"in_sidebar": false})")["in_hidden_sidebar"] == true);
+  patch("gog", R"({"in_hidden_sidebar": true})");
+  std::tie(mirrors, shown) = hidden_list();
+  CHECK_FALSE(mirrors);
+  CHECK(shown["epic"] == false);
+  CHECK(shown["local"] == true);
+
+  // Mirroring again follows the normal list; leaving it copies the list as it is then.
+  const auto set_mirrors = [&](const char* body) {
+    auto res = client.Put("/v1/sources/hidden-sidebar", body, "application/json");
+    REQUIRE(res != nullptr);
+    CHECK(res->status == 200);
+  };
+  set_mirrors(R"({"mirrors": true})");
+  std::tie(mirrors, shown) = hidden_list();
+  CHECK(mirrors);
+  CHECK(shown["epic"] == true);
+  CHECK(shown["local"] == false);
+  set_mirrors(R"({"mirrors": false})");
+  patch("local", R"({"in_sidebar": true})");
+  std::tie(mirrors, shown) = hidden_list();
+  CHECK_FALSE(mirrors);
+  CHECK(shown["epic"] == true);
+  CHECK(shown["local"] == false);
 }
 
 TEST_CASE("A switched-off source's games are left out of the library unless include_off is set") {

@@ -1369,6 +1369,7 @@ struct SourceState {
   bool added = false;  // set up; the rest are offered on the Sources page's catalog
   bool enabled = true;
   bool in_sidebar = true;
+  bool in_hidden_sidebar = true;  // in hidden mode's sidebar
   int position = 0;
   std::int64_t imported_at = 0;  // unix seconds; 0 if never
   int games = 0;
@@ -1378,6 +1379,8 @@ struct SourcesResult {
   bool ok = false;
   ApiError error;
   std::vector<SourceState> sources;  // every source, in sidebar order
+  // Hidden mode's sidebar lists what the normal one does, until it's changed in hidden mode.
+  bool hidden_sidebar_mirrors = true;
 };
 
 struct StoreStatusResult {
