@@ -126,6 +126,9 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   ApplyLayoutTokens();
   // The padding around the tiles is background too; see eventFilter.
   grid_->installEventFilter(this);
+  // A drag from outside the tiles shows from where it started.
+  grid_->SetBandHost(this, nullptr);
+  grid_->band_area = [this] { return CoverArea(); };
   installEventFilter(this);
 
   // The grid fills this and scrolls itself, until a search also lists store
@@ -409,7 +412,33 @@ bool LibraryPage::eventFilter(QObject* watched, QEvent* event) {
       static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
     ClearSelection();
   }
+  // Presses nothing under the tab bar takes (the grid's padding, the space around Continue
+  // playing) reach the page: a drag-select starts there too, as if from the grid's empty space.
+  const QEvent::Type type = event->type();
+  if (watched == this && (type == QEvent::MouseButtonPress || type == QEvent::MouseMove ||
+                          type == QEvent::MouseButtonRelease)) {
+    const auto* mouse = static_cast<QMouseEvent*>(event);
+    const QPoint pos = mouse->position().toPoint();
+    const QPoint in_grid = grid_->viewport()->mapFrom(this, pos);
+    if (type == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton &&
+        grid_->isVisible() && CoverArea().contains(pos)) {
+      grid_->BeginDragAt(in_grid, mouse->modifiers());
+      dragging_ = true;
+    } else if (dragging_ && event->type() == QEvent::MouseMove) {
+      grid_->MoveDragTo(in_grid);
+    } else if (dragging_ && event->type() == QEvent::MouseButtonRelease) {
+      grid_->FinishDrag();
+      dragging_ = false;
+    }
+  }
   return QWidget::eventFilter(watched, event);
+}
+
+QRect LibraryPage::CoverArea() const {
+  const QWidget* above =
+      title_filters_->isVisible() ? static_cast<QWidget*>(title_filters_) : tabs_;
+  const int top = above->mapTo(this, QPoint(0, above->height())).y();
+  return QRect(0, top, width(), height() - top);
 }
 
 QWidget* LibraryPage::BuildOwnedSection() {

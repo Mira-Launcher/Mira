@@ -404,12 +404,14 @@ void SourceSettingsCard::LoadSettings() {
       }
       for (SettingEditor& editor : settings_) {
         const auto it = config.values.find(editor.entry.key);
-        const bool typed = editor.Changed();  // kept, not overwritten by a refresh
+        // Kept, not overwritten by a refresh.
+        const bool typed = values_loaded_ && editor.Changed();
         editor.original = it != config.values.end() ? it->second : editor.entry.default_display;
         if (typed) continue;
         editor.SetText(editor.original);
         editor.original = editor.Text();
       }
+      values_loaded_ = true;
       UpdateButtons();
     });
   });

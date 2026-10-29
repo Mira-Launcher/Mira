@@ -121,6 +121,14 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   for (TileGrid* grid : {library_grid_, owned_grid_}) {
     if (grid == nullptr) continue;
     grid->SetBandHost(content_, grid == library_grid_ ? library_section_ : owned_section_);
+    // The lowest section's box goes on to the bottom of the page, as its drags do.
+    QWidget* section = grid == library_grid_ ? library_section_ : owned_section_;
+    grid->band_area = [this, grid, section] {
+      QRect area(section->mapTo(content_, QPoint()), section->size());
+      if (grid == owned_grid_ || owned_section_ == nullptr || !owned_section_->isVisible())
+        area.setBottom(content_->rect().bottom());
+      return area;
+    };
     TileGrid* other = grid == library_grid_ ? owned_grid_ : library_grid_;
     if (other == nullptr) continue;
     connect(grid->selectionModel(), &QItemSelectionModel::selectionChanged, other, [grid, other] {
