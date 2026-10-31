@@ -359,6 +359,17 @@ const DownloadTracker::Entry* DownloadTracker::Find(const QString& key) const {
   return nullptr;
 }
 
+const DownloadTracker::Entry* DownloadTracker::LiveInstall(const QString& source, QString ref,
+                                                           const QString& game_id) const {
+  // A store game updates as its store title.
+  if (ref.isEmpty() && !source.isEmpty() && game_id.startsWith(source + "-"))
+    ref = game_id.mid(source.size() + 1);
+  const Entry* entry = ref.isEmpty() ? nullptr : Find(KeyFor(Kind::Title, source, ref));
+  if (entry == nullptr && !game_id.isEmpty()) entry = Find(KeyFor(Kind::Game, {}, game_id));
+  if (entry == nullptr) return nullptr;
+  return entry->state == State::Running || entry->state == State::Paused ? entry : nullptr;
+}
+
 int DownloadTracker::RunningCount() const {
   return static_cast<int>(std::count_if(entries_.begin(), entries_.end(),
                                         [](const Entry& e) { return e.state == State::Running; }));

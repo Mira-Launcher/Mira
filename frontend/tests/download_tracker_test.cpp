@@ -257,3 +257,28 @@ TEST_CASE("DownloadTracker keeps a paused install's progress and lets it be paus
   CHECK(tracker.RunningCount() == 0);
   CHECK(DownloadTracker::CanPause(*entry));
 }
+
+TEST_CASE("DownloadTracker finds a game's or title's install while it runs or is paused") {
+  DownloadTracker tracker;
+  tracker.NoteTitle("epic", "abc", "Spruce");
+  tracker.HandleEvent("library.install.started",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  // A store game's update is found by its id as well as its title.
+  const DownloadTracker::Entry* update = tracker.LiveInstall("epic", {}, "epic-abc");
+  REQUIRE(update != nullptr);
+  CHECK(update == tracker.LiveInstall("epic", "abc", {}));
+  CHECK(update->kind == DownloadTracker::Kind::Title);
+  tracker.HandleEvent("library.install.paused",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  CHECK(tracker.LiveInstall("epic", "abc", {}) != nullptr);
+  tracker.HandleEvent("library.install.finished",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  CHECK(tracker.LiveInstall("epic", "abc", {}) == nullptr);
+
+  // A game's own installer.
+  tracker.HandleEvent("game.install.started", R"({"id": "celeste"})");
+  const DownloadTracker::Entry* installer = tracker.LiveInstall("local", {}, "celeste");
+  REQUIRE(installer != nullptr);
+  CHECK(installer->kind == DownloadTracker::Kind::Game);
+  CHECK(tracker.LiveInstall("epic", {}, "epic-other") == nullptr);
+}

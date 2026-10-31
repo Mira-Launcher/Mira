@@ -40,6 +40,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QMenu menu(parent_);
   QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
   play->setEnabled(CanPlayOrStop(game));
+  if (host_.install_actions && host_.install_actions(menu, id)) menu.addSeparator();
   // The game's other ways to start, and its tools.
   if (!running && CanPlayOrStop(game)) {
     if (const std::vector<PlayChoice> choices = PlayChoices(game, /*all=*/true);

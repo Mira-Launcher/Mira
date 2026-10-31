@@ -86,6 +86,9 @@ class DownloadTracker : public QObject {
   // Newest first.
   const std::vector<Entry>& Entries() const { return entries_; }
   const Entry* Find(const QString& key) const;
+  // The running or paused install of a store title (`ref`, or the ref in a store game's id
+  // "<source>-<ref>") or of a game's installer; null when there's none.
+  const Entry* LiveInstall(const QString& source, QString ref, const QString& game_id) const;
   int RunningCount() const;
   void ClearFinished();
 

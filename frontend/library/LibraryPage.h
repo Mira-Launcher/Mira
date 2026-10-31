@@ -16,6 +16,7 @@
 
 class QLabel;
 class QLineEdit;
+class QMenu;
 class QModelIndex;
 class QScrollArea;
 class QStandardItemModel;
@@ -91,6 +92,9 @@ class LibraryPage : public QWidget {
   std::function<std::optional<DownloadTracker::TileProgress>(const QString& source,
                                                              const QString& ref)>
       title_progress;
+  // Set by the owner: adds Pause, Resume or Cancel while a store title installs; returns whether
+  // it did.
+  std::function<bool(QMenu& menu, const QString& source, const QString& ref)> install_actions;
   // Redraws the store matches' install states.
   void RefreshOwnedStates();
   int ShownCount() const;

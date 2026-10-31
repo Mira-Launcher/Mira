@@ -599,6 +599,10 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
   if (!index.isValid() || index.row() >= static_cast<int>(owned_matches_.size())) return;
   const OwnedMatch match = owned_matches_[index.row()];
   QMenu menu(this);
+  bool installing = false;
+  for (const auto& [source, ref] : match.copies)
+    installing |= install_actions && install_actions(menu, source, ref);
+  if (installing) menu.addSeparator();
   if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
     for (const auto& [source, ref] : match.copies) {
       const SourceInfo* info = FindSourceInfo(source);

@@ -22,6 +22,7 @@
 #include <algorithm>
 
 #include "../activity/DownloadTracker.h"
+#include "../activity/InstallActions.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
@@ -1513,6 +1514,11 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   const bool add = refs.size() == 1 && humble_paths_.contains(refs.front());
   if (!add) refs.removeIf([this](const QString& ref) { return humble_paths_.contains(ref); });
   QMenu menu(this);
+  if (selected.size() == 1 && downloads_ != nullptr &&
+      AddInstallActions(
+          menu, this, *downloads_,
+          downloads_->LiveInstall(source_.id, QString::fromStdString(selected.front()), {})))
+    menu.addSeparator();
   const QString verb = add ? "Add to library…" : id_ == "humble" ? "Download" : "Install";
   const auto counted = [](const QString& label, size_t count) {
     return count > 1 ? QString("%1 (%2)").arg(label).arg(count) : label;
