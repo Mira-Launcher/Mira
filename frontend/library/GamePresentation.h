@@ -75,6 +75,14 @@ inline QString StatusLabel(const std::string& status) {
   return label;
 }
 
+// What mirad is doing with a game's saves (game.saves_activity's `doing`), as its tile and card say
+// it; empty when it's doing nothing.
+inline QString SavesDoingLabel(const std::string& doing) {
+  if (doing == "backing_up") return "Backing up saves…";
+  if (doing == "restoring") return "Restoring saves…";
+  return doing.empty() ? QString() : "Working on saves…";
+}
+
 inline QString FormatLastPlayed(const std::optional<std::int64_t>& last_played_at) {
   if (!last_played_at) return "Never";
   return QDateTime::fromSecsSinceEpoch(*last_played_at).toString("yyyy-MM-dd HH:mm");

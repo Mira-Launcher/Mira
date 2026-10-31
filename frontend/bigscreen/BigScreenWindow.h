@@ -86,6 +86,9 @@ class BigScreenWindow : public QWidget {
   void CancelInstall(const Item& item);
   void Uninstall(const Item& item);
   void TogglePin(const Item& item);
+  // The game's saves as menus: backing up now, and each backup's restore, pin and delete. Where
+  // they're kept is set in the desktop window.
+  void ManageSaves(const Item& item);
   // The action X does on a game: "Play", "Stop", "Install", or empty while installing.
   QString QuickActionLabel(const Item& item) const;
   void QuickAction(const Item& item);
@@ -165,6 +168,14 @@ class BigScreenWindow : public QWidget {
   // Ends the launch overlay once the game runs, and comes back when it exits.
   void FollowLaunch();
   void EndLaunch();
+  // ManageSaves' menu, read fresh from mirad.
+  void ShowSaves(const Item& item);
+  void ShowBackups(const Item& item, const std::vector<SaveSnapshot>& snapshots);
+  void ShowBackup(const Item& item, const SaveSnapshot& snapshot);
+  void BackUpSaves(const Item& item);
+  // Asks before removing it, deleting its prefix and save backups too as chosen.
+  void ConfirmUninstall(const Item& item, const RemovalPlan& plan, bool delete_prefix,
+                        bool delete_saves);
 
   LibraryServices services_;
   FrontendPrefs prefs_;

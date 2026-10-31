@@ -132,6 +132,44 @@ InstallerInfoResult ToInstallerInfo(const json& entry) {
   return info;
 }
 
+SavesResult ToSaves(const json& entry) {
+  const auto int64 = [](const json& object, const char* key) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_number() ? it->get<std::int64_t>() : std::int64_t{0};
+  };
+  SavesResult saves;
+  saves.enabled = entry.value("enabled", false);
+  saves.status = Str(entry, "status");
+  saves.entry = Str(entry, "entry");  // null when no entry matched
+  saves.match = Str(entry, "match");
+  for (const json& item : entry.value("locations", json::array())) {
+    if (!item.is_object()) continue;
+    saves.locations.push_back({.pattern = Str(item, "pattern"),
+                               .path = Str(item, "path"),
+                               .problem = Str(item, "problem"),
+                               .files = Int(item, "files"),
+                               .bytes = int64(item, "bytes"),
+                               .extra = item.value("extra", false)});
+  }
+  for (const json& item : entry.value("snapshots", json::array())) {
+    if (!item.is_object()) continue;
+    saves.snapshots.push_back({.id = Str(item, "id"),
+                               .taken_at = int64(item, "taken_at"),
+                               .reason = Str(item, "reason"),
+                               .files = Int(item, "files"),
+                               .bytes = int64(item, "bytes"),
+                               .pinned = item.value("pinned", false)});
+  }
+  saves.doing = Str(entry, "doing");
+  if (entry.contains("folders") && entry["folders"].is_object()) {
+    saves.install_folder = Str(entry["folders"], "install");
+    saves.prefix_folder = Str(entry["folders"], "prefix");
+  }
+  if (entry.contains("last_error") && entry["last_error"].is_object())
+    saves.last_error = ToApiError(entry["last_error"]);
+  return saves;
+}
+
 UnclearDrop ToUnclearDrop(const json& entry) {
   UnclearDrop drop;
   drop.path = entry.value("path", std::string());

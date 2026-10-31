@@ -28,6 +28,7 @@
 #include "launchers/Office.h"
 #include "launchers/Shims.h"
 #include "library/PrefixNaming.h"
+#include "library/WinePrefix.h"
 #include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Curl.h"
@@ -94,15 +95,6 @@ void ReapOrphans(pid_t pid = -1) {
   std::erase_if(orphans, [](pid_t orphan) { return ::waitpid(orphan, nullptr, WNOHANG) != 0; });
 }
 
-// The Windows user folder the launcher writes its settings under.
-fs::path UserDir(const fs::path& prefix) {
-  const fs::path users = prefix / "drive_c" / "users";
-  std::error_code ec;
-  if (fs::is_directory(users / "steamuser", ec)) return users / "steamuser";
-  const char* user = std::getenv("USER");
-  return users / (user ? user : "user");
-}
-
 void WriteIfMissing(const fs::path& file, std::string_view content) {
   std::error_code ec;
   if (fs::exists(file, ec)) return;
@@ -113,12 +105,13 @@ void WriteIfMissing(const fs::path& file, std::string_view content) {
 // Lutris's defaults: both launchers misbehave under Wine with these on.
 void WriteDefaults(const config::Config& config, const Launcher& launcher, const fs::path& prefix) {
   if (launcher.id == "ubisoft" && config.GetBool("launchers.ubisoft.disable_overlay")) {
-    WriteIfMissing(UserDir(prefix) / "AppData/Local/Ubisoft Game Launcher/settings.yaml",
-                   "overlay:\n  enabled: false\n  forceunhookgame: false\n  fps_enabled: false\n"
-                   "  warning_enabled: false\nuser:\n  closebehavior: CloseBehavior_Close\n");
+    WriteIfMissing(
+        library::WindowsUserDir(prefix) / "AppData/Local/Ubisoft Game Launcher/settings.yaml",
+        "overlay:\n  enabled: false\n  forceunhookgame: false\n  fps_enabled: false\n"
+        "  warning_enabled: false\nuser:\n  closebehavior: CloseBehavior_Close\n");
   }
   if (launcher.id == "battlenet" && config.GetBool("launchers.battlenet.disable_hw_accel")) {
-    WriteIfMissing(UserDir(prefix) / "AppData/Roaming/Battle.net/Battle.net.config",
+    WriteIfMissing(library::WindowsUserDir(prefix) / "AppData/Roaming/Battle.net/Battle.net.config",
                    R"({"Client":{"HardwareAcceleration":"false","Sound":{"Enabled":"false"},)"
                    R"("Streaming":{"StreamingEnabled":"false"}}})");
   }

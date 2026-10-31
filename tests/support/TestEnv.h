@@ -3,6 +3,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -42,6 +43,19 @@ class PathPrepend {
 
  private:
   std::string old_;
+};
+
+// Sets an environment variable (unsets it for null) for its lifetime, restoring it afterwards.
+class EnvVar {
+ public:
+  EnvVar(const char* name, const char* value);
+  ~EnvVar();
+  EnvVar(const EnvVar&) = delete;
+  EnvVar& operator=(const EnvVar&) = delete;
+
+ private:
+  const char* name_;
+  std::optional<std::string> old_;
 };
 
 // A temp state directory with a loaded, isolated Config, GameStore and EventBus.

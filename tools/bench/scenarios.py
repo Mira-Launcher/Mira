@@ -348,6 +348,68 @@ def relocate(ctx, meta):
     check(Path(target).is_dir(), "the game's folder isn't at its new place")
 
 
+def save_locations(path, names, entries=40000):
+    """A save locations list about the size of the real one: `names` keep their saves in <base>/saves,
+    the rest are filler with a Steam id and a prefix folder each."""
+    with path.open("w") as out:
+        for name in names:
+            out.write(f"{json.dumps(name)}:\n  files:\n    \"<base>/saves\":\n      tags: [save]\n")
+        for i in range(entries - len(names)):
+            out.write(f"\"Filler Game {i}\":\n  files:\n    \"<winAppData>/Filler{i}/save.dat\":\n"
+                      f"      tags: [save]\n  steam:\n    id: {100000 + i}\n")
+
+
+def write_saves(folder, files, total_bytes):
+    folder.mkdir(parents=True, exist_ok=True)
+    for i in range(files):
+        (folder / f"slot{i}.sav").write_bytes(os.urandom(total_bytes // files))
+
+
+@scenario("saves")
+def saves(ctx, meta):
+    """The save locations list indexed; 20 games' saves looked up; backups of a typical save set (50 files,
+    10 MB) and a large one (5,000 files, 250 MB), and of the typical one unchanged; and a restore."""
+    home = ctx.mirad.home
+    games = [g for g in sorted(ctx.games(), key=lambda g: g["id"]) if g.get("platform") == "native"][:20]
+    check(len(games) == 20, f"the fixture has {len(games)} native games, not 20")
+    listing = home / "save-locations.yaml"
+    save_locations(listing, [g["name"] for g in games])
+    status, body = ctx.client.request("PATCH", "/v1/config", {"saves": {"manifest_url": f"file://{listing}"}})
+    check(status == 200, f"setting the list's address answered {status}: {body}")
+    with ctx.measure("index the save locations list"):
+        state = ctx.client.wait_job(ctx.client.request("POST", "/v1/saves/manifest/update"))
+    check(state.get("state") == "finished", f"indexing ended {state}")
+
+    typical, large = games[0], games[1]
+    write_saves(Path(typical["install_path"]) / "saves", 50, 10 << 20)
+    write_saves(Path(large["install_path"]) / "saves", 5000, 250 << 20)
+
+    def look():
+        for game in games:
+            status, body = ctx.client.get(f"/v1/games/{game['id']}/saves")
+            check(status == 200 and body.get("entry"), f"{game['id']}'s saves answered {status}: {body}")
+    with ctx.measure("GET a game's saves", repeats=len(games)):
+        look()
+
+    def back_up(game):
+        state = ctx.client.wait_job(ctx.client.request("POST", f"/v1/games/{game['id']}/saves/backup"))
+        check(state.get("state") == "finished", f"backing up {game['id']} ended {state}")
+        return state["result"]
+    with ctx.measure("back up 50 files, 10 MB"):
+        taken = back_up(typical)
+    check(taken.get("taken"), "the typical save set wasn't backed up")
+    with ctx.measure("back up 50 files, unchanged"):
+        check(not back_up(typical).get("taken"), "an unchanged save set was backed up again")
+    with ctx.measure("back up 5,000 files, 250 MB"):
+        check(back_up(large).get("taken"), "the large save set wasn't backed up")
+
+    (Path(typical["install_path"]) / "saves" / "slot0.sav").write_bytes(b"changed")
+    with ctx.measure("restore 50 files"):
+        state = ctx.client.wait_job(ctx.client.request("POST", f"/v1/games/{typical['id']}/saves/restore",
+                                                       {"snapshot": taken["snapshot"]["id"]}))
+    check(state.get("state") == "finished", f"restoring ended {state}")
+
+
 # --- store games ----------------------------------------------------------------------------------------------
 # Epic, GOG and Steam games with stand-in store tools that answer at once, so what's measured is Mira's own
 # work. No API adds a game with a store as its source, so they're written into mira.db before mirad starts.
@@ -855,12 +917,22 @@ def gui_pages(ctx, meta):
 @scenario("gui-game-card", gui=True, startup=True)
 def gui_game_card(ctx, meta):
     """A game card with 100 achievements opened, then its achievements page with their icons, then both
-    closed, three times; what the card took should go with it."""
+    closed, three times; then the same with its saves page and 10 backups. What the card took should go
+    with it."""
     home = ctx.mirad.home
     add_games(home, [{"id": "bench-steam", "name": "Bench Steam", "source": "manual", "runner_ref": "steam:4000"}])
     start_with(ctx, fake_stores(home) | steam_achievements(home, count=100))
     state = ctx.client.wait_job(ctx.client.request("POST", "/v1/games/bench-steam/achievements/refresh"))
     check(state.get("state") == "finished", f"the achievements refresh ended {state}")
+    saves = home / "store-games" / "bench-steam" / "saves"
+    write_saves(saves, 50, 10 << 20)
+    # A base without saves answers 404 and gets no saves rounds.
+    status, _ = ctx.client.request("PATCH", "/v1/games/bench-steam/config", {"saves.extra_paths": [str(saves)]})
+    has_saves = status < 300
+    for _ in range(10 if has_saves else 0):
+        (saves / "slot0.sav").write_bytes(os.urandom(1024))
+        state = ctx.client.wait_job(ctx.client.request("POST", "/v1/games/bench-steam/saves/backup"))
+        check(state.get("state") == "finished", f"a backup ended {state}")
 
     def cycle(pid):
         display = Display(pid)
@@ -870,30 +942,38 @@ def gui_game_card(ctx, meta):
         time.sleep(1.5)
         display.xdotool("type", "--delay", "20", "Bench Steam")
         time.sleep(1.5)
-        cards, card_cpus, pages, page_cpus, closed = [], [], [], [], []
-        for round_ in range(1, 4):
-            # Again each round: a closed card leaves the grid without focus.
-            display.xdotool("mousemove", "500", "270", "click", "1")
-            time.sleep(1.5)
-            library = display.snapshot()
-            wall, cpu = respond(pid, lambda: display.key("alt+Return"))
-            check(changed(library, display.snapshot()) > 0.05, f"Alt+Enter didn't open the game card (round {round_})")
-            cards.append(wall)
-            card_cpus.append(cpu)
-            shown = display.snapshot()
-            wall, cpu = respond(pid, lambda: display.xdotool("mousemove", "570", "302", "click", "1"))
-            check(changed(shown, display.snapshot()) > 0.05, f"the achievements line didn't open their page (round {round_})")
-            pages.append(wall)
-            page_cpus.append(cpu)
-            for _ in range(2):  # back to the card, then the card closed
-                respond(pid, lambda: display.key("Escape"), may_idle=True)
-            check(changed(library, display.snapshot()) < 0.02, f"Esc didn't close the card (round {round_})")
-            closed.append(proc_status(pid)["rss_kb"])
+        cards, card_cpus, closed = [], [], []
+        # The facts line under the game's name: achievements, then saves beside them. The saves page's
+        # light cards change about 4% of the small snapshot, the achievements' icons far more.
+        lines = [("achievements", 570, 0.05)] + ([("saves", 760, 0.02)] if has_saves else [])
+        pages = {name: ([], []) for name, _, _ in lines}
+        for name, x, least in lines:
+            for round_ in range(1, 4):
+                # Again each round: a closed card leaves the grid without focus.
+                display.xdotool("mousemove", "500", "270", "click", "1")
+                time.sleep(1.5)
+                library = display.snapshot()
+                wall, cpu = respond(pid, lambda: display.key("alt+Return"))
+                check(changed(library, display.snapshot()) > 0.05, f"Alt+Enter didn't open the game card (round {round_})")
+                cards.append(wall)
+                card_cpus.append(cpu)
+                shown = display.snapshot()
+                wall, cpu = respond(pid, lambda: display.xdotool("mousemove", str(x), "302", "click", "1"))
+                check(changed(shown, display.snapshot()) > least, f"the {name} line didn't open its page (round {round_})")
+                pages[name][0].append(wall)
+                pages[name][1].append(cpu)
+                for _ in range(2):  # back to the card, then the card closed
+                    respond(pid, lambda: display.key("Escape"), may_idle=True)
+                check(changed(library, display.snapshot()) < 0.02, f"Esc didn't close the card (round {round_})")
+                closed.append(proc_status(pid)["rss_kb"])
         ctx.results["open the card"] = round(statistics.median(cards), 1)
         ctx.results["open the card, CPU until done"] = round(statistics.median(card_cpus), 1)
-        ctx.results["open achievements"] = round(statistics.median(pages), 1)
-        ctx.results["open achievements, CPU until done"] = round(statistics.median(page_cpus), 1)
-        check(closed[-1] - closed[0] <= 2048,
+        for name, (walls, cpus) in pages.items():
+            ctx.results[f"open {name}"] = round(statistics.median(walls), 1)
+            ctx.results[f"open {name}, CPU until done"] = round(statistics.median(cpus), 1)
+        # Memory after a close swings by up to 20 MB between rounds without growing, so the later rounds'
+        # lowest is compared: a leak raises every round.
+        check(min(closed[len(closed) // 2:]) - closed[0] <= 2048,
               f"each card opened and closed kept memory: {closed} KB after each close")
     open_gui(ctx, "GUI game card", then=cycle)
 

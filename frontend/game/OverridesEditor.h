@@ -51,6 +51,8 @@ class OverridesEditor : public QWidget {
   SettingsPage* AddPage(const QString& title, icons::Glyph glyph);
   // Re-splits the pages after the host's cards changed, and starts at the top.
   void ShowFromTop();
+  // Scrolls `key`'s row into view, once the values have arrived.
+  void RevealKey(const std::string& key);
 
  signals:
   void Changed();
@@ -71,6 +73,7 @@ class OverridesEditor : public QWidget {
 
   std::string game_id_;
   std::string resetting_key_;  // the override a reset is reloading for; its edit is dropped
+  std::string reveal_key_;     // a row RevealKey asked for before the values arrived
   bool values_loaded_ = false;
   SettingsNavWidget* nav_ = nullptr;
   std::vector<Field> fields_;

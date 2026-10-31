@@ -1,5 +1,6 @@
 #include "store/MetadataStore.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <fstream>
@@ -14,7 +15,7 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 5> kMigrations = {
+constexpr std::array<std::string_view, 6> kMigrations = {
     R"sql(
 CREATE TABLE metadata(
   id TEXT PRIMARY KEY,
@@ -67,7 +68,31 @@ CREATE TABLE achievements(
   json TEXT NOT NULL CHECK(json_valid(json))
 ) STRICT;
 )sql",
+    // Ludusavi's save-location manifest, indexed. A rebuild writes the next generation beside the
+    // current one, which the lists row "save_entries" names.
+    R"sql(
+CREATE TABLE save_entries(
+  generation INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  norm TEXT NOT NULL,
+  alias_of TEXT NOT NULL,
+  entry TEXT NOT NULL,
+  PRIMARY KEY(generation, name)
+) STRICT;
+CREATE INDEX save_entries_norm ON save_entries(generation, norm, name);
+CREATE TABLE save_ids(
+  generation INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  name TEXT NOT NULL
+) STRICT;
+CREATE INDEX save_ids_ref ON save_ids(generation, kind, ref, name);
+)sql",
 };
+
+constexpr std::string_view kSaveIndexList = "save_entries";
+// Rows written or deleted per hold of the lock while the save index is rebuilt.
+constexpr std::size_t kSaveBatch = 2000;
 
 // API slot name, and the key the fetcher keeps it under in the info. Steam's
 // capsule and header are served too, but left out of ArtVersions' tiles.
@@ -159,6 +184,18 @@ void MetadataStore::Load() {
   }
   for (auto row = tiers->Step(); row && *row; row = tiers->Step())
     tiers_[tiers->Text(0)] = tiers->Text(1);
+
+  save_generation_ = 0;
+  save_count_ = 0;
+  if (auto index = db_.Prepare("SELECT value FROM lists WHERE name = ?")) {
+    if (auto row = index->Bind(1, kSaveIndexList).Step(); row && *row) {
+      const json value = json::parse(index->Text(0), nullptr, false);
+      if (value.is_object()) {
+        save_generation_ = value.value("generation", std::int64_t{0});
+        save_count_ = value.value("games", std::int64_t{0});
+      }
+    }
+  }
 }
 
 json MetadataStore::Read(const std::string& id) const {
@@ -256,6 +293,148 @@ void MetadataStore::DropAchievementsLocked(const std::string& id) {
       log::Warn("could not drop {}'s achievements: {}", id, done.error().message);
     }
   }
+}
+
+Result<void> MetadataStore::ReplaceSaveEntries(std::span<const SaveEntry> entries) {
+  std::lock_guard rebuild(save_rebuild_mutex_);
+  std::int64_t generation = 0;
+  {
+    std::lock_guard lock(mutex_);
+    if (!db_.IsOpen()) return Err("metadata_write_failed", "the metadata cache isn't open");
+    generation = save_generation_ + 1;
+  }
+  // What an earlier rebuild left when mirad stopped halfway.
+  DropSaveGenerations(generation - 1);
+
+  for (std::size_t start = 0; start < entries.size(); start += kSaveBatch) {
+    std::lock_guard lock(mutex_);
+    Transaction transaction(db_);
+    if (auto begun = transaction.Begin(); !begun) return std::unexpected(begun.error());
+    auto add_entry = db_.Prepare(
+        "INSERT OR IGNORE INTO save_entries(generation, name, norm, alias_of, entry) "
+        "VALUES(?, ?, ?, ?, ?)");
+    if (!add_entry) return std::unexpected(add_entry.error());
+    auto add_id =
+        db_.Prepare("INSERT INTO save_ids(generation, kind, ref, name) VALUES(?, ?, ?, ?)");
+    if (!add_id) return std::unexpected(add_id.error());
+    for (const SaveEntry& entry :
+         entries.subspan(start, std::min(kSaveBatch, entries.size() - start))) {
+      if (auto done = add_entry->Bind(1, generation)
+                          .Bind(2, entry.name)
+                          .Bind(3, entry.norm)
+                          .Bind(4, entry.alias_of)
+                          .Bind(5, entry.entry)
+                          .Run();
+          !done)
+        return std::unexpected(done.error());
+      for (const auto& [kind, ref] : entry.ids) {
+        if (auto done =
+                add_id->Bind(1, generation).Bind(2, kind).Bind(3, ref).Bind(4, entry.name).Run();
+            !done)
+          return std::unexpected(done.error());
+      }
+    }
+    if (auto committed = transaction.Commit(); !committed)
+      return std::unexpected(committed.error());
+  }
+
+  const auto games =
+      std::ranges::count_if(entries, [](const SaveEntry& e) { return e.alias_of.empty(); });
+  {
+    std::lock_guard lock(mutex_);
+    auto upsert = db_.Prepare(
+        "INSERT INTO lists(name, value, updated_at) VALUES(?, ?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at");
+    if (!upsert) return std::unexpected(upsert.error());
+    if (auto done = upsert->Bind(1, kSaveIndexList)
+                        .Bind(2, json{{"generation", generation}, {"games", games}}.dump())
+                        .Bind(3, model::NowSeconds())
+                        .Run();
+        !done)
+      return std::unexpected(done.error());
+    save_generation_ = generation;
+    save_count_ = games;
+  }
+  DropSaveGenerations(generation);
+  return {};
+}
+
+void MetadataStore::DropSaveGenerations(std::int64_t keep) {
+  for (const char* sql :
+       {"DELETE FROM save_entries WHERE rowid IN (SELECT rowid FROM save_entries WHERE "
+        "generation != ? LIMIT ?)",
+        "DELETE FROM save_ids WHERE rowid IN (SELECT rowid FROM save_ids WHERE generation != ? "
+        "LIMIT ?)"}) {
+    for (;;) {
+      std::lock_guard lock(mutex_);
+      if (!db_.IsOpen()) return;
+      auto remove = db_.Prepare(sql);
+      if (!remove) return;
+      if (auto done = remove->Bind(1, keep).Bind(2, static_cast<std::int64_t>(kSaveBatch)).Run();
+          !done) {
+        log::Warn("could not clear the old save index: {}", done.error().message);
+        return;
+      }
+      auto changes = db_.Prepare("SELECT changes()");
+      if (!changes) return;
+      if (auto row = changes->Step();
+          !row || !*row || changes->Int(0) < static_cast<std::int64_t>(kSaveBatch))
+        break;
+    }
+  }
+}
+
+std::optional<MetadataStore::SaveEntry> MetadataStore::FindSaveEntry(std::string_view name) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return std::nullopt;
+  auto select = db_.Prepare(
+      "SELECT norm, alias_of, entry FROM save_entries WHERE generation = ? AND name = ?");
+  if (!select) return std::nullopt;
+  auto row = select->Bind(1, save_generation_).Bind(2, name).Step();
+  if (!row || !*row) return std::nullopt;
+  return SaveEntry{std::string(name), select->Text(0), select->Text(1), select->Text(2)};
+}
+
+std::string MetadataStore::SaveEntryWithId(std::string_view kind, std::string_view ref) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return {};
+  // Several entries can share an id (a game and its demo, say); the first by name is taken.
+  auto select = db_.Prepare(
+      "SELECT name FROM save_ids WHERE generation = ? AND kind = ? AND ref = ? ORDER BY name "
+      "LIMIT 1");
+  if (!select) return {};
+  auto row = select->Bind(1, save_generation_).Bind(2, kind).Bind(3, ref).Step();
+  return row && *row ? select->Text(0) : std::string();
+}
+
+std::string MetadataStore::SaveEntryWithNorm(std::string_view norm) const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen() || norm.empty()) return {};
+  auto select = db_.Prepare(
+      "SELECT name FROM save_entries WHERE generation = ? AND norm = ? ORDER BY name LIMIT 1");
+  if (!select) return {};
+  auto row = select->Bind(1, save_generation_).Bind(2, norm).Step();
+  return row && *row ? select->Text(0) : std::string();
+}
+
+std::vector<MetadataStore::SaveEntry> MetadataStore::SearchSaveEntries(std::string_view norm,
+                                                                       int limit) const {
+  std::lock_guard lock(mutex_);
+  std::vector<SaveEntry> found;
+  if (!db_.IsOpen() || norm.empty()) return found;
+  auto select = db_.Prepare(
+      "SELECT name, norm, alias_of FROM save_entries WHERE generation = ?1 AND instr(norm, ?2) > 0 "
+      "ORDER BY instr(norm, ?2) != 1, length(name), name LIMIT ?3");
+  if (!select) return found;
+  select->Bind(1, save_generation_).Bind(2, norm).Bind(3, std::int64_t{limit});
+  for (auto row = select->Step(); row && *row; row = select->Step())
+    found.push_back({select->Text(0), select->Text(1), select->Text(2), {}});
+  return found;
+}
+
+std::int64_t MetadataStore::SaveEntryCount() const {
+  std::lock_guard lock(mutex_);
+  return save_count_;
 }
 
 std::optional<std::vector<MetadataStore::CatalogRow>> MetadataStore::ReadCatalog(

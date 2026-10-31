@@ -269,3 +269,32 @@ TEST_CASE("Play offers the default launch option first, and only it when asked")
   CHECK(PlayChoices(game, false).size() == 1);
   CHECK(PlayChoices(game, true).size() == 2);
 }
+
+TEST_CASE("ToSaves reads a game's backups and locations, null entry and all") {
+  const SavesResult saves = mapping::ToSaves(json::parse(R"({
+    "enabled": true, "status": "kept", "entry": null, "match": null,
+    "locations": [{"pattern": "<base>/Saved", "path": "/games/fir/Saved", "files": 3,
+                   "bytes": 4096, "skipped": []},
+                  {"pattern": "<home>", "path": "/home/u", "files": 0, "bytes": 0,
+                   "skipped": [], "problem": "too_broad"}],
+    "snapshots": [{"id": "20261021T143005Z", "taken_at": 1792593005, "reason": "after_play",
+                   "files": 3, "bytes": 4096}],
+    "last_error": {"code": "saves_too_large", "message": "too big", "at": 1792593000}})"));
+  CHECK(saves.enabled);
+  CHECK(saves.status == "kept");
+  CHECK(saves.entry.empty());
+  REQUIRE(saves.locations.size() == 2);
+  CHECK(saves.locations[0].files == 3);
+  CHECK(saves.locations[0].bytes == 4096);
+  CHECK(saves.locations[1].problem == "too_broad");
+  REQUIRE(saves.snapshots.size() == 1);
+  CHECK(saves.snapshots[0].taken_at == 1792593005);
+  CHECK(saves.snapshots[0].reason == "after_play");
+  REQUIRE(saves.last_error);
+  CHECK(saves.last_error->code == "saves_too_large");
+
+  // Nothing failed.
+  const SavesResult plain = mapping::ToSaves(json::parse(R"({"status": "no_entry"})"));
+  CHECK_FALSE(plain.last_error);
+  CHECK(plain.snapshots.empty());
+}

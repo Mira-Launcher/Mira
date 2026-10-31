@@ -16,6 +16,7 @@ namespace mira_gui {
 
 class AchievementsPage;
 class ArtPickerPanel;
+class SavesPage;
 class ChangeBar;
 class GameEditForm;
 class GameLibraryModel;
@@ -39,8 +40,10 @@ class GameCard : public HeroBackdrop {
   bool IsDirty() const;
   // Saves the form's edits; Saved follows on success.
   void Save();
-  // Back and Esc: out of the art picker or Achievements, then Advanced, then RequestClose.
+  // Back and Esc: out of the art picker, Achievements or Saves, then Advanced, then RequestClose.
   void Back();
+  // The Saves page, once the game's saves have loaded.
+  void OpenSaves();
   // Asks first when the edits aren't saved; CloseRequested once it may close.
   void RequestClose();
   // A new cover for `id`, which may be another game's.
@@ -75,6 +78,10 @@ class GameCard : public HeroBackdrop {
   void OpenAchievements();
   void CloseAchievements();
   bool AchievementsOpen() const;
+  // GET /v1/games/{id}/saves into the saves line and the page, again on every change to them.
+  void LoadSaves();
+  void CloseSaves();
+  bool SavesOpen() const;
 
   std::string id_;
   // A not-installed title's card has no form, so form_ stays null.
@@ -88,10 +95,16 @@ class GameCard : public HeroBackdrop {
   // The form, and the art picker once first opened.
   QStackedWidget* stack_ = nullptr;
   ArtPickerPanel* picker_ = nullptr;
-  // "48 of 52 achievements" under the status, which opens their page; its room kept while empty.
+  // "48 of 52 achievements" under the status, which opens their page.
   QPushButton* achievements_button_ = nullptr;
   AchievementsPage* achievements_page_ = nullptr;
   std::optional<AchievementsResult> achievements_;
+  // "7 backups · last after today's session" beside it, which opens the Saves page.
+  QPushButton* saves_button_ = nullptr;
+  SavesPage* saves_page_ = nullptr;
+  std::optional<SavesResult> saves_;
+  int saves_request_ = 0;  // the newest LoadSaves: an older answer arriving after it is dropped
+  bool open_saves_when_loaded_ = false;
   QPushButton* art_button_ = nullptr;
   QPushButton* play_ = nullptr;
   QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, before Play

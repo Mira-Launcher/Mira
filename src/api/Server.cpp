@@ -165,6 +165,7 @@ void Server::RegisterRoutes() {
   RegisterModManagerRoutes(router, s_);
   RegisterUpdateRoutes(router, s_);
   RegisterAchievementRoutes(router, s_);
+  RegisterSaveRoutes(router, s_);
   RegisterRunnerRoutes(router, s_);
   RegisterEventRoutes(router, s_);
   RegisterLogRoutes(router, s_);

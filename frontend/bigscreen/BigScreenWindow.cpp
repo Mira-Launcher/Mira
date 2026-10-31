@@ -21,10 +21,12 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../game/RemoveGamesCard.h"
+#include "../game/SavesText.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GameMenus.h"
+#include "../library/GamePresentation.h"
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
 #include "CollectionsPage.h"
@@ -44,6 +46,12 @@
 #include "Sounds.h"
 
 namespace mira_gui::bigscreen {
+
+namespace {
+// How long the launch screen stays for a game that doesn't open a window: Steam may need a while
+// to start, update or sync first. It runs from when the game's saves work, if any, is done.
+constexpr int kLaunchTimeoutMs = 120'000;
+}  // namespace
 
 Page::Page(BigScreenWindow* window) : QWidget(window), window_(window) {
   setAttribute(Qt::WA_TranslucentBackground);
@@ -221,9 +229,12 @@ class Chrome : public QWidget {
     const double u = window_->unit();
     painter.fillRect(rect(), QColor(0, 0, 0, 170));
     const double row_h = u * 3.4;
-    const QRectF box((width() - u * 30) / 2,
-                     (height() - row_h * double(menu.entries.size()) - u * 6) / 2, u * 30,
-                     row_h * double(menu.entries.size()) + u * 6);
+    // A list taller than the screen shows a window of it that follows the focus.
+    const int count = int(menu.entries.size());
+    const int shown = std::clamp(int((height() - u * 14) / row_h), 1, count);
+    const int first = std::clamp(menu.focus - shown / 2, 0, count - shown);
+    const QRectF box((width() - u * 30) / 2, (height() - row_h * shown - u * 6) / 2, u * 30,
+                     row_h * shown + u * 6);
     painter.setPen(QPen(tokens.border, 1));
     painter.setBrush(tokens.surface);
     painter.drawRoundedRect(box, u * 0.7, u * 0.7);
@@ -232,16 +243,16 @@ class Chrome : public QWidget {
     painter.drawText(box.adjusted(u * 2, u * 1.4, -u * 2, 0), Qt::AlignTop | Qt::AlignLeft,
                      menu.title);
     painter.setFont(Font(u, 1.2, QFont::Bold));
-    for (size_t i = 0; i < menu.entries.size(); ++i) {
-      const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i) * row_h,
+    for (int i = first; i < first + shown; ++i) {
+      const QRectF row(box.left() + u * 1.2, box.top() + u * 4 + double(i - first) * row_h,
                        box.width() - u * 2.4, row_h - u * 0.4);
-      const bool focused = int(i) == menu.focus;
+      const bool focused = i == menu.focus;
       painter.setPen(focused ? QPen(Accent(), u * 0.12) : Qt::NoPen);
       painter.setBrush(focused ? tokens.surface_alt : Qt::transparent);
       painter.drawRoundedRect(row, u * 0.45, u * 0.45);
       painter.setPen(tokens.text);
       painter.drawText(row.adjusted(u * 1.2, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,
-                       menu.entries[i].first);
+                       menu.entries[size_t(i)].first);
     }
   }
 
@@ -251,18 +262,27 @@ class Chrome : public QWidget {
     const theme::Tokens& tokens = theme::Current();
     const double u = window_->unit();
     painter.fillRect(rect(), QColor(0, 0, 0, 180));
-    const QRectF box((width() - u * 34) / 2, (height() - u * 14) / 2, u * 34, u * 14);
+    // As tall as its title and body wrap to, over the buttons' row.
+    const double inner_w = u * 30;
+    const int wrap = Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap;
+    const QFont title_font = Font(u, 1.6, QFont::Bold), body_font = Font(u, 1.0);
+    const double title_h = QFontMetricsF(title_font)
+                               .boundingRect(QRectF(0, 0, inner_w, 0), wrap, dialog.title)
+                               .height();
+    const double body_h =
+        QFontMetricsF(body_font).boundingRect(QRectF(0, 0, inner_w, 0), wrap, dialog.body).height();
+    const double box_h = std::max(u * 14, title_h + u * 0.8 + body_h + u * 3.8 + u * 3.6);
+    const QRectF box((width() - u * 34) / 2, (height() - box_h) / 2, u * 34, box_h);
     painter.setPen(QPen(tokens.border, 1));
     painter.setBrush(tokens.surface);
     painter.drawRoundedRect(box, u * 0.7, u * 0.7);
     const QRectF inner = box.adjusted(u * 2, u * 1.8, -u * 2, -u * 1.8);
     painter.setPen(tokens.text);
-    painter.setFont(Font(u, 1.6, QFont::Bold));
-    painter.drawText(inner, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, dialog.title);
-    painter.setFont(Font(u, 1.0));
+    painter.setFont(title_font);
+    painter.drawText(inner, wrap, dialog.title);
+    painter.setFont(body_font);
     painter.setPen(tokens.text_muted);
-    painter.drawText(inner.adjusted(0, u * 2.8, 0, 0),
-                     Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, dialog.body);
+    painter.drawText(inner.adjusted(0, title_h + u * 0.8, 0, 0), wrap, dialog.body);
     // Buttons, right-aligned: confirm then cancel.
     painter.setFont(Font(u, 1.05, QFont::Bold));
     const QStringList labels = {dialog.confirm_label, "Cancel"};
@@ -301,10 +321,14 @@ class Chrome : public QWidget {
     painter.setFont(Font(u, 1.05));
     // Nothing reports a prefix being set up, but a Windows game's first start is when it happens.
     const bool first_run = item.game && !item.game->last_played_at && item.game->play_seconds == 0;
-    const QString detail =
-        item.game && item.game->source == "steam" ? "Steam is starting it. This can take a moment."
-        : first_run ? "Its first start sets things up, which can take a minute or two."
-                    : "This can take a moment.";
+    const QString saves =
+        SavesDoingLabel(window_->services().library->SavesDoing(item.key.toStdString()));
+    const QString detail = !saves.isEmpty() ? saves + " It starts once they're done."
+                           : item.game && item.game->source == "steam"
+                               ? "Steam is starting it. This can take a moment."
+                           : first_run
+                               ? "Its first start sets things up, which can take a minute or two."
+                               : "This can take a moment.";
     painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
     painter.drawText(title.translated(0, u * 4.6), Qt::AlignHCenter | Qt::AlignTop,
                      "This screen closes once the game's window opens.");
@@ -423,6 +447,18 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   launch_timeout_.setSingleShot(true);
   connect(&launch_timeout_, &QTimer::timeout, this, &BigScreenWindow::EndLaunch);
   connect(services_.library, &GameLibraryModel::Changed, this, &BigScreenWindow::FollowLaunch);
+  // The launch waits for mirad's saves work, which the screen says, and which doesn't count
+  // against the wait for the game to start.
+  connect(services_.library, &QAbstractItemModel::dataChanged, this, [this] {
+    if (launching_.key.isEmpty() || handed_off_) return;
+    const bool saving = !services_.library->SavesDoing(launching_.key.toStdString()).empty();
+    if (saving) {
+      launch_timeout_.stop();
+    } else if (!launch_timeout_.isActive()) {
+      launch_timeout_.start(kLaunchTimeoutMs);
+    }
+    chrome_->update();
+  });
   // Games often open behind big screen: their window is brought forward once it's up.
   window_poll_.setInterval(500);
   connect(&window_poll_, &QTimer::timeout, this, [this] {
@@ -606,8 +642,7 @@ void BigScreenWindow::Play(const Item& item, const std::string& option) {
   const int serial = ++launch_serial_;
   cancelled_.clear();
   hero_->Hold(true);  // no trailer behind the launch screen
-  // Steam may need a while to start, update or sync first.
-  launch_timeout_.start(120'000);
+  if (services_.library->SavesDoing(item.game->id).empty()) launch_timeout_.start(kLaunchTimeoutMs);
   chrome_->update();
   actions::Launch(
       this, item.game->id, option,
@@ -723,33 +758,148 @@ void BigScreenWindow::Uninstall(const Item& item) {
       return;
     }
     const RemovalPlan plan = plans.plans.front();
-    const QString action = RemoveGamesCard::ActionText({plan});
-    const QString text =
-        plan.kind == "steam"    ? QString("Steam asks first, then removes its files and prefix.")
-        : !DeletesFiles(plan)   ? QString("Its files stay where they are.")
-        : plan.folder_is_prefix ? QString("This deletes its folder, which is also its prefix.")
-                                : QString(
-                                      "This deletes the game's files. Its prefix, with saves "
-                                      "and settings, is kept.");
-    Confirm(action.section(' ', 0, 0) + " " + item.name + "?", text, action, [this, item, plan] {
-      api::DeleteGamesAsync(
-          this, {plan.id}, DeletesFiles(plan), /*delete_prefix=*/false,
-          [this, item](DeleteGamesResult result) {
-            if (!result.ok || !result.failed.empty()) {
-              Toast("Could not uninstall " + item.name);
-              return;
-            }
-            if (result.removed.empty()) return;  // Steam's own uninstall takes it from here
-            Toast(item.name + " removed");
-            // Its page would offer Play for a game that's gone.
-            if (stack_->currentWidget() == game_page_ && game_page_->key() == item.key) Back();
-          });
-    });
+    // The desktop card's two switches, as a choice before the question.
+    const bool prefix = HasPrefixToDelete(plan), saves = !plan.saves.empty();
+    if (!prefix && !saves) return ConfirmUninstall(item, plan, false, false);
+    const QString rest = plan.files_in_prefix.empty() ? "its prefix" : "the rest of its prefix";
+    std::vector<std::pair<QString, std::function<void()>>> entries;
+    const auto add = [&](const QString& label, bool delete_prefix, bool delete_saves) {
+      entries.push_back({label, [this, item, plan, delete_prefix, delete_saves] {
+                           ConfirmUninstall(item, plan, delete_prefix, delete_saves);
+                         }});
+    };
+    add(prefix && saves ? "Keep " + rest + " and save backups"
+        : prefix        ? "Keep " + rest
+                        : QString("Keep its save backups"),
+        false, false);
+    if (prefix) add("Delete " + rest + " too", true, false);
+    if (saves) add("Delete its save backups too", false, true);
+    if (prefix && saves) add("Delete " + rest + " and save backups too", true, true);
+    ShowMenu(RemoveGamesCard::ActionText({plan}).section(' ', 0, 0) + " " + item.name + "?",
+             std::move(entries));
   });
+}
+
+void BigScreenWindow::ConfirmUninstall(const Item& item, const RemovalPlan& plan,
+                                       bool delete_prefix, bool delete_saves) {
+  const QString action = RemoveGamesCard::ActionText({plan});
+  QString text =
+      plan.kind == "steam"  ? QString("Steam asks first, then removes its files and prefix.")
+      : !DeletesFiles(plan) ? delete_prefix
+                                  ? QString("Its files stay where they are. Its prefix is deleted.")
+                                  : QString("Its files stay where they are.")
+      : plan.folder_is_prefix ? QString("This deletes its folder, which is also its prefix.")
+      : plan.prefix.empty()   ? QString("This deletes the game's files.")
+      : delete_prefix
+          ? QString("This deletes the game's files and its prefix, with saves and settings.")
+          : QString("This deletes the game's files. Its prefix, with saves and settings, is kept.");
+  if (delete_saves) text += " Mira's backups of its saves are deleted too.";
+  Confirm(action.section(' ', 0, 0) + " " + item.name + "?", text, action,
+          [this, item, plan, delete_prefix, delete_saves] {
+            api::DeleteGamesAsync(
+                this, {plan.id}, DeletesFiles(plan), delete_prefix, delete_saves,
+                [this, item](DeleteGamesResult result) {
+                  if (!result.ok || !result.failed.empty()) {
+                    Toast("Could not uninstall " + item.name);
+                    return;
+                  }
+                  if (result.removed.empty()) return;  // Steam's own uninstall takes it from here
+                  Toast(item.name + " removed");
+                  // Its page would offer Play for a game that's gone.
+                  if (stack_->currentWidget() == game_page_ && game_page_->key() == item.key)
+                    Back();
+                });
+          });
 }
 
 void BigScreenWindow::TogglePin(const Item& item) {
   if (item.game) services_.menus->ToggleTag(item.game->id, tags::kPinned);
+}
+
+void BigScreenWindow::ManageSaves(const Item& item) {
+  if (!item.game) return;
+  if (const std::string doing = services_.library->SavesDoing(item.game->id); !doing.empty())
+    return Toast(SavesDoingLabel(doing));
+  ShowSaves(item);
+}
+
+void BigScreenWindow::ShowSaves(const Item& item) {
+  api::GetSavesAsync(this, item.game->id, [this, item](SavesResult saves) {
+    if (!saves.ok) return Toast("Could not read " + item.name + "'s saves");
+    std::vector<std::pair<QString, std::function<void()>>> entries;
+    if (saves.status != "registry_only" && saves.status != "no_entry")
+      entries.push_back({"Back up now", [this, item] { BackUpSaves(item); }});
+    if (!saves.snapshots.empty()) {
+      entries.push_back(
+          {QString("Backups (%1)").arg(saves.snapshots.size()),
+           [this, item, snapshots = saves.snapshots] { ShowBackups(item, snapshots); }});
+    }
+    if (entries.empty() || saves.status == "off") {
+      return Toast(saves.status == "steam_cloud"     ? "Steam keeps " + item.name + "'s saves"
+                   : saves.status == "registry_only" ? item.name + " saves in the Windows registry"
+                   : saves.status == "off" ? "Backing up " + item.name + "'s saves is off"
+                                           : "Mira doesn't know where " + item.name + " saves");
+    }
+    const QDateTime now = QDateTime::currentDateTime();
+    ShowMenu(saves_text::Summary(saves, now), std::move(entries));
+  });
+}
+
+void BigScreenWindow::ShowBackups(const Item& item, const std::vector<SaveSnapshot>& snapshots) {
+  const QDateTime now = QDateTime::currentDateTime();
+  std::vector<std::pair<QString, std::function<void()>>> entries;
+  for (const SaveSnapshot& snapshot : snapshots) {
+    QString label =
+        saves_text::When(snapshot.taken_at, now) + " · " + saves_text::Reason(snapshot.reason);
+    if (snapshot.pinned) label += " · Pinned";
+    entries.push_back({label, [this, item, snapshot] { ShowBackup(item, snapshot); }});
+  }
+  ShowMenu(item.name + "'s backups", std::move(entries));
+}
+
+void BigScreenWindow::ShowBackup(const Item& item, const SaveSnapshot& snapshot) {
+  const QString when = saves_text::When(snapshot.taken_at, QDateTime::currentDateTime(), true);
+  const std::string id = item.game->id;
+  const auto restore = [this, item, snapshot, when, id] {
+    Confirm("Restore the backup from " + when + "?",
+            "What " + item.name + " has saved now is backed up first, so this can be undone.",
+            "Restore", [this, item, snapshot, when, id] {
+              Toast(SavesDoingLabel("restoring"));
+              api::RestoreSavesAsync(this, id, snapshot.id, [this, item, when](SavesJobResult r) {
+                Toast(r.ok ? "Restored " + item.name + "'s saves from " + when
+                           : "Could not restore " + item.name + "'s saves");
+              });
+            });
+  };
+  const auto pin = [this, item, snapshot, id] {
+    api::PinSaveBackupAsync(this, id, snapshot.id, !snapshot.pinned,
+                            [this, item, snapshot](GameActionResult r) {
+                              if (!r.ok) return Toast("Could not change the backup's pin");
+                              SaveSnapshot changed = snapshot;
+                              changed.pinned = !snapshot.pinned;
+                              ShowBackup(item, changed);
+                              menu_->focus = 1;  // still on Pin, now Unpin
+                            });
+  };
+  const auto remove = [this, item, snapshot, when, id] {
+    Confirm("Delete the backup from " + when + "?", "Its saves can't be restored once it's gone.",
+            "Delete", [this, id, snapshot] {
+              api::DeleteSaveBackupAsync(this, id, snapshot.id, [this](GameActionResult r) {
+                Toast(r.ok ? "Deleted the backup" : "Could not delete the backup");
+              });
+            });
+  };
+  ShowMenu("Backup from " + when + (snapshot.pinned ? " · Pinned" : ""),
+           {{"Restore", restore}, {snapshot.pinned ? "Unpin" : "Pin", pin}, {"Delete", remove}});
+}
+
+void BigScreenWindow::BackUpSaves(const Item& item) {
+  Toast(SavesDoingLabel("backing_up"));
+  api::BackUpSavesAsync(this, item.game->id, [this, item](SavesJobResult result) {
+    Toast(!result.ok     ? "Could not back up " + item.name + "'s saves"
+          : result.taken ? "Backed up " + item.name + "'s saves"
+                         : QString("Nothing changed since the last backup"));
+  });
 }
 
 QString BigScreenWindow::QuickActionLabel(const Item& item) const {

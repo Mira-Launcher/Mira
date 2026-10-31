@@ -77,6 +77,30 @@ void GetAchievementsAsync(QObject* context, const std::string& id,
 void RefreshAchievementsAsync(QObject* context, const std::string& id,
                               std::function<void(AchievementsRefreshResult)> callback);
 
+// GET /v1/games/{id}/saves: where its saves are, and its backups, from the disk.
+void GetSavesAsync(QObject* context, const std::string& id,
+                   std::function<void(SavesResult)> callback);
+
+// POST /v1/games/{id}/saves/backup, a job: backs its saves up now.
+void BackUpSavesAsync(QObject* context, const std::string& id,
+                      std::function<void(SavesJobResult)> callback);
+
+// POST /v1/games/{id}/saves/restore, a job: puts `snapshot` back, backing up what's there first.
+void RestoreSavesAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                       std::function<void(SavesJobResult)> callback);
+
+// DELETE /v1/games/{id}/saves/{snapshot}.
+void DeleteSaveBackupAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                           std::function<void(GameActionResult)> callback);
+
+// PATCH /v1/games/{id}/saves/{snapshot}: pins or unpins a backup.
+void PinSaveBackupAsync(QObject* context, const std::string& id, const std::string& snapshot,
+                        bool pinned, std::function<void(GameActionResult)> callback);
+
+// POST /v1/games/{id}/saves/folders: adds a picked folder (`add`), or takes one out by its pattern.
+void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
+                           const std::string& folder,
+                           std::function<void(GameActionResult)> callback);
 // POST /v1/games/{id}/tricks. Returns 202; watch for
 // tricks.started/.finished/.failed via ParseTricksEvent.
 void RunWinetricksAsync(QObject* context, const std::string& id, const std::string& verb,
@@ -113,9 +137,11 @@ void RelocateGameAsync(QObject* context, const std::string& id, const std::strin
                        const std::string& data_dir, std::function<void(GameDetailResult)> callback);
 
 // POST /v1/games/delete, a job: removes games, keeping what the user set on them, and with
-// `delete_files` their files (a Steam game through Steam), with `delete_prefix` their prefixes.
+// `delete_files` their files (a Steam game through Steam), with `delete_prefix` their prefixes,
+// with `delete_saves` their save backups.
 void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, bool delete_files,
-                      bool delete_prefix, std::function<void(DeleteGamesResult)> callback);
+                      bool delete_prefix, bool delete_saves,
+                      std::function<void(DeleteGamesResult)> callback);
 
 // POST /v1/games/removal: what removing each game can delete.
 void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,

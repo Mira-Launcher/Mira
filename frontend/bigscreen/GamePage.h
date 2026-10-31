@@ -12,7 +12,7 @@ class QNetworkAccessManager;
 namespace mira_gui::bigscreen {
 
 // One game: its cover, status and play time, with Play, Install, Pause,
-// Pin and Uninstall as its state allows.
+// Pin, Saves and Uninstall as its state allows.
 class GamePage : public Page {
   Q_OBJECT
 
@@ -32,7 +32,7 @@ class GamePage : public Page {
   void paintEvent(QPaintEvent* event) override;
 
  private:
-  enum class Action { Play, Stop, Install, Pause, Resume, Cancel, Pin, Uninstall };
+  enum class Action { Play, Stop, Install, Pause, Resume, Cancel, Pin, Saves, Uninstall };
   struct Button {
     Action action;
     QString label;

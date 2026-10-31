@@ -93,6 +93,12 @@ std::string ParseGameId(const std::string& data) {
   return entry.value("id", std::string());
 }
 
+std::string ParseSavesDoing(const std::string& data) {
+  const json entry = json::parse(data, nullptr, false);
+  if (entry.is_discarded() || !entry.is_object()) return {};
+  return entry.value("doing", std::string());
+}
+
 std::vector<std::string> ParseChangedKeys(const std::string& data) {
   const json entry = json::parse(data, nullptr, false);
   std::vector<std::string> keys;

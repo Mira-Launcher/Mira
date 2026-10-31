@@ -166,6 +166,24 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 ### `mira achievements <id> [--refresh]`
 `GET /v1/games/{id}/achievements`. Lists a Steam, GOG or Epic game's achievements as last checked, unlocked ones marked `[x]` with their date and rarity. `--refresh` asks the store again first and waits for it.
 
+### `mira saves <id>`
+`GET /v1/games/{id}/saves`. Prints whether Mira keeps the game's saves and why not, the list entry it matched and how, then each save location with how many files and bytes are there, or why it isn't read, then why the last backup after play failed, if it did, and the backups, newest first.
+
+### `mira saves backup <id>`
+`POST /v1/games/{id}/saves/backup`, waiting for the job. Prints the new backup's id, or the newest one's when nothing changed.
+
+### `mira saves restore <id> <backup>` / `delete <id> <backup>`
+`POST /v1/games/{id}/saves/restore` (waiting for the job) / `DELETE /v1/games/{id}/saves/{backup}`. `restore` puts a backup's files back after backing up what's there, and prints the command that undoes it. `delete` deletes one backup.
+
+### `mira saves folder <id> add|remove <path>`
+`POST /v1/games/{id}/saves/folders`. `add` adds a file or folder the game keeps saves in that Mira doesn't know about (a relative path is taken from the current folder); `remove` takes one out by its pattern, as `mira saves <id>` lists it. Prints the game's list after the change.
+
+### `mira saves pin <id> <backup>` / `unpin <id> <backup>`
+`PATCH /v1/games/{id}/saves/{backup}`. A pinned backup is kept however many newer ones are taken, and doesn't count toward `saves.keep`; `unpin` lets it go with the rest. The game's backups list marks pinned ones.
+
+### `mira saves manifest [--update]` / `search <name>`
+`GET /v1/saves/manifest` / `GET /v1/saves/entries?q=`. `manifest` prints where the list of save locations comes from, how many games it holds and when it was downloaded and checked; `--update` checks for a newer one first and waits for it. `search` lists the entries whose name contains `<name>`, for setting a game's `saves.manifest_name`.
+
 ### `mira metadata <id> [--refresh | --matches [QUERY] | --wrong | --match N | --match-id ID]`
 `GET /v1/games/{id}/metadata`. Prints the cached store info. `--refresh` fetches it again in the background. `--matches` lists SteamGridDB matches for the name, starred where the art comes from. `--wrong` moves to the next match, `--match N` picks one from the list (`0` is the top match) and `--match-id` takes a SteamGridDB id.
 
