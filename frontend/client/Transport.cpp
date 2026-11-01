@@ -1,8 +1,6 @@
 #include "Transport.h"
 
 #include <httplib.h>
-#include <pwd.h>
-#include <unistd.h>
 
 #include <cctype>
 #include <cstdlib>
@@ -11,6 +9,7 @@
 #include <toml.hpp>
 
 #include "JsonMapping.h"
+#include "Paths.h"
 
 namespace mira_gui::transport {
 namespace {
@@ -63,30 +62,18 @@ Reply Finish(const httplib::Result& res) {
   return reply;
 }
 
-// paths::Home in src/core/Paths.cpp, which the frontend can't link.
 std::string Home() {
-  if (const char* home = std::getenv("HOME"); home && *home) return home;
-  if (const passwd* pw = ::getpwuid(::getuid())) return pw->pw_dir;
-  return "/tmp";
+  return paths::Home().string();
 }
 
-// paths::RuntimeDir: never /tmp, where another user could make mira/ first and take the socket's
-// place.
 std::string RuntimeDir() {
-  for (const char* name : {"XDG_RUNTIME_DIR", "XDG_CACHE_HOME"}) {
-    if (const char* value = std::getenv(name); value && *value) return value;
-  }
-  return Home() + "/.cache";
+  return paths::RuntimeDir().string();
 }
 
 // mirad's socket_path setting from settings.toml, expanded as paths::Expand does (keep the two
 // in step), or "" when it isn't set there. Read once: mirad itself only reads it at startup.
 std::string ConfiguredSocket() {
-  const char* config_home = std::getenv("XDG_CONFIG_HOME");
-  const std::filesystem::path base = config_home && *config_home
-                                         ? std::filesystem::path(config_home)
-                                         : std::filesystem::path(Home()) / ".config";
-  toml::parse_result parsed = toml::parse_file((base / "mira" / "settings.toml").string());
+  toml::parse_result parsed = toml::parse_file((paths::UserDir() / "settings.toml").string());
   if (!parsed) return {};
   const std::optional<std::string> raw = parsed.table()["socket_path"].value<std::string>();
   if (!raw || raw->empty()) return {};

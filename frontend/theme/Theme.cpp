@@ -24,6 +24,8 @@
 #include <toml.hpp>
 #include <utility>
 
+#include "../client/Paths.h"
+
 namespace mira_gui::theme {
 namespace {
 
@@ -60,16 +62,9 @@ QColor ParseColor(const std::string& text, const QColor& fallback) {
   return parsed.isValid() ? parsed : fallback;
 }
 
-// Where a user's own themes live, following the same env-var-then-XDG rule as
-// the socket path (client/Transport.cpp).
+// Where a user's own themes live.
 std::filesystem::path UserThemeDir() {
-  const char* config_home = std::getenv("XDG_CONFIG_HOME");
-  if (config_home != nullptr && *config_home != '\0') {
-    return std::filesystem::path(config_home) / "mira" / "themes";
-  }
-  const char* home = std::getenv("HOME");
-  const std::filesystem::path base = home != nullptr && *home != '\0' ? home : ".";
-  return base / ".config" / "mira" / "themes";
+  return paths::UserDir() / "themes";
 }
 
 QString BundledPath(const QString& name) {

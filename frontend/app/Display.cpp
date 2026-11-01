@@ -19,6 +19,7 @@
 #include <filesystem>
 
 #include "../client/Async.h"
+#include "../client/Paths.h"
 
 namespace mira_gui::display {
 namespace {
@@ -41,12 +42,12 @@ bool IsSetByMira(const char* name) {
 }
 
 QString ConfigDir() {
-  const QString xdg = qEnvironmentVariable("XDG_CONFIG_HOME");
-  return (xdg.isEmpty() ? QDir::homePath() + "/.config" : xdg);
+  return QString::fromStdString(paths::ConfigHome().string());
 }
 
 QSettings& Store() {
-  static QSettings settings(ConfigDir() + "/mira/display.ini", QSettings::IniFormat);
+  static QSettings settings(QString::fromStdString((paths::UserDir() / "display.ini").string()),
+                            QSettings::IniFormat);
   return settings;
 }
 

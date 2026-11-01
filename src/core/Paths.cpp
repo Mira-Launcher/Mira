@@ -20,16 +20,38 @@ std::filesystem::path Home() {
   return "/tmp";
 }
 
+#ifdef __APPLE__
+// The XDG variables still win when set, as the tests and sandboxes set them.
+std::filesystem::path UserDir() {
+  const char* config = std::getenv("XDG_CONFIG_HOME");
+  if (config && *config) return std::filesystem::path(config) / "mira";
+  return Home() / "Library" / "Application Support" / "Mira";
+}
+
+std::filesystem::path CacheDir() {
+  return EnvOr("XDG_CACHE_HOME", Home() / "Library" / "Caches");
+}
+
+// $TMPDIR is the user's own (/var/folders/.../T), and short enough for a socket path.
+std::filesystem::path RuntimeDir() {
+  return EnvOr("XDG_RUNTIME_DIR", EnvOr("TMPDIR", CacheDir()));
+}
+#else
 std::filesystem::path UserDir() {
   return EnvOr("XDG_CONFIG_HOME", Home() / ".config") / "mira";
 }
 
-std::filesystem::path RuntimeDir() {
-  return EnvOr("XDG_RUNTIME_DIR", EnvOr("XDG_CACHE_HOME", Home() / ".cache"));
+std::filesystem::path CacheDir() {
+  return EnvOr("XDG_CACHE_HOME", Home() / ".cache");
 }
 
+std::filesystem::path RuntimeDir() {
+  return EnvOr("XDG_RUNTIME_DIR", CacheDir());
+}
+#endif
+
 std::filesystem::path ShaderCacheDir(const std::string& game_id) {
-  return EnvOr("XDG_CACHE_HOME", Home() / ".cache") / "mira" / "shaders" / game_id;
+  return CacheDir() / "mira" / "shaders" / game_id;
 }
 
 std::filesystem::path SettingsFile() {
