@@ -7,7 +7,12 @@
 #include <QThread>
 #include <QTimer>
 #include <csignal>
+#include <string_view>
 #include <utility>
+
+#ifdef __APPLE__
+#include <libproc.h>
+#endif
 
 #include "../client/api/Config.h"
 
@@ -87,8 +92,13 @@ void DaemonSupervisor::StopIfSelfStarted() {
   const qint64 pid = std::exchange(pid_, 0);
   // Nothing watches a detached mirad, so its pid may have gone to another process since.
   const auto running = [pid] {
+#ifdef __APPLE__
+    char name[2 * MAXCOMLEN + 1] = {};
+    return proc_name(int(pid), name, sizeof(name)) > 0 && std::string_view(name) == "mirad";
+#else
     QFile comm(QString("/proc/%1/comm").arg(pid));
     return comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "mirad";
+#endif
   };
   if (pid <= 0 || !running() || ::kill(pid_t(pid), SIGTERM) != 0) return;
   for (int i = 0; i < 20 && running(); ++i) QThread::msleep(100);
