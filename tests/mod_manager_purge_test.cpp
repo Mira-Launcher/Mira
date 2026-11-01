@@ -1,10 +1,12 @@
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <json.hpp>
 #include <sstream>
 
+#include "core/Paths.h"
 #include "runner/Exec.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
@@ -359,4 +361,66 @@ TEST_CASE("Removing Mod Organizer 2 from a game deletes that game's instance onl
     CHECK_FALSE(fs::exists(own / "ModOrganizer.ini"));
     CHECK(fs::exists(own / "ModOrganizer.exe"));
   }
+}
+
+TEST_CASE("Adding Mod Organizer 2 to a game opens the game's own instance, made if it has none") {
+  test::LiveServer server(test::TempDir("add-mo2"));
+  const fs::path dir = server.config().File().parent_path();
+  test::EnvVar config_home("XDG_CONFIG_HOME", (dir / "xdg").c_str());
+  test::Touch(dir / "xdg/mira/tools/mo2/ModOrganizer.exe");
+  // The tricks MO2 needs run through a stand-in winetricks against a stand-in Wine.
+  const fs::path wine = dir / "runners/wine/wine-9.0-amd64/bin/wine";
+  test::Touch(wine, "#!/bin/sh\n", /*executable=*/true);
+  test::Touch(wine.parent_path() / "wineserver", "", /*executable=*/true);
+  test::Touch(dir / "bin/winetricks", "#!/bin/sh\nexit 0\n", /*executable=*/true);
+  const test::PathPrepend path(dir / "bin");
+
+  const fs::path prefix = dir / "prefix";
+  fs::create_directories(prefix / "drive_c/users/steamuser");
+  const fs::path instances = prefix / "drive_c/users/steamuser/AppData/Local/ModOrganizer";
+  // Fir is in a library folder outside the prefix, with a comma in its folder's name.
+  const GamesDir library = Outside(prefix, dir / "library");
+  model::Game fir = WindowsGame("fir", "Fir, the Game", "none", prefix, library);
+  // Elm already has an instance MO2 made, and another game's instance is named Elm.
+  model::Game elm = WindowsGame("elm", "Elm", "none", prefix, InPrefix(prefix));
+  test::Touch(instances / "Mine/ModOrganizer.ini",
+              "[General]\ngameName=Elm\ngamePath=@ByteArray(C:\\\\Games\\\\Elm)\n");
+  test::Touch(instances / "Elm/ModOrganizer.ini",
+              "[General]\ngamePath=@ByteArray(C:\\\\Games\\\\Other)\n");
+  model::Game oak = WindowsGame("oak", "Elm", "none", prefix, InPrefix(prefix));
+  oak.install_path = (prefix / "drive_c/Games/Oak").string();
+  test::Touch(fs::path(oak.install_path) / "game.exe");
+  for (model::Game* game : {&fir, &elm, &oak}) {
+    game->runner_ref = "wine:wine-9.0-amd64";
+    game->launch = json::object();
+    REQUIRE(server.games().Upsert(*game).has_value());
+  }
+  auto client = server.Client();
+  const auto add = [&](const std::string& id) {
+    const json job = test::AwaitJob(client, client.Post("/v1/games/" + id + "/mod-managers/mo2"));
+    REQUIRE(job["state"] == "finished");
+    for (const json& option : job["result"]["launch"]["options"])
+      if (option["id"] == "mo2") return option["args"].get<std::string>();
+    FAIL("no mo2 option");
+    return std::string();
+  };
+
+  CHECK(add("fir") == "-i \"Fir, the Game\"");
+  // As MO2's QSettings reads it: quoted, so the comma doesn't split it, with backslashes doubled.
+  std::string windows = "Z:" + library.host.string() + "/Fir, the Game";
+  std::ranges::replace(windows, '/', '\\');
+  std::string escaped;
+  for (const char c : windows) escaped += c == '\\' ? std::string("\\\\") : std::string(1, c);
+  CHECK(Read(instances / "Fir, the Game/ModOrganizer.ini") ==
+        "[General]\ngamePath=\"" + escaped + "\"\n");
+  // Added again, it keeps the same instance; and removing it finds it.
+  CHECK(add("fir") == "-i \"Fir, the Game\"");
+  CHECK(Summary(client, "fir", "mo2")["deleted"] ==
+        json::array({{{"path", (instances / "Fir, the Game").string()},
+                      {"bytes", fs::file_size(instances / "Fir, the Game/ModOrganizer.ini")}}}));
+
+  CHECK(add("elm") == "-i \"Mine\"");
+  CHECK(add("oak") == "-i \"Elm (oak)\"");
+  CHECK(Read(instances / "Elm/ModOrganizer.ini").ends_with("Other)\n"));
+  CHECK(paths::ListDir(instances).size() == 4);
 }

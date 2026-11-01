@@ -8,6 +8,8 @@
 
 #include "core/AtomicFile.h"
 #include "core/Paths.h"
+#include "launchers/Launchers.h"
+#include "library/WinePrefix.h"
 #include "runner/Curl.h"
 #include "runner/Downloader.h"
 #include "runner/Exec.h"
@@ -28,6 +30,85 @@ json Without(const json& launch, const std::string& id) {
     if (!option.is_object() || option.value("id", std::string()) != id) kept.push_back(option);
   }
   return kept;
+}
+
+constexpr const char* kMo2Ini = "ModOrganizer.ini";
+
+bool SamePath(const fs::path& a, const fs::path& b) {
+  if (a.empty() || b.empty()) return false;
+  std::error_code ec;
+  const fs::path left = fs::weakly_canonical(a, ec);
+  return !ec && left == fs::weakly_canonical(b, ec) && !ec;
+}
+
+// `path` as programs in `prefix` see it: under C: inside drive_c, else through Z:.
+std::string WindowsPath(const fs::path& prefix, const fs::path& path) {
+  std::error_code ec;
+  const fs::path drive_c = fs::weakly_canonical(prefix / "drive_c", ec);
+  const fs::path target = fs::weakly_canonical(path, ec);
+  std::string out = paths::IsWithin(target, {drive_c})
+                        ? "C:\\" + target.lexically_relative(drive_c).string()
+                        : "Z:" + target.string();
+  std::ranges::replace(out, '/', '\\');
+  return out;
+}
+
+// An MO2 instance's gamePath as written: by MO2 (@ByteArray(...)) or by Mira (quoted).
+std::string Mo2GamePath(const fs::path& ini) {
+  std::ifstream in(ini);
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.starts_with("gamePath=")) continue;
+    std::string_view value = std::string_view(line).substr(std::string_view("gamePath=").size());
+    if (value.starts_with("@ByteArray(") && value.ends_with(')'))
+      value = value.substr(11, value.size() - 12);  // @ByteArray( and )
+    else if (value.size() >= 2 && value.starts_with('"') && value.ends_with('"'))
+      value = value.substr(1, value.size() - 2);
+    // Qt writes a backslash as two.
+    std::string path;
+    for (std::size_t i = 0; i < value.size(); ++i) {
+      if (value[i] == '\\' && i + 1 < value.size() && value[i + 1] == '\\') ++i;
+      path.push_back(value[i]);
+    }
+    return path;
+  }
+  return {};
+}
+
+// The game's name as a Windows folder name, its id when nothing of it is left.
+std::string InstanceName(const model::Game& game) {
+  std::string name;
+  for (const char c : game.name) {
+    if (static_cast<unsigned char>(c) >= 32 && !std::string_view(R"(<>:"/\|?*)").contains(c))
+      name.push_back(c);
+  }
+  while (!name.empty() && (name.back() == '.' || name.back() == ' ')) name.pop_back();
+  while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+  return name.empty() ? game.id : name;
+}
+
+// The name of the game's MO2 instance, made with only its folder when it has none: opening it,
+// MO2 finds the game from the folder and fills in the rest.
+Result<std::string> EnsureMo2Instance(const model::Game& game) {
+  const fs::path dir = Mo2InstancesDir(game);
+  for (const fs::path& instance : paths::ListDir(dir)) {
+    if (Mo2Manages(instance / kMo2Ini, game)) return instance.filename().string();
+  }
+  std::string name = InstanceName(game);
+  std::error_code ec;
+  if (fs::exists(dir / name, ec)) name += " (" + game.id + ")";
+  std::string path = WindowsPath(library::PrefixRoot(game.data_dir), game.install_path);
+  std::string escaped;
+  for (const char c : path) escaped += c == '\\' ? std::string("\\\\") : std::string(1, c);
+  // Quoted, so a comma in the path doesn't make it a list.
+  fs::create_directories(dir / name, ec);
+  if (auto written = WriteFileAtomic(dir / name / kMo2Ini,
+                                     std::format("[General]\ngamePath=\"{}\"\n", escaped),
+                                     "mod_manager_failed");
+      !written)
+    return std::unexpected(written.error());
+  return name;
 }
 
 // Unpacks `archive` into `dir`, which is made empty first.
@@ -174,6 +255,18 @@ bool OnGame(const model::Game& game, const ModManager& manager) {
   });
 }
 
+fs::path Mo2InstancesDir(const model::Game& game) {
+  if (game.data_dir.empty()) return {};
+  return library::WindowsUserDir(library::PrefixRoot(game.data_dir)) / "AppData/Local/ModOrganizer";
+}
+
+bool Mo2Manages(const fs::path& ini, const model::Game& game) {
+  if (game.data_dir.empty() || game.install_path.empty()) return false;
+  const std::string path = Mo2GamePath(ini);
+  return !path.empty() &&
+         SamePath(launchers::HostPath(library::PrefixRoot(game.data_dir), path), game.install_path);
+}
+
 Error OpenError(const ModManager& manager, std::string_view game_name) {
   return {"mod_manager_open", std::format("{} is open for {}", manager.name, game_name),
           std::format("Close {}, then remove it again.", manager.name)};
@@ -197,13 +290,19 @@ Result<model::Game> AddToGame(config::Config& config, store::GameStore& games,
     if (auto ran = runner::RunTricksVerb(runners, *game, verb); !ran)
       return std::unexpected(ran.error());
   }
+  std::string args;
+  if (manager.id == "mo2" && !game->install_path.empty()) {
+    const auto instance = EnsureMo2Instance(*game);
+    if (!instance) return std::unexpected(instance.error());
+    args = std::format("-i \"{}\"", *instance);
+  }
   return games.Update(game_id, [&](model::Game& g) {
     json options = Without(g.launch, manager.id);
     options.push_back({{"id", manager.id},
                        {"name", manager.name},
                        {"mode", "tool"},
                        {"exe", (Dir(manager) / manager.binary).string()},
-                       {"args", ""},
+                       {"args", args},
                        {"native", false}});
     g.launch["options"] = std::move(options);
   });

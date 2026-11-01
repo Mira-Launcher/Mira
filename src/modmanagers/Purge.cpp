@@ -72,27 +72,6 @@ bool IsDeployed(const fs::path& file, const fs::path& staged, const fs::path& st
   return fs::equivalent(file, staged, ec) && !ec;
 }
 
-// The folder an MO2 instance manages, from its ModOrganizer.ini; empty when it names none.
-fs::path Mo2GamePath(const fs::path& ini, const fs::path& prefix) {
-  std::ifstream in(ini);
-  std::string line;
-  while (std::getline(in, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (!line.starts_with("gamePath=")) continue;
-    std::string_view value = std::string_view(line).substr(std::string_view("gamePath=").size());
-    if (value.starts_with("@ByteArray(") && value.ends_with(')'))
-      value = value.substr(11, value.size() - 12);  // @ByteArray( and )
-    // Qt writes a backslash as two.
-    std::string path;
-    for (std::size_t i = 0; i < value.size(); ++i) {
-      if (value[i] == '\\' && i + 1 < value.size() && value[i + 1] == '\\') ++i;
-      path.push_back(value[i]);
-    }
-    return launchers::HostPath(prefix, path);
-  }
-  return {};
-}
-
 bool SamePath(const fs::path& a, const fs::path& b) {
   if (a.empty() || b.empty()) return false;
   std::error_code ec;
@@ -196,17 +175,15 @@ void PlanVortex(PurgePlan& plan, const model::Game& game, const fs::path& prefix
   }
 }
 
-void PlanMo2(PurgePlan& plan, const ModManager& manager, const model::Game& game,
-             const fs::path& prefix, const fs::path& user) {
-  const fs::path instances = user / "AppData/Local/ModOrganizer";
+void PlanMo2(PurgePlan& plan, const ModManager& manager, const model::Game& game) {
+  const fs::path instances = Mo2InstancesDir(game);
   for (const fs::path& dir : paths::ListDir(instances)) {
-    if (SamePath(Mo2GamePath(dir / "ModOrganizer.ini", prefix), game.install_path))
-      plan.deleted.push_back(dir);
+    if (Mo2Manages(dir / "ModOrganizer.ini", game)) plan.deleted.push_back(dir);
   }
   if (!plan.deleted.empty()) plan.emptied.push_back(instances);
   // A portable instance keeps its data beside the program, in Mira's copy every game shares.
   const fs::path own = Dir(manager);
-  if (SamePath(Mo2GamePath(own / "ModOrganizer.ini", prefix), game.install_path)) {
+  if (Mo2Manages(own / "ModOrganizer.ini", game)) {
     for (const char* name : {"ModOrganizer.ini", "mods", "downloads", "profiles", "overwrite",
                              "webcache", "logs", "crashDumps"})
       AddExisting(plan.deleted, own / name);
@@ -220,15 +197,15 @@ PurgePlan PlanPurge(const ModManager& manager, const model::Game& game,
   PurgePlan plan;
   if (game.data_dir.empty()) return plan;
   const fs::path prefix = library::PrefixRoot(game.data_dir);
-  const fs::path user = library::WindowsUserDir(prefix);
   if (manager.id == "vortex") {
     const bool shared = std::ranges::any_of(games, [&](const model::Game& other) {
       return other.id != game.id && !other.data_dir.empty() &&
              SamePath(library::PrefixRoot(other.data_dir), prefix);
     });
-    PlanVortex(plan, game, prefix, user / "AppData/Roaming/Vortex", shared);
+    PlanVortex(plan, game, prefix, library::WindowsUserDir(prefix) / "AppData/Roaming/Vortex",
+               shared);
   } else if (manager.id == "mo2") {
-    PlanMo2(plan, manager, game, prefix, user);
+    PlanMo2(plan, manager, game);
   }
   // Deepest first, so a folder whose only content was an emptied one goes too.
   std::ranges::sort(plan.emptied, [](const fs::path& a, const fs::path& b) {
