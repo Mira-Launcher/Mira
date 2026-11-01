@@ -26,7 +26,7 @@ jobs:
 
       - name: Packages
         run: |
-          brew install ninja llvm ccache
+          brew install ninja llvm ccache cabextract p7zip
           llvm="$(brew --prefix llvm)"
           echo "CC=$llvm/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$llvm/bin/clang++" >> "$GITHUB_ENV"

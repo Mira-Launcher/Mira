@@ -14,6 +14,7 @@
 
 #include "core/Log.h"
 #include "core/Strings.h"
+#include "proc/Procs.h"
 #include "runner/Exec.h"
 
 namespace mira::library {
@@ -109,28 +110,7 @@ bool AnyOpenForWriting(const std::vector<fs::path>& paths) {
   }
   if (wanted.empty()) return false;
 
-  std::error_code ec;
-  for (const auto& proc : fs::directory_iterator("/proc", ec)) {
-    const std::string pid = proc.path().filename().string();
-    if (pid.empty() || !std::ranges::all_of(pid, ::isdigit)) continue;
-    std::error_code fd_ec;
-    for (const auto& fd : fs::directory_iterator(proc.path() / "fd", fd_ec)) {
-      std::error_code link_ec;
-      const fs::path target = fs::read_symlink(fd.path(), link_ec);
-      if (link_ec || !wanted.contains(target.string())) continue;
-      std::ifstream info(proc.path() / "fdinfo" / fd.path().filename());
-      std::string key;
-      std::string flags;
-      while (info >> key >> flags) {
-        if (key != "flags:") continue;
-        int mode = 0;
-        std::from_chars(flags.data(), flags.data() + flags.size(), mode, 8);
-        if ((mode & O_ACCMODE) != O_RDONLY) return true;
-        break;
-      }
-    }
-  }
-  return false;
+  return proc::AnyOpenForWriting(wanted);
 }
 
 fs::path StemWithoutArchiveExtension(const fs::path& archive) {

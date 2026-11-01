@@ -189,9 +189,11 @@ struct Walker {
       }
       return;
     }
-    if (!HasWildcard(part)) {
-      if (fs::exists(at / part, ec)) return Step(at / part, index + 1);
-      if (!fold) return;
+    // Folding lists the folder even for a plain name: on a case-insensitive disk (macOS) exists()
+    // would match and keep the pattern's spelling instead of the file's.
+    if (!HasWildcard(part) && !fold) {
+      if (fs::exists(at / part, ec)) Step(at / part, index + 1);
+      return;
     }
     for (const auto& entry : fs::directory_iterator(at, ec)) {
       const std::string name = entry.path().filename().string();

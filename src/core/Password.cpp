@@ -3,10 +3,39 @@
 #include <dlfcn.h>
 
 #include <array>
+#include <cstdlib>
+#include <format>
 #include <vector>
+
+#ifdef __APPLE__
+#include <CommonCrypto/CommonKeyDerivation.h>
+#include <stdlib.h>
+#endif
 
 namespace mira::password {
 namespace {
+
+#ifdef __APPLE__
+// macOS's crypt(3) only has DES, so it's PBKDF2-SHA256 there:
+// "$pbkdf2-sha256$<rounds>$<salt>$<key>" in hex.
+constexpr unsigned kRounds = 600000;
+constexpr std::string_view kPbkdf2 = "$pbkdf2-sha256$";
+
+std::string Hex(const unsigned char* bytes, size_t size) {
+  std::string out;
+  for (size_t i = 0; i < size; ++i) out += std::format("{:02x}", bytes[i]);
+  return out;
+}
+
+std::string Pbkdf2(const std::string& password, const std::string& salt_hex, unsigned rounds) {
+  std::array<unsigned char, 32> key{};
+  if (CCKeyDerivationPBKDF(kCCPBKDF2, password.data(), password.size(),
+                           reinterpret_cast<const uint8_t*>(salt_hex.data()), salt_hex.size(),
+                           kCCPRFHmacAlgSHA256, rounds, key.data(), key.size()) != 0)
+    return {};
+  return std::format("{}{}${}${}", kPbkdf2, rounds, salt_hex, Hex(key.data(), key.size()));
+}
+#endif
 
 // libxcrypt's own signatures; `data` is a struct crypt_data, which is opaque here.
 using CryptR = char* (*)(const char* phrase, const char* setting, void* data);
@@ -46,6 +75,13 @@ std::string Run(const Crypt& crypt, const std::string& password, const std::stri
 }  // namespace
 
 Result<std::string> Hash(const std::string& password) {
+#ifdef __APPLE__
+  std::array<unsigned char, 16> salt{};
+  arc4random_buf(salt.data(), salt.size());
+  if (std::string hash = Pbkdf2(password, Hex(salt.data(), salt.size()), kRounds); !hash.empty())
+    return hash;
+  return Err("password_hash_failed", "couldn't hash the password");
+#endif
   const Crypt* crypt = Load();
   if (crypt == nullptr) {
     return Err("libcrypt_missing", "couldn't load the system's libcrypt to hash the password",
@@ -63,9 +99,22 @@ Result<std::string> Hash(const std::string& password) {
 }
 
 bool Matches(const std::string& password, const std::string& hash) {
-  const Crypt* crypt = Load();
-  if (crypt == nullptr || hash.empty()) return false;
-  const std::string again = Run(*crypt, password, hash);
+  std::string again;
+#ifdef __APPLE__
+  if (hash.starts_with(kPbkdf2)) {
+    const size_t rounds_end = hash.find('$', kPbkdf2.size());
+    const size_t salt_end =
+        rounds_end == std::string::npos ? rounds_end : hash.find('$', rounds_end + 1);
+    if (salt_end == std::string::npos) return false;
+    const unsigned rounds = unsigned(std::strtoul(hash.c_str() + kPbkdf2.size(), nullptr, 10));
+    again = Pbkdf2(password, hash.substr(rounds_end + 1, salt_end - rounds_end - 1), rounds);
+  }
+#endif
+  if (again.empty()) {
+    const Crypt* crypt = Load();
+    if (crypt == nullptr || hash.empty()) return false;
+    again = Run(*crypt, password, hash);
+  }
   if (again.size() != hash.size()) return false;
   unsigned char differ = 0;  // constant time, so timing doesn't tell how much matched
   for (size_t i = 0; i < hash.size(); ++i) differ |= static_cast<unsigned char>(again[i] ^ hash[i]);

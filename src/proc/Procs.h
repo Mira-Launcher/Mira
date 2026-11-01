@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,8 @@ std::string Name(pid_t pid);
 bool HasEntry(const std::string& environ, const std::string& entry);
 // Every process whose environment holds `entry`.
 std::vector<pid_t> WithEntry(const std::string& entry);
+// Whether any process has one of these files (canonical paths) open for writing.
+bool AnyOpenForWriting(const std::set<std::string>& files);
 // This program's own path.
 std::filesystem::path SelfExe();
 
