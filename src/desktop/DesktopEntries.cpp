@@ -18,6 +18,7 @@
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "metadata/MetadataFetcher.h"
+#include "proc/Procs.h"
 #include "runner/Exec.h"
 #include "setup/Setup.h"
 #include "store/GameStore.h"
@@ -64,7 +65,7 @@ std::string Binary(std::string_view name) {
   } else if (const auto on_path = runner::FindOnPath(name); on_path && on_path->starts_with('/')) {
     found = *on_path;
   } else {
-    found = fs::read_symlink("/proc/self/exe", ec).parent_path() / name;
+    found = proc::SelfExe().parent_path() / name;
   }
   if (ec || !fs::is_regular_file(found, ec)) return std::string(name);
   return found.string();

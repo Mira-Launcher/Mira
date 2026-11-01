@@ -192,6 +192,7 @@ TEST_CASE("A recognised installer runs quietly into its prefix, logging as it go
   std::getline(args, passed);
   // The configured arguments, then the target and Inno's own log.
   CHECK(passed == "/QUIET /SP- /DIR=C:\\Games\\" + waiting.name + " /LOG=C:\\mira-install.log");
+#ifdef __linux__
   // Its own scope, so running out of memory takes the installer, not mirad.
   const auto cgroup_of = [](const fs::path& file) {
     std::ifstream in(file);
@@ -203,6 +204,7 @@ TEST_CASE("A recognised installer runs quietly into its prefix, logging as it go
       cgroup_of(state / "setup_celeste" / "setup_celeste.exe.cgroup");
   CHECK(installer_cgroup.ends_with(".scope"));
   CHECK(installer_cgroup != cgroup_of("/proc/self/cgroup"));
+#endif
   auto ended = client.Get("/v1/logs/game:celeste");
   REQUIRE(ended != nullptr);
   const auto ended_log = nlohmann::json::parse(ended->body);

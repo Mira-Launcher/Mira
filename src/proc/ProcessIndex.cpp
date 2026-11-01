@@ -1,15 +1,14 @@
 #include "proc/ProcessIndex.h"
 
-#include <dirent.h>
-
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <fstream>
+#include <sstream>
 #include <unordered_set>
 
 #include "core/Strings.h"
 #include "model/Types.h"
+#include "proc/Procs.h"
 
 namespace mira::proc {
 namespace {
@@ -31,9 +30,9 @@ std::string SteamLaunchAppId(const std::string& argv0, std::istream& rest) {
 
 namespace {
 
-ProcessInfo Read(const std::string& pid) {
+ProcessInfo Read(pid_t pid) {
   ProcessInfo info;
-  std::ifstream environ_file("/proc/" + pid + "/environ", std::ios::binary);
+  std::istringstream environ_file(Environ(pid).value_or(""));
   std::string item;
   while (std::getline(environ_file, item, '\0')) {
     if (item.starts_with("WINEPREFIX="))
@@ -41,7 +40,7 @@ ProcessInfo Read(const std::string& pid) {
     else if (item.starts_with("STEAM_COMPAT_DATA_PATH=") && info.prefix.empty())
       info.prefix = item.substr(23);
   }
-  std::ifstream cmdline_file("/proc/" + pid + "/cmdline", std::ios::binary);
+  std::istringstream cmdline_file(Cmdline(pid).value_or(""));
   std::getline(cmdline_file, info.argv0, '\0');
   info.steam_launch = SteamLaunchAppId(info.argv0, cmdline_file);
   if (info.prefix.empty()) {
@@ -66,20 +65,14 @@ ProcessInfo Read(const std::string& pid) {
 void ProcessIndex::Refresh() {
   const std::int64_t now = model::NowSeconds();
   std::unordered_set<pid_t> alive;
-  DIR* proc_dir = ::opendir("/proc");
-  if (!proc_dir) return;
-  while (const dirent* entry = ::readdir(proc_dir)) {
-    const std::string name = entry->d_name;
-    if (name.empty() || !std::isdigit(static_cast<unsigned char>(name[0]))) continue;
-    const pid_t pid = std::atoi(name.c_str());
+  for (const pid_t pid : AllPids()) {
     alive.insert(pid);
     const auto known = processes_.find(pid);
     if (known != processes_.end() && now - known->second.first_seen > kRereadSeconds) continue;
-    ProcessInfo info = Read(name);
+    ProcessInfo info = Read(pid);
     info.first_seen = known == processes_.end() ? now : known->second.first_seen;
     processes_[pid] = std::move(info);
   }
-  ::closedir(proc_dir);
   std::erase_if(processes_, [&](const auto& item) { return !alive.contains(item.first); });
 }
 

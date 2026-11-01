@@ -70,6 +70,9 @@ void UnblockSignals() {
 // environment it started with. Then children take the display from the user manager's
 // current environment, read again at most once a minute.
 std::vector<std::string> SessionEnv() {
+#ifndef __linux__
+  return {};  // no systemd, and macOS needs no display variables
+#endif
   if (std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr) return {};
   static std::mutex mutex;
   static std::vector<std::string> cached;
