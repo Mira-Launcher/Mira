@@ -36,6 +36,7 @@ src/
   humble/     humble-cli wrapper (downloads only, not an ILibrarySource)
   launchers/  Battle.net, Ubisoft Connect, EA app, Microsoft 365 and Creative Cloud, each installed into its own prefix
   emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
+  modmanagers/  Vortex and Mod Organizer 2: download, adding to a game, and Purge (undoing a manager's deployment and deleting its data for one game)
   lutris/     Lutris library import
   heroic/     Heroic Games Launcher import
   metadata/   Cover art and store metadata fetching

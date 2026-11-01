@@ -31,7 +31,7 @@ Long-running work (scans, downloads, installs, winetricks) is a [job](#jobs): it
 
 Scans, imports, moving games, removing games, removing a source, bulk metadata refreshes, installs, store and tool setup, Humble downloads, runner downloads, winetricks verbs and choosing artwork are jobs. Their own `*.started`, `*.finished` and `*.failed` events are published as well, for clients that follow one thing. The request checks its input as usual (a bad body is still `400`), then answers `202 {"status": "running", "job": "<id>"}` and does the work in the background. Pass `?job=<id>` (letters, digits, `-`, `_`, up to 64) to name the job yourself, so you can listen for it before the reply arrives.
 
-Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork`, `achievements` or `saves`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
+Events: `job.started {id, kind, target, label}`, `job.progress {id, done, total, message}` where the work has steps, then `job.finished {id, kind, target, result}` or `job.failed {id, kind, target, error}`. `result` is what the endpoint describes as its reply; `error` is the usual `{code, message, hint?, fix?}`, or `internal_error` for a bug in mirad. `kind` is `scan`, `import`, `relocate`, `delete`, `remove_source`, `metadata`, `install`, `update`, `setup`, `download`, `runner`, `tricks`, `artwork`, `achievements`, `saves` or `mod_manager`; `target` is the source, game, store, tool or runner it's about, or empty. Installs, runner downloads and tool setups run a few at a time, and winetricks verbs one at a time.
 
 ### `GET /v1/jobs/{id}`
 `{id, kind, target, label, state, progress?, result?, error?}` with `state` `running`, `finished` or `failed`. The last 100 jobs are kept, never dropping one still running; an older one is `404 job_not_found`.
@@ -645,10 +645,18 @@ Downloads the latest release over Mira's copy and adds its source. A [job](#jobs
 ### `POST /v1/games/{id}/mod-managers/{manager}`
 Runs the winetricks verbs it needs in the game's prefix (Vortex: `vcrun2022`, `dotnetdesktop9`; Mod Organizer 2: `vcrun2022`), then adds it as the game's launch option with the manager's id. A job on the winetricks lane, since the verbs can take minutes. `409 not_windows_game` for a game without a prefix, `mod_manager_missing` while it isn't installed.
 
-### `DELETE /v1/games/{id}/mod-managers/{manager}`
-Takes it off the game. Its settings and mods stay in the prefix. Returns the game.
+### `GET /v1/games/{id}/mod-managers/{manager}`
+What removing it from the game would do, to show before asking: `{"deployed", "restored", "deleted": [{"path", "bytes"}], "bytes", "open"}`. `deployed` counts the files it put into the game's folders that would come out, `restored` the game files it set aside that would go back, `deleted` lists its folders that would go with their sizes (`bytes` is their total), and `open` says it's open for the game now. `404 game_not_found`, `mod_manager_not_found`.
 
-Removing the source deletes Mira's copy and takes it off every game.
+### `DELETE /v1/games/{id}/mod-managers/{manager}`
+Undoes what it did for the game, then takes it off. A [job](#jobs) (kind `mod_manager`, target the game) whose result is the game.
+
+- Vortex: every file a `vortex.deployment*.json` record in the game's folders (or in a staging folder, for its other targets) says it deployed comes out while it's still Vortex's: a hard link to the staged copy, or a symlink into the staging folder. A file the user has replaced since stays. Game files Vortex set aside (`*.vortex_backup`) go back unless a file of that name is there again, and folders it made go once only its markers are left. Then its data goes: in the game's own prefix, all of `%APPDATA%\Vortex`; in a prefix other games share, only this game's `%APPDATA%\Vortex\<game>` and `downloads\<game>`, for Vortex's game ids that deploy into the game's folder (none when it never deployed). A staging folder moved elsewhere goes too when it holds Vortex's `__vortex_staging_folder` marker.
+- Mod Organizer 2 deploys nothing into the game's folder. The instance in `%LOCALAPPDATA%\ModOrganizer` whose `gamePath` is the game's folder is deleted, and a portable instance in Mira's copy (`~/.config/mira/tools/mo2`) for this game loses its `ModOrganizer.ini`, mods, downloads, profiles and overwrite. Folders an instance keeps elsewhere stay.
+
+`409 mod_manager_open` (with a `hint`) while it's open for the game, `game_running` or `game_busy` while the game runs or its files change. The job fails with `purge_failed` (with a `hint`) at the first file it can't delete or put back; the manager stays on the game, so removing it again carries on. A tool can't be opened while its game's files change (`409 game_busy`).
+
+Removing the source deletes Mira's copy and takes it off every game, leaving its settings and mods in each prefix.
 
 ## Updates
 
