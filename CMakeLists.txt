@@ -119,7 +119,7 @@ endif()
 # Its glibc 2.36+ calls are answered by cmake/glibc_shims.cpp.
 set_source_files_properties(cmake/glibc_shims.cpp PROPERTIES COMPILE_DEFINITIONS MIRA_NO_GLIBC_SYMVER)
 function(mira_static_runtime target)
-  if(MIRA_STATIC_LIBSTDCXX AND NOT MIRA_ASAN AND NOT MIRA_TSAN)
+  if(MIRA_STATIC_LIBSTDCXX AND NOT MIRA_ASAN AND NOT MIRA_TSAN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(${target} PRIVATE -static-libstdc++ -static-libgcc)
     target_sources(${target} PRIVATE cmake/glibc_shims.cpp)
   endif()
@@ -184,7 +184,9 @@ foreach(icon_size IN ITEMS 16 32 48 64 128 256)
 endforeach()
 
 # The AppImage, .deb and .rpm, built in an Ubuntu 22.04 container (targets appimage, packages); needs docker or podman.
-include(cmake/AppImageContainer.cmake)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  include(cmake/AppImageContainer.cmake)
+endif()
 
 option(MIRA_BUILD_FRONTEND "Build the Qt frontend skeleton if Qt6 is available" ON)
 if(MIRA_BUILD_FRONTEND)
@@ -206,7 +208,9 @@ if(TARGET mira-gui)
   # `cmake --build <preset> --target appimage-host` -> build/<preset>/Mira-x86_64.AppImage, with the host's libraries.
   # Needs mira-gui built (it's the whole point of bundling), so this lives
   # inside the same guard as run-gui above rather than being unconditional.
-  include(cmake/AppImage.cmake)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(cmake/AppImage.cmake)
+  endif()
   if(TARGET appimage-host)
     include(cmake/Packages.cmake)
   endif()

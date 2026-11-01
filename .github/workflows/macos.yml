@@ -1,0 +1,53 @@
+# The macOS port's build and tests on Apple Silicon, with Apple's clang and with Homebrew's LLVM
+# (newer libc++). Folds into ci.yml once the port builds.
+name: macOS
+
+on:
+  push:
+    branches: [macos]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [appleclang, llvm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Packages
+        run: brew install ninja
+
+      - name: Homebrew LLVM
+        if: matrix.compiler == 'llvm'
+        run: |
+          brew install llvm
+          llvm="$(brew --prefix llvm)"
+          echo "CC=$llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$llvm/bin/clang++" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L$llvm/lib/c++ -Wl,-rpath,$llvm/lib/c++ -L$llvm/lib/unwind -lunwind" >> "$GITHUB_ENV"
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.12.0
+          modules: qtmultimedia
+          cache: true
+
+      # -k 0 keeps going past failures, so one run lists every file that doesn't build.
+      - name: Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMIRA_ASAN=ON
+          cmake --build build --target mirad mira mira-run mira-gui mira_tests mira_gui_tests -- -k 0
+
+      - name: Core tests
+        run: ./build/mira_tests
+
+      - name: GUI tests
+        run: QT_QPA_PLATFORM=offscreen ./build/frontend/mira_gui_tests
