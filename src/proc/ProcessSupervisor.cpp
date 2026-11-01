@@ -17,10 +17,12 @@
 
 #include "core/Log.h"
 #include "core/Strings.h"
-#include "proc/Cgroup.h"
 #include "proc/ExitReason.h"
+#include "proc/GameGroup.h"
 #include "proc/ProcessIndex.h"
+#include "proc/Procs.h"
 #include "proc/Session.h"
+#include "proc/Units.h"
 #include "runner/Exec.h"
 
 namespace mira::proc {
@@ -80,38 +82,12 @@ std::set<pid_t> FindSteamProcesses(const std::string& appid) {
   const std::string marker_app = "SteamAppId=" + appid;
   const std::string marker_game = "SteamGameId=" + appid;
 
-  DIR* proc_dir = ::opendir("/proc");
-  if (!proc_dir) return found;
-  while (const dirent* entry = ::readdir(proc_dir)) {
-    const std::string name = entry->d_name;
-    if (name.empty() || !std::isdigit(static_cast<unsigned char>(name[0]))) continue;
-    const pid_t pid = std::atoi(name.c_str());
-
-    std::ifstream environ_file("/proc/" + name + "/environ", std::ios::binary);
-    if (!environ_file) continue;  // gone, or not our own process (permission denied)
-    const std::string environ((std::istreambuf_iterator<char>(environ_file)),
-                              std::istreambuf_iterator<char>());
-    // environ is NUL-separated, not newline-separated -- a plain substring
-    // search still works since neither marker can span a NUL boundary by
-    // construction (both are single "KEY=VALUE" entries).
-    if (environ.find(marker_app) != std::string::npos ||
-        environ.find(marker_game) != std::string::npos) {
-      found.insert(pid);
-    }
+  for (const pid_t pid : AllPids()) {
+    const auto environ = Environ(pid);
+    if (!environ) continue;  // gone, or not our own process
+    if (HasEntry(*environ, marker_app) || HasEntry(*environ, marker_game)) found.insert(pid);
   }
-  ::closedir(proc_dir);
   return found;
-}
-
-// The cgroup mira-run put the game in (its scope's "game" child); nullopt once mira-run is gone.
-std::optional<std::filesystem::path> WrappedGroup(pid_t wrapper_pid) {
-  const auto scope = cgroup::Of(wrapper_pid);
-  if (!scope) return std::nullopt;
-  std::filesystem::path group = cgroup::GameGroup(*scope);
-  std::error_code ec;
-  if (!std::filesystem::is_directory(group, ec))
-    return std::nullopt;  // not a mira-run scope (gone, or a reused pid)
-  return group;
 }
 
 bool AnyAlive(const std::set<pid_t>& pids) {
@@ -300,10 +276,10 @@ Result<void> ProcessSupervisor::Stop(const std::string& game_id, std::int64_t ti
       return Err("stop_failed", std::format("could not signal pid {}", pid));
     }
   } else {
-    // A mira-run game: everything it started is in its cgroup. No cgroup means mira-run is gone.
-    const auto group = WrappedGroup(pid);
+    // A mira-run game: everything it started is in its group. No group means mira-run is gone.
+    const auto group = GameGroup::Of(pid);
     if (!group) return Err("not_running", std::format("\"{}\" is not running", game_id));
-    cgroup::Signal(*group, SIGTERM);
+    group->Signal(SIGTERM);
   }
   {
     std::lock_guard lock(mutex_);
@@ -346,14 +322,6 @@ std::string CompanionPrefix(const std::string& game_id) {
   return "mira-with-" + strings::Slugify(game_id) + ".";
 }
 
-void StopUnits(const std::string& pattern) {
-  Command command;
-  command.argv = {"systemctl", "--user", "stop", "--no-block", pattern};
-  if (auto spawned = runner::SpawnReaped(command); !spawned) {
-    log::Warn("couldn't stop {}: {}", pattern, spawned.error().message);
-  }
-}
-
 }  // namespace
 
 std::string ProcessSupervisor::CompanionUnit(const std::string& game_id,
@@ -392,22 +360,15 @@ std::string ProcessSupervisor::SharedUnit(const std::string& name) const {
 Result<void> ProcessSupervisor::StartShared(const std::string& name, Command command,
                                             int output_fd) {
   const std::string unit = SharedUnit(name);
-  Command active;
-  active.argv = {"systemctl", "--user", "is-active", "--quiet", unit};
-  if (const auto ran = runner::RunAndWait(active); ran && ran->exit_code == 0) return {};
-  command.argv.insert(command.argv.begin(),
-                      {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
-                       "--description", "Mira: " + name, "--"});
+  if (units::Active(unit)) return {};
+  units::Wrap(command, unit, "Mira: " + name);
   return runner::SpawnReaped(command, output_fd);
 }
 
 void ProcessSupervisor::StopShared(const std::string& name) {
   // Waits, so a game started right after doesn't find it still stopping.
-  Command command;
-  command.argv = {"systemctl", "--user", "stop", SharedUnit(name)};
-  command.timeout_s = 15;
-  if (const auto ran = runner::RunAndWait(command); !ran)
-    log::Warn("couldn't stop {}: {}", name, ran.error().message);
+  if (const auto stopped = units::Stop(SharedUnit(name)); !stopped)
+    log::Warn("couldn't stop {}: {}", name, stopped.error().message);
 }
 
 // Stop()'s SIGKILL escalation, for WatchWrapped and WatchReconciledLive: a game that
@@ -420,7 +381,7 @@ void ProcessSupervisor::KillIfOverdue(const std::string& game_id, pid_t wrapper_
     kill_deadlines_.erase(deadline);
   }
   log::Warn("{} ignored SIGTERM; sending SIGKILL", game_id);
-  if (const auto group = WrappedGroup(wrapper_pid)) cgroup::Kill(*group);
+  if (const auto group = GameGroup::Of(wrapper_pid)) group->Kill();
 }
 
 void ProcessSupervisor::WatchWrapped(std::string game_id, pid_t wrapper_pid,
@@ -465,7 +426,7 @@ bool ProcessSupervisor::Forget(const std::string& game_id) {
     kill_deadlines_.erase(game_id);
     requested_stop = stop_requested_.erase(game_id) > 0;
   }
-  StopUnits(CompanionPrefix(game_id) + "*");
+  units::StopPrefix(CompanionPrefix(game_id));
   return requested_stop;
 }
 

@@ -44,6 +44,14 @@ jobs:
           key: ccache-macos-${{ github.sha }}
           restore-keys: ccache-macos-
 
+      # Proton builds are only found next to umu-run; the tests never run it.
+      - name: umu-run stub
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/umu-run"
+          chmod +x "$HOME/.local/bin/umu-run"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       # -k 0 keeps going past failures, so one run lists every file that doesn't build.
       - name: Build
         run: |

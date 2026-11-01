@@ -33,7 +33,9 @@
 #include "library/Relocate.h"
 #include "library/Scanner.h"
 #include "library/SourceRegistry.h"
+#include "proc/Procs.h"
 #include "proc/Session.h"
+#include "proc/Units.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/WindowsTheme.h"
@@ -135,9 +137,7 @@ Result<void> RunPreScriptInline(const std::string& pre_script, int timeout_s) {
 
 // Empty on failure; ResolveSiblingBinary then falls back to PATH.
 std::filesystem::path OwnBinaryDir() {
-  std::error_code ec;
-  const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
-  return ec ? std::filesystem::path() : exe.parent_path();
+  return proc::SelfExe().parent_path();
 }
 
 struct WrapperStatus {
@@ -290,12 +290,8 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
                          const std::string& unit) {
   auto command = PrepareCommand(s, game, OptionProgram(game, option));
   if (!command) return std::unexpected(command.error());
-  if (!unit.empty()) {
-    command->argv.insert(
-        command->argv.begin(),
-        {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
-         "--description", std::format("Mira: {} with {}", option.name, game.name), "--"});
-  }
+  if (!unit.empty())
+    proc::units::Wrap(*command, unit, std::format("Mira: {} with {}", option.name, game.name));
   const std::filesystem::path log = proc::GameLogPath(s.games.Dir(), game.id);
   std::error_code ec;
   std::filesystem::create_directories(log.parent_path(), ec);
@@ -373,11 +369,13 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
                      "mira-run wasn't found next to mirad or on PATH");
   }
 
+#ifdef __linux__
   const auto systemd_run = runner::FindOnPath("systemd-run");
   if (!systemd_run) {
     return SendError(res, 500, "systemd_missing",
                      "launching games needs systemd (systemd-run wasn't found)");
   }
+#endif
 
   const int pre_timeout_s = static_cast<int>(resolver.GetInt("launch.pre_timeout_s"));
   const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game.id);
@@ -414,9 +412,12 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
   }
   wrapped.argv.push_back("--");
   wrapped.argv.insert(wrapped.argv.end(), command.argv.begin(), command.argv.end());
+#ifdef __linux__
+  // A scope of its own, with the game's cgroup delegated to mira-run.
   wrapped.argv.insert(wrapped.argv.begin(),
                       {*systemd_run, "--user", "--scope", "--quiet", "--collect", "-p",
                        "Delegate=yes", "--description", "Mira: " + game.name, "--"});
+#endif
 
   int status_fd = -1;
   auto wrapper_pid = runner::SpawnDetachedWithStatus(wrapped, status_fd);

@@ -25,9 +25,11 @@
 #include "core/Posix.h"
 #include "core/Result.h"
 #include "model/Types.h"
-#include "proc/Cgroup.h"
+#include "proc/GameGroup.h"
 #include "proc/Session.h"
 #include "runner/GameMode.h"
+
+extern char** environ;
 
 using namespace mira;
 
@@ -265,20 +267,15 @@ int main(int argc, char** argv) {
     }
   }
 
-  // The game gets its own child group of mira-run's scope, so WaitEmpty
-  // sees every process it leaves behind.
-  const auto scope = proc::cgroup::Of(::getpid());
-  const std::filesystem::path game_group =
-      scope ? proc::cgroup::GameGroup(*scope) : std::filesystem::path{};
-  if (!scope || !proc::cgroup::Create(game_group)) {
-    const std::string message = "game tracking needs a systemd user session (cgroup v2)";
-    WriteStatus(args.status_fd, std::format("no_cgroup\n{}\n", message));
+  // The game gets a group of its own, so WaitEmpty sees every process it leaves behind.
+  const auto created = proc::GameGroup::Create();
+  if (!created) {
+    WriteStatus(args.status_fd, std::format("no_cgroup\n{}\n", created.error().message));
     if (args.status_fd >= 0) ::close(args.status_fd);
-    std::cerr << "mira-run: " << message << "\n";
+    std::cerr << "mira-run: " << created.error().message << "\n";
     return 1;
   }
-  // Precomputed: the child writes it between fork and exec, where no allocation is safe.
-  const std::string game_procs = (game_group / "cgroup.procs").string();
+  const proc::GameGroup& game_group = *created;
 
   if (!args.pre.empty()) {
     const ScriptResult pre = RunScriptWithTimeout(args.pre, args.pre_timeout_s);
@@ -323,6 +320,12 @@ int main(int argc, char** argv) {
   game_argv.reserve(args.game_argv.size() + 1);
   for (const std::string& a : args.game_argv) game_argv.push_back(const_cast<char*>(a.c_str()));
   game_argv.push_back(nullptr);
+  // Made before fork: the child can't allocate.
+  std::vector<std::string> game_env = game_group.Env();
+  for (char** e = environ; *e != nullptr; ++e) game_env.emplace_back(*e);
+  std::vector<char*> game_envp;
+  for (std::string& entry : game_env) game_envp.push_back(entry.data());
+  game_envp.push_back(nullptr);
 
   // The child reports a failed exec here; a successful exec closes it (O_CLOEXEC) unwritten.
   int report[2];
@@ -338,19 +341,17 @@ int main(int argc, char** argv) {
   if (game_pid == 0) {
     // Join before exec, so nothing the game forks can escape the group. A game that can't join
     // isn't started: outside the group it would be neither tracked nor stoppable.
-    const int procs_fd = ::open(game_procs.c_str(), O_WRONLY | O_CLOEXEC);
-    if (procs_fd < 0 || ::write(procs_fd, "0", 1) != 1) {
+    if (!game_group.JoinFromChild()) {
       const int join_errno = errno;
       [[maybe_unused]] const ssize_t written = ::write(report[1], &join_errno, sizeof(join_errno));
       _exit(127);
     }
-    ::close(procs_fd);
-    // No setpgid: Stop() signals the game's cgroup, not the process group.
+    // No setpgid: Stop() signals the game's group, not the process group.
     if (log_fd >= 0) {
       ::dup2(log_fd, STDOUT_FILENO);
       ::dup2(log_fd, STDERR_FILENO);
     }
-    ::execvp(game_argv[0], game_argv.data());
+    posix::ExecVpe(game_argv[0], game_argv.data(), game_envp.data());
     const int exec_errno = errno;
     [[maybe_unused]] const ssize_t written = ::write(report[1], &exec_errno, sizeof(exec_errno));
     _exit(127);
@@ -394,17 +395,17 @@ int main(int argc, char** argv) {
     waited = ::waitpid(game_pid, &status, 0);
   } while (waited < 0 && errno == EINTR);
 
-  if (proc::cgroup::Populated(game_group)) {
+  if (game_group.Populated()) {
     // A game that exited on its own may have handed off to another process (a launcher starting the
     // real game), so wait for it. One that was killed leaves only helpers that ignore SIGTERM
     // (Wine's services.exe, explorer.exe, ...): give them a moment, then end them.
-    if (WIFSIGNALED(status) && !proc::cgroup::WaitEmpty(game_group, std::chrono::seconds(2))) {
+    if (WIFSIGNALED(status) && !game_group.WaitEmpty(std::chrono::seconds(2))) {
       WriteLogLine(log_fd, "[mira-run] game was killed; ending the processes it left\n");
-      proc::cgroup::Kill(game_group);
+      game_group.Kill();
     } else if (log_fd >= 0) {
       WriteLogLine(log_fd, "[mira-run] game's child processes still running; waiting for them\n");
     }
-    proc::cgroup::WaitEmpty(game_group);
+    game_group.WaitEmpty();
   }
 
   if (args.gamemode) gamemode::UnregisterGame(game_pid);
@@ -440,8 +441,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  std::error_code ec;
-  std::filesystem::remove(game_group, ec);  // best effort: an empty cgroup is a plain rmdir
+  game_group.Remove();
   if (auto written = proc::WriteSessionRecord(args.database, record); !written && log_fd >= 0) {
     WriteLogLine(log_fd,
                  "[mira-run] couldn't record the session: " + written.error().message + "\n");

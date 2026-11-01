@@ -30,6 +30,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "core/TomlJson.h"
+#include "proc/Procs.h"
 #include "setup/Setup.h"
 #include "system/Packages.h"
 
@@ -76,9 +77,8 @@ void StopStartedDaemon() {
 // session of its own, so it outlives this command and a Ctrl-C here.
 pid_t Spawn(const std::string& program, std::vector<std::string> args, bool detach) {
   std::error_code ec;
-  const std::filesystem::path sibling =
-      std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / program;
-  const std::string exe = !ec && std::filesystem::exists(sibling, ec) ? sibling.string() : program;
+  const std::filesystem::path sibling = mira::proc::SelfExe().parent_path() / program;
+  const std::string exe = std::filesystem::exists(sibling, ec) ? sibling.string() : program;
   const pid_t pid = ::fork();
   if (pid != 0) return pid;
   if (detach) ::setsid();
@@ -2113,7 +2113,7 @@ int CmdSetup(int argc, char** argv) {
     std::fprintf(stderr, "mira: run this from the AppImage: ./Mira-x86_64.AppImage setup\n");
     return 1;
   }
-  const std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe");
+  const std::filesystem::path self = mira::proc::SelfExe();
   const std::filesystem::path icon =
       self.parent_path().parent_path() / "share/icons/hicolor/256x256/apps/mira.png";
 

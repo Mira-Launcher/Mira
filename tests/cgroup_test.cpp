@@ -1,3 +1,4 @@
+#ifdef __linux__
 #include "proc/Cgroup.h"
 
 #include <doctest.h>
@@ -74,3 +75,5 @@ TEST_CASE("mira-run keeps its session open while the game's background child run
   REQUIRE(sessions.size() == 1);
   CHECK(sessions[0].duration_seconds >= 2);
 }
+
+#endif
