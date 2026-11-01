@@ -15,12 +15,18 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
+    env:
+      # Without these ccache skips every file built with the precompiled headers.
+      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - uses: actions/checkout@v4
 
       - name: Packages
         run: |
-          brew install ninja llvm
+          brew install ninja llvm ccache
           llvm="$(brew --prefix llvm)"
           echo "CC=$llvm/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$llvm/bin/clang++" >> "$GITHUB_ENV"
@@ -32,11 +38,19 @@ jobs:
           modules: qtmultimedia
           cache: true
 
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
       # -k 0 keeps going past failures, so one run lists every file that doesn't build.
       - name: Build
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMIRA_ASAN=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMIRA_ASAN=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build --target mirad mira mira-run mira-gui mira_tests mira_gui_tests -- -k 0
+          ccache -s
 
       - name: Core tests
         run: ./build/mira_tests
