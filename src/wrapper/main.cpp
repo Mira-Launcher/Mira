@@ -22,6 +22,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/Posix.h"
 #include "core/Result.h"
 #include "model/Types.h"
 #include "proc/Cgroup.h"
@@ -132,7 +133,7 @@ struct ScriptResult {
 ScriptResult RunScriptWithTimeout(const std::string& script, int timeout_s) {
   ScriptResult result;
   int pipe_fds[2];
-  if (::pipe2(pipe_fds, O_CLOEXEC) != 0) return result;
+  if (posix::Pipe(pipe_fds) != 0) return result;
 
   const pid_t pid = fork();
   if (pid < 0) {
@@ -325,7 +326,7 @@ int main(int argc, char** argv) {
 
   // The child reports a failed exec here; a successful exec closes it (O_CLOEXEC) unwritten.
   int report[2];
-  if (::pipe2(report, O_CLOEXEC) != 0) {
+  if (posix::Pipe(report) != 0) {
     WriteStatus(args.status_fd, std::format("exec_failed\n{}\n", std::strerror(errno)));
     return 1;
   }
@@ -383,7 +384,7 @@ int main(int argc, char** argv) {
   // A stray signal must not lose the session record.
   struct sigaction sa{};
   sa.sa_handler = SIG_IGN;
-  ::sigemptyset(&sa.sa_mask);
+  sigemptyset(&sa.sa_mask);
   ::sigaction(SIGTERM, &sa, nullptr);
   ::sigaction(SIGINT, &sa, nullptr);
 

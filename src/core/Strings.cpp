@@ -304,4 +304,29 @@ std::string EscapeUrl(std::string_view url) {
   return out;
 }
 
+int CompareVersions(std::string_view a, std::string_view b) {
+  const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+  size_t i = 0, j = 0;
+  while (i < a.size() && j < b.size()) {
+    if (digit(a[i]) && digit(b[j])) {
+      while (i < a.size() && a[i] == '0') ++i;
+      while (j < b.size() && b[j] == '0') ++j;
+      const size_t start_a = i, start_b = j;
+      while (i < a.size() && digit(a[i])) ++i;
+      while (j < b.size() && digit(b[j])) ++j;
+      const std::string_view run_a = a.substr(start_a, i - start_a);
+      const std::string_view run_b = b.substr(start_b, j - start_b);
+      if (run_a.size() != run_b.size()) return run_a.size() < run_b.size() ? -1 : 1;
+      if (const int order = run_a.compare(run_b); order != 0) return order;
+    } else {
+      if (a[i] != b[j])
+        return static_cast<unsigned char>(a[i]) < static_cast<unsigned char>(b[j]) ? -1 : 1;
+      ++i;
+      ++j;
+    }
+  }
+  if (i < a.size()) return 1;
+  return j < b.size() ? -1 : 0;
+}
+
 }  // namespace mira::strings

@@ -10,6 +10,7 @@
 #include <sstream>
 
 #include "core/Log.h"
+#include "core/Strings.h"
 #include "emulators/Emulators.h"
 #include "library/Stores.h"
 #include "runner/Downloader.h"
@@ -60,7 +61,7 @@ std::optional<Update> MiraUpdate() {
     log::Warn("couldn't check for a Mira update: {}", latest.error().message);
     return std::nullopt;
   }
-  if (strverscmp(WithoutV(latest->tag).c_str(), MIRA_VERSION) <= 0) return std::nullopt;
+  if (strings::CompareVersions(WithoutV(latest->tag), MIRA_VERSION) <= 0) return std::nullopt;
   return Update{
       .kind = "mira",
       .id = "mira",

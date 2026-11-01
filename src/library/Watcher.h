@@ -9,6 +9,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
+#include "library/DirEvents.h"
 #include "library/Drops.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
@@ -24,18 +25,17 @@ void CreateMissingRoots(const config::Config& config);
 // Watches every enabled library root and rescans automatically: "drop a
 // folder in and it's picked up" without running `mira scan` by hand.
 //
-// One inotify watch per root and per sorting folder in it (.hidden, a folder
+// One watch per root and per sorting folder in it (.hidden, a folder
 // tag's folder), non-recursive. A new directory is debounced
 // (rescanned once its size is unchanged for `scan.debounce_ms`) rather than
-// scanned mid-copy. epoll_wait blocks with no timeout except while a
-// directory is being watched for size stability.
+// scanned mid-copy. It waits with no timeout except while a directory is
+// being watched for size stability.
 //
-// Runs on its own thread (Run() blocks); Stop() unblocks it via an eventfd,
-// safe to call from any other thread.
+// Runs on its own thread (Run() blocks); Stop() unblocks it, safe to call
+// from any other thread.
 class Watcher {
  public:
   Watcher(config::Config& config, store::GameStore& games, api::EventBus& events);
-  ~Watcher();
   Watcher(const Watcher&) = delete;
   Watcher& operator=(const Watcher&) = delete;
 
@@ -70,7 +70,7 @@ class Watcher {
     bool drop = false;        // dropped into a Mira folder: sorted on settle
   };
 
-  void HandleInotify();
+  void HandleChanges(const std::vector<DirEvents::Change>& changes);
   void HandleDebounceTick();
   void ScheduleCheck(const std::filesystem::path& root, const std::filesystem::path& path,
                      bool is_archive, const std::string& emulator = {}, bool drop = false);
@@ -99,11 +99,7 @@ class Watcher {
   UnclearMoves* unclear_moves_ = nullptr;
   Drops* drops_ = nullptr;
 
-  int inotify_fd_ = -1;
-  int epoll_fd_ = -1;
-  int timer_fd_ = -1;
-  int stop_fd_ = -1;
-  int reload_fd_ = -1;
+  DirEvents dir_events_;
   int settings_wd_ = -1;  // settings.toml's folder
   std::function<void()> on_settings_saved_;
 
@@ -113,7 +109,7 @@ class Watcher {
     std::string emulator = {};  // an emulator's games folder, not a library root
     bool mira_folder = false;   // a Mira folder's top, whose new entries are sorted
   };
-  std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
+  std::map<int, Watched> watches_;  // watch descriptor -> what it watches
   std::atomic<int> roots_watched_{0};
   std::map<std::string, Pending> pending_;  // absolute dir path -> debounce state
 };

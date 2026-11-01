@@ -1,9 +1,11 @@
 #include "GameKeyboard.h"
 
+#ifdef __linux__
 #include <fcntl.h>
 #include <linux/uinput.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#endif
 
 #include <QGuiApplication>
 #include <QPainter>
@@ -13,6 +15,7 @@
 
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
+#include "KeyCodes.h"
 
 namespace mira_gui::bigscreen {
 namespace {
@@ -20,6 +23,7 @@ namespace {
 constexpr int kShift = -1;
 constexpr int kClose = -2;
 
+#ifdef __linux__
 bool Emit(int fd, int type, int code, int value) {
   input_event event{};
   event.type = std::uint16_t(type);
@@ -27,6 +31,13 @@ bool Emit(int fd, int type, int code, int value) {
   event.value = value;
   return ::write(fd, &event, sizeof(event)) == ssize_t(sizeof(event));
 }
+#else
+// No virtual keyboard yet: EnsureDevice() fails first, so nothing is sent.
+enum { EV_SYN, EV_KEY, SYN_REPORT = 0 };
+bool Emit(int, int, int, int) {
+  return false;
+}
+#endif
 
 }  // namespace
 
@@ -59,14 +70,20 @@ GameKeyboard::GameKeyboard(BigScreenWindow* window)
 }
 
 GameKeyboard::~GameKeyboard() {
+#ifdef __linux__
   if (fd_ >= 0) {
     ioctl(fd_, UI_DEV_DESTROY);
     ::close(fd_);
   }
+#endif
 }
 
 bool GameKeyboard::EnsureDevice(QString* error) {
   if (fd_ >= 0) return true;
+#ifndef __linux__
+  *error = "Typing into games isn't supported on this system yet.";
+  return false;
+#else
   const int fd = ::open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
   if (fd < 0) {
     *error = "Typing into games needs access to /dev/uinput.";
@@ -96,6 +113,7 @@ bool GameKeyboard::EnsureDevice(QString* error) {
   }
   fd_ = fd;
   return true;
+#endif
 }
 
 bool GameKeyboard::Open(QString* error) {

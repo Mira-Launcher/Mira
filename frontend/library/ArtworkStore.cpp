@@ -1,6 +1,8 @@
 #include "ArtworkStore.h"
 
+#ifdef __GLIBC__
 #include <malloc.h>
+#endif
 
 #include <QBuffer>
 #include <QImage>
@@ -241,7 +243,9 @@ void ArtworkStore::Release() {
   QPixmapCache::clear();
   // Once the pages closed for the tray are deleted and in-flight decodes have landed. The images
   // were decoded on worker threads, so most of the memory is in their malloc arenas.
+#ifdef __GLIBC__
   QTimer::singleShot(2000, [] { malloc_trim(0); });
+#endif
 }
 
 void ArtworkStore::Restore() {

@@ -1,6 +1,8 @@
 #include "core/Lane.h"
 
+#ifdef __GLIBC__
 #include <malloc.h>
+#endif
 
 #include <chrono>
 #include <exception>
@@ -74,7 +76,9 @@ void Lane::Work(std::stop_token stop, Worker* self) {
       --live_;
       lock.unlock();
       // Quiet for a while: hand what the work freed back to the system.
+#ifdef __GLIBC__
       malloc_trim(0);
+#endif
       return;
     }
     std::function<void()> task = std::move(queue_.front());

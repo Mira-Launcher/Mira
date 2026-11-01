@@ -32,6 +32,12 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# macOS builds with Homebrew's LLVM, whose libc++ has std::jthread, and ship that libc++ in the app,
+# so the system libc++'s "introduced in macOS N" limits don't apply.
+if(APPLE AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  add_compile_definitions(_LIBCPP_DISABLE_AVAILABILITY)
+endif()
+
 add_library(mira_glibc_compat INTERFACE)
 if(MIRA_GLIBC_COMPAT AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_options(mira_glibc_compat INTERFACE
@@ -95,6 +101,10 @@ add_library(mira_core STATIC ${MIRA_CORE_SOURCES})
 target_include_directories(mira_core PUBLIC src)
 target_link_libraries(mira_core PRIVATE mira_flags mira_sqlite mira_stb)
 target_link_libraries(mira_core PUBLIC mira_third_party mira_glibc_compat Threads::Threads ${CMAKE_DL_LIBS})
+if(APPLE)
+  # FSEvents, for the library watcher.
+  target_link_libraries(mira_core PUBLIC "-framework CoreServices")
+endif()
 
 option(MIRA_PCH "Precompile the common headers" ON)
 

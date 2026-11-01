@@ -1,7 +1,5 @@
 #include "BigScreenWindow.h"
 
-#include <linux/input-event-codes.h>
-
 #include <QApplication>
 #include <QDateTime>
 #include <QDir>
@@ -37,6 +35,7 @@
 #include "GamepadInput.h"
 #include "HeroBackground.h"
 #include "HomePage.h"
+#include "KeyCodes.h"
 #include "Notice.h"
 #include "QuickSettings.h"
 #include "Screenshots.h"
