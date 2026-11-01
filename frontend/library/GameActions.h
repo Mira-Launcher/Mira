@@ -23,13 +23,30 @@ struct GameSummary;
 // exists once.
 namespace mira_gui::actions {
 
+// A window that asks which saves a game starts with when they changed both here and in its
+// store's cloud. `chosen` gets "keep_local", "use_cloud" or "skip", or "" when the player
+// cancelled.
+class SavesChooser {
+ public:
+  virtual ~SavesChooser() = default;
+  virtual void ChooseSaves(const std::string& id,
+                           std::function<void(std::string choice)> chosen) = 0;
+};
+
 // POST /v1/games/{id}/launch. `on_launched(tracked)` runs only on success.
 // `tracked` is false when mirad handed the game to Steam rather than
 // spawning it: no game.state event is coming, so a caller must not record
 // it as running.
 // `option` names one of its launch options; empty for what Play starts.
+// A cloud save conflict asks `parent`'s window when it's a SavesChooser and launches again with
+// the answer; the launch counts as under way until then.
 void Launch(QWidget* parent, const std::string& id, const std::string& option,
-            std::function<void(bool tracked)> on_launched, std::function<void()> on_failed = {});
+            std::function<void(bool tracked)> on_launched, std::function<void()> on_failed = {},
+            const std::string& saves = {});
+
+// Whether a launch of `id` from this app is waiting for mirad or for a saves choice, so a
+// notification about it isn't shown on top.
+bool LaunchUnderWay(const std::string& id);
 
 // Starts what Play starts through `launch`, or with more than one choice or Ctrl held, asks with a
 // menu at the cursor first. A tool picked there opens untracked.

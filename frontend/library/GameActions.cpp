@@ -4,6 +4,7 @@
 #include <QDesktopServices>
 #include <QGuiApplication>
 #include <QMenu>
+#include <QPointer>
 #include <QStringList>
 #include <QUrl>
 #include <QWidget>
@@ -48,14 +49,41 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
                         failures.front().error);
 }
 
+// Launches from this app still waiting for mirad or a saves choice, by game.
+std::map<std::string, int>& LaunchesUnderWay() {
+  static std::map<std::string, int> launches;
+  return launches;
+}
+
 }  // namespace
 
 void Launch(QWidget* parent, const std::string& id, const std::string& option,
-            std::function<void(bool tracked)> on_launched, std::function<void()> on_failed) {
-  // mirad holds the request while the game's saves are backed up; the tile shows that from
-  // game.saves_activity.
+            std::function<void(bool tracked)> on_launched, std::function<void()> on_failed,
+            const std::string& saves) {
+  ++LaunchesUnderWay()[id];
+  const auto done = [id] {
+    if (--LaunchesUnderWay()[id] == 0) LaunchesUnderWay().erase(id);
+  };
+  // mirad holds the request while the game's saves are backed up or synced; the tile shows that
+  // from game.saves_activity.
   api::LaunchGameAsync(
-      parent, id, option, [parent, id, on_launched, on_failed](LaunchResult result) {
+      parent, id, option, saves,
+      [parent, id, option, on_launched, on_failed, saves, done](LaunchResult result) {
+        auto* chooser = dynamic_cast<SavesChooser*>(parent->window());
+        if (!result.ok && result.error.code == "saves_conflict" && saves.empty() &&
+            chooser != nullptr) {
+          chooser->ChooseSaves(id, [parent = QPointer<QWidget>(parent), id, option, on_launched,
+                                    on_failed, done](const std::string& choice) {
+            done();
+            if (choice.empty() || parent.isNull()) {
+              if (on_failed) on_failed();
+              return;
+            }
+            Launch(parent, id, option, on_launched, on_failed, choice);
+          });
+          return;
+        }
+        done();
         if (!result.ok) {
           if (on_failed) on_failed();
           notify::FailedRequest(parent, "Could not launch the game.", result.error);
@@ -63,6 +91,10 @@ void Launch(QWidget* parent, const std::string& id, const std::string& option,
         }
         if (on_launched) on_launched(result.tracked);
       });
+}
+
+bool LaunchUnderWay(const std::string& id) {
+  return LaunchesUnderWay().contains(id);
 }
 
 void ChoosePlay(QWidget* parent, const GameSummary& game,

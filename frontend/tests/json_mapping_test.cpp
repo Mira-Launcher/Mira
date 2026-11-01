@@ -270,7 +270,7 @@ TEST_CASE("Play offers the default launch option first, and only it when asked")
   CHECK(PlayChoices(game, true).size() == 2);
 }
 
-TEST_CASE("ToSaves reads a game's backups and locations, null entry and all") {
+TEST_CASE("ToSaves reads a game's backups, locations and cloud, null entry and all") {
   const SavesResult saves = mapping::ToSaves(json::parse(R"({
     "enabled": true, "status": "kept", "entry": null, "match": null,
     "locations": [{"pattern": "<base>/Saved", "path": "/games/fir/Saved", "files": 3,
@@ -279,7 +279,9 @@ TEST_CASE("ToSaves reads a game's backups and locations, null entry and all") {
                    "skipped": [], "problem": "too_broad"}],
     "snapshots": [{"id": "20261021T143005Z", "taken_at": 1792593005, "reason": "after_play",
                    "files": 3, "bytes": 4096}],
-    "last_error": {"code": "saves_too_large", "message": "too big", "at": 1792593000}})"));
+    "last_error": {"code": "saves_too_large", "message": "too big", "at": 1792593000},
+    "cloud": {"store": "GOG", "state": "conflict", "synced_at": 10, "checked_at": 20,
+              "local_at": 30, "cloud_at": 40, "files": 3, "bytes": 4096, "locations": []}})"));
   CHECK(saves.enabled);
   CHECK(saves.status == "kept");
   CHECK(saves.entry.empty());
@@ -292,9 +294,15 @@ TEST_CASE("ToSaves reads a game's backups and locations, null entry and all") {
   CHECK(saves.snapshots[0].reason == "after_play");
   REQUIRE(saves.last_error);
   CHECK(saves.last_error->code == "saves_too_large");
+  REQUIRE(saves.cloud);
+  CHECK(saves.cloud->state == "conflict");
+  CHECK(saves.cloud->local_at == 30);
+  CHECK(saves.cloud->cloud_at == 40);
 
-  // Nothing failed.
-  const SavesResult plain = mapping::ToSaves(json::parse(R"({"status": "no_entry"})"));
+  // A game of another store has no cloud, and nothing failed.
+  const SavesResult plain =
+      mapping::ToSaves(json::parse(R"({"status": "no_entry", "cloud": null})"));
+  CHECK_FALSE(plain.cloud);
   CHECK_FALSE(plain.last_error);
   CHECK(plain.snapshots.empty());
 }

@@ -200,6 +200,9 @@ bool ParseNotification(const std::string& data, NotificationEvent* out) {
   out->message = payload.value("message", std::string());
   if (out->message.empty()) return false;
   out->level = payload.value("level", std::string("info"));
+  out->persistent = payload.value("persistent", false);
+  out->id = payload.value("id", std::string());
+  out->error = payload.contains("code") ? mapping::ToApiError(payload) : ApiError();
   return true;
 }
 

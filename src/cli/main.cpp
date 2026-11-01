@@ -144,6 +144,14 @@ std::string FixCommand(const json& fix) {
   return "";
 }
 
+// An error response's code, or "".
+std::string ErrorCode(const httplib::Result& res) {
+  if (!res) return "";
+  const json body = json::parse(res->body, nullptr, false);
+  const json error = body.is_object() ? body.value("error", json::object()) : json::object();
+  return error.is_object() ? error.value("code", std::string()) : "";
+}
+
 void PrintError(const httplib::Result& res) {
   if (res) {
     const json body = json::parse(res->body, nullptr, false);
@@ -466,18 +474,37 @@ int CmdRunners(int argc, char** argv) {
 }
 
 int CmdLaunch(int argc, char** argv) {
+  constexpr const char* kUsage =
+      "usage: mira launch <id> [--saves keep_local|use_cloud|skip] [file...]\n";
   if (argc < 1) {
-    std::fprintf(stderr, "usage: mira launch <id> [file...]\n");
+    std::fprintf(stderr, "%s", kUsage);
     return 2;
   }
+  json body = json::object();
   json files = json::array();
-  for (int i = 1; i < argc; ++i) files.push_back(std::filesystem::absolute(argv[i]).string());
+  for (int i = 1; i < argc; ++i) {
+    if (std::string_view(argv[i]) == "--saves") {
+      if (i + 1 >= argc) {
+        std::fprintf(stderr, "%s", kUsage);
+        return 2;
+      }
+      body["saves"] = argv[++i];
+      continue;
+    }
+    files.push_back(std::filesystem::absolute(argv[i]).string());
+  }
+  if (!files.empty()) body["files"] = files;
   auto client = Connect();
   auto res = client.Post(std::format("/v1/games/{}/launch", Seg(argv[0])),
-                         files.empty() ? std::string() : json{{"files", files}}.dump(),
-                         "application/json");
+                         body.empty() ? std::string() : body.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
+    if (ErrorCode(res) == "saves_conflict")
+      std::fprintf(stderr,
+                   "Start it with the saves on this computer (uploading them), with the cloud's, "
+                   "or without syncing:\n  mira launch %s --saves keep_local\n  mira launch %s "
+                   "--saves use_cloud\n  mira launch %s --saves skip\n",
+                   argv[0], argv[0], argv[0]);
     return 1;
   }
   std::puts("running");
@@ -1284,7 +1311,8 @@ int CmdSaves(int argc, char** argv) {
   const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
   if (!game && !((what == "manifest" && (argc == 1 || update)) ||
                  ((what == "search" || what == "backup") && argc == 2) ||
-                 ((what == "restore" || what == "delete" || what == "pin" || what == "unpin") &&
+                 ((what == "restore" || what == "delete" || what == "pin" || what == "unpin" ||
+                   what == "cloud") &&
                   argc == 3) ||
                  (what == "folder" && argc == 4 &&
                   (std::string_view(argv[2]) == "add" || std::string_view(argv[2]) == "remove")))) {
@@ -1302,6 +1330,9 @@ int CmdSaves(int argc, char** argv) {
         "  adds a file or folder the game keeps saves in, or takes one out by its pattern.\n"
         "usage: mira saves pin|unpin <id> <backup>\n"
         "  keeps a backup however many newer ones are taken, or lets it go again.\n"
+        "usage: mira saves cloud <id> check|sync|download|upload\n"
+        "  a GOG or Epic game's cloud saves: compare, sync the way they're behind, or\n"
+        "  replace one side with the other (backing up first).\n"
         "usage: mira saves manifest [--update]\n"
         "  where the list of save locations comes from and when it was checked;\n"
         "  --update checks it now.\n"
@@ -1335,6 +1366,12 @@ int CmdSaves(int argc, char** argv) {
     }
     if (const json failure = saves.value("last_error", json()); failure.is_object())
       std::printf("last backup failed: %s\n", failure.value("message", std::string()).c_str());
+    if (const json cloud = saves.value("cloud", json()); cloud.is_object()) {
+      const std::string reason = cloud.value("reason", std::string());
+      std::printf("%s cloud: %s%s\n", cloud.value("store", std::string()).c_str(),
+                  cloud.value("state", std::string()).c_str(),
+                  reason.empty() ? "" : std::format(" ({})", reason).c_str());
+    }
     const json snapshots = saves.value("snapshots", json::array());
     if (!snapshots.empty()) std::printf("backups:\n");
     for (const json& snapshot : snapshots) {
@@ -1367,6 +1404,23 @@ int CmdSaves(int argc, char** argv) {
       std::printf("; undo with: mira saves restore %s %s", argv[1],
                   result["undo"].get<std::string>().c_str());
     std::printf("\n");
+    return 0;
+  }
+  if (what == "cloud") {
+    json result;
+    if (!AwaitJob(client,
+                  client.Post(std::format("/v1/games/{}/saves/cloud", Seg(argv[1])),
+                              json{{"action", argv[2]}}.dump(), "application/json"),
+                  result))
+      return 1;
+    std::printf("%s\n", result.value("state", std::string()).c_str());
+    for (const json& location : result.value("locations", json::array())) {
+      const std::string moved = location.value("moved", std::string());
+      std::printf("  %s  %s%s\n    %s\n", location.value("name", std::string()).c_str(),
+                  location.value("state", std::string()).c_str(),
+                  moved.empty() ? "" : std::format(" ({}ed)", moved).c_str(),
+                  location.value("path", std::string()).c_str());
+    }
     return 0;
   }
   if (what == "folder") {
@@ -2103,8 +2157,10 @@ void PrintUsage() {
       "  runners download --kind K --tag TAG [--source ID]   download and install one\n"
       "  runners updates | update <kind:name>     list or install newer builds\n"
       "  runners tools [install umu|winetricks]   check or install runner helpers\n"
-      "  launch <id>            launch a game (or hand it to Steam for a\n"
-      "                         Steam game, depending on steam.launch_mode)\n"
+      "  launch <id> [--saves keep_local|use_cloud|skip]\n"
+      "                         launch a game (or hand it to Steam for a\n"
+      "                         Steam game, depending on steam.launch_mode);\n"
+      "                         --saves settles a cloud save conflict\n"
       "  stop <id>              stop a running game\n"
       "  open-url <url>         open a sign-in link in the app it belongs to\n"
       "  run <id> --exe PATH [--args ARGS]        run an arbitrary exe in this\n"
@@ -2145,6 +2201,7 @@ void PrintUsage() {
       "  saves restore|delete <id> <backup>   put a backup's files back, or delete it\n"
       "  saves folder <id> add|remove <path>   a folder the game keeps saves in\n"
       "  saves pin|unpin <id> <backup>   keep a backup past saves.keep, or let it go\n"
+      "  saves cloud <id> check|sync|download|upload   a GOG or Epic game's cloud saves\n"
       "  saves manifest [--update] | search <name>   the list of where games keep saves\n"
       "  tricks <id> <verb>     run a winetricks verb against this game's prefix\n"
       "  config get|set|list|reset [args...]\n"

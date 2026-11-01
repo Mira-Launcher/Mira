@@ -16,7 +16,7 @@ namespace mira_gui {
 class SettingsCard;
 
 // The game card's Saves page: its backups, newest first, with Restore and Delete; where its saves
-// are; and its saves settings.
+// are; for a GOG or Epic game, how they stand with the store's cloud; and its saves settings.
 // Restoring backs up what's there first, so it offers Undo rather than asking.
 class SavesPage : public QWidget {
   Q_OBJECT
@@ -41,14 +41,16 @@ class SavesPage : public QWidget {
   void Arrange();
   void FillBackups();
   void FillWhere();
+  void FillCloud();
   void LoadSettings();
   void BackUp();
   void Restore(const SaveSnapshot& snapshot);
   void Delete(const SaveSnapshot& snapshot);
   void Pin(const SaveSnapshot& snapshot);
+  void Sync(const std::string& action);
   void AddFolder();
   void RemoveFolder(const std::string& pattern);
-  // Whether a backup or restore from here is running, which disables the others.
+  // Whether a backup, restore or sync from here is running, which disables the others.
   void SetBusy(bool busy);
   bool Busy() const { return busy_ || !doing_.empty(); }
   // Moves focus off the page's buttons before they're disabled or rebuilt.
@@ -73,6 +75,7 @@ class SavesPage : public QWidget {
   int columns_ = 0;
   SettingsCard* backups_ = nullptr;
   SettingsCard* where_ = nullptr;
+  SettingsCard* cloud_ = nullptr;
   SettingsCard* settings_ = nullptr;
 };
 

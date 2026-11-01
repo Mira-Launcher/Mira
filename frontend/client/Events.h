@@ -70,7 +70,8 @@ bool ParseArtCandidatesEvent(const std::string& data, ArtCandidatesEvent* out);
 // Parses a `game.artwork_thumbs_ready` payload.
 bool ParseArtThumbsEvent(const std::string& data, ArtThumbsEvent* out);
 
-// Parses a `notification` payload (`{"level": "...", "message": "..."}`).
+// Parses a `notification` payload (`{"level", "message", "persistent"?, "id"?}`, plus an error's
+// `code`, `error`, `hint` and `fix` when one is behind it).
 // False if `data` is not a JSON object with a message.
 bool ParseNotification(const std::string& data, NotificationEvent* out);
 

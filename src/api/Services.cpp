@@ -1042,32 +1042,111 @@ Result<json> Services::RestoreSaves(const std::string& id, const std::string& sn
               {"undo", before ? (*before)["snapshot"]["id"] : json(nullptr)}};
 }
 
-void Services::SavesBeforeLaunch(const model::Game& game) {
-  // A first backup, so even the first session can be undone. Looked at once a run: a game with
-  // none found then gets its first backup after play, and the survey would slow every launch.
+Result<json> Services::SyncCloudSaves(const std::string& id, saves::CloudAction action) {
+  const auto claim = Claim(id, "saves");
+  if (!claim) return std::unexpected(claim.error());
+  const auto game = games.Find(id);
+  if (!game) return Err("game_not_found", "no such game");
+  return SyncCloud(*game, action, [] { return Result<void>(); });
+}
+
+Result<json> Services::SyncCloud(const model::Game& game, saves::CloudAction action,
+                                 const std::function<Result<void>()>& before_download) {
+  const SavesWork work(*this, game.id, "syncing");
+  auto synced = saves::RunCloud(config, games.Metadata(), games, game, action, [&] {
+    if (auto ready = before_download(); !ready) return ready;
+    auto taken = saves::TakeSnapshot(config, game, saves::SurveyFor(config, games.Metadata(), game),
+                                     saves::kBeforeCloudDownload);
+    if (!taken && taken.error().code != "saves_not_found")
+      return Result<void>(std::unexpected(taken.error()));
+    return Result<void>();
+  });
+  events.Publish("game.saves_changed", {{"id", game.id}});
+  return synced;
+}
+
+bool Services::CloudSyncs(const model::Game& game) const {
+  return saves::CloudFor(game) != nullptr &&
+         config::Resolver(config, game.overrides).GetBool("saves.cloud") &&
+         !saves::KnownUnsupported(games.Metadata(), game);
+}
+
+Result<void> Services::SavesBeforeLaunch(const model::Game& game, std::string_view choice) {
+  if (CloudSyncs(game) && choice != "skip") {
+    if (auto synced = SyncBeforeLaunch(game, choice); !synced) return synced;
+  }
+  // A first backup, so even the first session can be undone; after the sync, which tells where
+  // the cloud's saves go. Looked at once a run: a game with none found then gets its first
+  // backup after play, and the survey would slow every launch.
   bool looked = false;
   {
     const std::lock_guard lock(first_backups_mutex_);
     looked = !first_backups_.insert(game.id).second;
   }
-  if (looked || !saves::PlanFor(config, game, std::nullopt).backup ||
-      !saves::ListSnapshots(saves::GameBackups(config, game.id)).empty())
-    return;
-  const saves::Survey survey = saves::SurveyFor(config, games.Metadata(), game);
-  if (!survey.plan.backup) return;
-  const SavesWork work(*this, game.id, "backing_up");
-  if (auto taken = saves::TakeSnapshot(config, game, survey, saves::kFirst);
-      taken && taken->value("taken", false))
-    events.Publish("game.saves_changed", {{"id", game.id}});
-  else if (!taken && taken.error().code != "saves_not_found")
-    log::Warn("couldn't back up {}'s saves before playing: {}", game.id, taken.error().message);
+  if (!looked && saves::PlanFor(config, game, std::nullopt).backup &&
+      saves::ListSnapshots(saves::GameBackups(config, game.id)).empty()) {
+    const saves::Survey survey = saves::SurveyFor(config, games.Metadata(), game);
+    if (survey.plan.backup) {
+      const SavesWork work(*this, game.id, "backing_up");
+      if (auto taken = saves::TakeSnapshot(config, game, survey, saves::kFirst);
+          taken && taken->value("taken", false))
+        events.Publish("game.saves_changed", {{"id", game.id}});
+      else if (!taken && taken.error().code != "saves_not_found")
+        log::Warn("couldn't back up {}'s saves before playing: {}", game.id, taken.error().message);
+    }
+  }
+  return {};
+}
+
+Result<void> Services::SyncBeforeLaunch(const model::Game& game, std::string_view choice) {
+  // The cloud gets saves.cloud_timeout_s, then the game starts with the saves here. A download
+  // under way is let finish, since stopping it would leave the saves half replaced.
+  const auto timeout = std::chrono::seconds(config.GetInt("saves.cloud_timeout_s"));
+  std::stop_source expired;
+  std::mutex mutex;
+  bool moving = false;
+  std::jthread timer([&](std::stop_token done) {
+    std::condition_variable_any wake;
+    std::unique_lock lock(mutex);
+    wake.wait_for(lock, done, timeout, [] { return false; });
+    if (!done.stop_requested() && !moving) expired.request_stop();
+  });
+  const auto started = std::chrono::steady_clock::now();
+  const saves::CloudAction action = choice == "keep_local"  ? saves::CloudAction::Upload
+                                    : choice == "use_cloud" ? saves::CloudAction::Download
+                                                            : saves::CloudAction::Sync;
+  Result<json> synced = Err("cancelled", "the cloud took too long");
+  RunCancellable(expired.get_token(), [&] {
+    synced = SyncCloud(game, action, [&]() -> Result<void> {
+      const std::lock_guard lock(mutex);
+      if (expired.stop_requested()) return Err("cancelled", "the cloud took too long");
+      moving = true;
+      return {};
+    });
+  });
+  timer.request_stop();
+  const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - started);
+  if (synced) {
+    log::Info("synced {}'s cloud saves before playing in {} ms", game.id, took.count());
+    return {};
+  }
+  if (synced.error().code == "saves_conflict") {
+    NotifySavesConflict(game, synced.error(), "since they were last in sync");
+    return std::unexpected(synced.error());
+  }
+  log::Warn(
+      "starting {} with the saves on this computer after {} ms: {}", game.id, took.count(),
+      expired.stop_requested() ? std::string("the cloud took too long") : synced.error().message);
+  return {};
 }
 
 void Services::SavesAfterPlay(const std::string& id, std::function<void()> then) {
   const auto game = games.Find(id);
-  if (!game || !saves::PlanFor(config, *game, std::nullopt).backup) return then();
-  // Shown from the game's exit, so a client never sees it idle while the work waits its turn on
-  // the lane.
+  if (!game || (!saves::PlanFor(config, *game, std::nullopt).backup && !CloudSyncs(*game)))
+    return then();
+  // One stretch of work from the game's exit through the sync, so a client never sees it idle
+  // between, even while the work waits its turn on the lane.
   auto work = std::make_shared<const SavesWork>(*this, id, "backing_up");
   saves.Post([this, id, then = std::move(then), work = std::move(work)]() mutable {
     struct Finally {
@@ -1078,7 +1157,25 @@ void Services::SavesAfterPlay(const std::string& id, std::function<void()> then)
     const auto game = games.Find(id);
     if (!game) return;
     BackUpAfterPlay(*game);
+    if (!CloudSyncs(*game)) return;
+    const auto claim = Claim(id, "saves");
+    if (!claim) return;
+    auto synced = SyncCloud(*game, saves::CloudAction::Sync, [] { return Result<void>(); });
+    if (synced) return;
+    log::Warn("couldn't sync {}'s cloud saves after playing: {}", id, synced.error().message);
+    // Saves changed on another computer while this one played: neither side is overwritten, and
+    // the user is told, since saves that silently stay here would be confusing.
+    if (synced.error().code == "saves_conflict")
+      NotifySavesConflict(*game, synced.error(), "while you played");
   });
+}
+
+void Services::NotifySavesConflict(const model::Game& game, const Error& error,
+                                   std::string_view when) {
+  events.PublishNotification(model::NotifyLevel::Warning,
+                             std::format("{}'s saves changed both here and in {}'s cloud {}.",
+                                         game.name, saves::CloudFor(game)->Name(), when),
+                             api::FailedEvent({{"id", game.id}, {"persistent", true}}, error));
 }
 
 void Services::BackUpAfterPlay(const model::Game& game) {

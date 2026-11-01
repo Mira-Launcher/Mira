@@ -1054,6 +1054,28 @@ Schema::Schema() {
                 "so it follows the game when it moves.",
          .keywords = "backup custom"});
 
+  s.Group("Cloud saves");
+
+  s.Add({.key = "saves.cloud",
+         .label = "Sync GOG and Epic saves with their cloud",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Keep the saves of GOG and Epic games in step with the store's cloud, as Galaxy "
+                "and the Epic launcher do. Saves are backed up before anything is downloaded "
+                "over them.",
+         .keywords = "cloud sync gog epic"});
+
+  s.Add({.key = "saves.cloud_timeout_s",
+         .label = "Longest wait for the cloud before playing (seconds)",
+         .type = Type::Int,
+         .default_value = 20,
+         .doc =
+             "When checking the cloud takes longer than this, or the store can't be reached, the "
+             "game starts with the saves on this computer. They're synced after you play.",
+         .constraint = Range(1, 300),
+         .keywords = "cloud sync timeout offline"});
+
   s.Group("Where saves are", Sections::Fold::Collapsed);
 
   s.Add({.key = "saves.manifest_url",

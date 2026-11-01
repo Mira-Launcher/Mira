@@ -34,12 +34,15 @@ class Sounds;
 // (through SDL3 when it's installed) or the keyboard. It reads the library
 // LibraryWindow keeps current, and covers browsing, playing, installing and
 // a few settings; everything else stays in the desktop window.
-class BigScreenWindow : public QWidget {
+class BigScreenWindow : public QWidget, public actions::SavesChooser {
   Q_OBJECT
 
  public:
   explicit BigScreenWindow(LibraryServices services, QWidget* parent = nullptr);
   ~BigScreenWindow() override;
+
+  // A menu over the launch screen; Back cancels the launch.
+  void ChooseSaves(const std::string& id, std::function<void(std::string choice)> chosen) override;
 
   const LibraryServices& services() const { return services_; }
   const FrontendPrefs& prefs() const { return prefs_; }
@@ -86,8 +89,8 @@ class BigScreenWindow : public QWidget {
   void CancelInstall(const Item& item);
   void Uninstall(const Item& item);
   void TogglePin(const Item& item);
-  // The game's saves as menus: backing up now, and each backup's restore, pin and delete. Where
-  // they're kept is set in the desktop window.
+  // The game's saves as menus: syncing with its store's cloud, backing up now, and each backup's
+  // restore, pin and delete. Where they're kept is set in the desktop window.
   void ManageSaves(const Item& item);
   // The action X does on a game: "Play", "Stop", "Install", or empty while installing.
   QString QuickActionLabel(const Item& item) const;
@@ -126,7 +129,9 @@ class BigScreenWindow : public QWidget {
     QString title;
     std::vector<std::pair<QString, std::function<void()>>> entries;
     int focus = 0;
+    std::function<void()> on_dismiss;  // closed without picking an entry
   };
+  void DismissMenu();
   struct Dialog {
     QString title;
     QString body;
@@ -172,6 +177,8 @@ class BigScreenWindow : public QWidget {
   void ShowSaves(const Item& item);
   void ShowBackups(const Item& item, const std::vector<SaveSnapshot>& snapshots);
   void ShowBackup(const Item& item, const SaveSnapshot& snapshot);
+  // `action` as POST /v1/games/{id}/saves/sync takes it: "sync", "upload" or "download".
+  void SyncSaves(const Item& item, const std::string& action);
   void BackUpSaves(const Item& item);
   // Asks before removing it, deleting its prefix and save backups too as chosen.
   void ConfirmUninstall(const Item& item, const RemovalPlan& plan, bool delete_prefix,

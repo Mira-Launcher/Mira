@@ -29,6 +29,7 @@
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
+#include "saves/Cloud.h"
 #include "store/GameStore.h"
 
 namespace httplib {
@@ -239,16 +240,22 @@ class Services {
   // what's there now. {restored, files, undo}: `undo` is the snapshot holding what was replaced
   // (null when there were no saves). Errs snapshot_not_found and saves::RestoreSnapshot's errors.
   Result<nlohmann::json> RestoreSaves(const std::string& id, const std::string& snapshot);
-  // What's being done with a game's saves now: "backing_up", "restoring", or "".
+  // SyncCloud holding the game's claim.
+  Result<nlohmann::json> SyncCloudSaves(const std::string& id, saves::CloudAction action);
+  // What's being done with a game's saves now: "backing_up", "restoring", "syncing", or "".
   std::string SavesDoing(const std::string& id);
   // Blocks until nothing is being done with the game's saves, so a launch right after a session
-  // waits for its backup; that work ends on its own. False when mirad began stopping.
+  // waits for its backup and sync; that work ends on its own. False when mirad began stopping.
   bool WaitForSavesWork(const std::string& id);
-  // Before a launch, under its claim: a first backup for a game that has none.
-  void SavesBeforeLaunch(const model::Game& game);
+  // Before a launch, under its claim: a first backup for a game that has none, then for a game
+  // whose cloud saves are synced, a sync that gets saves.cloud_timeout_s. `choice` settles a
+  // conflict ("keep_local", "use_cloud") or skips the sync ("skip"). Errs only saves_conflict:
+  // a cloud that can't be reached in time lets the game start with the saves here.
+  Result<void> SavesBeforeLaunch(const model::Game& game, std::string_view choice);
   // After a session ends, on the saves lane: the after-play backup, keeping a failure for
-  // GET /v1/games/{id}/saves to show. `then` runs once it's done, so a move of the game's folder
-  // can't take its claim first.
+  // GET /v1/games/{id}/saves to show, then a cloud sync; a conflict found then is a persistent
+  // notification. `then` runs once they're done, so a move of the game's folder can't take
+  // their claim first.
   void SavesAfterPlay(const std::string& id, std::function<void()> then);
 
   // After settings changed, however (a request, a reset, a hand edit of settings.toml): syncs the
@@ -285,8 +292,19 @@ class Services {
     Services& services_;
     std::string id_;
   };
+  // saves::RunCloud, with a before_cloud_download snapshot before anything local is overwritten,
+  // once `before_download` agreed. Publishes game.saves_changed when done.
+  Result<nlohmann::json> SyncCloud(const model::Game& game, saves::CloudAction action,
+                                   const std::function<Result<void>()>& before_download);
+  // Whether `game`'s saves are synced with its store's cloud, as far as is known without asking.
+  bool CloudSyncs(const model::Game& game) const;
+  // SavesBeforeLaunch's sync, stopped after saves.cloud_timeout_s unless it's downloading.
+  Result<void> SyncBeforeLaunch(const model::Game& game, std::string_view choice);
   // The after-play backup, keeping its failure for the game's saves.
   void BackUpAfterPlay(const model::Game& game);
+  // A persistent notification of a cloud save conflict found `when`, with its fix, for a launch
+  // from outside the GUI or one found after play.
+  void NotifySavesConflict(const model::Game& game, const Error& error, std::string_view when);
   void WatchExternalGames();
   // Locks hidden games once hidden.lock_after_minutes pass with no one using Mira and no game
   // running.

@@ -82,8 +82,8 @@ mira set celeste --tag hidden
 
 ## Playing
 
-### `mira launch <id> [file...]` / `mira stop <id>`
-`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam -silent -applaunch <appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first. Files are passed to a Microsoft 365 app to open.
+### `mira launch <id> [--saves keep_local|use_cloud|skip] [file...]` / `mira stop <id>`
+`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam -silent -applaunch <appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first. Files are passed to a Microsoft 365 app to open. When a GOG or Epic game's saves changed both here and in the cloud, the launch is refused and prints the three ways to start it; `--saves` picks one (`keep_local` uploads this computer's saves, `use_cloud` downloads the cloud's after a backup, `skip` starts without syncing).
 
 ### `mira run <id> --exe PATH [--args ARGS]`
 `POST /v1/games/{id}/run`. Runs any executable in the game's prefix, creating the prefix first if needed. This is the manual way to run an installer:
@@ -180,6 +180,9 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 
 ### `mira saves pin <id> <backup>` / `unpin <id> <backup>`
 `PATCH /v1/games/{id}/saves/{backup}`. A pinned backup is kept however many newer ones are taken, and doesn't count toward `saves.keep`; `unpin` lets it go with the rest. The game's backups list marks pinned ones.
+
+### `mira saves cloud <id> check|sync|download|upload`
+`POST /v1/games/{id}/saves/cloud`, waiting for the job. Prints the GOG or Epic game's cloud state, then each cloud location's state, folder and whether it was moved.
 
 ### `mira saves manifest [--update]` / `search <name>`
 `GET /v1/saves/manifest` / `GET /v1/saves/entries?q=`. `manifest` prints where the list of save locations comes from, how many games it holds and when it was downloaded and checked; `--update` checks for a newer one first and waits for it. `search` lists the entries whose name contains `<name>`, for setting a game's `saves.manifest_name`.
