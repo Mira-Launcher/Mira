@@ -1620,6 +1620,17 @@ struct ModManagersResult {
   std::vector<ModManagerInfo> managers;
 };
 
+// GET /v1/games/{id}/mod-managers/{manager}: what removing it from the game does.
+struct ModManagerPurgeResult {
+  bool ok = false;
+  ApiError error;
+  int deployed = 0;                  // its files in the game's folders that come out
+  int restored = 0;                  // game files it set aside that go back
+  std::vector<std::string> deleted;  // its folders that go
+  std::uint64_t bytes = 0;           // their size
+  bool open = false;                 // it's open for the game now
+};
+
 struct EmulatorsResult {
   bool ok = false;
   ApiError error;
