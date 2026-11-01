@@ -24,6 +24,10 @@ bool HasEntry(const std::string& environ, const std::string& entry);
 std::vector<pid_t> WithEntry(const std::string& entry);
 // Whether any process has one of these files (canonical paths) open for writing.
 bool AnyOpenForWriting(const std::set<std::string>& files);
+#ifdef __APPLE__
+// The pid and when it started: unlike the pid alone, never another process's later.
+std::string StartToken(pid_t pid);
+#endif
 // This program's own path.
 std::filesystem::path SelfExe();
 

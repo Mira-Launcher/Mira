@@ -83,13 +83,12 @@ void StopPrefix(const std::string& prefix) {
 // SIGTERM, then SIGKILL for what's left after 15 s, as systemd does.
 Result<void> Stop(const std::string& unit) {
   const std::string entry = std::string(kKey) + unit;
-  for (const pid_t pid : WithEntry(entry)) ::kill(pid, SIGTERM);
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-  while (!WithEntry(entry).empty()) {
-    if (std::chrono::steady_clock::now() >= deadline) {
-      for (const pid_t pid : WithEntry(entry)) ::kill(pid, SIGKILL);
-      break;
-    }
+  // Each round, so what they fork meanwhile is asked too.
+  for (std::vector<pid_t> left = WithEntry(entry); !left.empty(); left = WithEntry(entry)) {
+    const bool overdue = std::chrono::steady_clock::now() >= deadline;
+    for (const pid_t pid : left) ::kill(pid, overdue ? SIGKILL : SIGTERM);
+    if (overdue) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
   return {};

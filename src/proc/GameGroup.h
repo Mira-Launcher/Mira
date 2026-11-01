@@ -42,10 +42,11 @@ class GameGroup {
   std::string procs_;  // cgroup.procs, made ahead: the child can't allocate
 #else
   pid_t wrapper_ = 0;
+  std::string token_;  // mira-run's StartToken, so a reused pid isn't the same group
 #endif
 };
 
-// The environment entry that tags processes on macOS: "MIRA_GROUP=<id>".
+// The environment entry that tags processes on macOS: "MIRA_GROUP=<mira-run's StartToken>".
 std::string GroupEntry(const std::string& id);
 
 }  // namespace mira::proc

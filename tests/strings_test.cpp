@@ -105,4 +105,5 @@ TEST_CASE("CompareVersions compares the numbers in versions by value") {
   CHECK(CompareVersions("1.2", "1.2") == 0);
   CHECK(CompareVersions("v1.2", "v1.10") < 0);
   CHECK(CompareVersions("1.2", "1.2.1") < 0);
+  CHECK(CompareVersions("1.01", "1.1") < 0);
 }

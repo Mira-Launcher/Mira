@@ -7,6 +7,7 @@
 #include <system_error>
 #include <utility>
 
+#include "core/Log.h"
 #include "library/DirEvents.h"
 
 namespace mira::library {
@@ -14,15 +15,18 @@ namespace {
 namespace fs = std::filesystem;
 
 void Callback(ConstFSEventStreamRef, void* self, size_t count, void* paths,
-              const FSEventStreamEventFlags flags[], const FSEventStreamEventId ids[]) {
-  static_cast<DirEvents*>(self)->OnEvents(count, static_cast<char**>(paths), flags, ids);
+              const FSEventStreamEventFlags flags[], const FSEventStreamEventId[]) {
+  static_cast<DirEvents*>(self)->OnEvents(count, static_cast<char**>(paths), flags);
 }
 
-void Release(void*& stream) {
+// Delivers what the stream still holds, then waits out any callback still running on the queue.
+void Release(void*& stream, void* queue) {
   if (stream == nullptr) return;
   auto* ref = static_cast<FSEventStreamRef>(stream);
+  FSEventStreamFlushSync(ref);
   FSEventStreamStop(ref);
   FSEventStreamInvalidate(ref);
+  dispatch_sync_f(static_cast<dispatch_queue_t>(queue), nullptr, [](void*) {});
   FSEventStreamRelease(ref);
   stream = nullptr;
 }
@@ -31,11 +35,10 @@ void Release(void*& stream) {
 
 DirEvents::DirEvents() {
   queue_handle_ = dispatch_queue_create("mira.watcher", DISPATCH_QUEUE_SERIAL);
-  since_ = FSEventsGetCurrentEventId();
 }
 
 DirEvents::~DirEvents() {
-  Release(stream_);
+  Release(stream_, queue_handle_);
   if (queue_handle_ != nullptr) dispatch_release(static_cast<dispatch_queue_t>(queue_handle_));
 }
 
@@ -83,11 +86,11 @@ void DirEvents::WakeReload() {
   wake_.notify_all();
 }
 
-// A stream watches a fixed set of folders, so a changed set needs a new one. It starts from the
-// last event the old one saw.
+// A stream watches a fixed set of folders, so a changed set needs a new one. The old one hands over
+// what it holds first, and the new one starts from now, not replaying a new folder's history.
 // dirs_ only changes on Wait()'s thread, so it's read here unlocked.
-void DirEvents::Restart(std::uint64_t since) {
-  Release(stream_);
+void DirEvents::Restart() {
+  Release(stream_, queue_handle_);
   if (dirs_.empty()) return;
   CFMutableArrayRef paths =
       CFArrayCreateMutable(nullptr, CFIndex(dirs_.size()), &kCFTypeArrayCallBacks);
@@ -100,11 +103,14 @@ void DirEvents::Restart(std::uint64_t since) {
   FSEventStreamContext context{};
   context.info = this;
   FSEventStreamRef stream =
-      FSEventStreamCreate(nullptr, &Callback, &context, paths, since, 0.05,
+      FSEventStreamCreate(nullptr, &Callback, &context, paths, kFSEventStreamEventIdSinceNow, 0.05,
                           kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer |
                               kFSEventStreamCreateFlagWatchRoot);
   CFRelease(paths);
-  if (stream == nullptr) return;
+  if (stream == nullptr) {
+    log::Error("Watcher: couldn't start watching {} folders", dirs_.size());
+    return;
+  }
   FSEventStreamSetDispatchQueue(stream, static_cast<dispatch_queue_t>(queue_handle_));
   FSEventStreamStart(stream);
   stream_ = stream;
@@ -114,10 +120,9 @@ bool DirEvents::Wait(Fired& fired) {
   fired = {};
   std::unique_lock lock(mutex_);
   if (std::exchange(dirty_, false)) {
-    const std::uint64_t since = since_;
-    // Not under the lock: stopping the stream can wait for a callback, which takes it.
+    // Not under the lock: stopping the stream waits for its callback, which takes it.
     lock.unlock();
-    Restart(since);
+    Restart();
     lock.lock();
   }
   const auto ready = [&] {
@@ -142,11 +147,9 @@ bool DirEvents::Wait(Fired& fired) {
   return true;
 }
 
-void DirEvents::OnEvents(size_t count, char** paths, const std::uint32_t* flags,
-                         const std::uint64_t* ids) {
+void DirEvents::OnEvents(size_t count, char** paths, const std::uint32_t* flags) {
   const std::scoped_lock lock(mutex_);
   for (size_t i = 0; i < count; ++i) {
-    since_ = ids[i];
     const std::uint32_t flag = flags[i];
     if (flag & (kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped |
                 kFSEventStreamEventFlagKernelDropped)) {

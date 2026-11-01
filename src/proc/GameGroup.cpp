@@ -81,6 +81,8 @@ void GameGroup::Remove() const {
 Result<GameGroup> GameGroup::Create() {
   GameGroup group;
   group.wrapper_ = ::getpid();
+  group.token_ = StartToken(group.wrapper_);
+  if (group.token_.empty()) return Err("no_group", "couldn't read mira-run's own process info");
   return group;
 }
 
@@ -88,11 +90,13 @@ std::optional<GameGroup> GameGroup::Of(pid_t wrapper) {
   if (::kill(wrapper, 0) != 0 || Name(wrapper) != "mira-run") return std::nullopt;
   GameGroup group;
   group.wrapper_ = wrapper;
+  group.token_ = StartToken(wrapper);
+  if (group.token_.empty()) return std::nullopt;
   return group;
 }
 
 std::vector<std::string> GameGroup::Env() const {
-  return {GroupEntry(std::to_string(wrapper_))};
+  return {GroupEntry(token_)};
 }
 
 bool GameGroup::JoinFromChild() const {
@@ -100,7 +104,7 @@ bool GameGroup::JoinFromChild() const {
 }
 
 std::vector<pid_t> GameGroup::Pids() const {
-  std::vector<pid_t> pids = WithEntry(GroupEntry(std::to_string(wrapper_)));
+  std::vector<pid_t> pids = WithEntry(GroupEntry(token_));
   std::erase(pids, wrapper_);
   return pids;
 }
