@@ -249,6 +249,9 @@ void AddedSources::Import(const QString& id) {
   } else if (source == "lutris") {
     api::ImportLutrisAsync(
         this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+  } else if (source == "heroic") {
+    api::ImportHeroicAsync(
+        this, [done](HeroicImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (tile.entry.source.kind == SourceInfo::Kind::Launcher) {
     api::ImportLauncherAsync(
         this, source, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });

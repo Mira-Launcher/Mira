@@ -77,6 +77,7 @@ struct GameSummary {
   std::string source_ref;  // the launcher's id, for a launcher's own install
   std::string store_url;   // its page on the store it's from; empty when there's none
   bool running = false;
+  std::vector<std::string> tools;  // names of its tool options open now
   // Slot ("cover", "hero", ...) -> version, only for slots with an image.
   // Unset when the record didn't say, which means nothing is known either way.
   std::optional<ArtVersions> art;
@@ -166,6 +167,20 @@ inline const char* RunVerb(const GameSummary& game) {
 }
 inline const char* RunningLabel(const GameSummary& game) {
   return IsApp(game) ? "Running" : "Playing";
+}
+// The tools the game opened, "Vortex and Tweaker"; empty when none is open.
+inline std::string ToolNames(const GameSummary& game) {
+  std::string names;
+  for (size_t i = 0; i < game.tools.size(); ++i) {
+    if (i > 0) names += i + 1 == game.tools.size() ? " and " : ", ";
+    names += game.tools[i];
+  }
+  return names;
+}
+// "Vortex open" while the game isn't running but tools it opened are; empty otherwise.
+inline std::string OpenToolsLabel(const GameSummary& game) {
+  if (game.running || game.tools.empty()) return {};
+  return ToolNames(game) + " open";
 }
 inline const char* Noun(const GameSummary& game) {
   return IsApp(game) ? "app" : "game";
@@ -939,14 +954,14 @@ struct SteamScanResult {
   int updated = 0;
 };
 
-// POST /v1/lutris/import.
-// GET /v1/lutris.
-struct LutrisStatusResult {
+// GET /v1/lutris or /v1/heroic: whether that launcher is on this computer.
+struct ImporterStatusResult {
   bool ok = false;
   ApiError error;
   bool found = false;
 };
 
+// POST /v1/lutris/import.
 struct LutrisImportResult {
   bool ok = false;
   ApiError error;
@@ -954,6 +969,16 @@ struct LutrisImportResult {
   int updated = 0;
   int other_runner = 0;  // left to a runner Mira doesn't drive (steam, dosbox, ...)
   int incomplete = 0;    // wine/linux games whose config can't be imported as-is
+};
+
+// POST /v1/heroic/import.
+struct HeroicImportResult {
+  bool ok = false;
+  ApiError error;
+  int added = 0;
+  int updated = 0;
+  int unsupported = 0;  // macOS and browser games
+  int incomplete = 0;   // no program, or a Windows game without a prefix yet
 };
 
 // POST /v1/games/{id}/run: an arbitrary executable inside this game's own
@@ -1099,8 +1124,9 @@ struct InstallerInfoResult {
   ApiError error;
   std::string path;
   std::int64_t size_bytes = 0;
-  std::string format;   // "inno" | "nsis" | "msi" | "unknown"
-  bool silent = false;  // Mira knows how to run it without its window
+  std::int64_t estimated_install_bytes = -1;  // a guess from Steam's requirements; -1 without one
+  std::string format;                         // "inno" | "nsis" | "msi" | "unknown"
+  bool silent = false;                        // Mira knows how to run it without its window
   // Library roots whose disk can hold the prefix when the game's folder is outside them (a disc);
   // the first is mirad's default.
   struct Target {
@@ -1116,6 +1142,8 @@ struct InstallProgressResult {
   ApiError error;
   std::string state;  // "idle" | "queued" | "running" | "finished" | "failed"
   std::int64_t bytes_written = 0;
+  std::int64_t estimated_bytes = -1;  // a guess at the installed size, from Steam's requirements
+  double progress = -1;               // bytes_written against that guess, under 1 while running
 };
 
 // A `game.install.started` / `.finished` / `.failed` payload.
@@ -1369,6 +1397,7 @@ struct SourceState {
   bool added = false;  // set up; the rest are offered on the Sources page's catalog
   bool enabled = true;
   bool in_sidebar = true;
+  bool in_hidden_sidebar = true;  // in hidden mode's sidebar
   int position = 0;
   std::int64_t imported_at = 0;  // unix seconds; 0 if never
   int games = 0;
@@ -1378,6 +1407,8 @@ struct SourcesResult {
   bool ok = false;
   ApiError error;
   std::vector<SourceState> sources;  // every source, in sidebar order
+  // Hidden mode's sidebar lists what the normal one does, until it's changed in hidden mode.
+  bool hidden_sidebar_mirrors = true;
 };
 
 struct StoreStatusResult {
@@ -1398,6 +1429,14 @@ struct StoreStatusResult {
 struct StoreActionResult {
   bool ok = false;
   ApiError error;
+};
+
+// GET /v1/library/size: what installing a store title downloads and takes on disk.
+struct InstallSizeResult {
+  bool ok = false;
+  ApiError error;
+  std::int64_t download_bytes = -1;  // -1: the store doesn't say
+  std::int64_t install_bytes = -1;
 };
 
 // GET /v1/library/install/paused.
@@ -1666,6 +1705,8 @@ struct StoreEvent {
   double progress = -1;  // install "progress": 0..1
   std::int64_t eta_seconds = -1;  // install "progress", when reported
   double bytes_per_second = -1;
+  std::int64_t downloaded_bytes = -1;  // install "progress": of `total_bytes`, when reported
+  std::int64_t total_bytes = -1;
 };
 
 // library.catalog_checking / library.catalog_checked: mirad re-checking what a store's account

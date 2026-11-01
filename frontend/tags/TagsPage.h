@@ -79,7 +79,6 @@ class TagsPage : public QWidget {
     std::vector<std::string> folders;  // in the order that picks a game's folder
     bool steam = true;
     bool steam_by_name = true;
-    bool tag_by_root = true;
   };
   // One of Your tags' rows, kept across refreshes and updated in place.
   struct MineRow {

@@ -103,6 +103,18 @@ class ProcessSupervisor {
   // Forget stops every such scope, including ones started before mirad restarted.
   std::string CompanionUnit(const std::string& game_id, const std::string& option_id) const;
 
+  // A tool option opened on its own (a mod manager, a settings program), in a systemd scope of its
+  // own. Not a play session: no playtime and no game.state, but Tools() lists it while anything
+  // in the scope runs, and game.updated follows when it opens and closes.
+  struct Tool {
+    std::string id;  // the launch option's
+    std::string name;
+  };
+  Result<void> StartTool(const std::string& game_id, Tool tool, Command command, int output_fd);
+  std::vector<Tool> Tools(const std::string& game_id) const;
+  // Closes the game's open tools; false when none is open.
+  bool StopTools(const std::string& game_id);
+
   // Claims a game before anything is spawned or any of its files change, so two quick
   // launches can't both start it and a game can't launch mid-move. Empty if it is
   // running or already claimed.
@@ -153,6 +165,11 @@ class ProcessSupervisor {
                               bool requested_stop);
   // Takes a finished game off every running list; true if Stop() had asked it to quit.
   bool Forget(const std::string& game_id);
+  // `group` is the tool's scope once systemd-run has joined it.
+  void WatchTool(std::string game_id, std::string unit, pid_t pid,
+                 std::optional<std::filesystem::path> group);
+  // game.updated for the game, so clients see its tools change.
+  void PublishTools(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);
   void WatchExternal(std::string game_id, ExternalMatch match, std::int64_t requested_at,
                      std::string post_script);
@@ -169,6 +186,8 @@ class ProcessSupervisor {
   std::map<std::string, std::string> reserved_;  // games claimed by Reserve(), with the purpose
   std::set<std::string> stop_requested_;         // Stop() was called; the exit isn't a crash
   std::map<std::string, Watcher> watchers_;
+  std::map<std::string, std::pair<std::string, Tool>> tools_;  // scope unit -> game id, tool
+  std::vector<Watcher> tool_watchers_;
   // Watchers replaced by a relaunch of the same game; each is joined once it has finished.
   std::vector<Watcher> retired_;
   std::atomic<bool> stopping_{false};

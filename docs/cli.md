@@ -133,6 +133,9 @@ A source that isn't set up lists nothing. Steam needs `steam.web_api_key` and `s
 ### `mira lutris import`
 `POST /v1/lutris/import`. Imports games from Lutris's database.
 
+### `mira heroic import`
+`POST /v1/heroic/import`. Imports the games Heroic Games Launcher installed.
+
 ### `mira store [list]`
 Lists the stores: `epic`, `gog`, `itch`, `amazon` and `humble`. Each wraps a command-line tool and shares one set of verbs, `mira store <id> <verb>` (see [Stores](api.md#stores)).
 

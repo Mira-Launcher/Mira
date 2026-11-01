@@ -4,6 +4,7 @@
 #include <regex>
 
 #include "core/LogHub.h"
+#include "library/InstallSize.h"
 
 namespace mira::library {
 
@@ -11,11 +12,21 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress) {
   static const std::regex kProgress(R"(Progress:\s*([0-9]+(?:\.[0-9]+)?)\s*%?)");
   static const std::regex kEta(R"(ETA:\s*([0-9]+):([0-9]{2}):([0-9]{2}))");
   static const std::regex kSpeed(R"(Download\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*MiB/s)");
+  static const std::regex kDownloaded(R"(Downloaded:\s*([0-9]+(?:\.[0-9]+)?)\s*MiB)");
+  static const std::regex kTotal(R"(Download size:\s*([0-9]+(?:\.[0-9]+)?)\s*MiB)");
+  constexpr double kMiB = 1024 * 1024;
   std::cmatch match;
   const char* begin = line.data();
   const char* end = line.data() + line.size();
   if (std::regex_search(begin, end, match, kSpeed)) {
-    progress.bytes_per_second = std::stod(match[1].str()) * 1024 * 1024;
+    progress.bytes_per_second = std::stod(match[1].str()) * kMiB;
+  }
+  if (std::regex_search(begin, end, match, kTotal)) {
+    progress.total_bytes = static_cast<std::int64_t>(std::stod(match[1].str()) * kMiB);
+  }
+  if (std::regex_search(begin, end, match, kDownloaded)) {
+    progress.downloaded_bytes = static_cast<std::int64_t>(std::stod(match[1].str()) * kMiB);
+    return true;
   }
   if (!std::regex_search(begin, end, match, kProgress)) return false;
   progress.fraction = std::min(1.0, std::stod(match[1].str()) / 100.0);
@@ -28,6 +39,9 @@ bool ParseProgressLine(std::string_view line, DownloadProgress& progress) {
 
 StoreProgress::StoreProgress(api::EventBus& events, std::string source, std::string ref)
     : events_(events), source_(std::move(source)), ref_(std::move(ref)) {
+  // Asked before the install, the size stands in until the tool prints its own.
+  if (const auto known = KnownInstallSize(source_, ref_))
+    progress_.total_bytes = known->download_bytes;
   loghub::Begin(channel());
 }
 
@@ -54,7 +68,9 @@ void StoreProgress::Feed(std::string_view chunk) {
                                                {"ref", ref_},
                                                {"progress", progress_.fraction},
                                                {"eta", progress_.eta_seconds},
-                                               {"bps", progress_.bytes_per_second}});
+                                               {"bps", progress_.bytes_per_second},
+                                               {"downloaded", progress_.downloaded_bytes},
+                                               {"total", progress_.total_bytes}});
 }
 
 }  // namespace mira::library

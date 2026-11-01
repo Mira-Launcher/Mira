@@ -159,8 +159,7 @@ fs::path NormalRoot(const std::string& root) {
 
 SortRules::SortRules(const config::Config& config)
     : folders(config.GetStringArray("tags.folders")),
-      prefix_root(Normal(config.GetPath("prefix_root"))),
-      tag_by_root(config.GetBool("scan.tag_by_root")) {
+      prefix_root(Normal(config.GetPath("prefix_root"))) {
   for (const std::string& root : config.GetStringArray("library_roots")) {
     roots.push_back(NormalRoot(root));
     roots_as_written.push_back(root);
@@ -370,14 +369,6 @@ void TagsForPlace(const SortRules& rules, model::Game& game, const fs::path& old
                   const fs::path& root, const Container& place) {
   std::vector<std::string>& tags = game.tags;
   if (!old_root.empty() && Normal(old_root) != Normal(root)) {
-    if (rules.tag_by_root) {
-      const std::string old_tag = old_root.filename().string();
-      std::erase_if(tags, [&](const std::string& tag) { return SameName(tag, old_tag); });
-      const std::string tag = strings::TitleCase(root.filename().string());
-      if (!tag.empty() &&
-          std::ranges::none_of(tags, [&](const std::string& t) { return SameName(t, tag); }))
-        tags.push_back(tag);
-    }
     if (IsApplications(old_root) && !IsApplications(root)) std::erase(tags, std::string("app"));
     if (IsApplications(root) && !std::ranges::contains(tags, std::string("app")))
       tags.push_back("app");

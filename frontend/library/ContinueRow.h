@@ -32,8 +32,13 @@ class ContinueRow : public QWidget {
   void PlayToggled(QString id);
   void MenuRequested(QString id, QPoint global_pos);
 
+ protected:
+  void resizeEvent(QResizeEvent* event) override;
+
  private:
   QWidget* MakeCard(const GameSummary& game, bool running);
+  // Shows the cards that fit the row's width, at least one; the rest wait for a wider window.
+  void FitCards();
 
   ArtworkStore* artwork_ = nullptr;
   QHBoxLayout* cards_ = nullptr;

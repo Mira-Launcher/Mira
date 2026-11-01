@@ -11,16 +11,13 @@ namespace {
 namespace fs = std::filesystem;
 
 // A new game's tags from where it was found in `folder`: the folder tag of a sorting folder
-// first, the library root's name (scan.tag_by_root), `app` in the Applications root (whatever
-// lands there is an application, not a game), and `hidden` under .hidden. Outside the library
-// folders (an install inside a prefix) none apply.
+// first, `app` in the Applications root (whatever lands there is an application, not a game), and
+// `hidden` under .hidden. Outside the library folders (an install inside a prefix) none apply.
 void TagFromPlace(const config::Config& config, model::Game& game, const fs::path& folder) {
   const fs::path root = RootOf(config, folder);
   if (root.empty()) return;
   const Container place = ContainerOf(config, root, folder).value_or(Container{});
   if (!place.folder_tag.empty()) game.tags.push_back(place.folder_tag);
-  if (config.GetBool("scan.tag_by_root") && !root.filename().empty())
-    game.tags.push_back(strings::TitleCase(root.filename().string()));
   if (strings::ToLower(root.filename().string()) == "applications") game.tags.push_back("app");
   if (place.hidden) game.tags.push_back("hidden");
 }

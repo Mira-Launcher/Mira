@@ -267,6 +267,8 @@ InstallProgressResult GetInstallProgressSync(const std::string& id) {
       [](InstallProgressResult& result, const json& body) {
         result.state = body.value("state", std::string("idle"));
         result.bytes_written = body.value("bytes_written", std::int64_t{0});
+        result.estimated_bytes = body.value("estimated_bytes", std::int64_t{-1});
+        result.progress = body.value("progress", -1.0);
       });
 }
 

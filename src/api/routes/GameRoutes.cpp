@@ -233,7 +233,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
         game.folder_tag = pick;
       }
       library::DropStalePick(game);
-      library::ApplyOverridesPatch(game, config);
+      library::ApplyOverridesPatch(game, config, s.config);
       return game.tags != old_tags || game.folder_tag != old_pick ||
              game.overrides != old_overrides;
     });
@@ -274,7 +274,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
       return SendError(res, 400, "invalid_setting", *problem);
     }
     auto result = s.games.Update(id, [&](model::Game& game) {
-      library::ApplyOverridesPatch(game, *body);
+      library::ApplyOverridesPatch(game, *body, s.config);
       // Written against the game's folders, so they follow it when it or its prefix moves.
       const auto extra = game.overrides.find("saves.extra_paths");
       if (body->contains("saves.extra_paths") && extra != game.overrides.end() &&

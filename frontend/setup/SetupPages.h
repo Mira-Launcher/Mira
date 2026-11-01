@@ -67,8 +67,8 @@ class UsePage : public SetupStep {
   QAbstractButton* apps_ = nullptr;
 };
 
-// Steam and Lutris games already here, whose Steam account they are, and whether Windows games
-// are ready to run.
+// Steam, Lutris and Heroic games already here, whose Steam account they are, and whether Windows
+// games are ready to run.
 class FoundPage : public SetupStep {
   Q_OBJECT
 
@@ -86,9 +86,17 @@ class FoundPage : public SetupStep {
   SteamInstalledResult steam_;
   SteamAccountsResult accounts_;
   QString account_;  // the picked steamid64
-  bool lutris_found_ = false;
   bool steam_on_ = true;
-  bool lutris_on_ = true;
+  // Launchers whose installed games Mira imports, and whether to.
+  struct Importer {
+    const char* id = "";
+    const char* adds = "";  // what it adds, shown until it's added some
+    bool found = false;
+    bool on = true;
+  };
+  std::vector<Importer> importers_ = {
+      {.id = "lutris", .adds = "Its Wine and Linux games, as Lutris runs them"},
+      {.id = "heroic", .adds = "The Epic, GOG, Amazon and sideloaded games it installed"}};
   std::vector<RunnerInfo> runners_;
   bool runners_known_ = false;
   GameModeStatusResult gamemode_;

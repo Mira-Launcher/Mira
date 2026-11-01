@@ -19,6 +19,7 @@ namespace mira_gui {
 class ModalOverlay;
 class SourceCatalog;
 class SourceSetupCard;
+class Switch;
 
 // Sources, as a card over the library: "Added" shows the sources that are
 // set up, "Add source" the rest, and one search box filters either. A source
@@ -31,6 +32,8 @@ class SourcesPage : public QFrame {
 
   // Every source, in sidebar order, as Sidebar::SourceEntries gives them.
   void SetEntries(const std::vector<SourceEntry>& entries);
+  // In hidden mode, a switch says whether its sidebar mirrors the normal one.
+  void SetHiddenSidebar(bool hidden_mode, bool mirrors);
   // Shows the catalog, the search focused.
   void ShowCatalog();
   void ShowAdded();
@@ -42,6 +45,7 @@ class SourcesPage : public QFrame {
   void OpenRequested(QString id);
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
+  void HiddenSidebarMirrorsToggled(bool mirrors);
   void EnabledToggled(QString id, bool enabled);
   void Imported(QString id);
   void Removed(QString id);
@@ -51,6 +55,9 @@ class SourcesPage : public QFrame {
   QButtonGroup* views_ = nullptr;
   QLabel* hint_ = nullptr;
   QLineEdit* search_ = nullptr;
+  bool hidden_mode_ = false;
+  QWidget* mirror_row_ = nullptr;
+  Switch* mirror_ = nullptr;
   AddedSources* added_ = nullptr;
   SourceCatalog* catalog_ = nullptr;
   std::vector<SourceEntry> entries_;

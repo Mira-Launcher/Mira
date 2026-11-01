@@ -40,6 +40,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QMenu menu(parent_);
   QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
   play->setEnabled(CanPlayOrStop(game));
+  if (host_.install_actions && host_.install_actions(menu, id)) menu.addSeparator();
   // The game's other ways to start, and its tools.
   if (!running && CanPlayOrStop(game)) {
     if (const std::vector<PlayChoice> choices = PlayChoices(game, /*all=*/true);
@@ -54,6 +55,16 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   for (const PlayChoice& tool : ToolChoices(game)) {
     menu.addAction("Open " + tool.label, this,
                    [this, id, option = tool.option] { actions::Launch(parent_, id, option, {}); });
+  }
+  // Stopping a game that isn't running closes the tools it opened.
+  if (!running && !game.tools.empty()) {
+    const QString names = QString::fromStdString(ToolNames(game));
+    menu.addAction("Close " + names, this, [this, id, names] {
+      api::StopGameAsync(parent_, id, [this, names](StopResult result) {
+        if (!result.ok)
+          notify::FailedRequest(parent_, "Could not close " + names + ".", result.error);
+      });
+    });
   }
   if (extra) extra(menu);
   // An emulator's game moves to another one for its console; filled in when mirad answers.

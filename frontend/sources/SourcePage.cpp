@@ -22,6 +22,7 @@
 #include <algorithm>
 
 #include "../activity/DownloadTracker.h"
+#include "../activity/InstallActions.h"
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/EventHub.h"
@@ -121,6 +122,14 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   for (TileGrid* grid : {library_grid_, owned_grid_}) {
     if (grid == nullptr) continue;
     grid->SetBandHost(content_, grid == library_grid_ ? library_section_ : owned_section_);
+    // The lowest section's box goes on to the bottom of the page, as its drags do.
+    QWidget* section = grid == library_grid_ ? library_section_ : owned_section_;
+    grid->band_area = [this, grid, section] {
+      QRect area(section->mapTo(content_, QPoint()), section->size());
+      if (grid == owned_grid_ || owned_section_ == nullptr || !owned_section_->isVisible())
+        area.setBottom(content_->rect().bottom());
+      return area;
+    };
     TileGrid* other = grid == library_grid_ ? owned_grid_ : library_grid_;
     if (other == nullptr) continue;
     connect(grid->selectionModel(), &QItemSelectionModel::selectionChanged, other, [grid, other] {
@@ -1117,6 +1126,9 @@ void SourcePage::Import() {
   } else if (id_ == "lutris") {
     api::ImportLutrisAsync(
         this, [done](LutrisImportResult r) { done(r.ok, r.error, r.added, r.updated); });
+  } else if (id_ == "heroic") {
+    api::ImportHeroicAsync(
+        this, [done](HeroicImportResult r) { done(r.ok, r.error, r.added, r.updated); });
   } else if (IsEmulator()) {
     api::ImportEmulatorAsync(
         this, id_, [done](StoreImportResult r) { done(r.ok, r.error, r.added, r.updated); });
@@ -1393,6 +1405,7 @@ void SourcePage::ApplyFilter() {
 }
 
 void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
+  hovered_ = index;
   if (!index.isValid()) {
     if (hover_card_ != nullptr) hover_card_->hide();
     return;
@@ -1407,17 +1420,49 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     const QString ref = index.data(GameTileDelegate::IdRole).toString();
     QString status = index.data(GameTileDelegate::StatusTextRole).toString();
     if (status.isEmpty()) status = index.data(GameTileDelegate::ActionRole).toString();
+    QString size;
     if (humble_paths_.contains(ref)) {
-      status = "Downloaded to " + humble_paths_.value(ref);
+      // A path has no spaces to wrap at; it may break after each folder instead.
+      status =
+          "Downloaded to " + humble_paths_.value(ref).replace('/', QString("/") + QChar(0x200B));
     } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
       status = id_ == "humble" ? "Not downloaded" : "Not installed";
+      size = TitleSize(grid, index);
     }
     hover_card_->ShowTitle(QString::fromStdString(id_), ref,
-                           index.data(GameTileDelegate::NameRole).toString(), status, source_.name,
-                           TagOrder(library_->Games()));
+                           index.data(GameTileDelegate::NameRole).toString(), status, size,
+                           source_.name, TagOrder(library_->Games()));
   }
   const QRect tile = grid->visualRect(index);
   hover_card_->PopUpBeside(QRect(grid->viewport()->mapToGlobal(tile.topLeft()), tile.size()));
+}
+
+QString SourcePage::TitleSize(TileGrid* grid, const QModelIndex& index) {
+  const QString ref = index.data(GameTileDelegate::IdRole).toString();
+  if (const auto known = title_sizes_.constFind(ref); known != title_sizes_.constEnd()) {
+    const auto [download, install] = *known;
+    if (install <= 0) return download > 0 ? SizeText(download) + " download" : QString();
+    return download > 0 && download != install
+               ? QString("%1 on disk · %2 download").arg(SizeText(install), SizeText(download))
+               : SizeText(install) + " on disk";
+  }
+  if (id_ != "epic" && id_ != "gog" && id_ != "amazon") return {};
+  // Asked once per title; the card fills in when the store answers, if it's still showing it.
+  title_sizes_.insert(ref, {-1, -1});
+  api::GetInstallSizeAsync(
+      this, id_, ref.toStdString(),
+      [this, grid, ref, at = QPersistentModelIndex(index)](InstallSizeResult r) {
+        // A store that couldn't be reached is asked again on the next hover; one that answered
+        // without a size isn't.
+        if (!r.ok) {
+          if (r.error.code != "size_unknown") title_sizes_.remove(ref);
+          return;
+        }
+        title_sizes_.insert(ref, {r.download_bytes, r.install_bytes});
+        if (hover_card_ != nullptr && hover_card_->isVisible() && at.isValid() && hovered_ == at)
+          ShowHoverCard(grid, at);
+      });
+  return {};
 }
 
 void SourcePage::ShowTileNote(const QString& id, const QString& text) {
@@ -1469,6 +1514,11 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   const bool add = refs.size() == 1 && humble_paths_.contains(refs.front());
   if (!add) refs.removeIf([this](const QString& ref) { return humble_paths_.contains(ref); });
   QMenu menu(this);
+  if (selected.size() == 1 && downloads_ != nullptr &&
+      AddInstallActions(
+          menu, this, *downloads_,
+          downloads_->LiveInstall(source_.id, QString::fromStdString(selected.front()), {})))
+    menu.addSeparator();
   const QString verb = add ? "Add to library…" : id_ == "humble" ? "Download" : "Install";
   const auto counted = [](const QString& label, size_t count) {
     return count > 1 ? QString("%1 (%2)").arg(label).arg(count) : label;

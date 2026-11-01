@@ -58,6 +58,9 @@ class Sidebar : public QWidget {
   void RefreshSources();
   std::vector<SourceEntry> SourceEntries() const;
   void SetSourceHidden(const QString& id, bool hidden);
+  // Whether hidden mode's sidebar lists what the normal one does; off keeps a copy of its own.
+  bool HiddenSidebarMirrors() const { return hidden_sidebar_mirrors_; }
+  void SetHiddenSidebarMirrors(bool mirrors);
   // What each store owns, so its row counts installed games out of them ("2/229 games").
   void SetOwnedTitles(OwnedTitles* titles);
   // Shows and stores a new order.
@@ -172,12 +175,16 @@ class Sidebar : public QWidget {
   SourceRow& BuildSourceRow(int index);
   // The AllSources() index of a source row's button, or -1.
   int SourceIndexOf(const QObject* nav) const;
+  // Whether the sidebar lists `id` in the current mode.
+  bool InSidebar(const QString& id) const;
   QVBoxLayout* source_nav_layout_ = nullptr;
-  QLabel* sources_empty_ = nullptr;    // shown while no source row is
-  QSet<QString> added_sources_;        // set up; the Sources page adds the rest
-  QSet<QString> hidden_sources_;       // unticked "In sidebar"
-  QSet<QString> disabled_sources_;     // <id>.enabled = false
-  std::vector<QString> source_order_;  // saved order; see SourceOrder()
+  QLabel* sources_empty_ = nullptr;     // shown while no source row is
+  QSet<QString> added_sources_;         // set up; the Sources page adds the rest
+  QSet<QString> hidden_sources_;        // unticked "In sidebar"
+  QSet<QString> hidden_mode_hidden_;    // hidden mode's own unticked ones, unless it mirrors
+  bool hidden_sidebar_mirrors_ = true;  // hidden mode lists what hidden_sources_ leaves
+  QSet<QString> disabled_sources_;      // <id>.enabled = false
+  std::vector<QString> source_order_;   // saved order; see SourceOrder()
   // Store signed in / launcher installed, by source id, as last asked.
   QHash<QString, bool> source_ready_;
   QHash<QString, QString> source_account_;     // signed-in account, where a store says

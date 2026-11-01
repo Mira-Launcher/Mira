@@ -16,6 +16,7 @@
 
 class QLabel;
 class QLineEdit;
+class QMenu;
 class QModelIndex;
 class QScrollArea;
 class QStandardItemModel;
@@ -91,6 +92,9 @@ class LibraryPage : public QWidget {
   std::function<std::optional<DownloadTracker::TileProgress>(const QString& source,
                                                              const QString& ref)>
       title_progress;
+  // Set by the owner: adds Pause, Resume or Cancel while a store title installs; returns whether
+  // it did.
+  std::function<bool(QMenu& menu, const QString& source, const QString& ref)> install_actions;
   // Redraws the store matches' install states.
   void RefreshOwnedStates();
   int ShownCount() const;
@@ -148,6 +152,8 @@ class LibraryPage : public QWidget {
   // While store matches show under it, the grid is as tall as its tiles and the page scrolls.
   void FitGrid();
   void InstallMatch(const QModelIndex& index, const QPoint& global_pos);
+  // Everything under the tab bar (and the title filters), where a drag-select may start.
+  QRect CoverArea() const;
   // A not-installed tile's menu: install (from each store that sells it) and hide or unhide.
   void ShowTitleMenu(const QModelIndex& index, const QPoint& global_pos);
   // The Not installed tab: every store's titles that aren't installed, in place of the library's
@@ -181,6 +187,7 @@ class LibraryPage : public QWidget {
   bool continue_apps_ = false;
   AppsIn apps_ = AppsIn::All;
   bool not_installed_ = false;
+  bool dragging_ = false;  // a drag-select started outside the grid's tiles
   QString hidden_shortcut_;
   TitleFilterBar* title_filters_ = nullptr;
 };

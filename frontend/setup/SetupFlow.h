@@ -17,7 +17,7 @@ struct Choices {
   QStringList stores = {"steam", "epic", "gog"};
   bool office = true;  // Microsoft 365, picked on the applications page
   QStringList office_apps = {"word", "excel", "powerpoint"};
-  QStringList found;  // "steam", "lutris": switched on on the page of what's found here
+  QStringList found;  // "steam", "lutris", "heroic": switched on on the page of what's found here
   // A skipped page's picks bring no pages of their own.
   bool stores_skipped = false;
   bool apps_skipped = false;

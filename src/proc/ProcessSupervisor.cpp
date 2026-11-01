@@ -187,6 +187,9 @@ ProcessSupervisor::~ProcessSupervisor() {
     std::lock_guard lock(mutex_);
     watchers.swap(watchers_);
     retired.swap(retired_);
+    retired.insert(retired.end(), std::make_move_iterator(tool_watchers_.begin()),
+                   std::make_move_iterator(tool_watchers_.end()));
+    tool_watchers_.clear();
   }
   for (auto& [id, watcher] : watchers) {
     if (watcher.thread.joinable()) watcher.thread.join();
@@ -365,6 +368,100 @@ std::string ProcessSupervisor::CompanionUnit(const std::string& game_id,
   const auto now = std::chrono::system_clock::now().time_since_epoch();
   return std::format("{}{}-{}.scope", CompanionPrefix(game_id), strings::Slugify(option_id),
                      std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+}
+
+Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool, Command command,
+                                          int output_fd) {
+  const auto now = std::chrono::system_clock::now().time_since_epoch();
+  const std::string unit =
+      std::format("mira-tool-{}.{}-{}.scope", strings::Slugify(game_id), strings::Slugify(tool.id),
+                  std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+  command.argv.insert(command.argv.begin(),
+                      {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
+                       "--description", "Mira: " + tool.name, "--"});
+  auto pid = runner::SpawnDetached(command, output_fd);
+  if (!pid) return std::unexpected(pid.error());
+  // systemd-run joins the scope before it execs the tool, so exiting before that means it couldn't
+  // make one (no systemd user session) and the tool never ran.
+  std::optional<std::filesystem::path> group;
+  bool reaped = false;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!group && !reaped && std::chrono::steady_clock::now() < deadline) {
+    if (const auto of = cgroup::Of(*pid); of && of->filename() == unit) group = of;
+    int status = 0;
+    if (!group) {
+      const pid_t waited = ::waitpid(*pid, &status, WNOHANG);
+      reaped = waited == *pid || (waited < 0 && errno != EINTR);
+      if (!reaped) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+  if (!group && reaped) {
+    return Err("cgroup_unavailable",
+               "systemd-run couldn't start " + tool.name + " in its own scope",
+               "Mira needs a systemd user session to run programs for games.");
+  }
+  {
+    std::lock_guard lock(mutex_);
+    std::erase_if(tool_watchers_, [](Watcher& watcher) {
+      if (!watcher.done->load()) return false;
+      if (watcher.thread.joinable()) watcher.thread.join();
+      return true;
+    });
+    tools_[unit] = {game_id, std::move(tool)};
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    std::thread thread([this, game_id, unit, pid = *pid, group, done] {
+      WatchTool(game_id, unit, pid, group);
+      done->store(true);
+    });
+    tool_watchers_.push_back(Watcher{std::move(thread), std::move(done)});
+  }
+  PublishTools(game_id);
+  return {};
+}
+
+void ProcessSupervisor::WatchTool(std::string game_id, std::string unit, pid_t pid,
+                                  std::optional<std::filesystem::path> group) {
+  // The tool is open while its scope has processes: a launcher that starts the real program and
+  // exits leaves it running there. Until systemd-run has joined the scope, the pid says.
+  bool reaped = false;
+  while (!stopping_.load(std::memory_order_relaxed)) {
+    if (!group) {
+      if (const auto of = cgroup::Of(pid); of && of->filename() == unit) group = of;
+    }
+    if (!reaped) {
+      int status = 0;
+      const pid_t waited = ::waitpid(pid, &status, WNOHANG);
+      reaped = waited == pid || (waited < 0 && errno != EINTR);
+    }
+    // Reaped too when the scope empties: the tool's own pid can outlast it as a zombie.
+    if (reaped && (!group || !cgroup::Populated(*group))) break;
+    if (PollWaitStopping()) break;
+  }
+  if (stopping_.load(std::memory_order_relaxed)) return;
+  {
+    std::lock_guard lock(mutex_);
+    tools_.erase(unit);
+  }
+  PublishTools(game_id);
+}
+
+void ProcessSupervisor::PublishTools(const std::string& game_id) {
+  if (const auto game = games_.Find(game_id)) events_.Publish("game.updated", model::ToJson(*game));
+}
+
+std::vector<ProcessSupervisor::Tool> ProcessSupervisor::Tools(const std::string& game_id) const {
+  std::lock_guard lock(mutex_);
+  std::vector<Tool> tools;
+  for (const auto& [unit, entry] : tools_) {
+    if (entry.first == game_id) tools.push_back(entry.second);
+  }
+  return tools;
+}
+
+bool ProcessSupervisor::StopTools(const std::string& game_id) {
+  if (Tools(game_id).empty()) return false;
+  StopUnits("mira-tool-" + strings::Slugify(game_id) + ".*");
+  return true;
 }
 
 bool ProcessSupervisor::IsRunning(const std::string& game_id) const {

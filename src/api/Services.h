@@ -211,6 +211,9 @@ class Services {
   // With no Wine or Proton build installed (a fresh install), downloads the newest GE-Proton so
   // Windows games run.
   void EnsureWindowsRunner();
+  // Moves what names a removed build onto the build that runs in its place, with games.updated
+  // for the games it moved.
+  void RepointRemovedRunners();
 
   // Files a store wrote for one launch of `game_id` (Epic's ownership token), deleted once it
   // exits.

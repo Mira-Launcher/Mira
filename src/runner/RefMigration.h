@@ -26,4 +26,10 @@ int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef&
 // their overrides and every runner setting. Returns how many it changed.
 int MigrateInPlaceRefs(config::Config& config, store::GameStore& games);
 
+// Points every reference to a build that isn't installed anymore at the build that runs in its
+// place (RunnerRegistry::StandIn), so what a game shows is what it runs. Returns how many it
+// changed, adding the games' ids to `game_ids`.
+int RepointRemovedBuilds(config::Config& config, store::GameStore& games,
+                         std::vector<std::string>* game_ids = nullptr);
+
 }  // namespace mira::runner

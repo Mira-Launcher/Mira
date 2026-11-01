@@ -242,26 +242,29 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // needs attention (or Playing) earns one.
   const QString status_text = index.data(StatusTextRole).toString();
   // Only when nothing more pressing is on the line.
-  const bool unchecked =
-      !running && status == "ready" && status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
+  const QString tools = index.data(ToolsRole).toString();
+  const bool unchecked = !running && tools.isEmpty() && status == "ready" &&
+                         status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
   // The source shares the status line: after the status, or alone and quieter without one.
   const SourceInfo* source =
       show_source_ ? FindSourceInfo(index.data(SourceRole).toString()) : nullptr;
   const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
   const QFontMetrics small_metrics(small_font);
   if (!progress.isValid() && show_status_ &&
-      (running || status != "ready" || !status_text.isEmpty() || unchecked)) {
+      (running || !tools.isEmpty() || status != "ready" || !status_text.isEmpty() || unchecked)) {
     painter->setFont(small_font);
     QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
     if (unchecked) dot = tokens.warning;
+    if (status_text.isEmpty() && !tools.isEmpty()) dot = tokens.running;
     painter->setPen(Qt::NoPen);
     painter->setBrush(dot.lighter(160));
     painter->drawEllipse(QPoint(status_rect.left() + 3, status_rect.center().y()), 3, 3);
     painter->setPen(QColor(255, 255, 255, 170));
     QString line = !status_text.isEmpty() ? status_text
-                   : running   ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
-                   : unchecked ? QString("Not checked")
-                               : StatusLabel(status);
+                   : running ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
+                   : !tools.isEmpty() ? tools
+                   : unchecked        ? QString("Not checked")
+                                      : StatusLabel(status);
     if (source != nullptr) line += " · " + source->name;
     const QRect text_rect = status_rect.adjusted(12, 0, 0, 0);
     painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,

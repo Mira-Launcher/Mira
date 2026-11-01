@@ -25,6 +25,8 @@ class GameMenus : public QObject {
     std::function<const std::vector<GameSummary>&()> library;
     // "Installing… 1.2 GB" while the game installs, else empty.
     std::function<QString(const std::string& id)> install_text;
+    // Adds Pause, Resume or Cancel while the game installs or updates; returns whether it did.
+    std::function<bool(QMenu& menu, const std::string& id)> install_actions;
     std::function<void(const std::string& id)> toggle_running;
     std::function<void(const std::string& id, const std::string& option)> launch;
     std::function<void(const std::string& id)> open_settings;

@@ -16,11 +16,15 @@ namespace mira_gui {
 namespace {
 
 const QSize kCover(80, 120);
+constexpr int kCardWidth = 340;
+constexpr int kCardSpacing = 12;
 
 }  // namespace
 
 ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent)
     : QWidget(parent), artwork_(artwork) {
+  // Its cards don't hold the window wide: fewer show when the row is narrower (FitCards).
+  setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
@@ -28,8 +32,21 @@ ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent)
   heading->setProperty("role", "section");
   layout->addWidget(heading);
   cards_ = new QHBoxLayout();
-  cards_->setSpacing(12);
+  cards_->setSpacing(kCardSpacing);
   layout->addLayout(cards_);
+}
+
+void ContinueRow::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  FitCards();
+}
+
+void ContinueRow::FitCards() {
+  const int fit = std::max(1, (width() + kCardSpacing) / (kCardWidth + kCardSpacing));
+  int index = 0;
+  for (int i = 0; i < cards_->count(); ++i) {
+    if (QWidget* card = cards_->itemAt(i)->widget()) card->setVisible(index++ < fit);
+  }
 }
 
 void ContinueRow::SetGames(const std::vector<const GameSummary*>& games) {
@@ -48,6 +65,7 @@ void ContinueRow::SetGames(const std::vector<const GameSummary*>& games) {
     cards_->addWidget(MakeCard(*game, game->running));
   }
   cards_->addStretch(1);  // cards pack to the left
+  FitCards();
   setVisible(!games.empty());
 }
 
@@ -62,7 +80,7 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   auto* card = new QFrame(this);
   card->setObjectName("continue_card");
   card->setFixedHeight(kCover.height() + 16);
-  card->setFixedWidth(340);
+  card->setFixedWidth(kCardWidth);
   const QString id = QString::fromStdString(game.id);
   card->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(card, &QWidget::customContextMenuRequested, this,
@@ -83,8 +101,10 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   name->setProperty("role", "section");
   name->setWordWrap(true);
   text->addWidget(name);
-  const QString when =
-      running ? QString(RunningLabel(game)) + " now" : FormatPlayedAgo(game.last_played_at);
+  const QString tools = QString::fromStdString(OpenToolsLabel(game));
+  const QString when = running            ? QString(RunningLabel(game)) + " now"
+                       : !tools.isEmpty() ? tools
+                                          : FormatPlayedAgo(game.last_played_at);
   auto* meta = new QLabel(
       IsApp(game) ? when : QString("%1 · %2").arg(when, FormatPlaytime(game.play_seconds)), card);
   meta->setProperty("role", "muted");

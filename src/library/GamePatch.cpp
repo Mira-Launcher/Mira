@@ -108,9 +108,10 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
 }
 
 // Applies a flat {"dotted.key": value} overrides patch; null removes an override.
-void ApplyOverridesPatch(model::Game& game, const json& patch) {
+void ApplyOverridesPatch(model::Game& game, const json& patch, const config::Config& config) {
   for (const auto& [key, value] : patch.items()) {
-    if (value.is_null()) {
+    // A value the game would get anyway isn't kept, so the game follows later changes to it.
+    if (value.is_null() || value == config.Get(key)) {
       game.overrides.erase(key);
     } else {
       game.overrides[key] = value;

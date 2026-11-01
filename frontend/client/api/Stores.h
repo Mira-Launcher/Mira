@@ -21,6 +21,12 @@ void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callb
 void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
                       std::optional<bool> in_sidebar,
                       std::function<void(PatchConfigResult)> callback);
+// PATCH /v1/sources/{id} {"in_hidden_sidebar": ...}: whether hidden mode's sidebar lists it.
+void SetSourceInHiddenSidebarAsync(QObject* context, const std::string& id, bool in_sidebar,
+                                   std::function<void(PatchConfigResult)> callback);
+// PUT /v1/sources/hidden-sidebar: whether hidden mode's sidebar mirrors the normal one.
+void SetHiddenSidebarMirrorsAsync(QObject* context, bool mirrors,
+                                  std::function<void(PatchConfigResult)> callback);
 // PATCH /v1/sources/{id} {"added": true}: set up, which also turns it on.
 void AddSourceAsync(QObject* context, const std::string& id,
                     std::function<void(PatchConfigResult)> callback);
@@ -53,6 +59,10 @@ void GetStoreLibraryAsync(QObject* context, const std::string& source, bool fres
 
 void InstallStoreTitleAsync(QObject* context, const std::string& source, const std::string& ref,
                             bool update, std::function<void(StoreActionResult)> callback);
+
+// GET /v1/library/size: asks the store tool, so it can take a few seconds.
+void GetInstallSizeAsync(QObject* context, const std::string& source, const std::string& ref,
+                         std::function<void(InstallSizeResult)> callback);
 
 // POST /v1/library/hidden: hides or shows owned titles; an installed one's game takes the tag.
 void SetTitlesHiddenAsync(QObject* context, const std::string& source,

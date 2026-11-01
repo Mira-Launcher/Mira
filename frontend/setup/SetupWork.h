@@ -16,8 +16,8 @@ class DownloadTracker;
 
 // Set up Mira's slow work, started as soon as its page is left with Next so it's done or under way
 // by the time it's needed: system packages, Proton, the stores' helper tools, Microsoft 365's
-// Windows setup and its apps, and the Steam and Lutris imports. Owned by the main window, so it
-// keeps going after the setup window closes.
+// Windows setup and its apps, and the Steam, Lutris and Heroic imports. Owned by the main window,
+// so it keeps going after the setup window closes.
 class SetupWork : public QObject {
   Q_OBJECT
 
@@ -36,7 +36,8 @@ class SetupWork : public QObject {
   // Added once Office is ready, or now if it is.
   void AddOfficeApps(const std::vector<std::string>& refs);
   void ImportSteam();
-  void ImportLutris();
+  // Lutris's or Heroic's installed games.
+  void ImportFrom(const QString& importer);
   // Turns each source on or off.
   void SetSourcesOn(const QStringList& on, const QStringList& off);
 
@@ -69,7 +70,7 @@ class SetupWork : public QObject {
   bool office_failed_ = false;
   double office_progress_ = -1;
   bool steam_running_ = false;
-  bool lutris_running_ = false;
+  QSet<QString> imports_running_;
   QSet<QString> tools_running_;
 };
 

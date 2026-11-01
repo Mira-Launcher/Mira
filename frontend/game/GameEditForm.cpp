@@ -435,6 +435,9 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   populating_ = false;
 
   original_patch_ = CurrentPatch();
+  // A native game or a desktop entry runs without a prefix (a native game keeps its old one only
+  // for turning back into a Windows game).
+  data_dir_row_->setVisible(game.platform != "native" && game.source != "desktop-entry");
   move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
   // An emulator's game names its emulator here, and picking another moves it there.
   const bool emulated = game.runner_ref.starts_with("emulator:");

@@ -817,6 +817,24 @@ int CmdLutrisImport() {
   return 0;
 }
 
+int CmdHeroic(int argc, char** argv) {
+  if (argc == 0 || std::string_view(argv[0]) != "import") {
+    std::fprintf(stderr, "usage: mira heroic import\n");
+    return 2;
+  }
+  auto client = Connect();
+  json summary;
+  if (!AwaitJob(client, client.Post("/v1/heroic/import"), summary)) return 1;
+  std::printf("added: %lld  updated: %lld\n", summary.value("added", 0LL),
+              summary.value("updated", 0LL));
+  if (const long long unsupported = summary.value("unsupported", 0LL); unsupported > 0)
+    std::printf("%lld left in Heroic: macOS or browser games\n", unsupported);
+  if (const long long incomplete = summary.value("incomplete", 0LL); incomplete > 0)
+    std::printf("%lld not imported: Heroic's files name no program or prefix for them\n",
+                incomplete);
+  return 0;
+}
+
 int CmdLutris(int argc, char** argv) {
   if (argc > 0 && std::string_view(argv[0]) == "import") return CmdLutrisImport();
   std::fprintf(stderr, "usage: mira lutris import\n");
@@ -2186,6 +2204,7 @@ void PrintUsage() {
       "  steam scan             detect installed Steam games\n"
       "  steam status online|invisible   set your Steam friends status\n"
       "  lutris import          import games from Lutris's own database\n"
+      "  heroic import          import games Heroic Games Launcher installed\n"
       "  launcher list|install|import|open   Battle.net, Ubisoft Connect and EA app\n"
       "  store [list]           list the stores: Epic, GOG, itch, Amazon Games, Humble Bundle\n"
       "  store <id> status|setup|login|logout|import   one store's tool and account\n"
@@ -2238,6 +2257,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "add") return CmdAdd(rest_argc, rest);
   if (command == "steam") return CmdSteam(rest_argc, rest);
   if (command == "lutris") return CmdLutris(rest_argc, rest);
+  if (command == "heroic") return CmdHeroic(rest_argc, rest);
   if (command == "launcher") return CmdLauncher(rest_argc, rest);
   if (command == "store") return CmdStore(rest_argc, rest);
   if (command == "library") return CmdLibrary(rest_argc, rest);

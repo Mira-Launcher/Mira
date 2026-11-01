@@ -126,6 +126,9 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   ApplyLayoutTokens();
   // The padding around the tiles is background too; see eventFilter.
   grid_->installEventFilter(this);
+  // A drag from outside the tiles shows from where it started.
+  grid_->SetBandHost(this, nullptr);
+  grid_->band_area = [this] { return CoverArea(); };
   installEventFilter(this);
 
   // The grid fills this and scrolls itself, until a search also lists store
@@ -409,7 +412,33 @@ bool LibraryPage::eventFilter(QObject* watched, QEvent* event) {
       static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
     ClearSelection();
   }
+  // Presses nothing under the tab bar takes (the grid's padding, the space around Continue
+  // playing) reach the page: a drag-select starts there too, as if from the grid's empty space.
+  const QEvent::Type type = event->type();
+  if (watched == this && (type == QEvent::MouseButtonPress || type == QEvent::MouseMove ||
+                          type == QEvent::MouseButtonRelease)) {
+    const auto* mouse = static_cast<QMouseEvent*>(event);
+    const QPoint pos = mouse->position().toPoint();
+    const QPoint in_grid = grid_->viewport()->mapFrom(this, pos);
+    if (type == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton &&
+        grid_->isVisible() && CoverArea().contains(pos)) {
+      grid_->BeginDragAt(in_grid, mouse->modifiers());
+      dragging_ = true;
+    } else if (dragging_ && event->type() == QEvent::MouseMove) {
+      grid_->MoveDragTo(in_grid);
+    } else if (dragging_ && event->type() == QEvent::MouseButtonRelease) {
+      grid_->FinishDrag();
+      dragging_ = false;
+    }
+  }
   return QWidget::eventFilter(watched, event);
+}
+
+QRect LibraryPage::CoverArea() const {
+  const QWidget* above =
+      title_filters_->isVisible() ? static_cast<QWidget*>(title_filters_) : tabs_;
+  const int top = above->mapTo(this, QPoint(0, above->height())).y();
+  return QRect(0, top, width(), height() - top);
 }
 
 QWidget* LibraryPage::BuildOwnedSection() {
@@ -570,6 +599,10 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
   if (!index.isValid() || index.row() >= static_cast<int>(owned_matches_.size())) return;
   const OwnedMatch match = owned_matches_[index.row()];
   QMenu menu(this);
+  bool installing = false;
+  for (const auto& [source, ref] : match.copies)
+    installing |= install_actions && install_actions(menu, source, ref);
+  if (installing) menu.addSeparator();
   if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
     for (const auto& [source, ref] : match.copies) {
       const SourceInfo* info = FindSourceInfo(source);
@@ -735,12 +768,16 @@ void LibraryPage::RefreshContinue() {
     for (const GameSummary& game : library_->Games()) {
       if (!library_->Shown(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
       if (IsApp(game) && !continue_apps_) continue;
-      if (game.running || game.last_played_at) games.push_back(&game);
+      if (game.running || !game.tools.empty() || game.last_played_at) games.push_back(&game);
     }
     const size_t keep = std::min(games.size(), static_cast<size_t>(continue_count_));
+    // What's open first: the game itself, or tools it opened.
+    const auto open = [](const GameSummary* game) {
+      return game->running ? 2 : game->tools.empty() ? 0 : 1;
+    };
     std::partial_sort(games.begin(), games.begin() + keep, games.end(),
-                      [](const GameSummary* a, const GameSummary* b) {
-                        if (a->running != b->running) return a->running;
+                      [&open](const GameSummary* a, const GameSummary* b) {
+                        if (open(a) != open(b)) return open(a) > open(b);
                         return a->last_played_at.value_or(0) > b->last_played_at.value_or(0);
                       });
     games.resize(keep);

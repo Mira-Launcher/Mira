@@ -16,6 +16,7 @@
 #include "core/Strings.h"
 #include "desktop/DesktopEntries.h"
 #include "library/Detector.h"
+#include "library/InstallSize.h"
 #include "library/PrefixNaming.h"
 #include "library/SourceRemoval.h"
 #include "metadata/FetchQueue.h"
@@ -566,6 +567,11 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
   if (!installable) {
     Finish(id, "game isn't waiting on an installer");
     return Err("not_needs_install", "game isn't waiting on an installer");
+  }
+  {
+    const std::int64_t estimate = EstimatedInstallBytes(games.Metadata().Read(id));
+    const std::lock_guard lock(tracked_mutex);
+    tracked[id].progress.estimated_bytes = estimate;
   }
   if (installer) {
     std::error_code ec;

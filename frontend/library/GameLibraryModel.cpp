@@ -179,7 +179,7 @@ std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count, bool
   std::vector<const GameSummary*> played;
   for (const GameSummary& game : games_) {
     if (IsHidden(game) != hidden) continue;
-    if (game.running) {  // anything open shows, apps included
+    if (game.running || !game.tools.empty()) {  // anything open shows, apps and tools included
       running.push_back(&game);
     } else if (!IsApp(game) && game.last_played_at) {
       played.push_back(&game);
@@ -243,6 +243,8 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
       return game.needs_check;
     case GameTileDelegate::AppRole:
       return IsApp(game);
+    case GameTileDelegate::ToolsRole:
+      return QString::fromStdString(OpenToolsLabel(game));
     default:
       return {};
   }

@@ -1,6 +1,7 @@
 #include <doctest.h>
 
 #include "activity/DownloadTracker.h"
+#include "widgets/Labels.h"
 
 using namespace mira_gui;
 using State = DownloadTracker::State;
@@ -65,6 +66,27 @@ TEST_CASE("DownloadTracker shows a store download's progress and follows a game'
   tracker.HandleEvent("library.install.progress",
                       R"({"source": "gog", "ref": "1", "progress": 0.9, "eta": 30})");
   CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1"), true).contains("1 min left"));
+  // How much of the download has come, where the store says, on the cover and in the full line.
+  CHECK(DownloadTracker::SizeProgressText(*tracker.Find("gog:1")).isEmpty());
+  tracker.HandleEvent("library.install.progress",
+                      R"({"source": "gog", "ref": "1", "progress": 0.5, "downloaded": 1073741824,
+                          "total": 2147483648})");
+  const QString size = DownloadTracker::SizeProgressText(*tracker.Find("gog:1"));
+  CHECK(size.contains(SizeText(1073741824)));
+  CHECK(size.contains(SizeText(2147483648)));
+  CHECK(DownloadTracker::ProgressText(*tracker.Find("gog:1")).contains(size));
+  CHECK(DownloadTracker::TileProgressFor(*tracker.Find("gog:1")).detail.contains(size));
+  // An installer's written bytes against the guessed installed size, under its cover too.
+  DownloadTracker::Entry installer;
+  installer.kind = DownloadTracker::Kind::Game;
+  installer.bytes = 1073741824;
+  installer.progress = 0.25;
+  installer.total_bytes = 4294967296;
+  const QString guessed = DownloadTracker::SizeProgressText(installer);
+  CHECK(guessed.contains(SizeText(1073741824)));
+  CHECK(guessed.contains(SizeText(4294967296)));
+  CHECK(DownloadTracker::TileProgressFor(installer).detail.contains(guessed));
+  CHECK(DownloadTracker::TileProgressFor(installer).fraction == doctest::Approx(0.25));
 
   CHECK(tracker.HandleEvent("game.install.started", R"({"id": "celeste"})"));
   const QString game_key =
@@ -234,4 +256,29 @@ TEST_CASE("DownloadTracker keeps a paused install's progress and lets it be paus
   CHECK(entry->progress == doctest::Approx(0.4));
   CHECK(tracker.RunningCount() == 0);
   CHECK(DownloadTracker::CanPause(*entry));
+}
+
+TEST_CASE("DownloadTracker finds a game's or title's install while it runs or is paused") {
+  DownloadTracker tracker;
+  tracker.NoteTitle("epic", "abc", "Spruce");
+  tracker.HandleEvent("library.install.started",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  // A store game's update is found by its id as well as its title.
+  const DownloadTracker::Entry* update = tracker.LiveInstall("epic", {}, "epic-abc");
+  REQUIRE(update != nullptr);
+  CHECK(update == tracker.LiveInstall("epic", "abc", {}));
+  CHECK(update->kind == DownloadTracker::Kind::Title);
+  tracker.HandleEvent("library.install.paused",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  CHECK(tracker.LiveInstall("epic", "abc", {}) != nullptr);
+  tracker.HandleEvent("library.install.finished",
+                      R"({"source": "epic", "ref": "abc", "update": true})");
+  CHECK(tracker.LiveInstall("epic", "abc", {}) == nullptr);
+
+  // A game's own installer.
+  tracker.HandleEvent("game.install.started", R"({"id": "celeste"})");
+  const DownloadTracker::Entry* installer = tracker.LiveInstall("local", {}, "celeste");
+  REQUIRE(installer != nullptr);
+  CHECK(installer->kind == DownloadTracker::Kind::Game);
+  CHECK(tracker.LiveInstall("epic", {}, "epic-other") == nullptr);
 }

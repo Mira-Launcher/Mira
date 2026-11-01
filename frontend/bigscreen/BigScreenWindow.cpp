@@ -588,21 +588,7 @@ QPixmap BigScreenWindow::Cover(const Item& item, QSize size) const {
 }
 
 const DownloadTracker::Entry* BigScreenWindow::Download(const Item& item) const {
-  using Kind = DownloadTracker::Kind;
-  // A store game ("<source>-<ref>") updates as its store title.
-  QString ref = item.ref;
-  if (ref.isEmpty() && item.key.startsWith(item.source + "-"))
-    ref = item.key.mid(item.source.size() + 1);
-  const DownloadTracker::Entry* entry =
-      ref.isEmpty()
-          ? nullptr
-          : services_.downloads->Find(DownloadTracker::KeyFor(Kind::Title, item.source, ref));
-  if (entry == nullptr)
-    entry = services_.downloads->Find(DownloadTracker::KeyFor(Kind::Game, {}, item.key));
-  if (entry == nullptr) return nullptr;
-  const bool live = entry->state == DownloadTracker::State::Running ||
-                    entry->state == DownloadTracker::State::Paused;
-  return live ? entry : nullptr;
+  return services_.downloads->LiveInstall(item.source, item.ref, item.key);
 }
 
 double BigScreenWindow::Progress(const Item& item) const {

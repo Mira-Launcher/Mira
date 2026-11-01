@@ -482,4 +482,13 @@ TEST_CASE("ParseProgressLine reads legendary and gogdl download lines") {
   CHECK(library::ParseProgressLine("= Progress: 7.00 70/1000, Running for: 00:00:10, ETA: 00:02:10",
                                    progress));
   CHECK(progress.fraction == doctest::Approx(0.07));
+
+  // The download's size and how much of it has come.
+  CHECK(progress.total_bytes == -1);
+  library::ParseProgressLine("[cli] INFO: Download size: 812.50 MiB (Compression savings: 41.2%)",
+                             progress);
+  CHECK(progress.total_bytes == static_cast<std::int64_t>(812.5 * 1024 * 1024));
+  CHECK(library::ParseProgressLine(
+      "[DLManager] INFO:  - Downloaded: 98.25 MiB, Written: 120.00 MiB", progress));
+  CHECK(progress.downloaded_bytes == static_cast<std::int64_t>(98.25 * 1024 * 1024));
 }
