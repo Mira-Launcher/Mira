@@ -161,6 +161,24 @@ void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionRe
       std::move(callback));
 }
 
+void GetUpdatesAsync(QObject* context, std::function<void(UpdatesResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<UpdatesResult>(
+            transport::Get("/v1/updates", {.read_timeout = std::chrono::seconds(60)}),
+            "GET /v1/updates", Shape::Array, [](UpdatesResult& result, const nlohmann::json& body) {
+              for (const nlohmann::json& entry : body) {
+                result.updates.push_back(
+                    {entry.value("kind", std::string()), entry.value("id", std::string()),
+                     entry.value("name", std::string()), entry.value("installed", std::string()),
+                     entry.value("latest", std::string())});
+              }
+            });
+      },
+      std::move(callback), async::Lane::Slow);
+}
+
 void GetLutrisAsync(QObject* context, std::function<void(LutrisStatusResult)> callback) {
   async::Run(
       context,

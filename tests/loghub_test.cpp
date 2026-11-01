@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <fstream>
 
+#include "support/TestEnv.h"
+
 using namespace mira;
 
 TEST_CASE("Each channel keeps its own lines, read from a cursor") {
@@ -74,9 +76,7 @@ TEST_CASE("Repeated download progress lines are one live line, kept once somethi
 
 TEST_CASE(
     "A channel is journaled to disk as it is written, and read back from there after a restart") {
-  const std::filesystem::path dir =
-      std::filesystem::temp_directory_path() / "mira-loghub-journal-test";
-  std::filesystem::remove_all(dir);
+  const std::filesystem::path dir = test::TempDir("loghub-journal");
   loghub::SetJournalDirectory(dir);
 
   loghub::Begin("setup:journal-test");

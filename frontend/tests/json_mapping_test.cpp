@@ -193,6 +193,20 @@ TEST_CASE("FlattenConfig skips the opaque frontend table") {
   CHECK(out.count("frontend.window_width") == 0);
 }
 
+TEST_CASE("FlattenConfig tells a saved secret from an unset one") {
+  std::map<std::string, std::string> out;
+  mapping::FlattenConfig(json::parse(R"({
+    "secrets_set": ["steamgriddb.api_key"],
+    "steamgriddb": {"api_key": ""},
+    "steam": {"web_api_key": ""}
+  })"),
+                         "", out);
+
+  CHECK(out["steamgriddb.api_key"] == kSecretSaved);
+  CHECK(out["steam.web_api_key"].empty());
+  CHECK(out.count("secrets_set") == 0);
+}
+
 TEST_CASE("FlattenConfig only skips frontend at the top level") {
   // A nested key that happens to be named "frontend" is a real setting.
   std::map<std::string, std::string> out;

@@ -257,13 +257,18 @@ void FlattenConfig(const json& node, const std::string& prefix,
     return;
   }
   for (const auto& [key, value] : node.items()) {
-    if (prefix.empty() && key == "frontend") continue;  // opaque, not part of the schema
+    // Not settings: the opaque frontend table, and which secrets are set.
+    if (prefix.empty() && (key == "frontend" || key == "secrets_set")) continue;
     const std::string dotted = prefix.empty() ? key : prefix + "." + key;
     if (value.is_object()) {
       FlattenConfig(value, dotted, out);
     } else {
       out[dotted] = ToDisplayString(value);
     }
+  }
+  if (!prefix.empty() || !node.contains("secrets_set") || !node["secrets_set"].is_array()) return;
+  for (const json& key : node["secrets_set"]) {
+    if (key.is_string()) out[key.get<std::string>()] = kSecretSaved;
   }
 }
 

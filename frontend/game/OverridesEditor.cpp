@@ -109,7 +109,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     api::ListRunnersAsync(this, [this](RunnersResult runners) {
       for (Field& field : fields_) {
         if (field.combo != nullptr && field.entry.is_runner_ref)
-          FillRunnerCombo(field.combo, runners);
+          FillRunnerCombo(field.combo, runners, field.entry);
       }
     });
   };

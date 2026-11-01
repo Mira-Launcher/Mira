@@ -158,6 +158,10 @@ class SettingsPanel : public QWidget {
 
   void Load();
   void LoadFrontendPrefs();
+  void ShowFrontendPrefs(const FrontendPrefs& prefs);
+  // Changes saved elsewhere (the CLI, a source page, another client) show here as they land.
+  void FollowConfigChanges();
+  void ReloadValues();
   void BuildInterfacePage();
   void AddDisplayRows(SettingsCard* card);
   void BuildBigScreenPage();
@@ -257,6 +261,7 @@ class SettingsPanel : public QWidget {
   SettingsCard* mira_folders_card_ = nullptr;
   int saves_pending_ = 0;
   int loads_pending_ = 2;  // the settings and the display prefs; Ready at zero
+  bool values_loaded_ = false;
   void LoadDone();
   QString save_error_;
 };

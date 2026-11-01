@@ -35,12 +35,9 @@
 
 namespace mira_gui {
 
-// setViewportMargins is protected on QAbstractScrollArea; this republishes
-// it so ApplyLayoutTokens() can pad the tiles without also insetting the
-// scrollbar. Ctrl+wheel resizes tiles instead of scrolling.
+// Ctrl+wheel resizes tiles instead of scrolling.
 class LibraryGrid : public TileView {
  public:
-  using TileView::setViewportMargins;
   using TileView::TileView;
 
   // One call per notch, positive to grow.
@@ -644,7 +641,7 @@ void LibraryPage::ApplyLayoutTokens() {
   // This pads only the tiles' own drawing area, leaving the scrollbar
   // docked at the panel's true right edge.
   const int margin = theme::Current().grid_margin;
-  grid_->setViewportMargins(margin, margin, margin, margin);
+  grid_->SetPadding(margin);
 }
 
 void LibraryPage::ApplyFilter() {

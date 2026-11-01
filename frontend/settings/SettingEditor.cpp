@@ -21,6 +21,15 @@
 #include "SettingsCard.h"
 
 namespace mira_gui {
+namespace {
+
+void ShowSecret(QLineEdit* line, QAction* clear, bool saved) {
+  line->setProperty("secret_saved", saved);
+  line->setPlaceholderText(saved ? "Saved" : "Not set");
+  clear->setVisible(saved);
+}
+
+}  // namespace
 
 SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
   const std::string& label = entry.label.empty() ? entry.key : entry.label;
@@ -69,17 +78,17 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     // An empty path means Mira finds it (the doc says where), not "nothing".
     if (!entry.path.empty() && entry.default_display.empty()) line->setPlaceholderText("Automatic");
     if (entry.is_secret) {
+      // mirad never sends a saved key back, so there's nothing to show: typing replaces it.
       line->setEchoMode(QLineEdit::Password);
-      line->setPlaceholderText("Not set");
-      // The eye sits inside the field, so a key field is as wide as any other.
-      QAction* show = line->addAction(QIcon(), QLineEdit::TrailingPosition);
-      icons::Follow(show, icons::Glyph::Eye, &theme::Tokens::text_muted);
-      show->setCheckable(true);
-      show->setToolTip("Show");
-      QObject::connect(show, &QAction::toggled, line, [line = line, show](bool shown) {
-        line->setEchoMode(shown ? QLineEdit::Normal : QLineEdit::Password);
-        show->setToolTip(shown ? "Hide" : "Show");
-      });
+      clear_secret = line->addAction(QIcon(), QLineEdit::TrailingPosition);
+      icons::Follow(clear_secret, icons::Glyph::Close, &theme::Tokens::text_muted);
+      clear_secret->setToolTip("Remove the saved key");
+      QObject::connect(clear_secret, &QAction::triggered, line,
+                       [line = line, clear = clear_secret] {
+                         line->clear();
+                         ShowSecret(line, clear, false);
+                       });
+      ShowSecret(line, clear_secret, false);
     }
     if (entry.path.empty()) {
       row->AddControl(line);
@@ -137,6 +146,8 @@ std::string SettingEditor::Text() const {
     for (const QString& item : list->Items()) items.push_back(item.toStdString());
     return mapping::ListText(items);
   }
+  if (clear_secret && line->text().isEmpty() && line->property("secret_saved").toBool())
+    return kSecretSaved;
   return line->text().toStdString();
 }
 
@@ -179,6 +190,12 @@ void SettingEditor::SetText(const std::string& text) {
     ShowRunnerRef(combo, QString::fromStdString(text));
     return;
   }
+  if (clear_secret) {
+    const bool saved = text == kSecretSaved;
+    ShowSecret(line, clear_secret, saved);
+    line->setText(saved ? QString() : QString::fromStdString(text));
+    return;
+  }
   line->setText(QString::fromStdString(text));
   line->setCursorPosition(0);
 }
@@ -191,6 +208,7 @@ void SettingEditor::OnEdited(QObject* context, std::function<void()> edited) con
     if (combo->isEditable()) QObject::connect(combo, &QComboBox::editTextChanged, context, edited);
   }
   if (line) QObject::connect(line, &QLineEdit::textChanged, context, edited);
+  if (clear_secret) QObject::connect(clear_secret, &QAction::triggered, context, edited);
   if (list) QObject::connect(list, &ListEdit::Changed, context, edited);
 }
 
@@ -206,13 +224,16 @@ QString RunnerRef(const QComboBox* combo) {
   return index >= 0 && combo->itemData(index).isValid() ? combo->itemData(index).toString() : text;
 }
 
-void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners) {
+void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
+                     const ConfigSchemaEntry& entry) {
   const QString current = RunnerRef(combo);
   combo->blockSignals(true);
   combo->clear();
-  combo->addItem("Auto (best available)", "auto");
+  if (entry.runner_kinds.empty()) combo->addItem("Auto (best available)", "auto");
   if (runners.ok) {
     for (const RunnerInfo& runner : runners.runners) {
+      if (!entry.runner_kinds.empty() && !std::ranges::contains(entry.runner_kinds, runner.kind))
+        continue;
       const QString label = QString("%1 (%2)").arg(QString::fromStdString(runner.name),
                                                    QString::fromStdString(runner.kind));
       combo->addItem(label, QString::fromStdString(runner.reference));

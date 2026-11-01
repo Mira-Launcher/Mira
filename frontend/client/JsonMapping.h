@@ -50,7 +50,8 @@ std::vector<GameFailure> ToGameFailures(const nlohmann::json& reply, const char*
 std::string ToDisplayString(const nlohmann::json& value);
 
 // Flattens GET /v1/config's nested document to the dotted keys Schema
-// entries use, skipping the opaque `frontend` table
+// entries use, skipping the opaque `frontend` table; a secret in `secrets_set` reads as
+// kSecretSaved
 void FlattenConfig(const nlohmann::json& node, const std::string& prefix,
                    std::map<std::string, std::string>& out);
 

@@ -1764,6 +1764,31 @@ TEST_CASE(
   CHECK(changes[1]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
 }
 
+TEST_CASE("GET /v1/config leaves secrets out unless asked, and says which are set") {
+  LiveServer server(TempDir("server-config-secrets"));
+  httplib::Client client = server.Client();
+  const auto config = [&](const char* path) {
+    auto res = client.Get(path);
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body);
+  };
+  CHECK(config("/v1/config")["secrets_set"] == nlohmann::json::array());
+
+  REQUIRE(
+      client
+          .Patch("/v1/config", R"({"steamgriddb": {"api_key": "secret-key"}})", "application/json")
+          ->status == 200);
+  const nlohmann::json masked = config("/v1/config");
+  CHECK(masked.dump().find("secret-key") == std::string::npos);
+  CHECK(masked["steamgriddb"]["api_key"] == "");
+  CHECK(masked["secrets_set"] == nlohmann::json::array({"steamgriddb.api_key"}));
+  CHECK(config("/v1/config?reveal=1")["steamgriddb"]["api_key"] == "secret-key");
+
+  REQUIRE(client.Post("/v1/config/reset?key=steamgriddb.api_key")->status == 200);
+  CHECK(config("/v1/config")["secrets_set"] == nlohmann::json::array());
+}
+
 TEST_CASE("A game's settings override the global ones, all or nothing, until set back to null") {
   LiveServer server(TempDir("server-game-config"));
   model::Game game;

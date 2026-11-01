@@ -18,6 +18,80 @@ namespace {
 constexpr mode_t kSettingsMode = 0600;  // it holds API keys
 using nlohmann::json;
 
+// Leads every settings.toml Mira writes. Older versions wrote every default, so a file without it
+// is cleaned once on load.
+constexpr std::string_view kHeader =
+    "# Only the settings you change are kept here; the rest follow Mira's defaults.\n"
+    "# `mira config describe` lists every setting with its default.\n\n";
+
+void Erase(json& set, const json::json_pointer& pointer) {
+  if (!pointer.empty() && set.contains(pointer))
+    set[pointer.parent_pointer()].erase(pointer.back());
+}
+
+// Removes the tables left empty once their settings went, so the file doesn't list bare headers.
+// An object-valued setting is a value, kept even when empty.
+void Prune(json& table, const std::string& prefix) {
+  for (auto it = table.begin(); it != table.end();) {
+    const std::string key = prefix + it.key();
+    if (it->is_object() && Schema::Instance().Find(key) == nullptr) {
+      Prune(*it, key + ".");
+      if (it->empty()) {
+        it = table.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+}
+
+// Drops the values an older Mira wrote out without anyone choosing them: today's default and the
+// earlier ones. Whether anything was dropped.
+bool DropWrittenDefaults(json& set) {
+  bool dropped = false;
+  for (const Entry& entry : Schema::Instance().Entries()) {
+    const auto pointer = Schema::Pointer(entry.key);
+    if (!set.contains(pointer)) continue;
+    const json& value = set[pointer];
+    if (value == entry.default_value || std::ranges::contains(entry.old_defaults, value)) {
+      Erase(set, pointer);
+      dropped = true;
+    }
+  }
+  return dropped;
+}
+
+// Drops what no setting reads (settings since removed, the old [frontend] table), adding each
+// dotted key to `dropped`. A setting's own value is its data, so it's never looked into.
+void DropUnknown(json& table, const std::string& prefix, std::vector<std::string>& dropped) {
+  for (auto it = table.begin(); it != table.end();) {
+    const std::string key = prefix + it.key();
+    if (Schema::Instance().Find(key) == nullptr) {
+      if (it->is_object()) DropUnknown(*it, key + ".", dropped);
+      if (!it->is_object() || it->empty()) {
+        if (!it->is_object()) dropped.push_back(key);
+        it = table.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+}
+
+// A key with a dot above a setting ({"tags.folders": ...}) would be saved as one stray table key,
+// since TOML quotes it: settings nest. Inside a setting's own value, keys are its data.
+void FindDottedKeys(const json& table, const std::string& prefix,
+                    std::vector<std::string>& problems) {
+  for (const auto& [key, value] : table.items()) {
+    const std::string dotted = prefix + key;
+    if (key.find('.') != std::string::npos) {
+      problems.push_back(std::format("{}: write it as nested tables, not a dotted key", dotted));
+    } else if (value.is_object() && Schema::Instance().Find(dotted) == nullptr) {
+      FindDottedKeys(value, dotted + ".", problems);
+    }
+  }
+}
+
 }  // namespace
 
 Config::Config(std::filesystem::path file)
@@ -25,7 +99,8 @@ Config::Config(std::filesystem::path file)
   document_ = Schema::Instance().Defaults();
 }
 
-void Config::ResetInvalid(json& whole, const std::function<json(const Entry&)>& fallback,
+void Config::ResetInvalid(json& whole,
+                          const std::function<std::optional<json>(const Entry&)>& fallback,
                           std::string_view note) {
   const Schema& schema = Schema::Instance();
   for (const Entry& entry : schema.Entries()) {
@@ -33,16 +108,31 @@ void Config::ResetInvalid(json& whole, const std::function<json(const Entry&)>& 
     if (!whole.contains(pointer)) continue;
     if (auto problem = schema.Validate(entry.key, whole[pointer])) {
       log::Warn("settings: {}: {} {}", entry.key, *problem, note);
-      whole[pointer] = fallback(entry);
+      if (auto value = fallback(entry)) {
+        whole[pointer] = std::move(*value);
+      } else {
+        Erase(whole, pointer);
+      }
     }
   }
 }
 
+void Config::SetLocked(json set) {
+  set_ = std::move(set);
+  Prune(set_, "");
+  document_ = Schema::Instance().Defaults();
+  document_.merge_patch(set_);
+}
+
+std::string Config::TextLocked() const {
+  return std::string(kHeader) + tomljson::ToTomlText(set_);
+}
+
 void Config::Load(const std::string& fallback) {
-  const Schema& schema = Schema::Instance();
   std::lock_guard lock(mutex_);
-  document_ = schema.Defaults();
+  SetLocked(json::object());
   frontend_ = json::object();
+  file_as_loaded_ = json::object();
   ++revision_;
   keep_file_ = false;
   keep_frontend_file_ = false;
@@ -64,24 +154,42 @@ void Config::Load(const std::string& fallback) {
     // An individual bad value falls back to its default rather than
     // rejecting the whole file, so one typo cannot leave the user with a
     // daemon that refuses to start.
-    ResetInvalid(
-        whole, [](const Entry& entry) { return entry.default_value; }, "(using the default)");
-    for (const Entry& entry : schema.Entries()) {
-      const auto pointer = Schema::Pointer(entry.key);
-      if (!entry.old_defaults.empty() && whole.contains(pointer) &&
-          std::ranges::find(entry.old_defaults, whole[pointer]) != entry.old_defaults.end()) {
-        log::Info("settings: {} moves to its new default", entry.key);
-        whole[pointer] = entry.default_value;
-      }
-    }
-
-    document_.merge_patch(whole);
+    ResetInvalid(whole, [](const Entry&) { return std::nullopt; }, "(using the default)");
     loaded_text_ = text;
+    file_as_loaded_ = whole;
+    std::vector<std::string> unknown;
+    DropUnknown(whole, "", unknown);
+    const bool cleaned = !text.starts_with(kHeader) && DropWrittenDefaults(whole);
+    if (cleaned || !unknown.empty()) {
+      // Each kind of cleaning keeps its own copy, so a later one can't overwrite the first's.
+      const char* suffix = cleaned ? ".with-defaults" : ".with-removed-settings";
+      std::filesystem::copy_file(file_, std::filesystem::path(file_) += suffix,
+                                 std::filesystem::copy_options::overwrite_existing, ec);
+      if (cleaned) {
+        log::Info(
+            "settings: kept only the values that differ from Mira's defaults (the file as it "
+            "was is {}{})",
+            file_.string(), suffix);
+      }
+      if (!unknown.empty()) {
+        std::string keys;
+        for (const std::string& key : unknown) keys += (keys.empty() ? "" : ", ") + key;
+        log::Info(
+            "settings: dropped what no setting reads any more: {} (the file as it was is {}{})",
+            keys, file_.string(), suffix);
+      }
+      SetLocked(std::move(whole));
+      loaded_text_ = TextLocked();
+      write_text(loaded_text_);
+      return;
+    }
+    SetLocked(std::move(whole));
   };
 
   if (!std::filesystem::exists(file_, ec)) {
-    log::Info("no settings at {}, writing defaults", file_.string());
-    write_text(tomljson::ToToml(document_));
+    log::Info("no settings at {}, starting from the defaults", file_.string());
+    loaded_text_ = TextLocked();
+    write_text(loaded_text_);
   } else {
     // A file from before saves were owner-only.
     std::filesystem::permissions(
@@ -110,7 +218,8 @@ void Config::Load(const std::string& fallback) {
         log::Error(
             "settings at {} could not be parsed ({}); kept it as {} and continuing with defaults",
             file_.string(), parsed.error().description(), broken->string());
-        write_text(tomljson::ToToml(document_));
+        loaded_text_ = TextLocked();
+        write_text(loaded_text_);
       }
     } else {
       keep_file_ = true;
@@ -201,18 +310,22 @@ Result<std::vector<std::string>> Config::SyncLocked() {
   }
   json whole = tomljson::ToJson(parsed.table());
   ResetInvalid(
-      whole, [this](const Entry& entry) { return GetLocked(entry.key); },
+      whole,
+      [this](const Entry& entry) -> std::optional<json> {
+        const auto pointer = Schema::Pointer(entry.key);
+        if (set_.contains(pointer)) return set_[pointer];
+        return std::nullopt;
+      },
       "(keeping the current value)");
-  json next = schema.Defaults();
-  next.merge_patch(whole);
+  const json before = document_;
+  SetLocked(std::move(whole));
 
   std::vector<std::string> changed;
   for (const Entry& entry : schema.Entries()) {
     const auto pointer = Schema::Pointer(entry.key);
-    if (next.value(pointer, json()) != document_.value(pointer, json()))
+    if (document_.value(pointer, json()) != before.value(pointer, json()))
       changed.push_back(entry.key);
   }
-  document_ = std::move(next);
   loaded_text_ = text;
   keep_file_ = false;
   ++revision_;
@@ -237,9 +350,10 @@ Result<void> Config::ChangeAndSave(const std::function<void()>& change) {
     }
   }
   change();
+  SetLocked(std::move(set_));
   ++revision_;  // every change to the settings saves
   if (keep_file_) return KeptFileError(file_);
-  const std::string text = tomljson::ToTomlText(document_);
+  const std::string text = TextLocked();
   if (auto written = WriteFileAtomic(file_, text, "config_write_failed", true, kSettingsMode);
       !written)
     return written;
@@ -257,6 +371,11 @@ Result<void> Config::SaveFrontendFile() {
 std::string Config::LoadedText() const {
   std::lock_guard lock(mutex_);
   return loaded_text_;
+}
+
+json Config::FileAsLoaded() const {
+  std::lock_guard lock(mutex_);
+  return file_as_loaded_;
 }
 
 json Config::Document() const {
@@ -280,7 +399,7 @@ Result<void> Config::Set(std::string_view key, const json& value) {
   if (auto problem = Schema::Instance().Validate(key, value)) {
     return Err("invalid_setting", std::format("{}: {}", key, *problem));
   }
-  return ChangeAndSave([&] { document_[Schema::Pointer(key)] = value; });
+  return ChangeAndSave([&] { set_[Schema::Pointer(key)] = value; });
 }
 
 Result<void> Config::Patch(const json& patch) {
@@ -290,7 +409,7 @@ Result<void> Config::Patch(const json& patch) {
   std::vector<std::string> problems;
   for (const Entry& entry : schema.Entries()) {
     const auto pointer = Schema::Pointer(entry.key);
-    if (!patch.contains(pointer)) continue;
+    if (!patch.contains(pointer) || patch[pointer].is_null()) continue;  // null: back to default
     if (auto problem = schema.Validate(entry.key, patch[pointer])) {
       problems.push_back(std::format("{}: {}", entry.key, *problem));
     }
@@ -298,6 +417,11 @@ Result<void> Config::Patch(const json& patch) {
   // A key the schema doesn't know (a typo) would be saved unchecked. A setting's value may nest (a
   // list, a map). A removal (null) sets nothing; an empty object or list flattens to null too, so
   // look at the real value.
+  if (patch.is_object()) {
+    json settings = patch;
+    settings.erase("frontend");
+    FindDottedKeys(settings, "", problems);
+  }
   const json flat = patch.flatten();  // named: items() would outlive a temporary
   for (const auto& item : flat.items()) {
     const std::string& pointer = item.key();
@@ -340,17 +464,18 @@ Result<void> Config::Patch(const json& patch) {
     }
     backend_patch.erase("frontend");
   }
-  return ChangeAndSave([&] { document_.merge_patch(backend_patch); });
+  // A null removes the value, back to the default.
+  return ChangeAndSave([&] { set_.merge_patch(backend_patch); });
 }
 
 Result<void> Config::Reset(std::string_view key) {
   const Entry* entry = Schema::Instance().Find(key);
   if (entry == nullptr) return Err("unknown_setting", std::format("unknown setting \"{}\"", key));
-  return ChangeAndSave([&] { document_[Schema::Pointer(key)] = entry->default_value; });
+  return ChangeAndSave([&] { Erase(set_, Schema::Pointer(key)); });
 }
 
 Result<void> Config::ResetAll() {
-  return ChangeAndSave([&] { document_ = Schema::Instance().Defaults(); });
+  return ChangeAndSave([&] { set_ = json::object(); });
 }
 
 json Config::FrontendSettings() const {

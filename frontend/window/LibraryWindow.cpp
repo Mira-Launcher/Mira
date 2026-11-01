@@ -136,6 +136,10 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   for (const auto& [id, width] : prefs.source_tile_widths.value_or(std::map<std::string, int>{})) {
     source_tile_widths_[id] = std::clamp(width, kMinTileWidth, kMaxTileWidth);
   }
+  for (const auto& [key, width] : prefs.page_tile_widths.value_or(std::map<std::string, int>{})) {
+    page_tile_widths_[key] = std::clamp(width, kMinTileWidth, kMaxTileWidth);
+  }
+  library_tile_width_ = tile_width;
 
   // The one copy of the library every view reads; see GameLibraryModel.
   library_ = new mira_gui::GameLibraryModel(this);
@@ -511,8 +515,9 @@ mira_gui::FrontendPrefs LibraryWindow::LayoutPrefs() const {
     prefs.window_height = normal.height();
   }
   prefs.window_maximized = isMaximized();
-  prefs.tile_width = grid_page_->TileWidth();
+  prefs.tile_width = library_tile_width_;
   prefs.source_tile_widths = source_tile_widths_;
+  prefs.page_tile_widths = page_tile_widths_;
   prefs.library_filter = grid_page_->FilterKey().toStdString();
   prefs.sort_by = grid_page_->SortKey();
   prefs.sort_descending = grid_page_->SortDescending();
@@ -738,9 +743,9 @@ void LibraryWindow::BuildTagsPage() {
   tags_page_ = new mira_gui::TagsPage(artwork_, this);
   tags_page_->SetGames(library_->Games());
   tags_page_->SetShowingHidden(library_->ShowingHidden());
-  tags_page_->SetTileWidth(grid_page_->TileWidth());
+  tags_page_->SetTileWidth(PageTileWidth("tags"));
   connect(tags_page_, &mira_gui::TagsPage::GamesChanged, this, &LibraryWindow::UpsertGames);
-  // The picker's covers zoom with the library's tiles.
+  // Ctrl+wheel over the picker's covers.
   connect(tags_page_, &mira_gui::TagsPage::ZoomRequested, this,
           [this](int steps) { StepZoom(steps); });
   connect(tags_page_, &mira_gui::TagsPage::PickerToggled, this,
@@ -960,17 +965,35 @@ void LibraryWindow::StepZoom(int steps) {
 }
 
 void LibraryWindow::ApplyTileWidth(int width) {
-  if (!SourcePageShown() || tile_size_synced_) grid_page_->SetTileWidth(width);
-  if (tags_page_ != nullptr && !SourcePageShown()) tags_page_->SetTileWidth(width);
-  if (!SourcePageShown()) return;
-  if (!tile_size_synced_)
+  if (tile_size_synced_) {
+    library_tile_width_ = width;
+    grid_page_->SetTileWidth(width);
+    if (tags_page_ != nullptr) tags_page_->SetTileWidth(width);
+    if (SourcePageShown()) source_page_->SetTileWidth(width);
+    return;
+  }
+  if (SourcePageShown()) {
     source_tile_widths_[source_page_->property("source_id").toString().toStdString()] = width;
-  source_page_->SetTileWidth(width);
+    source_page_->SetTileWidth(width);
+  } else if (TagPickerShown()) {
+    page_tile_widths_["tags"] = width;
+    tags_page_->SetTileWidth(width);
+  } else {
+    (library_->ShowingHidden() ? page_tile_widths_["hidden"] : library_tile_width_) = width;
+    grid_page_->SetTileWidth(width);
+  }
 }
 
 int LibraryWindow::ShownTileWidth() const {
-  return SourcePageShown() ? SourceTileWidth(source_page_->property("source_id").toString())
-                           : grid_page_->TileWidth();
+  if (SourcePageShown()) return SourceTileWidth(source_page_->property("source_id").toString());
+  if (TagPickerShown()) return PageTileWidth("tags");
+  return grid_page_->TileWidth();
+}
+
+int LibraryWindow::PageTileWidth(const std::string& key) const {
+  if (tile_size_synced_) return library_tile_width_;
+  const auto it = page_tile_widths_.find(key);
+  return it == page_tile_widths_.end() ? library_tile_width_ : it->second;
 }
 
 mira_gui::TileRow LibraryWindow::ShownTileRow() const {
@@ -981,7 +1004,7 @@ mira_gui::TileRow LibraryWindow::ShownTileRow() const {
 }
 
 int LibraryWindow::SourceTileWidth(const QString& id) const {
-  if (tile_size_synced_) return grid_page_->TileWidth();
+  if (tile_size_synced_) return library_tile_width_;
   const auto it = source_tile_widths_.find(id.toStdString());
   return it == source_tile_widths_.end() ? kDefaultSourceTileWidth : it->second;
 }
@@ -1001,8 +1024,7 @@ void LibraryWindow::SyncZoom() {
   zoom_->setRange(
       mira_gui::FitTileWidth(kMinTileWidth, kMinTileWidth, row, kMinTileWidth, kMaxTileWidth),
       mira_gui::FitTileWidth(kMaxTileWidth, kMaxTileWidth, row, kMinTileWidth, kMaxTileWidth));
-  zoom_->setValue(source ? SourceTileWidth(source_page_->property("source_id").toString())
-                         : grid_page_->TileWidth());
+  zoom_->setValue(ShownTileWidth());
   zoom_->setEnabled(!GameEditOpen() && (source || GridShown() || TagPickerShown()));
 }
 
@@ -1209,6 +1231,11 @@ void LibraryWindow::ShowingHiddenChanged(bool showing) {
   top_bar_->SetHiddenShortcut(showing ? HiddenShortcut() : QString());
   grid_page_->SetHiddenShortcut(HiddenShortcut());
   if (tags_page_ != nullptr) tags_page_->SetShowingHidden(showing);
+  // Hidden mode's grid keeps a size of its own.
+  if (!tile_size_synced_) {
+    grid_page_->SetTileWidth(showing ? PageTileWidth("hidden") : library_tile_width_);
+    SyncZoomSoon();
+  }
   LibraryChanged();
   if (!showing && hidden_password_ && !hidden_locked_) mira_gui::api::LeftHiddenModeAsync(this);
 }
@@ -1258,9 +1285,11 @@ bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void LibraryWindow::UpdateFooter() {
-  const auto total = std::ranges::count_if(
-      library_->Games(),
-      [this](const mira_gui::GameSummary& game) { return library_->Shown(game); });
+  // Out of what the library can list: store launchers (the EA app) live on their source pages.
+  const auto total =
+      std::ranges::count_if(library_->Games(), [this](const mira_gui::GameSummary& game) {
+        return library_->Shown(game) && mira_gui::GameFilterProxy::MatchesKey(game, "all");
+      });
   sidebar_->SetFooter(grid_page_->ShownCount(), static_cast<int>(total), mirad_reachable_);
 }
 
@@ -1476,6 +1505,7 @@ void LibraryWindow::LaunchGame(const std::string& id, const std::string& option)
 
 void LibraryWindow::OpenTitleCover(const QString& source, const QString& ref, const QString& name) {
   if (!LeaveOverlays()) return;
+  if (!GameEditOpen()) focus_before_card_ = QApplication::focusWidget();
   if (game_card_ != nullptr) CloseGameEdit();
   SetGridControlsEnabled(false);
   mira_gui::GameSummary title;
@@ -1494,6 +1524,7 @@ void LibraryWindow::OpenTitleCover(const QString& source, const QString& ref, co
 
 void LibraryWindow::OpenGameDialog(const std::string& id) {
   if (!LeaveOverlays()) return;  // a dirty card or Settings page was kept
+  if (!GameEditOpen()) focus_before_card_ = QApplication::focusWidget();
   // Fresh instance each time: the card loads its id at construction.
   if (game_card_ != nullptr) CloseGameEdit();
   SetGridControlsEnabled(false);
@@ -1524,6 +1555,9 @@ void LibraryWindow::CloseGameEdit() {
   root_stack_->setCurrentIndex(0);
   SetGridControlsEnabled(true);
   UpdateLibraryNavActive();
+  // The focused widget was hidden with the page under the card, so nothing has the keyboard.
+  if (focus_before_card_ != nullptr && focus_before_card_->isVisible())
+    focus_before_card_->setFocus(Qt::OtherFocusReason);
   // Torn down rather than left alive off-screen: IsDirty() on a discarded
   // form would otherwise still read dirty, and wrongly prompt again on the
   // next Ctrl+Q from the grid.

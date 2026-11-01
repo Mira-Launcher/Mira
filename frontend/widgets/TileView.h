@@ -31,6 +31,8 @@ class TileView : public QListView {
 
   // A pixel less: QListView wraps a tile that ends exactly at the row's edge.
   TileRow Row() const { return {RoomBesideScrollbar(this, viewport()->width()) - 1, 0}; }
+  // Background around the tiles, as viewport margins so the scrollbar stays at the edge.
+  void SetPadding(int padding);
   void SetDragSelectEnabled(bool enabled);
   // A drag-select pressed outside the grid (the page around a grid sized to its tiles), with the
   // page passing on its moves and release. Points are in this view's viewport coordinates.
@@ -56,6 +58,7 @@ class TileView : public QListView {
   void focusOutEvent(QFocusEvent* event) override;
   void changeEvent(QEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
+  void updateGeometries() override;
   // The tile is about to scroll out from under its card.
   void StopHover() { hover_.Track(QModelIndex()); }
 
@@ -70,6 +73,8 @@ class TileView : public QListView {
   void AutoScrollStep();
   void EndDrag();
 
+  int padding_ = 0;
+  QSize laid_out_cell_;
   bool drag_select_enabled_ = true;
   bool tracking_drag_ = false;
   QPoint drag_origin_;                    // content coordinates

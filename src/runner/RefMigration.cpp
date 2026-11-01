@@ -96,24 +96,29 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
     return std::nullopt;
   };
 
+  return RepointRefs(config, games, migrated);
+}
+
+int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef& moved,
+                std::vector<std::string>* game_ids) {
   int changed = 0;
   std::vector<const config::Entry*> runner_keys;
   for (const config::Entry& entry : config::Schema::Instance().Entries()) {
     if (!entry.is_runner_ref) continue;
     runner_keys.push_back(&entry);
-    if (const auto to = migrated(config.GetString(entry.key))) {
+    if (const auto to = moved(config.GetString(entry.key))) {
       log::Info("{}: {} is now {}", entry.key, config.GetString(entry.key), *to);
       if (config.Set(entry.key, *to)) ++changed;
     }
   }
 
   for (const model::Game& game : games.All()) {
-    auto to = migrated(game.runner_ref);
+    auto to = moved(game.runner_ref);
     nlohmann::json overrides = game.overrides;
     bool overrides_changed = false;
     for (const config::Entry* entry : runner_keys) {
       if (!overrides.contains(entry->key) || !overrides[entry->key].is_string()) continue;
-      if (auto override_to = migrated(overrides[entry->key].get<std::string>())) {
+      if (auto override_to = moved(overrides[entry->key].get<std::string>())) {
         overrides[entry->key] = *override_to;
         overrides_changed = true;
       }
@@ -124,7 +129,9 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
       if (to) g.runner_ref = *to;
       if (overrides_changed) g.overrides = overrides;
     });
-    if (updated) ++changed;
+    if (!updated) continue;
+    ++changed;
+    if (game_ids != nullptr) game_ids->push_back(game.id);
   }
   return changed;
 }
