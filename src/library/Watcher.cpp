@@ -211,8 +211,9 @@ void Watcher::Run() {
 
   DirEvents::Fired fired;
   while (dir_events_.Wait(fired)) {
-    if (fired.reload) WatchRoots();
+    // Changes first: they belong to the watches a reload replaces.
     if (!fired.changes.empty()) HandleChanges(fired.changes);
+    if (fired.reload) WatchRoots();
     if (fired.timer) HandleDebounceTick();
     if (fired.stop) return;
   }

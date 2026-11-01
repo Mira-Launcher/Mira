@@ -44,6 +44,7 @@ std::optional<ProcArgs> ReadProcArgs(pid_t pid) {
   std::string buffer(size, '\0');
   if (sysctl(mib, 3, buffer.data(), &size, nullptr, 0) != 0) return std::nullopt;
   buffer.resize(size);
+  if (buffer.size() < sizeof(int)) return std::nullopt;
   int argc = 0;
   std::memcpy(&argc, buffer.data(), sizeof(argc));
   size_t at = buffer.find('\0', sizeof(argc));  // past the exec path
@@ -51,8 +52,10 @@ std::optional<ProcArgs> ReadProcArgs(pid_t pid) {
   while (at < buffer.size() && buffer[at] == '\0') ++at;
   ProcArgs args;
   const size_t argv_start = at;
-  for (int i = 0; i < argc && at < buffer.size(); ++i) at = buffer.find('\0', at) + 1;
-  if (at == 0 || at > buffer.size()) at = buffer.size();
+  for (int i = 0; i < argc && at < buffer.size(); ++i) {
+    const size_t end = buffer.find('\0', at);
+    at = end == std::string::npos ? buffer.size() : end + 1;
+  }
   args.argv = buffer.substr(argv_start, at - argv_start);
   // The environment ends at the first empty string.
   if (at >= buffer.size() || buffer[at] == '\0') return args;
@@ -180,6 +183,14 @@ bool AnyOpenForWriting(const std::set<std::string>& files) {
 #endif
   return false;
 }
+
+#ifdef __APPLE__
+std::string StartToken(pid_t pid) {
+  proc_bsdinfo info{};
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != int(sizeof(info))) return {};
+  return std::format("{}.{}.{}", pid, info.pbi_start_tvsec, info.pbi_start_tvusec);
+}
+#endif
 
 std::filesystem::path SelfExe() {
 #ifdef __APPLE__

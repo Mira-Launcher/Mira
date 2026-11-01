@@ -189,17 +189,30 @@ struct Walker {
       }
       return;
     }
-    // Folding lists the folder even for a plain name: on a case-insensitive disk (macOS) exists()
-    // would match and keep the pattern's spelling instead of the file's.
     if (!HasWildcard(part) && !fold) {
       if (fs::exists(at / part, ec)) Step(at / part, index + 1);
       return;
     }
+    // A plain name is still looked up in the listing: on a case-insensitive disk (macOS) exists()
+    // matches any case and would keep the pattern's spelling instead of the file's. An exact match
+    // wins over other cases, and exists() still covers what no listing shows (.., unreadable
+    // folders).
+    const bool plain = !HasWildcard(part);
+    if (plain) {
+      for (const auto& entry : fs::directory_iterator(at, ec)) {
+        if (entry.path().filename() == part) return Step(entry.path(), index + 1);
+      }
+    }
+    bool matched = false;
     for (const auto& entry : fs::directory_iterator(at, ec)) {
       const std::string name = entry.path().filename().string();
       if (IsDosDevices(entry.path())) continue;
-      if (MatchComponent(part, name, fold)) Step(entry.path(), index + 1);
+      if (MatchComponent(part, name, fold)) {
+        matched = true;
+        Step(entry.path(), index + 1);
+      }
     }
+    if (plain && !matched && fs::exists(at / part, ec)) Step(at / part, index + 1);
   }
 
   // A matched path: the file, or every file under the folder without following its symlinks.

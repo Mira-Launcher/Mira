@@ -59,7 +59,7 @@ class DirEvents {
 
 #ifdef __APPLE__
   // FSEvents' callback, on its own queue.
-  void OnEvents(size_t count, char** paths, const std::uint32_t* flags, const std::uint64_t* ids);
+  void OnEvents(size_t count, char** paths, const std::uint32_t* flags);
 #endif
 
  private:
@@ -75,7 +75,7 @@ class DirEvents {
     std::string path;  // resolved, as FSEvents reports it
     bool writes = false;
   };
-  void Restart(std::uint64_t since);
+  void Restart();
 
   std::mutex mutex_;
   std::condition_variable wake_;
@@ -88,7 +88,6 @@ class DirEvents {
   bool dirty_ = false;
   void* stream_ = nullptr;        // FSEventStreamRef
   void* queue_handle_ = nullptr;  // dispatch_queue_t
-  std::uint64_t since_ = 0;       // the last event seen, so a restarted stream misses nothing
 #endif
 };
 

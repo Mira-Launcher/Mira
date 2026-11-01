@@ -322,7 +322,12 @@ int main(int argc, char** argv) {
   game_argv.push_back(nullptr);
   // Made before fork: the child can't allocate.
   std::vector<std::string> game_env = game_group.Env();
-  for (char** e = environ; *e != nullptr; ++e) game_env.emplace_back(*e);
+  // Not an outer launch's tags: the game belongs to this group only.
+  for (char** e = environ; *e != nullptr; ++e) {
+    const std::string_view entry(*e);
+    if (!entry.starts_with("MIRA_GROUP=") && !entry.starts_with("MIRA_UNIT="))
+      game_env.emplace_back(entry);
+  }
   std::vector<char*> game_envp;
   for (std::string& entry : game_env) game_envp.push_back(entry.data());
   game_envp.push_back(nullptr);

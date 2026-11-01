@@ -309,6 +309,7 @@ int CompareVersions(std::string_view a, std::string_view b) {
   size_t i = 0, j = 0;
   while (i < a.size() && j < b.size()) {
     if (digit(a[i]) && digit(b[j])) {
+      const size_t zeros_a = i, zeros_b = j;
       while (i < a.size() && a[i] == '0') ++i;
       while (j < b.size() && b[j] == '0') ++j;
       const size_t start_a = i, start_b = j;
@@ -318,6 +319,9 @@ int CompareVersions(std::string_view a, std::string_view b) {
       const std::string_view run_b = b.substr(start_b, j - start_b);
       if (run_a.size() != run_b.size()) return run_a.size() < run_b.size() ? -1 : 1;
       if (const int order = run_a.compare(run_b); order != 0) return order;
+      // As strverscmp: more leading zeros sorts first (1.01 before 1.1).
+      if (const size_t za = start_a - zeros_a, zb = start_b - zeros_b; za != zb)
+        return za > zb ? -1 : 1;
     } else {
       if (a[i] != b[j])
         return static_cast<unsigned char>(a[i]) < static_cast<unsigned char>(b[j]) ? -1 : 1;
