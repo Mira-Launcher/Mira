@@ -303,7 +303,11 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
   close(pipe_fds[1]);
   setpgid(pid, pid);
   // Readable once the child exits, so a child whose output closed first is reaped at once.
+#ifdef SYS_pidfd_open
   const int exited_fd = static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
+#else
+  const int exited_fd = -1;
+#endif
   const std::stop_token stop = ThisTaskStop();
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(command.timeout_s);
   bool timed_out = false;
