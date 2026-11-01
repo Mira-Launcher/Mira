@@ -42,6 +42,11 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
                    .arg(item)
                    .arg(dropped == 1 ? "" : "s");
     }
+    if (!plan.purged.empty()) {
+      lines << "Takes the mods it deployed out of these games, puts back the game files it set "
+               "aside, and deletes its mods, downloads and settings for them:";
+      for (const std::string& game : plan.purged) lines << "  • " + QString::fromStdString(game);
+    }
     if (!plan.program_dir.empty()) lines << "Deletes " + name + " itself.";
     if (!plan.uninstall.empty()) {
       lines << "Uninstalls " + name + " from your system (asks for your password).";

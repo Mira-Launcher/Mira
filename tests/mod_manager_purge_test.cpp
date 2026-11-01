@@ -22,16 +22,34 @@ std::string Read(const fs::path& file) {
   return text.str();
 }
 
-// A Windows game installed at C:\Games\<name> in `prefix`, with `manager` as a launch option.
-model::Game WindowsGame(const std::string& id, const fs::path& prefix, const std::string& name,
-                        const std::string& manager) {
+// The folder games are installed in: on this computer, and as the prefix sees it.
+struct GamesDir {
+  fs::path host;
+  std::string windows;
+};
+GamesDir InPrefix(const fs::path& prefix) {
+  return {prefix / "drive_c/Games", "C:\\Games"};
+}
+// A library folder outside the prefix, which Wine reaches through its Z: drive.
+GamesDir Outside(const fs::path& prefix, const fs::path& library) {
+  fs::create_directories(prefix / "dosdevices");
+  fs::create_directory_symlink("/", prefix / "dosdevices/z:");
+  std::string windows = "Z:" + library.string();
+  std::ranges::replace(windows, '/', '\\');
+  return {library, windows};
+}
+
+// A Windows game installed in `games`, with `manager` as a launch option. `data_dir` is the game's
+// prefix folder.
+model::Game WindowsGame(const std::string& id, const std::string& name, const std::string& manager,
+                        const fs::path& data_dir, const GamesDir& games) {
   model::Game game;
   game.id = id;
   game.name = name;
   game.platform = model::Platform::Windows;
   game.status = model::GameStatus::Ready;
-  game.data_dir = prefix.string();
-  game.install_path = (prefix / "drive_c/Games" / name).string();
+  game.data_dir = data_dir.string();
+  game.install_path = (games.host / name).string();
   game.exe_path = "game.exe";
   test::Touch(fs::path(game.install_path) / "game.exe");
   game.launch = {{"options", json::array({{{"id", manager},
@@ -61,16 +79,18 @@ bool HasOption(test::LiveServer& server, const std::string& game, const std::str
   return false;
 }
 
-// Vortex's state for `game` (Vortex's id `vortex_id`) in `prefix`, as it leaves it after deploying
-// a mod by hard links into <game>\Data and another by a symlink into the game's folder.
+// Vortex's state for game `name` in `games` (Vortex's id `vortex_id`) in `prefix`, as it leaves it
+// after deploying a mod by hard links into <game>\Data and another by a symlink into the game's
+// folder.
 struct VortexGame {
   fs::path data;     // the game's Data folder
   fs::path vortex;   // %APPDATA%\Vortex
   fs::path staging;  // %APPDATA%\Vortex\<id>\mods
 };
-VortexGame DeployVortex(const fs::path& prefix, const std::string& name,
+VortexGame DeployVortex(const fs::path& prefix, const GamesDir& games, const std::string& name,
                         const std::string& vortex_id) {
-  const fs::path install = prefix / "drive_c/Games" / name;
+  const fs::path install = games.host / name;
+  const std::string windows_install = games.windows + "\\" + name;
   const fs::path vortex = prefix / "drive_c/users/steamuser/AppData/Roaming/Vortex";
   const fs::path staging = vortex / vortex_id / "mods";
   const fs::path data = install / "Data";
@@ -99,7 +119,7 @@ VortexGame DeployVortex(const fs::path& prefix, const std::string& name,
       "C:\\users\\steamuser\\AppData\\Roaming\\Vortex\\" + vortex_id + "\\mods";
   const json hardlinks = {{"gameId", vortex_id},
                           {"deploymentMethod", "hardlink"},
-                          {"targetPath", "C:\\Games\\" + name + "\\Data"},
+                          {"targetPath", windows_install + "\\Data"},
                           {"stagingPath", windows_staging},
                           {"files", json::array({
                                         {{"relPath", "a.esp"}, {"source", "ModA"}},
@@ -109,7 +129,7 @@ VortexGame DeployVortex(const fs::path& prefix, const std::string& name,
                                     })}};
   const json symlinks = {{"gameId", vortex_id},
                          {"deploymentMethod", "symlink"},
-                         {"targetPath", "C:\\Games\\" + name},
+                         {"targetPath", windows_install},
                          {"stagingPath", windows_staging},
                          {"files", json::array({
                                        {{"relPath", "dinput8.dll"}, {"source", "ModB"}},
@@ -133,20 +153,32 @@ bool SystemdUserAvailable() {
 
 TEST_CASE("Removing Vortex from a game takes out what it deployed and puts the game's files back") {
   test::LiveServer server(test::TempDir("purge-vortex"));
-  const fs::path prefix = server.config().File().parent_path() / "prefix";
-  fs::create_directories(prefix / "drive_c/users/steamuser");
-  const VortexGame fir = DeployVortex(prefix, "Fir", "fir");
-  REQUIRE(server.games().Upsert(WindowsGame("fir", prefix, "Fir", "vortex")).has_value());
-  const fs::path install = fir.data.parent_path();
-  test::Touch(fir.vortex / "state.v2/LOCK");
-
+  const fs::path data_dir = server.config().File().parent_path() / "prefix";
+  fs::path prefix = data_dir;
   bool shared = false;
+  bool outside = false;
   SUBCASE("in the game's own prefix, all of Vortex's folder goes") {}
+  SUBCASE("in umu's layout, with the prefix in pfx/") {
+    prefix = data_dir / "pfx";
+  }
+  SUBCASE("installed in a library folder outside the prefix") {
+    outside = true;
+  }
   SUBCASE("in a prefix another game shares, only this game's part of it") {
     shared = true;
-    DeployVortex(prefix, "Elm", "elm");
-    REQUIRE(server.games().Upsert(WindowsGame("elm", prefix, "Elm", "vortex")).has_value());
   }
+  fs::create_directories(prefix / "drive_c/users/steamuser");
+  const GamesDir games =
+      outside ? Outside(prefix, data_dir.parent_path() / "library") : InPrefix(prefix);
+  const VortexGame fir = DeployVortex(prefix, games, "Fir", "fir");
+  REQUIRE(server.games().Upsert(WindowsGame("fir", "Fir", "vortex", data_dir, games)).has_value());
+  if (shared) {
+    DeployVortex(prefix, games, "Elm", "elm");
+    REQUIRE(
+        server.games().Upsert(WindowsGame("elm", "Elm", "vortex", data_dir, games)).has_value());
+  }
+  const fs::path install = fir.data.parent_path();
+  test::Touch(fir.vortex / "state.v2/LOCK");
   auto client = server.Client();
 
   const json summary = Summary(client, "fir", "vortex");
@@ -187,7 +219,7 @@ TEST_CASE("Removing Vortex from a game takes out what it deployed and puts the g
     CHECK(fs::exists(fir.vortex / "state.v2/LOCK"));
     CHECK(fs::exists(fir.vortex / "elm/mods/ModA/a.esp"));
     CHECK(fs::exists(fir.vortex / "downloads/elm/ModA.zip"));
-    CHECK(fs::exists(prefix / "drive_c/Games/Elm/Data/a.esp"));
+    CHECK(fs::exists(games.host / "Elm/Data/a.esp"));
     CHECK(HasOption(server, "elm", "vortex"));
   } else {
     CHECK_FALSE(fs::exists(fir.vortex));
@@ -203,8 +235,8 @@ TEST_CASE("Removing Vortex refuses while it's open for the game, and deletes not
   const fs::path dir = server.config().File().parent_path();
   const fs::path prefix = dir / "prefix";
   fs::create_directories(prefix / "drive_c/users/steamuser");
-  const VortexGame fir = DeployVortex(prefix, "Fir", "fir");
-  model::Game game = WindowsGame("fir", prefix, "Fir", "vortex");
+  const VortexGame fir = DeployVortex(prefix, InPrefix(prefix), "Fir", "fir");
+  model::Game game = WindowsGame("fir", "Fir", "vortex", prefix, InPrefix(prefix));
   // Stands in for Vortex: a native tool that stays open.
   test::Touch(dir / "vortex.sh", "#!/bin/sh\nexec sleep 300\n", /*executable=*/true);
   game.launch["options"][0]["exe"] = (dir / "vortex.sh").string();
@@ -226,9 +258,60 @@ TEST_CASE("Removing Vortex refuses while it's open for the game, and deletes not
   CHECK(fs::exists(fir.data / "a.esp"));
   CHECK(fs::exists(fir.vortex));
   CHECK(HasOption(server, "fir", "vortex"));
+  // Nor does removing its source.
+  const auto source = client.Post("/v1/sources/vortex/remove", "{}", "application/json");
+  REQUIRE(source != nullptr);
+  CHECK(source->status == 409);
+  CHECK(json::parse(source->body)["error"]["code"] == "mod_manager_open");
+  CHECK(fs::exists(fir.data / "a.esp"));
 
   client.Post("/v1/games/fir/stop");
   CHECK(test::WaitUntil([&] { return server.services().supervisor.Tools("fir").empty(); }));
+}
+
+TEST_CASE("Removing Vortex as a source purges it from every game it was added to") {
+  test::LiveServer server(test::TempDir("purge-vortex-source"));
+  const fs::path dir = server.config().File().parent_path();
+  test::EnvVar config_home("XDG_CONFIG_HOME", (dir / "xdg").c_str());
+  const fs::path program = dir / "xdg/mira/tools/vortex";
+  test::Touch(program / "Vortex.exe");
+  std::vector<VortexGame> deployed;
+  for (const std::string name : {"Fir", "Elm"}) {
+    const fs::path prefix = dir / ("prefix-" + name);
+    fs::create_directories(prefix / "drive_c/users/steamuser");
+    std::string id = name;
+    std::ranges::transform(id, id.begin(), [](unsigned char c) { return std::tolower(c); });
+    deployed.push_back(DeployVortex(prefix, InPrefix(prefix), name, id));
+    REQUIRE(server.games()
+                .Upsert(WindowsGame(id, name, "vortex", prefix, InPrefix(prefix)))
+                .has_value());
+  }
+  auto client = server.Client();
+
+  const auto plan = client.Get("/v1/sources/vortex/removal");
+  REQUIRE(plan != nullptr);
+  json purged = json::array();
+  const json removal = json::parse(plan->body);
+  for (const json& game : removal["purged"]) purged.push_back(game["id"]);
+  CHECK(purged.size() == 2);
+  CHECK(std::ranges::contains(purged, json("fir")));
+  CHECK(std::ranges::contains(purged, json("elm")));
+
+  const json job =
+      test::AwaitJob(client, client.Post("/v1/sources/vortex/remove", "{}", "application/json"));
+  REQUIRE(job["state"] == "finished");
+  CHECK(job["result"]["problems"].empty());
+  CHECK_FALSE(fs::exists(program));
+  for (const VortexGame& game : deployed) {
+    const fs::path install = game.data.parent_path();
+    CHECK_FALSE(fs::exists(game.data / "a.esp"));
+    CHECK_FALSE(fs::exists(install / "dinput8.dll"));
+    CHECK(Read(game.data / "c.esm") == "the game's c");
+    CHECK(Read(game.data / "own.esp") == "the game's");
+    CHECK_FALSE(fs::exists(game.vortex));
+  }
+  CHECK_FALSE(HasOption(server, "fir", "vortex"));
+  CHECK_FALSE(HasOption(server, "elm", "vortex"));
 }
 
 TEST_CASE("Removing Mod Organizer 2 from a game deletes that game's instance only") {
@@ -255,7 +338,9 @@ TEST_CASE("Removing Mod Organizer 2 from a game deletes that game's instance onl
     test::Touch(own / "ModOrganizer.ini", "[General]\ngamePath=@ByteArray(C:\\\\Games\\\\Fir)\n");
     test::Touch(own / "mods/ModC/c.esp", "mod c");
   }
-  REQUIRE(server.games().Upsert(WindowsGame("fir", prefix, "Fir", "mo2")).has_value());
+  REQUIRE(server.games()
+              .Upsert(WindowsGame("fir", "Fir", "mo2", prefix, InPrefix(prefix)))
+              .has_value());
   auto client = server.Client();
 
   const json summary = Summary(client, "fir", "mo2");

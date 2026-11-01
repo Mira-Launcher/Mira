@@ -656,7 +656,7 @@ Undoes what it did for the game, then takes it off. A [job](#jobs) (kind `mod_ma
 
 `409 mod_manager_open` (with a `hint`) while it's open for the game, `game_running` or `game_busy` while the game runs or its files change. The job fails with `purge_failed` (with a `hint`) at the first file it can't delete or put back; the manager stays on the game, so removing it again carries on. A tool can't be opened while its game's files change (`409 game_busy`).
 
-Removing the source deletes Mira's copy and takes it off every game, leaving its settings and mods in each prefix.
+[Removing the source](#post-v1sourcesidremove) purges it from every game it was added to the same way, then deletes Mira's copy.
 
 ## Updates
 
@@ -701,10 +701,10 @@ What removing a source would do:
 
 `tools` lists a store's tools Mira downloaded, each `{name, path}` (GOG's gogdl and comet: `[{"name": "gogdl", "path": "~/.config/mira/tools/gog"}, ...]`), deleted after its games are uninstalled and the account signed out. A copy on `PATH` or set by a `<store>.*_bin` setting is left alone.
 
-`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files, and an emulator's games are the user's). For an emulator, `program_dir` is Mira's download of it, `packages` the system packages it came from with `uninstall` the command removing them (empty on a distro Mira doesn't know), and `data` its settings, saves and caches.
+`deletes` is empty for games that are only dropped from Mira (Steam, Lutris and Humble own their files, and an emulator's games are the user's). For an emulator, `program_dir` is Mira's download of it, `packages` the system packages it came from with `uninstall` the command removing them (empty on a distro Mira doesn't know), and `data` its settings, saves and caches. For a [mod manager](#mod-managers), `program_dir` is Mira's copy and `purged` lists the games it was added to, each `{id, name}`, which it's removed from as `DELETE /v1/games/{id}/mod-managers/{manager}` does; `purged` is empty for any other source.
 
 ### `POST /v1/sources/{id}/remove`
-Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, deletes the store tools Mira downloaded, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
+Uninstalls the source's games (through the store tool, or by deleting a folder inside a Mira folder), deletes a launcher's program folder but keeps save folders, signs out, deletes the store tools Mira downloaded, removes the games from Mira and marks the source not added. An emulator's download is deleted, and its `data` too when the body is `{"delete_data": true}`; its packages are left for the client to uninstall as root. A mod manager is purged from each of its `purged` games first (a game it fails on loses it all the same, reported in `problems`); `409 mod_manager_open` while it's open for one of them, `game_running` or `game_busy` while one runs or its files change. Prefixes are never deleted. A [job](#jobs); a failed step is reported and the rest still run: `{"removed": 3, "problems": []}`.
 
 ### `GET /v1/sources/{id}/runner`
 The runner a source's games use: `{"runner_ref", "games", "differing"}`. `games` counts its Windows games and `differing` the ones on another runner. For Epic, GOG, itch and Amazon this is `<id>.runner`, the default for their games with no runner of their own (empty falls back to `default_runner.windows`). For a launcher it is the runner of its prefix, which its games share. `400 no_runner` for Steam, Lutris and Humble; `409 launcher_not_installed`.

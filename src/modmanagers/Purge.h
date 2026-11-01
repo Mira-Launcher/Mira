@@ -38,5 +38,9 @@ PurgePlan PlanPurge(const ModManager& manager, const model::Game& game,
 nlohmann::json PurgeSummary(const PurgePlan& plan);
 // Carries the plan out, stopping at the first file that can't be deleted or put back.
 Result<void> Purge(const PurgePlan& plan);
+// Purges `manager` from the game, then takes it off; a failed purge leaves it on. The caller holds
+// the game's claim and has checked the manager isn't open.
+Result<model::Game> PurgeFromGame(store::GameStore& games, const ModManager& manager,
+                                  const std::string& game_id);
 
 }  // namespace mira::modmanagers

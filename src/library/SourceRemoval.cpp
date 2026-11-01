@@ -17,6 +17,7 @@
 #include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
 #include "modmanagers/ModManagers.h"
+#include "modmanagers/Purge.h"
 #include "system/Packages.h"
 
 namespace mira::library {
@@ -295,8 +296,12 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
     }
     for (const fs::path& path : emulators::DataPaths(*emulator)) plan.data.push_back(path.string());
   }
-  if (const modmanagers::ModManager* manager = modmanagers::Find(source))
+  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
     plan.program_dir = modmanagers::Dir(*manager).string();
+    for (const model::Game& game : games.All()) {
+      if (modmanagers::OnGame(game, *manager)) plan.purged.push_back({game.id, game.name, {}});
+    }
+  }
   for (const model::Game& game : games.All()) {
     if (!Belongs(game, source, launcher)) continue;
     if (!game.data_dir.empty() && !std::ranges::contains(plan.kept, game.data_dir))
@@ -359,18 +364,28 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     }
   }
 
+  // Undone on every game it was added to, its mods and settings there deleted, before its program
+  // goes. A game it fails on loses it all the same, and the failure is reported.
+  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
+    for (const model::Game& game : games.All()) {
+      if (!modmanagers::OnGame(game, *manager)) continue;
+      if (auto purged = modmanagers::PurgeFromGame(games, *manager, game.id); !purged)
+        result.problems.push_back(std::format("{}: {}", game.name, purged.error().message));
+    }
+    if (auto done = modmanagers::Uninstall(games, *manager); !done)
+      result.problems.push_back(done.error().message);
+    for (const RemovalGame& purged : plan->purged) {
+      if (const auto game = games.Find(purged.id))
+        events.Publish("game.updated", model::ToJson(*game));
+    }
+  }
+
   std::vector<std::string> deleted = delete_data ? plan->data : std::vector<std::string>();
   if (!plan->program_dir.empty() && launcher == nullptr) deleted.push_back(plan->program_dir);
   for (const std::string& path : deleted) {
     std::error_code ec;
     fs::remove_all(path, ec);
     if (ec) result.problems.push_back(std::format("deleting {}: {}", path, ec.message()));
-  }
-
-  // Off every game it was added to; its settings and mods stay in their prefixes.
-  if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
-    if (auto done = modmanagers::Uninstall(games, *manager); !done)
-      result.problems.push_back(done.error().message);
   }
 
   if (plan->signs_out) {

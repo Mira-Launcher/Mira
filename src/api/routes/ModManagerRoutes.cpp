@@ -108,25 +108,15 @@ void RegisterModManagerRoutes(Router& http, Services& s) {
     if (!manager) return;
     const auto game = s.games.Find(id);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    if (IsOpen(s, id, *manager)) {
-      return SendError(
-          res, 409,
-          Error{"mod_manager_open", std::format("{} is open for {}", manager->name, game->name),
-                std::format("Close {}, then remove it again.", manager->name)});
-    }
+    if (IsOpen(s, id, *manager))
+      return SendError(res, 409, modmanagers::OpenError(*manager, game->name));
     // Nor a launch, or the manager opening, while its files go.
     auto claim = s.Claim(id, "removing a mod manager");
     if (!claim) return SendError(res, 409, claim.error());
     const auto held = std::make_shared<proc::ProcessSupervisor::Reservation>(std::move(*claim));
     s.StartJob(req, res, "mod_manager", id, "Removing " + manager->name + " from " + game->name,
                [&s, id, manager, held](JobRegistry::Progress&) -> Result<json> {
-                 const auto game = s.games.Find(id);
-                 if (!game) return Err("game_not_found", "no such game");
-                 const modmanagers::PurgePlan plan =
-                     modmanagers::PlanPurge(*manager, *game, s.games.All());
-                 if (auto purged = modmanagers::Purge(plan); !purged)
-                   return std::unexpected(purged.error());
-                 const auto removed = modmanagers::RemoveFromGame(s.games, *manager, id);
+                 const auto removed = modmanagers::PurgeFromGame(s.games, *manager, id);
                  if (!removed) return std::unexpected(removed.error());
                  Changed(s, removed);
                  return s.Record(*removed);

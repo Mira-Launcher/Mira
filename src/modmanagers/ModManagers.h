@@ -37,13 +37,15 @@ bool Installed(const ModManager& manager);
 std::string InstalledVersion(const ModManager& manager);
 // Downloads the latest release over the copy installed.
 Result<void> Install(const ModManager& manager);
-// Deletes Mira's copy and takes it off every game. Its settings and mods stay in each game's
-// prefix.
+// Deletes Mira's copy and takes it off every game it's still on. Removing its source purges each
+// game first (PurgeFromGame).
 Result<void> Uninstall(store::GameStore& games, const ModManager& manager);
 
 // The Windows games it can be added to: those with a prefix.
 bool CanAdd(const model::Game& game);
 bool OnGame(const model::Game& game, const ModManager& manager);
+// mod_manager_open: why it can't be removed from `game_name` while open there.
+Error OpenError(const ModManager& manager, std::string_view game_name);
 // Readies the game's prefix with its tricks, then adds it to the game as a tool launch option.
 Result<model::Game> AddToGame(config::Config& config, store::GameStore& games,
                               const ModManager& manager, const std::string& game_id);

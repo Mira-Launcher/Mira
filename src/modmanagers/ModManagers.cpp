@@ -174,6 +174,11 @@ bool OnGame(const model::Game& game, const ModManager& manager) {
   });
 }
 
+Error OpenError(const ModManager& manager, std::string_view game_name) {
+  return {"mod_manager_open", std::format("{} is open for {}", manager.name, game_name),
+          std::format("Close {}, then remove it again.", manager.name)};
+}
+
 Result<model::Game> AddToGame(config::Config& config, store::GameStore& games,
                               const ModManager& manager, const std::string& game_id) {
   const auto game = games.Find(game_id);

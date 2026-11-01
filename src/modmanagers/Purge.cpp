@@ -282,4 +282,13 @@ Result<void> Purge(const PurgePlan& plan) {
   return {};
 }
 
+Result<model::Game> PurgeFromGame(store::GameStore& games, const ModManager& manager,
+                                  const std::string& game_id) {
+  const auto game = games.Find(game_id);
+  if (!game) return Err("game_not_found", "no such game");
+  if (auto purged = Purge(PlanPurge(manager, *game, games.All())); !purged)
+    return std::unexpected(purged.error());
+  return RemoveFromGame(games, manager, game_id);
+}
+
 }  // namespace mira::modmanagers

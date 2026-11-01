@@ -1505,6 +1505,7 @@ struct RemovalPlanResult {
       uninstall;                  // the command removing them as root; empty on a distro Mira can't
   std::vector<std::string> data;  // an emulator's settings, saves and caches
   std::vector<std::string> kept;
+  std::vector<std::string> purged;  // names of the games a mod manager is undone on
   bool signs_out = false;
   std::vector<std::string> tools;  // names of the store tools Mira downloaded, deleted
 };
