@@ -1,9 +1,11 @@
 #include "proc/Procs.h"
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <format>
 #include <fstream>
@@ -133,6 +135,50 @@ std::vector<pid_t> WithEntry(const std::string& entry) {
       found.push_back(pid);
   }
   return found;
+}
+
+bool AnyOpenForWriting(const std::set<std::string>& files) {
+#ifdef __APPLE__
+  for (const pid_t pid : AllPids()) {
+    const int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nullptr, 0);
+    if (bytes <= 0) continue;
+    std::vector<proc_fdinfo> fds(size_t(bytes) / sizeof(proc_fdinfo) + 16);
+    const int got =
+        proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds.data(), int(fds.size() * sizeof(proc_fdinfo)));
+    for (int i = 0; i < got / int(sizeof(proc_fdinfo)); ++i) {
+      if (fds[size_t(i)].proc_fdtype != PROX_FDTYPE_VNODE) continue;
+      vnode_fdinfowithpath info{};
+      if (proc_pidfdinfo(pid, fds[size_t(i)].proc_fd, PROC_PIDFDVNODEPATHINFO, &info,
+                         sizeof(info)) <= 0)
+        continue;
+      // fi_openflags holds the kernel's FREAD (1) and FWRITE (2).
+      if ((info.pfi.fi_openflags & 2) != 0 && files.contains(info.pvip.vip_path)) return true;
+    }
+  }
+#else
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator("/proc", ec)) {
+    const std::string pid = entry.path().filename().string();
+    if (pid.empty() || !std::isdigit(static_cast<unsigned char>(pid[0]))) continue;
+    std::error_code fd_ec;
+    for (const auto& fd : std::filesystem::directory_iterator(entry.path() / "fd", fd_ec)) {
+      std::error_code link_ec;
+      const std::filesystem::path target = std::filesystem::read_symlink(fd.path(), link_ec);
+      if (link_ec || !files.contains(target.string())) continue;
+      std::ifstream info(entry.path() / "fdinfo" / fd.path().filename());
+      std::string key;
+      std::string flags;
+      while (info >> key >> flags) {
+        if (key != "flags:") continue;
+        int mode = 0;
+        std::from_chars(flags.data(), flags.data() + flags.size(), mode, 8);
+        if ((mode & O_ACCMODE) != O_RDONLY) return true;
+        break;
+      }
+    }
+  }
+#endif
+  return false;
 }
 
 std::filesystem::path SelfExe() {

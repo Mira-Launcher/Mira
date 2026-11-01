@@ -411,7 +411,7 @@ TEST_CASE("POST /v1/games/{id}/launch refuses a command_wrappers entry that isn'
   game.name = "true-game";
   game.platform = model::Platform::Native;
   game.status = model::GameStatus::Ready;
-  game.install_path = "/bin";
+  game.install_path = "/usr/bin";
   game.exe_path = "true";
   game.overrides["command_wrappers"] =
       nlohmann::json::array({"this-wrapper-does-not-exist-anywhere-xyz"});
@@ -454,7 +454,7 @@ TEST_CASE(
   game.name = "wrapped-game";
   game.platform = model::Platform::Native;
   game.status = model::GameStatus::Ready;
-  game.install_path = "/bin";
+  game.install_path = "/usr/bin";
   game.exe_path = "true";
   // If this weren't split on spaces, exec would look for a binary literally
   // named "sh -c true" and fail with exit 127, so a passing "true" here is
@@ -561,7 +561,7 @@ TEST_CASE("POST /v1/games/{id}/launch with launch.gamemode never blocks or fails
   game.name = "gamemode-game";
   game.platform = model::Platform::Native;
   game.status = model::GameStatus::Ready;
-  game.install_path = "/bin";
+  game.install_path = "/usr/bin";
   game.exe_path = "true";
   game.overrides["launch.gamemode"] = true;
   REQUIRE(server.games().Upsert(game).has_value());
