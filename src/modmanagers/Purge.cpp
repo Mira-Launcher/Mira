@@ -294,7 +294,17 @@ PurgePlan PlanPurge(const ModManager& manager, const model::Game& game,
     return other.id != game.id && !other.data_dir.empty() && OnGame(other, manager) &&
            SamePath(library::PrefixRoot(other.data_dir), prefix);
   });
-  if (!kept) PlanRegistry(plan, manager, prefix / "user.reg");
+  if (!kept) {
+    PlanRegistry(plan, manager, prefix / "user.reg");
+    // MO2's link handler settings, shared by the prefix's instances.
+    if (manager.id == "mo2") {
+      const fs::path instances = Mo2InstancesDir(game);
+      const std::size_t before = plan.deleted.size();
+      for (const char* name : {"nxmhandler.ini", "nxmhandler.log"})
+        AddExisting(plan.deleted, instances / name);
+      if (plan.deleted.size() > before) plan.emptied.push_back(instances);
+    }
+  }
   plan.data_dir = game.data_dir;
   // Deepest first, so a folder whose only content was an emptied one goes too.
   std::ranges::sort(plan.emptied, [](const fs::path& a, const fs::path& b) {
@@ -346,6 +356,32 @@ Result<void> Purge(const PurgePlan& plan) {
       continue;
     for (const fs::path& marker : left) fs::remove(marker, ec);
     fs::remove(dir, ec);
+  }
+  return {};
+}
+
+Result<void> PurgeBeforeDelete(const model::Game& game, std::span<const model::Game> games,
+                               bool files, bool prefix) {
+  if (files && prefix) return {};
+  const fs::path install = game.install_path;
+  const fs::path root = game.data_dir.empty() ? fs::path() : library::PrefixRoot(game.data_dir);
+  // What goes with the deleted part is left to that. By its folder, as a deployed symlink resolves
+  // into the staging folder.
+  const auto going = [&](const fs::path& path) {
+    const fs::path folder = path.parent_path();
+    return (files && !install.empty() && paths::IsWithin(folder, {install}, true)) ||
+           (prefix && !root.empty() && paths::IsWithin(folder, {root}, true));
+  };
+  for (const ModManager& manager : All()) {
+    if (!OnGame(game, manager)) continue;
+    PurgePlan plan = PlanPurge(manager, game, games);
+    std::erase_if(plan.deployed, going);
+    std::erase_if(plan.restored, [&](const auto& pair) { return going(pair.second); });
+    std::erase_if(plan.manifests, going);
+    std::erase_if(plan.emptied, going);
+    std::erase_if(plan.deleted, going);
+    if (prefix) plan.keys.clear();
+    if (auto purged = Purge(plan); !purged) return purged;
   }
   return {};
 }

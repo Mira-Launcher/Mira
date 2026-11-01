@@ -411,6 +411,51 @@ TEST_CASE(
   CHECK(reg.ends_with(other));
 }
 
+TEST_CASE("Deleting a game's files or prefix purges its mod managers from the part that stays") {
+  test::LiveServer server(test::TempDir("purge-delete"));
+  const fs::path dir = server.config().File().parent_path();
+  const fs::path prefix = dir / "prefixes/fir";
+  fs::create_directories(prefix / "drive_c/users/steamuser");
+  const fs::path instances = prefix / "drive_c/users/steamuser/AppData/Local/ModOrganizer";
+  auto client = server.Client();
+
+  SUBCASE("deleting the files clears the managers' data from the kept prefix") {
+    const VortexGame fir = DeployVortex(prefix, InPrefix(prefix), "Fir", "fir");
+    test::Touch(instances / "Fir/ModOrganizer.ini",
+                "[General]\ngamePath=@ByteArray(C:\\\\Games\\\\Fir)\n");
+    test::Touch(instances / "nxmhandler.ini", "[General]\nnoregister=true\n");
+    model::Game game = WindowsGame("fir", "Fir", "vortex", prefix, InPrefix(prefix));
+    game.launch["options"].push_back({{"id", "mo2"},
+                                      {"name", "mo2"},
+                                      {"mode", "tool"},
+                                      {"exe", "/nowhere/mo2.exe"},
+                                      {"native", false}});
+    REQUIRE(server.games().Upsert(game).has_value());
+    REQUIRE(test::AwaitJob(client, client.Delete("/v1/games/fir?delete_files=true"))["state"] ==
+            "finished");
+    CHECK_FALSE(server.games().Find("fir").has_value());
+    CHECK_FALSE(fs::exists(fir.data.parent_path()));
+    CHECK_FALSE(fs::exists(fir.vortex));
+    CHECK_FALSE(fs::exists(instances));
+    CHECK(fs::exists(prefix / "drive_c/users/steamuser"));
+  }
+  SUBCASE("deleting the prefix takes the deployment out of the kept game folder") {
+    const GamesDir games = Outside(prefix, dir / "library");
+    const VortexGame fir = DeployVortex(prefix, games, "Fir", "fir");
+    REQUIRE(server.games().Upsert(WindowsGame("fir", "Fir", "vortex", prefix, games)).has_value());
+    REQUIRE(test::AwaitJob(client, client.Delete("/v1/games/fir?delete_prefix=true"))["state"] ==
+            "finished");
+    CHECK_FALSE(fs::exists(prefix));
+    const fs::path install = fir.data.parent_path();
+    CHECK_FALSE(fs::exists(fir.data / "a.esp"));
+    CHECK_FALSE(fs::is_symlink(install / "dinput8.dll"));
+    CHECK_FALSE(fs::exists(fir.data / "vortex.deployment.json"));
+    CHECK(Read(fir.data / "c.esm") == "the game's c");
+    CHECK(Read(fir.data / "own.esp") == "the game's");
+    CHECK(fs::exists(install / "game.exe"));
+  }
+}
+
 TEST_CASE("Adding Mod Organizer 2 to a game opens the game's own instance, made if it has none") {
   test::LiveServer server(test::TempDir("add-mo2"));
   const fs::path dir = server.config().File().parent_path();

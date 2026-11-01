@@ -47,5 +47,10 @@ Result<void> Purge(const PurgePlan& plan);
 // the game's claim and has checked the manager isn't open.
 Result<model::Game> PurgeFromGame(store::GameStore& games, const ModManager& manager,
                                   const std::string& game_id);
+// Before the game's files or prefix are deleted (`files`, `prefix`): purges every manager on it
+// from the part that stays. `games` are the games staying in the library. The caller has checked
+// none is open.
+Result<void> PurgeBeforeDelete(const model::Game& game, std::span<const model::Game> games,
+                               bool files, bool prefix);
 
 }  // namespace mira::modmanagers
