@@ -690,7 +690,7 @@ Result<runner::ReleaseAsset> NewestListed(const config::Config& config, const Em
        ++it) {
     const std::string name = (*it)[1].str();
     if (strings::GlobMatch(emulator.asset, name) &&
-        (newest.empty() || strverscmp(name.c_str(), newest.c_str()) > 0))
+        (newest.empty() || strings::CompareVersions(name, newest) > 0))
       newest = name;
   }
   if (newest.empty())

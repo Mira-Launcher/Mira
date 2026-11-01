@@ -1,5 +1,5 @@
-# The macOS port's build and tests on Apple Silicon, with Apple's clang and with Homebrew's LLVM
-# (newer libc++). Folds into ci.yml once the port builds.
+# The macOS port's build and tests on Apple Silicon, with Homebrew's LLVM: Xcode's libc++ has no
+# std::jthread. Folds into ci.yml once the port builds.
 name: macOS
 
 on:
@@ -15,20 +15,12 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        compiler: [appleclang, llvm]
     steps:
       - uses: actions/checkout@v4
 
       - name: Packages
-        run: brew install ninja
-
-      - name: Homebrew LLVM
-        if: matrix.compiler == 'llvm'
         run: |
-          brew install llvm
+          brew install ninja llvm
           llvm="$(brew --prefix llvm)"
           echo "CC=$llvm/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$llvm/bin/clang++" >> "$GITHUB_ENV"

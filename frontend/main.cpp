@@ -1,4 +1,6 @@
+#ifdef __GLIBC__
 #include <malloc.h>
+#endif
 
 #include <QApplication>
 #include <QDir>
@@ -31,7 +33,9 @@
 int main(int argc, char** argv) {
   // Covers decode on worker threads. With glibc's per-thread arenas, the freed images stayed
   // resident in the tray (about 45 MB) even after malloc_trim; one arena gives them back.
+#ifdef __GLIBC__
   mallopt(M_ARENA_MAX, 1);
+#endif
   mira_gui::display::Prepare(std::find(argv, argv + argc, std::string_view("--big-screen")) !=
                              argv + argc);
   // QApplication takes out the arguments it handles.

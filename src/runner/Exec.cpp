@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core/Lane.h"
+#include "core/Posix.h"
 #include "core/Strings.h"
 
 extern char** environ;
@@ -156,7 +157,7 @@ PreparedCommand Prepare(const Command& command) {
 // O_CLOEXEC pipe, then fork. Overlapping spawns would otherwise leak each
 // other's write ends and hold readers open until the other child exits.
 Result<pid_t> ForkWithPipe(int pipe_fds[2]) {
-  if (pipe2(pipe_fds, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
+  if (posix::Pipe(pipe_fds) != 0) return Err("exec_pipe_failed", std::strerror(errno));
   const pid_t pid = fork();
   if (pid < 0) {
     const std::string message = std::strerror(errno);
@@ -207,7 +208,7 @@ Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) {
       failure[0] = 1;
     } else {
-      execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
+      posix::ExecVpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
       failure[0] = 2;
     }
     failure[1] = errno;
@@ -267,7 +268,7 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
       if (null_fd > 3) close(null_fd);
     }
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
-    execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
+    posix::ExecVpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);
   }
   close(pipe_fds[1]);
@@ -294,7 +295,7 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     dup2(pipe_fds[1], STDOUT_FILENO);
     dup2(pipe_fds[1], STDERR_FILENO);
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
-    execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
+    posix::ExecVpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);  // only reached if exec failed
   }
 

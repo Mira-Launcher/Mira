@@ -1,11 +1,5 @@
 #include "library/Watcher.h"
 
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <sys/inotify.h>
-#include <sys/timerfd.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -23,8 +17,6 @@
 namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
-
-constexpr int kWatchMask = IN_CREATE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE;
 
 std::int64_t NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -64,42 +56,15 @@ std::uintmax_t ArchiveSize(const fs::path& archive) {
 
 Watcher::Watcher(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {
-  // Created here, before Run() ever starts on another thread, specifically
-  // because Stop() (called from whatever thread owns the Watcher object) must
-  // never race Run()'s own setup: thread creation is a happens-before point
-  // for anything written beforehand, so this is the one fd that cannot be
-  // deferred to Run() like the other three. TSan caught this exact race
-  // during development (see tests/watcher_test.cpp).
-  stop_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (stop_fd_ < 0) log::Error("Watcher: failed to create stop eventfd: {}", std::strerror(errno));
-  // Same reasoning as stop_fd_.
-  reload_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (reload_fd_ < 0)
-    log::Error("Watcher: failed to create reload eventfd: {}", std::strerror(errno));
-}
-
-Watcher::~Watcher() {
-  if (inotify_fd_ >= 0) ::close(inotify_fd_);
-  if (epoll_fd_ >= 0) ::close(epoll_fd_);
-  if (timer_fd_ >= 0) ::close(timer_fd_);
-  if (stop_fd_ >= 0) ::close(stop_fd_);
-  if (reload_fd_ >= 0) ::close(reload_fd_);
+  if (!dir_events_.Ok()) log::Error("Watcher: failed to set up: {}", std::strerror(errno));
 }
 
 void Watcher::Stop() {
-  if (stop_fd_ < 0) return;
-  const uint64_t one = 1;
-  if (::write(stop_fd_, &one, sizeof(one)) < 0) {
-    log::Error("Watcher::Stop: failed to signal eventfd: {}", std::strerror(errno));
-  }
+  dir_events_.WakeStop();
 }
 
 void Watcher::ReloadRoots() {
-  if (reload_fd_ < 0) return;
-  const uint64_t one = 1;
-  if (::write(reload_fd_, &one, sizeof(one)) < 0) {
-    log::Error("Watcher::ReloadRoots: failed to signal eventfd: {}", std::strerror(errno));
-  }
+  dir_events_.WakeReload();
 }
 
 void CreateMissingRoots(const config::Config& config) {
@@ -126,7 +91,7 @@ void CreateMissingRoots(const config::Config& config) {
 }
 
 void Watcher::WatchRoots() {
-  for (const auto& [wd, watched] : watches_) inotify_rm_watch(inotify_fd_, wd);
+  for (const auto& [wd, watched] : watches_) dir_events_.Remove(wd);
   watches_.clear();
   pending_.clear();
   RearmTimer();
@@ -146,7 +111,7 @@ void Watcher::WatchRoots() {
     std::error_code ec;
     fs::create_directories(emulators::RomDir(config_, emulator), ec);
     for (const fs::path& dir : emulators::GameRoots(config_, emulator)) {
-      const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
+      const int wd = dir_events_.Add(dir);
       if (wd < 0) {
         log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
         continue;
@@ -159,7 +124,7 @@ void Watcher::WatchRoots() {
   for (const fs::path& folder : config_.GetPathArray("mira_folders")) {
     std::error_code ec;
     if (!fs::is_directory(folder, ec)) continue;
-    const int wd = inotify_add_watch(inotify_fd_, folder.c_str(), kWatchMask);
+    const int wd = dir_events_.Add(folder);
     if (wd < 0) {
       log::Error("Watcher: could not watch {}: {}", folder.string(), std::strerror(errno));
       continue;
@@ -171,7 +136,7 @@ void Watcher::WatchRoots() {
       if (drops_ != nullptr && !IsMiraFoldersOwn(config_, entry)) drops_->Sort(entry, /*ask=*/true);
     }
   }
-  ++roots_watched_;  // events queue in inotify from here, read once the loop runs
+  ++roots_watched_;  // events queue from here, read once the loop runs
 }
 
 bool Watcher::IsSortingFolder(const fs::path& root, const fs::path& dir) const {
@@ -180,7 +145,7 @@ bool Watcher::IsSortingFolder(const fs::path& root, const fs::path& dir) const {
 
 void Watcher::WatchFolder(const fs::path& root, const fs::path& dir) {
   // Adding a watch on a folder already watched returns the same descriptor.
-  const int wd = inotify_add_watch(inotify_fd_, dir.c_str(), kWatchMask);
+  const int wd = dir_events_.Add(dir);
   if (wd < 0) {
     log::Error("Watcher: could not watch {}: {}", dir.string(), std::strerror(errno));
     return;
@@ -199,25 +164,18 @@ void Watcher::Unwatch(const fs::path& dir) {
   std::erase_if(watches_, [&](const auto& entry) {
     const auto& [wd, watched] = entry;
     if (watched.dir == watched.root || !IsAtOrUnder(watched.dir, dir)) return false;
-    inotify_rm_watch(inotify_fd_, wd);
+    dir_events_.Remove(wd);
     return true;
   });
 }
 
 void Watcher::RearmTimer() {
-  itimerspec spec{};
-  if (pending_.empty()) {
-    timerfd_settime(timer_fd_, 0, &spec, nullptr);  // all-zero disarms it
-    return;
-  }
   // A fixed short poll interval while anything is pending, not an idle
   // wakeup (see the class comment): it only runs while a directory is
   // actively being watched for size stability, and disarms the instant
   // pending_ empties.
-  constexpr long kPollMs = 500;
-  spec.it_value.tv_sec = kPollMs / 1000;
-  spec.it_value.tv_nsec = (kPollMs % 1000) * 1000000L;
-  timerfd_settime(timer_fd_, 0, &spec, nullptr);
+  constexpr int kPollMs = 500;
+  dir_events_.ArmTimer(pending_.empty() ? std::nullopt : std::optional(kPollMs));
 }
 
 void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_archive,
@@ -245,64 +203,24 @@ void Watcher::ScheduleDrop(const fs::path& folder, const fs::path& path) {
 }
 
 void Watcher::Run() {
-  inotify_fd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-  epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
-  timer_fd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-  if (inotify_fd_ < 0 || epoll_fd_ < 0 || timer_fd_ < 0 || stop_fd_ < 0) {
-    log::Error("Watcher: failed to set up inotify/epoll: {}", std::strerror(errno));
-    return;
-  }
-
+  if (!dir_events_.Ok()) return;
   WatchRoots();
   // Editors save by writing a new file and renaming it over, so the folder is watched, not the
   // file.
-  settings_wd_ = inotify_add_watch(inotify_fd_, config_.File().parent_path().c_str(),
-                                   IN_CLOSE_WRITE | IN_MOVED_TO);
+  settings_wd_ = dir_events_.Add(config_.File().parent_path(), /*writes=*/true);
 
-  epoll_event ev{};
-  ev.events = EPOLLIN;
-  ev.data.fd = inotify_fd_;
-  epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, inotify_fd_, &ev);
-  ev.data.fd = timer_fd_;
-  epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, timer_fd_, &ev);
-  ev.data.fd = stop_fd_;
-  epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, stop_fd_, &ev);
-  ev.data.fd = reload_fd_;
-  epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, reload_fd_, &ev);
-
-  epoll_event fired[8];
-  while (true) {
-    const int n = epoll_wait(epoll_fd_, fired, 8, -1);  // blocks; no timeout at rest
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      log::Error("Watcher: epoll_wait failed: {}", std::strerror(errno));
-      break;
-    }
-    bool stop_requested = false;
-    for (int i = 0; i < n; ++i) {
-      if (fired[i].data.fd == stop_fd_) {
-        stop_requested = true;
-      } else if (fired[i].data.fd == reload_fd_) {
-        uint64_t signals = 0;
-        [[maybe_unused]] auto _ = ::read(reload_fd_, &signals, sizeof(signals));
-        WatchRoots();
-      } else if (fired[i].data.fd == inotify_fd_) {
-        HandleInotify();
-      } else if (fired[i].data.fd == timer_fd_) {
-        uint64_t expirations = 0;
-        [[maybe_unused]] auto _ = ::read(timer_fd_, &expirations, sizeof(expirations));
-        HandleDebounceTick();
-      }
-    }
-    if (stop_requested) break;
+  DirEvents::Fired fired;
+  while (dir_events_.Wait(fired)) {
+    if (fired.reload) WatchRoots();
+    if (!fired.changes.empty()) HandleChanges(fired.changes);
+    if (fired.timer) HandleDebounceTick();
+    if (fired.stop) return;
   }
+  log::Error("Watcher: waiting for changes failed: {}", std::strerror(errno));
 }
 
-void Watcher::HandleInotify() {
-  // Sized for several events with reasonably long filenames; inotify_event
-  // is variable-length (name follows the struct), so this is read in a loop
-  // rather than assumed to be one event per read.
-  alignas(inotify_event) char buffer[4096];
+void Watcher::HandleChanges(const std::vector<DirEvents::Change>& changes) {
+  using Kind = DirEvents::Kind;
   std::set<fs::path> deleted_from;     // roots to rescan once the queue is drained
   std::set<std::string> roms_deleted;  // emulators to import into once it is
   bool settings_saved = false;
@@ -315,79 +233,73 @@ void Watcher::HandleInotify() {
   for (const fs::path& p : config_.GetPathArray("runner_search_paths")) runner_roots.push_back(p);
   for (const fs::path& p : config_.GetPathArray("wine_search_paths")) runner_roots.push_back(p);
 
-  while (true) {
-    const ssize_t n = ::read(inotify_fd_, buffer, sizeof(buffer));
-    if (n <= 0) break;  // EAGAIN (nothing more queued) or an error either way
+  for (const DirEvents::Change& change : changes) {
+    if (change.wd == settings_wd_ &&
+        (change.kind == Kind::kWritten || change.kind == Kind::kAdded) &&
+        config_.File().filename() == change.name) {
+      settings_saved = true;
+    }
 
-    size_t offset = 0;
-    while (offset < static_cast<size_t>(n)) {
-      const auto* event = reinterpret_cast<const inotify_event*>(buffer + offset);
-      offset += sizeof(inotify_event) + event->len;
-      if (event->wd == settings_wd_ && event->len > 0 && config_.File().filename() == event->name) {
-        settings_saved = true;
+    if (change.kind == Kind::kOverflow) {  // events were dropped: rescan every root
+      for (const fs::path& root : config_.GetPathArray("library_roots")) deleted_from.insert(root);
+      continue;
+    }
+    const auto watched = watches_.find(change.wd);
+    if (watched == watches_.end()) continue;
+    if (change.kind == Kind::kGone) {  // the folder itself went away
+      watches_.erase(watched);
+      continue;
+    }
+    const bool added = change.kind == Kind::kAdded;
+    const bool removed = change.kind == Kind::kRemoved || change.kind == Kind::kMovedAway;
+    const fs::path root = watched->second.root;
+    const fs::path path = watched->second.dir / change.name;
+    if (watched->second.mira_folder) {
+      if (added) {
+        ScheduleDrop(root, path);
+      } else if (removed) {
+        pending_.erase(path.string());
+        if (drops_ != nullptr) drops_->Forget(path);
       }
+      continue;
+    }
+    if (const std::string& emulator = watched->second.emulator; !emulator.empty()) {
+      if (change.name.starts_with('.')) continue;
+      if (added) {
+        ScheduleCheck(root, path, /*is_archive=*/false, emulator);
+      } else if (removed) {
+        pending_.erase(path.string());
+        roms_deleted.insert(emulator);
+      }
+      continue;
+    }
 
-      if (event->mask & IN_Q_OVERFLOW) {  // events were dropped: rescan every root
-        for (const fs::path& root : config_.GetPathArray("library_roots"))
-          deleted_from.insert(root);
-        continue;
-      }
-      const auto watched = watches_.find(event->wd);
-      if (watched == watches_.end()) continue;
-      if (event->mask & IN_IGNORED) {  // the folder itself went away
-        watches_.erase(watched);
-        continue;
-      }
-      if (event->len == 0) continue;
-      const fs::path root = watched->second.root;
-      const fs::path path = watched->second.dir / event->name;
-      if (watched->second.mira_folder) {
-        if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-          ScheduleDrop(root, path);
-        } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
-          pending_.erase(path.string());
-          if (drops_ != nullptr) drops_->Forget(path);
+    if (added) {
+      if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
+      std::error_code ec;
+      const bool extract = config_.GetBool("scan.auto_extract_archives");
+      // A link to a folder arrives whole (no copy to wait out, and its size is a whole game's).
+      if (fs::is_symlink(fs::symlink_status(path, ec)) && fs::is_directory(path, ec)) {
+        deleted_from.insert(root);  // rescanned right away, like a deletion
+      } else if (fs::is_directory(path, ec)) {
+        if (IsSortingFolder(root, path)) WatchFolder(root, path);
+        if (!path.filename().string().starts_with(kExtractingPrefix)) {
+          ScheduleCheck(root, path, /*is_archive=*/false);
         }
-        continue;
+      } else if (strings::ToLower(path.extension().string()) == ".appimage") {
+        ScheduleCheck(root, path, /*is_archive=*/false);  // a game in one file
+      } else if (extract && LooksLikeArchive(path)) {
+        ScheduleCheck(root, path, /*is_archive=*/true);
+      } else if (extract && IsLaterVolume(path)) {
+        // Another part arriving restarts the wait on the first one.
+        if (auto first = FirstVolumeOf(path)) ScheduleCheck(root, *first, /*is_archive=*/true);
       }
-      if (const std::string& emulator = watched->second.emulator; !emulator.empty()) {
-        if (std::string_view(event->name).starts_with('.')) continue;
-        if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-          ScheduleCheck(root, path, /*is_archive=*/false, emulator);
-        } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
-          pending_.erase(path.string());
-          roms_deleted.insert(emulator);
-        }
-        continue;
-      }
-
-      if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
-        if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
-        std::error_code ec;
-        const bool extract = config_.GetBool("scan.auto_extract_archives");
-        // A link to a folder arrives whole (no copy to wait out, and its size is a whole game's).
-        if (fs::is_symlink(fs::symlink_status(path, ec)) && fs::is_directory(path, ec)) {
-          deleted_from.insert(root);  // rescanned right away, like a deletion
-        } else if (fs::is_directory(path, ec)) {
-          if (IsSortingFolder(root, path)) WatchFolder(root, path);
-          if (!path.filename().string().starts_with(kExtractingPrefix)) {
-            ScheduleCheck(root, path, /*is_archive=*/false);
-          }
-        } else if (strings::ToLower(path.extension().string()) == ".appimage") {
-          ScheduleCheck(root, path, /*is_archive=*/false);  // a game in one file
-        } else if (extract && LooksLikeArchive(path)) {
-          ScheduleCheck(root, path, /*is_archive=*/true);
-        } else if (extract && IsLaterVolume(path)) {
-          // Another part arriving restarts the wait on the first one.
-          if (auto first = FirstVolumeOf(path)) ScheduleCheck(root, *first, /*is_archive=*/true);
-        }
-      } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
-        pending_.erase(path.string());  // no point finishing a debounce for a path that's gone
-        // A watch follows its folder, not the path: one moved away is dropped, and watched again
-        // by its new path if it moved to another sorting folder's place (IN_MOVED_TO above).
-        if (event->mask & IN_MOVED_FROM) Unwatch(path);
-        deleted_from.insert(root);
-      }
+    } else if (removed) {
+      pending_.erase(path.string());  // no point finishing a debounce for a path that's gone
+      // A watch follows its folder, not the path: one moved away is dropped, and watched again
+      // by its new path if it moved to another sorting folder's place (kAdded above).
+      if (change.kind == Kind::kMovedAway) Unwatch(path);
+      deleted_from.insert(root);
     }
   }
   if (settings_saved && on_settings_saved_) on_settings_saved_();

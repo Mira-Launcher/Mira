@@ -98,3 +98,11 @@ TEST_CASE("EscapeUrl encodes what curl refuses and leaves a valid URL alone") {
         "https://example.com/a%20b?x=1&y=2#top");
   CHECK(EscapeUrl("https://example.com/caf\xc3\xa9") == "https://example.com/caf%C3%A9");
 }
+
+TEST_CASE("CompareVersions compares the numbers in versions by value") {
+  using mira::strings::CompareVersions;
+  CHECK(CompareVersions("0.16.10", "0.16.9") > 0);
+  CHECK(CompareVersions("1.2", "1.2") == 0);
+  CHECK(CompareVersions("v1.2", "v1.10") < 0);
+  CHECK(CompareVersions("1.2", "1.2.1") < 0);
+}

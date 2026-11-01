@@ -38,9 +38,16 @@ std::string SignalReason(int signal_number) {
     case SIGSYS:
       return "bad system call (SIGSYS)";
     default: {
-      const char* name = ::sigabbrev_np(signal_number);
-      return name != nullptr ? std::format("signal {} (SIG{})", signal_number, name)
-                             : std::format("signal {}", signal_number);
+#ifdef __APPLE__
+      std::string name =
+          signal_number > 0 && signal_number < NSIG ? sys_signame[signal_number] : "";
+      std::ranges::transform(name, name.begin(), [](unsigned char c) { return std::toupper(c); });
+#else
+      const char* abbrev = ::sigabbrev_np(signal_number);
+      const std::string name = abbrev != nullptr ? abbrev : "";
+#endif
+      return !name.empty() ? std::format("signal {} (SIG{})", signal_number, name)
+                           : std::format("signal {}", signal_number);
     }
   }
 }

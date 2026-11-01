@@ -24,6 +24,7 @@
 
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/Posix.h"
 #include "core/StoreErrors.h"
 #include "itch/Itch.h"
 
@@ -91,7 +92,7 @@ Result<Spawned> SpawnCapturingStdout(const std::vector<std::string>& argv) {
 
   // CLOEXEC so children other threads spawn meanwhile don't hold the write end.
   int pipe_fds[2];
-  if (pipe2(pipe_fds, O_CLOEXEC) != 0) return Err("pipe_failed", std::strerror(errno));
+  if (posix::Pipe(pipe_fds) != 0) return Err("pipe_failed", std::strerror(errno));
 
   const pid_t pid = fork();
   if (pid < 0) {

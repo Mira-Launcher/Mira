@@ -1,6 +1,8 @@
 #include "LibraryWindow.h"
 
+#ifdef __GLIBC__
 #include <malloc.h>
+#endif
 
 #include <QAction>
 #include <QApplication>
@@ -1533,7 +1535,9 @@ void LibraryWindow::CloseGameEdit() {
     game_card_->deleteLater();
     game_card_ = nullptr;
     // The picker's previews are freed once the card is deleted; glibc keeps that memory otherwise.
+#ifdef __GLIBC__
     QTimer::singleShot(2000, [] { malloc_trim(0); });
+#endif
   }
   ShowNextCard();
 }

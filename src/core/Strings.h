@@ -53,4 +53,7 @@ std::string EscapeUrl(std::string_view url);
 // 16 hex digits of FNV-1a: stable across builds and runs, unlike std::hash, for names kept on disk.
 std::string StableHash(std::string_view text);
 
+// Orders version strings with their numbers compared by value (1.10 after 1.9), like strverscmp.
+int CompareVersions(std::string_view a, std::string_view b);
+
 }  // namespace mira::strings
