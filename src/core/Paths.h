@@ -8,7 +8,8 @@
 namespace mira::paths {
 
 // Everything the user might want to back up or put under version control lives
-// in one directory: $XDG_CONFIG_HOME/mira (default ~/.config/mira). This is a
+// in one directory: $XDG_CONFIG_HOME/mira (default ~/.config/mira, and
+// ~/Library/Application Support/Mira on macOS). This is a
 // deliberate departure from the usual XDG three-way config/data/cache split:
 // backup-friendliness was asked for explicitly, and a single folder of TOML
 // files serves that better than state scattered across three directories.
@@ -20,6 +21,9 @@ std::filesystem::path UserDir();
 std::filesystem::path RuntimeDir();
 
 std::filesystem::path Home();
+
+// $XDG_CACHE_HOME, ~/.cache, or ~/Library/Caches on macOS.
+std::filesystem::path CacheDir();
 
 // A game's shader caches: rebuilt when lost and many gigabytes, so under XDG_CACHE_HOME
 // rather than UserDir().
