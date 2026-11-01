@@ -363,6 +363,54 @@ TEST_CASE("Removing Mod Organizer 2 from a game deletes that game's instance onl
   }
 }
 
+TEST_CASE(
+    "Removing a mod manager takes its link handler and settings out of the prefix's registry") {
+  test::LiveServer server(test::TempDir("purge-registry"));
+  const fs::path prefix = server.config().File().parent_path() / "prefix";
+  fs::create_directories(prefix / "drive_c/users/steamuser");
+  std::string handler = R"(\"Z:\\home\\me\\.config\\mira\\tools\\mo2\\nxmhandler.exe\" \"%1\")";
+  bool shared = false;
+  SUBCASE("in a prefix of its own") {}
+  SUBCASE("keeping a link handler that opens another program") {
+    handler = R"(\"C:\\Program Files\\Black Tree Gaming Ltd\\Vortex\\Vortex.exe\" -d \"%1\")";
+  }
+  SUBCASE("keeping everything while another game in the prefix has it") {
+    shared = true;
+  }
+  const std::string other = "[Software\\\\Wine\\\\Fonts] 1791954400\n#time=1dc0\n\"A\"=\"b\"\n";
+  test::Touch(
+      prefix / "user.reg",
+      "WINE REGISTRY Version 2\n;; All keys relative to \\\\User\n\n#arch=win64\n\n" + other +
+          "\n[Software\\\\Classes\\\\NXM] 1791954498\n#time=1dc0\n@=\"URL:NXM Protocol\"\n"
+          "\"URL Protocol\"=\"\"\n\n"
+          "[Software\\\\Classes\\\\nxm\\\\shell\\\\open\\\\command] 1791954498\n#time=1dc0\n"
+          "@=\"" +
+          handler +
+          "\"\n\n[Software\\\\Mod Organizer Team\\\\Mod Organizer] 1791954500\n"
+          "#time=1dc0\n\"CurrentInstance\"=\"\"\n\n" +
+          other);
+  REQUIRE(server.games()
+              .Upsert(WindowsGame("fir", "Fir", "mo2", prefix, InPrefix(prefix)))
+              .has_value());
+  if (shared) {
+    REQUIRE(server.games()
+                .Upsert(WindowsGame("elm", "Elm", "mo2", prefix, InPrefix(prefix)))
+                .has_value());
+  }
+  auto client = server.Client();
+  REQUIRE(Remove(client, "fir", "mo2")["state"] == "finished");
+
+  const std::string reg = Read(prefix / "user.reg");
+  const bool ours = handler.contains("mira");
+  CHECK(reg.contains("\\\\nxm\\\\shell") == (shared || !ours));
+  CHECK(reg.contains("URL:NXM Protocol") == (shared || !ours));
+  CHECK(reg.contains("Mod Organizer Team") == shared);
+  // Other keys and the file's header stay as they were.
+  CHECK(reg.starts_with("WINE REGISTRY Version 2\n"));
+  CHECK(reg.contains("\n\n" + other + "\n"));
+  CHECK(reg.ends_with(other));
+}
+
 TEST_CASE("Adding Mod Organizer 2 to a game opens the game's own instance, made if it has none") {
   test::LiveServer server(test::TempDir("add-mo2"));
   const fs::path dir = server.config().File().parent_path();

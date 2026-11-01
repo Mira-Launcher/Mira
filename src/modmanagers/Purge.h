@@ -27,6 +27,11 @@ struct PurgePlan {
   std::vector<std::filesystem::path> emptied;
   // The manager's own data: Vortex's staging folders and downloads, an MO2 instance.
   std::vector<std::filesystem::path> deleted;
+  // Keys taken out of the prefix's user.reg (`registry`), as written there: the nxm: link handler
+  // it registered and MO2's settings, unless another game in the prefix still has it.
+  std::filesystem::path registry;
+  std::vector<std::string> keys;
+  std::string data_dir;  // the game's, for what runs in its prefix
 };
 
 // What Purge would do for `manager` on `game`, read from the prefix as it is now. `games` is the

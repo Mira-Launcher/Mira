@@ -2,16 +2,22 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <chrono>
 #include <format>
 #include <fstream>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 
+#include "core/AtomicFile.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "launchers/Launchers.h"
 #include "library/WinePrefix.h"
+#include "proc/ProcessSupervisor.h"
 
 namespace mira::modmanagers {
 namespace fs = std::filesystem;
@@ -190,6 +196,82 @@ void PlanMo2(PurgePlan& plan, const ModManager& manager, const model::Game& game
   }
 }
 
+// The key of a user.reg section header ("[Software\\Classes\\nxm] 1791954498"), as written; empty
+// for any other line.
+std::string_view SectionKey(std::string_view line) {
+  if (!line.starts_with('[')) return {};
+  const std::size_t end = line.rfind(']');
+  return end == std::string_view::npos ? std::string_view() : line.substr(1, end - 1);
+}
+
+// `key` is `under` or one of its subkeys, ignoring case as Windows does.
+bool UnderKey(std::string_view key, std::string_view under) {
+  const auto same = [](std::string_view a, std::string_view b) {
+    return a.size() == b.size() && std::ranges::equal(a, b, [](char x, char y) {
+             return std::tolower(static_cast<unsigned char>(x)) ==
+                    std::tolower(static_cast<unsigned char>(y));
+           });
+  };
+  if (key.size() == under.size()) return same(key, under);
+  return key.size() > under.size() && same(key.substr(0, under.size()), under) &&
+         key.substr(under.size()).starts_with(R"(\\)");
+}
+
+std::vector<std::string> ReadLines(const fs::path& file) {
+  std::ifstream in(file);
+  std::vector<std::string> lines;
+  for (std::string line; std::getline(in, line);) lines.push_back(std::move(line));
+  return lines;
+}
+
+// Keys as user.reg writes them, backslashes doubled.
+constexpr std::string_view kNxmKey = R"(Software\\Classes\\nxm)";
+constexpr std::string_view kNxmCommand = R"(Software\\Classes\\nxm\\shell\\open\\command)";
+constexpr std::string_view kMo2Key = R"(Software\\Mod Organizer Team)";
+
+void PlanRegistry(PurgePlan& plan, const ModManager& manager, const fs::path& reg) {
+  const std::vector<std::string> lines = ReadLines(reg);
+  // The nxm: handler goes when it opens Mira's copy of this manager.
+  const std::string own = std::format(R"(\\mira\\tools\\{}\\)", manager.id);
+  bool in_command = false;
+  bool has_mo2 = false;
+  for (const std::string& line : lines) {
+    if (const std::string_view key = SectionKey(line); !key.empty()) {
+      in_command = UnderKey(key, kNxmCommand) && key.size() == kNxmCommand.size();
+      has_mo2 = has_mo2 || UnderKey(key, kMo2Key);
+    } else if (in_command && line.starts_with("@=") &&
+               strings::ToLower(line).contains(strings::ToLower(own))) {
+      plan.keys.emplace_back(kNxmKey);
+    }
+  }
+  if (manager.id == "mo2" && has_mo2) plan.keys.emplace_back(kMo2Key);
+  if (!plan.keys.empty()) plan.registry = reg;
+}
+
+// Takes `keys` and their subkeys out of the user.reg, once nothing runs in the prefix: Wine writes
+// the file back when it exits, which would put them back.
+Result<void> RemoveKeys(const PurgePlan& plan) {
+  if (plan.keys.empty()) return {};
+  const auto running = [&] { return !proc::FindPrefixProcesses(plan.data_dir).empty(); };
+  // Wine's server stays a few seconds after its last program closes.
+  for (int i = 0; i < 20 && running(); ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  if (running()) {
+    return Err("prefix_busy", "something is still running in the game's prefix",
+               "Close what's running in the game's prefix, then remove it again.");
+  }
+  std::string kept;
+  bool dropping = false;
+  for (const std::string& line : ReadLines(plan.registry)) {
+    if (const std::string_view key = SectionKey(line); !key.empty()) {
+      dropping = std::ranges::any_of(
+          plan.keys, [&](const std::string& under) { return UnderKey(key, under); });
+    }
+    if (!dropping) kept += line + '\n';
+  }
+  return WriteFileAtomic(plan.registry, kept, "purge_failed");
+}
+
 }  // namespace
 
 PurgePlan PlanPurge(const ModManager& manager, const model::Game& game,
@@ -207,6 +289,13 @@ PurgePlan PlanPurge(const ModManager& manager, const model::Game& game,
   } else if (manager.id == "mo2") {
     PlanMo2(plan, manager, game);
   }
+  // Its registry keys serve every game in the prefix that has it.
+  const bool kept = std::ranges::any_of(games, [&](const model::Game& other) {
+    return other.id != game.id && !other.data_dir.empty() && OnGame(other, manager) &&
+           SamePath(library::PrefixRoot(other.data_dir), prefix);
+  });
+  if (!kept) PlanRegistry(plan, manager, prefix / "user.reg");
+  plan.data_dir = game.data_dir;
   // Deepest first, so a folder whose only content was an emptied one goes too.
   std::ranges::sort(plan.emptied, [](const fs::path& a, const fs::path& b) {
     return a.string().size() > b.string().size();
@@ -234,6 +323,8 @@ Result<void> Purge(const PurgePlan& plan) {
     return Err("purge_failed", std::format("couldn't {} {}: {}", what, path.string(), ec.message()),
                kPurgeHint);
   };
+  // First, so a busy prefix stops it before anything is gone.
+  if (auto removed = RemoveKeys(plan); !removed) return removed;
   for (const fs::path& file : plan.deployed) {
     if (fs::remove(file, ec); ec) return failed("delete", file);
   }
