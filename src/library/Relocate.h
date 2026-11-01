@@ -84,6 +84,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
                              std::span<const model::Game> library = {});
 
 // Renames `from` to `to`; across filesystems, with allow_copy, copies then removes the original.
+// Absolute links inside that pointed into `from` point at the same place in `to` afterwards.
 Result<void> MovePath(const std::filesystem::path& from, const std::filesystem::path& to,
                       bool allow_copy);
 
