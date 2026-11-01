@@ -13,9 +13,10 @@
 
 #include "api/EventBus.h"
 #include "core/Command.h"
-#include "proc/Cgroup.h"
+#include "proc/GameGroup.h"
 #include "proc/ProcessIndex.h"
 #include "proc/ProcessSupervisor.h"
+#include "proc/Procs.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "store/GameStore.h"
@@ -37,7 +38,20 @@ bool WaitFor(std::function<bool()> predicate, std::chrono::milliseconds timeout)
   }
   return predicate();
 }
+// `program` in a session of its own; macOS has no setsid(1).
+std::string Setsid(const std::string& program) {
+#ifdef __APPLE__
+  return "perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' " + program;
+#else
+  return "setsid " + program;
+#endif
+}
+
+// Whether games can be tracked: on Linux that takes a systemd user session.
 bool SystemdUserAvailable() {
+#ifdef __APPLE__
+  return true;
+#endif
   Command probe;
   probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
   auto ran = runner::RunAndWait(probe);
@@ -49,13 +63,19 @@ bool SystemdUserAvailable() {
 pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game& game,
                          const fs::path& db, const std::vector<std::string>& mira_run_args,
                          const std::vector<std::string>& program) {
-  const fs::path mira_run = fs::read_symlink("/proc/self/exe").parent_path() / "mira-run";
+  const fs::path mira_run = proc::SelfExe().parent_path() / "mira-run";
   Command cmd;
-  cmd.argv = {"systemd-run",  "--user",     "--scope",
-              "--quiet",      "--collect",  "-p",
-              "Delegate=yes", "--",         mira_run.string(),
-              "--game-id",    game.id,      "--database",
-              db.string(),    "--log-file", (db.parent_path() / "game.log").string()};
+  cmd.argv = {mira_run.string(),
+              "--game-id",
+              game.id,
+              "--database",
+              db.string(),
+              "--log-file",
+              (db.parent_path() / "game.log").string()};
+#ifdef __linux__
+  cmd.argv.insert(cmd.argv.begin(), {"systemd-run", "--user", "--scope", "--quiet", "--collect",
+                                     "-p", "Delegate=yes", "--"});
+#endif
   cmd.argv.insert(cmd.argv.end(), mira_run_args.begin(), mira_run_args.end());
   cmd.argv.push_back("--");
   cmd.argv.insert(cmd.argv.end(), program.begin(), program.end());
@@ -66,15 +86,14 @@ pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game&
   return *pid;
 }
 
-// The game's cgroup once it has a process in it. systemd-run joins the scope before exec'ing
-// mira-run, so reading the cgroup any earlier finds the test's own.
-std::optional<fs::path> WaitForGameGroup(pid_t wrapper) {
-  std::optional<fs::path> group;
+// The game's group once it has a process in it. On Linux systemd-run joins the scope before
+// exec'ing mira-run, so reading the cgroup any earlier finds the test's own.
+std::optional<proc::GameGroup> WaitForGameGroup(pid_t wrapper) {
+  std::optional<proc::GameGroup> group;
   WaitFor(
       [&] {
-        const auto scope = proc::cgroup::Of(wrapper);
-        if (scope && !proc::cgroup::Pids(proc::cgroup::GameGroup(*scope)).empty())
-          group = proc::cgroup::GameGroup(*scope);
+        group = proc::GameGroup::Of(wrapper);
+        if (group && group->Pids().empty()) group.reset();
         return group.has_value();
       },
       std::chrono::seconds(5));
@@ -129,14 +148,14 @@ TEST_CASE("Quitting mirad leaves a running game alone and doesn't wait for it") 
   REQUIRE(wrapper > 0);
   const auto game_group = WaitForGameGroup(wrapper);
   REQUIRE(game_group.has_value());
-  const fs::path group = *game_group;
+  const proc::GameGroup group = *game_group;
 
   const auto started = std::chrono::steady_clock::now();
   supervisor.reset();
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(500));
-  CHECK_FALSE(proc::cgroup::Pids(group).empty());
+  CHECK_FALSE(group.Pids().empty());
 
-  proc::cgroup::Kill(group);
+  group.Kill();
   ::waitpid(wrapper, nullptr, 0);
 }
 
@@ -278,7 +297,7 @@ TEST_CASE("FindPrefixProcesses finds a process that left its process group") {
   // setsid(), like wineserver does, the env var is all that's left tying
   // this process to the game.
   Command command;
-  command.argv = {"sh", "-c", "setsid sleep 30 & sleep 30"};
+  command.argv = {"sh", "-c", Setsid("sleep 30") + " & sleep 30"};
   command.env["WINEPREFIX"] = prefix.string();
   auto pid = runner::SpawnDetached(command);
   REQUIRE(pid.has_value());
@@ -492,7 +511,7 @@ TEST_CASE("SteamLaunchAppId reads Steam's reaper wrapper and nothing else") {
 }
 
 TEST_CASE(
-    "Stop ends a mira-run game's cgroup, including children that left its session and ignore "
+    "Stop ends a mira-run game's group, including children that left its session and ignore "
     "SIGTERM") {
   if (!SystemdUserAvailable()) {
     MESSAGE("no systemd user session; skipped");
@@ -509,15 +528,15 @@ TEST_CASE(
   game.id = "cgroup-stop";
   REQUIRE(games.Upsert(game).has_value());
 
-  const pid_t wrapper =
-      LaunchUnderMiraRun(supervisor, game, state / "mira.db", {},
-                         {"sh", "-c", "(trap '' TERM; exec setsid sleep 300) & exec sleep 300"});
+  const pid_t wrapper = LaunchUnderMiraRun(
+      supervisor, game, state / "mira.db", {},
+      {"sh", "-c", "(trap '' TERM; exec " + Setsid("sleep 300") + ") & exec sleep 300"});
   REQUIRE(wrapper > 0);
   const auto game_group = WaitForGameGroup(wrapper);
   REQUIRE(game_group.has_value());
-  const fs::path group = *game_group;
+  const proc::GameGroup group = *game_group;
 
   REQUIRE(supervisor.Stop("cgroup-stop").has_value());
   CHECK(WaitFor([&] { return !supervisor.IsRunning("cgroup-stop"); }, std::chrono::seconds(6)));
-  CHECK(WaitFor([&] { return proc::cgroup::Pids(group).empty(); }, std::chrono::seconds(5)));
+  CHECK(WaitFor([&] { return group.Pids().empty(); }, std::chrono::seconds(5)));
 }
