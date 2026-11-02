@@ -4,6 +4,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "modmanagers/ModManagers.h"
+#include "modmanagers/Purge.h"
 
 namespace mira::api {
 namespace {
@@ -28,6 +29,11 @@ const modmanagers::ModManager* FindManager(const std::string& id, Response& res)
   const modmanagers::ModManager* manager = modmanagers::Find(id);
   if (!manager) SendError(res, 404, "mod_manager_not_found", "no such mod manager");
   return manager;
+}
+
+bool IsOpen(const Services& s, const std::string& game_id, const modmanagers::ModManager& manager) {
+  return std::ranges::contains(s.supervisor.Tools(game_id), manager.id,
+                               &proc::ProcessSupervisor::Tool::id);
 }
 
 void Changed(Services& s, const Result<model::Game>& game) {
@@ -83,13 +89,38 @@ void RegisterModManagerRoutes(Router& http, Services& s) {
         &s.tricks);
   });
 
-  http.Delete(R"(/v1/games/([^/]+)/mod-managers/([^/]+))", [&s](const Request& req, Response& res) {
+  // What removing it would delete and put back.
+  http.Get(R"(/v1/games/([^/]+)/mod-managers/([^/]+))", [&s](const Request& req, Response& res) {
     const modmanagers::ModManager* manager = FindManager(req.matches[2], res);
     if (!manager) return;
-    const auto removed = modmanagers::RemoveFromGame(s.games, *manager, req.matches[1]);
-    if (!removed) return SendError(res, 404, removed.error());
-    Changed(s, removed);
-    SendJson(res, s.Record(*removed));
+    const auto game = s.games.Find(req.matches[1]);
+    if (!game || s.Conceals(*game)) return SendError(res, 404, "game_not_found", "no such game");
+    json summary =
+        modmanagers::PurgeSummary(modmanagers::PlanPurge(*manager, *game, s.games.All()));
+    summary["open"] = IsOpen(s, game->id, *manager);
+    SendJson(res, summary);
+  });
+
+  // Undoes what it deployed, deletes its mods and settings for the game, then takes it off.
+  http.Delete(R"(/v1/games/([^/]+)/mod-managers/([^/]+))", [&s](const Request& req, Response& res) {
+    const std::string id = req.matches[1];
+    const modmanagers::ModManager* manager = FindManager(req.matches[2], res);
+    if (!manager) return;
+    const auto game = s.games.Find(id);
+    if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    if (IsOpen(s, id, *manager))
+      return SendError(res, 409, modmanagers::OpenError(*manager, game->name));
+    // Nor a launch, or the manager opening, while its files go.
+    auto claim = s.Claim(id, "removing a mod manager");
+    if (!claim) return SendError(res, 409, claim.error());
+    const auto held = std::make_shared<proc::ProcessSupervisor::Reservation>(std::move(*claim));
+    s.StartJob(req, res, "mod_manager", id, "Removing " + manager->name + " from " + game->name,
+               [&s, id, manager, held](JobRegistry::Progress&) -> Result<json> {
+                 const auto removed = modmanagers::PurgeFromGame(s.games, *manager, id);
+                 if (!removed) return std::unexpected(removed.error());
+                 Changed(s, removed);
+                 return s.Record(*removed);
+               });
   });
 }
 

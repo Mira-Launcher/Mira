@@ -8,6 +8,13 @@
 
 namespace mira_gui::api {
 using nlohmann::json;
+namespace {
+
+std::string GamePath(const std::string& id, const std::string& game_id) {
+  return "/v1/games/" + PercentEncode(game_id) + "/mod-managers/" + PercentEncode(id);
+}
+
+}  // namespace
 
 void GetModManagersAsync(QObject* context, std::function<void(ModManagersResult)> callback) {
   async::Run(
@@ -44,8 +51,37 @@ void AddModManagerToGameAsync(QObject* context, const std::string& id, const std
   RunJob<StoreActionResult>(
       context, "mod_manager",
       [id, game_id](const std::string& query) {
-        return transport::Post("/v1/games/" + PercentEncode(game_id) + "/mod-managers/" +
-                               PercentEncode(id) + query);
+        return transport::Post(GamePath(id, game_id) + query);
+      },
+      [](StoreActionResult&, const json&) {}, std::move(callback));
+}
+
+void GetModManagerPurgeAsync(QObject* context, const std::string& id, const std::string& game_id,
+                             std::function<void(ModManagerPurgeResult)> callback) {
+  async::Run(
+      context,
+      [id, game_id] {
+        return ReadReply<ModManagerPurgeResult>(
+            transport::Get(GamePath(id, game_id)), "GET /v1/games/{id}/mod-managers/{manager}",
+            Shape::Object, [](ModManagerPurgeResult& result, const json& body) {
+              result.deployed = body.value("deployed", 0);
+              result.restored = body.value("restored", 0);
+              for (const json& folder : body.value("deleted", json::array()))
+                result.deleted.push_back(folder.value("path", std::string()));
+              result.bytes = body.value("bytes", std::uint64_t{0});
+              result.open = body.value("open", false);
+            });
+      },
+      std::move(callback));
+}
+
+void RemoveModManagerFromGameAsync(QObject* context, const std::string& id,
+                                   const std::string& game_id,
+                                   std::function<void(StoreActionResult)> callback) {
+  RunJob<StoreActionResult>(
+      context, "mod_manager",
+      [id, game_id](const std::string& query) {
+        return transport::Delete(GamePath(id, game_id) + query);
       },
       [](StoreActionResult&, const json&) {}, std::move(callback));
 }

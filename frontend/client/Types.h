@@ -1505,6 +1505,7 @@ struct RemovalPlanResult {
       uninstall;                  // the command removing them as root; empty on a distro Mira can't
   std::vector<std::string> data;  // an emulator's settings, saves and caches
   std::vector<std::string> kept;
+  std::vector<std::string> purged;  // names of the games a mod manager is undone on
   bool signs_out = false;
   std::vector<std::string> tools;  // names of the store tools Mira downloaded, deleted
 };
@@ -1618,6 +1619,17 @@ struct ModManagersResult {
   bool ok = false;
   ApiError error;
   std::vector<ModManagerInfo> managers;
+};
+
+// GET /v1/games/{id}/mod-managers/{manager}: what removing it from the game does.
+struct ModManagerPurgeResult {
+  bool ok = false;
+  ApiError error;
+  int deployed = 0;                  // its files in the game's folders that come out
+  int restored = 0;                  // game files it set aside that go back
+  std::vector<std::string> deleted;  // its folders that go
+  std::uint64_t bytes = 0;           // their size
+  bool open = false;                 // it's open for the game now
 };
 
 struct EmulatorsResult {
