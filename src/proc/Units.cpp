@@ -6,6 +6,9 @@
 #include <thread>
 
 #include "core/Log.h"
+#ifdef __linux__
+#include "proc/Cgroup.h"
+#endif
 #include "proc/Procs.h"
 #include "runner/Exec.h"
 
@@ -40,6 +43,18 @@ Result<void> Stop(const std::string& unit) {
   const auto ran = runner::RunAndWait(command);
   if (!ran) return std::unexpected(ran.error());
   return {};
+}
+
+std::optional<Scope> Scope::Of(pid_t pid, const std::string& unit) {
+  const auto group = cgroup::Of(pid);
+  if (!group || group->filename() != unit) return std::nullopt;
+  Scope scope;
+  scope.group_ = *group;
+  return scope;
+}
+
+bool Scope::Populated() const {
+  return cgroup::Populated(group_);
 }
 
 #else
@@ -92,6 +107,17 @@ Result<void> Stop(const std::string& unit) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
   return {};
+}
+
+// The command has the unit in its environment from the start.
+std::optional<Scope> Scope::Of(pid_t, const std::string& unit) {
+  Scope scope;
+  scope.entry_ = std::string(kKey) + unit;
+  return scope;
+}
+
+bool Scope::Populated() const {
+  return !WithEntry(entry_).empty();
 }
 
 #endif

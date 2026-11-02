@@ -20,6 +20,7 @@
 #include "core/Command.h"
 #include "core/Result.h"
 #include "proc/Session.h"
+#include "proc/Units.h"
 #include "store/GameStore.h"
 
 namespace mira::proc {
@@ -165,9 +166,9 @@ class ProcessSupervisor {
                               bool requested_stop);
   // Takes a finished game off every running list; true if Stop() had asked it to quit.
   bool Forget(const std::string& game_id);
-  // `group` is the tool's scope once systemd-run has joined it.
+  // `group` is the tool's scope once its command has joined it.
   void WatchTool(std::string game_id, std::string unit, pid_t pid,
-                 std::optional<std::filesystem::path> group);
+                 std::optional<units::Scope> group);
   // game.updated for the game, so clients see its tools change.
   void PublishTools(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);

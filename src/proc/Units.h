@@ -1,5 +1,9 @@
 #pragma once
 
+#include <sys/types.h>
+
+#include <filesystem>
+#include <optional>
 #include <string>
 
 #include "core/Command.h"
@@ -16,5 +20,21 @@ bool Active(const std::string& unit);
 void StopPrefix(const std::string& prefix);
 // Stops `unit` and waits for it.
 Result<void> Stop(const std::string& unit);
+
+// A unit's processes, once the command started in it has joined.
+class Scope {
+ public:
+  // nullopt until `pid` is in `unit`: on Linux systemd-run joins it just before exec'ing the
+  // command.
+  static std::optional<Scope> Of(pid_t pid, const std::string& unit);
+  bool Populated() const;
+
+ private:
+#ifdef __linux__
+  std::filesystem::path group_;
+#else
+  std::string entry_;
+#endif
+};
 
 }  // namespace mira::proc::units

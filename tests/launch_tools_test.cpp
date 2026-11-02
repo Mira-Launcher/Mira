@@ -14,6 +14,9 @@ namespace fs = std::filesystem;
 namespace {
 
 bool SystemdUserAvailable() {
+#ifdef __APPLE__
+  return true;
+#endif
   Command probe;
   probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
   auto ran = runner::RunAndWait(probe);
@@ -96,6 +99,7 @@ TEST_CASE(
   CHECK(json::parse(client.Post("/v1/games/fir/stop")->body)["status"] == "not_running");
 }
 
+#ifdef __linux__
 TEST_CASE("A tool that can't get a systemd scope is an error, not opened") {
   test::LiveServer server(test::TempDir("launch-tools-no-scope"));
   const fs::path dir = server.config().File().parent_path();
@@ -133,3 +137,4 @@ TEST_CASE("A tool that can't get a systemd scope is an error, not opened") {
   CHECK(Record(client, "fir")["tools"].empty());
   CHECK_FALSE(fs::exists(dir / "manager" / "launch.sh.ran"));
 }
+#endif

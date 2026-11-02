@@ -344,18 +344,16 @@ Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool,
   const std::string unit =
       std::format("mira-tool-{}.{}-{}.scope", strings::Slugify(game_id), strings::Slugify(tool.id),
                   std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
-  command.argv.insert(command.argv.begin(),
-                      {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit,
-                       "--description", "Mira: " + tool.name, "--"});
+  units::Wrap(command, unit, "Mira: " + tool.name);
   auto pid = runner::SpawnDetached(command, output_fd);
   if (!pid) return std::unexpected(pid.error());
   // systemd-run joins the scope before it execs the tool, so exiting before that means it couldn't
   // make one (no systemd user session) and the tool never ran.
-  std::optional<std::filesystem::path> group;
+  std::optional<units::Scope> group;
   bool reaped = false;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while (!group && !reaped && std::chrono::steady_clock::now() < deadline) {
-    if (const auto of = cgroup::Of(*pid); of && of->filename() == unit) group = of;
+    group = units::Scope::Of(*pid, unit);
     int status = 0;
     if (!group) {
       const pid_t waited = ::waitpid(*pid, &status, WNOHANG);
@@ -388,21 +386,19 @@ Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool,
 }
 
 void ProcessSupervisor::WatchTool(std::string game_id, std::string unit, pid_t pid,
-                                  std::optional<std::filesystem::path> group) {
+                                  std::optional<units::Scope> group) {
   // The tool is open while its scope has processes: a launcher that starts the real program and
   // exits leaves it running there. Until systemd-run has joined the scope, the pid says.
   bool reaped = false;
   while (!stopping_.load(std::memory_order_relaxed)) {
-    if (!group) {
-      if (const auto of = cgroup::Of(pid); of && of->filename() == unit) group = of;
-    }
+    if (!group) group = units::Scope::Of(pid, unit);
     if (!reaped) {
       int status = 0;
       const pid_t waited = ::waitpid(pid, &status, WNOHANG);
       reaped = waited == pid || (waited < 0 && errno != EINTR);
     }
     // Reaped too when the scope empties: the tool's own pid can outlast it as a zombie.
-    if (reaped && (!group || !cgroup::Populated(*group))) break;
+    if (reaped && (!group || !group->Populated())) break;
     if (PollWaitStopping()) break;
   }
   if (stopping_.load(std::memory_order_relaxed)) return;
@@ -428,7 +424,7 @@ std::vector<ProcessSupervisor::Tool> ProcessSupervisor::Tools(const std::string&
 
 bool ProcessSupervisor::StopTools(const std::string& game_id) {
   if (Tools(game_id).empty()) return false;
-  StopUnits("mira-tool-" + strings::Slugify(game_id) + ".*");
+  units::StopPrefix("mira-tool-" + strings::Slugify(game_id) + ".");
   return true;
 }
 
