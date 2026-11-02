@@ -9,9 +9,9 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "epic/EosOverlay.h"
 #include "epic/EpicImporter.h"
 #include "epic/EpicInstaller.h"
-#include "epic/EosOverlay.h"
 #include "epic/Legendary.h"
 
 namespace mira::epic {
@@ -90,9 +90,9 @@ Result<library::LaunchExtras> EpicSource::BeforeLaunch(const config::Config& con
     const bool on = config::Resolver(config, game.overrides).GetBool("epic.eos_overlay");
     // Without Mira's copy, an overlay set up some other way stays.
     if (!on || overlay.installed) {
-      if (auto set = SetOverlayIn(game.data_dir,
-                                  on ? std::filesystem::path(overlay.path).parent_path()
-                                     : std::filesystem::path());
+      if (auto set =
+              SetOverlayIn(game.data_dir, on ? std::filesystem::path(overlay.path).parent_path()
+                                             : std::filesystem::path());
           !set) {
         log::Warn("couldn't set up the EOS overlay for {}: {}", game.id, set.error().message);
       }

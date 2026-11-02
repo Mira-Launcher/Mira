@@ -29,7 +29,9 @@ bool IsOverlay(const fs::path& dir) {
 }
 
 // Legendary's record of the overlay it installed: {install_path, version, ...}.
-fs::path RecordFile() { return LegendaryConfigDir() / "overlay_install.json"; }
+fs::path RecordFile() {
+  return LegendaryConfigDir() / "overlay_install.json";
+}
 
 json Record() {
   std::ifstream file(RecordFile());
@@ -128,9 +130,8 @@ std::string WithOverlayPath(std::string_view user_reg, std::string_view windows_
   } else {
     const auto end = std::find_if(std::next(key), lines.end(),
                                   [](const std::string& line) { return line.starts_with('['); });
-    const auto value = std::find_if(std::next(key), end, [](const std::string& line) {
-      return line.starts_with(kValue);
-    });
+    const auto value = std::find_if(
+        std::next(key), end, [](const std::string& line) { return line.starts_with(kValue); });
     if (windows_path.empty()) {
       if (value != end) lines.erase(value);
     } else if (value != end) {

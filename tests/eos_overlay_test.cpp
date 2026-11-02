@@ -60,8 +60,8 @@ TEST_CASE("WithOverlayPath puts the path after the key's #time line when it adds
   const std::string reg = std::string(kUserReg) +
                           "\n[Software\\\\Epic Games\\\\EOS] 1761354001\n"
                           "#time=1db45a1e0f00001\n";
-  CHECK(epic::WithOverlayPath(reg, "Z:\\o").ends_with(
-      "#time=1db45a1e0f00001\n\"OverlayPath\"=\"Z:\\\\o\"\n"));
+  CHECK(epic::WithOverlayPath(reg, "Z:\\o")
+            .ends_with("#time=1db45a1e0f00001\n\"OverlayPath\"=\"Z:\\\\o\"\n"));
 }
 
 TEST_CASE("SetOverlayIn writes a prefix's user.reg only when it changes and skips a new prefix") {

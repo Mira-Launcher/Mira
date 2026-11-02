@@ -26,8 +26,8 @@ std::vector<Store> BuildStores() {
   return {
       {"epic", "Epic Games", "legendary", "legendary", epic::InstallLegendaryBinary, epic::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(epic::kLoginUrl); },
-       epic::Login, epic::FindCode, epic::Logout, ImportWith<epic::EpicImporter>,
-       "the EOS overlay", nullptr, nullptr, epic::DetectOverlay, epic::InstallOverlay},
+       epic::Login, epic::FindCode, epic::Logout, ImportWith<epic::EpicImporter>, "the EOS overlay",
+       nullptr, nullptr, epic::DetectOverlay, epic::InstallOverlay},
       {"gog", "GOG", "gogdl", "gog", gog::InstallGogBinary, gog::Status,
        [](const config::Config&) -> Result<std::string> { return std::string(gog::kLoginUrl); },
        gog::Login, gog::FindCode, gog::Logout, ImportWith<gog::GogImporter>, "comet", "comet",
