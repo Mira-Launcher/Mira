@@ -445,6 +445,9 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     json tools = json::array();
     for (const library::RemovalPlan::Tool& tool : plan->tools)
       tools.push_back({{"name", tool.name}, {"path", tool.path}});
+    json purged = json::array();
+    for (const library::RemovalGame& game : plan->purged)
+      purged.push_back({{"id", game.id}, {"name", game.name}});
     SendJson(res, {{"source", plan->source},
                    {"tools", tools},
                    {"games", games},
@@ -453,18 +456,31 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                    {"uninstall", plan->uninstall},
                    {"data", plan->data},
                    {"kept", plan->kept},
+                   {"purged", purged},
                    {"signs_out", plan->signs_out}});
   });
 
   http.Post(R"(/v1/sources/([a-z0-9-]+)/remove)", [&s](const Request& req, Response& res) {
     const std::string source = req.matches[1].str();
     // Checked now, so an unknown source is a 404 rather than a failed job.
-    if (auto plan = library::PlanRemoval(s.config, s.games, source); !plan)
-      return SendError(res, 404, plan.error());
+    const auto plan = library::PlanRemoval(s.config, s.games, source);
+    if (!plan) return SendError(res, 404, plan.error());
+    // A mod manager's games are purged, so none may be open in it, running or busy meanwhile.
+    auto held = std::make_shared<std::vector<proc::ProcessSupervisor::Reservation>>();
+    if (const modmanagers::ModManager* manager = modmanagers::Find(source)) {
+      for (const library::RemovalGame& game : plan->purged) {
+        if (std::ranges::contains(s.supervisor.Tools(game.id), manager->id,
+                                  &proc::ProcessSupervisor::Tool::id))
+          return SendError(res, 409, modmanagers::OpenError(*manager, game.name));
+        auto claim = s.Claim(game.id, "removing a mod manager");
+        if (!claim) return SendError(res, 409, claim.error());
+        held->push_back(std::move(*claim));
+      }
+    }
     const json body = json::parse(req.body, nullptr, false);
     const bool delete_data = body.is_object() && body.value("delete_data", false);
     s.StartJob(req, res, "remove_source", source, "Removing " + source,
-               [&s, source, delete_data](JobRegistry::Progress&) -> Result<json> {
+               [&s, source, delete_data, held](JobRegistry::Progress&) -> Result<json> {
                  auto removed =
                      library::RemoveSource(s.config, s.games, s.events, source, delete_data);
                  if (!removed) return std::unexpected(removed.error());

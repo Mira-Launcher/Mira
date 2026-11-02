@@ -88,6 +88,11 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path);
 // fetch is needed first: id/name are already known from the tile/row.
 void ViewLog(QWidget* parent, const std::string& id, const QString& name);
 
+// Asks before removing mod manager `manager` from the game (RemoveModManagerCard), then removes
+// it, which undoes what it deployed and deletes its data for the game.
+void RemoveModManager(QWidget* parent, const std::string& id, const QString& name,
+                      const std::string& manager);
+
 // Opens the Winetricks card. Fetches the full record first to check data_dir
 // (not in the list summary) before opening; mirad only rejects "no
 // prefix" asynchronously, so this catches it up front instead.

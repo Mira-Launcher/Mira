@@ -27,6 +27,7 @@
 #include "library/SourceRemoval.h"
 #include "library/Stores.h"
 #include "metadata/MetadataFetcher.h"
+#include "modmanagers/Purge.h"
 #include "proc/ProcessIndex.h"
 #include "runner/Exec.h"
 #include "runner/ProtonRunner.h"
@@ -786,6 +787,17 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
           std::format("\"{}\" also uses {}, so it wasn't deleted", sharer->name, game.data_dir),
           "Remove the launcher it came with to delete its prefix.");
     }
+  }
+  if (files || prefix) {
+    for (const modmanagers::ModManager& manager : modmanagers::All()) {
+      if (modmanagers::OnGame(game, manager) &&
+          std::ranges::contains(supervisor.Tools(game.id), manager.id,
+                                &proc::ProcessSupervisor::Tool::id))
+        return std::unexpected(modmanagers::OpenError(manager, game.name));
+    }
+    // A mod manager's mods and settings in a kept prefix, or its deployment in kept files.
+    if (auto purged = modmanagers::PurgeBeforeDelete(game, others, files, prefix); !purged)
+      return purged;
   }
   if (backups) {
     if (auto deleted = saves::DeleteBackups(config, game.id); !deleted) return deleted;

@@ -257,10 +257,18 @@ TEST_CASE("Relocate moves a prefix that holds the game as one folder") {
   SUBCASE("and the same when the install folder is the prefix itself") {
     const fs::path combined = setup.outside / "cuphead";
     const model::Game cuphead = setup.LutrisGame("cuphead", "Cuphead", combined, combined);
+    // Lutris links the Wine user to Proton's by an absolute path; a link elsewhere is the user's.
+    const fs::path users = combined / "drive_c/users";
+    fs::create_directories(users / "steamuser");
+    fs::create_directory_symlink(users / "steamuser", users / "emondri");
+    fs::create_directory_symlink(setup.outside, users / "elsewhere");
     const auto moved = library::Relocate(setup.env.config, cuphead, {}, std::vector{cuphead});
     REQUIRE(moved.has_value());
     CHECK(moved->install_path == moved->data_dir);
     CHECK(fs::exists(fs::path(moved->install_path) / "Game.exe"));
+    const fs::path moved_users = fs::path(moved->data_dir) / "drive_c/users";
+    CHECK(fs::read_symlink(moved_users / "emondri") == moved_users / "steamuser");
+    CHECK(fs::read_symlink(moved_users / "elsewhere") == setup.outside);
   }
 }
 

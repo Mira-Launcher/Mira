@@ -17,7 +17,44 @@
 namespace mira::library {
 namespace fs = std::filesystem;
 
+namespace {
+
+// Renames `from` to `to`, else copies it across and deletes it when `allow_copy`.
+Result<void> MoveTree(const fs::path& from, const fs::path& to, bool allow_copy);
+
+// Links inside `to` that pointed into `from` by an absolute path (a prefix's users/<name> as Lutris
+// makes it) would dangle once it moved, so each is pointed at the same place in `to`.
+void RepointLinks(const fs::path& from, const fs::path& to) {
+  const fs::path old_root = from.lexically_normal();
+  std::error_code ec;
+  for (fs::recursive_directory_iterator it(to, fs::directory_options::skip_permission_denied, ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    std::error_code link_ec;
+    if (!it->is_symlink(link_ec)) continue;
+    const fs::path target = fs::read_symlink(it->path(), link_ec);
+    if (link_ec || !target.is_absolute()) continue;
+    const fs::path inside = target.lexically_normal().lexically_relative(old_root);
+    if (inside.empty() || *inside.begin() == "..") continue;
+    fs::remove(it->path(), link_ec);
+    fs::create_symlink(inside == "." ? to : to / inside, it->path(), link_ec);
+    if (link_ec)
+      log::Warn("couldn't point {} at its new place: {}", it->path().string(), link_ec.message());
+  }
+}
+
+}  // namespace
+
 Result<void> MovePath(const fs::path& from, const fs::path& to, bool allow_copy) {
+  Result<void> moved = MoveTree(from, to, allow_copy);
+  std::error_code ec;
+  if (moved && fs::is_directory(to, ec)) RepointLinks(from, to);
+  return moved;
+}
+
+namespace {
+
+Result<void> MoveTree(const fs::path& from, const fs::path& to, bool allow_copy) {
   std::error_code ec;
   if (!fs::exists(from, ec)) {
     if (ec)
@@ -50,8 +87,6 @@ Result<void> MovePath(const fs::path& from, const fs::path& to, bool allow_copy)
               to.string(), ec.message());
   return {};
 }
-
-namespace {
 
 // `inner`'s place under `outer`, carried over to `moved_outer`.
 std::string Rebase(const fs::path& inner, const fs::path& outer, const fs::path& moved_outer) {

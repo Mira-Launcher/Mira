@@ -555,6 +555,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                        std::format("{} only runs beside the game", option->name));
     }
     if (option && option->mode == library::LaunchMode::Tool) {
+      // Not while the game's files change: a move, or a mod manager being removed.
+      if (const std::string busy = s.supervisor.ReservedFor(game->id); !busy.empty())
+        return SendError(res, 409, GameBusyError(game->id, busy));
       if (auto opened = SpawnOption(s, *game, *option, ""); !opened) {
         const bool no_scope = opened.error().code == "cgroup_unavailable";  // as for a game
         return SendError(res, no_scope ? 500 : PrepareStatus(opened.error()), opened.error());

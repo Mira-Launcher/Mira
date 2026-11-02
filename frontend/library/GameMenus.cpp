@@ -66,6 +66,15 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
       });
     });
   }
+  // Taking a mod manager off undoes what it did for the game; the card asks first.
+  for (const LaunchOption& option : game.launch.options) {
+    const SourceInfo* manager = FindSourceInfo(QString::fromStdString(option.id));
+    if (manager == nullptr || manager->kind != SourceInfo::Kind::ModManager) continue;
+    QAction* remove_manager = menu.addAction(
+        "Remove " + manager->name + "…", this,
+        [this, id, name, to = option.id] { actions::RemoveModManager(parent_, id, name, to); });
+    remove_manager->setEnabled(!running);
+  }
   if (extra) extra(menu);
   // An emulator's game moves to another one for its console; filled in when mirad answers.
   const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));

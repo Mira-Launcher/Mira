@@ -15,9 +15,12 @@
 #include "../app/Notify.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../client/api/ModManagers.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/MoveGamesCard.h"
 #include "../game/PrefixCards.h"
+#include "../game/RemoveModManagerCard.h"
+#include "../sources/Sources.h"
 #include "../widgets/WindowCards.h"
 #include "PlayChoices.h"
 
@@ -212,6 +215,28 @@ void MoveGames(QWidget* parent, const std::vector<std::string>& ids,
                const std::map<std::string, QString>& names, std::function<void()> on_done);
 
 }  // namespace
+
+void RemoveModManager(QWidget* parent, const std::string& id, const QString& name,
+                      const std::string& manager) {
+  const SourceInfo* info = FindSourceInfo(QString::fromStdString(manager));
+  if (info == nullptr) return;
+  // Shown at once; its rows fill in when mirad has looked through the prefix.
+  auto* card = new RemoveModManagerCard(name, *info);
+  QObject::connect(card, &RemoveModManagerCard::Confirmed, parent,
+                   [parent, card, id, name, manager, manager_name = info->name] {
+                     cards::Close(card);
+                     api::RemoveModManagerFromGameAsync(
+                         parent, manager, id, [parent, name, manager_name](StoreActionResult r) {
+                           if (!r.ok)
+                             notify::FailedRequest(
+                                 parent, "Could not remove " + manager_name + " from " + name + ".",
+                                 r.error);
+                         });
+                   });
+  cards::Show(parent, card);
+  api::GetModManagerPurgeAsync(
+      card, manager, id, [card](ModManagerPurgeResult summary) { card->SetSummary(summary); });
+}
 
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done) {

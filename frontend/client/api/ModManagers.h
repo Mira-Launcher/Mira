@@ -16,5 +16,12 @@ void InstallModManagerAsync(QObject* context, const std::string& id,
 // A job: readies the game's prefix for it, then adds it to the game as a tool.
 void AddModManagerToGameAsync(QObject* context, const std::string& id, const std::string& game_id,
                               std::function<void(StoreActionResult)> callback);
+// What removing it from the game would take out, put back and delete.
+void GetModManagerPurgeAsync(QObject* context, const std::string& id, const std::string& game_id,
+                             std::function<void(ModManagerPurgeResult)> callback);
+// A job: undoes what it did for the game and deletes its data there, then takes it off.
+void RemoveModManagerFromGameAsync(QObject* context, const std::string& id,
+                                   const std::string& game_id,
+                                   std::function<void(StoreActionResult)> callback);
 
 }  // namespace mira_gui::api

@@ -33,6 +33,8 @@ struct RemovalPlan {
   std::vector<std::string>
       data;  // an emulator's settings, saves and caches, deleted only when asked
   std::vector<std::string> kept;  // prefixes and save folders left alone
+  // The games a mod manager was added to: what it deployed is undone and its data deleted there.
+  std::vector<RemovalGame> purged;
   bool signs_out = false;
   struct Tool {
     std::string name;  // "gogdl"

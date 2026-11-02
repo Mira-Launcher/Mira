@@ -171,6 +171,9 @@ RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
         for (const json& path : body.value("kept", json::array())) {
           if (path.is_string()) result.kept.push_back(path.get<std::string>());
         }
+        for (const json& game : body.value("purged", json::array())) {
+          if (game.is_object()) result.purged.push_back(game.value("name", std::string()));
+        }
         result.signs_out = body.value("signs_out", false);
         for (const json& tool : body.value("tools", json::array())) {
           if (tool.is_object()) result.tools.push_back(tool.value("name", std::string()));
