@@ -183,6 +183,7 @@ int main(int argc, char** argv) {
     services.SortAllByTags();  // in case the folder tags changed while mirad was off
     // On a lane, so shutdown stops a download instead of waiting for it.
     services.operations.Post([&services] { services.EnsureWindowsRunner(); });
+    services.operations.Post([&services] { services.EnsureEosOverlay(); });
   });
 
   mira::library::Watcher watcher(config, games, events);

@@ -23,7 +23,8 @@ class EpicSource : public library::ILibrarySource {
 
   // Epic Online Services' sign-in arguments from `legendary launch --json`, as `legendary launch`
   // itself would pass them: without them EOS games run signed out, with no achievements or
-  // online features.
+  // online features. A Windows game's prefix is also pointed at the EOS overlay while
+  // `epic.eos_overlay` is on for it, and away from it while that's off.
   Result<library::LaunchExtras> BeforeLaunch(const config::Config& config, const model::Game& game,
                                              bool sign_in) const override;
 };

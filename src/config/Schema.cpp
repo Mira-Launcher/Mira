@@ -645,6 +645,16 @@ Schema::Schema() {
                 "earn unlock on your GOG account.",
          .keywords = "comet galaxy achievements"});
 
+  s.Add({.key = "epic.eos_overlay",
+         .label = "Epic Online Services overlay",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Download Epic's in-game overlay and turn it on for Windows Epic games. Some games "
+                "need it to finish signing in: the first time one does, Epic asks in the overlay "
+                "whether the game may use your account.",
+         .keywords = "eos overlay epic online services sign in login friends"});
+
   s.Add({.key = "itch.collections",
          .label = "itch.io collections",
          .type = Type::StringArray,

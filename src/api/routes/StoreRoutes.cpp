@@ -123,7 +123,18 @@ void RegisterStoreRoutes(Router& http, Services& s) {
             return fail(installed.error());
           log::Info("installed {} {}", store->tool, asset.tag);
           say(std::format("Installed {} {}", store->tool, asset.tag));
-          if (store->helper) {
+          if (store->fetch_helper) {
+            // The store works without its helper, so a failure here doesn't fail the setup.
+            say(std::format("Downloading {}", store->helper));
+            if (auto fetched = store->fetch_helper(s.config)) {
+              const std::string version = store->helper_status(s.config).version;
+              say(version.empty() ? std::format("Installed {}", store->helper)
+                                  : std::format("Installed {} {}", store->helper, version));
+            } else {
+              log::Warn("couldn't install {}: {}", store->helper, fetched.error().message);
+              say(std::format("Couldn't install {}: {}", store->helper, fetched.error().message));
+            }
+          } else if (store->helper) {
             // The store works without its helper, so a failure here doesn't fail the setup.
             say(std::format("Looking up the newest {} release", store->helper));
             const auto helper = runner::ListReleases(s.config, store->helper_release_kind);

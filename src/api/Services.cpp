@@ -18,6 +18,8 @@
 #include "core/LogHub.h"
 #include "core/Paths.h"
 #include "desktop/DesktopEntries.h"
+#include "epic/EosOverlay.h"
+#include "epic/Legendary.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
@@ -1354,6 +1356,22 @@ void Services::EnsureWindowsRunner() {
   }
   log::Info("no Wine or Proton runner is installed: downloading {}", releases->front().tag);
   (void)DownloadRunner("proton", family->id, releases->front(), "");
+}
+
+void Services::EnsureEosOverlay() {
+  if (!config.GetBool("epic.eos_overlay") || epic::DetectOverlay(config).installed ||
+      !epic::Status(config).authenticated)
+    return;
+  jobs.Start("setup", "epic", "Downloading the EOS overlay",
+             [this](JobRegistry::Progress&) -> Result<json> {
+               if (auto installed = epic::InstallOverlay(config); !installed) {
+                 log::Warn("couldn't download the EOS overlay: {}", installed.error().message);
+                 return std::unexpected(installed.error());
+               }
+               const std::string version = epic::DetectOverlay(config).version;
+               log::Info("downloaded the EOS overlay {}", version);
+               return json{{"tag", version}};
+             });
 }
 
 }  // namespace mira::api

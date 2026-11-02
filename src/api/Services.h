@@ -214,6 +214,9 @@ class Services {
   // Moves what names a removed build onto the build that runs in its place, with games.updated
   // for the games it moved.
   void RepointRemovedRunners();
+  // Downloads Epic's EOS overlay in the background (a setup job for "epic") when Epic is signed in
+  // and it's missing: an account set up before Mira fetched it with legendary gets it untouched.
+  void EnsureEosOverlay();
 
   // Files a store wrote for one launch of `game_id` (Epic's ownership token), deleted once it
   // exits.
