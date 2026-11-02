@@ -117,7 +117,9 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
   status_ = new QLabel(this);
   status_->setTextFormat(Qt::RichText);
+  status_->setWordWrap(true);
   layout->addWidget(status_);
+  size_line_ = AddLine(layout, this, "muted");
 
   protondb_ = new QLabel(this);
   // Fixed, not the layout's default: a QSS-painted pill should hug its own
@@ -138,8 +140,8 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
 void HoverCard::Reset() {
   protondb_->hide();
-  for (QLabel* line :
-       {platform_line_, played_line_, developer_line_, review_line_, error_line_, hint_line_}) {
+  for (QLabel* line : {size_line_, platform_line_, played_line_, developer_line_, review_line_,
+                       error_line_, hint_line_}) {
     SetLine(line, QString());
   }
 }
@@ -176,7 +178,7 @@ void HoverCard::ShowGame(const GameSummary& game, bool running, const QString& h
 }
 
 void HoverCard::ShowTitle(const QString& source, const QString& ref, const QString& title,
-                          const QString& status, const QString& detail,
+                          const QString& status, const QString& size, const QString& detail,
                           std::vector<std::string> library_tags) {
   // Keyed like the id it gets once installed, so a late answer for another title is dropped.
   game_id_ = (source + "-" + ref).toStdString();
@@ -184,6 +186,7 @@ void HoverCard::ShowTitle(const QString& source, const QString& ref, const QStri
   name_->setText(title);
   status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>")
                        .arg(theme::Current().text_muted.name(), status.toHtmlEscaped()));
+  SetLine(size_line_, size);
   SetLine(platform_line_, detail);
   Reposition();
 

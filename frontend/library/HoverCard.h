@@ -63,9 +63,9 @@ class HoverCard : public QWidget {
   void ShowGame(const GameSummary& game, bool running, const QString& hint = QString());
   // A store title that isn't in the library yet, with its cached details
   // (GET /v1/library/metadata) once they arrive. Having no genres, it lists those of its Steam
-  // tags that are among `library_tags`.
+  // tags that are among `library_tags`. `size` is a muted line under the status, when known.
   void ShowTitle(const QString& source, const QString& ref, const QString& title,
-                 const QString& status, const QString& detail,
+                 const QString& status, const QString& size, const QString& detail,
                  std::vector<std::string> library_tags);
   // Shows the card beside `anchor` (global), and keeps it there as it grows.
   void PopUpBeside(const QRect& anchor);
@@ -82,6 +82,7 @@ class HoverCard : public QWidget {
   QRect anchor_;
   QLabel* name_ = nullptr;
   QLabel* status_ = nullptr;
+  QLabel* size_line_ = nullptr;
   QLabel* protondb_ = nullptr;
   QLabel* platform_line_ = nullptr;
   QLabel* played_line_ = nullptr;

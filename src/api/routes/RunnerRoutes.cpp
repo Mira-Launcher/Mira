@@ -237,6 +237,7 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
       return SendError(res, 400, deleted.error());
     }
     s.events.Publish("runners.removed", {{"kind", kind}, {"name", name}});
+    s.RepointRemovedRunners();
     SendJson(res, json::object());
   });
 }

@@ -98,6 +98,8 @@ void InstallerCard::ShowInfo(const InstallerInfoResult& info, const std::string&
   installer_ = path;
   QStringList parts{QFileInfo(QString::fromStdString(info.path)).fileName(),
                     SizeText(info.size_bytes)};
+  if (info.estimated_install_bytes > 0)
+    parts << "about " + SizeText(info.estimated_install_bytes) + " installed";
   if (const QString format = InstallerFormatName(info.format); !format.isEmpty()) parts << format;
   file_->setText(parts.join("  ·  "));
   file_->setToolTip(QString::fromStdString(info.path));

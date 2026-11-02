@@ -300,8 +300,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     }
     const json& match = (*matches)[next];
     const json patch = {{"metadata.steamgriddb_id", match.value("id", std::int64_t{0})}};
-    auto updated =
-        s.games.Update(game->id, [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
+    auto updated = s.games.Update(
+        game->id, [&](model::Game& g) { library::ApplyOverridesPatch(g, patch, s.config); });
     if (!updated) return SendError(res, 500, updated.error());
     s.fetches.Enqueue(s.config, s.events, *updated, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"match", match}}, 202);
@@ -327,8 +327,8 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
       return SendJson(res, {{"status", "matched"}, {"steamgriddb_id", id}});
     }
     const json patch = {{"metadata.steamgriddb_id", id == 0 ? json(nullptr) : json(id)}};
-    auto game = s.games.Update(req.matches[1],
-                               [&](model::Game& g) { library::ApplyOverridesPatch(g, patch); });
+    auto game = s.games.Update(
+        req.matches[1], [&](model::Game& g) { library::ApplyOverridesPatch(g, patch, s.config); });
     if (!game) return SendStoreError(res, game.error());
     s.fetches.Enqueue(s.config, s.events, *game, /*force=*/true, /*announce=*/true);
     SendJson(res, {{"status", "fetching"}, {"steamgriddb_id", id}}, 202);

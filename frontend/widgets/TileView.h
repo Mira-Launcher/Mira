@@ -46,6 +46,9 @@ class TileView : public QListView {
     band_host_ = host;
     band_bounds_ = bounds;
   }
+  // Where the box may go, in the host's coordinates, instead of `bounds`: for a page whose cover
+  // area goes on past the grid's own section.
+  std::function<QRect()> band_area;
   // A tile painted something that moves (a busy progress rail): repaint soon.
   // Stops by itself once no paint asks again.
   void KeepAnimating();

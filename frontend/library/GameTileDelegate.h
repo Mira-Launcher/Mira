@@ -45,6 +45,8 @@ class GameTileDelegate : public QStyledItemDelegate {
     NeedsCheckRole,
     // A program rather than a game: "Running", not "Playing".
     AppRole,
+    // Optional: "Vortex open", for tools the game opened while it isn't running itself.
+    ToolsRole,
     // Optional: a ProtonDB tier ("gold"), drawn as a small pill in the top-left corner.
     ProtonDbRole,
     // Optional: the share of positive Steam reviews (int), on the status line.

@@ -52,6 +52,11 @@ class RunnerRegistry {
   };
   Result<Resolved> Resolve(const std::string& runner_ref) const;
 
+  // For a "kind:name" whose build isn't installed anymore, the newest installed build of its line
+  // (GE-Proton10-9 for GE-Proton10-7: the same name but for the numbers), which runs in its place.
+  // Nothing while the build is installed, for "auto"/"latest", or when no build of the line is.
+  std::optional<model::RunnerBuild> StandIn(const std::string& runner_ref) const;
+
   // Turns game.runner_ref into a concrete "kind:name" string, without
   // provisioning anything: empty -> default_runner.<platform>, "auto" ->
   // best available windows runner. Used by launch paths that must not

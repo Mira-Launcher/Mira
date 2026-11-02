@@ -99,6 +99,18 @@ int MigrateInPlaceRefs(config::Config& config, store::GameStore& games) {
   return RepointRefs(config, games, migrated);
 }
 
+int RepointRemovedBuilds(config::Config& config, store::GameStore& games,
+                         std::vector<std::string>* game_ids) {
+  const RunnerRegistry registry(config);
+  return RepointRefs(
+      config, games,
+      [&](const std::string& ref) -> std::optional<std::string> {
+        if (auto stand_in = registry.StandIn(ref)) return stand_in->Reference();
+        return std::nullopt;
+      },
+      game_ids);
+}
+
 int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef& moved,
                 std::vector<std::string>* game_ids) {
   int changed = 0;
@@ -106,6 +118,8 @@ int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef&
   for (const config::Entry& entry : config::Schema::Instance().Entries()) {
     if (!entry.is_runner_ref) continue;
     runner_keys.push_back(&entry);
+    // A setting left at its default keeps following the default.
+    if (config.Get(entry.key) == entry.default_value) continue;
     if (const auto to = moved(config.GetString(entry.key))) {
       log::Info("{}: {} is now {}", entry.key, config.GetString(entry.key), *to);
       if (config.Set(entry.key, *to)) ++changed;

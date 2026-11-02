@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QPersistentModelIndex>
 #include <QPoint>
 #include <QSet>
 #include <QSize>
@@ -152,6 +153,9 @@ class SourcePage : public QWidget {
   void ShowOwnedMenu(const QPoint& pos);
   // nullptr hides it.
   void ShowHoverCard(TileGrid* grid, const QModelIndex& index);
+  // A not-installed title's size for its hover card, asked of mirad the first time it's needed;
+  // empty until it's known or when the store doesn't say.
+  QString TitleSize(TileGrid* grid, const QModelIndex& index);
   // The shared model changed: this source's count and status line.
   void LibraryUpdated();
   void HandleEvent(const std::string& type, const std::string& data);
@@ -245,6 +249,9 @@ class SourcePage : public QWidget {
   GameFilterProxy* games_ = nullptr;           // this source's games, for library_grid_
   QStandardItemModel* owned_model_ = nullptr;  // owned_ as tiles, for owned_grid_
   HoverCard* hover_card_ = nullptr;
+  QPersistentModelIndex hovered_;  // the tile the hover card is for
+  // ref -> {download, install} bytes, -1 when unknown or still being asked.
+  QHash<QString, std::pair<qint64, qint64>> title_sizes_;
 };
 
 }  // namespace mira_gui

@@ -589,10 +589,12 @@ void FoundPage::Enter() {
     account_ = QString::fromStdString(accounts_.selected);
     Show();
   });
-  api::GetLutrisAsync(this, [this](LutrisStatusResult result) {
-    lutris_found_ = result.ok && result.found;
-    Show();
-  });
+  for (size_t i = 0; i < importers_.size(); ++i) {
+    api::GetImporterAsync(this, importers_[i].id, [this, i](ImporterStatusResult result) {
+      importers_[i].found = result.ok && result.found;
+      Show();
+    });
+  }
   api::ListRunnersAsync(this, [this](RunnersResult result) {
     if (!result.ok) return;
     runners_ = result.runners;
@@ -610,7 +612,6 @@ void FoundPage::Show() {
   Clear(body_);
   const theme::Tokens& tokens = theme::Current();
   const int steam_games = Count("steam");
-  const int lutris_games = Count("lutris");
 
   if (steam_.found) {
     QFrame* card = SetupCard(this);
@@ -727,32 +728,34 @@ void FoundPage::Show() {
     body_->addWidget(card);
   }
 
-  if (lutris_found_) {
+  bool any_importer = false;
+  for (Importer& importer : importers_) {
+    if (!importer.found) continue;
+    any_importer = true;
+    const SourceInfo& source = *FindSourceInfo(importer.id);
+    const int games = Count(importer.id);
     QFrame* card = SetupCard(this);
     auto* line = new QHBoxLayout(card);
     line->setContentsMargins(16, 12, 16, 12);
     line->setSpacing(12);
-    line->addWidget(MakeSourceBadge(*FindSourceInfo("lutris"), 30, card));
+    line->addWidget(MakeSourceBadge(source, 30, card));
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
-    text->addWidget(Bold(card, "Lutris"));
-    text->addWidget(MakeLabel(card,
-                              lutris_games > 0
-                                  ? QString("%1 games added").arg(lutris_games)
-                                  : QString("Its Wine and Linux games, as Lutris runs them"),
-                              "muted"));
+    text->addWidget(Bold(card, source.name));
+    text->addWidget(MakeLabel(
+        card, games > 0 ? QString("%1 games added").arg(games) : QString(importer.adds), "muted"));
     line->addLayout(text, /*stretch=*/1);
-    if (lutris_games == 0) {
+    if (games == 0) {
       auto* add = new Switch(card);
-      add->setChecked(lutris_on_);
-      add->setAccessibleName("Add Lutris's games");
-      connect(add, &QAbstractButton::toggled, this, [this](bool on) { lutris_on_ = on; });
+      add->setChecked(importer.on);
+      add->setAccessibleName("Add " + source.name + "'s games");
+      connect(add, &QAbstractButton::toggled, this, [&importer](bool on) { importer.on = on; });
       line->addWidget(add);
     }
     body_->addWidget(card);
   }
 
-  if (!steam_.found && !lutris_found_) {
+  if (!steam_.found && !any_importer) {
     QFrame* card = SetupCard(this);
     auto* line = new QHBoxLayout(card);
     line->setContentsMargins(16, 12, 16, 12);
@@ -765,10 +768,11 @@ void FoundPage::Show() {
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
     text->addWidget(Bold(card, "No games yet"));
-    text->addWidget(MakeLabel(card,
-                              "Steam and Lutris aren't installed. That's fine: your stores come "
-                              "next, and games you install yourself can be added any time.",
-                              "muted"));
+    text->addWidget(
+        MakeLabel(card,
+                  "Steam, Lutris and Heroic aren't installed. That's fine: your stores come "
+                  "next, and games you install yourself can be added any time.",
+                  "muted"));
     line->addLayout(text, /*stretch=*/1);
     body_->addWidget(card);
   }
@@ -819,7 +823,9 @@ void FoundPage::Show() {
 void FoundPage::Leave() {
   context_.choices->found.clear();
   if (steam_.found && steam_on_) context_.choices->found << "steam";
-  if (lutris_found_ && lutris_on_) context_.choices->found << "lutris";
+  for (const Importer& importer : importers_) {
+    if (importer.found && importer.on) context_.choices->found << importer.id;
+  }
   const bool add_steam = steam_.found && steam_on_ && Count("steam") == 0 && !steam_.games.empty();
   if (!account_.isEmpty() && account_.toStdString() != accounts_.selected) {
     // Steam's playtime is read for the account picked, so it's saved before the games come in.
@@ -830,7 +836,10 @@ void FoundPage::Leave() {
   } else if (add_steam) {
     context_.work->ImportSteam();
   }
-  if (lutris_found_ && lutris_on_ && Count("lutris") == 0) context_.work->ImportLutris();
+  for (const Importer& importer : importers_) {
+    if (importer.found && importer.on && Count(importer.id) == 0)
+      context_.work->ImportFrom(importer.id);
+  }
 }
 
 // --- Stores ----------------------------------------------------------------------------------
@@ -1318,8 +1327,8 @@ void DonePage::ShowSummary() {
                               [source](const GameSummary& g) { return g.source == source; }));
   };
   if (choices.games) {
-    for (const auto& [source, name] :
-         {std::pair{"steam", "Steam"}, std::pair{"lutris", "Lutris"}}) {
+    for (const auto& [source, name] : {std::pair{"steam", "Steam"}, std::pair{"lutris", "Lutris"},
+                                       std::pair{"heroic", "Heroic"}}) {
       const int games = count(source);
       if (games > 0) {
         add(Mark::Done, QString("%1: %2 games in your library").arg(name).arg(games), {});

@@ -179,13 +179,15 @@ void GetUpdatesAsync(QObject* context, std::function<void(UpdatesResult)> callba
       std::move(callback), async::Lane::Slow);
 }
 
-void GetLutrisAsync(QObject* context, std::function<void(LutrisStatusResult)> callback) {
+void GetImporterAsync(QObject* context, const std::string& importer,
+                      std::function<void(ImporterStatusResult)> callback) {
   async::Run(
       context,
-      [] {
-        return ReadReply<LutrisStatusResult>(
-            transport::Get("/v1/lutris"), "GET /v1/lutris", Shape::Object,
-            [](LutrisStatusResult& result, const nlohmann::json& body) {
+      [importer] {
+        const std::string path = "/v1/" + importer;
+        return ReadReply<ImporterStatusResult>(
+            transport::Get(path), "GET " + path, Shape::Object,
+            [](ImporterStatusResult& result, const nlohmann::json& body) {
               result.found = body.value("found", false);
             });
       },
@@ -197,6 +199,19 @@ void ImportLutrisAsync(QObject* context, std::function<void(LutrisImportResult)>
       context, "import",
       [](const std::string& query) { return transport::Post("/v1/lutris/import" + query); },
       FillLutrisImport, std::move(callback));
+}
+
+void ImportHeroicAsync(QObject* context, std::function<void(HeroicImportResult)> callback) {
+  RunJob<HeroicImportResult>(
+      context, "import",
+      [](const std::string& query) { return transport::Post("/v1/heroic/import" + query); },
+      [](HeroicImportResult& result, const json& body) {
+        result.added = body.value("added", 0);
+        result.updated = body.value("updated", 0);
+        result.unsupported = body.value("unsupported", 0);
+        result.incomplete = body.value("incomplete", 0);
+      },
+      std::move(callback));
 }
 
 void GetDesktopEntryCandidatesAsync(QObject* context,

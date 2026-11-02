@@ -117,8 +117,8 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     QLabel* blurb = MakeLabel(tile, copy.blurb, "subtle");
     blurb->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     tile->Body()->addWidget(blurb, 1);
-    // Lutris has nothing to set up: its button imports right away.
-    const bool imports = id == "lutris";
+    // Lutris and Heroic have nothing to set up: their button imports right away.
+    const bool imports = id == "lutris" || id == "heroic";
     auto* button = new QPushButton(imports ? "Import games" : "Set up…", tile);
     button->setDefault(true);
     button->setAccessibleName((imports ? "Import games from " : "Set up ") + source.name);

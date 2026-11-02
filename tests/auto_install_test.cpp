@@ -8,6 +8,7 @@
 
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
+#include "library/InstallSize.h"
 #include "proc/Session.h"
 #include "runner/IRunner.h"
 #include "support/LiveServer.h"
@@ -315,4 +316,47 @@ TEST_CASE("An installer that installs nothing leaves the game waiting, with a wa
   CHECK(runs == 2);
   CHECK(read(log_file.string() + ".1").contains("last launch"));
   CHECK_FALSE(log.contains("last launch"));
+}
+
+TEST_CASE("An installer's progress is guessed from the storage Steam's requirements ask for") {
+  const fs::path state = test::TempDir("auto-install-estimate");
+  test::LiveServer server(state);
+  const fs::path release = state / "release";
+  const fs::path dir = state / "prefix" / "drive_c" / "Games" / "Celeste";
+  // Writes 1 MiB of a game Steam says needs 2 MB, then waits.
+  AddWaitingGame(server, state / "setup_celeste",
+                 "# Inno Setup\nmkdir -p '" + dir.string() + "'\nhead -c 1048576 /dev/zero > '" +
+                     dir.string() + "/data.bin'\nwhile [ ! -e '" + release.string() +
+                     "' ]; do sleep 0.05; done\nprintf game > '" + dir.string() +
+                     "/Celeste.exe'\n");
+  REQUIRE(server.MutableConfig().Set("install.show_progress", false));
+  REQUIRE(
+      server.games()
+          .Metadata()
+          .Write("celeste",
+                 {{"steam",
+                   {{"pc_requirements",
+                     {{"minimum", "<ul><li><strong>Storage:</strong> 2 MB available space</li>"},
+                      {"recommended", "<strong>Hard Disk Space: 1MB </strong>"}}}}}})
+          .has_value());
+  httplib::Client client = server.Client();
+  const auto installer = nlohmann::json::parse(client.Get("/v1/games/celeste/installer")->body);
+  CHECK(installer["estimated_install_bytes"] == 2 * 1024 * 1024);
+
+  REQUIRE(client.Post("/v1/games/celeste/install")->status == 202);
+  nlohmann::json progress;
+  CHECK(test::WaitUntil([&] {
+    progress = nlohmann::json::parse(client.Get("/v1/games/celeste/install/progress")->body);
+    return progress["progress"].get<double>() > 0;
+  }));
+  CHECK(progress["estimated_bytes"] == 2 * 1024 * 1024);
+  CHECK(progress["progress"].get<double>() == doctest::Approx(0.5).epsilon(0.05));
+  test::Touch(release);
+  REQUIRE(test::WaitForEvent(server.events(), "game.install.finished"));
+
+  // Without a storage line there's no guess.
+  CHECK(library::EstimatedInstallBytes(nlohmann::json::object()) == -1);
+  CHECK(library::EstimatedInstallBytes(
+            {{"steam", {{"pc_requirements", {{"minimum", "<strong>OS:</strong> Windows 10"}}}}}}) ==
+        -1);
 }

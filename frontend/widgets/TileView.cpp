@@ -174,6 +174,7 @@ void TileView::UpdateDrag() {
     QRect bounds = band_host_->rect();
     if (band_bounds_ != nullptr)
       bounds = QRect(band_bounds_->mapTo(band_host_, QPoint()), band_bounds_->size());
+    if (band_area) bounds = band_area();
     band = band.intersected(bounds);
     // What the box covers is what it selects.
     rect = QRect(viewport()->mapFrom(band_host_, band.topLeft()) + Offset(), band.size());

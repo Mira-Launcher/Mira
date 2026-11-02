@@ -286,6 +286,8 @@ bool ParseStoreEvent(const std::string& event_type, const std::string& data, Sto
       out->progress = entry.value("progress", 0.0);
       out->eta_seconds = static_cast<std::int64_t>(entry.value("eta", -1.0));
       out->bytes_per_second = entry.value("bps", -1.0);
+      out->downloaded_bytes = entry.value("downloaded", std::int64_t{-1});
+      out->total_bytes = entry.value("total", std::int64_t{-1});
     }
   } else if (event_type.starts_with(kLauncher)) {
     out->source = entry.value("id", std::string());

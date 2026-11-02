@@ -89,6 +89,12 @@ SourceCopy CopyFor(const std::string& id) {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",
             "Import games"};
   }
+  if (id == "heroic") {
+    return {
+        "The Epic, GOG, Amazon and sideloaded games Heroic installed, run in Heroic's prefixes. "
+        "Nothing is moved; they stay playable in Heroic too.",
+        "", "Import Heroic games"};
+  }
   return {"Lutris's Wine and native games. Nothing is moved; they stay playable in Lutris too.", "",
           "Import Lutris games"};
 }

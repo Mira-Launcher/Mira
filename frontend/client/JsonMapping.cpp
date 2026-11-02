@@ -67,6 +67,11 @@ GameSummary ToGameSummary(const json& entry) {
   game.source_ref = entry.value("source_ref", std::string());
   game.store_url = entry.value("store_url", std::string());
   game.running = entry.value("running", false);
+  if (const auto tools = entry.find("tools"); tools != entry.end() && tools->is_array()) {
+    for (const json& tool : *tools) {
+      if (tool.is_object()) game.tools.push_back(tool.value("name", std::string()));
+    }
+  }
   game.art = ToArtVersions(entry);
   ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);
   game.launch = ToGameLaunch(entry);
@@ -122,6 +127,7 @@ InstallerInfoResult ToInstallerInfo(const json& entry) {
   InstallerInfoResult info;
   info.path = entry.value("path", std::string());
   info.size_bytes = entry.value("size_bytes", std::int64_t{0});
+  info.estimated_install_bytes = entry.value("estimated_install_bytes", std::int64_t{-1});
   info.format = entry.value("format", std::string("unknown"));
   info.silent = entry.value("silent", false);
   for (const json& target : entry.value("targets", json::array())) {

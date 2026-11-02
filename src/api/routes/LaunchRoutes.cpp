@@ -28,6 +28,7 @@
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/InstallSize.h"
 #include "library/LaunchOptions.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
@@ -212,6 +213,11 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
                                const std::optional<RunProgram>& program,
                                const library::LaunchExtras& extras = {}) {
   const runner::RunnerRegistry registry(s.config);
+  // A build removed outside Mira: the game moves to the one that runs instead.
+  if (registry.StandIn(registry.ResolveRef(game))) {
+    s.RepointRemovedRunners();
+    if (const auto moved = s.games.Find(game.id)) game.runner_ref = moved->runner_ref;
+  }
   auto resolved = program && program->native
                       ? Result<runner::RunnerRegistry::Resolved>(
                             runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})
@@ -283,8 +289,8 @@ RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& o
           .as_game = option.mode == library::LaunchMode::Play};
 }
 
-// Starts a launch option detached and untracked, with its output in the game's log; `unit` puts it
-// in a systemd scope of that name.
+// Starts a launch option detached, with its output in the game's log: an alongside one in the
+// systemd scope `unit`, a tool (no `unit`) as one of the game's open tools.
 Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option,
                          const std::string& unit) {
   auto command = PrepareCommand(s, game, OptionProgram(game, option));
@@ -299,7 +305,10 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
   std::error_code ec;
   std::filesystem::create_directories(log.parent_path(), ec);
   const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
-  auto spawned = runner::SpawnReaped(*command, log_fd);
+  auto spawned = unit.empty()
+                     ? s.supervisor.StartTool(game.id, {.id = option.id, .name = option.name},
+                                              *command, log_fd)
+                     : runner::SpawnReaped(*command, log_fd);
   if (log_fd >= 0) ::close(log_fd);
   if (!spawned) return std::unexpected(spawned.error());
   return {};
@@ -546,8 +555,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
                        std::format("{} only runs beside the game", option->name));
     }
     if (option && option->mode == library::LaunchMode::Tool) {
-      if (auto opened = SpawnOption(s, *game, *option, ""); !opened)
-        return SendError(res, PrepareStatus(opened.error()), opened.error());
+      if (auto opened = SpawnOption(s, *game, *option, ""); !opened) {
+        const bool no_scope = opened.error().code == "cgroup_unavailable";  // as for a game
+        return SendError(res, no_scope ? 500 : PrepareStatus(opened.error()), opened.error());
+      }
       return SendJson(res, {{"status", "opened"}, {"tracked", false}});
     }
 
@@ -730,6 +741,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         timeout_s = emulator->stop_timeout_s;
     }
     if (auto stopped = s.supervisor.Stop(req.matches[1], timeout_s); !stopped) {
+      // With the game itself closed, stopping it closes the tools it opened.
+      if (stopped.error().code == "not_running" && s.supervisor.StopTools(req.matches[1]))
+        return SendJson(res, {{"status", "stopping"}});
       // A client that missed the exit gets told it's stopped instead of an error.
       if (stopped.error().code == "not_running") {
         if (const auto game = s.games.Find(req.matches[1])) {
@@ -857,6 +871,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       targets.push_back({{"path", target.root.string()}, {"free_bytes", target.free_bytes}});
     SendJson(res, {{"path", info->path.string()},
                    {"size_bytes", info->size_bytes},
+                   {"estimated_install_bytes",
+                    library::EstimatedInstallBytes(s.games.Metadata().Read(game->id))},
                    {"format", library::ToString(info->format)},
                    {"silent", info->silent},
                    {"silent_args", info->silent_args},
@@ -868,7 +884,15 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (!s.games.Contains(id)) return SendError(res, 404, "game_not_found", "no such game");
     const auto progress = library::Progress(id);
     if (!progress) return SendJson(res, {{"state", "idle"}});
+    // How far along by the guessed size, kept under 1 while it runs since the guess can be low.
+    const std::int64_t estimate = progress->estimated_bytes;
+    const double fraction =
+        estimate > 0 && progress->state == "running"
+            ? std::min(0.99, static_cast<double>(progress->bytes_written) / estimate)
+            : -1;
     SendJson(res, {{"state", progress->state},
+                   {"estimated_bytes", estimate},
+                   {"progress", fraction},
                    {"mode", progress->mode},
                    {"started_at", progress->started_at},
                    {"finished_at", progress->finished_at},

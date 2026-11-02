@@ -11,9 +11,6 @@ class QWidget;
 namespace mira_gui::actions {
 
 void ScanLibrary(QWidget* parent);
-// `on_imported` runs once the import succeeded.
-void ImportSteam(QWidget* parent, std::function<void()> on_imported);
-void ImportLutris(QWidget* parent, std::function<void()> on_imported);
 void SyncDesktopEntries(QWidget* parent);
 // Asks first, then turns desktop entries off and removes them.
 void RemoveAllDesktopEntries(QWidget* parent);

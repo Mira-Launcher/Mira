@@ -65,6 +65,8 @@ class SourceSettingsCard : public SettingsCard {
   int runner_serial_ = 0;          // bumped by Apply; older GET replies are dropped
 
   std::vector<SettingEditor> settings_;
+  // Until the first values arrive, every row differs from its empty `original` without an edit.
+  bool values_loaded_ = false;
   QWidget* footer_ = nullptr;
   QLabel* status_ = nullptr;
   QPushButton* discard_ = nullptr;

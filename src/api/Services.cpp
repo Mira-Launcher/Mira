@@ -431,6 +431,9 @@ void Services::AddRecordFields(json& record, const model::Game& game,
                                const RecordSettings& settings) {
   // So a client can resync after a reconnect.
   record["running"] = supervisor.IsRunning(game.id);
+  record["tools"] = json::array();
+  for (const proc::ProcessSupervisor::Tool& tool : supervisor.Tools(game.id))
+    record["tools"].push_back({{"id", tool.id}, {"name", tool.name}});
   record["art"] = games.Metadata().ArtVersions(game.id);
   if (std::string page = library::StorePage(games, game); !page.empty())
     record["store_url"] = std::move(page);
@@ -955,6 +958,17 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
   }
   events.Publish("runners.download.finished", finished);
   return finished;
+}
+
+void Services::RepointRemovedRunners() {
+  std::vector<std::string> ids;
+  if (runner::RepointRemovedBuilds(config, games, &ids) == 0 || ids.empty()) return;
+  json moved = json::array();
+  const RecordSettings settings = CurrentRecordSettings();
+  for (const std::string& id : ids) {
+    if (const auto game = games.Find(id)) moved.push_back(Record(*game, &settings));
+  }
+  events.Publish("games.updated", {{"games", moved}});
 }
 
 void Services::RemoveAfterExit(const std::string& game_id,

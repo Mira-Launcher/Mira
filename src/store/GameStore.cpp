@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 9> kMigrations = {
+constexpr std::array<std::string_view, 10> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -163,6 +163,10 @@ CREATE TABLE IF NOT EXISTS cloud_sync(
   checked_at INTEGER NOT NULL,
   PRIMARY KEY(game_id, location)
 ) STRICT;
+)sql",
+    R"sql(
+-- Whether hidden mode's sidebar lists a source, once chosen there; until then it follows in_sidebar.
+CREATE TABLE IF NOT EXISTS hidden_sidebar(source TEXT PRIMARY KEY, shown INTEGER NOT NULL) STRICT;
 )sql",
 };
 
@@ -590,14 +594,21 @@ Result<void> GameStore::KeepUiState(const json& state) {
 }
 
 namespace {
-// Columns: id, added, enabled, in_sidebar, position, imported_at.
+// A source's row with hidden mode's choice beside it, NULL when there is none.
+constexpr std::string_view kSourceSelect =
+    "SELECT id, added, enabled, in_sidebar, position, imported_at, hidden_sidebar.shown "
+    "FROM sources LEFT JOIN hidden_sidebar ON hidden_sidebar.source = sources.id";
+
+// Columns: kSourceSelect's.
 SourceState ReadSource(const Statement& row) {
-  return SourceState{.id = row.Text(0),
-                     .added = row.Int(1) != 0,
-                     .enabled = row.Int(2) != 0,
-                     .in_sidebar = row.Int(3) != 0,
-                     .position = static_cast<int>(row.Int(4)),
-                     .imported_at = row.Int(5)};
+  return SourceState{
+      .id = row.Text(0),
+      .added = row.Int(1) != 0,
+      .enabled = row.Int(2) != 0,
+      .in_sidebar = row.Int(3) != 0,
+      .in_hidden_sidebar = row.IsNull(6) ? std::nullopt : std::optional<bool>(row.Int(6) != 0),
+      .position = static_cast<int>(row.Int(4)),
+      .imported_at = row.Int(5)};
 }
 }  // namespace
 
@@ -605,9 +616,7 @@ std::vector<SourceState> GameStore::Sources() const {
   std::lock_guard lock(mutex_);
   std::vector<SourceState> sources;
   if (!db_.IsOpen()) return sources;
-  auto select = db_.Prepare(
-      "SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources ORDER BY "
-      "position, id");
+  auto select = db_.Prepare(std::format("{} ORDER BY position, id", kSourceSelect));
   if (!select) return sources;
   auto row = select->Step();
   for (; row && *row; row = select->Step()) sources.push_back(ReadSource(*select));
@@ -619,8 +628,7 @@ SourceState GameStore::Source(const std::string& id) const {
   std::lock_guard lock(mutex_);
   SourceState state{.id = id};
   if (!db_.IsOpen()) return state;
-  auto select = db_.Prepare(
-      "SELECT id, added, enabled, in_sidebar, position, imported_at FROM sources WHERE id = ?");
+  auto select = db_.Prepare(std::format("{} WHERE id = ?", kSourceSelect));
   if (!select) return state;
   auto row = select->Bind(1, id).Step();
   if (row && *row) state = ReadSource(*select);
@@ -631,20 +639,60 @@ SourceState GameStore::Source(const std::string& id) const {
 void GameStore::SaveSource(const SourceState& state) {
   std::lock_guard lock(mutex_);
   if (!db_.IsOpen()) return;
-  auto keep = db_.Prepare(
-      "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) "
-      "VALUES(?, ?, ?, ?, ?, ?)");
-  if (!keep) return;
-  if (auto done = keep->Bind(1, state.id)
-                      .Bind(2, std::int64_t{state.added})
-                      .Bind(3, std::int64_t{state.enabled})
-                      .Bind(4, std::int64_t{state.in_sidebar})
-                      .Bind(5, std::int64_t{state.position})
-                      .Bind(6, state.imported_at)
-                      .Run();
-      !done) {
-    log::Warn("could not save the source {}: {}", state.id, done.error().message);
-  }
+  const auto written = Transact([&]() -> Result<void> {
+    auto keep = db_.Prepare(
+        "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) "
+        "VALUES(?, ?, ?, ?, ?, ?)");
+    if (!keep) return std::unexpected(keep.error());
+    if (auto done = keep->Bind(1, state.id)
+                        .Bind(2, std::int64_t{state.added})
+                        .Bind(3, std::int64_t{state.enabled})
+                        .Bind(4, std::int64_t{state.in_sidebar})
+                        .Bind(5, std::int64_t{state.position})
+                        .Bind(6, state.imported_at)
+                        .Run();
+        !done)
+      return done;
+    auto hidden =
+        state.in_hidden_sidebar
+            ? db_.Prepare("INSERT OR REPLACE INTO hidden_sidebar(source, shown) VALUES(?, ?)")
+            : db_.Prepare("DELETE FROM hidden_sidebar WHERE source = ?");
+    if (!hidden) return std::unexpected(hidden.error());
+    hidden->Bind(1, state.id);
+    if (state.in_hidden_sidebar) hidden->Bind(2, std::int64_t{*state.in_hidden_sidebar});
+    return hidden->Run();
+  });
+  if (!written) log::Warn("could not save the source {}: {}", state.id, written.error().message);
+}
+
+bool GameStore::HiddenSidebarMirrors() const {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return true;
+  auto select = db_.Prepare("SELECT 1 FROM hidden_sidebar LIMIT 1");
+  if (!select) return true;
+  auto row = select->Step();
+  return !(row && *row);
+}
+
+void GameStore::SetHiddenSidebar(const std::map<std::string, bool>& shown) {
+  std::lock_guard lock(mutex_);
+  if (!db_.IsOpen()) return;
+  const auto written = Transact([&]() -> Result<void> {
+    auto clear = db_.Prepare("DELETE FROM hidden_sidebar");
+    if (!clear) return std::unexpected(clear.error());
+    if (auto done = clear->Run(); !done) return done;
+    for (const auto& [id, on] : shown) {
+      // Read through the sources table, so each needs a row there too.
+      auto source = db_.Prepare("INSERT OR IGNORE INTO sources(id) VALUES(?)");
+      if (!source) return std::unexpected(source.error());
+      if (auto done = source->Bind(1, id).Run(); !done) return done;
+      auto insert = db_.Prepare("INSERT INTO hidden_sidebar(source, shown) VALUES(?, ?)");
+      if (!insert) return std::unexpected(insert.error());
+      if (auto done = insert->Bind(1, id).Bind(2, std::int64_t{on}).Run(); !done) return done;
+    }
+    return {};
+  });
+  if (!written) log::Warn("could not save hidden mode's sidebar: {}", written.error().message);
 }
 
 void GameStore::SetSourceOrder(const std::vector<std::string>& ids) {

@@ -19,7 +19,7 @@ class SettingsCard;
 // Adding games and apps by hand, as one in-window card (cards::Show): scanning the library
 // folders, something already installed, an installer (added, then installed at once) or entries
 // from the app menu. Each choice replaces the first page with its own, which has a way back.
-// Steam and Lutris aren't here: their sources add them.
+// Steam, Lutris and Heroic aren't here: their sources add them.
 class AddGamesCard : public QWidget {
   Q_OBJECT
 

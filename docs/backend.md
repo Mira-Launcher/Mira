@@ -37,6 +37,7 @@ src/
   launchers/  Battle.net, Ubisoft Connect, EA app, Microsoft 365 and Creative Cloud, each installed into its own prefix
   emulators/  The emulator table (install route, ROM extensions, firmware, launch args) and the ROM folder importer
   lutris/     Lutris library import
+  heroic/     Heroic Games Launcher import
   metadata/   Cover art and store metadata fetching
   achievements/  Achievement lists from each store, the system locale, and achievement icons
   saves/      The save locations list (download, index, matching a game to an entry), resolving a game's save files, and their backups
@@ -124,7 +125,7 @@ In a root listed in `tags.sorted_roots`, games are sorted into `.hidden` and a f
 
 Neither `umu-run` nor `wineboot` gives a reliable exit code for prefix creation, so both runners check that `drive_c` exists afterwards.
 
-`RunnerRegistry` turns a `kind:name` reference into a runner and build. `latest` picks the newest build. `auto` (the default for `default_runner.windows`) prefers a distro-packaged build, then GE-Proton or Wine staging-tkg, then the newest, and uses Proton when any Proton build is installed. Provisioning pins the resolved build onto the game's `runner_ref`, so installing another build never changes a working game. A pinned build that's gone (removed after a newer one of its line came) resolves to the newest installed build whose name differs from it only in its numbers, so `GE-Proton11-7` runs on `GE-Proton11-9`. Updating a build through Mira (`POST /v1/runners/update`) moves every reference to it onto the new one: games' `runner_ref`, their overrides and every runner setting (`runner::RepointRefs`, which the startup migration of in-place builds uses too).
+`RunnerRegistry` turns a `kind:name` reference into a runner and build. `latest` picks the newest build. `auto` (the default for `default_runner.windows`) prefers a distro-packaged build, then GE-Proton or Wine staging-tkg, then the newest, and uses Proton when any Proton build is installed. Provisioning pins the resolved build onto the game's `runner_ref`, so installing another build never changes a working game. A pinned build that's gone (removed after a newer one of its line came) resolves to the newest installed build whose name differs from it only in its numbers, so `GE-Proton11-7` runs on `GE-Proton11-9` (`RunnerRegistry::StandIn`). Updating a build through Mira (`POST /v1/runners/update`) moves every reference to it onto the new one: games' `runner_ref`, their overrides and every runner setting (`runner::RepointRefs`, which the startup migration of in-place builds uses too). A build removed any other way (`DELETE /v1/runners/...`, by hand, or before that existed) is moved off the same way by `runner::RepointRemovedBuilds`: at startup, after a removal, and when a launch has to use a stand-in, so a game shows the build it runs. Runner settings left at their default aren't moved: they keep following the default.
 
 Windows games are provisioned when they are detected and again on later scans while they are still `setting_up`. A game that broke because no runner was available is provisioned again on each scan, when a runner download finishes, and when it is launched.
 

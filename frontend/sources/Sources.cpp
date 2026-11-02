@@ -32,6 +32,7 @@ const std::vector<SourceInfo>& AllSources() {
       {"revit", "Autodesk Revit", Kind::Launcher, QColor("#1b6ef3"), {}, true},
       {"quickbooks", "QuickBooks Desktop", Kind::Launcher, QColor("#2ca01c"), {}, true},
       {"lutris", "Lutris", Kind::Local, QColor("#f39c12")},
+      {"heroic", "Heroic", Kind::Local, QColor("#4a6cf7"), {}, true},
       {"duckstation", "DuckStation", Kind::Emulator, QColor("#fe6700"), {"ps1"}},
       {"pcsx2", "PCSX2", Kind::Emulator, QColor("#699cfe"), {"ps2"}, true},
       {"ppsspp", "PPSSPP", Kind::Emulator, QColor("#4c9fb8"), {"psp"}},

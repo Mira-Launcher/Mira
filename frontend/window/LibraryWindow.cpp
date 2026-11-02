@@ -39,6 +39,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../activity/DownloadsPanel.h"
+#include "../activity/InstallActions.h"
 #include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
 #include "../app/Display.h"
@@ -162,6 +163,14 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
          return library_->Games();
        },
        .install_text = [this](const std::string& id) { return InstallText(id); },
+       .install_actions =
+           [this](QMenu& menu, const std::string& id) {
+             const mira_gui::GameSummary* game = FindGame(id);
+             const QString source = game ? QString::fromStdString(game->source) : QString();
+             return mira_gui::AddInstallActions(
+                 menu, this, *downloads_,
+                 downloads_->LiveInstall(source, {}, QString::fromStdString(id)));
+           },
        .toggle_running = [this](const std::string& id) { ToggleRunning(id); },
        .launch = [this](const std::string& id,
                         const std::string& option) { LaunchGame(id, option); },
@@ -849,7 +858,9 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
           });
   connect(sidebar, &Sidebar::HoverEnded, this, &LibraryWindow::HideHoverCard);
   connect(sidebar, &Sidebar::SourcesChanged, this, [this] {
-    if (sources_page_ != nullptr) sources_page_->SetEntries(sidebar_->SourceEntries());
+    if (sources_page_ == nullptr) return;
+    sources_page_->SetEntries(sidebar_->SourceEntries());
+    sources_page_->SetHiddenSidebar(library_->ShowingHidden(), sidebar_->HiddenSidebarMirrors());
   });
   return sidebar;
 }
@@ -886,6 +897,10 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
     if (entry == nullptr || entry->state != mira_gui::DownloadTracker::State::Running)
       return std::nullopt;
     return mira_gui::DownloadTracker::TileProgressFor(*entry);
+  };
+  page->install_actions = [this](QMenu& menu, const QString& source, const QString& ref) {
+    return mira_gui::AddInstallActions(menu, this, *downloads_,
+                                       downloads_->LiveInstall(source, ref, {}));
   };
   connect(page, &mira_gui::LibraryPage::TitleCoverRequested, this, &LibraryWindow::OpenTitleCover);
   connect(page, &mira_gui::LibraryPage::InstallTitleRequested, this,
@@ -2093,7 +2108,10 @@ void LibraryWindow::OpenSourcesPage(bool catalog) {
   auto* page = new mira_gui::SourcesPage();
   sources_page_ = page;
   page->SetEntries(sidebar_->SourceEntries());
+  page->SetHiddenSidebar(library_->ShowingHidden(), sidebar_->HiddenSidebarMirrors());
   connect(page, &mira_gui::SourcesPage::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+  connect(page, &mira_gui::SourcesPage::HiddenSidebarMirrorsToggled, sidebar_,
+          &mira_gui::Sidebar::SetHiddenSidebarMirrors);
   connect(page, &mira_gui::SourcesPage::SidebarToggled, this,
           [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
   connect(page, &mira_gui::SourcesPage::EnabledToggled, sidebar_,

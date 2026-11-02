@@ -75,7 +75,7 @@ Resets one key, or everything when `key` is left out.
 Stored in the library database, `mira.db`. A game's `id` is a readable slug such as `celeste`, or `celeste-2` on a clash.
 
 ### `GET /v1/games[?status=][&tag=][&include_hidden=true][&include_off=true]`
-Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag, matched ignoring case. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. Games from a source that's switched off are left out too, unless `include_off=true` is given. With `scan.tag_by_root` on, games a scan finds in a library root are tagged with its name, in Title Case; games added by hand, installed into a prefix or imported from a store aren't.
+Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) and by tag, matched ignoring case. Games tagged `hidden` are left out unless `tag` is given, so `?tag=hidden` lists only those, or `include_hidden=true` is, which lists them alongside the rest. Games from a source that's switched off are left out too, unless `include_off=true` is given.
 
 ### `GET /v1/games/{id}`
 
@@ -92,6 +92,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 ```
 
 - `running` is whether Mira is tracking a process for the game right now. Every game record the API returns or an event carries has it.
+- `tools` lists the game's [tool options](#launch-options) open right now, `[{id, name}]`, empty when none is. Opening or closing one publishes `game.updated`.
 
 - `art` lists the art slots Mira has an image cached for, each with a version: `{"cover": "18f3a…-2c41", "hero": "…"}`. A slot left out has no image, so `GET /v1/games/{id}/artwork` for it would 404. The version changes whenever the slot's image does, so a client can keep its copy until then. Every game record has it, and so do `game.metadata_ready`, `game.metadata_failed` and `game.artwork_selected`.
 
@@ -173,7 +174,7 @@ Every setting as it resolves for this game, with the layer it came from:
 ```
 
 ### `PATCH /v1/games/{id}/config`
-Sets or removes (`null`) this game's overrides as a flat `{"dotted.key": value}` body. Only `per_game` keys are accepted, and nothing is applied if any key fails.
+Sets or removes (`null`) this game's overrides as a flat `{"dotted.key": value}` body. A value equal to what the setting is without an override (from settings, or its default) removes the override too, so the game keeps following that setting. Only `per_game` keys are accepted, and nothing is applied if any key fails.
 
 ### `POST /v1/games/{id}/launch`
 Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game. A Microsoft 365 app takes an optional body `{"files": ["/absolute/path", ...]}` and opens those documents, also while it's already running (`400 files_unsupported` for anything else); its desktop entry declares the file types it opens and passes them on. `409 needs_install` or `409 not_ready` when it can't run, `409 game_busy` while it's being moved or its files deleted (a move or delete likewise waits for no launch and fails with `game_busy` or `game_running`). While its saves are being backed up or synced, as just after it exits, the launch waits for that to finish first (`game.saves_activity` says it's going on); mirad stopping meanwhile answers `503 shutting_down`. A Windows game left `broken` by a missing runner is provisioned again first.
@@ -202,13 +203,13 @@ A game's `launch` holds other ways to start it and programs that run beside it, 
   "options": [{ "id": "olympus", "name": "Olympus", "mode": "play", "exe": "/home/me/Olympus/olympus", "args": "", "native": true }] }
 ```
 
-- `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself, untracked.
+- `mode` `play` starts the option instead of the game's own program, however the game's source would start it, tracked as the game (its time counts as playtime). `alongside` starts with every tracked launch of the game and is stopped when the game exits. `tool` is opened by itself in a systemd scope of its own: not a play session (no playtime, no `game.state`), but listed in the game's `tools` while anything in that scope runs, so a launcher that starts the real program and exits still counts. Tools opened before mirad restarted aren't listed.
 - `exe` is absolute or relative to `install_path`. `{game_dir}`, `{game_exe}` and `{prefix}` in `exe` or `args` are filled in, as `Z:\...` Wine paths in the args of an option run in the prefix.
 - A Windows game's option runs with the game's runner and in its prefix (Steam's own Proton and prefix for a Steam game), unless `native` is set. Any other game's runs as a Linux program.
 - `sign_in` (optional, `play` only): whether the option starts with the store's sign-in, as the game's own program does: Epic's sign-in arguments, which hold a single-use credential. Unset, it does when `exe` is inside `install_path` (another program of the game, such as its DirectX 12 build), and doesn't for a program elsewhere, such as a mod manager, which can't use the code before it expires. GOG's comet runs beside every play option either way, since it hands the program nothing.
 - `default` is the `play` option Play starts with no option named; empty for the game's own program. `only` asks a client to offer nothing else. `id`s are made from the name when missing; `game` is reserved for the game's own program.
 
-The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`.
+The launch body's `"option": "<id>"` picks one (`"game"` for the game's own program); `404 launch_option_not_found` for an unknown one, `400 alongside_option` for an alongside one. A `tool` answers `{"status": "opened", "tracked": false}`, or `500 cgroup_unavailable` without a systemd user session, as a game would.
 
 ### `GET /v1/games/{id}/sessions?limit=`
 `{"sessions": [{"started_at", "ended_at", "duration_seconds", "exit_code", "signal", "incomplete"}, ...]}`: the game's finished play sessions, newest first, at most `limit` (default 50; `400 invalid_param` unless a whole number, 1 or more). `incomplete` is a session mirad restarted during, so how it ended is unknown. Removing the game removes its sessions.
@@ -220,7 +221,7 @@ The launch body's `"option": "<id>"` picks one (`"game"` for the game's own prog
 A live log, one per task so two running at once don't mix. Channels: `daemon` (mirad's own output), `game:<id>` (the game's log file, as above), `setup:<source>` (a launcher's install or a store tool's download), `install:<source>:<ref>` (a store title's install or update) and `runner:<kind>:<name>` (a runner download). Reply: `{"lines": [...], "next": N, "active": bool}`. Send `next` back as `after` to get only what came since; with no `after` the last `lines` (default 300) are returned. `active` is whether the task is still writing. A channel nothing has written to is an empty list. `400 invalid_param` for a bad `after` or `lines`. Non-game channels are kept in memory (the last 4000 lines) and start over when the task starts again.
 
 ### `POST /v1/games/{id}/stop`
-Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
+Sends SIGTERM to the game's process group and every process in its prefix, then SIGKILL after `launch.stop_timeout_s`. Proton games leave the group early, so the prefix is what reaches them. If the game isn't running but has tools open, closes them instead (`{"status": "stopping"}`). If neither is, returns `{"status": "not_running"}` and publishes `game.state` with `idle`. `mirad` also publishes `idle` for every game at startup.
 
 ### `POST /v1/open-url`
 Body `{"url": "scheme:..."}`. Opens a link whose scheme an app's launcher takes (Autodesk's `adskidmgr:` and `adsk.idmgr:`, which finish its sign-in) with the command the app's prefix registers for it, in the prefix of a running app of that launcher, else the one played last. Mira's `mira.open-url.desktop` entry, `mira open-url %u`, is what the desktop opens these links with. `{"status": "opened", "game_id"}`, `400 invalid_body`, `404 no_app_for_url` when no installed app takes the scheme, `404 no_url_handler` when its prefix registers nothing for it.
@@ -234,13 +235,13 @@ A native program without its executable bit is `409 not_executable`. A launch or
 Body (optional) `{"interactive": bool, "installer": "path", "target": "library root"}`. Runs a `needs_install` game's installer in its prefix. `target`, one of `library_roots` (else `400 invalid_body`), makes a prefix not yet in Mira's prefix folders on that root's disk instead, since the game installs into its prefix: for an installer on a disc or a mounted image, which is full or read-only. Without `target`, a game whose folder is outside every library root uses the first one. Inno Setup, NSIS and MSI installers run silently with `install.inno_args`/`install.nsis_args`/`install.msi_args` and `C:\Games\<name>` in the game's prefix as the target, so the installer's folder keeps only the installer; anything else is shown. `installer` (absolute or relative to `install_path`) picks the file and also works for a `broken` game. One installer runs at a time, in a systemd scope of its own (as a game does), so one that runs the system out of memory is killed without mirad. Its command line, output and exit code (and an Inno Setup installer's own log, from `/LOG=`) go to the game's log (`game:<id>`, which is `active` while it runs), replacing the last launch's, which is kept as `<id>.log.1`. Afterwards the game executable is looked for in that target, in `install_path` (only executables the installer wrote, not ones packed beside it, such as a repack's checksum tool) or in new folders under `install.detect_dirs` in `drive_c`. A game found in a new folder moves there, to its own folder rather than a publisher's folder around it (`Program Files/Ubisoft/<game>`): `installer_dir` keeps the old one, a game still named after the installer's folder takes the new folder's name, and its metadata is fetched again while `metadata.enabled` is on. A job (kind `install`). Events: `game.install.started`/`finished`/`failed` and `game.updated`, also for an installer a scan runs on its own (`scan.auto_run_installers`). Errors: `409 not_needs_install`, `409 install_running`, `404 installer_missing`.
 
 ### `GET /v1/games/{id}/installer[?path=]`
-`{"path", "size_bytes", "format": "inno"|"nsis"|"msi"|"unknown", "silent", "silent_args", "targets": [{"path", "free_bytes"}]}` for the game's installer, or for `path`. `targets` lists the library roots to pass as the install's `target` when the game's folder is outside every one of them (a disc or a mounted image), the first being the default; empty otherwise.
+`{"path", "size_bytes", "estimated_install_bytes", "format": "inno"|"nsis"|"msi"|"unknown", "silent", "silent_args", "targets": [{"path", "free_bytes"}]}` for the game's installer, or for `path`. `estimated_install_bytes` is a guess at what the game takes once installed, from the storage line of Steam's system requirements in its metadata (the larger of minimum and recommended), -1 without one. `targets` lists the library roots to pass as the install's `target` when the game's folder is outside every one of them (a disc or a mounted image), the first being the default; empty otherwise.
 
 ### `DELETE /v1/games/{id}/installer`
 Deletes the game's `installer_dir` and clears it, returning the game. Only inside a library root, and never when that folder also holds the game's `install_path` or `data_dir` (`409 installer_dir_in_use`). `404 no_installer_dir` when there's none, `409` while the game runs.
 
 ### `GET /v1/games/{id}/install/progress`
-`{"state": "idle"|"queued"|"running"|"finished"|"failed", "mode": "silent"|"interactive", "started_at", "finished_at", "error", "bytes_written"}`. Silent installers report no percentage, so `bytes_written` is the progress signal. Kept in memory only.
+`{"state": "idle"|"queued"|"running"|"finished"|"failed", "mode": "silent"|"interactive", "started_at", "finished_at", "error", "bytes_written", "estimated_bytes", "progress"}`. Silent installers report no percentage, so `bytes_written` is the progress signal. `estimated_bytes` is the installer's `estimated_install_bytes`, and `progress` (0..1) is `bytes_written` against it while it runs, kept under 1 since the guess can be low; -1 for either without a guess. Kept in memory only.
 
 ### `POST /v1/games/{id}/finish-install`
 Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the installed game. `409 no_executable` if `exe_path` is empty, still an installer, or missing.
@@ -305,6 +306,9 @@ Body `{"folder": "...", "id"?: "..."}`. Settles an unclear move: with `id` (one 
 ### `POST /v1/library/drops`
 Body `{"path": "...", "choice": "..."}`. Moves an unclear drop where `choice` (one of its choices) says, as a [job](#jobs) of kind `sort_drop`, and publishes `library.drop_settled {path}`, which is also published when it disappears on its own. The job fails with `drop_not_found`, `invalid_choice`, or the error of the import or emulator add.
 
+### `GET /v1/library/size?source=&ref=`
+What installing a store title downloads and then takes on disk, asked of its store tool: `legendary info --json` for Epic, `gogdl info` (its all-languages size) for GOG, `nile install --info --json` for Amazon. `{"download_bytes", "install_bytes"}`, -1 for one the store doesn't give. Kept while mirad runs (up to 500 titles), so asking again is free, and an install of that title reports its `total` from it. `400 invalid_param` without both, `400 size_unsupported` for another store, `404 size_unknown` when the tool's answer has no size, and the tool's own error (signed out, missing) otherwise.
+
 ### `GET /v1/library[?source=epic|steam|gog|itch|amazon|office][&fresh=1]`
 What each account owns, whether or not it's installed:
 
@@ -331,7 +335,7 @@ Body `{"source": "...", "ref": "..."}`. Installs an owned title as a job (kind `
 - `steam`: opens `steam://install/<appid>`. The game appears on the next Steam scan.
 - `office`: the Office Deployment Tool adds the app to Microsoft 365's prefix.
 
-A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`; -1 when not reported) for Epic, GOG, Amazon and itch.
+A missing tool or login fails the install with `library.install.failed`, whose `code`, `hint` and `fix` say what's needed. Afterwards the title is imported and provisioned. Events: `library.install.started`/`finished`/`failed` and `library.install.progress` (`progress` 0..1, `eta` seconds, `bps`, `downloaded` and `total` bytes of the download, `total` from the tool's own count or else [the size](#get-v1librarysizesourceref) asked before; -1 when not reported) for Epic, GOG, Amazon and itch.
 
 Installing a title again while it's paused resumes it: the store tool continues from the files it left.
 
@@ -358,7 +362,7 @@ Body `{"source": "epic", "titles": [{"ref": "...", "title": "..."}]}`. Queues a 
 
 ## Tags
 
-Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. Tags Mira makes (a library root's name, a Lutris category) are in Title Case as Steam names its tags: each lowercase word capitalised except short joining words ("Free to Play"), other casing kept ("RPG"). Tags a client sets are kept as given; a library from before this was cased the same way once, merging tags that then matched. With `tags.steam` on, a game's or store title's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record as `steam_tags`, from the same Steam store request as its details: a Steam game's by its appid, any other game's (with `metadata.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. Clients offer them as tags, and with `tags.steam_new_games` a game just added (scanned, imported, installed or added by hand) gets, once its first fetch is in, each of its Steam tags that is already one of the library's tags or in `tags.folders`, spelled as the library has it (`game.updated` follows). Other Steam tags are never added to a game.
+Tags are a game's `tags`; `favorite`, `hidden` and `app` have their own actions, so these endpoints refuse them and leave them out of their lists. Tags match ignoring case. Tags Mira makes (a Lutris category) are in Title Case as Steam names its tags: each lowercase word capitalised except short joining words ("Free to Play"), other casing kept ("RPG"). Tags a client sets are kept as given; a library from before this was cased the same way once, merging tags that then matched. With `tags.steam` on, a game's or store title's [metadata](#metadata) fetch also stores its Steam tags (the 20 Steam shows, most voted first) in its metadata record as `steam_tags`, from the same Steam store request as its details: a Steam game's by its appid, any other game's (with `metadata.steam_by_name`) by a Steam game of exactly its name. A store's launcher (`source` `launcher`) gets none. Clients offer them as tags, and with `tags.steam_new_games` a game just added (scanned, imported, installed or added by hand) gets, once its first fetch is in, each of its Steam tags that is already one of the library's tags or in `tags.folders`, spelled as the library has it (`game.updated` follows). Other Steam tags are never added to a game.
 
 ### `GET /v1/tags`
 `{"tags": [{"name", "count", "ids", "folder", "steam_ids"}], "steam": [{"name", "count", "ids"}], "steam_missing": N}`. `tags` are the library's, most games first, spelled as first seen, with the games that have each, whether it's in `tags.folders` (a folder tag no game has yet is listed with none), and the games Steam gives it. `steam` is every Steam tag on the library's games that isn't one of `tags`, most games first. `steam_missing` counts the games with a metadata record but no Steam tags in it yet (fetched before `tags.steam`, or Steam didn't answer).
@@ -514,6 +518,23 @@ Reads Lutris's `pga.db` (through the `sqlite3` CLI) and each game's YAML config 
 
 Nothing on disk is moved. `install_path` is the executable's folder and `data_dir` is the configured prefix. `runner_ref` is left empty so `default_runner.windows` applies, since Lutris's Wine version is often an alias. Lutris categories become tags in Title Case (`.hidden` becomes `hidden`, `favorites` becomes `favorite`) and are merged with existing tags, ignoring case. Re-importing updates Lutris's fields and leaves overrides alone. Lutris sets `install_path`, `exe_path` and `data_dir` on the first import; after that Mira's stay (a different executable picked in Mira survives) unless what they point at is gone. `candidates` lists the executables in the game's folder, unless the folder holds other games too. Lutris's `playtime` and `lastplayed` fill `play_seconds` and `last_played_at` until Mira has recorded a session of its own (`last_session_at`); after that Mira's record stays.
 
+## Heroic
+
+### `GET /v1/heroic`
+Whether Heroic Games Launcher is on this computer: `{"found", "config_dir"}`, its config folder (`heroic.config_dir`, else `$XDG_CONFIG_HOME/heroic`, else the Flatpak's `~/.var/app/com.heroicgameslauncher.hgl/config/heroic`). `config_dir` is empty when not found.
+
+### `POST /v1/heroic/import`
+Imports the games Heroic installed, from its own files: Epic games from `legendaryConfig/legendary/installed.json`, GOG games from `gog_store/installed.json` (the program from the game's `goggame-<id>.info`, `start.sh` on Linux), Amazon games from `nile_config/nile/installed.json` (the program from the game's `fuel.json`) and sideloaded games from `sideload_apps/library.json`. A [job](#jobs) whose result is:
+
+```json
+{ "added": 3, "updated": 1, "unsupported": 1, "incomplete": 0 }
+```
+
+- `unsupported` counts macOS and browser games, which are skipped.
+- `incomplete` counts games whose program, or a Windows game's prefix (`GamesConfig/<id>.json`'s `winePrefix`, its `pfx` folder for a Proton prefix), Heroic's files don't name.
+
+The games' `source` is `heroic` and `source_ref` is `<store>:<id>` (`epic`, `gog`, `amazon` or `sideload`). They run through Mira's runners in Heroic's prefix, without the store's sign-in, as Lutris's do; `runner_ref` is left empty so `default_runner.windows` applies. A game Mira already has at that folder from its own Epic, GOG or Amazon source stays that source's. Nothing on disk is moved, and as with Lutris, Heroic sets `install_path`, `exe_path`, `args` and `data_dir` on the first import, after which Mira's stay unless what they point at is gone.
+
 ## Stores
 
 Epic, GOG, itch, Amazon and Humble each wrap a command-line tool, and all five share one set of calls under `/v1/stores/{id}`, where `id` is `epic`, `gog`, `itch`, `amazon` or `humble` (`404 store_not_found` otherwise). Store games always launch through Mira's own runners, never through the store tool.
@@ -647,10 +668,13 @@ What has a newer release: Mira itself, and the emulators, store tools, umu and r
 ## Sources
 
 ### `GET /v1/sources`
-Every source, in sidebar order: stored ones by `position` first, then the rest in default order. `added` is true for `local` always. `games` counts the games it owns. `{"sources": [{"id": "steam", "added": true, "enabled": true, "in_sidebar": true, "position": 0, "imported_at": 1760000000, "games": 12}]}`
+Every source, in sidebar order: stored ones by `position` first, then the rest in default order. `added` is true for `local` always. `games` counts the games it owns. `in_hidden_sidebar` is whether hidden mode's sidebar lists it. While `hidden_sidebar_mirrors` is true, that's `in_sidebar`; the first change made in hidden mode gives it a copy of its own, which changes to `in_sidebar` no longer touch, even once the two match again. `{"sources": [{"id": "steam", "added": true, "enabled": true, "in_sidebar": true, "in_hidden_sidebar": true, "position": 0, "imported_at": 1760000000, "games": 12}], "hidden_sidebar_mirrors": true}`
 
 ### `PATCH /v1/sources/{id}`
-Body may hold `added`, `enabled` and `in_sidebar` (booleans); other keys are ignored. Returns the source as above and publishes `sources.changed`. `404 unknown_source` for an id not in the list.
+Body may hold `added`, `enabled`, `in_sidebar` and `in_hidden_sidebar` (booleans); other keys are ignored. Setting `in_hidden_sidebar` while hidden mode mirrors first copies the whole list for it. Returns the source as above and publishes `sources.changed`. `404 unknown_source` for an id not in the list.
+
+### `PUT /v1/sources/hidden-sidebar`
+Body `{"mirrors": true}` makes hidden mode's sidebar list what the normal one does again, dropping its own list; `false` gives it a copy of the list as it is now (nothing changes if it has one already). Returns `{"hidden_sidebar_mirrors": ...}` and publishes `sources.changed`. `400 invalid_body` without a boolean `mirrors`.
 
 ### `PUT /v1/sources/order`
 Body `{"order": ["gog", "local"]}`. Unknown ids are dropped and the rest get positions 1, 2, ... in that order. Returns `{"ok": true}` and publishes `sources.changed`.

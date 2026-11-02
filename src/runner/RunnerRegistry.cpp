@@ -167,26 +167,40 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
 
   const auto match = std::ranges::find(builds, name, &model::RunnerBuild::name);
   if (match == builds.end()) {
-    // A build replaced by a newer one of its line (GE-Proton10-7 by GE-Proton10-9): that one runs
-    // the game instead, its name the same but for the numbers.
-    const auto masked = [](std::string text) {
-      std::erase_if(text, [](unsigned char c) { return std::isdigit(c); });
-      return text;
-    };
-    const model::RunnerBuild* newest = nullptr;
-    for (const model::RunnerBuild& build : builds) {
-      if (masked(build.name) != masked(name)) continue;
-      if (!newest || ParseVersion(build.version) > ParseVersion(newest->version)) newest = &build;
-    }
-    if (newest != nullptr) {
-      log::Info("{} isn't installed anymore: using {}", runner_ref, newest->Reference());
-      return Resolved{runner, *newest};
+    if (auto stand_in = StandIn(runner_ref)) {
+      log::Info("{} isn't installed anymore: using {}", runner_ref, stand_in->Reference());
+      return Resolved{runner, std::move(*stand_in)};
     }
     return Err("runner_build_not_found",
                std::format("the {} build \"{}\" isn't installed anymore", kind, name),
                "Install it again, or choose another runner.", Fix::Runners());
   }
   return Resolved{runner, *match};
+}
+
+std::optional<model::RunnerBuild> RunnerRegistry::StandIn(const std::string& runner_ref) const {
+  const auto colon = runner_ref.find(':');
+  if (colon == std::string::npos) return std::nullopt;
+  std::string kind = runner_ref.substr(0, colon);
+  if (kind == "proton_umu") kind = "proton";
+  const std::string name = runner_ref.substr(colon + 1);
+  const IRunner* runner = FindByKind(kind);
+  if (runner == nullptr || !runner->UsesBuilds() || name == "auto" || name == "latest")
+    return std::nullopt;
+  const std::vector<model::RunnerBuild>& builds = BuildsFor(kind);
+  if (std::ranges::contains(builds, name, &model::RunnerBuild::name)) return std::nullopt;
+
+  const auto masked = [](std::string text) {
+    std::erase_if(text, [](unsigned char c) { return std::isdigit(c); });
+    return text;
+  };
+  const model::RunnerBuild* newest = nullptr;
+  for (const model::RunnerBuild& build : builds) {
+    if (masked(build.name) != masked(name)) continue;
+    if (!newest || ParseVersion(build.version) > ParseVersion(newest->version)) newest = &build;
+  }
+  if (newest == nullptr) return std::nullopt;
+  return *newest;
 }
 
 std::string RunnerRegistry::ResolveRef(const model::Game& game) const {

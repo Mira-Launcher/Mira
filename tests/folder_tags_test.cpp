@@ -195,7 +195,6 @@ TEST_CASE("A scan finds games in sorting folders, tags them by place, and leaves
   const fs::path root = TempDir("folder-tags-scan-games");
   REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
   REQUIRE(env.config.Patch(Sorting(root, {"RPG", "Strategy"})).has_value());
-  const std::string root_tag = strings::TitleCase(root.filename().string());
   for (const fs::path& game : {root / "RPG" / "Alpha", root / ".hidden" / "RPG" / "Beta",
                                root / ".hidden" / "Gamma", root / "Other" / "Delta"}) {
     Touch(game / "run.sh", "#!/bin/sh\n", /*executable=*/true);
@@ -203,9 +202,9 @@ TEST_CASE("A scan finds games in sorting folders, tags them by place, and leaves
   library::Scanner scanner(env.config, env.games, env.events);
   scanner.ScanAll();
 
-  CHECK(env.games.Find("alpha")->tags == std::vector<std::string>{"RPG", root_tag});
-  CHECK(env.games.Find("beta")->tags == std::vector<std::string>{"RPG", root_tag, "hidden"});
-  CHECK(env.games.Find("gamma")->tags == std::vector<std::string>{root_tag, "hidden"});
+  CHECK(env.games.Find("alpha")->tags == std::vector<std::string>{"RPG"});
+  CHECK(env.games.Find("beta")->tags == std::vector<std::string>{"RPG", "hidden"});
+  CHECK(env.games.Find("gamma")->tags == std::vector<std::string>{"hidden"});
   CHECK(env.games.Find("other").has_value());  // not a sorting folder, so a game of its own
   CHECK_FALSE(env.games.Find("delta").has_value());
 
@@ -229,7 +228,6 @@ TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
   const fs::path root = TempDir("folder-tags-moved-games");
   REQUIRE(env.config.Set("library_roots", json::array({root.string()})).has_value());
   REQUIRE(env.config.Patch(Sorting(root, {"RPG"})).has_value());
-  const std::string root_tag = strings::TitleCase(root.filename().string());
   for (const fs::path& game :
        {root / "RPG" / "Alpha", root / ".hidden" / "RPG" / "Beta", root / ".hidden" / "Gamma"}) {
     Touch(game / "run.sh", "#!/bin/sh\n", /*executable=*/true);
@@ -242,7 +240,7 @@ TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
   CHECK(scanner.ScanAll().moved == 1);
   auto alpha = env.games.Find("alpha");
   CHECK(alpha->install_path == (root / "Alpha").string());
-  CHECK(alpha->tags == std::vector<std::string>{root_tag});
+  CHECK(alpha->tags.empty());
   CHECK_FALSE(fs::exists(root / "RPG"));
 
   // Into .hidden/RPG: hidden, and RPG again; .hidden's own Gamma still keeps .hidden.
@@ -250,7 +248,7 @@ TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
   CHECK(scanner.ScanAll().moved == 1);
   alpha = env.games.Find("alpha");
   CHECK(alpha->install_path == (root / ".hidden" / "RPG" / "Alpha").string());
-  CHECK(alpha->tags == std::vector<std::string>{root_tag, "RPG", "hidden"});
+  CHECK(alpha->tags == std::vector<std::string>{"RPG", "hidden"});
   CHECK(alpha->status == model::GameStatus::Ready);
 
   // A folder whose program several missing games share is unclear: not added, and none of them is

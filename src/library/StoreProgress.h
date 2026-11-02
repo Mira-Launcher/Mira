@@ -13,10 +13,13 @@ struct DownloadProgress {
   double fraction = 0;            // 0..1
   std::int64_t eta_seconds = -1;  // -1: not reported
   double bytes_per_second = -1;
+  std::int64_t downloaded_bytes = -1;
+  std::int64_t total_bytes = -1;  // what the whole download is
 };
 
 // Reads one line of legendary, gogdl or nile download output. They share
-// Legendary's log format: "Progress: 12.34% (...), ETA: 00:01:20" and
+// Legendary's log format: "Download size: 812.34 MiB" before it starts, then
+// "Progress: 12.34% (...), ETA: 00:01:20", "Downloaded: 98.12 MiB" and
 // "+ Download - 12.34 MiB/s". Updates only what the line reports; true if it
 // reported progress.
 bool ParseProgressLine(std::string_view line, DownloadProgress& progress);

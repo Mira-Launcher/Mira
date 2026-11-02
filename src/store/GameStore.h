@@ -48,6 +48,8 @@ struct SourceState {
   bool added = false;   // set up: shown on the Sources page and in the sidebar, not in the catalog
   bool enabled = true;  // off keeps it added but hidden, its games unlisted and imports skipped
   bool in_sidebar = true;
+  // In hidden mode's sidebar; unset while hidden mode mirrors in_sidebar.
+  std::optional<bool> in_hidden_sidebar = std::nullopt;
   int position = 0;              // sidebar order, ascending
   std::int64_t imported_at = 0;  // unix seconds of the last successful import, 0 if none
 };
@@ -92,6 +94,10 @@ class GameStore {
   void SaveSource(const SourceState& state);
   // Positions follow `ids`' order; sources not named keep theirs.
   void SetSourceOrder(const std::vector<std::string>& ids);
+  // Hidden mode's sidebar mirrors in_sidebar until it's given a list of its own.
+  bool HiddenSidebarMirrors() const;
+  // Hidden mode's whole list, source id -> shown; empty goes back to mirroring.
+  void SetHiddenSidebar(const std::map<std::string, bool>& shown);
   // Marks it set up; `imported` also stamps imported_at with now.
   void MarkSourceAdded(const std::string& id, bool imported);
 

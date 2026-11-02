@@ -106,9 +106,19 @@ QString DownloadTracker::JobFor(const Entry& entry) const {
   return found == job_by_target_.end() ? QString() : found->second;
 }
 
+QString DownloadTracker::SizeProgressText(const Entry& entry) {
+  if (entry.total_bytes <= 0) return {};
+  // An installer's total is a guess from Steam's requirements.
+  if (entry.kind == Kind::Game)
+    return SizeText(entry.bytes) + " of about " + SizeText(entry.total_bytes);
+  if (entry.downloaded_bytes < 0) return SizeText(entry.total_bytes);
+  return SizeText(entry.downloaded_bytes) + " of " + SizeText(entry.total_bytes);
+}
+
 QString DownloadTracker::ProgressText(const Entry& entry, bool short_form) {
   if (entry.progress < 0) return {};
   QStringList parts{QString("%1%").arg(qRound(entry.progress * 100))};
+  if (const QString size = SizeProgressText(entry); !short_form && !size.isEmpty()) parts << size;
   if (!short_form && entry.bytes_per_second > 0) {
     parts << SizeText(static_cast<qint64>(entry.bytes_per_second)) + "/s";
   }
@@ -127,8 +137,12 @@ DownloadTracker::TileProgress DownloadTracker::TileProgressFor(const Entry& entr
                         : entry.update           ? "Updating…"
                                                  : "Installing…";
   tile.status = entry.progress >= 0 ? ProgressText(entry, /*short_form=*/true) : doing;
-  if (entry.bytes_per_second > 0) {
-    tile.detail = SizeText(static_cast<qint64>(entry.bytes_per_second)) + "/s";
+  QStringList detail;
+  if (const QString size = SizeProgressText(entry); !size.isEmpty()) detail << size;
+  if (entry.bytes_per_second > 0)
+    detail << SizeText(static_cast<qint64>(entry.bytes_per_second)) + "/s";
+  if (!detail.isEmpty()) {
+    tile.detail = detail.join(" · ");
   } else if (entry.bytes > 0) {
     tile.detail = SizeText(entry.bytes) + " written";
   }
@@ -228,7 +242,11 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     Entry& entry = Upsert(Kind::Game, QString(), QString::fromStdString(install.id));
     entry.state = state;
     entry.error = install.error;
-    if (state == State::Running) entry.bytes = 0;
+    if (state == State::Running) {
+      entry.bytes = 0;
+      entry.progress = -1;
+      entry.total_bytes = -1;
+    }
     if (DropIfCancelled(entry)) return true;
     emit Changed(entry.key);
     return true;
@@ -264,6 +282,8 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     entry.progress = store.progress;
     entry.eta_seconds = store.eta_seconds;
     entry.bytes_per_second = store.bytes_per_second;
+    entry.downloaded_bytes = store.downloaded_bytes;
+    entry.total_bytes = store.total_bytes;
     emit Changed(entry.key);
     return true;
   }
@@ -282,6 +302,8 @@ bool DownloadTracker::HandleEvent(const std::string& type, const std::string& da
     entry.progress = -1;
     entry.eta_seconds = -1;
     entry.bytes_per_second = -1;
+    entry.downloaded_bytes = -1;
+    entry.total_bytes = -1;
   }
   if (DropIfCancelled(entry)) return true;
   const QString key = entry.key;
@@ -335,6 +357,17 @@ const DownloadTracker::Entry* DownloadTracker::Find(const QString& key) const {
     if (entry.key == key) return &entry;
   }
   return nullptr;
+}
+
+const DownloadTracker::Entry* DownloadTracker::LiveInstall(const QString& source, QString ref,
+                                                           const QString& game_id) const {
+  // A store game updates as its store title.
+  if (ref.isEmpty() && !source.isEmpty() && game_id.startsWith(source + "-"))
+    ref = game_id.mid(source.size() + 1);
+  const Entry* entry = ref.isEmpty() ? nullptr : Find(KeyFor(Kind::Title, source, ref));
+  if (entry == nullptr && !game_id.isEmpty()) entry = Find(KeyFor(Kind::Game, {}, game_id));
+  if (entry == nullptr) return nullptr;
+  return entry->state == State::Running || entry->state == State::Paused ? entry : nullptr;
 }
 
 int DownloadTracker::RunningCount() const {
@@ -407,6 +440,8 @@ void DownloadTracker::Poll() {
                                     [&key](const Entry& e) { return e.key == key; });
           if (!progress.ok || found == entries_.end() || found->state != State::Running) return;
           found->bytes = progress.bytes_written;
+          found->progress = progress.progress;
+          found->total_bytes = progress.estimated_bytes;
           // In case the event was missed.
           if (progress.state == "finished") found->state = State::Finished;
           if (progress.state == "failed") found->state = State::Failed;

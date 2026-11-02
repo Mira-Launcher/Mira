@@ -599,7 +599,6 @@ void TagsPage::Refresh() {
     settings_.folders = mapping::ParseListText(value("tags.folders"));
     settings_.steam = value("tags.steam") != "false";
     settings_.steam_by_name = value("metadata.steam_by_name") != "false";
-    settings_.tag_by_root = value("scan.tag_by_root") != "false";
     settings_loaded_ = true;
     Sync();
   });
@@ -827,9 +826,6 @@ void TagsPage::SyncSettings() {
         [this](bool on) {
           PatchSetting("metadata.steam_by_name", "a boolean", on ? "true" : "false");
         });
-    add("scan.tag_by_root", "Tag new games by library folder",
-        "Tag each new game a scan finds with the name of the library folder it was found in.",
-        [this](bool on) { PatchSetting("scan.tag_by_root", "a boolean", on ? "true" : "false"); });
   }
   const auto set = [this](const std::string& key, bool on) {
     Switch* toggle = setting_switches_.at(key);
@@ -843,7 +839,6 @@ void TagsPage::SyncSettings() {
   }
   set("tags.steam", settings_.steam);
   set("metadata.steam_by_name", settings_.steam_by_name);
-  set("scan.tag_by_root", settings_.tag_by_root);
   QTimer::singleShot(0, this, &TagsPage::FitLeft);
 }
 

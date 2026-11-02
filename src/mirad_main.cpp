@@ -132,6 +132,7 @@ int main(int argc, char** argv) {
   // the time the very first client request arrives.
   services.ReconcileSessions();
   mira::runner::MigrateInPlaceRefs(config, games);
+  mira::runner::RepointRemovedBuilds(config, games);
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);
   services.artwork_selects.Post([&config, &games, &services, &events] {

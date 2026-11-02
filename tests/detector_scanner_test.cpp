@@ -88,8 +88,8 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   model::Game native_game = auto_setup.CreateGame(root / "Celeste", native_result);
   CHECK(native_game.status == model::GameStatus::Ready);
   CHECK(native_game.id == "celeste");
-  // scan.tag_by_root defaults on: the library root's name becomes a tag, with no config needed.
-  CHECK(native_game.tags == std::vector<std::string>{strings::TitleCase(root.filename().string())});
+  // The library folder's name doesn't become a tag.
+  CHECK(native_game.tags.empty());
 
   library::Detector::Result windows_result;
   windows_result.candidates.push_back({"hollow_knight.exe", model::Platform::Windows, 4.5, true});
@@ -104,18 +104,6 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   REQUIRE(stream.size() == 2);
   CHECK(stream[0].type == "game.added");
   CHECK(stream[0].payload.value("open_config", false) == true);
-}
-
-TEST_CASE("AutoSetup skips the automatic root tag when scan.tag_by_root is off") {
-  test::TestEnv env("autosetup-no-tag-config");
-  REQUIRE(env.config.Set("scan.tag_by_root", false).has_value());
-  library::AutoSetup auto_setup(env.config, env.games, env.events);
-
-  library::Detector::Result result;
-  result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
-  result.confidence = 0.9;
-  model::Game game = auto_setup.CreateGame("/games/Celeste", result);
-  CHECK(game.tags.empty());
 }
 
 TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders") {

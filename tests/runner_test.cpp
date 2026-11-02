@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "config/Config.h"
+#include "config/Schema.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
@@ -364,6 +365,30 @@ TEST_CASE("A game on a removed Proton build runs on the newest build of its line
   CHECK(resolved->build->name == "GE-Proton11-9");
   // Another line's build isn't a stand-in.
   CHECK_FALSE(registry.Resolve("proton:Kron4ek-Proton-9").has_value());
+
+  // What a game and a setting name follows the build that runs in its place; a setting left at
+  // its default, a build still installed and another line's build stay as they are.
+  model::Game game;
+  game.id = "nightmare";
+  game.runner_ref = "proton:GE-Proton11-7";
+  REQUIRE(env.games.Upsert(game).has_value());
+  game.id = "kept";
+  game.runner_ref = "proton:GE-Proton11-8";
+  REQUIRE(env.games.Upsert(game).has_value());
+  game.id = "other";
+  game.runner_ref = "proton:Kron4ek-Proton-9";
+  REQUIRE(env.games.Upsert(game).has_value());
+  REQUIRE(env.config.Set("launchers.runner", "proton:GE-Proton11-7"));
+  const nlohmann::json app_default =
+      config::Schema::Instance().Find("launchers.app_runner")->default_value;
+  std::vector<std::string> moved;
+  runner::RepointRemovedBuilds(env.config, env.games, &moved);
+  CHECK(moved == std::vector<std::string>{"nightmare"});
+  CHECK(env.games.Find("nightmare")->runner_ref == "proton:GE-Proton11-9");
+  CHECK(env.games.Find("kept")->runner_ref == "proton:GE-Proton11-8");
+  CHECK(env.games.Find("other")->runner_ref == "proton:Kron4ek-Proton-9");
+  CHECK(env.config.GetString("launchers.runner") == "proton:GE-Proton11-9");
+  CHECK(env.config.Get("launchers.app_runner") == app_default);
 }
 
 TEST_CASE("Steam's Proton is found in a library on another drive") {
