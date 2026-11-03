@@ -46,6 +46,9 @@ struct Store {
   Result<void> (*install_helper)(const config::Config& config,
                                  const runner::ReleaseAsset& asset) = nullptr;
   runner::ToolStatus (*helper_status)(const config::Config& config) = nullptr;
+  // For a helper the tool downloads itself rather than a release (Epic's EOS overlay, through
+  // legendary), in place of helper_release_kind and install_helper: installs or updates it.
+  Result<void> (*fetch_helper)(const config::Config& config) = nullptr;
 };
 
 const std::vector<Store>& AllStores();

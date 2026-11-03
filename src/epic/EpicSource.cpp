@@ -4,9 +4,12 @@
 #include <format>
 #include <json.hpp>
 
+#include "config/Resolver.h"
 #include "core/Command.h"
 #include "core/Json.h"
+#include "core/Log.h"
 #include "core/StoreErrors.h"
+#include "epic/EosOverlay.h"
 #include "epic/EpicImporter.h"
 #include "epic/EpicInstaller.h"
 #include "epic/Legendary.h"
@@ -81,6 +84,20 @@ Result<json> LaunchParameters(const config::Config& config, const std::string& a
 Result<library::LaunchExtras> EpicSource::BeforeLaunch(const config::Config& config,
                                                        const model::Game& game,
                                                        bool sign_in) const {
+  // It hands the game nothing, so it's set up signed in or not.
+  if (game.platform == model::Platform::Windows && !game.data_dir.empty()) {
+    const runner::ToolStatus overlay = DetectOverlay(config);
+    const bool on = config::Resolver(config, game.overrides).GetBool("epic.eos_overlay");
+    // Without Mira's copy, an overlay set up some other way stays.
+    if (!on || overlay.installed) {
+      if (auto set =
+              SetOverlayIn(game.data_dir, on ? std::filesystem::path(overlay.path).parent_path()
+                                             : std::filesystem::path());
+          !set) {
+        log::Warn("couldn't set up the EOS overlay for {}: {}", game.id, set.error().message);
+      }
+    }
+  }
   if (!sign_in || game.source_ref.empty()) return library::LaunchExtras{};
   if (!Status(config).authenticated) return Err("not_authenticated", "Epic isn't signed in");
   auto params = LaunchParameters(config, game.source_ref, false);

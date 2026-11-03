@@ -140,8 +140,9 @@ std::vector<Update> FindUpdates(config::Config& config) {
       return ToolUpdate(config, store.id, store.tool, store.release_kind,
                         store.status(config).tool.path);
     }));
-    // The store's setup also updates its helper.
-    if (store.helper_status) {
+    // The store's setup also updates its helper. One the tool fetches itself has no release to
+    // compare with.
+    if (store.helper_status && store.helper_release_kind) {
       checks.push_back(std::async(std::launch::async, [&config, &store]() -> std::optional<Update> {
         const std::string path = store.helper_status(config).path;
         if (!path.empty())
