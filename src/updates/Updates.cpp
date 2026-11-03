@@ -9,7 +9,9 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <future>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -18,10 +20,12 @@
 #include "core/Paths.h"
 #include "emulators/Emulators.h"
 #include "library/Stores.h"
+#include "modmanagers/ModManagers.h"
 #include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerUpdates.h"
+#include "runner/Winetricks.h"
 
 #ifndef MIRA_VERSION
 #define MIRA_VERSION "0"
@@ -84,36 +88,67 @@ const std::string& InstallKind() {
   return kind;
 }
 
-// GitHub allows 60 unauthenticated requests an hour, so as long as the release lists are cached.
-std::optional<Update> MiraUpdate(bool refresh) {
+// The tag `fetch` finds, kept for 10 minutes: GitHub allows 60 unauthenticated requests an hour.
+Result<std::string> CachedTag(const std::string& key, bool refresh,
+                              const std::function<Result<std::string>()>& fetch) {
   using Clock = std::chrono::steady_clock;
   static std::mutex mutex;
-  static std::optional<Clock::time_point> checked;
-  static std::optional<Update> found;
+  static std::map<std::string, std::pair<Clock::time_point, std::string>> cache;
   {
     std::lock_guard lock(mutex);
-    if (!refresh && checked && Clock::now() - *checked < std::chrono::minutes(10)) return found;
+    const auto found = cache.find(key);
+    if (!refresh && found != cache.end() &&
+        Clock::now() - found->second.first < std::chrono::minutes(10))
+      return found->second.second;
   }
-  const auto latest = runner::LatestRelease(LatestUrl(), "*.AppImage");
+  auto tag = fetch();
+  if (tag) {
+    std::lock_guard lock(mutex);
+    cache[key] = {Clock::now(), *tag};
+  }
+  return tag;
+}
+
+Result<std::string> LatestTag(const std::string& url, const std::string& pattern,
+                              const std::vector<std::string>& exclude, bool refresh) {
+  return CachedTag(url, refresh, [&]() -> Result<std::string> {
+    const auto latest = runner::LatestRelease(url, pattern, exclude);
+    if (!latest) return std::unexpected(latest.error());
+    return latest->tag;
+  });
+}
+
+std::optional<Update> MiraUpdate(bool refresh) {
+  const auto latest = LatestTag(LatestUrl(), "*.AppImage", {}, refresh);
   if (!latest) {
     log::Warn("couldn't check for a Mira update: {}", latest.error().message);
     return std::nullopt;
   }
-  std::optional<Update> update;
-  if (IsNewer(latest->tag)) {
-    update =
-        Update{.kind = "mira",
-               .id = "mira",
-               .name = "Mira",
-               .installed = MIRA_VERSION,
-               .latest = latest->tag,
-               .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, latest->tag),
-               .install = InstallKind()};
+  if (!IsNewer(*latest)) return std::nullopt;
+  return Update{.kind = "mira",
+                .id = "mira",
+                .name = "Mira",
+                .installed = MIRA_VERSION,
+                .latest = *latest,
+                .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, *latest),
+                .install = InstallKind()};
+}
+
+std::optional<Update> ModManagerUpdate(const modmanagers::ModManager& manager, bool refresh) {
+  const std::string installed = modmanagers::InstalledVersion(manager);
+  if (installed.empty()) return std::nullopt;
+  const auto latest = LatestTag(manager.release_url, manager.asset, manager.exclude, refresh);
+  if (!latest) {
+    log::Warn("couldn't check for a {} update: {}", manager.name, latest.error().message);
+    return std::nullopt;
   }
-  std::lock_guard lock(mutex);
-  checked = Clock::now();
-  found = update;
-  return update;
+  if (*latest == installed) return std::nullopt;
+  return Update{.kind = "mod_manager",
+                .id = manager.id,
+                .name = manager.name,
+                .installed = installed,
+                .latest = *latest,
+                .url = ""};
 }
 
 fs::path PackageDir() {
@@ -172,6 +207,26 @@ std::optional<Update> ToolUpdate(const config::Config& config, const std::string
                 .name = name,
                 .installed = installed,
                 .latest = latest.tag,
+                .url = ""};
+}
+
+// Only the copy Mira downloaded, by the version its script names.
+std::optional<Update> WinetricksUpdate(const config::Config& config, bool refresh) {
+  const std::string path = runner::WinetricksPath();
+  if (!Managed(config, path)) return std::nullopt;
+  const std::string installed = runner::InstalledWinetricksVersion(path);
+  if (installed.empty()) return std::nullopt;
+  const auto latest = CachedTag("winetricks", refresh, runner::LatestWinetricksTag);
+  if (!latest) {
+    log::Warn("couldn't check for a winetricks update: {}", latest.error().message);
+    return std::nullopt;
+  }
+  if (*latest == installed) return std::nullopt;
+  return Update{.kind = "tool",
+                .id = "winetricks",
+                .name = "winetricks",
+                .installed = installed,
+                .latest = *latest,
                 .url = ""};
 }
 
@@ -293,6 +348,10 @@ std::vector<Update> FindUpdates(config::Config& config, bool refresh) {
   checks.push_back(std::async(std::launch::async, [&config] {
     return ToolUpdate(config, "umu", "umu", "umu", runner::UmuRunPath());
   }));
+  checks.push_back(std::async(std::launch::async, WinetricksUpdate, std::cref(config), refresh));
+  for (const modmanagers::ModManager& manager : modmanagers::All()) {
+    checks.push_back(std::async(std::launch::async, ModManagerUpdate, std::cref(manager), refresh));
+  }
 
   std::vector<Update> updates;
   for (auto& check : checks) {
@@ -307,7 +366,8 @@ std::vector<Update> FindUpdates(config::Config& config, bool refresh) {
          .installed = runner::BuildLabel(update.build.kind, update.build.name),
          .latest = runner::BuildLabel(update.build.kind,
                                       runner::ReleaseName(update.build.kind, update.latest)),
-         .url = ""});
+         .url = "",
+         .release = runner::ReleaseName(update.build.kind, update.latest)});
   }
   return updates;
 }

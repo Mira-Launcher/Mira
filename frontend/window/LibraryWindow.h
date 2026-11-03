@@ -34,6 +34,10 @@ class ArtworkStore;
 class DaemonSupervisor;
 class DownloadTracker;
 class DownloadsPanel;
+class MiraUpdater;
+class RunnerUpdater;
+class UpdateChecker;
+class UpdatesPanel;
 class GameCard;
 class GameLibraryModel;
 class GameMenus;
@@ -145,6 +149,8 @@ class LibraryWindow : public QMainWindow,
   bool eventFilter(QObject* watched, QEvent* event) override;
   // The games the hidden mode lists.
   std::vector<mira_gui::GameSummary> ShownGames() const;
+  // The top bar's update button and count, from what's available and Mira's own update.
+  void SyncUpdates();
   // What toggles hidden mode, as the user has it bound.
   QString HiddenShortcut() const;
   void UpdateFooter();
@@ -352,6 +358,10 @@ class LibraryWindow : public QMainWindow,
   QTimer* save_prefs_timer_ = nullptr;  // see ScheduleSavePrefs
   bool zoom_sync_queued_ = false;       // see SyncZoomSoon
   mira_gui::DownloadsPanel* downloads_panel_ = nullptr;
+  mira_gui::UpdateChecker* update_checker_ = nullptr;
+  mira_gui::RunnerUpdater* runner_updater_ = nullptr;
+  mira_gui::MiraUpdater* mira_updater_ = nullptr;
+  mira_gui::UpdatesPanel* updates_panel_ = nullptr;
   // game.added events asking for their settings to open, gathered briefly
   // so a scan's burst of them opens nothing.
   std::vector<std::string> pending_added_;

@@ -134,6 +134,11 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawPolyline(QPolygonF({QPointF(5.2, 8.5), QPointF(8.0, 11.3), QPointF(10.8, 8.5)}));
       painter.drawLine(QPointF(4.0, 13.0), QPointF(12.0, 13.0));
       return;
+    case Glyph::Update:
+      painter.drawLine(QPointF(8.0, 13.0), QPointF(8.0, 5.7));
+      painter.drawPolyline(QPolygonF({QPointF(5.2, 7.5), QPointF(8.0, 4.7), QPointF(10.8, 7.5)}));
+      painter.drawLine(QPointF(4.0, 3.0), QPointF(12.0, 3.0));
+      return;
     case Glyph::Sliders:
       for (const qreal y : {4.5, 8.0, 11.5}) painter.drawLine(QPointF(2.5, y), QPointF(13.5, y));
       painter.setBrush(color);

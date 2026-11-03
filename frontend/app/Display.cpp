@@ -201,6 +201,11 @@ void SetDaemon(std::function<qint64()> pid, std::function<void()> hand_off) {
   hand_off_daemon = std::move(hand_off);
 }
 
+QString Program() {
+  const QString appimage = qEnvironmentVariable("APPIMAGE");
+  return appimage.isEmpty() ? QCoreApplication::applicationFilePath() : appimage;
+}
+
 bool Restart(const QStringList& arguments) {
   QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
   for (const QByteArray& name : qgetenv(kSetByMira).split(',')) environment.remove(name);
@@ -212,7 +217,7 @@ bool Restart(const QStringList& arguments) {
   // Saves still on their way to mirad (setup's last page, a setting) land before this one quits.
   async::QuickPool()->waitForDone(5000);
   QProcess process;
-  process.setProgram(QCoreApplication::applicationFilePath());
+  process.setProgram(Program());
   process.setArguments(arguments);
   process.setProcessEnvironment(environment);
   // Closed first: closing it later would remove the new process's socket of the same name.

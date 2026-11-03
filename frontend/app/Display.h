@@ -36,6 +36,9 @@ void ForgetEnv();
 void SetInstanceLock(QLockFile* lock);
 void SetActivationServer(QLocalServer* server);
 void SetDaemon(std::function<qint64()> pid, std::function<void()> hand_off);
+// What starts this program again: the AppImage itself when running from one, not its temporary
+// mount, which keeps the old build if the file has been replaced.
+QString Program();
 // Starts mira-gui again with `arguments` and quits this one. False, and nothing given up, when
 // it couldn't start.
 bool Restart(const QStringList& arguments);

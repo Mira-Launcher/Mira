@@ -885,17 +885,27 @@ struct RunnerUpdatesResult {
 
 // GET /v1/updates: something Mira downloaded that has a newer release.
 struct UpdateInfo {
-  std::string kind;  // "mira", "emulator", "tool" or "runner"
-  std::string id;    // the source's id for an emulator or a store's tool
-  std::string name;
-  std::string installed;
-  std::string latest;
+  std::string kind;     // "mira", "emulator", "mod_manager", "tool" or "runner"
+  std::string id = {};  // the source's id for an emulator or a store's tool
+  std::string name = {};
+  std::string installed = {};
+  std::string latest = {};
+  std::string url = {};      // Mira's release page
+  std::string install = {};  // how Mira updates: "appimage", "deb", "rpm", "manual" or "none"
+  std::string release = {};  // a runner's new release, as its download is named
 };
 
 struct UpdatesResult {
   bool ok = false;
   ApiError error;
   std::vector<UpdateInfo> updates;
+};
+
+// POST /v1/updates/mira.
+struct MiraUpdateResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> install;  // what installs the package as root; empty for an AppImage
 };
 
 // GET /v1/runners/tools: umu-launcher and winetricks.

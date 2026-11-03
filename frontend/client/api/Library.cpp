@@ -161,22 +161,44 @@ void OpenSteamBigPictureAsync(QObject* context, std::function<void(StoreActionRe
       std::move(callback));
 }
 
-void GetUpdatesAsync(QObject* context, std::function<void(UpdatesResult)> callback) {
+void GetUpdatesAsync(QObject* context, bool refresh, std::function<void(UpdatesResult)> callback) {
   async::Run(
       context,
-      [] {
+      [refresh] {
         return ReadReply<UpdatesResult>(
-            transport::Get("/v1/updates", {.read_timeout = std::chrono::seconds(60)}),
+            transport::Get(refresh ? "/v1/updates?refresh=1" : "/v1/updates",
+                           {.read_timeout = std::chrono::seconds(60)}),
             "GET /v1/updates", Shape::Array, [](UpdatesResult& result, const nlohmann::json& body) {
               for (const nlohmann::json& entry : body) {
                 result.updates.push_back(
                     {entry.value("kind", std::string()), entry.value("id", std::string()),
                      entry.value("name", std::string()), entry.value("installed", std::string()),
-                     entry.value("latest", std::string())});
+                     entry.value("latest", std::string()), entry.value("url", std::string()),
+                     entry.value("install", std::string()), entry.value("release", std::string())});
               }
             });
       },
       std::move(callback), async::Lane::Slow);
+}
+
+void UpdateMiraAsync(QObject* context, std::function<void(MiraUpdateResult)> callback) {
+  RunJob<MiraUpdateResult>(
+      context, "mira_update",
+      [](const std::string& query) { return transport::Post("/v1/updates/mira" + query); },
+      [](MiraUpdateResult& result, const nlohmann::json& body) {
+        result.install = body.value("install", std::vector<std::string>());
+      },
+      std::move(callback));
+}
+
+void ShutdownDaemonAsync(QObject* context, std::function<void()> done) {
+  async::Run(
+      context,
+      [] {
+        transport::Post("/v1/shutdown");
+        return true;
+      },
+      std::function<void(bool)>([done = std::move(done)](bool) { done(); }));
 }
 
 void GetImporterAsync(QObject* context, const std::string& importer,

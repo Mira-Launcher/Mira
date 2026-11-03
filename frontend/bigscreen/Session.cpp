@@ -9,18 +9,10 @@
 #include <QFile>
 #include <QStandardPaths>
 
+#include "../app/Display.h"
 #include "../client/api/Library.h"
 
 namespace mira_gui::bigscreen {
-namespace {
-
-// The AppImage itself when running from one, not its temporary mount.
-QString Executable() {
-  const QString appimage = qEnvironmentVariable("APPIMAGE");
-  return appimage.isEmpty() ? QCoreApplication::applicationFilePath() : appimage;
-}
-
-}  // namespace
 
 bool ApplyStartOnLogin(bool on) {
   const QString dir =
@@ -30,7 +22,7 @@ bool ApplyStartOnLogin(bool on) {
   QDir().mkpath(dir);
   // Inside Exec's quotes ", `, $ and \ take a backslash, which the key's string escaping doubles.
   QString exec;
-  for (const QChar c : Executable()) {
+  for (const QChar c : display::Program()) {
     if (c == '"' || c == '`' || c == '$') exec += "\\\\";
     if (c == '\\') exec += "\\\\\\";
     if (c == '%') exec += '%';
@@ -45,7 +37,7 @@ bool ApplyStartOnLogin(bool on) {
 }
 
 void UpdateSteamShortcut(QObject* context) {
-  const QString exe = Executable();
+  const QString exe = display::Program();
   const bool installed = !qEnvironmentVariable("APPIMAGE").isEmpty() || exe.startsWith("/usr/") ||
                          exe.startsWith("/opt/");
   if (!installed) return;

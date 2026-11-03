@@ -21,6 +21,7 @@ struct Update {
   std::string latest;
   std::string url;           // Mira's release page
   std::string install = {};  // Mira's: see ClassifyInstall
+  std::string release = {};  // a runner's new release, as its download is named
 };
 
 // Asks each source at once; one that can't be reached is left out. `refresh` skips what's cached.

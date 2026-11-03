@@ -61,8 +61,7 @@ std::string WinetricksPath() {
   return fs::exists(BundledWinetricks(), ec) ? BundledWinetricks().string() : std::string();
 }
 
-// Its releases ship no script asset, so fetch the script at the latest tag.
-Result<void> InstallWinetricks() {
+Result<std::string> LatestWinetricksTag() {
   const Result<nlohmann::json> listed =
       CurlJson("https://api.github.com/repos/Winetricks/winetricks/releases/latest");
   if (!listed) return std::unexpected(listed.error());
@@ -71,6 +70,23 @@ Result<void> InstallWinetricks() {
       release.is_object() ? release.value("tag_name", std::string()) : std::string();
   if (tag.empty())
     return Err("github_api_error", "couldn't find the latest winetricks release", kGitHubHint);
+  return tag;
+}
+
+std::string InstalledWinetricksVersion(const fs::path& script) {
+  constexpr std::string_view kPrefix = "WINETRICKS_VERSION=";
+  std::ifstream file(script);
+  for (std::string line; std::getline(file, line);) {
+    if (line.starts_with(kPrefix)) return line.substr(kPrefix.size());
+  }
+  return {};
+}
+
+// Its releases ship no script asset, so fetch the script at the latest tag.
+Result<void> InstallWinetricks() {
+  const Result<std::string> latest = LatestWinetricksTag();
+  if (!latest) return std::unexpected(latest.error());
+  const std::string& tag = *latest;
 
   const fs::path target = BundledWinetricks();
   std::error_code ec;

@@ -30,6 +30,7 @@ namespace mira_gui {
 class ArtworkStore;
 class GameLibraryModel;
 class OwnedTitles;
+class UpdateChecker;
 struct SourceInfo;
 
 // The window's left side: Library, Runners and Settings, then (scrolling)
@@ -41,8 +42,8 @@ class Sidebar : public QWidget {
 
  public:
   // `prefs` is frontend.toml as read at startup.
-  Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const FrontendPrefs& prefs,
-          QWidget* parent = nullptr);
+  Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker* updates,
+          const FrontendPrefs& prefs, QWidget* parent = nullptr);
 
   // What Settings saved: which sources show and in what order, the source
   // rows' counts and covers, and how PINNED and RECENTLY PLAYED look.
@@ -121,7 +122,7 @@ class Sidebar : public QWidget {
   int SourceDropRow(int y) const;
   void ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos);
   void ShowMenu(const QPoint& global_pos);
-  // Which sources' tools or emulators have a newer release, while updates.check is on.
+  // Which sources' tools or emulators have a newer release, from UpdateChecker.
   void RefreshUpdates();
   void UpdateSourceTool(const SourceInfo& source);
   // Both sections, if what they'd show changed.
@@ -192,7 +193,7 @@ class Sidebar : public QWidget {
   int sources_request_ = 0;                    // RefreshSources keeps only the newest answer
   // Source id to what has a newer release ("butler v15.32.0"), from GET /v1/updates.
   QHash<QString, QString> source_updates_;
-  int updates_request_ = 0;  // RefreshUpdates keeps only the newest answer
+  UpdateChecker* updates_ = nullptr;
   bool show_source_counts_ = true;
   bool show_source_covers_ = true;
   QSet<QString> source_cover_ids_;           // the games source rows show covers of

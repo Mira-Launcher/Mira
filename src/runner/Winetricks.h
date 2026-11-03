@@ -25,6 +25,12 @@ std::string WinetricksPath();
 // Installs the latest winetricks release's script into Mira's tools folder.
 Result<void> InstallWinetricks();
 
+// The tag of winetricks' latest release.
+Result<std::string> LatestWinetricksTag();
+
+// The version that script names, or empty if it isn't there.
+std::string InstalledWinetricksVersion(const std::filesystem::path& script);
+
 // The wine binary a game's runner uses (Proton's bundled one for Proton).
 Result<std::filesystem::path> ResolveWineBinary(const RunnerRegistry& runners,
                                                 const model::Game& game);

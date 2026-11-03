@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "runner/Downloader.h"
+#include "runner/Winetricks.h"
 #include "support/TestEnv.h"
 #include "updates/Updates.h"
 
@@ -61,4 +62,12 @@ TEST_CASE("DownloadWithDigest keeps only a file matching its digest") {
     CHECK_FALSE(fs::exists(target));
   }
   CHECK_FALSE(fs::exists(dir / "target.sha256sum"));
+}
+
+TEST_CASE("InstalledWinetricksVersion reads the version the script names") {
+  const fs::path dir = TempDir("winetricks-version");
+  const fs::path script = dir / "winetricks";
+  std::ofstream(script) << "#!/bin/sh\nWINETRICKS_VERSION=20260125\necho hi\n";
+  CHECK(runner::InstalledWinetricksVersion(script) == "20260125");
+  CHECK(runner::InstalledWinetricksVersion(dir / "missing").empty());
 }

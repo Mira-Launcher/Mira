@@ -20,6 +20,7 @@ void RegisterUpdateRoutes(Router& http, Services& s) {
                               {"name", update.name},     {"installed", update.installed},
                               {"latest", update.latest}, {"url", update.url}};
       if (!update.install.empty()) entry["install"] = update.install;
+      if (!update.release.empty()) entry["release"] = update.release;
       list.push_back(std::move(entry));
     }
     SendJson(res, list);
