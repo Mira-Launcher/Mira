@@ -191,10 +191,16 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   advanced_line_layout->setContentsMargins(0, 0, 0, 0);
   advanced_line_layout->addWidget(advanced);
   advanced_line_layout->addStretch(1);
-  auto* advanced_row = new SettingRow("Environment and scripts",
-                                      "Environment variables, runner options and scripts.", runner);
+  auto* advanced_row =
+      new SettingRow("Environment and runner options",
+                     "Environment variables, runner options, script timeouts and every other "
+                     "setting it can change.",
+                     runner);
   advanced_row->SetBelow(advanced_line);
   runner->AddRow(advanced_row);
+
+  // --- Scripts: its rows are the game's overrides, built by overrides_ below.
+  scripts_card_ = new SettingsCard("Scripts", cards_page);
 
   // --- Details
   auto* details = new SettingsCard("Details", cards_page);
@@ -248,11 +254,11 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   // Two columns stacked separately, not a grid, so a short card leaves no gap under it.
   auto* columns = new QHBoxLayout();
   columns->setSpacing(14);
-  for (const auto& [top, bottom] : {std::pair{launch, details}, std::pair{runner, files}}) {
+  for (const std::vector<QWidget*>& cards : {std::vector<QWidget*>{launch, details},
+                                             std::vector<QWidget*>{runner, scripts_card_, files}}) {
     auto* column = new QVBoxLayout();
     column->setSpacing(14);
-    column->addWidget(top);
-    column->addWidget(bottom);
+    for (QWidget* card : cards) column->addWidget(card);
     column->addStretch(1);
     columns->addLayout(column, /*stretch=*/1);
   }
@@ -260,6 +266,9 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   // --- Advanced: the runner options page, then the overrides' own categories.
   overrides_ = new mira_gui::OverridesEditor(id_, pages_);
+  overrides_->HostRows(
+      {"launch.pre_script", "launch.pre_steps", "launch.post_script", "launch.post_steps"},
+      scripts_card_);
   SettingsPage* options_page = overrides_->AddPage("Runner options", icons::Glyph::Sliders);
   runner_options_card_ = options_page->AddCard(QString());  // titled and filled per runner kind
   runner_options_card_->hide();
@@ -340,6 +349,12 @@ void GameEditForm::SetBottomRoom(int height) {
 }
 
 void GameEditForm::OpenAdvanced(const std::string& key) {
+  if (overrides_->Hosts(key)) {
+    pages_->setCurrentIndex(0);
+    if (auto* scroll = qobject_cast<QScrollArea*>(pages_->widget(0)))
+      scroll->ensureWidgetVisible(scripts_card_);
+    return;
+  }
   pages_->setCurrentIndex(1);
   overrides_->ShowFromTop();  // the runner's card may have come or gone since last time
   overrides_->RevealKey(key);

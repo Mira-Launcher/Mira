@@ -4,6 +4,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QWidget>
+#include <vector>
 
 class QHBoxLayout;
 class QPushButton;
@@ -60,6 +61,8 @@ class SettingRow : public QWidget {
   QWidget* Grip() const { return grip_; }
   // Shows the dot and the undo button. The owner connects RevertClicked.
   void SetModified(bool modified);
+  // Shows `other`'s changes as this row's too, for a setting shown inside this row.
+  void Include(SettingRow* other);
 
  signals:
   void RevertClicked();
@@ -68,6 +71,11 @@ class SettingRow : public QWidget {
   bool eventFilter(QObject* watched, QEvent* event) override;
 
  private:
+  void ShowModified();
+
+  bool modified_ = false;
+  SettingRow* included_in_ = nullptr;
+  std::vector<SettingRow*> included_;
   QWidget* dot_ = nullptr;
   QWidget* grip_ = nullptr;
   QLabel* label_ = nullptr;

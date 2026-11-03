@@ -6,16 +6,19 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
 #include <QToolButton>
 #include <QUrl>
+#include <QVBoxLayout>
 #include <cmath>
 
 #include "../client/JsonMapping.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/ChipToggles.h"
 #include "../widgets/ListEdit.h"
 #include "../widgets/PathField.h"
 #include "SettingsCard.h"
@@ -66,6 +69,16 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     // Empty is "use the default runner", which an empty box doesn't say.
     combo->lineEdit()->setPlaceholderText("Default runner");
     row->AddControl(combo);
+  } else if (entry.type == "an array of strings" && !entry.choices.empty()) {
+    chips = new ChipToggles(row);
+    std::vector<ChipToggles::Choice> choices;
+    for (const ConfigSchemaEntry::Choice& choice : entry.choices) {
+      choices.push_back({QString::fromStdString(choice.value), QString::fromStdString(choice.label),
+                         QString::fromStdString(choice.doc), QString::fromStdString(choice.pair),
+                         choice.needs_pair});
+    }
+    chips->SetChoices(std::move(choices));
+    row->SetBelow(chips);
   } else if (entry.type == "an array of strings") {
     const bool folders = entry.path == "folder";
     list = new ListEdit(folders ? ListEdit::Kind::Folder : ListEdit::Kind::Text,
@@ -134,6 +147,7 @@ QWidget* SettingEditor::Input() const {
   if (combo != nullptr) return combo;
   if (spin != nullptr) return spin;
   if (list != nullptr) return list;
+  if (chips != nullptr) return chips;
   return line;
 }
 
@@ -141,9 +155,10 @@ std::string SettingEditor::Text() const {
   if (toggle) return toggle->isChecked() ? "true" : "false";
   if (spin) return spin->cleanText().toStdString();
   if (combo) return (combo->isEditable() ? RunnerRef(combo) : combo->currentText()).toStdString();
-  if (list) {
+  if (list || chips) {
     std::vector<std::string> items;
-    for (const QString& item : list->Items()) items.push_back(item.toStdString());
+    for (const QString& item : list ? list->Items() : chips->Values())
+      items.push_back(item.toStdString());
     return mapping::ListText(items);
   }
   if (clear_secret && line->text().isEmpty() && line->property("secret_saved").toBool())
@@ -165,11 +180,14 @@ void SettingEditor::SetText(const std::string& text) {
     toggle->setChecked(text == "true");
     return;
   }
-  if (list) {
+  if (list || chips) {
     QStringList items;
     for (const std::string& item : mapping::ParseListText(text))
       items << QString::fromStdString(item);
-    list->SetItems(items);
+    if (list)
+      list->SetItems(items);
+    else
+      chips->SetValues(items);
     return;
   }
   if (spin) {
@@ -210,6 +228,42 @@ void SettingEditor::OnEdited(QObject* context, std::function<void()> edited) con
   if (line) QObject::connect(line, &QLineEdit::textChanged, context, edited);
   if (clear_secret) QObject::connect(clear_secret, &QAction::triggered, context, edited);
   if (list) QObject::connect(list, &ListEdit::Changed, context, edited);
+  if (chips) QObject::connect(chips, &ChipToggles::Changed, context, edited);
+}
+
+void SettingEditor::Embed(SettingEditor& shown) {
+  if (line == nullptr || shown.chips == nullptr) return;
+  auto* box = new QFrame(row);
+  box->setObjectName("script_box");
+  auto* layout = new QVBoxLayout(box);
+  layout->setContentsMargins(8, 8, 8, 4);
+  layout->setSpacing(6);
+  layout->addWidget(shown.chips);
+  // Out of the row's controls, into the box under the chips, as wide as the box.
+  line->setMinimumWidth(0);
+  line->setMaximumWidth(QWIDGETSIZE_MAX);
+  line->setFrame(false);
+  line->setObjectName("script_line");
+  line->setPlaceholderText("Commands, or a script's path");
+  layout->addWidget(line);
+  row->SetBelow(box);
+  shown.row->hide();
+  row->Include(shown.row);
+  QObject::connect(row, &SettingRow::RevertClicked, shown.row, &SettingRow::RevertClicked);
+}
+
+void PairChoices(const SettingEditor& first, const SettingEditor& second) {
+  ChipToggles* from = first.chips;
+  ChipToggles* to = second.chips;
+  if (from == nullptr || to == nullptr) return;
+  QObject::connect(from, &ChipToggles::Clicked, to, [from, to](const QString& value, bool on) {
+    const auto& choices = from->Choices();
+    const auto it = std::ranges::find(choices, value, &ChipToggles::Choice::value);
+    if (it != choices.end() && !it->pair.isEmpty()) to->SetOn(it->pair, on);
+  });
+  QObject::connect(from, &ChipToggles::Changed, to,
+                   [from, to] { to->SetPairValues(from->Values()); });
+  to->SetPairValues(from->Values());
 }
 
 void ShowRunnerRef(QComboBox* combo, const QString& ref) {
