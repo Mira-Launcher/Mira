@@ -86,6 +86,14 @@ void RegisterConfigRoutes(Router& http, Services& s) {
       });
       // Present only when there's a shape to describe.
       if (!entry.constraint.one_of.empty()) entries.back()["one_of"] = entry.constraint.one_of;
+      for (const config::Choice& choice : entry.constraint.choices) {
+        json item = {{"value", choice.value}, {"label", choice.label}, {"doc", choice.doc}};
+        if (!choice.pair.empty()) item["pair"] = choice.pair;
+        if (choice.needs_pair) item["needs_pair"] = true;
+        entries.back()["choices"].push_back(std::move(item));
+      }
+      if (!entry.shown_in.empty()) entries.back()["shown_in"] = entry.shown_in;
+      if (!entry.paired_key.empty()) entries.back()["paired_key"] = entry.paired_key;
       if (entry.constraint.minimum) entries.back()["minimum"] = *entry.constraint.minimum;
       if (entry.constraint.maximum) entries.back()["maximum"] = *entry.constraint.maximum;
       if (!entry.game_doc.empty()) entries.back()["game_doc"] = entry.game_doc;

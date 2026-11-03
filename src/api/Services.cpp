@@ -25,6 +25,7 @@
 #include "library/FolderTags.h"
 #include "library/PrefixNaming.h"
 #include "library/Scanner.h"
+#include "library/ScriptPresets.h"
 #include "library/SourceRegistry.h"
 #include "library/SourceRemoval.h"
 #include "library/Stores.h"
@@ -493,7 +494,9 @@ void Services::WatchExternalGames() {
       if (!info.steam_launch.empty()) steam_running.insert(info.steam_launch);
     }
     const auto post_script = [&](const model::Game& game) {
-      return config::Resolver(config, game.overrides).GetString("launch.post_script");
+      // Not its post-exit steps: started outside Mira, the game never ran its pre-launch ones.
+      return library::OwnScript(
+          config::Resolver(config, game.overrides).GetString("launch.post_script"));
     };
     const auto post_timeout = [&](const model::Game& game) {
       return config::Resolver(config, game.overrides).GetInt("launch.post_timeout_s");
