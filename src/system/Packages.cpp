@@ -267,6 +267,19 @@ std::vector<std::string> InstalledPackages(std::string_view feature) {
   return packages;
 }
 
+std::vector<std::string> InstallFileCommand(Family family, const std::string& file) {
+  switch (family) {
+    case Family::Debian:
+      return {"apt-get", "install", "-y", file};
+    case Family::Fedora:
+      return {"dnf", "install", "-y", "--nogpgcheck", file};
+    case Family::Suse:
+      return {"zypper", "--non-interactive", "install", "--allow-unsigned-rpm", file};
+    default:
+      return {};
+  }
+}
+
 std::vector<std::string> UninstallCommand(Family family, const std::vector<std::string>& packages) {
   if (packages.empty()) return {};
   std::vector<std::string> argv;

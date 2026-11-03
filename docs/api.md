@@ -673,7 +673,15 @@ What has a newer release: Mira itself, and the emulators, store tools, umu and r
  { "kind": "emulator", "id": "duckstation", "name": "DuckStation", "installed": "latest", "latest": "latest", "url": "" }]
 ```
 
-`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference. comet is a `tool` with `id` `gog`, since GOG's setup updates it; while GOG's gogdl is Mira's copy and comet isn't there yet (GOG set up before Mira fetched comet), it's listed with `installed` empty. Epic's EOS overlay isn't listed: it has no release to compare with, and Epic's setup updates it. Mira's is the release at `url`. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+`?refresh=1` asks every source again instead of using its answer from the last ten minutes.
+
+`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/umu/setup` for `umu`), `runner` through `POST /v1/runners/update` with `id` as the reference, `mira` through `POST /v1/updates/mira`. A `mira` entry's `install` says how this copy updates: `appimage`, `deb` or `rpm` by itself, `manual` for an install it can't replace (Arch, rpm-ostree, files it doesn't own), `none` for a build of your own. comet is a `tool` with `id` `gog`, since GOG's setup updates it; while GOG's gogdl is Mira's copy and comet isn't there yet (GOG set up before Mira fetched comet), it's listed with `installed` empty. Epic's EOS overlay isn't listed: it has no release to compare with, and Epic's setup updates it. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+
+### `POST /v1/updates/mira`
+A [job](#jobs) of kind `mira_update` that downloads Mira's latest release and checks it against the SHA-256 GitHub lists for it; one with no such digest or a different one fails (`checksum_missing`, `checksum_mismatch`) and changes nothing. An AppImage is then swapped in place for the next start to run, which needs write access to its folder (`update_not_writable`). The result is `{"install": [argv...]}`: the command a client runs as root to install a downloaded `.deb` or `.rpm`, empty for an AppImage. mirad removes a package left behind when it next starts.
+
+### `POST /v1/shutdown`
+`202`, then mirad stops as on SIGTERM, for a client replacing it with a newer one. Games keep running and are adopted when it starts again.
 
 `emulators.<id>.repo` switches an emulator Mira downloads to a fork: `owner/repo` or a GitHub link, or a Forgejo or GitLab releases API link. The fork's release then no longer matches what's installed, so it shows here as an update.
 

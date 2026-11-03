@@ -1,15 +1,21 @@
 #include "updates/Updates.h"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <future>
+#include <mutex>
 #include <optional>
 #include <sstream>
 
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "emulators/Emulators.h"
 #include "library/Stores.h"
 #include "runner/Downloader.h"
@@ -53,21 +59,65 @@ bool Behind(const runner::InstalledTool& installed, const runner::ReleaseAsset& 
 
 constexpr const char* kMiraRepo = "Mira-Launcher/Mira";
 
-std::optional<Update> MiraUpdate() {
-  const auto latest = runner::LatestRelease(
-      std::format("https://api.github.com/repos/{}/releases/latest", kMiraRepo), "*.AppImage");
+std::string LatestUrl() {
+  return std::format("https://api.github.com/repos/{}/releases/latest", kMiraRepo);
+}
+
+bool IsNewer(const std::string& tag) {
+  return strverscmp(WithoutV(tag).c_str(), MIRA_VERSION) > 0;
+}
+
+// This process's own: it doesn't change while running, and asking takes a package manager's time.
+const std::string& InstallKind() {
+  static const std::string kind = [] {
+    const char* appimage = std::getenv("APPIMAGE");
+    std::error_code ec;
+    const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+    return ClassifyInstall(appimage != nullptr ? appimage : "", exe, system::DetectDistro().family,
+                           [](const std::vector<std::string>& argv) {
+                             Command command;
+                             command.argv = argv;
+                             const auto result = runner::RunAndWait(command);
+                             return result && result->exit_code == 0;
+                           });
+  }();
+  return kind;
+}
+
+// GitHub allows 60 unauthenticated requests an hour, so as long as the release lists are cached.
+std::optional<Update> MiraUpdate(bool refresh) {
+  using Clock = std::chrono::steady_clock;
+  static std::mutex mutex;
+  static std::optional<Clock::time_point> checked;
+  static std::optional<Update> found;
+  {
+    std::lock_guard lock(mutex);
+    if (!refresh && checked && Clock::now() - *checked < std::chrono::minutes(10)) return found;
+  }
+  const auto latest = runner::LatestRelease(LatestUrl(), "*.AppImage");
   if (!latest) {
     log::Warn("couldn't check for a Mira update: {}", latest.error().message);
     return std::nullopt;
   }
-  if (strverscmp(WithoutV(latest->tag).c_str(), MIRA_VERSION) <= 0) return std::nullopt;
-  return Update{
-      .kind = "mira",
-      .id = "mira",
-      .name = "Mira",
-      .installed = MIRA_VERSION,
-      .latest = latest->tag,
-      .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, latest->tag)};
+  std::optional<Update> update;
+  if (IsNewer(latest->tag)) {
+    update =
+        Update{.kind = "mira",
+               .id = "mira",
+               .name = "Mira",
+               .installed = MIRA_VERSION,
+               .latest = latest->tag,
+               .url = std::format("https://github.com/{}/releases/tag/{}", kMiraRepo, latest->tag),
+               .install = InstallKind()};
+  }
+  std::lock_guard lock(mutex);
+  checked = Clock::now();
+  found = update;
+  return update;
+}
+
+fs::path PackageDir() {
+  return paths::EnvOr("XDG_CACHE_HOME", paths::Home() / ".cache") / "mira" / "update";
 }
 
 std::optional<Update> EmulatorUpdate(const config::Config& config,
@@ -127,9 +177,89 @@ std::optional<Update> ToolUpdate(const config::Config& config, const std::string
 
 }  // namespace
 
-std::vector<Update> FindUpdates(config::Config& config) {
+std::string ClassifyInstall(const std::string& appimage, const fs::path& exe, system::Family family,
+                            const std::function<bool(const std::vector<std::string>&)>& succeeds) {
+  if (!appimage.empty()) return "appimage";
+  const std::string path = exe.string();
+  if (!path.starts_with("/usr/") && !path.starts_with("/opt/")) return "none";
+  if (family == system::Family::Debian && succeeds({"dpkg", "-S", path})) return "deb";
+  if ((family == system::Family::Fedora || family == system::Family::Suse) &&
+      succeeds({"rpm", "-qf", path}))
+    return "rpm";
+  return "manual";
+}
+
+Result<nlohmann::json> DownloadMira(
+    const std::function<void(int percent, const std::string& message)>& on_progress) {
+  const std::string& kind = InstallKind();
+  if (kind != "appimage" && kind != "deb" && kind != "rpm")
+    return Err("update_unsupported", "this copy of Mira can't update itself");
+  const auto latest = runner::LatestRelease(
+      LatestUrl(), std::format("*.{}", kind == "appimage" ? "AppImage" : kind));
+  if (!latest) return std::unexpected(latest.error());
+  if (!IsNewer(latest->tag)) return Err("no_update", "this is already the latest Mira");
+  const auto progress = [&on_progress, total = latest->size_bytes](double fraction) {
+    constexpr std::int64_t kMegabyte = 1000 * 1000;
+    on_progress(
+        static_cast<int>(fraction * 100),
+        std::format("{} MB of {} MB", static_cast<std::int64_t>(fraction * total) / kMegabyte,
+                    total / kMegabyte));
+  };
+
+  std::error_code ec;
+  if (kind == "appimage") {
+    const fs::path appimage = std::getenv("APPIMAGE");
+    const fs::path folder = appimage.parent_path();
+    // Beside it, since only a rename within its folder can't leave half a file behind.
+    if (::access(folder.c_str(), W_OK) != 0)
+      return Err("update_not_writable",
+                 std::format("Mira can't write to {}. Move its AppImage to a folder you own, or "
+                             "replace it by hand.",
+                             folder.string()));
+    fs::path download = appimage;
+    download += ".update";
+    if (auto downloaded = runner::DownloadWithDigest(*latest, download, progress); !downloaded)
+      return std::unexpected(downloaded.error());
+    fs::permissions(download,
+                    fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
+                        fs::perms::others_read | fs::perms::others_exec,
+                    ec);
+    if (!ec) fs::rename(download, appimage, ec);
+    if (ec) {
+      std::error_code ignored;
+      fs::remove(download, ignored);
+      return Err("update_failed",
+                 std::format("couldn't replace {}: {}", appimage.string(), ec.message()));
+    }
+    log::Info("replaced {} with Mira {}", appimage.string(), latest->tag);
+    return nlohmann::json{{"install", nlohmann::json::array()}};
+  }
+
+  const fs::path folder = PackageDir();
+  fs::create_directories(folder, ec);
+  if (ec)
+    return Err("update_failed",
+               std::format("couldn't create {}: {}", folder.string(), ec.message()));
+  const fs::path package = folder / latest->asset_name;
+  if (auto downloaded = runner::DownloadWithDigest(*latest, package, progress); !downloaded)
+    return std::unexpected(downloaded.error());
+  const auto install = system::InstallFileCommand(system::DetectDistro().family, package.string());
+  if (install.empty()) {
+    RemoveDownloadedMira();
+    return Err("update_unsupported", "Mira doesn't know how to install a package on this system");
+  }
+  return nlohmann::json{{"install", install}};
+}
+
+void RemoveDownloadedMira() {
+  std::error_code ec;
+  fs::remove_all(PackageDir(), ec);
+}
+
+std::vector<Update> FindUpdates(config::Config& config, bool refresh) {
+  if (refresh) runner::ForgetCachedReleases();
   std::vector<std::future<std::optional<Update>>> checks;
-  checks.push_back(std::async(std::launch::async, MiraUpdate));
+  checks.push_back(std::async(std::launch::async, MiraUpdate, refresh));
   for (const emulators::Emulator& emulator : emulators::All()) {
     if (!emulators::Downloads(emulator)) continue;
     checks.push_back(std::async(std::launch::async,
