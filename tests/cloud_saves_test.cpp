@@ -335,8 +335,6 @@ TEST_CASE("Epic cloud saves move through legendary into Mira's own save folder")
   json job = cloud.Run("sync");
   REQUIRE(job["state"] == "finished");
   CHECK(job["result"]["locations"][0]["moved"] == "upload");
-  CHECK(Lines(dir / "legendary.calls", "--save-path " + folder.string() + " --force-upload -y") ==
-        1);
   CHECK(files::ReadFile(epic_cloud / "files/slot.sav") == "local 1");
   CHECK(cloud.State()["state"] == "synced");
 

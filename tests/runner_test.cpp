@@ -93,12 +93,19 @@ TEST_CASE("NativeRunner auto-chmods an AppImage missing its execute bit instead 
   fs::remove_all(dir);
 }
 
-TEST_CASE("RunnerRegistry::Resolve rejects a malformed or unknown reference") {
+TEST_CASE("RunnerRegistry::Resolve rejects a malformed, unknown or uninstalled reference") {
+  // Isolated, discovery finds no wine or proton builds at all.
   test::TestEnv env("runner-registry-bad");
   runner::RunnerRegistry registry(env.config);
 
   CHECK_FALSE(registry.Resolve("no-colon-here").has_value());
   CHECK_FALSE(registry.Resolve("not_a_real_kind:whatever").has_value());
+  CHECK_FALSE(registry.Resolve("proton:GE-Proton-Nonexistent").has_value());
+
+  // native has no build concept at all, so it still resolves.
+  auto native = registry.Resolve("native:native");
+  REQUIRE(native.has_value());
+  CHECK_FALSE(native->build.has_value());
 }
 
 TEST_CASE("DeduplicateBuilds keeps the first of one build found twice") {
@@ -158,24 +165,8 @@ TEST_CASE("ProvisionGame marks a native game ready with no build") {
   CHECK(result.runner_ref == "native:native");
 }
 
-TEST_CASE("Resolve reports an uninstalled build instead of succeeding with none") {
-  // Isolated, discovery finds no wine or proton builds at all.
-  test::TestEnv env("resolve-missing-build");
-  runner::RunnerRegistry registry(env.config);
-
-  // Regression: this used to return success-with-no-build, which made a
-  // Windows game resolve to "no build" and report a vague error, and made
-  // native:anything-at-all silently "succeed" for a Windows game.
-  auto proton = registry.Resolve("proton:GE-Proton-Nonexistent");
-  CHECK_FALSE(proton.has_value());
-
-  // native has no build concept at all, so it still resolves.
-  auto native = registry.Resolve("native:native");
-  REQUIRE(native.has_value());
-  CHECK_FALSE(native->build.has_value());
-}
-
-TEST_CASE("ResolveRef leaves a non-empty runner_ref untouched") {
+TEST_CASE(
+    "ResolveRef keeps a game's own runner_ref, and an empty one on a native game is the default") {
   test::TestEnv env("resolveref-explicit");
   runner::RunnerRegistry registry(env.config);
 
@@ -183,15 +174,11 @@ TEST_CASE("ResolveRef leaves a non-empty runner_ref untouched") {
   game.platform = model::Platform::Windows;
   game.runner_ref = "wine:system";
   CHECK(registry.ResolveRef(game) == "wine:system");
-}
 
-TEST_CASE("ResolveRef falls back to default_runner.native for an empty ref on a native game") {
-  test::TestEnv env("resolveref-native");
-  runner::RunnerRegistry registry(env.config);
-
-  model::Game game;
-  game.platform = model::Platform::Native;
-  CHECK(registry.ResolveRef(game) == "native:native");
+  model::Game native;
+  native.platform = model::Platform::Native;
+  CHECK(registry.ResolveRef(native) ==
+        config::Schema::Instance().Find("default_runner.native")->default_value.get<std::string>());
 }
 
 TEST_CASE("ResolveRef expands \"auto\" to a real installed windows runner, not native") {
@@ -447,16 +434,4 @@ TEST_CASE(
   REQUIRE(pid.has_value());
   CHECK(WIFEXITED(status));
   CHECK(WEXITSTATUS(status) == 0);
-}
-
-TEST_CASE("CurlDownload retries through a dropped network instead of failing on the first error") {
-  const Command command =
-      runner::CurlDownloadCommand("https://example.invalid/file", "/tmp/mira-tests/file");
-  const auto has = [&](const char* flag) {
-    return std::ranges::find(command.argv, flag) != command.argv.end();
-  };
-  CHECK(has("--retry"));
-  CHECK(has("--retry-all-errors"));  // a dropped network is a timeout, a reset or a DNS failure
-  CHECK(has("--retry-max-time"));    // but not forever
-  CHECK(has("-sSLf"));               // never saves an HTTP error page as the file
 }

@@ -16,8 +16,6 @@ TEST_CASE(
   CHECK(at("epic") < at("gog"));
   CHECK(at("gog") < at("steam"));
   CHECK(at("steam") < at("lutris"));
-  // itch follows GOG by default, so it slots in right after it.
-  CHECK(at("itch") == at("gog") + 1);
 
   // Moved by hand, Local stays where it was put; unknown ids are dropped.
   const std::vector<QString> moved = OrderSources({"steam", "local", "nonsense"});

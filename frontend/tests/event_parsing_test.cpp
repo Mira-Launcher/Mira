@@ -10,31 +10,22 @@ using namespace mira_gui;
 // a malformed or unexpected payload has to be a no-op, never a crash and
 // never a half-applied update.
 
-TEST_CASE("ParseGameSummary accepts the full record game.added carries") {
+TEST_CASE("ParseGameSummary reads game.added's record, and nothing else") {
   GameSummary game;
   REQUIRE(events::ParseGameSummary(
       R"({"id": "blue-prince", "name": "Blue Prince", "status": "ready",
           "platform": "windows", "confidence": 1.0, "play_seconds": 0})",
       &game));
   CHECK(game.id == "blue-prince");
-  CHECK(game.name == "Blue Prince");
-  CHECK(game.status == "ready");
-}
 
-TEST_CASE("ParseGameSummary rejects anything that isn't a JSON object") {
-  GameSummary game;
   CHECK_FALSE(events::ParseGameSummary("", &game));
   CHECK_FALSE(events::ParseGameSummary("not json", &game));
   CHECK_FALSE(events::ParseGameSummary("[]", &game));
   CHECK_FALSE(events::ParseGameSummary("null", &game));
   CHECK_FALSE(events::ParseGameSummary("42", &game));
-}
 
-TEST_CASE("ParseGameSummary rejects a payload from a different event") {
-  // The real case: runners.download.started shares the event stream with
-  // game.added, and without an id check its payload parsed into a game with
-  // every field empty, one blank tile in the library per runner download.
-  GameSummary game;
+  // runners.download.started shares the stream with game.added: without an id check its payload
+  // would be a blank tile in the library.
   CHECK_FALSE(events::ParseGameSummary(R"({"kind": "proton", "tag": "GE-Proton11-7"})", &game));
   CHECK_FALSE(events::ParseGameSummary(R"({"id": ""})", &game));
   CHECK_FALSE(events::ParseGameSummary(R"({"id": 42})", &game));
@@ -118,7 +109,7 @@ TEST_CASE("ParseMetadataEvent carries the code, not just the message") {
   CHECK_FALSE(events::ParseMetadataEvent("not json", &event));
 }
 
-TEST_CASE("ParseGameState reads the launch/exit signal") {
+TEST_CASE("ParseGameState reads the launch/exit signal, and needs an id to act on") {
   GameStateEvent state;
   REQUIRE(events::ParseGameState(R"({"id": "x", "state": "running", "pid": 1234})", &state));
   CHECK(state.id == "x");
@@ -127,6 +118,10 @@ TEST_CASE("ParseGameState reads the launch/exit signal") {
   REQUIRE(events::ParseGameState(
       R"({"id": "x", "state": "crashed", "exit_code": 139, "played_seconds": 11})", &state));
   CHECK(state.state == "crashed");
+
+  // Acting on the wrong row is worse than ignoring the event.
+  CHECK_FALSE(events::ParseGameState(R"({"state": "running"})", &state));
+  CHECK_FALSE(events::ParseGameState("not json", &state));
 }
 
 TEST_CASE("ParseCatalogCheck tells a store's re-check starting from one that changed its list") {
@@ -140,14 +135,6 @@ TEST_CASE("ParseCatalogCheck tells a store's re-check starting from one that cha
   CHECK(check.changed);
   CHECK_FALSE(events::ParseCatalogCheck("library.install.started", R"({"source": "gog"})", &check));
   CHECK_FALSE(events::ParseCatalogCheck("library.catalog_checked", R"({"changed": true})", &check));
-}
-
-TEST_CASE("ParseGameState requires an id") {
-  // Without one there is no row to act on, and acting on the wrong row is
-  // worse than ignoring the event.
-  GameStateEvent state;
-  CHECK_FALSE(events::ParseGameState(R"({"state": "running"})", &state));
-  CHECK_FALSE(events::ParseGameState("not json", &state));
 }
 
 TEST_CASE("ParseRemovedIds reads games.removed and ignores anything malformed") {
@@ -189,17 +176,14 @@ TEST_CASE("ParseRunnerDownload reads the state from the event type and ignores u
   CHECK_FALSE(events::ParseRunnerDownload("runners.download.finished", "not json", &event));
 }
 
-TEST_CASE("ParseTricksEvent ignores unrelated event types") {
+TEST_CASE("ParseTricksEvent extracts id, verb, state and error, and ignores other events") {
   // Same shared-stream hazard as runner downloads: the Winetricks card must
-  // not mistake a game.updated (or someone else's tricks event) for its own.
+  // not mistake a game.updated for its own.
   TricksEvent event;
   CHECK_FALSE(events::ParseTricksEvent("game.added", R"({"id": "x"})", &event));
   CHECK_FALSE(events::ParseTricksEvent("runners.download.started", R"({})", &event));
   CHECK(events::ParseTricksEvent("tricks.started", R"({})", &event));
-}
 
-TEST_CASE("ParseTricksEvent extracts id, verb, state and error") {
-  TricksEvent event;
   REQUIRE(events::ParseTricksEvent(
       "tricks.failed", R"({"id": "x", "verb": "corefonts", "error": "winetricks not found"})",
       &event));

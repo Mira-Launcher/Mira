@@ -127,6 +127,9 @@ TEST_CASE("A list setting round-trips unchanged, items with commas included") {
   CHECK(mapping::TypedValueFromText("an array of strings", mapping::ListText({"*.{txt,log}"})) ==
         json::parse(R"(["*.{txt,log}"])"));
   CHECK(mapping::ParseListText(mapping::ToDisplayString(json::array())).empty());
+  // Empty items are dropped rather than sent.
+  CHECK(mapping::ParseListText(R"(["", "a", ""])") == std::vector<std::string>{"a"});
+  CHECK(mapping::ParseListText("").empty());
 }
 
 TEST_CASE("A merge patch between two objects sends changed keys and removes cleared ones") {
@@ -139,11 +142,6 @@ TEST_CASE("A merge patch between two objects sends changed keys and removes clea
   CHECK(applied == after);
 }
 
-TEST_CASE("A list setting drops empty items rather than sending them") {
-  CHECK(mapping::ParseListText(R"(["", "a", ""])") == std::vector<std::string>{"a"});
-  CHECK(mapping::ParseListText("").empty());
-}
-
 TEST_CASE("TypedValueFromText converts by schema type, not by looks") {
   // The schema type is authoritative: "5" under a string key must stay a
   // string, or a PATCH would change the value's JSON kind behind the user.
@@ -154,43 +152,31 @@ TEST_CASE("TypedValueFromText converts by schema type, not by looks") {
   CHECK(mapping::TypedValueFromText("a string", "5") == json("5"));
   CHECK(mapping::TypedValueFromText("an array of strings", R"(["a","b"])") ==
         json::parse(R"(["a","b"])"));
-}
 
-TEST_CASE("TypedValueFromText sends a malformed number as text") {
-  // Deliberate: the server's own validator explains the bad input better
-  // than a client-side guess would, so the typo is forwarded rather than
-  // silently turned into 0.
+  // A malformed number goes as text: the server's validator explains it better than a silent 0.
   CHECK(mapping::TypedValueFromText("an integer", "twelve") == json("twelve"));
   CHECK(mapping::TypedValueFromText("a number", "") == json(""));
 }
 
-TEST_CASE("FlattenConfig produces the dotted keys the schema uses") {
+TEST_CASE("FlattenConfig produces the dotted keys the schema uses, without the frontend table") {
+  // [frontend] is passthrough storage the backend never validates; showing
+  // it in a schema-generated settings screen would offer edits no schema
+  // entry describes. A nested key that happens to be named "frontend" is a real setting.
   std::map<std::string, std::string> out;
   mapping::FlattenConfig(json::parse(R"({
     "auto_setup": true,
     "scan": {"debounce_ms": 1500},
-    "default_runner": {"windows": "proton_umu:auto"}
+    "default_runner": {"windows": "proton_umu:auto"},
+    "frontend": {"window_width": 1180},
+    "desktop_entries": {"frontend": "x"}
   })"),
                          "", out);
 
   CHECK(out["auto_setup"] == "true");
   CHECK(out["scan.debounce_ms"] == "1500");
   CHECK(out["default_runner.windows"] == "proton_umu:auto");
-}
-
-TEST_CASE("FlattenConfig skips the opaque frontend table") {
-  // [frontend] is passthrough storage the backend never validates; showing
-  // it in a schema-generated settings screen would offer edits no schema
-  // entry describes.
-  std::map<std::string, std::string> out;
-  mapping::FlattenConfig(json::parse(R"({
-    "auto_setup": true,
-    "frontend": {"window_width": 1180}
-  })"),
-                         "", out);
-
-  CHECK(out.count("auto_setup") == 1);
   CHECK(out.count("frontend.window_width") == 0);
+  CHECK(out["desktop_entries.frontend"] == "x");
 }
 
 TEST_CASE("FlattenConfig tells a saved secret from an unset one") {
@@ -207,30 +193,17 @@ TEST_CASE("FlattenConfig tells a saved secret from an unset one") {
   CHECK(out.count("secrets_set") == 0);
 }
 
-TEST_CASE("FlattenConfig only skips frontend at the top level") {
-  // A nested key that happens to be named "frontend" is a real setting.
-  std::map<std::string, std::string> out;
-  mapping::FlattenConfig(json::parse(R"({"desktop_entries": {"frontend": "x"}})"), "", out);
-  CHECK(out["desktop_entries.frontend"] == "x");
-}
-
-TEST_CASE("AssignDottedKey rebuilds the nesting PATCH /v1/config expects") {
+TEST_CASE(
+    "AssignDottedKey rebuilds the nesting PATCH /v1/config expects, keys sharing a prefix too") {
+  // Writing the second key of a group must not replace the object the first one created, or
+  // saving two settings in one group would silently drop one of them.
   json document = json::object();
   mapping::AssignDottedKey(document, "scan.debounce_ms", json(1500));
   mapping::AssignDottedKey(document, "auto_setup", json(true));
-  CHECK(document == json::parse(R"({"scan": {"debounce_ms": 1500}, "auto_setup": true})"));
-}
-
-TEST_CASE("AssignDottedKey merges two keys sharing a prefix") {
-  // Both edits have to survive: writing the second must not replace the
-  // object the first one created, or saving two settings in one group would
-  // silently drop one of them.
-  json document = json::object();
   mapping::AssignDottedKey(document, "default_runner.windows", json("proton_umu:auto"));
   mapping::AssignDottedKey(document, "default_runner.native", json("native:native"));
-  CHECK(document["default_runner"].size() == 2);
-  CHECK(document["default_runner"]["windows"] == "proton_umu:auto");
-  CHECK(document["default_runner"]["native"] == "native:native");
+  CHECK(document == json::parse(R"({"scan": {"debounce_ms": 1500}, "auto_setup": true,
+    "default_runner": {"windows": "proton_umu:auto", "native": "native:native"}})"));
 }
 
 TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {
@@ -277,7 +250,7 @@ TEST_CASE("Play offers the default launch option first, and only it when asked")
   std::vector<PlayChoice> choices = PlayChoices(game, false);
   REQUIRE(choices.size() == 2);
   CHECK(choices[0].option == "olympus");
-  CHECK(choices[1].label == "Play directly");
+  CHECK(choices[1].option == "game");
   CHECK(ToolChoices(game).front().option == "vortex");
   game.launch.only = true;
   CHECK(PlayChoices(game, false).size() == 1);

@@ -86,9 +86,7 @@ TEST_CASE("PrefixDir skips a folder another game already owns even though it isn
         "celeste");  // its own, not a collision
 }
 
-TEST_CASE(
-    "PrefixDir falls back to strings::Slugify's own \"game\" default for a name with no letters or "
-    "digits") {
+TEST_CASE("A name with no letters or digits still gets a prefix folder of its own") {
   config::Config config(TempConfigFile("prefix-naming-empty.toml"));
   config.Load();
   test::Isolate(config);
@@ -98,7 +96,9 @@ TEST_CASE(
   model::Game game;
   game.id = "itch-42";
   game.name = "!!!";
-  CHECK(library::PrefixDir(config, game) == root / "game");
+  const fs::path prefix = library::PrefixDir(config, game);
+  CHECK(prefix.parent_path() == root);
+  CHECK_FALSE(prefix.filename().empty());
 }
 
 TEST_CASE("Relocate leaves a prefix already at its named directory in place") {

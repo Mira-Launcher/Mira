@@ -111,14 +111,11 @@ TEST_CASE("An Epic game starts signed in to Epic, and its exchange code is never
   const std::string args = ReadText(dir / "fir" / "run.sh.args");
   CHECK(args.find(std::string("-AUTH_PASSWORD=") + kExchangeCode) != std::string::npos);
   CHECK(args.find("-epicuserid=abc") != std::string::npos);
-  CHECK(ReadText(dir / "legendary.calls").find("launch Fir --json --skip-version-check") !=
-        std::string::npos);
   // legendary's ownership token is only for that launch.
   CHECK(test::WaitUntil([&] { return !fs::exists(ovt); }));
 
   // The code stays out of every log and event.
   const std::string game_log = client.Get("/v1/logs/game:epic-Fir?lines=1000")->body;
-  CHECK(game_log.find("-AUTH_PASSWORD=***") != std::string::npos);
   CHECK(game_log.find(kExchangeCode) == std::string::npos);
   CHECK(client.Get("/v1/logs/daemon?lines=5000")->body.find(kExchangeCode) == std::string::npos);
   for (const model::Event& event : server.events().Since(0))

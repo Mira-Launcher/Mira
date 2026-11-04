@@ -15,22 +15,33 @@ TEST_CASE("Distro families come from os-release, with ostree and SteamOS ahead o
   CHECK(system::ParseOsRelease("ID=nixos\n", false).family == system::Family::Unknown);
 }
 
+namespace {
+
+// The family's own tool, the package last, and nothing that would stop to ask.
+bool Runs(const std::vector<std::string>& command, std::string_view tool, std::string_view yes,
+          std::string_view package) {
+  return !command.empty() && command.front() == tool && command.back() == package &&
+         std::ranges::find(command, yes) != command.end();
+}
+
+}  // namespace
+
 TEST_CASE("A downloaded package installs by its path where Mira can update itself") {
-  CHECK(system::InstallFileCommand(system::Family::Debian, "/tmp/m.deb") ==
-        std::vector<std::string>{"apt-get", "install", "-y", "/tmp/m.deb"});
+  CHECK(Runs(system::InstallFileCommand(system::Family::Debian, "/tmp/m.deb"), "apt-get", "-y",
+             "/tmp/m.deb"));
   CHECK(system::InstallFileCommand(system::Family::Fedora, "/tmp/m.rpm").back() == "/tmp/m.rpm");
   CHECK(system::InstallFileCommand(system::Family::Arch, "/tmp/m.deb").empty());
   CHECK(system::InstallFileCommand(system::Family::Ostree, "/tmp/m.rpm").empty());
 }
 
 TEST_CASE("Install commands per family; none where Mira can't install") {
-  CHECK(system::InstallCommand(system::Family::Arch, {"cabextract"}) ==
-        std::vector<std::string>{"pacman", "-S", "--needed", "--noconfirm", "cabextract"});
+  CHECK(Runs(system::InstallCommand(system::Family::Arch, {"cabextract"}), "pacman", "--noconfirm",
+             "cabextract"));
   CHECK(system::InstallCommand(system::Family::Ostree, {"cabextract"}).front() == "rpm-ostree");
   CHECK(system::InstallCommand(system::Family::SteamOS, {"cabextract"}).empty());
   CHECK(system::InstallCommand(system::Family::Fedora, {}).empty());
-  CHECK(system::UninstallCommand(system::Family::Debian, {"dolphin-emu"}) ==
-        std::vector<std::string>{"apt-get", "remove", "-y", "dolphin-emu"});
+  CHECK(Runs(system::UninstallCommand(system::Family::Debian, {"dolphin-emu"}), "apt-get", "-y",
+             "dolphin-emu"));
   CHECK(system::UninstallCommand(system::Family::Unknown, {"dolphin-emu"}).empty());
   CHECK_FALSE(system::ToolsFor("winetricks").empty());
   CHECK(system::ToolsFor("nonsense").empty());

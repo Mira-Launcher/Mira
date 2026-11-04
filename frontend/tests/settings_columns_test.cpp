@@ -69,7 +69,7 @@ TEST_CASE("Settings pages use fewer columns when that is nearly as short") {
   CHECK(plan.columns.size() == 2);
 }
 
-TEST_CASE("Settings columns stay fast and valid for long pages") {
+TEST_CASE("Settings columns stay valid for long pages") {
   std::vector<int> heights(14, 100);
   CheckValid(Balance(heights, 4), 14);
 }

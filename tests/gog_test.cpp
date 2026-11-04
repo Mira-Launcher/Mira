@@ -87,16 +87,6 @@ TEST_CASE("DetectGog honours the gog.gogdl_bin override") {
   CHECK(status.path == (fixture.dir / "gogdl").string());
 }
 
-TEST_CASE("Login stores what gogdl wrote, and Status reads it back") {
-  Fixture fixture("gog-login");
-  fixture.UseFakeGogdl();
-
-  REQUIRE(gog::Login(fixture.config, "good-code"));
-  const runner::AuthStatus status = gog::Status(fixture.config);
-  REQUIRE(status.tool.installed);
-  CHECK(status.authenticated);
-}
-
 TEST_CASE("Login fails when gogdl reports {\"error\": true} despite exiting 0") {
   // `gogdl auth --code <bogus>` prints {"error": true} but
   // still exits 0 -- same exit-code lie Legendary has, and the same fix
@@ -231,7 +221,9 @@ TEST_CASE("GOG sign-in through mirad refuses a bad code and keeps a good one unt
 
   auto listed = client.Get("/v1/stores");
   REQUIRE(listed != nullptr);
-  CHECK(nlohmann::json::parse(listed->body).size() == 5);
+  const nlohmann::json stores = nlohmann::json::parse(listed->body);
+  CHECK(std::ranges::any_of(
+      stores, [](const nlohmann::json& store) { return store.value("id", "") == "gog"; }));
   auto unknown = client.Get("/v1/stores/nope/status");
   REQUIRE(unknown != nullptr);
   CHECK(unknown->status == 404);

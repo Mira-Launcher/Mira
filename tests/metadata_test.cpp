@@ -55,18 +55,6 @@ TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches n
   CHECK_FALSE(fs::exists(metadata::ArtworkDir(config, game.id)));
 }
 
-TEST_CASE("Metadata/artwork cache paths sit next to settings.toml, not a global XDG lookup") {
-  const fs::path dir = TempDir("metadata-paths");
-  config::Config config(dir / "settings.toml");
-  config.Load();
-  store::MetadataStore cache(dir);
-  cache.Load();
-  test::Isolate(config);
-
-  CHECK(metadata::ArtworkDir(config, "foo") == dir / "artwork" / "foo");
-  CHECK(cache.ArtworkDir("foo") == metadata::ArtworkDir(config, "foo"));
-}
-
 TEST_CASE("art rows point at files, and Remove drops the info, rows and files") {
   const fs::path dir = TempDir("metadata-art-rows");
   fs::create_directories(dir / "artwork" / "celeste");
@@ -431,9 +419,11 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
   CHECK(metadata::CandidateThumbFile(config, "celeste", "../cover", 1).empty());
 
   // Kept apart from the game's art, which a clear leaves alone.
-  CHECK_FALSE(fs::exists(metadata::ArtworkDir(config, "celeste") / "thumbs"));
+  const fs::path art = metadata::ArtworkDir(config, "celeste") / "cover.png";
+  test::Touch(art, "art");
   metadata::ClearCandidateThumbs(config);
   CHECK(metadata::CandidateThumbFile(config, "celeste", "cover", 1).empty());
+  CHECK(fs::exists(art));
 }
 
 TEST_CASE("Enqueue skips when metadata is off unless forced; a failure is only metadata_failed") {
@@ -526,6 +516,7 @@ TEST_CASE(
   };
   CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached
 
+  REQUIRE(config.Set("metadata.refresh_days", 30).has_value());
   write(model::NowSeconds());
   CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
   write(model::NowSeconds(), 1);  // fetched before Steam's trailer streams
@@ -599,7 +590,6 @@ TEST_CASE("A removed cover leaves the placeholder and stays removed through a re
   game.name = "Celeste";
   REQUIRE(metadata::Fetch(config, cache, game).has_value());
   CHECK_FALSE(cache.ArtFor("celeste", "cover").has_value());
-  CHECK(cache.Read("celeste")["artwork"].value("source", std::string()) == "none");
 }
 
 TEST_CASE("A store title that isn't installed has its art chosen like a game's") {

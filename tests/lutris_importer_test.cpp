@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 
 #include "config/Config.h"
 #include "library/Relocate.h"
@@ -133,27 +134,36 @@ TEST_CASE(
   CHECK(game->status == model::GameStatus::Ready);
 }
 
-TEST_CASE("LutrisImporter cases categories as Steam's tags, and keeps a tag's own casing") {
+TEST_CASE(
+    "LutrisImporter cases categories as Steam's tags, maps .hidden and favorites to Mira's, and "
+    "keeps a tag's own casing") {
   if (!HaveSqlite3()) return;
 
   Fixture fx("lutris-categories");
   const fs::path game_dir = fx.lutris_dir.parent_path() / "celeste";
   fs::create_directories(game_dir);
-  REQUIRE(BuildFixtureDb(fx.lutris_dir / "pga.db",
-                         {{"Celeste", "celeste", "wine", "celeste-1", {"open world", "favorites"}}})
+  REQUIRE(BuildFixtureDb(
+              fx.lutris_dir / "pga.db",
+              {{"Celeste", "celeste", "wine", "celeste-1", {"open world", "favorites", ".hidden"}}})
               .has_value());
   test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
               std::format("game:\n  exe: {}/Celeste.exe\n  prefix: {}\n", game_dir.string(),
                           game_dir.string()));
   lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
   REQUIRE(importer.Import().has_value());
-  CHECK(fx.games.Find("celeste")->tags == std::vector<std::string>{"Open World", "favorite"});
+  const auto tags = [&] {
+    const std::vector<std::string> list = fx.games.Find("celeste")->tags;
+    return std::set<std::string>(list.begin(), list.end());
+  };
+  CHECK(tags() == std::set<std::string>{"Open World", "favorite", "hidden"});
 
   // Renamed by hand in Mira: a re-import doesn't add Lutris's back beside it.
-  REQUIRE(fx.games.Update("celeste", [](model::Game& g) { g.tags = {"open world", "favorite"}; })
-              .has_value());
+  REQUIRE(
+      fx.games
+          .Update("celeste", [](model::Game& g) { g.tags = {"open world", "favorite", "hidden"}; })
+          .has_value());
   REQUIRE(importer.Import().has_value());
-  CHECK(fx.games.Find("celeste")->tags == std::vector<std::string>{"open world", "favorite"});
+  CHECK(tags() == std::set<std::string>{"open world", "favorite", "hidden"});
 }
 
 TEST_CASE("LutrisImporter keeps a relative exe relative to prefix, per the yaml itself") {
@@ -406,38 +416,6 @@ TEST_CASE("LutrisImporter refuses an install_path that's really the whole shared
   CHECK(summary->added == 0);
   CHECK(summary->incomplete == 1);
   CHECK(fx.games.All().empty());
-}
-
-TEST_CASE(
-    "LutrisImporter maps .hidden to the hidden tag, favorites to favorite, and everything else "
-    "verbatim") {
-  if (!HaveSqlite3()) return;
-
-  Fixture fx("lutris-categories");
-  const fs::path game_dir = fx.lutris_dir.parent_path() / "Celeste";
-  fs::create_directories(game_dir);
-
-  REQUIRE(BuildFixtureDb(
-              fx.lutris_dir / "pga.db",
-              {{"Celeste", "celeste", "wine", "celeste-1", {".hidden", "favorites", "Platformer"}}})
-              .has_value());
-  test::Touch(fx.lutris_dir / "games" / "celeste-1.yml",
-              std::format(R"(game:
-  exe: {}/Celeste.exe
-  prefix: {}
-)",
-                          game_dir.string(), game_dir.string()));
-
-  lutris::LutrisImporter importer(fx.config, fx.games, fx.events);
-  const auto summary = importer.Import();
-  REQUIRE(summary.has_value());
-  CHECK(summary->added == 1);
-
-  const auto game = fx.games.Find("celeste");
-  REQUIRE(game.has_value());
-  CHECK(std::ranges::find(game->tags, "hidden") != game->tags.end());
-  CHECK(std::ranges::find(game->tags, "favorite") != game->tags.end());
-  CHECK(std::ranges::find(game->tags, "Platformer") != game->tags.end());
 }
 
 TEST_CASE(

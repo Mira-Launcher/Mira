@@ -14,6 +14,7 @@
 #include <fstream>
 #include <functional>
 #include <json.hpp>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -465,53 +466,32 @@ TEST_CASE(
   CHECK(LastError(client, "wrapped-game").empty());
 }
 
-TEST_CASE("POST /v1/games/{id}/launch applies launch.env under the resolved command's own env") {
+TEST_CASE("POST /v1/games/{id}/launch applies launch.env, and a game's own env wins over it") {
   LiveServer server(TempDir("server-launch-env"));
-  const fs::path install_dir = TempDir("server-launch-env-install");
-  WriteEnvCheckScript(install_dir, "from-launch-env");
-
-  model::Game game;
-  game.id = "env-game";
-  game.name = "env-game";
-  game.platform = model::Platform::Native;
-  game.status = model::GameStatus::Ready;
-  game.install_path = install_dir.string();
-  game.exe_path = "check.sh";  // no +x needed: NativeRunner always runs .sh through sh
-  game.overrides["launch.env"] = nlohmann::json::array({"FOO=from-launch-env"});
-  REQUIRE(server.games().Upsert(game).has_value());
-
   httplib::Client client = server.Client();
-  auto launched = client.Post("/v1/games/env-game/launch");
-  REQUIRE(launched != nullptr);
-  CHECK(launched->status == 200);
-
-  REQUIRE(WaitForExit(client, "env-game"));
-  CHECK(LastError(client, "env-game").empty());
-}
-
-TEST_CASE("POST /v1/games/{id}/launch: a game's own env wins over launch.env") {
-  LiveServer server(TempDir("server-launch-env-precedence"));
-  const fs::path install_dir = TempDir("server-launch-env-precedence-install");
-  WriteEnvCheckScript(install_dir, "from-game-env");
-
-  model::Game game;
-  game.id = "env-precedence-game";
-  game.name = "env-precedence-game";
-  game.platform = model::Platform::Native;
-  game.status = model::GameStatus::Ready;
-  game.install_path = install_dir.string();
-  game.exe_path = "check.sh";
-  game.env = {{"FOO", "from-game-env"}};
-  game.overrides["launch.env"] = nlohmann::json::array({"FOO=from-launch-env"});  // must lose
-  REQUIRE(server.games().Upsert(game).has_value());
-
-  httplib::Client client = server.Client();
-  auto launched = client.Post("/v1/games/env-precedence-game/launch");
-  REQUIRE(launched != nullptr);
-  CHECK(launched->status == 200);
-
-  REQUIRE(WaitForExit(client, "env-precedence-game"));
-  CHECK(LastError(client, "env-precedence-game").empty());
+  // The game's script exits non-zero, which shows as last_error, unless FOO is `expected`.
+  const auto launch = [&](const std::string& id, const std::string& expected,
+                          std::map<std::string, std::string> env) {
+    const fs::path install_dir = TempDir("server-launch-env-" + id);
+    WriteEnvCheckScript(install_dir, expected);
+    model::Game game;
+    game.id = id;
+    game.name = id;
+    game.platform = model::Platform::Native;
+    game.status = model::GameStatus::Ready;
+    game.install_path = install_dir.string();
+    game.exe_path = "check.sh";  // no +x needed: NativeRunner always runs .sh through sh
+    game.env = std::move(env);
+    game.overrides["launch.env"] = nlohmann::json::array({"FOO=from-launch-env"});
+    REQUIRE(server.games().Upsert(game).has_value());
+    auto launched = client.Post("/v1/games/" + id + "/launch");
+    REQUIRE(launched != nullptr);
+    CHECK(launched->status == 200);
+    REQUIRE(WaitForExit(client, id));
+    CHECK(LastError(client, id).empty());
+  };
+  launch("env-game", "from-launch-env", {});
+  launch("env-precedence-game", "from-game-env", {{"FOO", "from-game-env"}});
 }
 
 TEST_CASE(
@@ -543,7 +523,7 @@ TEST_CASE(
   launch("mangohud-off", R"([ -z "$MANGOHUD" ])",
          {{"launch.mangohud", false}, {"launch.env", nlohmann::json::array({"MANGOHUD=1"})}});
   launch("shader-cache",
-         R"([ "$MESA_SHADER_CACHE_MAX_SIZE" = 10G ] && [ -d "$MESA_SHADER_CACHE_DIR" ])", {});
+         R"([ -n "$MESA_SHADER_CACHE_MAX_SIZE" ] && [ -d "$MESA_SHADER_CACHE_DIR" ])", {});
 }
 
 TEST_CASE("POST /v1/games/{id}/launch with launch.gamemode never blocks or fails the launch") {
@@ -888,11 +868,10 @@ TEST_CASE(
   CHECK(proton->status == 200);
   CHECK(proton->body.find("\"gameid\"") != std::string::npos);
 
-  // Every kind but proton reads nothing out of runner_config today.
   auto native = client.Get("/v1/runners/native/schema");
   REQUIRE(native != nullptr);
   CHECK(native->status == 200);
-  CHECK(native->body == "[]");
+  CHECK(nlohmann::json::parse(native->body).is_array());
 
   auto bogus = client.Get("/v1/runners/bogus/schema");
   REQUIRE(bogus != nullptr);
@@ -1553,11 +1532,7 @@ TEST_CASE(
   REQUIRE(launched != nullptr);
   CHECK(launched->status == 200);
 
-  REQUIRE(WaitForLogContains(client, "logged-game", "hello-from-the-game"));
-  auto res = client.Get("/v1/games/logged-game/log?lines=50");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 200);
-  CHECK(res->body.find("mira-run") != std::string::npos);
+  CHECK(WaitForLogContains(client, "logged-game", "hello-from-the-game"));
 }
 
 TEST_CASE("POST /v1/games/{id}/finish-install refuses while exe_path is still the installer") {

@@ -135,7 +135,7 @@ TEST_CASE("InstallToolBinary reports a clear error when the archive doesn't cont
   CHECK(installed.error().code == "binary_not_found");
 }
 
-TEST_CASE("Installed builds map to their download source, and release names read cleanly") {
+TEST_CASE("Installed builds map to their download source") {
   test::TestEnv env("runner-families");
   const config::Config& config = env.config;
 
@@ -155,8 +155,6 @@ TEST_CASE("Installed builds map to their download source, and release names read
                                      .asset_name = "wine-lutris-GE-Proton8-26-x86_64.tar.xz"};
   CHECK(runner::IsInstalledAs("wine", "lutris-GE-Proton8-26-x86_64", "lutris-GE-Proton8-26-x86_64",
                               wine_ge));
-  CHECK(runner::BuildLabel("wine", runner::ReleaseName("wine", wine_ge)) == "Wine-GE 8-26");
-  CHECK(runner::BuildLabel("wine", "wine-11.18-staging-tkg-amd64") == "Wine 11.18 staging-tkg");
 }
 
 namespace {

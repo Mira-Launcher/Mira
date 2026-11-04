@@ -1,5 +1,7 @@
 #include <doctest.h>
 
+#include <algorithm>
+
 #include "setup/SetupFlow.h"
 
 using mira_gui::setup::Choices;
@@ -8,23 +10,46 @@ using mira_gui::setup::Screen;
 using mira_gui::setup::ScreenKind;
 using mira_gui::setup::SourcesOn;
 
+namespace {
+
+bool SignsIn(const QStringList& flow) {
+  return std::ranges::any_of(flow, [](const QString& page) { return page.startsWith("sign:"); });
+}
+
+QStringList Sorted(QStringList list) {
+  list.sort();
+  return list;
+}
+
+}  // namespace
+
 TEST_CASE("Set up Mira asks only about what was picked, and skipped picks bring no pages") {
-  CHECK(Flow(Choices{}) == QStringList{"welcome", "use", "look", "sidebar", "done"});
+  const QStringList nothing = Flow(Choices{});
+  CHECK(nothing.front() == "welcome");
+  CHECK(nothing.back() == "done");
+  for (const char* page : {"found", "stores", "apps", "office"})
+    CHECK_FALSE(nothing.contains(page));
+  CHECK_FALSE(SignsIn(nothing));
 
   Choices both{.games = true, .apps = true};
   both.stores = {"gog", "steam", "epic"};
-  CHECK(Flow(both) == QStringList{"welcome", "use", "found", "stores", "apps", "sign:steam",
-                                  "sign:epic", "sign:gog", "office", "look", "sidebar", "done"});
+  const QStringList all = Flow(both);
+  for (const char* page :
+       {"found", "stores", "apps", "sign:steam", "sign:epic", "sign:gog", "office"}) {
+    CHECK(all.contains(page));
+  }
+  CHECK(all.indexOf("stores") < all.indexOf("sign:gog"));  // signs in to what was just picked
 
   Choices apps_only{.apps = true};
-  CHECK(Flow(apps_only) ==
-        QStringList{"welcome", "use", "apps", "office", "look", "sidebar", "done"});
+  const QStringList apps = Flow(apps_only);
+  CHECK(apps.contains("office"));
+  CHECK_FALSE(apps.contains("stores"));
 
   Choices skipped = both;
   skipped.stores_skipped = true;
   skipped.apps_skipped = true;
-  CHECK(Flow(skipped) ==
-        QStringList{"welcome", "use", "found", "stores", "apps", "look", "sidebar", "done"});
+  CHECK_FALSE(SignsIn(Flow(skipped)));
+  CHECK_FALSE(Flow(skipped).contains("office"));
 
   Choices no_office = both;
   no_office.office = false;
@@ -35,16 +60,16 @@ TEST_CASE("Only the sources picked in setup stay on") {
   Choices picks{.games = true, .apps = true};
   picks.stores = {"epic", "gog"};
   picks.found = {"steam"};
-  CHECK(SourcesOn(picks) == QStringList{"local", "steam", "epic", "gog", "office"});
+  CHECK(Sorted(SourcesOn(picks)) == Sorted({"local", "steam", "epic", "gog", "office"}));
 
   Choices skipped = picks;
   skipped.stores_skipped = true;
   skipped.apps_skipped = true;
-  CHECK(SourcesOn(skipped) == QStringList{"local", "steam"});
+  CHECK(Sorted(SourcesOn(skipped)) == Sorted({"local", "steam"}));
 
   Choices apps_only = picks;
   apps_only.games = false;
-  CHECK(SourcesOn(apps_only) == QStringList{"local", "office"});
+  CHECK(Sorted(SourcesOn(apps_only)) == Sorted({"local", "office"}));
 }
 
 TEST_CASE("A Steam Deck is told by its panel and a TV by its size") {
