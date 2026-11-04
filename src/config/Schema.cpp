@@ -1633,6 +1633,16 @@ Schema::Schema() {
          .doc = "Moves a downloaded game's archives to Archives in the Mira folder instead of "
                 "deleting them once they're extracted."});
 
+  s.Add({.key = "downloads.torbox_key",
+         .label = "TorBox API key",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Optional. With a key, Mira gets torrents through TorBox, uses it for anything it "
+                "already has ready, and falls back to it when a link can't be downloaded directly.",
+         .is_secret = true,
+         .link = "https://torbox.app/settings",
+         .keywords = "debrid service torrent magnet token"});
+
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");
   s.ResetTogether();

@@ -46,3 +46,14 @@ TEST_CASE("a link download's row follows its state") {
   tracker.RemoveLink("abc");
   CHECK(tracker.Entries().empty());
 }
+
+TEST_CASE("A download a service is fetching shows the service and its progress") {
+  DownloadInfo download;
+  download.id = "a";
+  download.state = "service";
+  download.service = "TorBox";
+  download.service_progress = 0.25;
+  const auto entry = DownloadTracker::FromLink(download);
+  CHECK(entry.message == "TorBox is getting it…");
+  CHECK(entry.progress == 0.25);
+}

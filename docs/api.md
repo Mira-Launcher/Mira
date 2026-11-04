@@ -691,13 +691,15 @@ A [job](#jobs) of kind `mira_update` that downloads Mira's latest release and ch
 
 One game's links, downloaded with aria2 (a system package) into `.mira-downloads` in the first Mira folder. Archives are then extracted, and the result moves into the Mira folder, where the usual sorting and install take over. The queue survives a restart of mirad, continuing what's already on disk.
 
+With `downloads.torbox_key` set, torrents go through TorBox. Other links use it when it already has them ready, and fall back to it when they can't be read or their download fails. Items Mira adds stay in the TorBox account.
+
 ### `GET /v1/downloads`
-A list of `{id, name, links, state, files, total, done, speed, password, error?}`. `state` is `queued`, `resolving`, `downloading`, `paused`, `extracting`, `password`, `failed` or `done`. Each of `files` is `{name, source, total, done, state}`. `error` is `{code, message, hint}`; while `state` is `password`, `wrong_password` means the last one tried didn't open it.
+A list of `{id, name, links, state, files, total, done, speed, password, error?}`. `state` is `queued`, `resolving`, `service`, `downloading`, `paused`, `extracting`, `password`, `failed` or `done`. Each of `files` is `{name, source, total, done, state}`. While `state` is `service`, a download service is fetching it and `service` is `{name, progress}`. `error` is `{code, message, hint}`; while `state` is `password`, `wrong_password` means the last one tried didn't open it.
 
 Events: `download.changed` carries one of these whenever it changes, and `download.removed` carries `{id}`.
 
 ### `POST /v1/downloads/check`
-`{"links": ["..."]}` answers `{"files": [{name, size, source}]}` without downloading. `400` when a link can't be used: `link_is_a_page`, `link_not_found`, `link_unreachable`, `link_unreadable`, or `service_needed` for a torrent.
+`{"links": ["..."]}` answers `{"files": [{name, size, source}]}` without downloading. `400` when a link can't be used: `link_is_a_page`, `link_not_found`, `link_unreachable`, `link_unreadable`, or, with no service set up, `service_needed` for a torrent.
 
 ### `POST /v1/downloads`
 `{"name": "...", "links": ["..."], "password": "..."}` queues a game and answers `201` with it. `password` is optional, and is tried before the saved ones.

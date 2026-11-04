@@ -224,6 +224,10 @@ DownloadTracker::Entry DownloadTracker::FromLink(const DownloadInfo& download) {
   }
   if (state == "queued") entry.message = "Queued";
   if (state == "resolving") entry.message = "Checking links…";
+  if (state == "service") {
+    entry.message = QString("%1 is getting it…").arg(QString::fromStdString(download.service));
+    entry.progress = download.service_progress;
+  }
   if (state == "extracting") entry.message = "Extracting…";
   if (state == "password") entry.message = "Waiting for a password";
   if ((state == "downloading" || state == "paused") && download.total > 0) {

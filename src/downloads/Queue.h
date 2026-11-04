@@ -31,10 +31,16 @@ struct Download {
   std::string id;
   std::string name;
   std::vector<std::string> links;
-  std::string state;  // queued, resolving, downloading, paused, extracting, password, failed, done
+  // queued, resolving, service, downloading, paused, extracting, password, failed, done
+  std::string state;
   Error error;
   std::vector<QueuedFile> files;
-  std::string password;  // tried first; from the confirm step or the prompt
+  std::string password;           // tried first; from the confirm step or the prompt
+  bool use_service = false;       // a direct download failed: get everything through the service
+  std::vector<std::string> jobs;  // what the service is fetching for this one
+  std::string service;            // that service's name
+  double service_progress = 0;    // 0 to 1, over `jobs`
+  bool polling = false;
 };
 
 // Runs the download queue. Survives restarts: it's saved on every state change, and what was in
@@ -71,6 +77,8 @@ class Queue {
   void StartNext();
   void PollFiles(Download& download);
   void Fetch(const std::string& id);
+  void PollService(const std::string& id);
+  void StartFiles(Download& download);
   void Finish(const std::string& id);
   Result<void> Extract(const Download& download, const std::filesystem::path& dir);
   void SetState(Download& download, std::string state, Error error = {});
@@ -87,6 +95,7 @@ class Queue {
   std::vector<Download> downloads_;
   Aria2 aria2_;
   std::int64_t applied_limit_ = -1;
+  int ticks_ = 0;
   Lane work_{"downloads", 4};
   std::jthread thread_;
 };

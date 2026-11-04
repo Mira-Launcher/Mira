@@ -344,7 +344,9 @@ QWidget* DownloadsPanel::BuildRow(int index) {
       connect(button, &QPushButton::clicked, this, [this, id, name] { emit LinkAction(id, name); });
       actions->addWidget(button);
     };
-    if (entry.link_state == "downloading" || entry.link_state == "queued") action("Pause", "pause");
+    if (entry.link_state == "downloading" || entry.link_state == "queued" ||
+        entry.link_state == "service")
+      action("Pause", "pause");
     if (entry.link_state == "paused") action("Resume", "resume");
     if (entry.link_state == "failed") action("Retry", "retry");
     if (entry.link_state == "password") {

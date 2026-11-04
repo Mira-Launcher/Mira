@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "downloads/Links.h"
+#include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
 #include "runner/Exec.h"
 #include "support/TestEnv.h"
@@ -55,4 +56,31 @@ TEST_CASE("a file name from a server stays one path part") {
   CHECK(CleanFileName("..", "") == "download");
   CHECK(CleanFileName("", "https://a.example/files/My%20Game.7z?token=1") == "My Game.7z");
   CHECK(CleanFileName("", "https://a.example/") == "download");
+}
+
+TEST_CASE("A service's answer is read, and its file paths stay under the download") {
+  CHECK(SafeRelativePath("Game/sub/setup.exe") == "Game/sub/setup.exe");
+  CHECK(SafeRelativePath("../../etc/./passwd") == "etc/passwd");
+  CHECK(SafeRelativePath("/abs\\..\\x.bin") == "abs/x.bin");
+  CHECK(SafeRelativePath("..") == "download");
+
+  const auto item = nlohmann::json::parse(R"({
+    "download_state": "cached", "download_finished": true, "download_present": true, "progress": 1,
+    "files": [{"id": 1, "name": "Game/setup.exe", "size": 5},
+              {"id": 0, "name": "Game/data/a.bin", "size": 7}]})");
+  const ServiceStatus ready = ParseTorBoxItem(item);
+  CHECK(ready.ready);
+  CHECK(ready.failure.empty());
+  REQUIRE(ready.files.size() == 2);
+  CHECK(ready.files[0].id == "1");
+  CHECK(ready.files[0].path == "setup.exe");
+  CHECK(ready.files[1].path == "data/a.bin");
+
+  const ServiceStatus partial = ParseTorBoxItem(nlohmann::json::parse(
+      R"({"download_state": "downloading", "download_finished": false, "progress": 0.25,
+          "error": null})"));
+  CHECK_FALSE(partial.ready);
+  CHECK(partial.progress == 0.25);
+  CHECK(partial.failure.empty());
+  CHECK_FALSE(ParseTorBoxItem(nlohmann::json{{"download_state", "expired"}}).failure.empty());
 }

@@ -82,7 +82,8 @@ double Fraction(const DownloadInfo& download) {
 
 bool HasRail(const DownloadInfo& download) {
   return download.state == "downloading" || download.state == "paused" ||
-         download.state == "resolving" || download.state == "extracting";
+         download.state == "resolving" || download.state == "service" ||
+         download.state == "extracting";
 }
 
 QString FileProgress(const DownloadFile& file) {
@@ -373,7 +374,7 @@ void DownloadsWindow::Rebuild() {
     }
   };
   section("Needs you", {"password", "failed"});
-  section("Active", {"resolving", "downloading", "paused", "extracting"});
+  section("Active", {"resolving", "service", "downloading", "paused", "extracting"});
   section("Queued", {"queued"});
 
   bool first_store = true;
@@ -453,7 +454,8 @@ QWidget* DownloadsWindow::BuildRow(const DownloadInfo& download) {
     line->addWidget(button);
   };
   if (download.state == "queued") action("Move to front", "front");
-  if (download.state == "downloading" || download.state == "queued") action("Pause", "pause");
+  if (download.state == "downloading" || download.state == "queued" || download.state == "service")
+    action("Pause", "pause");
   if (download.state == "paused") action("Resume", "resume");
   if (download.state == "failed") action("Retry", "retry");
   if (download.state != "extracting") {

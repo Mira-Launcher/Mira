@@ -1473,6 +1473,8 @@ struct DownloadInfo {
   std::int64_t total = 0;
   std::int64_t done = 0;
   std::int64_t speed = 0;
+  std::string service;          // while a download service is fetching it
+  double service_progress = 0;  // 0 to 1
 };
 
 struct DownloadsResult {
