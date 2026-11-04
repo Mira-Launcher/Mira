@@ -711,6 +711,9 @@ Events: `download.changed` carries one of these whenever it changes, and `downlo
 
 These answer `404` for an unknown id, `409` when it isn't in a state to do that.
 
+### `GET /v1/downloads/passwords`, `PUT /v1/downloads/passwords`
+The saved archive passwords as a list of strings, most recently working first. `PUT` takes `{"passwords": ["..."]}` and replaces them.
+
 ## Sources
 
 ### `GET /v1/sources`

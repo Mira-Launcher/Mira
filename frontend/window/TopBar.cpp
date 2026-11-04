@@ -44,11 +44,12 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
 
   layout->addStretch(1);
 
-  mira_update_ = new QToolButton(this);
-  mira_update_->setObjectName("mira_update");
-  mira_update_->hide();
-  connect(mira_update_, &QToolButton::clicked, this, &TopBar::MiraUpdateClicked);
-  layout->addWidget(mira_update_);
+  notice_ = new QToolButton(this);
+  notice_->setObjectName("top_notice");
+  notice_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  notice_->hide();
+  connect(notice_, &QToolButton::clicked, this, &TopBar::NoticeClicked);
+  layout->addWidget(notice_);
 
   zoom_ = new QSlider(Qt::Horizontal, this);
   zoom_->setRange(min_tile, max_tile);
@@ -112,11 +113,16 @@ void TopBar::SetUpdatesCount(int pending) {
   QTimer::singleShot(0, this, &TopBar::PlaceHiddenNote);
 }
 
-void TopBar::SetMiraUpdate(const QString& text, bool busy, const QString& tooltip) {
-  mira_update_->setText(text);
-  mira_update_->setToolTip(tooltip);
-  theme::SetStyleProperty(mira_update_, "busy", busy ? "true" : "false");
-  mira_update_->setVisible(!text.isEmpty());
+QWidget* TopBar::notice_button() const {
+  return notice_;
+}
+
+void TopBar::SetNotice(const QString& text, bool busy, const QString& tooltip, bool lock) {
+  notice_->setText(text);
+  notice_->setToolTip(tooltip);
+  notice_->setIcon(lock ? icons::For(icons::Glyph::Lock, theme::Current().on_accent) : QIcon());
+  theme::SetStyleProperty(notice_, "busy", busy ? "true" : "false");
+  notice_->setVisible(!text.isEmpty());
   QTimer::singleShot(0, this, &TopBar::PlaceHiddenNote);
 }
 
@@ -142,7 +148,7 @@ void TopBar::PlaceHiddenNote() {
   place.moveCenter(rect().center());
   constexpr int kGap = 12;
   hidden_note_->setGeometry(place);
-  const QWidget* tools = mira_update_->isVisible() ? static_cast<QWidget*>(mira_update_) : zoom_;
+  const QWidget* tools = notice_->isVisible() ? static_cast<QWidget*>(notice_) : zoom_;
   hidden_note_->setVisible(place.left() >= brand_->geometry().right() + kGap &&
                            place.right() <= tools->geometry().left() - kGap);
 }

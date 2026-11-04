@@ -99,6 +99,10 @@ The top bar shows `Update` only when Mira itself has a new version, and one clic
 
 ### Activity
 
+Add games has *Download from links*: one paste is one game. `POST /v1/downloads/check` reads the links, then a confirm page offers the name, an optional password and the files. `downloads/LinkDownloads` holds the queue from `download.*` events and feeds `DownloadTracker` as `Kind::Link` rows, which keep to progress and one button (Pause, Resume, Retry or Enter password). *Manage downloads* in Activity opens `downloads/DownloadsWindow`, with the speed, limit, how many at once, each game's files, Cancel, and store installs read-only. Its rows update in place and rebuild only when one changes state, so a password being typed survives.
+
+The top bar has room for one notice, the most important now (`LibraryWindow::SyncUpdates`): Mira updating, then a download waiting for a password (`Password` or `Passwords: 2`, opening `downloads/PasswordPopup`), then a failed download (opening the Downloads window, which marks it seen), then `Update`. Skip in the popup stops the notice asking about that download until the GUI restarts; the Downloads window still takes its password.
+
 The top bar's download button opens `activity/DownloadsPanel`, titled Activity. It lists everything `activity/DownloadTracker` has seen from the event stream: game installers, store installs and updates, Humble downloads, launcher installs, tool downloads, runner downloads and `mirad`'s jobs (scans, imports, moving and deleting games, removing a source). `mirad` replays recent events on connect, so work started before the GUI opened also shows. Game installers report bytes written, and with a guess at the installed size from Steam's requirements (`estimated_bytes`) a percentage and "1.2 GB of about 4 GB", which the installer card also shows ("about 4 GB installed"); Epic, GOG, Amazon and itch installs report percent, speed and time left (`library.install.progress`), and Epic, GOG and Amazon how much of the download has come ("1.2 GB of 4.5 GB"), also drawn on the title's tile in the library, on its source page and in search: the title, a rail (moving while no percentage is known), the percentage and time left, and the speed or bytes written under it (`DownloadTracker::TileProgressFor`); jobs with steps report how far along they are. A row's name is cut short to fit the panel's fixed width (the whole of it in its tooltip), and its status wraps. A finished install offers *Show*, which selects the game.
 
 When a launched game turns out to have been an installer (`game.install_detected`), `game/InstallPromptCard` asks over the library, in the same overlay as Manage sources: the program found (or *Choose…* one inside the installed folder), a switch to mark it as an app, and *Keep as is* or *Use this program* (`finish-install`). While Mira is hidden or minimized, a notification asks first and its *Review…* button opens the card.
@@ -166,6 +170,7 @@ runners/   the Runners page
 tags/      the Tags page and its game picker
 activity/  the download and job tracker and the Activity panel
 updates/   the update check, Mira's own update and the Updates panel
+downloads/ link downloads: the queue's model, the password popup and the Downloads window
 settings/  the Settings screen and the card and row pieces every settings screen shares
 window/    the main window, its top bar and frameless edge, and About
 dialogs/   modal dialogs

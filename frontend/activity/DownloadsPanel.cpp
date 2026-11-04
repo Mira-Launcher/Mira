@@ -45,6 +45,9 @@ QString RunningText(const DownloadTracker::Entry& entry) {
       return "Installing…";
     case Kind::Job:
       return entry.message.isEmpty() ? QString("Working…") : entry.message;
+    case Kind::Link:
+      if (!entry.message.isEmpty()) return entry.message;
+      return entry.progress >= 0 ? DownloadTracker::ProgressText(entry) : QString("Downloading…");
     default: {
       const QString progress = DownloadTracker::ProgressText(entry);
       return progress.isEmpty() ? QString("Downloading…") : "Downloading… " + progress;
@@ -73,6 +76,7 @@ QString Origin(const DownloadTracker& tracker, const DownloadTracker::Entry& ent
   switch (entry.kind) {
     case Kind::Game:
     case Kind::Job:
+    case Kind::Link:
       return QString();
     case Kind::Runner:
       return entry.source.isEmpty() ? QString()
@@ -102,9 +106,17 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   title->setProperty("role", "section");
   header->addWidget(title);
   header->addStretch(1);
+  auto* manage = new QPushButton("Manage downloads", this);
+  manage->setObjectName("text_button");
+  connect(manage, &QPushButton::clicked, this, [this] {
+    hide();
+    emit ManageRequested();
+  });
+  header->addWidget(manage);
   clear_ = new QPushButton("Clear finished", this);
   clear_->setObjectName("text_button");
   connect(clear_, &QPushButton::clicked, tracker_, &DownloadTracker::ClearFinished);
+  connect(clear_, &QPushButton::clicked, this, &DownloadsPanel::FinishedCleared);
   header->addWidget(clear_);
   layout->addLayout(header);
 
@@ -183,6 +195,8 @@ bool DownloadsPanel::UpdateRow(const QString& key) {
     QWidget* row = rows_->itemAt(i)->widget();
     if (row == nullptr || row->property("download_key").toString() != key) continue;
     if (!row->property("download_running").toBool()) return false;
+    // A link's buttons follow its state.
+    if (row->property("link_state").toString() != entry->link_state) return false;
     // Its job became known after the row was built: rebuilt with Cancel.
     if ((row->findChild<QPushButton*>("download_cancel") == nullptr) !=
         tracker_->JobFor(*entry).isEmpty())
@@ -233,6 +247,7 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   row->setObjectName("download_row");
   row->setProperty("download_key", entry.key);
   row->setProperty("download_running", entry.state == State::Running);
+  row->setProperty("link_state", entry.link_state);
   row->setProperty("first", index == 0);
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(18, 10, 18, 10);
@@ -274,6 +289,8 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   const char* role = "muted";
   if (entry.state == State::Running) {
     state = RunningText(entry);
+  } else if (entry.state == State::Paused && !entry.message.isEmpty()) {
+    state = entry.message;
   } else if (entry.state == State::Paused) {
     state = entry.progress >= 0 ? QString("Paused at %1%").arg(qRound(entry.progress * 100))
                                 : QString("Paused");
@@ -301,15 +318,18 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   text->addStretch(1);
   layout->addLayout(text, /*stretch=*/1);
 
-  // Every row, whatever its state: what it did, or is doing.
-  auto* log = new QPushButton("Log", row);
-  log->setObjectName("text_button");
-  log->setToolTip("Open its live log in a window");
-  connect(log, &QPushButton::clicked, this,
-          [this, channel = DownloadTracker::LogChannelFor(entry), name] {
-            emit LogRequested(channel, name);
-          });
-  layout->addWidget(log, 0, Qt::AlignVCenter);
+  // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
+  // its row keeps to its progress and one button.
+  if (entry.kind != Kind::Link) {
+    auto* log = new QPushButton("Log", row);
+    log->setObjectName("text_button");
+    log->setToolTip("Open its live log in a window");
+    connect(log, &QPushButton::clicked, this,
+            [this, channel = DownloadTracker::LogChannelFor(entry), name] {
+              emit LogRequested(channel, name);
+            });
+    layout->addWidget(log, 0, Qt::AlignVCenter);
+  }
 
   // Stacked, so Pause or Resume sits over Cancel at the same width.
   auto* actions = new QVBoxLayout();
@@ -317,7 +337,25 @@ QWidget* DownloadsPanel::BuildRow(int index) {
   actions->addStretch(1);
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
-  if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
+  if (entry.kind == Kind::Link) {
+    const QString id = entry.ref;
+    const auto action = [this, row, actions, id](const QString& label, const QString& name) {
+      auto* button = new QPushButton(label, row);
+      connect(button, &QPushButton::clicked, this, [this, id, name] { emit LinkAction(id, name); });
+      actions->addWidget(button);
+    };
+    if (entry.link_state == "downloading" || entry.link_state == "queued") action("Pause", "pause");
+    if (entry.link_state == "paused") action("Resume", "resume");
+    if (entry.link_state == "failed") action("Retry", "retry");
+    if (entry.link_state == "password") {
+      auto* enter = new QPushButton("Enter password", row);
+      connect(enter, &QPushButton::clicked, this, [this, id] {
+        hide();
+        emit LinkPasswordRequested(id);
+      });
+      actions->addWidget(enter);
+    }
+  } else if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
     if (DownloadTracker::CanPause(entry)) {
       auto* pause = new QPushButton("Pause", row);
       pause->setObjectName("download_pause");

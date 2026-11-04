@@ -31,6 +31,9 @@ namespace bigscreen {
 class BigScreenWindow;
 }
 class ArtworkStore;
+class DownloadsWindow;
+class LinkDownloads;
+class PasswordPopup;
 class DaemonSupervisor;
 class DesktopController;
 class DownloadTracker;
@@ -363,6 +366,12 @@ class LibraryWindow : public QMainWindow,
   mira_gui::RunnerUpdater* runner_updater_ = nullptr;
   mira_gui::MiraUpdater* mira_updater_ = nullptr;
   mira_gui::UpdatesPanel* updates_panel_ = nullptr;
+  mira_gui::LinkDownloads* link_downloads_ = nullptr;
+  mira_gui::PasswordPopup* password_popup_ = nullptr;
+  mira_gui::DownloadsWindow* downloads_window_ = nullptr;
+  // What the top bar's notice is now, so a click does the right thing.
+  enum class Notice { None, MiraBusy, Password, Failed, Update };
+  Notice notice_ = Notice::None;
   // game.added events asking for their settings to open, gathered briefly
   // so a scan's burst of them opens nothing.
   std::vector<std::string> pending_added_;

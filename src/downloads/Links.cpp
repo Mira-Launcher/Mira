@@ -1,5 +1,6 @@
 #include "downloads/Links.h"
 
+#include <cctype>
 #include <format>
 #include <json.hpp>
 #include <regex>
@@ -133,7 +134,30 @@ std::string NameFromDisposition(const std::string& header) {
   return std::regex_search(header, match, kName) ? match[1].str() : std::string();
 }
 
-Result<std::vector<LinkFile>> Resolve(const std::string& link) {
+std::string CleanFileName(const std::string& name, const std::string& url) {
+  std::string out = name;
+  if (out.empty()) {
+    const std::string path = url.substr(0, url.find_first_of("?#"));
+    for (std::size_t i = 0; i < path.size(); ++i) {
+      if (path[i] == '%' && i + 2 < path.size() && std::isxdigit(path[i + 1]) != 0 &&
+          std::isxdigit(path[i + 2]) != 0) {
+        out += static_cast<char>(std::stoi(path.substr(i + 1, 2), nullptr, 16));
+        i += 2;
+      } else {
+        out += path[i];
+      }
+    }
+  }
+  const auto slash = out.find_last_of("/\\");
+  if (slash != std::string::npos) out.erase(0, slash + 1);
+  std::erase(out, '\0');
+  const auto first = out.find_first_not_of(". ");
+  return first == std::string::npos ? std::string("download") : out.substr(first);
+}
+
+namespace {
+
+Result<std::vector<LinkFile>> ResolveRaw(const std::string& link) {
   if (IsPixeldrain(link)) return Pixeldrain(link);
   if (IsMediaFire(link)) return MediaFire(link);
   const auto probe = Head(link);
@@ -148,6 +172,16 @@ Result<std::vector<LinkFile>> Resolve(const std::string& link) {
                                 .name = NameFromDisposition(probe->disposition),
                                 .size = probe->size,
                                 .source = "Direct"}};
+}
+
+}  // namespace
+
+Result<std::vector<LinkFile>> Resolve(const std::string& link) {
+  auto files = ResolveRaw(link);
+  if (files) {
+    for (LinkFile& file : *files) file.name = CleanFileName(file.name, file.url);
+  }
+  return files;
 }
 
 }  // namespace mira::downloads

@@ -48,3 +48,11 @@ TEST_CASE("FindPassword picks the password that opens an archive") {
   CHECK(*library::FindPassword(names, saved) == std::string("sekret"));
   CHECK_FALSE(library::FindPassword(names, {"wrong"})->has_value());
 }
+
+TEST_CASE("a file name from a server stays one path part") {
+  CHECK(CleanFileName("../../.bashrc", "") == "bashrc");
+  CHECK(CleanFileName("C:\\x\\game.7z", "") == "game.7z");
+  CHECK(CleanFileName("..", "") == "download");
+  CHECK(CleanFileName("", "https://a.example/files/My%20Game.7z?token=1") == "My Game.7z");
+  CHECK(CleanFileName("", "https://a.example/") == "download");
+}

@@ -107,7 +107,8 @@ void Queue::Start() {
         // What was running starts over and continues what's on disk. One already fetched extracts
         // again.
         if (IsLive(download.state)) download.state = "queued";
-        if (!download.id.empty()) downloads_.push_back(std::move(download));
+        if (!download.id.empty() && download.state != "done")
+          downloads_.push_back(std::move(download));
       }
     }
   }
@@ -215,6 +216,11 @@ void Queue::PollFiles(Download& download) {
     }
     file.status = *status;
     if (status->state == "error") {
+      // The rest would keep downloading with nothing watching them. Retry continues what's on disk.
+      for (QueuedFile& other : download.files) {
+        if (!other.gid.empty()) aria2_.Remove(other.gid);
+        other.gid.clear();
+      }
       return SetState(download, "failed",
                       {"download_failed",
                        std::format("couldn't download {}: {}",
@@ -332,12 +338,7 @@ Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const
     const auto resolved = Resolve(link);
     if (!resolved) return std::unexpected(resolved.error());
     for (const LinkFile& file : *resolved) {
-      std::string name = file.name;
-      if (name.empty()) {
-        const std::string path = file.url.substr(0, file.url.find('?'));
-        name = path.substr(path.find_last_of('/') + 1);
-      }
-      files.push_back({{"name", name}, {"size", file.size}, {"source", file.source}});
+      files.push_back({{"name", file.name}, {"size", file.size}, {"source", file.source}});
     }
   }
   return json{{"files", files}};

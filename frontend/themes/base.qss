@@ -137,19 +137,19 @@ QWidget#top_bar QToolButton#close_button:hover {
   background: @error;
 }
 
-/* Mira has a new version; quiet again while it's updating. */
-QWidget#top_bar QToolButton#mira_update[busy="false"] {
+/* The one notice: a password wanted, a failed download, a new Mira. Quiet while Mira updates. */
+QWidget#top_bar QToolButton#top_notice[busy="false"] {
   background: @accent;
   color: @on_accent;
   padding: 4px 12px;
   font-weight: 600;
 }
 
-QWidget#top_bar QToolButton#mira_update[busy="false"]:hover {
+QWidget#top_bar QToolButton#top_notice[busy="false"]:hover {
   background: @info;
 }
 
-QWidget#top_bar QToolButton#mira_update[busy="true"] {
+QWidget#top_bar QToolButton#top_notice[busy="true"] {
   color: @text_muted;
   padding: 5px 8px;
 }
@@ -1343,11 +1343,13 @@ QPlainTextEdit#log_view {
 }
 
 /* dialogs/LogWindow: the task's name in the window's own bar. */
-QLabel#log_title {
+QLabel#log_title,
+QLabel#downloads_title {
   font-weight: 600;
 }
 
-QWidget#log_frame {
+QWidget#log_frame,
+QWidget#downloads_frame {
   background: @window;
   border: 1px solid @border;
 }

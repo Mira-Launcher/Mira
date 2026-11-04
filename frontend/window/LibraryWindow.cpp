@@ -57,6 +57,9 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/LogWindow.h"
+#include "../downloads/DownloadsWindow.h"
+#include "../downloads/LinkDownloads.h"
+#include "../downloads/PasswordPopup.h"
 #include "../game/GameCard.h"
 #include "../game/GameDetailsCard.h"
 #include "../game/InstallPromptCard.h"
@@ -221,6 +224,32 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(mira_updater_, &mira_gui::MiraUpdater::Changed, this, &LibraryWindow::SyncUpdates);
   connect(mira_updater_, &mira_gui::MiraUpdater::Progress, this, &LibraryWindow::SyncUpdates);
 
+  link_downloads_ = new mira_gui::LinkDownloads(this);
+  password_popup_ = new mira_gui::PasswordPopup(link_downloads_, this);
+  downloads_window_ = new mira_gui::DownloadsWindow(link_downloads_, downloads_, this);
+  connect(link_downloads_, &mira_gui::LinkDownloads::Changed, this, [this](const QString& id) {
+    for (const mira_gui::DownloadInfo& download : link_downloads_->Downloads()) {
+      if (id.isEmpty() || QString::fromStdString(download.id) == id) downloads_->SetLink(download);
+    }
+  });
+  connect(link_downloads_, &mira_gui::LinkDownloads::Removed, downloads_,
+          &mira_gui::DownloadTracker::RemoveLink);
+  connect(link_downloads_, &mira_gui::LinkDownloads::NoticeChanged, this,
+          &LibraryWindow::SyncUpdates);
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::LinkAction, this,
+          [this](const QString& id, const QString& action) {
+            link_downloads_->Act(id.toStdString(), action.toStdString());
+          });
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::LinkPasswordRequested, this,
+          [this](const QString& id) {
+            link_downloads_->Unskip(id.toStdString());
+            password_popup_->ShowBelow(top_bar_->activity_button(), id.toStdString());
+          });
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::ManageRequested, downloads_window_,
+          &mira_gui::DownloadsWindow::Open);
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::FinishedCleared, link_downloads_,
+          &mira_gui::LinkDownloads::ClearFinished);
+
   // The stylesheet re-polishes every widget by itself; what it cannot reach
   // is what we paint: the placeholder covers drawn in the theme's own colors.
   // Connected before the views are built, so it runs before they repaint.
@@ -276,12 +305,23 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
           [this] { downloads_panel_->ShowBelow(top_bar_->activity_button()); });
   connect(top_bar_, &mira_gui::TopBar::UpdatesClicked, this,
           [this] { updates_panel_->ShowBelow(top_bar_->updates_button()); });
-  connect(top_bar_, &mira_gui::TopBar::MiraUpdateClicked, this, [this] {
-    // Running already: the button only shows how far along it is.
-    if (mira_updater_->Busy())
-      updates_panel_->ShowBelow(top_bar_->updates_button());
-    else
-      updates_panel_->StartMira(top_bar_->updates_button());
+  connect(top_bar_, &mira_gui::TopBar::NoticeClicked, this, [this] {
+    switch (notice_) {
+      case Notice::None:
+        break;
+      case Notice::MiraBusy:  // the button only shows how far along it is
+        updates_panel_->ShowBelow(top_bar_->updates_button());
+        break;
+      case Notice::Password:
+        password_popup_->ShowBelow(top_bar_->notice_button());
+        break;
+      case Notice::Failed:
+        downloads_window_->Open();
+        break;
+      case Notice::Update:
+        updates_panel_->StartMira(top_bar_->updates_button());
+        break;
+    }
   });
   update_checker_->Check();
   connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, &LibraryWindow::RefreshLibrary);
@@ -1238,6 +1278,7 @@ void LibraryWindow::ConnectionChanged(bool connected) {
   // At once: mirad answers from its stored lists and re-checks the stores behind them, so the
   // sidebar's and the Not installed tab's counts show with the library.
   owned_titles_->RefreshIfStale();
+  link_downloads_->Load();
   // mirad restarted or came back: what changed meanwhile may be past its replay.
   if (std::exchange(stream_dropped_, false)) {
     RefreshGames();
@@ -2094,24 +2135,44 @@ QString LibraryWindow::InstallText(const std::string& id) const {
 void LibraryWindow::SyncUpdates() {
   using State = mira_gui::MiraUpdater::State;
   top_bar_->SetUpdatesCount(updates_panel_->Pending());
-  const auto mira = mira_gui::MiraEntry(update_checker_->Updates());
+  const auto show = [this](Notice notice, const QString& text, bool busy, const QString& tooltip,
+                           bool lock = false) {
+    notice_ = notice;
+    top_bar_->SetNotice(text, busy, tooltip, lock);
+  };
   switch (mira_updater_->Current()) {
     case State::Downloading:
-      return top_bar_->SetMiraUpdate(QString("Updating %1%").arg(mira_updater_->Percent()), true,
-                                     "Show the update");
+      return show(Notice::MiraBusy, QString("Updating %1%").arg(mira_updater_->Percent()), true,
+                  "Show the update");
     case State::Installing:
-      return top_bar_->SetMiraUpdate("Waiting for your password", true, "Show the update");
+      return show(Notice::MiraBusy, "Waiting for your password", true, "Show the update");
     case State::Closing:
-      return top_bar_->SetMiraUpdate("Closing your games…", true, "Show the update");
+      return show(Notice::MiraBusy, "Closing your games…", true, "Show the update");
     case State::Restarting:
-      return top_bar_->SetMiraUpdate("Restarting…", true, "Show the update");
+      return show(Notice::MiraBusy, "Restarting…", true, "Show the update");
     case State::Idle:
     case State::Failed:
       break;
   }
-  if (!mira) return top_bar_->SetMiraUpdate(QString(), false, QString());
-  top_bar_->SetMiraUpdate("Update", false,
-                          "Update Mira to " + QString::fromStdString(mira->latest));
+  // Only the most important one: what's stuck waiting on you, then what went wrong, then news.
+  if (const auto waiting = link_downloads_->WaitingForPassword(); !waiting.empty()) {
+    const auto count = static_cast<int>(waiting.size());
+    return show(Notice::Password,
+                count == 1 ? QString("Password") : QString("Passwords: %1").arg(count), false,
+                count == 1 ? QString::fromStdString(waiting.front().name) + " needs a password"
+                           : QString("%1 downloads need a password").arg(count),
+                true);
+  }
+  if (const int failed = link_downloads_->UnseenFailures(); failed > 0) {
+    return show(Notice::Failed,
+                failed == 1 ? QString("Download failed") : QString("Failed: %1").arg(failed), false,
+                "Open Downloads");
+  }
+  if (const auto mira = mira_gui::MiraEntry(update_checker_->Updates())) {
+    return show(Notice::Update, "Update", false,
+                "Update Mira to " + QString::fromStdString(mira->latest));
+  }
+  show(Notice::None, QString(), false, QString());
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {
@@ -2231,6 +2292,7 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     sidebar_->RefreshSources();
     downloads_->RecheckJobs();
     downloads_->LoadPaused();
+    link_downloads_->Load();
     return;
   }
   if (type == "config.changed") {

@@ -24,6 +24,18 @@ void RegisterDownloadRoutes(Router& http, Services& s) {
   http.Get("/v1/downloads",
            [&s](const Request&, Response& res) { SendJson(res, s.downloads.List()); });
 
+  http.Get("/v1/downloads/passwords",
+           [&s](const Request&, Response& res) { SendJson(res, s.downloads.Passwords()); });
+
+  http.Put("/v1/downloads/passwords", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"passwords": ["..."]})");
+    if (!body) return;
+    const auto passwords = StringList(*body, "passwords");
+    if (!passwords)
+      return SendError(res, 400, "invalid_body", "passwords must be a list of strings");
+    SendDone(res, s.downloads.SetPasswords(*passwords));
+  });
+
   http.Post("/v1/downloads/check", [&s](const Request& req, Response& res) {
     const auto body = BodyObject(req, res, R"({"links": ["..."]})");
     if (!body) return;

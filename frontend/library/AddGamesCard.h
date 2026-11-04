@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "../client/Types.h"
 
@@ -39,6 +40,10 @@ class AddGamesCard : public QWidget {
   void ShowInstalled(const QString& path, const ImportGuessResult& guess);
   void ShowInstaller(const QString& path, const ImportGuessResult& guess);
   void ShowAppMenu();
+  // Links pasted, read by mirad, then what they turned out to be with a name and password to give.
+  void ShowLinks();
+  void ShowLinksConfirm(const std::vector<std::string>& links,
+                        const std::vector<DownloadFile>& files);
   void FillMenuDetails();
   void Close();
   // Where moving something in puts it: the first Mira folder's Games or Applications.

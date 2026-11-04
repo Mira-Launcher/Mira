@@ -26,6 +26,10 @@ std::string MediaFireAddressIn(const std::string& page);
 // Filename from a Content-Disposition header, or empty.
 std::string NameFromDisposition(const std::string& header);
 
+// A file's name as one safe path part. `name` comes from a remote server, so whatever folders it
+// claims go; with no name, the address's last part stands in.
+std::string CleanFileName(const std::string& name, const std::string& url);
+
 // The files a direct or host link stands for. A link that leads to a web page Mira can't read
 // fails with link_is_a_page.
 Result<std::vector<LinkFile>> Resolve(const std::string& link);
