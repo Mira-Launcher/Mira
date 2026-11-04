@@ -15,6 +15,7 @@
 #include "config/Resolver.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
@@ -159,25 +160,29 @@ void RegisterGameRoutes(Router& http, Services& s) {
       return SendError(res, 400, "invalid_body", *problem);
 
     const auto before = s.games.Find(id);
-    // Turned into a Windows game without a prefix folder: it gets one, as POST /v1/games/manual
-    // does. A game turned native keeps its data_dir, so switching back reuses the same prefix.
+    // Turned into a Windows or web game without a data folder: it gets one, as POST
+    // /v1/games/manual does. A game turned native keeps its data_dir, so switching back reuses the
+    // same prefix.
     std::string prefix_dir;
-    if (before && before->platform != model::Platform::Windows && before->data_dir.empty()) {
+    if (before && !model::NeedsRunnerSetup(before->platform) && before->data_dir.empty()) {
       const model::Game patched = library::ParseGamePatch(*before, b);
-      if (patched.platform == model::Platform::Windows && patched.data_dir.empty()) {
+      if (model::NeedsRunnerSetup(patched.platform) && patched.data_dir.empty()) {
         prefix_dir = library::PrefixDir(s.config, s.games, patched).string();
       }
     }
-    // Turned into a ready Windows game: its prefix is set up in the background, as POST
-    // /v1/games/manual does, and it is setting_up until then.
-    const bool turned_windows = before && before->platform != model::Platform::Windows;
+    // Turned into a ready Windows or web game: its prefix or browser is set up in the background,
+    // as POST /v1/games/manual does, and it is setting_up until then.
+    // So is a game Mira found nothing to run in, once it's given a page or program.
+    const bool turned = before && library::ParseGamePatch(*before, b).platform != before->platform;
+    const bool was_unknown = before && before->platform == model::Platform::Unknown;
     bool provision = false;
     auto result = s.games.Update(id, [&](model::Game& game) {
       game = library::ParseGamePatch(game, b);
-      if (game.platform == model::Platform::Windows && game.data_dir.empty())
+      if (model::NeedsRunnerSetup(game.platform) && game.data_dir.empty())
         game.data_dir = prefix_dir;
-      provision = turned_windows && game.platform == model::Platform::Windows &&
-                  game.status == model::GameStatus::Ready;
+      provision = turned && model::NeedsRunnerSetup(game.platform) &&
+                  (game.status == model::GameStatus::Ready ||
+                   (was_unknown && game.status == model::GameStatus::Broken));
       if (provision) game.status = model::GameStatus::SettingUp;
     });
     if (!result) return SendStoreError(res, result.error());
@@ -530,15 +535,13 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     model::Platform platform;
     if (b.contains("platform") && !library::IsSettablePlatform(b["platform"])) {
-      return SendError(res, 400, "invalid_body", R"("platform" must be "windows" or "native")");
+      return SendError(res, 400, "invalid_body",
+                       R"("platform" must be "windows", "native" or "web")");
     }
     if (b.contains("platform")) {
       platform = model::PlatformFromString(b["platform"].get<std::string>());
     } else {
-      const std::string ext =
-          strings::ToLower(std::filesystem::path(exe_path).extension().string());
-      const bool windows = ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd";
-      platform = windows ? model::Platform::Windows : model::Platform::Native;
+      platform = library::PlatformOfFile(exe_path);
     }
 
     const auto is_appimage = [](const std::string& exe) {
@@ -575,8 +578,9 @@ void RegisterGameRoutes(Router& http, Services& s) {
       game.tags.push_back("app");
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    // An installer needs the prefix too: it installs the game into it.
-    if (platform != model::Platform::Windows) {
+    // An installer needs the prefix too: it installs the game into it. A web game keeps its browser
+    // profile there.
+    if (!model::NeedsRunnerSetup(platform)) {
       game.data_dir.clear();
     } else if (game.data_dir.empty()) {
       game.data_dir = library::PrefixDir(s.config, s.games, game).string();
@@ -587,9 +591,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
       game.status = model::GameStatus::NeedsInstall;
       game.last_error = "This is an installer, not the game itself. Install it to play.";
     } else {
-      // A Windows game's prefix is set up in the background; it's setting_up until then.
-      game.status = platform == model::Platform::Windows ? model::GameStatus::SettingUp
-                                                         : model::GameStatus::Ready;
+      // A Windows game's prefix (a web game's browser) is set up in the background; it's
+      // setting_up until then.
+      game.status = model::NeedsRunnerSetup(platform) ? model::GameStatus::SettingUp
+                                                      : model::GameStatus::Ready;
       game.last_error.clear();
     }
 

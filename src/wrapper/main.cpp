@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -26,6 +27,7 @@
 #include "model/Types.h"
 #include "proc/Cgroup.h"
 #include "proc/Session.h"
+#include "proc/WebServe.h"
 #include "runner/GameMode.h"
 
 using namespace mira;
@@ -227,7 +229,25 @@ void SetProcessTitle(int argc, char** argv, const std::string& title) {
 
 }  // namespace
 
+// mira-run --serve DIR --port N -- <argv...>: an HTML game's server, run as the game itself
+// (runner/BrowserRunner), so it lives exactly as long as the browser.
+std::optional<int> Serve(int argc, char** argv) {
+  if (argc < 7 || std::string_view(argv[1]) != "--serve" || std::string_view(argv[3]) != "--port" ||
+      std::string_view(argv[5]) != "--")
+    return std::nullopt;
+  int port = 0;
+  const std::string_view port_text = argv[4];
+  std::from_chars(port_text.data(), port_text.data() + port_text.size(), port);
+  if (port <= 0 || port > 65535) return std::nullopt;
+  return proc::ServeWhileRunning(argv[2], port, std::vector<std::string>(argv + 6, argv + argc));
+}
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string_view(argv[1]) == "--serve") {
+    if (const std::optional<int> served = Serve(argc, argv)) return *served;
+    std::cerr << "mira-run: usage: mira-run --serve DIR --port N -- <argv...>\n";
+    return 2;
+  }
   const auto parsed = ParseArgs(argc, argv);
   if (!parsed) {
     std::cerr << "mira-run: usage: mira-run --game-id ID --database FILE --status-fd N "

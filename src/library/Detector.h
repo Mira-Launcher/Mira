@@ -28,6 +28,18 @@ struct DetectorSettings {
   std::vector<std::string> ignore_globs;
 };
 
+// An .html or .htm file.
+bool IsWebPage(const std::filesystem::path& file);
+
+// The platform a file picked to start a game says it's for: Windows for .exe, .msi, .bat and .cmd,
+// web for a page, native for anything else.
+model::Platform PlatformOfFile(const std::filesystem::path& file);
+
+// A page that runs a game: it has a script or a canvas, and isn't a page sending you elsewhere (a
+// redirect, a link to the developer's site) or one of a game's documents (a readme, credits, a
+// walkthrough), which plenty of games ship beside their program.
+bool LooksLikeWebGame(const std::filesystem::path& file);
+
 // Reads every detect.*/scan.max_depth/scan.ignore_globs key into one
 // DetectorSettings -- shared by Scanner (a fresh scan) and AutoInstall (a
 // post-install re-detect), so both score/flag candidates identically.

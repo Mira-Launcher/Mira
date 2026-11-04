@@ -10,7 +10,8 @@
 
 namespace mira::model {
 
-enum class Platform { Unknown, Windows, Native };
+// Web: an HTML game, which a browser runs from Mira's local server (runner/BrowserRunner).
+enum class Platform { Unknown, Windows, Native, Web };
 
 enum class GameStatus {
   SettingUp,  // detected and configured; its data directory is being provisioned
@@ -19,6 +20,12 @@ enum class GameStatus {
   Missing,       // the folder disappeared, but the configuration is kept
   NeedsInstall,  // the only thing found was an installer, not the game itself
 };
+
+// Windows and web games get a data folder and a runner set up before they run (a prefix, a
+// browser profile); native games run as they are.
+inline bool NeedsRunnerSetup(Platform platform) {
+  return platform == Platform::Windows || platform == Platform::Web;
+}
 
 std::string_view ToString(Platform platform);
 std::string_view ToString(GameStatus status);

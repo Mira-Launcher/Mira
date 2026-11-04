@@ -5,6 +5,7 @@
 
 #include "config/Resolver.h"
 #include "config/Schema.h"
+#include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/LaunchOptions.h"
 
@@ -36,12 +37,20 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   if (patch.contains("args") && patch["args"].is_string()) game.args = patch["args"];
   if (patch.contains("platform") && patch["platform"].is_string()) {
     game.platform = model::PlatformFromString(patch["platform"].get<std::string>());
+  } else if (patch.contains("exe_path") &&
+             (IsWebPage(game.exe_path) || game.platform == model::Platform::Web)) {
+    // A page picked as what starts it, or something else picked in a page's place.
+    game.platform = PlatformOfFile(game.exe_path);
   }
   if (patch.contains("working_dir") && patch["working_dir"].is_string()) {
     game.working_dir = patch["working_dir"];
   }
   if (patch.contains("runner_ref") && patch["runner_ref"].is_string()) {
     game.runner_ref = patch["runner_ref"];
+  } else if ((game.platform == model::Platform::Web) != game.runner_ref.starts_with("browser:") &&
+             !game.runner_ref.empty()) {
+    // Turned into a web game or out of one: a browser runs only web games, and only a browser them.
+    game.runner_ref.clear();
   }
   if (patch.contains("data_dir") && patch["data_dir"].is_string()) {
     game.data_dir = patch["data_dir"];
@@ -92,7 +101,7 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
       return std::format("\"{}\" must be a string", key);
   }
   if (patch.contains("platform") && !IsSettablePlatform(patch["platform"])) {
-    return "\"platform\" must be \"windows\" or \"native\"";
+    return "\"platform\" must be \"windows\", \"native\" or \"web\"";
   }
   if (patch.contains("tags") && !patch["tags"].is_array()) return "\"tags\" must be an array";
   if (patch.contains("runner_config") && !patch["runner_config"].is_object())

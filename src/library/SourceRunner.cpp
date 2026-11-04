@@ -20,7 +20,8 @@ bool HasStoreKey(std::string_view source) {
 }
 
 bool IsSourceGame(const model::Game& game, std::string_view source) {
-  return game.source == source && game.platform != model::Platform::Native;
+  return game.source == source && game.platform != model::Platform::Native &&
+         game.platform != model::Platform::Web;
 }
 
 // Launcher games share the launcher's prefix; one moved elsewhere keeps its own runner.

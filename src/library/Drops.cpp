@@ -15,12 +15,13 @@ namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
 
-// A Windows or Linux program, or a folder holding one, rather than a ROM.
+// A Windows, Linux or HTML game, or a folder holding one, rather than a ROM.
 bool IsProgram(const config::Config& config, const fs::path& path) {
   std::error_code ec;
   if (fs::is_directory(path, ec)) {
     return !Detector(SettingsFromConfig(config)).Detect(path).candidates.empty();
   }
+  if (IsWebPage(path)) return LooksLikeWebGame(path);
   const std::string extension = strings::ToLower(path.extension().string());
   return extension == ".exe" || extension == ".msi" || extension == ".appimage" ||
          extension == ".sh";

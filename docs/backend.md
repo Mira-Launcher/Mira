@@ -116,13 +116,16 @@ In a root listed in `tags.sorted_roots`, games are sorted into `.hidden` and a f
 
 ## Runners
 
-`runner::IRunner` has `kind()`, `Discover(config)`, `Provision(game, build)` and `BuildCommand(game, build)`. There are five runners:
+`runner::IRunner` has `kind()`, `Discover(config)`, `Provision(game, build)` and `BuildCommand(game, build)`. There are six runners:
 
 - `NativeRunner` runs the executable directly.
 - `ProtonRunner` runs Proton builds through `umu-run`. It uses the `umu-run` on `PATH`, or Mira's own copy under the tools folder.
 - `WineRunner` runs the system Wine or any Wine build it finds.
 - `SteamRunner` runs a Steam game with the Proton build and prefix Steam already set up for it.
 - `EmulatorRunner` runs a ROM in its source's emulator, with that emulator's launch args.
+- `BrowserRunner` runs an HTML game (platform `web`). Its builds are the browsers on `PATH`, Chromium's family first, since it opens a page as an app window. The command is `mira-run --serve <game folder> --port N -- <browser>`: `mira-run` serves the folder on `127.0.0.1` (with the cross-origin headers Godot's web exports need for SharedArrayBuffer) for as long as the browser runs, so the game's session ends when its window closes. The browser gets a profile of its own under the game's `data_dir` (`browser/<name>`), so it never joins a browser that's already open. The port comes from the game's id, the same on every launch and computer, because a browser files a page's saves under its address; another program holding it is `web_port_busy` rather than a move to another port, which would hide the saves. No browser installed is `RequireFeature("browser")`'s error, which offers installing Chromium.
+
+The scan takes a folder for an HTML game only when nothing in it runs: an `.html` page at its top, or an `index.html` one folder down, that has a script or a canvas, and isn't a redirect, a link to a site or one of a game's documents by name (a readme, credits, a walkthrough).
 
 Neither `umu-run` nor `wineboot` gives a reliable exit code for prefix creation, so both runners check that `drive_c` exists afterwards.
 

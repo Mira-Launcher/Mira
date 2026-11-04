@@ -13,12 +13,14 @@
 
 #include "config/Schema.h"
 #include "core/Log.h"
+#include "runner/BrowserRunner.h"
 #include "runner/Downloader.h"
 #include "runner/EmulatorRunner.h"
 #include "runner/NativeRunner.h"
 #include "runner/ProtonRunner.h"
 #include "runner/SteamRunner.h"
 #include "runner/WineRunner.h"
+#include "system/Packages.h"
 
 namespace mira::runner {
 namespace {
@@ -77,6 +79,8 @@ RunnerRegistry::RunnerRegistry(config::Config& config) : config_(config) {
   runners_[steam->kind()] = std::move(steam);
   auto emulator = std::make_unique<EmulatorRunner>(config);
   runners_[emulator->kind()] = std::move(emulator);
+  auto browser = std::make_unique<BrowserRunner>(config);
+  runners_[browser->kind()] = std::move(browser);
 }
 
 // One build, discovered once. On a normal Arch/Steam setup `~/.steam/steam`
@@ -153,12 +157,19 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
   if (!runner->UsesBuilds()) return Resolved{runner, std::nullopt};  // native
 
   const std::vector<model::RunnerBuild>& builds = BuildsFor(kind);
+  if (builds.empty() && kind == "browser") {
+    // A browser is a system package, so the error offers installing one.
+    if (auto required = system::RequireFeature("browser", "HTML games"); !required)
+      return std::unexpected(required.error());
+  }
   if (builds.empty()) {
     return Err("runner_build_not_found", std::format("no {} builds are installed", kind),
                std::format("Install a {} build.", kind), Fix::Runners());
   }
 
-  if (name == "auto") return Resolved{runner, PickAuto(config_, builds)};
+  // Browsers are found best first; the others are ranked.
+  if (name == "auto")
+    return Resolved{runner, kind == "browser" ? builds.front() : PickAuto(config_, builds)};
   if (name == "latest") {
     auto newest = std::ranges::max_element(
         builds, {}, [](const model::RunnerBuild& build) { return ParseVersion(build.version); });
@@ -206,17 +217,20 @@ std::optional<model::RunnerBuild> RunnerRegistry::StandIn(const std::string& run
 std::string RunnerRegistry::ResolveRef(const model::Game& game) const {
   std::string ref = game.runner_ref;
   // Stores with a <source>.runner key can set their own default.
-  if (ref.empty() && game.platform != model::Platform::Native && !game.source.empty() &&
+  const bool web = game.platform == model::Platform::Web;
+  if (ref.empty() && game.platform != model::Platform::Native && !web && !game.source.empty() &&
       config::Schema::Instance().Find(game.source + ".runner") != nullptr) {
     ref = config_.GetString(game.source + ".runner");
   }
   if (ref.empty()) {
     ref = config_.GetString(game.platform == model::Platform::Native ? "default_runner.native"
+                            : web                                    ? "default_runner.web"
                                                                      : "default_runner.windows");
   }
-  // "auto" isn't itself "kind:name": it means "the best available windows
-  // runner": Proton if a build is installed (protonfixes come with it),
+  // "auto" isn't itself "kind:name": for a web game it's the best browser; otherwise it means "the
+  // best available windows runner": Proton if a build is installed (protonfixes come with it),
   // else plain Wine, else nothing usable and Resolve below says so clearly.
+  if (ref == "auto" && web) ref = "browser:auto";
   if (ref == "auto") ref = BuildsFor("proton").empty() ? "wine:auto" : "proton:auto";
   return ref;
 }

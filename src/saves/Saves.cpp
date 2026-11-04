@@ -1,9 +1,12 @@
 #include "saves/Saves.h"
 
 #include <algorithm>
+#include <cstring>
+#include <format>
 
 #include "config/Resolver.h"
 #include "core/Strings.h"
+#include "runner/BrowserRunner.h"
 #include "saves/Backups.h"
 #include "saves/Cloud.h"
 
@@ -39,6 +42,27 @@ Survey SurveyFor(const config::Config& config, const store::MetadataStore& cache
   const Roots roots = RootsFor(config, game);
   const json entry = EntryJson(survey.match);
   std::vector<std::string> patterns = FileLocations(entry, roots);
+  // A web game saves into its browser's storage: Chromium's Local Storage and IndexedDB, Firefox's
+  // storage. Only its own origin's, since the browser's extensions keep theirs there too (Helium's
+  // ad blocker stores megabytes of filter lists). Local Storage is one database for every origin.
+  if (game.platform == model::Platform::Web) {
+    const int port = runner::WebGamePort(game);
+    const std::string browser = game.runner_ref.starts_with("browser:")
+                                    ? Escape(game.runner_ref.substr(std::strlen("browser:")))
+                                    : "*";
+    const bool firefox = runner::IsFirefoxFamily(
+        game.runner_ref.substr(std::min(game.runner_ref.size(), std::strlen("browser:"))));
+    const bool chromium = browser != "*" && !firefox;
+    if (!firefox) {
+      patterns.push_back(std::format("<prefix>/browser/{}/Default/Local Storage", browser));
+      patterns.push_back(std::format(
+          "<prefix>/browser/{}/Default/IndexedDB/http_127.0.0.1_{}.indexeddb.*", browser, port));
+    }
+    if (!chromium) {
+      patterns.push_back(
+          std::format("<prefix>/browser/{}/storage/default/http+++127.0.0.1+{}", browser, port));
+    }
+  }
   for (std::string& extra :
        config::Resolver(config, game.overrides).GetStringArray("saves.extra_paths"))
     patterns.push_back(std::move(extra));

@@ -257,9 +257,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
       }
     } else {
       const std::string ext = strings::ToLower(std::filesystem::path(path).extension().string());
-      const bool windows = ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd";
       programs.push_back({{"path", std::filesystem::path(path).filename().string()},
-                          {"platform", windows ? "windows" : "native"},
+                          {"platform", std::string(model::ToString(library::PlatformOfFile(path)))},
                           {"installer", ext == ".msi" || library::IsBuiltInstaller(path)}});
     }
     const bool installer = !programs.empty() && programs.front()["installer"].get<bool>();
