@@ -444,7 +444,13 @@ Result<ExecResult> RunCurlWithSecrets(const std::vector<std::string>& args,
   return result;
 }
 
-Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir) {
+std::optional<std::string> SevenZip() {
+  std::optional<std::string> found = FindOnPath("7z");
+  return found ? found : FindOnPath("7zz");
+}
+
+Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir,
+                     const std::string& password) {
   const std::string name = strings::ToLower(archive.filename().string());
   const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") ||
                        name.find(".tar.") != std::string::npos ||
@@ -454,11 +460,11 @@ Result<void> Extract(const std::filesystem::path& archive, const std::filesystem
   if (tarball) {
     command.argv = {"tar", "-xf", archive.string(), "-C", out_dir.string()};
   } else {
-    std::optional<std::string> seven_zip = FindOnPath("7z");
-    if (!seven_zip) seven_zip = FindOnPath("7zz");
+    const std::optional<std::string> seven_zip = SevenZip();
     if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
     command.argv = {
         *seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
+    if (!password.empty()) command.argv.push_back("-p" + password);
   }
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());

@@ -187,6 +187,7 @@ int main(int argc, char** argv) {
     services.operations.Post([&services] { services.EnsureEosOverlay(); });
   });
 
+  services.downloads.Start();
   mira::library::Watcher watcher(config, games, events);
   watcher.UseMetadataQueue(services.fetches);
   watcher.UseInstallLane(services.installs);

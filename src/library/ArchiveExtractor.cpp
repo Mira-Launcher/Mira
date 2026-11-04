@@ -60,6 +60,8 @@ std::optional<Volume> VolumeOf(const fs::path& path) {
 
 // `dest`, or the first of "<dest> (2)", "<dest> (3)"... that's free: an archive never replaces a
 // folder already there, such as a game with its saves.
+}  // namespace
+
 fs::path FreeName(const fs::path& dest) {
   std::error_code ec;
   fs::path name = dest;
@@ -68,7 +70,66 @@ fs::path FreeName(const fs::path& dest) {
   return name;
 }
 
-}  // namespace
+Result<std::optional<std::string>> FindPassword(const fs::path& archive,
+                                                const std::vector<std::string>& candidates) {
+  const std::string name = strings::ToLower(archive.filename().string());
+  if (name.ends_with(".tgz") || name.find(".tar") != std::string::npos) return std::string();
+  const std::optional<std::string> seven_zip = runner::SevenZip();
+  if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
+  const auto run = [&](std::vector<std::string> args) {
+    Command command;
+    command.argv = {*seven_zip};
+    command.argv.insert(command.argv.end(), args.begin(), args.end());
+    return runner::RunAndWait(command);
+  };
+  // Always given a password: without one 7-Zip stops to ask for it.
+  const auto list = [&](const std::string& password) {
+    return run({"l", "-slt", "-p" + password, archive.string()});
+  };
+  const auto listed = list("mira-no-password");
+  if (!listed) return std::unexpected(listed.error());
+  if (listed->exit_code != 0) {
+    // The names are encrypted too, so listing is the test.
+    if (listed->output.find("assword") == std::string::npos)
+      return Err("extract_failed", std::format("7-Zip can't read {}: {}",
+                                               archive.filename().string(), listed->output));
+    for (const std::string& candidate : candidates) {
+      const auto attempt = list(candidate);
+      if (attempt && attempt->exit_code == 0) return candidate;
+    }
+    return std::optional<std::string>();
+  }
+
+  // Only the contents are encrypted: testing the smallest file is enough, and quick.
+  std::string smallest;
+  std::uintmax_t smallest_size = UINTMAX_MAX;
+  std::string path;
+  std::uintmax_t size = 0;
+  bool encrypted = false;
+  std::istringstream lines(listed->output);
+  for (std::string line; std::getline(lines, line);) {
+    if (line.ends_with('\r')) line.pop_back();
+    if (line.starts_with("Path = ")) {
+      path = line.substr(7);
+      size = 0;
+      encrypted = false;
+    } else if (line.starts_with("Size = ")) {
+      std::from_chars(line.data() + 7, line.data() + line.size(), size);
+    } else if (line == "Encrypted = +") {
+      encrypted = true;
+    }
+    if (encrypted && size > 0 && size < smallest_size) {
+      smallest = path;
+      smallest_size = size;
+    }
+  }
+  if (smallest.empty()) return std::string();
+  for (const std::string& candidate : candidates) {
+    const auto attempt = run({"t", "-p" + candidate, archive.string(), "--", smallest});
+    if (attempt && attempt->exit_code == 0) return candidate;
+  }
+  return std::optional<std::string>();
+}
 
 bool LooksLikeArchive(const fs::path& path) {
   return !SuffixOf(path).empty() && !IsLaterVolume(path);

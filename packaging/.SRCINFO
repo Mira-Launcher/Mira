@@ -12,6 +12,7 @@ pkgbase = mira-launcher
 	depends = qt6-base
 	depends = qt6-multimedia
 	depends = 7zip
+	depends = aria2
 	optdepends = wine: run Windows games without Proton
 	optdepends = umu-launcher: Proton support (AUR)
 	optdepends = winetricks: install DLL/redistributable fixes into a game prefix

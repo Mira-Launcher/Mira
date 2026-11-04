@@ -83,6 +83,8 @@ constexpr Entry kEntries[] = {
     {"archives",
      {"7zip", "7z 7zz", "", "Extracts game archives and installers", "7zip", "7zip p7zip-full",
       "7zip", "7zip"}},
+    {"downloads",
+     {"aria2", "aria2c", "", "Downloads games from links", "aria2", "aria2", "aria2", "aria2"}},
     {"performance",
      {"gamemode", "gamemoded", "", "Raises performance while a game runs", "gamemode", "gamemode",
       "gamemode", "gamemode"}},

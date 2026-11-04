@@ -1612,6 +1612,27 @@ Schema::Schema() {
          .doc = "Mira looks for newer releases of itself and of the emulators, store tools and "
                 "runners it downloaded."});
 
+  s.Section("Downloads", "Downloads");
+
+  s.Add({.key = "downloads.speed_limit_mb",
+         .label = "Speed limit",
+         .type = Type::Int,
+         .default_value = 0,
+         .doc = "The most link downloads may use together, in MB/s. 0 is no limit."});
+
+  s.Add({.key = "downloads.parallel",
+         .label = "Downloads at once",
+         .type = Type::Int,
+         .default_value = 2,
+         .doc = "How many games download from links at the same time."});
+
+  s.Add({.key = "downloads.keep_archives",
+         .label = "Keep archives",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Moves a downloaded game's archives to Archives in the Mira folder instead of "
+                "deleting them once they're extracted."});
+
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");
   s.ResetTogether();
