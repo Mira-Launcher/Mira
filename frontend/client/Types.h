@@ -646,9 +646,10 @@ struct ConfigSchemaEntry {
   bool game_only = false;         // only exists per game; not listed in the global settings
   bool is_secret = false;         // mask this value's field
   bool is_runner_ref = false;     // offer a runner picker (GET /v1/runners) instead of free text
-  std::vector<std::string> runner_kinds;  // what the picker lists, without "auto"; empty: all
-  std::string link;                       // web page where the user gets the value; empty if none
-  std::string keywords;                   // extra search terms, space-separated
+  // What the picker lists, with "auto" only when it's the default; empty: all and "auto".
+  std::vector<std::string> runner_kinds;
+  std::string link;      // web page where the user gets the value; empty if none
+  std::string keywords;  // extra search terms, space-separated
 };
 
 struct ConfigSchemaResult {
@@ -1212,7 +1213,7 @@ struct ImportGuessResult {
   // What could start it, best first: relative to a folder, or the file's own name.
   struct Program {
     std::string path;
-    std::string platform;  // "windows" | "native"
+    std::string platform;  // "windows" | "native" | "web"
     bool installer = false;
   };
   std::vector<Program> programs;

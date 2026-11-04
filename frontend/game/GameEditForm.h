@@ -149,6 +149,8 @@ class GameEditForm : public QWidget {
   SettingRow* launch_options_row_ = nullptr;
   LaunchOptionsEdit* launch_options_ = nullptr;
   bool windows_ = false;
+  bool web_ = false;  // an HTML game: its runners are browsers, and only it runs in one
+  mira_gui::RunnersResult runners_;  // the last list, kept to refill the picker once the game loads
   SettingRow* tags_row_ = nullptr;
   SettingRow* runner_row_ = nullptr;
   SettingRow* emulator_row_ = nullptr;  // in place of the runner for an emulator's game

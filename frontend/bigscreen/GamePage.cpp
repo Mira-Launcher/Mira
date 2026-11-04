@@ -372,11 +372,12 @@ void GamePage::paintEvent(QPaintEvent*) {
     facts.append(
         {"Played", game.play_seconds > 0 ? FormatPlaytime(game.play_seconds) : QString("—")});
     facts.append({"Last played", FormatLastPlayed(game.last_played_at)});
-    facts.append({"Runs with", game.platform == "native" ? QString("Linux build")
-                               : game.runner_ref.empty() ? QString("Default runner")
-                               : !runner_name_.isEmpty()
-                                   ? runner_name_
-                                   : QString::fromStdString(game.runner_ref)});
+    facts.append({"Runs with",
+                  game.platform == "native"                           ? QString("Linux build")
+                  : game.platform == "web" && game.runner_ref.empty() ? QString("Default browser")
+                  : game.runner_ref.empty()                           ? QString("Default runner")
+                  : !runner_name_.isEmpty() ? runner_name_
+                                            : QString::fromStdString(game.runner_ref)});
     if (last_session_)
       facts.append({"Last session", FormatPlaytime(last_session_->duration_seconds)});
     if (!controller_.empty()) {

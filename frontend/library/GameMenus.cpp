@@ -120,8 +120,9 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   QAction* install = menu.addAction(installing ? "Installing…" : "Install…");
   install->setEnabled((status == "needs_install" || status == "broken") && !installing);
   install->setToolTip("Run this game's installer, or pick a different one");
-  QAction* run_in_prefix =
-      menu.addAction(game.platform == "native" ? "Run a program…" : "Run in prefix…");
+  // Only a Windows game has a prefix; a program beside any other runs as it is.
+  const bool prefix = game.platform != "native" && game.platform != "web";
+  QAction* run_in_prefix = menu.addAction(prefix ? "Run in prefix…" : "Run a program…");
   QAction* finish_install = menu.addAction("Mark as installed");
   finish_install->setEnabled(status == "needs_install");
   finish_install->setToolTip(status == "needs_install"
@@ -139,9 +140,10 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   for (QAction* action :
        {install, run_in_prefix, finish_install, winetricks, relocate, game_details})
     action->setVisible(!emulated);
-  const bool native = game.platform == "native";
-  winetricks->setEnabled(!native);
-  winetricks->setToolTip(native ? "Native games have no Wine or Proton prefix." : QString());
+  winetricks->setEnabled(prefix);
+  winetricks->setToolTip(prefix                      ? QString()
+                         : game.platform == "native" ? "Native games have no Wine or Proton prefix."
+                                                     : "HTML games have no Wine or Proton prefix.");
   // The resolved setting isn't on GameSummary. The menu opens at once and the
   // entry fills in when mirad answers, a moment later.
   QAction* desktop_entry = menu.addAction("Desktop entry");

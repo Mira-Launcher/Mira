@@ -480,7 +480,7 @@ void GameCard::UpdateIdentity() {
   const QString source = info != nullptr ? info->name : StatusLabel(game->source);
   QStringList facts;
   if (!source.isEmpty()) facts << source;
-  if (!game->platform.empty()) facts << StatusLabel(game->platform);
+  if (!game->platform.empty()) facts << PlatformLabel(game->platform);
   if (game->play_seconds > 0 && !IsApp(*game))
     facts << FormatPlaytime(game->play_seconds) + " played";
   status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
