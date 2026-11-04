@@ -93,6 +93,10 @@ The sidebar's *Tags* row (between Runners and Settings) opens `tags/TagsPage`, s
 
 Adding, *New tag* and *Choose games…* open `tags/TagPicker` in place of the cards: covers to tick, the games Steam gives the tag (or the games that have it) first and ticked, then every other game unticked, with a search, and a floating bar with an *Also a folder* switch, Cancel and *Add to N games*. The covers follow the library's tile size and zoom with it (Ctrl+wheel, the slider, Ctrl+=/-). Hidden games wait in a last *Hidden* section, the only one hidden mode shows, ticked only if they have the tag; store launchers aren't offered and keep the tag as they had it. It sends `POST /v1/tags/set`, so afterwards exactly the ticked games (and those launchers) have the tag. A change that moves folders (the Folder switch, sorting a library folder) asks in the change bar first with how many move (`POST /v1/tags/preview`), and applies at once when none would; removing a tag asks there too.
 
+### Updates
+
+The top bar shows `Update` only when Mira itself has a new version, and one click starts it (`updates/MiraUpdater`): it confirms if a game or install is running, downloads, installs through the system's own password prompt where a package needs it, closes games, stops mirad and restarts. The icon beside Activity opens `updates/UpdatesPanel`, which lists what `updates/UpdateChecker` found, grouped by `updates/UpdateRows`, each with its own Update button.
+
 ### Activity
 
 The top bar's download button opens `activity/DownloadsPanel`, titled Activity. It lists everything `activity/DownloadTracker` has seen from the event stream: game installers, store installs and updates, Humble downloads, launcher installs, tool downloads, runner downloads and `mirad`'s jobs (scans, imports, moving and deleting games, removing a source). `mirad` replays recent events on connect, so work started before the GUI opened also shows. Game installers report bytes written, and with a guess at the installed size from Steam's requirements (`estimated_bytes`) a percentage and "1.2 GB of about 4 GB", which the installer card also shows ("about 4 GB installed"); Epic, GOG, Amazon and itch installs report percent, speed and time left (`library.install.progress`), and Epic, GOG and Amazon how much of the download has come ("1.2 GB of 4.5 GB"), also drawn on the title's tile in the library, on its source page and in search: the title, a rail (moving while no percentage is known), the percentage and time left, and the speed or bytes written under it (`DownloadTracker::TileProgressFor`); jobs with steps report how far along they are. A row's name is cut short to fit the panel's fixed width (the whole of it in its tooltip), and its status wraps. A finished install offers *Show*, which selects the game.
@@ -157,6 +161,7 @@ sources/   the source list, source pages with their setup and settings cards, re
 runners/   the Runners page
 tags/      the Tags page and its game picker
 activity/  the download and job tracker and the Activity panel
+updates/   the update check, Mira's own update and the Updates panel
 settings/  the Settings screen and the card and row pieces every settings screen shares
 window/    the main window, its top bar and frameless edge, and About
 dialogs/   modal dialogs

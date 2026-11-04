@@ -74,6 +74,7 @@
 #include "../library/LibraryActions.h"
 #include "../library/LibraryPage.h"
 #include "../library/OwnedTitles.h"
+#include "../runners/RunnerUpdater.h"
 #include "../runners/RunnersPage.h"
 #include "../settings/SettingsPanel.h"
 #include "../setup/SetupWindow.h"
@@ -88,6 +89,10 @@
 #include "../tags/TagsPage.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../updates/MiraUpdater.h"
+#include "../updates/UpdateChecker.h"
+#include "../updates/UpdateRows.h"
+#include "../updates/UpdatesPanel.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
@@ -207,6 +212,14 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
           });
   connect(downloads_panel_, &mira_gui::DownloadsPanel::ShowGameRequested, this,
           [this](const QString& id) { ShowGame(id.toStdString()); });
+  update_checker_ = new mira_gui::UpdateChecker(this);
+  runner_updater_ = new mira_gui::RunnerUpdater(downloads_, this);
+  mira_updater_ = new mira_gui::MiraUpdater(library_, downloads_, this);
+  updates_panel_ =
+      new mira_gui::UpdatesPanel(update_checker_, mira_updater_, runner_updater_, downloads_, this);
+  connect(update_checker_, &mira_gui::UpdateChecker::Changed, this, &LibraryWindow::SyncUpdates);
+  connect(mira_updater_, &mira_gui::MiraUpdater::Changed, this, &LibraryWindow::SyncUpdates);
+  connect(mira_updater_, &mira_gui::MiraUpdater::Progress, this, &LibraryWindow::SyncUpdates);
 
   // The stylesheet re-polishes every widget by itself; what it cannot reach
   // is what we paint: the placeholder covers drawn in the theme's own colors.
@@ -261,6 +274,16 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   connect(zoom_, &QSlider::sliderReleased, this, [this] { Zoom(zoom_->value()); });
   connect(top_bar_, &mira_gui::TopBar::ActivityClicked, this,
           [this] { downloads_panel_->ShowBelow(top_bar_->activity_button()); });
+  connect(top_bar_, &mira_gui::TopBar::UpdatesClicked, this,
+          [this] { updates_panel_->ShowBelow(top_bar_->updates_button()); });
+  connect(top_bar_, &mira_gui::TopBar::MiraUpdateClicked, this, [this] {
+    // Running already: the button only shows how far along it is.
+    if (mira_updater_->Busy())
+      updates_panel_->ShowBelow(top_bar_->updates_button());
+    else
+      updates_panel_->StartMira(top_bar_->updates_button());
+  });
+  update_checker_->Check();
   connect(top_bar_, &mira_gui::TopBar::RefreshClicked, this, &LibraryWindow::RefreshLibrary);
   connect(top_bar_, &mira_gui::TopBar::ShortcutsClicked, this,
           [this] { common_.reference->trigger(); });
@@ -725,7 +748,7 @@ void LibraryWindow::OpenRunners() {
   if (source_page_ != nullptr && !CloseSource([this] { OpenRunners(); })) return;
   CloseTags();
   CloseSourcesPage();
-  runners_page_ = new mira_gui::RunnersPage(downloads_, this);
+  runners_page_ = new mira_gui::RunnersPage(downloads_, runner_updater_, this);
   runners_page_->SetGames(ShownGames());
   main_stack_->addWidget(runners_page_);
   main_stack_->setCurrentWidget(runners_page_);
@@ -818,7 +841,7 @@ void LibraryWindow::OpenGameDetailPage(const std::string& id) {
 
 mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {
   using mira_gui::Sidebar;
-  auto* sidebar = new Sidebar(library_, artwork_, prefs, this);
+  auto* sidebar = new Sidebar(library_, artwork_, update_checker_, prefs, this);
   sidebar->SetOwnedTitles(owned_titles_);
   connect(sidebar, &Sidebar::LibraryClicked, this, &LibraryWindow::ShowLibrary);
   connect(sidebar, &Sidebar::RunnersClicked, this, &LibraryWindow::OpenRunners);
@@ -2069,6 +2092,29 @@ QString LibraryWindow::InstallText(const std::string& id) const {
   if (entry == nullptr || entry->state != State::Running) return QString();
   if (entry->bytes <= 0) return "Installing…";
   return "Installing… " + mira_gui::SizeText(entry->bytes);
+}
+
+void LibraryWindow::SyncUpdates() {
+  using State = mira_gui::MiraUpdater::State;
+  top_bar_->SetUpdatesCount(updates_panel_->Pending());
+  const auto mira = mira_gui::MiraEntry(update_checker_->Updates());
+  switch (mira_updater_->Current()) {
+    case State::Downloading:
+      return top_bar_->SetMiraUpdate(QString("Updating %1%").arg(mira_updater_->Percent()), true,
+                                     "Show the update");
+    case State::Installing:
+      return top_bar_->SetMiraUpdate("Waiting for your password", true, "Show the update");
+    case State::Closing:
+      return top_bar_->SetMiraUpdate("Closing your games…", true, "Show the update");
+    case State::Restarting:
+      return top_bar_->SetMiraUpdate("Restarting…", true, "Show the update");
+    case State::Idle:
+    case State::Failed:
+      break;
+  }
+  if (!mira) return top_bar_->SetMiraUpdate(QString(), false, QString());
+  top_bar_->SetMiraUpdate("Update", false,
+                          "Update Mira to " + QString::fromStdString(mira->latest));
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {

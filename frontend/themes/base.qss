@@ -137,6 +137,23 @@ QWidget#top_bar QToolButton#close_button:hover {
   background: @error;
 }
 
+/* Mira has a new version; quiet again while it's updating. */
+QWidget#top_bar QToolButton#mira_update[busy="false"] {
+  background: @accent;
+  color: @on_accent;
+  padding: 4px 12px;
+  font-weight: 600;
+}
+
+QWidget#top_bar QToolButton#mira_update[busy="false"]:hover {
+  background: @info;
+}
+
+QWidget#top_bar QToolButton#mira_update[busy="true"] {
+  color: @text_muted;
+  padding: 5px 8px;
+}
+
 /* --- Filter/sort pill, its popover, and the sidebar's icon-button tools -- */
 
 QWidget#filter_sort_button {
@@ -155,14 +172,17 @@ QWidget#filter_sort_popover {
   border-radius: @radius_panel;
 }
 
-QWidget#downloads_popover {
+QWidget#downloads_popover,
+QWidget#updates_popover {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;
 }
 
 QWidget#downloads_popover QScrollArea,
-QWidget#downloads_popover QScrollArea > QWidget > QWidget {
+QWidget#downloads_popover QScrollArea > QWidget > QWidget,
+QWidget#updates_popover QScrollArea,
+QWidget#updates_popover QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 

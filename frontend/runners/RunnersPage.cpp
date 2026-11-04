@@ -25,6 +25,7 @@
 #include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
+#include "RunnerUpdater.h"
 
 namespace mira_gui {
 namespace {
@@ -85,8 +86,8 @@ void SetProgress(QWidget* holder, double fraction) {
 
 }  // namespace
 
-RunnersPage::RunnersPage(DownloadTracker* downloads, QWidget* parent)
-    : QWidget(parent), downloads_(downloads) {
+RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWidget* parent)
+    : QWidget(parent), downloads_(downloads), updater_(updater) {
   setObjectName("runners_page");
   auto* outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
@@ -489,15 +490,15 @@ void RunnersPage::RebuildTools() {
 }
 
 void RunnersPage::Update(const RunnerInfo& runner, const RunnerUpdate& update) {
-  replacing_[update.name] = runner.reference;
-  api::UpdateRunnerAsync(
-      this, runner.reference, [this, name = update.name](RunnerDownloadResult result) {
-        if (!result.ok) {
-          replacing_.erase(name);
-          SetStatus("Could not start the update: " + error_help::Describe(result.error), true);
-          RebuildInstalled();
-        }
-      });
+  updater_->Update({.reference = runner.reference,
+                    .kind = runner.kind,
+                    .name = runner.name,
+                    .label = runner.label},
+                   update.name, [this](bool ok, const ApiError& error) {
+                     if (ok) return;
+                     SetStatus("Could not start the update: " + error_help::Describe(error), true);
+                     RebuildInstalled();
+                   });
 }
 
 void RunnersPage::SetupTool(const RunnerTool& tool) {
@@ -580,7 +581,6 @@ void RunnersPage::DownloadChanged(const QString& key) {
     const QString name = downloads_->NameFor(*entry);
     SetStatus(QString("Downloading %1 failed: %2").arg(name, error_help::Describe(entry->error)),
               true);
-    replacing_.erase(entry->ref.toStdString());
   }
   if (entry->state == DownloadTracker::State::Finished) {
     // Discoverable once on disk; the list re-discovers each time.
@@ -590,25 +590,6 @@ void RunnersPage::DownloadChanged(const QString& key) {
           return QString::fromStdString(release.name) == entry->ref;
         })) {
       RefreshCatalog();
-    }
-    if (auto it = replacing_.find(entry->ref.toStdString()); it != replacing_.end()) {
-      const std::string old_reference = it->second;
-      replacing_.erase(it);
-      const auto old = std::ranges::find(runners_, old_reference, &RunnerInfo::reference);
-      // Copied: Confirm runs an event loop that can reassign runners_.
-      const std::string kind = old != runners_.end() ? old->kind : std::string();
-      const std::string name = old != runners_.end() ? old->name : std::string();
-      if (old != runners_.end() &&
-          notify::Confirm(this, "Update finished",
-                          QString("Games that used %1 now use %2. Remove %1?")
-                              .arg(QString::fromStdString(old->label), downloads_->NameFor(*entry)),
-                          "Remove", /*destructive=*/true)) {
-        api::DeleteRunnerAsync(this, kind, name, [this](RunnerRemoveResult result) {
-          if (!result.ok)
-            SetStatus("Could not remove the old build: " + error_help::Describe(result.error),
-                      true);
-        });
-      }
     }
   }
   RebuildInstalled();

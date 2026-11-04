@@ -20,6 +20,7 @@ struct ReleaseAsset {
   std::string tag;
   std::string asset_name;
   std::string download_url;
+  std::string digest;               // the host's own "sha256:<hex>" for the file, if it gives one
   std::string checksum_url;         // empty if the release had no matching .sha512sum asset
   bool checksum_is_sha256 = false;  // else sha512
   bool checksum_is_list = false;    // checksum_url is a sha256sums.txt covering every asset
@@ -89,6 +90,14 @@ Result<void> DownloadAndInstall(const config::Config& config, const std::string&
 // (".../releases/latest").
 Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pattern,
                                    const std::vector<std::string>& exclude = {});
+
+// Downloads `asset` to `target`, which is removed unless it matches `asset.digest`. Unlike
+// DownloadAndInstall, an asset with no digest fails: this is for files about to replace Mira.
+Result<void> DownloadWithDigest(const ReleaseAsset& asset, const std::filesystem::path& target,
+                                const std::function<void(double)>& on_progress = {});
+
+// ListFamilyReleases asks the network again next time.
+void ForgetCachedReleases();
 
 // Downloads and installs a tool binary that isn't a runner build (gogdl,
 // butler, ...) into "<config dir>/tools/<tool_name>/<binary_name>",

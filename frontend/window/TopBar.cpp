@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QSlider>
+#include <QTimer>
 #include <QToolButton>
 #include <QWindow>
 
@@ -41,6 +42,12 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
 
   layout->addStretch(1);
 
+  mira_update_ = new QToolButton(this);
+  mira_update_->setObjectName("mira_update");
+  mira_update_->hide();
+  connect(mira_update_, &QToolButton::clicked, this, &TopBar::MiraUpdateClicked);
+  layout->addWidget(mira_update_);
+
   zoom_ = new QSlider(Qt::Horizontal, this);
   zoom_->setRange(min_tile, max_tile);
   zoom_->setValue(tile);
@@ -62,6 +69,9 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
   // Its count's text is taller than the icon; the bar shouldn't grow for it.
   activity_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
   connect(activity_, &QToolButton::clicked, this, &TopBar::ActivityClicked);
+  updates_ = tool("Updates");
+  updates_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
+  connect(updates_, &QToolButton::clicked, this, &TopBar::UpdatesClicked);
   refresh_ = tool("Refresh library");
   connect(refresh_, &QToolButton::clicked, this, &TopBar::RefreshClicked);
   shortcuts_ = tool("Keyboard shortcuts");
@@ -91,6 +101,23 @@ void TopBar::SetActivityCount(int running) {
                                      : QString("Activity: %1 running").arg(running));
 }
 
+void TopBar::SetUpdatesCount(int pending) {
+  updates_->setText(pending > 0 ? QString::number(pending) : QString());
+  updates_->setToolButtonStyle(pending > 0 ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
+  updates_->setToolTip(pending == 0 ? QString("Updates")
+                                    : QString("Updates: %1 available").arg(pending));
+  // The count moves the tools, and the note fits between them and the brand.
+  QTimer::singleShot(0, this, &TopBar::PlaceHiddenNote);
+}
+
+void TopBar::SetMiraUpdate(const QString& text, bool busy, const QString& tooltip) {
+  mira_update_->setText(text);
+  mira_update_->setToolTip(tooltip);
+  theme::SetStyleProperty(mira_update_, "busy", busy ? "true" : "false");
+  mira_update_->setVisible(!text.isEmpty());
+  QTimer::singleShot(0, this, &TopBar::PlaceHiddenNote);
+}
+
 void TopBar::SyncMaximized() {
   const bool maximized = window()->isMaximized();
   maximize_->setIcon(icons::For(maximized ? icons::Glyph::Restore : icons::Glyph::Maximize));
@@ -113,8 +140,9 @@ void TopBar::PlaceHiddenNote() {
   place.moveCenter(rect().center());
   constexpr int kGap = 12;
   hidden_note_->setGeometry(place);
+  const QWidget* tools = mira_update_->isVisible() ? static_cast<QWidget*>(mira_update_) : zoom_;
   hidden_note_->setVisible(place.left() >= brand_->geometry().right() + kGap &&
-                           place.right() <= zoom_->geometry().left() - kGap);
+                           place.right() <= tools->geometry().left() - kGap);
 }
 
 void TopBar::resizeEvent(QResizeEvent* event) {
@@ -127,6 +155,7 @@ void TopBar::ApplyIcons() {
   big_screen_->setIcon(icons::For(Glyph::Monitor));
   refresh_->setIcon(icons::For(Glyph::Refresh));
   activity_->setIcon(icons::For(Glyph::Download));
+  updates_->setIcon(icons::For(Glyph::Update));
   shortcuts_->setIcon(icons::For(Glyph::Keyboard));
   about_->setIcon(icons::For(Glyph::Info));
   minimize_->setIcon(icons::For(Glyph::Minimize));

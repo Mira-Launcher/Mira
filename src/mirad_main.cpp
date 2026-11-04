@@ -32,6 +32,7 @@
 #include "migrate/Sources.h"
 #include "runner/RefMigration.h"
 #include "store/GameStore.h"
+#include "updates/Updates.h"
 
 namespace {
 
@@ -205,6 +206,7 @@ int main(int argc, char** argv) {
     }
   });
 
+  mira::updates::RemoveDownloadedMira();  // the package a finished or abandoned update left
   WaitForShutdownSignal();
   mira::log::Info("shutting down");
   server.Stop();

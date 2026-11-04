@@ -39,6 +39,7 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../updates/UpdateChecker.h"
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
@@ -71,26 +72,17 @@ void SavePrefs(QWidget* parent, const FrontendPrefs& prefs, const QString& failu
 
 }  // namespace
 
-Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const FrontendPrefs& prefs,
-                 QWidget* parent)
-    : QWidget(parent), library_(library), artwork_(artwork) {
+Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker* updates,
+                 const FrontendPrefs& prefs, QWidget* parent)
+    : QWidget(parent), library_(library), artwork_(artwork), updates_(updates) {
   setObjectName("left_sidebar");
   // A point above the rest of the window, so its rows read at a glance.
   setFont(theme::Larger(font()));
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
             if (type == "sources.changed") RefreshSources();
-            if (!live) return;
-            // A tool set up or an emulator installed may be the newer release.
-            const auto payload = nlohmann::json::parse(data, nullptr, false);
-            if (!payload.is_object()) return;
-            const std::string kind = payload.value("kind", std::string());
-            const bool installed = type == "job.finished" && (kind == "setup" || kind == "install");
-            const bool check_changed =
-                type == "config.changed" && payload.contains("keys") &&
-                std::ranges::contains(payload["keys"], nlohmann::json("updates.check"));
-            if (installed || check_changed) RefreshUpdates();
           });
+  connect(updates_, &UpdateChecker::Changed, this, &Sidebar::RefreshUpdates);
 
   // Rows with their own menu handle it first; the rest fall through to here.
   setContextMenuPolicy(Qt::CustomContextMenu);
@@ -243,7 +235,6 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, const Fronten
     RefreshGames();
     ShowActive();
   });
-  RefreshUpdates();
 }
 
 // PINNED and RECENTLY PLAYED headings carry a button for the customize card.
@@ -918,31 +909,18 @@ void Sidebar::ShowSourceMenu(const SourceInfo& source, const QPoint& global_pos)
 }
 
 void Sidebar::RefreshUpdates() {
-  const int request = ++updates_request_;
-  api::GetConfigAsync(this, [this, request](ConfigResult config) {
-    if (request != updates_request_ || !config.ok) return;
-    const auto check = config.values.find("updates.check");
-    if (check != config.values.end() && check->second == "false") {
-      source_updates_.clear();
-      UpdateSources();
-      return;
-    }
-    api::GetUpdatesAsync(this, [this, request](UpdatesResult result) {
-      if (request != updates_request_ || !result.ok) return;
-      source_updates_.clear();
-      // Runner builds and umu belong to the Runners page, Mira's own release to no source.
-      for (const UpdateInfo& update : result.updates) {
-        const QString id = QString::fromStdString(update.id);
-        if ((update.kind != "tool" && update.kind != "emulator") || FindSourceInfo(id) == nullptr)
-          continue;
-        QString& what = source_updates_[id];
-        if (!what.isEmpty()) what += " and ";
-        what += QString::fromStdString(update.name);
-        if (!update.latest.empty()) what += " (" + QString::fromStdString(update.latest) + ")";
-      }
-      UpdateSources();
-    });
-  });
+  source_updates_.clear();
+  // Runner builds and umu belong to the Runners page, Mira's own release to no source.
+  for (const UpdateInfo& update : updates_->Updates()) {
+    const QString id = QString::fromStdString(update.id);
+    if ((update.kind != "tool" && update.kind != "emulator") || FindSourceInfo(id) == nullptr)
+      continue;
+    QString& what = source_updates_[id];
+    if (!what.isEmpty()) what += " and ";
+    what += QString::fromStdString(update.name);
+    if (!update.latest.empty()) what += " (" + QString::fromStdString(update.latest) + ")";
+  }
+  UpdateSources();
 }
 
 void Sidebar::UpdateSourceTool(const SourceInfo& source) {

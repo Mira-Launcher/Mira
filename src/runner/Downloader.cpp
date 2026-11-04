@@ -104,6 +104,46 @@ bool Excluded(const std::vector<std::string>& exclude, const std::string& text) 
 
 // A release's first asset that matches; one per release is expected. GitHub and Forgejo list
 // assets, GitLab links under assets.links.
+// Checks `target` against `checksum_file` beside it, removing the checksum file, and `target` too
+// unless it matches.
+Result<void> RunChecksum(bool sha256, const fs::path& target, const fs::path& checksum_file) {
+  std::error_code ec;
+  Command verify;
+  verify.argv = {sha256 ? "sha256sum" : "sha512sum", "-c", checksum_file.filename().string()};
+  verify.cwd = target.parent_path();
+  const Result<ExecResult> verified = RunAndWait(verify);
+  fs::remove(checksum_file, ec);
+  if (!verified || verified->exit_code == 127) {  // 127: the tool couldn't be run
+    fs::remove(target, ec);
+    return Err("checksum_unchecked",
+               std::format("couldn't run {} to check the download", verify.argv[0]));
+  }
+  if (verified->exit_code != 0) {
+    fs::remove(target, ec);
+    return Err(
+        "checksum_mismatch",
+        "downloaded file's checksum didn't match, so it was discarded instead of installing a "
+        "corrupted or tampered build");
+  }
+  return {};
+}
+
+// curl writes straight into `file`, so its size against the release's says how far along it is.
+std::jthread WatchDownload(const fs::path& file, std::int64_t total,
+                           const std::function<void(double)>& on_progress) {
+  return std::jthread([file, total, &on_progress](std::stop_token stop) {
+    int reported = -1;
+    while (!stop.stop_requested()) {
+      std::error_code size_ec;
+      const auto size = fs::file_size(file, size_ec);
+      const int percent =
+          size_ec ? 0 : static_cast<int>(std::min<std::uintmax_t>(size * 100 / total, 100));
+      if (percent != reported) on_progress((reported = percent) / 100.0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+  });
+}
+
 std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& pattern,
                                     const std::vector<std::string>& exclude) {
   if (!release.is_object() || !release.contains("assets")) return std::nullopt;
@@ -118,6 +158,7 @@ std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& patt
     entry.asset_name = name;
     entry.download_url = core::JsonString(asset, gitlab ? "url" : "browser_download_url");
     entry.size_bytes = core::JsonInt(asset, "size");
+    entry.digest = core::JsonString(asset, "digest");
     entry.published_at = core::JsonString(release, gitlab ? "released_at" : "published_at");
     FindChecksum(assets, name, entry);
     return entry;
@@ -197,25 +238,7 @@ Result<void> DownloadVerified(const ReleaseAsset& asset, const fs::path& target)
     }
   }
 
-  Command verify;
-  verify.argv = {asset.checksum_is_sha256 ? "sha256sum" : "sha512sum", "-c",
-                 checksum_file.filename().string()};
-  verify.cwd = target.parent_path();
-  const Result<ExecResult> verified = RunAndWait(verify);
-  fs::remove(checksum_file, ec);
-  if (!verified || verified->exit_code == 127) {  // 127: the tool couldn't be run
-    fs::remove(target, ec);
-    return Err("checksum_unchecked",
-               std::format("couldn't run {} to check the download", verify.argv[0]));
-  }
-  if (verified->exit_code != 0) {
-    fs::remove(target, ec);
-    return Err(
-        "checksum_mismatch",
-        "downloaded file's checksum didn't match, so it was discarded instead of installing a "
-        "corrupted or tampered build");
-  }
-  return {};
+  return RunChecksum(asset.checksum_is_sha256, target, checksum_file);
 }
 
 // Recursively searches `dir` for a regular file named `name`, for pulling
@@ -412,27 +435,35 @@ std::string BuildLabel(const std::string& kind, const std::string& name) {
   return name;
 }
 
+namespace {
+using Clock = std::chrono::steady_clock;
+struct CachedReleases {
+  Clock::time_point at;
+  std::vector<ReleaseAsset> releases;
+};
+std::mutex release_cache_mutex;
+std::map<std::string, CachedReleases> release_cache;
+}  // namespace
+
 Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family) {
-  using Clock = std::chrono::steady_clock;
-  struct Cached {
-    Clock::time_point at;
-    std::vector<ReleaseAsset> releases;
-  };
-  static std::mutex mutex;
-  static std::map<std::string, Cached> cache;
   const std::string key = family.repo + "|" + family.asset_pattern;
   {
-    std::lock_guard lock(mutex);
-    if (auto it = cache.find(key);
-        it != cache.end() && Clock::now() - it->second.at < std::chrono::minutes(10)) {
+    std::lock_guard lock(release_cache_mutex);
+    if (auto it = release_cache.find(key);
+        it != release_cache.end() && Clock::now() - it->second.at < std::chrono::minutes(10)) {
       return it->second.releases;
     }
   }
   auto releases = FetchReleases(family.repo, family.asset_pattern, family.exclude);
   if (!releases) return releases;
-  std::lock_guard lock(mutex);
-  cache[key] = {Clock::now(), *releases};
+  std::lock_guard lock(release_cache_mutex);
+  release_cache[key] = {Clock::now(), *releases};
   return releases;
+}
+
+void ForgetCachedReleases() {
+  std::lock_guard lock(release_cache_mutex);
+  release_cache.clear();
 }
 
 Result<void> DownloadAndInstall(const config::Config& config, const std::string& kind,
@@ -471,21 +502,8 @@ Result<void> DownloadAndInstall(const config::Config& config, const std::string&
   // once extraction succeeds.
   const fs::path archive = install_dir / asset.asset_name;
   std::jthread watch;
-  if (on_progress && asset.size_bytes > 0) {
-    // curl writes straight into `archive`, so its size against the release's says how far along it
-    // is.
-    watch = std::jthread([&archive, &on_progress, total = asset.size_bytes](std::stop_token stop) {
-      int reported = -1;
-      while (!stop.stop_requested()) {
-        std::error_code size_ec;
-        const auto size = fs::file_size(archive, size_ec);
-        const int percent =
-            size_ec ? 0 : static_cast<int>(std::min<std::uintmax_t>(size * 100 / total, 100));
-        if (percent != reported) on_progress((reported = percent) / 100.0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      }
-    });
-  }
+  if (on_progress && asset.size_bytes > 0)
+    watch = WatchDownload(archive, asset.size_bytes, on_progress);
   auto downloaded = DownloadVerified(asset, archive);
   if (watch.joinable()) {
     watch.request_stop();
@@ -524,6 +542,30 @@ Result<ReleaseAsset> LatestRelease(const std::string& url, const std::string& pa
     return Err("no_release_asset",
                std::format("the latest release at {} has no file matching {}", url, pattern));
   return *asset;
+}
+
+Result<void> DownloadWithDigest(const ReleaseAsset& asset, const fs::path& target,
+                                const std::function<void(double)>& on_progress) {
+  constexpr std::string_view kPrefix = "sha256:";
+  if (!asset.digest.starts_with(kPrefix))
+    return Err("checksum_missing", std::format("{} has no checksum to verify", asset.asset_name));
+  std::jthread watch;
+  if (on_progress && asset.size_bytes > 0)
+    watch = WatchDownload(target, asset.size_bytes, on_progress);
+  if (auto downloaded = CurlDownload(asset.download_url, target); !downloaded) return downloaded;
+
+  fs::path checksum_file = target;
+  checksum_file += ".sha256sum";
+  std::ofstream out(checksum_file);
+  out << asset.digest.substr(kPrefix.size()) << "  " << target.filename().string() << "\n";
+  out.close();  // so a failed flush counts too
+  if (!out) {
+    std::error_code ec;
+    fs::remove(target, ec);
+    fs::remove(checksum_file, ec);
+    return Err("download_failed", std::format("couldn't write {}", checksum_file.string()));
+  }
+  return RunChecksum(/*sha256=*/true, target, checksum_file);
 }
 
 namespace {

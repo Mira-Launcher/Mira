@@ -15,6 +15,14 @@ TEST_CASE("Distro families come from os-release, with ostree and SteamOS ahead o
   CHECK(system::ParseOsRelease("ID=nixos\n", false).family == system::Family::Unknown);
 }
 
+TEST_CASE("A downloaded package installs by its path where Mira can update itself") {
+  CHECK(system::InstallFileCommand(system::Family::Debian, "/tmp/m.deb") ==
+        std::vector<std::string>{"apt-get", "install", "-y", "/tmp/m.deb"});
+  CHECK(system::InstallFileCommand(system::Family::Fedora, "/tmp/m.rpm").back() == "/tmp/m.rpm");
+  CHECK(system::InstallFileCommand(system::Family::Arch, "/tmp/m.deb").empty());
+  CHECK(system::InstallFileCommand(system::Family::Ostree, "/tmp/m.rpm").empty());
+}
+
 TEST_CASE("Install commands per family; none where Mira can't install") {
   CHECK(system::InstallCommand(system::Family::Arch, {"cabextract"}) ==
         std::vector<std::string>{"pacman", "-S", "--needed", "--noconfirm", "cabextract"});

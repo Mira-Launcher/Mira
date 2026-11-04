@@ -31,6 +31,7 @@ enum class Glyph {
   Stop,
   CheckCircle,
   Download,
+  Update,
   Clock,
   Warning,
   CircleX,

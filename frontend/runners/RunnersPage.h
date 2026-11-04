@@ -15,6 +15,8 @@ class QPushButton;
 
 namespace mira_gui {
 
+class RunnerUpdater;
+
 class DownloadTracker;
 class SettingsCard;
 
@@ -26,7 +28,7 @@ class RunnersPage : public QWidget {
   Q_OBJECT
 
  public:
-  explicit RunnersPage(DownloadTracker* downloads, QWidget* parent = nullptr);
+  RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWidget* parent = nullptr);
 
   // The whole library, to say how many games use each build.
   void SetGames(const std::vector<GameSummary>& games);
@@ -56,6 +58,7 @@ class RunnersPage : public QWidget {
   void SetStatus(const QString& text, bool error = false);
 
   DownloadTracker* downloads_ = nullptr;
+  RunnerUpdater* updater_ = nullptr;
   QButtonGroup* kinds_ = nullptr;
   QBoxLayout* columns_ = nullptr;  // side by side, or stacked on a narrow window
   SettingsCard* installed_ = nullptr;
@@ -72,7 +75,6 @@ class RunnersPage : public QWidget {
   std::map<std::string, std::vector<RunnerSourceInfo>> sources_;  // by kind
   std::vector<RunnerUpdate> updates_;
   std::vector<RunnerTool> tools_;
-  std::map<std::string, std::string> replacing_;  // new release name -> reference it updates
   // Each downloading catalog row's progress, by download key, so a new percent
   // doesn't rebuild the list. Reset by RebuildCatalog.
   std::map<QString, QWidget*> progress_rows_;

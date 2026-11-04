@@ -46,6 +46,10 @@ std::string_view PackageFor(const Tool& tool, Family family);
 // The command that installs `packages` as root, or empty where Mira can't (SteamOS, unknown).
 std::vector<std::string> InstallCommand(Family family, const std::vector<std::string>& packages);
 
+// The command that installs a downloaded .deb or .rpm, by absolute path, as root; empty where the
+// family's package manager doesn't. The caller has verified the file, and Mira's rpms are unsigned.
+std::vector<std::string> InstallFileCommand(Family family, const std::string& file);
+
 // The packages of `feature`'s installed programs (not the libraries they use), named for this
 // distro.
 std::vector<std::string> InstalledPackages(std::string_view feature);

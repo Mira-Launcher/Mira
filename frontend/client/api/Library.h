@@ -72,8 +72,14 @@ void RelocateLibraryAsync(QObject* context, std::function<void(RelocateLibraryRe
 void RelocateGamesAsync(QObject* context, const std::vector<std::string>& ids,
                         std::function<void(RelocateLibraryResult)> callback);
 
-// GET /v1/updates. Reaches each release source, cached by mirad.
-void GetUpdatesAsync(QObject* context, std::function<void(UpdatesResult)> callback);
+// GET /v1/updates. Reaches each release source, cached by mirad unless `refresh`.
+void GetUpdatesAsync(QObject* context, bool refresh, std::function<void(UpdatesResult)> callback);
+
+// POST /v1/updates/mira: a job that downloads and verifies Mira's latest release.
+void UpdateMiraAsync(QObject* context, std::function<void(MiraUpdateResult)> callback);
+
+// POST /v1/shutdown. `done` runs either way: mirad may stop before it answers.
+void ShutdownDaemonAsync(QObject* context, std::function<void()> done);
 
 // GET /v1/library/unclear: folders that could be any of several games moved by hand.
 void ListUnclearMovesAsync(QObject* context, std::function<void(UnclearMovesResult)> callback);
