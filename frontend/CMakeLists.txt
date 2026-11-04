@@ -128,7 +128,9 @@ add_executable(mira_gui_tests
   ${MIRA_GUI_TEST_SOURCES}
   activity/DownloadTracker.cpp
   app/DaemonSupervisor.cpp
+  app/DesktopController.cpp
   app/ErrorHelp.cpp
+  bigscreen/GamepadInput.cpp
   client/EventHub.cpp
   client/EventStream.cpp
   client/Events.cpp

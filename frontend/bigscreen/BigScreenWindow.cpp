@@ -1268,14 +1268,8 @@ void BigScreenWindow::AppControl(Nav nav) {
 }
 
 void BigScreenWindow::ApplyInputOptions() {
-  GamepadInput::Options options;
-  options.swap_confirm = prefs_.big_screen_swap_confirm.value_or(false);
+  const GamepadInput::Options options = GamepadInput::OptionsFrom(prefs_);
   SetSwapConfirm(options.swap_confirm);
-  const std::string stick = prefs_.big_screen_stick.value_or("medium");
-  options.stick_threshold = stick == "high" ? 11000 : stick == "low" ? 25000 : 18000;
-  const std::string repeat = prefs_.big_screen_repeat.value_or("normal");
-  options.first_repeat_ms = repeat == "fast" ? 260 : repeat == "slow" ? 520 : 380;
-  options.repeat_ms = repeat == "fast" ? 60 : repeat == "slow" ? 140 : 90;
   input_->SetOptions(options);
   RestartIdle();
 }

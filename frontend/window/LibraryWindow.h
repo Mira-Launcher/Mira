@@ -32,6 +32,7 @@ class BigScreenWindow;
 }
 class ArtworkStore;
 class DaemonSupervisor;
+class DesktopController;
 class DownloadTracker;
 class DownloadsPanel;
 class MiraUpdater;
@@ -386,5 +387,6 @@ class LibraryWindow : public QMainWindow,
   // and a filter or search change redraws every visible tile.
   mira_gui::ArtworkStore* artwork_ = nullptr;
   QPointer<mira_gui::bigscreen::BigScreenWindow> big_screen_;
+  mira_gui::DesktopController* controller_ = nullptr;
   mira_gui::shortcuts::Common common_;
 };

@@ -4,10 +4,15 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <functional>
 #include <memory>
 #include <vector>
 
 #include "NavRepeater.h"
+
+namespace mira_gui {
+struct FrontendPrefs;
+}
 
 namespace mira_gui::bigscreen {
 
@@ -32,13 +37,22 @@ class GamepadInput : public QObject {
     int stick_threshold = 18000;  // of 32767, how far a stick moves before it counts
     int first_repeat_ms = 380;
     int repeat_ms = 90;
+    bool start_as_action = false;  // Start (Menu) does what X does: a right click on the desktop
   };
+  // The controller settings (Settings › Big screen › Controller) as options.
+  static Options OptionsFrom(const FrontendPrefs& prefs);
 
   explicit GamepadInput(QObject* parent = nullptr);
   ~GamepadInput() override;
+  // Opening the controllers takes SDL about 50 ms, so this does it on a worker thread, then calls
+  // `ready` on `parent`'s thread with the new input (not if `parent` is gone by then).
+  static void CreateInBackground(QObject* parent, std::function<void(GamepadInput*)> ready);
 
   bool available() const { return sdl_ != nullptr; }
   void SetOptions(const Options& options);
+  // Stops reading the controllers. Buttons still held when it resumes count only once released,
+  // so the press that switched windows doesn't land here too.
+  void SetPaused(bool paused);
 
   // The controllers connected now, the last used first.
   const std::vector<Pad>& pads() const { return pads_; }
@@ -54,6 +68,8 @@ class GamepadInput : public QObject {
 
  signals:
   void Pressed(Nav nav);
+  // A button let go, after the press it was down for; not sent for directions' repeats.
+  void Released(Nav nav);
   void PadChanged();
   // A controller's battery dropped under 15%.
   void BatteryLow(QString name, int percent);
@@ -62,6 +78,8 @@ class GamepadInput : public QObject {
 
  private:
   struct Sdl;
+  GamepadInput(QObject* parent, std::unique_ptr<Sdl> sdl);
+  void Begin(std::unique_ptr<Sdl> sdl);
   void Poll();
   void Scan();
 
@@ -72,6 +90,9 @@ class GamepadInput : public QObject {
   Options options_;
   std::vector<Pad> pads_;
   std::array<bool, size_t(Nav::kCount)> down_{};
+  // Held when reading resumed, ignored until released.
+  std::array<bool, size_t(Nav::kCount)> masked_{};
+  bool mask_held_ = false;
   std::int64_t back_since_ = -1;
 };
 
