@@ -147,7 +147,9 @@ add_executable(mira_gui_tests
   sources/Sources.cpp
   theme/Theme.cpp
   updates/UpdateRows.cpp
+  widgets/FocusRing.cpp
   widgets/Labels.cpp
+  widgets/SpatialNav.cpp
   widgets/TileFit.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -158,8 +160,8 @@ qt_add_resources(mira_gui_tests "test_themes"
     "${CMAKE_CURRENT_SOURCE_DIR}/themes/mira-dark.toml"
     "${CMAKE_CURRENT_SOURCE_DIR}/themes/mira-light.toml"
 )
-# Widgets only for the game model's headers (its roles are the tile
-# delegate's) and theme colors; no test opens a window or runs an event loop.
+# Widgets for the game model's headers (its roles are the tile delegate's), theme colors and
+# the tests that open a window (offscreen).
 # Test for QAbstractItemModelTester, which checks the models' row signals.
 find_package(Qt6 REQUIRED COMPONENTS Test)
 target_link_libraries(mira_gui_tests PRIVATE mira_third_party Qt6::Widgets Qt6::Test)

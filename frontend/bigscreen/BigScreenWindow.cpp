@@ -29,6 +29,7 @@
 #include "../library/GamePresentation.h"
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
+#include "../widgets/FocusRing.h"
 #include "CollectionsPage.h"
 #include "DownloadsPage.h"
 #include "GameKeyboard.h"
@@ -353,6 +354,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint), services_(services) {
   setWindowTitle("Mira");
   setFocusPolicy(Qt::StrongFocus);
+  FocusRing::LeaveOut(this);
   // Driven by a controller or keys; a pointer would only sit over the art.
   setCursor(Qt::BlankCursor);
   input_ = new GamepadInput(this);

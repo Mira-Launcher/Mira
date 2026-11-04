@@ -11,6 +11,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/SpatialNav.h"
 
 namespace mira_gui {
 
@@ -19,6 +20,7 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
   setAttribute(
       Qt::WA_StyledBackground);    // a plain QWidget subclass draws no QSS background otherwise
   setFont(theme::Larger(font()));  // a point above the rest of the window, like the sidebar
+  spatial_nav::TabLast(this);      // window tools after the library itself
 
   auto* layout = new QHBoxLayout(this);
   layout->setContentsMargins(12, 4, 6, 4);

@@ -45,12 +45,6 @@ class StyleChoice : public QAbstractButton {
     painter.setPen(QPen(isChecked() ? tokens.accent : tokens.border, isChecked() ? 2 : 1));
     painter.setBrush(isChecked() || underMouse() ? tokens.surface_alt : tokens.surface);
     painter.drawRoundedRect(frame, tokens.radius_control + 2, tokens.radius_control + 2);
-    if (hasFocus()) {
-      painter.setPen(QPen(tokens.accent, 1, Qt::DotLine));
-      painter.setBrush(Qt::NoBrush);
-      painter.drawRoundedRect(frame.adjusted(3, 3, -3, -3), tokens.radius_control,
-                              tokens.radius_control);
-    }
 
     sidebar::PaintStylePreview(&painter, QRect(12, 12, width() - 24, 86), option_.style, games_(),
                                artwork_);

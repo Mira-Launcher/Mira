@@ -10,6 +10,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
+#include <QPointer>
+#include <QProxyStyle>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QStyle>
@@ -142,11 +144,26 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
 
 // Fusion rather than the desktop's own style: ours is the only palette and stylesheet in play, and
 // Breeze/Adwaita would otherwise keep drawing the parts our QSS doesn't name, which is what
-// "half-themed" looks like.
-void UseFusion() {
-  if (QApplication::style() == nullptr || QApplication::style()->name() != "fusion") {
-    QApplication::setStyle(QStyleFactory::create("Fusion"));
+// "half-themed" looks like. Its dotted focus frame is left out: the focus ring marks focus.
+class AppStyle : public QProxyStyle {
+ public:
+  AppStyle() : QProxyStyle(QStyleFactory::create("Fusion")) {}
+
+  void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter,
+                     const QWidget* widget) const override {
+    if (element == PE_FrameFocusRect) return;
+    QProxyStyle::drawPrimitive(element, option, painter, widget);
   }
+};
+
+// Set once: with a stylesheet, QApplication::style() is Qt's stylesheet wrapper around ours, and
+// setting it again would repolish every widget. The application deletes it on exit.
+QPointer<QStyle> g_app_style;
+
+void UseFusion() {
+  if (g_app_style != nullptr) return;
+  g_app_style = new AppStyle;
+  QApplication::setStyle(g_app_style);
 }
 
 // The desktop's palette (KDE's color scheme, for one), or none when the platform gives

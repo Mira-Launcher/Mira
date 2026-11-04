@@ -96,7 +96,6 @@
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
-#include "../widgets/Scrolling.h"
 #include "../widgets/TileView.h"
 #include "AboutCard.h"
 #include "FramelessRoot.h"
@@ -752,7 +751,6 @@ void LibraryWindow::OpenRunners() {
   runners_page_->SetGames(ShownGames());
   main_stack_->addWidget(runners_page_);
   main_stack_->setCurrentWidget(runners_page_);
-  mira_gui::FocusPage(runners_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }
@@ -801,7 +799,6 @@ void LibraryWindow::OpenTags() {
         CloseRunners();
         CloseSourcesPage();
         main_stack_->setCurrentWidget(tags_page_);
-        mira_gui::FocusPage(tags_page_);
         SetSourceControlsEnabled(false);
         UpdateLibraryNavActive();
       },
@@ -1650,11 +1647,7 @@ void LibraryWindow::OpenSettings(const QString& focus_key) {
             content_stack_->setCurrentWidget(settings_page_);
             SetSettingsChromeVisible(true);
             // Focus can't go into the panel before now: it's disabled while loading.
-            if (focus_key.isEmpty()) {
-              mira_gui::FocusPage(settings_page_);
-            } else {
-              settings_panel_->FocusKey(focus_key);
-            }
+            if (!focus_key.isEmpty()) settings_panel_->FocusKey(focus_key);
           });
 }
 
@@ -2035,7 +2028,6 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   });
   main_stack_->addWidget(source_page_);
   main_stack_->setCurrentWidget(source_page_);
-  mira_gui::FocusPage(source_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }

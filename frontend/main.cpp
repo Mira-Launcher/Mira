@@ -25,6 +25,8 @@
 #include "setup/SetupWindow.h"
 #include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
+#include "widgets/FocusRing.h"
+#include "widgets/SpatialNav.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
 
@@ -99,6 +101,8 @@ int main(int argc, char** argv) {
   mira_gui::theme::portal::Watch();
   mira_gui::theme::Apply("auto");
   mira_gui::tooltip::Install();
+  mira_gui::FocusRing::Install();
+  mira_gui::spatial_nav::Install();
 
   // docs/backend.md's "frontend-managed" daemon path: start mirad
   // ourselves if nothing is already listening, so the AppImage works as one

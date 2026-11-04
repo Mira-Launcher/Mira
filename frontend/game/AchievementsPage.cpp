@@ -123,7 +123,18 @@ void AchievementTile::SetIcon(const QPixmap& icon) {
 
 void AchievementTile::mouseReleaseEvent(QMouseEvent* event) {
   QFrame::mouseReleaseEvent(event);
-  if (!Masked() || event->button() != Qt::LeftButton) return;
+  if (event->button() == Qt::LeftButton) Reveal();
+}
+
+void AchievementTile::keyPressEvent(QKeyEvent* event) {
+  const int key = event->key();
+  if (Masked() && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
+    return Reveal();
+  QFrame::keyPressEvent(event);
+}
+
+void AchievementTile::Reveal() {
+  if (!Masked()) return;
   revealed_ = true;
   Fill();
   emit Revealed();
@@ -132,6 +143,7 @@ void AchievementTile::mouseReleaseEvent(QMouseEvent* event) {
 void AchievementTile::Fill() {
   const bool masked = Masked();
   setCursor(masked ? Qt::PointingHandCursor : Qt::ArrowCursor);
+  setFocusPolicy(masked ? Qt::TabFocus : Qt::NoFocus);
   name_->setText(masked ? "Hidden achievement" : QString::fromStdString(item_.name));
   description_->setText(masked ? "Click to show it" : QString::fromStdString(item_.description));
   description_->setVisible(!description_->text().isEmpty());

@@ -61,6 +61,7 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent)
 void SourceTile::SetClickable(const QString& tooltip) {
   clickable_ = true;
   setProperty("clickable", true);
+  setFocusPolicy(Qt::TabFocus);
   setCursor(Qt::PointingHandCursor);
   setToolTip(tooltip);
 }
@@ -93,6 +94,13 @@ void SourceTile::mouseReleaseEvent(QMouseEvent* event) {
     emit Clicked();
   }
   QFrame::mouseReleaseEvent(event);
+}
+
+void SourceTile::keyPressEvent(QKeyEvent* event) {
+  const int key = event->key();
+  if (clickable_ && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
+    return emit Clicked();
+  QFrame::keyPressEvent(event);
 }
 
 }  // namespace mira_gui
