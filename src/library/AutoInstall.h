@@ -24,6 +24,11 @@ enum class InstallerFormat { kUnknown, kInnoSetup, kNsis, kMsi };
 
 // The formats Mira can run silently; anything else is kUnknown.
 InstallerFormat DetectInstallerFormat(const std::filesystem::path& file);
+
+// The user asked for what's in `folder` to be added, as with a download from links: its installer
+// runs on its own even with scan.auto_run_installers off. Lasts until mirad restarts.
+void RequestAutoInstall(const std::filesystem::path& folder);
+bool IsAutoInstallRequested(const std::filesystem::path& folder);
 std::string_view ToString(InstallerFormat format);
 
 // Whether an installer builder made the file: the silent formats above, plus WiX Burn bundles,

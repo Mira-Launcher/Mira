@@ -14,6 +14,9 @@
 #include "core/Paths.h"
 #include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
+#include "library/AutoInstall.h"
+#include "library/Drops.h"
+#include "library/Import.h"
 #include "runner/Exec.h"
 
 namespace mira::downloads {
@@ -43,6 +46,12 @@ bool IsLive(const std::string& state) {
 
 constexpr int kServicePollTicks = 5;
 
+std::vector<std::string> Addresses(const QueuedFile& file) {
+  std::vector<std::string> out = {file.url};
+  out.insert(out.end(), file.mirrors.begin(), file.mirrors.end());
+  return out;
+}
+
 Error ServiceNeeded() {
   return {"service_needed", "torrents need a download service",
           "Add one in Settings, under Downloads."};
@@ -59,6 +68,37 @@ std::vector<std::string> ParseStrings(const std::string& text) {
 }
 
 }  // namespace
+
+std::vector<QueuedFile> MergeMirrors(std::vector<QueuedFile> files) {
+  std::vector<QueuedFile> out;
+  for (QueuedFile& file : files) {
+    const auto same_name = [&](const std::string& name) {
+      return std::ranges::find(out, name, &QueuedFile::name);
+    };
+    const auto found = same_name(file.name);
+    if (found == out.end()) {
+      out.push_back(std::move(file));
+      continue;
+    }
+    const std::int64_t a = found->status.total;
+    const std::int64_t b = file.status.total;
+    if (a <= 0 || b <= 0 || a == b) {
+      if (a <= 0) found->status.total = b;
+      found->mirrors.push_back(std::move(file.url));
+      continue;
+    }
+    const fs::path path(file.name);
+    std::string name;
+    for (int copy = 2; name.empty() || same_name(name) != out.end(); ++copy) {
+      name = (path.parent_path() /
+              std::format("{} ({}){}", path.stem().string(), copy, path.extension().string()))
+                 .string();
+    }
+    file.name = std::move(name);
+    out.push_back(std::move(file));
+  }
+  return out;
+}
 
 json ToJson(const Download& download) {
   json files = json::array();
@@ -253,8 +293,9 @@ void Queue::Fetch(const std::string& id) {
 
 void Queue::StartFiles(Download& download) {
   const fs::path dir = WorkDir(download);
+  download.files = MergeMirrors(std::move(download.files));
   for (QueuedFile& file : download.files) {
-    auto gid = aria2_.Add({file.url}, dir, file.name);
+    auto gid = aria2_.Add(Addresses(file), dir, file.name);
     if (!gid) return SetState(download, "failed", gid.error());
     file.gid = *gid;
   }
@@ -332,7 +373,7 @@ void Queue::PollFiles(Download& download) {
     const auto status = aria2_.Status(file.gid);
     // aria2 restarted and lost it: add it again, continuing what's on disk.
     if (!status) {
-      auto gid = aria2_.Add({file.url}, WorkDir(download), file.name);
+      auto gid = aria2_.Add(Addresses(file), WorkDir(download), file.name);
       if (!gid) return SetState(download, "failed", gid.error());
       file.gid = *gid;
       all_done = false;
@@ -370,27 +411,23 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
   std::vector<fs::path> entries;
   std::error_code ec;
   for (const auto& entry : fs::directory_iterator(dir, ec)) {
-    if (entry.path().filename() != "extracted") entries.push_back(entry.path());
+    const std::string name = entry.path().filename().string();
+    if (name != "extracted" && name != "staged") entries.push_back(entry.path());
   }
   std::vector<fs::path> archives;
   for (const fs::path& path : entries) {
     if (library::LooksLikeArchive(path) && !library::IsLaterVolume(path)) archives.push_back(path);
   }
-  const auto folders = config_.GetPathArray("mira_folders");
-  if (folders.empty()) return Err("no_mira_folder", "Mira has no folder to put the game in");
-  const fs::path home = folders.front();
+  const fs::path extracted = dir / "extracted";
 
   // Nothing to extract: an installer, a ROM or a folder of files.
   if (archives.empty()) {
-    if (entries.size() == 1 && !fs::is_directory(entries.front(), ec)) {
-      fs::rename(entries.front(), library::FreeName(home / entries.front().filename()), ec);
-    } else {
-      const fs::path dest = library::FreeName(home / FolderName(download.name));
-      fs::create_directories(dest, ec);
-      for (const fs::path& path : entries) fs::rename(path, dest / path.filename(), ec);
-    }
+    if (entries.size() == 1) return Place(download, dir, entries.front());
+    fs::remove_all(extracted, ec);
+    fs::create_directories(extracted, ec);
+    for (const fs::path& path : entries) fs::rename(path, extracted / path.filename(), ec);
     if (ec) return Err("move_failed", ec.message(), kDiskHint);
-    return {};
+    return Place(download, dir, extracted);
   }
 
   std::vector<std::string> candidates;
@@ -407,7 +444,6 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
                  std::format("{} needs a password", archive.filename().string()));
     chosen.push_back(**found);
   }
-  const fs::path extracted = dir / "extracted";
   fs::remove_all(extracted, ec);
   fs::create_directories(extracted, ec);
   if (ec) return Err("dest_dir_failed", ec.message(), kDiskHint);
@@ -422,11 +458,16 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
     if (!fs::exists(dest, ec)) fs::rename(path, dest, ec);
     if (ec) return Err("move_failed", ec.message(), kDiskHint);
   }
-  fs::rename(extracted, library::FreeName(home / FolderName(download.name)), ec);
-  if (ec) return Err("move_failed", ec.message(), kDiskHint);
+  // An archive holding one folder: that folder is the game, not a level above it.
+  fs::path content = extracted;
+  std::vector<fs::path> inside;
+  for (const auto& entry : fs::directory_iterator(extracted, ec)) inside.push_back(entry.path());
+  if (inside.size() == 1) content = inside.front();
+  if (auto placed = Place(download, dir, content); !placed) return placed;
 
   if (config_.GetBool("downloads.keep_archives")) {
-    const fs::path kept = home / "Archives" / FolderName(download.name);
+    const fs::path kept =
+        config_.GetPathArray("mira_folders").front() / "Archives" / FolderName(download.name);
     fs::create_directories(kept, ec);
     for (const fs::path& path : entries) {
       if (fs::exists(path, ec)) fs::rename(path, kept / path.filename(), ec);
@@ -434,6 +475,56 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
     if (ec) log::Warn("couldn't keep the archives of {}: {}", download.name, ec.message());
   }
   return {};
+}
+
+// A program goes straight to the library under the name the user confirmed, since they asked for it
+// to be added. A ROM or anything else goes to the Mira folder, for the usual sorting.
+Result<void> Queue::Place(const Download& download, const fs::path& dir, const fs::path& content) {
+  const auto folders = config_.GetPathArray("mira_folders");
+  if (folders.empty()) return Err("no_mira_folder", "Mira has no folder to put the game in");
+  const fs::path home = folders.front();
+  std::error_code ec;
+  const bool program = library::IsProgram(config_, content);
+  const bool is_file = fs::is_regular_file(content, ec);
+  if (!program && is_file) {
+    fs::rename(content, library::FreeName(home / content.filename()), ec);
+    if (ec) return Err("move_failed", ec.message(), kDiskHint);
+    return {};
+  }
+  const std::string name = FolderName(download.name);
+  const fs::path staged_dir = dir / "staged";
+  fs::remove_all(staged_dir, ec);
+  fs::create_directories(staged_dir, ec);
+  fs::path staged = staged_dir / name;
+  if (is_file) {
+    fs::create_directories(staged, ec);
+    fs::rename(content, staged / content.filename(), ec);
+  } else {
+    fs::rename(content, staged, ec);
+  }
+  if (ec) return Err("move_failed", ec.message(), kDiskHint);
+  if (!program) {
+    fs::rename(staged, library::FreeName(home / name), ec);
+    if (ec) return Err("move_failed", ec.message(), kDiskHint);
+    return {};
+  }
+  const library::ImportKind kind = library::ClassifyImport(staged).kind == library::ImportKind::kApp
+                                       ? library::ImportKind::kApp
+                                       : library::ImportKind::kGame;
+  // The same name in the library already: this one is kept beside it.
+  for (int copy = 2;; ++copy) {
+    const auto imported = library::ImportInto(config_, staged, kind);
+    if (imported) {
+      if (config_.GetBool("downloads.auto_install")) library::RequestAutoInstall(*imported);
+      return {};
+    }
+    if (imported.error().code != "target_exists" || copy > 20)
+      return std::unexpected(imported.error());
+    const fs::path next = staged_dir / std::format("{} ({})", name, copy);
+    fs::rename(staged, next, ec);
+    if (ec) return Err("move_failed", ec.message(), kDiskHint);
+    staged = next;
+  }
 }
 
 void Queue::Finish(const std::string& id) {
@@ -471,6 +562,10 @@ Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const
   json files = json::array();
   const std::unique_ptr<Service> service = ActiveService(config_);
   const auto add_file = [&files](const LinkFile& file) {
+    // The same file from another host is a mirror, not one more file.
+    for (const json& seen : files) {
+      if (seen["name"] == file.name && seen["size"] == file.size) return;
+    }
     files.push_back({{"name", file.name}, {"size", file.size}, {"source", file.source}});
   };
   for (const std::string& link : links) {

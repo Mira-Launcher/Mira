@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "downloads/Links.h"
+#include "downloads/Queue.h"
 #include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
 #include "runner/Exec.h"
@@ -83,4 +84,22 @@ TEST_CASE("A service's answer is read, and its file paths stay under the downloa
   CHECK(partial.progress == 0.25);
   CHECK(partial.failure.empty());
   CHECK_FALSE(ParseTorBoxItem(nlohmann::json{{"download_state", "expired"}}).failure.empty());
+}
+
+TEST_CASE("The same file from two hosts is one file with mirrors") {
+  const auto file = [](const char* url, const char* name, std::int64_t size) {
+    return QueuedFile{.url = url,
+                      .name = name,
+                      .source = "",
+                      .gid = "",
+                      .status = {.state = "", .total = size, .done = 0, .speed = 0, .error = ""}};
+  };
+  const auto merged =
+      MergeMirrors({file("https://a/x", "game.7z", 5), file("https://b/x", "game.7z", 5),
+                    file("https://c/x", "game.7z", 0), file("https://d/y", "game.7z", 9),
+                    file("https://e/z", "other.bin", 1)});
+  REQUIRE(merged.size() == 3);
+  CHECK(merged[0].mirrors == std::vector<std::string>{"https://b/x", "https://c/x"});
+  CHECK(merged[1].name == "game (2).7z");
+  CHECK(merged[2].name == "other.bin");
 }

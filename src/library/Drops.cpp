@@ -15,6 +15,14 @@ namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
 
+std::string NameOf(const fs::path& path) {
+  std::error_code ec;
+  return strings::CleanGameName(
+      (fs::is_regular_file(path, ec) ? path.stem() : path.filename()).string());
+}
+
+}  // namespace
+
 // A Windows, Linux or HTML game, or a folder holding one, rather than a ROM.
 bool IsProgram(const config::Config& config, const fs::path& path) {
   std::error_code ec;
@@ -27,20 +35,12 @@ bool IsProgram(const config::Config& config, const fs::path& path) {
          extension == ".sh";
 }
 
-std::string NameOf(const fs::path& path) {
-  std::error_code ec;
-  return strings::CleanGameName(
-      (fs::is_regular_file(path, ec) ? path.stem() : path.filename()).string());
-}
-
-}  // namespace
-
 bool IsMiraFoldersOwn(const config::Config& config, const fs::path& path) {
   const std::string name = path.filename().string();
   if (name.starts_with('.')) return true;
-  if (std::ranges::contains(
-          std::vector<std::string>{"games", "applications", "prefixes", "roms", "saves", "archives"},
-          strings::ToLower(name))) {
+  if (std::ranges::contains(std::vector<std::string>{"games", "applications", "prefixes", "roms",
+                                                     "saves", "archives"},
+                            strings::ToLower(name))) {
     return true;
   }
   for (const config::Entry& entry : config::Schema::Instance().Entries()) {

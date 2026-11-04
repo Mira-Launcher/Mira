@@ -25,6 +25,9 @@ struct Drop {
 // setting names or holds, Games and the rest, or Mira's work in progress.
 bool IsMiraFoldersOwn(const config::Config& config, const std::filesystem::path& path);
 
+// A Windows or Linux program, or a folder holding one, rather than a ROM.
+bool IsProgram(const config::Config& config, const std::filesystem::path& path);
+
 // Sorts what's dropped into a Mira folder, and keeps what it couldn't sort for a client to settle.
 // Events: library.drop_unclear {path, name, reason, choices: [{id, label}]} when one appears, and
 // library.drop_settled {path} when it's gone.

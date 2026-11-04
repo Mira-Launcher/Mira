@@ -23,7 +23,12 @@ struct QueuedFile {
   std::string source;
   std::string gid;  // while aria2 has it
   FileStatus status;
+  std::vector<std::string> mirrors = {};  // more addresses of this same file
 };
+
+// The same file pasted from several hosts is one file with mirrors: same name, and sizes that don't
+// disagree. A different file with the same name gets a name of its own.
+std::vector<QueuedFile> MergeMirrors(std::vector<QueuedFile> files);
 
 // One game's links. Downloaded into a hidden folder in the first Mira folder, extracted there, then
 // moved into that Mira folder, where the normal sorting and install take over.
@@ -81,6 +86,8 @@ class Queue {
   void StartFiles(Download& download);
   void Finish(const std::string& id);
   Result<void> Extract(const Download& download, const std::filesystem::path& dir);
+  Result<void> Place(const Download& download, const std::filesystem::path& dir,
+                     const std::filesystem::path& content);
   void SetState(Download& download, std::string state, Error error = {});
   Download* FindLocked(const std::string& id);
   void Announce(const Download& download);

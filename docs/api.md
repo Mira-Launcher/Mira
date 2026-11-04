@@ -689,7 +689,7 @@ A [job](#jobs) of kind `mira_update` that downloads Mira's latest release and ch
 
 ## Downloads
 
-One game's links, downloaded with aria2 (a system package) into `.mira-downloads` in the first Mira folder. Archives are then extracted, and the result moves into the Mira folder, where the usual sorting and install take over. The queue survives a restart of mirad, continuing what's already on disk.
+One game's links, downloaded with aria2 (a system package) into `.mira-downloads` in the first Mira folder. Archives are then extracted, and the result moves into the Mira folder, where the usual sorting and install take over. A program goes straight into Games or Applications under the name given, and with `downloads.auto_install` its installer runs if Mira can run it unattended. The queue survives a restart of mirad, continuing what's already on disk.
 
 With `downloads.torbox_key` set, torrents go through TorBox. Other links use it when it already has them ready, and fall back to it when they can't be read or their download fails. Items Mira adds stay in the TorBox account.
 

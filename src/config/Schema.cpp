@@ -1633,6 +1633,13 @@ Schema::Schema() {
          .doc = "Moves a downloaded game's archives to Archives in the Mira folder instead of "
                 "deleting them once they're extracted."});
 
+  s.Add({.key = "downloads.auto_install",
+         .label = "Run installers",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Runs a downloaded game's installer on its own once it's in the library, when Mira "
+                "can run that kind of installer unattended."});
+
   s.Add({.key = "downloads.torbox_key",
          .label = "TorBox API key",
          .type = Type::String,
