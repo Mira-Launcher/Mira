@@ -80,6 +80,10 @@ double Fraction(const DownloadInfo& download) {
   return DownloadTracker::FromLink(download).progress;
 }
 
+bool IsRunning(const DownloadInfo& download) {
+  return download.state == "downloading" || download.state == "service";
+}
+
 bool HasRail(const DownloadInfo& download) {
   return download.state == "downloading" || download.state == "paused" ||
          download.state == "resolving" || download.state == "service" ||
@@ -181,10 +185,9 @@ DownloadsWindow::DownloadsWindow(LinkDownloads* downloads, DownloadTracker* trac
   pause_all_ = new QPushButton("Pause all", body);
   connect(pause_all_, &QPushButton::clicked, this, [this] {
     const auto& list = downloads_->Downloads();
-    const bool running = std::ranges::any_of(
-        list, [](const DownloadInfo& download) { return download.state == "downloading"; });
+    const bool running = std::ranges::any_of(list, IsRunning);
     for (const DownloadInfo& download : list) {
-      if (running && download.state == "downloading") downloads_->Act(download.id, "pause");
+      if (running && IsRunning(download)) downloads_->Act(download.id, "pause");
       if (!running && download.state == "paused") downloads_->Act(download.id, "resume");
     }
   });
@@ -311,13 +314,17 @@ void DownloadsWindow::Refresh() {
 void DownloadsWindow::UpdateHeader() {
   std::int64_t speed = 0;
   bool running = false;
+  bool fetching = false;
   bool paused = false;
   for (const DownloadInfo& download : downloads_->Downloads()) {
     speed += download.speed;
-    running = running || download.state == "downloading";
+    running = running || IsRunning(download);
+    fetching = fetching || download.state == "downloading";
     paused = paused || download.state == "paused";
   }
-  speed_->setText(running ? "↓ " + SizeText(speed) + "/s" : QString("Nothing downloading"));
+  speed_->setText(fetching  ? "↓ " + SizeText(speed) + "/s"
+                  : running ? QString("Waiting for the download service")
+                            : QString("Nothing downloading"));
   pause_all_->setText(running || !paused ? "Pause all" : "Resume all");
   pause_all_->setEnabled(running || paused);
 }
