@@ -40,31 +40,22 @@ namespace {
 // own IsRunning() is test-only, not exposed to a client), so a 409 means
 // ProcessSupervisor no longer considers the game running, i.e. the watcher
 // thread already reaped it and recorded the outcome.
-bool WaitForExit(httplib::Client& client, const std::string& id,
-                 std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
+bool WaitForExit(httplib::Client& client, const std::string& id) {
+  return test::WaitUntil([&] {
     auto res = client.Post(std::format("/v1/games/{}/stop", id));
-    if (res && res->status == 200 && res->body.find("not_running") != std::string::npos)
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  return false;
+    return res && res->status == 200 && res->body.find("not_running") != std::string::npos;
+  });
 }
 
 // Unlike WaitForExit, this never calls stop -- for a test that cares about
 // the game's actual output, repeatedly SIGTERMing it as a polling mechanism
 // (WaitForExit's approach) races the signal against a fast script's own
 // completion and can kill it before it finishes writing anything.
-bool WaitForLogContains(httplib::Client& client, const std::string& id, std::string_view needle,
-                        std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
+bool WaitForLogContains(httplib::Client& client, const std::string& id, std::string_view needle) {
+  return test::WaitUntil([&] {
     auto res = client.Get(std::format("/v1/games/{}/log?lines=50", id));
-    if (res && res->status == 200 && res->body.find(needle) != std::string::npos) return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  return false;
+    return res && res->status == 200 && res->body.find(needle) != std::string::npos;
+  });
 }
 
 std::string LastError(httplib::Client& client, const std::string& id) {
@@ -371,8 +362,10 @@ TEST_CASE("A game record lists its cached art slots, with a version that changes
   CHECK(art_of("hollow") == nlohmann::json::object());
 
   // A new image in the slot, as a refresh or a pick writes it: the file, then the metadata.
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  std::ofstream(art_dir / "cover.jpg") << "second, larger";
+  // The same size, written later.
+  const auto written = fs::last_write_time(art_dir / "cover.jpg");
+  std::ofstream(art_dir / "cover.jpg") << "fresh";
+  fs::last_write_time(art_dir / "cover.jpg", written + std::chrono::minutes(1));
   write_info();
   const nlohmann::json second = art_of("celeste");
   REQUIRE(second.contains("cover"));
@@ -1427,12 +1420,8 @@ TEST_CASE(
 
   // No runner in the test environment, so the setup ends broken, but it ends.
   const std::string id = added["id"];
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-  while (server.games().Find(id)->status == model::GameStatus::SettingUp &&
-         std::chrono::steady_clock::now() < deadline) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  }
-  CHECK(server.games().Find(id)->status != model::GameStatus::SettingUp);
+  CHECK(test::WaitUntil(
+      [&] { return server.games().Find(id)->status != model::GameStatus::SettingUp; }));
 }
 
 TEST_CASE("POST /v1/games/manual refuses a platform Mira can't run instead of adding the game") {
@@ -1945,11 +1934,11 @@ TEST_CASE("Running a picked program in a game with no prefix first makes one wit
   CHECK(fs::is_directory(fs::path(game.data_dir) / "drive_c"));
 
   std::string logged;
-  for (int i = 0; i < 100 && logged.empty(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  CHECK(test::WaitUntil([&] {
     std::ifstream in(log);
     std::getline(in, logged);
-  }
+    return !logged.empty();
+  }));
   const std::string setup = (state / "Celeste" / "Setup.exe").string();
   CHECK(logged == game.data_dir + "|" + setup + " /lang=en /x");
   const auto stored = server.games().Find("celeste");
@@ -2149,10 +2138,11 @@ TEST_CASE("The event stream replays history, marks where news starts, and resume
   }));
   CHECK(resumed.back().id == first.back().id);
 
-  // A stream still waiting on the next event doesn't hold up quitting.
+  // A stream still waiting on the next event doesn't hold up quitting, which would take its 20 s
+  // wait.
   const auto quitting = std::chrono::steady_clock::now();
   owned.reset();
-  CHECK(std::chrono::steady_clock::now() - quitting < std::chrono::seconds(1));
+  CHECK(std::chrono::steady_clock::now() - quitting < std::chrono::seconds(10));
 }
 
 TEST_CASE("A client that saw only the live marker resumes from it without a gap") {

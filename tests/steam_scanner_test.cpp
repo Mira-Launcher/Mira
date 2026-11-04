@@ -96,11 +96,13 @@ TEST_CASE("Flathub's Steam is found, with its own pid file") {
   fs::create_directories(flatpak / ".local/share/Steam/steamapps");
   REQUIRE(env.config.Set("steam.root", "").has_value());
 
-  const std::string old_home = std::getenv("HOME") != nullptr ? std::getenv("HOME") : "";
-  setenv("HOME", home.c_str(), 1);
-  const auto root = steam::FindSteamRoot(env.config);
-  const fs::path pid_file = steam::SteamPidFile(env.config);
-  setenv("HOME", old_home.c_str(), 1);
+  std::optional<fs::path> root;
+  fs::path pid_file;
+  {
+    const test::EnvVar home_var("HOME", home.c_str());
+    root = steam::FindSteamRoot(env.config);
+    pid_file = steam::SteamPidFile(env.config);
+  }
 
   REQUIRE(root.has_value());
   CHECK(*root == flatpak / ".local/share/Steam");

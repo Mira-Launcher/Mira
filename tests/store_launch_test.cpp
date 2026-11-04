@@ -83,13 +83,6 @@ void Play(test::LiveServer& server, httplib::Client& client, const std::string& 
   REQUIRE(test::WaitUntil([&] { return Exits(server, id) > before; }, std::chrono::seconds(20)));
 }
 
-bool SystemdUserAvailable() {
-  Command probe;
-  probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
-  const auto ran = runner::RunAndWait(probe);
-  return ran && ran->exit_code == 0;
-}
-
 bool Alive(const fs::path& pid_file) {
   const std::string pid = ReadText(pid_file);
   return !pid.empty() && ::kill(std::stoi(pid), 0) == 0;
@@ -214,7 +207,9 @@ TEST_CASE("An Epic game still starts when legendary can't give its sign-in") {
   Play(server, client, "epic-Fir");
   CHECK(ReadText(dir / "fir" / "run.sh.args").find("-epicuserid=abc") != std::string::npos);
 
-  // Hanging both ways: the game starts without them once legendary's time is up.
+  // Hanging both ways: the game starts without them once legendary's time is up, not after the
+  // hang.
+  REQUIRE(server.MutableConfig().Set("epic.signin_timeout_s", 1).has_value());
   UseFakeLegendary(server, dir, "    sleep 60");
   fs::remove(dir / "fir" / "run.sh.args");
   const auto started = std::chrono::steady_clock::now();
@@ -224,10 +219,7 @@ TEST_CASE("An Epic game still starts when legendary can't give its sign-in") {
 }
 
 TEST_CASE("comet runs once beside GOG games, signed in without a token on its command line") {
-  if (!SystemdUserAvailable()) {
-    MESSAGE("no systemd user session; skipped");
-    return;
-  }
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   test::LiveServer server(test::TempDir("store-launch-gog"));
   const fs::path dir = server.config().File().parent_path();
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(

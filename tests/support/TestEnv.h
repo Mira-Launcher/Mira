@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -15,8 +16,26 @@
 // building their own config and store.
 namespace mira::test {
 
-// A fresh, empty directory under $TMPDIR/mira-tests.
+// $TMPDIR/mira-tests-<pid>, where every test's files go, so two runs at once don't share them.
+// main() points HOME and the XDG folders inside it, and removes it after a passing run.
+const std::filesystem::path& TestsRoot();
+
+// A fresh, empty directory under TestsRoot().
 std::filesystem::path TempDir(std::string_view name);
+
+// Whether this machine has `what` a test needs. Without it the test is reported as skipped, or
+// fails where MIRA_TESTS_REQUIRE_ALL is set (CI, which is set up to run every test).
+bool Has(bool available, std::string_view what);
+
+// Whether `systemd-run --user --scope` works here, which game launches need.
+bool SystemdUserSession();
+
+// A fresh directory on another disk than TestsRoot() (/dev/shm/mira-tests-<pid>/<name>), for what
+// Mira does differently per disk; nullopt, reported through Has, where /dev/shm isn't one.
+std::optional<std::filesystem::path> OtherDiskDir(std::string_view name);
+
+// The per-run roots on each disk, for main() to clear.
+std::vector<std::filesystem::path> TestsRoots();
 
 // Creates `path` (and its parents) with `content`.
 void Touch(const std::filesystem::path& path, std::string_view content = "",

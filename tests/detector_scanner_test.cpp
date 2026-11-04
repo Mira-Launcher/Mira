@@ -1,4 +1,5 @@
 #include <doctest.h>
+#include <unistd.h>
 
 #include <filesystem>
 #include <fstream>
@@ -155,8 +156,11 @@ TEST_CASE(
   REQUIRE(scanner.ScanAll().added == 1);
 
   fs::permissions(lib, fs::perms::owner_all, fs::perm_options::remove);
+  // Root reads it regardless, as in an `unshare -r` run.
+  const bool locked = ::access(lib.c_str(), R_OK) != 0;
   const library::ScanSummary unreadable = scanner.ScanAll();
   fs::permissions(lib, fs::perms::owner_all, fs::perm_options::add);
+  if (!test::Has(locked, "way to lock a folder (it runs as root)")) return;
   CHECK(unreadable.missing == 0);
   REQUIRE(env.games.Find("celeste").has_value());
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);

@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "config/Resolver.h"
 #include "config/Schema.h"
+#include "support/TestEnv.h"
 
 using namespace mira::config;
 namespace fs = std::filesystem;
@@ -57,7 +58,7 @@ TEST_CASE("Schema::Validate rejects bad values with a reason") {
 
 namespace {
 fs::path TempFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests";
+  const fs::path dir = mira::test::TestsRoot();
   fs::create_directories(dir);
   return dir / name;
 }

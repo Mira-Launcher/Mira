@@ -174,7 +174,9 @@ TEST_CASE("A running game is sorted once it exits") {
   REQUIRE(config.Set("library_roots", json::array({root.string()})).has_value());
   REQUIRE(config.Patch(Sorting(root, {"RPG"})).has_value());
   AddGame(server.games(), "quest", root / "Quest");
-  Touch(root / "Quest" / "run.sh", "#!/bin/sh\nsleep 1\n", /*executable=*/true);
+  // Runs until the test lets it end.
+  Touch(root / "Quest" / "run.sh", "#!/bin/sh\nwhile [ ! -e \"$0.stop\" ]; do sleep 0.05; done\n",
+        /*executable=*/true);
   httplib::Client client = server.Client();
 
   const auto launched = client.Post("/v1/games/quest/launch");
@@ -187,6 +189,7 @@ TEST_CASE("A running game is sorted once it exits") {
   CHECK(finished->payload["result"]["moved"].empty());
   CHECK(server.games().Find("quest")->install_path == (root / "Quest").string());
 
+  Touch(root / "Quest" / "run.sh.stop");
   CHECK(MovedTo(server.games(), "quest", root / "RPG" / "Quest"));
 }
 
@@ -706,12 +709,10 @@ TEST_CASE("Games in a library folder taken out are missing, and found again wher
 }
 
 TEST_CASE("A game on a disk with no Mira folder keeps its prefix in its own folder") {
-  const fs::path other_disk = "/dev/shm";
-  std::error_code ec;
-  if (!fs::is_directory(other_disk, ec)) return;
+  const auto other_disk = test::OtherDiskDir("own-prefix");
+  if (!other_disk) return;
   LiveServer server(TempDir("own-prefix-state"));
-  const fs::path drive = other_disk / "mira-tests-own-prefix";
-  fs::remove_all(drive, ec);
+  const fs::path& drive = *other_disk;
   httplib::Client client = server.Client();
   const auto set =
       client.Patch("/v1/config", json{{"library_roots", {(drive / "Games").string()}}}.dump(),
@@ -731,5 +732,4 @@ TEST_CASE("A game on a disk with no Mira folder keeps its prefix in its own fold
         "finished");
   CHECK_FALSE(fs::exists(prefix));
   CHECK(fs::exists(drive / "Games" / "Quest" / "run.sh"));
-  fs::remove_all(drive, ec);
 }

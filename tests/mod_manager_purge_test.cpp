@@ -144,13 +144,6 @@ VortexGame DeployVortex(const fs::path& prefix, const GamesDir& games, const std
   return {data, vortex, staging};
 }
 
-bool SystemdUserAvailable() {
-  Command probe;
-  probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
-  auto ran = runner::RunAndWait(probe);
-  return ran.has_value() && ran->exit_code == 0;
-}
-
 }  // namespace
 
 TEST_CASE("Removing Vortex from a game takes out what it deployed and puts the game's files back") {
@@ -229,10 +222,7 @@ TEST_CASE("Removing Vortex from a game takes out what it deployed and puts the g
 }
 
 TEST_CASE("Removing Vortex refuses while it's open for the game, and deletes nothing") {
-  if (!SystemdUserAvailable()) {
-    MESSAGE("no systemd user session; skipped");
-    return;
-  }
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   test::LiveServer server(test::TempDir("purge-vortex-open"));
   const fs::path dir = server.config().File().parent_path();
   const fs::path prefix = dir / "prefix";

@@ -2,6 +2,8 @@
 
 #include <doctest.h>
 #include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include <chrono>
 
@@ -20,9 +22,20 @@ LiveServer::LiveServer(const fs::path& state_dir)
   Isolate(config_);
   games_.Load();
   thread_ = std::thread([this] { [[maybe_unused]] auto _ = server_.Serve(socket_path_); });
-  // Serve() binds before it blocks accepting, but the thread needs a moment to start.
-  for (int i = 0; i < 200 && !fs::exists(socket_path_); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  // The socket file appears at bind(), before listen(), so wait until a connection is taken.
+  const bool listening = WaitUntil([&] {
+    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    socket_path_.string().copy(addr.sun_path, sizeof(addr.sun_path) - 1);
+    const bool connected = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(fd);
+    return connected;
+  });
+  if (!listening) {
+    server_.Stop();
+    thread_.join();
+    FAIL("mirad never listened on " << socket_path_);
   }
 }
 
@@ -42,15 +55,18 @@ nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started)
   REQUIRE(started->status == 202);
   const std::string id = nlohmann::json::parse(started->body).value("job", "");
   REQUIRE_FALSE(id.empty());
-  for (int attempt = 0; attempt < 300; ++attempt) {
-    auto job = client.Get("/v1/jobs/" + id);
-    REQUIRE(job != nullptr);
-    nlohmann::json state = nlohmann::json::parse(job->body);
-    if (state.value("state", "") != "running") return state;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  FAIL("job never finished");
-  return {};
+  // Generous: only a broken job waits it out, and an ASan build on a busy runner is slow.
+  nlohmann::json state;
+  const bool done = WaitUntil(
+      [&] {
+        auto job = client.Get("/v1/jobs/" + id);
+        REQUIRE(job != nullptr);
+        state = nlohmann::json::parse(job->body);
+        return state.value("state", "") != "running";
+      },
+      std::chrono::seconds(60));
+  if (!done) FAIL("job never finished: " << state.dump());
+  return state;
 }
 
 std::optional<model::Event> WaitForEvent(const api::EventBus& events, std::string_view type) {

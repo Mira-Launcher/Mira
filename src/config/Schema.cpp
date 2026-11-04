@@ -655,6 +655,15 @@ Schema::Schema() {
                 "whether the game may use your account.",
          .keywords = "eos overlay epic online services sign in login friends"});
 
+  s.Add({.key = "epic.signin_timeout_s",
+         .label = "Longest wait for Epic's sign-in before playing (seconds)",
+         .type = Type::Int,
+         .default_value = 10,
+         .doc = "When Legendary takes longer than this to sign a game in, Mira asks it once more "
+                "offline, then starts the game without Epic's sign-in.",
+         .constraint = Range(1, 120),
+         .keywords = "epic legendary sign in login timeout offline"});
+
   s.Add({.key = "itch.collections",
          .label = "itch.io collections",
          .type = Type::StringArray,

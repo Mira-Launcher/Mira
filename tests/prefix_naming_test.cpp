@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 namespace {
 
 fs::path TempConfigFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests";
+  const fs::path dir = test::TestsRoot();
   fs::create_directories(dir);
   const fs::path file = dir / name;
   fs::remove(file);
@@ -27,6 +27,7 @@ fs::path TempConfigFile(const char* name) {
 TEST_CASE("PrefixDir names by slugified game name by default") {
   config::Config config(TempConfigFile("prefix-naming-default.toml"));
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("prefix_root", TempDir("prefix-naming-root").string()).has_value());
 
   model::Game game;
@@ -38,6 +39,7 @@ TEST_CASE("PrefixDir names by slugified game name by default") {
 TEST_CASE("PrefixDir uses the raw id when prefix_naming is \"id\"") {
   config::Config config(TempConfigFile("prefix-naming-id.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path root = TempDir("prefix-naming-id-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
   REQUIRE(config.Set("prefix_naming", "id").has_value());
@@ -51,6 +53,7 @@ TEST_CASE("PrefixDir uses the raw id when prefix_naming is \"id\"") {
 TEST_CASE("PrefixDir appends a numeric suffix on a real directory collision") {
   config::Config config(TempConfigFile("prefix-naming-collision.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path root = TempDir("prefix-naming-collision-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
   fs::create_directories(root / "celeste");
@@ -64,6 +67,7 @@ TEST_CASE("PrefixDir appends a numeric suffix on a real directory collision") {
 TEST_CASE("PrefixDir skips a folder another game already owns even though it isn't created yet") {
   config::Config config(TempConfigFile("prefix-naming-owned.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path root = TempDir("prefix-naming-owned-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
   store::GameStore games(root / "mira.db");
@@ -87,6 +91,7 @@ TEST_CASE(
     "digits") {
   config::Config config(TempConfigFile("prefix-naming-empty.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path root = TempDir("prefix-naming-empty-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
 
@@ -99,6 +104,7 @@ TEST_CASE(
 TEST_CASE("Relocate leaves a prefix already at its named directory in place") {
   config::Config config(TempConfigFile("prefix-naming-relocate.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path root = TempDir("prefix-naming-relocate-root");
   REQUIRE(config.Set("prefix_root", root.string()).has_value());
   fs::create_directories(root / "celeste" / "drive_c");
@@ -117,6 +123,7 @@ TEST_CASE(
     "Relocate with only an install target moves the files and leaves the prefix where it is") {
   config::Config config(TempConfigFile("relocate-only-given.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path library = TempDir("relocate-only-given-lib");
   const fs::path elsewhere = TempDir("relocate-only-given-elsewhere");
   REQUIRE(config.Set("library_roots", nlohmann::json::array({library.string()})).has_value());
@@ -143,6 +150,7 @@ TEST_CASE(
 TEST_CASE("Relocate leaves a store launcher's shared prefix where it is") {
   config::Config config(TempConfigFile("relocate-shared.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path prefixes = TempDir("relocate-shared-prefixes");
   REQUIRE(config.Set("prefix_root", prefixes.string()).has_value());
   fs::create_directories(prefixes / "microsoft-365" / "drive_c");
@@ -166,6 +174,7 @@ TEST_CASE("Relocate leaves a store launcher's shared prefix where it is") {
 TEST_CASE("Relocate leaves Steam's compatdata prefix where Steam keeps it") {
   config::Config config(TempConfigFile("relocate-steam.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path prefixes = TempDir("relocate-steam-prefixes");
   const fs::path compatdata = TempDir("relocate-steam-compatdata");
   REQUIRE(config.Set("prefix_root", prefixes.string()).has_value());
@@ -349,13 +358,13 @@ TEST_CASE("Relocate leaves a program outside the game's folder alone and keeps p
 }
 
 TEST_CASE("PrefixDir puts a game on another disk in that disk's Mira folder") {
-  const fs::path other_disk = "/dev/shm";
-  std::error_code ec;
-  if (!fs::is_directory(other_disk, ec)) return;
+  const auto other_disk = test::OtherDiskDir("prefix-naming-disk");
+  if (!other_disk) return;
   config::Config config(TempConfigFile("prefix-naming-disk.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path prefix_root = TempDir("prefix-naming-home");
-  const fs::path mira = other_disk / "mira-tests-prefix-disk";
+  const fs::path mira = *other_disk / "Mira";
   fs::create_directories(mira / "Games" / "Celeste");
   REQUIRE(config.Set("prefix_root", prefix_root.string()).has_value());
   REQUIRE(config.Set("mira_folders", nlohmann::json::array({mira.string()})).has_value());
@@ -368,20 +377,19 @@ TEST_CASE("PrefixDir puts a game on another disk in that disk's Mira folder") {
   CHECK(library::PrefixDir(config, game) == mira / "prefixes" / "celeste");
 
   // With no Mira folder there, each game keeps its prefix in its own folder; nothing is shared.
-  const fs::path drive = other_disk / "mira-tests-prefix-drive";
+  const fs::path drive = *other_disk / "drive";
   fs::create_directories(drive / "Games" / "Celeste");
   REQUIRE(config.Set("mira_folders", nlohmann::json::array()).has_value());
   REQUIRE(
       config.Set("library_roots", nlohmann::json::array({(drive / "Games").string()})).has_value());
   game.install_path = (drive / "Games" / "Celeste").string();
   CHECK(library::PrefixDir(config, game) == drive / "Games" / "Celeste" / "prefix");
-  fs::remove_all(mira);
-  fs::remove_all(drive);
 }
 
 TEST_CASE("PrefixDir puts a library folder outside a Mira folder in its disk's prefixes") {
   config::Config config(TempConfigFile("prefix-naming-library.toml"));
   config.Load();
+  test::Isolate(config);
   const fs::path home = TempDir("prefix-naming-library");
   const fs::path prefix_root = home / "Mira" / "prefixes";
   REQUIRE(config.Set("prefix_root", prefix_root.string()).has_value());
@@ -394,10 +402,9 @@ TEST_CASE("PrefixDir puts a library folder outside a Mira folder in its disk's p
   CHECK(library::PrefixDir(config, game) == prefix_root / "celeste");
 
   // On another disk, that disk's Mira folder's, though the library folder isn't inside it.
-  const fs::path other_disk = "/dev/shm";
-  std::error_code ec;
-  if (!fs::is_directory(other_disk, ec)) return;
-  const fs::path drive = other_disk / "mira-tests-prefix-outside";
+  const auto drive_dir = test::OtherDiskDir("prefix-naming-outside");
+  if (!drive_dir) return;
+  const fs::path& drive = *drive_dir;
   fs::create_directories(drive / "Mira");
   fs::create_directories(drive / "Games" / "Celeste");
   REQUIRE(
@@ -406,5 +413,4 @@ TEST_CASE("PrefixDir puts a library folder outside a Mira folder in its disk's p
       config.Set("library_roots", nlohmann::json::array({(drive / "Games").string()})).has_value());
   game.install_path = (drive / "Games" / "Celeste").string();
   CHECK(library::PrefixDir(config, game) == drive / "Mira" / "prefixes" / "celeste");
-  fs::remove_all(drive);
 }

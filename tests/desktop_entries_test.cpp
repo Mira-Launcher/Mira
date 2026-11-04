@@ -25,6 +25,7 @@ TEST_CASE(
 
   config::Config config(state / "settings.toml");
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   // Point it at a scratch dir rather than the real
   // ~/.local/share/applications.
@@ -60,6 +61,7 @@ TEST_CASE(
   const fs::path applications = TempDir("desktop-entries-app-apps");
   config::Config config(state / "settings.toml");
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   REQUIRE(config.Set("desktop_entries.directory", applications.string()).has_value());
 
@@ -103,6 +105,7 @@ TEST_CASE(
 
   config::Config config(state / "settings.toml");
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   REQUIRE(config.Set("desktop_entries.directory", applications.string()).has_value());
 
@@ -134,6 +137,7 @@ TEST_CASE("DesktopEntries: a sync leaves unchanged entries untouched but rewrite
 
   config::Config config(state / "settings.toml");
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   REQUIRE(config.Set("desktop_entries.directory", applications.string()).has_value());
 
@@ -167,6 +171,7 @@ TEST_CASE("DesktopEntries: uses cached artwork as Icon= when present, falls back
 
   config::Config config(state / "settings.toml");
   config.Load();
+  test::Isolate(config);
   REQUIRE(config.Set("desktop_entries.enabled", true).has_value());
   REQUIRE(config.Set("desktop_entries.directory", applications.string()).has_value());
 

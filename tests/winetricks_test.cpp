@@ -17,13 +17,14 @@ namespace fs = std::filesystem;
 
 namespace {
 fs::path TempFile(const char* name) {
-  return fs::temp_directory_path() / "mira-tests" / name;
+  return test::TestsRoot() / name;
 }
 }  // namespace
 
 TEST_CASE("RunTricksVerb rejects a native runner outright") {
   config::Config config(TempFile("tricks-native-settings.toml"));
   config.Load();
+  test::Isolate(config);
   const runner::RunnerRegistry registry(config);
 
   model::Game game;
@@ -42,6 +43,7 @@ TEST_CASE("RunTricksVerb rejects a native runner outright") {
 TEST_CASE("RunTricksVerb rejects a game with no data_dir") {
   config::Config config(TempFile("tricks-nodatadir-settings.toml"));
   config.Load();
+  test::Isolate(config);
   const runner::RunnerRegistry registry(config);
 
   model::Game game;
@@ -56,6 +58,7 @@ TEST_CASE("RunTricksVerb rejects a game with no data_dir") {
 TEST_CASE("RunTricksVerb rejects an unprovisioned prefix") {
   config::Config config(TempFile("tricks-unprovisioned-settings.toml"));
   config.Load();
+  test::Isolate(config);
   const runner::RunnerRegistry registry(config);
 
   const fs::path data_dir = TempFile("tricks-unprovisioned-prefix");

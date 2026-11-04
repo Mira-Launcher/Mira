@@ -56,6 +56,7 @@ TEST_CASE("InstallToolBinary installs a bare binary directly, renamed to binary_
 
   config::Config config(dir / "settings.toml");
   config.Load();
+  test::Isolate(config);
 
   const Result<fs::path> installed = runner::InstallToolBinary(config, "gog", asset, "gogdl");
   REQUIRE(installed);
@@ -94,6 +95,7 @@ TEST_CASE("InstallToolBinary finds a binary nested inside a zip, alongside sibli
 
   config::Config config(dir / "settings.toml");
   config.Load();
+  test::Isolate(config);
 
   const Result<fs::path> installed = runner::InstallToolBinary(config, "itch", asset, "butler");
   REQUIRE(installed);
@@ -126,6 +128,7 @@ TEST_CASE("InstallToolBinary reports a clear error when the archive doesn't cont
 
   config::Config config(dir / "settings.toml");
   config.Load();
+  test::Isolate(config);
 
   const Result<fs::path> installed = runner::InstallToolBinary(config, "itch", asset, "butler");
   REQUIRE_FALSE(installed);

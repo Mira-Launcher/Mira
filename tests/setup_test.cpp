@@ -5,15 +5,15 @@
 #include <filesystem>
 #include <fstream>
 
+#include "support/TestEnv.h"
+
 using namespace mira;
 namespace fs = std::filesystem;
 
 TEST_CASE(
     "setup::Install writes the wrapper, links and desktop entry; Remove undoes it and drops the "
     "games' entries") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "setup";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
+  const fs::path dir = test::TempDir("setup");
   std::ofstream(dir / "Mira.AppImage") << "fake";
   std::ofstream(dir / "mira.png") << "png";
   const setup::SetupPaths paths{dir / "bin", dir / "applications", dir / "icons"};
@@ -37,8 +37,7 @@ TEST_CASE(
 }
 
 TEST_CASE("setup::Install refuses to replace a mira it didn't write") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "setup-conflict";
-  fs::remove_all(dir);
+  const fs::path dir = test::TempDir("setup-conflict");
   fs::create_directories(dir / "bin");
   std::ofstream(dir / "Mira.AppImage") << "fake";
   std::ofstream(dir / "bin" / "mira") << "#!/bin/sh\necho someone else's\n";

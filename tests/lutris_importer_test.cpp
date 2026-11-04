@@ -73,9 +73,7 @@ Result<void> BuildFixtureDb(const fs::path& db_path, const std::vector<FixtureRo
 
 // The fixtures build pga.db with the sqlite3 tool, which the importer also reads it with.
 bool HaveSqlite3() {
-  if (runner::FindOnPath("sqlite3")) return true;
-  WARN_MESSAGE(false, "skipped: sqlite3 isn't installed");
-  return false;
+  return test::Has(runner::FindOnPath("sqlite3").has_value(), "sqlite3");
 }
 
 struct Fixture {

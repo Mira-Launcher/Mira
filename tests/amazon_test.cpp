@@ -18,7 +18,7 @@ TEST_CASE("amazon: installed games launch from their fuel.json") {
   const fs::path dir = env.dir;
   fs::create_directories(dir / "nile");
   fs::create_directories(dir / "games/Some Game");
-  ::setenv("NILE_CONFIG_PATH", dir.c_str(), 1);
+  const test::EnvVar nile_config("NILE_CONFIG_PATH", dir.c_str());
 
   std::ofstream(dir / "nile/installed.json")
       << R"([{"id": "amzn1.adg.product.abc", "version": "1", "path": ")"
@@ -32,7 +32,6 @@ TEST_CASE("amazon: installed games launch from their fuel.json") {
 
   amazon::AmazonImporter importer(env.config, env.games, env.events);
   const auto summary = importer.Import();
-  ::unsetenv("NILE_CONFIG_PATH");
   REQUIRE(summary);
   CHECK(summary->added == 1);
 

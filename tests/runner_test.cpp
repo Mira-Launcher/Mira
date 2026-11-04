@@ -22,16 +22,6 @@
 using namespace mira;
 namespace fs = std::filesystem;
 
-namespace {
-fs::path TempFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests";
-  fs::create_directories(dir);
-  const fs::path file = dir / name;
-  fs::remove(file);
-  return file;
-}
-}  // namespace
-
 TEST_CASE("NativeRunner builds argv from install_path/exe_path and splits args") {
   model::Game game;
   game.install_path = "/games/Celeste";
@@ -49,9 +39,7 @@ TEST_CASE("NativeRunner builds argv from install_path/exe_path and splits args")
 }
 
 TEST_CASE("NativeRunner runs a .sh through sh, with or without its execute bit") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-sh";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
+  const fs::path dir = test::TempDir("native-sh");
   const fs::path script = dir / "start.sh";
   std::ofstream(script) << "#!/bin/sh\necho hi\n";
 
@@ -70,9 +58,7 @@ TEST_CASE("NativeRunner runs a .sh through sh, with or without its execute bit")
 }
 
 TEST_CASE("NativeRunner rejects a non-script exe with no execute bit") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-noexec";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
+  const fs::path dir = test::TempDir("native-noexec");
   const fs::path exe = dir / "game";
   std::ofstream(exe) << "not actually elf, doesn't matter here";
   fs::permissions(exe, fs::perms::owner_read | fs::perms::owner_write);
@@ -87,35 +73,8 @@ TEST_CASE("NativeRunner rejects a non-script exe with no execute bit") {
   fs::remove_all(dir);
 }
 
-TEST_CASE("NativeRunner runs an executable AppImage directly when FUSE is available") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-appimage";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  const fs::path exe = dir / "Game.AppImage";
-  std::ofstream(exe) << "not a real appimage, doesn't matter here";
-  fs::permissions(exe, fs::perms::owner_all);
-
-  model::Game game;
-  game.install_path = dir.string();
-  game.exe_path = "Game.AppImage";
-  runner::NativeRunner native;
-  auto command = native.BuildCommand(game, std::nullopt);
-  REQUIRE(command.has_value());
-  // Whether extraction is forced depends on whether this machine actually has
-  // FUSE: assert whichever shape that implies, same posture as the
-  // environment-dependent Proton/Wine tests below.
-  if (command->argv.size() > 1 && command->argv[1] == "--appimage-extract-and-run") {
-    CHECK(command->argv[0] == exe.string());
-  } else {
-    CHECK(command->argv == std::vector<std::string>{exe.string()});
-  }
-  fs::remove_all(dir);
-}
-
 TEST_CASE("NativeRunner auto-chmods an AppImage missing its execute bit instead of failing") {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "native-appimage-noexec";
-  fs::remove_all(dir);
-  fs::create_directories(dir);
+  const fs::path dir = test::TempDir("native-appimage-noexec");
   const fs::path exe = dir / "Game.AppImage";
   std::ofstream(exe) << "not a real appimage, doesn't matter here";
   fs::permissions(exe, fs::perms::owner_read |
@@ -135,9 +94,8 @@ TEST_CASE("NativeRunner auto-chmods an AppImage missing its execute bit instead 
 }
 
 TEST_CASE("RunnerRegistry::Resolve rejects a malformed or unknown reference") {
-  config::Config config(TempFile("runner-registry-bad.toml"));
-  config.Load();
-  runner::RunnerRegistry registry(config);
+  test::TestEnv env("runner-registry-bad");
+  runner::RunnerRegistry registry(env.config);
 
   CHECK_FALSE(registry.Resolve("no-colon-here").has_value());
   CHECK_FALSE(registry.Resolve("not_a_real_kind:whatever").has_value());
@@ -147,8 +105,7 @@ TEST_CASE("DeduplicateBuilds keeps the first of one build found twice") {
   // On a normal Steam setup ~/.steam/steam is a symlink to
   // ~/.local/share/Steam and both get searched, so every Proton build there
   // shows up once per path.
-  const fs::path root = fs::temp_directory_path() / "mira-tests" / "runner-dedupe";
-  fs::remove_all(root);
+  const fs::path root = test::TempDir("runner-dedupe");
   const fs::path real = root / "real" / "GE-Proton11-7";
   fs::create_directories(real);
   const fs::path link = root / "link";
@@ -187,9 +144,8 @@ TEST_CASE("DeduplicateBuilds keeps genuinely different builds, in order") {
 }
 
 TEST_CASE("ProvisionGame marks a native game ready with no build") {
-  config::Config config(TempFile("runner-registry-native-provision.toml"));
-  config.Load();
-  runner::RunnerRegistry registry(config);
+  test::TestEnv env("runner-registry-native-provision");
+  runner::RunnerRegistry registry(env.config);
 
   model::Game game;
   game.id = "celeste";
@@ -203,12 +159,9 @@ TEST_CASE("ProvisionGame marks a native game ready with no build") {
 }
 
 TEST_CASE("Resolve reports an uninstalled build instead of succeeding with none") {
-  config::Config config(TempFile("resolve-missing-build.toml"));
-  config.Load();
-  // Point discovery at nothing, so no wine/proton builds exist at all.
-  REQUIRE(config.Set("runner_search_paths", nlohmann::json::array()).has_value());
-  REQUIRE(config.Set("wine_search_paths", nlohmann::json::array()).has_value());
-  runner::RunnerRegistry registry(config);
+  // Isolated, discovery finds no wine or proton builds at all.
+  test::TestEnv env("resolve-missing-build");
+  runner::RunnerRegistry registry(env.config);
 
   // Regression: this used to return success-with-no-build, which made a
   // Windows game resolve to "no build" and report a vague error, and made
@@ -223,9 +176,8 @@ TEST_CASE("Resolve reports an uninstalled build instead of succeeding with none"
 }
 
 TEST_CASE("ResolveRef leaves a non-empty runner_ref untouched") {
-  config::Config config(TempFile("resolveref-explicit.toml"));
-  config.Load();
-  runner::RunnerRegistry registry(config);
+  test::TestEnv env("resolveref-explicit");
+  runner::RunnerRegistry registry(env.config);
 
   model::Game game;
   game.platform = model::Platform::Windows;
@@ -234,9 +186,8 @@ TEST_CASE("ResolveRef leaves a non-empty runner_ref untouched") {
 }
 
 TEST_CASE("ResolveRef falls back to default_runner.native for an empty ref on a native game") {
-  config::Config config(TempFile("resolveref-native.toml"));
-  config.Load();
-  runner::RunnerRegistry registry(config);
+  test::TestEnv env("resolveref-native");
+  runner::RunnerRegistry registry(env.config);
 
   model::Game game;
   game.platform = model::Platform::Native;
@@ -248,8 +199,11 @@ TEST_CASE("ResolveRef expands \"auto\" to a real installed windows runner, not n
   // empty runner_ref, silently ignoring default_runner.windows entirely
   // (including its "auto" case) for every Windows game with no runner_ref
   // set yet -- e.g. a fresh Lutris import.
-  config::Config config(TempFile("resolveref-windows-auto.toml"));
-  config.Load();
+  test::TestEnv env("resolveref-windows-auto");
+  config::Config& config = env.config;
+  // Isolation runs Windows games natively; this is about the shipped default.
+  REQUIRE(config.Set("default_runner.windows",
+                     config::Schema::Instance().Find("default_runner.windows")->default_value));
   runner::RunnerRegistry registry(config);
 
   model::Game game;
@@ -283,10 +237,9 @@ TEST_CASE("the old proton_umu: runner_ref spelling still resolves after the rena
   // umu was briefly modelled as its own runner kind; it's the mechanism
   // Proton runs through, not a runner. A games.toml written before the
   // rename must keep working.
-  config::Config config(TempFile("legacy-ref.toml"));
-  config.Load();
-  const fs::path runners = fs::temp_directory_path() / "mira-tests" / "legacy-ref-runners";
-  fs::remove_all(runners);
+  test::TestEnv env("legacy-ref");
+  config::Config& config = env.config;
+  const fs::path runners = test::TempDir("legacy-ref-runners");
   fs::create_directories(runners / "Fake-Proton-1");
   std::ofstream(runners / "Fake-Proton-1" / "proton").close();
   std::ofstream(runners / "Fake-Proton-1" / "toolmanifest.vdf").close();

@@ -51,6 +51,7 @@ struct Fixture {
 
   explicit Fixture(const char* name) : dir(TempDir(name)), config(dir / "settings.toml") {
     config.Load();
+    test::Isolate(config);
   }
 
   void UseFakeHumbleCli(bool authenticated, const std::string& list_output = kCsv) {
@@ -81,12 +82,10 @@ TEST_CASE(
   REQUIRE(status.tool.installed);
   CHECK_FALSE(status.authenticated);
 
-  const std::string home = std::getenv("HOME");
-  setenv("HOME", fixture.dir.c_str(), 1);
+  const test::EnvVar home("HOME", fixture.dir.c_str());
   std::ofstream(fixture.dir / ".humble-cli-key") << "old-key";
   CHECK_FALSE(humble::Login(fixture.config, "new-key"));
   CHECK(files::ReadFile(fixture.dir / ".humble-cli-key") == "old-key");
-  setenv("HOME", home.c_str(), 1);
 }
 
 TEST_CASE("Status reports authenticated once a session key works") {

@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 namespace {
 fs::path TempFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests";
+  const fs::path dir = test::TestsRoot();
   fs::create_directories(dir);
   const fs::path file = dir / name;
   for (const char* suffix : {"", "-wal", "-shm", ".bak"}) fs::remove(file.string() + suffix);

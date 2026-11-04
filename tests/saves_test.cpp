@@ -260,11 +260,12 @@ TEST_CASE("Reads go on while the save index is rebuilt, seeing the old one or th
     }
   });
   const auto new_entries = build("new");
+  // Already reading when the rebuild starts.
+  REQUIRE(test::WaitUntil([&] { return reads > 0; }));
   const auto replaced = cache.ReplaceSaveEntries(new_entries);
   done = true;
   reader.join();
   REQUIRE(replaced.has_value());
-  CHECK(reads > 0);
   CHECK(missing == 0);
   CHECK(cache.SaveEntryWithId("steam", "19999") == "Game 19999 new");
   CHECK(cache.SaveEntryCount() == 20000);

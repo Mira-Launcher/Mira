@@ -20,7 +20,7 @@ namespace fs = std::filesystem;
 namespace {
 
 fs::path TempFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / "auto-install";
+  const fs::path dir = test::TestsRoot() / "auto-install";
   fs::create_directories(dir);
   const fs::path file = dir / name;
   fs::remove(file);
@@ -344,10 +344,11 @@ TEST_CASE("An installer's progress is guessed from the storage Steam's requireme
   CHECK(installer["estimated_install_bytes"] == 2 * 1024 * 1024);
 
   REQUIRE(client.Post("/v1/games/celeste/install")->status == 202);
+  // The installer writes 1 MB and waits; read before it's done writing, progress is still climbing.
   nlohmann::json progress;
   CHECK(test::WaitUntil([&] {
     progress = nlohmann::json::parse(client.Get("/v1/games/celeste/install/progress")->body);
-    return progress["progress"].get<double>() > 0;
+    return progress["progress"].get<double>() >= 0.475;
   }));
   CHECK(progress["estimated_bytes"] == 2 * 1024 * 1024);
   CHECK(progress["progress"].get<double>() == doctest::Approx(0.5).epsilon(0.05));

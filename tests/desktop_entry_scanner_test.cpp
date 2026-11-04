@@ -57,6 +57,7 @@ struct Fixture {
       test::Touch(bin_dir / command, "#!/bin/sh\n", /*executable=*/true);
     }
     config.Load();
+    test::Isolate(config);
     REQUIRE(config.Set("desktop_import.extra_dirs", nlohmann::json::array({apps_dir.string()}))
                 .has_value());
     games.Load();
