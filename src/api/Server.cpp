@@ -87,6 +87,7 @@ Result<void> Server::Serve(const std::filesystem::path& socket_path) {
   }
   if ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0) ::chmod(dir.c_str(), st.st_mode & 0755);
   std::filesystem::remove(socket_path, ec);  // clear a stale socket from an unclean shutdown
+  s_.runtime_dir = dir;
 
   RegisterRoutes();
 

@@ -70,7 +70,8 @@ std::string OwnScript(std::string_view script) {
   return ::access(file.c_str(), X_OK) == 0 ? quoted : "sh " + quoted;
 }
 
-LaunchScripts ResolveLaunchScripts(const config::Config& config, const config::Resolver& resolver) {
+LaunchScripts ResolveLaunchScripts(const config::Config& config, const config::Resolver& resolver,
+                                   const std::filesystem::path& runtime_dir) {
   LaunchScripts scripts{OwnScript(resolver.GetString("launch.pre_script")),
                         OwnScript(resolver.GetString("launch.post_script"))};
   // In the table's order, which is how a settings screen shows them.
@@ -90,8 +91,7 @@ LaunchScripts ResolveLaunchScripts(const config::Config& config, const config::R
   for (const std::string& arg : steam::SteamCommand(config))
     steam_command += (steam_command.empty() ? "" : " ") + strings::ShellQuote(arg);
   const std::string steam_pid = strings::ShellQuote(steam::SteamPidFile(config).string());
-  const std::string runtime =
-      strings::ShellQuote(config.GetPath("socket_path").parent_path().string());
+  const std::string runtime = strings::ShellQuote(runtime_dir.string());
   const auto fill = [](std::string& step, std::string_view name, const std::string& value) {
     for (size_t at = step.find(name); at != std::string::npos;
          at = step.find(name, at + value.size())) {

@@ -6,6 +6,7 @@
 #include <json.hpp>
 #include <sstream>
 
+#include "proc/Session.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
@@ -82,10 +83,17 @@ TEST_CASE("Ready-made launch steps change the computer only while the game runs"
     REQUIRE(test::WaitUntil([&] { return fs::exists(state / "seen-by-game"); }));
   };
   const auto back = [&](const std::string& steam) {
-    return test::WaitUntil([&] {
+    const bool done = test::WaitUntil([&] {
       return fs::exists(state / "ran-after") && Read(state / "steam") == steam &&
              Read(state / "profile") == "power-saver\n";
     });
+    if (!done) {
+      MESSAGE("ran-after: " << fs::exists(state / "ran-after")
+                            << ", steam: " << Read(state / "steam")
+                            << "profile: " << Read(state / "profile") << "game log:\n"
+                            << Read(proc::GameLogPath(server.games().Dir(), "celeste")));
+    }
+    return done;
   };
 
   SUBCASE("while playing they're all on, and afterwards everything is as it was") {

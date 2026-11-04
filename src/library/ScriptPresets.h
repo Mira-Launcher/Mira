@@ -39,6 +39,8 @@ struct LaunchScripts {
 
 // The pre-launch and post-exit scripts a launch runs: the game's own, then its steps. The own
 // pre-launch script runs first, so a failure cancels the launch before any step starts.
-LaunchScripts ResolveLaunchScripts(const config::Config& config, const config::Resolver& resolver);
+// `runtime_dir` is the folder mirad's socket is in, whatever the socket_path setting says.
+LaunchScripts ResolveLaunchScripts(const config::Config& config, const config::Resolver& resolver,
+                                   const std::filesystem::path& runtime_dir);
 
 }  // namespace mira::library

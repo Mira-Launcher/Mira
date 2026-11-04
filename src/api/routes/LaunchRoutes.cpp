@@ -596,7 +596,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
 
     const config::Resolver resolver(s.config, game->overrides);
-    const library::LaunchScripts scripts = library::ResolveLaunchScripts(s.config, resolver);
+    const library::LaunchScripts scripts =
+        library::ResolveLaunchScripts(s.config, resolver, s.runtime_dir);
     const std::string& pre_script = scripts.pre;
     if (game->platform == model::Platform::Windows &&
         resolver.GetBool("launch.follow_system_theme") && !game->runner_ref.starts_with("steam:")) {
