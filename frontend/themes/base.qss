@@ -755,6 +755,45 @@ QFrame#settings_card QLineEdit#list_item {
   padding: 6px 0px;
 }
 
+/* SettingEditor::Embed: a script's ready-made steps as chips over its own commands, in one box. */
+QFrame#script_box {
+  background: @surface_alt;
+  border: 1px solid @border;
+  border-radius: @radius_control;
+}
+
+QFrame#script_box QLineEdit#script_line {
+  background: transparent;
+  border: none;
+  border-top: 1px solid @border;
+  border-radius: 0px;
+  padding: 6px 2px;
+  font-family: monospace;
+}
+
+QPushButton#step_chip {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: 6px;
+  padding: 5px 12px;
+}
+
+QPushButton#step_chip:hover {
+  border-color: @text_muted;
+}
+
+QPushButton#step_chip:checked {
+  background: @accent;
+  border-color: @accent;
+  color: @on_accent;
+}
+
+QPushButton#step_chip:disabled {
+  background: @surface;
+  border-color: @border;
+  color: @text_muted;
+}
+
 QPushButton#list_add,
 QPushButton#text_button {
   background: transparent;

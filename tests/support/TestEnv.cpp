@@ -82,6 +82,9 @@ void Isolate(config::Config& config) {
       {"heroic.config_dir", (dir / "heroic").string()},
       {"saves.manifest_url", "file://" + (dir / "endpoints" / "save-locations.yaml").string()},
       {"saves.backup_root", (dir / "saves").string()},
+      // Where no socket is: mirad uses the one it serves on, and the default is the user's live
+      // Mira's folder, which CI doesn't have.
+      {"socket_path", (dir / "no-socket-here" / "mirad.sock").string()},
   };
   for (const auto& [key, value] : folders) {
     [[maybe_unused]] auto set = config.Set(key, value);

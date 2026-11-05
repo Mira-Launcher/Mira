@@ -258,8 +258,23 @@ void SettingRow::SetBelow(QWidget* widget) {
 }
 
 void SettingRow::SetModified(bool modified) {
-  dot_->setVisible(modified);
-  revert_->setVisible(modified);
+  modified_ = modified;
+  ShowModified();
+  if (included_in_ != nullptr) included_in_->ShowModified();
+}
+
+void SettingRow::Include(SettingRow* other) {
+  other->included_in_ = this;
+  included_.push_back(other);
+  ShowModified();
+}
+
+void SettingRow::ShowModified() {
+  const bool shown = modified_ || std::ranges::any_of(included_, [](const SettingRow* row) {
+                       return row->modified_;
+                     });
+  dot_->setVisible(shown);
+  revert_->setVisible(shown);
 }
 
 // --- SettingsCard ---------------------------------------------------------

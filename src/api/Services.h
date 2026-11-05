@@ -54,6 +54,8 @@ class Services {
   store::GameStore& games;
   EventBus& events;
   HiddenLock hidden{games};
+  // The folder the socket is in, set by Server::Serve: state that ends with the login session.
+  std::filesystem::path runtime_dir;
 
   // While hidden games are locked: whether to answer as if this game, or the game or store title
   // with this id ("<source>-<ref>" for a title), weren't there.

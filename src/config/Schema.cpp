@@ -8,6 +8,7 @@
 #include "config/RunnerSources.h"
 #include "core/Strings.h"
 #include "emulators/Emulators.h"
+#include "library/ScriptPresets.h"
 
 namespace mira::config {
 namespace {
@@ -118,6 +119,37 @@ Validator FolderTags() {
     }
     return std::nullopt;
   };
+}
+
+// A list whose items are each one of `choices`, at most once.
+Constraint PickedFrom(std::vector<Choice> choices) {
+  Constraint constraint;
+  constraint.choices = choices;
+  constraint.validate = [choices =
+                             std::move(choices)](const json& value) -> std::optional<std::string> {
+    if (!value.is_array()) return "expected an array of strings";
+    std::vector<std::string> seen;
+    for (const json& item : value) {
+      if (!item.is_string()) return "expected an array of strings";
+      const std::string text = item.get<std::string>();
+      if (std::ranges::find(choices, text, &Choice::value) == choices.end()) {
+        std::string list;
+        for (const Choice& choice : choices) list += (list.empty() ? "" : ", ") + choice.value;
+        return std::format("\"{}\" isn't one of: {}", text, list);
+      }
+      if (std::ranges::contains(seen, text)) return std::format("\"{}\" is listed twice", text);
+      seen.push_back(text);
+    }
+    return std::nullopt;
+  };
+  return constraint;
+}
+
+std::vector<Choice> StepChoices(const std::vector<library::ScriptStep>& steps) {
+  std::vector<Choice> choices;
+  for (const library::ScriptStep& step : steps)
+    choices.push_back({step.id, step.label, step.doc, step.pair, step.needs_pair});
+  return choices;
 }
 
 // The source a key belongs to: "steam.root" and "launchers.ubisoft.disable_overlay" do,
@@ -986,9 +1018,21 @@ Schema::Schema() {
          .type = Type::String,
          .default_value = "",
          .scope = Scope::PerGame,
-         .doc = "A shell command that runs before a game starts, for example to mount a network "
-                "drive or set the CPU governor. The game waits for it. If it fails, the launch is "
-                "cancelled and shows the script's output. Empty disables it."});
+         .doc = "Shell commands, or the path of a script, that run before a game starts, for "
+                "example to mount a network drive. The game waits for them. If they fail, the "
+                "launch is cancelled and shows their output. Empty disables it."});
+
+  s.Add({.key = "launch.pre_steps",
+         .label = "Pre-launch steps",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::PerGame,
+         .doc = "Ready-made steps that run before a game starts, after the pre-launch script. A "
+                "step that fails never cancels the launch.",
+         .constraint = PickedFrom(StepChoices(library::PreLaunchSteps())),
+         .keywords = "preset steam invisible status power profile performance",
+         .shown_in = "launch.pre_script",
+         .paired_key = "launch.post_steps"});
 
   s.Add({.key = "launch.pre_timeout_s",
          .label = "Pre-launch timeout (seconds)",
@@ -1000,21 +1044,33 @@ Schema::Schema() {
          .constraint = Range(1, 600)});
 
   s.Add({.key = "launch.post_script",
-         .label = "Post-launch script",
+         .label = "Post-exit script",
          .type = Type::String,
          .default_value = "",
          .scope = Scope::PerGame,
-         .doc = "A shell command that runs after a game exits, however it ended, for example to "
-                "undo a CPU governor change. It runs in the background and its result does not "
-                "affect playtime or crash tracking. For Steam games launched through the Steam "
-                "client, it only runs when process tracking is on."});
+         .doc = "Shell commands, or the path of a script, that run after a game exits, however it "
+                "ended, for example to unmount a network drive. They run in the background and "
+                "their result does not affect playtime or crash tracking. For Steam games "
+                "launched through the Steam client, they only run when process tracking is on."});
+
+  s.Add({.key = "launch.post_steps",
+         .label = "Post-exit steps",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::PerGame,
+         .doc = "Ready-made steps that run after a game exits, after the post-exit script, "
+                "wherever that runs.",
+         .constraint = PickedFrom(StepChoices(library::PostExitSteps())),
+         .keywords = "preset steam online status power profile restore",
+         .shown_in = "launch.post_script",
+         .paired_key = "launch.pre_steps"});
 
   s.Add({.key = "launch.post_timeout_s",
-         .label = "Post-launch timeout (seconds)",
+         .label = "Post-exit timeout (seconds)",
          .type = Type::Int,
          .default_value = 30,
          .scope = Scope::PerGame,
-         .doc = "How long the post-launch script may run before Mira force-kills it.",
+         .doc = "How long the post-exit script may run before Mira force-kills it.",
          .constraint = Range(1, 600)});
 
   // --- Saves -----------------------------------------------------------------

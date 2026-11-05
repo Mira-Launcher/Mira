@@ -300,9 +300,23 @@ void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_
 
 SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
   SettingEditor& field = fields_[index];
+  const auto find = [this](const std::string& key) -> SettingEditor* {
+    const auto it =
+        std::ranges::find(fields_, key, [](const SettingEditor& f) { return f.entry.key; });
+    return key.empty() || it == fields_.end() || it->row == nullptr ? nullptr : &*it;
+  };
   SettingRow* row = field.Build(card);
-  card->AddRow(row);
-  nav_->RegisterRow(row, field.SearchText());
+  if (SettingEditor* paired = find(field.entry.paired_key)) PairChoices(*paired, field);
+  if (SettingEditor* host = find(field.entry.shown_in)) {
+    host->Embed(field);
+  } else {
+    card->AddRow(row);
+    QString search = field.SearchText();
+    for (const SettingEditor& shown : fields_) {
+      if (shown.entry.shown_in == field.entry.key) search += ' ' + shown.SearchText();
+    }
+    nav_->RegisterRow(row, search);
+  }
   field.OnEdited(this, [this] { Refresh(); });
   connect(row, &SettingRow::RevertClicked, this, [this, index] {
     fields_[index].SetText(fields_[index].original);
@@ -335,7 +349,11 @@ void SettingsPanel::FocusKey(const QString& key) {
     pending_focus_key_ = key;  // the schema hasn't loaded yet, most likely
     return;
   }
-  nav_->RevealRow(it->row);
+  const auto host = it->entry.shown_in.empty()
+                        ? fields_.end()
+                        : std::ranges::find(fields_, it->entry.shown_in,
+                                            [](const SettingEditor& f) { return f.entry.key; });
+  nav_->RevealRow((host != fields_.end() ? host : it)->row);
   QWidget* input = it->Input();
   if (input == nullptr) return;
   input->setFocus(Qt::OtherFocusReason);
