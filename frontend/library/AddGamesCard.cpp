@@ -105,7 +105,12 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
 }
 
 void AddGamesCard::ShowPage(SettingsCard* page) {
-  if (page_ != nullptr) page_->deleteLater();
+  if (page_ != nullptr) {
+    // Out of the layout now: until it's deleted, its height would add to the new page's.
+    layout_->removeWidget(page_);
+    page_->hide();
+    page_->deleteLater();
+  }
   page_ = page;
   page->setParent(this);
   layout_->addWidget(page);
