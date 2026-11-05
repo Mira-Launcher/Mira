@@ -357,6 +357,15 @@ void ExpanderRow::AddRow(QWidget* row) {
   rows_.append(row);
 }
 
+void ExpanderRow::ClearRows() {
+  for (QWidget* row : rows_) {
+    body_layout_->removeWidget(row);
+    row->hide();
+    row->deleteLater();
+  }
+  rows_.clear();
+}
+
 void ExpanderRow::SetMeta(const QString& text) {
   meta_->setText(text);
   meta_->setVisible(!text.isEmpty());

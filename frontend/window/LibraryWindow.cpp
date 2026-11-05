@@ -2006,9 +2006,18 @@ bool LibraryWindow::SidebarCardOpen() const {
   return sidebar_card_overlay_ != nullptr && sidebar_card_overlay_->isVisible();
 }
 
-// ~70% of the window, following it as it resizes.
+// Settings' column plus the card's sides, centered on the whole window with the sidebar dimmed
+// under it like the rest, and a tenth of the window clear above and below. Follows the window's
+// resizes.
 void LibraryWindow::SizeGameEditCard(QWidget* card) {
-  if (card != nullptr) card->setFixedSize(qRound(width() * 0.7), qRound(height() * 0.7));
+  if (card == nullptr) return;
+  constexpr int kMargin = 24;
+  constexpr int kSides = 2 * mira_gui::kCardInset;  // the form's least margins (GameEditForm)
+  // Settings' column, centered in a card an eighth of it wider each side for Saves and art.
+  const int room = width() - 2 * kMargin;
+  const int column = mira_gui::SettingsColumnWidth(room - kSides);
+  card->setFixedSize(std::min(room, qRound((column + kSides) * 1.25)), qRound(height() * 0.8));
+  if (auto* game = qobject_cast<mira_gui::GameCard*>(card)) game->SetColumnWidth(column);
 }
 
 bool LibraryWindow::LeaveOverlays() {

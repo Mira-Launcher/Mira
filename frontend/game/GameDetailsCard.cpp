@@ -165,24 +165,9 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   header->addWidget(play_, 0, Qt::AlignBottom);
   layout->addLayout(header);
 
-  // The store's info, on the settings card's translucent panel. Without any, the card is the
-  // hero alone.
-  panel_ = new QWidget(this);
-  panel_->setObjectName("game_edit_panel");
-  panel_->setAttribute(Qt::WA_StyledBackground);
+  // The store's info, on the settings card's panel. Without any, the card is the hero alone.
+  panel_ = new HeroPanel(this);
   panel_->hide();
-  const auto style_panel = [panel = panel_] {
-    const theme::Tokens& current = theme::Current();
-    QColor panel_color = current.window;
-    panel_color.setAlphaF(0.82);
-    panel->setStyleSheet(QString("QWidget#game_edit_panel { background: %1; border: 1px solid "
-                                 "%2; border-radius: %3px; }")
-                             .arg(theme::ColorToQss(panel_color))
-                             .arg(current.border.name())
-                             .arg(current.radius_panel));
-  };
-  style_panel();
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, panel_, style_panel);
   auto* panel_layout = new QVBoxLayout(panel_);
   panel_layout->setContentsMargins(0, 0, 0, 0);
   auto* scroll = new QScrollArea(panel_);
@@ -196,23 +181,24 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   body_->setSpacing(12);
   scroll->setWidget(body);
   scroll->viewport()->setAutoFillBackground(false);
+  FadeTop(scroll);
   panel_layout->addWidget(scroll);
   auto* panel_row = new QHBoxLayout();
-  panel_row->setContentsMargins(20, 0, 20, 20);
+  panel_row->setContentsMargins(1, 0, 1, 1);  // inside the card's border
   panel_row->addWidget(panel_);
   layout->addLayout(panel_row);
   ShowMetadata(metadata);
   body_->parentWidget()->ensurePolished();
   // As tall as the info needs, so a short blurb leaves no empty panel; with More or the
   // requirements to open, the most it gets, so what opens has room.
-  const int panel_width = kCardWidth - 40;
+  const int panel_width = kCardWidth - 2;
   const int panel_height =
       expandable_ ? kMaxPanelHeight
                   : std::min(body_->hasHeightForWidth() ? body_->heightForWidth(panel_width)
                                                         : body_->sizeHint().height(),
                              kMaxPanelHeight);
   panel_->setFixedHeight(panel_height);
-  setFixedSize(kCardWidth, kHeroHeight + (panel_->isHidden() ? 0 : panel_height + 20));
+  setFixedSize(kCardWidth, kHeroHeight + (panel_->isHidden() ? 0 : panel_height + 1));
 
   UpdateIdentity();
   connect(library_, &QAbstractItemModel::dataChanged, this, &GameDetailsCard::UpdateIdentity);

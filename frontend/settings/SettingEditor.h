@@ -62,9 +62,9 @@ void PairChoices(const SettingEditor& first, const SettingEditor& second);
 // runner_kinds; keeps the combo's value.
 void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
                      const ConfigSchemaEntry& entry);
-// An editable runner combo shows a listed runner by its name; anything else is the reference as
-// typed.
-void ShowRunnerRef(QComboBox* combo, const QString& ref);
+// Selects the item whose data is `value`; a value the combo doesn't list (a runner since removed,
+// or one set by hand) is added as it was set, so saving keeps it.
+void SelectOrKeep(QComboBox* combo, const QString& value);
 QString RunnerRef(const QComboBox* combo);
 
 }  // namespace mira_gui

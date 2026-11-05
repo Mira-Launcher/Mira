@@ -28,6 +28,7 @@
 #include "../widgets/Labels.h"
 #include "../widgets/LaidOutButton.h"
 #include "../widgets/Scrolling.h"
+#include "HeroBackdrop.h"
 #include "SavesConflictCard.h"
 #include "SavesText.h"
 
@@ -36,11 +37,11 @@ namespace mira_gui {
 namespace {
 constexpr int kColumnWidth = 340;  // the narrowest a column gets before the page goes to one
 
-// A row inside a card, padded like its SettingRows.
+// A row inside a card, its text from where the card's title and SettingRows' labels start.
 QWidget* Row(QWidget* parent, QHBoxLayout** layout) {
   auto* row = new QWidget(parent);
   *layout = new QHBoxLayout(row);
-  (*layout)->setContentsMargins(18, 6, 12, 6);
+  (*layout)->setContentsMargins(kLabelInset, 6, 12, 6);
   (*layout)->setSpacing(10);
   return row;
 }
@@ -83,7 +84,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(12, 12, 18, 4);
+  header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
   auto* back = new QToolButton(this);
   back->setAutoRaise(true);
@@ -110,7 +111,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);
-  content_layout->setContentsMargins(18, 10, 18, 18);
+  content_layout->setContentsMargins(kPageContentMargins);
   grid_ = new QGridLayout();
   grid_->setSpacing(12);
   content_layout->addLayout(grid_);
@@ -301,6 +302,8 @@ void SavesPage::FillWhere() {
       !saves_.prefix_folder.empty() ? saves_.prefix_folder : saves_.install_folder;
   if (!look_in.empty()) {
     QWidget* row = Row(where_, &line);
+    // The buttons' text on the other rows' edge, less their padding (base.qss).
+    line->setContentsMargins(kLabelInset - 10, 6, 12, 6);
     QPushButton* add = TextButton(row, "Add a folder…");
     add->setToolTip("Back up another folder of this game's saves too");
     add->setEnabled(!Busy());

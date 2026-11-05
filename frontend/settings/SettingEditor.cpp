@@ -130,7 +130,7 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
                    : QFileDialog::getOpenFileName(line, "Choose a file", start);
         if (chosen.isEmpty()) return;
         line->setText(HomeRelative(chosen));
-        ShowPathEnd(line);
+        ShowPathStart(line);
       });
       buttons.push_back(browse);
     }
@@ -229,18 +229,10 @@ void SettingEditor::SetText(const std::string& text) {
     segments->SetValue(QString::fromStdString(text));
     return;
   }
-  if (combo != nullptr && !entry.is_runner_ref) {
-    const int index = combo->findData(QString::fromStdString(text));
-    if (index >= 0) {
-      combo->setCurrentIndex(index);
-    } else if (!text.empty()) {
-      combo->insertItem(0, QString::fromStdString(text));
-      combo->setCurrentIndex(0);
-    }
-    return;
-  }
   if (combo != nullptr) {
-    ShowRunnerRef(combo, QString::fromStdString(text));
+    // An empty value that isn't an option leaves the choice as it was.
+    if (!text.empty() || entry.is_runner_ref || combo->findData(QString()) >= 0)
+      SelectOrKeep(combo, QString::fromStdString(text));
     return;
   }
   if (clear_secret) {
@@ -299,11 +291,10 @@ void PairChoices(const SettingEditor& first, const SettingEditor& second) {
   to->SetPairValues(from->Values());
 }
 
-void ShowRunnerRef(QComboBox* combo, const QString& ref) {
-  int index = combo->findData(ref);
+void SelectOrKeep(QComboBox* combo, const QString& value) {
+  int index = combo->findData(value);
   if (index < 0) {
-    // A runner this machine doesn't list (removed, or set by hand), kept as it was set.
-    combo->addItem(ref, ref);
+    combo->addItem(value, value);
     index = combo->count() - 1;
   }
   combo->setCurrentIndex(index);
@@ -330,7 +321,7 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
       combo->addItem(label, QString::fromStdString(runner.reference));
     }
   }
-  ShowRunnerRef(combo, current);
+  SelectOrKeep(combo, current);
   combo->blockSignals(false);
 }
 

@@ -1133,10 +1133,6 @@ QLabel#step_marker[state="done"] {
 
 /* --- Art picker ---------------------------------------------------------- */
 
-QWidget#picker_bar {
-  border-bottom: 1px solid @border;
-}
-
 QPushButton#chip {
   background: transparent;
   border: 1px solid @border;

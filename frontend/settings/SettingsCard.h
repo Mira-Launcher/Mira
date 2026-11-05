@@ -108,6 +108,8 @@ class ExpanderRow : public QWidget {
   explicit ExpanderRow(const QString& label, QWidget* parent = nullptr);
 
   void AddRow(QWidget* row);
+  // Removes and deletes every row, for a list that is rebuilt.
+  void ClearRows();
   const QList<QWidget*>& Rows() const { return rows_; }
   // Muted text after the label, e.g. the consoles an emulator runs.
   void SetMeta(const QString& text);

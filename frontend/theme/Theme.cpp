@@ -43,12 +43,15 @@ std::optional<QColor> g_desktop_accent;
 std::optional<Qt::ColorScheme> g_desktop_scheme;
 bool g_hidden_mode = false;
 
-// `from` moved `amount` (0 to 1) of the way to `to`.
+}  // namespace
+
 QColor Mix(const QColor& from, const QColor& to, double amount) {
   return QColor::fromRgbF(from.redF() + (to.redF() - from.redF()) * amount,
                           from.greenF() + (to.greenF() - from.greenF()) * amount,
                           from.blueF() + (to.blueF() - from.blueF()) * amount, from.alphaF());
 }
+
+namespace {
 
 // "#rrggbb" and "#rrggbbaa", in CSS order, because that is the order anyone
 // writing a theme by hand will reach for. (QColor's own "#aarrggbb" puts

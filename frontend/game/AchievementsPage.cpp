@@ -19,6 +19,7 @@
 #include "../widgets/FlowLayout.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
+#include "HeroBackdrop.h"
 
 namespace mira_gui {
 
@@ -167,7 +168,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(12, 12, 18, 4);
+  header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
   auto* back = new QToolButton(this);
   back->setAutoRaise(true);
@@ -197,7 +198,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);
-  content_layout->setContentsMargins(18, 10, 18, 18);
+  content_layout->setContentsMargins(kPageContentMargins);
   grid_ = new QGridLayout();
   grid_->setSpacing(10);
   content_layout->addLayout(grid_);

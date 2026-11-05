@@ -32,4 +32,8 @@ QPixmap PlaceholderCover(const QString& name, const QString& seed, QSize size, q
 // colors, for backdrops where a slice of a portrait cover would read as noise.
 QPixmap BlurredCover(const QPixmap& cover, QSize size);
 
+// The most colorful hue that covers a fair share of `art`, not the average: averaging most real
+// art gives grey or brown. Clamped so it reads on both light and dark themes; invalid for none.
+QColor DominantColor(const QPixmap& art);
+
 }  // namespace mira_gui

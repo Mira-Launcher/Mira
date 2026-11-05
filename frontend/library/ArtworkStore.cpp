@@ -113,51 +113,6 @@ QPixmap FitToTile(const QPixmap& source, QSize tile, qreal device_pixel_ratio, b
   return FitAnyToTile(source, tile, device_pixel_ratio, theme::Current().radius_tile, quick);
 }
 
-// The most colorful hue that covers a fair share of the cover, not the
-// average: averaging most real covers gives grey or brown. Clamped so it
-// reads on both light and dark themes.
-QColor DominantColor(const QPixmap& art) {
-  const QImage small = art.toImage()
-                           .scaled(24, 36, Qt::IgnoreAspectRatio, Qt::FastTransformation)
-                           .convertToFormat(QImage::Format_RGB32);
-  struct Bucket {
-    double vivid = 0, r = 0, g = 0, b = 0;
-    int count = 0;
-  };
-  constexpr int kHues = 12;
-  Bucket buckets[kHues];
-  Bucket grey;
-  const int total = small.width() * small.height();
-  for (int y = 0; y < small.height(); ++y) {
-    for (int x = 0; x < small.width(); ++x) {
-      const QColor pixel = QColor::fromRgb(small.pixel(x, y));
-      const double vivid = pixel.hsvSaturationF() * pixel.valueF();
-      Bucket& bucket = vivid < 0.12 ? grey : buckets[std::max(0, pixel.hsvHue()) * kHues / 360];
-      bucket.vivid += vivid;
-      bucket.r += pixel.red();
-      bucket.g += pixel.green();
-      bucket.b += pixel.blue();
-      ++bucket.count;
-    }
-  }
-  const Bucket* best = nullptr;
-  double best_score = 0;
-  for (const Bucket& bucket : buckets) {
-    if (bucket.count == 0) continue;
-    const double score =
-        bucket.vivid / std::sqrt(double(bucket.count) * total);  // mean vividness x sqrt(share)
-    if (score > best_score) best_score = score, best = &bucket;
-  }
-  if (best == nullptr || best->count * 25 < total)
-    best = grey.count > 0 ? &grey : best;  // under 4%: a grey cover
-  if (best == nullptr) return QColor();
-  const QColor mean(qRound(best->r / best->count), qRound(best->g / best->count),
-                    qRound(best->b / best->count));
-  const int saturation =
-      best == &grey ? std::min(mean.hsvSaturation(), 40) : std::max(mean.hsvSaturation(), 115);
-  return QColor::fromHsv(mean.hsvHue(), saturation, std::clamp(mean.value(), 158, 216));
-}
-
 constexpr const char* kSlots[] = {"hero"};
 
 QString SlotKey(const QString& id, const std::string& slot) {

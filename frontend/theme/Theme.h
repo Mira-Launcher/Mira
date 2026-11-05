@@ -175,6 +175,9 @@ class Notifier : public QObject {
   void Changed();
 };
 
+// `from` moved `amount` (0 to 1) of the way to `to`, keeping `from`'s alpha.
+QColor Mix(const QColor& from, const QColor& to, double amount);
+
 // A QColor as CSS: hex when opaque, rgba() otherwise.
 QString ColorToQss(const QColor& color);
 

@@ -13,6 +13,7 @@
 #include "../client/api/Games.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
+#include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
 #include "CardParts.h"
 
@@ -43,7 +44,7 @@ InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult&
   // A disc or mounted image is full or read-only: the game's prefix goes on a library root's disk.
   if (!info.targets.empty()) {
     auto* row = new SettingRow("Install onto", QString(), this);
-    target_ = new QComboBox(row);
+    target_ = new FlatCombo(row);
     for (const InstallerInfoResult::Target& target : info.targets) {
       target_->addItem(
           QString("%1  ·  %2 free")

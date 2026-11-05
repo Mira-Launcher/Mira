@@ -11,7 +11,7 @@
 #include "../client/Types.h"
 
 namespace mira_gui {
-class KeyValueEdit;
+class ExpanderRow;
 class LaunchOptionsEdit;
 class OverridesEditor;
 class SettingRow;
@@ -23,14 +23,15 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
-class QStackedWidget;
+class QScrollArea;
 class QVBoxLayout;
 
 namespace mira_gui {
 
-// One game's editable record (GET/PATCH /v1/games/{id}) as Launch, Runner,
-// Details and Files cards, shown in LibraryWindow's game card. Advanced
-// swaps them for the runner options and the per-game overrides.
+// One game's editable record (GET/PATCH /v1/games/{id}) and its own settings, shown in
+// LibraryWindow's game card as one column of cards for the kind of game it is: Details, then
+// Steam, an Emulator, or Launch and Runner plus its store's card, then Files, then Overrides for
+// the rest of the settings it can use.
 class GameEditForm : public QWidget {
   Q_OBJECT
 
@@ -45,11 +46,11 @@ class GameEditForm : public QWidget {
   void SetTagOrder(std::vector<std::string> order);
   // Extra space under the last card, so a change bar floating over it never covers a row.
   void SetBottomRoom(int height);
+  // The cards' column, centered in the form, as wide as Settings' (SettingsColumnWidth).
+  void SetColumnWidth(int width);
 
-  // At `key`'s row when one is given.
-  void OpenAdvanced(const std::string& key = {});
-  void CloseAdvanced();
-  bool AdvancedOpen() const;
+  // Scrolls to `key`'s row, opening its expander.
+  void RevealSetting(const std::string& key);
 
   void Save();
   // Fetches the game again, so a change made elsewhere shows; skipped while
@@ -74,10 +75,17 @@ class GameEditForm : public QWidget {
   // A tag chip was clicked: show the library's games with this tag.
   void TagFilterRequested(QString tag);
 
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
+
  private:
+  // The cards' margins: the column centered, and the bottom room under it.
+  void FitColumn();
   // The batch PATCH /v1/games that turns the saved tags into `now`.
   mira_gui::GamesPatch TagsPatch(const std::optional<std::vector<std::string>>& now) const;
   void Load();
+  // Puts the rows into the cards this kind of game has, the first time it loads.
+  void Arrange(const mira_gui::GameDetail& game);
   void Populate(const mira_gui::GameDetail& game);
   void ShowPatch(const mira_gui::GamePatch& patch);
   void PopulateExeCombo(const std::vector<mira_gui::GameDetail::Candidate>& candidates,
@@ -111,10 +119,10 @@ class GameEditForm : public QWidget {
   bool stale_ = false;  // the game changed elsewhere while there were edits; Discard loads it again
 
   QLabel* last_error_label_ = nullptr;
-  QLabel* source_note_label_ = nullptr;
   QLabel* check_tag_ = nullptr;
   QPushButton* looks_right_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
+  QPushButton* open_install_ = nullptr;
   QPushButton* move_button_ = nullptr;
   QPushButton* open_data_dir_ = nullptr;
   QPushButton* move_prefix_ = nullptr;
@@ -126,7 +134,6 @@ class GameEditForm : public QWidget {
   TagEdit* tags_edit_ = nullptr;
   QComboBox* runner_combo_ = nullptr;
   QLineEdit* data_dir_edit_ = nullptr;
-  KeyValueEdit* env_edit_ = nullptr;
 
   // Runner options: one row per key the chosen runner's schema lists, editing
   // runner_config_ (the whole object, so keys of other runners are kept).
@@ -135,8 +142,7 @@ class GameEditForm : public QWidget {
     SettingRow* row = nullptr;
     QLineEdit* edit = nullptr;
   };
-  SettingsCard* runner_options_card_ = nullptr;
-  SettingsCard* scripts_card_ = nullptr;  // the scripts' override rows, on the first page
+  ExpanderRow* runner_options_ = nullptr;
   std::vector<RunnerField> runner_fields_;
   std::map<std::string, std::vector<mira_gui::RunnerOption>> runner_schemas_;  // by kind
   std::string options_kind_;
@@ -149,6 +155,8 @@ class GameEditForm : public QWidget {
   SettingRow* working_dir_row_ = nullptr;
   SettingRow* launch_options_row_ = nullptr;
   LaunchOptionsEdit* launch_options_ = nullptr;
+  SettingRow* play_starts_row_ = nullptr;
+  SettingRow* only_choice_row_ = nullptr;
   bool windows_ = false;
   bool web_ = false;  // an HTML game: its runners are browsers, and only it runs in one
   mira_gui::RunnersResult runners_;  // the last list, kept to refill the picker once the game loads
@@ -157,12 +165,14 @@ class GameEditForm : public QWidget {
   SettingRow* emulator_row_ = nullptr;  // in place of the runner for an emulator's game
   QComboBox* emulator_combo_ =
       nullptr;  // its emulator, then the others that play it: picking one moves it
+  SettingRow* install_row_ = nullptr;
   SettingRow* data_dir_row_ = nullptr;
-  SettingRow* env_row_ = nullptr;
+  bool arranged_ = false;
 
-  // The cards, then Advanced: the runner options and the per-game overrides.
-  QStackedWidget* pages_ = nullptr;
+  QScrollArea* scroll_ = nullptr;
   QVBoxLayout* cards_layout_ = nullptr;
+  int column_width_ = 0;  // 0 until set: the cards fill the form
+  int bottom_room_ = 0;
   mira_gui::OverridesEditor* overrides_ = nullptr;
 };
 
