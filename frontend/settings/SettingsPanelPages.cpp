@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QScopedValueRollback>
 #include <QSlider>
 #include <QSpinBox>
 #include <algorithm>
@@ -18,6 +19,7 @@
 #include "../bigscreen/Choices.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlatCombo.h"
 #include "../widgets/FlowLayout.h"
 #include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
@@ -92,7 +94,10 @@ void SettingsPanel::AddCardReset(SettingsCard* card, std::vector<size_t> prefs,
                                  std::vector<size_t> schema) {
   connect(card, &SettingsCard::ResetClicked, this, [this, prefs, schema] {
     for (const size_t i : prefs) pref_fields_[i].reset();
-    for (const size_t i : schema) fields_[i].SetText(fields_[i].entry.default_display);
+    {
+      const QScopedValueRollback quiet(setting_values_, true);
+      for (const size_t i : schema) fields_[i].SetText(fields_[i].entry.default_display);
+    }
     Refresh();
   });
   card_resets_.push_back({card, std::move(prefs), std::move(schema)});
@@ -136,7 +141,7 @@ QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& lab
   spin->setSingleStep(0.5);
   spin->setDecimals(1);
   spin->setSuffix(" s");
-  spin->setMinimumWidth(90);
+  spin->setFixedWidth(kNumberWidth);
   spin->setValue(fallback_ms / 1000.0);
   row->AddControl(spin);
   card->AddRow(row);
@@ -172,7 +177,7 @@ void SettingsPanel::AddDisplayRows(SettingsCard* card) {
                                       const QVariant& current, const QVariant& fallback,
                                       std::function<void(const QVariant&)> store) {
     auto* row = new SettingRow(label, doc);
-    auto* combo = new QComboBox(row);
+    auto* combo = new FlatCombo(row);
     for (const auto& [text, value] : choices) combo->addItem(text, value);
     if (combo->findData(current) < 0) combo->addItem(current.toString(), current);  // hand-edited
     combo->setCurrentIndex(combo->findData(current));
@@ -246,6 +251,7 @@ void SettingsPanel::BuildInterfacePage() {
   // Wraps: built-in themes and the user's own copies can outgrow the card.
   auto* tiles_layout = new FlowLayout(tiles, 10);
   tiles_layout->setContentsMargins(0, 0, 0, 4);
+  tiles_layout->SetSpread(true);
   themes_ = new QButtonGroup(this);
   QStringList names{"auto"};
   names << theme::Available();
@@ -267,6 +273,16 @@ void SettingsPanel::BuildInterfacePage() {
                 .mark_saved = [this] { theme_saved_ = SelectedTheme(); }});
 
   AddDisplayRows(appearance);
+  const qreal desktop_points = theme::DesktopFont().pointSizeF();
+  std::vector<std::pair<int, QString>> text_sizes = {
+      {0, desktop_points > 0 ? QString("Same as desktop (%1 pt)").arg(desktop_points)
+                             : QString("Same as desktop")}};
+  for (int points = 8; points <= 18; ++points)
+    text_sizes.emplace_back(points, QString("%1 pt").arg(points));
+  AddChoice(appearance, "Text size",
+            "The size of text everywhere in Mira, besides game titles on covers, which grow with "
+            "the covers.",
+            "font text size points larger smaller", &FrontendPrefs::text_size, text_sizes, 0);
 
   SettingsCard* general = page->AddCard("General");
   AddToggle(general, "Start Mira when you log in",
@@ -296,7 +312,7 @@ void SettingsPanel::BuildInterfacePage() {
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);
   auto* preview_holder = new QWidget();
   auto* preview_layout = new QHBoxLayout(preview_holder);
-  preview_layout->setContentsMargins(18, 4, 18, 10);
+  preview_layout->setContentsMargins(kLabelInset, 4, kLabelInset, 10);
   preview_layout->addWidget(tile_preview_);
   preview_layout->addStretch(1);
   library->AddRow(preview_holder);
@@ -312,7 +328,7 @@ void SettingsPanel::BuildInterfacePage() {
   continue_count_ = new QSpinBox(continue_count_row_);
   continue_count_->setRange(1, 6);
   continue_count_->setValue(3);
-  continue_count_->setMinimumWidth(90);
+  continue_count_->setFixedWidth(kNumberWidth);
   continue_count_row_->AddControl(continue_count_);
   library->AddRow(continue_count_row_);
   nav_->RegisterRow(continue_count_row_, "continue playing cards count library");
@@ -346,7 +362,7 @@ void SettingsPanel::BuildInterfacePage() {
   layout_preview_ = new LayoutPreview(games, previews_.artwork);
   auto* layout_holder = new QWidget();
   auto* layout_holder_layout = new QHBoxLayout(layout_holder);
-  layout_holder_layout->setContentsMargins(18, 4, 18, 10);
+  layout_holder_layout->setContentsMargins(kLabelInset, 4, kLabelInset, 10);
   layout_holder_layout->addWidget(layout_preview_);
   layout->AddRow(layout_holder);
   std::vector<size_t> layout_fields;
@@ -398,14 +414,16 @@ QWidget* SettingsPanel::MakeSlider(ShapeField& field, int maximum) {
   auto* layout = new QHBoxLayout(box);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(10);
+  // The value before the slider, so the slider ends at the row's right edge like other controls.
+  field.value = new QLabel(box);
+  field.value->setProperty("role", "subtle");
+  field.value->setMinimumWidth(130);
+  field.value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  layout->addWidget(field.value);
   field.slider = new QSlider(Qt::Horizontal, box);
   field.slider->setRange(0, maximum);
   field.slider->setFixedWidth(180);
   layout->addWidget(field.slider);
-  field.value = new QLabel(box);
-  field.value->setProperty("role", "subtle");
-  field.value->setMinimumWidth(130);
-  layout->addWidget(field.value);
   ShapeField* shape = &field;
   connect(field.slider, &QSlider::valueChanged, this, [this, shape](int value) {
     shape->current = value;
@@ -479,7 +497,7 @@ QComboBox* SettingsPanel::AddChoice(SettingsCard* card, const QString& label, co
     }
   };
   auto* row = new SettingRow(label, doc);
-  auto* combo = new QComboBox(row);
+  auto* combo = new FlatCombo(row);
   for (const auto& [value, text] : options) combo->addItem(text, to_data(value));
   combo->setCurrentIndex(combo->findData(to_data(fallback)));
   row->AddControl(combo);
@@ -597,7 +615,7 @@ void SettingsPanel::BuildBigScreenPage() {
   trailer_volume_->setSingleStep(10);
   trailer_volume_->setSuffix("%");
   trailer_volume_->setValue(50);
-  trailer_volume_->setMinimumWidth(90);
+  trailer_volume_->setFixedWidth(kNumberWidth);
   volume_row->AddControl(trailer_volume_);
   trailers->AddRow(volume_row);
   nav_->RegisterRow(volume_row, "big screen trailer volume loud");

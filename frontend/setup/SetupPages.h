@@ -20,6 +20,7 @@ class QVBoxLayout;
 namespace mira_gui {
 
 class ProgressRail;
+class Segmented;
 class SignInPanel;
 class Switch;
 
@@ -170,7 +171,7 @@ class OfficeSetupPage : public SetupStep {
   const SetupContext& context_;
   std::vector<LauncherApp> apps_;
   QString plan_;
-  QButtonGroup* plans_ = nullptr;
+  Segmented* plans_ = nullptr;
   QWidget* app_tiles_ = nullptr;
 };
 

@@ -103,6 +103,7 @@ GameConfigResult GetGameConfigSync(const std::string& id) {
                                              mapping::ToDisplayString(entry.value("value", json()));
                                          e.layer = entry.value("layer", std::string());
                                          e.overridable = entry.value("overridable", false);
+                                         e.applies = entry.value("applies", true);
                                          result.entries.push_back(std::move(e));
                                        }
                                      });

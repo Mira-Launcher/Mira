@@ -64,6 +64,9 @@ enum class Glyph {
   Copy,
   Trophy,
   Lock,
+  PlayCircle,
+  Save,
+  Chip,
 };
 
 // Drawn on demand in the current theme's text color, at the handful of sizes

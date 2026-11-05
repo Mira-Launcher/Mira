@@ -28,6 +28,10 @@ int RoomBesideScrollbar(const QWidget* widget, int width) {
 TileView::TileView(QWidget* parent) : QListView(parent) {
   setSelectionMode(QAbstractItemView::ExtendedSelection);
   setMouseTracking(true);
+  // A drag's box follows the tiles as they scroll, however they scroll (the wheel glides).
+  connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
+    if (rubber_band_ != nullptr) UpdateDrag();
+  });
 }
 
 void TileView::SetDragSelectEnabled(bool enabled) {
@@ -117,7 +121,6 @@ void TileView::changeEvent(QEvent* event) {
 void TileView::wheelEvent(QWheelEvent* event) {
   hover_.Track(QModelIndex());
   QListView::wheelEvent(event);
-  if (rubber_band_ != nullptr) UpdateDrag();
 }
 
 void TileView::SetPadding(int padding) {
@@ -207,10 +210,7 @@ void TileView::AutoScrollStep() {
   if (delta == 0) return;
   delta = std::clamp(delta / 2, -40, 40);
   if (delta == 0) delta = drag_pos_.y() < kAutoScrollEdge ? -1 : 1;
-  QScrollBar* bar = verticalScrollBar();
-  const int before = bar->value();
-  bar->setValue(before + delta);
-  if (bar->value() != before) UpdateDrag();
+  verticalScrollBar()->setValue(verticalScrollBar()->value() + delta);  // the box follows
 }
 
 void TileView::EndDrag() {

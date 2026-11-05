@@ -26,6 +26,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
+#include "../widgets/Segmented.h"
 #include "BrowserSketch.h"
 #include "SetupLog.h"
 
@@ -127,20 +128,10 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   auto* left = new QVBoxLayout();
   left->setSpacing(12);
   if (!guide_.other_steps.isEmpty()) {
-    browsers_ = new QWidget(body_);
-    browsers_->setObjectName("segmented");
-    auto* pick = new QHBoxLayout(browsers_);
-    pick->setContentsMargins(3, 3, 3, 3);
-    pick->setSpacing(3);
-    for (const auto& [label, other] :
-         {std::pair{"Firefox", false}, std::pair{"Chrome or Edge", true}}) {
-      auto* button = new QPushButton(label, browsers_);
-      button->setCheckable(true);
-      button->setAutoExclusive(true);
-      button->setChecked(!other);
-      connect(button, &QPushButton::clicked, this, [this, other] { ShowBrowser(other); });
-      pick->addWidget(button);
-    }
+    browsers_ = new Segmented({{"firefox", "Firefox"}, {"chrome", "Chrome or Edge"}}, body_);
+    browsers_->SetValue("firefox");
+    connect(browsers_, &Segmented::Changed, this,
+            [this](const QString& browser) { ShowBrowser(browser == "chrome"); });
     auto* row = new QHBoxLayout();
     row->addWidget(browsers_);
     row->addStretch(1);

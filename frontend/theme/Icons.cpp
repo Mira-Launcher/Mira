@@ -308,6 +308,25 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawLine(QPointF(5.5, 5.5), QPointF(5.5, 7.0));
       painter.drawLine(QPointF(10.5, 5.5), QPointF(10.5, 7.0));
       return;
+    case Glyph::PlayCircle:
+      painter.drawEllipse(QPointF(8.0, 8.0), 5.5, 5.5);
+      painter.drawPolygon(QPolygonF({QPointF(6.8, 5.7), QPointF(6.8, 10.3), QPointF(10.5, 8.0)}));
+      return;
+    case Glyph::Save:  // a floppy disk
+      painter.drawPolygon(QPolygonF({QPointF(2.5, 2.5), QPointF(11.0, 2.5), QPointF(13.5, 5.0),
+                                     QPointF(13.5, 13.5), QPointF(2.5, 13.5)}));
+      painter.drawRect(QRectF(5.0, 2.5, 5.0, 3.0));
+      painter.drawRect(QRectF(4.5, 9.0, 7.0, 4.5));
+      return;
+    case Glyph::Chip:
+      painter.drawRoundedRect(QRectF(4.5, 4.5, 7.0, 7.0), 1.0, 1.0);
+      for (const qreal at : {6.25, 8.0, 9.75}) {
+        painter.drawLine(QPointF(at, 2.0), QPointF(at, 4.5));
+        painter.drawLine(QPointF(at, 11.5), QPointF(at, 14.0));
+        painter.drawLine(QPointF(2.0, at), QPointF(4.5, at));
+        painter.drawLine(QPointF(11.5, at), QPointF(14.0, at));
+      }
+      return;
     case Glyph::Layers:
       painter.drawPolygon(
           QPolygonF({QPointF(8.0, 2.5), QPointF(14.0, 5.8), QPointF(8.0, 9.1), QPointF(2.0, 5.8)}));

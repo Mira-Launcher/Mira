@@ -21,7 +21,6 @@ ShortcutEdit::ShortcutEdit(const QKeySequence& keys, QWidget* parent)
   setToolTip("Click, then press the new shortcut");
   setAttribute(Qt::WA_Hover);
   setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-  setMinimumWidth(150);  // so recording doesn't resize the row
 }
 
 void ShortcutEdit::SetKeys(const QKeySequence& keys) {
@@ -65,19 +64,20 @@ void ShortcutEdit::paintEvent(QPaintEvent*) {
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(frame, tokens.radius_control, tokens.radius_control);
   }
+  // Right-aligned, like every other control in a row, at the caps' own inset.
+  const QRect text_area = rect().adjusted(4, 0, -4, 0);
   if (recording_) {
     painter.setPen(tokens.accent);
-    painter.drawText(rect(), Qt::AlignCenter, "Press a shortcut");
+    painter.drawText(text_area, Qt::AlignRight | Qt::AlignVCenter, "Press a shortcut");
     return;
   }
   const QStringList caps = Caps();
   if (caps.isEmpty()) {
     painter.setPen(tokens.text_muted);
-    painter.drawText(rect(), Qt::AlignCenter, "None");
+    painter.drawText(text_area, Qt::AlignRight | Qt::AlignVCenter, "None");
     return;
   }
   const QFontMetrics metrics(font());
-  // Right-aligned, like every other control in a row.
   int width = -kCapGap;
   for (const QString& cap : caps)
     width += metrics.horizontalAdvance(cap) + 2 * kCapPadding + kCapGap;

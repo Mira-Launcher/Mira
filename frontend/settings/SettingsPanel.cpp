@@ -11,9 +11,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScopedValueRollback>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStorageInfo>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <optional>
@@ -28,11 +30,15 @@
 #include "../client/Events.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
+#include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
+#include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/Labels.h"
+#include "../widgets/ListEdit.h"
 #include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
 #include "SettingsCard.h"
@@ -143,6 +149,7 @@ void SettingsPanel::ReloadValues() {
   api::GetConfigAsync(this, [this](ConfigResult config) {
     if (!config.ok) return;
     ShowMiraFolders(config);
+    const QScopedValueRollback quiet(setting_values_, true);
     for (SettingEditor& field : fields_) {
       const auto it = config.values.find(field.entry.key);
       const std::string& value =
@@ -191,6 +198,7 @@ void SettingsPanel::Load() {
         return;
       }
       ShowMiraFolders(config);
+      const QScopedValueRollback quiet(setting_values_, true);
       for (SettingEditor& field : fields_) {
         const auto it = config.values.find(field.entry.key);
         field.original = it != config.values.end() ? it->second : field.entry.default_display;
@@ -216,16 +224,11 @@ void SettingsPanel::BuildSchemaPages() {
     SettingsPage* page =
         nav_->AddCategory(category, CategoryGlyph(category), CategoryNavGroup(category));
     pages_[category] = page;
-    const bool by_source =
-        std::ranges::all_of(rows, [this](size_t i) { return !fields_[i].entry.source.empty(); });
-    if (by_source) {
-      // Which sources the sidebar shows, and in what order, sits with the sources themselves.
-      if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
-      BuildSourceCards(page, rows);
-      continue;
-    }
+    // Which sources the sidebar shows, and in what order, sits with the sources themselves.
+    if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
     if (category == "Library") AddMiraFoldersCard(page);
     SettingsCard* card = nullptr;
+    ExpanderRow* expander = nullptr;
     int group = -1;
     std::vector<size_t> card_rows;
     const auto finish_card = [&] {
@@ -235,13 +238,24 @@ void SettingsPanel::BuildSchemaPages() {
       card_rows.clear();
     };
     for (const size_t i : rows) {
-      if (card == nullptr || fields_[i].entry.group != group) {
+      const ConfigSchemaEntry& entry = fields_[i].entry;
+      if (card == nullptr || entry.group != group) {
         finish_card();
-        group = fields_[i].entry.group;
-        card = page->AddCard(QString::fromStdString(fields_[i].entry.group_label));
-        if (fields_[i].entry.group_collapsed) card->SetCollapsible(/*collapsed=*/true);
+        group = entry.group;
+        card = page->AddCard(QString::fromStdString(entry.group_label));
+        if (entry.group_collapsed) card->SetCollapsible(/*collapsed=*/true);
+        expander = nullptr;
       }
-      AddSchemaRow(card, i);
+      if (entry.item.empty()) {
+        expander = nullptr;
+      } else if (expander == nullptr ||
+                 expander->property("item").toString() != QString::fromStdString(entry.item)) {
+        expander = new ExpanderRow(QString::fromStdString(entry.item_label), card);
+        expander->setProperty("item", QString::fromStdString(entry.item));
+        card->AddRow(expander);
+        items_[{category, QString::fromStdString(entry.item)}] = expander;
+      }
+      AddSchemaRow(card, i, expander);
       card_rows.push_back(i);
       // The password sits with the settings for when hidden games lock again, before them.
       if (fields_[i].entry.key.starts_with("hidden.") &&
@@ -267,38 +281,82 @@ void SettingsPanel::BuildSchemaPages() {
   }
   rows_built_ = true;
   for (const SectionAction& action : section_actions_) AppendSectionAction(action);
+  DescribeSourceItems();
+  DescribeEmulatorItems();
+  DescribeDownloadItems();
 }
 
-void SettingsPanel::BuildSourceCards(SettingsPage* page, const std::vector<size_t>& rows) {
-  std::vector<std::string> sources;
-  for (const size_t i : rows) {
-    if (std::ranges::find(sources, fields_[i].entry.source) == sources.end())
-      sources.push_back(fields_[i].entry.source);
+void SettingsPanel::DescribeSourceItems() {
+  for (const auto& [key, expander] : items_) {
+    if (key.first != "Sources") continue;
+    const SourceInfo* source = FindSourceInfo(key.second);
+    if (source == nullptr) continue;
+    expander->SetLeading(MakeSourceBadge(*source, 22, expander));
+    expander->SetMeta(source->kind == SourceInfo::Kind::Launcher ? "Launcher" : "Store");
   }
-  for (const std::string& source_id : sources) {
-    const QString id = QString::fromStdString(source_id);
-    const SourceInfo* source = FindSourceInfo(id);
-    auto* card = new SettingsCard(source != nullptr ? source->name : id);
-    source_cards_[id] = card;
-    page->AddWidget(card);
-    if (source != nullptr) card->SetLeading(MakeSourceBadge(*source, 24, card));
-    for (const size_t i : rows) {
-      if (fields_[i].entry.source != source_id) continue;
-      AddSchemaRow(card, i);
-    }
-  }
-  // Sources not set up yet are added from the sidebar, so their cards stay hidden.
+  // Sources not set up yet are added from the sidebar, so their settings stay out of the way.
   api::ListSourcesAsync(this, [this](SourcesResult result) {
     if (!result.ok) return;
     QSet<QString> added{"local"};
     for (const SourceState& source : result.sources) {
       if (source.added) added.insert(QString::fromStdString(source.id));
     }
-    for (const auto& [id, card] : source_cards_) card->setVisible(added.contains(id));
+    for (const auto& [key, expander] : items_) {
+      if (key.first != "Sources") continue;
+      for (QWidget* row : expander->Rows())
+        nav_->SetRowGateVisible(row, added.contains(key.second));
+    }
   });
 }
 
-SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
+void SettingsPanel::DescribeEmulatorItems() {
+  api::GetEmulatorsAsync(this, [this](EmulatorsResult result) {
+    if (!result.ok) return;
+    std::map<SettingsCard*, std::pair<int, int>> counts;  // emulators, installed
+    for (const EmulatorInfo& emulator : result.emulators) {
+      const auto it = items_.find({"Emulators", QString::fromStdString(emulator.id)});
+      if (it == items_.end()) continue;
+      ExpanderRow* expander = it->second;
+      if (const SourceInfo* source = FindSourceInfo(QString::fromStdString(emulator.id)))
+        expander->SetMeta(PlaysText(*source, 3));
+      const bool mine = QString::fromStdString(emulator.path)
+                            .startsWith(QDir::homePath() + "/.local/share/mira/");
+      if (emulator.installed) {
+        expander->SetSummary(mine || !emulator.version.empty() ? "Installed" : "Your copy",
+                             "success");
+      } else {
+        expander->SetSummary(emulator.package.empty() ? "Not installed" : "From system packages");
+      }
+      auto* card = qobject_cast<SettingsCard*>(expander->parentWidget()->parentWidget());
+      if (card == nullptr) continue;
+      auto& [all, installed] = counts[card];
+      ++all;
+      installed += emulator.installed ? 1 : 0;
+    }
+    for (const auto& [card, count] : counts) {
+      card->SetSummary(
+          count.second > 0
+              ? QString("%1 emulators · %2 installed").arg(count.first).arg(count.second)
+              : QString("%1 emulators").arg(count.first));
+    }
+  });
+}
+
+void SettingsPanel::DescribeDownloadItems() {
+  // A download's summary is where it comes from, as edited.
+  for (SettingEditor& field : fields_) {
+    if (field.entry.item.empty() || !field.entry.key.ends_with(".repo")) continue;
+    const auto it = items_.find(
+        {QString::fromStdString(field.entry.category), QString::fromStdString(field.entry.item)});
+    if (it == items_.end() || field.line == nullptr) continue;
+    ExpanderRow* expander = it->second;
+    const auto show = [expander, line = field.line] { expander->SetSummary(line->text()); };
+    connect(field.line, &QLineEdit::textChanged, expander, show);
+    show();
+  }
+}
+
+SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index, ExpanderRow* expander) {
   SettingEditor& field = fields_[index];
   const auto find = [this](const std::string& key) -> SettingEditor* {
     const auto it =
@@ -310,14 +368,20 @@ SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index) {
   if (SettingEditor* host = find(field.entry.shown_in)) {
     host->Embed(field);
   } else {
-    card->AddRow(row);
+    if (expander != nullptr) {
+      expander->AddRow(row);
+    } else {
+      card->AddRow(row);
+    }
     QString search = field.SearchText();
     for (const SettingEditor& shown : fields_) {
       if (shown.entry.shown_in == field.entry.key) search += ' ' + shown.SearchText();
     }
     nav_->RegisterRow(row, search);
   }
-  field.OnEdited(this, [this] { Refresh(); });
+  field.OnEdited(this, [this] {
+    if (!setting_values_) Refresh();
+  });
   connect(row, &SettingRow::RevertClicked, this, [this, index] {
     fields_[index].SetText(fields_[index].original);
     Refresh();
@@ -448,8 +512,11 @@ void SettingsPanel::DiscardChanges() {
   for (const PrefField& field : pref_fields_) {
     if (field.changed()) field.revert();
   }
-  for (SettingEditor& field : fields_) {
-    if (field.Changed()) field.SetText(field.original);
+  {
+    const QScopedValueRollback quiet(setting_values_, true);
+    for (SettingEditor& field : fields_) {
+      if (field.Changed()) field.SetText(field.original);
+    }
   }
   Refresh();
 }
@@ -610,15 +677,6 @@ QStringList ListValue(const ConfigResult& config, const std::string& key) {
   return list;
 }
 
-QString HomeShort(const QString& path) {
-  const QString home = QDir::homePath();
-  return path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
-}
-
-QString Expanded(const QString& path) {
-  return path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
-}
-
 }  // namespace
 
 void SettingsPanel::AddMiraFoldersCard(SettingsPage* page) {
@@ -629,15 +687,37 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
   if (mira_folders_card_ == nullptr) return;
   mira_folders_card_->ClearRows();
   const QStringList folders = ListValue(config, "mira_folders");
+  // As a folder list's rows (widgets/ListEdit): under the row that adds one, each with its space.
+  auto* add_row = new SettingRow(
+      "Folders",
+      "Pick a folder on another disk: Mira makes Games and Applications in it and watches it. "
+      "Drop a game, app, ROM or archive into it and Mira sorts it into place.",
+      mira_folders_card_);
+  auto* items = new QWidget(add_row);
+  auto* items_layout = new QVBoxLayout(items);
+  items_layout->setContentsMargins(0, 0, 0, 0);
+  items_layout->setSpacing(0);
   for (const QString& folder : folders) {
-    const QStorageInfo drive(Expanded(folder));
+    const QStorageInfo drive(ExpandHome(folder));
     const QString space = drive.isValid()
                               ? QString("%1 GB free").arg(drive.bytesAvailable() / 1'000'000'000)
                               : QString("Not there: its disk isn't mounted");
-    auto* row = new SettingRow(HomeShort(Expanded(folder)), space, mira_folders_card_);
+    auto* row = new QWidget(items);
+    QHBoxLayout* line = ListItemRow(row, /*button_last=*/folders.size() > 1);
+    auto* icon = new QLabel(row);
+    icons::Follow(icon, icons::Glyph::Folder, 16);
+    line->addWidget(icon);
+    auto* path = new QLabel(HomeRelative(ExpandHome(folder)), row);
+    path->setMinimumHeight(kControlHeight);
+    line->addWidget(path, /*stretch=*/1);
+    auto* free = new QLabel(space, row);
+    free->setProperty("role", "subtle");
+    line->addWidget(free);
+    items_layout->addWidget(row);
     if (folders.size() > 1) {
-      auto* remove = new QPushButton("Remove", row);
-      connect(remove, &QPushButton::clicked, this, [this, folder] {
+      QToolButton* remove = NewRemoveButton(row);
+      line->addWidget(remove);
+      connect(remove, &QToolButton::clicked, this, [this, folder] {
         if (!notify::Confirm(this, "Remove this Mira folder?",
                              "Its games and apps leave the library. Nothing is deleted from the "
                              "disk, and adding the folder again brings them back.",
@@ -647,25 +727,19 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
         EditMiraFolders([folder](QStringList& folders, QStringList& roots) {
           folders.removeAll(folder);
           roots.removeIf([&](const QString& root) {
-            return Expanded(root).startsWith(Expanded(folder) + "/");
+            return ExpandHome(root).startsWith(ExpandHome(folder) + "/");
           });
         });
       });
-      row->AddControl(remove);
     }
-    mira_folders_card_->AddRow(row);
   }
-  auto* add_row = new SettingRow(
-      "Add a Mira folder",
-      "Pick a folder on another disk: Mira makes Games and Applications in it and watches it. "
-      "Drop a game, app, ROM or archive into it and Mira sorts it into place.",
-      mira_folders_card_);
-  auto* add = new QPushButton("Add…", add_row);
+  add_row->SetBelowFlush(items);
+  auto* add = new QPushButton("Add folder…", add_row);
   connect(add, &QPushButton::clicked, this, [this] {
     const QString folder = QFileDialog::getExistingDirectory(this, "Choose a Mira folder");
     if (folder.isEmpty()) return;
     EditMiraFolders([folder](QStringList& folders, QStringList& roots) {
-      if (std::ranges::any_of(folders, [&](const QString& f) { return Expanded(f) == folder; }))
+      if (std::ranges::any_of(folders, [&](const QString& f) { return ExpandHome(f) == folder; }))
         return;
       folders << folder;
       for (const QString& sub : {"/Games", "/Applications"}) {

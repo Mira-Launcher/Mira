@@ -490,6 +490,17 @@ QComboBox QAbstractItemView {
   selection-color: @on_accent;
 }
 
+/* widgets/FlatCombo's popup draws plain items, so they're styled here as the others look. */
+mira_gui--FlatCombo QAbstractItemView::item {
+  padding: 4px 8px;
+  border-radius: @radius_control;
+}
+
+mira_gui--FlatCombo QAbstractItemView::item:selected {
+  background: @accent;
+  color: @on_accent;
+}
+
 QCheckBox::indicator, QRadioButton::indicator {
   width: 15px;
   height: 15px;
@@ -652,18 +663,79 @@ QWidget#settings_section QLabel[role="nav_heading"] {
   padding: 0;
 }
 
-/* The current page's title, held at the top of the scroll; top padding matches
- * kTitleClearance in ui/SettingsNav.cpp. */
-QLabel#settings_sticky {
+/* The current page's group and title, held at the top of the scroll over the column
+ * (settings/SettingsNav.cpp). */
+QWidget#settings_sticky {
   background: @window;
   border-bottom: 1px solid @border;
-  padding: 14px 32px 12px 32px;
+}
+
+QWidget#settings_sticky[pushed="true"] {
+  border-bottom: 1px solid transparent;
+}
+
+QWidget#settings_sticky QLabel[role="nav_heading"] {
+  padding: 0;
 }
 
 QFrame#settings_card {
   background: @surface;
   border: 1px solid @border;
-  border-radius: @radius_panel;
+  border-radius: @radius_card;
+}
+
+/* settings/SettingsCard's ExpanderRow: its rows, opened, on a sunken surface. */
+QWidget#expander_body {
+  background: @surface_sunken;
+  border-top: 1px solid @border;
+}
+
+/* A sunken row that ends its card takes the card's bottom corners (SettingsCard::RoundBottomRow). */
+QWidget#list_row[card_bottom="true"],
+QPushButton#list_more[card_bottom="true"],
+QWidget#expander_body[card_bottom="true"],
+QWidget#expander_head[card_bottom="true"] {
+  border-bottom-left-radius: @radius_card_inner;
+  border-bottom-right-radius: @radius_card_inner;
+}
+
+QWidget#expander_head:hover {
+  background: @surface_alt;
+}
+
+QLabel#expander_summary[tone="success"] {
+  color: @success;
+}
+
+/* One height for every control in a card (32 px with padding and border), with the row
+ * labels' minimum height in settings/SettingsCard.cpp, so every row is as tall as the next. */
+QFrame#settings_card QLineEdit,
+QFrame#settings_card QSpinBox,
+QFrame#settings_card QDoubleSpinBox,
+QFrame#settings_card QComboBox {
+  min-height: 22px;
+  max-height: 22px;
+}
+
+/* A longer choice in a card is its value and a chevron, boxed only on hover. Its chevron ends
+ * where the switches and fields of the rows around it do (widgets/FlatCombo sizes from this). */
+QFrame#settings_card QComboBox:!editable {
+  background: transparent;
+  border: 1px solid transparent;
+  padding-right: 0;
+}
+
+QFrame#settings_card QComboBox:!editable::drop-down {
+  width: 14px;
+}
+
+QFrame#settings_card QComboBox:!editable::down-arrow {
+  margin-right: 1px;
+}
+
+QFrame#settings_card QComboBox:!editable:hover,
+QFrame#settings_card QComboBox:!editable:focus {
+  background: @surface_alt;
 }
 
 /* A card whose rows scroll inside it shows the card's surface behind them. */
@@ -733,11 +805,10 @@ QLabel#copy_field {
   padding: 6px;
 }
 
-/* ui/ListEdit: a list setting as rows in one box. */
-QWidget#list_edit {
-  background: @window;
-  border: 1px solid @border;
-  border-radius: @radius_control;
+/* widgets/ListEdit: a list setting's items as sunken rows under its row. */
+QWidget#list_row {
+  background: @surface_sunken;
+  border-top: 1px solid @border;
 }
 
 QFrame#settings_card QLineEdit#list_item {
@@ -783,6 +854,24 @@ QPushButton#step_chip:disabled {
   background: @surface;
   border-color: @border;
   color: @text_muted;
+}
+
+QWidget#list_row[inherited="true"] QLineEdit#list_item {
+  color: @text_muted;
+}
+
+QPushButton#list_more {
+  background: @surface_sunken;
+  border: none;
+  border-top: 1px solid @border;
+  border-radius: 0;
+  color: @accent;
+  padding: 8px 34px;
+  text-align: left;
+}
+
+QPushButton#list_more:hover {
+  text-decoration: underline;
 }
 
 QPushButton#list_add,
@@ -1083,6 +1172,7 @@ QLabel#default_tag {
   padding: 0px 6px;
 }
 
+/* A two or three way choice (widgets/Segmented). */
 QWidget#segmented {
   background: @surface;
   border: 1px solid @border;

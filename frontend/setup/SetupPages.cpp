@@ -36,6 +36,7 @@
 #include "../widgets/Labels.h"
 #include "../widgets/LaidOutButton.h"
 #include "../widgets/ProgressRail.h"
+#include "../widgets/Segmented.h"
 #include "OfficePanel.h"
 #include "SetupLook.h"
 #include "SetupWork.h"
@@ -341,8 +342,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
     const nlohmann::json roots =
         nlohmann::json::parse(result.values["library_roots"], nullptr, false);
     if (roots.is_array() && !roots.empty() && roots.front().is_string()) {
-      QString first = QString::fromStdString(roots.front().get<std::string>());
-      if (first.startsWith("~")) first = QDir::homePath() + first.mid(1);
+      const QString first = ExpandHome(QString::fromStdString(roots.front().get<std::string>()));
       folder_ = QFileInfo(first).path();
     }
     ShowFolder();
@@ -1070,23 +1070,11 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   QFrame* plan_card = SetupCard(this);
   auto* plan_rows = new QVBoxLayout(plan_card);
   plan_rows->setContentsMargins(14, 4, 14, 4);
-  auto* segmented = new QWidget(plan_card);
-  segmented->setObjectName("segmented");
-  auto* buttons = new QHBoxLayout(segmented);
-  buttons->setContentsMargins(3, 3, 3, 3);
-  buttons->setSpacing(3);
-  plans_ = new QButtonGroup(this);
-  for (const OfficePlan& plan : OfficePlans()) {
-    auto* button = new QPushButton(plan.short_name, segmented);
-    button->setCheckable(true);
-    button->setProperty("plan", plan.value);
-    plans_->addButton(button);
-    buttons->addWidget(button);
-  }
-  connect(plans_, &QButtonGroup::buttonClicked, this,
-          [this](QAbstractButton* button) { plan_ = button->property("plan").toString(); });
+  plans_ = new Segmented(plan_card);
+  for (const OfficePlan& plan : OfficePlans()) plans_->AddOption(plan.value, plan.short_name);
+  connect(plans_, &Segmented::Changed, this, [this](const QString& plan) { plan_ = plan; });
   plan_rows->addWidget(
-      SetupRow(plan_card, "Your plan", "Office installs the edition that matches it.", segmented));
+      SetupRow(plan_card, "Your plan", "Office installs the edition that matches it.", plans_));
   layout->addWidget(plan_card);
 
   QFrame* apps_card = SetupCard(this);
@@ -1160,9 +1148,7 @@ void OfficeSetupPage::ShowApps() {
 
 void OfficeSetupPage::Enter() {
   if (plan_.isEmpty() && !OfficePlans().empty()) plan_ = OfficePlans().front().value;
-  for (QAbstractButton* button : plans_->buttons()) {
-    button->setChecked(button->property("plan").toString() == plan_);
-  }
+  plans_->SetValue(plan_);
 }
 
 void OfficeSetupPage::Leave() {

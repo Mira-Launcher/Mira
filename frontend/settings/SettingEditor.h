@@ -16,6 +16,7 @@ namespace mira_gui {
 
 class ChipToggles;
 class ListEdit;
+class Segmented;
 class SettingRow;
 class Switch;
 
@@ -31,6 +32,7 @@ struct SettingEditor {
   QDoubleSpinBox* spin = nullptr;  // set instead of `line` for a bounded number
   ListEdit* list = nullptr;        // set instead of `line` for an array
   ChipToggles* chips = nullptr;    // set instead of `list` for an array picked from choices
+  Segmented* segments = nullptr;   // set instead of `combo` for an enum of two or three
   SettingRow* row = nullptr;
   // A secret's button that drops the one mirad holds and doesn't send (kSecretSaved). Whether one
   // is held is the line's "secret_saved" property, since editors move around in vectors.

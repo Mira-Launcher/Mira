@@ -210,8 +210,7 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   painter->save();
   painter->setRenderHint(QPainter::Antialiasing);
 
-  QFont title_font =
-      theme::DesktopFont();  // the rest of the window is a point larger; titles fit as they were
+  QFont title_font = theme::DesktopFont();  // not the text size: its slot is a fixed 18 px
   title_font.setWeight(QFont::DemiBold);
   painter->setFont(title_font);
   painter->setPen(QColor(255, 255, 255, 235));

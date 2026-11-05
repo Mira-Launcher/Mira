@@ -29,6 +29,7 @@ namespace mira_gui {
 
 class ArtworkStore;
 class ChangeBar;
+class ExpanderRow;
 class SettingRow;
 class SettingsCard;
 class SettingsNavWidget;
@@ -173,9 +174,13 @@ class SettingsPanel : public QWidget {
   void BuildSidebarPage();
   void BuildShortcutsPage();
   void BuildSchemaPages();
-  // A Sources-style category: one folding card per source, its on switch in the header.
-  void BuildSourceCards(SettingsPage* page, const std::vector<size_t>& rows);
-  SettingRow* AddSchemaRow(SettingsCard* card, size_t index);
+  // The rows a schema item opens to (a store, an emulator, a download) say what they are once the
+  // sources, the emulators and the values are known.
+  void DescribeSourceItems();
+  void DescribeEmulatorItems();
+  void DescribeDownloadItems();
+  // Into `expander` when the setting belongs to an item, else straight into `card`.
+  SettingRow* AddSchemaRow(SettingsCard* card, size_t index, ExpanderRow* expander = nullptr);
   Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc,
                     const QString& search, std::optional<bool> FrontendPrefs::* member,
                     bool fallback);
@@ -245,8 +250,8 @@ class SettingsPanel : public QWidget {
   SidebarStyleChoices* sidebar_style_ = nullptr;
   SidebarStyleChoices::Choices sidebar_style_saved_;
   SettingsCard* sources_card_ = nullptr;
-  std::map<QString, SettingsCard*> source_cards_;  // by source id
-  bool restart_prompt_ = false;                    // a saved display setting takes a restart
+  std::map<std::pair<QString, QString>, ExpanderRow*> items_;  // by category and item
+  bool restart_prompt_ = false;  // a saved display setting takes a restart
 
   std::vector<ShortcutField> shortcuts_;
   std::vector<PrefField> pref_fields_;
@@ -262,6 +267,8 @@ class SettingsPanel : public QWidget {
   int saves_pending_ = 0;
   int loads_pending_ = 2;  // the settings and the display prefs; Ready at zero
   bool values_loaded_ = false;
+  // While every field takes its value at once: one Refresh after, not one per field.
+  bool setting_values_ = false;
   void LoadDone();
   QString save_error_;
 };

@@ -24,6 +24,7 @@
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
+#include "../widgets/Segmented.h"
 #include "SetupWork.h"
 
 namespace mira_gui {
@@ -510,36 +511,6 @@ class SidebarPreview : public QWidget {
   Shown shown_;
 };
 
-// Three buttons, one picked, as a segmented control; `value` names each.
-QWidget* Segmented(QWidget* parent, const std::vector<std::pair<QString, QString>>& options,
-                   QButtonGroup*& group) {
-  auto* box = new QWidget(parent);
-  box->setObjectName("segmented");
-  auto* buttons = new QHBoxLayout(box);
-  buttons->setContentsMargins(3, 3, 3, 3);
-  buttons->setSpacing(3);
-  group = new QButtonGroup(box);
-  for (const auto& [value, label] : options) {
-    auto* button = new QPushButton(label, box);
-    button->setCheckable(true);
-    button->setProperty("value", value);
-    group->addButton(button);
-    buttons->addWidget(button);
-  }
-  return box;
-}
-
-void Pick(QButtonGroup* group, const QString& value) {
-  for (QAbstractButton* button : group->buttons()) {
-    button->setChecked(button->property("value").toString() == value);
-  }
-}
-
-QString Picked(QButtonGroup* group) {
-  return group->checkedButton() != nullptr ? group->checkedButton()->property("value").toString()
-                                           : QString();
-}
-
 }  // namespace
 
 // --- Example art -----------------------------------------------------------------------------
@@ -707,19 +678,15 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   grid->setContentsMargins(14, 4, 14, 4);
   grid->setHorizontalSpacing(14);
   grid->setVerticalSpacing(0);
-  grid->addWidget(
-      SetupRow(card, "Corners", "How round covers, cards and buttons are.",
-               Segmented(card, {{"square", "Square"}, {"default", "Default"}, {"round", "Round"}},
-                         corners_)),
-      0, 0);
-  grid->addWidget(
-      SetupRow(card, "Spacing", "Space between covers.",
-               Segmented(card, {{"compact", "Compact"}, {"default", "Default"}, {"roomy", "Roomy"}},
-                         spacing_)),
-      0, 1);
+  corners_ =
+      new Segmented({{"square", "Square"}, {"default", "Default"}, {"round", "Round"}}, card);
+  grid->addWidget(SetupRow(card, "Corners", "How round covers, cards and buttons are.", corners_),
+                  0, 0);
+  spacing_ =
+      new Segmented({{"compact", "Compact"}, {"default", "Default"}, {"roomy", "Roomy"}}, card);
+  grid->addWidget(SetupRow(card, "Spacing", "Space between covers.", spacing_), 0, 1);
   grid->addWidget(MakeDivider(card, Qt::Horizontal), 1, 0, 1, 2);
-  connect(corners_, &QButtonGroup::buttonClicked, this, [this] {
-    const QString corners = Picked(corners_);
+  connect(corners_, &Segmented::Changed, this, [this](const QString& corners) {
     FrontendPrefs change;
     if (corners == "default") {
       change.clear = {"tile_radius", "panel_radius", "control_radius"};
@@ -731,8 +698,7 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
     }
     Save(change);
   });
-  connect(spacing_, &QButtonGroup::buttonClicked, this, [this] {
-    const QString spacing = Picked(spacing_);
+  connect(spacing_, &Segmented::Changed, this, [this](const QString& spacing) {
     FrontendPrefs change;
     if (spacing == "default") {
       change.clear = {"tile_spacing"};
@@ -825,15 +791,15 @@ void LookPage::Enter() {
     button->setChecked(static_cast<ThemeTile*>(button)->Theme() == theme);
   }
   const int radius = prefs.tile_radius.value_or(-1);
-  Pick(corners_, radius < 0     ? "default"
-                 : radius <= 3  ? "square"
-                 : radius >= 10 ? "round"
-                                : "default");
+  corners_->SetValue(radius < 0     ? "default"
+                     : radius <= 3  ? "square"
+                     : radius >= 10 ? "round"
+                                    : "default");
   const int spacing = prefs.tile_spacing.value_or(-1);
-  Pick(spacing_, spacing < 0    ? "default"
-                 : spacing <= 3 ? "compact"
-                 : spacing >= 8 ? "roomy"
-                                : "default");
+  spacing_->SetValue(spacing < 0    ? "default"
+                     : spacing <= 3 ? "compact"
+                     : spacing >= 8 ? "roomy"
+                                    : "default");
   games_switches_->setVisible(!apps);
   apps_switches_->setVisible(apps);
   continue_->setChecked(prefs.library_continue_row.value_or(true));
@@ -865,16 +831,16 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   rows->setSpacing(0);
   const std::vector<std::pair<QString, QString>> styles = {
       {"covers", "Covers"}, {"hero", "Banners"}, {"shelf", "Shelf"}};
-  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw.",
-                           Segmented(card, styles, pinned_),
-                           /*below=*/true));
+  pinned_ = new Segmented(styles, card);
+  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw.", pinned_, /*below=*/true));
   games_rows_ = new QWidget(card);
   auto* game_rows = new QVBoxLayout(games_rows_);
   game_rows->setContentsMargins(0, 0, 0, 0);
   game_rows->setSpacing(0);
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
+  recent_ = new Segmented(styles, games_rows_);
   game_rows->addWidget(SetupRow(games_rows_, "Recently played", "How recently played games draw.",
-                                Segmented(games_rows_, styles, recent_), /*below=*/true));
+                                recent_, /*below=*/true));
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
   when_ = new Switch(games_rows_);
   game_rows->addWidget(SetupRow(games_rows_, "Say when", "When each game was last played.", when_));
@@ -894,14 +860,14 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   layout->addLayout(columns);
   layout->addStretch(1);
 
-  connect(pinned_, &QButtonGroup::buttonClicked, this, [this] {
+  connect(pinned_, &Segmented::Changed, this, [this](const QString& style) {
     FrontendPrefs change;
-    change.sidebar_pinned_style = Picked(pinned_).toStdString();
+    change.sidebar_pinned_style = style.toStdString();
     Save(change);
   });
-  connect(recent_, &QButtonGroup::buttonClicked, this, [this] {
+  connect(recent_, &Segmented::Changed, this, [this](const QString& style) {
     FrontendPrefs change;
-    change.sidebar_recent_style = Picked(recent_).toStdString();
+    change.sidebar_recent_style = style.toStdString();
     Save(change);
   });
   connect(when_, &QAbstractButton::clicked, this, [this](bool on) {
@@ -936,8 +902,8 @@ void SidebarPage::Enter() {
   games_rows_->setVisible(!apps);
   const QString pinned = QString::fromStdString(prefs.sidebar_pinned_style.value_or("covers"));
   const QString recent = QString::fromStdString(prefs.sidebar_recent_style.value_or("hero"));
-  Pick(pinned_, pinned);
-  Pick(recent_, recent);
+  pinned_->SetValue(pinned);
+  recent_->SetValue(recent);
   when_->setChecked(prefs.sidebar_recent_when.value_or(true));
   covers_->setChecked(prefs.sidebar_source_covers.value_or(true));
   static_cast<SidebarPreview*>(preview_)->SetShown({.apps = apps,

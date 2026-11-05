@@ -1,5 +1,6 @@
 #include "SettingsNav.h"
 
+#include <QAction>
 #include <QButtonGroup>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -38,10 +39,11 @@ icons::Glyph CategoryGlyph(const QString& category) {
       {"Sidebar", Glyph::Sidebar},       {"Shortcuts", Glyph::Keyboard},
       {"Library", Glyph::Folder},        {"Metadata", Glyph::Image},
       {"Sources", Glyph::Layers},        {"Runners", Glyph::Wrench},
-      {"Launching", Glyph::Play},        {"Installers", Glyph::Download},
+      {"Launching", Glyph::PlayCircle},  {"Installers", Glyph::Download},
       {"Store launchers", Glyph::Store}, {"Detection", Glyph::Target},
       {"Scanning", Glyph::Refresh},      {"Desktop entries", Glyph::Grid},
-      {"Advanced", Glyph::Sliders},
+      {"Advanced", Glyph::Sliders},      {"Saves", Glyph::Save},
+      {"Emulators", Glyph::Chip},        {"Updates", Glyph::Update},
   };
   return kGlyphs.value(category, Glyph::Settings);
 }
@@ -73,16 +75,29 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   left_->setAttribute(Qt::WA_StyledBackground);
   left_->setFixedWidth(236);
   // The sidebar's margins, so its rows and these sit in the same column; one more on the
-  // right for the border, which beside the sidebar is the splitter's handle instead.
-  left_layout_ = new QVBoxLayout(left_);
-  left_layout_->setContentsMargins(10, 10, 11, 10);
+  // right for the border, which beside the sidebar is the splitter's handle instead. The nav's
+  // scroll area reaches the edge, its scroll bar in that margin, so the rows keep their width
+  // (as wide as the search box) on a window short enough to scroll them.
+  constexpr int kRight = 11;
+  auto* column = new QVBoxLayout(left_);
+  column->setContentsMargins(10, 10, 0, 10);
+  column->setSpacing(10);
+  left_layout_ = new QVBoxLayout();
+  left_layout_->setContentsMargins(0, 0, kRight, 0);
   left_layout_->setSpacing(10);
+  column->addLayout(left_layout_);
 
   search_ = new QLineEdit(left_);
   search_->setObjectName("settings_search");
-  search_->setClearButtonEnabled(true);
   search_->setPlaceholderText("Search settings…");
-  connect(search_, &QLineEdit::textChanged, this, [this](const QString&) {
+  // Mira's own glyph rather than the desktop's clear icon, which doesn't match the rest.
+  auto* clear = search_->addAction(QIcon(), QLineEdit::TrailingPosition);
+  icons::Follow(clear, icons::Glyph::Close, &theme::Tokens::text_muted);
+  clear->setToolTip("Clear the search");
+  clear->setVisible(false);
+  connect(clear, &QAction::triggered, search_, &QLineEdit::clear);
+  connect(search_, &QLineEdit::textChanged, this, [this, clear](const QString& text) {
+    clear->setVisible(!text.isEmpty());
     ApplyFilter();
     jump_->stop();
     jumping_to_ = -1;
@@ -96,11 +111,18 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   nav_ = new QWidget(scroll);
   nav_layout_ = new QVBoxLayout(nav_);
-  nav_layout_->setContentsMargins(0, 0, 0, 0);
   nav_layout_->setSpacing(2);  // the sidebar's row gap
   nav_layout_->addStretch(1);
   scroll->setWidget(nav_);
-  left_layout_->addWidget(scroll, /*stretch=*/1);
+  column->addWidget(scroll, /*stretch=*/1);
+  const auto fit_rows = [this, scroll] {
+    const int bar = scroll->verticalScrollBar()->maximum() > 0
+                        ? scroll->verticalScrollBar()->sizeHint().width()
+                        : 0;
+    nav_layout_->setContentsMargins(0, 0, std::max(0, kRight - bar), 0);
+  };
+  connect(scroll->verticalScrollBar(), &QScrollBar::rangeChanged, this, fit_rows);
+  fit_rows();
   outer->addWidget(left_);
 
   buttons_ = new QButtonGroup(this);
@@ -125,9 +147,19 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this,
           &SettingsNavWidget::SyncToScroll);
 
-  sticky_ = new QLabel(scroll_->viewport());
+  sticky_ = new QWidget(scroll_->viewport());
   sticky_->setObjectName("settings_sticky");
-  sticky_->setProperty("role", "heading");
+  sticky_->setAttribute(Qt::WA_StyledBackground);
+  auto* sticky_layout = new QVBoxLayout(sticky_);
+  // Top matches kTitleClearance, so the title doesn't move as it sticks.
+  sticky_layout->setContentsMargins(0, kTitleClearance, 0, 20);
+  sticky_layout->setSpacing(kTitleGap);
+  sticky_group_ = new QLabel(sticky_);
+  sticky_group_->setProperty("role", "nav_heading");
+  sticky_title_ = new QLabel(sticky_);
+  sticky_title_->setProperty("role", "heading");
+  sticky_layout->addWidget(sticky_group_);
+  sticky_layout->addWidget(sticky_title_);
   sticky_->hide();
 
   jump_ = new QVariantAnimation(this);
@@ -168,10 +200,6 @@ void SettingsNavWidget::SetBottomRoom(int height) {
   SyncToScroll();
 }
 
-int SettingsNavWidget::TitleTop(const Category& category) const {
-  return category.page->y() + category.page->TitleLabel()->y();
-}
-
 // The last page whose top has reached where a jump puts it.
 int SettingsNavWidget::CurrentIndex() const {
   const int line = scroll_->verticalScrollBar()->value() + kTitleClearance;
@@ -193,22 +221,21 @@ void SettingsNavWidget::SyncToScroll() {
 
   // Enough room under the last page for a jump to bring its title to the top.
   if (last != nullptr) {
-    const int below_title =
-        last->page->y() + last->page->height() - (TitleTop(*last) - kTitleClearance);
+    const int below_top = last->page->height() + kTitleClearance;
     const int bottom =
-        std::max(kPagePadBottom + bottom_room_, scroll_->viewport()->height() - below_title);
+        std::max(kPagePadBottom + bottom_room_, scroll_->viewport()->height() - below_top);
     if (sections_->contentsMargins().bottom() != bottom) {
       sections_->setContentsMargins(kPagePadX, kTitleClearance, kPagePadX, bottom);
     }
   }
 
-  // The title of the page the view is in, once its own has scrolled under the
+  // The heading and title of the page the view is in, once its own have started under the
   // top, pushed up by the next page as that one arrives.
   const Category* in = nullptr;
   const Category* next = nullptr;
   for (const Category& category : categories_) {
     if (category.page->isHidden()) continue;
-    if (TitleTop(category) - kTitleClearance < value) {
+    if (category.page->y() - kTitleClearance < value) {
       in = &category;
     } else if (next == nullptr && in != nullptr) {
       next = &category;
@@ -217,12 +244,19 @@ void SettingsNavWidget::SyncToScroll() {
   if (in == nullptr) {
     sticky_->hide();
   } else {
-    sticky_->setText(in->page->Title());
-    sticky_->resize(scroll_->viewport()->width(), sticky_->sizeHint().height());
+    sticky_title_->setText(in->page->Title());
+    sticky_group_->setText(in->group_heading != nullptr ? in->group_heading->text() : QString());
+    sticky_group_->setVisible(!sticky_group_->text().isEmpty());
+    // Over the page's own column, at its width.
+    const int left =
+        in->page->mapTo(scroll_->viewport(), QPoint(0, 0)).x() + in->page->ColumnLeft();
+    sticky_->resize(SettingsColumnWidth(in->page->width()), sticky_->sizeHint().height());
     int y = 0;
     if (next != nullptr)
       y = std::min(0, next->page->y() - kTitleClearance - value - sticky_->height());
-    sticky_->move(0, y);
+    sticky_->move(left, y);
+    // Its line marks the cards scrolling under it; while pushed off, it would float on its own.
+    theme::SetStyleProperty(sticky_, "pushed", y < 0 ? "true" : "false");
     sticky_->setVisible(y > -sticky_->height());
     sticky_->raise();
   }
@@ -253,11 +287,8 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   }
 
   auto* page = new SettingsPage(title, canvas_);
-  if (current_heading_ != nullptr && std::ranges::none_of(categories_, [this](const Category& c) {
-        return c.group_heading == current_heading_;
-      })) {
-    page->SetGroupHeading(current_group_);
-  }
+  // On every page, so a page reads the same reached by a click or a scroll, as the sticky shows it.
+  if (current_heading_ != nullptr) page->SetGroupHeading(current_group_);
   sections_->insertWidget(sections_->count() - 1, page);
 
   auto* button = new QPushButton(title, nav_);
@@ -326,6 +357,7 @@ void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchab
   RowEntry row;
   row.row_widget = row_widget;
   row.card = AncestorOf<SettingsCard>(row_widget);
+  row.expander = AncestorOf<ExpanderRow>(row_widget);
   row.search_text = settings_search::Normalize(searchable_text);
   row.category_index = static_cast<int>(category - categories_.begin());
   rows_.push_back(row);
@@ -361,12 +393,27 @@ void SettingsNavWidget::ApplyFilter() {
   const bool searching = !query.isEmpty();
   std::vector<int> visible_count(categories_.size(), 0);
   QHash<SettingsCard*, int> card_visible;
+  QHash<ExpanderRow*, int> expander_visible;
 
   for (const RowEntry& row : rows_) {
     const bool visible = row.gate_visible && settings_search::Matches(row.search_text, query);
     row.row_widget->setVisible(visible);
     if (row.card != nullptr) card_visible[row.card] += visible ? 1 : 0;
+    if (row.expander != nullptr) expander_visible[row.expander] += visible ? 1 : 0;
     if (visible) visible_count[row.category_index]++;
+  }
+
+  // Likewise an expander row: searching opens one with a match.
+  for (auto it = expander_visible.cbegin(); it != expander_visible.cend(); ++it) {
+    ExpanderRow* expander = it.key();
+    expander->setVisible(it.value() > 0);
+    if (searching && it.value() > 0) {
+      if (!closed_before_search_.contains(expander))
+        closed_before_search_.insert(expander, !expander->Expanded());
+      expander->SetExpanded(true);
+    } else if (!searching && closed_before_search_.contains(expander)) {
+      expander->SetExpanded(!closed_before_search_.take(expander));
+    }
   }
 
   // A card shows while any of its rows does. Searching unfolds a folded card
@@ -426,6 +473,7 @@ void SettingsNavWidget::RevealRow(QWidget* row_widget) {
   if (!search_->text().isEmpty()) search_->clear();  // triggers ApplyFilter via textChanged
 
   if (row.card != nullptr && row.card->Collapsible()) row.card->SetExpanded(true);
+  if (row.expander != nullptr) row.expander->SetExpanded(true);
   // After the unfolded card has its size, at the top just clear of the sticky title: scrolling
   // only until it's in view leaves it at the bottom, under the rows above it.
   QTimer::singleShot(0, this, [this, row_widget = QPointer<QWidget>(row_widget)] {

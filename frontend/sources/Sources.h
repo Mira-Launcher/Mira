@@ -51,8 +51,9 @@ bool InSource(const GameSummary& game, const std::string& source);
 std::vector<QString> OrderSources(const std::vector<QString>& saved);
 
 // The source's initial on its color, `size` pixels square; faded when `dim`.
-// What an emulator plays, by name: "GameCube and Wii".
-QString PlaysText(const SourceInfo& source);
+// What an emulator plays, by name: "GameCube and Wii". Past `at_most` names, the rest are counted:
+// "NES, SNES, Game Boy and 9 more".
+QString PlaysText(const SourceInfo& source, int at_most = 0);
 // Same, with the short names people search by: "Nintendo 64" also matches "n64".
 QString PlaysSearchText(const SourceInfo& source);
 // The source's own logo, `size` points square for `dpr`; null when it has none.

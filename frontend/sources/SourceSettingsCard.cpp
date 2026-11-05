@@ -14,6 +14,7 @@
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlatCombo.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -225,9 +226,8 @@ void SourceSettingsCard::BuildRunnerRow() {
                                  : "The Wine or Proton build for " + source_.name +
                                        " games that have no runner of their own.";
   runner_row_ = new SettingRow("Runner", runner_doc, this);
-  runner_ = new QComboBox(runner_row_);
+  runner_ = new FlatCombo(runner_row_);
   runner_->setEnabled(false);
-  runner_->setMinimumWidth(260);
   connect(runner_, QOverload<int>::of(&QComboBox::activated), this,
           &SourceSettingsCard::UpdateButtons);
   connect(runner_row_, &SettingRow::RevertClicked, this, [this] {

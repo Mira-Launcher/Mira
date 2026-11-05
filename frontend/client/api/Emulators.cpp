@@ -23,6 +23,8 @@ EmulatorsResult GetEmulatorsSync() {
           EmulatorInfo info;
           info.id = entry.value("id", std::string());
           info.name = entry.value("name", std::string());
+          info.maker = entry.value("maker", std::string());
+          info.consoles = entry.value("consoles", std::vector<std::string>());
           info.extensions = entry.value("extensions", std::vector<std::string>());
           info.folder_games = entry.value("folder_games", false);
           info.installed = entry.value("installed", false);

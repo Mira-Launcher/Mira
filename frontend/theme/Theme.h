@@ -86,13 +86,17 @@ Tokens WithSystemColors(Tokens tokens, const std::optional<QPalette>& system,
 // desktops whose palette Qt doesn't read. Restyles if they change what's drawn.
 void SetDesktopAppearance(std::optional<QColor> accent, std::optional<Qt::ColorScheme> scheme);
 
-// `font` `points` larger, in whatever unit it's set in.
-QFont Larger(QFont font, qreal points = 1);
-// The desktop's font, which tile titles keep. Everything else is a point larger (EnlargeAppFont).
+// The size all text uses: the user's (Overrides::text_points), else the desktop's, else 10 pt when
+// the desktop gives none in points.
+qreal TextPoints();
+// `px`, a pixel size picked for 11 pt text, at the current text size.
+int TextPx(int px);
+// The desktop's font, which tile titles keep: their slot on a tile is a fixed height.
 QFont DesktopFont();
-// Sets the application's font a point above the desktop's, so text reads at a glance. Once, at
+// Keeps the application font, and every widget class's, at TextPoints, also after the desktop's
+// platform theme sets its own (it answers after start, and again when its fonts change). Once, at
 // start.
-void EnlargeAppFont();
+void KeepTextSize();
 
 // What everything currently draws with. Valid before Apply() is ever called,
 // it starts as the built-in defaults.
@@ -114,6 +118,7 @@ struct Overrides {
   std::optional<int> radius_tile;
   std::optional<int> radius_panel;
   std::optional<int> radius_control;
+  std::optional<qreal> text_points;  // unset follows the desktop
 };
 
 // Re-applies the current theme, so a change shows without a restart.

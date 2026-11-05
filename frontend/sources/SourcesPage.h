@@ -7,7 +7,6 @@
 
 #include "AddedSources.h"
 
-class QButtonGroup;
 class QLabel;
 class QLineEdit;
 class QResizeEvent;
@@ -17,6 +16,7 @@ class QStackedWidget;
 namespace mira_gui {
 
 class ModalOverlay;
+class Segmented;
 class SourceCatalog;
 class SourceSetupCard;
 class Switch;
@@ -52,7 +52,7 @@ class SourcesPage : public QFrame {
   void CloseRequested();
 
  private:
-  QButtonGroup* views_ = nullptr;
+  Segmented* views_ = nullptr;  // added or catalog
   QLabel* hint_ = nullptr;
   QLineEdit* search_ = nullptr;
   bool hidden_mode_ = false;

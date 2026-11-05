@@ -26,6 +26,7 @@
 #include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
 #include "widgets/FocusRing.h"
+#include "widgets/Scrolling.h"
 #include "widgets/SpatialNav.h"
 #include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
@@ -49,8 +50,9 @@ int main(int argc, char** argv) {
   mira_gui::display::ForgetEnv();
   QApplication::setApplicationName("Mira");
   QApplication::setOrganizationName("mira");
-  mira_gui::theme::EnlargeAppFont();
+  mira_gui::theme::KeepTextSize();
   mira_gui::theme::WriteUserCopies();
+  mira_gui::SetUpSmoothWheel();
 
   // Mira closes to tray rather than quitting, so a second launch (another
   // double-click on the AppImage, another "Mira" from the app menu) must

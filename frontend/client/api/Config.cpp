@@ -51,6 +51,10 @@ void FillConfigSchema(ConfigSchemaResult& result, const json& body) {
     e.group_resettable = entry.value("group_resettable", false);
     e.source = entry.value("source", std::string());
     e.path = entry.value("path", std::string());
+    e.unit = entry.value("unit", std::string());
+    e.item = entry.value("item", std::string());
+    e.item_label = entry.value("item_label", std::string());
+    e.option_labels = entry.value("option_labels", std::vector<std::string>());
     const std::string scope = entry.value("scope", std::string());
     e.per_game = scope == "per_game" || scope == "game_only";
     e.game_only = scope == "game_only";
@@ -152,6 +156,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_int("tile_radius", result.prefs.tile_radius);
   read_int("panel_radius", result.prefs.panel_radius);
   read_int("control_radius", result.prefs.control_radius);
+  read_int("text_size", result.prefs.text_size);
   read_int("sidebar_recent_count", result.prefs.sidebar_recent_count);
   read_bool("sidebar_source_counts", result.prefs.sidebar_source_counts);
   read_bool("sidebar_source_covers", result.prefs.sidebar_source_covers);
@@ -237,6 +242,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.tile_radius) table["tile_radius"] = *prefs.tile_radius;
   if (prefs.panel_radius) table["panel_radius"] = *prefs.panel_radius;
   if (prefs.control_radius) table["control_radius"] = *prefs.control_radius;
+  if (prefs.text_size) table["text_size"] = *prefs.text_size;
   if (prefs.shortcut_overrides) {
     json shortcuts = json::object();
     for (const auto& [id, keys] : *prefs.shortcut_overrides) shortcuts[id] = keys;
