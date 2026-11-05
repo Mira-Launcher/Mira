@@ -45,7 +45,7 @@ void OverridesEditor::Reload() {
     if (config.ok)
       ApplyValues(config);
     else
-      resetting_key_.clear();
+      resetting_keys_.clear();
   });
 }
 
@@ -69,7 +69,9 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
 
     for (const size_t i : rows) {
       const ConfigSchemaEntry& entry = entries[i];
-      if (card == nullptr || entry.group != group) {
+      const bool hosted = Hosts(entry.key);
+      Field* shown_in = FindField(entry.shown_in);
+      if (!hosted && shown_in == nullptr && (card == nullptr || entry.group != group)) {
         group = entry.group;
         card = page->AddCard(QString::fromStdString(entry.group_label));
       }
@@ -79,17 +81,24 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
       field.entry = entry;
       // The settings screen's own editor, so an enum is a dropdown and a runner a picker here too.
       const std::string& doc = entry.game_doc.empty() ? entry.doc : entry.game_doc;
-      SettingRow* row = field.Build(card, QString::fromStdString(doc));
+      SettingsCard* into = hosted ? host_card_ : card;
+      SettingRow* row = field.Build(into, QString::fromStdString(doc));
+      if (Field* paired = FindField(entry.paired_key); paired != nullptr && paired->row != nullptr)
+        PairChoices(*paired, field);
       field.layer_label = new QLabel(row);
-      field.layer_label->setProperty("role", "subtle");
-      row->AddAfterLabel(field.layer_label);
       field.clear = new QToolButton(row);
-      field.clear->setAutoRaise(true);
-      icons::Follow(field.clear, icons::Glyph::Close, &theme::Tokens::text_muted);
-      field.clear->setToolTip("Use the global setting again");
-      field.clear->hide();
-      row->AddAfterLabel(field.clear);
-      card->AddRow(row);
+      if (shown_in != nullptr) {
+        shown_in->Embed(field);  // its host's row shows its layer, and clearing it clears both
+      } else {
+        field.layer_label->setProperty("role", "subtle");
+        row->AddAfterLabel(field.layer_label);
+        field.clear->setAutoRaise(true);
+        icons::Follow(field.clear, icons::Glyph::Close, &theme::Tokens::text_muted);
+        field.clear->setToolTip("Use the global setting again");
+        field.clear->hide();
+        row->AddAfterLabel(field.clear);
+        into->AddRow(row);
+      }
 
       const size_t index = fields_.size() - 1;
       connect(field.clear, &QToolButton::clicked, this, [this, index] { ResetField(index); });
@@ -102,7 +111,12 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
         fields_[index].row->SetModified(fields_[index].Changed());
         emit Changed();
       });
-      nav_->RegisterRow(row, field.SearchText());
+      if (hosted || shown_in != nullptr) continue;
+      QString search = field.SearchText();
+      for (const ConfigSchemaEntry& shown : entries) {
+        if (shown.shown_in == entry.key) search += ' ' + SettingEditor{.entry = shown}.SearchText();
+      }
+      nav_->RegisterRow(row, search);
     }
   }
   const auto list_runners = [this] {
@@ -127,12 +141,18 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
     if (it == fields_.end()) continue;
     Field& field = *it;
 
-    nav_->SetRowGateVisible(field.row, entry.overridable);
+    if (!field.entry.shown_in.empty()) {
+      // shown inside its host's row
+    } else if (Hosts(field.entry.key)) {
+      field.row->setVisible(entry.overridable);
+    } else {
+      nav_->SetRowGateVisible(field.row, entry.overridable);
+    }
     if (!entry.overridable) continue;
 
     // A reload after resetting one override keeps unsaved edits to the others.
-    const bool pending =
-        !field.layer.empty() && field.Text() != field.original && field.entry.key != resetting_key_;
+    const bool pending = !field.layer.empty() && field.Text() != field.original &&
+                         !std::ranges::contains(resetting_keys_, field.entry.key);
     const std::string kept = field.Text();
     field.layer = entry.layer;
     field.layer_label->setText(entry.layer == "game"     ? QString("This game")
@@ -144,23 +164,31 @@ void OverridesEditor::ApplyValues(const GameConfigResult& config) {
     if (pending) field.SetText(kept);
     field.row->SetModified(field.Text() != field.original);
   }
+  // A row showing another setting is "This game" while either is.
+  for (const Field& field : fields_) {
+    Field* host = FindField(field.entry.shown_in);
+    if (host == nullptr || field.layer != "game" || host->layer == "game") continue;
+    host->layer_label->setText("This game");
+    host->clear->show();
+  }
   // The first values give lists and paths their rows; later reloads keep the columns put.
   if (!values_loaded_) nav_->RearrangePages();
   values_loaded_ = true;
-  resetting_key_.clear();
+  resetting_keys_.clear();
   RevealKey(std::exchange(reveal_key_, {}));
   emit Changed();  // the change count, after a reset dropped that row's edit
 }
 
 void OverridesEditor::RevealKey(const std::string& key) {
   if (key.empty()) return;
-  const auto it = std::ranges::find(fields_, key, [](const Field& f) { return f.entry.key; });
+  const Field* field = FindField(key);
   // Before the values arrive the rows are placeholders, so it waits for them.
-  if (!values_loaded_ || it == fields_.end()) {
+  if (!values_loaded_ || field == nullptr) {
     reveal_key_ = key;
     return;
   }
-  nav_->RevealRow(it->row);
+  const Field* host = FindField(field->entry.shown_in);
+  nav_->RevealRow((host != nullptr ? host : field)->row);
 }
 
 std::vector<GameConfigEdit> OverridesEditor::PendingEdits() const {
@@ -197,24 +225,39 @@ SettingsPage* OverridesEditor::AddPage(const QString& title, icons::Glyph glyph)
   return nav_->AddCategory(title, glyph);
 }
 
+void OverridesEditor::HostRows(std::vector<std::string> keys, SettingsCard* card) {
+  host_keys_ = std::move(keys);
+  host_card_ = card;
+}
+
 void OverridesEditor::ShowFromTop() {
   nav_->RearrangePages();
   nav_->ScrollToTop();
 }
 
+OverridesEditor::Field* OverridesEditor::FindField(const std::string& key) {
+  if (key.empty()) return nullptr;
+  const auto it = std::ranges::find(fields_, key, [](const Field& f) { return f.entry.key; });
+  return it != fields_.end() ? &*it : nullptr;
+}
+
 void OverridesEditor::ResetField(size_t index) {
-  const Field& field = fields_[index];
-  resetting_key_ = field.entry.key;
-  api::PatchGameConfigAsync(
-      this, game_id_, {GameConfigEdit{field.entry.key, field.entry.type, std::string(), true}},
-      [this](PatchGameConfigResult result) {
-        if (!result.ok) {
-          resetting_key_.clear();
-          notify::FailedRequest(this, "Could not reset this override.", result.error);
-          return;
-        }
-        Reload();
-      });
+  // Clearing a row clears the settings shown inside it too.
+  std::vector<GameConfigEdit> edits;
+  resetting_keys_.clear();
+  for (const Field& field : fields_) {
+    if (&field != &fields_[index] && field.entry.shown_in != fields_[index].entry.key) continue;
+    resetting_keys_.push_back(field.entry.key);
+    edits.push_back(GameConfigEdit{field.entry.key, field.entry.type, std::string(), true});
+  }
+  api::PatchGameConfigAsync(this, game_id_, edits, [this](PatchGameConfigResult result) {
+    if (!result.ok) {
+      resetting_keys_.clear();
+      notify::FailedRequest(this, "Could not reset this override.", result.error);
+      return;
+    }
+    Reload();
+  });
 }
 
 }  // namespace mira_gui

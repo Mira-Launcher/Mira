@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@ class QToolButton;
 
 namespace mira_gui {
 
+class SettingsCard;
 class SettingsNavWidget;
 class SettingsPage;
 
@@ -49,6 +51,9 @@ class OverridesEditor : public QWidget {
 
   // A page of the host's own, listed before the schema's categories.
   SettingsPage* AddPage(const QString& title, icons::Glyph glyph);
+  // Builds `keys`' rows into the host's `card` instead of these pages. Call before Load.
+  void HostRows(std::vector<std::string> keys, SettingsCard* card);
+  bool Hosts(const std::string& key) const { return std::ranges::contains(host_keys_, key); }
   // Re-splits the pages after the host's cards changed, and starts at the top.
   void ShowFromTop();
   // Scrolls `key`'s row into view, once the values have arrived.
@@ -70,13 +75,17 @@ class OverridesEditor : public QWidget {
   void ApplyValues(const GameConfigResult& config);
   void Reload();
   void ResetField(size_t index);
+  Field* FindField(const std::string& key);
 
   std::string game_id_;
-  std::string resetting_key_;  // the override a reset is reloading for; its edit is dropped
-  std::string reveal_key_;     // a row RevealKey asked for before the values arrived
+  // The overrides a reset is reloading for; their edits are dropped.
+  std::vector<std::string> resetting_keys_;
+  std::string reveal_key_;  // a row RevealKey asked for before the values arrived
   bool values_loaded_ = false;
   SettingsNavWidget* nav_ = nullptr;
   std::vector<Field> fields_;
+  std::vector<std::string> host_keys_;
+  SettingsCard* host_card_ = nullptr;
 };
 
 }  // namespace mira_gui

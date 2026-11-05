@@ -136,6 +136,7 @@ class GameEditForm : public QWidget {
     QLineEdit* edit = nullptr;
   };
   SettingsCard* runner_options_card_ = nullptr;
+  SettingsCard* scripts_card_ = nullptr;  // the scripts' override rows, on the first page
   std::vector<RunnerField> runner_fields_;
   std::map<std::string, std::vector<mira_gui::RunnerOption>> runner_schemas_;  // by kind
   std::string options_kind_;

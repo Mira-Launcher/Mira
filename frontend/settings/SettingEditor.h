@@ -14,6 +14,7 @@ class QWidget;
 
 namespace mira_gui {
 
+class ChipToggles;
 class ListEdit;
 class SettingRow;
 class Switch;
@@ -29,6 +30,7 @@ struct SettingEditor {
   QComboBox* combo = nullptr;      // set instead of `line` for a runner key or a schema enum
   QDoubleSpinBox* spin = nullptr;  // set instead of `line` for a bounded number
   ListEdit* list = nullptr;        // set instead of `line` for an array
+  ChipToggles* chips = nullptr;    // set instead of `list` for an array picked from choices
   SettingRow* row = nullptr;
   // A secret's button that drops the one mirad holds and doesn't send (kSecretSaved). Whether one
   // is held is the line's "secret_saved" property, since editors move around in vectors.
@@ -45,7 +47,14 @@ struct SettingEditor {
   bool IsDefault() const;
   // Calls `edited` whenever the user changes the value.
   void OnEdited(QObject* context, std::function<void()> edited) const;
+  // Takes the chips of `shown` (an entry whose shown_in is this one) into this text field's box,
+  // with its own row hidden: its changes mark this row and this row's undo reverts both.
+  void Embed(SettingEditor& shown);
 };
+
+// Wires two lists of paired choices (paired_key): turning one of `first`'s on or off does the same
+// to its pair in `second`, and `second`'s choices that need their pair are greyed out without it.
+void PairChoices(const SettingEditor& first, const SettingEditor& second);
 
 // Refills a runner combo for `entry`: Auto, then every installed build, or only the builds of its
 // runner_kinds; keeps the combo's value.

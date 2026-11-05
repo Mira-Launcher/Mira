@@ -32,6 +32,7 @@
 #include "library/LaunchOptions.h"
 #include "library/Relocate.h"
 #include "library/Scanner.h"
+#include "library/ScriptPresets.h"
 #include "library/SourceRegistry.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
@@ -594,7 +595,9 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     }
 
     const config::Resolver resolver(s.config, game->overrides);
-    const std::string pre_script = resolver.GetString("launch.pre_script");
+    const library::LaunchScripts scripts =
+        library::ResolveLaunchScripts(s.config, resolver, s.runtime_dir);
+    const std::string& pre_script = scripts.pre;
     if (game->platform == model::Platform::Windows &&
         resolver.GetBool("launch.follow_system_theme") && !game->runner_ref.starts_with("steam:")) {
       if (auto synced = runner::SyncWindowsTheme(runner::RunnerRegistry(s.config), *game);
@@ -602,7 +605,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         log::Warn("couldn't set {}'s Windows theme: {}", game->id, synced.error().message);
       }
     }
-    const std::string post_script = resolver.GetString("launch.post_script");
+    const std::string& post_script = scripts.post;
     const std::int64_t post_timeout_s = resolver.GetInt("launch.post_timeout_s");
 
     // A play option replaces how the game starts, whatever its source, and is tracked as the game.
@@ -674,8 +677,11 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     // instead.
     if (game->runner_ref.starts_with("steam:")) {
       if (resolver.GetString("steam.launch_mode") == "steam") {
+        const bool track = resolver.GetBool("steam.track_process");
+        // Untracked, nothing runs at exit to undo the pre-launch steps, so they don't start either.
         if (auto ran = RunPreScriptInline(
-                pre_script, static_cast<int>(resolver.GetInt("launch.pre_timeout_s")));
+                track ? pre_script : library::OwnScript(resolver.GetString("launch.pre_script")),
+                static_cast<int>(resolver.GetInt("launch.pre_timeout_s")));
             !ran) {
           return SendError(res, 409, ran.error());
         }
@@ -691,7 +697,6 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         }
         [[maybe_unused]] auto _ = s.games.Update(
             game->id, [](model::Game& g) { g.last_played_at = model::NowSeconds(); });
-        const bool track = resolver.GetBool("steam.track_process");
         s.events.Publish("game.launched", {{"id", game->id}, {"via", "steam"}, {"tracked", track}});
         if (track) {
           if (auto started =

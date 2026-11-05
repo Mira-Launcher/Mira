@@ -61,11 +61,19 @@ void FillConfigSchema(ConfigSchemaResult& result, const json& body) {
     }
     e.link = entry.value("link", std::string());
     e.keywords = entry.value("keywords", std::string());
+    e.shown_in = entry.value("shown_in", std::string());
+    e.paired_key = entry.value("paired_key", std::string());
     if (entry.contains("default")) e.default_display = mapping::ToDisplayString(entry["default"]);
     if (entry.contains("one_of") && entry["one_of"].is_array()) {
       for (const json& option : entry["one_of"]) {
         if (option.is_string()) e.one_of.push_back(option.get<std::string>());
       }
+    }
+    for (const json& choice : entry.value("choices", json::array())) {
+      if (!choice.is_object()) continue;
+      e.choices.push_back({choice.value("value", std::string()),
+                           choice.value("label", std::string()), choice.value("doc", std::string()),
+                           choice.value("pair", std::string()), choice.value("needs_pair", false)});
     }
     if (entry.contains("minimum") && entry["minimum"].is_number()) {
       e.minimum = entry["minimum"].get<double>();

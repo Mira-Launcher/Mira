@@ -633,6 +633,15 @@ struct ConfigSchemaEntry {
   // them every setting is a free-text box and the rules only surface as a
   // rejection after saving.
   std::vector<std::string> one_of;
+  // For an array whose items are each picked once from these.
+  struct Choice {
+    std::string value;
+    std::string label;
+    std::string doc;
+    std::string pair;         // the choice in `paired_key` that undoes or goes with this one
+    bool needs_pair = false;  // only offered while `pair` is picked in `paired_key`
+  };
+  std::vector<Choice> choices;
   std::optional<double> minimum;
   std::optional<double> maximum;
   std::string category;           // UI grouping; always present
@@ -648,8 +657,10 @@ struct ConfigSchemaEntry {
   bool is_runner_ref = false;     // offer a runner picker (GET /v1/runners) instead of free text
   // What the picker lists, with "auto" only when it's the default; empty: all and "auto".
   std::vector<std::string> runner_kinds;
-  std::string link;      // web page where the user gets the value; empty if none
-  std::string keywords;  // extra search terms, space-separated
+  std::string link;        // web page where the user gets the value; empty if none
+  std::string keywords;    // extra search terms, space-separated
+  std::string shown_in;    // shown inside that setting's row instead of a row of its own
+  std::string paired_key;  // the setting whose choices pair with these
 };
 
 struct ConfigSchemaResult {

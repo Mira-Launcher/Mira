@@ -23,12 +23,22 @@ enum class PathKind { None, Folder, File };
 
 using Validator = std::function<std::optional<std::string>(const nlohmann::json&)>;
 
+// One value a StringArray's items are picked from, as a screen names it.
+struct Choice {
+  std::string value;
+  std::string label;
+  std::string doc;
+  std::string pair = {};    // the value in the entry's paired_key that goes with this one
+  bool needs_pair = false;  // only does anything while its pair is chosen
+};
+
 // A Validator plus the shape it enforces, so /v1/config/schema can publish
 // that shape instead of a UI only learning it from a rejected PATCH.
 // Constructible from a plain Validator when there's no shape to describe.
 struct Constraint {
   Validator validate = {};
   std::vector<std::string> one_of;  // empty unless this is an enum
+  std::vector<Choice> choices;      // empty unless this is a list whose items are picked from these
   std::optional<double> minimum;    // unset unless this is ranged
   std::optional<double> maximum;
 
@@ -56,6 +66,10 @@ struct Entry {
   std::string link = {};  // where to get the value, e.g. an API key page
   PathKind path = PathKind::None;
   std::string keywords = {};  // extra search terms a settings screen matches, e.g. "sgdb"
+  // A key whose row this one is shown inside, e.g. a script's ready-made steps in its box.
+  std::string shown_in = {};
+  // A list whose choices pair with this one's (Choice::pair), e.g. a step and its undo.
+  std::string paired_key = {};
   // Defaults it had before. Older versions wrote every default to settings.toml, so in a file from
   // then a stored one of these was never chosen, and is dropped when the file is cleaned.
   std::vector<nlohmann::json> old_defaults = {};
