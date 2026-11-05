@@ -50,6 +50,19 @@ Constraint OneOf(std::vector<std::string> allowed) {
   return constraint;
 }
 
+// OneOf with what a settings screen calls each value.
+Constraint Choices(std::vector<std::pair<std::string, std::string>> choices) {
+  std::vector<std::string> values;
+  std::vector<std::string> labels;
+  for (auto& [value, label] : choices) {
+    values.push_back(std::move(value));
+    labels.push_back(std::move(label));
+  }
+  Constraint constraint = OneOf(std::move(values));
+  constraint.option_labels = std::move(labels);
+  return constraint;
+}
+
 // A runner reference is "kind:name", where name may be "latest".
 Validator RunnerRef() {
   return [](const json& value) -> std::optional<std::string> {
@@ -181,12 +194,21 @@ class Sections {
     group_label_ = std::move(first_group);
     group_collapsed_ = false;
     group_resettable_ = false;
+    item_ = {};
+    item_label_ = {};
   }
   void Group(std::string label, Fold fold = Fold::Open) {
     ++group_;
     group_label_ = std::move(label);
     group_collapsed_ = fold == Fold::Collapsed;
     group_resettable_ = false;
+    item_ = {};
+    item_label_ = {};
+  }
+  // The entries added next belong to one thing, until the next Item, Group or Section.
+  void Item(std::string id, std::string label) {
+    item_ = std::move(id);
+    item_label_ = std::move(label);
   }
   // Marks the current group as one a screen may reset to its defaults in one go.
   void ResetTogether() { group_resettable_ = true; }
@@ -196,11 +218,15 @@ class Sections {
     entry.group_label = group_label_;
     entry.group_collapsed = group_collapsed_;
     entry.group_resettable = group_resettable_;
+    entry.item = item_;
+    entry.item_label = item_label_;
     entry.source = SourceOf(entry.key);
     entries_.push_back(std::move(entry));
   }
 
  private:
+  std::string item_;
+  std::string item_label_;
   std::vector<Entry>& entries_;
   std::string category_;
   int group_ = 0;
@@ -260,7 +286,7 @@ Schema::Schema() {
                 "\"celeste\", or \"celeste-2\" if that is taken). \"id\" uses the game's id (for "
                 "example \"gog-1207660413\"). Only new games are affected. Existing games keep "
                 "their folder until you move them.",
-         .constraint = OneOf({"name", "id"})});
+         .constraint = Choices({{"name", "Game name"}, {"id", "Game ID"}})});
 
   s.Group("New and missing games");
 
@@ -307,7 +333,7 @@ Schema::Schema() {
   s.Group("Hidden games");
 
   s.Add({.key = "hidden.lock_after_minutes",
-         .label = "Lock hidden games after (minutes idle)",
+         .label = "Lock hidden games after being idle",
          .type = Type::Int,
          .default_value = 15,
          .doc = "With a password set, lock hidden games again once Mira has been left alone this "
@@ -315,7 +341,8 @@ Schema::Schema() {
                 "keeps them unlocked until hidden mode is left (with the setting below on) or Mira "
                 "quits.",
          .constraint = Range(0, 1440),
-         .keywords = "password"});
+         .keywords = "password",
+         .unit = "min"});
 
   s.Add({.key = "hidden.lock_on_leave",
          .label = "Lock hidden games when leaving hidden mode",
@@ -409,7 +436,10 @@ Schema::Schema() {
          .doc = "The resolution downloaded art is kept at. Auto keeps it at High, or Original when "
                 "a 4K or larger screen is connected. Compact uses about half the disk space of "
                 "High. Original keeps art as downloaded.",
-         .constraint = OneOf({"auto", "compact", "high", "original"}),
+         .constraint = Choices({{"auto", "Automatic"},
+                                {"compact", "Compact"},
+                                {"high", "High"},
+                                {"original", "Original"}}),
          .keywords = "quality resolution disk space cover hero 4k",
          .old_defaults = {"high"}});
 
@@ -421,12 +451,13 @@ Schema::Schema() {
                 "reviews and ProtonDB rating, not only the cover."});
 
   s.Add({.key = "metadata.refresh_days",
-         .label = "Refresh details after (days)",
+         .label = "Refresh details after",
          .type = Type::Int,
          .default_value = 30,
          .doc = "Fetch a game's details again once they are this many days old, so ProtonDB "
                 "ratings and reviews stay current. Art is kept. 0 never refreshes them.",
-         .constraint = Range(0, 365)});
+         .constraint = Range(0, 365),
+         .unit = "days"});
 
   s.Add({.key = "metadata.steam_appid",
          .label = "Steam app ID for ratings",
@@ -437,7 +468,8 @@ Schema::Schema() {
                 "from Steam. 0 matches it by name. Enter the number from the game's "
                 "store.steampowered.com/app/ address when the match is wrong.",
          .constraint = Range(0, 1e12),
-         .keywords = "protondb reviews match wrong"});
+         .keywords = "protondb reviews match wrong",
+         .applies = {.except_sources = {"steam"}}});
 
   s.Add({.key = "metadata.steam_art_by_name",
          .label = "Match Steam art by name",
@@ -475,7 +507,8 @@ Schema::Schema() {
        .doc = "Use the cover, banner and icon that Lutris already downloaded for imported games."});
 
   // --- Sources ---------------------------------------------------------------
-  s.Section("Sources", "Steam");
+  s.Section("Sources", "Stores and launchers");
+  s.Item("steam", "Steam");
 
   s.Add({.key = "steam.root",
          .label = "Steam folder",
@@ -486,7 +519,7 @@ Schema::Schema() {
          .path = PathKind::Folder});
 
   s.Add({.key = "steam.launch_mode",
-         .label = "Steam launch mode",
+         .label = "Launch mode",
          .type = Type::String,
          .default_value = "steam",
          .scope = Scope::PerGame,
@@ -495,7 +528,8 @@ Schema::Schema() {
                 "process instead of tracking exits and crashes. \"direct\" makes Mira start the "
                 "game itself with the Proton build and prefix Steam set up, with full tracking of "
                 "stops, crashes and playtime.",
-         .constraint = OneOf({"steam", "direct"})});
+         .constraint = Choices({{"steam", "Through Steam"}, {"direct", "Directly"}}),
+         .applies = {.sources = {"steam"}}});
 
   s.Add({.key = "steam.launch_silent",
          .label = "Keep Steam's window closed",
@@ -503,17 +537,19 @@ Schema::Schema() {
          .default_value = true,
          .scope = Scope::PerGame,
          .doc = "For games launched through the Steam client, start Steam with -silent so a Steam "
-                "that wasn't running stays in the background instead of opening its window."});
+                "that wasn't running stays in the background instead of opening its window.",
+         .applies = {.sources = {"steam"}}});
 
   s.Add({.key = "steam.track_process",
-         .label = "Track the Steam process",
+         .label = "Track the game's process",
          .type = Type::Bool,
          .default_value = true,
          .scope = Scope::PerGame,
          .doc = "For games launched through the Steam client, watch for the game's process so "
                 "Mira shows it as running and records playtime. Crashes and exit codes are not "
                 "detected. When off, the game still launches, but Mira does not show it as "
-                "running."});
+                "running.",
+         .applies = {.sources = {"steam"}}});
 
   s.Add({.key = "steam.mira_shortcut",
          .label = "Add Mira to Steam",
@@ -531,10 +567,8 @@ Schema::Schema() {
                 "removed or this is turned off. Steam shows changes after it restarts.",
          .keywords = "artwork grid custom"});
 
-  s.Group("Steam account");
-
   s.Add({.key = "steam.import_playtime",
-         .label = "Import Steam playtime and last played",
+         .label = "Import playtime and last played",
          .type = Type::Bool,
          .default_value = true,
          .doc =
@@ -545,7 +579,7 @@ Schema::Schema() {
          .keywords = "recently played last played date"});
 
   s.Add({.key = "steam.web_api_key",
-         .label = "Steam Web API key",
+         .label = "Web API key",
          .type = Type::String,
          .default_value = "",
          .doc = "Optional. A free key from steamcommunity.com/dev/apikey; any domain name works "
@@ -566,7 +600,7 @@ Schema::Schema() {
          .link = "https://store.steampowered.com/account/",
          .keywords = "steamid account user number"});
 
-  s.Group("Store tools");
+  s.Item("epic", "Epic Games");
 
   s.Add({.key = "epic.legendary_bin",
          .label = "Legendary binary",
@@ -575,6 +609,38 @@ Schema::Schema() {
          .doc = "Path to the legendary binary. Empty uses the copy Mira downloaded, then the one "
                 "on your PATH.",
          .path = PathKind::File});
+
+  s.Add({.key = "epic.install_root",
+         .label = "Install folder",
+         .type = Type::String,
+         .default_value = "~/Mira/Games/Epic",
+         .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
+                "never scans it for games, so it can be inside a library folder.",
+         .path = PathKind::Folder,
+         .old_defaults = {"~/.local/share/mira/epic"}});
+
+  s.Add({.key = "epic.eos_overlay",
+         .label = "Epic Online Services overlay",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Download Epic's in-game overlay and turn it on for Windows Epic games. Some games "
+                "need it to finish signing in: the first time one does, Epic asks in the overlay "
+                "whether the game may use your account.",
+         .keywords = "eos overlay epic online services sign in login friends",
+         .applies = {.sources = {"epic"}, .platforms = {"windows"}}});
+
+  s.Add({.key = "epic.signin_timeout_s",
+         .label = "Longest wait for sign-in before playing",
+         .type = Type::Int,
+         .default_value = 10,
+         .doc = "When Legendary takes longer than this to sign a game in, Mira asks it once more "
+                "offline, then starts the game without Epic's sign-in.",
+         .constraint = Range(1, 120),
+         .keywords = "epic legendary sign in login timeout offline",
+         .unit = "s"});
+
+  s.Item("gog", "GOG");
 
   s.Add({.key = "gog.gogdl_bin",
          .label = "gogdl binary",
@@ -592,6 +658,43 @@ Schema::Schema() {
                 "your PATH.",
          .path = PathKind::File});
 
+  s.Add({.key = "gog.install_root",
+         .label = "Install folder",
+         .type = Type::String,
+         .default_value = "~/Mira/Games/GOG",
+         .doc = "The folder GOG games are installed into, with one subfolder per game. Mira never "
+                "scans it for games, so it can be inside a library folder.",
+         .path = PathKind::Folder,
+         .old_defaults = {"~/Games/GOG", "~/.local/share/mira/gog"}});
+
+  s.Add({.key = "gog.folder_naming",
+         .label = "Folder naming",
+         .type = Type::String,
+         .default_value = "title",
+         .doc = "How each GOG game's folder is named: \"title\" (for example \"Hollow Knight\") or "
+                "\"id\" (the GOG product id).",
+         .constraint = Choices({{"title", "Title"}, {"id", "Product ID"}})});
+
+  s.Add({.key = "gog.install_dlc",
+         .label = "Install DLC with games",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Install the DLC you own for a GOG game along with it. Updating a game also adds "
+                "DLC bought since it was installed.",
+         .keywords = "dlc expansion add-on"});
+
+  s.Add({.key = "gog.comet",
+         .label = "Unlock achievements",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Run comet beside GOG games, standing in for GOG Galaxy, so the achievements you "
+                "earn unlock on your GOG account.",
+         .keywords = "comet galaxy achievements",
+         .applies = {.sources = {"gog"}}});
+
+  s.Item("itch", "itch.io");
+
   s.Add({.key = "itch.butler_bin",
          .label = "butler binary",
          .type = Type::String,
@@ -599,6 +702,26 @@ Schema::Schema() {
          .doc = "Path to the butler binary. Empty uses the copy Mira downloaded, then the one on "
                 "your PATH.",
          .path = PathKind::File});
+
+  s.Add({.key = "itch.collections",
+         .label = "Collections",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .doc =
+             "Extra itch.io collections to show, added by id or by link (https://itch.io/c/...). "
+             "Your own collections always show. You cannot install a paid game you do not "
+             "own."});
+
+  s.Add({.key = "itch.install_root",
+         .label = "Install folder",
+         .type = Type::String,
+         .default_value = "~/Mira/Games/Itch",
+         .doc = "The folder itch.io games are installed into. Mira never scans it for games, so "
+                "it can be inside a library folder.",
+         .path = PathKind::Folder,
+         .old_defaults = {"~/.local/share/mira/itch"}});
+
+  s.Item("humble", "Humble Bundle");
 
   s.Add({.key = "humble.humble_cli_bin",
          .label = "humble-cli binary",
@@ -608,6 +731,15 @@ Schema::Schema() {
                 "on your PATH.",
          .path = PathKind::File});
 
+  s.Add({.key = "humble.download_root",
+         .label = "Download folder",
+         .type = Type::String,
+         .default_value = "~/Downloads/HumbleBundle",
+         .doc = "The folder Humble Bundle downloads go into, with one subfolder per bundle.",
+         .path = PathKind::Folder});
+
+  s.Item("amazon", "Amazon Games");
+
   s.Add({.key = "amazon.nile_bin",
          .label = "nile binary",
          .type = Type::String,
@@ -616,106 +748,8 @@ Schema::Schema() {
                 "your PATH.",
          .path = PathKind::File});
 
-  s.Add({.key = "lutris.data_dir",
-         .label = "Lutris data folder",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "The folder where Lutris keeps its database and game configs. Empty looks in "
-                "$XDG_DATA_HOME/lutris, then ~/.local/share/lutris.",
-         .path = PathKind::Folder});
-
-  s.Add({.key = "heroic.config_dir",
-         .label = "Heroic config folder",
-         .type = Type::String,
-         .default_value = "",
-         .doc = "The folder where Heroic Games Launcher keeps its settings and installed games. "
-                "Empty looks in $XDG_CONFIG_HOME/heroic, then Heroic's Flatpak folder.",
-         .path = PathKind::Folder});
-
-  s.Group("Install folders");
-
-  s.Add({.key = "epic.install_root",
-         .label = "Epic Games install folder",
-         .type = Type::String,
-         .default_value = "~/Mira/Games/Epic",
-         .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
-                "never scans it for games, so it can be inside a library folder.",
-         .path = PathKind::Folder,
-         .old_defaults = {"~/.local/share/mira/epic"}});
-
-  s.Add({.key = "gog.install_root",
-         .label = "GOG install folder",
-         .type = Type::String,
-         .default_value = "~/Mira/Games/GOG",
-         .doc = "The folder GOG games are installed into, with one subfolder per game. Mira never "
-                "scans it for games, so it can be inside a library folder.",
-         .path = PathKind::Folder,
-         .old_defaults = {"~/Games/GOG", "~/.local/share/mira/gog"}});
-
-  s.Add({.key = "gog.folder_naming",
-         .label = "GOG folder naming",
-         .type = Type::String,
-         .default_value = "title",
-         .doc = "How each GOG game's folder is named: \"title\" (for example \"Hollow Knight\") or "
-                "\"id\" (the GOG product id).",
-         .constraint = OneOf({"title", "id"})});
-
-  s.Add({.key = "gog.install_dlc",
-         .label = "Install DLC with GOG games",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Install the DLC you own for a GOG game along with it. Updating a game also adds "
-                "DLC bought since it was installed.",
-         .keywords = "dlc expansion add-on"});
-
-  s.Add({.key = "gog.comet",
-         .label = "Unlock GOG achievements",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Run comet beside GOG games, standing in for GOG Galaxy, so the achievements you "
-                "earn unlock on your GOG account.",
-         .keywords = "comet galaxy achievements"});
-
-  s.Add({.key = "epic.eos_overlay",
-         .label = "Epic Online Services overlay",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Download Epic's in-game overlay and turn it on for Windows Epic games. Some games "
-                "need it to finish signing in: the first time one does, Epic asks in the overlay "
-                "whether the game may use your account.",
-         .keywords = "eos overlay epic online services sign in login friends"});
-
-  s.Add({.key = "epic.signin_timeout_s",
-         .label = "Longest wait for Epic's sign-in before playing (seconds)",
-         .type = Type::Int,
-         .default_value = 10,
-         .doc = "When Legendary takes longer than this to sign a game in, Mira asks it once more "
-                "offline, then starts the game without Epic's sign-in.",
-         .constraint = Range(1, 120),
-         .keywords = "epic legendary sign in login timeout offline"});
-
-  s.Add({.key = "itch.collections",
-         .label = "itch.io collections",
-         .type = Type::StringArray,
-         .default_value = json::array(),
-         .doc =
-             "Extra itch.io collections to show, added by id or by link (https://itch.io/c/...). "
-             "Your own collections always show. You cannot install a paid game you do not "
-             "own."});
-
-  s.Add({.key = "itch.install_root",
-         .label = "itch.io install folder",
-         .type = Type::String,
-         .default_value = "~/Mira/Games/Itch",
-         .doc = "The folder itch.io games are installed into. Mira never scans it for games, so "
-                "it can be inside a library folder.",
-         .path = PathKind::Folder,
-         .old_defaults = {"~/.local/share/mira/itch"}});
-
   s.Add({.key = "amazon.install_root",
-         .label = "Amazon Games install folder",
+         .label = "Install folder",
          .type = Type::String,
          .default_value = "~/Mira/Games/Amazon",
          .doc = "The folder Amazon games are installed into, with one subfolder per game. Mira "
@@ -723,11 +757,24 @@ Schema::Schema() {
          .path = PathKind::Folder,
          .old_defaults = {"~/.local/share/mira/amazon"}});
 
-  s.Add({.key = "humble.download_root",
-         .label = "Humble Bundle download folder",
+  s.Item("lutris", "Lutris");
+
+  s.Add({.key = "lutris.data_dir",
+         .label = "Data folder",
          .type = Type::String,
-         .default_value = "~/Downloads/HumbleBundle",
-         .doc = "The folder Humble Bundle downloads go into, with one subfolder per bundle.",
+         .default_value = "",
+         .doc = "The folder where Lutris keeps its database and game configs. Empty looks in "
+                "$XDG_DATA_HOME/lutris, then ~/.local/share/lutris.",
+         .path = PathKind::Folder});
+
+  s.Item("heroic", "Heroic");
+
+  s.Add({.key = "heroic.config_dir",
+         .label = "Config folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "The folder where Heroic Games Launcher keeps its settings and installed games. "
+                "Empty looks in $XDG_CONFIG_HOME/heroic, then Heroic's Flatpak folder.",
          .path = PathKind::Folder});
 
   // --- Runners ---------------------------------------------------------------
@@ -772,7 +819,8 @@ Schema::Schema() {
          .default_value = false,
          .scope = Scope::PerGame,
          .doc = "HTML games open full screen. In Firefox that's its kiosk mode, which has no "
-                "close button: quit with Alt+F4 or Mira's Stop."});
+                "close button: quit with Alt+F4 or Mira's Stop.",
+         .applies = {.platforms = {"web"}}});
 
   s.Add({.key = "launch.pin_runner",
          .label = "Remember the chosen runner",
@@ -831,108 +879,116 @@ Schema::Schema() {
                 "your PATH is also used. New downloads go into the first.",
          .path = PathKind::Folder});
 
-  s.Group("Download sources", Sections::Fold::Collapsed);
+  s.Group("Download sources");  // each download folds on its own
   s.ResetTogether();
 
+  s.Item("proton_ge", "Proton-GE");
   s.Add({.key = "runner_sources.proton_ge.repo",
-         .label = "Proton-GE download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kProtonGERepo),
          .doc = "The GitHub repository (\"owner/repo\") that Proton-GE is downloaded from."});
 
   s.Add({.key = "runner_sources.proton_ge.asset_pattern",
-         .label = "Proton-GE file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kProtonGEAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. The default skips "
                 "non-x86_64 builds and checksum files."});
 
+  s.Item("wine_ge", "Wine-GE");
   s.Add({.key = "runner_sources.wine_ge.repo",
-         .label = "Wine-GE download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kWineGERepo),
          .doc = "The GitHub repository (\"owner/repo\") that Wine-GE is downloaded from."});
 
   s.Add({.key = "runner_sources.wine_ge.asset_pattern",
-         .label = "Wine-GE file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kWineGEAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download."});
 
+  s.Item("legendary", "Legendary");
   s.Add({.key = "runner_sources.legendary.repo",
-         .label = "Legendary download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryRepo),
          .doc = "The GitHub repository (\"owner/repo\") that Legendary is downloaded from.",
          .old_defaults = {"derrod/legendary"}});
 
   s.Add({.key = "runner_sources.legendary.asset_pattern",
-         .label = "Legendary file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kLegendaryAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. Legendary ships "
                 "as a single file per processor, not an archive.",
          .old_defaults = {"legendary"}});
 
+  s.Item("gog", "gogdl");
   s.Add({.key = "runner_sources.gog.repo",
-         .label = "gogdl download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kGogdlRepo),
          .doc = "The GitHub repository (\"owner/repo\") that gogdl is downloaded from."});
 
   s.Add({.key = "runner_sources.gog.asset_pattern",
-         .label = "gogdl file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kGogdlAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. gogdl ships as a "
                 "single Linux binary, not an archive."});
 
+  s.Item("comet", "comet");
   s.Add({.key = "runner_sources.comet.repo",
-         .label = "comet download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kCometRepo),
          .doc = "The GitHub repository (\"owner/repo\") that comet is downloaded from."});
 
   s.Add({.key = "runner_sources.comet.asset_pattern",
-         .label = "comet file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kCometAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. comet ships as a "
                 "single Linux binary for each processor type."});
 
+  s.Item("itch", "butler");
   s.Add({.key = "runner_sources.itch.repo",
-         .label = "butler download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kButlerRepo),
          .doc = "The GitHub repository (\"owner/repo\") that butler is downloaded from."});
 
   s.Add({.key = "runner_sources.itch.asset_pattern",
-         .label = "butler file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kButlerAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download. butler ships as a "
                 "zip that includes the libraries it needs."});
 
+  s.Item("humble", "humble-cli");
   s.Add({.key = "runner_sources.humble.repo",
-         .label = "humble-cli download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kHumbleCliRepo),
          .doc = "The GitHub repository (\"owner/repo\") that humble-cli is downloaded from."});
 
   s.Add({.key = "runner_sources.humble.asset_pattern",
-         .label = "humble-cli file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kHumbleCliAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download."});
 
+  s.Item("amazon", "nile");
   s.Add({.key = "runner_sources.amazon.repo",
-         .label = "nile download repository",
+         .label = "Repository",
          .type = Type::String,
          .default_value = std::string(runner_sources::kNileRepo),
          .doc = "The GitHub repository (\"owner/repo\") that nile is downloaded from."});
 
   s.Add({.key = "runner_sources.amazon.asset_pattern",
-         .label = "nile file pattern",
+         .label = "File pattern",
          .type = Type::String,
          .default_value = std::string(runner_sources::kNileAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download."});
@@ -942,22 +998,24 @@ Schema::Schema() {
   s.ResetTogether();
 
   s.Add({.key = "launch.stop_timeout_s",
-         .label = "Stop timeout (seconds)",
+         .label = "Stop timeout",
          .type = Type::Int,
          .default_value = 10,
          .doc = "How long a game has to quit after you stop it before Mira force-kills it. This "
                 "applies to the whole chain of launcher processes, not only the game.",
-         .constraint = Range(0, 600)});
+         .constraint = Range(0, 600),
+         .unit = "s"});
 
   s.Add({.key = "launch.log_max_mb",
-         .label = "Maximum log size (MB)",
+         .label = "Maximum log size",
          .type = Type::Int,
          .default_value = 64,
          .scope = Scope::PerGame,
          .doc = "The largest a game's log file may be. When a new session starts, the previous "
                 "log is deleted if it is over this size, so each game uses at most about twice "
                 "this much disk.",
-         .constraint = Range(1, 1024)});
+         .constraint = Range(1, 1024),
+         .unit = "MB"});
 
   s.Add({.key = "command_wrappers",
          .label = "Command wrappers",
@@ -977,12 +1035,11 @@ Schema::Schema() {
          .type = Type::StringArray,
          .default_value = json::array(),
          .scope = Scope::PerGame,
-         .doc = "Environment variables (KEY=VALUE) set for every launch, for example "
-                "\"MANGOHUD=1\" or \"DXVK_ASYNC=1\". A game's own Environment field wins over "
-                "these. They do not apply to Steam games launched through the Steam client.",
+         .doc = "Environment variables (KEY=VALUE) set for every game, for example "
+                "\"MANGOHUD=1\" or \"DXVK_ASYNC=1\". A game given a list of its own uses that one "
+                "instead. They do not apply to Steam games launched through the Steam client.",
          .game_doc = "Environment variables (KEY=VALUE) for this game, for example \"MANGOHUD=1\". "
-                     "This list replaces the global one for this game. The game's own Environment "
-                     "field wins over it."});
+                     "Once changed here, this list replaces the one in Settings for this game."});
 
   s.Add({.key = "launch.gamemode",
          .label = "Use GameMode",
@@ -1026,10 +1083,11 @@ Schema::Schema() {
          .doc =
              "What the overlay shows: \"fps\" only the frame rate, \"horizontal\" a one-line bar, "
              "\"extended\" or \"detailed\" more readings, \"full\" MangoHud's own layout.",
-         .constraint = OneOf({"full", "fps", "horizontal", "extended", "detailed"})});
-
-  s.Group("Scripts");
-  s.ResetTogether();
+         .constraint = Choices({{"full", "Full"},
+                                {"fps", "Frame rate only"},
+                                {"horizontal", "One line"},
+                                {"extended", "Extended"},
+                                {"detailed", "Detailed"}})});
 
   s.Add(
       {.key = "launch.follow_system_theme",
@@ -1040,7 +1098,11 @@ Schema::Schema() {
        .doc =
            "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
            "match your desktop, so programs such as Microsoft 365 that follow the system theme "
-           "match it too."});
+           "match it too.",
+       .applies = {.platforms = {"windows"}}});
+
+  s.Group("Scripts");
+  s.ResetTogether();
 
   s.Add({.key = "launch.pre_script",
          .label = "Pre-launch script",
@@ -1064,13 +1126,14 @@ Schema::Schema() {
          .paired_key = "launch.post_steps"});
 
   s.Add({.key = "launch.pre_timeout_s",
-         .label = "Pre-launch timeout (seconds)",
+         .label = "Pre-launch timeout",
          .type = Type::Int,
          .default_value = 30,
          .scope = Scope::PerGame,
          .doc = "How long the pre-launch script may run before the launch is cancelled. This stops "
                 "a stuck script from blocking the game.",
-         .constraint = Range(1, 600)});
+         .constraint = Range(1, 600),
+         .unit = "s"});
 
   s.Add({.key = "launch.post_script",
          .label = "Post-exit script",
@@ -1095,12 +1158,13 @@ Schema::Schema() {
          .paired_key = "launch.pre_steps"});
 
   s.Add({.key = "launch.post_timeout_s",
-         .label = "Post-exit timeout (seconds)",
+         .label = "Post-exit timeout",
          .type = Type::Int,
          .default_value = 30,
          .scope = Scope::PerGame,
          .doc = "How long the post-exit script may run before Mira force-kills it.",
-         .constraint = Range(1, 600)});
+         .constraint = Range(1, 600),
+         .unit = "s"});
 
   // --- Saves -----------------------------------------------------------------
   s.Section("Saves", "Backups");
@@ -1122,7 +1186,8 @@ Schema::Schema() {
          .scope = Scope::PerGame,
          .doc = "Don't back up the saves of Steam games that Steam starts and keeps in Steam "
                 "Cloud.",
-         .keywords = "backup steam cloud"});
+         .keywords = "backup steam cloud",
+         .applies = {.sources = {"steam"}}});
 
   s.Add({.key = "saves.keep",
          .label = "Backups kept per game",
@@ -1136,7 +1201,7 @@ Schema::Schema() {
          .keywords = "backup snapshot retention"});
 
   s.Add({.key = "saves.max_mb",
-         .label = "Largest backup (MB)",
+         .label = "Largest backup",
          .type = Type::Int,
          .default_value = 512,
          .scope = Scope::PerGame,
@@ -1144,6 +1209,7 @@ Schema::Schema() {
                 "locations most likely take more than saves.",
          .constraint = Range(1, 102400),
          .keywords = "backup size limit",
+         .unit = "MB",
          .old_defaults = {1024}});
 
   s.Add({.key = "saves.backup_root",
@@ -1177,17 +1243,19 @@ Schema::Schema() {
          .doc = "Keep the saves of GOG and Epic games in step with the store's cloud, as Galaxy "
                 "and the Epic launcher do. Saves are backed up before anything is downloaded "
                 "over them.",
-         .keywords = "cloud sync gog epic"});
+         .keywords = "cloud sync gog epic",
+         .applies = {.sources = {"gog", "epic"}}});
 
   s.Add({.key = "saves.cloud_timeout_s",
-         .label = "Longest wait for the cloud before playing (seconds)",
+         .label = "Longest wait for the cloud before playing",
          .type = Type::Int,
          .default_value = 20,
          .doc =
              "When checking the cloud takes longer than this, or the store can't be reached, the "
              "game starts with the saves on this computer. They're synced after you play.",
          .constraint = Range(1, 300),
-         .keywords = "cloud sync timeout offline"});
+         .keywords = "cloud sync timeout offline",
+         .unit = "s"});
 
   s.Group("Where saves are", Sections::Fold::Collapsed);
 
@@ -1309,12 +1377,13 @@ Schema::Schema() {
          .is_runner_ref = true});
 
   s.Add({.key = "launchers.detect_timeout_s",
-         .label = "Launcher game start timeout (seconds)",
+         .label = "Launcher game start timeout",
          .type = Type::Int,
          .default_value = 300,
          .doc = "How long to wait for a launcher to start a game, which may involve updates or a "
                 "login, before Mira stops tracking it.",
-         .constraint = Range(10, 3600)});
+         .constraint = Range(10, 3600),
+         .unit = "s"});
 
   s.Add({.key = "launchers.umu_lookup",
          .label = "Look up umu game IDs",
@@ -1364,7 +1433,9 @@ Schema::Schema() {
                 "Microsoft 365 Personal or Family, O365BusinessRetail for Business plans, "
                 "O365ProPlusRetail "
                 "for Apps for enterprise.",
-         .constraint = OneOf({"O365HomePremRetail", "O365BusinessRetail", "O365ProPlusRetail"})});
+         .constraint = Choices({{"O365HomePremRetail", "Personal or Family"},
+                                {"O365BusinessRetail", "Business"},
+                                {"O365ProPlusRetail", "Apps for enterprise"}})});
 
   s.Add({.key = "launchers.shims_url",
          .label = "Windows app shims download",
@@ -1386,7 +1457,7 @@ Schema::Schema() {
          .path = PathKind::Folder});
 
   // --- Emulators -------------------------------------------------------------
-  s.Section("Emulators", "Emulators");
+  s.Section("Emulators", "General");
 
   s.Add({.key = "emulators.roms_root",
          .label = "Games folder",
@@ -1409,40 +1480,49 @@ Schema::Schema() {
                 "the originals.",
          .old_defaults = {false}});
 
-  for (const emulators::Emulator& emulator : emulators::All()) {
-    s.Add({.key = std::format("emulators.{}.bin", emulator.id),
-           .label = std::format("{} program", emulator.name),
+  for (const emulators::Maker& maker : emulators::Makers()) {
+    s.Group(std::string(maker.name), Sections::Fold::Collapsed);
+    for (const std::string_view id : maker.emulators) {
+      const emulators::Emulator* found = emulators::Find(id);
+      if (found == nullptr) continue;
+      const emulators::Emulator& emulator = *found;
+      s.Item(emulator.id, emulator.name);
+      s.Add({.key = std::format("emulators.{}.bin", emulator.id),
+             .label = "Program",
+             .type = Type::String,
+             .default_value = "",
+             .doc = std::format(
+                 "The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
+                 emulator.name),
+             .path = PathKind::File});
+      s.Add({.key = std::format("emulators.{}.game_dirs", emulator.id),
+             .label = "Games kept in place",
+             .type = Type::StringArray,
+             .default_value = json::array(),
+             .doc = std::format(
+                 "Folders of {} games Mira tracks where they are, besides its own games folder.",
+                 emulator.name),
+             .path = PathKind::Folder});
+      s.Add(
+          {.key = std::format("emulators.{}.add_mode", emulator.id),
+           .label = "Adding games",
            .type = Type::String,
-           .default_value = "",
-           .doc = std::format(
-               "The {} to run. Empty uses the copy Mira downloaded, then the one on your PATH.",
-               emulator.name),
-           .path = PathKind::File});
-    s.Add({.key = std::format("emulators.{}.game_dirs", emulator.id),
-           .label = std::format("{} games kept in place", emulator.name),
-           .type = Type::StringArray,
-           .default_value = json::array(),
-           .doc = std::format(
-               "Folders of {} games Mira tracks where they are, besides its own games folder.",
-               emulator.name),
-           .path = PathKind::Folder});
-    s.Add(
-        {.key = std::format("emulators.{}.add_mode", emulator.id),
-         .label = std::format("Adding {} games", emulator.name),
-         .type = Type::String,
-         .default_value = "default",
-         .doc = "move or copy games added to it into its folder; default follows Move added games.",
-         .constraint = OneOf({"default", "move", "copy"})});
-    if (!emulators::Downloads(emulator)) continue;
-    s.Add({.key = std::format("emulators.{}.repo", emulator.id),
-           .label = std::format("{} download source", emulator.name),
-           .type = Type::String,
-           .default_value = emulators::DefaultSource(emulator),
-           .doc = std::format(
-               "Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
-               "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
-               "from there.",
-               emulator.name)});
+           .default_value = "default",
+           .doc =
+               "move or copy games added to it into its folder; default follows Move added games.",
+           .constraint =
+               Choices({{"default", "As in General"}, {"move", "Move"}, {"copy", "Copy"}})});
+      if (!emulators::Downloads(emulator)) continue;
+      s.Add({.key = std::format("emulators.{}.repo", emulator.id),
+             .label = "Download source",
+             .type = Type::String,
+             .default_value = emulators::DefaultSource(emulator),
+             .doc = std::format(
+                 "Where {} is downloaded from: a GitHub repository (\"owner/repo\", or its link) "
+                 "such as a fork, or a Forgejo or GitLab releases API link. Its next update comes "
+                 "from there.",
+                 emulator.name)});
+    }
   }
 
   // --- Detection -------------------------------------------------------------
@@ -1505,26 +1585,28 @@ Schema::Schema() {
                 "either by itself or through a larger file in the same folder."});
 
   s.Add({.key = "detect.installer_min_size_mb",
-         .label = "Minimum installer size (MB)",
+         .label = "Minimum installer size",
          .type = Type::Int,
          .default_value = 50,
          .doc =
              "Installers built with Inno Setup, NSIS, WiX or InstallShield are recognised at any "
              "size. For other files, the minimum size, of the file itself or of a file beside it, "
              "for an installer-like name to count as an installer.",
-         .constraint = Range(0, 1'000'000)});
+         .constraint = Range(0, 1'000'000),
+         .unit = "MB"});
 
   // --- Scanning --------------------------------------------------------------
   s.Section("Scanning", "Scanning");
   s.ResetTogether();
 
   s.Add({.key = "scan.debounce_ms",
-         .label = "Scan delay (ms)",
+         .label = "Scan delay",
          .type = Type::Int,
          .default_value = 3000,
          .doc = "How long a new folder must stay unchanged before Mira scans it. Raise this if "
                 "games arrive over a slow network share.",
-         .constraint = Range(0, 600000)});
+         .constraint = Range(0, 600000),
+         .unit = "ms"});
 
   s.Add({.key = "scan.max_depth",
          .label = "Maximum scan depth",
@@ -1603,7 +1685,7 @@ Schema::Schema() {
          .path = PathKind::Folder});
 
   // --- Updates ---------------------------------------------------------------
-  s.Section("Updates", "Updates");
+  s.Section("Updates", "Update checks");
 
   s.Add({.key = "updates.check",
          .label = "Check for updates",
@@ -1618,7 +1700,8 @@ Schema::Schema() {
          .label = "Speed limit",
          .type = Type::Int,
          .default_value = 0,
-         .doc = "The most link downloads may use together, in MB/s. 0 is no limit."});
+         .doc = "The most link downloads may use together. 0 is no limit.",
+         .unit = "MB/s"});
 
   s.Add({.key = "downloads.parallel",
          .label = "Downloads at once",
@@ -1667,12 +1750,24 @@ Schema::Schema() {
          .type = Type::String,
          .default_value = "info",
          .doc = "How much the daemon logs: debug, info, warn or error.",
-         .constraint = OneOf({"debug", "info", "warn", "error"})});
+         .constraint = Choices(
+             {{"debug", "Debug"}, {"info", "Info"}, {"warn", "Warnings"}, {"error", "Errors"}})});
 }
 
 const Schema& Schema::Instance() {
   static const Schema instance;
   return instance;
+}
+
+bool Applies::Matches(std::string_view source, std::string_view platform,
+                      std::string_view runner_ref) const {
+  const auto in = [](const std::vector<std::string>& list, std::string_view value) {
+    return std::ranges::contains(list, value);
+  };
+  const std::string_view runner_kind = runner_ref.substr(0, runner_ref.find(':'));
+  return (sources.empty() || in(sources, source)) && !in(except_sources, source) &&
+         (platforms.empty() || in(platforms, platform)) &&
+         (runners.empty() || in(runners, runner_kind));
 }
 
 const Entry* Schema::Find(std::string_view key) const {

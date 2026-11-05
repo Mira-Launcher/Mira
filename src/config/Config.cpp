@@ -538,4 +538,14 @@ std::vector<std::filesystem::path> Config::GetPathArray(std::string_view key) co
   return out;
 }
 
+void SetEnvEntry(nlohmann::json& list, const std::string& key, const std::string& value) {
+  nlohmann::json kept = nlohmann::json::array();
+  for (const nlohmann::json& entry : list) {
+    if (!entry.is_string() || !entry.get<std::string>().starts_with(key + "="))
+      kept.push_back(entry);
+  }
+  kept.push_back(key + "=" + value);
+  list = std::move(kept);
+}
+
 }  // namespace mira::config

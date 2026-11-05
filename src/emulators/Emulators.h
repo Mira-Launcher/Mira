@@ -86,6 +86,15 @@ struct Emulator {
 const std::vector<Emulator>& All();
 const Emulator* Find(std::string_view id);
 const Emulator* ForGame(const model::Game& game);
+
+// Emulators by who made the systems they run, makers in the order a screen lists them; every
+// emulator is in exactly one.
+struct Maker {
+  std::string_view name;
+  std::vector<std::string_view> emulators;
+};
+const std::vector<Maker>& Makers();
+std::string_view MakerOf(std::string_view emulator_id);
 // Whether Mira downloads it, rather than the system's packages installing it.
 bool Downloads(const Emulator& emulator);
 

@@ -474,6 +474,28 @@ const Emulator* ForGame(const model::Game& game) {
   return Find(game.source);
 }
 
+const std::vector<Maker>& Makers() {
+  static const std::vector<Maker> makers = {
+      {"Sony", {"duckstation", "pcsx2", "ppsspp", "rpcs3", "shadps4", "kyty", "vita3k"}},
+      {"Nintendo",
+       {"mesen", "snes9x", "bsnes", "mupen64plus", "rmg", "dolphin", "cemu", "mgba", "melonds",
+        "azahar", "eden", "ryujinx"}},
+      {"Sega", {"blastem", "ymir", "flycast", "redream"}},
+      {"Microsoft", {"xemu", "xenia"}},
+      {"Atari", {"stella", "atari800", "hatari"}},
+      {"Computers", {"dosbox", "fsuae", "vice", "openmsx"}},
+      {"Game engines", {"scummvm", "uzdoom", "easyrpg"}},
+      {"Multi-system and arcade", {"ares", "mednafen", "mame"}},
+  };
+  return makers;
+}
+
+std::string_view MakerOf(std::string_view emulator_id) {
+  for (const Maker& maker : Makers())
+    if (std::ranges::contains(maker.emulators, emulator_id)) return maker.name;
+  return {};
+}
+
 bool Downloads(const Emulator& emulator) {
   return !emulator.release_url.empty() || !emulator.listing_url.empty() ||
          !emulator.download_url.empty();

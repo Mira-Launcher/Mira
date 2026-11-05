@@ -13,6 +13,18 @@
 using namespace mira;
 namespace fs = std::filesystem;
 
+TEST_CASE("emulators: each one is listed under exactly one maker") {
+  for (const emulators::Emulator& emulator : emulators::All()) {
+    INFO("emulator: ", emulator.id);
+    const auto count = std::ranges::count_if(emulators::Makers(), [&](const emulators::Maker& m) {
+      return std::ranges::contains(m.emulators, std::string_view(emulator.id));
+    });
+    CHECK(count == 1);
+  }
+  for (const emulators::Maker& maker : emulators::Makers())
+    for (const std::string_view id : maker.emulators) CHECK(emulators::Find(id) != nullptr);
+}
+
 TEST_CASE("emulators: ROM names lose their dump tags but keep disc numbers") {
   CHECK(emulators::CleanName("Metroid Fusion (USA) [!].gba") == "Metroid Fusion");
   CHECK(emulators::CleanName("Final_Fantasy_VII (USA) (Disc 2).cue") ==

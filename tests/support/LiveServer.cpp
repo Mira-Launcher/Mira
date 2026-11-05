@@ -50,6 +50,13 @@ httplib::Client LiveServer::Client() {
   return client;
 }
 
+nlohmann::json GetJson(httplib::Client& client, const std::string& path) {
+  auto res = client.Get(path);
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  return nlohmann::json::parse(res->body);
+}
+
 nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started) {
   REQUIRE(started != nullptr);
   REQUIRE(started->status == 202);

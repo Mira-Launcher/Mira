@@ -13,6 +13,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Resolver.h"
+#include "config/Schema.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/Detector.h"
@@ -268,7 +269,20 @@ void RegisterGameRoutes(Router& http, Services& s) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     config::Resolver resolver(s.config, game->overrides);
-    SendJson(res, resolver.EffectiveDocument());
+    json body = resolver.EffectiveDocument();
+    const std::string_view platform = model::ToString(game->platform);
+    // Secrets read as "" here as in GET /v1/config; "set" says whether one is.
+    for (const config::Entry& entry : config::Schema::Instance().Entries()) {
+      if (entry.scope != config::Scope::Global && body.contains(entry.key)) {
+        body[entry.key]["applies"] =
+            entry.applies.Matches(game->source, platform, game->runner_ref);
+      }
+      if (!entry.is_secret || !body.contains(entry.key)) continue;
+      json& setting = body[entry.key];
+      setting["set"] = setting["value"].is_string() && !setting["value"].get<std::string>().empty();
+      setting["value"] = "";
+    }
+    SendJson(res, std::move(body));
   });
 
   http.Patch(R"(/v1/games/([^/]+)/config)", [&s](const Request& req, Response& res) {

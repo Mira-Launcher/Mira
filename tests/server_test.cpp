@@ -30,6 +30,7 @@
 
 using namespace mira;
 using test::AwaitJob;
+using test::GetJson;
 using test::LiveServer;
 using test::TempDir;
 namespace fs = std::filesystem;
@@ -1728,15 +1729,10 @@ TEST_CASE(
   CHECK(changes[1]["keys"] == nlohmann::json::array({"steamgriddb.api_key"}));
 }
 
-TEST_CASE("GET /v1/config leaves secrets out unless asked, and says which are set") {
+TEST_CASE("GET /v1/config and a game's settings leave secrets out, and say which are set") {
   LiveServer server(TempDir("server-config-secrets"));
   httplib::Client client = server.Client();
-  const auto config = [&](const char* path) {
-    auto res = client.Get(path);
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 200);
-    return nlohmann::json::parse(res->body);
-  };
+  const auto config = [&](const char* path) { return GetJson(client, path); };
   CHECK(config("/v1/config")["secrets_set"] == nlohmann::json::array());
 
   REQUIRE(
@@ -1748,6 +1744,15 @@ TEST_CASE("GET /v1/config leaves secrets out unless asked, and says which are se
   CHECK(masked["steamgriddb"]["api_key"] == "");
   CHECK(masked["secrets_set"] == nlohmann::json::array({"steamgriddb.api_key"}));
   CHECK(config("/v1/config?reveal=1")["steamgriddb"]["api_key"] == "secret-key");
+
+  model::Game game;
+  game.id = "celeste";
+  game.name = "Celeste";
+  REQUIRE(server.games().Upsert(game));
+  const nlohmann::json per_game = config("/v1/games/celeste/config");
+  CHECK(per_game.dump().find("secret-key") == std::string::npos);
+  CHECK(per_game["steamgriddb.api_key"]["set"] == true);
+  CHECK(per_game["steam.web_api_key"]["set"] == false);
 
   REQUIRE(client.Post("/v1/config/reset?key=steamgriddb.api_key")->status == 200);
   CHECK(config("/v1/config")["secrets_set"] == nlohmann::json::array());
@@ -1761,10 +1766,7 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
   REQUIRE(server.games().Upsert(game));
   httplib::Client client = server.Client();
   const auto setting = [&](const std::string& key) {
-    auto res = client.Get("/v1/games/celeste/config");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 200);
-    return nlohmann::json::parse(res->body)[key];
+    return GetJson(client, "/v1/games/celeste/config")[key];
   };
   const auto patch = [&](const std::string& body) {
     auto res = client.Patch("/v1/games/celeste/config", body, "application/json");
@@ -1802,6 +1804,34 @@ TEST_CASE("A game's settings override the global ones, all or nothing, until set
   auto missing = client.Get("/v1/games/nope/config");
   REQUIRE(missing != nullptr);
   CHECK(missing->status == 404);
+}
+
+TEST_CASE("A game's settings say which of them it can use") {
+  LiveServer server(TempDir("server-game-applies"));
+  model::Game steam;
+  steam.id = "steam-1145360";
+  steam.name = "Hades";
+  steam.source = "steam";
+  steam.platform = model::Platform::Windows;
+  REQUIRE(server.games().Upsert(steam));
+  model::Game local;
+  local.id = "celeste";
+  local.name = "Celeste";
+  local.platform = model::Platform::Native;
+  REQUIRE(server.games().Upsert(local));
+  httplib::Client client = server.Client();
+  const auto config = [&](const std::string& id) {
+    return GetJson(client, "/v1/games/" + id + "/config");
+  };
+  const nlohmann::json for_steam = config("steam-1145360");
+  const nlohmann::json for_local = config("celeste");
+  CHECK(for_steam["steam.launch_mode"]["applies"] == true);
+  CHECK(for_local["steam.launch_mode"]["applies"] == false);
+  CHECK(for_steam["launch.follow_system_theme"]["applies"] == true);
+  CHECK(for_local["launch.follow_system_theme"]["applies"] == false);
+  CHECK(for_steam["metadata.steam_appid"]["applies"] == false);
+  CHECK(for_local["launch.gamemode"]["applies"] == true);
+  CHECK_FALSE(for_local["library_roots"].contains("applies"));
 }
 
 TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown") {
@@ -1965,10 +1995,7 @@ TEST_CASE("Every setting the schema offers per game is one a game's settings acc
   REQUIRE(server.games().Upsert(game));
   httplib::Client client = server.Client();
 
-  auto res = client.Get("/v1/config/schema");
-  REQUIRE(res != nullptr);
-  REQUIRE(res->status == 200);
-  const auto schema = nlohmann::json::parse(res->body);
+  const auto schema = GetJson(client, "/v1/config/schema");
   REQUIRE_FALSE(schema.empty());
   nlohmann::json per_game = nlohmann::json::object();
   for (const auto& entry : schema) {

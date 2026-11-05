@@ -94,6 +94,23 @@ void RegisterConfigRoutes(Router& http, Services& s) {
       }
       if (!entry.shown_in.empty()) entries.back()["shown_in"] = entry.shown_in;
       if (!entry.paired_key.empty()) entries.back()["paired_key"] = entry.paired_key;
+      if (!entry.constraint.option_labels.empty())
+        entries.back()["option_labels"] = entry.constraint.option_labels;
+      if (!entry.unit.empty()) entries.back()["unit"] = entry.unit;
+      if (!entry.item.empty()) {
+        entries.back()["item"] = entry.item;
+        entries.back()["item_label"] = entry.item_label;
+      }
+      if (!entry.applies.Empty()) {
+        json& applies = entries.back()["applies_to"] = json::object();
+        const auto list = [&](const char* name, const std::vector<std::string>& values) {
+          if (!values.empty()) applies[name] = values;
+        };
+        list("sources", entry.applies.sources);
+        list("except_sources", entry.applies.except_sources);
+        list("platforms", entry.applies.platforms);
+        list("runners", entry.applies.runners);
+      }
       if (entry.constraint.minimum) entries.back()["minimum"] = *entry.constraint.minimum;
       if (entry.constraint.maximum) entries.back()["maximum"] = *entry.constraint.maximum;
       if (!entry.game_doc.empty()) entries.back()["game_doc"] = entry.game_doc;

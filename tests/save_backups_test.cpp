@@ -17,6 +17,7 @@
 
 using namespace mira;
 using nlohmann::json;
+using test::GetJson;
 namespace fs = std::filesystem;
 
 namespace {
@@ -28,13 +29,6 @@ constexpr const char* kManifest = R"yaml(---
       tags:
         - save
 )yaml";
-
-json Get(httplib::Client& client, const std::string& path) {
-  auto res = client.Get(path);
-  REQUIRE(res);
-  REQUIRE(res->status == 200);
-  return json::parse(res->body);
-}
 
 std::size_t Count(test::LiveServer& server, std::string_view type) {
   return static_cast<std::size_t>(std::ranges::count_if(
@@ -82,7 +76,7 @@ struct SaverGame {
     REQUIRE(test::WaitUntil([&] { return exits() > before; }));
   }
 
-  json Saves() { return Get(client, "/v1/games/saver/saves"); }
+  json Saves() { return GetJson(client, "/v1/games/saver/saves"); }
 
   json BackUp() { return test::AwaitJob(client, client.Post("/v1/games/saver/saves/backup")); }
 };

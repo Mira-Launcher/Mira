@@ -10,6 +10,7 @@
 #include "launchers/Autodesk.h"
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
+#include "migrate/GameEnv.h"
 #include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
 
@@ -278,4 +279,31 @@ TEST_CASE(
   CHECK(launchers::UrlCommand(reg, "other", "other:x") ==
         std::vector<std::string>{"x.exe", "other:x"});
   CHECK(launchers::UrlCommand(reg, "adsk.idmgr", "adsk.idmgr:/login").empty());
+}
+
+TEST_CASE("A game's own variables join its launch.env list, keeping what its launcher needs") {
+  test::TestEnv env("game-env-move");
+  REQUIRE(env.config.Set("launch.env", nlohmann::json::array({"DXVK_ASYNC=1", "FOO=global"})));
+  model::Game celeste;
+  celeste.id = "celeste";
+  celeste.name = "Celeste";
+  celeste.env = {{"FOO", "mine"}, {"BAR", "2"}};
+  REQUIRE(env.games.Upsert(celeste));
+  model::Game hearthstone;
+  hearthstone.id = "battlenet-hearthstone";
+  hearthstone.name = "Hearthstone";
+  hearthstone.source = "battlenet";
+  hearthstone.env = launchers::Find("battlenet")->env;
+  REQUIRE(env.games.Upsert(hearthstone));
+
+  migrate::MoveGameEnv(env.config, env.games);
+  migrate::MoveGameEnv(env.config, env.games);  // once moved, nothing changes
+
+  const model::Game moved = *env.games.Find("celeste");
+  CHECK(moved.env.empty());
+  CHECK(moved.overrides["launch.env"] ==
+        nlohmann::json::array({"DXVK_ASYNC=1", "BAR=2", "FOO=mine"}));
+  const model::Game kept = *env.games.Find("battlenet-hearthstone");
+  CHECK(kept.env == launchers::Find("battlenet")->env);
+  CHECK_FALSE(kept.overrides.contains("launch.env"));
 }

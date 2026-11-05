@@ -27,6 +27,7 @@ json ToJson(const config::Config& config, const emulators::Emulator& emulator) {
   const fs::path binary = emulators::Binary(config, emulator);
   return {{"id", emulator.id},
           {"name", emulator.name},
+          {"maker", emulators::MakerOf(emulator.id)},
           {"consoles", emulator.consoles},
           {"extensions", emulator.extensions},
           {"folder_games", emulators::ByFolder(emulator)},

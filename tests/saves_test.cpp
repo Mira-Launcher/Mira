@@ -18,6 +18,7 @@
 
 using namespace mira;
 using nlohmann::json;
+using test::GetJson;
 namespace fs = std::filesystem;
 
 namespace {
@@ -85,13 +86,6 @@ void WriteManifest(const fs::path& dir, const std::string& text) {
   test::Touch(dir / "endpoints" / "save-locations.yaml", text);
 }
 
-json Get(httplib::Client& client, const std::string& path) {
-  auto res = client.Get(path);
-  REQUIRE(res);
-  REQUIRE(res->status == 200);
-  return json::parse(res->body);
-}
-
 std::vector<std::string> Names(const json& answer) {
   std::vector<std::string> names;
   for (const json& entry : answer["entries"]) names.push_back(entry["name"]);
@@ -112,7 +106,7 @@ TEST_CASE("The save-location list is indexed once per change, and a broken one k
   test::LiveServer server(test::TempDir("saves-manifest"));
   const fs::path dir = server.config().File().parent_path();
   auto client = server.Client();
-  CHECK(Get(client, "/v1/saves/manifest")["games"] == 0);
+  CHECK(GetJson(client, "/v1/saves/manifest")["games"] == 0);
   const auto announced = [&] {
     return std::ranges::count_if(server.events().Since(0), [](const model::Event& event) {
       return event.type == "saves.manifest_changed";
@@ -127,12 +121,12 @@ TEST_CASE("The save-location list is indexed once per change, and a broken one k
   // Hollow Knight, Clustertruck, Needy Streamer Overload and the two Baldur's Gates: the entry
   // without save locations and the alias of it are left out.
   CHECK(job["result"]["games"] == 5);
-  const json state = Get(client, "/v1/saves/manifest");
+  const json state = GetJson(client, "/v1/saves/manifest");
   CHECK(state["games"] == 5);
   CHECK(state["fetched_at"].get<std::int64_t>() > 0);
   CHECK(state["url"] == server.config().GetString("saves.manifest_url"));
-  CHECK(Names(Get(client, "/v1/saves/entries?q=launch")).empty());
-  CHECK(Names(Get(client, "/v1/saves/entries?q=nothing")).empty());
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=launch")).empty());
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=nothing")).empty());
 
   job = test::AwaitJob(client, client.Post("/v1/saves/manifest/update"));
   REQUIRE(job["state"] == "finished");
@@ -143,15 +137,17 @@ TEST_CASE("The save-location list is indexed once per change, and a broken one k
   job = test::AwaitJob(client, client.Post("/v1/saves/manifest/update"));
   CHECK(job["result"]["changed"] == true);
   CHECK(announced() == 2);
-  CHECK(Names(Get(client, "/v1/saves/entries?q=celeste")) == std::vector<std::string>{"Celeste"});
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=celeste")) ==
+        std::vector<std::string>{"Celeste"});
 
   WriteManifest(dir, "<html>Too many requests</html>");
   job = test::AwaitJob(client, client.Post("/v1/saves/manifest/update"));
   REQUIRE(job["state"] == "failed");
   CHECK(job["error"]["code"] == "manifest_invalid");
   CHECK(announced() == 2);
-  CHECK(Get(client, "/v1/saves/manifest")["games"] == 6);
-  CHECK(Names(Get(client, "/v1/saves/entries?q=celeste")) == std::vector<std::string>{"Celeste"});
+  CHECK(GetJson(client, "/v1/saves/manifest")["games"] == 6);
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=celeste")) ==
+        std::vector<std::string>{"Celeste"});
 }
 
 TEST_CASE("Searching the list fetches it when due, and a failed fetch isn't retried at once") {
@@ -165,11 +161,11 @@ TEST_CASE("Searching the list fetches it when due, and a failed fetch isn't retr
   };
 
   // No list there yet: the search answers empty and the fetch fails in the background.
-  CHECK(Names(Get(client, "/v1/saves/entries?q=hollow")).empty());
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=hollow")).empty());
   REQUIRE(test::WaitForEvent(server.events(), "job.failed"));
   CHECK(jobs_failed() == 1);
   WriteManifest(dir, kManifest);
-  CHECK(Names(Get(client, "/v1/saves/entries?q=hollow")).empty());
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=hollow")).empty());
   server.services().saves.WaitIdle();
   CHECK(std::ranges::count_if(server.events().Since(0), [](const model::Event& event) {
           return event.type == "job.started" && event.payload.value("kind", "") == "saves";
@@ -177,9 +173,9 @@ TEST_CASE("Searching the list fetches it when due, and a failed fetch isn't retr
 
   // Asked for by hand, it's fetched; then a search ranks names starting with the words first.
   REQUIRE(test::AwaitJob(client, client.Post("/v1/saves/manifest/update"))["state"] == "finished");
-  CHECK(Names(Get(client, "/v1/saves/entries?q=Baldur%27s%20Gate")) ==
+  CHECK(Names(GetJson(client, "/v1/saves/entries?q=Baldur%27s%20Gate")) ==
         std::vector<std::string>{"Baldur's Gate II", "Baldur's Gate: Enhanced Edition"});
-  const json demo = Get(client, "/v1/saves/entries?q=hollow%20knight%20demo")["entries"];
+  const json demo = GetJson(client, "/v1/saves/entries?q=hollow%20knight%20demo")["entries"];
   REQUIRE(demo.size() == 1);
   CHECK(demo[0]["alias_of"] == "Hollow Knight");
 }
@@ -465,7 +461,7 @@ TEST_CASE("A game's saves say where they are, or why there are none to keep") {
   model::Game hollow = WindowsGame(prefix, dir / "games/hollow");
   hollow.name = "Hollow Knight";
   add(hollow, "hollow");
-  json saves = Get(client, "/v1/games/hollow/saves");
+  json saves = GetJson(client, "/v1/games/hollow/saves");
   CHECK(saves["status"] == "ready");
   CHECK(saves["enabled"] == true);
   CHECK(saves["entry"] == "Hollow Knight");
@@ -477,16 +473,16 @@ TEST_CASE("A game's saves say where they are, or why there are none to keep") {
   model::Game fresh = WindowsGame(dir / "prefixes/fresh", dir / "games/fresh");
   fresh.name = "Hollow Knight";
   add(fresh, "fresh");
-  CHECK(Get(client, "/v1/games/fresh/saves")["status"] == "no_files");
+  CHECK(GetJson(client, "/v1/games/fresh/saves")["status"] == "no_files");
 
   model::Game truck = WindowsGame(dir / "prefixes/truck", dir / "games/truck");
   truck.name = "Clustertruck";
   add(truck, "truck");
-  CHECK(Get(client, "/v1/games/truck/saves")["status"] == "registry_only");
+  CHECK(GetJson(client, "/v1/games/truck/saves")["status"] == "registry_only");
 
   model::Game unknown = Game("Not In The List");
   add(unknown, "unknown");
-  saves = Get(client, "/v1/games/unknown/saves");
+  saves = GetJson(client, "/v1/games/unknown/saves");
   CHECK(saves["status"] == "no_entry");
   CHECK(saves["entry"].is_null());
 
@@ -495,7 +491,7 @@ TEST_CASE("A game's saves say where they are, or why there are none to keep") {
   unknown.install_path = (dir / "games/unknown").string();
   unknown.overrides["saves.extra_paths"] = json::array({"<base>/save.dat"});
   add(unknown, "unknown");
-  CHECK(Get(client, "/v1/games/unknown/saves")["status"] == "ready");
+  CHECK(GetJson(client, "/v1/games/unknown/saves")["status"] == "ready");
 
   // Steam keeps a Steam Cloud game's saves while Steam starts it, unless told otherwise.
   model::Game sword = WindowsGame(dir / "steam/steamapps/compatdata/1873140",
@@ -504,16 +500,16 @@ TEST_CASE("A game's saves say where they are, or why there are none to keep") {
   sword.source = "steam";
   sword.runner_ref = "steam:1873140";
   add(sword, "steam-1873140");
-  CHECK(Get(client, "/v1/games/steam-1873140/saves")["status"] == "steam_cloud");
+  CHECK(GetJson(client, "/v1/games/steam-1873140/saves")["status"] == "steam_cloud");
   sword.overrides["steam.launch_mode"] = "direct";
   add(sword, "steam-1873140");
-  CHECK(Get(client, "/v1/games/steam-1873140/saves")["status"] == "no_files");
+  CHECK(GetJson(client, "/v1/games/steam-1873140/saves")["status"] == "no_files");
   sword.overrides = json::object({{"saves.skip_cloud", false}});
   add(sword, "steam-1873140");
-  CHECK(Get(client, "/v1/games/steam-1873140/saves")["status"] == "no_files");
+  CHECK(GetJson(client, "/v1/games/steam-1873140/saves")["status"] == "no_files");
   sword.overrides = json::object({{"saves.enabled", false}});
   add(sword, "steam-1873140");
-  saves = Get(client, "/v1/games/steam-1873140/saves");
+  saves = GetJson(client, "/v1/games/steam-1873140/saves");
   CHECK(saves["status"] == "off");
   CHECK(saves["enabled"] == false);
 
