@@ -56,7 +56,8 @@ Result<Probe> Head(const std::string& url) {
 
 Result<std::string> Page(const std::string& url) {
   Command command;
-  command.argv = {"curl", "-sL", "--max-time", "20", "--", url};
+  // A page is small: an address that turns out to be a big file gives up rather than fetching it.
+  command.argv = {"curl", "-sL", "--max-time", "20", "--max-filesize", "10M", "--", url};
   const auto result = runner::RunAndWait(command);
   if (!result || result->exit_code != 0)
     return Err("link_unreachable", std::format("couldn't reach {}", url));
@@ -96,12 +97,23 @@ Result<std::vector<LinkFile>> Pixeldrain(const std::string& link) {
 }
 
 Result<std::vector<LinkFile>> MediaFire(const std::string& link) {
+  // Some links answer with the file itself instead of a page.
+  if (const auto probe = Head(link);
+      probe && probe->status < 400 && probe->content_type.find("text/html") == std::string::npos)
+    return std::vector<LinkFile>{{.url = link,
+                                  .name = NameFromDisposition(probe->disposition),
+                                  .size = probe->size,
+                                  .source = "MediaFire"}};
   const auto page = Page(link);
   if (!page) return std::unexpected(page.error());
   const std::string address = MediaFireAddressIn(*page);
   if (address.empty())
     return Err("link_unreadable", "couldn't find the download on that MediaFire page");
-  return std::vector<LinkFile>{{.url = address, .name = "", .size = 0, .source = "MediaFire"}};
+  const auto file = Head(address);
+  return std::vector<LinkFile>{{.url = address,
+                                .name = file ? NameFromDisposition(file->disposition) : "",
+                                .size = file ? file->size : 0,
+                                .source = "MediaFire"}};
 }
 
 bool IsPixeldrain(const std::string& link) {
@@ -113,6 +125,12 @@ bool IsMediaFire(const std::string& link) {
 }
 
 }  // namespace
+
+bool IsWebLink(const std::string& link) {
+  const std::string lower = strings::ToLower(link);
+  return lower.starts_with("http://") || lower.starts_with("https://") ||
+         lower.starts_with("magnet:");
+}
 
 LinkKind Classify(const std::string& link) {
   const std::string lower = strings::ToLower(link);
@@ -127,26 +145,36 @@ std::string MediaFireAddressIn(const std::string& page) {
   return std::regex_search(page, match, kAddress) ? match[1].str() : std::string();
 }
 
+namespace {
+
+std::string PercentDecoded(const std::string& text) {
+  std::string out;
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '%' && i + 2 < text.size() && std::isxdigit(text[i + 1]) != 0 &&
+        std::isxdigit(text[i + 2]) != 0) {
+      out += static_cast<char>(std::stoi(text.substr(i + 1, 2), nullptr, 16));
+      i += 2;
+    } else {
+      out += text[i];
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
 std::string NameFromDisposition(const std::string& header) {
-  static const std::regex kName(R"re(filename\*?=(?:UTF-8'')?"?([^";\r\n]+)"?)re",
+  static const std::regex kName(R"re(filename(\*?)=(?:UTF-8'')?"?([^";\r\n]+)"?)re",
                                 std::regex::icase);
   std::smatch match;
-  return std::regex_search(header, match, kName) ? match[1].str() : std::string();
+  if (!std::regex_search(header, match, kName)) return {};
+  return match[1].length() > 0 ? PercentDecoded(match[2].str()) : match[2].str();
 }
 
 std::string CleanFileName(const std::string& name, const std::string& url) {
   std::string out = name;
   if (out.empty()) {
-    const std::string path = url.substr(0, url.find_first_of("?#"));
-    for (std::size_t i = 0; i < path.size(); ++i) {
-      if (path[i] == '%' && i + 2 < path.size() && std::isxdigit(path[i + 1]) != 0 &&
-          std::isxdigit(path[i + 2]) != 0) {
-        out += static_cast<char>(std::stoi(path.substr(i + 1, 2), nullptr, 16));
-        i += 2;
-      } else {
-        out += path[i];
-      }
-    }
+    out = PercentDecoded(url.substr(0, url.find_first_of("?#")));
   }
   const auto slash = out.find_last_of("/\\");
   if (slash != std::string::npos) out.erase(0, slash + 1);

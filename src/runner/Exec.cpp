@@ -464,7 +464,8 @@ Result<void> Extract(const std::filesystem::path& archive, const std::filesystem
     if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
     command.argv = {
         *seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
-    if (!password.empty()) command.argv.push_back("-p" + password);
+    // Always given one: without it 7-Zip stops to ask, which nothing here can answer.
+    command.argv.push_back("-p" + (password.empty() ? std::string("mira-no-password") : password));
   }
   const Result<ExecResult> result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());

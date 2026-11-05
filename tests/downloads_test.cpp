@@ -18,6 +18,10 @@ namespace fs = std::filesystem;
 TEST_CASE("Links are told apart, and a host's address and a file's name are read") {
   CHECK(Classify("magnet:?xt=urn:btih:abc") == LinkKind::Torrent);
   CHECK(Classify("https://example.com/game.TORRENT") == LinkKind::Torrent);
+  CHECK(IsWebLink("HTTPS://example.com/a"));
+  CHECK(IsWebLink("magnet:?xt=urn:btih:abc"));
+  CHECK_FALSE(IsWebLink("file:///etc/passwd"));
+  CHECK(NameFromDisposition("attachment; filename*=UTF-8''My%20Game.zip") == "My Game.zip");
   CHECK(Classify("https://pixeldrain.com/u/abc123") == LinkKind::Host);
   CHECK(Classify("https://www.mediafire.com/file/abc/game.7z/file") == LinkKind::Host);
   CHECK(Classify("https://example.com/game.7z") == LinkKind::Direct);

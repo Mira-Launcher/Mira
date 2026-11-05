@@ -12,6 +12,9 @@ enum class LinkKind { Direct, Host, Torrent };
 
 LinkKind Classify(const std::string& link);
 
+// http, https or magnet: the only links Mira hands to a downloader.
+bool IsWebLink(const std::string& link);
+
 // A file a link stands for.
 struct LinkFile {
   std::string url;

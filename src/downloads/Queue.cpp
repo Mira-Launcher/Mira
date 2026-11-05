@@ -52,9 +52,28 @@ std::vector<std::string> Addresses(const QueuedFile& file) {
   return out;
 }
 
+Result<void> OnlyWebLinks(const std::vector<std::string>& links) {
+  for (const std::string& link : links) {
+    if (!IsWebLink(link))
+      return Err("invalid_links", std::format("{} isn't a web link", link),
+                 "Links start with http://, https:// or magnet:.");
+  }
+  return {};
+}
+
 Error ServiceNeeded() {
   return {"service_needed", "torrents need a download service",
           "Add one in Settings, under Downloads."};
+}
+
+// A link that can't be read doesn't matter when another link gives the same file: that's a mirror.
+// Otherwise the first one that matters, or no error.
+using DeadLink = std::pair<std::string, Error>;
+Error FirstUnmirrored(const std::vector<DeadLink>& dead, const std::vector<std::string>& names) {
+  for (const auto& [name, error] : dead) {
+    if (!std::ranges::contains(names, name)) return error;
+  }
+  return {};
 }
 
 std::vector<std::string> ParseStrings(const std::string& text) {
@@ -229,6 +248,7 @@ void Queue::Fetch(const std::string& id) {
   std::vector<QueuedFile> files;
   std::vector<std::string> jobs;
   Error failure;
+  std::vector<DeadLink> dead;
   for (const std::string& link : links) {
     const bool service_only = Classify(link) == LinkKind::Torrent;
     if (service_only && service == nullptr) {
@@ -258,8 +278,8 @@ void Queue::Fetch(const std::string& id) {
         jobs.push_back(*job);
         continue;
       }
-      failure = resolved.error();
-      break;
+      dead.emplace_back(CleanFileName("", link), resolved.error());
+      continue;
     }
     for (const LinkFile& file : *resolved) {
       files.push_back(
@@ -269,6 +289,11 @@ void Queue::Fetch(const std::string& id) {
            .gid = "",
            .status = {.state = "waiting", .total = file.size, .done = 0, .speed = 0, .error = ""}});
     }
+  }
+  if (failure.code.empty()) {
+    std::vector<std::string> names;
+    for (const QueuedFile& file : files) names.push_back(file.name);
+    failure = FirstUnmirrored(dead, names);
   }
   std::error_code ec;
   if (failure.code.empty()) {
@@ -559,12 +584,20 @@ void Queue::Finish(const std::string& id) {
 }
 
 Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const {
+  if (auto valid = OnlyWebLinks(links); !valid) return std::unexpected(valid.error());
   json files = json::array();
+  std::vector<std::string> names;
+  std::vector<DeadLink> dead;
   const std::unique_ptr<Service> service = ActiveService(config_);
-  const auto add_file = [&files](const LinkFile& file) {
-    // The same file from another host is a mirror, not one more file.
-    for (const json& seen : files) {
-      if (seen["name"] == file.name && seen["size"] == file.size) return;
+  const auto add_file = [&files, &names](const LinkFile& file) {
+    names.push_back(file.name);
+    // The same file from another host is a mirror, not one more file. A size of 0 is unknown.
+    for (json& seen : files) {
+      const std::int64_t size = seen["size"];
+      if (seen["name"] == file.name && (size == file.size || size == 0 || file.size == 0)) {
+        seen["size"] = std::max(size, file.size);
+        return;
+      }
     }
     files.push_back({{"name", file.name}, {"size", file.size}, {"source", file.source}});
   };
@@ -585,11 +618,14 @@ Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const
       add_file({.url = "", .name = CleanFileName("", link), .size = 0, .source = service->Name()});
       continue;
     }
-    if (!resolved) return std::unexpected(resolved.error());
-    for (const LinkFile& file : *resolved) {
-      files.push_back({{"name", file.name}, {"size", file.size}, {"source", file.source}});
+    if (!resolved) {
+      dead.emplace_back(CleanFileName("", link), resolved.error());
+      continue;
     }
+    std::ranges::for_each(*resolved, add_file);
   }
+  if (const Error error = FirstUnmirrored(dead, names); !error.code.empty())
+    return Err(error.code, error.message, error.hint);
   return json{{"files", files}};
 }
 
@@ -597,6 +633,7 @@ Result<nlohmann::json> Queue::Add(const std::string& name, const std::vector<std
                                   const std::string& password) {
   if (FolderName(name).empty()) return Err("invalid_name", "the game needs a name");
   if (links.empty()) return Err("invalid_links", "there are no links to download");
+  if (auto valid = OnlyWebLinks(links); !valid) return std::unexpected(valid.error());
   Download download;
   download.id = NewId();
   download.name = name;

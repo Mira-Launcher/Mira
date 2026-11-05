@@ -106,6 +106,7 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   std::string path;
   std::uintmax_t size = 0;
   bool encrypted = false;
+  bool encrypted_empty = false;
   std::istringstream lines(listed->output);
   for (std::string line; std::getline(lines, line);) {
     if (line.ends_with('\r')) line.pop_back();
@@ -118,15 +119,23 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
     } else if (line == "Encrypted = +") {
       encrypted = true;
     }
+    if (encrypted && size == 0) encrypted_empty = true;
     if (encrypted && size > 0 && size < smallest_size) {
       smallest = path;
       smallest_size = size;
     }
   }
-  if (smallest.empty()) return std::string();
+  if (smallest.empty() && !encrypted_empty) return std::string();
+  const auto opens = [&](const std::string& password) {
+    std::vector<std::string> args = {"t", "-p" + password, archive.string()};
+    if (!smallest.empty()) args.insert(args.end(), {"--", smallest});
+    const auto attempt = run(std::move(args));
+    return attempt && attempt->exit_code == 0;
+  };
+  // An empty file may or may not hold encrypted data, so only the test can say.
+  if (smallest.empty() && opens("mira-no-password")) return std::string();
   for (const std::string& candidate : candidates) {
-    const auto attempt = run({"t", "-p" + candidate, archive.string(), "--", smallest});
-    if (attempt && attempt->exit_code == 0) return candidate;
+    if (opens(candidate)) return candidate;
   }
   return std::optional<std::string>();
 }

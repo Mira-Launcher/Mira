@@ -699,7 +699,7 @@ A list of `{id, name, links, state, files, total, done, speed, password, error?}
 Events: `download.changed` carries one of these whenever it changes, and `download.removed` carries `{id}`.
 
 ### `POST /v1/downloads/check`
-`{"links": ["..."]}` answers `{"files": [{name, size, source}]}` without downloading. `400` when a link can't be used: `link_is_a_page`, `link_not_found`, `link_unreachable`, `link_unreadable`, or, with no service set up, `service_needed` for a torrent.
+`{"links": ["..."]}` answers `{"files": [{name, size, source}]}` without downloading. A dead link is ignored when another link gives a file of the same name. `400` when a link can't be used: `invalid_links` for anything but http, https or magnet, `link_is_a_page`, `link_not_found`, `link_unreachable`, `link_unreadable`, or, with no service set up, `service_needed` for a torrent.
 
 ### `POST /v1/downloads`
 `{"name": "...", "links": ["..."], "password": "..."}` queues a game and answers `201` with it. `password` is optional, and is tried before the saved ones.
