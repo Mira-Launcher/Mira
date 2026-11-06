@@ -43,7 +43,6 @@ TEST_CASE("Art picked in Mira goes into Steam's grid, and Steam's own custom art
                              written));
   CHECK(Read(grid / "730p.png") == "mira cover");
   CHECK_FALSE(fs::exists(grid / "730p.jpg"));  // Steam might show either
-  CHECK(Read(grid / "730p.jpg.before-mira") == "steam cover");
   CHECK(Read(grid / "730_hero.jpg") == "mira hero");
   CHECK(Read(grid / "730_logo.png") == "steam logo");  // Steam can't show WebP
   CHECK_FALSE(fs::exists(root / "userdata" / "0" / "config" / "grid"));

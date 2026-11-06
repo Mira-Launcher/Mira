@@ -18,18 +18,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Waits for a "game.added" event, polling the bus rather than sleeping a
-// fixed amount: debounce plus the watcher's poll tick make the exact timing
-// unpredictable, so this waits for the actual signal instead.
-bool WaitForGameAdded(api::EventBus& events, std::chrono::milliseconds timeout) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    for (const model::Event& event : events.Since(0)) {
-      if (event.type == "game.added") return true;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  return false;
+// What a test of something the watcher must not do waits for instead of a fixed time: a real game
+// dropped into `root` afterwards. The watcher handles changes in order, and the scan that adds it
+// covers the whole root, so once it's in the library, what came before has been dealt with.
+void DropPartnerGame(const fs::path& root, const store::GameStore& games) {
+  Touch(root / "Hollow Knight" / "hollow_knight", "", /*executable=*/true);
+  REQUIRE(test::WaitUntil([&] { return games.Find("hollow-knight").has_value(); }));
 }
 
 }  // namespace
@@ -55,11 +49,7 @@ TEST_CASE("Watcher picks up a new game folder in each of two watched roots") {
   Touch(games_root / "Celeste" / "Celeste", "", /*executable=*/true);
   Touch(apps_root / "Hollow Knight" / "hollow_knight", "", /*executable=*/true);
 
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while (!(games.Find("celeste") && games.Find("hollow-knight")) &&
-         std::chrono::steady_clock::now() < deadline) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
+  CHECK(test::WaitUntil([&] { return games.Find("celeste") && games.Find("hollow-knight"); }));
 
   watcher.Stop();
   watcher_thread.join();
@@ -94,11 +84,10 @@ TEST_CASE("Watcher follows library_roots after ReloadRoots") {
   REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 1; }));
 
   test::Touch(new_root / "Celeste" / "Celeste", "", /*executable=*/true);
-  CHECK(WaitForGameAdded(env.events, std::chrono::seconds(5)));
+  CHECK(test::WaitUntil([&] { return env.games.Find("celeste").has_value(); }));
 
   watcher.Stop();
   watcher_thread.join();
-  CHECK(env.games.Find("celeste").has_value());
 }
 
 TEST_CASE("Watcher never rediscovers its own prefix directory as a game") {
@@ -118,14 +107,13 @@ TEST_CASE("Watcher never rediscovers its own prefix directory as a game") {
 
   fs::create_directories(root / "prefix" / "celeste" / "drive_c");
   Touch(root / "prefix" / "celeste" / "system.reg");
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  DropPartnerGame(root, games);
 
   watcher.Stop();
   watcher_thread.join();
 
-  CHECK(games.All().empty());
-  CHECK(events.Since(0).empty());
+  CHECK(games.All().size() == 1);
+  CHECK_FALSE(games.Find("celeste").has_value());
 }
 
 TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting folder as a game") {
@@ -155,7 +143,7 @@ TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting fo
               ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
           0);
 
-  CHECK(WaitForGameAdded(events, std::chrono::seconds(5)));
+  CHECK(test::WaitUntil([&] { return games.Find("celeste").has_value(); }));
   CHECK(test::WaitUntil([&] { return !fs::exists(archive); }));  // the archive itself is gone
 
   watcher.Stop();
@@ -191,15 +179,13 @@ TEST_CASE("Watcher leaves a dropped archive alone when auto_extract_archives is 
   REQUIRE(std::system(
               ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
           0);
-
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  DropPartnerGame(root, games);
 
   watcher.Stop();
   watcher_thread.join();
 
   CHECK(fs::exists(archive));  // untouched
-  CHECK(games.All().empty());
+  CHECK(games.All().size() == 1);
 }
 
 TEST_CASE(
@@ -211,9 +197,11 @@ TEST_CASE(
   // paths::IsWithin for why. This is a real, if unusual, config: nothing
   // stops library_roots from overlapping runner_search_paths.
   const fs::path root = TempDir("watch-runner-overlap-root");
+  const fs::path games_root = TempDir("watch-runner-overlap-games");
   test::TestEnv env("watch-runner-overlap-state");
   config::Config& config = env.config;
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
+  REQUIRE(config.Set("library_roots", nlohmann::json::array({root.string(), games_root.string()}))
+              .has_value());
   REQUIRE(config.Set("runner_search_paths", nlohmann::json::array({root.string()})).has_value());
   REQUIRE(config.Set("prefix_root", (root / "prefix").string()).has_value());
   REQUIRE(config.Set("scan.debounce_ms", 100).has_value());
@@ -239,16 +227,15 @@ TEST_CASE(
   REQUIRE(std::system(
               ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
           0);
-
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(800));  // past debounce, nothing should fire
+  // In a library folder of its own, since nothing in the runner folder is ever scanned.
+  DropPartnerGame(games_root, games);
 
   watcher.Stop();
   watcher_thread.join();
 
   CHECK(fs::exists(archive));                            // untouched, not extracted
   CHECK(fs::exists(root / "Fake-Proton-1" / "proton"));  // untouched, not treated as a game
-  CHECK(games.All().empty());
+  CHECK(games.All().size() == 1);
 }
 
 TEST_CASE(
@@ -264,10 +251,10 @@ TEST_CASE(
                                                            (outside / "Games").string()}))
               .has_value());
 
-  const std::string old_home = std::getenv("HOME") != nullptr ? std::getenv("HOME") : "";
-  setenv("HOME", home.c_str(), 1);
-  library::CreateMissingRoots(env.config);
-  setenv("HOME", old_home.c_str(), 1);
+  {
+    test::EnvVar at_home("HOME", home.c_str());
+    library::CreateMissingRoots(env.config);
+  }
 
   CHECK(fs::is_directory(home / "Mira" / "Games"));
   CHECK_FALSE(fs::exists(outside / "Games"));

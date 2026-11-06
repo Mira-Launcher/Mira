@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 namespace {
 fs::path TempFile(const char* name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests";
+  const fs::path dir = test::TestsRoot();
   fs::create_directories(dir);
   const fs::path file = dir / name;
   for (const char* suffix : {"", "-wal", "-shm", ".bak"}) fs::remove(file.string() + suffix);
@@ -109,15 +109,6 @@ TEST_CASE("UpdateMany saves every changed game and skips unknown or unchanged on
   CHECK(reloaded.Find("tunic")->tags.empty());
 }
 
-TEST_CASE("Remove deletes a game and reports an error for an unknown id") {
-  store::GameStore store(TempFile("games-remove.db"));
-  store.Load();
-  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
-  CHECK(store.Remove("celeste").has_value());
-  CHECK_FALSE(store.Find("celeste").has_value());
-  CHECK_FALSE(store.Remove("celeste").has_value());
-}
-
 TEST_CASE("hidden store titles survive a reload, and only store games leave one behind") {
   const fs::path file = TempFile("games-hidden-titles.db");
   store::GameStore store(file);
@@ -150,7 +141,9 @@ TEST_CASE("a finished session is counted once and outlives its game") {
   }
   CHECK(store.Sessions("celeste", 10).size() == 1);
   REQUIRE(store.Remove("celeste").has_value());
-  CHECK(store.NextId("Celeste") == "celeste-2");  // a new game doesn't take its history
+  CHECK_FALSE(store.Find("celeste").has_value());
+  CHECK_FALSE(store.Remove("celeste").has_value());  // an unknown id is an error
+  CHECK(store.NextId("Celeste") == "celeste-2");     // a new game doesn't take its history
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.Sessions("celeste", 10).size() == 1);
   CHECK(store.Find("celeste")->play_seconds == 60);

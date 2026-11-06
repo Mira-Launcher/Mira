@@ -3,8 +3,9 @@
 (stdout and --summary, for the PR comment) and every value, scenario by scenario (--full).
 
 Each side takes one or more result files, in run order; repeated runs are shown as their median and
-compared run by run. A scenario that fails
-only on the base is new or changed in the branch, so it's listed without a comparison.
+compared run by run. A scenario that fails only on the base is new or changed in the branch, so it's listed
+without a comparison. Exits 1 only for a scenario that failed in every branch run and in no base run, so a
+broken runner (both sides) or a one-off timeout doesn't fail the check.
 Usage: compare.py --base a.json [...] --branch b.json [...] --summary s.md --full f.md
 """
 
@@ -14,29 +15,33 @@ import statistics
 import sys
 from pathlib import Path
 
-INSTR_NOISE = 0.02  # callgrind counts barely move between runs
-INSTR_FLOOR = 500_000
-MEMORY_NOISE = 0.10
-WORSE = 0.10  # time and memory rises at least this big are listed
-TIME_FLOOR_MS = 1.0
-MEMORY_FLOOR_KB = 1024
+# The summary lists what a user would feel, time and memory; instruction counts are in the full log only, since
+# they move with code that takes no longer. Short timings on a shared runner step by whole poll intervals (5 to
+# 10 ms) from run to run, so a change needs a size, a floor and every run on its side.
+TIME_CHANGE = 0.20
+TIME_FLOOR_MS = 5.0
+MEMORY_CHANGE = 0.10
+MEMORY_FLOOR_KB = 2048
 IDLE_CPU_FLOOR_MS = 50
+# Below this many runs a side, a change is only run again, never listed.
+MIN_RUNS = 3
 PROCESSES = {"mirad": "mirad", "gui": "the GUI"}
 MEMORY = {"threads": "threads", "rss_kb": "resident memory", "pss_anon_kb": "own memory"}
 
 
 def load(paths):
-    """{(mode, scenario, key): [value per run]}, the failures and the runs."""
+    """{(mode, scenario, key): [value per run]}, {scenario: [error per failed run]}, {scenario: runs} and the runs."""
     runs = [json.loads(Path(p).read_text()) for p in paths]
-    values = {}
+    values, failures, ran = {}, {}, {}
     for run in runs:
         for scenario, results in run["results"].items():
             for key, value in results.items():
                 values.setdefault((run["mode"], scenario, key), []).append(value)
-    failures = {}
-    for run in runs:
-        failures.update(run["failures"])
-    return values, failures, runs
+        for scenario, error in run["failures"].items():
+            failures.setdefault(scenario, []).append(error)
+        for scenario in {**run["results"], **run["failures"]}:
+            ran[scenario] = ran.get(scenario, 0) + 1
+    return values, failures, ran, runs
 
 
 def change(old, new):
@@ -77,8 +82,8 @@ class Report:
         self.base = {k: statistics.median(v) for k, v in base_runs.items()}
         self.branch = {k: statistics.median(v) for k, v in branch_runs.items()}
         self.scenarios = list(dict.fromkeys(s for _, s, _ in list(self.branch) + list(self.base)))
-        # Scenarios listed for a time or memory change, which one run can show by chance; run.sh runs them
-        # again to tell a real change from noise. Instruction counts don't need it.
+        # Scenarios with a change over its threshold, which a few runs can show by chance; run.sh runs them
+        # again, and the change is listed only if every run then agrees.
         self.noisy = set()
 
     def pair(self, mode, scenario, key):
@@ -95,96 +100,54 @@ class Report:
     def is_memory(key):
         return key.partition(".")[0] in PROCESSES
 
-    @staticmethod
-    def summarized(scenario, metric):
-        # Qt's thread pool starts and retires idle workers on 30 s timers, so the GUI's thread count
-        # follows timing, not the code. The full log still has it.
-        return not (metric == "threads" and scenario.startswith("gui"))
+    def moved(self, scenario, key, threshold, floor):
+        """(change, base, branch) when a timed measure moved by at least `threshold` and `floor`, else None.
+        Over both, the scenario is run again; it's returned only once every branch run is past every base run,
+        which load on the runner doesn't do to one side alone."""
+        old_runs = self.base_runs.get(("time", scenario, key))
+        new_runs = self.branch_runs.get(("time", scenario, key))
+        if not old_runs or not new_runs:
+            return None
+        old, new = statistics.median(old_runs), statistics.median(new_runs)
+        c = paired_change(old_runs, new_runs) if old else 1.0
+        if abs(c) < threshold or abs(new - old) < floor or (c > 0) != (new > old):
+            return None
+        self.noisy.add(scenario)
+        if min(len(old_runs), len(new_runs)) < MIN_RUNS:
+            return None
+        held = min(new_runs) > max(old_runs) if c > 0 else max(new_runs) < min(old_runs)
+        return (c, old, new) if held else None
 
-    def worse(self):
-        """Every measure that got worse beyond its threshold, largest first. If none did but something got
-        worse at all, the largest such change, so a regression is never left out."""
-        found = []  # (change, line, over the threshold, the scenario when it's from time or memory)
+    def changes(self):
+        """Time, idle CPU and memory changes that held, as (change, line, is memory)."""
+        found = []
         for scenario in self.scenarios:
             for key in self.keys(scenario):
-                t_old, t_new = self.pair("time", scenario, key)
-                timed = t_old is not None and t_new is not None
                 if self.is_memory(key):
                     process, _, metric = key.partition(".")
-                    c = self.time_change(scenario, key) if timed and self.summarized(scenario, metric) else 0
-                    if c > 0:
-                        floor = 2 if metric == "threads" else MEMORY_FLOOR_KB
+                    # Thread counts follow pools starting and retiring idle workers on timers, not the code.
+                    if metric == "threads":
+                        continue
+                    if moved := self.moved(scenario, key, MEMORY_CHANGE, MEMORY_FLOOR_KB):
+                        c, old, new = moved
                         found.append((c, f"**{scenario}**: {PROCESSES[process]} {MEMORY[metric]} "
-                                         f"{memory_text(metric, t_old)} → {memory_text(metric, t_new)} ({pct(c)})",
-                                      c >= WORSE and t_new - t_old >= floor, scenario))
-                    continue
-                if key.startswith("idle CPU"):
-                    if timed and t_new > t_old:
-                        found.append((change(t_old, t_new) if t_old else 1.0,
-                                      f"**{scenario}** idle CPU: {ms(t_old)} → {ms(t_new)} in 5 s",
-                                      t_new - t_old >= IDLE_CPU_FLOOR_MS, scenario))
-                    continue
-                times = f"{ms(t_old)} → {ms(t_new)}" if timed else ""
-                i_old, i_new = self.pair("instr", scenario, key)
-                if i_old and i_new is not None and i_new > i_old:
-                    c = change(i_old, i_new)
-                    over = c >= INSTR_NOISE and i_new - i_old >= INSTR_FLOOR
-                    found.append((c, f"**{key}** ({scenario}): {mega(i_old)} → {mega(i_new)} instructions "
-                                     f"({pct(c)})" + (f", {times}" if times else ""), over, None))
-                    if over:
-                        continue
-                # Time alone swings with load on the runner, so it needs a bigger change to count.
-                c = self.time_change(scenario, key) if timed else 0
-                if c > 0:
-                    found.append((c, f"**{key}** ({scenario}): {times} ({pct(c)})",
-                                  c >= WORSE and t_new - t_old >= TIME_FLOOR_MS, scenario))
-        found.sort(key=lambda f: -f[0])
-        lines = [line for _, line, over, _ in found if over]
-        self.noisy.update(scenario for _, _, over, scenario in found if over and scenario)
-        if found and not lines:
-            lines.append(f"{found[0][1]}, the largest regression, under the thresholds")
-        return lines
+                                         f"{memory_text(metric, old)} → {memory_text(metric, new)} ({pct(c)})", True))
+                elif key.startswith("idle CPU"):
+                    if moved := self.moved(scenario, key, 0, IDLE_CPU_FLOOR_MS):
+                        c, old, new = moved
+                        found.append((c, f"**{scenario}** idle CPU: {ms(old)} → {ms(new)} in 5 s", False))
+                elif moved := self.moved(scenario, key, TIME_CHANGE, TIME_FLOOR_MS):
+                    c, old, new = moved
+                    found.append((c, f"**{key}** ({scenario}): {ms(old)} → {ms(new)} ({pct(c)})", False))
+        return found
 
-    def faster(self):
-        """Instruction counts that dropped beyond the noise."""
-        lines = []
-        for scenario in self.scenarios:
-            for key in self.keys(scenario):
-                i_old, i_new = self.pair("instr", scenario, key)
-                if self.is_memory(key) or not i_old or i_new is None:
-                    continue
-                c = change(i_old, i_new)
-                if c <= -INSTR_NOISE and i_old - i_new >= INSTR_FLOOR:
-                    t_old, t_new = self.pair("time", scenario, key)
-                    times = (f", {ms(t_old)} → {ms(t_new)} ({pct(self.time_change(scenario, key))})"
-                             if t_old is not None and t_new is not None else "")
-                    lines.append(f"**{key}** ({scenario}): {mega(i_old)} → {mega(i_new)} instructions ({pct(c)}){times}")
-        return lines
-
-    def memory(self):
-        """One line per process and metric that dropped beyond noise, naming the scenario it dropped most in.
-        Rises are listed one by one under Worse."""
-        lines = []
-        for process, name in PROCESSES.items():
-            for metric, label in MEMORY.items():
-                key = f"{process}.{metric}"
-                moved = []
-                measured = 0
-                for scenario in self.scenarios:
-                    old, new = self.pair("time", scenario, key)
-                    if old is None or new is None or not self.summarized(scenario, metric):
-                        continue
-                    measured += 1
-                    c = self.time_change(scenario, key)
-                    floor = 2 if metric == "threads" else MEMORY_FLOOR_KB
-                    if c <= -MEMORY_NOISE and old - new >= floor:
-                        moved.append((c, scenario, old, new))
-                if moved:
-                    self.noisy.update(scenario for _, scenario, _, _ in moved)
-                    c, scenario, old, new = min(moved)
-                    lines.append(f"{name} {label} down in {len(moved)} of {measured} scenarios, most in "
-                                 f"**{scenario}**: {memory_text(metric, old)} → {memory_text(metric, new)} ({pct(c)})")
-        return lines
+    def summary(self):
+        """(worse, faster, memory drops) lines, largest change first."""
+        found = self.changes()
+        worse = [line for c, line, _ in sorted(found, key=lambda f: -f[0]) if c > 0]
+        faster = [line for c, line, memory in sorted(found, key=lambda f: f[0]) if c < 0 and not memory]
+        smaller = [line for c, line, memory in sorted(found, key=lambda f: f[0]) if c < 0 and memory]
+        return worse, faster, smaller
 
     def full(self, gui_runs):
         once = (" The GUI scenarios ran once, so their values are from that run, unless the summary lists them as "
@@ -225,10 +188,10 @@ def main():
     parser.add_argument("--full")
     parser.add_argument("--fixture", help="the fixture's JSON, for the summary's first line")
     parser.add_argument("--base-name", default="main")
-    parser.add_argument("--recheck", help="writes the scenarios listed for a time or memory change, one a line")
+    parser.add_argument("--recheck", help="writes the scenarios to run again, one a line")
     args = parser.parse_args()
-    base, base_failed, _ = load(args.base)
-    branch, branch_failed, branch_runs = load(args.branch)
+    base, base_failed, _, _ = load(args.base)
+    branch, branch_failed, branch_ran, branch_runs = load(args.branch)
     report = Report(base, branch)
     # Runs per scenario: the passes over every scenario, then run.sh's reruns of the noisy ones.
     counts = {}
@@ -239,6 +202,9 @@ def main():
     passes = lambda gui: min((n for name, n in counts.items() if name.startswith("gui") == gui), default=0)
     time_runs, gui_runs = passes(False), passes(True)
     rechecked = {name: n for name, n in counts.items() if n > passes(name.startswith("gui"))}
+    # Broken by the branch: failed every time it ran there and never on the base.
+    broken = sorted(name for name, errors in branch_failed.items()
+                    if len(errors) == branch_ran[name] and name not in base_failed)
 
     lines = [f"## Benchmark against {args.base_name}", ""]
     if args.fixture:
@@ -248,30 +214,37 @@ def main():
                   f"{time_runs} timed runs of mirad's scenarios and {gui_runs} of the GUI's, plus one callgrind run "
                   f"per side.{once}", ""]
     if rechecked:
-        lines += ["Run again, since a time or memory change looked over its threshold: "
+        lines += ["Run again, since a change looked over its threshold or a run failed: "
                   + ", ".join(f"{name} ({n} runs)" for name, n in sorted(rechecked.items())) + ".", ""]
     if branch_failed:
-        lines += ["### Failed on the branch", *[f"- **{name}**: {error}" for name, error in branch_failed.items()], ""]
+        def failed(name, errors):
+            where = ((f"failed in all {len(errors)} runs" if len(errors) > 1 else "failed in its one run")
+                     if name in broken else
+                     f"also fails on {args.base_name}" if name in base_failed else
+                     f"failed in {len(errors)} of {branch_ran[name]} runs")
+            return f"- **{name}** ({where}): {errors[-1]}"
+        lines += ["### Failed on the branch", *[failed(name, errors) for name, errors in branch_failed.items()], ""]
     new = sorted(set(base_failed) - set(branch_failed))
     if new:
         lines += [f"Failed on {args.base_name} only, so new or changed here: {', '.join(new)}", ""]
-    worse, faster, memory = report.worse(), report.faster(), report.memory()
+    worse, faster, memory = report.summary()
     for title, items in (("Worse", worse), ("Faster", faster), ("Memory", memory)):
         if items:
             lines += [f"### {title}", *[f"- {item}" for item in items], ""]
     if not (worse or faster or memory or branch_failed):
         lines += ["No change beyond noise.", ""]
-    lines.append(f"Listed: instructions over {INSTR_NOISE:.0%} and 0.5M; time and memory rises over {WORSE:.0%}, "
-                 f"drops in memory over {MEMORY_NOISE:.0%} and 1 MB. Every value is in the full log.")
+    lines.append(f"Listed when every run agrees: time changes over {TIME_CHANGE:.0%} and {TIME_FLOOR_MS:.0f} ms, "
+                 f"memory over {MEMORY_CHANGE:.0%} and {MEMORY_FLOOR_KB // 1024} MB, idle CPU over "
+                 f"{IDLE_CPU_FLOOR_MS} ms. Instruction counts and every other value are in the full log.")
     summary = "\n".join(lines)
     if args.recheck:
-        Path(args.recheck).write_text("".join(f"{name}\n" for name in sorted(report.noisy)))
+        Path(args.recheck).write_text("".join(f"{name}\n" for name in sorted(report.noisy | set(branch_failed))))
     print(summary)
     if args.summary:
         Path(args.summary).write_text(summary + "\n")
     if args.full:
         Path(args.full).write_text(report.full(gui_runs))
-    sys.exit(1 if branch_failed else 0)
+    sys.exit(1 if broken else 0)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 #include <doctest.h>
 #include <signal.h>
 
+#include <string>
+#include <string_view>
+
 #include "proc/ExitReason.h"
 
 using namespace mira;
@@ -27,6 +30,10 @@ ExitInfo Killed(int signal_number, std::int64_t played = 600) {
           .log_tail = {}};
 }
 
+bool Says(const std::string& error, std::string_view part) {
+  return error.find(part) != std::string::npos;
+}
+
 }  // namespace
 
 TEST_CASE("A non-zero exit on its own is an ordinary quit, however soon it comes") {
@@ -37,19 +44,21 @@ TEST_CASE("A non-zero exit on its own is an ordinary quit, however soon it comes
   }
 }
 
-TEST_CASE("Crash signals are crashes, said in plain words") {
+TEST_CASE("Crash signals are crashes, naming the cause and how long the game ran") {
   auto outcome = ClassifyExit(Killed(SIGSEGV, 250));
   CHECK(outcome.crashed);
   CHECK(outcome.code == "crashed");
-  CHECK(outcome.error == "Crashed after 4 minutes: invalid memory access (segmentation fault)");
+  CHECK(Says(outcome.error, "4 minutes"));
+  CHECK(Says(outcome.error, "segmentation fault"));
 
   outcome = ClassifyExit(Killed(SIGABRT, 7300));
-  CHECK(outcome.error == "Crashed after 2 hours 1 minute: the game aborted itself (SIGABRT)");
+  CHECK(Says(outcome.error, "2 hours 1 minute"));
+  CHECK(Says(outcome.error, "SIGABRT"));
 
   SUBCASE("and so is a shell's 128 + signal for one") {
     outcome = ClassifyExit(Exit(128 + SIGSEGV));
     CHECK(outcome.crashed);
-    CHECK(outcome.error.find("segmentation fault") != std::string::npos);
+    CHECK(Says(outcome.error, "segmentation fault"));
   }
 }
 
@@ -57,7 +66,7 @@ TEST_CASE("A SIGKILL says the game was killed, not that it crashed on its own") 
   const auto outcome = ClassifyExit(Killed(SIGKILL, 30));
   CHECK(outcome.crashed);
   CHECK(outcome.code == "killed");
-  CHECK(outcome.error == "Killed after 30 seconds, often because the system ran out of memory");
+  CHECK(Says(outcome.error, "memory"));
 }
 
 TEST_CASE("Being closed is an ordinary end, and anything after Stop is too") {
@@ -74,31 +83,36 @@ TEST_CASE("Being closed is an ordinary end, and anything after Stop is too") {
 TEST_CASE("A program that couldn't start says why") {
   auto outcome = ClassifyExit(Exit(127, 0));
   CHECK(outcome.code == "start_failed");
-  CHECK(outcome.error == "Couldn't start: the program or a library it needs is missing");
-  CHECK(ClassifyExit(Exit(126, 0)).error == "Couldn't start: the program isn't executable");
+  CHECK(Says(outcome.error, "missing"));
+  CHECK(Says(ClassifyExit(Exit(126, 0)).error, "executable"));
 
   ExitInfo wine = Exit(53, 2);
   wine.log_tail = "wine: cannot find L\"C:\\\\Games\\\\Game.exe\"\n";
-  CHECK(ClassifyExit(wine).error == "Couldn't start: Wine couldn't find or load the program");
+  outcome = ClassifyExit(wine);
+  CHECK(outcome.code == "start_failed");
+  CHECK(Says(outcome.error, "Wine"));
 }
 
-TEST_CASE("Wine's unhandled-exception report names what went wrong") {
+TEST_CASE("Wine's unhandled-exception report names what went wrong, without its addresses") {
   ExitInfo info = Exit(5, 90);
   info.log_tail =
       "wine: Unhandled exception 0xe06d7363 in thread 24 at address 00006FFFFF4A1234 (thread "
-      "0024), "
-      "starting debugger...\n";
-  CHECK(ClassifyExit(info).error == "Crashed after 1 minute with an unhandled C++ exception");
+      "0024), starting debugger...\n";
+  auto outcome = ClassifyExit(info);
+  CHECK(outcome.crashed);
+  CHECK(Says(outcome.error, "C++ exception"));
+  CHECK_FALSE(Says(outcome.error, "00006FFFFF4A1234"));
 
   info.log_tail =
       "0024:err:seh:NtRaiseException Unhandled exception code c0000409 flags 1 addr 0x14000\n";
-  CHECK(ClassifyExit(info).error ==
-        "Crashed after 1 minute with an unhandled stack buffer overrun");
+  CHECK(Says(ClassifyExit(info).error, "stack buffer overrun"));
 
   info.log_tail =
-      "wine: Unhandled illegal instruction at address 0000000140001000 (thread 0024), starting "
-      "debugger...\n";
-  CHECK(ClassifyExit(info).error == "Crashed after 1 minute with an unhandled illegal instruction");
+      "wine: Unhandled page fault on read access to 0000000000000000 at address "
+      "0000000140001000 (thread 0024), starting debugger...\n";
+  outcome = ClassifyExit(info);
+  CHECK(Says(outcome.error, "page fault"));
+  CHECK_FALSE(Says(outcome.error, "0000000000000000"));
 }
 
 TEST_CASE("DescribeDuration reads like a person would say it") {

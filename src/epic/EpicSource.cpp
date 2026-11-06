@@ -67,7 +67,7 @@ Result<json> LaunchParameters(const config::Config& config, const std::string& a
   // The update check would fetch Epic's whole asset list first.
   command.argv = {tool.path, "launch", app_name, "--json", "--skip-version-check"};
   if (offline) command.argv.push_back("--offline");
-  command.timeout_s = 10;
+  command.timeout_s = static_cast<int>(config.GetInt("epic.signin_timeout_s"));
   const auto result = runner::RunAndWait(command);
   if (!result) return std::unexpected(result.error());
   if (result->exit_code != 0) {

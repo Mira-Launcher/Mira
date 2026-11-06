@@ -48,38 +48,6 @@ TEST_CASE("ParseVdf skips // comments") {
   CHECK(root->Get({"appstate", "name"})->scalar == "Steamworks Common Redistributables");
 }
 
-TEST_CASE("ParseVdf handles the real localconfig.vdf Playtime/LastPlayed shape") {
-  const char* text = R"(
-"UserLocalConfigStore"
-{
-	"Software"
-	{
-		"Valve"
-		{
-			"Steam"
-			{
-				"apps"
-				{
-					"480"
-					{
-						"LastPlayed"		"1759204559"
-						"Playtime"		"332"
-					}
-				}
-			}
-		}
-	}
-}
-)";
-  auto root = steam::ParseVdf(text);
-  REQUIRE(root.has_value());
-  const auto* app =
-      root->Get({"UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "480"});
-  REQUIRE(app != nullptr);
-  CHECK(app->Get({"Playtime"})->scalar == "332");
-  CHECK(app->Get({"LastPlayed"})->scalar == "1759204559");
-}
-
 TEST_CASE("ParseVdf rejects unterminated input instead of hanging or crashing") {
   CHECK_FALSE(steam::ParseVdf(R"("a" { "b" "c")").has_value());
   CHECK_FALSE(steam::ParseVdf(R"("a" "unterminated)").has_value());

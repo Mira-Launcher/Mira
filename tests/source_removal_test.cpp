@@ -70,11 +70,8 @@ TEST_CASE(
     "Removing an emulator deletes Mira's download, and its settings and saves only when asked") {
   test::TestEnv env("remove-emulator");
   const fs::path home = env.dir / "home";
-  const std::string old_home = std::getenv("HOME");
-  const char* old_config = std::getenv("XDG_CONFIG_HOME");
-  const std::string old_config_home = old_config != nullptr ? old_config : "";
-  setenv("HOME", home.c_str(), 1);
-  setenv("XDG_CONFIG_HOME", (home / ".config").c_str(), 1);
+  const test::EnvVar home_var("HOME", home.c_str());
+  const test::EnvVar config_home("XDG_CONFIG_HOME", (home / ".config").c_str());
   const fs::path tool = env.dir / "tools" / "mgba";
   test::Touch(tool / "mgba.AppImage");
   test::Touch(home / ".config" / "mgba" / "config.ini");
@@ -91,10 +88,4 @@ TEST_CASE(
   REQUIRE(library::RemoveSource(env.config, env.games, env.events, "mgba", /*delete_data=*/true)
               .has_value());
   CHECK_FALSE(fs::exists(home / ".config" / "mgba"));
-
-  setenv("HOME", old_home.c_str(), 1);
-  if (old_config != nullptr)
-    setenv("XDG_CONFIG_HOME", old_config_home.c_str(), 1);
-  else
-    unsetenv("XDG_CONFIG_HOME");
 }

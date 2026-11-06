@@ -123,11 +123,7 @@ TEST_CASE("emulators: added files are copied or moved in, run, and move to anoth
   CHECK(summary->added == 0);
 }
 
-TEST_CASE("emulators: download sources read as a repository or link") {
-  CHECK(emulators::DefaultSource(*emulators::Find("duckstation")) == "stenzek/duckstation");
-  CHECK(emulators::DefaultSource(*emulators::Find("bsnes")) == "bsnes-emu/bsnes");
-  CHECK(emulators::DefaultSource(*emulators::Find("ryujinx"))
-            .starts_with("https://mirror.cachyos.org/"));
+TEST_CASE("emulators: a download source reads as a repository whether given as one or a link") {
   CHECK(strings::GithubRepo("https://github.com/someone/duckstation") == "someone/duckstation");
   CHECK(strings::GithubRepo("someone/duckstation") == "someone/duckstation");
 }

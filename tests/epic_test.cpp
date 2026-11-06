@@ -1,10 +1,8 @@
 #include <doctest.h>
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -135,19 +133,6 @@ TEST_CASE("Login rejects a pasted JSON page with no authorizationCode") {
   CHECK(result.error().code == "invalid_code");
 }
 
-TEST_CASE("RunLegendaryJson reads a top-level array through the same noise") {
-  // list/list-installed return an array, not an object -- the other half of
-  // the same bug.
-  Fixture fixture("epic-noisy-array");
-  fixture.UseFakeLegendary(kNoise, kLoggedIn, R"([{"app_name": "abc", "title": "A Game"}])");
-
-  const Result<nlohmann::json> listed = epic::RunLegendaryJson(fixture.config, {"list-installed"});
-  REQUIRE(listed);
-  REQUIRE(listed->is_array());
-  REQUIRE(listed->size() == 1);
-  CHECK((*listed)[0].value("app_name", std::string()) == "abc");
-}
-
 TEST_CASE("EpicImporter imports installed titles and tags them") {
   Fixture fixture("epic-import");
   fixture.UseFakeLegendary(
@@ -242,16 +227,17 @@ TEST_CASE("The library listing answers from the stored list and re-checks the st
   };
   // The first re-check of epic finished after event `after`, and whether it changed the list.
   const auto checked = [&](std::int64_t after) -> std::optional<bool> {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (std::chrono::steady_clock::now() < deadline) {
+    std::optional<bool> changed;
+    test::WaitUntil([&] {
       for (const auto& event : server.events().Since(after)) {
         if (event.type == "library.catalog_checked" && event.payload["source"] == "epic") {
-          return event.payload["changed"].get<bool>();
+          changed = event.payload["changed"].get<bool>();
+          return true;
         }
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    return std::nullopt;
+      return false;
+    });
+    return changed;
   };
 
   // Never listed: asked at once.

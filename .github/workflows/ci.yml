@@ -84,7 +84,10 @@ jobs:
           cmake --build build --target mira_tests mira_gui_tests mira-run
           ccache -sv
 
+      # Set up above for every test, so one that finds something missing fails instead of skipping.
       - name: Core tests
+        env:
+          MIRA_TESTS_REQUIRE_ALL: 1
         run: ./build/mira_tests
 
       - name: GUI tests

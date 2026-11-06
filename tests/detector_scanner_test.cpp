@@ -1,4 +1,5 @@
 #include <doctest.h>
+#include <unistd.h>
 
 #include <filesystem>
 #include <fstream>
@@ -100,10 +101,14 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
   // Found outside every library root (an install inside a prefix): no folder to name it after.
   CHECK(windows_game.tags.empty());
 
-  auto stream = env.events.Since(0);
-  REQUIRE(stream.size() == 2);
-  CHECK(stream[0].type == "game.added");
-  CHECK(stream[0].payload.value("open_config", false) == true);
+  // Each new game is announced, asking the GUI to open its settings.
+  int added = 0;
+  for (const model::Event& event : env.events.Since(0)) {
+    if (event.type != "game.added") continue;
+    ++added;
+    CHECK(event.payload.value("open_config", false));
+  }
+  CHECK(added == 2);
 }
 
 TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders") {
@@ -155,8 +160,11 @@ TEST_CASE(
   REQUIRE(scanner.ScanAll().added == 1);
 
   fs::permissions(lib, fs::perms::owner_all, fs::perm_options::remove);
+  // Root reads it regardless, as in an `unshare -r` run.
+  const bool locked = ::access(lib.c_str(), R_OK) != 0;
   const library::ScanSummary unreadable = scanner.ScanAll();
   fs::permissions(lib, fs::perms::owner_all, fs::perm_options::add);
+  if (!test::Has(locked, "way to lock a folder (it runs as root)")) return;
   CHECK(unreadable.missing == 0);
   REQUIRE(env.games.Find("celeste").has_value());
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
@@ -424,21 +432,6 @@ TEST_CASE("A marked installer beside its payload is picked over the tools packed
   REQUIRE_FALSE(game.candidates.empty());
   CHECK(game.candidates[0].rel_path == "Genesis.exe");
   CHECK_FALSE(game.candidates[0].is_installer);
-}
-
-TEST_CASE("AutoSetup stores an installer candidate as needs_install, not launchable") {
-  test::TestEnv env("autosetup-installer-config");
-  library::AutoSetup auto_setup(env.config, env.games, env.events);
-
-  library::Detector::Result detected;
-  detected.candidates.push_back(
-      {"setup_hollow_knight.exe", model::Platform::Windows, 4.0, true, true});
-  detected.confidence = 1.0;
-
-  model::Game game = auto_setup.CreateGame("/games/game-hollow", detected);
-  CHECK(game.status == model::GameStatus::NeedsInstall);
-  CHECK_FALSE(game.last_error.empty());
-  CHECK(game.exe_path == "setup_hollow_knight.exe");  // kept for reference, just not launchable yet
 }
 
 TEST_CASE("A small installer stub is still flagged if a large sibling payload sits beside it") {

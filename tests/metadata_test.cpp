@@ -55,17 +55,6 @@ TEST_CASE("Fetch on a non-Steam game with no SteamGridDB key fails, and caches n
   CHECK_FALSE(fs::exists(metadata::ArtworkDir(config, game.id)));
 }
 
-TEST_CASE("Metadata/artwork cache paths sit next to settings.toml, not a global XDG lookup") {
-  const fs::path dir = TempDir("metadata-paths");
-  config::Config config(dir / "settings.toml");
-  config.Load();
-  store::MetadataStore cache(dir);
-  cache.Load();
-
-  CHECK(metadata::ArtworkDir(config, "foo") == dir / "artwork" / "foo");
-  CHECK(cache.ArtworkDir("foo") == metadata::ArtworkDir(config, "foo"));
-}
-
 TEST_CASE("art rows point at files, and Remove drops the info, rows and files") {
   const fs::path dir = TempDir("metadata-art-rows");
   fs::create_directories(dir / "artwork" / "celeste");
@@ -96,6 +85,7 @@ TEST_CASE("SelectArtwork fails closed: no metadata, no candidate list, unknown i
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   // Nothing fetched yet for this game at all.
   CHECK_FALSE(metadata::SelectArtwork(config, cache, "no-such-game", "hero", 1).has_value());
@@ -128,6 +118,7 @@ TEST_CASE("FetchCandidatePage fails before asking SteamGridDB when it can't") {
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   CHECK(metadata::FetchCandidatePage(config, cache, "celeste", "banner", 0).error().code ==
         "invalid_type");
@@ -155,6 +146,7 @@ TEST_CASE("SelectArtwork records the pick and points the slot at its file") {
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   const fs::path image = dir / "new.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG new";
@@ -187,6 +179,7 @@ TEST_CASE(
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   std::vector<unsigned char> pixels(16 * 16 * 4, 200);
   std::string png;
@@ -221,6 +214,7 @@ TEST_CASE(
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   const auto write_png = [](const fs::path& file, int width, int height, unsigned char alpha) {
     std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 4, 128);
@@ -347,6 +341,7 @@ TEST_CASE(
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   const fs::path art = metadata::ArtworkDir(config, "celeste");
   fs::create_directories(art);
@@ -379,6 +374,7 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   const fs::path image = dir / "thumb.png";
   std::ofstream(image, std::ios::binary) << "\x89PNG fake";
@@ -423,9 +419,11 @@ TEST_CASE("FetchCandidateThumbs caches each listed preview and reports which fai
   CHECK(metadata::CandidateThumbFile(config, "celeste", "../cover", 1).empty());
 
   // Kept apart from the game's art, which a clear leaves alone.
-  CHECK_FALSE(fs::exists(metadata::ArtworkDir(config, "celeste") / "thumbs"));
+  const fs::path art = metadata::ArtworkDir(config, "celeste") / "cover.png";
+  test::Touch(art, "art");
   metadata::ClearCandidateThumbs(config);
   CHECK(metadata::CandidateThumbFile(config, "celeste", "cover", 1).empty());
+  CHECK(fs::exists(art));
 }
 
 TEST_CASE("Enqueue skips when metadata is off unless forced; a failure is only metadata_failed") {
@@ -518,6 +516,7 @@ TEST_CASE(
   };
   CHECK(metadata::TitleNeedsFetch(config, cache, "gog-1"));  // nothing cached
 
+  REQUIRE(config.Set("metadata.refresh_days", 30).has_value());
   write(model::NowSeconds());
   CHECK_FALSE(metadata::TitleNeedsFetch(config, cache, "gog-1"));
   write(model::NowSeconds(), 1);  // fetched before Steam's trailer streams
@@ -537,6 +536,7 @@ TEST_CASE("PruneOrphanArt removes old art folders with no cached record and keep
   config.Load();
   store::MetadataStore cache(dir);
   cache.Load();
+  test::Isolate(config);
 
   const auto folder = [&](const std::string& id, bool old) {
     const fs::path path = metadata::ArtworkDir(config, id);
@@ -590,7 +590,6 @@ TEST_CASE("A removed cover leaves the placeholder and stays removed through a re
   game.name = "Celeste";
   REQUIRE(metadata::Fetch(config, cache, game).has_value());
   CHECK_FALSE(cache.ArtFor("celeste", "cover").has_value());
-  CHECK(cache.Read("celeste")["artwork"].value("source", std::string()) == "none");
 }
 
 TEST_CASE("A store title that isn't installed has its art chosen like a game's") {

@@ -7,7 +7,7 @@
 # MIRA_BENCH_BASE_BIN and MIRA_BENCH_BRANCH_BIN name folders of built binaries (an extracted AppImage's
 # usr/bin) to measure instead of building; CI uses the AppImages it already built.
 # MIRA_BENCH_ONLY="read gui-pages" runs only those scenarios; MIRA_BENCH_GAMES sets the fixture's game count.
-# MIRA_BENCH_RECHECK (default 4) is how many more times a scenario listed for a time or memory change runs.
+# MIRA_BENCH_RECHECK (default 4) is how many more times a scenario with a change over its threshold, or a failed run, runs.
 # Base's build is kept per commit and build.sh, and the fixtures per base build, fixture scripts and size, so a rerun
 # against the same base only builds the branch, incrementally.
 set -euo pipefail
@@ -135,9 +135,9 @@ report() {  # compare.py args...
     --fixture "$out/fixture-base.json" --base-name "${MIRA_BENCH_BASE_NAME:-$base}" \
     --summary "$out/summary.md" --full "$out/full.md" "$@"
 }
-# A time or memory change in one or three runs can be the machine's load, mostly in the GUI's single run: the
-# scenarios listed for one run MIRA_BENCH_RECHECK more times, side by side as before, and the report is made
-# from every run. Only what was listed costs more time.
+# A time or memory change in one or three runs can be the machine's load, mostly in the GUI's single run, and a
+# failed run can be the runner: those scenarios run MIRA_BENCH_RECHECK more times, side by side as before, and
+# the report is made from every run. Only what was flagged costs more time.
 report --recheck "$out/recheck.txt" >/dev/null || true
 mapfile -t again <"$out/recheck.txt"
 mirad_again=() gui_again=()

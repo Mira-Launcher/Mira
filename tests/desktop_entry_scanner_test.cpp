@@ -7,6 +7,7 @@
 #include <json.hpp>
 #include <map>
 #include <optional>
+#include <set>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
@@ -57,6 +58,7 @@ struct Fixture {
       test::Touch(bin_dir / command, "#!/bin/sh\n", /*executable=*/true);
     }
     config.Load();
+    test::Isolate(config);
     REQUIRE(config.Set("desktop_import.extra_dirs", nlohmann::json::array({apps_dir.string()}))
                 .has_value());
     games.Load();
@@ -238,9 +240,10 @@ TEST_CASE(
   auto second = scanner.Import({"second"});
   REQUIRE(second.has_value());
   CHECK(second->added == 1);
-  REQUIRE(fx.games.All().size() == 2);
-  CHECK(fx.games.All()[0].exe_path == (fx.bin_dir / "first-game").string());
-  CHECK(fx.games.All()[1].exe_path == (fx.bin_dir / "second-game").string());
+  std::set<std::string> commands;
+  for (const model::Game& game : fx.games.All()) commands.insert(game.exe_path);
+  CHECK(commands == std::set<std::string>{(fx.bin_dir / "first-game").string(),
+                                          (fx.bin_dir / "second-game").string()});
 }
 
 TEST_CASE("DesktopEntryScanner: an entry whose command isn't installed isn't offered") {

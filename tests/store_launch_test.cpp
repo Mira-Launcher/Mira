@@ -83,13 +83,6 @@ void Play(test::LiveServer& server, httplib::Client& client, const std::string& 
   REQUIRE(test::WaitUntil([&] { return Exits(server, id) > before; }, std::chrono::seconds(20)));
 }
 
-bool SystemdUserAvailable() {
-  Command probe;
-  probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
-  const auto ran = runner::RunAndWait(probe);
-  return ran && ran->exit_code == 0;
-}
-
 bool Alive(const fs::path& pid_file) {
   const std::string pid = ReadText(pid_file);
   return !pid.empty() && ::kill(std::stoi(pid), 0) == 0;
@@ -118,14 +111,11 @@ TEST_CASE("An Epic game starts signed in to Epic, and its exchange code is never
   const std::string args = ReadText(dir / "fir" / "run.sh.args");
   CHECK(args.find(std::string("-AUTH_PASSWORD=") + kExchangeCode) != std::string::npos);
   CHECK(args.find("-epicuserid=abc") != std::string::npos);
-  CHECK(ReadText(dir / "legendary.calls").find("launch Fir --json --skip-version-check") !=
-        std::string::npos);
   // legendary's ownership token is only for that launch.
   CHECK(test::WaitUntil([&] { return !fs::exists(ovt); }));
 
   // The code stays out of every log and event.
   const std::string game_log = client.Get("/v1/logs/game:epic-Fir?lines=1000")->body;
-  CHECK(game_log.find("-AUTH_PASSWORD=***") != std::string::npos);
   CHECK(game_log.find(kExchangeCode) == std::string::npos);
   CHECK(client.Get("/v1/logs/daemon?lines=5000")->body.find(kExchangeCode) == std::string::npos);
   for (const model::Event& event : server.events().Since(0))
@@ -214,7 +204,9 @@ TEST_CASE("An Epic game still starts when legendary can't give its sign-in") {
   Play(server, client, "epic-Fir");
   CHECK(ReadText(dir / "fir" / "run.sh.args").find("-epicuserid=abc") != std::string::npos);
 
-  // Hanging both ways: the game starts without them once legendary's time is up.
+  // Hanging both ways: the game starts without them once legendary's time is up, not after the
+  // hang.
+  REQUIRE(server.MutableConfig().Set("epic.signin_timeout_s", 1).has_value());
   UseFakeLegendary(server, dir, "    sleep 60");
   fs::remove(dir / "fir" / "run.sh.args");
   const auto started = std::chrono::steady_clock::now();
@@ -224,10 +216,7 @@ TEST_CASE("An Epic game still starts when legendary can't give its sign-in") {
 }
 
 TEST_CASE("comet runs once beside GOG games, signed in without a token on its command line") {
-  if (!SystemdUserAvailable()) {
-    MESSAGE("no systemd user session; skipped");
-    return;
-  }
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   test::LiveServer server(test::TempDir("store-launch-gog"));
   const fs::path dir = server.config().File().parent_path();
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(

@@ -13,13 +13,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool SystemdUserAvailable() {
-  Command probe;
-  probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
-  auto ran = runner::RunAndWait(probe);
-  return ran.has_value() && ran->exit_code == 0;
-}
-
 json Record(httplib::Client& client, const std::string& id) {
   return json::parse(client.Get("/v1/games/" + id)->body);
 }
@@ -28,15 +21,14 @@ json Record(httplib::Client& client, const std::string& id) {
 
 TEST_CASE(
     "A tool a game opens is listed as open until it closes, and stopping the game closes it") {
-  if (!SystemdUserAvailable()) {
-    MESSAGE("no systemd user session; skipped");
-    return;
-  }
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   test::LiveServer server(test::TempDir("launch-tools"));
   const fs::path dir = server.config().File().parent_path();
   // A launcher that starts the real program and exits at once, as many mod managers' do.
   test::Touch(dir / "manager" / "launch.sh", "#!/bin/sh\nsleep 300 &\ntouch \"$0.done\"\n",
               /*executable=*/true);
+  // One whose launcher leaves nothing running, so it closes as soon as mirad sees the launcher end.
+  test::Touch(dir / "check" / "launch.sh", "#!/bin/sh\n", /*executable=*/true);
   test::Touch(dir / "game" / "run.sh", "#!/bin/sh\n", /*executable=*/true);
   model::Game game;
   game.id = "fir";
@@ -47,13 +39,16 @@ TEST_CASE(
   game.exe_path = "run.sh";
   REQUIRE(server.games().Upsert(game).has_value());
   auto client = server.Client();
-  const json option = {{"id", "manager"},
-                       {"name", "Manager"},
-                       {"mode", "tool"},
-                       {"exe", (dir / "manager" / "launch.sh").string()},
-                       {"native", true}};
+  const auto tool = [&](const std::string& id, const std::string& name) {
+    return json{{"id", id},
+                {"name", name},
+                {"mode", "tool"},
+                {"exe", (dir / id / "launch.sh").string()},
+                {"native", true}};
+  };
+  const json options = json::array({tool("manager", "Manager"), tool("check", "Check")});
   REQUIRE(client
-              .Patch("/v1/games/fir", json{{"launch", {{"options", json::array({option})}}}}.dump(),
+              .Patch("/v1/games/fir", json{{"launch", {{"options", options}}}}.dump(),
                      "application/json")
               ->status == 200);
   CHECK(Record(client, "fir")["tools"].empty());
@@ -81,8 +76,12 @@ TEST_CASE(
   // Still open once its launcher has exited, since what it started runs on; not a play session.
   REQUIRE(test::WaitUntil([&] { return fs::exists(dir / "manager" / "launch.sh.done"); }));
   const std::int64_t after_launcher = last_id();
-  CHECK_FALSE(test::WaitUntil([&] { return Record(client, "fir")["tools"].empty(); },
-                              std::chrono::milliseconds(2500)));
+  // Once a tool opened after it has closed, mirad has seen the manager's launcher end too.
+  REQUIRE(
+      json::parse(client.Post("/v1/games/fir/launch", R"({"option": "check"})", "application/json")
+                      ->body)["status"] == "opened");
+  REQUIRE(test::WaitUntil([&] { return Record(client, "fir")["tools"].size() == 1; }));
+  CHECK(Record(client, "fir")["tools"] == json::array({{{"id", "manager"}, {"name", "Manager"}}}));
   CHECK_FALSE(Record(client, "fir")["running"].get<bool>());
   for (const model::Event& event : server.events().Since(0)) CHECK(event.type != "game.state");
 

@@ -1,5 +1,9 @@
 #include "support/TestEnv.h"
 
+#include <doctest.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <cstdlib>
 #include <format>
 #include <fstream>
@@ -7,14 +11,66 @@
 #include <thread>
 #include <utility>
 
+#include "core/Command.h"
+#include "runner/Exec.h"
+
 namespace mira::test {
 namespace fs = std::filesystem;
 
+const fs::path& TestsRoot() {
+  static const fs::path root = fs::temp_directory_path() / std::format("mira-tests-{}", ::getpid());
+  return root;
+}
+
 fs::path TempDir(std::string_view name) {
-  const fs::path dir = fs::temp_directory_path() / "mira-tests" / name;
+  const fs::path dir = TestsRoot() / name;
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
+}
+
+namespace {
+const fs::path& OtherDiskRoot() {
+  static const fs::path root = std::format("/dev/shm/mira-tests-{}", ::getpid());
+  return root;
+}
+}  // namespace
+
+std::optional<fs::path> OtherDiskDir(std::string_view name) {
+  fs::create_directories(TestsRoot());
+  struct stat here{}, there{};
+  const bool other = ::stat(TestsRoot().c_str(), &here) == 0 &&
+                     ::stat(OtherDiskRoot().parent_path().c_str(), &there) == 0 &&
+                     here.st_dev != there.st_dev;
+  if (!Has(other, "second disk (/dev/shm on its own device)")) return std::nullopt;
+  const fs::path dir = OtherDiskRoot() / name;
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  return dir;
+}
+
+std::vector<fs::path> TestsRoots() {
+  return {TestsRoot(), OtherDiskRoot()};
+}
+
+bool Has(bool available, std::string_view what) {
+  if (available) return true;
+  if (std::getenv("MIRA_TESTS_REQUIRE_ALL") != nullptr) {
+    FAIL_CHECK("this machine has no " << what << ", and MIRA_TESTS_REQUIRE_ALL is set");
+  } else {
+    WARN_MESSAGE(false, "skipped: this machine has no " << what);
+  }
+  return false;
+}
+
+bool SystemdUserSession() {
+  static const bool available = [] {
+    Command probe;
+    probe.argv = {"systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"};
+    const auto ran = runner::RunAndWait(probe);
+    return ran.has_value() && ran->exit_code == 0;
+  }();
+  return available;
 }
 
 bool WaitUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
