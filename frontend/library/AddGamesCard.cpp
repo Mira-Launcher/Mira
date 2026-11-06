@@ -1,7 +1,9 @@
 #include "AddGamesCard.h"
 
+#include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDir>
 #include <QFileDialog>
@@ -11,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <memory>
@@ -18,8 +21,10 @@
 #include "../app/ErrorHelp.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
+#include "../client/api/Downloads.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../downloads/LinkText.h"
 #include "../game/CardParts.h"
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
@@ -100,7 +105,12 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
 }
 
 void AddGamesCard::ShowPage(SettingsCard* page) {
-  if (page_ != nullptr) page_->deleteLater();
+  if (page_ != nullptr) {
+    // Out of the layout now: until it's deleted, its height would add to the new page's.
+    layout_->removeWidget(page_);
+    page_->hide();
+    page_->deleteLater();
+  }
   page_ = page;
   page->setParent(this);
   layout_->addWidget(page);
@@ -174,6 +184,11 @@ void AddGamesCard::ShowMenu() {
         this, "Installer", QDir::homePath(), "Installers (*.exe *.msi *.EXE *.MSI);;All files (*)");
     if (!file.isEmpty()) Classify(file, true);
   });
+
+  QPushButton* links = add_row(icons::Glyph::External, "Download from links",
+                               "Downloads, extracts and installs one game", "Paste…")
+                           .second;
+  connect(links, &QPushButton::clicked, this, [this] { ShowLinks(); });
 
   auto [menu_line, menu] = add_row(icons::Glyph::Grid, "From your app menu", "…", "Choose…");
   menu_detail_ = menu_line;
@@ -495,6 +510,123 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
   connect(shown, &QPushButton::clicked, this, [run] { run(true); });
 
   ShowPage(page);
+}
+
+void AddGamesCard::ShowLinks() {
+  const int request = ++request_;
+  SettingsCard* page = NewPage();
+  AddCardBack(page, [this] { ShowMenu(); });
+  AddCardHeading(page, "Download from links", "Close", [this] { Close(); });
+
+  auto* intro = new SettingRow("Links for one game", QString(), page);
+  intro->SetBelow(Detail(intro, "One per line. Add another game the same way afterwards."));
+  page->AddRow(intro);
+  auto* text = new QPlainTextEdit(page);
+  text->setFixedHeight(140);
+  text->setPlaceholderText("https://…");
+  // What was just copied is most likely what's wanted.
+  const std::vector<std::string> copied = downloads::ParseLinks(QApplication::clipboard()->text());
+  for (const std::string& link : copied) text->appendPlainText(QString::fromStdString(link));
+  auto* box = new QWidget(page);
+  auto* box_layout = new QVBoxLayout(box);
+  box_layout->setContentsMargins(18, 0, 18, 10);
+  box_layout->addWidget(text);
+  page->AddRow(box);
+
+  QLabel* error = AddErrorLine(page);
+  QHBoxLayout* buttons = AddButtonRow(page);
+  auto* cancel = new QPushButton("Cancel", page);
+  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
+  buttons->addWidget(cancel);
+  auto* next = new QPushButton("Continue", page);
+  next->setDefault(true);
+  buttons->addWidget(next);
+  const auto refresh = [text, next] {
+    next->setEnabled(!downloads::ParseLinks(text->toPlainText()).empty());
+  };
+  refresh();
+  connect(text, &QPlainTextEdit::textChanged, page, refresh);
+  connect(next, &QPushButton::clicked, this, [=, this] {
+    const std::vector<std::string> links = downloads::ParseLinks(text->toPlainText());
+    next->setEnabled(false);
+    next->setText("Checking…");
+    error->hide();
+    api::CheckLinksAsync(this, links, [=, this](LinkCheckResult result) {
+      if (request != request_) return;
+      if (result.ok) return ShowLinksConfirm(links, result.files);
+      next->setText("Continue");
+      next->setEnabled(true);
+      error->setText(error_help::Describe(result.error));
+      error->show();
+    });
+  });
+  ShowPage(page);
+  text->setFocus();
+}
+
+void AddGamesCard::ShowLinksConfirm(const std::vector<std::string>& links,
+                                    const std::vector<DownloadFile>& files) {
+  ++request_;
+  SettingsCard* page = NewPage();
+  AddCardBack(page, [this] { ShowLinks(); });
+  std::int64_t total = 0;
+  for (const DownloadFile& file : files) total += file.total;
+  const QString count =
+      files.size() == 1 ? QString("1 file") : QString("%1 files").arg(files.size());
+  AddCardHeading(
+      page, "Download this game?", "Close", [this] { Close(); },
+      total > 0 ? count + "  ·  " + SizeText(total) : count);
+
+  auto* name_row = new SettingRow("Name", QString(), page);
+  auto* name = new QLineEdit(
+      files.empty() ? QString() : downloads::GuessName(QString::fromStdString(files.front().name)),
+      name_row);
+  name->setFixedWidth(240);
+  name_row->AddControl(name);
+  page->AddRow(name_row);
+
+  auto* password_row = new SettingRow("Archive password", QString(), page);
+  password_row->SetBelow(
+      Detail(password_row, "Optional. Passwords that worked before are tried first."));
+  auto* password = new QLineEdit(password_row);
+  password->setFixedWidth(240);
+  password_row->AddControl(password);
+  page->AddRow(password_row);
+
+  for (const DownloadFile& file : files) {
+    auto* row = new SettingRow(QString::fromStdString(file.name), QString(), page);
+    QStringList parts{QString::fromStdString(file.source)};
+    if (file.total > 0) parts << SizeText(file.total);
+    row->SetBelow(Detail(row, parts.join("  ·  ")));
+    page->AddRow(row);
+  }
+  if (files.size() > 4) page->SetScrollable();
+
+  QLabel* error = AddErrorLine(page);
+  QHBoxLayout* buttons = AddButtonRow(page);
+  auto* cancel = new QPushButton("Cancel", page);
+  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
+  buttons->addWidget(cancel);
+  auto* start = new QPushButton("Download", page);
+  start->setDefault(true);
+  buttons->addWidget(start);
+  const auto refresh = [start, name] { start->setEnabled(!name->text().trimmed().isEmpty()); };
+  refresh();
+  connect(name, &QLineEdit::textChanged, page, refresh);
+  connect(start, &QPushButton::clicked, this, [=, this] {
+    start->setEnabled(false);
+    error->hide();
+    api::AddDownloadAsync(this, name->text().trimmed().toStdString(), links,
+                          password->text().toStdString(), [=, this](StoreActionResult result) {
+                            if (result.ok) return Close();
+                            start->setEnabled(true);
+                            error->setText(error_help::Describe(result.error));
+                            error->show();
+                          });
+  });
+  ShowPage(page);
+  name->setFocus();
+  name->selectAll();
 }
 
 void AddGamesCard::ShowAppMenu() {

@@ -58,7 +58,11 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
 // Extracts `archive` into `out_dir`: tarballs with tar, which keeps symlinks
 // and permissions, and everything else (zip, rar, 7z, split volumes) with
 // 7-Zip.
-Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir);
+// `password` opens an encrypted archive; a tarball has none.
+Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir,
+                     const std::string& password = {});
+// The 7-Zip on PATH, if any.
+std::optional<std::string> SevenZip();
 
 // Absolute path to `name` if it's on $PATH, else nullopt. Used to check a
 // runner's actual dependency (umu-run, wine) is installed, rather than

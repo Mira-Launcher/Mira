@@ -24,8 +24,8 @@ namespace mira_gui {
 
 QString CategoryNavGroup(const QString& category) {
   static const QStringList kLookAndFeel = {"Interface", "Big screen", "Sidebar", "Shortcuts"};
-  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries", "Updates",
-                                      "Advanced"};
+  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries",
+                                      "Downloads", "Updates",  "Advanced"};
   if (kLookAndFeel.contains(category)) return "Look and feel";
   if (kSystem.contains(category)) return "System";
   return "Games";

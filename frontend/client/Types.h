@@ -1453,6 +1453,49 @@ struct StoreActionResult {
   ApiError error;
 };
 
+// One file of a link download (docs/api.md#downloads).
+struct DownloadFile {
+  std::string name;
+  std::string source;  // "Direct", "Pixeldrain", ...
+  std::int64_t total = 0;
+  std::int64_t done = 0;
+  std::string state;
+};
+
+// One game being fetched from links. `state`: queued, resolving, downloading, paused, extracting,
+// password, failed or done.
+struct DownloadInfo {
+  std::string id;
+  std::string name;
+  std::string state;
+  ApiError error;
+  std::vector<DownloadFile> files;
+  std::int64_t total = 0;
+  std::int64_t done = 0;
+  std::int64_t speed = 0;
+  std::string service;          // while a download service is fetching it
+  double service_progress = 0;  // 0 to 1
+};
+
+struct DownloadsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<DownloadInfo> downloads;
+};
+
+struct DownloadPasswordsResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<std::string> passwords;
+};
+
+// What pasted links turned out to be, before anything downloads.
+struct LinkCheckResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<DownloadFile> files;
+};
+
 // GET /v1/library/size: what installing a store title downloads and takes on disk.
 struct InstallSizeResult {
   bool ok = false;

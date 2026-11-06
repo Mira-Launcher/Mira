@@ -55,6 +55,8 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
       return "runner:" + source + "/" + ref;
     case Kind::Job:
       return "job:" + ref;
+    case Kind::Link:
+      return "link:" + ref;
   }
   return QString();
 }
@@ -72,6 +74,7 @@ QString DownloadTracker::LogChannelFor(const Entry& entry) {
     case Kind::Runner:
       return "runner:" + entry.source + ":" + entry.ref;
     case Kind::Job:
+    case Kind::Link:
       return "daemon";
   }
   return "daemon";
@@ -100,6 +103,7 @@ QString DownloadTracker::JobFor(const Entry& entry) const {
       target = entry.source + ":" + entry.ref;
       break;
     case Kind::Job:
+    case Kind::Link:
       return {};
   }
   const auto found = job_by_target_.find(target);
@@ -200,6 +204,62 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   }
   emit Changed(entry.key);
   return true;
+}
+
+DownloadTracker::Entry DownloadTracker::FromLink(const DownloadInfo& download) {
+  Entry entry;
+  entry.kind = Kind::Link;
+  entry.ref = QString::fromStdString(download.id);
+  entry.key = KeyFor(Kind::Link, QString(), entry.ref);
+  entry.link_state = QString::fromStdString(download.state);
+  entry.error = download.error;
+  entry.changed = QDateTime::currentDateTime();
+  const std::string& state = download.state;
+  if (state == "paused" || state == "password") {
+    entry.state = State::Paused;
+  } else if (state == "failed") {
+    entry.state = State::Failed;
+  } else if (state == "done") {
+    entry.state = State::Finished;
+  }
+  if (state == "queued") entry.message = "Queued";
+  if (state == "resolving") entry.message = "Checking links…";
+  if (state == "service") {
+    entry.message = QString("%1 is getting it…").arg(QString::fromStdString(download.service));
+    entry.progress = download.service_progress;
+  }
+  if (state == "extracting") entry.message = "Extracting…";
+  if (state == "password") entry.message = "Waiting for a password";
+  if ((state == "downloading" || state == "paused") && download.total > 0) {
+    entry.progress = static_cast<double>(download.done) / static_cast<double>(download.total);
+    entry.downloaded_bytes = download.done;
+    entry.total_bytes = download.total;
+    if (download.speed > 0) {
+      entry.bytes_per_second = static_cast<double>(download.speed);
+      entry.eta_seconds = (download.total - download.done) / download.speed;
+    }
+  }
+  return entry;
+}
+
+void DownloadTracker::SetLink(const DownloadInfo& download) {
+  Entry entry = FromLink(download);
+  const QString key = entry.key;
+  NoteTitle("link", entry.ref, QString::fromStdString(download.name));
+  // In place: rows ticking every second would otherwise keep trading places.
+  const auto found = std::ranges::find(entries_, key, &Entry::key);
+  if (found == entries_.end()) {
+    entries_.insert(entries_.begin(), std::move(entry));
+  } else {
+    *found = std::move(entry);
+  }
+  emit Changed(key);
+}
+
+void DownloadTracker::RemoveLink(const QString& id) {
+  const QString key = KeyFor(Kind::Link, QString(), id);
+  if (std::erase_if(entries_, [&key](const Entry& e) { return e.key == key; }) > 0)
+    emit Changed(key);
 }
 
 void DownloadTracker::LoadPaused() {
@@ -408,6 +468,10 @@ QString DownloadTracker::NameFor(const Entry& entry) const {
     }
     case Kind::Job: {
       const QString label = titles_.value("job:" + entry.ref);
+      return label.isEmpty() ? entry.ref : label;
+    }
+    case Kind::Link: {
+      const QString label = titles_.value("link:" + entry.ref);
       return label.isEmpty() ? entry.ref : label;
     }
   }

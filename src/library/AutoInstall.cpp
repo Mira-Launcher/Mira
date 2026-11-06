@@ -466,9 +466,26 @@ bool Installing(const std::string& id) {
   return it != tracked.end() && it->second.progress.state == "running";
 }
 
+namespace {
+std::mutex requested_mutex;
+std::set<fs::path> requested_installs;
+}  // namespace
+
+void RequestAutoInstall(const fs::path& folder) {
+  const std::lock_guard lock(requested_mutex);
+  requested_installs.insert(folder.lexically_normal());
+}
+
+bool IsAutoInstallRequested(const fs::path& folder) {
+  const std::lock_guard lock(requested_mutex);
+  return requested_installs.contains(folder.lexically_normal());
+}
+
 bool AutoInstalls(const config::Config& config, const model::Game& game) {
   if (game.status != model::GameStatus::NeedsInstall) return false;
-  if (!config.GetBool("auto_setup") || !config.GetBool("scan.auto_run_installers")) return false;
+  if (!config.GetBool("auto_setup")) return false;
+  if (!config.GetBool("scan.auto_run_installers") && !IsAutoInstallRequested(game.install_path))
+    return false;
   if (!config.GetBool("install.retry_failed") &&
       game.last_error.starts_with("Install didn't finish"))
     return false;

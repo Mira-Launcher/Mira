@@ -28,6 +28,11 @@ class DownloadsPanel : public QWidget {
   void ShowGameRequested(const QString& id);
   // "Log" on any row: its live log, by channel, with the row's name.
   void LogRequested(const QString& channel, const QString& title);
+  // A link download's row: pause, resume or retry.
+  void LinkAction(const QString& id, const QString& action);
+  void LinkPasswordRequested(const QString& id);
+  void ManageRequested();
+  void FinishedCleared();
 
  private:
   void Rebuild();

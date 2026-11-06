@@ -1612,6 +1612,44 @@ Schema::Schema() {
          .doc = "Mira looks for newer releases of itself and of the emulators, store tools and "
                 "runners it downloaded."});
 
+  s.Section("Downloads", "Downloads");
+
+  s.Add({.key = "downloads.speed_limit_mb",
+         .label = "Speed limit",
+         .type = Type::Int,
+         .default_value = 0,
+         .doc = "The most link downloads may use together, in MB/s. 0 is no limit."});
+
+  s.Add({.key = "downloads.parallel",
+         .label = "Downloads at once",
+         .type = Type::Int,
+         .default_value = 2,
+         .doc = "How many games download from links at the same time."});
+
+  s.Add({.key = "downloads.keep_archives",
+         .label = "Keep archives",
+         .type = Type::Bool,
+         .default_value = false,
+         .doc = "Moves a downloaded game's archives to Archives in the Mira folder instead of "
+                "deleting them once they're extracted."});
+
+  s.Add({.key = "downloads.auto_install",
+         .label = "Run installers",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Runs a downloaded game's installer on its own once it's in the library, when Mira "
+                "can run that kind of installer unattended."});
+
+  s.Add({.key = "downloads.torbox_key",
+         .label = "TorBox API key",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Optional. With a key, Mira gets torrents through TorBox, uses it for anything it "
+                "already has ready, and falls back to it when a link can't be downloaded directly.",
+         .is_secret = true,
+         .link = "https://torbox.app/settings",
+         .keywords = "debrid service torrent magnet token"});
+
   // --- Advanced --------------------------------------------------------------
   s.Section("Advanced", "Daemon");
   s.ResetTogether();

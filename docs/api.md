@@ -687,6 +687,35 @@ A [job](#jobs) of kind `mira_update` that downloads Mira's latest release and ch
 
 `emulators.<id>.repo` switches an emulator Mira downloads to a fork: `owner/repo` or a GitHub link, or a Forgejo or GitLab releases API link. The fork's release then no longer matches what's installed, so it shows here as an update.
 
+## Downloads
+
+One game's links, downloaded with aria2 (a system package) into `.mira-downloads` in the first Mira folder. Archives are then extracted, and the result moves into the Mira folder, where the usual sorting and install take over. A program goes straight into Games or Applications under the name given, and with `downloads.auto_install` its installer runs if Mira can run it unattended. The queue survives a restart of mirad, continuing what's already on disk.
+
+With `downloads.torbox_key` set, torrents go through TorBox. Other links use it when it already has them ready, and fall back to it when they can't be read or their download fails. Items Mira adds stay in the TorBox account.
+
+### `GET /v1/downloads`
+A list of `{id, name, links, state, files, total, done, speed, password, error?}`. `state` is `queued`, `resolving`, `service`, `downloading`, `paused`, `extracting`, `password`, `failed` or `done`. Each of `files` is `{name, source, total, done, state}`. While `state` is `service`, a download service is fetching it and `service` is `{name, progress}`. `error` is `{code, message, hint}`; while `state` is `password`, `wrong_password` means the last one tried didn't open it.
+
+Events: `download.changed` carries one of these whenever it changes, and `download.removed` carries `{id}`.
+
+### `POST /v1/downloads/check`
+`{"links": ["..."]}` answers `{"files": [{name, size, source}]}` without downloading. A dead link is ignored when another link gives a file of the same name. `400` when a link can't be used: `invalid_links` for anything but http, https or magnet, `link_is_a_page`, `link_not_found`, `link_unreachable`, `link_unreadable`, or, with no service set up, `service_needed` for a torrent.
+
+### `POST /v1/downloads`
+`{"name": "...", "links": ["..."], "password": "..."}` queues a game and answers `201` with it. `password` is optional, and is tried before the saved ones.
+
+### Controlling a download
+- `POST /v1/downloads/{id}/pause` and `/resume`
+- `POST /v1/downloads/{id}/retry`: one that failed
+- `POST /v1/downloads/{id}/front`: moves a queued one ahead of the others waiting
+- `POST /v1/downloads/{id}/password`: `{"password": "..."}` for one waiting on it. A password that works is saved and tried on later archives.
+- `DELETE /v1/downloads/{id}`: cancels it and deletes what it downloaded. A finished one just leaves the list.
+
+These answer `404` for an unknown id, `409` when it isn't in a state to do that.
+
+### `GET /v1/downloads/passwords`, `PUT /v1/downloads/passwords`
+The saved archive passwords as a list of strings, most recently working first. `PUT` takes `{"passwords": ["..."]}` and replaces them.
+
 ## Sources
 
 ### `GET /v1/sources`

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../client/ApiError.h"
+#include "../client/Types.h"
 
 class QTimer;
 
@@ -30,7 +31,7 @@ class DownloadTracker : public QObject {
   Q_OBJECT
 
  public:
-  enum class Kind { Game, Title, Launcher, Tool, Runner, Job };
+  enum class Kind { Game, Title, Launcher, Tool, Runner, Job, Link };
   enum class State { Running, Paused, Finished, Failed };
 
   struct Entry {
@@ -46,7 +47,8 @@ class DownloadTracker : public QObject {
     double bytes_per_second = -1;
     qint64 downloaded_bytes = -1;  // Title, of total_bytes, when the store reports them
     qint64 total_bytes = -1;       // Title: the download's; Game: a guess at the installed size
-    QString message;               // a Job's current step
+    QString message;               // a Job's current step, or what a Link waits on or does
+    QString link_state;            // a Link's state as mirad names it
     ApiError error;
     QDateTime changed;
   };
@@ -82,6 +84,11 @@ class DownloadTracker : public QObject {
   void RecheckJobs();
   // Rows for the installs mirad has paused, e.g. after reconnecting.
   void LoadPaused();
+
+  // A link download as an entry: its row, and the Downloads window's progress text.
+  static Entry FromLink(const DownloadInfo& download);
+  void SetLink(const DownloadInfo& download);
+  void RemoveLink(const QString& id);
 
   // Newest first.
   const std::vector<Entry>& Entries() const { return entries_; }

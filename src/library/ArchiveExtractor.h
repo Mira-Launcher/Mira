@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -24,6 +25,17 @@ std::vector<std::filesystem::path> VolumesOf(const std::filesystem::path& archiv
 
 // True while any process has one of `paths` open for writing.
 bool AnyOpenForWriting(const std::vector<std::filesystem::path>& paths);
+
+// `dest`, or "<dest> (2)" and so on when something is already there.
+std::filesystem::path FreeName(const std::filesystem::path& dest);
+
+// Which of `candidates` opens `archive`: empty when it isn't encrypted, nullopt when none does.
+Result<std::optional<std::string>> FindPassword(const std::filesystem::path& archive,
+                                                const std::vector<std::string>& candidates);
+
+// Deletes the links under `dir` that lead out of it, or nowhere: an archive could aim one at
+// anything on the system.
+void RemoveEscapingLinks(const std::filesystem::path& dir);
 
 std::filesystem::path StemWithoutArchiveExtension(const std::filesystem::path& archive);
 

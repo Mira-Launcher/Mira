@@ -602,7 +602,6 @@ void Sidebar::UpdateSources() {
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
-    const QString update = off || signed_out ? QString() : source_updates_.value(id);
     auto* row = qobject_cast<QHBoxLayout*>(source_row.nav->layout());
     if (show_source_covers_) {
       std::vector<const GameSummary*> covers = std::move(shown[id.toStdString()]);
@@ -640,10 +639,6 @@ void Sidebar::UpdateSources() {
         detail = QString("<span style=\"color: %1;\">Signed out</span>")
                      .arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
-      } else if (!update.isEmpty()) {
-        detail = QString("<span style=\"color: %1;\">Update available</span>")
-                     .arg(theme::Current().accent.name()) +
-                 (detail.isEmpty() ? QString() : " · " + detail);
       }
       source_row.detail->setText(detail);
       source_row.detail->setVisible(!detail.isEmpty());
@@ -657,13 +652,11 @@ void Sidebar::UpdateSources() {
       QString label = show_source_counts_ ? counted : QString();
       if (off) label = "Off";
       if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
-      if (!update.isEmpty()) label = StatusDot(theme::Current().accent) + label;
       source_row.count->setText(label);
       source_row.count->show();
     }
-    source_row.nav->setToolTip(signed_out         ? QString("Signed out of %1").arg(sources[i].name)
-                               : update.isEmpty() ? QString()
-                                                  : "Update available: " + update);
+    source_row.nav->setToolTip(signed_out ? QString("Signed out of %1").arg(sources[i].name)
+                                          : QString());
   }
   // isHidden, not isVisible: this also runs while the sidebar itself is off screen.
   sources_empty_->setVisible(sources_shown &&

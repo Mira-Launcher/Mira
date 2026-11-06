@@ -27,7 +27,10 @@ class TopBar : public QWidget {
   // What has a newer release, shown beside the Updates icon.
   void SetUpdatesCount(int pending);
   // The button for Mira's own update: empty `text` hides it, and `busy` is one already running.
-  void SetMiraUpdate(const QString& text, bool busy, const QString& tooltip);
+  // The one notice the bar has room for, the most important at the moment; empty text hides it.
+  // `busy` keeps it quiet, for what's only reporting progress.
+  void SetNotice(const QString& text, bool busy, const QString& tooltip, bool lock = false);
+  QWidget* notice_button() const;
   // The window's maximized state changed: the button's icon and tooltip follow.
   void SyncMaximized();
   // Hidden mode's note in the middle of the bar, naming `shortcut` as the way out; none for empty.
@@ -36,7 +39,7 @@ class TopBar : public QWidget {
  signals:
   void ActivityClicked();
   void UpdatesClicked();
-  void MiraUpdateClicked();
+  void NoticeClicked();
   void BigScreenClicked();
   void RefreshClicked();
   void ShortcutsClicked();
@@ -60,7 +63,7 @@ class TopBar : public QWidget {
   QSlider* zoom_ = nullptr;
   QToolButton* activity_ = nullptr;
   QToolButton* updates_ = nullptr;
-  QToolButton* mira_update_ = nullptr;
+  QToolButton* notice_ = nullptr;
   QToolButton* big_screen_ = nullptr;
   QToolButton* refresh_ = nullptr;
   QToolButton* shortcuts_ = nullptr;
