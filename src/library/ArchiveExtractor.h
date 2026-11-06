@@ -33,6 +33,10 @@ std::filesystem::path FreeName(const std::filesystem::path& dest);
 Result<std::optional<std::string>> FindPassword(const std::filesystem::path& archive,
                                                 const std::vector<std::string>& candidates);
 
+// Deletes the links under `dir` that lead out of it, or nowhere: an archive could aim one at
+// anything on the system.
+void RemoveEscapingLinks(const std::filesystem::path& dir);
+
 std::filesystem::path StemWithoutArchiveExtension(const std::filesystem::path& archive);
 
 // Extracts into a hidden folder next to `dest_dir` and moves the result into

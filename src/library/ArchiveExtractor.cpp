@@ -140,6 +140,25 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   return std::optional<std::string>();
 }
 
+void RemoveEscapingLinks(const fs::path& dir) {
+  std::error_code ec;
+  const fs::path root = fs::weakly_canonical(dir, ec);
+  if (ec) return;
+  std::vector<fs::path> escaping;
+  for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
+    std::error_code link_ec;
+    if (!entry.is_symlink(link_ec)) continue;
+    // Resolved fully, so a chain of links can't step out where each one alone looks fine.
+    const fs::path target = fs::weakly_canonical(entry.path(), link_ec);
+    const fs::path inside = target.lexically_relative(root);
+    if (link_ec || inside.empty() || *inside.begin() == "..") escaping.push_back(entry.path());
+  }
+  for (const fs::path& link : escaping) {
+    log::Warn("removed a link leading out of an archive: {}", link.string());
+    fs::remove(link, ec);
+  }
+}
+
 bool LooksLikeArchive(const fs::path& path) {
   return !SuffixOf(path).empty() && !IsLaterVolume(path);
 }

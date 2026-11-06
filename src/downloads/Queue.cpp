@@ -476,6 +476,7 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
     if (auto done = runner::Extract(archives[i], extracted, chosen[i]); !done) return done;
     if (!chosen[i].empty()) RememberPassword(chosen[i]);
   }
+  library::RemoveEscapingLinks(extracted);
   // What came alongside the archives belongs to the game too.
   for (const fs::path& path : entries) {
     if (library::LooksLikeArchive(path) || library::IsLaterVolume(path)) continue;

@@ -55,6 +55,26 @@ TEST_CASE("FindPassword picks the password that opens an archive") {
   CHECK_FALSE(library::FindPassword(names, {"wrong"})->has_value());
 }
 
+TEST_CASE("Links leading out of an extracted archive are removed") {
+  const fs::path dir = TempDir("escaping-links");
+  fs::create_directories(dir / "a/b");
+  std::ofstream(dir / "file") << "x";
+  fs::create_symlink("file", dir / "inside");
+  fs::create_symlink("/etc", dir / "absolute");
+  fs::create_symlink("../..", dir / "a/b/root");
+  fs::create_symlink("a/b/root/..", dir / "chain");
+  fs::create_symlink("loop", dir / "loop");
+
+  library::RemoveEscapingLinks(dir);
+
+  const auto present = [&](const char* name) { return fs::is_symlink(dir / name); };
+  CHECK(present("inside"));
+  CHECK(present("a/b/root"));
+  CHECK_FALSE(present("absolute"));
+  CHECK_FALSE(present("chain"));
+  CHECK_FALSE(present("loop"));
+}
+
 TEST_CASE("a file name from a server stays one path part") {
   CHECK(CleanFileName("../../.bashrc", "") == "bashrc");
   CHECK(CleanFileName("C:\\x\\game.7z", "") == "game.7z");
