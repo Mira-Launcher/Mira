@@ -1,8 +1,12 @@
 #include "GamepadInput.h"
 
 #include <QLibrary>
+#include <QThread>
 #include <algorithm>
 #include <cstdint>
+#include <mutex>
+
+#include "../client/Types.h"
 
 namespace mira_gui::bigscreen {
 namespace {
@@ -12,6 +16,10 @@ namespace {
 struct SDL_Gamepad;
 using SDL_JoystickID = std::uint32_t;
 constexpr std::uint32_t kInitGamepad = 0x00002000u;
+constexpr std::uint32_t kInitEvents = 0x00004000u;
+// SDL_InitSubSystem and SDL_QuitSubSystem aren't thread safe, and one input can be opening the
+// controllers on a worker thread while another starts.
+std::mutex g_init;
 enum Button {
   kSouth,
   kEast,
@@ -85,7 +93,11 @@ struct GamepadInput::Sdl {
   std::vector<Open> open;
   int scan_countdown = 0;
   int power_countdown = 0;
+  bool events = false;
+  bool gamepads = false;
 
+  // Quick, and on the thread that reads the controllers: SDL counts the one that starts its
+  // events as its main thread.
   bool Load() {
     lib.setFileNameAndVersion("SDL3", 0);
     if (!lib.load()) return false;
@@ -119,21 +131,53 @@ struct GamepadInput::Sdl {
     SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
     // SDL would otherwise swallow SIGINT and SIGTERM, so mira-gui couldn't be stopped.
     SetHint("SDL_NO_SIGNAL_HANDLERS", "1");
-    if (!Init(kInitGamepad)) return false;
-    // Polled below, so nothing should queue up as events.
-    SetGamepadEventsEnabled(false);
-    return true;
+    const std::lock_guard lock(g_init);
+    events = Init(kInitEvents);
+    return events;
+  }
+
+  // About 50 ms, so it may run on another thread.
+  bool OpenGamepads() {
+    const std::lock_guard lock(g_init);
+    gamepads = Init(kInitGamepad);
+    return gamepads;
   }
 
   ~Sdl() {
     for (const Open& pad : open) CloseGamepad(pad.pad);
-    if (QuitSubSystem != nullptr && lib.isLoaded()) QuitSubSystem(kInitGamepad);
+    const std::lock_guard lock(g_init);
+    if (gamepads) QuitSubSystem(kInitGamepad);
+    if (events) QuitSubSystem(kInitEvents);
   }
 };
 
 GamepadInput::GamepadInput(QObject* parent) : QObject(parent) {
   auto sdl = std::make_unique<Sdl>();
-  if (!sdl->Load()) return;
+  if (sdl->Load() && sdl->OpenGamepads()) Begin(std::move(sdl));
+}
+
+GamepadInput::GamepadInput(QObject* parent, std::unique_ptr<Sdl> sdl) : QObject(parent) {
+  if (sdl != nullptr) Begin(std::move(sdl));
+}
+
+void GamepadInput::CreateInBackground(QObject* parent, std::function<void(GamepadInput*)> ready) {
+  auto sdl = std::make_shared<std::unique_ptr<Sdl>>(std::make_unique<Sdl>());
+  if (!(*sdl)->Load()) {
+    ready(new GamepadInput(parent, nullptr));
+    return;
+  }
+  auto opened = std::make_shared<bool>(false);
+  QThread* thread = QThread::create([sdl, opened] { *opened = (*sdl)->OpenGamepads(); });
+  QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+  QObject::connect(thread, &QThread::finished, parent, [parent, sdl, opened, ready] {
+    ready(new GamepadInput(parent, *opened ? std::move(*sdl) : nullptr));
+  });
+  thread->start();
+}
+
+void GamepadInput::Begin(std::unique_ptr<Sdl> sdl) {
+  // Polled below, so nothing should queue up as events.
+  sdl->SetGamepadEventsEnabled(false);
   sdl_ = std::move(sdl);
   clock_.start();
   timer_.setInterval(kScanMs);
@@ -143,9 +187,32 @@ GamepadInput::GamepadInput(QObject* parent) : QObject(parent) {
 
 GamepadInput::~GamepadInput() = default;
 
+GamepadInput::Options GamepadInput::OptionsFrom(const FrontendPrefs& prefs) {
+  Options options;
+  options.swap_confirm = prefs.big_screen_swap_confirm.value_or(false);
+  const std::string stick = prefs.big_screen_stick.value_or("medium");
+  options.stick_threshold = stick == "high" ? 11000 : stick == "low" ? 25000 : 18000;
+  const std::string repeat = prefs.big_screen_repeat.value_or("normal");
+  options.first_repeat_ms = repeat == "fast" ? 260 : repeat == "slow" ? 520 : 380;
+  options.repeat_ms = repeat == "fast" ? 60 : repeat == "slow" ? 140 : 90;
+  return options;
+}
+
 void GamepadInput::SetOptions(const Options& options) {
   options_ = options;
   repeater_.SetTiming(options.first_repeat_ms, options.repeat_ms);
+}
+
+void GamepadInput::SetPaused(bool paused) {
+  if (!sdl_ || paused == !timer_.isActive()) return;
+  if (paused) {
+    timer_.stop();
+    return;
+  }
+  mask_held_ = true;
+  back_since_ = -1;
+  Poll();
+  timer_.start();
 }
 
 void GamepadInput::Scan() {
@@ -237,7 +304,7 @@ void GamepadInput::Poll() {
     mine[size_t(Nav::Right)] = button(kDpadRight) || x > threshold;
     mine[size_t(options_.swap_confirm ? Nav::Back : Nav::Accept)] = button(kSouth);
     mine[size_t(options_.swap_confirm ? Nav::Accept : Nav::Back)] = button(kEast);
-    mine[size_t(Nav::Action)] = button(kWest);
+    mine[size_t(Nav::Action)] = button(kWest) || (options_.start_as_action && button(kStart));
     mine[size_t(Nav::Search)] = button(kNorth);
     mine[size_t(Nav::PrevTab)] = button(kLeftShoulder);
     mine[size_t(Nav::NextTab)] = button(kRightShoulder);
@@ -251,6 +318,12 @@ void GamepadInput::Poll() {
       // A button newly down marks the controller in use.
       if (!down_[i] && used < 0) used = int(p);
     }
+  }
+  if (mask_held_) masked_ = down;
+  mask_held_ = false;
+  for (size_t i = 0; i < down.size(); ++i) {
+    if (!down[i]) masked_[i] = false;
+    if (masked_[i]) down[i] = false;
   }
   const std::int64_t now = clock_.elapsed();
   // Held B goes Home, once per hold.
@@ -270,8 +343,12 @@ void GamepadInput::Poll() {
     emit PadChanged();
   }
   if (down != down_) emit Activity();
+  const std::array<bool, size_t(Nav::kCount)> was = down_;
   down_ = down;
   for (const Nav nav : repeater_.Feed(down, now)) emit Pressed(nav);
+  for (size_t i = 0; i < down.size(); ++i) {
+    if (was[i] && !down[i]) emit Released(Nav(i));
+  }
 }
 
 void GamepadInput::Rumble(double low, double high, int ms) {

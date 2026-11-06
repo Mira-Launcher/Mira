@@ -60,8 +60,10 @@ class FilterSortPill : public QWidget {
 
  protected:
   void mousePressEvent(QMouseEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 
  private:
+  void OpenPopover();
   QWidget* BuildPopover();
   // The pill's text and icons, and the popover's rows, in the theme's colors.
   void UpdateSummary();

@@ -24,7 +24,6 @@
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Scrolling.h"
 #include "AchievementsPage.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
@@ -528,7 +527,6 @@ void GameCard::OpenAchievements() {
   }
   if (ArtPickerOpen()) CloseArtPicker();
   stack_->setCurrentWidget(achievements_page_);
-  FocusPage(achievements_page_);
 }
 
 void GameCard::CloseAchievements() {
@@ -585,7 +583,6 @@ void GameCard::OpenSaves() {
   }
   if (ArtPickerOpen()) CloseArtPicker();
   stack_->setCurrentWidget(saves_page_);
-  FocusPage(saves_page_);
 }
 
 void GameCard::CloseSaves() {

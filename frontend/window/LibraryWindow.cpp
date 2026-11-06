@@ -42,6 +42,7 @@
 #include "../activity/InstallActions.h"
 #include "../app/Appearance.h"
 #include "../app/DaemonSupervisor.h"
+#include "../app/DesktopController.h"
 #include "../app/Display.h"
 #include "../app/KeyBindings.h"
 #include "../app/Notify.h"
@@ -96,7 +97,6 @@
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
-#include "../widgets/Scrolling.h"
 #include "../widgets/TileView.h"
 #include "AboutCard.h"
 #include "FramelessRoot.h"
@@ -289,6 +289,9 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
           [this] { common_.reference->trigger(); });
   connect(top_bar_, &mira_gui::TopBar::AboutClicked, this, &LibraryWindow::OpenAbout);
   connect(top_bar_, &mira_gui::TopBar::BigScreenClicked, this, &LibraryWindow::OpenBigScreen);
+  controller_ = new mira_gui::DesktopController(this);
+  connect(controller_, &mira_gui::DesktopController::OpenBigScreen, this,
+          &LibraryWindow::OpenBigScreen);
   // Without an explicit cursor here, a resize cursor FramelessRoot set at its
   // edge margin would keep showing over the whole window after the drag ends.
   top_bar_->setCursor(Qt::ArrowCursor);
@@ -491,6 +494,7 @@ void LibraryWindow::BuildShortcuts() {
 
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   scan_on_startup_ = prefs.scan_on_startup.value_or(true);
+  controller_->ApplyPrefs(prefs);
   sidebar_->ApplyPrefs(prefs);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
@@ -752,7 +756,6 @@ void LibraryWindow::OpenRunners() {
   runners_page_->SetGames(ShownGames());
   main_stack_->addWidget(runners_page_);
   main_stack_->setCurrentWidget(runners_page_);
-  mira_gui::FocusPage(runners_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }
@@ -801,7 +804,6 @@ void LibraryWindow::OpenTags() {
         CloseRunners();
         CloseSourcesPage();
         main_stack_->setCurrentWidget(tags_page_);
-        mira_gui::FocusPage(tags_page_);
         SetSourceControlsEnabled(false);
         UpdateLibraryNavActive();
       },
@@ -1650,11 +1652,7 @@ void LibraryWindow::OpenSettings(const QString& focus_key) {
             content_stack_->setCurrentWidget(settings_page_);
             SetSettingsChromeVisible(true);
             // Focus can't go into the panel before now: it's disabled while loading.
-            if (focus_key.isEmpty()) {
-              mira_gui::FocusPage(settings_page_);
-            } else {
-              settings_panel_->FocusKey(focus_key);
-            }
+            if (!focus_key.isEmpty()) settings_panel_->FocusKey(focus_key);
           });
 }
 
@@ -2035,7 +2033,6 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   });
   main_stack_->addWidget(source_page_);
   main_stack_->setCurrentWidget(source_page_);
-  mira_gui::FocusPage(source_page_);
   SetSourceControlsEnabled(false);
   UpdateLibraryNavActive();
 }
@@ -2501,12 +2498,14 @@ void LibraryWindow::OpenBigScreen() {
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::RefreshRequested, this,
             &LibraryWindow::RefreshLibrary);
     connect(big_screen_, &mira_gui::bigscreen::BigScreenWindow::Closed, this, [this] {
+      controller_->SetBigScreenOpen(false);
       if (mira_gui::display::RestartFor(/*big_screen=*/false)) return;
       show();
       raise();
       activateWindow();
     });
   }
+  controller_->SetBigScreenOpen(true);
   hide();
   // Sized first: without a window manager, fullscreen alone leaves it at its default size.
   big_screen_->setGeometry(screen()->geometry());

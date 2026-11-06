@@ -84,11 +84,6 @@ class PickTile : public QAbstractButton {
       painter.setPen(QPen(tokens.text, 1));
       painter.drawRoundedRect(box.adjusted(1, 1, -1, -1), 5, 5);
     }
-    if (hasFocus()) {
-      painter.setPen(QPen(tokens.text, 1, Qt::DotLine));
-      painter.setBrush(Qt::NoBrush);
-      painter.drawRoundedRect(cover.adjusted(3, 3, -3, -3), radius, radius);
-    }
 
     painter.setPen(isChecked() ? tokens.text : tokens.text_muted);
     const QRect name(0, CoverSize().height() + 4, width_, kName);

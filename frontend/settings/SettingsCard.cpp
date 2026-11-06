@@ -139,12 +139,6 @@ void Switch::paintEvent(QPaintEvent*) {
   painter.setPen(Qt::NoPen);
   painter.setBrush(position_ > 0.5 ? tokens.on_accent : tokens.text_muted);
   painter.drawEllipse(knob);
-
-  if (hasFocus()) {
-    painter.setPen(QPen(tokens.accent, 1, Qt::DotLine));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(track.adjusted(-2, -2, 2, 2), 12, 12);
-  }
 }
 
 // --- SettingRow -----------------------------------------------------------

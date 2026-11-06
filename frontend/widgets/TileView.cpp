@@ -102,6 +102,10 @@ void TileView::leaveEvent(QEvent* event) {
 
 void TileView::focusOutEvent(QFocusEvent* event) {
   EndDrag();
+  // Moving on by keyboard or controller: the selection's border would read as where focus still is.
+  // Leaving by mouse, a menu or another window keeps it.
+  if (event->reason() == Qt::TabFocusReason || event->reason() == Qt::BacktabFocusReason)
+    clearSelection();
   QListView::focusOutEvent(event);
 }
 

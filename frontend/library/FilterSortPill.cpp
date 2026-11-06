@@ -127,6 +127,7 @@ FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending
   setObjectName("filter_sort_button");
   setCursor(Qt::PointingHandCursor);
   setAttribute(Qt::WA_Hover, true);
+  setFocusPolicy(Qt::TabFocus);
   setFixedHeight(TabRow::kControlHeight);
 
   auto* layout = new QHBoxLayout(this);
@@ -169,7 +170,6 @@ QWidget* FilterSortPill::BuildPopover() {
   filters_->setObjectName("filter_list");
   filters_->setFrameShape(QFrame::NoFrame);
   filters_->setSelectionMode(QAbstractItemView::SingleSelection);
-  filters_->setFocusPolicy(Qt::NoFocus);
   filters_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   for (const FilterEntry& entry : kFilters) {
     auto* item = new QListWidgetItem(filters_);
@@ -357,6 +357,17 @@ void FilterSortPill::ClearFilters() {
 void FilterSortPill::mousePressEvent(QMouseEvent* event) {
   if (event->button() == Qt::MiddleButton) return ClearFilters();
   if (event->button() != Qt::LeftButton) return QWidget::mousePressEvent(event);
+  OpenPopover();
+}
+
+void FilterSortPill::keyPressEvent(QKeyEvent* event) {
+  const int key = event->key();
+  if (key != Qt::Key_Return && key != Qt::Key_Enter && key != Qt::Key_Space)
+    return QWidget::keyPressEvent(event);
+  OpenPopover();
+}
+
+void FilterSortPill::OpenPopover() {
   // Wide enough for two columns of whole tag names, up to a point; longer ones are cut short.
   constexpr int kMaxWidth = 360;
   int widest = 0;
@@ -370,6 +381,8 @@ void FilterSortPill::mousePressEvent(QMouseEvent* event) {
   popover_->setFixedWidth(qMax(qMax(240, width()), qMin(fits_tags, kMaxWidth)));
   popover_->move(mapToGlobal(QPoint(0, height() + 4)));
   popover_->show();
+  // The filters take the arrow keys, however the popover was opened.
+  filters_->setFocus(Qt::PopupFocusReason);
 }
 
 void FilterSortPill::UpdateSummary() {

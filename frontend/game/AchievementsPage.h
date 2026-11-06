@@ -38,8 +38,10 @@ class AchievementTile : public QFrame {
 
  protected:
   void mouseReleaseEvent(QMouseEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 
  private:
+  void Reveal();
   void Fill();
 
   Achievement item_;

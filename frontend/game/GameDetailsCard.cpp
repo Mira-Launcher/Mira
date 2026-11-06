@@ -79,15 +79,25 @@ const char* TierState(const std::string& tier) {
   return "warning";
 }
 
-// A label that runs `clicked` on a left click: a screenshot, or the large one over the card.
+// A label that runs `clicked` on a left click, Enter or Space: a screenshot, or the large one over
+// the card.
 class Clickable : public QLabel {
  public:
-  explicit Clickable(QWidget* parent) : QLabel(parent) { setCursor(Qt::PointingHandCursor); }
+  explicit Clickable(QWidget* parent) : QLabel(parent) {
+    setCursor(Qt::PointingHandCursor);
+    setFocusPolicy(Qt::TabFocus);
+  }
   std::function<void()> clicked;
 
  protected:
   void mouseReleaseEvent(QMouseEvent* event) override {
     if (event->button() == Qt::LeftButton && clicked) clicked();
+  }
+  void keyPressEvent(QKeyEvent* event) override {
+    const int key = event->key();
+    if (clicked && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
+      return clicked();
+    QLabel::keyPressEvent(event);
   }
 };
 

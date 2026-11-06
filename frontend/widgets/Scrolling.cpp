@@ -83,9 +83,6 @@ class PageKeys : public QObject {
     }
   }
 
-  // Set up for a whole page, not just its own area.
-  bool PageWide() const { return !scope_.isNull() && scope_ != area_; }
-
  private:
   QPointer<QAbstractScrollArea> area_;
   QPointer<QWidget> scope_;
@@ -97,18 +94,6 @@ void SetUpScrolling(QAbstractScrollArea* area, QWidget* scope) {
   area->verticalScrollBar()->setSingleStep(
       std::max(1, kNotchPixels / std::max(1, QApplication::wheelScrollLines())));
   new PageKeys(area, scope != nullptr ? scope : area);
-}
-
-void FocusPage(QWidget* page) {
-  for (QAbstractScrollArea* area : page->findChildren<QAbstractScrollArea*>()) {
-    for (QObject* child : area->children()) {
-      const auto* keys = dynamic_cast<const PageKeys*>(child);
-      if (keys != nullptr && keys->PageWide()) {
-        area->setFocus(Qt::OtherFocusReason);
-        return;
-      }
-    }
-  }
 }
 
 void SettleLayout(QWidget* page) {
