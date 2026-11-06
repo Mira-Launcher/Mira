@@ -75,6 +75,12 @@ inline QString StatusLabel(const std::string& status) {
   return label;
 }
 
+// A game's platform as its card and hover card name it.
+inline QString PlatformLabel(const std::string& platform) {
+  if (platform == "web") return "HTML";
+  return StatusLabel(platform);
+}
+
 // What mirad is doing with a game's saves (game.saves_activity's `doing`), as its tile and card say
 // it; empty when it's doing nothing.
 inline QString SavesDoingLabel(const std::string& doing) {

@@ -734,7 +734,8 @@ Schema::Schema() {
              "installed build. \"auto\" picks the best installed runner: Proton if any is "
              "installed, otherwise Wine.",
          .constraint = AutoOrRunnerRef(),
-         .is_runner_ref = true});
+         .is_runner_ref = true,
+         .runner_kinds = {"proton", "wine"}});
 
   s.Add({.key = "default_runner.native",
          .label = "Default native runner",
@@ -744,6 +745,25 @@ Schema::Schema() {
          .constraint = RunnerRef(),
          .is_runner_ref = true,
          .runner_kinds = {"native"}});
+
+  s.Add({.key = "default_runner.web",
+         .label = "Browser for HTML games",
+         .type = Type::String,
+         .default_value = "auto",
+         .doc = "The browser HTML games open in, written as \"browser:name\", for example "
+                "\"browser:firefox\". \"auto\" picks an installed browser, preferring Chromium's "
+                "family (Chromium, Chrome, Brave, Helium), which opens a game as an app window.",
+         .constraint = AutoOrRunnerRef(),
+         .is_runner_ref = true,
+         .runner_kinds = {"browser"}});
+
+  s.Add({.key = "web.fullscreen",
+         .label = "Open HTML games full screen",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "HTML games open full screen. In Firefox that's its kiosk mode, which has no "
+                "close button: quit with Alt+F4 or Mira's Stop."});
 
   s.Add({.key = "launch.pin_runner",
          .label = "Remember the chosen runner",

@@ -12,6 +12,7 @@
 #include "core/Command.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/Detector.h"
 #include "library/Relocate.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
@@ -87,6 +88,12 @@ ImportGuess ClassifyImport(const fs::path& dropped) {
     }
   }
 
+  if (fs::is_regular_file(path, ec) && IsWebPage(path)) {
+    guess.kind = ImportKind::kGame;
+    guess.reason = "An HTML game";
+    return guess;
+  }
+
   if (const std::optional<bool> software = metadata::SteamSaysSoftware(guess.name)) {
     guess.kind = *software ? ImportKind::kApp : ImportKind::kGame;
     guess.reason = *software ? "Steam lists it as software" : "Steam lists it as a game";
@@ -125,13 +132,17 @@ Result<fs::path> ImportInto(const config::Config& config, const fs::path& droppe
     return Err("already_in_library", std::format("{} is already in the library", path.string()));
   }
 
-  const fs::path target = *root / path.filename();
+  // A page goes in a folder of its own, named for it, since a scan finds games as folders.
+  const bool page = fs::is_regular_file(path, ec) && IsWebPage(path);
+  const fs::path entry = page ? path.stem() : path.filename();
+  const fs::path target = *root / entry;
   if (fs::exists(target, ec))
     return Err("target_exists", std::format("{} already exists", target.string()));
   // From another drive it's copied beside the root first, so the watcher never sees half of it.
-  const fs::path staging = root->parent_path() / ".mira-import" / path.filename();
+  const fs::path staging = root->parent_path() / ".mira-import" / entry;
   fs::remove_all(staging, ec);
-  if (auto moved = MovePath(path, staging, /*allow_copy=*/true); !moved)
+  if (auto moved = MovePath(path, page ? staging / path.filename() : staging, /*allow_copy=*/true);
+      !moved)
     return std::unexpected(moved.error());
   fs::create_directories(*root, ec);
   fs::rename(staging, target, ec);

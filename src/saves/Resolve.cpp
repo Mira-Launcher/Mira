@@ -270,6 +270,9 @@ Roots RootsFor(const config::Config& config, const model::Game& game) {
     roots.prefix_user = library::WindowsUserDir(roots.prefix);
     roots.user_name = roots.prefix_user.filename().string();
   }
+  // A web game's data folder holds its browser profiles (runner/BrowserRunner).
+  if (game.platform == model::Platform::Web && !game.data_dir.empty())
+    roots.prefix = fs::path(game.data_dir).lexically_normal();
   if (game.source == "steam" || game.source == "gog" || game.source == "epic") {
     roots.store = game.source;
     roots.store_game_id = game.source_ref;

@@ -54,6 +54,12 @@ std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own
   return FindOnPath(name);
 }
 
+std::filesystem::path OwnBinaryDir() {
+  std::error_code ec;
+  const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+  return ec ? std::filesystem::path() : exe.parent_path();
+}
+
 namespace {
 
 // mirad blocks SIGINT/SIGTERM on every thread (see mirad_main.cpp), and a

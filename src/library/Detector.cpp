@@ -105,6 +105,17 @@ InstallerKind ClassifyInstaller(const fs::path& path, const DetectorSettings& se
                                                     : InstallerKind::kNone;
 }
 
+// A name a game's documents go by (a readme, credits, a walkthrough, a link to its site).
+bool IsDocumentName(std::string_view name) {
+  const std::string lower = strings::ToLower(name);
+  for (const char* document :
+       {"readme", "read me", "manual", "licen", "credits", "changelog", "change log", "walkthrough",
+        "eula", "faq", "guide", "docs", "notes", "welcome", "privacy", "website", "homepage"}) {
+    if (lower.find(document) != std::string::npos) return true;
+  }
+  return false;
+}
+
 // Walks `folder` up to max_depth, skipping anything matching ignore_globs
 // (relative to `folder`, so "*/prefix/*" excludes a prefix directory the
 // caller nested inside the game folder, and a bare glob like ".*" excludes
@@ -150,7 +161,14 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder,
       if (!entry.is_regular_file(ec)) continue;
 
       const std::string ext = strings::ToLower(entry.path().extension().string());
-      if (ext == ".exe") {
+      if (IsWebPage(entry.path())) {
+        // A page at the top, or a folder's index.html one level down (www/, game/, not docs/).
+        const bool placed =
+            depth == 0 || (depth == 1 && entry.path().stem() == "index" &&
+                           !IsDocumentName(entry.path().parent_path().filename().string()));
+        if (placed && LooksLikeWebGame(entry.path()))
+          found.push_back({rel, model::Platform::Web, depth, InstallerKind::kNone});
+      } else if (ext == ".exe") {
         found.push_back({rel, model::Platform::Windows, depth, installer(entry.path())});
       } else if (ext == ".msi") {
         found.push_back({rel, model::Platform::Windows, depth, InstallerKind::kInstaller});
@@ -175,9 +193,51 @@ double NameSimilarityBonus(const RawCandidate& candidate, const std::string& cle
 
 }  // namespace
 
+bool IsWebPage(const fs::path& file) {
+  const std::string ext = strings::ToLower(file.extension().string());
+  return ext == ".html" || ext == ".htm";
+}
+
+model::Platform PlatformOfFile(const fs::path& file) {
+  const std::string ext = strings::ToLower(file.extension().string());
+  if (ext == ".exe" || ext == ".msi" || ext == ".bat" || ext == ".cmd")
+    return model::Platform::Windows;
+  return IsWebPage(file) ? model::Platform::Web : model::Platform::Native;
+}
+
+bool LooksLikeWebGame(const fs::path& file) {
+  if (IsDocumentName(file.stem().string())) return false;
+  // A Twine game is one page tens of MB long; its head says what it is.
+  constexpr std::size_t kHead = 256 * 1024;
+  std::ifstream in(file, std::ios::binary);
+  std::string head(kHead, '\0');
+  in.read(head.data(), kHead);
+  head.resize(static_cast<std::size_t>(in.gcount()));
+  head = strings::ToLower(head);
+  if (head.find("http-equiv=\"refresh\"") != std::string::npos ||
+      head.find("http-equiv='refresh'") != std::string::npos ||
+      head.find("http-equiv=refresh") != std::string::npos)
+    return false;
+  if (head.find("<script") == std::string::npos && head.find("<canvas") == std::string::npos)
+    return false;
+  // A short page whose script only goes somewhere else.
+  std::error_code ec;
+  const bool short_page = fs::file_size(file, ec) < 8 * 1024;
+  const bool sends_away = head.find("location.href") != std::string::npos ||
+                          head.find("location.replace") != std::string::npos ||
+                          head.find("window.location") != std::string::npos ||
+                          head.find("window.open") != std::string::npos;
+  return !(short_page && sends_away);
+}
+
 Detector::Result Detector::Detect(const fs::path& folder) const {
   const std::string cleaned_name = strings::CleanGameName(folder.filename().string());
   std::vector<RawCandidate> raw = WalkForExecutables(folder, settings_);
+  // A page is the game only when nothing in the folder runs: a program beside one (NW.js games
+  // keep theirs in www/, others ship a manual) is what starts the game.
+  if (std::ranges::any_of(raw,
+                          [](const RawCandidate& c) { return c.kind != model::Platform::Web; }))
+    std::erase_if(raw, [](const RawCandidate& c) { return c.kind == model::Platform::Web; });
   // A plain executable at a package's level or above it means the game is installed, and the
   // package is one of its leftovers or redistributables (VC_redist carries a WiX mark too).
   for (RawCandidate& candidate : raw) {

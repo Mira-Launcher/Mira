@@ -39,7 +39,7 @@ model::GameStatus RestoredStatus(const model::Game& game) {
   if (game.exe_path.empty()) return model::GameStatus::SettingUp;
   if (game.platform == model::Platform::Native) return model::GameStatus::Ready;
 
-  // Windows: only ready if something actually provisioned it.
+  // Windows and web: only ready if something actually provisioned it.
   std::error_code ec;
   const bool provisioned =
       !game.runner_ref.empty() && !game.data_dir.empty() && fs::exists(game.data_dir, ec);
@@ -640,10 +640,11 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
 namespace {
 
-// Provisions a broken Windows game again if a runner now resolves for it.
+// Provisions a broken Windows or web game again if a runner (a browser) now resolves for it.
 bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games,
                  api::EventBus& events, const model::Game& game) {
-  if (game.status != model::GameStatus::Broken || game.platform != model::Platform::Windows)
+  if (game.status != model::GameStatus::Broken ||
+      (game.platform != model::Platform::Windows && game.platform != model::Platform::Web))
     return false;
   // A broken game with no executable on disk broke for another reason.
   std::error_code ec;

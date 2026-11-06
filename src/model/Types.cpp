@@ -13,6 +13,8 @@ std::string_view ToString(Platform platform) {
       return "windows";
     case Platform::Native:
       return "native";
+    case Platform::Web:
+      return "web";
     case Platform::Unknown:
       return "unknown";
   }
@@ -52,6 +54,7 @@ std::string_view ToString(NotifyLevel level) {
 Platform PlatformFromString(std::string_view text) {
   if (text == "windows") return Platform::Windows;
   if (text == "native") return Platform::Native;
+  if (text == "web") return Platform::Web;
   return Platform::Unknown;
 }
 

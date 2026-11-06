@@ -73,4 +73,8 @@ std::optional<std::string> FindOnPath(std::string_view name);
 std::optional<std::string> ResolveSiblingBinary(const std::filesystem::path& own_binary_dir,
                                                 std::string_view name);
 
+// The running binary's directory, from /proc/self/exe; empty on failure, which
+// ResolveSiblingBinary takes as "look on PATH".
+std::filesystem::path OwnBinaryDir();
+
 }  // namespace mira::runner

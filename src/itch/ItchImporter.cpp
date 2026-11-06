@@ -101,8 +101,12 @@ Result<library::ImportSummary> ItchImporter::Import() {
         game.confidence = detected.confidence;
       }
     }
+    // An HTML upload names no platform, and its page is what runs.
+    if (library::IsWebPage(game.exe_path)) game.platform = model::Platform::Web;
+    // A runner of the other kind doesn't run it (one picked before the game was seen as web).
+    if (existing && existing->platform != game.platform) game.runner_ref.clear();
 
-    if (game.platform == model::Platform::Windows) {
+    if (model::NeedsRunnerSetup(game.platform)) {
       library::ProvisionOnImport(game, existing, config_, games_, provisioner);
     } else {
       game.status = model::GameStatus::Ready;

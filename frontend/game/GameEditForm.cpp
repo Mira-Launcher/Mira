@@ -408,6 +408,10 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   install_path_ = game.install_path;
   source_ = game.source;
   windows_ = game.platform == "windows";
+  if (web_ != (game.platform == "web")) {
+    web_ = game.platform == "web";
+    PopulateRunnerCombo(runners_);
+  }
   noun_ = std::ranges::contains(game.tags, tags::kApp) ? "app" : "game";
   move_button_->setToolTip("Move this " + noun_ + "'s files to another folder");
   move_prefix_->setToolTip("Move this " + noun_ + "'s prefix to another folder");
@@ -451,9 +455,11 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   original_patch_ = CurrentPatch();
   // A native game or a desktop entry runs without a prefix (a native game keeps its old one only
-  // for turning back into a Windows game).
-  data_dir_row_->setVisible(game.platform != "native" && game.source != "desktop-entry");
-  move_prefix_->setVisible(!game.data_dir.empty() && game.source != "desktop-entry");
+  // for turning back into a Windows game); an HTML game's data folder holds its browser and saves,
+  // which Mira manages.
+  const bool own_files = game.source != "desktop-entry" && game.platform != "web";
+  data_dir_row_->setVisible(own_files && game.platform != "native");
+  move_prefix_->setVisible(own_files && !game.data_dir.empty());
   // An emulator's game names its emulator here, and picking another moves it there.
   const bool emulated = game.runner_ref.starts_with("emulator:");
   runner_row_->setVisible(!emulated);
@@ -613,12 +619,14 @@ void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Cand
 }
 
 void GameEditForm::PopulateRunnerCombo(const mira_gui::RunnersResult& result) {
+  runners_ = result;
   const QString current = RunnerRef(runner_combo_);
   runner_combo_->blockSignals(true);
   runner_combo_->clear();
-  runner_combo_->addItem("Default runner", QString());
+  runner_combo_->addItem(web_ ? "Default browser" : "Default runner", QString());
   if (result.ok) {
     for (const mira_gui::RunnerInfo& runner : result.runners) {
+      if ((runner.kind == "browser") != web_) continue;
       const QString label = QString("%1 (%2)").arg(QString::fromStdString(runner.name),
                                                    QString::fromStdString(runner.kind));
       runner_combo_->addItem(label, QString::fromStdString(runner.reference));

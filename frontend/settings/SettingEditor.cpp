@@ -283,7 +283,8 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
   const QString current = RunnerRef(combo);
   combo->blockSignals(true);
   combo->clear();
-  if (entry.runner_kinds.empty()) combo->addItem("Auto (best available)", "auto");
+  if (entry.runner_kinds.empty() || entry.default_display == "auto")
+    combo->addItem("Auto (best available)", "auto");
   if (runners.ok) {
     for (const RunnerInfo& runner : runners.runners) {
       if (!entry.runner_kinds.empty() && !std::ranges::contains(entry.runner_kinds, runner.kind))

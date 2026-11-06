@@ -8,6 +8,7 @@
 #include <optional>
 #include <sstream>
 
+#include "runner/BrowserRunner.h"
 #include "runner/Exec.h"
 
 namespace mira::system {
@@ -19,7 +20,7 @@ using nlohmann::json;
 struct Entry {
   std::string_view feature;
   Tool tool;
-  bool on_demand = false;  // an emulator's: asked for when it's set up, never in the full list
+  bool on_demand = false;  // asked for when needed (an emulator, a browser), never in the full list
 };
 
 constexpr Entry kEntries[] = {
@@ -88,6 +89,10 @@ constexpr Entry kEntries[] = {
     {"performance",
      {"mangohud", "mangohud", "", "Shows an FPS and performance overlay", "mangohud", "mangohud",
       "mangohud", "mangohud"}},
+    {"browser",
+     {"browser", runner::kBrowsers, "", "Runs HTML games", "chromium", "chromium", "chromium",
+      "chromium"},
+     true},
     {"controllers",
      {"sdl3", "", "libSDL3.so.0", "Controllers and sounds in big screen", "sdl3", "libsdl3-0",
       "SDL3", "libSDL3-0"}},

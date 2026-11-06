@@ -134,13 +134,6 @@ Result<void> RunPreScriptInline(const std::string& pre_script, int timeout_s) {
   return {};
 }
 
-// Empty on failure; ResolveSiblingBinary then falls back to PATH.
-std::filesystem::path OwnBinaryDir() {
-  std::error_code ec;
-  const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
-  return ec ? std::filesystem::path() : exe.parent_path();
-}
-
 struct WrapperStatus {
   bool ok = false;
   bool read_timed_out =
@@ -195,7 +188,7 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
 // the request's (400).
 int PrepareStatus(const Error& error) {
   return error.code == "working_dir_missing" || error.code == "program_missing" ||
-                 error.code == "not_executable"
+                 error.code == "not_executable" || error.code == "web_port_busy"
              ? 409
              : 400;
 }
@@ -376,7 +369,7 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
   }
   const config::Resolver resolver(s.config, game.overrides);
   // mira-run owns the session so it survives mirad dying.
-  const auto mira_run = runner::ResolveSiblingBinary(OwnBinaryDir(), "mira-run");
+  const auto mira_run = runner::ResolveSiblingBinary(runner::OwnBinaryDir(), "mira-run");
   if (!mira_run) {
     return SendError(res, 500, "mira_run_missing",
                      "mira-run wasn't found next to mirad or on PATH");
@@ -509,6 +502,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         library::RetryBrokenProvisioning(s.config, s.games, s.events, game->id)) {
       game = s.games.Find(game->id);
       if (!game) return SendError(res, 404, "game_not_found", "no such game");
+    }
+    // Still broken for want of a runner: that error, with its fix (installing a browser, say).
+    if (game->status == model::GameStatus::Broken && model::NeedsRunnerSetup(game->platform)) {
+      const runner::RunnerRegistry runners(s.config);
+      if (auto resolved = runners.Resolve(runners.ResolveRef(*game)); !resolved)
+        return SendError(res, 409, resolved.error());
     }
     if (game->status == model::GameStatus::NeedsInstall) {
       return SendError(res, 409, "needs_install",

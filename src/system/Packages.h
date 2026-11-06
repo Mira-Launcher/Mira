@@ -36,8 +36,8 @@ struct Tool {
 };
 
 // Every tool Mira knows but an emulator's, or those `feature` needs ("core", "wine", "winetricks",
-// "adobe", "archives", "performance", "controllers", or an emulator's id). Empty for an unknown
-// feature.
+// "adobe", "archives", "performance", "controllers", "browser", or an emulator's id). Empty for an
+// unknown feature.
 std::vector<Tool> ToolsFor(std::string_view feature = {});
 
 // The package for `tool` on `family`, alternatives separated by spaces; Ostree layers Fedora's.
