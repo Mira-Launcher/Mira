@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mira LANGUAGES C CXX VERSION 0.17.1)
+project(mira LANGUAGES C CXX VERSION 0.18.0)
 
 # Dependencies are vendored in third_party/ (header-only, except SQLite's one
 # C file), so a build needs nothing fetched at configure time, and the only
