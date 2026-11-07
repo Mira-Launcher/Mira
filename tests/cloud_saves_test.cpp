@@ -19,6 +19,7 @@
 
 using namespace mira;
 using nlohmann::json;
+using test::GetJson;
 namespace fs = std::filesystem;
 
 namespace {
@@ -26,13 +27,6 @@ namespace {
 fs::path EndpointDir(const char* name) {
   const std::string url = std::getenv(std::format("MIRA_{}_URL", name).c_str());
   return fs::path(url.substr(std::string_view("file://").size()));
-}
-
-json Get(httplib::Client& client, const std::string& path) {
-  auto res = client.Get(path);
-  REQUIRE(res);
-  REQUIRE(res->status == 200);
-  return json::parse(res->body);
 }
 
 int Lines(const fs::path& file, std::string_view containing) {
@@ -168,7 +162,7 @@ struct Cloud {
     return test::AwaitJob(client, client.Post(std::format("/v1/games/{}/saves/cloud", id),
                                               json{{"action", action}}.dump(), "application/json"));
   }
-  json State() { return Get(client, std::format("/v1/games/{}/saves", id))["cloud"]; }
+  json State() { return GetJson(client, std::format("/v1/games/{}/saves", id))["cloud"]; }
 };
 
 }  // namespace
@@ -214,7 +208,7 @@ TEST_CASE("GOG cloud saves move the way they're behind, and a conflict moves not
   REQUIRE(job["state"] == "finished");
   CHECK(job["result"]["locations"][0]["moved"] == "download");
   CHECK(files::ReadFile(local) == "cloud 2");
-  json saves = Get(client, "/v1/games/gog-1207/saves");
+  json saves = GetJson(client, "/v1/games/gog-1207/saves");
   REQUIRE_FALSE(saves["snapshots"].empty());
   CHECK(saves["snapshots"][0]["reason"] == "before_cloud_download");
 
@@ -253,11 +247,11 @@ TEST_CASE("GOG cloud saves move the way they're behind, and a conflict moves not
   CHECK(state["bytes"] == std::string("local 4").size());
 
   // Taking the cloud's keeps this computer's in a backup.
-  const std::size_t backups = Get(client, "/v1/games/gog-1207/saves")["snapshots"].size();
+  const std::size_t backups = GetJson(client, "/v1/games/gog-1207/saves")["snapshots"].size();
   job = cloud.Run("download");
   REQUIRE(job["state"] == "finished");
   CHECK(files::ReadFile(local) == "cloud 4");
-  saves = Get(client, "/v1/games/gog-1207/saves");
+  saves = GetJson(client, "/v1/games/gog-1207/saves");
   CHECK(saves["snapshots"].size() == backups + 1);
   CHECK(saves["cloud"]["state"] == "synced");
 
@@ -267,7 +261,7 @@ TEST_CASE("GOG cloud saves move the way they're behind, and a conflict moves not
     CHECK(text.find("secret1") == std::string::npos);
     CHECK(text.find("cloudtok") == std::string::npos);
   }
-  CHECK(Get(client, "/v1/games/gog-1207/saves").dump().find("secret1") == std::string::npos);
+  CHECK(GetJson(client, "/v1/games/gog-1207/saves").dump().find("secret1") == std::string::npos);
 }
 
 TEST_CASE("A first GOG sync with saves on both sides compares them, and a failed transfer fails") {
@@ -344,7 +338,7 @@ TEST_CASE("Epic cloud saves move through legendary into Mira's own save folder")
   REQUIRE(job["state"] == "finished");
   CHECK(job["result"]["locations"][0]["moved"] == "download");
   CHECK(files::ReadFile(folder / "slot.sav") == "cloud 2");
-  CHECK(Get(client, "/v1/games/epic-Fir/saves")["snapshots"][0]["reason"] ==
+  CHECK(GetJson(client, "/v1/games/epic-Fir/saves")["snapshots"][0]["reason"] ==
         "before_cloud_download");
   fs::remove(epic::LegendaryConfigDir() / "user.json");
 }
@@ -398,7 +392,7 @@ TEST_CASE("Cloud saves sync before a launch and after play, and a conflict waits
   };
   const auto reasons = [&] {
     std::vector<std::string> found;
-    const json saves = Get(client, "/v1/games/epic-Fir/saves");
+    const json saves = GetJson(client, "/v1/games/epic-Fir/saves");
     for (const json& snapshot : saves["snapshots"]) found.push_back(snapshot["reason"]);
     return found;
   };
@@ -410,7 +404,7 @@ TEST_CASE("Cloud saves sync before a launch and after play, and a conflict waits
   CHECK(files::ReadFile(epic_cloud / "files/slot.sav") == "local 1 played");
   CHECK(std::ranges::contains(reasons(), "first"));
   CHECK(std::ranges::contains(reasons(), "after_play"));
-  const json locations = Get(client, "/v1/games/epic-Fir/saves")["locations"];
+  const json locations = GetJson(client, "/v1/games/epic-Fir/saves")["locations"];
   REQUIRE(locations.size() == 1);
   CHECK(locations[0]["path"] == (folder / "Saved").string());
 

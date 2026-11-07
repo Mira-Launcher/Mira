@@ -94,8 +94,9 @@ void GameCard::Build(const GameSummary* title) {
   layout->setSpacing(0);
 
   // Back at the top left, as in Settings; the art's one button at the right.
+  // The back button, cover and name, and Change art and Play, on the card's one inset each side.
   auto* top = new QHBoxLayout();
-  top->setContentsMargins(14, 12, 14, 0);
+  top->setContentsMargins(kCardInset, 16, kCardInset, 0);
   // hero_action's text color in base.qss: the buttons are dark glass in every theme.
   const QColor on_glass(0xe6, 0xe8, 0xec);
   auto* back = new QPushButton(this);
@@ -126,7 +127,7 @@ void GameCard::Build(const GameSummary* title) {
   // Name and status over the art. The shadow, in the surface's color, keeps
   // it off the art's detail.
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(24, 4, 20, 16);
+  header->setContentsMargins(kCardInset, 4, kCardInset, 16);
   header->setSpacing(16);
   auto* identity = new QVBoxLayout();
   identity->setSpacing(4);
@@ -192,6 +193,8 @@ void GameCard::Build(const GameSummary* title) {
               form_->Reload();
               LoadSaves();  // its saves settings may be what changed
             }
+            // Settings' values show in the rows the game takes from Settings.
+            if (live && form_ != nullptr && type == "config.changed") form_->Reload();
             if (live && form_ != nullptr &&
                 ((type == "game.saves_changed" && events::ParseGameId(data) == id_) ||
                  type == "saves.manifest_changed"))
@@ -220,30 +223,16 @@ void GameCard::Build(const GameSummary* title) {
   header->addWidget(play_, 0, Qt::AlignBottom);
   layout->addLayout(header);
 
-  // Translucent, so the art still shows through at its top edge.
-  auto* panel = new QWidget(this);
-  panel->setObjectName("game_edit_panel");
-  panel->setAttribute(Qt::WA_StyledBackground);
-  const auto style_panel = [panel] {
-    const theme::Tokens& current = theme::Current();
-    QColor panel_color = current.window;
-    panel_color.setAlphaF(0.82);
-    panel->setStyleSheet(QString("QWidget#game_edit_panel { background: %1; border: 1px solid "
-                                 "%2; border-radius: %3px; }")
-                             .arg(theme::ColorToQss(panel_color))
-                             .arg(current.border.name())
-                             .arg(current.radius_panel));
-  };
-  style_panel();
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, panel, style_panel);
+  auto* panel = new HeroPanel(this);
   auto* panel_layout = new QVBoxLayout(panel);
   panel_layout->setContentsMargins(0, 0, 0, 0);
   auto* panel_row = new QHBoxLayout();
-  panel_row->setContentsMargins(20, 0, 20, 20);
+  panel_row->setContentsMargins(1, 0, 1, 1);  // inside the card's border
   panel_row->addWidget(panel);
   layout->addLayout(panel_row, /*stretch=*/1);
 
   stack_ = new QStackedWidget(panel);
+  FadeTop(stack_);
   panel_layout->addWidget(stack_);
   bar_ = new ChangeBar(this);
   // While the art picker is open the bar is its Cancel and Use.
@@ -318,8 +307,6 @@ void GameCard::Back() {
     CloseAchievements();
   } else if (SavesOpen()) {
     CloseSaves();
-  } else if (form_->AdvancedOpen()) {
-    form_->CloseAdvanced();
   } else {
     RequestClose();
   }
@@ -338,6 +325,10 @@ void GameCard::RequestClose() {
       })) {
     emit CloseRequested();
   }
+}
+
+void GameCard::SetColumnWidth(int width) {
+  if (form_ != nullptr) form_->SetColumnWidth(width);
 }
 
 void GameCard::UpdateCover(const std::string& id) {
@@ -577,7 +568,7 @@ void GameCard::OpenSaves() {
     connect(saves_page_, &SavesPage::BackClicked, this, &GameCard::CloseSaves);
     connect(saves_page_, &SavesPage::SettingClicked, this, [this](const std::string& key) {
       CloseSaves();
-      form_->OpenAdvanced(key);
+      form_->RevealSetting(key);
     });
     saves_page_->Show(*saves_);
   }

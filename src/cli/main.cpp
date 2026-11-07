@@ -26,6 +26,7 @@
 #include <toml.hpp>
 #include <vector>
 
+#include "config/Config.h"
 #include "config/Schema.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
@@ -1871,9 +1872,19 @@ int CmdSet(int argc, char** argv) {
       return 2;
     }
   }
-  if (!env.empty()) patch["env"] = env;
-
   auto client = Connect();
+  // --env adds to the game's launch.env list, starting it from Settings' list.
+  if (!env.empty()) {
+    auto res = client.Get(std::format("/v1/games/{}/config", Seg(id)));
+    if (!Ok(res)) {
+      PrintError(res);
+      return 1;
+    }
+    json list = json::parse(res->body, nullptr, false)["launch.env"].value("value", json::array());
+    for (const auto& [key, value] : env.items())
+      mira::config::SetEnvEntry(list, key, value.get<std::string>());
+    overrides["launch.env"] = std::move(list);
+  }
   if (!overrides.empty()) {
     const json schema = FetchSchema(client);
     for (auto& entry : overrides.items()) {

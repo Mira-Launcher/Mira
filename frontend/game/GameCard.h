@@ -48,6 +48,8 @@ class GameCard : public HeroBackdrop {
   void RequestClose();
   // A new cover for `id`, which may be another game's.
   void UpdateCover(const std::string& id);
+  // The settings' column inside the card; its other pages (Saves, art) use the card's width.
+  void SetColumnWidth(int width);
 
  signals:
   void CloseRequested();

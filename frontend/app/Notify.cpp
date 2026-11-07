@@ -68,7 +68,7 @@ class ToastCard : public QFrame {
     // Set here, not in the stylesheet: height is measured from this font
     // below, and a stylesheet is applied too late to be measured.
     QFont font = label->font();
-    font.setPixelSize(kFontPixelSize);
+    font.setPixelSize(theme::TextPx(kFontPixelSize));
     label->setFont(font);
     layout->addWidget(label);
 

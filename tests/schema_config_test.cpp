@@ -25,7 +25,43 @@ TEST_CASE("every schema entry is well-formed") {
     CHECK_FALSE(entry.category.empty());
     CHECK_FALSE(entry.group_label.empty());
     CHECK_FALSE(Schema::Instance().Validate(entry.key, entry.default_value).has_value());
+    if (!entry.constraint.option_labels.empty())
+      CHECK(entry.constraint.option_labels.size() == entry.constraint.one_of.size());
+    // Only a game's own settings can apply to some games and not others.
+    if (entry.scope == Scope::Global) CHECK(entry.applies.Empty());
   }
+}
+
+TEST_CASE("an item's settings sit together, so a screen can show them under one row") {
+  std::vector<std::string> done;
+  std::string current;
+  for (const Entry& entry : Schema::Instance().Entries()) {
+    const std::string item =
+        entry.item.empty() ? ""
+                           : entry.category + "/" + std::to_string(entry.group) + "/" + entry.item;
+    if (item == current) continue;
+    INFO("key: ", entry.key);
+    if (!item.empty()) CHECK_FALSE(std::ranges::contains(done, item));
+    if (!current.empty()) done.push_back(current);
+    current = item;
+  }
+  CHECK_FALSE(done.empty());
+}
+
+TEST_CASE("a setting for some games applies by the game's source, platform and runner") {
+  const Schema& schema = Schema::Instance();
+  const Applies& launch_mode = schema.Find("steam.launch_mode")->applies;
+  CHECK(launch_mode.Matches("steam", "windows", ""));
+  CHECK_FALSE(launch_mode.Matches("gog", "windows", ""));
+  const Applies& overlay = schema.Find("epic.eos_overlay")->applies;
+  CHECK(overlay.Matches("epic", "windows", "proton:latest"));
+  CHECK_FALSE(overlay.Matches("epic", "native", ""));
+  CHECK_FALSE(schema.Find("metadata.steam_appid")->applies.Matches("steam", "windows", ""));
+  CHECK(schema.Find("metadata.steam_appid")->applies.Matches("gog", "native", ""));
+  const Applies by_runner{.runners = {"emulator"}};
+  CHECK(by_runner.Matches("mgba", "native", "emulator:mgba"));
+  CHECK_FALSE(by_runner.Matches("", "windows", "proton:latest"));
+  CHECK(schema.Find("launch.gamemode")->applies.Matches("anything", "native", "wine:system"));
 }
 
 TEST_CASE("every setting on the Sources page belongs to a source") {

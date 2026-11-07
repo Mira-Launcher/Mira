@@ -8,7 +8,6 @@
 #include "../client/Types.h"
 
 class QBoxLayout;
-class QButtonGroup;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -18,6 +17,7 @@ namespace mira_gui {
 class RunnerUpdater;
 
 class DownloadTracker;
+class Segmented;
 class SettingsCard;
 
 // The library window's Runners page: the Proton or Wine builds installed,
@@ -59,7 +59,7 @@ class RunnersPage : public QWidget {
 
   DownloadTracker* downloads_ = nullptr;
   RunnerUpdater* updater_ = nullptr;
-  QButtonGroup* kinds_ = nullptr;
+  Segmented* kinds_ = nullptr;     // proton or wine
   QBoxLayout* columns_ = nullptr;  // side by side, or stacked on a narrow window
   SettingsCard* installed_ = nullptr;
   bool installed_error_ = false;  // the status shows a failed runner list

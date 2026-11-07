@@ -16,6 +16,7 @@
 using namespace mira;
 using nlohmann::json;
 using test::AwaitJob;
+using test::GetJson;
 using test::LiveServer;
 using test::TempDir;
 using test::Touch;
@@ -28,13 +29,6 @@ void WriteManifest(const fs::path& library, const std::string& appid, const std:
   Touch(library / "steamapps" / ("appmanifest_" + appid + ".acf"),
         "\"AppState\"\n{\n\t\"appid\"\t\t\"" + appid + "\"\n\t\"name\"\t\t\"" + name +
             "\"\n\t\"installdir\"\t\t\"" + installdir + "\"\n}\n");
-}
-
-json Get(httplib::Client& client, const std::string& path) {
-  auto res = client.Get(path);
-  REQUIRE(res != nullptr);
-  REQUIRE(res->status == 200);
-  return json::parse(res->body);
 }
 
 // What every source's games look like in the library.
@@ -82,11 +76,11 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
   CHECK(first["result"]["added"] == 2);
   CHECK(server.games().All().size() == 2);
 
-  const json dota = Get(client, "/v1/games/steam-570");
+  const json dota = GetJson(client, "/v1/games/steam-570");
   CHECK(dota["runner_ref"] == "steam:570");
   CHECK(dota["platform"] == "native");
   CHECK(dota["status"] == "ready");
-  const json hades = Get(client, "/v1/games/steam-1145360");
+  const json hades = GetJson(client, "/v1/games/steam-1145360");
   CHECK(hades["platform"] == "windows");
   CHECK(hades["install_path"] == (second / "steamapps" / "common" / "Hades").string());
   CHECK(hades["data_dir"] == (second / "steamapps" / "compatdata" / "1145360").string());
@@ -96,7 +90,7 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
   const json again = AwaitJob(client, client.Post("/v1/steam/scan"));
   CHECK(again["result"]["added"] == 0);
   CHECK(again["result"]["updated"] == 2);
-  const json kept = Get(client, "/v1/games/steam-570");
+  const json kept = GetJson(client, "/v1/games/steam-570");
   CHECK(kept["tags"] == json::array({"favorite"}));
   CHECK(kept["args"] == "-novid");
 }
@@ -110,7 +104,7 @@ TEST_CASE("Removing Steam forgets its games but never touches their files") {
   REQUIRE(server.games().Upsert(SourceGame("celeste", "scan", state / "Celeste")));
   httplib::Client client = server.Client();
 
-  const json plan = Get(client, "/v1/sources/steam/removal");
+  const json plan = GetJson(client, "/v1/sources/steam/removal");
   REQUIRE(plan["games"].size() == 1);
   CHECK(plan["games"][0]["deletes"] == "");
   CHECK_FALSE(plan["signs_out"].get<bool>());
@@ -144,7 +138,7 @@ TEST_CASE("Removing a store deletes only inside Mira's folders, keeps prefixes, 
   Touch(tools / "comet" / "comet", "#!/bin/sh\necho 0.3.2\n", /*executable=*/true);
   httplib::Client client = server.Client();
 
-  const json plan = Get(client, "/v1/sources/gog/removal");
+  const json plan = GetJson(client, "/v1/sources/gog/removal");
   CHECK(plan["signs_out"].get<bool>());
   CHECK(plan["kept"] == json::array({(state / "prefixes" / "celeste").string()}));
   CHECK(plan["tools"] == json::array({{{"name", "gogdl"}, {"path", (tools / "gog").string()}},
@@ -191,13 +185,13 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
   const json imported = AwaitJob(client, client.Post("/v1/launchers/ubisoft/import"));
   REQUIRE(imported["state"] == "finished");
   CHECK(imported["result"]["added"] == 1);
-  const json trackmania = Get(client, "/v1/games/ubisoft-5595");
+  const json trackmania = GetJson(client, "/v1/games/ubisoft-5595");
   CHECK(trackmania["install_path"] == (program / "games" / "Trackmania").string());
   CHECK(trackmania["data_dir"] == prefix.string());
   CHECK(trackmania["exe_path"] == "Trackmania.exe");
   CHECK(trackmania["source"] == "ubisoft");
 
-  const json plan = Get(client, "/v1/sources/ubisoft/removal");
+  const json plan = GetJson(client, "/v1/sources/ubisoft/removal");
   REQUIRE(plan["games"].size() == 1);
   CHECK(plan["program_dir"] == program.string());
   CHECK(plan["kept"] == json::array({prefix.string(), (program / "savegames").string()}));
@@ -228,7 +222,7 @@ TEST_CASE(
   REQUIRE(ordered != nullptr);
   CHECK(ordered->status == 200);
 
-  const json sources = Get(client, "/v1/sources")["sources"];
+  const json sources = GetJson(client, "/v1/sources")["sources"];
   CHECK(sources[0]["id"] == "gog");
   CHECK(sources[1]["id"] == "local");
   CHECK(sources[1]["added"] == true);
@@ -239,7 +233,7 @@ TEST_CASE(
   CHECK(epic["enabled"] == false);
   CHECK(epic["in_sidebar"] == false);
   CHECK(epic["in_hidden_sidebar"] == false);  // hidden mode mirrors in_sidebar until changed there
-  CHECK(Get(client, "/v1/sources")["hidden_sidebar_mirrors"] == true);
+  CHECK(GetJson(client, "/v1/sources")["hidden_sidebar_mirrors"] == true);
 
   const auto patch = [&](const char* id, const char* body) {
     auto res = client.Patch(std::string("/v1/sources/") + id, body, "application/json");
@@ -248,7 +242,7 @@ TEST_CASE(
     return json::parse(res->body);
   };
   const auto hidden_list = [&] {
-    const json listed = Get(client, "/v1/sources");
+    const json listed = GetJson(client, "/v1/sources");
     std::map<std::string, bool> shown;
     for (const json& source : listed["sources"]) shown[source["id"]] = source["in_hidden_sidebar"];
     return std::pair{listed["hidden_sidebar_mirrors"].get<bool>(), shown};
@@ -303,8 +297,8 @@ TEST_CASE("A switched-off source's games are left out of the library unless incl
     for (const json& game : games) out.push_back(game["id"]);
     return out;
   };
-  CHECK_FALSE(std::ranges::contains(ids(Get(client, "/v1/games")), std::string("steam-570")));
-  CHECK(std::ranges::contains(ids(Get(client, "/v1/games?include_off=true")),
+  CHECK_FALSE(std::ranges::contains(ids(GetJson(client, "/v1/games")), std::string("steam-570")));
+  CHECK(std::ranges::contains(ids(GetJson(client, "/v1/games?include_off=true")),
                               std::string("steam-570")));
 
   // Setting it up again turns it back on.
@@ -329,7 +323,7 @@ TEST_CASE(
   LiveServer server(TempDir("office-apps"));
   httplib::Client client = server.Client();
   // Listed before Office is installed, so they can be picked first.
-  const json launchers = Get(client, "/v1/launchers");
+  const json launchers = GetJson(client, "/v1/launchers");
   const auto office =
       std::ranges::find(launchers, json("office"), [](const json& l) { return l["id"]; });
   REQUIRE(office != launchers.end());
@@ -444,7 +438,7 @@ TEST_CASE("Steam's installed games are listed most recently played first without
         R"("UserLocalConfigStore" { "Software" { "Valve" { "Steam" { "apps" {
              "400" { "LastPlayed" "1000" } "620" { "LastPlayed" "3000" } } } } } })");
 
-  const json listed = Get(client, "/v1/steam/installed");
+  const json listed = GetJson(client, "/v1/steam/installed");
   CHECK(listed["found"].get<bool>());
   REQUIRE(listed["games"].size() == 3);
   CHECK(listed["games"][0]["name"] == "Portal 2");
@@ -452,7 +446,7 @@ TEST_CASE("Steam's installed games are listed most recently played first without
   CHECK(listed["games"][1]["appid"] == "400");
   CHECK(listed["games"][2]["appid"] == "70");
   CHECK_FALSE(listed["games"][2].contains("last_played_at"));
-  CHECK(Get(client, "/v1/games").empty());
+  CHECK(GetJson(client, "/v1/games").empty());
 }
 
 TEST_CASE("Settings from before the sources table carry over to it") {

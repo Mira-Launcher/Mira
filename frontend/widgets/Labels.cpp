@@ -16,6 +16,10 @@ QString HomeRelative(const QString& path) {
   return path == home || path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
 }
 
+QString ExpandHome(const QString& path) {
+  return path == "~" || path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
+}
+
 QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role, bool wrap) {
   auto* label = new QLabel(text, parent);
   label->setWordWrap(wrap);

@@ -1,7 +1,6 @@
 #include "AddGamesCard.h"
 
 #include <QApplication>
-#include <QButtonGroup>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
@@ -28,7 +27,9 @@
 #include "../game/CardParts.h"
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
+#include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
+#include "../widgets/Segmented.h"
 #include "../widgets/WindowCards.h"
 #include "LibraryActions.h"
 
@@ -39,15 +40,11 @@ constexpr int kWidth = 560;
 constexpr int kTile = 30;
 constexpr int kEntryIcon = 32;
 
-QString Expanded(const QString& path) {
-  return path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
-}
-
 QStringList ListSetting(const ConfigResult& config, const std::string& key) {
   QStringList list;
   if (const auto it = config.values.find(key); it != config.values.end()) {
     for (const std::string& item : mapping::ParseListText(it->second))
-      list << Expanded(QString::fromStdString(item));
+      list << ExpandHome(QString::fromStdString(item));
   }
   return list;
 }
@@ -283,7 +280,7 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
   QComboBox* program = nullptr;
   if (folder) {
     auto* row = new SettingRow("Program that starts it", QString(), page);
-    program = new QComboBox(row);
+    program = new FlatCombo(row);
     for (const ImportGuessResult::Program& candidate : guess.programs) {
       program->addItem(QString::fromStdString(candidate.path),
                        QString::fromStdString(candidate.platform));
@@ -301,21 +298,10 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
   page->AddRow(name_row);
 
   auto* kind_row = new SettingRow("It's", QString(), page);
-  auto* segmented = new QWidget(kind_row);
-  segmented->setObjectName("segmented");
-  auto* segmented_layout = new QHBoxLayout(segmented);
-  segmented_layout->setContentsMargins(3, 3, 3, 3);
-  segmented_layout->setSpacing(3);
-  auto* kinds = new QButtonGroup(segmented);
-  auto* game = new QPushButton("A game", segmented);
-  auto* app = new QPushButton("An app", segmented);
-  for (QPushButton* button : {game, app}) {
-    button->setCheckable(true);
-    kinds->addButton(button);
-    segmented_layout->addWidget(button);
-  }
-  (guess.kind == "app" ? app : game)->setChecked(true);
-  kind_row->AddControl(segmented);
+  auto* kinds = new Segmented({{"game", "A game"}, {"app", "An app"}}, kind_row);
+  kinds->SetValue(guess.kind == "app" ? "app" : "game");
+  QPushButton* app = kinds->Option("app");
+  kind_row->AddControl(kinds);
   page->AddRow(kind_row);
 
   // Already in a library folder, it has nowhere to move to.
@@ -330,7 +316,7 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
       row->Label()->setText("Move it into " + HomeRelative(MoveTarget(app->isChecked())));
     };
     label();
-    connect(kinds, &QButtonGroup::buttonClicked, row, label);
+    connect(kinds, &Segmented::Changed, row, label);
   }
 
   QLabel* error = AddErrorLine(page);
@@ -431,7 +417,7 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
   QComboBox* target = nullptr;
   if (!info.targets.empty()) {
     auto* row = new SettingRow("Install onto", QString(), page);
-    target = new QComboBox(row);
+    target = new FlatCombo(row);
     for (const InstallerInfoResult::Target& choice : info.targets) {
       target->addItem(
           QString("%1  ·  %2 free")

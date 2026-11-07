@@ -96,9 +96,7 @@ QString FolderName(const std::string& root) {
 // The same folder however a setting spells it: "~/Mira/Games", "/home/me/Mira/Games/".
 bool SameFolder(const std::string& a, const std::string& b) {
   const auto expanded = [](const std::string& path) {
-    QString text = QString::fromStdString(path);
-    if (text == "~" || text.startsWith("~/")) text = QDir::homePath() + text.mid(1);
-    return QDir::cleanPath(text);
+    return QDir::cleanPath(ExpandHome(QString::fromStdString(path)));
   };
   return expanded(a) == expanded(b);
 }

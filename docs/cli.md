@@ -57,8 +57,10 @@ Changes a game. Game fields and setting overrides go to separate endpoints:
 
 | Flag | Endpoint |
 |---|---|
-| `--name`, `--exe`, `--args`, `--runner kind:name`, `--data-dir`, `--env KEY=VALUE`, `--tag NAME`, `--untag NAME` | `PATCH /v1/games/{id}` |
-| `--override dotted.key=value`, `--unset dotted.key` | `PATCH /v1/games/{id}/config` |
+| `--name`, `--exe`, `--args`, `--runner kind:name`, `--data-dir`, `--tag NAME`, `--untag NAME` | `PATCH /v1/games/{id}` |
+| `--override dotted.key=value`, `--unset dotted.key`, `--env KEY=VALUE` | `PATCH /v1/games/{id}/config` |
+
+`--env` sets a variable in the game's `launch.env` list, which starts from Settings' list the first time; `--unset launch.env` puts the game back on Settings' list.
 
 `--env`, `--tag`, `--untag`, `--override` and `--unset` can repeat.
 

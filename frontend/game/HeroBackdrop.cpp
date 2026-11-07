@@ -1,5 +1,6 @@
 #include "HeroBackdrop.h"
 
+#include <QGraphicsOpacityEffect>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
@@ -15,8 +16,17 @@
 namespace mira_gui {
 namespace {
 
-// Share of the card's height the art covers before it has faded out.
-constexpr qreal kBandShare = 0.6;
+// A hero's usual shape (Steam's are 1920x620), for the blurred cover that stands in for one.
+constexpr qreal kHeroAspect = 620.0 / 1920.0;
+// The least the art covers before it has faded out: the header over it and some of the panel.
+constexpr int kMinBand = 240;
+// How far a HeroPanel's fill takes to fade in, and its content's top (within the pages' own top
+// margins, so nothing at rest fades).
+constexpr int kPanelFade = 48;
+constexpr int kContentFade = 12;
+// How much of the art's color the card takes, on a dark and a light theme.
+constexpr qreal kDarkTint = 0.24;
+constexpr qreal kLightTint = 0.12;
 
 }  // namespace
 
@@ -103,11 +113,20 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
   QPainterPath card;
   card.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel,
                       tokens.radius_panel);
-  painter.fillPath(card, tokens.surface);
-
   const QPixmap source = Source();
+  if (source.cacheKey() != tone_key_) {
+    tone_ = source.isNull() ? QColor() : DominantColor(source);
+    tone_key_ = source.cacheKey();
+  }
+  const QColor surface_tinted = Tinted(tokens.surface);
+  painter.fillPath(card, surface_tinted);
+
   if (!source.isNull()) {
-    const QRect band(0, 0, width(), qRound(height() * kBandShare));
+    // Across the card's width at the art's own shape, so all of it shows however tall the card.
+    const bool hero = !hero_.isNull() || !hero_preview_.isNull();
+    const qreal aspect = hero ? qreal(source.height()) / source.width() : kHeroAspect;
+    const QRect band(0, 0, width(),
+                     std::clamp(qRound(width() * aspect), std::min(kMinBand, height()), height()));
     const qreal dpr = devicePixelRatioF();
     const qint64 key = source.cacheKey() ^ (qint64(band.width()) << 32) ^ band.height() ^
                        (qint64(qRound(dpr * 100)) << 48);
@@ -118,7 +137,7 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
       QPixmap scaled;
       // A cover is portrait: a slice of it reads as noise, so blur it into
       // a wash of its colors (down to a few pixels and back up).
-      if (hero_.isNull() && hero_preview_.isNull()) {
+      if (!hero) {
         scaled = BlurredCover(source, band.size() * dpr);
       } else {
         scaled = source.scaled(band.size() * dpr, Qt::KeepAspectRatioByExpanding, mode);
@@ -135,7 +154,7 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
         QPointF((band.width() - size.width()) / 2, (band.height() - size.height()) / 2), rendered_);
     // Fades into the surface, so text laid over it keeps the theme's colors.
     QLinearGradient fade(0, 0, 0, band.height());
-    QColor surface = tokens.surface;
+    QColor surface = surface_tinted;
     surface.setAlphaF(0.2);
     fade.setColorAt(0, surface);
     surface.setAlphaF(0.75);
@@ -148,6 +167,53 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
 
   painter.setPen(QPen(tokens.border, 1));
   painter.drawPath(card);
+}
+
+HeroPanel::HeroPanel(QWidget* parent) : QWidget(parent) {
+  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] { update(); });
+}
+
+QColor HeroBackdrop::Tinted(const QColor& base) const {
+  if (!tone_.isValid()) return base;
+  // Enough to read as the art's, not so much that the theme's own colors stop showing.
+  const qreal amount = base.lightnessF() < 0.5 ? kDarkTint : kLightTint;
+  return theme::Mix(base, tone_, amount);
+}
+
+void HeroPanel::paintEvent(QPaintEvent*) {
+  const theme::Tokens& tokens = theme::Current();
+  const auto* backdrop = qobject_cast<const HeroBackdrop*>(parentWidget());
+  QColor color = backdrop != nullptr ? backdrop->Tinted(tokens.window) : tokens.window;
+  color.setAlphaF(0.82);
+  QColor clear = color;
+  clear.setAlphaF(0);
+  QLinearGradient fill(0, 0, 0, height());
+  fill.setColorAt(0, clear);
+  fill.setColorAt(std::min(1.0, qreal(kPanelFade) / std::max(1, height())), color);
+  fill.setColorAt(1, color);
+  // The card's corner, less its border.
+  const qreal radius = std::max(0, tokens.radius_panel - 1);
+  QPainterPath path;
+  path.moveTo(0, 0);
+  path.lineTo(width(), 0);
+  path.lineTo(width(), height() - radius);
+  path.arcTo(width() - 2 * radius, height() - 2 * radius, 2 * radius, 2 * radius, 0, -90);
+  path.lineTo(radius, height());
+  path.arcTo(0, height() - 2 * radius, 2 * radius, 2 * radius, -90, -90);
+  path.closeSubpath();
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.fillPath(path, fill);
+}
+
+void FadeTop(QWidget* widget) {
+  auto* effect = new QGraphicsOpacityEffect(widget);
+  effect->setOpacity(1);  // 0.7 by default
+  QLinearGradient mask(0, 0, 0, kContentFade);
+  mask.setColorAt(0, Qt::transparent);
+  mask.setColorAt(1, Qt::black);
+  effect->setOpacityMask(mask);
+  widget->setGraphicsEffect(effect);
 }
 
 CoverChip::CoverChip(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), artwork_(artwork) {

@@ -37,14 +37,29 @@ struct Choice {
 // Constructible from a plain Validator when there's no shape to describe.
 struct Constraint {
   Validator validate = {};
-  std::vector<std::string> one_of;  // empty unless this is an enum
-  std::vector<Choice> choices;      // empty unless this is a list whose items are picked from these
-  std::optional<double> minimum;    // unset unless this is ranged
+  std::vector<std::string> one_of;         // empty unless this is an enum
+  std::vector<std::string> option_labels;  // what a screen calls each of one_of; may be empty
+  std::vector<Choice> choices;    // empty unless this is a list whose items are picked from these
+  std::optional<double> minimum;  // unset unless this is ranged
   std::optional<double> maximum;
 
   Constraint() = default;
   Constraint(Validator validator) : validate(std::move(validator)) {}  // NOLINT: implicit
   explicit operator bool() const { return static_cast<bool>(validate); }
+};
+
+// The games a per-game setting means anything for. Each list left empty matches every game.
+struct Applies {
+  std::vector<std::string> sources = {};         // the game's source is one of these
+  std::vector<std::string> except_sources = {};  // and none of these
+  std::vector<std::string> platforms = {};       // "windows", "native", "web"
+  std::vector<std::string> runners = {};         // the kind in the game's runner_ref ("emulator")
+
+  bool Matches(std::string_view source, std::string_view platform,
+               std::string_view runner_ref) const;
+  bool Empty() const {
+    return sources.empty() && except_sources.empty() && platforms.empty() && runners.empty();
+  }
 };
 
 // Declared with designated initializers in Schema.cpp, under the section it
@@ -70,6 +85,8 @@ struct Entry {
   std::string shown_in = {};
   // A list whose choices pair with this one's (Choice::pair), e.g. a step and its undo.
   std::string paired_key = {};
+  std::string unit = {};  // what a number counts, shown beside it: "s", "MB", "days"
+  Applies applies = {};   // per-game settings only
   // Defaults it had before. Older versions wrote every default to settings.toml, so in a file from
   // then a stored one of these was never chosen, and is dropped when the file is cleaned.
   std::vector<nlohmann::json> old_defaults = {};
@@ -80,6 +97,10 @@ struct Entry {
   std::string group_label = {};   // the group's title, e.g. "Steam account"
   bool group_collapsed = false;   // a group of rarely changed values a screen shows folded
   bool group_resettable = false;  // a group whose values make sense to reset together
+  // A few entries of a group that belong to one thing (an emulator, a download), which a screen
+  // shows under one row named item_label; their labels make sense under it.
+  std::string item = {};
+  std::string item_label = {};
   // The source the key belongs to ("steam", "ubisoft"), derived from the key; empty if none.
   std::string source = {};
 };

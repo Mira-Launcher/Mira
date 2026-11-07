@@ -1,6 +1,5 @@
 #include "SourcesPage.h"
 
-#include <QButtonGroup>
 #include <QColor>
 #include <QEvent>
 #include <QFrame>
@@ -28,6 +27,7 @@
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
+#include "../widgets/Segmented.h"
 #include "SourceCatalog.h"
 #include "SourceSetupCard.h"
 #include "Sources.h"
@@ -69,20 +69,8 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
                 &theme::Tokens::text_muted);
   header->addWidget(search_, 0, Qt::AlignTop);
 
-  auto* segmented = new QWidget(this);
-  segmented->setObjectName("segmented");
-  auto* segmented_layout = new QHBoxLayout(segmented);
-  segmented_layout->setContentsMargins(3, 3, 3, 3);
-  segmented_layout->setSpacing(3);
-  views_ = new QButtonGroup(this);
-  int index = 0;
-  for (const char* label : {"Added", "Add source"}) {
-    auto* button = new QPushButton(label, segmented);
-    button->setCheckable(true);
-    views_->addButton(button, index++);
-    segmented_layout->addWidget(button);
-  }
-  header->addWidget(segmented, 0, Qt::AlignTop);
+  views_ = new Segmented({{"added", "Added"}, {"catalog", "Add source"}}, this);
+  header->addWidget(views_, 0, Qt::AlignTop);
 
   auto* close = new QToolButton(this);
   close->setAutoRaise(true);
@@ -126,8 +114,9 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   scroll->setWidget(views);
   outer->addWidget(scroll, /*stretch=*/1);
 
-  views_->button(0)->setChecked(true);
-  connect(views_, &QButtonGroup::idClicked, this, &SourcesPage::ShowView);
+  views_->SetValue("added");
+  connect(views_, &Segmented::Changed, this,
+          [this](const QString& view) { ShowView(view == "catalog" ? 1 : 0); });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString& text) {
     added_->SetFilter(text);
     catalog_->SetFilter(text);
@@ -155,15 +144,15 @@ void SourcesPage::SetEntries(const std::vector<SourceEntry>& entries) {
   }
   added_->SetEntries(added);
   catalog_->SetSources(offered);
-  views_->button(0)->setText(QString("Added  %1").arg(added.size()));
-  views_->button(1)->setText(QString("Add source  %1").arg(offered.size()));
+  views_->Option("added")->setText(QString("Added  %1").arg(added.size()));
+  views_->Option("catalog")->setText(QString("Add source  %1").arg(offered.size()));
 }
 
 void SourcesPage::SetHiddenSidebar(bool hidden_mode, bool mirrors) {
   const QSignalBlocker quiet(mirror_);
   mirror_->setChecked(mirrors);
   hidden_mode_ = hidden_mode;
-  mirror_row_->setVisible(hidden_mode_ && views_->checkedId() == 0);
+  mirror_row_->setVisible(hidden_mode_ && views_->Value() == "added");
 }
 
 void SourcesPage::ShowCatalog() {
@@ -177,7 +166,7 @@ void SourcesPage::ShowAdded() {
 }
 
 void SourcesPage::ShowView(int view) {
-  views_->button(view)->setChecked(true);
+  views_->SetValue(view == 1 ? "catalog" : "added");
   mirror_row_->setVisible(hidden_mode_ && view == 0);
   added_->setVisible(view == 0);
   catalog_->setVisible(view == 1);

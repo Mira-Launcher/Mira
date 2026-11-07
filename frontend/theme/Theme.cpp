@@ -1,12 +1,15 @@
 #include "Theme.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QDir>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QHash>
+#include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
@@ -40,12 +43,15 @@ std::optional<QColor> g_desktop_accent;
 std::optional<Qt::ColorScheme> g_desktop_scheme;
 bool g_hidden_mode = false;
 
-// `from` moved `amount` (0 to 1) of the way to `to`.
+}  // namespace
+
 QColor Mix(const QColor& from, const QColor& to, double amount) {
   return QColor::fromRgbF(from.redF() + (to.redF() - from.redF()) * amount,
                           from.greenF() + (to.greenF() - from.greenF()) * amount,
                           from.blueF() + (to.blueF() - from.blueF()) * amount, from.alphaF());
 }
+
+namespace {
 
 // "#rrggbb" and "#rrggbbaa", in CSS order, because that is the order anyone
 // writing a theme by hand will reach for. (QColor's own "#aarrggbb" puts
@@ -154,6 +160,16 @@ class AppStyle : public QProxyStyle {
     if (element == PE_FrameFocusRect) return;
     QProxyStyle::drawPrimitive(element, option, painter, widget);
   }
+
+  void polish(QWidget* widget) override {
+    QProxyStyle::polish(widget);
+    // A spin box ignores the stylesheet's padding, so its text would sit against the left edge
+    // while a line edit's is indented. The same 8 px, less the inner edit's own 2.
+    if (auto* spin = qobject_cast<QAbstractSpinBox*>(widget)) {
+      if (auto* edit = spin->findChild<QLineEdit*>()) edit->setTextMargins(6, 0, 0, 0);
+    }
+  }
+  using QProxyStyle::polish;
 };
 
 // Set once: with a stylesheet, QApplication::style() is Qt's stylesheet wrapper around ours, and
@@ -225,6 +241,46 @@ Tokens WithSystemColors(Tokens tokens, const std::optional<QPalette>& system,
 }
 
 namespace {
+constexpr qreal kFallbackPoints = 10;
+// The size base.qss's pixel sizes and the code's TextPx values were picked at.
+constexpr qreal kTunedPoints = 11;
+qreal g_styled_points = 0;  // TextPoints() when Restyle last ran
+}  // namespace
+
+QFont DesktopFont() {
+  return QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+}
+
+qreal TextPoints() {
+  if (g_overrides.text_points) return *g_overrides.text_points;
+  const qreal desktop = DesktopFont().pointSizeF();
+  return desktop > 0 ? desktop : kFallbackPoints;
+}
+
+int TextPx(int px) {
+  return std::max(1, qRound(px * TextPoints() / kTunedPoints));
+}
+
+namespace {
+
+QFont TextFont() {
+  QFont font = DesktopFont();
+  font.setPointSizeF(TextPoints());
+  return font;
+}
+
+void KeepFont() {
+  const QFont font = TextFont();
+  // The classes the platform theme gives a font of their own (QApplicationPrivate's map).
+  static const char* const kClasses[] = {
+      "QLabel",      "QPushButton", "QToolButton",       "QAbstractItemView", "QMenu",
+      "QHeaderView", "QTabBar",     "QComboBoxListView", "QGroupBox"};
+  const bool stale =
+      QApplication::font() != font || std::ranges::any_of(kClasses, [&font](const char* name) {
+        return QApplication::font(name) != font;
+      });
+  if (stale) QApplication::setFont(font);  // also clears every class's font
+}
 
 // A theme by name: the bundled one of that name if there is one, then the user's file of that
 // name over it, key by key, then the desktop's colors if it asks for them.
@@ -303,6 +359,11 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   values.insert("top_bar_border",
                 g_hidden_mode ? ColorToQss(Mix(tokens.border, tokens.accent, 0.6)) : "transparent");
   values.insert("hidden_note", ColorToQss(Mix(tokens.text, tokens.accent, 0.35)));
+  // A card's opened row and its list items: a step from the card toward the window.
+  values.insert("surface_sunken", ColorToQss(Mix(tokens.surface, tokens.window, 0.45)));
+  values.insert("radius_card", QString("%1px").arg(tokens.radius_panel + 4));
+  // A row ending a card, inside its 1px border.
+  values.insert("radius_card_inner", QString("%1px").arg(tokens.radius_panel + 3));
   // Faint washes behind a note or a mark, still readable under text.
   for (const auto& [name, color] :
        {std::pair{"accent_faint", tokens.accent}, std::pair{"info_faint", tokens.info},
@@ -330,6 +391,13 @@ QString RenderQss(const Tokens& tokens) {
   QFile file(":/themes/base.qss");
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   QString sheet = QString::fromUtf8(file.readAll());
+  // Its text sizes follow the text size; the @font_size tokens are already scaled.
+  static const QRegularExpression font_px("font-size:\\s*(\\d+)px");
+  for (QRegularExpressionMatch match = font_px.match(sheet); match.hasMatch();
+       match = font_px.match(sheet, match.capturedStart() + 1)) {
+    sheet.replace(match.capturedStart(1), match.capturedLength(1),
+                  QString::number(TextPx(match.captured(1).toInt())));
+  }
 
   const QHash<QString, QString> values = QssValues(tokens);
   static const QRegularExpression placeholder("@([a-z_]+)");
@@ -388,8 +456,12 @@ void Restyle() {
   if (g_overrides.radius_panel) g_tokens.radius_panel = *g_overrides.radius_panel;
   if (g_overrides.radius_control) g_tokens.radius_control = *g_overrides.radius_control;
   if (g_hidden_mode) g_tokens.accent = g_tokens.accent_hidden;
+  g_tokens.font_size_small = TextPx(g_theme_tokens.font_size_small);
+  g_tokens.font_size_heading = TextPx(g_theme_tokens.font_size_heading);
+  g_styled_points = TextPoints();
 
   UseFusion();
+  KeepFont();
   QApplication::setPalette(PaletteFor(g_tokens));
   qApp->setStyleSheet(RenderQss(g_tokens));
   emit Notifier::Instance() -> Changed();
@@ -445,26 +517,55 @@ void SetStyleSheet(QWidget* widget, const QString& sheet) {
   if (widget->styleSheet() != sheet) widget->setStyleSheet(sheet);
 }
 
-QFont Larger(QFont font, qreal points) {
-  if (font.pointSizeF() > 0) {
-    font.setPointSizeF(font.pointSizeF() + points);
-  } else {
-    font.setPixelSize(font.pixelSize() + qRound(points));
-  }
-  return font;
-}
-
 namespace {
-std::optional<QFont> g_desktop_font;
+// The platform theme refills Qt's per-class fonts (QLabel, QPushButton...) at the desktop's size
+// when the desktop's settings arrive (the portal answers after start) or change, while fields keep
+// the app's, so labels would read a point off the fields beside them. Setting the app font again
+// clears those. A new desktop size, when the text follows it, restyles for the sheet's sizes.
+class FontKeeper : public QObject {
+ public:
+  FontKeeper() {
+    qApp->installEventFilter(this);
+    Schedule();
+  }
+
+  // The answer can come before any window (so with no ThemeChange) and before or after the first
+  // check: its palette reaches the application itself, and every window's first show checks too.
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    switch (event->type()) {
+      case QEvent::ThemeChange:
+      case QEvent::ApplicationPaletteChange:
+      case QEvent::ApplicationFontChange:
+        Schedule();
+        break;
+      case QEvent::Show:
+        if (auto* widget = qobject_cast<QWidget*>(watched); widget != nullptr && widget->isWindow())
+          Schedule();
+        break;
+      default:
+        break;
+    }
+    return QObject::eventFilter(watched, event);
+  }
+
+ private:
+  void Schedule() {
+    if (std::exchange(pending_, true)) return;
+    QTimer::singleShot(0, this, [this] {
+      pending_ = false;
+      if (g_applied && TextPoints() != g_styled_points) return Restyle();  // sets the font too
+      KeepFont();
+    });
+  }
+
+  bool pending_ = false;
+};
 }  // namespace
 
-QFont DesktopFont() {
-  return g_desktop_font.value_or(QApplication::font());
-}
-
-void EnlargeAppFont() {
-  g_desktop_font = QApplication::font();
-  QApplication::setFont(Larger(*g_desktop_font));
+void KeepTextSize() {
+  KeepFont();
+  static FontKeeper* keeper = new FontKeeper;
+  Q_UNUSED(keeper);
 }
 
 const Tokens& Current() {

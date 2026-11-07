@@ -28,6 +28,7 @@
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
 #include "migrate/EarlySchema.h"
+#include "migrate/GameEnv.h"
 #include "migrate/Legacy.h"
 #include "migrate/Sources.h"
 #include "runner/RefMigration.h"
@@ -112,6 +113,7 @@ int main(int argc, char** argv) {
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
   if (games.SourcesNew())
     mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
+  mira::migrate::MoveGameEnv(config, games);          // temporary; see migrate/GameEnv.h
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);

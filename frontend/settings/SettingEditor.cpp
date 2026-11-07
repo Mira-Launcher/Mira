@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
+#include <QPushButton>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -19,8 +20,11 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ChipToggles.h"
+#include "../widgets/FlatCombo.h"
+#include "../widgets/Labels.h"
 #include "../widgets/ListEdit.h"
 #include "../widgets/PathField.h"
+#include "../widgets/Segmented.h"
 #include "SettingsCard.h"
 
 namespace mira_gui {
@@ -43,10 +47,22 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     toggle->setAccessibleName(QString::fromStdString(label));
     row->AddControl(toggle);
   } else if (!entry.one_of.empty()) {
-    combo = new QComboBox(row);
-    for (const std::string& option : entry.one_of) combo->addItem(QString::fromStdString(option));
-    combo->setMinimumWidth(200);
-    row->AddControl(combo);
+    const auto option_label = [this](size_t i) {
+      return QString::fromStdString(i < entry.option_labels.size() ? entry.option_labels[i]
+                                                                   : entry.one_of[i]);
+    };
+    if (entry.one_of.size() <= 3 && !entry.option_labels.empty()) {
+      segments = new Segmented(row);
+      segments->setAccessibleName(QString::fromStdString(label));
+      for (size_t i = 0; i < entry.one_of.size(); ++i)
+        segments->AddOption(QString::fromStdString(entry.one_of[i]), option_label(i));
+      row->AddControl(segments);
+    } else {
+      combo = new FlatCombo(row);
+      for (size_t i = 0; i < entry.one_of.size(); ++i)
+        combo->addItem(option_label(i), QString::fromStdString(entry.one_of[i]));
+      row->AddControl(combo);
+    }
   } else if (entry.minimum && entry.maximum &&
              (entry.type == "an integer" || entry.type == "a number")) {
     spin = new QDoubleSpinBox(row);
@@ -59,15 +75,12 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     };
     spin->setToolTip(
         QString("Between %1 and %2").arg(number(*entry.minimum), number(*entry.maximum)));
-    spin->setMinimumWidth(110);
+    if (!entry.unit.empty()) spin->setSuffix(" " + QString::fromStdString(entry.unit));
+    spin->setFixedWidth(kNumberWidth);
     row->AddControl(spin);
   } else if (entry.is_runner_ref) {
-    combo = new QComboBox(row);
-    combo->setEditable(true);
-    combo->setInsertPolicy(QComboBox::NoInsert);
-    combo->setFixedWidth(280);
-    // Empty is "use the default runner", which an empty box doesn't say.
-    combo->lineEdit()->setPlaceholderText("Default runner");
+    combo = new FlatCombo(row);
+    combo->addItem("Default runner", QString());  // the runners come later (FillRunnerCombo)
     row->AddControl(combo);
   } else if (entry.type == "an array of strings" && !entry.choices.empty()) {
     chips = new ChipToggles(row);
@@ -83,13 +96,15 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     const bool folders = entry.path == "folder";
     list = new ListEdit(folders ? ListEdit::Kind::Folder : ListEdit::Kind::Text,
                         folders ? "Add folder…" : "Add…", row);
-    row->SetBelow(list);
+    row->AddControl(list->EmptyLabel());
+    row->AddControl(list->AddButton());
+    row->SetBelowFlush(list);
   } else {
     line = new QLineEdit(row);
-    // One width for every field, so a page's fields line up.
-    line->setFixedWidth(entry.path.empty() ? 280 : 240);
-    // An empty path means Mira finds it (the doc says where), not "nothing".
-    if (!entry.path.empty() && entry.default_display.empty()) line->setPlaceholderText("Automatic");
+    // An empty path means Mira finds it (the doc says where), not "nothing"; any other empty
+    // text (a script, an id) is nothing at all.
+    if (entry.default_display.empty())
+      line->setPlaceholderText(entry.path.empty() ? "None" : "Automatic");
     if (entry.is_secret) {
       // mirad never sends a saved key back, so there's nothing to show: typing replaces it.
       line->setEchoMode(QLineEdit::Password);
@@ -103,30 +118,39 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
                        });
       ShowSecret(line, clear_secret, false);
     }
-    if (entry.path.empty()) {
-      row->AddControl(line);
-    } else {
+    // The field and what goes with it (Browse…, a link) take one width, so fields line up.
+    std::vector<QWidget*> buttons;
+    if (!entry.path.empty()) {
       const bool folder = entry.path == "folder";
-      row->AddControl(PathRow(line, [line = line, folder] {
-        const QString home = QDir::homePath();
-        QString start = line->text().isEmpty() ? home : line->text();
-        if (start.startsWith("~")) start = home + start.mid(1);
+      auto* browse = new QPushButton("Browse…", row);
+      QObject::connect(browse, &QPushButton::clicked, line, [line = line, folder] {
+        const QString start = line->text().isEmpty() ? QDir::homePath() : ExpandHome(line->text());
         const QString chosen =
             folder ? QFileDialog::getExistingDirectory(line, "Choose a folder", start)
                    : QFileDialog::getOpenFileName(line, "Choose a file", start);
-        return chosen.startsWith(home + "/") ? "~" + chosen.mid(home.size()) : chosen;
-      }));
+        if (chosen.isEmpty()) return;
+        line->setText(HomeRelative(chosen));
+        ShowPathStart(line);
+      });
+      buttons.push_back(browse);
     }
-  }
-  if (!entry.link.empty()) {
-    const QUrl url(QString::fromStdString(entry.link));
-    auto* link = new QToolButton(row);
-    link->setAutoRaise(true);
-    icons::Follow(link, icons::Glyph::External, &theme::Tokens::accent);
-    link->setToolTip(QString("Open %1").arg(url.host()));
-    link->setCursor(Qt::PointingHandCursor);
-    QObject::connect(link, &QToolButton::clicked, link, [url] { QDesktopServices::openUrl(url); });
-    row->AddControl(link);
+    if (!entry.link.empty()) {
+      const QUrl url(QString::fromStdString(entry.link));
+      auto* link = new QToolButton(row);
+      link->setAutoRaise(true);
+      icons::Follow(link, icons::Glyph::External, &theme::Tokens::accent);
+      link->setToolTip(QString("Open %1").arg(url.host()));
+      link->setCursor(Qt::PointingHandCursor);
+      QObject::connect(link, &QToolButton::clicked, link,
+                       [url] { QDesktopServices::openUrl(url); });
+      buttons.push_back(link);
+    }
+    if (buttons.empty()) {
+      line->setFixedWidth(kFieldColumnWidth);
+      row->AddControl(line);
+    } else {
+      row->AddControl(FieldWithButtons(line, buttons));
+    }
   }
   return row;
 }
@@ -138,13 +162,15 @@ QString SettingEditor::Doc() const {
 }
 
 QString SettingEditor::SearchText() const {
-  return QString::fromStdString(entry.key + ' ' + entry.label + ' ' + entry.category + ' ' +
-                                entry.group_label + ' ' + entry.doc + ' ' + entry.keywords);
+  return QString::fromStdString(entry.key + ' ' + entry.label + ' ' + entry.item_label + ' ' +
+                                entry.category + ' ' + entry.group_label + ' ' + entry.doc + ' ' +
+                                entry.keywords);
 }
 
 QWidget* SettingEditor::Input() const {
   if (toggle != nullptr) return toggle;
   if (combo != nullptr) return combo;
+  if (segments != nullptr) return segments;
   if (spin != nullptr) return spin;
   if (list != nullptr) return list;
   if (chips != nullptr) return chips;
@@ -154,7 +180,12 @@ QWidget* SettingEditor::Input() const {
 std::string SettingEditor::Text() const {
   if (toggle) return toggle->isChecked() ? "true" : "false";
   if (spin) return spin->cleanText().toStdString();
-  if (combo) return (combo->isEditable() ? RunnerRef(combo) : combo->currentText()).toStdString();
+  if (segments) return segments->Value().toStdString();
+  if (combo) {
+    if (entry.is_runner_ref) return RunnerRef(combo).toStdString();
+    const QVariant value = combo->currentData();
+    return (value.isValid() ? value.toString() : combo->currentText()).toStdString();
+  }
   if (list || chips) {
     std::vector<std::string> items;
     for (const QString& item : list ? list->Items() : chips->Values())
@@ -194,18 +225,14 @@ void SettingEditor::SetText(const std::string& text) {
     spin->setValue(QString::fromStdString(text).toDouble());
     return;
   }
-  if (combo != nullptr && !combo->isEditable()) {
-    const int index = combo->findText(QString::fromStdString(text));
-    if (index >= 0) {
-      combo->setCurrentIndex(index);
-    } else if (!text.empty()) {
-      combo->insertItem(0, QString::fromStdString(text));
-      combo->setCurrentIndex(0);
-    }
+  if (segments) {
+    segments->SetValue(QString::fromStdString(text));
     return;
   }
   if (combo != nullptr) {
-    ShowRunnerRef(combo, QString::fromStdString(text));
+    // An empty value that isn't an option leaves the choice as it was.
+    if (!text.empty() || entry.is_runner_ref || combo->findData(QString()) >= 0)
+      SelectOrKeep(combo, QString::fromStdString(text));
     return;
   }
   if (clear_secret) {
@@ -221,10 +248,8 @@ void SettingEditor::SetText(const std::string& text) {
 void SettingEditor::OnEdited(QObject* context, std::function<void()> edited) const {
   if (toggle) QObject::connect(toggle, &Switch::toggled, context, edited);
   if (spin) QObject::connect(spin, &QDoubleSpinBox::valueChanged, context, edited);
-  if (combo) {
-    QObject::connect(combo, &QComboBox::currentTextChanged, context, edited);
-    if (combo->isEditable()) QObject::connect(combo, &QComboBox::editTextChanged, context, edited);
-  }
+  if (segments) QObject::connect(segments, &Segmented::Changed, context, edited);
+  if (combo) QObject::connect(combo, &QComboBox::currentIndexChanged, context, edited);
   if (line) QObject::connect(line, &QLineEdit::textChanged, context, edited);
   if (clear_secret) QObject::connect(clear_secret, &QAction::triggered, context, edited);
   if (list) QObject::connect(list, &ListEdit::Changed, context, edited);
@@ -266,16 +291,17 @@ void PairChoices(const SettingEditor& first, const SettingEditor& second) {
   to->SetPairValues(from->Values());
 }
 
-void ShowRunnerRef(QComboBox* combo, const QString& ref) {
-  const int index = ref.isEmpty() ? -1 : combo->findData(ref);
-  combo->setEditText(index >= 0 ? combo->itemText(index) : ref);
-  combo->lineEdit()->setCursorPosition(0);
+void SelectOrKeep(QComboBox* combo, const QString& value) {
+  int index = combo->findData(value);
+  if (index < 0) {
+    combo->addItem(value, value);
+    index = combo->count() - 1;
+  }
+  combo->setCurrentIndex(index);
 }
 
 QString RunnerRef(const QComboBox* combo) {
-  const QString text = combo->currentText();
-  const int index = combo->findText(text);
-  return index >= 0 && combo->itemData(index).isValid() ? combo->itemData(index).toString() : text;
+  return combo->currentData().toString();
 }
 
 void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
@@ -283,6 +309,7 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
   const QString current = RunnerRef(combo);
   combo->blockSignals(true);
   combo->clear();
+  combo->addItem("Default runner", QString());
   if (entry.runner_kinds.empty() || entry.default_display == "auto")
     combo->addItem("Auto (best available)", "auto");
   if (runners.ok) {
@@ -294,7 +321,7 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
       combo->addItem(label, QString::fromStdString(runner.reference));
     }
   }
-  ShowRunnerRef(combo, current);
+  SelectOrKeep(combo, current);
   combo->blockSignals(false);
 }
 

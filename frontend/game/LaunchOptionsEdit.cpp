@@ -14,9 +14,12 @@
 #include <algorithm>
 #include <set>
 
+#include "../settings/SettingsCard.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlatCombo.h"
+#include "../widgets/ListEdit.h"
 #include "../widgets/PathField.h"
 #include "../widgets/PopupDialog.h"
 
@@ -61,29 +64,16 @@ std::string FreeId(const QString& name, const std::vector<LaunchOption>& options
 }  // namespace
 
 LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(8);
-
-  auto* list = new QWidget(this);
-  list->setObjectName("list_edit");
-  list->setAttribute(Qt::WA_StyledBackground);
-  auto* list_layout = new QVBoxLayout(list);
-  list_layout->setContentsMargins(1, 1, 1, 1);
-  list_layout->setSpacing(0);
-  rows_ = new QVBoxLayout();
+  setObjectName("list_edit");
+  rows_ = new QVBoxLayout(this);
+  rows_->setContentsMargins(0, 0, 0, 0);
   rows_->setSpacing(0);
-  list_layout->addLayout(rows_);
-  auto* empty = new QLabel("None", list);
-  empty->setProperty("role", "subtle");
-  empty->setContentsMargins(10, 6, 10, 6);
-  empty_ = empty;
-  list_layout->addWidget(empty_);
-  auto* add = new QPushButton("Add launch option", list);
-  icons::Follow(add, icons::Glyph::Plus, &theme::Tokens::accent);
-  add->setObjectName("list_add");
-  add->setCursor(Qt::PointingHandCursor);
-  connect(add, &QPushButton::clicked, this, [this] {
+
+  empty_ = new QLabel("None", this);
+  theme::SetStyleProperty(empty_, "role", "subtle");
+  add_ = new QPushButton("Add…", this);
+  add_->setCursor(Qt::PointingHandCursor);
+  connect(add_, &QPushButton::clicked, this, [this] {
     LaunchOption option;
     if (!Edit(option)) return;
     option.id = FreeId(QString::fromStdString(option.name), launch_.options);
@@ -91,27 +81,16 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
     Rebuild();
     emit Changed();
   });
-  list_layout->addWidget(add, 0, Qt::AlignLeft);
-  layout->addWidget(list);
 
-  auto* default_line = new QHBoxLayout();
-  default_line->setSpacing(8);
-  default_line->addWidget(new QLabel("Play starts", this));
-  default_ = new QComboBox(this);
-  default_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-  default_->setMinimumContentsLength(8);
-  default_line->addWidget(default_, /*stretch=*/1);
-  layout->addLayout(default_line);
-  only_ = new QCheckBox("Offer nothing else", this);
-  only_->setToolTip("Ctrl+click Play still shows every choice");
-  layout->addWidget(only_);
+  default_ = new FlatCombo(this);
+  only_ = new Switch(this);
   connect(default_, &QComboBox::activated, this, [this] {
     launch_.default_id = default_->currentData().toString().toStdString();
     if (launch_.default_id.empty()) launch_.only = false;
     Rebuild();
     emit Changed();
   });
-  connect(only_, &QCheckBox::toggled, this, [this](bool on) {
+  connect(only_, &Switch::toggled, this, [this](bool on) {
     if (launch_.only == on) return;
     launch_.only = on;
     emit Changed();
@@ -143,14 +122,14 @@ void LaunchOptionsEdit::Rebuild() {
   }
   for (size_t i = 0; i < launch_.options.size(); ++i) {
     const LaunchOption& option = launch_.options[i];
+    // As ListEdit's rows: sunken, past the label of the row above, the buttons ending where the
+    // controls of the rows around them do.
     auto* row = new QWidget(this);
-    row->setObjectName("list_row");
-    auto* layout = new QHBoxLayout(row);
-    layout->setContentsMargins(10, 4, 4, 4);
-    layout->setSpacing(8);
+    QHBoxLayout* layout = ListItemRow(row);
     auto* text = new QLabel(row);
     text->setTextFormat(Qt::PlainText);
     text->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    text->setMinimumHeight(kControlHeight);
     text->setText(QString::fromStdString(option.name) + "  ·  " + ModeText(option.mode));
     text->setToolTip(
         QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
@@ -160,28 +139,21 @@ void LaunchOptionsEdit::Rebuild() {
     icons::Follow(edit, icons::Glyph::Settings, &theme::Tokens::text_muted);
     edit->setToolTip("Edit");
     connect(edit, &QToolButton::clicked, this, [this, id = option.id] {
-      auto find = [this, &id] {
-        return std::find_if(launch_.options.begin(), launch_.options.end(),
-                            [&](const LaunchOption& o) { return o.id == id; });
-      };
-      auto it = find();
+      auto it = std::ranges::find(launch_.options, id, &LaunchOption::id);
       if (it == launch_.options.end()) return;
       LaunchOption changed = *it;
       if (!Edit(changed)) return;
-      it = find();  // a live reload may have replaced the list while the dialog was open
+      // A live reload may have replaced the list while the dialog was open.
+      it = std::ranges::find(launch_.options, id, &LaunchOption::id);
       if (it == launch_.options.end()) return;
       *it = std::move(changed);
       Rebuild();
       emit Changed();
     });
     layout->addWidget(edit);
-    auto* remove = new QToolButton(row);
-    remove->setAutoRaise(true);
-    icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
-    remove->setToolTip("Remove");
+    QToolButton* remove = NewRemoveButton(row);
     connect(remove, &QToolButton::clicked, this, [this, id = option.id] {
-      auto it = std::find_if(launch_.options.begin(), launch_.options.end(),
-                             [&](const LaunchOption& o) { return o.id == id; });
+      auto it = std::ranges::find(launch_.options, id, &LaunchOption::id);
       if (it == launch_.options.end()) return;
       if (it->id == launch_.default_id) {
         launch_.default_id.clear();
@@ -195,6 +167,7 @@ void LaunchOptionsEdit::Rebuild() {
     rows_->addWidget(row);
   }
   empty_->setVisible(launch_.options.empty());
+  setVisible(!launch_.options.empty());
 
   default_->clear();
   default_->addItem("The game's own program", QString());
@@ -223,7 +196,7 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   form->setContentsMargins(0, 0, 0, 0);
   auto* name = new QLineEdit(QString::fromStdString(option.name), form_widget);
   form->addRow("Name", name);
-  auto* mode = new QComboBox(form_widget);
+  auto* mode = new FlatCombo(form_widget);
   for (const auto& [id, text] : kModes) mode->addItem(text, QString(id));
   mode->setCurrentIndex(std::max(mode->findData(QString::fromStdString(option.mode)), 0));
   form->addRow("What it does", mode);
@@ -242,7 +215,7 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   native->setVisible(windows_);
   form->addRow(QString(), native);
   // The sign-in holds a single-use code: a program elsewhere, like a mod manager, can't use it.
-  auto* sign_in = new QComboBox(form_widget);
+  auto* sign_in = new FlatCombo(form_widget);
   sign_in->addItem("If it's in the game's folder", -1);
   sign_in->addItem("Yes", 1);
   sign_in->addItem("No", 0);

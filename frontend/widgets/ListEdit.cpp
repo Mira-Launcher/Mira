@@ -14,28 +14,50 @@
 
 namespace mira_gui {
 
+QHBoxLayout* ListItemRow(QWidget* row, bool button_last) {
+  row->setObjectName("list_row");
+  row->setAttribute(Qt::WA_StyledBackground);
+  auto* layout = new QHBoxLayout(row);
+  // A tool button's glyph sits 9 px inside it, so text ends 9 px further in.
+  layout->setContentsMargins(34, 2, button_last ? 9 : 18, 2);
+  layout->setSpacing(8);
+  return layout;
+}
+
+QToolButton* NewRemoveButton(QWidget* parent) {
+  auto* remove = new QToolButton(parent);
+  remove->setAutoRaise(true);
+  icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
+  remove->setToolTip("Remove");
+  return remove;
+}
+
 ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent)
     : QWidget(parent), kind_(kind) {
   setObjectName("list_edit");
-  setAttribute(Qt::WA_StyledBackground);
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(1, 1, 1, 1);
+  layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
   rows_ = new QVBoxLayout();
   rows_->setSpacing(0);
   layout->addLayout(rows_);
 
-  empty_ = new QLabel("None", this);
-  empty_->setProperty("role", "subtle");
-  empty_->setContentsMargins(10, 6, 10, 6);
-  layout->addWidget(empty_);
+  more_ = new QPushButton(this);
+  more_->setObjectName("list_more");
+  more_->setCursor(Qt::PointingHandCursor);
+  connect(more_, &QPushButton::clicked, this, [this] {
+    show_all_ = true;
+    Update();
+  });
+  layout->addWidget(more_);
 
-  auto* add = new QPushButton(add_text, this);
-  icons::Follow(add, icons::Glyph::Plus, &theme::Tokens::accent);
-  add->setObjectName("list_add");
-  add->setCursor(Qt::PointingHandCursor);
-  connect(add, &QPushButton::clicked, this, [this] {
+  empty_ = new QLabel("None", this);
+  theme::SetStyleProperty(empty_, "role", "subtle");
+
+  add_ = new QPushButton(add_text, this);
+  add_->setCursor(Qt::PointingHandCursor);
+  connect(add_, &QPushButton::clicked, this, [this] {
     if (kind_ == Kind::Folder) {
       const QString folder =
           QFileDialog::getExistingDirectory(this, "Choose a folder", QDir::homePath());
@@ -49,8 +71,7 @@ ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent)
     }
     AddRow({}, /*edit=*/true);
   });
-  layout->addWidget(add, 0, Qt::AlignLeft);
-  UpdateEmpty();
+  Update();
 }
 
 QStringList ListEdit::Items() const {
@@ -71,16 +92,26 @@ void ListEdit::SetItems(const QStringList& items) {
     delete item->widget();
     delete item;
   }
+  show_all_ = false;
   for (const QString& text : items) AddRow(text, /*edit=*/false);
-  UpdateEmpty();
+  Update();
+}
+
+void ListEdit::SetReadOnly(bool read_only) {
+  read_only_ = read_only;
+  for (int i = 0; i < rows_->count(); ++i) {
+    QWidget* row = rows_->itemAt(i)->widget();
+    if (row == nullptr) continue;
+    theme::SetStyleProperty(row, "inherited", read_only ? "true" : "false");
+    if (auto* line = row->findChild<QLineEdit*>()) line->setReadOnly(read_only);
+    if (auto* remove = row->findChild<QToolButton*>()) remove->setVisible(!read_only);
+  }
 }
 
 void ListEdit::AddRow(const QString& text, bool edit) {
   auto* row = new QWidget(this);
-  row->setObjectName("list_row");
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(10, 0, 4, 0);
-  layout->setSpacing(8);
+  QHBoxLayout* layout = ListItemRow(row);
+  theme::SetStyleProperty(row, "inherited", read_only_ ? "true" : "false");
   if (kind_ == Kind::Folder) {
     auto* icon = new QLabel(row);
     icons::Follow(icon, icons::Glyph::Folder, 16);
@@ -90,26 +121,36 @@ void ListEdit::AddRow(const QString& text, bool edit) {
   auto* line = new QLineEdit(text, row);
   line->setObjectName("list_item");
   line->setFrame(false);
+  line->setReadOnly(read_only_);
   connect(line, &QLineEdit::textEdited, this, &ListEdit::Changed);
   layout->addWidget(line, /*stretch=*/1);
-  auto* remove = new QToolButton(row);
-  remove->setAutoRaise(true);
-  icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
-  remove->setToolTip("Remove");
+  QToolButton* remove = NewRemoveButton(row);
+  remove->setVisible(!read_only_);
   connect(remove, &QToolButton::clicked, this, [this, row] {
     rows_->removeWidget(row);
     row->deleteLater();
-    UpdateEmpty();
+    Update();
     emit Changed();
   });
   layout->addWidget(remove);
   rows_->addWidget(row);
-  UpdateEmpty();
-  if (edit) line->setFocus();
+  if (edit) {
+    show_all_ = true;  // a new item is never folded away
+    line->setFocus();
+  }
+  Update();
 }
 
-void ListEdit::UpdateEmpty() {
-  empty_->setVisible(rows_->count() == 0);
+void ListEdit::Update() {
+  const int count = rows_->count();
+  const bool folded = !show_all_ && count > kShortList;
+  for (int i = 0; i < count; ++i) {
+    if (QWidget* row = rows_->itemAt(i)->widget()) row->setVisible(!folded || i < kShownFolded);
+  }
+  more_->setText(QString("Show all %1").arg(count));
+  more_->setVisible(folded);
+  empty_->setVisible(count == 0);
+  setVisible(count > 0);
 }
 
 }  // namespace mira_gui

@@ -19,6 +19,7 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class ExpanderRow;
 class SettingsCard;
 class SettingsPage;
 
@@ -102,7 +103,8 @@ class SettingsNavWidget : public QWidget {
   struct RowEntry {
     QWidget* row_widget = nullptr;
     SettingsCard* card = nullptr;
-    QString search_text;  // settings_search::Normalize'd
+    ExpanderRow* expander = nullptr;  // the row it's inside, if any
+    QString search_text;              // settings_search::Normalize'd
     bool gate_visible = true;
     int category_index = -1;
   };
@@ -115,7 +117,6 @@ class SettingsNavWidget : public QWidget {
   // The sticky title, the nav's current row and the room under the last page,
   // after a scroll or a change in the pages' size.
   void SyncToScroll();
-  int TitleTop(const Category& category) const;
   int CurrentIndex() const;
 
   QLineEdit* search_ = nullptr;
@@ -125,14 +126,17 @@ class SettingsNavWidget : public QWidget {
   QScrollArea* scroll_ = nullptr;  // every page, one after another
   QWidget* canvas_ = nullptr;
   QVBoxLayout* sections_ = nullptr;
-  QLabel* sticky_ = nullptr;  // the current page's title, over the scroll's top
+  // The current page's group and title, over the scroll's top and as wide as the column.
+  QWidget* sticky_ = nullptr;
+  QLabel* sticky_group_ = nullptr;
+  QLabel* sticky_title_ = nullptr;
   QVariantAnimation* jump_ = nullptr;
   int jumping_to_ = -1;                      // the nav row a jump is heading for
   int bottom_room_ = 0;                      // for a change bar
   QStackedWidget* content_stack_ = nullptr;  // scroll_ vs. empty_state_
   QLabel* empty_state_ = nullptr;            // shown when a query matches nothing at all
   QWidget* left_ = nullptr;
-  QVBoxLayout* left_layout_ = nullptr;  // header widget (if any), search box, nav
+  QVBoxLayout* left_layout_ = nullptr;  // header widget (if any) and search box, over the nav
   QWidget* header_widget_ = nullptr;
   QLabel* current_heading_ = nullptr;  // the group heading new categories go under
   QString current_group_;
@@ -141,6 +145,7 @@ class SettingsNavWidget : public QWidget {
   std::vector<RowEntry> rows_;
   QHash<QWidget*, int> row_index_by_widget_;  // row_widget -> index into rows_
   QHash<SettingsCard*, bool> folded_before_search_;
+  QHash<ExpanderRow*, bool> closed_before_search_;
 };
 
 }  // namespace mira_gui

@@ -16,6 +16,7 @@ namespace mira_gui {
 
 class ChipToggles;
 class ListEdit;
+class Segmented;
 class SettingRow;
 class Switch;
 
@@ -31,6 +32,7 @@ struct SettingEditor {
   QDoubleSpinBox* spin = nullptr;  // set instead of `line` for a bounded number
   ListEdit* list = nullptr;        // set instead of `line` for an array
   ChipToggles* chips = nullptr;    // set instead of `list` for an array picked from choices
+  Segmented* segments = nullptr;   // set instead of `combo` for an enum of two or three
   SettingRow* row = nullptr;
   // A secret's button that drops the one mirad holds and doesn't send (kSecretSaved). Whether one
   // is held is the line's "secret_saved" property, since editors move around in vectors.
@@ -60,9 +62,9 @@ void PairChoices(const SettingEditor& first, const SettingEditor& second);
 // runner_kinds; keeps the combo's value.
 void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
                      const ConfigSchemaEntry& entry);
-// An editable runner combo shows a listed runner by its name; anything else is the reference as
-// typed.
-void ShowRunnerRef(QComboBox* combo, const QString& ref);
+// Selects the item whose data is `value`; a value the combo doesn't list (a runner since removed,
+// or one set by hand) is added as it was set, so saving keeps it.
+void SelectOrKeep(QComboBox* combo, const QString& value);
 QString RunnerRef(const QComboBox* combo);
 
 }  // namespace mira_gui

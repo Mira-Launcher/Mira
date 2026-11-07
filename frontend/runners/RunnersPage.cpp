@@ -1,6 +1,5 @@
 #include "RunnersPage.h"
 
-#include <QButtonGroup>
 #include <QComboBox>
 #include <QDateTime>
 #include <QFrame>
@@ -22,9 +21,11 @@
 #include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
+#include "../widgets/Segmented.h"
 #include "RunnerUpdater.h"
 
 namespace mira_gui {
@@ -102,28 +103,16 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   header->addWidget(title, /*stretch=*/1);
   // Only the two kinds with builds to download. `native` has none, and
   // `steam` resolves its build per game from Steam's own prefix.
-  auto* segmented = new QWidget(this);
-  segmented->setObjectName("segmented");
-  auto* segmented_layout = new QHBoxLayout(segmented);
-  segmented_layout->setContentsMargins(3, 3, 3, 3);
-  segmented_layout->setSpacing(3);
-  kinds_ = new QButtonGroup(this);
-  for (const auto& [label, kind] : {std::pair{"Proton", "proton"}, std::pair{"Wine", "wine"}}) {
-    auto* button = new QPushButton(label, segmented);
-    button->setCheckable(true);
-    button->setProperty("kind", kind);
-    kinds_->addButton(button);
-    segmented_layout->addWidget(button);
-  }
-  kinds_->buttons().first()->setChecked(true);
-  connect(kinds_, &QButtonGroup::buttonClicked, this, [this] {
+  kinds_ = new Segmented({{"proton", "Proton"}, {"wine", "Wine"}}, this);
+  kinds_->SetValue("proton");
+  connect(kinds_, &Segmented::Changed, this, [this] {
     catalog_loaded_ = false;
     releases_.clear();
     RebuildInstalled();
     RefreshSources();
     RebuildTools();
   });
-  header->addWidget(segmented);
+  header->addWidget(kinds_);
   outer->addWidget(header_box);
 
   // Both columns scroll together, each as tall as its own cards.
@@ -173,9 +162,8 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   left->addWidget(default_note_);
 
   catalog_ = new SettingsCard("Get more", canvas);
-  source_ = new QComboBox(catalog_);
+  source_ = new FlatCombo(catalog_);
   source_->setToolTip("Where builds are downloaded from");
-  source_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
   catalog_->Header()->addWidget(source_);
   auto* refresh = new QToolButton(catalog_);
@@ -217,7 +205,7 @@ void RunnersPage::SetGames(const std::vector<GameSummary>& games) {
 }
 
 std::string RunnersPage::CurrentKind() const {
-  return kinds_->checkedButton()->property("kind").toString().toStdString();
+  return kinds_->Value().toStdString();
 }
 
 void RunnersPage::SetStatus(const QString& text, bool error) {

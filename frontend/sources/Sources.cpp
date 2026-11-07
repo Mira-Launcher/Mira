@@ -225,7 +225,7 @@ const Console* FindConsole(const QString& id) {
 
 }  // namespace
 
-QString PlaysText(const SourceInfo& source) {
+QString PlaysText(const SourceInfo& source, int at_most) {
   QStringList names;
   for (const QString& id : source.consoles) {
     const Console* console = FindConsole(id);
@@ -233,6 +233,11 @@ QString PlaysText(const SourceInfo& source) {
       names << id;
     else if (*console->name != '\0')
       names << console->name;
+  }
+  if (at_most > 0 && names.size() > at_most + 1) {
+    const qsizetype rest = names.size() - at_most;
+    names = names.mid(0, at_most);
+    names << QString("%1 more").arg(rest);
   }
   return JoinAnd(names);
 }

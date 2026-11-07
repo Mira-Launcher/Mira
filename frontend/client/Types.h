@@ -642,8 +642,12 @@ struct ConfigSchemaEntry {
     bool needs_pair = false;  // only offered while `pair` is picked in `paired_key`
   };
   std::vector<Choice> choices;
+  std::vector<std::string> option_labels;  // what to call each of one_of; may be empty
   std::optional<double> minimum;
   std::optional<double> maximum;
+  std::string unit;               // what a number counts ("s", "MB"), shown beside it
+  std::string item;               // settings of a group that belong to one thing (an emulator)
+  std::string item_label;         // that thing's name, the row they show under
   std::string category;           // UI grouping; always present
   int group = 0;                  // settings sharing this number within a category form one card
   std::string group_label;        // that card's title
@@ -732,6 +736,7 @@ struct GameConfigEntry {
   std::string value_display;  // stringified like ConfigResult::values
   std::string layer;          // "default" | "config" | "game"
   bool overridable = false;
+  bool applies = true;  // the game can use it at all (a Steam setting for a Steam game)
 };
 
 struct GameConfigResult {
@@ -1061,6 +1066,8 @@ struct FrontendPrefs {
   std::optional<int> tile_radius;
   std::optional<int> panel_radius;
   std::optional<int> control_radius;
+  // Text size in points; unset or 0 follows the desktop's.
+  std::optional<int> text_size;
   // Overridden keyboard shortcuts, id (ui/KeyBindings.h) -> a
   // QKeySequence::toString(PortableText) string. An id absent here just
   // means "whatever that action's own default is" -- see keybindings::All().
@@ -1660,6 +1667,8 @@ struct EmulatorFirmware {
 struct EmulatorInfo {
   std::string id;  // also its games' `source`
   std::string name;
+  std::string maker;                    // who made the systems it runs: "Sony", "Computers"
+  std::vector<std::string> consoles;    // short names: "ps1", "snes"
   std::vector<std::string> extensions;  // ".sfc", lower case
   bool folder_games = false;            // its games are folders (PS3, PS4), not files
   bool installed = false;

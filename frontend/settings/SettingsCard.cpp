@@ -25,13 +25,46 @@
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/ToolTip.h"
-#include "SettingsColumns.h"
 #include "SettingsNav.h"
 
 namespace mira_gui {
 namespace {
 
 constexpr int kRowPaddingX = 18;
+// The settings column's width, and on windows at least kWideRoom wide.
+constexpr int kColumn = 720;
+constexpr int kWideColumn = 760;
+constexpr int kWideRoom = 1400;
+
+// The chevron that folds a card or an expander row, redrawn in a new theme's color.
+QToolButton* NewChevron(QWidget* parent, QWidget* owner, std::function<bool()> expanded,
+                        std::function<void(bool)> set_expanded) {
+  auto* chevron = new QToolButton(parent);
+  chevron->setAutoRaise(true);
+  QObject::connect(chevron, &QToolButton::clicked, owner,
+                   [expanded, set_expanded] { set_expanded(!expanded()); });
+  QObject::connect(theme::Notifier::Instance(), &theme::Notifier::Changed, chevron,
+                   [expanded, set_expanded] { set_expanded(expanded()); });
+  return chevron;
+}
+
+void ShowChevron(QToolButton* chevron, bool expanded) {
+  chevron->setIcon(icons::For(expanded ? icons::Glyph::ChevronUp : icons::Glyph::ChevronDown,
+                              theme::Current().text_muted));
+  chevron->setToolTip(expanded ? "Fold" : "Show");
+}
+
+// A click released on `head` that folds it: one on a control in it (a switch, a button) is that
+// control's.
+bool FoldClick(QWidget* head, QEvent* event) {
+  if (event->type() != QEvent::MouseButtonRelease) return false;
+  const auto* mouse = static_cast<QMouseEvent*>(event);
+  for (QWidget* hit = head->childAt(mouse->position().toPoint()); hit != nullptr && hit != head;
+       hit = hit->parentWidget()) {
+    if (qobject_cast<QAbstractButton*>(hit) != nullptr) return false;
+  }
+  return true;
+}
 
 // A card's rows, with a line between each two shown. Drawn here rather than by the card so the
 // lines scroll with the rows.
@@ -148,10 +181,11 @@ SettingRow::SettingRow(const QString& label, const QString& doc, QWidget* parent
   setObjectName("setting_row");
   setAttribute(Qt::WA_StyledBackground);  // so a row being dragged can be highlighted
   outer_ = new QVBoxLayout(this);
-  outer_->setContentsMargins(8, 8, kRowPaddingX, 8);
-  outer_->setSpacing(6);
+  outer_->setContentsMargins(0, 0, 0, 0);
+  outer_->setSpacing(0);
 
   line_ = new QHBoxLayout();
+  line_->setContentsMargins(8, 8, kRowPaddingX, 8);
   line_->setSpacing(6);
   outer_->addLayout(line_);
 
@@ -165,7 +199,7 @@ SettingRow::SettingRow(const QString& label, const QString& doc, QWidget* parent
   line_->addSpacing(4);
 
   label_ = new QLabel(label, this);
-  label_->setMinimumHeight(30);
+  label_->setMinimumHeight(kControlHeight);
   line_->addWidget(label_);
   if (!doc.isEmpty()) {
     label_->setToolTip(doc);
@@ -246,29 +280,178 @@ void SettingRow::AddAfterLabel(QWidget* widget) {
 
 void SettingRow::SetBelow(QWidget* widget) {
   auto* indent = new QHBoxLayout();
-  indent->setContentsMargins(16, 0, 0, 0);
+  const QMargins line = line_->contentsMargins();
+  indent->setContentsMargins(line.left() + 16, 0, line.right(), line.bottom());
+  line_->setContentsMargins(line.left(), line.top(), line.right(), 6);
   indent->addWidget(widget);
   outer_->addLayout(indent);
 }
 
+void SettingRow::SetBelowFlush(QWidget* widget) {
+  outer_->addWidget(widget);
+}
+
+void SettingRow::SetIndent(int pixels) {
+  const QMargins line = line_->contentsMargins();
+  line_->setContentsMargins(8 + pixels, line.top(), line.right(), line.bottom());
+  for (int i = 0; i < outer_->count(); ++i) {
+    if (auto* below = qobject_cast<QHBoxLayout*>(outer_->itemAt(i)->layout());
+        below != nullptr && below != line_) {
+      const QMargins m = below->contentsMargins();
+      below->setContentsMargins(8 + pixels + 16, m.top(), m.right(), m.bottom());
+    }
+  }
+}
+
+// --- ExpanderRow ----------------------------------------------------------
+
+ExpanderRow::ExpanderRow(const QString& label, QWidget* parent) : QWidget(parent) {
+  setObjectName("expander_row");
+  auto* layout = new QVBoxLayout(this);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+
+  head_ = new QWidget(this);
+  head_->setObjectName("expander_head");
+  head_->setAttribute(Qt::WA_StyledBackground);
+  head_->setAttribute(Qt::WA_Hover);
+  head_->setCursor(Qt::PointingHandCursor);
+  head_layout_ = new QHBoxLayout(head_);
+  // As a SettingRow's line with its dot's room, so names line up with the labels around them.
+  head_layout_->setContentsMargins(kLabelInset, 8, kRowPaddingX - 6, 8);
+  head_layout_->setSpacing(8);
+  label_ = new QLabel(label, head_);
+  label_->setMinimumHeight(kControlHeight);
+  head_layout_->addWidget(label_);
+  meta_ = new QLabel(head_);
+  theme::SetStyleProperty(meta_, "role", "subtle");
+  meta_->hide();
+  head_layout_->addWidget(meta_);
+  head_layout_->addStretch(1);
+  summary_ = new QLabel(head_);
+  summary_->setObjectName("expander_summary");
+  theme::SetStyleProperty(summary_, "role", "subtle");
+  summary_->hide();
+  head_layout_->addWidget(summary_);
+  chevron_ =
+      NewChevron(head_, this, [this] { return Expanded(); }, [this](bool on) { SetExpanded(on); });
+  chevron_->setAccessibleName(label);
+  head_layout_->addWidget(chevron_);
+  head_->installEventFilter(this);
+  layout->addWidget(head_);
+
+  body_ = new CardBody(&rows_, this);
+  body_->setObjectName("expander_body");
+  body_->setAttribute(Qt::WA_StyledBackground);
+  body_layout_ = new QVBoxLayout(body_);
+  body_layout_->setContentsMargins(0, 1, 0, 0);  // under the line over the body
+  body_layout_->setSpacing(0);
+  layout->addWidget(body_);
+  SetExpanded(false);
+}
+
+void ExpanderRow::AddRow(QWidget* row) {
+  row->setParent(body_);
+  if (auto* setting = qobject_cast<SettingRow*>(row)) setting->SetIndent(16);
+  body_layout_->addWidget(row);
+  rows_.append(row);
+}
+
+void ExpanderRow::ClearRows() {
+  for (QWidget* row : rows_) {
+    body_layout_->removeWidget(row);
+    row->hide();
+    row->deleteLater();
+  }
+  rows_.clear();
+}
+
+void ExpanderRow::SetMeta(const QString& text) {
+  meta_->setText(text);
+  meta_->setVisible(!text.isEmpty());
+}
+
+void ExpanderRow::SetSummary(const QString& text, const QString& tone) {
+  summary_->setText(text);
+  summary_->setVisible(!text.isEmpty());
+  theme::SetStyleProperty(summary_, "tone", tone);
+}
+
+void ExpanderRow::AddTrailing(QWidget* widget) {
+  widget->setParent(head_);
+  head_layout_->insertWidget(head_layout_->indexOf(chevron_), widget, 0, Qt::AlignVCenter);
+}
+
+void ExpanderRow::SetLeading(QWidget* widget) {
+  widget->setParent(head_);
+  head_layout_->insertWidget(0, widget, 0, Qt::AlignVCenter);
+}
+
+void ExpanderRow::SetExpanded(bool expanded) {
+  const bool changed = expanded != Expanded();
+  body_->setVisible(expanded);
+  ShowChevron(chevron_, expanded);
+  if (changed) emit Toggled(expanded);
+}
+
+bool ExpanderRow::Expanded() const {
+  return body_->isVisibleTo(this);
+}
+
+bool ExpanderRow::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == head_ && FoldClick(head_, event)) {
+    SetExpanded(!Expanded());
+    return true;
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
+int SettingsColumnWidth(int room) {
+  return std::min(room, room >= kWideRoom ? kWideColumn : kColumn);
+}
+
+QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons) {
+  auto* group = new QWidget(field->parentWidget());
+  group->setFixedWidth(kFieldColumnWidth);
+  auto* layout = new QHBoxLayout(group);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(8);
+  field->setMinimumWidth(0);
+  field->setMaximumWidth(QWIDGETSIZE_MAX);
+  layout->addWidget(field, /*stretch=*/1);
+  for (QWidget* button : buttons) layout->addWidget(button);
+  return group;
+}
+
 void SettingRow::SetModified(bool modified) {
   modified_ = modified;
-  ShowModified();
-  if (included_in_ != nullptr) included_in_->ShowModified();
+  ShowRevert();
+  if (included_in_ != nullptr) included_in_->ShowRevert();
+}
+
+void SettingRow::SetOverridden(bool overridden) {
+  overridden_ = overridden;
+  ShowRevert();
+  if (included_in_ != nullptr) included_in_->ShowRevert();
 }
 
 void SettingRow::Include(SettingRow* other) {
   other->included_in_ = this;
   included_.push_back(other);
-  ShowModified();
+  ShowRevert();
 }
 
-void SettingRow::ShowModified() {
-  const bool shown = modified_ || std::ranges::any_of(included_, [](const SettingRow* row) {
-                       return row->modified_;
-                     });
-  dot_->setVisible(shown);
-  revert_->setVisible(shown);
+void SettingRow::ShowRevert() {
+  const auto any = [this](bool SettingRow::* flag) {
+    return this->*flag ||
+           std::ranges::any_of(included_, [flag](const SettingRow* row) { return row->*flag; });
+  };
+  const bool modified = any(&SettingRow::modified_);
+  dot_->setVisible(modified);
+  revert_->setVisible(modified || any(&SettingRow::overridden_));
+  revert_->setToolTip(modified ? "Undo this change" : "Use Settings' value");
+  revert_->setAccessibleName((modified ? "Undo the change to " : "Use Settings' value for ") +
+                             label_->text());
 }
 
 // --- SettingsCard ---------------------------------------------------------
@@ -276,12 +459,13 @@ void SettingRow::ShowModified() {
 SettingsCard::SettingsCard(const QString& title, QWidget* parent) : QFrame(parent) {
   setObjectName("settings_card");
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 4);
+  layout->setContentsMargins(1, 1, 1, 1);  // inside its border, so a sunken row never covers it
   layout->setSpacing(0);
 
   header_ = new QWidget(this);
   header_layout_ = new QHBoxLayout(header_);
-  header_layout_->setContentsMargins(kRowPaddingX, 14, kRowPaddingX - 6, 4);
+  // Its title starts where the rows' labels do (SettingRow's line, past its dot's room).
+  header_layout_->setContentsMargins(kLabelInset, 14, kRowPaddingX - 6, 4);
   header_layout_->setSpacing(10);
   title_ = new QLabel(title, header_);
   title_->setProperty("role", "section");
@@ -482,13 +666,9 @@ void SettingsCard::SetResettable(bool resettable) {
 
 void SettingsCard::SetCollapsible(bool collapsed) {
   if (chevron_ == nullptr) {
-    chevron_ = new QToolButton(header_);
-    chevron_->setAutoRaise(true);
+    chevron_ = NewChevron(
+        header_, this, [this] { return Expanded(); }, [this](bool on) { SetExpanded(on); });
     chevron_->setFocusPolicy(Qt::StrongFocus);
-    connect(chevron_, &QToolButton::clicked, this, [this] { SetExpanded(!Expanded()); });
-    // Redrawn in the new theme's color.
-    connect(theme::Notifier::Instance(), &theme::Notifier::Changed, chevron_,
-            [this] { SetExpanded(Expanded()); });
     header_layout_->addWidget(chevron_);
     header_->setCursor(Qt::PointingHandCursor);
     header_->installEventFilter(this);
@@ -497,15 +677,23 @@ void SettingsCard::SetCollapsible(bool collapsed) {
   SetExpanded(!collapsed);
 }
 
+void SettingsCard::SetSummary(const QString& text) {
+  if (summary_ == nullptr) {
+    summary_ = new QLabel(header_);
+    theme::SetStyleProperty(summary_, "role", "subtle");
+    const int at =
+        chevron_ != nullptr ? header_layout_->indexOf(chevron_) : header_layout_->count();
+    header_layout_->insertWidget(at, summary_, 0, Qt::AlignVCenter);
+  }
+  summary_->setText(text);
+}
+
 void SettingsCard::SetExpanded(bool expanded) {
   body_->setVisible(expanded);
   if (chevron_ != nullptr) {
-    const QColor muted = theme::Current().text_muted;
-    chevron_->setIcon(
-        icons::For(expanded ? icons::Glyph::ChevronUp : icons::Glyph::ChevronDown, muted));
-    chevron_->setToolTip(expanded ? "Fold" : "Show");
+    ShowChevron(chevron_, expanded);
     // Folded, the header is the whole card, so it gets the bottom padding.
-    header_layout_->setContentsMargins(kRowPaddingX, 12, kRowPaddingX - 6, expanded ? 4 : 12);
+    header_layout_->setContentsMargins(kLabelInset, 12, kRowPaddingX - 6, expanded ? 4 : 12);
   }
   update();
 }
@@ -514,19 +702,34 @@ bool SettingsCard::Expanded() const {
   return body_->isVisibleTo(this);
 }
 
+void SettingsCard::resizeEvent(QResizeEvent* event) {
+  QFrame::resizeEvent(event);
+  RoundBottomRow();  // a list folding or an expander opening resizes the card
+}
+
+bool SettingsCard::event(QEvent* event) {
+  const bool handled = QFrame::event(event);
+  // Rows added or shown inside, which may not resize the card, lay it out again.
+  if (event->type() == QEvent::LayoutRequest) RoundBottomRow();
+  return handled;
+}
+
+void SettingsCard::RoundBottomRow() {
+  static const QStringList kSunken = {"list_row", "list_more", "expander_body", "expander_head"};
+  for (QWidget* widget : findChildren<QWidget*>()) {
+    if (!kSunken.contains(widget->objectName())) continue;
+    const int bottom = widget->mapTo(this, QPoint(0, widget->height())).y();
+    const bool last = widget->isVisibleTo(this) && bottom >= height() - 2;  // its border's inside
+    theme::SetStyleProperty(widget, "card_bottom", last ? "true" : "false");
+  }
+}
+
 bool SettingsCard::eventFilter(QObject* watched, QEvent* event) {
   if (auto* grip = qobject_cast<QWidget*>(watched);
       grip != nullptr && grip->objectName() == "row_grip") {
     if (HandleGrip(grip, event)) return true;
   }
-  if (watched == header_ && event->type() == QEvent::MouseButtonRelease) {
-    // A click on a header control (a switch, a button) is that control's, not a fold.
-    auto* mouse = static_cast<QMouseEvent*>(event);
-    for (QWidget* hit = header_->childAt(mouse->position().toPoint());
-         hit != nullptr && hit != header_; hit = hit->parentWidget()) {
-      if (qobject_cast<QAbstractButton*>(hit) != nullptr)
-        return QFrame::eventFilter(watched, event);
-    }
+  if (watched == header_ && FoldClick(header_, event)) {
     SetExpanded(!Expanded());
     return true;
   }
@@ -537,14 +740,12 @@ bool SettingsCard::eventFilter(QObject* watched, QEvent* event) {
 
 namespace {
 
-// A page's cards in adaptive columns (ui/SettingsColumns). The split is kept
-// until the width or the set of shown cards changes, so folding a card never
-// moves cards between columns. The last card of a shorter column grows down to
-// the tallest column's bottom, unless it can fold.
-class CardColumns : public QLayout {
+// A page's heading, title and cards stacked in one column centered in the page, and a preview
+// beside it while there's room (the space either side of the column, less a margin).
+class CenteredColumn : public QLayout {
  public:
-  explicit CardColumns(QWidget* parent) : QLayout(parent) { setContentsMargins(0, 0, 0, 0); }
-  ~CardColumns() override {
+  explicit CenteredColumn(QWidget* parent) : QLayout(parent) { setContentsMargins(0, 0, 0, 0); }
+  ~CenteredColumn() override {
     while (QLayoutItem* item = takeAt(0)) delete item;
   }
 
@@ -552,112 +753,70 @@ class CardColumns : public QLayout {
     items_.append(item);
     invalidate();
   }
+  void InsertWidget(int index, QWidget* widget) {
+    addChildWidget(widget);
+    items_.insert(std::clamp(index, 0, static_cast<int>(items_.size())), new QWidgetItem(widget));
+    invalidate();
+  }
   int count() const override { return static_cast<int>(items_.size()); }
   QLayoutItem* itemAt(int index) const override { return items_.value(index); }
   QLayoutItem* takeAt(int index) override {
     if (index < 0 || index >= items_.size()) return nullptr;
-    plans_.clear();
     return items_.takeAt(index);
   }
   Qt::Orientations expandingDirections() const override { return {}; }
   bool hasHeightForWidth() const override { return true; }
-  int heightForWidth(int width) const override {
-    return Place(QRect(0, 0, width, 0), /*apply=*/false);
-  }
-  QSize sizeHint() const override {
-    return {settings_columns::kMaxWidth, heightForWidth(settings_columns::kMaxWidth)};
-  }
+  int heightForWidth(int width) const override { return Place(QRect(0, 0, width, 0), false); }
+  QSize sizeHint() const override { return {kWideColumn, heightForWidth(kWideColumn)}; }
   QSize minimumSize() const override {
     int width = 0;
-    for (const QLayoutItem* item : items_) {
+    for (const QLayoutItem* item : items_)
       if (!item->isEmpty()) width = std::max(width, item->minimumSize().width());
-    }
-    return {width, 0};
+    return {std::min(width, 480), 0};
   }
   void setGeometry(const QRect& rect) override {
     QLayout::setGeometry(rect);
-    Place(rect, /*apply=*/true);
+    Place(rect, true);
   }
-  void Replan() {
-    plans_.clear();
-    invalidate();
-  }
+  int ColumnLeft(int width) const { return (width - SettingsColumnWidth(width)) / 2; }
 
  private:
   static int HeightOf(const QLayoutItem* item, int width) {
     return item->hasHeightForWidth() ? item->heightForWidth(width) : item->sizeHint().height();
   }
 
-  static bool CanGrow(const QLayoutItem* item) {
-    const auto* card = qobject_cast<const SettingsCard*>(item->widget());
-    return card != nullptr && !card->Collapsible();
-  }
-
-  // Positions the shown cards in `rect` (when `apply`); returns the tallest column's height.
   int Place(const QRect& rect, bool apply) const {
-    std::vector<int> shown;
-    for (int i = 0; i < items_.size(); ++i) {
-      if (!items_[i]->isEmpty()) shown.push_back(i);
+    const int column = SettingsColumnWidth(rect.width());
+    const int left = rect.x() + ColumnLeft(rect.width());
+    int y = rect.y();
+    bool first = true;
+    bool after_title = false;
+    for (QLayoutItem* item : items_) {
+      if (item->isEmpty()) continue;
+      if (!first) y += after_title ? kTitleGap : kCardGap;
+      const int height = HeightOf(item, column);
+      if (apply) item->setGeometry(QRect(left, y, column, height));
+      y += height;
+      first = false;
+      after_title = item->widget() != nullptr && item->widget()->objectName() == "settings_title";
     }
-    // Plans are kept per width, so a size probe at another width can't replace
-    // the one in use; a real resize or another set of cards starts over.
-    if (shown != shown_ || (apply && rect.width() != applied_width_)) plans_.clear();
-    shown_ = shown;
-    if (apply) applied_width_ = rect.width();
-    auto plan_it = plans_.find(rect.width());
-    if (plan_it == plans_.end()) {
-      const int measure = std::min(settings_columns::kMaxWidth, rect.width());
-      std::vector<int> heights;
-      for (const int i : shown) heights.push_back(HeightOf(items_[i], measure));
-      plan_it = plans_.insert(rect.width(), settings_columns::Arrange(heights, rect.width()));
-    }
-    const settings_columns::Plan& plan = plan_it.value();
-
-    std::vector<int> natural;
-    for (const auto& column : plan.columns) {
-      int height = 0;
-      for (const int c : column) height += HeightOf(items_[shown_[c]], plan.width) + kCardGap;
-      natural.push_back(column.empty() ? 0 : height - kCardGap);
-    }
-    const int tallest = natural.empty() ? 0 : *std::ranges::max_element(natural);
-    if (!apply) return tallest;
-
-    for (size_t j = 0; j < plan.columns.size(); ++j) {
-      const auto& column = plan.columns[j];
-      const int x = rect.x() + static_cast<int>(j) * (plan.width + settings_columns::kGap);
-      int y = rect.y();
-      for (const int c : column) {
-        QLayoutItem* item = items_[shown_[c]];
-        int height = HeightOf(item, plan.width);
-        if (c == column.back() && CanGrow(item)) height += std::max(0, rect.height() - natural[j]);
-        item->setGeometry(QRect(x, y, plan.width, height));
-        y += height + kCardGap;
-      }
-    }
-    return tallest;
+    return y - rect.y();
   }
 
   static constexpr int kCardGap = 16;
 
   QList<QLayoutItem*> items_;
-  mutable std::vector<int> shown_;  // indices into items_ the plans were made for
-  mutable int applied_width_ = -1;
-  mutable QHash<int, settings_columns::Plan> plans_;  // by width
 };
 
 }  // namespace
 
 SettingsPage::SettingsPage(const QString& title, QWidget* parent) : QWidget(parent) {
   setObjectName("settings_section");
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(12);
+  auto* layout = new CenteredColumn(this);
   title_ = new QLabel(title, this);
+  title_->setObjectName("settings_title");
   title_->setProperty("role", "heading");
   layout->addWidget(title_);
-  cards_ = new QWidget(this);
-  new CardColumns(cards_);
-  layout->addWidget(cards_);
 }
 
 SettingsCard* SettingsPage::AddCard(const QString& title) {
@@ -667,7 +826,7 @@ SettingsCard* SettingsPage::AddCard(const QString& title) {
 }
 
 void SettingsPage::AddWidget(QWidget* widget) {
-  cards_->layout()->addWidget(widget);
+  layout()->addWidget(widget);
 }
 
 QString SettingsPage::Title() const {
@@ -675,13 +834,18 @@ QString SettingsPage::Title() const {
 }
 
 void SettingsPage::Rearrange() {
-  static_cast<CardColumns*>(cards_->layout())->Replan();
+  layout()->invalidate();
 }
 
 void SettingsPage::SetGroupHeading(const QString& text) {
   auto* heading = new QLabel(text.toUpper(), this);
+  heading->setObjectName("settings_title");
   heading->setProperty("role", "nav_heading");
-  static_cast<QVBoxLayout*>(layout())->insertWidget(0, heading);
+  static_cast<CenteredColumn*>(layout())->InsertWidget(0, heading);
+}
+
+int SettingsPage::ColumnLeft() const {
+  return static_cast<CenteredColumn*>(layout())->ColumnLeft(width());
 }
 
 // --- ChangeBar ------------------------------------------------------------

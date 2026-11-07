@@ -26,6 +26,7 @@
 #include <QRandomGenerator>
 #include <QScrollBar>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -43,6 +44,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/FlowLayout.h"
 #include "../widgets/TabRow.h"
+#include "HeroBackdrop.h"
 
 namespace mira_gui {
 namespace {
@@ -58,6 +60,7 @@ enum ThumbState { kIdle, kLoading, kReady, kFailed };
 
 // Gap around each preview inside its grid cell.
 constexpr int kInset = 6;
+constexpr int kTabPadding = 12;  // a tab's text from its underline's end (base.qss)
 // mirad takes at most this many ids per batch.
 constexpr std::size_t kMaxBatch = 64;
 // The grid's items that aren't candidates: the user's own image, and no art at all.
@@ -120,6 +123,7 @@ QString StyleLabel(const ArtCandidate& candidate) {
 class ThumbGrid : public QListWidget {
  public:
   using QListWidget::QListWidget;
+  using QListWidget::setViewportMargins;
   std::function<void()> on_resize;
 
  protected:
@@ -259,12 +263,13 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   // Two rows, so the chips never squeeze their labels: the slots and the image buttons, then the
   // chips and which SteamGridDB game the art is from.
   auto* rows = new QVBoxLayout(bar);
-  rows->setContentsMargins(16, 10, 16, 10);
+  rows->setContentsMargins(kCardInset - kTabPadding, 10, kCardInset, 10);
   rows->setSpacing(8);
   auto* bar_layout = new QHBoxLayout();
   bar_layout->setSpacing(8);
   rows->addLayout(bar_layout);
   auto* filter_layout = new QHBoxLayout();
+  filter_layout->setContentsMargins(kTabPadding, 0, 0, 0);
   filter_layout->setSpacing(8);
   rows->addLayout(filter_layout);
   slots_ = new TabRow(bar);
@@ -393,8 +398,9 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   grid_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   grid_->setFrameShape(QFrame::NoFrame);
   grid_->setMouseTracking(true);
-  grid_->setStyleSheet("QListWidget { background: transparent; padding: 8px 10px; }");
+  grid_->setStyleSheet("QListWidget { background: transparent; border: none; }");
   grid_->viewport()->setAutoFillBackground(false);
+  FadeTop(grid_);  // covers scrolling up under the bar dissolve rather than ending on a line
   delegate_ = new ThumbDelegate(pulse_, grid_);
   grid_->setItemDelegate(delegate_);
   grid->on_resize = [this] {
@@ -1205,16 +1211,23 @@ void ArtPickerPanel::ShowUpload(const QString& name, const QPixmap& pixmap, QSiz
 }
 
 void ArtPickerPanel::UpdateGridSize() {
-  // Sized as if the scroll bar were always there, so it showing up doesn't
-  // change the column count and lay everything out again.
-  const int scroll_bar = grid_->verticalScrollBar()->sizeHint().width();
-  const int width = grid_->width() - 20 - scroll_bar;  // less the grid's padding
+  // Previews from the card's inset on the left to its inset on the right. QListView wraps them in
+  // the width less the style's whole scroll bar extent, shown or not, so that goes in the right
+  // inset. Viewport margins, not QSS padding: Qt takes padding as one width for both sides.
+  QStyle* style = grid_->style();
+  int extent = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, grid_->verticalScrollBar());
+  if (style->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents, nullptr, grid_))
+    extent += 2 * style->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, grid_);
+  const int left = kCardInset - kInset;
+  const int right = std::max(0, left - extent);
+  static_cast<ThumbGrid*>(grid_)->setViewportMargins(left, 8, right, 8);
+  const int width = grid_->width() - left - right - extent;
   // SteamGridDB heroes are 96:31, covers 2:3; logos vary, so a wide box, and icons are square.
   const bool hero = slot_ == "hero";
   const bool logo = slot_ == "logo";
   const bool icon = slot_ == "icon";
   const int columns = std::max(2, width / (hero ? 230 : logo ? 200 : icon ? 96 : 118));
-  const int cell = std::max(40, width / columns);
+  const int cell = std::max(40, (width - 1) / columns);  // a pixel spare, or the last column wraps
   const int art = cell - 2 * kInset;
   const int height = qRound(art * (hero   ? 31.0 / 96.0
                                    : logo ? 0.5

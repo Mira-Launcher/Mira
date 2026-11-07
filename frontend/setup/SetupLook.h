@@ -17,6 +17,7 @@ class QNetworkAccessManager;
 
 namespace mira_gui {
 
+class Segmented;
 class Switch;
 
 // Three example games' covers and heroes from Steam's CDN, for previews before the user has games
@@ -97,8 +98,8 @@ class LookPage : public SetupStep {
 
   const SetupContext& context_;
   QButtonGroup* themes_ = nullptr;
-  QButtonGroup* corners_ = nullptr;
-  QButtonGroup* spacing_ = nullptr;
+  Segmented* corners_ = nullptr;
+  Segmented* spacing_ = nullptr;
   QWidget* games_switches_ = nullptr;
   QWidget* apps_switches_ = nullptr;
   Switch* continue_ = nullptr;
@@ -122,8 +123,8 @@ class SidebarPage : public SetupStep {
   void Save(const FrontendPrefs& change);
 
   const SetupContext& context_;
-  QButtonGroup* pinned_ = nullptr;
-  QButtonGroup* recent_ = nullptr;
+  Segmented* pinned_ = nullptr;
+  Segmented* recent_ = nullptr;
   QWidget* games_rows_ = nullptr;
   Switch* when_ = nullptr;
   Switch* covers_ = nullptr;

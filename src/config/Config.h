@@ -125,4 +125,8 @@ class Config {
   std::atomic<std::uint64_t> revision_{0};
 };
 
+// Sets `key` in a launch.env list of "KEY=VALUE" strings: drops its earlier entries and appends
+// the new one.
+void SetEnvEntry(nlohmann::json& list, const std::string& key, const std::string& value);
+
 }  // namespace mira::config

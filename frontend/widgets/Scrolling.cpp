@@ -1,5 +1,6 @@
 #include "Scrolling.h"
 
+#include <QAbstractItemView>
 #include <QAbstractScrollArea>
 #include <QAbstractSpinBox>
 #include <QApplication>
@@ -10,6 +11,8 @@
 #include <QScrollBar>
 #include <QSlider>
 #include <QTextEdit>
+#include <QVariantAnimation>
+#include <QWheelEvent>
 #include <algorithm>
 
 namespace mira_gui {
@@ -35,8 +38,9 @@ class PageKeys : public QObject {
 
   bool eventFilter(QObject* watched, QEvent* event) override {
     if (area_.isNull() || scope_.isNull()) return false;
-    // The wheel scrolls the area; a dropdown, number box or slider in it only takes
-    // the wheel once focused, so passing over one doesn't change it.
+    // The wheel always scrolls the area: a dropdown, number box or slider in it never takes it,
+    // even focused, so scrolling past one after an edit doesn't change it. Keys and clicks still
+    // do.
     if (event->type() == QEvent::Wheel || event->type() == QEvent::Polish) {
       auto* control = qobject_cast<QWidget*>(watched);
       if (control == nullptr || InnerArea(control) != area_ ||
@@ -48,7 +52,6 @@ class PageKeys : public QObject {
         control->setFocusPolicy(Qt::StrongFocus);  // the wheel must not focus it on the way past
         return false;
       }
-      if (control->hasFocus()) return false;
       QCoreApplication::sendEvent(area_->verticalScrollBar(), event);
       return true;
     }
@@ -88,7 +91,94 @@ class PageKeys : public QObject {
   QPointer<QWidget> scope_;
 };
 
+// One scroll bar's glide toward where its wheel notches so far would have put it.
+class Glide : public QVariantAnimation {
+ public:
+  static constexpr const char* kName = "wheel_glide";
+
+  explicit Glide(QScrollBar* bar) : QVariantAnimation(bar), bar_(bar) {
+    setObjectName(kName);
+    setDuration(200);
+    setEasingCurve(QEasingCurve::OutCubic);
+    connect(this, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant& value) { bar_->setValue(value.toInt()); });
+    // Dragging the bar or a key takes over.
+    connect(bar, &QScrollBar::sliderPressed, this, &QVariantAnimation::stop);
+    connect(bar, &QScrollBar::actionTriggered, this, &QVariantAnimation::stop);
+  }
+
+  // False when the bar is at that end already, so the wheel goes on to whatever holds it.
+  bool By(int pixels) {
+    const bool running = state() == QAbstractAnimation::Running;
+    const int to =
+        std::clamp((running ? target_ : bar_->value()) + pixels, bar_->minimum(), bar_->maximum());
+    if (!running && to == bar_->value()) return false;
+    target_ = to;
+    stop();
+    setStartValue(bar_->value());
+    setEndValue(to);
+    start();
+    return true;
+  }
+
+ private:
+  QScrollBar* bar_;
+  int target_ = 0;
+};
+
+// A touchpad's own pixel steps are smooth already. On Wayland only a touchpad's scrolls come with
+// phases and as synthesized by the system: a mouse wheel sends pixels too, and Qt gives every
+// pointer event the seat's one device, which is "touchpad" once the compositor offers gestures.
+bool Touchpad(const QWheelEvent& wheel) {
+  if (wheel.phase() != Qt::NoScrollPhase || wheel.source() == Qt::MouseEventSynthesizedBySystem)
+    return true;
+  static const bool wayland = QGuiApplication::platformName().startsWith("wayland");
+  if (wayland) return false;
+  const QPointingDevice* device = wheel.pointingDevice();
+  return (device != nullptr && device->type() == QInputDevice::DeviceType::TouchPad) ||
+         !wheel.pixelDelta().isNull();
+}
+
+// Every scroll area hands its wheel to its vertical bar, so the bar is where a notch's jump
+// becomes a glide, after the view itself has seen the wheel (Ctrl zooms, hovers end).
+class SmoothWheel : public QObject {
+ public:
+  using QObject::QObject;
+
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() != QEvent::Wheel) return false;
+    auto* bar = qobject_cast<QScrollBar*>(watched);
+    if (bar == nullptr || bar->orientation() != Qt::Vertical) return false;
+    auto* wheel = static_cast<QWheelEvent*>(event);
+    const QPoint angle = wheel->angleDelta();
+    if (angle.y() == 0 || angle.x() != 0 || wheel->modifiers() != Qt::NoModifier ||
+        Touchpad(*wheel))
+      return false;
+    QAbstractScrollArea* area = InnerArea(bar);
+    if (area == nullptr || area->verticalScrollBar() != bar) return false;
+    // Their bars count items or lines, not pixels.
+    if (auto* view = qobject_cast<QAbstractItemView*>(area);
+        (view != nullptr && view->verticalScrollMode() == QAbstractItemView::ScrollPerItem) ||
+        qobject_cast<QPlainTextEdit*>(area) != nullptr) {
+      return false;
+    }
+    auto* glide = static_cast<Glide*>(
+        bar->findChild<QVariantAnimation*>(Glide::kName, Qt::FindDirectChildrenOnly));
+    if (glide == nullptr) glide = new Glide(bar);
+    // As far as Qt's own step would have gone.
+    const int pixels = qRound(angle.y() / double(kNotchPixels) * QApplication::wheelScrollLines() *
+                              bar->singleStep() * (bar->invertedControls() ? -1 : 1));
+    if (!glide->By(pixels)) return false;
+    wheel->accept();
+    return true;
+  }
+};
+
 }  // namespace
+
+void SetUpSmoothWheel() {
+  qApp->installEventFilter(new SmoothWheel(qApp));
+}
 
 void SetUpScrolling(QAbstractScrollArea* area, QWidget* scope) {
   area->verticalScrollBar()->setSingleStep(

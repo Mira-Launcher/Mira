@@ -76,8 +76,6 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
                  const FrontendPrefs& prefs, QWidget* parent)
     : QWidget(parent), library_(library), artwork_(artwork), updates_(updates) {
   setObjectName("left_sidebar");
-  // A point above the rest of the window, so its rows read at a glance.
-  setFont(theme::Larger(font()));
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
             if (type == "sources.changed") RefreshSources();

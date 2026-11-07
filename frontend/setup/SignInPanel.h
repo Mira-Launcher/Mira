@@ -19,6 +19,7 @@ namespace mira_gui {
 
 class BrowserSketch;
 class ProgressRail;
+class Segmented;
 class SetupLog;
 
 // Connects one source, step by step, beside a drawing of the page the user will see: a store
@@ -84,7 +85,7 @@ class SignInPanel : public QWidget {
   QLabel* done_label_ = nullptr;  // in the header
   QWidget* preparing_ = nullptr;
   QWidget* body_ = nullptr;
-  QWidget* browsers_ = nullptr;  // Firefox / Chrome or Edge, for guides that differ
+  Segmented* browsers_ = nullptr;  // Firefox / Chrome or Edge, for guides that differ
   QVBoxLayout* steps_ = nullptr;
   QWidget* account_row_ = nullptr;
   QLabel* account_ = nullptr;

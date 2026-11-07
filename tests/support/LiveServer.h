@@ -46,6 +46,9 @@ class LiveServer {
 // as GET /v1/jobs/{id} shows it once done (`state`, then `result` or `error`).
 nlohmann::json AwaitJob(httplib::Client& client, const httplib::Result& started);
 
+// GET `path`, which must answer 200, parsed.
+nlohmann::json GetJson(httplib::Client& client, const std::string& path);
+
 // The first event of `type` published so far or within 10 s; nullopt if none came.
 std::optional<model::Event> WaitForEvent(const api::EventBus& events, std::string_view type);
 

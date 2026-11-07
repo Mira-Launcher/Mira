@@ -1,91 +1,110 @@
 #pragma once
 
-#include <QWidget>
-#include <algorithm>
+#include <QObject>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "../client/Types.h"
 #include "../settings/SettingEditor.h"
-#include "../theme/Icons.h"
 
 class QLabel;
-class QToolButton;
+class QPushButton;
+class QWidget;
 
 namespace mira_gui {
 
+class ExpanderRow;
 class SettingsCard;
-class SettingsNavWidget;
-class SettingsPage;
 
-// The "just for this game" half of a game's settings: every overridable
-// setting, resolved through default -> settings.toml -> this game, editable
-// the same way the settings screen edits the global value, each row's clear
-// button dropping back to the layer underneath.
+// A game's own values for the settings it can use, resolved through default -> Settings -> this
+// game and edited with the settings screen's own editors. A row the game sets for itself shows a
+// dot, and its undo puts it back on Settings' value (an unsaved edit is undone first).
 //
-// Its own widget because it talks to a different endpoint than the dialog
-// around it: the dialog saves fields via PATCH .../games/{id}, this saves
-// keys via PATCH .../games/{id}/config. The dialog only asks it what changed.
-class OverridesEditor : public QWidget {
+// The host places the rows that belong with its own cards (a store's settings, the environment
+// variables); every other row goes into the Overrides card, one expander per category.
+//
+// Its own object because it talks to a different endpoint than the form around it: the form saves
+// fields via PATCH .../games/{id}, this saves keys via PATCH .../games/{id}/config.
+class OverridesEditor : public QObject {
   Q_OBJECT
 
  public:
-  explicit OverridesEditor(std::string game_id, QWidget* parent = nullptr);
+  OverridesEditor(std::string game_id, QWidget* parent);
 
-  // Fetches the schema, builds a row per key, then fills in this game's
-  // resolved values. Non-fatal if either request fails: the rest of the
-  // dialog still works without this section.
+  // Puts `key`'s row into `card` at row `at` (-1 the end) instead of the Overrides card. Call
+  // before Load.
+  void PlaceRow(const std::string& key, SettingsCard* card, int at = -1);
+  // The card the other rows go into. Call before Load.
+  void SetOverridesCard(SettingsCard* card);
+  // Shows `card`, which holds only placed rows, only while one of them is shown.
+  void HideWhenEmpty(SettingsCard* card);
+
+  // Fetches the schema and Settings' values the first time, then this game's values. Non-fatal if
+  // a request fails: the rest of the form still works without these rows.
   void Load();
 
-  // The keys whose value the user actually changed, ready for
-  // PATCH /v1/games/{id}/config. Empty when nothing was touched, so a dialog
-  // opened and saved unedited sends no override patch at all.
+  // The keys changed or put back on Settings, ready for PATCH /v1/games/{id}/config. Empty when
+  // nothing was touched, so a card opened and saved unedited sends no override patch at all.
   std::vector<GameConfigEdit> PendingEdits() const;
-
-  // Call after PendingEdits() was successfully applied. It resets the
-  // change-tracking baseline without a re-fetch, so PendingEdits() goes
-  // back to empty.
+  // After PendingEdits() was applied: the edits are the new baseline, then the layers reload.
   void MarkSaved();
-  // Puts every edited row back to its loaded value.
   void DiscardChanges();
 
-  // A page of the host's own, listed before the schema's categories.
-  SettingsPage* AddPage(const QString& title, icons::Glyph glyph);
-  // Builds `keys`' rows into the host's `card` instead of these pages. Call before Load.
-  void HostRows(std::vector<std::string> keys, SettingsCard* card);
-  bool Hosts(const std::string& key) const { return std::ranges::contains(host_keys_, key); }
-  // Re-splits the pages after the host's cards changed, and starts at the top.
-  void ShowFromTop();
-  // Scrolls `key`'s row into view, once the values have arrived.
+  // The value `key`'s row holds now, empty before it is built.
+  std::string Text(const std::string& key) const;
+  // Hides `key`'s row whatever the game can use, e.g. environment variables Steam won't pass on.
+  void SetRowHidden(const std::string& key, bool hidden);
+  // Opens `key`'s expander and asks for its row to be scrolled to, once the values have arrived.
   void RevealKey(const std::string& key);
 
  signals:
   void Changed();
+  void RevealRequested(QWidget* row);
 
  private:
-  // One row: an overridable schema key with the same editor the settings
-  // screen gives it and the layer the shown value came from.
   struct Field : SettingEditor {
-    std::string layer;  // "default" | "config" | "game"
-    QLabel* layer_label = nullptr;
-    QToolButton* clear = nullptr;  // drops this game's override; shown while the layer is "game"
+    std::string layer;                 // "default" | "config" | "game"
+    std::string settings;              // the value Settings gives it, what undo puts back
+    bool applies = false;              // overridable and usable by this game
+    bool hidden = false;               // SetRowHidden
+    bool clearing = false;             // undo put it back on Settings; saved as a clear
+    bool unlocked = false;             // Edit… pressed on a list the game took from Settings
+    QPushButton* edit_list = nullptr;  // Edit… on a list the game takes from Settings
+    QLabel* from_settings = nullptr;   // says so beside the label
+    ExpanderRow* expander = nullptr;   // in the Overrides card, else placed by the host
+    SettingsCard* card = nullptr;      // where the host placed it
+    bool embedded = false;             // shown inside its shown_in's row, which undoes both
   };
 
   void BuildRows(const ConfigSchemaResult& schema);
   void ApplyValues(const GameConfigResult& config);
   void Reload();
-  void ResetField(size_t index);
-  Field* FindField(const std::string& key);
+  // Pressing undo on `index`'s row, for it and the settings shown inside it: the unsaved edits
+  // first, then the game's own values.
+  void Undo(size_t index);
+  const Field* Find(const std::string& key) const;  // null for an empty or unknown key
+  Field* Find(const std::string& key);
+  // The game's own value, saved or about to be.
+  bool Own(const Field& field) const;
+  void ShowState(Field& field);
+  void UpdateSummaries();
 
+  struct Placement {
+    SettingsCard* card = nullptr;
+    int at = -1;
+  };
   std::string game_id_;
-  // The overrides a reset is reloading for; their edits are dropped.
-  std::vector<std::string> resetting_keys_;
+  QWidget* parent_ = nullptr;
+  std::map<std::string, Placement> placed_;
+  SettingsCard* overrides_card_ = nullptr;
+  std::vector<SettingsCard*> hide_when_empty_;
+  std::map<std::string, ExpanderRow*> expanders_;  // by category
+  std::map<std::string, std::string> settings_values_;
   std::string reveal_key_;  // a row RevealKey asked for before the values arrived
   bool values_loaded_ = false;
-  SettingsNavWidget* nav_ = nullptr;
+  bool loading_ = false;
   std::vector<Field> fields_;
-  std::vector<std::string> host_keys_;
-  SettingsCard* host_card_ = nullptr;
 };
 
 }  // namespace mira_gui

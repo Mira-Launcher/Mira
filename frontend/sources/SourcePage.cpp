@@ -46,6 +46,7 @@
 #include "../library/ZoomSettle.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ModalOverlay.h"
 #include "../widgets/PopupDialog.h"
@@ -902,7 +903,7 @@ void SourcePage::AddToGame() {
       source_.name +
       " opens from the game's page and runs in its prefix. Mira first installs what it "
       "needs there, which can take a few minutes.");
-  auto* picker = new QComboBox(&dialog);
+  auto* picker = new FlatCombo(&dialog);
   for (const GameSummary* game : games) {
     picker->addItem(QString::fromStdString(game->name), QString::fromStdString(game->id));
   }
@@ -966,7 +967,7 @@ void SourcePage::AskStartFile(const StartChoice& choice) {
                      "Which file starts " + QString::fromStdString(choice.name) + "?");
   dialog.SetMessage(
       "Its folder has more than one program. You can change it later in the game's settings.");
-  auto* files = new QComboBox(&dialog);
+  auto* files = new FlatCombo(&dialog);
   for (const std::string& file : choice.files) files->addItem(QString::fromStdString(file));
   dialog.AddWidget(files);
   dialog.AddButton("Use this file", true, true);

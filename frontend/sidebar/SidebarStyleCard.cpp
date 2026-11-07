@@ -97,7 +97,7 @@ SidebarStyleChoices::SidebarStyleChoices(const Choices& choices, std::vector<Gam
   recent_count_ = new QSpinBox(count_row_);
   recent_count_->setRange(0, 10);
   recent_count_->setSpecialValueText("Off");
-  recent_count_->setMinimumWidth(90);
+  recent_count_->setFixedWidth(kNumberWidth);
   connect(recent_count_, &QSpinBox::valueChanged, this, [this](int count) {
     choices_.recent_count = count;
     Edited();
@@ -182,10 +182,11 @@ SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent)
       Edited();
     });
     group->addButton(choice);
+    // Spread edge to edge: the gaps widen with the card rather than leaving room at the end.
+    if (!list.empty()) tiles->addStretch(1);
     tiles->addWidget(choice);
     list.push_back(choice);
   }
-  tiles->addStretch(1);
   row->SetBelow(box);
   return row;
 }

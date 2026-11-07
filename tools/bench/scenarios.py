@@ -949,10 +949,13 @@ def gui_game_card(ctx, meta):
         time.sleep(1.5)
         cards, card_cpus, closed = [], [], []
         # The facts line under the game's name: achievements, then saves beside them. The saves page's
-        # light cards change about 4% of the small snapshot, the achievements' icons far more.
-        lines = [("achievements", 570, 0.05)] + ([("saves", 760, 0.02)] if has_saves else [])
+        # light cards change about 4% of the small snapshot, the achievements' icons far more. Each has
+        # two places: the card centered on the window, then the older card's, which a base may have.
+        lines = [("achievements", [(600, 258), (570, 302)], 0.05)]
+        if has_saves:
+            lines.append(("saves", [(850, 258), (760, 302)], 0.02))
         pages = {name: ([], []) for name, _, _ in lines}
-        for name, x, least in lines:
+        for name, places, least in lines:
             for round_ in range(1, 3):
                 # Again each round: a closed card leaves the grid without focus.
                 display.xdotool("mousemove", "500", "270", "click", "1")
@@ -963,13 +966,23 @@ def gui_game_card(ctx, meta):
                 cards.append(wall)
                 card_cpus.append(cpu)
                 shown = display.snapshot()
-                wall, cpu = respond(pid, lambda: display.xdotool("mousemove", str(x), "302", "click", "1"))
-                check(changed(shown, display.snapshot()) > least, f"the {name} line didn't open its page (round {round_})")
+                for x, y in places:
+                    timed = respond(pid, lambda: display.xdotool("mousemove", str(x), str(y), "click", "1"),
+                                    may_idle=True)
+                    after = display.snapshot()
+                    # A click beside the card closes it, which changes the screen too.
+                    if timed is not None and changed(shown, after) > least and changed(library, after) > 0.05:
+                        places = [(x, y)]  # the rounds after click only where it worked
+                        break
+                else:
+                    raise Failed(f"the {name} line didn't open its page (round {round_})")
+                wall, cpu = timed
                 pages[name][0].append(wall)
                 pages[name][1].append(cpu)
                 for _ in range(2):  # back to the card, then the card closed
                     respond(pid, lambda: display.key("Escape"), may_idle=True)
-                check(changed(library, display.snapshot()) < 0.02, f"Esc didn't close the card (round {round_})")
+                share = changed(library, display.snapshot())
+                check(share < 0.02, f"Esc didn't close the card (round {round_}, {share:.1%} of the screen differs)")
                 closed.append(proc_status(pid)["rss_kb"])
         ctx.results["open the card"] = round(statistics.median(cards), 1)
         ctx.results["open the card, CPU until done"] = round(statistics.median(card_cpus), 1)
