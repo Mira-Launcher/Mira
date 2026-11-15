@@ -1,10 +1,12 @@
 #include "runner/GameMode.h"
 
+#include <chrono>
 #include <string>
 #include <vector>
 
 #include "core/Command.h"
 #include "core/Log.h"
+#include "proc/Cgroup.h"
 #include "runner/Exec.h"
 
 namespace mira::gamemode {
@@ -90,6 +92,52 @@ void UnregisterGame(pid_t pid) {
     log::Warn("GameMode unregistration for pid {} failed: {}", pid,
               !result ? result.error().message : result->output);
   }
+}
+
+GroupClients::GroupClients(std::filesystem::path group) : group_(std::move(group)) {
+  Scan(false);
+  thread_ = std::thread([this] {
+    std::unique_lock lock(mutex_);
+    while (!wake_.wait_for(lock, std::chrono::seconds(1), [this] { return stopping_; })) {
+      lock.unlock();
+      Scan(true);
+      lock.lock();
+    }
+  });
+}
+
+GroupClients::~GroupClients() {
+  {
+    const std::lock_guard lock(mutex_);
+    stopping_ = true;
+  }
+  wake_.notify_all();
+  thread_.join();
+  for (const pid_t pid : registered_) UnregisterGame(pid);
+}
+
+void GroupClients::Scan(bool settle) {
+  const std::vector<pid_t> pids = proc::cgroup::Pids(group_);
+  const std::set<pid_t> now(pids.begin(), pids.end());
+  for (auto it = registered_.begin(); it != registered_.end();) {
+    if (now.contains(*it)) {
+      ++it;
+    } else {
+      UnregisterGame(*it);
+      it = registered_.erase(it);
+    }
+  }
+  std::set<pid_t> seen;
+  for (const pid_t pid : now) {
+    if (registered_.contains(pid)) continue;
+    if (!settle || seen_.contains(pid)) {
+      RegisterGame(pid);
+      registered_.insert(pid);
+    } else {
+      seen.insert(pid);
+    }
+  }
+  seen_ = std::move(seen);
 }
 
 }  // namespace mira::gamemode

@@ -398,7 +398,8 @@ int main(int argc, char** argv) {
   // write succeeds.
   [[maybe_unused]] auto write_start = proc::WriteSessionRecord(args.database, record);
 
-  if (args.gamemode) gamemode::RegisterGame(game_pid);
+  std::optional<gamemode::GroupClients> gamemode_clients;
+  if (args.gamemode) gamemode_clients.emplace(game_group);
 
   // A stray signal must not lose the session record.
   struct sigaction sa{};
@@ -426,7 +427,7 @@ int main(int argc, char** argv) {
     proc::cgroup::WaitEmpty(game_group);
   }
 
-  if (args.gamemode) gamemode::UnregisterGame(game_pid);
+  gamemode_clients.reset();  // the game is over, so GameMode ends before the post script runs
 
   record.finished = true;
   record.ended_at = model::NowSeconds();

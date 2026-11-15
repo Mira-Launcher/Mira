@@ -27,25 +27,12 @@ using test::TempDir;
 namespace fs = std::filesystem;
 
 namespace {
-// Waits up to `timeout` for `predicate()` to become true, polling rather
-// than sleeping the whole timeout. These tests spawn real subprocesses, so
-// exact timing isn't guaranteed.
 // Starts `program` the way the launch routes do: under mira-run in a systemd scope,
 // handed to LaunchWrapped. Returns the wrapper pid, or -1.
 pid_t LaunchUnderMiraRun(proc::ProcessSupervisor& supervisor, const model::Game& game,
                          const fs::path& db, const std::vector<std::string>& mira_run_args,
                          const std::vector<std::string>& program) {
-  const fs::path mira_run = fs::read_symlink("/proc/self/exe").parent_path() / "mira-run";
-  Command cmd;
-  cmd.argv = {"systemd-run",  "--user",     "--scope",
-              "--quiet",      "--collect",  "-p",
-              "Delegate=yes", "--",         mira_run.string(),
-              "--game-id",    game.id,      "--database",
-              db.string(),    "--log-file", (db.parent_path() / "game.log").string()};
-  cmd.argv.insert(cmd.argv.end(), mira_run_args.begin(), mira_run_args.end());
-  cmd.argv.push_back("--");
-  cmd.argv.insert(cmd.argv.end(), program.begin(), program.end());
-  auto pid = runner::SpawnDetached(cmd);
+  auto pid = runner::SpawnDetached(test::MiraRunCommand(game.id, db, mira_run_args, program));
   if (!pid) return -1;
   if (auto launched = supervisor.LaunchWrapped(game, *pid, model::NowSeconds()); !launched)
     return -1;

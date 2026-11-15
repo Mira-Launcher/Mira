@@ -61,13 +61,27 @@ std::vector<pid_t> Pids(const std::filesystem::path& group) {
   return pids;
 }
 
+namespace {
+
+// Reads cgroup.events through `fd` from the start. Reading is also what clears kernfs's pending
+// event: poll() on an fd that was never read returns at once, every time.
+bool PopulatedFrom(int fd) {
+  if (::lseek(fd, 0, SEEK_SET) < 0) return false;
+  std::string text;
+  char chunk[256];
+  ssize_t n;
+  while ((n = ::read(fd, chunk, sizeof(chunk))) > 0) text.append(chunk, static_cast<size_t>(n));
+  return text.starts_with("populated 1\n") || text.find("\npopulated 1\n") != std::string::npos;
+}
+
+}  // namespace
+
 bool Populated(const std::filesystem::path& group) {
-  std::ifstream in(group / "cgroup.events");
-  std::string line;
-  while (std::getline(in, line)) {
-    if (line == "populated 1") return true;
-  }
-  return false;
+  const int fd = ::open((group / "cgroup.events").c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return false;
+  const bool populated = PopulatedFrom(fd);
+  ::close(fd);
+  return populated;
 }
 
 bool WaitEmpty(const std::filesystem::path& group,
@@ -76,7 +90,8 @@ bool WaitEmpty(const std::filesystem::path& group,
       std::chrono::steady_clock::now() + timeout.value_or(std::chrono::milliseconds::zero());
   // A failed open leaves fd -1, which poll() ignores, so this degrades to a 1 s sleep.
   const int fd = ::open((group / "cgroup.events").c_str(), O_RDONLY | O_CLOEXEC);
-  bool empty = !Populated(group);
+  const auto populated = [&] { return fd >= 0 ? PopulatedFrom(fd) : Populated(group); };
+  bool empty = !populated();
   while (!empty) {
     int wait_ms = 1000;
     if (timeout) {
@@ -87,7 +102,7 @@ bool WaitEmpty(const std::filesystem::path& group,
     }
     pollfd pfd{fd, POLLPRI, 0};
     ::poll(&pfd, 1, wait_ms);
-    empty = !Populated(group);
+    empty = !populated();
   }
   if (fd >= 0) ::close(fd);
   return empty;
